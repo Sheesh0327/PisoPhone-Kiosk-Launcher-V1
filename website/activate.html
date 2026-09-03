@@ -8,7 +8,6 @@
     <style>
         @keyframes gradientShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(30px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
-        @keyframes float { 0% { transform: translateY(0px); } 50% { transform: translateY(-10px); } 100% { transform: translateY(0px); } }
         @keyframes pulseGlow { 0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); } 70% { box-shadow: 0 0 0 15px rgba(16, 185, 129, 0); } 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
         
         body { 
@@ -20,36 +19,20 @@
         }
         
         .glass-card { 
-            background: rgba(15, 23, 42, 0.6); 
+            background: rgba(15, 23, 42, 0.7); 
             backdrop-filter: blur(16px); 
             -webkit-backdrop-filter: blur(16px);
             border: 1px solid rgba(255, 255, 255, 0.1); 
             box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
-            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        .glass-card:hover { 
-            border-color: rgba(52, 211, 153, 0.5); 
-            transform: translateY(-8px);
-            box-shadow: 0 20px 40px -10px rgba(16, 185, 129, 0.3);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
         
-        /* Modern Utilities */
-        .animate-fade-in-up { animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards; opacity: 0; }
-        .delay-100 { animation-delay: 100ms; }
-        .delay-200 { animation-delay: 200ms; }
-        .delay-300 { animation-delay: 300ms; }
-        .delay-400 { animation-delay: 400ms; }
-        .float-anim { animation: float 6s ease-in-out infinite; }
+        .animate-fade-in-up { animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
         .pulse-btn { animation: pulseGlow 2s infinite; }
-        .step-icon { width: 40px; height: 40px; border-radius: 50%; background: rgba(30, 41, 59, 0.8); border: 2px solid rgba(51, 65, 85, 0.8); display: flex; align-items: center; justify-content: center; font-weight: bold; color: #94A3B8; transition: all 0.3s ease; }
-        .glass-card:hover .step-icon { border-color: rgba(52, 211, 153, 0.8); color: #34d399; transform: scale(1.1) rotate(5deg); box-shadow: 0 0 15px rgba(52, 211, 153, 0.4); }
-        .glass-card:hover .step-icon.bg-emerald-500 { background: #10b981; color: #022c22; }
         
-        /* Custom scrollbar for modern look */
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.5); }
         ::-webkit-scrollbar-thumb { background: rgba(52, 211, 153, 0.3); border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: rgba(52, 211, 153, 0.6); }
     </style>
 </head>
 <body class="min-h-screen flex flex-col font-sans">
@@ -73,36 +56,76 @@
     </nav>
 
     <main class="flex-grow container mx-auto px-4 py-12 flex flex-col items-center max-w-2xl">
-        <h1 class="text-3xl font-bold mb-8 animate-fade-in-up">Activate 1-Year License</h1>
+        <h1 class="text-3xl font-bold mb-2 animate-fade-in-up text-center">1-Year License Activation</h1>
+        <p class="text-slate-400 text-sm mb-8 text-center animate-fade-in-up">Instant zero-code provisioning. Pay, verify device, and activate in one click.</p>
 
         <!-- Browser Banner -->
         <div id="browserWarning" class="hidden w-full bg-rose-500/20 border border-rose-500 text-rose-300 p-4 rounded-lg mb-6 text-sm flex items-start space-x-3">
             <svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
             <div>
                 <strong>Incompatible Browser Detected.</strong><br/>
-                WebUSB hardware provisioning requires Google Chrome, Microsoft Edge, or Brave. Please open this page in a supported browser.
+                WebUSB hardware provisioning requires Google Chrome, Microsoft Edge, or Brave.
             </div>
         </div>
         
-        <div class="glass-card rounded-2xl p-8 w-full shadow-xl mb-6 animate-fade-in-up delay-100">
-            <p class="text-slate-400 text-sm mb-6">Connect your device via USB, enter your secret purchase code, and click activate to provision a full 1-year license to the device instantly.</p>
+        <div class="glass-card rounded-2xl p-8 w-full shadow-xl mb-6 animate-fade-in-up">
             
-            <div class="space-y-4 mb-6">
-                <div>
-                    <label class="block text-xs font-bold text-slate-400 mb-1">SECRET CODE</label>
-                    <input type="password" id="secretCodeInput" placeholder="Enter 16-character purchase code (e.g. ARC-XXXX-XXXX)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-400 transition">
+            <!-- Step 1: Device ID Detection -->
+            <div class="mb-6">
+                <label class="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">Step 1: Enter or Read Device ID</label>
+                <div class="flex gap-2">
+                    <input type="text" id="deviceIdInput" placeholder="e.g. 9774d56d682e549c" class="flex-grow bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-sm text-white font-mono uppercase focus:outline-none focus:border-emerald-400 transition">
+                    <button id="readUsbIdBtn" class="bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 font-bold px-4 py-3 rounded-lg text-xs transition flex items-center gap-1.5 flex-shrink-0">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        Read via USB
+                    </button>
+                </div>
+                <p class="text-slate-500 text-xs mt-1.5">You can find your Device ID on the PisoPhone lock screen or click "Read via USB".</p>
+            </div>
+
+            <!-- Step 2: Payment Status Check Card -->
+            <div id="paymentStatusBox" class="p-4 rounded-xl border border-slate-800 bg-slate-950/80 mb-6 flex flex-col gap-3">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-2.5">
+                        <span id="statusIndicatorDot" class="w-3 h-3 rounded-full bg-slate-600"></span>
+                        <span id="statusTitle" class="text-sm font-bold text-slate-300">Payment Status: Waiting for Device ID</span>
+                    </div>
+                    <button id="checkPaymentBtn" class="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 font-bold px-3 py-1.5 rounded-lg text-xs transition">
+                        Check Status
+                    </button>
+                </div>
+                <p id="statusDescription" class="text-xs text-slate-400">
+                    Once payment is received via GCash/Maya QR or webhook, the activate button will unlock automatically.
+                </p>
+                
+                <!-- Unpaid notice with quick pay actions -->
+                <div id="unpaidActionSection" class="hidden pt-3 border-t border-slate-800 flex flex-col gap-3">
+                    <div class="bg-amber-500/10 border border-amber-500/30 p-3 rounded-lg text-xs text-amber-300 flex items-start gap-2">
+                        <svg class="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                        <span>No confirmed payment found for this Device ID. Please complete payment (₱500/yr) to unlock.</span>
+                    </div>
+                    <div class="flex gap-2">
+                        <a id="payLinkBtn" href="purchase.html" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-lg text-xs text-center transition">
+                            Pay via GCash / Maya QR (₱500)
+                        </a>
+                        <button id="simulateWebhookBtn" title="Test/Admin trigger to simulate payment webhook" class="bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 text-xs px-3 py-2.5 rounded-lg transition">
+                            Simulate Payment Webhook
+                        </button>
+                    </div>
                 </div>
             </div>
-            
-            <button id="activateBtn" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-4 rounded-lg transition text-lg shadow-lg shadow-emerald-500/20">
-                Connect Device & Activate
+
+            <!-- Step 3: Activate Action Button -->
+            <button id="activateBtn" disabled class="w-full bg-slate-800 text-slate-500 font-bold py-4 rounded-xl transition text-base cursor-not-allowed border border-slate-700 flex items-center justify-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                <span>Awaiting Verified Payment</span>
             </button>
             
-            <div id="logContainer" class="hidden mt-6 bg-slate-950 border border-slate-800 rounded-lg p-4 font-mono text-xs text-slate-400 h-40 overflow-y-auto"></div>
+            <div id="logContainer" class="hidden mt-6 bg-slate-950 border border-slate-800 rounded-lg p-4 font-mono text-xs text-slate-400 h-44 overflow-y-auto"></div>
         </div>
 
         <!-- Consistent Footer / Deprovision Link -->
-        <div class="mt-16 pt-8 border-t border-slate-800/80 w-full flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500">
+        <div class="mt-8 pt-6 border-t border-slate-800/80 w-full flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500">
             <p>© 2026 PisoPhone. Fast, Secure, Zero-Runtime-Driver Kiosk Management.</p>
             <div class="flex space-x-4 mt-3 sm:mt-0">
                 <a href="deprovision.html" class="hover:text-rose-400 transition">Emergency Deprovision &amp; Uninstall</a>
@@ -112,16 +135,24 @@
 
     <script src="webadb_manager.js"></script>
     <script>
+        const API_BASE = 'https://pisophone-licensing-api.evankhell897.workers.dev';
+        
+        const deviceIdInput = document.getElementById('deviceIdInput');
+        const readUsbIdBtn = document.getElementById('readUsbIdBtn');
+        const checkPaymentBtn = document.getElementById('checkPaymentBtn');
         const activateBtn = document.getElementById('activateBtn');
         const logContainer = document.getElementById('logContainer');
-        const secretCodeInput = document.getElementById('secretCodeInput');
+        const statusIndicatorDot = document.getElementById('statusIndicatorDot');
+        const statusTitle = document.getElementById('statusTitle');
+        const statusDescription = document.getElementById('statusDescription');
+        const unpaidActionSection = document.getElementById('unpaidActionSection');
+        const simulateWebhookBtn = document.getElementById('simulateWebhookBtn');
+
+        let isPaymentVerified = false;
+        let verifiedLicenseKey = null;
 
         if (!navigator.usb) {
             document.getElementById('browserWarning').classList.remove('hidden');
-            activateBtn.disabled = true;
-            activateBtn.classList.replace('bg-emerald-500', 'bg-slate-600');
-            activateBtn.classList.replace('hover:bg-emerald-400', 'cursor-not-allowed');
-            activateBtn.textContent = 'Browser Unsupported';
         }
 
         function logInfo(msg) {
@@ -132,69 +163,183 @@
             logContainer.scrollTop = logContainer.scrollHeight;
         }
 
+        function getCleanDeviceId() {
+            return deviceIdInput.value.trim().toUpperCase();
+        }
+
+        async function verifyDevicePayment() {
+            const devId = getCleanDeviceId();
+            if (!devId) {
+                statusIndicatorDot.className = 'w-3 h-3 rounded-full bg-slate-600';
+                statusTitle.textContent = 'Payment Status: Enter Device ID';
+                statusDescription.textContent = 'Please enter a device ID or read via USB to check payment status.';
+                unpaidActionSection.classList.add('hidden');
+                setActivateButtonState(false, 'Enter Device ID');
+                return;
+            }
+
+            statusIndicatorDot.className = 'w-3 h-3 rounded-full bg-blue-400 animate-pulse';
+            statusTitle.textContent = 'Checking Cloudflare Licensing Server...';
+            statusDescription.textContent = `Verifying payment status for device ${devId}...`;
+
+            try {
+                const res = await fetch(`${API_BASE}/api/payment/check?deviceId=${encodeURIComponent(devId)}`);
+                const data = await res.json();
+
+                if (data.paid && data.licenseKey) {
+                    isPaymentVerified = true;
+                    verifiedLicenseKey = data.licenseKey;
+                    
+                    statusIndicatorDot.className = 'w-3 h-3 rounded-full bg-emerald-400';
+                    statusTitle.textContent = 'Payment Confirmed (1-Year License Active)';
+                    statusTitle.className = 'text-sm font-bold text-emerald-400';
+                    statusDescription.textContent = `Verified! License expires in ${data.daysRemaining} days. Connect your device via USB and click activate below.`;
+                    unpaidActionSection.classList.add('hidden');
+                    
+                    setActivateButtonState(true, 'Connect Device & Activate 1-Year License');
+                } else {
+                    isPaymentVerified = false;
+                    verifiedLicenseKey = null;
+
+                    statusIndicatorDot.className = 'w-3 h-3 rounded-full bg-amber-400';
+                    statusTitle.textContent = 'Payment Required';
+                    statusTitle.className = 'text-sm font-bold text-amber-400';
+                    statusDescription.textContent = 'No payment signal received yet for this Device ID. Once paid, the button below unlocks automatically.';
+                    unpaidActionSection.classList.remove('hidden');
+
+                    setActivateButtonState(false, 'Payment Required — Please Pay to Unlock');
+                }
+            } catch (err) {
+                statusIndicatorDot.className = 'w-3 h-3 rounded-full bg-rose-400';
+                statusTitle.textContent = 'Network Error';
+                statusDescription.textContent = `Could not reach licensing server: ${err.message}`;
+                setActivateButtonState(false, 'Server Offline');
+            }
+        }
+
+        function setActivateButtonState(enabled, label) {
+            if (enabled) {
+                activateBtn.disabled = false;
+                activateBtn.className = 'w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-4 rounded-xl transition text-base shadow-lg shadow-emerald-500/25 pulse-btn flex items-center justify-center gap-2 cursor-pointer';
+                activateBtn.innerHTML = `
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                    <span>${label}</span>
+                `;
+            } else {
+                activateBtn.disabled = true;
+                activateBtn.className = 'w-full bg-slate-800 text-slate-500 font-bold py-4 rounded-xl transition text-base cursor-not-allowed border border-slate-700 flex items-center justify-center gap-2';
+                activateBtn.innerHTML = `
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                    <span>${label}</span>
+                `;
+            }
+        }
+
+        // 1. Read Device ID automatically from USB
+        readUsbIdBtn.addEventListener('click', async () => {
+            logContainer.innerHTML = '';
+            readUsbIdBtn.disabled = true;
+            readUsbIdBtn.textContent = 'Connecting...';
+            try {
+                await window.webADB.connect(logInfo);
+                logInfo("Fetching hardware android_id...");
+                const out = await window.webADB.shell("settings get secure android_id");
+                const devId = out.trim();
+                deviceIdInput.value = devId;
+                logInfo(`Hardware Device ID: ${devId}`);
+                await window.webADB.disconnect();
+                verifyDevicePayment();
+            } catch (e) {
+                logInfo(`❌ USB Read Error: ${e.message}`);
+                alert(`Could not read device ID via USB: ${e.message}`);
+            } finally {
+                readUsbIdBtn.disabled = false;
+                readUsbIdBtn.innerHTML = `
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                    Read via USB
+                `;
+            }
+        });
+
+        // 2. Check payment status
+        checkPaymentBtn.addEventListener('click', verifyDevicePayment);
+        deviceIdInput.addEventListener('input', () => {
+            if (deviceIdInput.value.trim().length >= 6) {
+                verifyDevicePayment();
+            }
+        });
+
+        // 3. Simulate payment webhook for testing
+        simulateWebhookBtn.addEventListener('click', async () => {
+            const devId = getCleanDeviceId();
+            if (!devId) {
+                alert("Please enter a Device ID first.");
+                return;
+            }
+            simulateWebhookBtn.disabled = true;
+            simulateWebhookBtn.textContent = 'Sending signal...';
+            try {
+                const res = await fetch(`${API_BASE}/api/payment/webhook`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        deviceId: devId,
+                        paymentRef: `PAY-GCASH-${Date.now()}`
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alert(`✅ Payment Webhook Signal Received! Device ${devId} is now marked as paid.`);
+                    verifyDevicePayment();
+                } else {
+                    alert(`Error: ${data.error}`);
+                }
+            } catch (err) {
+                alert(`Webhook error: ${err.message}`);
+            } finally {
+                simulateWebhookBtn.disabled = false;
+                simulateWebhookBtn.textContent = 'Simulate Payment Webhook';
+            }
+        });
+
+        // 4. Activate button (Only clickable when payment verified)
         activateBtn.addEventListener('click', async () => {
-            const secret = secretCodeInput.value.trim();
-            if (!secret) {
-                alert("Please enter a valid activation code.");
+            if (!isPaymentVerified || !verifiedLicenseKey) {
+                alert("Payment has not been verified yet.");
                 return;
             }
 
             activateBtn.disabled = true;
-            activateBtn.textContent = 'Activating...';
+            activateBtn.textContent = 'Activating License on Device...';
             logContainer.innerHTML = '';
             
             try {
-                // 1. Connect ADB
+                // Connect ADB
                 await window.webADB.connect(logInfo);
 
-                // 2. Get Device ID for licensing
-                logInfo("Fetching device ID...");
-                let deviceIdOut = await window.webADB.shell("settings get secure android_id");
-                let deviceId = deviceIdOut.trim();
-                logInfo(`Device ID: ${deviceId}`);
-
-                // 3. Request Cryptographically Signed 1-Year License from Cloudflare Worker
-                logInfo("Validating activation code with Cloudflare Licensing Server...");
-                const workerApiBase = 'https://pisophone-licensing-api.evankhell897.workers.dev';
-                let licenseToPush = "FULL-1YEAR-" + secret.toUpperCase();
-
-                try {
-                    const issueResp = await fetch(`${workerApiBase}/api/license/issue`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            deviceId: deviceId,
-                            activationCode: secret
-                        })
-                    });
-                    
-                    const issueData = await issueResp.json();
-                    if (issueResp.ok && issueData.licenseKey) {
-                        licenseToPush = issueData.licenseKey;
-                        logInfo(`✅ Cloudflare license issued: Expiration ${new Date(issueData.paidExpiresAt).toLocaleDateString()}`);
-                    } else if (issueData.error) {
-                        logInfo(`⚠️ Server warning: ${issueData.error} (proceeding with fallback seal)`);
-                    }
-                } catch (cfErr) {
-                    logInfo(`Note: Cloudflare licensing server offline (${cfErr.message}). Applying local hardware signature.`);
-                }
-
-                // 4. Push License Key via Broadcast
-                logInfo("Pushing cryptographically sealed license to device...");
-                let broadcastOut = await window.webADB.shell(`am broadcast -a com.pisophone.kiosk.ACTIVATE --es key "${licenseToPush}"`);
-                logInfo("Broadcast sent. Device is now permanently licensed for 1 year.");
+                logInfo("Pushing cryptographically sealed license key from Cloudflare Worker...");
+                await window.webADB.shell(`am broadcast -a com.pisophone.kiosk.ACTIVATE --es key "${verifiedLicenseKey}"`);
+                logInfo("Broadcast delivered. Device license updated to 1-Year Commercial License!");
                 
-                logInfo("✅ ACTIVATION COMPLETE!");
-                activateBtn.textContent = 'Activated Successfully';
-                activateBtn.classList.replace('bg-emerald-500', 'bg-slate-700');
+                logInfo("✅ DEVICE ACTIVATION COMPLETE!");
+                activateBtn.textContent = 'Activated Successfully!';
+                activateBtn.className = 'w-full bg-slate-700 text-emerald-400 font-bold py-4 rounded-xl transition text-base';
                 
                 await window.webADB.disconnect();
             } catch (err) {
                 logInfo(`❌ ERROR: ${err.message}`);
                 activateBtn.disabled = false;
-                activateBtn.textContent = 'Try Again';
+                activateBtn.textContent = 'Retry Activation';
             }
         });
+
+        // Polling if waiting for payment
+        setInterval(() => {
+            const devId = getCleanDeviceId();
+            if (devId && !isPaymentVerified) {
+                verifyDevicePayment();
+            }
+        }, 8000);
     </script>
 </body>
 </html>
