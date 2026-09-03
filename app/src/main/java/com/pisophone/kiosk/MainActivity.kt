@@ -1,4 +1,6 @@
 package com.pisophone.kiosk
+import androidx.compose.ui.platform.LocalConfiguration
+import android.content.res.Configuration
 
 import android.app.ActivityManager
 import android.content.Context
@@ -531,17 +533,42 @@ fun LauncherScreen(
 
     val currentTheme = cleanThemes[themeIndex % cleanThemes.size]
 
-    val timeFormat = remember { SimpleDateFormat("h:mm a", Locale.getDefault()) }
-    val dateFormat = remember { SimpleDateFormat("EEEE, MMMM d", Locale.getDefault()) }
-    var time by remember { mutableStateOf(timeFormat.format(Date())) }
-    var date by remember { mutableStateOf(dateFormat.format(Date())) }
+    // Extracted TimeDateDisplay to prevent full recomposition every second
+    @Composable
+    fun TimeDateDisplay(currentTheme: CleanTheme) {
+        var time by remember { mutableStateOf("") }
+        var date by remember { mutableStateOf("") }
 
-    LaunchedEffect(Unit) {
-        while (true) {
-            val now = Date()
-            time = timeFormat.format(now)
-            date = dateFormat.format(now)
-            delay(1000)
+        LaunchedEffect(Unit) {
+            val timeFormat = SimpleDateFormat("h:mm a", Locale.getDefault())
+            val dateFormat = SimpleDateFormat("EEEE, MMMM d", Locale.getDefault())
+            while (true) {
+                val now = Date()
+                time = timeFormat.format(now)
+                date = dateFormat.format(now)
+                delay(1000)
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Bottom
+        ) {
+            Text(
+                text = time,
+                fontSize = 32.sp,
+                fontWeight = FontWeight.Bold,
+                color = currentTheme.textPrimary,
+                letterSpacing = (-0.5).sp,
+            )
+            Text(
+                text = date,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                color = currentTheme.textSecondary,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
         }
     }
 
@@ -667,27 +694,7 @@ fun LauncherScreen(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Time & Date Display
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Bottom
-            ) {
-                Text(
-                    text = time,
-                    fontSize = 32.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = currentTheme.textPrimary,
-                    letterSpacing = (-0.5).sp,
-                )
-                Text(
-                    text = date,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = currentTheme.textSecondary,
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
-            }
+            TimeDateDisplay(currentTheme)
         }
 
         HorizontalDivider(color = currentTheme.border.copy(alpha = 0.6f), thickness = 1.dp)
@@ -857,10 +864,12 @@ fun LauncherScreen(
                     val scale = lerp(start = 0.90f, stop = 1.0f, fraction = 1f - pageOffset.coerceIn(0f, 1f))
                     val alpha = lerp(start = 0.7f, stop = 1.0f, fraction = 1f - pageOffset.coerceIn(0f, 1f))
                     
+                    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+                    val cardAspectRatio = if (isLandscape) 1.6f else 0.9f
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .aspectRatio(0.9f)
+                            .aspectRatio(cardAspectRatio)
                             .graphicsLayer {
                                 scaleX = scale
                                 scaleY = scale
@@ -971,8 +980,10 @@ fun LauncherScreen(
                 }
             }
             
+            val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+            val columns = if (isLandscape) GridCells.Fixed(6) else GridCells.Fixed(3)
             LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 88.dp),
+                columns = columns,
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 modifier = Modifier.weight(1f)
             ) {

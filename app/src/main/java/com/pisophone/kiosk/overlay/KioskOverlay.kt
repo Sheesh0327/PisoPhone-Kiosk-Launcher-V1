@@ -660,19 +660,110 @@ fun BlockScreen(
     var currentSecretKey by remember { mutableStateOf(KioskSecurity.getSharedSecret(context)) }
 
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
-    val timeFormat = remember { SimpleDateFormat("h:mm a", Locale.getDefault()) }
-    var currentTimeStr by remember { mutableStateOf(timeFormat.format(Date())) }
-
     var licenseInfo by remember { mutableStateOf(HardwareLockManager.getLicenseInfo(context)) }
-    var remainingTrialMillis by remember { mutableStateOf(maxOf(0L, licenseInfo.expiresAtMs - System.currentTimeMillis())) }
 
+    // Update licenseInfo once every 10 seconds instead of every single second, saving recompositions.
     LaunchedEffect(Unit) {
         while (true) {
-            currentTimeStr = timeFormat.format(Date())
-            val info = HardwareLockManager.getLicenseInfo(context)
-            licenseInfo = info
-            remainingTrialMillis = maxOf(0L, info.expiresAtMs - System.currentTimeMillis())
-            delay(1000)
+            licenseInfo = HardwareLockManager.getLicenseInfo(context)
+            delay(10000)
+        }
+    }
+
+    @Composable
+    fun BlockScreenTimeHeader(batteryStatus: BatteryStatus, themeTextPrimary: Color) {
+        var currentTimeStr by remember { mutableStateOf("") }
+        
+        LaunchedEffect(Unit) {
+            val timeFormat = SimpleDateFormat("h:mm a", Locale.getDefault())
+            while (true) {
+                currentTimeStr = timeFormat.format(Date())
+                delay(1000)
+            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 12.dp)
+                .alpha(0.8f),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                currentTimeStr,
+                color = themeTextPrimary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                letterSpacing = (-0.5).sp
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Wifi, contentDescription = null, tint = themeTextPrimary, modifier = Modifier.size(16.dp))
+                Icon(Icons.Filled.SignalCellular4Bar, contentDescription = null, tint = themeTextPrimary, modifier = Modifier.size(16.dp))
+                Icon(Icons.Filled.BatteryFull, contentDescription = null, tint = themeTextPrimary, modifier = Modifier.size(16.dp))
+                Text("${batteryStatus.level}%", color = themeTextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+
+    @Composable
+    fun DeviceTitleBadge(deviceIp: String, themePrimary: Color, themeTextPrimary: Color, themeTextTertiary: Color, themeSurfaceVariant: Color) {
+        val context = LocalContext.current
+        var customAlias by remember { mutableStateOf(KioskSecurity.getDeviceAlias(context)) }
+        LaunchedEffect(Unit) {
+            while(true) {
+                customAlias = KioskSecurity.getDeviceAlias(context)
+                kotlinx.coroutines.delay(5000)
+            }
+        }
+        val deviceNumber = remember(deviceIp) {
+            try {
+                val lastOctet = deviceIp.substringAfterLast(".").toIntOrNull()
+                if (lastOctet != null && lastOctet in 100..120) {
+                    (lastOctet - 99).toString()
+                } else if (lastOctet != null && lastOctet in 1..254) {
+                    lastOctet.toString()
+                } else {
+                    "1"
+                }
+            } catch (e: Exception) {
+                "1"
+            }
+        }
+        val mainTitle = if (customAlias.isNotBlank()) customAlias else "PisoPhone $deviceNumber"
+
+        Text(
+            mainTitle,
+            color = themeTextPrimary,
+            fontSize = 30.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = (-0.5).sp,
+            modifier = Modifier.padding(bottom = 2.dp)
+        )
+
+        // Device IP & System Badge reflecting ESP32 Web Page config
+        Surface(
+            color = themeSurfaceVariant,
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.padding(bottom = 10.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .background(if (deviceIp != "127.0.0.1") themePrimary else Color.Gray, CircleShape)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    if (customAlias.isNotBlank()) "$mainTitle • IP: $deviceIp" else "IP: $deviceIp",
+                    color = themeTextTertiary,
+                    fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Medium
+                )
+            }
         }
     }
 
@@ -684,28 +775,7 @@ fun BlockScreen(
             .systemBarsPadding()
         ) {
         // Top Bar
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 12.dp)
-                .alpha(0.8f),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                currentTimeStr,
-                color = TextPrimary,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-                letterSpacing = (-0.5).sp
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Wifi, contentDescription = null, tint = TextPrimary, modifier = Modifier.size(16.dp))
-                Icon(Icons.Filled.SignalCellular4Bar, contentDescription = null, tint = TextPrimary, modifier = Modifier.size(16.dp))
-                Icon(Icons.Filled.BatteryFull, contentDescription = null, tint = TextPrimary, modifier = Modifier.size(16.dp))
-                Text("${batteryStatus.level}%", color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            }
-        }
+        BlockScreenTimeHeader(batteryStatus = batteryStatus, themeTextPrimary = TextPrimary)
 
         // Annoying Battery Alert Banner (Loud & Pulsing)
         if (!isUnlicensed && batteryStatus.alertState != BatteryAlertState.NONE) {
@@ -715,7 +785,7 @@ fun BlockScreen(
         // 7-Day Free Trial Countdown Banner (Lock Screen Only)
         if (!isUnlicensed && !licenseInfo.isPaid && licenseInfo.state == HardwareLockManager.LicenseState.TRIAL_ACTIVE) {
             TrialCountdownBanner(
-                remainingMs = remainingTrialMillis
+                expiresAtMs = licenseInfo.expiresAtMs
             )
         }
 
@@ -750,64 +820,7 @@ fun BlockScreen(
                     
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Compute clean device number alias (e.g. "PisoPhone 1" or from IP octet / custom alias)
-                    var customAlias by remember { mutableStateOf(KioskSecurity.getDeviceAlias(context)) }
-                    LaunchedEffect(Unit) {
-                        while(true) {
-                            customAlias = KioskSecurity.getDeviceAlias(context)
-                            kotlinx.coroutines.delay(500)
-                        }
-                    }
-                    val deviceNumber = remember(deviceIp) {
-                        try {
-                            val lastOctet = deviceIp.substringAfterLast(".").toIntOrNull()
-                            if (lastOctet != null && lastOctet in 100..120) {
-                                (lastOctet - 99).toString()
-                            } else if (lastOctet != null && lastOctet in 1..254) {
-                                lastOctet.toString()
-                            } else {
-                                "1"
-                            }
-                        } catch (e: Exception) {
-                            "1"
-                        }
-                    }
-                    val mainTitle = if (customAlias.isNotBlank()) customAlias else "PisoPhone $deviceNumber"
-
-                    Text(
-                        mainTitle,
-                        color = TextPrimary,
-                        fontSize = 30.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = (-0.5).sp,
-                        modifier = Modifier.padding(bottom = 2.dp)
-                    )
-
-                    // Device IP & System Badge reflecting ESP32 Web Page config
-                    Surface(
-                        color = SurfaceVariant,
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.padding(bottom = 10.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(6.dp)
-                                    .background(if (deviceIp != "127.0.0.1") Primary else Color.Gray, CircleShape)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                if (customAlias.isNotBlank()) "$mainTitle • IP: $deviceIp" else "IP: $deviceIp",
-                                color = TextTertiary,
-                                fontSize = 12.sp,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
+                    DeviceTitleBadge(deviceIp, Primary, TextPrimary, TextTertiary, SurfaceVariant)
 
                     Text(
                         if (isWaiting) "Coins inserted: $coinsInserted" else "Insert a coin to unlock all applications for a $minutesPerCoin-minute session.",
@@ -1153,9 +1166,18 @@ fun BlockScreen(
 
 @Composable
 fun TrialCountdownBanner(
-    remainingMs: Long,
+    expiresAtMs: Long,
     modifier: Modifier = Modifier
 ) {
+    var remainingMs by remember { mutableStateOf(maxOf(0L, expiresAtMs - System.currentTimeMillis())) }
+
+    LaunchedEffect(expiresAtMs) {
+        while (true) {
+            remainingMs = maxOf(0L, expiresAtMs - System.currentTimeMillis())
+            delay(1000)
+        }
+    }
+
     val totalSec = maxOf(0L, remainingMs / 1000L)
     val days = (totalSec / (60 * 60 * 24)).toInt()
     val hours = ((totalSec / (60 * 60)) % 24).toInt()
