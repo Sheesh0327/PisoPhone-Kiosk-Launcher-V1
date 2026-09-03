@@ -1,4 +1,6 @@
 package com.pisophone.kiosk
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.ui.platform.LocalConfiguration
 import android.content.res.Configuration
 
@@ -161,40 +163,11 @@ class MainActivity : ComponentActivity() {
                                 overlayPermissionLauncher.launch(intent)
                             })
                         } else {
-                            val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) createDeviceProtectedStorageContext() else this
-                            val prefs = deviceContext.getSharedPreferences("kiosk_prefs", Context.MODE_PRIVATE)
-                            var isCardMode by remember { mutableStateOf(prefs.getBoolean("card_mode", false)) }
-                            var savedGames by remember { mutableStateOf(prefs.getStringSet("saved_games", emptySet()) ?: emptySet()) }
-                            var themeIndex by remember { mutableStateOf(prefs.getInt("theme_index", 0)) }
-
                             LauncherScreen(
                                 apps = appsList,
                                 onAppClick = { appInfo ->
                                     AppLauncher.launchApp(this@MainActivity, appInfo.packageName)
-                                },
-                                isCardMode = isCardMode,
-                                onToggleMode = {
-                                    val newVal = !isCardMode
-                                    isCardMode = newVal
-                                    prefs.edit().putBoolean("card_mode", newVal).apply()
-                                },
-                                savedGames = savedGames,
-                                onToggleGame = { packageName ->
-                                    val newGames = savedGames.toMutableSet()
-                                    if (newGames.contains(packageName)) {
-                                        newGames.remove(packageName)
-                                    } else {
-                                        newGames.add(packageName)
-                                    }
-                                    savedGames = newGames
-                                    prefs.edit().putStringSet("saved_games", newGames).apply()
-                                },
-                                themeIndex = themeIndex,
-                                onCycleTheme = {
-                                    val nextTheme = (themeIndex + 1) % 5
-                                    themeIndex = nextTheme
-                                    prefs.edit().putInt("theme_index", nextTheme).apply()
-                                },
+                                }
                             )
                         }
                     }
@@ -459,15 +432,7 @@ fun PermissionScreen(onRequest: () -> Unit) {
 fun LauncherScreen(
     apps: List<AppInfo>,
     onAppClick: (AppInfo) -> Unit,
-    isCardMode: Boolean,
-    onToggleMode: () -> Unit,
-    savedGames: Set<String>,
-    onToggleGame: (String) -> Unit,
-    themeIndex: Int = 0,
-    onCycleTheme: () -> Unit = {},
 ) {
-    var showGameDropdown by remember { mutableStateOf(false) }
-
     data class CleanTheme(
         val name: String,
         val bg: Color,
@@ -480,65 +445,22 @@ fun LauncherScreen(
         val isDark: Boolean
     )
 
-    val cleanThemes = listOf(
-        // 0: Obsidian Emerald (Signature Website Look)
-        CleanTheme(
-            name = "Obsidian Emerald",
-            bg = Color(0xFF060B14),
-            surface = Color(0xFF0F172A),
-            primary = Color(0xFF10B981),
-            onPrimary = Color(0xFF020617),
-            textPrimary = Color(0xFFF8FAFC),
-            textSecondary = Color(0xFF94A3B8),
-            border = Color(0xFF1E293B),
-            isDark = true
-        ),
-        // 1: Emerald Matrix
-        CleanTheme(
-            name = "Emerald Matrix",
-            bg = Color(0xFF04120B),
-            surface = Color(0xFF0C2B1D),
-            primary = Color(0xFF34D399),
-            onPrimary = Color(0xFF020617),
-            textPrimary = Color(0xFFF8FAFC),
-            textSecondary = Color(0xFF6EE7B7),
-            border = Color(0xFF164E35),
-            isDark = true
-        ),
-        // 2: Cyber Slate
-        CleanTheme(
-            name = "Cyber Slate",
-            bg = Color(0xFF090D16),
-            surface = Color(0xFF131E30),
-            primary = Color(0xFF38BDF8),
-            onPrimary = Color(0xFF020617),
-            textPrimary = Color(0xFFF8FAFC),
-            textSecondary = Color(0xFF94A3B8),
-            border = Color(0xFF1E293B),
-            isDark = true
-        ),
-        // 3: Stealth Noir
-        CleanTheme(
-            name = "Stealth Noir",
-            bg = Color(0xFF000000),
-            surface = Color(0xFF111827),
-            primary = Color(0xFF10B981),
-            onPrimary = Color(0xFF020617),
-            textPrimary = Color(0xFFF9FAFB),
-            textSecondary = Color(0xFF6B7280),
-            border = Color(0xFF1F2937),
-            isDark = true
-        )
+    val currentTheme = CleanTheme(
+        name = "Obsidian Emerald",
+        bg = Color(0xFF060B14),
+        surface = Color(0xFF0F172A),
+        primary = Color(0xFF10B981),
+        onPrimary = Color(0xFF020617),
+        textPrimary = Color(0xFFF8FAFC),
+        textSecondary = Color(0xFF94A3B8),
+        border = Color(0xFF1E293B),
+        isDark = true
     )
 
-    val currentTheme = cleanThemes[themeIndex % cleanThemes.size]
-
-    // Extracted TimeDateDisplay to prevent full recomposition every second
     @Composable
     fun TimeDateDisplay(currentTheme: CleanTheme) {
         var time by remember { mutableStateOf("") }
         var date by remember { mutableStateOf("") }
-
         LaunchedEffect(Unit) {
             val timeFormat = SimpleDateFormat("h:mm a", Locale.getDefault())
             val dateFormat = SimpleDateFormat("EEEE, MMMM d", Locale.getDefault())
@@ -549,7 +471,6 @@ fun LauncherScreen(
                 delay(1000)
             }
         }
-
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -617,7 +538,6 @@ fun LauncherScreen(
                             color = currentTheme.primary
                         )
                     }
-
                     // Status Pill
                     Surface(
                         color = currentTheme.primary.copy(alpha = 0.12f),
@@ -645,390 +565,102 @@ fun LauncherScreen(
                         }
                     }
                 }
-
-                // Header Action Buttons
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    IconButton(
-                        onClick = onCycleTheme,
-                        modifier = Modifier
-                            .size(38.dp)
-                            .background(currentTheme.surface, CircleShape)
-                            .border(1.dp, currentTheme.border, CircleShape)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Palette,
-                            contentDescription = "Change Theme",
-                            tint = currentTheme.primary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-
-                    Button(
-                        onClick = onToggleMode,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = currentTheme.surface,
-                            contentColor = currentTheme.textPrimary
-                        ),
-                        border = BorderStroke(1.dp, currentTheme.border),
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
-                    ) {
-                        Icon(
-                            if (isCardMode) Icons.Filled.Apps else Icons.Filled.SportsEsports,
-                            contentDescription = null,
-                            tint = currentTheme.primary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            if (isCardMode) "All Apps" else "Featured",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
             }
-
             Spacer(modifier = Modifier.height(10.dp))
-
             TimeDateDisplay(currentTheme)
         }
-
         HorizontalDivider(color = currentTheme.border.copy(alpha = 0.6f), thickness = 1.dp)
 
-        // Main Content Area
-        if (isCardMode) {
-            // Featured Apps (Cards)
-            val featuredApps = apps.filter { savedGames.contains(it.packageName) }
+        val categories = listOf("Social Media", "Gaming", "Entertainment", "Browsing", "Shopping", "Utilities", "Other Apps")
+        
+        val appsByCategory = remember(apps) {
+            val map = mutableMapOf<String, MutableList<AppInfo>>()
+            categories.forEach { map[it] = mutableListOf() }
             
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = "Featured Applications",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = currentTheme.textPrimary
-                    )
-                    Surface(
-                        color = currentTheme.surface,
-                        shape = RoundedCornerShape(6.dp),
-                        border = BorderStroke(1.dp, currentTheme.border)
-                    ) {
-                        Text(
-                            text = "${featuredApps.size}",
-                            color = currentTheme.textSecondary,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
+            apps.forEach { app ->
+                val name = app.name.lowercase()
+                val pkg = app.packageName.lowercase()
                 
-                Box {
-                    OutlinedButton(
-                        onClick = { showGameDropdown = !showGameDropdown },
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = currentTheme.primary
-                        ),
-                        border = BorderStroke(1.dp, currentTheme.primary.copy(alpha = 0.5f)),
-                        shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Manage", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                    
-                    DropdownMenu(
-                        expanded = showGameDropdown,
-                        onDismissRequest = { showGameDropdown = false },
-                        modifier = Modifier
-                            .background(currentTheme.surface)
-                            .border(1.dp, currentTheme.border, RoundedCornerShape(12.dp))
-                            .heightIn(max = 400.dp)
-                            .width(280.dp)
-                    ) {
-                        apps.forEach { app ->
-                            val isPinned = savedGames.contains(app.packageName)
-                            DropdownMenuItem(
-                                text = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        if (app.bitmap != null) {
-                                            Image(
-                                                bitmap = app.bitmap,
-                                                contentDescription = app.name,
-                                                modifier = Modifier
-                                                    .size(32.dp)
-                                                    .clip(RoundedCornerShape(8.dp))
-                                            )
-                                            Spacer(modifier = Modifier.width(12.dp))
-                                        }
-                                        Text(
-                                            text = app.name,
-                                            color = currentTheme.textPrimary,
-                                            fontSize = 14.sp,
-                                            modifier = Modifier.weight(1f)
+                val category = when {
+                    pkg.contains("facebook") || pkg.contains("twitter") || pkg.contains("instagram") || pkg.contains("tiktok") || pkg.contains("snapchat") || pkg.contains("social") || pkg.contains("discord") || pkg.contains("reddit") || pkg.contains("telegram") || pkg.contains("whatsapp") || pkg.contains("messenger") || pkg.contains("viber") || name.contains("facebook") || name.contains("instagram") || name.contains("tiktok") || name.contains("messenger") -> "Social Media"
+                    pkg.contains("game") || pkg.contains("unity") || pkg.contains("epic") || pkg.contains("roblox") || pkg.contains("minecraft") || pkg.contains("mobilelegends") || pkg.contains("pubg") || pkg.contains("tencent") || pkg.contains("codm") || pkg.contains("supercell") || name.contains("game") || name.contains("roblox") -> "Gaming"
+                    pkg.contains("youtube") || pkg.contains("netflix") || pkg.contains("hulu") || pkg.contains("spotify") || pkg.contains("video") || pkg.contains("music") || pkg.contains("tv") || pkg.contains("media") || pkg.contains("player") || name.contains("youtube") || name.contains("netflix") || name.contains("tv") || name.contains("player") || name.contains("music") -> "Entertainment"
+                    pkg.contains("chrome") || pkg.contains("browser") || pkg.contains("firefox") || pkg.contains("opera") || pkg.contains("edge") || pkg.contains("brave") || pkg.contains("duckduckgo") || name.contains("browser") || name.contains("chrome") -> "Browsing"
+                    pkg.contains("shop") || pkg.contains("amazon") || pkg.contains("ebay") || pkg.contains("lazada") || pkg.contains("shopee") || pkg.contains("zalora") || pkg.contains("shein") || pkg.contains("alibaba") || pkg.contains("aliexpress") || name.contains("shop") || name.contains("lazada") || name.contains("shopee") || name.contains("amazon") -> "Shopping"
+                    pkg.contains("calc") || pkg.contains("clock") || pkg.contains("calendar") || pkg.contains("camera") || pkg.contains("gallery") || pkg.contains("settings") || pkg.contains("util") || pkg.contains("file") || pkg.contains("tools") || pkg.contains("notes") || pkg.contains("maps") || pkg.contains("weather") -> "Utilities"
+                    else -> "Other Apps"
+                }
+                map[category]?.add(app)
+            }
+            map
+        }
+
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().weight(1f),
+            contentPadding = PaddingValues(vertical = 16.dp)
+        ) {
+            categories.forEach { category ->
+                val categoryApps = appsByCategory[category]
+                if (!categoryApps.isNullOrEmpty()) {
+                    item {
+                        Text(
+                            text = category,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = currentTheme.textPrimary,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+                        )
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(categoryApps) { app ->
+                                Column(
+                                    modifier = Modifier
+                                        .width(76.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable { onAppClick(app) }
+                                        .padding(8.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    if (app.bitmap != null) {
+                                        Image(
+                                            bitmap = app.bitmap,
+                                            contentDescription = app.name,
+                                            modifier = Modifier
+                                                .size(56.dp)
+                                                .clip(RoundedCornerShape(14.dp))
                                         )
-                                        if (isPinned) {
+                                    } else {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(56.dp)
+                                                .background(currentTheme.surface, RoundedCornerShape(14.dp))
+                                                .border(1.dp, currentTheme.border, RoundedCornerShape(14.dp)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
                                             Icon(
-                                                Icons.Filled.Check,
+                                                Icons.Filled.Apps,
                                                 contentDescription = null,
-                                                tint = currentTheme.primary,
-                                                modifier = Modifier.size(20.dp)
+                                                tint = currentTheme.primary
                                             )
                                         }
                                     }
-                                },
-                                onClick = { onToggleGame(app.packageName) },
-                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
-                            )
-                        }
-                    }
-                }
-            }
-            
-            if (featuredApps.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 16.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
-                        shape = RoundedCornerShape(20.dp),
-                        border = BorderStroke(1.dp, currentTheme.border)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .background(currentTheme.primary.copy(alpha = 0.12f), CircleShape)
-                                    .border(1.dp, currentTheme.primary.copy(alpha = 0.3f), CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    Icons.Filled.Star,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(24.dp),
-                                    tint = currentTheme.primary
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                "No Featured Apps",
-                                color = currentTheme.textPrimary,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                "Tap 'Manage' above to select games and apps for quick carousel access.",
-                                color = currentTheme.textSecondary,
-                                fontSize = 12.sp,
-                                textAlign = TextAlign.Center,
-                                lineHeight = 16.sp
-                            )
-                        }
-                    }
-                }
-            } else {
-                val pagerState = rememberPagerState(pageCount = { featuredApps.size })
-                
-                HorizontalPager(
-                    state = pagerState,
-                    contentPadding = PaddingValues(horizontal = 48.dp),
-                    pageSpacing = 16.dp,
-                    modifier = Modifier.fillMaxWidth()
-                ) { page ->
-                    val app = featuredApps[page]
-                    val pageOffset = ((pagerState.currentPage - page) + pagerState.currentPageOffsetFraction).absoluteValue
-                    val scale = lerp(start = 0.90f, stop = 1.0f, fraction = 1f - pageOffset.coerceIn(0f, 1f))
-                    val alpha = lerp(start = 0.7f, stop = 1.0f, fraction = 1f - pageOffset.coerceIn(0f, 1f))
-                    
-                    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
-                    val cardAspectRatio = if (isLandscape) 2.2f else 1.4f
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(cardAspectRatio)
-                            .graphicsLayer {
-                                scaleX = scale
-                                scaleY = scale
-                                this.alpha = alpha
-                            }
-                            .clip(RoundedCornerShape(20.dp))
-                            .clickable { onAppClick(app) },
-                        colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
-                        border = BorderStroke(1.dp, if (pageOffset < 0.5f) currentTheme.primary.copy(alpha = 0.4f) else currentTheme.border),
-                        elevation = CardDefaults.cardElevation(if (pageOffset < 0.5f) 8.dp else 1.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            if (app.bitmap != null) {
-                                Image(
-                                    bitmap = app.bitmap,
-                                    contentDescription = app.name,
-                                    modifier = Modifier
-                                        .size(64.dp)
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .border(1.dp, currentTheme.border, RoundedCornerShape(16.dp))
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                text = app.name,
-                                color = currentTheme.textPrimary,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                textAlign = TextAlign.Center,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "Ready to Play",
-                                color = currentTheme.primary,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
-                }
-                
-                // Launch Button (Styled like website primary CTA)
-                val focusedApp = featuredApps.getOrNull(pagerState.currentPage)
-                if (focusedApp != null) {
-                    Button(
-                        onClick = { onAppClick(focusedApp) },
-                        modifier = Modifier
-                            .padding(horizontal = 32.dp, vertical = 12.dp)
-                            .fillMaxWidth()
-                            .height(48.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = currentTheme.primary,
-                            contentColor = currentTheme.onPrimary
-                        ),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(
-                            Icons.Filled.PlayArrow,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            "Launch ${focusedApp.name}",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-            }
-        } else {
-            // All Apps Mode (Grid)
-            val allApps = apps.filter { !savedGames.contains(it.packageName) }
-            
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "All Applications",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = currentTheme.textPrimary
-                )
-                Surface(
-                    color = currentTheme.surface,
-                    shape = RoundedCornerShape(6.dp),
-                    border = BorderStroke(1.dp, currentTheme.border)
-                ) {
-                    Text(
-                        text = "${allApps.size}",
-                        color = currentTheme.textSecondary,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                }
-            }
-            
-            val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
-            val columns = if (isLandscape) GridCells.Fixed(8) else GridCells.Fixed(4)
-            LazyVerticalGrid(
-                columns = columns,
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                modifier = Modifier.weight(1f)
-            ) {
-                items(allApps) { app ->
-                    Column(
-                        modifier = Modifier
-                            .padding(4.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { onAppClick(app) }
-                            .padding(8.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        if (app.bitmap != null) {
-                            Image(
-                                bitmap = app.bitmap,
-                                contentDescription = app.name,
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                            )
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .background(currentTheme.bg, RoundedCornerShape(12.dp)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    Icons.Filled.Apps,
-                                    contentDescription = null,
-                                    tint = currentTheme.primary
-                                )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = app.name,
+                                        color = currentTheme.textPrimary,
+                                        fontSize = 11.sp,
+                                        lineHeight = 14.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
                             }
                         }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = app.name,
-                            color = currentTheme.textPrimary,
-                            fontSize = 11.sp,
-                            lineHeight = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center
-                        )
+                        Spacer(modifier = Modifier.height(16.dp))
                     }
                 }
             }
