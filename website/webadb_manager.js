@@ -8,6 +8,15 @@
     const DEVICE_TEMP_APK_PATH = "/data/local/tmp/app.apk";
     const PACKAGE_NAME = "com.pisophone.kiosk";
 
+    // Eagerly preload WebADB bundle on script evaluation to prevent microtask delays during user click
+    let bundlePromise = null;
+    try {
+        bundlePromise = import('./yume-chan-bundle.js').catch(err => {
+            console.warn("WebADB bundle background preload:", err);
+            return null;
+        });
+    } catch (e) {}
+
     class WebADBManager {
         constructor() {
             this.adb = null;
@@ -17,17 +26,49 @@
         }
 
         /**
+         * Sets cached APK bytes directly (e.g. from local file input)
+         */
+        setCachedApkBytes(bytes) {
+            this.cachedApkBytes = bytes;
+        }
+
+        /**
          * Downloads the APK silently into computer's temporary cache (Browser memory)
-         * @param {string} apkUrl URL of the APK to download
+         * Supports candidate URLs array for seamless fallback.
+         * @param {string|string[]} apkUrlOrUrls URL or list of fallback URLs
          * @param {function} logCallback Function to output log messages
          * @returns {Promise<Uint8Array>} The downloaded APK bytes
          */
-        async downloadToLocalTemp(apkUrl, logCallback = console.log) {
+        async downloadToLocalTemp(apkUrlOrUrls, logCallback = console.log) {
+            if (this.cachedApkBytes && this.cachedApkBytes.length > 0) {
+                logCallback("✅ Using pre-cached APK from computer memory.");
+                return this.cachedApkBytes;
+            }
+
+            const urls = Array.isArray(apkUrlOrUrls) ? apkUrlOrUrls : [apkUrlOrUrls];
+            let response = null;
+            let chosenUrl = null;
+
             logCallback("Step 1: Downloading APK to local computer temporary cache...");
-            
-            const response = await fetch(apkUrl);
-            if (!response.ok) {
-                throw new Error(`Failed to download APK from ${apkUrl} (HTTP ${response.status})`);
+
+            for (const url of urls) {
+                try {
+                    logCallback(`Fetching APK from: ${url}`);
+                    const res = await fetch(url);
+                    if (res.ok) {
+                        response = res;
+                        chosenUrl = url;
+                        break;
+                    } else {
+                        console.warn(`Source responded HTTP ${res.status}: ${url}`);
+                    }
+                } catch (fetchErr) {
+                    console.warn(`Fetch error for ${url}:`, fetchErr);
+                }
+            }
+
+            if (!response || !response.ok) {
+                throw new Error(`Failed to download APK from any source. Please verify internet connection or load a local APK file.`);
             }
 
             const contentLength = +(response.headers.get('Content-Length') || 0);
@@ -50,6 +91,9 @@
                     if (receivedBytes % LOG_INTERVAL_BYTES < value.length || receivedBytes === contentLength) {
                         logCallback(`Downloading: ${pct}% (${mb} / ${totalMb} MB)`);
                     }
+                } else if (receivedBytes % LOG_INTERVAL_BYTES < value.length) {
+                    const mb = (receivedBytes / (1024 * 1024)).toFixed(1);
+                    logCallback(`Downloading: ${mb} MB received...`);
                 }
             }
 
@@ -73,23 +117,24 @@
          * @returns {Promise<boolean>} Connection success status
          */
         async connect(logCallback = console.log) {
-            logCallback("Loading WebADB communication modules...");
+            logCallback("Initializing WebADB connection...");
             
             try {
                 // Dynamically import local bundled yume-chan WebADB modules
+                const modules = (bundlePromise ? await bundlePromise : null) || await import('./yume-chan-bundle.js');
                 const {
                     Adb,
                     AdbDaemonTransport,
                     AdbDaemonWebUsbDeviceManager,
                     AdbCredentialWeb
-                } = await import('./yume-chan-bundle.js');
+                } = modules;
 
                 const Manager = AdbDaemonWebUsbDeviceManager.BROWSER;
                 if (!Manager) {
                     throw new Error("WebUSB is not supported by your browser. Please use Google Chrome, Microsoft Edge, or Brave.");
                 }
 
-                logCallback("Requesting WebUSB permission (select your Android phone)...");
+                logCallback("Requesting WebUSB permission (select your Android phone from popup)...");
                 const webusbDevice = await Manager.requestDevice();
                 if (!webusbDevice) {
                     throw new Error("No USB device selected.");

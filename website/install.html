@@ -246,27 +246,9 @@
             <h1 class="text-3xl md:text-4xl font-extrabold mb-2 text-white">
                 Install PisoPhone Kiosk
             </h1>
-            <p class="text-slate-400 text-xs md:text-sm max-w-xl mx-auto mb-4">
+            <p class="text-slate-400 text-xs md:text-sm max-w-xl mx-auto mb-2">
                 Follow the interactive guide below to prepare and lock down your Android phone into an automated coin kiosk in minutes.
             </p>
-
-            <!-- Prominent Hardware Prerequisite Notice: USB Data Cable -->
-            <div class="max-w-2xl mx-auto bg-amber-500/10 border-2 border-amber-500/40 rounded-xl p-3.5 text-left flex items-start gap-3 shadow-lg shadow-amber-500/5">
-                <div class="w-9 h-9 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0 text-amber-400 mt-0.5">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
-                    </svg>
-                </div>
-                <div class="text-xs space-y-1">
-                    <div class="font-extrabold text-amber-300 text-sm flex items-center gap-2">
-                        <span>CRITICAL: Connect Phone via USB DATA Cable to Computer</span>
-                        <span class="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded font-mono uppercase">Required</span>
-                    </div>
-                    <p class="text-slate-300 leading-relaxed">
-                        You <strong>must connect your Android phone to this computer using a USB Data Cable</strong> (not a charging-only cable). When plugged in, select <strong class="text-white">"File Transfer / Android Auto"</strong> on the phone notification bar so the browser can send commands.
-                    </p>
-                </div>
-            </div>
         </div>
 
         <!-- 2-Column Responsive Layout: Sliding Instructions (Left) + Themed Device Mockup (Right) -->
@@ -353,6 +335,12 @@
                                             <div class="flex items-start gap-3">
                                                 <span class="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-400 font-bold flex items-center justify-center shrink-0">3</span>
                                                 <div>Go to <strong>System &gt; Developer Options</strong> and toggle <strong>USB Debugging</strong> to <span class="text-emerald-400 font-bold">ON</span>.</div>
+                                            </div>
+                                            <div class="flex items-start gap-3 bg-amber-500/10 border border-amber-500/30 rounded-lg p-2.5 text-amber-200">
+                                                <span class="w-5 h-5 rounded-full bg-amber-500/30 text-amber-300 font-bold flex items-center justify-center shrink-0">4</span>
+                                                <div class="leading-relaxed">
+                                                    <strong class="text-amber-300">Connect via USB DATA Cable:</strong> Connect phone to computer using a <strong>USB Data Cable</strong> (not a charging-only cable). When prompted on the phone, tap <strong class="text-emerald-400">"Always Allow"</strong> for USB debugging, and select <strong class="text-white">"File Transfer / Android Auto"</strong> on the phone notification bar.
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -514,10 +502,16 @@
                                             Ensure your phone is connected to this computer with your <strong>USB Data Cable</strong>, then click below to flash PisoPhone Kiosk and lock down the terminal.
                                         </p>
 
-                                        <button id="installAppBtn" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3.5 px-4 rounded-xl transition-all duration-300 shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 text-sm flex items-center justify-center gap-2.5 mb-3 pulse-btn btn-glow cursor-pointer">
+                                        <button id="installAppBtn" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3.5 px-4 rounded-xl transition-all duration-300 shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 text-sm flex items-center justify-center gap-2.5 mb-2.5 pulse-btn btn-glow cursor-pointer">
                                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                                            Connect &amp; Install PisoPhone
+                                            <span>Connect &amp; Install PisoPhone</span>
                                         </button>
+
+                                        <div class="flex items-center justify-between text-[11px] text-slate-400 mb-3 px-1">
+                                            <span>Offline or custom build?</span>
+                                            <label for="localApkInput" class="text-emerald-400 hover:text-emerald-300 underline cursor-pointer font-medium">Or select local .APK from PC</label>
+                                            <input type="file" id="localApkInput" accept=".apk" class="hidden">
+                                        </div>
 
                                         <!-- Live Output Log Console -->
                                         <div id="installLog" class="hidden bg-slate-950 border border-slate-800 rounded-xl p-3 font-mono text-xs text-emerald-300 h-36 overflow-y-auto leading-relaxed"></div>
@@ -929,7 +923,12 @@
         animationFrameId = requestAnimationFrame(tick);
 
         // ================= WEBADB PROVISIONING & ACTIONS =================
-        const apkUrl = "https://pisophone-v1.pages.dev/app-debug.apk";
+        const candidateApkUrls = [
+            'app-debug.apk',
+            window.location.origin + '/app-debug.apk',
+            'https://pisophone-v1.pages.dev/app-debug.apk',
+            'https://raw.githubusercontent.com/Sheesh0327/PisoPhone-Kiosk-Launcher-V1/main/website/app-debug.apk'
+        ];
 
         // Reboot to Recovery Logic
         const rebootBtn = document.getElementById('rebootRecoveryBtn');
@@ -971,6 +970,7 @@
         // App Installation Logic
         const installBtn = document.getElementById('installAppBtn');
         const installLog = document.getElementById('installLog');
+        const localApkInput = document.getElementById('localApkInput');
 
         function logInstall(msg) {
             installLog.classList.remove('hidden');
@@ -980,38 +980,68 @@
             installLog.scrollTop = installLog.scrollHeight;
         }
 
+        // Handle optional local APK file selection (offline/custom builds)
+        if (localApkInput) {
+            localApkInput.addEventListener('change', (e) => {
+                const file = e.target.files && e.target.files[0];
+                if (!file) return;
+
+                installLog.classList.remove('hidden');
+                logInstall(`Selected local APK: ${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MB)`);
+                logInstall("Reading APK into browser memory cache...");
+
+                const reader = new FileReader();
+                reader.onload = function (evt) {
+                    const bytes = new Uint8Array(evt.target.result);
+                    window.webADB.setCachedApkBytes(bytes);
+                    logInstall(`✅ Loaded ${file.name} ready for direct flashing! Click "Install" button to proceed.`);
+                    installBtn.querySelector('span').textContent = `Install Local APK (${(file.size / (1024 * 1024)).toFixed(1)} MB)`;
+                };
+                reader.onerror = function () {
+                    logInstall(`❌ Failed to read local file: ${file.name}`);
+                };
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
         installBtn.addEventListener('click', async () => {
-            if (!navigator.usb) return alert("WebUSB is not supported in this browser. Please use Chrome, Edge, or Brave.");
-            // Pause auto-advance on installation
+            if (!navigator.usb) {
+                return alert("WebUSB is not supported in this browser. Please use Google Chrome, Microsoft Edge, or Brave on a desktop computer.");
+            }
+
+            // Pause auto-advance during installation
             isPlaying = false;
             sliderStatusHint.textContent = "Installing...";
 
             installBtn.disabled = true;
             installBtn.classList.remove('bg-emerald-500', 'hover:bg-emerald-400', 'pulse-btn', 'btn-glow');
             installBtn.classList.add('bg-slate-700', 'text-slate-300');
-            installBtn.textContent = '⏳ Installing PisoPhone... Keep USB cable connected!';
+            installBtn.innerHTML = '<span>⏳ Connecting &amp; Flashing PisoPhone... Keep USB plugged in!</span>';
             installLog.innerHTML = '';
+            installLog.classList.remove('hidden');
 
             try {
-                // 1. Download to local computer cache (with cache busting)
-                await window.webADB.downloadToLocalTemp(apkUrl + '?t=' + Date.now(), logInstall);
-
-                // 2. Connect WebUSB
-                logInstall("Connecting via WebUSB... (Check your phone screen and tap 'Always Allow')");
+                // Step 1: Connect WebUSB FIRST (must be immediate in response to user click gesture)
+                logInstall("Step 1: Connecting via WebUSB... Please select your Android device from the popup.");
                 await window.webADB.connect(logInstall);
-                
-                // 3. Install locally cached APK & provision device owner
-                await window.webADB.installKioskApp(apkUrl, logInstall);
-                
-                installBtn.textContent = '🎉 Installation & Hardware Lockdown Complete!';
+
+                // Step 2: Download or verify cached APK
+                logInstall("Step 2: Preparing PisoPhone Kiosk APK payload...");
+                await window.webADB.downloadToLocalTemp(candidateApkUrls, logInstall);
+
+                // Step 3: Install locally cached APK & provision device owner
+                logInstall("Step 3: Transferring payload to device & setting up kiosk admin...");
+                await window.webADB.installKioskApp(candidateApkUrls, logInstall);
+
+                installBtn.innerHTML = '<span>🎉 Installation &amp; Lockdown Complete!</span>';
                 installBtn.className = "w-full bg-emerald-600 text-white font-black py-4 rounded-xl shadow-xl shadow-emerald-500/30 text-base flex items-center justify-center gap-3";
                 await window.webADB.disconnect();
             } catch (err) {
-                logInstall(`❌ ERROR: ${err.message}`);
-                logInstall(`💡 TIP: Make sure you are using a USB DATA cable (not charging-only) and that "File Transfer" mode is selected on the phone.`);
+                logInstall(`❌ ERROR: ${err.message || err}`);
+                logInstall(`💡 TIP: Ensure your phone is connected with a USB DATA cable (not charging-only). Check the phone screen and tap "Always Allow" for USB Debugging.`);
                 installBtn.disabled = false;
-                installBtn.className = "w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3.5 px-4 rounded-xl transition-all duration-300 shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 text-sm flex items-center justify-center gap-2.5 mb-3 pulse-btn btn-glow cursor-pointer";
-                installBtn.textContent = 'Retry Installation';
+                installBtn.className = "w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3.5 px-4 rounded-xl transition-all duration-300 shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 text-sm flex items-center justify-center gap-2.5 mb-2.5 pulse-btn btn-glow cursor-pointer";
+                installBtn.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg><span>Retry Installation</span>';
             }
         });
     </script>
