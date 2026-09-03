@@ -131,6 +131,21 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
             }
 
             ACTION_ACTIVATE -> {
+                val currentInfo = com.pisophone.kiosk.security.HardwareLockManager.getLicenseInfo(context)
+                if (currentInfo.isPaid && currentInfo.state == com.pisophone.kiosk.security.HardwareLockManager.LicenseState.PAID_ACTIVE) {
+                    Log.i(TAG, "Device already has an active 1-Year Commercial License. Days remaining: ${currentInfo.daysRemaining}")
+                    Toast.makeText(context, "Device is already activated! No need to reactivate.", Toast.LENGTH_LONG).show()
+                    try {
+                        val mainIntent = Intent(context, MainActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        }
+                        context.startActivity(mainIntent)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Could not bring MainActivity to top: ${e.message}")
+                    }
+                    return
+                }
+
                 val key = intent.getStringExtra("key") ?: intent.getStringExtra("code") ?: "ACTIVATION_KEY"
                 Log.i(TAG, "Activation broadcast received with key: $key")
                 val success = com.pisophone.kiosk.security.HardwareLockManager.activateOneYearLicense(context, key)

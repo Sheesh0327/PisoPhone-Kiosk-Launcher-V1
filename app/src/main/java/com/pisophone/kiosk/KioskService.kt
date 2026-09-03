@@ -933,6 +933,14 @@ class KioskService : Service() {
 
         scope.launch {
             try {
+                HardwareLockManager.syncWithBackend(this@KioskService)
+            } catch (e: Exception) {
+                Log.d(TAG, "Initial hardware lock sync deferred: ${e.message}")
+            }
+        }
+
+        scope.launch {
+            try {
                 val recentEvents = coinEventRepo.getLatestEvents(200)
                 val now = System.currentTimeMillis()
                 for (event in recentEvents) {

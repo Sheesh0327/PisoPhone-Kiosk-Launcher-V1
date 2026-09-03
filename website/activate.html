@@ -151,6 +151,8 @@
 
         let isPaymentVerified = false;
         let verifiedLicenseKey = null;
+        let currentDeviceModel = '';
+        let verifiedDaysRemaining = 365;
 
         if (!navigator.usb) {
             document.getElementById('browserWarning').classList.remove('hidden');
@@ -187,17 +189,23 @@
                 const res = await fetch(`${API_BASE}/api/payment/check?deviceId=${encodeURIComponent(devId)}`);
                 const data = await res.json();
 
+                if (data.deviceModel && data.deviceModel !== 'Unknown Device' && data.deviceModel !== 'Android Device') {
+                    currentDeviceModel = data.deviceModel;
+                }
+
                 if (data.paid && data.licenseKey) {
                     isPaymentVerified = true;
                     verifiedLicenseKey = data.licenseKey;
+                    verifiedDaysRemaining = data.daysRemaining || 365;
+                    const modelName = currentDeviceModel || data.deviceModel || 'your device';
                     
                     statusIndicatorDot.className = 'w-3 h-3 rounded-full bg-emerald-400';
-                    statusTitle.textContent = 'Payment Confirmed (1-Year License Active)';
+                    statusTitle.textContent = 'Device Already Activated & Paid (1-Year Commercial License)';
                     statusTitle.className = 'text-sm font-bold text-emerald-400';
-                    statusDescription.textContent = `Verified! License expires in ${data.daysRemaining} days. Connect your device via USB and click activate below.`;
+                    statusDescription.textContent = `Verified! Active 1-Year Commercial License for ${modelName} (${data.daysRemaining} days remaining). No need to reactivate or repurchase. You can click below anytime to re-sync if reinstalled.`;
                     unpaidActionSection.classList.add('hidden');
                     
-                    setActivateButtonState(true, 'Connect Device & Activate 1-Year License');
+                    setActivateButtonState(true, `Device Already Activated — Re-sync ${modelName}`);
                 } else {
                     isPaymentVerified = false;
                     verifiedLicenseKey = null;
@@ -255,13 +263,17 @@
                 const androidId = (await window.webADB.shell("settings get secure android_id")).trim() || "UNKNOWN_ID";
                 const board = await getProp("ro.product.board");
                 const bootloader = await getProp("ro.bootloader");
-                const brand = await getProp("ro.product.brand");
+                const brand = (await getProp("ro.product.brand")) || (await getProp("ro.product.manufacturer"));
                 const device = await getProp("ro.product.device");
                 const hardware = await getProp("ro.hardware");
                 const manufacturer = await getProp("ro.product.manufacturer");
                 const model = await getProp("ro.product.model");
                 const product = await getProp("ro.product.name");
                 const fingerprint = await getProp("ro.build.fingerprint");
+
+                if (brand || model) {
+                    currentDeviceModel = `${brand || manufacturer} ${model}`.trim();
+                }
 
                 const rawHardwareString = `${androidId}|${board}|${bootloader}|${brand}|${device}|${hardware}|${manufacturer}|${model}|${product}|${fingerprint}`;
                 
@@ -275,6 +287,9 @@
 
                 deviceIdInput.value = devId;
                 logInfo(`Hardware Device ID: ${devId}`);
+                if (currentDeviceModel) {
+                    logInfo(`Device Model: ${currentDeviceModel}`);
+                }
                 await window.webADB.disconnect();
                 verifyDevicePayment();
             } catch (e) {
@@ -317,6 +332,7 @@
                 });
                 const data = await res.json();
                 if (data.success) {
+                    if (data.deviceModel) currentDeviceModel = data.deviceModel;
                     alert(`✅ Payment Webhook Signal Received! Device ${devId} is now marked as paid.`);
                     verifyDevicePayment();
                 } else {
@@ -393,6 +409,8 @@
                 // Trigger confetti particles
                 triggerConfettiCelebration();
 
+                const displayModel = currentDeviceModel || 'Your Device';
+
                 // Show rich animated celebration overlay
                 const successOverlay = document.createElement('div');
                 successOverlay.className = 'fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/90 backdrop-blur-md animate-fade-in-up';
@@ -403,17 +421,20 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                             </svg>
                         </div>
-                        <h2 class="text-3xl font-black text-white mb-2 tracking-tight">CONGRATULATIONS!</h2>
+                        <h2 class="text-3xl font-black text-white mb-1 tracking-tight">CONGRATULATIONS!</h2>
+                        <p class="text-emerald-400 font-bold text-base mb-3">Congratulations, your ${displayModel} is activated!</p>
                         <div class="inline-block bg-emerald-500/20 text-emerald-300 text-xs font-bold px-3 py-1 rounded-full border border-emerald-500/40 mb-4">
-                            1-Year Commercial License Active
+                            1-Year Commercial License Active (${verifiedDaysRemaining} Days)
                         </div>
                         <p class="text-slate-300 text-sm mb-6 leading-relaxed">
-                            The device is now cryptographically activated for <strong>365 days</strong>. The 7-day trial banner has been cleared, and all kiosk features are unlocked.
+                            Your <strong class="text-emerald-400 font-bold">${displayModel}</strong> is cryptographically activated. The 7-day trial banner has been cleared, and all kiosk launcher features are permanently unlocked.
                         </p>
-                        <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-3 mb-6 text-xs text-slate-400 font-mono">
-                            Device ID: <span class="text-emerald-400 font-bold">${getCleanDeviceId()}</span>
+                        <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-3 mb-6 text-xs text-slate-400 font-mono text-left space-y-1">
+                            <div class="flex justify-between"><span class="text-slate-500">Device Model:</span> <span class="text-emerald-400 font-bold">${displayModel}</span></div>
+                            <div class="flex justify-between"><span class="text-slate-500">Device ID:</span> <span class="text-slate-300 font-bold">${getCleanDeviceId()}</span></div>
+                            <div class="flex justify-between"><span class="text-slate-500">License Status:</span> <span class="text-emerald-400 font-bold">PAID & ACTIVE</span></div>
                         </div>
-                        <button onclick="this.closest('.fixed').remove()" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3.5 rounded-xl transition shadow-lg shadow-emerald-500/25">
+                        <button onclick="this.closest('.fixed').remove()" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3.5 rounded-xl transition shadow-lg shadow-emerald-500/25 cursor-pointer">
                             Close & Continue
                         </button>
                     </div>

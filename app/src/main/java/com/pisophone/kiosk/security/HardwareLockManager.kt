@@ -406,15 +406,18 @@ object HardwareLockManager {
                 if (status == "PAID" && paidExpires > 0L) {
                     editor.putString(KEY_LICENSE_STATUS, "PAID")
                     editor.putLong(KEY_PAID_EXPIRES_TIME, paidExpires)
+                } else if (status == "LOCKED") {
+                    editor.putString(KEY_LICENSE_STATUS, "EXPIRED")
                 }
                 if (trialExpires > 0L) {
                     editor.putLong(KEY_TRIAL_EXPIRES_TIME, trialExpires)
                 }
-                val currentStatus = prefs.getString(KEY_LICENSE_STATUS, "TRIAL") ?: "TRIAL"
-                val currPaid = prefs.getLong(KEY_PAID_EXPIRES_TIME, 0L)
-                val currTrial = prefs.getLong(KEY_TRIAL_EXPIRES_TIME, 0L)
+                val currentStatus = prefs.getString(KEY_LICENSE_STATUS, if (status == "PAID") "PAID" else "TRIAL") ?: "TRIAL"
+                val currPaid = if (status == "PAID" && paidExpires > 0L) paidExpires else prefs.getLong(KEY_PAID_EXPIRES_TIME, 0L)
+                val currTrial = if (trialExpires > 0L) trialExpires else prefs.getLong(KEY_TRIAL_EXPIRES_TIME, 0L)
                 editor.putString(KEY_LICENSE_SIGNATURE, generateLicenseSignature(hwId, currentStatus, currTrial, currPaid))
                 editor.apply()
+                notifyLicenseChanged()
                 Log.i(TAG, "Backend sync success. Status: $status, Paid: $paidExpires")
                 true
             } else {

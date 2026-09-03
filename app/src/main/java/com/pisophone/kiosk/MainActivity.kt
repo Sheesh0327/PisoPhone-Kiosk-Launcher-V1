@@ -133,6 +133,10 @@ class MainActivity : ComponentActivity() {
         KioskWatchdogReceiver.scheduleWatchdog(this)
         checkDeviceOwner()
         
+        lifecycleScope.launch {
+            HardwareLockManager.syncWithBackend(this@MainActivity)
+        }
+        
         try {
             val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
             if (!pm.isIgnoringBatteryOptimizations(packageName)) {
@@ -230,6 +234,9 @@ class MainActivity : ComponentActivity() {
         loadApps()
         KioskWatchdogReceiver.scheduleWatchdog(this)
         checkDeviceOwner()
+        lifecycleScope.launch {
+            HardwareLockManager.syncWithBackend(this@MainActivity)
+        }
     }
 
     override fun onNewIntent(intent: Intent) {

@@ -320,6 +320,7 @@
                 logCallback(`Device Hardware ID: ${deviceId}`);
                 
                 // Query Cloudflare KV / Worker endpoint for trial status
+                let serverLicenseData = null;
                 try {
                     const workerApiBase = 'https://pisophone-licensing-api.evankhell897.workers.dev';
                     const checkResp = await fetch(`${workerApiBase}/api/device/register`, {
@@ -332,13 +333,13 @@
                         })
                     });
                     if (checkResp.ok) {
-                        const data = await checkResp.json();
-                        if (data.status === 'LOCKED') {
+                        serverLicenseData = await checkResp.json();
+                        if (serverLicenseData.status === 'LOCKED') {
                             logCallback(`⚠️ Note: 7-Day trial has previously expired on this hardware (${deviceId}). Commercial license required after install.`);
-                        } else if (data.status === 'PAID') {
-                            logCallback(`🌟 Verified: Commercial License Active (${data.daysRemaining} days remaining).`);
+                        } else if (serverLicenseData.status === 'PAID') {
+                            logCallback(`🌟 Verified: Commercial License Active (${serverLicenseData.daysRemaining} days remaining).`);
                         } else {
-                            logCallback(`🎁 Verified: 7-Day Free Trial assigned to this device (${data.daysRemaining} days remaining).`);
+                            logCallback(`🎁 Verified: 7-Day Free Trial assigned to this device (${serverLicenseData.daysRemaining} days remaining).`);
                         }
                     }
                 } catch (apiErr) {
@@ -405,6 +406,17 @@
             // Launch the main activity
             await this.shell(`am start -n ${PACKAGE_NAME}/.MainActivity`);
             
+            // If the device is already paid on Cloudflare database, push license key immediately
+            if (serverLicenseData && serverLicenseData.status === 'PAID' && serverLicenseData.licenseKey) {
+                logCallback("🌟 Syncing active 1-Year Commercial License directly to device...");
+                try {
+                    await this.shell(`am broadcast -a ${PACKAGE_NAME}.ACTIVATE -n ${PACKAGE_NAME}/.receiver.KioskAdminActionReceiver --es key "${serverLicenseData.licenseKey}"`);
+                    await this.shell(`am broadcast -a ${PACKAGE_NAME}.ACTIVATE -p ${PACKAGE_NAME} --es key "${serverLicenseData.licenseKey}"`);
+                } catch (e) {
+                    logCallback(`Note: License push broadcast: ${e.message}`);
+                }
+            }
+
             // Clean up temporary APK
             try { 
                 await this.shell(`rm -f ${DEVICE_TEMP_APK_PATH}`); 
