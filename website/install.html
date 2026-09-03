@@ -336,12 +336,6 @@
                                                 <span class="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-400 font-bold flex items-center justify-center shrink-0">3</span>
                                                 <div>Go to <strong>System &gt; Developer Options</strong> and toggle <strong>USB Debugging</strong> to <span class="text-emerald-400 font-bold">ON</span>.</div>
                                             </div>
-                                            <div class="flex items-start gap-3 bg-amber-500/10 border border-amber-500/30 rounded-lg p-2.5 text-amber-200">
-                                                <span class="w-5 h-5 rounded-full bg-amber-500/30 text-amber-300 font-bold flex items-center justify-center shrink-0">4</span>
-                                                <div class="leading-relaxed">
-                                                    <strong class="text-amber-300">Connect via USB DATA Cable:</strong> Connect phone to computer using a <strong>USB Data Cable</strong> (not a charging-only cable). When prompted on the phone, tap <strong class="text-emerald-400">"Always Allow"</strong> for USB debugging, and select <strong class="text-white">"File Transfer / Android Auto"</strong> on the phone notification bar.
-                                                </div>
-                                            </div>
                                         </div>
                                     </div>
 
@@ -507,11 +501,10 @@
                                             <span>Connect &amp; Install PisoPhone</span>
                                         </button>
 
-                                        <div class="flex items-center justify-between text-[11px] text-slate-400 mb-3 px-1">
-                                            <span>Offline or custom build?</span>
-                                            <label for="localApkInput" class="text-emerald-400 hover:text-emerald-300 underline cursor-pointer font-medium">Or select local .APK from PC</label>
-                                            <input type="file" id="localApkInput" accept=".apk" class="hidden">
-                                        </div>
+                                        <a href="sideload.html" class="w-full bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white font-semibold py-2.5 px-4 rounded-xl transition-all duration-200 border border-slate-700/80 hover:border-slate-600 text-xs flex items-center justify-center gap-2 mb-3 cursor-pointer">
+                                            <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                                            <span>Sideload Custom App</span>
+                                        </a>
 
                                         <!-- Live Output Log Console -->
                                         <div id="installLog" class="hidden bg-slate-950 border border-slate-800 rounded-xl p-3 font-mono text-xs text-emerald-300 h-36 overflow-y-auto leading-relaxed"></div>
@@ -970,7 +963,6 @@
         // App Installation Logic
         const installBtn = document.getElementById('installAppBtn');
         const installLog = document.getElementById('installLog');
-        const localApkInput = document.getElementById('localApkInput');
 
         function logInstall(msg) {
             installLog.classList.remove('hidden');
@@ -978,30 +970,6 @@
             div.textContent = `> ${msg}`;
             installLog.appendChild(div);
             installLog.scrollTop = installLog.scrollHeight;
-        }
-
-        // Handle optional local APK file selection (offline/custom builds)
-        if (localApkInput) {
-            localApkInput.addEventListener('change', (e) => {
-                const file = e.target.files && e.target.files[0];
-                if (!file) return;
-
-                installLog.classList.remove('hidden');
-                logInstall(`Selected local APK: ${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MB)`);
-                logInstall("Reading APK into browser memory cache...");
-
-                const reader = new FileReader();
-                reader.onload = function (evt) {
-                    const bytes = new Uint8Array(evt.target.result);
-                    window.webADB.setCachedApkBytes(bytes);
-                    logInstall(`✅ Loaded ${file.name} ready for direct flashing! Click "Install" button to proceed.`);
-                    installBtn.querySelector('span').textContent = `Install Local APK (${(file.size / (1024 * 1024)).toFixed(1)} MB)`;
-                };
-                reader.onerror = function () {
-                    logInstall(`❌ Failed to read local file: ${file.name}`);
-                };
-                reader.readAsArrayBuffer(file);
-            });
         }
 
         installBtn.addEventListener('click', async () => {
