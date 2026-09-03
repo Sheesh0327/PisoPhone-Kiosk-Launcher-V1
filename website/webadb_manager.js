@@ -290,16 +290,17 @@
 
             const androidId = (await this.shell("settings get secure android_id")).trim() || "UNKNOWN_ID";
             const board = await getProp("ro.product.board");
-            const bootloader = await getProp("ro.bootloader");
             const brand = (await getProp("ro.product.brand")) || (await getProp("ro.product.manufacturer"));
             const device = await getProp("ro.product.device");
             const hardware = await getProp("ro.hardware");
             const manufacturer = await getProp("ro.product.manufacturer");
             const model = await getProp("ro.product.model");
             const product = await getProp("ro.product.name");
-            const fingerprint = await getProp("ro.build.fingerprint");
 
-            const rawHardwareString = `${androidId}|${board}|${bootloader}|${brand}|${device}|${hardware}|${manufacturer}|${model}|${product}|${fingerprint}`;
+            // Canonical immutable hardware identity:
+            // Excludes volatile build fingerprint, bootloader revision, and OS build numbers
+            // so device ID survives OTA updates, security patches, and OS upgrades.
+            const rawHardwareString = `${androidId}|${board}|${brand}|${device}|${hardware}|${manufacturer}|${model}|${product}`;
             
             const encoder = new TextEncoder();
             const data = encoder.encode(rawHardwareString);
@@ -399,13 +400,27 @@
 
             logCallback("✅ PisoPhone Launcher installed successfully!");
 
-            logCallback("Step 4: Setting PisoPhone as Device Owner (Kiosk Administrator)...");
+            logCallback("Step 4: Pre-flight check: Verifying device account prerequisites...");
+            try {
+                const accountsDump = await this.shell("dumpsys account");
+                const hasAccounts = /Account\s*\{/i.test(accountsDump) || /Accounts:\s*[1-9]/i.test(accountsDump);
+                if (hasAccounts) {
+                    throw new Error("Cannot set Device Owner: An active user account (e.g. Google, WhatsApp, Samsung) is logged in. Android security policy strictly blocks Device Owner enrollment when accounts exist. Please go to Android Settings > Accounts and remove all accounts, or Factory Reset the device and skip account setup.");
+                }
+            } catch (accErr) {
+                if (accErr.message.includes("Cannot set Device Owner")) {
+                    throw accErr;
+                }
+                // Continue if dumpsys is restricted
+            }
+
+            logCallback("Setting PisoPhone as Device Owner (Kiosk Administrator)...");
             const dpmResult = await this.shell(`dpm set-device-owner ${PACKAGE_NAME}/${PACKAGE_NAME}.receiver.KioskDeviceAdminReceiver`);
             logCallback(`Device Admin output: ${dpmResult.trim()}`);
 
             if (dpmResult.includes("Exception") || dpmResult.includes("java.lang") || dpmResult.includes("Error") || dpmResult.includes("illegal state")) {
                 if (dpmResult.includes("accounts") || dpmResult.includes("already")) {
-                    throw new Error("Cannot set Device Owner: An account is logged into this device. Please factory reset and SKIP all account setups.");
+                    throw new Error("Cannot set Device Owner: An account is logged into this device. Android requires 0 accounts for kiosk mode. Please remove all accounts in Settings > Accounts or Factory Reset and SKIP all account setups.");
                 }
                 throw new Error(`Device Owner setup failed: ${dpmResult.trim()}`);
             }
