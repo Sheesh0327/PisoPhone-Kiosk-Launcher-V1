@@ -274,6 +274,51 @@
         }
 
         /**
+         * Reads immutable hardware properties via ADB and computes the canonical Hardware Device ID
+         * @param {function} logCallback Function to log progress
+         * @returns {Promise<{deviceId: string, deviceModel: string, hardwareHash: string, rawHardwareString: string}>}
+         */
+        async getHardwareInfo(logCallback = console.log) {
+            if (!this.adb) throw new Error("Device not connected.");
+
+            const getProp = async (prop) => {
+                try {
+                    const res = await this.shell(`getprop ${prop}`);
+                    return res ? res.trim() : "";
+                } catch (e) { return ""; }
+            };
+
+            const androidId = (await this.shell("settings get secure android_id")).trim() || "UNKNOWN_ID";
+            const board = await getProp("ro.product.board");
+            const bootloader = await getProp("ro.bootloader");
+            const brand = (await getProp("ro.product.brand")) || (await getProp("ro.product.manufacturer"));
+            const device = await getProp("ro.product.device");
+            const hardware = await getProp("ro.hardware");
+            const manufacturer = await getProp("ro.product.manufacturer");
+            const model = await getProp("ro.product.model");
+            const product = await getProp("ro.product.name");
+            const fingerprint = await getProp("ro.build.fingerprint");
+
+            const rawHardwareString = `${androidId}|${board}|${bootloader}|${brand}|${device}|${hardware}|${manufacturer}|${model}|${product}|${fingerprint}`;
+            
+            const encoder = new TextEncoder();
+            const data = encoder.encode(rawHardwareString);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+            
+            const deviceId = `HW-${hex.substring(0, 4)}-${hex.substring(4, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}`;
+            const deviceModel = `${brand || manufacturer} ${model}`.trim() || 'Android Device';
+
+            return {
+                deviceId,
+                deviceModel,
+                hardwareHash: hex,
+                rawHardwareString
+            };
+        }
+
+        /**
          * Full Automated Kiosk App Installer & Provisioner
          * @param {string} apkUrl URL of the APK to install
          * @param {function} logCallback Function to output log messages
@@ -291,34 +336,10 @@
             let deviceId = "UNKNOWN";
             let serverLicenseData = null;
             try {
-                const getProp = async (prop) => {
-                    try {
-                        const res = await this.shell(`getprop ${prop}`);
-                        return res ? res.trim() : "";
-                    } catch (e) { return ""; }
-                };
-
-                const androidId = (await this.shell("settings get secure android_id")).trim() || "UNKNOWN_ID";
-                const board = await getProp("ro.product.board");
-                const bootloader = await getProp("ro.bootloader");
-                const brand = await getProp("ro.product.brand");
-                const device = await getProp("ro.product.device");
-                const hardware = await getProp("ro.hardware");
-                const manufacturer = await getProp("ro.product.manufacturer");
-                const model = await getProp("ro.product.model");
-                const product = await getProp("ro.product.name");
-                const fingerprint = await getProp("ro.build.fingerprint");
-
-                const rawHardwareString = `${androidId}|${board}|${bootloader}|${brand}|${device}|${hardware}|${manufacturer}|${model}|${product}|${fingerprint}`;
-                
-                const encoder = new TextEncoder();
-                const data = encoder.encode(rawHardwareString);
-                const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-                const hashArray = Array.from(new Uint8Array(hashBuffer));
-                const hex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
-                
-                deviceId = `HW-${hex.substring(0, 4)}-${hex.substring(4, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}`;
-                logCallback(`Device Hardware ID: ${deviceId}`);
+                const hwInfo = await this.getHardwareInfo(logCallback);
+                deviceId = hwInfo.deviceId;
+                const deviceModel = hwInfo.deviceModel;
+                logCallback(`Device Hardware ID: ${deviceId} (${deviceModel})`);
                 
                 // Query Cloudflare KV / Worker endpoint for trial status
                 try {
@@ -329,7 +350,7 @@
                         body: JSON.stringify({
                             deviceId: deviceId,
                             hardwareHash: deviceId,
-                            deviceModel: model || navigator.userAgent
+                            deviceModel: deviceModel
                         })
                     });
                     if (checkResp.ok) {

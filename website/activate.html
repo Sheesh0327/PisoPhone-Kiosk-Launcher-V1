@@ -253,37 +253,9 @@
                 await window.webADB.connect(logInfo);
                 logInfo("Fetching immutable hardware properties for fingerprinting...");
                 
-                const getProp = async (prop) => {
-                    try {
-                        const res = await window.webADB.shell(`getprop ${prop}`);
-                        return res ? res.trim() : "";
-                    } catch (e) { return ""; }
-                };
-
-                const androidId = (await window.webADB.shell("settings get secure android_id")).trim() || "UNKNOWN_ID";
-                const board = await getProp("ro.product.board");
-                const bootloader = await getProp("ro.bootloader");
-                const brand = (await getProp("ro.product.brand")) || (await getProp("ro.product.manufacturer"));
-                const device = await getProp("ro.product.device");
-                const hardware = await getProp("ro.hardware");
-                const manufacturer = await getProp("ro.product.manufacturer");
-                const model = await getProp("ro.product.model");
-                const product = await getProp("ro.product.name");
-                const fingerprint = await getProp("ro.build.fingerprint");
-
-                if (brand || model) {
-                    currentDeviceModel = `${brand || manufacturer} ${model}`.trim();
-                }
-
-                const rawHardwareString = `${androidId}|${board}|${bootloader}|${brand}|${device}|${hardware}|${manufacturer}|${model}|${product}|${fingerprint}`;
-                
-                const encoder = new TextEncoder();
-                const data = encoder.encode(rawHardwareString);
-                const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-                const hashArray = Array.from(new Uint8Array(hashBuffer));
-                const hex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
-                
-                const devId = `HW-${hex.substring(0, 4)}-${hex.substring(4, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}`;
+                const hwInfo = await window.webADB.getHardwareInfo(logInfo);
+                const devId = hwInfo.deviceId;
+                currentDeviceModel = hwInfo.deviceModel;
 
                 deviceIdInput.value = devId;
                 logInfo(`Hardware Device ID: ${devId}`);

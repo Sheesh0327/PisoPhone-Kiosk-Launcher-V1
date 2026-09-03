@@ -82,17 +82,23 @@ object HardwareLockManager {
             "UNKNOWN_ID"
         }
 
+        val brand = if (Build.BRAND.isNullOrBlank() || Build.BRAND.equals("unknown", ignoreCase = true)) {
+            Build.MANUFACTURER ?: ""
+        } else {
+            Build.BRAND
+        }
+
         val rawHardwareString = listOf(
             androidId,
-            Build.BOARD,
-            Build.BOOTLOADER,
-            Build.BRAND,
-            Build.DEVICE,
-            Build.HARDWARE,
-            Build.MANUFACTURER,
-            Build.MODEL,
-            Build.PRODUCT,
-            Build.FINGERPRINT
+            Build.BOARD ?: "",
+            Build.BOOTLOADER ?: "",
+            brand,
+            Build.DEVICE ?: "",
+            Build.HARDWARE ?: "",
+            Build.MANUFACTURER ?: "",
+            Build.MODEL ?: "",
+            Build.PRODUCT ?: "",
+            Build.FINGERPRINT ?: ""
         ).joinToString("|")
 
         return try {
