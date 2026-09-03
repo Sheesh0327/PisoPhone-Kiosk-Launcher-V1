@@ -6,6 +6,8 @@ import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -44,7 +46,7 @@ object HardwareLockManager {
     private const val ONE_YEAR_MS = 365L * 24L * 60L * 60L * 1000L
 
     // Cloudflare Worker backend endpoint
-    private const val DEFAULT_BACKEND_URL = "https://pisophone-license-api.evankhell897.workers.dev"
+    private const val DEFAULT_BACKEND_URL = "https://pisophone-licensing-api.evankhell897.workers.dev"
 
     enum class LicenseState {
         TRIAL_ACTIVE,
@@ -288,7 +290,7 @@ object HardwareLockManager {
     }
 
     /**
-     * Activates a 1-Year Commercial License on this hardware.
+     * Activates a 1-Year Commercial License on this hardware and syncs with Cloudflare KV.
      */
     fun activateOneYearLicense(context: Context, keyOrRef: String = "MANUAL"): Boolean {
         return try {
@@ -307,6 +309,44 @@ object HardwareLockManager {
                 .putString(KEY_LICENSE_SIGNATURE, sig)
                 .putLong(KEY_LAST_KNOWN_WALL_CLOCK, now)
                 .apply()
+
+            // Asynchronously notify & redeem code on Cloudflare backend
+            kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+                try {
+                    val androidId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: ""
+                    val devModel = getHardwareDescription()
+                    val url = URL("$DEFAULT_BACKEND_URL/api/license/issue")
+                    val conn = (url.openConnection() as HttpURLConnection).apply {
+                        requestMethod = "POST"
+                        connectTimeout = 8000
+                        readTimeout = 8000
+                        doOutput = true
+                        setRequestProperty("Content-Type", "application/json")
+                    }
+
+                    val payload = JSONObject().apply {
+                        put("deviceId", androidId.ifEmpty { hwId })
+                        put("activationCode", keyOrRef.trim())
+                        put("hardwareHash", hwId)
+                        put("deviceModel", devModel)
+                    }
+
+                    conn.outputStream.use { os ->
+                        os.write(payload.toString().toByteArray(Charsets.UTF_8))
+                    }
+
+                    val respCode = conn.responseCode
+                    if (respCode == 200) {
+                        val respStr = conn.inputStream.bufferedReader().use { it.readText() }
+                        Log.i(TAG, "Cloudflare Worker validated & redeemed code in KV successfully: $respStr")
+                    } else {
+                        val errStr = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                        Log.w(TAG, "Cloudflare Worker returned HTTP $respCode: $errStr")
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not reach Cloudflare Worker during activation: ${e.message}")
+                }
+            }
 
             Log.i(TAG, "1-Year License successfully activated on hardware $hwId (Expires: $newExpires)")
             true

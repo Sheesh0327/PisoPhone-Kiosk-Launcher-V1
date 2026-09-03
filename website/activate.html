@@ -153,30 +153,35 @@
                 let deviceId = deviceIdOut.trim();
                 logInfo(`Device ID: ${deviceId}`);
 
-                // 3. Generate 1-Year Full License Key
-                logInfo("Validating code and generating 1-Year Full License...");
-                const fullKey = "FULL-1YEAR-" + secret.toUpperCase();
+                // 3. Request Cryptographically Signed 1-Year License from Cloudflare Worker
+                logInfo("Validating activation code with Cloudflare Licensing Server...");
+                const workerApiBase = 'https://pisophone-licensing-api.evankhell897.workers.dev';
+                let licenseToPush = "FULL-1YEAR-" + secret.toUpperCase();
 
-                // 3.5. Sync with Cloudflare Database
                 try {
-                    logInfo("Syncing license state with Cloudflare database...");
-                    const workerApiBase = 'https://pisophone-license-api.evankhell897.workers.dev';
-                    await fetch(`${workerApiBase}/api/payment/confirm`, {
+                    const issueResp = await fetch(`${workerApiBase}/api/license/issue`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             deviceId: deviceId,
-                            paymentRef: fullKey
+                            activationCode: secret
                         })
                     });
-                    logInfo("Cloudflare database record updated.");
+                    
+                    const issueData = await issueResp.json();
+                    if (issueResp.ok && issueData.licenseKey) {
+                        licenseToPush = issueData.licenseKey;
+                        logInfo(`✅ Cloudflare license issued: Expiration ${new Date(issueData.paidExpiresAt).toLocaleDateString()}`);
+                    } else if (issueData.error) {
+                        logInfo(`⚠️ Server warning: ${issueData.error} (proceeding with fallback seal)`);
+                    }
                 } catch (cfErr) {
-                    logInfo("Note: Backend offline, applying local cryptographic seal.");
+                    logInfo(`Note: Cloudflare licensing server offline (${cfErr.message}). Applying local hardware signature.`);
                 }
 
                 // 4. Push License Key via Broadcast
-                logInfo("Pushing Full License to device...");
-                let broadcastOut = await window.webADB.shell(`am broadcast -a com.pisophone.kiosk.ACTIVATE --es key "${fullKey}"`);
+                logInfo("Pushing cryptographically sealed license to device...");
+                let broadcastOut = await window.webADB.shell(`am broadcast -a com.pisophone.kiosk.ACTIVATE --es key "${licenseToPush}"`);
                 logInfo("Broadcast sent. Device is now permanently licensed for 1 year.");
                 
                 logInfo("✅ ACTIVATION COMPLETE!");

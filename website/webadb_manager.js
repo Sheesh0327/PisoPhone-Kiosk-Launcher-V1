@@ -296,7 +296,7 @@
                 
                 // Query Cloudflare KV / Worker endpoint for trial status
                 try {
-                    const workerApiBase = 'https://pisophone-license-api.evankhell897.workers.dev';
+                    const workerApiBase = 'https://pisophone-licensing-api.evankhell897.workers.dev';
                     const checkResp = await fetch(`${workerApiBase}/api/device/register`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },

@@ -663,9 +663,17 @@ fun BlockScreen(
     val timeFormat = remember { SimpleDateFormat("h:mm a", Locale.getDefault()) }
     var currentTimeStr by remember { mutableStateOf(timeFormat.format(Date())) }
 
+    var licenseInfo by remember { mutableStateOf(HardwareLockManager.getLicenseInfo(context)) }
+    var remainingTrialMillis by remember { mutableStateOf(maxOf(0L, licenseInfo.expiresAtMs - System.currentTimeMillis())) }
+    var showTrialActivationDialog by remember { mutableStateOf(false) }
+    var trialActivationCode by remember { mutableStateOf("") }
+
     LaunchedEffect(Unit) {
         while (true) {
             currentTimeStr = timeFormat.format(Date())
+            val info = HardwareLockManager.getLicenseInfo(context)
+            licenseInfo = info
+            remainingTrialMillis = maxOf(0L, info.expiresAtMs - System.currentTimeMillis())
             delay(1000)
         }
     }
@@ -704,6 +712,14 @@ fun BlockScreen(
         // Annoying Battery Alert Banner (Loud & Pulsing)
         if (!isUnlicensed && batteryStatus.alertState != BatteryAlertState.NONE) {
             BatteryAlertBanner(batteryStatus = batteryStatus)
+        }
+
+        // 7-Day Free Trial Countdown Banner (Lock Screen Only)
+        if (!isUnlicensed && !licenseInfo.isPaid && licenseInfo.state == HardwareLockManager.LicenseState.TRIAL_ACTIVE) {
+            TrialCountdownBanner(
+                remainingMs = remainingTrialMillis,
+                onActivateClick = { showTrialActivationDialog = true }
+            )
         }
 
         // Scrollable Area
@@ -1112,8 +1128,8 @@ fun BlockScreen(
                         
                         OutlinedTextField(
                             value = activationCode,
-                            onValueChange = { activationCode = it.take(12).uppercase() },
-                            placeholder = { Text("Enter 12-Digit Code", color = TextSecondary) },
+                            onValueChange = { activationCode = it.trim().uppercase() },
+                            placeholder = { Text("e.g. PISO-XXXX-XXXX", color = TextSecondary) },
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = Primary,
                                 unfocusedBorderColor = Border,
@@ -1133,6 +1149,191 @@ fun BlockScreen(
                         }
                     }
                 }
+            }
+
+            if (showTrialActivationDialog) {
+                AlertDialog(
+                    onDismissRequest = { showTrialActivationDialog = false },
+                    containerColor = Color(0xFF0F172A),
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(Icons.Filled.Lock, contentDescription = null, tint = Color(0xFFF59E0B), modifier = Modifier.size(22.dp))
+                            Text("PisoPhone License Activation", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text(
+                                "This machine is currently running on a 7-day free trial. Enter your 1-year activation code or connect via the WebUSB installer to activate permanently.",
+                                color = Color(0xFF94A3B8),
+                                fontSize = 12.sp,
+                                lineHeight = 16.sp
+                            )
+                            
+                            Surface(
+                                color = Color(0xFF1E293B),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Text("DEVICE HARDWARE ID", color = Color(0xFF64748B), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        licenseInfo.hardwareId.take(16).uppercase(),
+                                        color = Color(0xFF38BDF8),
+                                        fontSize = 12.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
+                            OutlinedTextField(
+                                value = trialActivationCode,
+                                onValueChange = { trialActivationCode = it.trim().uppercase() },
+                                placeholder = { Text("e.g. PISO-XXXX-XXXX", color = Color(0xFF64748B), fontSize = 13.sp) },
+                                label = { Text("Activation Code", color = Color(0xFF94A3B8)) },
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = Color(0xFFF59E0B),
+                                    unfocusedBorderColor = Color(0xFF334155),
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White,
+                                ),
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                if (trialActivationCode.isNotBlank()) {
+                                    onActivateClick(trialActivationCode)
+                                    showTrialActivationDialog = false
+                                    licenseInfo = HardwareLockManager.getLicenseInfo(context)
+                                    Toast.makeText(context, "Activating device license...", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF59E0B), contentColor = Color(0xFF0F172A)),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("ACTIVATE NOW", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showTrialActivationDialog = false }) {
+                            Text("Cancel", color = Color(0xFF94A3B8))
+                        }
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun TrialCountdownBanner(
+    remainingMs: Long,
+    onActivateClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val totalSec = maxOf(0L, remainingMs / 1000L)
+    val days = (totalSec / (60 * 60 * 24)).toInt()
+    val hours = ((totalSec / (60 * 60)) % 24).toInt()
+    val minutes = ((totalSec / 60) % 60).toInt()
+    val seconds = (totalSec % 60).toInt()
+
+    val bannerGold = Color(0xFFF59E0B)
+    val bannerGoldBg = Color(0xFF1C1917)
+    val borderGold = Color(0xFF78350F)
+    val cyanAccent = Color(0xFF38BDF8)
+
+    Surface(
+        color = bannerGoldBg,
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, borderGold),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .background(bannerGold, CircleShape)
+                    )
+                    Text(
+                        "7-DAY FREE TRIAL ACTIVE",
+                        color = bannerGold,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 0.5.sp
+                    )
+                }
+
+                Surface(
+                    color = bannerGold.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(6.dp),
+                    border = BorderStroke(0.5.dp, bannerGold.copy(alpha = 0.5f)),
+                    modifier = Modifier.clickable { onActivateClick() }
+                ) {
+                    Text(
+                        "ENTER KEY",
+                        color = bannerGold,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    val timeStr = if (days > 0) {
+                        "${days}d ${"%02d".format(hours)}h ${"%02d".format(minutes)}m ${"%02d".format(seconds)}s"
+                    } else {
+                        "${"%02d".format(hours)}h ${"%02d".format(minutes)}m ${"%02d".format(seconds)}s"
+                    }
+                    Text(
+                        timeStr,
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Text(
+                        "left",
+                        color = Color(0xFF94A3B8),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                Text(
+                    "All games unlocked",
+                    color = cyanAccent,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         }
     }
