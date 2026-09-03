@@ -802,9 +802,8 @@ fun LauncherScreen(
             if (featuredApps.isEmpty()) {
                 Box(
                     modifier = Modifier
-                        .weight(1f)
                         .fillMaxWidth()
-                        .padding(24.dp),
+                        .padding(horizontal = 24.dp, vertical = 16.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Card(
@@ -814,12 +813,12 @@ fun LauncherScreen(
                         border = BorderStroke(1.dp, currentTheme.border)
                     ) {
                         Column(
-                            modifier = Modifier.padding(32.dp),
+                            modifier = Modifier.padding(24.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(56.dp)
+                                    .size(48.dp)
                                     .background(currentTheme.primary.copy(alpha = 0.12f), CircleShape)
                                     .border(1.dp, currentTheme.primary.copy(alpha = 0.3f), CircleShape),
                                 contentAlignment = Alignment.Center
@@ -827,23 +826,24 @@ fun LauncherScreen(
                                 Icon(
                                     Icons.Filled.Star,
                                     contentDescription = null,
-                                    modifier = Modifier.size(28.dp),
+                                    modifier = Modifier.size(24.dp),
                                     tint = currentTheme.primary
                                 )
                             }
-                            Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
                             Text(
-                                "No Featured Apps Selected",
+                                "No Featured Apps",
                                 color = currentTheme.textPrimary,
-                                fontSize = 18.sp,
+                                fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold
                             )
-                            Spacer(modifier = Modifier.height(6.dp))
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 "Tap 'Manage' above to select games and apps for quick carousel access.",
                                 color = currentTheme.textSecondary,
-                                fontSize = 13.sp,
-                                textAlign = TextAlign.Center
+                                fontSize = 12.sp,
+                                textAlign = TextAlign.Center,
+                                lineHeight = 16.sp
                             )
                         }
                     }
@@ -854,10 +854,8 @@ fun LauncherScreen(
                 HorizontalPager(
                     state = pagerState,
                     contentPadding = PaddingValues(horizontal = 48.dp),
-                    pageSpacing = 20.dp,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
+                    pageSpacing = 16.dp,
+                    modifier = Modifier.fillMaxWidth()
                 ) { page ->
                     val app = featuredApps[page]
                     val pageOffset = ((pagerState.currentPage - page) + pagerState.currentPageOffsetFraction).absoluteValue
@@ -865,7 +863,7 @@ fun LauncherScreen(
                     val alpha = lerp(start = 0.7f, stop = 1.0f, fraction = 1f - pageOffset.coerceIn(0f, 1f))
                     
                     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
-                    val cardAspectRatio = if (isLandscape) 1.6f else 0.9f
+                    val cardAspectRatio = if (isLandscape) 2.2f else 1.4f
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -875,7 +873,7 @@ fun LauncherScreen(
                                 scaleY = scale
                                 this.alpha = alpha
                             }
-                            .clip(RoundedCornerShape(24.dp))
+                            .clip(RoundedCornerShape(20.dp))
                             .clickable { onAppClick(app) },
                         colors = CardDefaults.cardColors(containerColor = currentTheme.surface),
                         border = BorderStroke(1.dp, if (pageOffset < 0.5f) currentTheme.primary.copy(alpha = 0.4f) else currentTheme.border),
@@ -884,7 +882,7 @@ fun LauncherScreen(
                         Column(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(24.dp),
+                                .padding(16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center
                         ) {
@@ -893,26 +891,26 @@ fun LauncherScreen(
                                     bitmap = app.bitmap,
                                     contentDescription = app.name,
                                     modifier = Modifier
-                                        .size(108.dp)
-                                        .clip(RoundedCornerShape(22.dp))
-                                        .border(1.dp, currentTheme.border, RoundedCornerShape(22.dp))
+                                        .size(64.dp)
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .border(1.dp, currentTheme.border, RoundedCornerShape(16.dp))
                                 )
                             }
-                            Spacer(modifier = Modifier.height(20.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
                             Text(
                                 text = app.name,
                                 color = currentTheme.textPrimary,
-                                fontSize = 22.sp,
+                                fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
                                 textAlign = TextAlign.Center,
-                                maxLines = 2,
+                                maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            Spacer(modifier = Modifier.height(4.dp))
+                            Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = "Ready to Play",
                                 color = currentTheme.primary,
-                                fontSize = 12.sp,
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Medium
                             )
                         }
@@ -925,25 +923,27 @@ fun LauncherScreen(
                     Button(
                         onClick = { onAppClick(focusedApp) },
                         modifier = Modifier
-                            .padding(horizontal = 32.dp, vertical = 20.dp)
+                            .padding(horizontal = 32.dp, vertical = 12.dp)
                             .fillMaxWidth()
-                            .height(54.dp),
+                            .height(48.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = currentTheme.primary,
                             contentColor = currentTheme.onPrimary
                         ),
-                        shape = RoundedCornerShape(14.dp)
+                        shape = RoundedCornerShape(12.dp)
                     ) {
                         Icon(
                             Icons.Filled.PlayArrow,
                             contentDescription = null,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             "Launch ${focusedApp.name}",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -981,61 +981,54 @@ fun LauncherScreen(
             }
             
             val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
-            val columns = if (isLandscape) GridCells.Fixed(6) else GridCells.Fixed(3)
+            val columns = if (isLandscape) GridCells.Fixed(8) else GridCells.Fixed(4)
             LazyVerticalGrid(
                 columns = columns,
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 modifier = Modifier.weight(1f)
             ) {
                 items(allApps) { app ->
-                    Card(
+                    Column(
                         modifier = Modifier
-                            .padding(6.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .clickable { onAppClick(app) },
-                        colors = CardDefaults.cardColors(containerColor = currentTheme.surface.copy(alpha = 0.7f)),
-                        border = BorderStroke(1.dp, currentTheme.border),
-                        shape = RoundedCornerShape(16.dp)
+                            .padding(4.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { onAppClick(app) }
+                            .padding(8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            if (app.bitmap != null) {
-                                Image(
-                                    bitmap = app.bitmap,
-                                    contentDescription = app.name,
-                                    modifier = Modifier
-                                        .size(52.dp)
-                                        .clip(RoundedCornerShape(14.dp))
-                                )
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .size(52.dp)
-                                        .background(currentTheme.bg, RoundedCornerShape(14.dp)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        Icons.Filled.Apps,
-                                        contentDescription = null,
-                                        tint = currentTheme.primary
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = app.name,
-                                color = currentTheme.textPrimary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                textAlign = TextAlign.Center
+                        if (app.bitmap != null) {
+                            Image(
+                                bitmap = app.bitmap,
+                                contentDescription = app.name,
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(RoundedCornerShape(12.dp))
                             )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .background(currentTheme.bg, RoundedCornerShape(12.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Filled.Apps,
+                                    contentDescription = null,
+                                    tint = currentTheme.primary
+                                )
+                            }
                         }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = app.name,
+                            color = currentTheme.textPrimary,
+                            fontSize = 11.sp,
+                            lineHeight = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center
+                        )
                     }
                 }
             }
