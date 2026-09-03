@@ -11,6 +11,8 @@ import android.content.res.Configuration
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Build
@@ -89,7 +91,7 @@ import kotlin.math.absoluteValue
 data class AppInfo(
     val name: String,
     val packageName: String,
-    val icon: Drawable,
+    val icon: Drawable? = null,
     val bitmap: androidx.compose.ui.graphics.ImageBitmap? = null,
 )
 
@@ -350,20 +352,33 @@ class MainActivity : ComponentActivity() {
                         return@mapNotNull null
                     }
 
-                    val iconDrawable = resolveInfo.activityInfo.loadIcon(pm)
-                    val imgBitmap =
-                        try {
-                            iconDrawable.toBitmap().asImageBitmap()
-                        } catch (_: Exception) {
-                            null
-                        }
+                    val appName = try {
+                        resolveInfo.loadLabel(pm).toString()
+                    } catch (_: Throwable) {
+                        pkgName
+                    }
+
+                    val imgBitmap = try {
+                        val iconDrawable = resolveInfo.activityInfo.loadIcon(pm)
+                        val w = 96
+                        val h = 96
+                        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                        val canvas = Canvas(bmp)
+                        iconDrawable.setBounds(0, 0, w, h)
+                        iconDrawable.draw(canvas)
+                        bmp.asImageBitmap()
+                    } catch (_: Throwable) {
+                        null
+                    }
+
                     AppInfo(
-                        name = resolveInfo.loadLabel(pm).toString(),
+                        name = appName,
                         packageName = pkgName,
-                        icon = iconDrawable,
                         bitmap = imgBitmap,
                     )
-                }.sortedBy { it.name }
+                }
+                .distinctBy { it.packageName }
+                .sortedBy { it.name.lowercase() }
 
             withContext(Dispatchers.Main) {
                 appsList = apps
@@ -647,53 +662,27 @@ fun LauncherScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .padding(horizontal = 16.dp, vertical = 10.dp)
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(bottom = 8.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Star,
-                        contentDescription = "Pinned Apps",
-                        tint = Color(0xFFFBBF24),
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Text(
-                        text = "PINNED APPS",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.8.sp,
-                        color = currentTheme.textPrimary
-                    )
-                    Surface(
-                        color = Color(0x22FBBF24),
-                        shape = RoundedCornerShape(6.dp),
-                        border = BorderStroke(1.dp, Color(0x44FBBF24))
-                    ) {
-                        Text(
-                            text = "4 SLOTS",
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFFFBBF24),
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-
+                Icon(
+                    imageVector = Icons.Filled.Star,
+                    contentDescription = "Pinned Apps",
+                    tint = Color(0xFFFBBF24),
+                    modifier = Modifier.size(14.dp)
+                )
                 Text(
-                    text = "Tap to launch or pin",
+                    text = "PINNED",
                     fontSize = 11.sp,
-                    color = currentTheme.textMuted
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.8.sp,
+                    color = currentTheme.textSecondary
                 )
             }
-
-            Spacer(modifier = Modifier.height(10.dp))
 
             // 4 Top Slots Row
             Row(
@@ -707,15 +696,15 @@ fun LauncherScreen(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .height(96.dp)
-                            .clip(RoundedCornerShape(16.dp))
+                            .height(88.dp)
+                            .clip(RoundedCornerShape(14.dp))
                             .background(
-                                if (pinnedApp != null) currentTheme.cardBg else currentTheme.surface.copy(alpha = 0.6f)
+                                if (pinnedApp != null) currentTheme.cardBg else currentTheme.surface.copy(alpha = 0.45f)
                             )
                             .border(
-                                width = if (pinnedApp != null) 1.5.dp else 1.dp,
-                                color = if (pinnedApp != null) currentTheme.borderEmerald else currentTheme.border,
-                                shape = RoundedCornerShape(16.dp)
+                                width = if (pinnedApp != null) 1.2.dp else 1.dp,
+                                color = if (pinnedApp != null) currentTheme.borderEmerald else currentTheme.border.copy(alpha = 0.6f),
+                                shape = RoundedCornerShape(14.dp)
                             )
                             .combinedClickable(
                                 onClick = {
@@ -733,7 +722,7 @@ fun LauncherScreen(
                                     }
                                 }
                             )
-                            .padding(6.dp),
+                            .padding(4.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         if (pinnedApp != null) {
@@ -747,25 +736,25 @@ fun LauncherScreen(
                                         bitmap = pinnedApp.bitmap,
                                         contentDescription = pinnedApp.name,
                                         modifier = Modifier
-                                            .size(46.dp)
-                                            .clip(RoundedCornerShape(12.dp))
+                                            .size(42.dp)
+                                            .clip(RoundedCornerShape(10.dp))
                                     )
                                 } else {
                                     Box(
                                         modifier = Modifier
-                                            .size(46.dp)
-                                            .background(currentTheme.surface, RoundedCornerShape(12.dp)),
+                                            .size(42.dp)
+                                            .background(currentTheme.surface, RoundedCornerShape(10.dp)),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
                                             Icons.Filled.SportsEsports,
                                             contentDescription = null,
                                             tint = currentTheme.primary,
-                                            modifier = Modifier.size(24.dp)
+                                            modifier = Modifier.size(22.dp)
                                         )
                                     }
                                 }
-                                Spacer(modifier = Modifier.height(5.dp))
+                                Spacer(modifier = Modifier.height(4.dp))
                                 Text(
                                     text = pinnedApp.name,
                                     color = currentTheme.textPrimary,
@@ -781,7 +770,7 @@ fun LauncherScreen(
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.TopEnd)
-                                    .size(14.dp)
+                                    .size(13.dp)
                                     .background(Color(0xFF059669), CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -789,36 +778,23 @@ fun LauncherScreen(
                                     Icons.Filled.PushPin,
                                     contentDescription = "Pinned",
                                     tint = Color.White,
-                                    modifier = Modifier.size(9.dp)
+                                    modifier = Modifier.size(8.dp)
                                 )
                             }
                         } else {
-                            // Empty Slot UI
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center,
-                                modifier = Modifier.fillMaxSize()
+                            // Minimal Empty Slot UI without descriptive text
+                            Box(
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .background(Color(0x1510B981), CircleShape)
+                                    .border(1.dp, Color(0x3310B981), CircleShape),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(38.dp)
-                                        .background(Color(0x1A10B981), CircleShape)
-                                        .border(1.dp, Color(0x3310B981), CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Add,
-                                        contentDescription = "Add Pinned App",
-                                        tint = currentTheme.primary,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "Slot ${slotIndex + 1}",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = currentTheme.textMuted
+                                Icon(
+                                    imageVector = Icons.Filled.Add,
+                                    contentDescription = "Add Pinned App",
+                                    tint = currentTheme.primary.copy(alpha = 0.7f),
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
                         }
