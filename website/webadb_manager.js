@@ -290,8 +290,33 @@
             logCallback("Inspecting hardware identifier for license provisioning...");
             let deviceId = "UNKNOWN";
             try {
-                const idOut = await this.shell("settings get secure android_id");
-                deviceId = idOut.trim();
+                const getProp = async (prop) => {
+                    try {
+                        const res = await this.shell(`getprop ${prop}`);
+                        return res ? res.trim() : "";
+                    } catch (e) { return ""; }
+                };
+
+                const androidId = (await this.shell("settings get secure android_id")).trim() || "UNKNOWN_ID";
+                const board = await getProp("ro.product.board");
+                const bootloader = await getProp("ro.bootloader");
+                const brand = await getProp("ro.product.brand");
+                const device = await getProp("ro.product.device");
+                const hardware = await getProp("ro.hardware");
+                const manufacturer = await getProp("ro.product.manufacturer");
+                const model = await getProp("ro.product.model");
+                const product = await getProp("ro.product.name");
+                const fingerprint = await getProp("ro.build.fingerprint");
+
+                const rawHardwareString = `${androidId}|${board}|${bootloader}|${brand}|${device}|${hardware}|${manufacturer}|${model}|${product}|${fingerprint}`;
+                
+                const encoder = new TextEncoder();
+                const data = encoder.encode(rawHardwareString);
+                const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+                const hashArray = Array.from(new Uint8Array(hashBuffer));
+                const hex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+                
+                deviceId = `HW-${hex.substring(0, 4)}-${hex.substring(4, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}`;
                 logCallback(`Device Hardware ID: ${deviceId}`);
                 
                 // Query Cloudflare KV / Worker endpoint for trial status
@@ -302,8 +327,8 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             deviceId: deviceId,
-                            hardwareHash: `HW-${deviceId.toUpperCase()}`,
-                            deviceModel: navigator.userAgent
+                            hardwareHash: deviceId,
+                            deviceModel: model || navigator.userAgent
                         })
                     });
                     if (checkResp.ok) {

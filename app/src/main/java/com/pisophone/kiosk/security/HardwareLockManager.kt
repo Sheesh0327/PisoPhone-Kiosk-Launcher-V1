@@ -375,7 +375,7 @@ object HardwareLockManager {
             }
 
             val payload = JSONObject().apply {
-                put("deviceId", androidId.ifEmpty { hwId })
+                put("deviceId", hwId)
                 put("hardwareHash", hwId)
                 put("deviceModel", devModel)
             }
