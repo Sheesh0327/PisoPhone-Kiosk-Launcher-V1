@@ -104,11 +104,10 @@ export default {
 
     try {
       const now = Date.now();
-      const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
       const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
 
       // =========================================================================
-      // 1. Device Registration / Trial Status Check
+      // 1. Device Registration & Hardware Status Check
       // POST /api/device/register
       // Body: { deviceId: string, hardwareHash: string, deviceModel: string }
       // =========================================================================
@@ -131,8 +130,7 @@ export default {
 
         if (existing) {
           const isPaid = existing.licenseType === 'PAID' && existing.paidExpiresAt > now;
-          const isTrialValid = existing.trialExpiresAt > now;
-          const isLocked = !isPaid && !isTrialValid;
+          const isLocked = !isPaid;
 
           existing.lastCheckinAt = now;
           existing.installCount = (existing.installCount || 1) + 1;
@@ -152,21 +150,21 @@ export default {
 
           return new Response(
             JSON.stringify({
-              status: isLocked ? 'LOCKED' : (isPaid ? 'PAID' : 'TRIAL'),
-              licenseType: existing.licenseType,
+              status: isPaid ? 'PAID' : 'UNACTIVATED',
+              licenseType: existing.licenseType || 'UNACTIVATED',
               deviceId: existing.deviceId,
               deviceModel: existing.deviceModel || deviceModel || 'Unknown Device',
-              trialExpiresAt: existing.trialExpiresAt,
+              trialExpiresAt: 0,
               paidExpiresAt: existing.paidExpiresAt || 0,
               daysRemaining: isPaid
                 ? Math.max(0, Math.ceil((existing.paidExpiresAt - now) / (24 * 60 * 60 * 1000)))
-                : Math.max(0, Math.ceil((existing.trialExpiresAt - now) / (24 * 60 * 60 * 1000))),
+                : 0,
               signature,
               licenseKey,
               serverTime: now,
-              message: isLocked
-                ? 'Free trial has ended. Please complete payment.'
-                : (isPaid ? 'Active 1-Year Commercial License' : '7-Day Free Trial Active'),
+              message: isPaid
+                ? 'Active 1-Year Commercial License'
+                : 'Device registered. Activation required to unlock kiosk.',
             }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
@@ -176,9 +174,9 @@ export default {
           deviceId,
           hardwareHash,
           deviceModel: deviceModel || 'Unknown Device',
-          licenseType: 'TRIAL',
+          licenseType: 'UNACTIVATED',
           firstRegisteredAt: now,
-          trialExpiresAt: now + SEVEN_DAYS_MS,
+          trialExpiresAt: 0,
           paidExpiresAt: 0,
           lastCheckinAt: now,
           installCount: 1,
@@ -190,15 +188,15 @@ export default {
 
         return new Response(
           JSON.stringify({
-            status: 'TRIAL',
-            licenseType: 'TRIAL',
+            status: 'UNACTIVATED',
+            licenseType: 'UNACTIVATED',
             deviceId,
             deviceModel: newRecord.deviceModel,
-            trialExpiresAt: newRecord.trialExpiresAt,
+            trialExpiresAt: 0,
             paidExpiresAt: 0,
-            daysRemaining: 7,
+            daysRemaining: 0,
             serverTime: now,
-            message: '7-Day Free Trial activated for this hardware.',
+            message: 'Device registered successfully. Ready for license QR activation.',
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
@@ -229,7 +227,7 @@ export default {
               paid: false,
               deviceId,
               deviceModel: record ? (record.deviceModel || 'Android Device') : 'Unknown Device',
-              status: record ? (record.trialExpiresAt > now ? 'TRIAL' : 'LOCKED') : 'UNREGISTERED',
+              status: record ? 'UNACTIVATED' : 'UNREGISTERED',
               serverTime: now,
               message: 'No confirmed payment found for this device ID.',
             }),
@@ -308,7 +306,6 @@ export default {
             hardwareHash: `HW-${deviceId.toUpperCase()}`,
             deviceModel: 'Licensed via Webhook',
             firstRegisteredAt: now,
-            trialExpiresAt: now,
             installCount: 1,
             processedPaymentRefs: [],
           };
@@ -405,7 +402,6 @@ export default {
             hardwareHash: `HW-${cleanId.toUpperCase()}`,
             deviceModel: 'Manual Activation',
             firstRegisteredAt: now,
-            trialExpiresAt: now,
             installCount: 1,
             processedPaymentRefs: [],
           };

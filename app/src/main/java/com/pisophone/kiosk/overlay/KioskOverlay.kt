@@ -41,7 +41,6 @@ import androidx.compose.material.icons.filled.BrightnessMedium
 import androidx.compose.material.icons.filled.BrightnessLow
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.automirrored.filled.VolumeMute
-import androidx.compose.material.icons.filled.VolumeMute
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.CleaningServices
@@ -798,13 +797,6 @@ fun BlockScreen(
             BatteryAlertBanner(batteryStatus = batteryStatus)
         }
 
-        // 7-Day Free Trial Countdown Banner (Lock Screen Only)
-        if (!isUnlicensed && !licenseInfo.isPaid && licenseInfo.state == HardwareLockManager.LicenseState.TRIAL_ACTIVE) {
-            TrialCountdownBanner(
-                expiresAtMs = licenseInfo.expiresAtMs
-            )
-        }
-
         // Scrollable Area
         BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
             val isWide = maxWidth > 600.dp || isLandscape
@@ -1189,105 +1181,6 @@ fun BlockScreen(
         }
     }
 }
-
-@Composable
-fun TrialCountdownBanner(
-    expiresAtMs: Long,
-    modifier: Modifier = Modifier
-) {
-    var remainingMs by remember { mutableStateOf(maxOf(0L, expiresAtMs - System.currentTimeMillis())) }
-
-    LaunchedEffect(expiresAtMs) {
-        while (true) {
-            remainingMs = maxOf(0L, expiresAtMs - System.currentTimeMillis())
-            delay(1000)
-        }
-    }
-
-    val totalSec = maxOf(0L, remainingMs / 1000L)
-    val days = (totalSec / (60 * 60 * 24)).toInt()
-    val hours = ((totalSec / (60 * 60)) % 24).toInt()
-    val minutes = ((totalSec / 60) % 60).toInt()
-    val seconds = (totalSec % 60).toInt()
-
-    val bannerGold = Color(0xFFF59E0B)
-    val bannerGoldBg = Color(0xFF1C1917)
-    val borderGold = Color(0xFF78350F)
-    val cyanAccent = Color(0xFF38BDF8)
-
-    Surface(
-        color = bannerGoldBg,
-        shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, borderGold),
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 4.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(7.dp)
-                            .background(bannerGold, CircleShape)
-                    )
-                    Text(
-                        "7-DAY FREE TRIAL ACTIVE",
-                        color = bannerGold,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = 0.5.sp
-                    )
-                }
-
-                Text(
-                    "All games unlocked",
-                    color = cyanAccent,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Start,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val timeStr = if (days > 0) {
-                    "${days}d ${"%02d".format(hours)}h ${"%02d".format(minutes)}m ${"%02d".format(seconds)}s"
-                } else {
-                    "${"%02d".format(hours)}h ${"%02d".format(minutes)}m ${"%02d".format(seconds)}s"
-                }
-                Text(
-                    timeStr,
-                    color = Color.White,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Black,
-                    fontFamily = FontFamily.Monospace
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    "remaining",
-                    color = Color(0xFF94A3B8),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-        }
-    }
-}
-
 
 @Composable
 fun FloatingBall(

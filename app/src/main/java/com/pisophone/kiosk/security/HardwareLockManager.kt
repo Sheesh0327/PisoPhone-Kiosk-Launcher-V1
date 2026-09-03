@@ -7,8 +7,9 @@ import android.os.SystemClock
 import android.provider.Settings
 import android.util.Base64
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -26,7 +27,7 @@ import javax.crypto.spec.SecretKeySpec
  * HardwareLockManager
  *
  * Cryptographically binds the kiosk application to the target device's physical hardware
- * and enforces a robust 7-day trial followed by un-bypassable lockdown unless licensed.
+ * and enforces device activation for committed coin-slot hardware users.
  * Supports Cloudflare KV remote synchronization while providing asymmetric RSA-2048
  * signature verification and tamper-resistant offline clock tracking.
  */
@@ -43,6 +44,8 @@ object HardwareLockManager {
     val licenseUpdateVersion = MutableStateFlow<Long>(System.currentTimeMillis())
     val activationCelebrationEvent = MutableStateFlow<Boolean>(false)
 
+    private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
     fun notifyLicenseChanged() {
         licenseUpdateVersion.value = System.currentTimeMillis()
     }
@@ -53,24 +56,22 @@ object HardwareLockManager {
     private const val KEY_BOUND_SIGNATURE = "bound_hardware_sig"
     private const val KEY_HARDWARE_LOCKED = "hardware_lock_enforced"
 
-    // Licensing & Anti-Uninstall Trial State Keys
-    private const val KEY_LICENSE_STATUS = "license_status" // "TRIAL", "PAID", "EXPIRED"
-    private const val KEY_TRIAL_START_TIME = "license_trial_start_time"
-    private const val KEY_TRIAL_EXPIRES_TIME = "license_trial_expires_time"
+    // Licensing & Activation State Keys
+    private const val KEY_LICENSE_STATUS = "license_status" // "UNACTIVATED", "PAID", "EXPIRED"
+    private const val KEY_TUTORIAL_COMPLETED = "kiosk_tutorial_completed"
     private const val KEY_PAID_EXPIRES_TIME = "license_paid_expires_time"
     private const val KEY_LAST_KNOWN_WALL_CLOCK = "license_last_wall_clock"
     private const val KEY_TIME_TAMPER_LOCKED = "license_time_tamper_locked"
     private const val KEY_LICENSE_SIGNATURE = "license_integrity_signature"
 
     private const val HARDWARE_SECRET_SALT = "kiosk_hw_bind_salt_2026_x89a"
-    private const val SEVEN_DAYS_MS = 7L * 24L * 60L * 60L * 1000L
     private const val ONE_YEAR_MS = 365L * 24L * 60L * 60L * 1000L
 
     // Cloudflare Worker backend endpoint
     private const val DEFAULT_BACKEND_URL = "https://pisophone-licensing-api.evankhell897.workers.dev"
 
     enum class LicenseState {
-        TRIAL_ACTIVE,
+        UNACTIVATED,
         PAID_ACTIVE,
         EXPIRED_LOCKED,
         HARDWARE_MISMATCH
@@ -151,10 +152,9 @@ object HardwareLockManager {
         val boundHwId = prefs.getString(KEY_BOUND_HW_ID, null)
 
         if (boundHwId == null) {
-            // First run on this hardware: bind and start 7-Day Free Trial
+            // First run on this hardware: bind hardware and set status as UNACTIVATED (requires license activation)
             val sig = generateSignature(currentHwId, currentDevName, now)
-            val trialExpires = now + SEVEN_DAYS_MS
-            val licSig = generateLicenseSignature(currentHwId, "TRIAL", trialExpires, 0L)
+            val licSig = generateLicenseSignature(currentHwId, "UNACTIVATED", 0L)
 
             prefs.edit()
                 .putString(KEY_BOUND_HW_ID, currentHwId)
@@ -162,19 +162,17 @@ object HardwareLockManager {
                 .putLong(KEY_BOUND_TIMESTAMP, now)
                 .putString(KEY_BOUND_SIGNATURE, sig)
                 .putBoolean(KEY_HARDWARE_LOCKED, false)
-                .putString(KEY_LICENSE_STATUS, "TRIAL")
-                .putLong(KEY_TRIAL_START_TIME, now)
-                .putLong(KEY_TRIAL_EXPIRES_TIME, trialExpires)
+                .putString(KEY_LICENSE_STATUS, "UNACTIVATED")
                 .putLong(KEY_PAID_EXPIRES_TIME, 0L)
                 .putLong(KEY_LAST_KNOWN_WALL_CLOCK, now)
                 .putBoolean(KEY_TIME_TAMPER_LOCKED, false)
                 .putString(KEY_LICENSE_SIGNATURE, licSig)
                 .apply()
 
-            Log.i(TAG, "Cryptographic hardware seal established for $currentDevName ($currentHwId). 7-Day Trial active.")
+            Log.i(TAG, "Cryptographic hardware seal established for $currentDevName ($currentHwId). Awaiting activation.")
             
             // Asynchronously register device with Cloudflare KV backend
-            kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+            coroutineScope.launch {
                 syncWithBackend(context)
             }
             return true
@@ -253,13 +251,12 @@ object HardwareLockManager {
         // Advance monotonic high-water mark
         prefs.edit().putLong(KEY_LAST_KNOWN_WALL_CLOCK, maxOf(lastKnownClock, now)).apply()
 
-        val status = prefs.getString(KEY_LICENSE_STATUS, "TRIAL") ?: "TRIAL"
-        val trialExpires = prefs.getLong(KEY_TRIAL_EXPIRES_TIME, 0L)
+        val status = prefs.getString(KEY_LICENSE_STATUS, "UNACTIVATED") ?: "UNACTIVATED"
         val paidExpires = prefs.getLong(KEY_PAID_EXPIRES_TIME, 0L)
         val licSig = prefs.getString(KEY_LICENSE_SIGNATURE, "") ?: ""
 
         // Check tamper signature
-        val expectedSig = generateLicenseSignature(hwId, status, trialExpires, paidExpires)
+        val expectedSig = generateLicenseSignature(hwId, status, paidExpires)
         if (licSig.isNotEmpty() && licSig != expectedSig) {
             Log.w(TAG, "License signature mismatch! Lock enforced.")
             return LicenseInfo(
@@ -285,13 +282,12 @@ object HardwareLockManager {
             )
         }
 
-        // 2. Check Trial License
-        if (trialExpires > now) {
-            val days = Math.max(0, Math.ceil((trialExpires - now).toDouble() / (24 * 60 * 60 * 1000)).toInt())
+        // 2. Check Unactivated Status
+        if (status == "UNACTIVATED" || (status != "PAID" && paidExpires == 0L)) {
             return LicenseInfo(
-                state = LicenseState.TRIAL_ACTIVE,
-                daysRemaining = days,
-                expiresAtMs = trialExpires,
+                state = LicenseState.UNACTIVATED,
+                daysRemaining = 0,
+                expiresAtMs = 0L,
                 isPaid = false,
                 hardwareId = hwId,
                 deviceName = devName
@@ -302,7 +298,7 @@ object HardwareLockManager {
         return LicenseInfo(
             state = LicenseState.EXPIRED_LOCKED,
             daysRemaining = 0,
-            expiresAtMs = if (status == "PAID") paidExpires else trialExpires,
+            expiresAtMs = paidExpires,
             isPaid = false,
             hardwareId = hwId,
             deviceName = devName
@@ -314,7 +310,22 @@ object HardwareLockManager {
      */
     fun isLicenseActive(context: Context): Boolean {
         val info = getLicenseInfo(context)
-        return info.state == LicenseState.TRIAL_ACTIVE || info.state == LicenseState.PAID_ACTIVE
+        return info.state == LicenseState.PAID_ACTIVE
+    }
+
+    /**
+     * Checks if the user has completed the interactive first-time setup tutorial.
+     */
+    fun isTutorialCompleted(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_TUTORIAL_COMPLETED, false)
+    }
+
+    /**
+     * Sets whether the user has completed the interactive first-time setup tutorial.
+     */
+    fun setTutorialCompleted(context: Context, completed: Boolean = true) {
+        getPrefs(context).edit().putBoolean(KEY_TUTORIAL_COMPLETED, completed).apply()
+        notifyLicenseChanged()
     }
 
     /**
@@ -436,8 +447,7 @@ object HardwareLockManager {
                 Log.i(TAG, "Valid cryptographically verified license token received (Algorithm: ${if (isRsaValid) "RSA-2048" else "HMAC"}).")
             }
 
-            val trialExpires = prefs.getLong(KEY_TRIAL_EXPIRES_TIME, now)
-            val sig = generateLicenseSignature(hwId, "PAID", trialExpires, targetExpires)
+            val sig = generateLicenseSignature(hwId, "PAID", targetExpires)
 
             prefs.edit()
                 .putString(KEY_LICENSE_STATUS, "PAID")
@@ -448,7 +458,7 @@ object HardwareLockManager {
                 .apply()
 
             // Asynchronously notify Cloudflare backend of manual activation / redemption
-            kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+            coroutineScope.launch {
                 try {
                     val devModel = getHardwareDescription()
                     val url = URL("$DEFAULT_BACKEND_URL/api/payment/confirm")
@@ -549,14 +559,10 @@ object HardwareLockManager {
                 } else if (status == "LOCKED") {
                     editor.putString(KEY_LICENSE_STATUS, "EXPIRED")
                 }
-                if (trialExpires > 0L) {
-                    editor.putLong(KEY_TRIAL_EXPIRES_TIME, trialExpires)
-                }
 
-                val currentStatus = prefs.getString(KEY_LICENSE_STATUS, if (status == "PAID") "PAID" else "TRIAL") ?: "TRIAL"
+                val currentStatus = prefs.getString(KEY_LICENSE_STATUS, if (status == "PAID") "PAID" else "UNACTIVATED") ?: "UNACTIVATED"
                 val currPaid = if (status == "PAID" && paidExpires > 0L) paidExpires else prefs.getLong(KEY_PAID_EXPIRES_TIME, 0L)
-                val currTrial = if (trialExpires > 0L) trialExpires else prefs.getLong(KEY_TRIAL_EXPIRES_TIME, 0L)
-                editor.putString(KEY_LICENSE_SIGNATURE, generateLicenseSignature(hwId, currentStatus, currTrial, currPaid))
+                editor.putString(KEY_LICENSE_SIGNATURE, generateLicenseSignature(hwId, currentStatus, currPaid))
                 editor.apply()
 
                 notifyLicenseChanged()
@@ -601,8 +607,8 @@ object HardwareLockManager {
         return hmacBytes.joinToString("") { "%02x".format(it) }
     }
 
-    private fun generateLicenseSignature(hwId: String, status: String, trialExp: Long, paidExp: Long): String {
-        val payload = "LIC|$hwId|$status|$trialExp|$paidExp|$HARDWARE_SECRET_SALT"
+    private fun generateLicenseSignature(hwId: String, status: String, paidExp: Long): String {
+        val payload = "LIC|$hwId|$status|$paidExp|$HARDWARE_SECRET_SALT"
         val mac = Mac.getInstance("HmacSHA256")
         val secretKey = SecretKeySpec(HARDWARE_SECRET_SALT.toByteArray(), "HmacSHA256")
         mac.init(secretKey)

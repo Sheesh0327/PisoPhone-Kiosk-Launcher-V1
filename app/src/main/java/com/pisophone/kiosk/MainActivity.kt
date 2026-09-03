@@ -48,7 +48,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Launch
+import androidx.compose.material.icons.automirrored.filled.Launch
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -67,7 +67,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.core.graphics.drawable.toBitmap
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -78,6 +77,7 @@ import com.pisophone.kiosk.security.KioskSecurity
 import com.pisophone.kiosk.util.AppLauncher
 import com.pisophone.kiosk.ui.DeviceOwnerScreen
 import com.pisophone.kiosk.ui.HardwareLockScreen
+import com.pisophone.kiosk.ui.TutorialScreen
 import com.pisophone.kiosk.ui.ActivationCelebrationDialog
 import com.pisophone.kiosk.ui.theme.PisoPhoneLauncherTheme
 import kotlinx.coroutines.Dispatchers
@@ -86,7 +86,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
-import kotlin.math.absoluteValue
 
 data class AppInfo(
     val name: String,
@@ -152,6 +151,7 @@ class MainActivity : ComponentActivity() {
             PisoPhoneLauncherTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     var isAppAllowed by remember { mutableStateOf(HardwareLockManager.isAppAllowedToRun(this@MainActivity)) }
+                    var isTutorialCompleted by remember { mutableStateOf(HardwareLockManager.isTutorialCompleted(this@MainActivity)) }
                     var showCelebration by remember { mutableStateOf(false) }
                     var licenseInfo by remember { mutableStateOf(HardwareLockManager.getLicenseInfo(this@MainActivity)) }
 
@@ -160,6 +160,7 @@ class MainActivity : ComponentActivity() {
 
                     LaunchedEffect(licenseUpdateVer) {
                         isAppAllowed = HardwareLockManager.isAppAllowedToRun(this@MainActivity)
+                        isTutorialCompleted = HardwareLockManager.isTutorialCompleted(this@MainActivity)
                         licenseInfo = HardwareLockManager.getLicenseInfo(this@MainActivity)
                     }
 
@@ -171,7 +172,14 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    if (!isAppAllowed) {
+                    if (!isAppAllowed && !isTutorialCompleted) {
+                        TutorialScreen(
+                            onCompleteTutorial = {
+                                HardwareLockManager.setTutorialCompleted(this@MainActivity, true)
+                                isTutorialCompleted = true
+                            }
+                        )
+                    } else if (!isAppAllowed) {
                         HardwareLockScreen(
                             onRebindSuccess = {
                                 isAppAllowed = true
@@ -1210,7 +1218,7 @@ fun LauncherScreen(
                     selectedPinnedSlotForOptions = null
                     onAppClick(app)
                 }) {
-                    Icon(Icons.Filled.Launch, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(Icons.AutoMirrored.Filled.Launch, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("Launch", color = currentTheme.primary, fontWeight = FontWeight.Bold)
                 }

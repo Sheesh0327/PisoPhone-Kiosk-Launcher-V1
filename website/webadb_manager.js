@@ -332,7 +332,7 @@
 
             if (!this.adb) throw new Error("Device not connected.");
 
-            // Hardware & Trial Verification against Cloudflare Database
+            // Hardware Verification & Registration against Cloudflare Database
             logCallback("Inspecting hardware identifier for license provisioning...");
             let deviceId = "UNKNOWN";
             let serverLicenseData = null;
@@ -342,7 +342,7 @@
                 const deviceModel = hwInfo.deviceModel;
                 logCallback(`Device Hardware ID: ${deviceId} (${deviceModel})`);
                 
-                // Query Cloudflare KV / Worker endpoint for trial status
+                // Query Cloudflare KV / Worker endpoint for license status
                 try {
                     const workerApiBase = 'https://pisophone-licensing-api.evankhell897.workers.dev';
                     const checkResp = await fetch(`${workerApiBase}/api/device/register`, {
@@ -356,12 +356,10 @@
                     });
                     if (checkResp.ok) {
                         serverLicenseData = await checkResp.json();
-                        if (serverLicenseData.status === 'LOCKED') {
-                            logCallback(`⚠️ Note: 7-Day trial has previously expired on this hardware (${deviceId}). Commercial license required after install.`);
-                        } else if (serverLicenseData.status === 'PAID') {
+                        if (serverLicenseData.status === 'PAID') {
                             logCallback(`🌟 Verified: Commercial License Active (${serverLicenseData.daysRemaining} days remaining).`);
                         } else {
-                            logCallback(`🎁 Verified: 7-Day Free Trial assigned to this device (${serverLicenseData.daysRemaining} days remaining).`);
+                            logCallback(`✨ Device registered with hardware ID: ${deviceId}. Ready for setup tutorial and activation.`);
                         }
                     }
                 } catch (apiErr) {
