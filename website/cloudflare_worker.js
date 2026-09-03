@@ -4,39 +4,12 @@
  * Bound KV Namespace: DEVICE_STORE -> pisophone-production-kv
  */
 
-// Production RSA-2048 Asymmetric Private Key (PKCS#8 PEM)
-// Public key is embedded into the Android client APK (cannot forge licenses even if APK is decompiled)
-const DEFAULT_RSA_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
-MIIEugIBADANBgkqhkiG9w0BAQEFAASCBKQwggSgAgEAAoIBAQC2/khCqnI6oHLN
-5inZyjmEJ9sn6wklDzXCJcwGRxL5D/Jc6x6pJhLzv5KSz5BBL7OY3tw9LfnXwSPi
-oo0JtIaAYurMbWPsqnL9jJ850AGoQH9qvLpUfnZ6cYw5rG8paXdXLMZJqk8d3uir
-3l+1QA5Pbeqo0upWJarYDhkn7ELcWLAghoZ3hPib7cT+Y9/I69ynDTwCDrImxWOv
-nWrTO3X8FJdZJw2QJvHZVF0xoeTZGv9hsS57jTzqgwkYore39I6jH4wBAXUAsiNQ
-aV0DiDGUZ+GpsH98FGTuA5eENZ8260T4wdKidoWHjE7VbZFTo0ooQew6Zf5Y2jHS
-VhjZZi8VAgMBAAECgf8t9kn82wYJGhCIpsbcOdU4df18Itl19XWkzgy9hulWpV3t
-xYbUW9VmygQgQjVGKjULfVTUCQUEq/491MlkwD/U/2nG7uYQpSWjIy7bCbCUEgWI
-fN62jXNn51BqxZfy6HD3jfqmUtO/k1cQoOOcVfp1Xz/eJ4IausGugqjO3jvs6LmX
-0E31s4wjPF7siyarUhScnA83JEv/sk9xr8IGg+Kyt5Nwa96rSaIs932WRkeSF7GU
-BfA7AU5LL7dM1LHBt3Rarc/SUQZ5gEDpEXwoOJaZih26zL9Mp0SPaqQv6nKxQub7
-3T3fDyhwwD1YOCVPyMh21/pHhxGjdXVXsnzSJAECgYEA5kZQmXw9+LXTk1ONstSy
-/3mY0nBDsfzcQyzTq8VFxxcl1KupY47ive/d4IBIM1dKYMpu0WMyoJMFrOVn/d2H
-Xsw9hT/XIXi/hVNmO4qtHtKLkpa53DFh3inVggAxSGGZfrGvwo7Ne5LJJJgvmo4h
-gmawvuYmyXwPydj7q0lHsRUCgYEAy2/BSEKFFHJP6JIYXXm1rhGf7HS5bxTV+uy0
-PTcTGfB30mEPWGzul/1eVdwW8KFg4snBTVqrSYjjpFDnI85wU8mcfP+PRAoIZwAc
-Oz/mClBII8zUF4zI880AStnJRnocDCtVpNZYGeIDvfbvkeubrhURm4UyRh35ZfpT
-iigYBgECgYBQtlar5aNnGHxHSGMDSpBPAZTyNc1UhpfBp+WtcGDrzo5BA8ZEkiGh
-h4DSnsQv0qnMUUgUdluZcs7rciFIFyzKqnXpzZ2fKs6eccQEnK/ffNbVE6Wjq19t
-WmZuwZiEkUkW4jsDy7/0T1fXTsxotObD6TCMSOlRd/2ktzxHJlFNnQKBgDXalrsP
-SPV5sWeqzSJppsu2xLQuziv2wxKS+L+/xaG3Q7EAmrRY2eyIWSG3iqcWwXQn3rEg
-kHl98G0+MYIMEzZLB88bRAzJ7yF9KPwSVU5jpEU94uN9FHFd0nb+Ikcy6hvamOhz
-CY2IhF8UcKUbTvINh8S4xO9E3hG968GGDZ4BAoGAD1RNkGLe/O7FCkqza0XCOEKp
-q4gO3rmb6PVaKD73YdZ+Q6iaj6Oe1pJi/09F3Vt1UtfHY6ibLQmuhOcANgyIxCpO
-W/ATuIapv3fJAYSXbLkyoArzYoPQZ2bYF5XXBtXSVzMpfw3ACB3tNN5h9FsilY8W
-+RD546O+xNe0VFcWyfU=
------END PRIVATE KEY-----`;
-
 // Helper: Asymmetric RSA-SHA256 signature using Web Crypto API
+// The RSA private key MUST be provided via Cloudflare Worker Secret: LICENSE_RSA_PRIVATE_KEY
 async function signRsaSha256(message, privateKeyPem) {
+  if (!privateKeyPem || typeof privateKeyPem !== 'string') {
+    return null;
+  }
   try {
     const b64 = privateKeyPem.replace(/-----[^-]+-----/g, '').replace(/\s+/g, '');
     const binary = atob(b64);
@@ -90,7 +63,7 @@ async function signHmacSha256(message, secret) {
 // Core helper: Generate cryptographic license token
 async function generateLicenseToken(deviceId, paidExpiresAt, env) {
   const payload = `${deviceId}|${paidExpiresAt}`;
-  const privKey = env.LICENSE_RSA_PRIVATE_KEY || DEFAULT_RSA_PRIVATE_KEY;
+  const privKey = env.LICENSE_RSA_PRIVATE_KEY;
   const rsaSig = await signRsaSha256(payload, privKey);
   
   if (rsaSig) {
@@ -101,7 +74,7 @@ async function generateLicenseToken(deviceId, paidExpiresAt, env) {
     };
   }
   
-  // Fallback to HMAC if RSA fails
+  // Fallback to HMAC if RSA secret is not configured
   const signingSecret = env.LICENSE_SIGNING_SECRET || 'piso_master_lic_secret_2026_89a1f';
   const hmacSig = await signHmacSha256(payload, signingSecret);
   return {
