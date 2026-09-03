@@ -289,6 +289,7 @@
             // Hardware & Trial Verification against Cloudflare Database
             logCallback("Inspecting hardware identifier for license provisioning...");
             let deviceId = "UNKNOWN";
+            let serverLicenseData = null;
             try {
                 const getProp = async (prop) => {
                     try {
@@ -320,7 +321,6 @@
                 logCallback(`Device Hardware ID: ${deviceId}`);
                 
                 // Query Cloudflare KV / Worker endpoint for trial status
-                let serverLicenseData = null;
                 try {
                     const workerApiBase = 'https://pisophone-licensing-api.evankhell897.workers.dev';
                     const checkResp = await fetch(`${workerApiBase}/api/device/register`, {
