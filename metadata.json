@@ -1,0 +1,8 @@
+{
+  "name": "PisoPhone Launcher",
+  "description": "A kiosk launcher for a phone rental business.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PisoPhone - Deprovision & Uninstall</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes gradientShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(30px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes float { 0% { transform: translateY(0px); } 50% { transform: translateY(-10px); } 100% { transform: translateY(0px); } }
+        @keyframes pulseGlow { 0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); } 70% { box-shadow: 0 0 0 15px rgba(16, 185, 129, 0); } 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
+        
+        body { 
+            background: linear-gradient(-45deg, #020617, #0B1120, #0f172a, #064e3b); 
+            background-size: 400% 400%; 
+            animation: gradientShift 15s ease infinite; 
+            color: #F8FAFC; 
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+        }
+        
+        .glass-card { 
+            background: rgba(15, 23, 42, 0.6); 
+            backdrop-filter: blur(16px); 
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1); 
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .glass-card:hover { 
+            border-color: rgba(52, 211, 153, 0.5); 
+            transform: translateY(-8px);
+            box-shadow: 0 20px 40px -10px rgba(16, 185, 129, 0.3);
+        }
+        
+        /* Modern Utilities */
+        .animate-fade-in-up { animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards; opacity: 0; }
+        .delay-100 { animation-delay: 100ms; }
+        .delay-200 { animation-delay: 200ms; }
+        .delay-300 { animation-delay: 300ms; }
+        .delay-400 { animation-delay: 400ms; }
+        .float-anim { animation: float 6s ease-in-out infinite; }
+        .pulse-btn { animation: pulseGlow 2s infinite; }
+        .step-icon { width: 40px; height: 40px; border-radius: 50%; background: rgba(30, 41, 59, 0.8); border: 2px solid rgba(51, 65, 85, 0.8); display: flex; align-items: center; justify-content: center; font-weight: bold; color: #94A3B8; transition: all 0.3s ease; }
+        .glass-card:hover .step-icon { border-color: rgba(52, 211, 153, 0.8); color: #34d399; transform: scale(1.1) rotate(5deg); box-shadow: 0 0 15px rgba(52, 211, 153, 0.4); }
+        .glass-card:hover .step-icon.bg-emerald-500 { background: #10b981; color: #022c22; }
+        
+        /* Custom scrollbar for modern look */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.5); }
+        ::-webkit-scrollbar-thumb { background: rgba(52, 211, 153, 0.3); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(52, 211, 153, 0.6); }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+    <!-- Navigation Bar -->
+    <nav class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50 px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <svg class="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+            </svg>
+            <a href="index.html" class="text-xl font-black tracking-wider">PISO<span class="text-emerald-400">PHONE</span></a>
+        </div>
+        <div class="flex items-center space-x-6 text-sm font-semibold text-slate-300">
+            <a href="index.html" class="hover:text-emerald-400 transition">Dashboard</a>
+            <a href="purchase.html" class="hover:text-emerald-400 transition">Plans & Pricing</a>
+            <a href="install.html" class="hover:text-emerald-400 transition">Install</a>
+            <a href="activate.html" class="hover:text-emerald-400 transition">Activate</a>
+            <a href="debloater.html" class="hover:text-emerald-400 transition">Debloater</a>
+            <a href="sideload.html" class="hover:text-emerald-400 transition">Sideloader</a>
+            <a href="deprovision.html" class="text-rose-400">Deprovision</a>
+        </div>
+    </nav>
+
+    <main class="flex-grow container mx-auto px-4 py-12 flex flex-col items-center max-w-2xl">
+        <h1 class="text-3xl font-bold mb-2 animate-fade-in-up">Deprovision & Remove</h1>
+        <p class="text-slate-400 text-sm mb-8 text-center">Safely release Device Owner admin locks and restore your Android phone to normal stock operation without wiping data.</p>
+        
+        <!-- Browser Banner -->
+        <div id="browserWarning" class="hidden w-full bg-rose-500/20 border border-rose-500 text-rose-300 p-4 rounded-lg mb-6 text-sm flex items-start space-x-3">
+            <svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+            <div>
+                <strong>Incompatible Browser Detected.</strong><br/>
+                WebUSB hardware provisioning requires Google Chrome, Microsoft Edge, or Brave. Please open this page in a supported browser.
+            </div>
+        </div>
+
+        <div class="glass-card rounded-2xl p-8 w-full shadow-xl border-rose-500/30 animate-fade-in-up delay-100">
+            <div class="flex items-start space-x-3 bg-rose-500/10 border border-rose-500/20 p-4 rounded-xl mb-6">
+                <svg class="w-5 h-5 text-rose-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                </svg>
+                <p class="text-xs text-rose-300">
+                    This action completely de-elevates PisoPhone, stops the kiosk lockdown daemon, removes device admin privileges, and uninstalls the package cleanly.
+                </p>
+            </div>
+
+            <h2 class="text-sm font-bold text-slate-300 mb-2">Instructions</h2>
+            <ol class="list-decimal list-inside text-xs text-slate-400 space-y-1 mb-6">
+                <li>Connect your Android phone to this computer via USB.</li>
+                <li>Ensure USB debugging is enabled on the device.</li>
+                <li>Enter the Admin PIN (default is 1234).</li>
+                <li>Click the button below to authorize WebUSB and begin deprovisioning.</li>
+            </ol>
+            
+            <div class="mb-6">
+                <label for="adminPin" class="block text-sm font-medium text-slate-300 mb-2">Admin PIN</label>
+                <input type="text" id="adminPin" value="1234" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" placeholder="Enter Admin PIN">
+            </div>
+
+            <button id="deprovisionBtn" class="w-full bg-rose-600 hover:bg-rose-500 text-white font-bold py-4 rounded-xl transition text-base shadow-lg shadow-rose-600/25 pulse-btn">
+                Connect Device & Deprovision
+            </button>
+            
+            <div id="logContainer" class="hidden mt-6 bg-slate-950 border border-slate-800 rounded-lg p-4 font-mono text-xs text-slate-400 h-40 overflow-y-auto"></div>
+        </div>
+    </main>
+
+    <script src="webadb_manager.js"></script>
+    <script>
+        const deprovisionBtn = document.getElementById('deprovisionBtn');
+        const logContainer = document.getElementById('logContainer');
+
+        if (!navigator.usb) {
+            document.getElementById('browserWarning').classList.remove('hidden');
+            deprovisionBtn.disabled = true;
+            deprovisionBtn.classList.replace('bg-rose-600', 'bg-slate-600');
+            deprovisionBtn.classList.replace('hover:bg-rose-500', 'cursor-not-allowed');
+            deprovisionBtn.textContent = 'Browser Unsupported';
+        }
+
+        function logInfo(msg) {
+            logContainer.classList.remove('hidden');
+            const p = document.createElement('div');
+            p.textContent = `> ${msg}`;
+            logContainer.appendChild(p);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        deprovisionBtn.addEventListener('click', async () => {
+            if (!confirm("Are you sure you want to deprovision and remove PisoPhone from this device?")) {
+                return;
+            }
+
+            const pin = document.getElementById('adminPin').value.trim();
+            if (!pin) {
+                alert("Please enter the Admin PIN.");
+                return;
+            }
+
+            deprovisionBtn.disabled = true;
+            deprovisionBtn.textContent = 'Deprovisioning...';
+            logContainer.innerHTML = '';
+            
+            try {
+                // 1. Connect ADB
+                await window.webADB.connect(logInfo);
+
+                // 2. Broadcast deprovision intent to stop services and clear device owner
+                logInfo("Sending deprovision intent to app...");
+                let deprovOut = await window.webADB.shell(`am broadcast -a com.pisophone.kiosk.DEPROVISION -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es pin "${pin}"`);
+                logInfo(deprovOut.trim());
+
+                // 3. Wait for admin policy release
+                logInfo("Waiting for admin policy release (3 seconds)...");
+                await new Promise(r => setTimeout(r, 3000));
+
+                // Optional fallback: attempt to remove active admin via shell in case the app was only a device admin and not owner
+                try {
+                    await window.webADB.shell("dpm remove-active-admin com.pisophone.kiosk/com.pisophone.kiosk.receiver.KioskDeviceAdminReceiver");
+                } catch (e) {}
+
+                // 4. Uninstall app package
+                logInfo("Uninstalling PisoPhone package (com.pisophone.kiosk)...");
+                let uninstallOut = await window.webADB.shell("pm uninstall com.pisophone.kiosk");
+                logInfo(uninstallOut.trim());
+
+                if (uninstallOut.includes("Failure")) {
+                    throw new Error(`Uninstall failed: ${uninstallOut.trim()}. The Admin PIN might be incorrect, or the device is still locked.`);
+                }
+
+                logInfo("✅ DEPROVISIONING COMPLETE! Device has been restored to standard Android.");
+                deprovisionBtn.textContent = 'Deprovisioned Successfully';
+                deprovisionBtn.classList.replace('bg-rose-600', 'bg-slate-700');
+                
+                await window.webADB.disconnect();
+            } catch (err) {
+                logInfo(`❌ ERROR: ${err.message}`);
+                deprovisionBtn.disabled = false;
+                deprovisionBtn.textContent = 'Try Again';
+            }
+        });
+    </script>
+</body>
+</html>

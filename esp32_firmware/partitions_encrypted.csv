@@ -1,0 +1,6 @@
+# PlatformIO ESP32 / ESP32-C3 Secure Partition Table with Flash Encryption Flags
+# Name,     Type, SubType,  Offset,   Size,     Flags
+nvs,        data, nvs,      0x9000,   0x5000,
+otadata,    data, ota,      0xe000,   0x2000,
+app0,       app,  factory,  0x10000,  0x2B0000, encrypted
+spiffs,     data, spiffs,   0x2C0000, 0x130000, encrypted

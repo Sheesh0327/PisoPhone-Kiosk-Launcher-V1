@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PisoPhone - Kiosk Management Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes gradientShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(30px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes float { 0% { transform: translateY(0px); } 50% { transform: translateY(-10px); } 100% { transform: translateY(0px); } }
+        @keyframes pulseGlow { 0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); } 70% { box-shadow: 0 0 0 15px rgba(16, 185, 129, 0); } 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
+        
+        body { 
+            background: linear-gradient(-45deg, #020617, #0B1120, #0f172a, #064e3b); 
+            background-size: 400% 400%; 
+            animation: gradientShift 15s ease infinite; 
+            color: #F8FAFC; 
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+        }
+        
+        .glass-card { 
+            background: rgba(15, 23, 42, 0.6); 
+            backdrop-filter: blur(16px); 
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1); 
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .glass-card:hover { 
+            border-color: rgba(52, 211, 153, 0.5); 
+            transform: translateY(-8px);
+            box-shadow: 0 20px 40px -10px rgba(16, 185, 129, 0.3);
+        }
+        
+        /* Modern Utilities */
+        .animate-fade-in-up { animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards; opacity: 0; }
+        .delay-100 { animation-delay: 100ms; }
+        .delay-200 { animation-delay: 200ms; }
+        .delay-300 { animation-delay: 300ms; }
+        .delay-400 { animation-delay: 400ms; }
+        .float-anim { animation: float 6s ease-in-out infinite; }
+        .pulse-btn { animation: pulseGlow 2s infinite; }
+        .step-icon { width: 40px; height: 40px; border-radius: 50%; background: rgba(30, 41, 59, 0.8); border: 2px solid rgba(51, 65, 85, 0.8); display: flex; align-items: center; justify-content: center; font-weight: bold; color: #94A3B8; transition: all 0.3s ease; }
+        .glass-card:hover .step-icon { border-color: rgba(52, 211, 153, 0.8); color: #34d399; transform: scale(1.1) rotate(5deg); box-shadow: 0 0 15px rgba(52, 211, 153, 0.4); }
+        .glass-card:hover .step-icon.bg-emerald-500 { background: #10b981; color: #022c22; }
+        
+        /* Custom scrollbar for modern look */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.5); }
+        ::-webkit-scrollbar-thumb { background: rgba(52, 211, 153, 0.3); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(52, 211, 153, 0.6); }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+    <!-- Navigation Bar -->
+    <nav class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50 px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <svg class="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+            </svg>
+            <a href="index.html" class="text-xl font-black tracking-wider">PISO<span class="text-emerald-400">PHONE</span></a>
+        </div>
+        <div class="flex items-center space-x-6 text-sm font-semibold text-slate-300">
+            <a href="index.html" class="text-emerald-400">Dashboard</a>
+            <a href="purchase.html" class="hover:text-emerald-400 transition">Plans & Pricing</a>
+            <a href="install.html" class="hover:text-emerald-400 transition">Install</a>
+            <a href="activate.html" class="hover:text-emerald-400 transition">Activate</a>
+            <a href="debloater.html" class="hover:text-emerald-400 transition">Debloater</a>
+            <a href="sideload.html" class="hover:text-emerald-400 transition">Sideloader</a>
+            <a href="deprovision.html" class="hover:text-rose-400 text-slate-400 transition">Deprovision</a>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-grow container mx-auto px-4 py-16 flex flex-col items-center justify-center text-center max-w-5xl">
+        <!-- Hero Tagline -->
+        <div class="inline-flex items-center space-x-2 bg-emerald-500/10 border border-emerald-500/30 px-4 py-1.5 rounded-full text-emerald-400 text-xs font-semibold uppercase tracking-wider mb-6">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>1-Click WebUSB Hardware Provisioning</span>
+        </div>
+
+        <h1 class="text-5xl md:text-7xl font-black tracking-tight mb-6 animate-fade-in-up">
+            Turn Any Android into a <br/>
+            <span class="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-500">Commercial Arcade Kiosk</span>
+        </h1>
+        <p class="text-slate-400 text-lg md:text-xl mb-12 max-w-2xl animate-fade-in-up delay-100">
+            PisoPhone securely locks down Android devices for coin-op gaming, rentals, and dedicated kiosk use. Provision and manage licenses instantly via 1-click WebUSB directly from your browser.
+        </p>
+
+        <!-- Action Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 w-full text-left">
+            <!-- 1. Pricing / Plans Card -->
+            <div class="glass-card rounded-2xl p-7 flex flex-col justify-between shadow-xl transition transform hover:-translate-y-1 animate-fade-in-up delay-100">
+                <div>
+                    <div class="bg-purple-500/20 text-purple-400 w-12 h-12 rounded-xl flex items-center justify-center mb-5 float-anim">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                    </div>
+                    <h2 class="text-xl font-bold text-white mb-2">1. Choose a Plan</h2>
+                    <p class="text-slate-400 text-sm mb-6">Explore our 7-Day Free Trial or 1-Year Commercial License options for arcade & rental fleets.</p>
+                </div>
+                <a href="purchase.html" class="w-full bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-semibold py-3 rounded-xl transition text-center text-sm">
+                    View Pricing & Plans →
+                </a>
+            </div>
+
+            <!-- 2. Install Card -->
+            <div class="glass-card rounded-2xl p-7 flex flex-col justify-between shadow-xl border-emerald-500/30 transition transform hover:-translate-y-1 animate-fade-in-up delay-200">
+                <div>
+                    <div class="bg-emerald-500/20 text-emerald-400 w-12 h-12 rounded-xl flex items-center justify-center mb-5 float-anim">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                        </svg>
+                    </div>
+                    <h2 class="text-xl font-bold text-white mb-2">2. Install to Device</h2>
+                    <p class="text-slate-400 text-sm mb-6">Plug your phone in via USB to flash the APK, grant Device Owner privileges, and auto-start the 7-day trial.</p>
+                </div>
+                <a href="install.html" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-3 rounded-xl transition text-center text-sm shadow-lg shadow-emerald-500/20">
+                    Install via WebUSB →
+                </a>
+            </div>
+
+            <!-- 3. Debloat Card -->
+            <div class="glass-card rounded-2xl p-7 flex flex-col justify-between shadow-xl border-teal-500/30 transition transform hover:-translate-y-1 animate-fade-in-up delay-200">
+                <div>
+                    <div class="bg-teal-500/20 text-teal-300 w-12 h-12 rounded-xl flex items-center justify-center mb-5 float-anim">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                        </svg>
+                    </div>
+                    <h2 class="text-xl font-bold text-white mb-2">3. Debloat & Optimize</h2>
+                    <p class="text-slate-400 text-sm mb-6">Disable OEM bloatware, telemetry, and pre-installed junk with our Universal Android Debloater tool.</p>
+                </div>
+                <a href="debloater.html" class="w-full bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-semibold py-3 rounded-xl transition text-center text-sm">
+                    Open Debloater →
+                </a>
+            </div>
+
+            <!-- 4. Activate Card -->
+            <div class="glass-card rounded-2xl p-7 flex flex-col justify-between shadow-xl transition transform hover:-translate-y-1 animate-fade-in-up delay-300">
+                <div>
+                    <div class="bg-cyan-500/20 text-cyan-400 w-12 h-12 rounded-xl flex items-center justify-center mb-5 float-anim">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+                        </svg>
+                    </div>
+                    <h2 class="text-xl font-bold text-white mb-2">4. Activate License</h2>
+                    <p class="text-slate-400 text-sm mb-6">Enter your secret purchase code to instantly push a 1-year ECDSA-signed full license key over WebUSB.</p>
+                </div>
+                <a href="activate.html" class="w-full bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-semibold py-3 rounded-xl transition text-center text-sm">
+                    Activate Device →
+                </a>
+            </div>
+        </div>
+
+        <!-- Footer / Deprovision Link -->
+        <div class="mt-16 pt-8 border-t border-slate-800/80 w-full flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500">
+            <p>© 2026 PisoPhone. Fast, Secure, Zero-Runtime-Driver Kiosk Management.</p>
+            <div class="flex space-x-4 mt-3 sm:mt-0">
+                <a href="deprovision.html" class="hover:text-rose-400 transition">Emergency Deprovision & Uninstall</a>
+            </div>
+        </div>
+    </main>
+</body>
+</html>
