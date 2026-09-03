@@ -71,6 +71,7 @@ import com.pisophone.kiosk.security.KioskSecurity
 import com.pisophone.kiosk.util.AppLauncher
 import com.pisophone.kiosk.ui.DeviceOwnerScreen
 import com.pisophone.kiosk.ui.HardwareLockScreen
+import com.pisophone.kiosk.ui.ActivationCelebrationDialog
 import com.pisophone.kiosk.ui.theme.PisoPhoneLauncherTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -140,6 +141,24 @@ class MainActivity : ComponentActivity() {
             PisoPhoneLauncherTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     var isAppAllowed by remember { mutableStateOf(HardwareLockManager.isAppAllowedToRun(this@MainActivity)) }
+                    var showCelebration by remember { mutableStateOf(false) }
+                    var licenseInfo by remember { mutableStateOf(HardwareLockManager.getLicenseInfo(this@MainActivity)) }
+
+                    val licenseUpdateVer by HardwareLockManager.licenseUpdateVersion.collectAsState()
+                    val celebrationTrigger by HardwareLockManager.activationCelebrationEvent.collectAsState()
+
+                    LaunchedEffect(licenseUpdateVer) {
+                        isAppAllowed = HardwareLockManager.isAppAllowedToRun(this@MainActivity)
+                        licenseInfo = HardwareLockManager.getLicenseInfo(this@MainActivity)
+                    }
+
+                    LaunchedEffect(celebrationTrigger) {
+                        if (celebrationTrigger) {
+                            isAppAllowed = HardwareLockManager.isAppAllowedToRun(this@MainActivity)
+                            licenseInfo = HardwareLockManager.getLicenseInfo(this@MainActivity)
+                            showCelebration = true
+                        }
+                    }
 
                     if (!isAppAllowed) {
                         HardwareLockScreen(
@@ -170,6 +189,16 @@ class MainActivity : ComponentActivity() {
                                 }
                             )
                         }
+                    }
+
+                    if (showCelebration) {
+                        ActivationCelebrationDialog(
+                            licenseInfo = licenseInfo,
+                            onDismiss = {
+                                showCelebration = false
+                                HardwareLockManager.activationCelebrationEvent.value = false
+                            }
+                        )
                     }
                 }
             }

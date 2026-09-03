@@ -7,6 +7,7 @@ import android.provider.Settings
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -26,6 +27,13 @@ import javax.crypto.spec.SecretKeySpec
 object HardwareLockManager {
     private const val TAG = "HardwareLock"
     private const val PREFS_NAME = "kiosk_hardware_seal_vault"
+
+    val licenseUpdateVersion = MutableStateFlow<Long>(System.currentTimeMillis())
+    val activationCelebrationEvent = MutableStateFlow<Boolean>(false)
+
+    fun notifyLicenseChanged() {
+        licenseUpdateVersion.value = System.currentTimeMillis()
+    }
 
     private const val KEY_BOUND_HW_ID = "bound_hardware_fingerprint"
     private const val KEY_BOUND_DEVICE_NAME = "bound_device_model_name"
@@ -349,6 +357,8 @@ object HardwareLockManager {
             }
 
             Log.i(TAG, "1-Year License successfully activated on hardware $hwId (Expires: $newExpires)")
+            activationCelebrationEvent.value = true
+            licenseUpdateVersion.value = System.currentTimeMillis()
             true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to activate license: ${e.message}", e)

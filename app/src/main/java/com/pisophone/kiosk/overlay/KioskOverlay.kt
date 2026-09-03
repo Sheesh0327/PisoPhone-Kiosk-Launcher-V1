@@ -56,6 +56,7 @@ import com.pisophone.kiosk.AppInfo
 import com.pisophone.kiosk.KioskService
 import com.pisophone.kiosk.model.BatteryAlertState
 import com.pisophone.kiosk.model.BatteryStatus
+import com.pisophone.kiosk.ui.ActivationCelebrationDialog
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.drawable.toBitmap
@@ -661,6 +662,21 @@ fun BlockScreen(
 
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     var licenseInfo by remember { mutableStateOf(HardwareLockManager.getLicenseInfo(context)) }
+    var showActivationCelebration by remember { mutableStateOf(false) }
+
+    val licenseUpdateVer by HardwareLockManager.licenseUpdateVersion.collectAsState()
+    val celebrationTrigger by HardwareLockManager.activationCelebrationEvent.collectAsState()
+
+    LaunchedEffect(licenseUpdateVer) {
+        licenseInfo = HardwareLockManager.getLicenseInfo(context)
+    }
+
+    LaunchedEffect(celebrationTrigger) {
+        if (celebrationTrigger) {
+            licenseInfo = HardwareLockManager.getLicenseInfo(context)
+            showActivationCelebration = true
+        }
+    }
 
     // Update licenseInfo once every 10 seconds instead of every single second, saving recompositions.
     LaunchedEffect(Unit) {
@@ -1159,6 +1175,16 @@ fun BlockScreen(
                         }
                     }
                 }
+            }
+
+            if (showActivationCelebration) {
+                ActivationCelebrationDialog(
+                    licenseInfo = licenseInfo,
+                    onDismiss = {
+                        showActivationCelebration = false
+                        HardwareLockManager.activationCelebrationEvent.value = false
+                    }
+                )
             }
         }
     }
