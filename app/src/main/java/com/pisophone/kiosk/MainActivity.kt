@@ -1,6 +1,10 @@
 package com.pisophone.kiosk
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.platform.LocalConfiguration
 import android.content.res.Configuration
 
@@ -23,12 +27,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -44,6 +42,11 @@ import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Launch
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -53,13 +56,15 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.util.lerp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.graphics.drawable.toBitmap
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -456,38 +461,75 @@ fun PermissionScreen(onRequest: () -> Unit) {
     }
 }
 
+object PinnedSlotsManager {
+    private const val PREFS_NAME = "kiosk_pinned_slots_prefs"
+    private const val KEY_PREFIX = "pinned_slot_"
+
+    fun getPinnedSlots(context: Context): List<String> {
+        val sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return (0 until 4).map { index ->
+            sp.getString("$KEY_PREFIX$index", "") ?: ""
+        }
+    }
+
+    fun setPinnedSlot(context: Context, slotIndex: Int, packageName: String) {
+        if (slotIndex in 0..3) {
+            val sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            sp.edit().putString("$KEY_PREFIX$slotIndex", packageName).apply()
+        }
+    }
+
+    fun clearPinnedSlot(context: Context, slotIndex: Int) {
+        if (slotIndex in 0..3) {
+            val sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            sp.edit().remove("$KEY_PREFIX$slotIndex").apply()
+        }
+    }
+}
+
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun LauncherScreen(
     apps: List<AppInfo>,
     onAppClick: (AppInfo) -> Unit,
 ) {
-    data class CleanTheme(
-        val name: String,
-        val bg: Color,
-        val surface: Color,
-        val primary: Color,
-        val onPrimary: Color,
-        val textPrimary: Color,
-        val textSecondary: Color,
-        val border: Color,
-        val isDark: Boolean
-    )
+    val context = LocalContext.current
+    val currentTheme = remember {
+        object {
+            val bg = Color(0xFF060B14)
+            val surface = Color(0xFF0F172A)
+            val cardBg = Color(0xFF0D1527)
+            val primary = Color(0xFF10B981)
+            val primaryLight = Color(0xFF34D399)
+            val onPrimary = Color(0xFF020617)
+            val textPrimary = Color(0xFFF8FAFC)
+            val textSecondary = Color(0xFF94A3B8)
+            val textMuted = Color(0xFF64748B)
+            val border = Color(0xFF1E293B)
+            val borderEmerald = Color(0x4010B981)
+        }
+    }
 
-    val currentTheme = CleanTheme(
-        name = "Obsidian Emerald",
-        bg = Color(0xFF060B14),
-        surface = Color(0xFF0F172A),
-        primary = Color(0xFF10B981),
-        onPrimary = Color(0xFF020617),
-        textPrimary = Color(0xFFF8FAFC),
-        textSecondary = Color(0xFF94A3B8),
-        border = Color(0xFF1E293B),
-        isDark = true
-    )
+    // Pinned slots state (4 slots)
+    var pinnedSlots by remember { mutableStateOf(PinnedSlotsManager.getPinnedSlots(context)) }
+    var slotToPinIndex by remember { mutableStateOf<Int?>(null) }
+    var selectedPinnedSlotForOptions by remember { mutableStateOf<Pair<Int, AppInfo>?>(null) }
+    var appToPinFromDrawer by remember { mutableStateOf<AppInfo?>(null) }
+
+    // Search query state for standard app drawer
+    var searchQuery by remember { mutableStateOf("") }
+
+    val filteredApps = remember(apps, searchQuery) {
+        if (searchQuery.isBlank()) {
+            apps
+        } else {
+            val query = searchQuery.trim().lowercase()
+            apps.filter { it.name.lowercase().contains(query) || it.packageName.lowercase().contains(query) }
+        }
+    }
 
     @Composable
-    fun TimeDateDisplay(currentTheme: CleanTheme) {
+    fun TimeDateDisplay() {
         var time by remember { mutableStateOf("") }
         var date by remember { mutableStateOf("") }
         LaunchedEffect(Unit) {
@@ -533,7 +575,7 @@ fun LauncherScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 14.dp)
+                .padding(horizontal = 20.dp, vertical = 12.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -595,104 +637,672 @@ fun LauncherScreen(
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(10.dp))
-            TimeDateDisplay(currentTheme)
+            Spacer(modifier = Modifier.height(8.dp))
+            TimeDateDisplay()
         }
+
         HorizontalDivider(color = currentTheme.border.copy(alpha = 0.6f), thickness = 1.dp)
 
-        val categories = listOf("Social Media", "Gaming", "Entertainment", "Browsing", "Shopping", "Utilities", "Other Apps")
-        
-        val appsByCategory = remember(apps) {
-            val map = mutableMapOf<String, MutableList<AppInfo>>()
-            categories.forEach { map[it] = mutableListOf() }
-            
-            apps.forEach { app ->
-                val name = app.name.lowercase()
-                val pkg = app.packageName.lowercase()
-                
-                val category = when {
-                    pkg.contains("facebook") || pkg.contains("twitter") || pkg.contains("instagram") || pkg.contains("tiktok") || pkg.contains("snapchat") || pkg.contains("social") || pkg.contains("discord") || pkg.contains("reddit") || pkg.contains("telegram") || pkg.contains("whatsapp") || pkg.contains("messenger") || pkg.contains("viber") || name.contains("facebook") || name.contains("instagram") || name.contains("tiktok") || name.contains("messenger") -> "Social Media"
-                    pkg.contains("game") || pkg.contains("unity") || pkg.contains("epic") || pkg.contains("roblox") || pkg.contains("minecraft") || pkg.contains("mobilelegends") || pkg.contains("pubg") || pkg.contains("tencent") || pkg.contains("codm") || pkg.contains("supercell") || name.contains("game") || name.contains("roblox") -> "Gaming"
-                    pkg.contains("youtube") || pkg.contains("netflix") || pkg.contains("hulu") || pkg.contains("spotify") || pkg.contains("video") || pkg.contains("music") || pkg.contains("tv") || pkg.contains("media") || pkg.contains("player") || name.contains("youtube") || name.contains("netflix") || name.contains("tv") || name.contains("player") || name.contains("music") -> "Entertainment"
-                    pkg.contains("chrome") || pkg.contains("browser") || pkg.contains("firefox") || pkg.contains("opera") || pkg.contains("edge") || pkg.contains("brave") || pkg.contains("duckduckgo") || name.contains("browser") || name.contains("chrome") -> "Browsing"
-                    pkg.contains("shop") || pkg.contains("amazon") || pkg.contains("ebay") || pkg.contains("lazada") || pkg.contains("shopee") || pkg.contains("zalora") || pkg.contains("shein") || pkg.contains("alibaba") || pkg.contains("aliexpress") || name.contains("shop") || name.contains("lazada") || name.contains("shopee") || name.contains("amazon") -> "Shopping"
-                    pkg.contains("calc") || pkg.contains("clock") || pkg.contains("calendar") || pkg.contains("camera") || pkg.contains("gallery") || pkg.contains("settings") || pkg.contains("util") || pkg.contains("file") || pkg.contains("tools") || pkg.contains("notes") || pkg.contains("maps") || pkg.contains("weather") -> "Utilities"
-                    else -> "Other Apps"
-                }
-                map[category]?.add(app)
-            }
-            map
-        }
-
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth().weight(1f),
-            contentPadding = PaddingValues(vertical = 16.dp)
+        // Pinned Apps / Quick Launch Section (4 Slots)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
-            categories.forEach { category ->
-                val categoryApps = appsByCategory[category]
-                if (!categoryApps.isNullOrEmpty()) {
-                    item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Star,
+                        contentDescription = "Pinned Apps",
+                        tint = Color(0xFFFBBF24),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = "PINNED APPS",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.8.sp,
+                        color = currentTheme.textPrimary
+                    )
+                    Surface(
+                        color = Color(0x22FBBF24),
+                        shape = RoundedCornerShape(6.dp),
+                        border = BorderStroke(1.dp, Color(0x44FBBF24))
+                    ) {
                         Text(
-                            text = category,
-                            fontSize = 18.sp,
+                            text = "4 SLOTS",
+                            fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
-                            color = currentTheme.textPrimary,
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+                            color = Color(0xFFFBBF24),
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                         )
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(categoryApps) { app ->
-                                Column(
-                                    modifier = Modifier
-                                        .width(76.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable { onAppClick(app) }
-                                        .padding(8.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    if (app.bitmap != null) {
-                                        Image(
-                                            bitmap = app.bitmap,
-                                            contentDescription = app.name,
-                                            modifier = Modifier
-                                                .size(56.dp)
-                                                .clip(RoundedCornerShape(14.dp))
-                                        )
+                    }
+                }
+
+                Text(
+                    text = "Tap to launch or pin",
+                    fontSize = 11.sp,
+                    color = currentTheme.textMuted
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // 4 Top Slots Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                for (slotIndex in 0 until 4) {
+                    val pkgName = pinnedSlots.getOrElse(slotIndex) { "" }
+                    val pinnedApp = apps.find { it.packageName == pkgName }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(96.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(
+                                if (pinnedApp != null) currentTheme.cardBg else currentTheme.surface.copy(alpha = 0.6f)
+                            )
+                            .border(
+                                width = if (pinnedApp != null) 1.5.dp else 1.dp,
+                                color = if (pinnedApp != null) currentTheme.borderEmerald else currentTheme.border,
+                                shape = RoundedCornerShape(16.dp)
+                            )
+                            .combinedClickable(
+                                onClick = {
+                                    if (pinnedApp != null) {
+                                        onAppClick(pinnedApp)
                                     } else {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(56.dp)
-                                                .background(currentTheme.surface, RoundedCornerShape(14.dp))
-                                                .border(1.dp, currentTheme.border, RoundedCornerShape(14.dp)),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                Icons.Filled.Apps,
-                                                contentDescription = null,
-                                                tint = currentTheme.primary
-                                            )
-                                        }
+                                        slotToPinIndex = slotIndex
                                     }
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(
-                                        text = app.name,
-                                        color = currentTheme.textPrimary,
-                                        fontSize = 11.sp,
-                                        lineHeight = 14.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
-                                        textAlign = TextAlign.Center
+                                },
+                                onLongClick = {
+                                    if (pinnedApp != null) {
+                                        selectedPinnedSlotForOptions = Pair(slotIndex, pinnedApp)
+                                    } else {
+                                        slotToPinIndex = slotIndex
+                                    }
+                                }
+                            )
+                            .padding(6.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (pinnedApp != null) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center,
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                if (pinnedApp.bitmap != null) {
+                                    Image(
+                                        bitmap = pinnedApp.bitmap,
+                                        contentDescription = pinnedApp.name,
+                                        modifier = Modifier
+                                            .size(46.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(46.dp)
+                                            .background(currentTheme.surface, RoundedCornerShape(12.dp)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.SportsEsports,
+                                            contentDescription = null,
+                                            tint = currentTheme.primary,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(5.dp))
+                                Text(
+                                    text = pinnedApp.name,
+                                    color = currentTheme.textPrimary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+
+                            // Small Pin badge top-right
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .size(14.dp)
+                                    .background(Color(0xFF059669), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Filled.PushPin,
+                                    contentDescription = "Pinned",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(9.dp)
+                                )
+                            }
+                        } else {
+                            // Empty Slot UI
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center,
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .background(Color(0x1A10B981), CircleShape)
+                                        .border(1.dp, Color(0x3310B981), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Add,
+                                        contentDescription = "Add Pinned App",
+                                        tint = currentTheme.primary,
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Slot ${slotIndex + 1}",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = currentTheme.textMuted
+                                )
                             }
                         }
-                        Spacer(modifier = Modifier.height(16.dp))
                     }
                 }
             }
         }
+
+        HorizontalDivider(color = currentTheme.border.copy(alpha = 0.4f), thickness = 1.dp)
+
+        // Search Bar & Drawer Header
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp)
+        ) {
+            // Search Input
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = {
+                    Text(
+                        "Search games & apps...",
+                        color = currentTheme.textMuted,
+                        fontSize = 13.sp
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Filled.Search,
+                        contentDescription = "Search",
+                        tint = currentTheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(
+                            onClick = { searchQuery = "" },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = "Clear",
+                                tint = currentTheme.textMuted,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = currentTheme.surface,
+                    unfocusedContainerColor = currentTheme.surface.copy(alpha = 0.7f),
+                    focusedBorderColor = currentTheme.primary,
+                    unfocusedBorderColor = currentTheme.border,
+                    focusedTextColor = currentTheme.textPrimary,
+                    unfocusedTextColor = currentTheme.textPrimary
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp)
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Apps,
+                        contentDescription = null,
+                        tint = currentTheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = "ALL APPS",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.8.sp,
+                        color = currentTheme.textPrimary
+                    )
+                }
+                Text(
+                    text = "${filteredApps.size} apps available",
+                    fontSize = 11.sp,
+                    color = currentTheme.textMuted
+                )
+            }
+        }
+
+        // Standard App Drawer Grid (4 columns, smooth scrolling, reliable layout)
+        if (filteredApps.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        Icons.Filled.Search,
+                        contentDescription = null,
+                        tint = currentTheme.textMuted,
+                        modifier = Modifier.size(40.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "No apps match \"$searchQuery\"",
+                        color = currentTheme.textSecondary,
+                        fontSize = 13.sp
+                    )
+                }
+            }
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(4),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(horizontal = 10.dp),
+                contentPadding = PaddingValues(top = 4.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(filteredApps, key = { it.packageName }) { app ->
+                    Column(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .combinedClickable(
+                                onClick = { onAppClick(app) },
+                                onLongClick = {
+                                    appToPinFromDrawer = app
+                                }
+                            )
+                            .padding(vertical = 8.dp, horizontal = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        if (app.bitmap != null) {
+                            Image(
+                                bitmap = app.bitmap,
+                                contentDescription = app.name,
+                                modifier = Modifier
+                                    .size(54.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(54.dp)
+                                    .background(currentTheme.surface, RoundedCornerShape(14.dp))
+                                    .border(1.dp, currentTheme.border, RoundedCornerShape(14.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Filled.Apps,
+                                    contentDescription = null,
+                                    tint = currentTheme.primary,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = app.name,
+                            color = currentTheme.textPrimary,
+                            fontSize = 11.sp,
+                            lineHeight = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // Modal Dialog: Select App to Pin to a specific slot
+    if (slotToPinIndex != null) {
+        val targetSlot = slotToPinIndex!!
+        var pickerSearchQuery by remember { mutableStateOf("") }
+        val pickerApps = remember(apps, pickerSearchQuery) {
+            if (pickerSearchQuery.isBlank()) {
+                apps
+            } else {
+                val q = pickerSearchQuery.trim().lowercase()
+                apps.filter { it.name.lowercase().contains(q) || it.packageName.lowercase().contains(q) }
+            }
+        }
+
+        Dialog(
+            onDismissRequest = { slotToPinIndex = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xDD020617))
+                    .padding(20.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.85f)
+                        .clip(RoundedCornerShape(24.dp))
+                        .border(1.dp, currentTheme.borderEmerald, RoundedCornerShape(24.dp)),
+                    color = currentTheme.surface,
+                    shadowElevation = 24.dp
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(20.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "Pin App to Slot ${targetSlot + 1}",
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = currentTheme.textPrimary
+                                )
+                                Text(
+                                    text = "Select an app or game for quick access",
+                                    fontSize = 12.sp,
+                                    color = currentTheme.textSecondary
+                                )
+                            }
+
+                            IconButton(
+                                onClick = { slotToPinIndex = null },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    Icons.Filled.Close,
+                                    contentDescription = "Close",
+                                    tint = currentTheme.textSecondary
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Picker Search Input
+                        OutlinedTextField(
+                            value = pickerSearchQuery,
+                            onValueChange = { pickerSearchQuery = it },
+                            placeholder = { Text("Filter apps...", color = currentTheme.textMuted, fontSize = 12.sp) },
+                            leadingIcon = {
+                                Icon(Icons.Filled.Search, contentDescription = null, tint = currentTheme.primary, modifier = Modifier.size(18.dp))
+                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = currentTheme.bg,
+                                unfocusedContainerColor = currentTheme.bg,
+                                focusedBorderColor = currentTheme.primary,
+                                unfocusedBorderColor = currentTheme.border,
+                                focusedTextColor = currentTheme.textPrimary,
+                                unfocusedTextColor = currentTheme.textPrimary
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(46.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(3),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(pickerApps, key = { it.packageName }) { app ->
+                                Surface(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .clickable {
+                                            PinnedSlotsManager.setPinnedSlot(context, targetSlot, app.packageName)
+                                            pinnedSlots = PinnedSlotsManager.getPinnedSlots(context)
+                                            Toast.makeText(context, "${app.name} pinned to Slot ${targetSlot + 1}", Toast.LENGTH_SHORT).show()
+                                            slotToPinIndex = null
+                                        },
+                                    color = currentTheme.cardBg,
+                                    shape = RoundedCornerShape(14.dp),
+                                    border = BorderStroke(1.dp, currentTheme.border)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(10.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        if (app.bitmap != null) {
+                                            Image(
+                                                bitmap = app.bitmap,
+                                                contentDescription = app.name,
+                                                modifier = Modifier
+                                                    .size(46.dp)
+                                                    .clip(RoundedCornerShape(12.dp))
+                                            )
+                                        } else {
+                                            Icon(
+                                                Icons.Filled.Apps,
+                                                contentDescription = null,
+                                                tint = currentTheme.primary,
+                                                modifier = Modifier.size(46.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Text(
+                                            text = app.name,
+                                            color = currentTheme.textPrimary,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Modal Dialog: Options for an already Pinned Slot
+    if (selectedPinnedSlotForOptions != null) {
+        val (slotIdx, app) = selectedPinnedSlotForOptions!!
+
+        AlertDialog(
+            onDismissRequest = { selectedPinnedSlotForOptions = null },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (app.bitmap != null) {
+                        Image(
+                            bitmap = app.bitmap,
+                            contentDescription = app.name,
+                            modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp))
+                        )
+                    }
+                    Text(
+                        text = "Slot ${slotIdx + 1}: ${app.name}",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = currentTheme.textPrimary
+                    )
+                }
+            },
+            text = {
+                Text(
+                    text = "Manage this pinned slot:",
+                    fontSize = 13.sp,
+                    color = currentTheme.textSecondary
+                )
+            },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = {
+                            selectedPinnedSlotForOptions = null
+                            slotToPinIndex = slotIdx
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = currentTheme.cardBg, contentColor = currentTheme.primaryLight),
+                        border = BorderStroke(1.dp, currentTheme.border)
+                    ) {
+                        Text("Change App", fontSize = 12.sp)
+                    }
+
+                    Button(
+                        onClick = {
+                            PinnedSlotsManager.clearPinnedSlot(context, slotIdx)
+                            pinnedSlots = PinnedSlotsManager.getPinnedSlots(context)
+                            Toast.makeText(context, "Unpinned Slot ${slotIdx + 1}", Toast.LENGTH_SHORT).show()
+                            selectedPinnedSlotForOptions = null
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444).copy(alpha = 0.2f), contentColor = Color(0xFFF87171)),
+                        border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.4f))
+                    ) {
+                        Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Unpin", fontSize = 12.sp)
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    selectedPinnedSlotForOptions = null
+                    onAppClick(app)
+                }) {
+                    Icon(Icons.Filled.Launch, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Launch", color = currentTheme.primary, fontWeight = FontWeight.Bold)
+                }
+            },
+            containerColor = currentTheme.surface,
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+
+    // Modal Dialog: Pin an App selected from the Drawer to a specific slot
+    if (appToPinFromDrawer != null) {
+        val app = appToPinFromDrawer!!
+
+        AlertDialog(
+            onDismissRequest = { appToPinFromDrawer = null },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (app.bitmap != null) {
+                        Image(
+                            bitmap = app.bitmap,
+                            contentDescription = app.name,
+                            modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp))
+                        )
+                    }
+                    Text(
+                        text = "Pin ${app.name}",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = currentTheme.textPrimary
+                    )
+                }
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Choose which slot to pin this app to:",
+                        fontSize = 13.sp,
+                        color = currentTheme.textSecondary
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        for (i in 0 until 4) {
+                            Button(
+                                onClick = {
+                                    PinnedSlotsManager.setPinnedSlot(context, i, app.packageName)
+                                    pinnedSlots = PinnedSlotsManager.getPinnedSlots(context)
+                                    Toast.makeText(context, "${app.name} pinned to Slot ${i + 1}", Toast.LENGTH_SHORT).show()
+                                    appToPinFromDrawer = null
+                                },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = currentTheme.cardBg,
+                                    contentColor = currentTheme.primary
+                                ),
+                                border = BorderStroke(1.dp, currentTheme.borderEmerald),
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(vertical = 8.dp)
+                            ) {
+                                Text("Slot ${i + 1}", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { appToPinFromDrawer = null }) {
+                    Text("Cancel", color = currentTheme.textSecondary)
+                }
+            },
+            containerColor = currentTheme.surface,
+            shape = RoundedCornerShape(20.dp)
+        )
     }
 }
