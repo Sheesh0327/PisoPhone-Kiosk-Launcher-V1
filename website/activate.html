@@ -361,12 +361,20 @@
                 await window.webADB.shell(`am broadcast -a com.pisophone.kiosk.ACTIVATE -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es key "${verifiedLicenseKey}"`);
                 // Package broadcast
                 await window.webADB.shell(`am broadcast -a com.pisophone.kiosk.ACTIVATE -p com.pisophone.kiosk --es key "${verifiedLicenseKey}"`);
-                // Refresh signal
-                await window.webADB.shell(`am broadcast -a com.pisophone.kiosk.STATUS_REFRESH -p com.pisophone.kiosk`);
-                // Bring to top
+                
+                // Allow storage of cryptographic seal to persist on disk
+                await new Promise(resolve => setTimeout(resolve, 800));
+
+                logInfo("🔄 Sending restart app command to apply 1-Year License changes immediately...");
+                // Notify admin receiver to restart kiosk services
+                await window.webADB.shell(`am broadcast -a com.pisophone.kiosk.RESTART -p com.pisophone.kiosk`);
+                
+                // Force-stop and restart MainActivity for complete visual reload of kiosk interface
+                await window.webADB.shell(`am force-stop com.pisophone.kiosk`);
+                await new Promise(resolve => setTimeout(resolve, 600));
                 await window.webADB.shell(`am start -n com.pisophone.kiosk/.MainActivity`);
                 
-                logInfo("Broadcast delivered. Device license updated to 1-Year Commercial License!");
+                logInfo("App restarted successfully. Device license updated to 1-Year Commercial License!");
                 logInfo("✅ DEVICE ACTIVATION COMPLETE!");
                 
                 activateBtn.textContent = 'Activated Successfully!';

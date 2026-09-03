@@ -448,6 +448,12 @@
                 try {
                     await this.shell(`am broadcast -a ${PACKAGE_NAME}.ACTIVATE -n ${PACKAGE_NAME}/.receiver.KioskAdminActionReceiver --es key "${serverLicenseData.licenseKey}"`);
                     await this.shell(`am broadcast -a ${PACKAGE_NAME}.ACTIVATE -p ${PACKAGE_NAME} --es key "${serverLicenseData.licenseKey}"`);
+                    await new Promise(r => setTimeout(r, 800));
+                    logCallback("🔄 Restarting PisoPhone to apply 1-Year Commercial License...");
+                    await this.shell(`am broadcast -a ${PACKAGE_NAME}.RESTART -p ${PACKAGE_NAME}`);
+                    await this.shell(`am force-stop ${PACKAGE_NAME}`);
+                    await new Promise(r => setTimeout(r, 600));
+                    await this.shell(`am start -n ${PACKAGE_NAME}/.MainActivity`);
                 } catch (e) {
                     logCallback(`Note: License push broadcast: ${e.message}`);
                 }
