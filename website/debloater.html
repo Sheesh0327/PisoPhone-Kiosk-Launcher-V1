@@ -15,6 +15,17 @@
         }
 
         @keyframes gradientShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(30px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes float { 0% { transform: translateY(0px); } 50% { transform: translateY(-10px); } 100% { transform: translateY(0px); } }
+        @keyframes pulseGlow { 0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); } 70% { box-shadow: 0 0 0 15px rgba(16, 185, 129, 0); } 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
+
+        /* Modern Utilities */
+        .animate-fade-in-up { animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards; opacity: 0; }
+        .delay-100 { animation-delay: 100ms; }
+        .delay-200 { animation-delay: 200ms; }
+        .delay-300 { animation-delay: 300ms; }
+        .delay-400 { animation-delay: 400ms; }
+        .float-anim { animation: float 6s ease-in-out infinite; }
 
         /* Optimized Card with solid background matching install.html */
         .glass-card { 
@@ -127,7 +138,7 @@
     <!-- Main Container -->
     <main class="flex-grow container mx-auto px-4 py-6 flex flex-col items-center max-w-6xl">
         <!-- Hero Header -->
-        <div class="text-center mb-6">
+        <div class="text-center mb-6 animate-fade-in-up">
             <div class="inline-flex items-center space-x-2 bg-emerald-500/10 border border-emerald-500/30 px-3 py-0.5 rounded-full text-emerald-400 text-xs font-semibold uppercase tracking-wider mb-2">
                 <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                 <span>WebUSB Fast Optimizer • Zero-Root System Cleanup</span>
@@ -141,7 +152,7 @@
         </div>
 
         <!-- Connection Card -->
-        <div class="w-full glass-card rounded-2xl p-5 md:p-6 mb-5 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div class="w-full glass-card rounded-2xl p-5 md:p-6 mb-5 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4 animate-fade-in-up delay-100">
             <div class="flex items-center gap-3.5">
                 <div id="connStatusIcon" class="w-11 h-11 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-500 shrink-0 shadow-inner">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>

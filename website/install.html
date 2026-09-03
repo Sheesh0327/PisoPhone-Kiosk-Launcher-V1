@@ -15,6 +15,17 @@
         }
 
         @keyframes gradientShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(30px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes float { 0% { transform: translateY(0px); } 50% { transform: translateY(-10px); } 100% { transform: translateY(0px); } }
+        @keyframes pulseGlow { 0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); } 70% { box-shadow: 0 0 0 15px rgba(16, 185, 129, 0); } 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
+
+        /* Modern Utilities */
+        .animate-fade-in-up { animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards; opacity: 0; }
+        .delay-100 { animation-delay: 100ms; }
+        .delay-200 { animation-delay: 200ms; }
+        .delay-300 { animation-delay: 300ms; }
+        .delay-400 { animation-delay: 400ms; }
+        .float-anim { animation: float 6s ease-in-out infinite; }
 
         /* Optimized Card with solid background & no heavy backdrop-filter blur */
         .glass-card { 
@@ -240,7 +251,7 @@
     <!-- Main Container -->
     <main class="flex-grow container mx-auto px-4 py-6 flex flex-col items-center max-w-6xl">
         <!-- Hero Header -->
-        <div class="text-center mb-5">
+        <div class="text-center mb-5 animate-fade-in-up">
             <div class="inline-flex items-center space-x-2 bg-emerald-500/10 border border-emerald-500/30 px-3 py-0.5 rounded-full text-emerald-400 text-xs font-semibold uppercase tracking-wider mb-2">
                 <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                 <span>WebUSB Fast Provisioning • Step-By-Step Interactive Guide</span>
@@ -254,7 +265,7 @@
         </div>
 
         <!-- 2-Column Responsive Layout: Sliding Instructions (Left) + Themed Device Mockup (Right) -->
-        <div class="w-full grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div class="w-full grid grid-cols-1 lg:grid-cols-12 gap-6 items-start animate-fade-in-up delay-100">
             
             <!-- LEFT COLUMN: Sequentially Sliding Installation Step Cards (7 Cols) -->
             <div class="lg:col-span-7 flex flex-col space-y-3">
