@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -60,7 +61,7 @@ fun TutorialScreen(
             delay(5000)
             scrollState.animateScrollTo(400, animationSpec = tween(durationMillis = 2000))
             tts?.speak(
-                "Notice the floating timer ball on the right side of the screen. This is where users will insert coins to add time and check their remaining session balance.",
+                "Notice the floating timer pill on the screen. Tap it anytime to open the Game Space HUD where users can add time, adjust brightness and volume, boost RAM, or check their session balance.",
                 TextToSpeech.QUEUE_ADD, null, null
             )
             delay(6000)
@@ -267,29 +268,33 @@ fun MockLauncherUI() {
             }
         }
         
-        // Mock Floating Timer Ball
+        // Mock Floating Timer Pill (Matching actual floating ball overlay)
         Box(
             modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .padding(end = 0.dp) // Anchored to edge
-                .size(60.dp)
-                .background(Color(0xFF060B14), RoundedCornerShape(topStart = 30.dp, bottomStart = 30.dp))
-                .border(2.dp, Color(0xFF10B981), RoundedCornerShape(topStart = 30.dp, bottomStart = 30.dp))
-                .padding(4.dp),
+                .align(Alignment.TopEnd)
+                .padding(top = 18.dp, end = 16.dp)
+                .height(28.dp)
+                .wrapContentWidth()
+                .background(Color(0xFF0F172A).copy(alpha = 0.9f), CircleShape)
+                .border(1.dp, Color(0xFF00E5FF).copy(alpha = 0.85f), CircleShape)
+                .padding(horizontal = 8.dp),
             contentAlignment = Alignment.Center
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = "30:00",
-                    color = Color(0xFF10B981),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .background(Color(0xFF00E5FF), CircleShape)
                 )
                 Text(
-                    text = "INSERT",
+                    text = "30:00",
                     color = Color.White,
-                    fontSize = 8.sp,
-                    fontWeight = FontWeight.Black
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp
                 )
             }
         }

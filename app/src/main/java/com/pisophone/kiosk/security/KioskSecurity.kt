@@ -14,9 +14,7 @@ import javax.crypto.spec.SecretKeySpec
 
 object KioskSecurity {
     private const val PREFS_SECURITY_OLD = "kiosk_security_vault"
-    private const val PREFS_SECURITY_ENCRYPTED = "kiosk_security_vault_enc"
     
-    private const val KEY_SHARED_SECRET = "hmac_shared_secret"
     private const val KEY_ADMIN_PIN = "admin_access_pin"
     private const val KEY_DEVICE_ALIAS = "device_alias"
     private const val KEY_HIDDEN_APPS = "hidden_apps_set"
@@ -72,15 +70,17 @@ object KioskSecurity {
         }
     }
 
-    private fun buildPrefs(context: Context): SharedPreferences {
+    fun getDirectBootPrefs(context: Context, name: String = PREFS_SECURITY_OLD): SharedPreferences {
         val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
             context.createDeviceProtectedStorageContext()
         } else {
             context
         }
-        // Attempting to use EncryptedSharedPreferences during a Direct Boot (LOCKED_BOOT_COMPLETED)
-        // will crash the app because CE storage is unavailable. We rely purely on DE storage.
-        return deviceContext.getSharedPreferences(PREFS_SECURITY_OLD, Context.MODE_PRIVATE)
+        return deviceContext.getSharedPreferences(name, Context.MODE_PRIVATE)
+    }
+
+    private fun buildPrefs(context: Context): SharedPreferences {
+        return getDirectBootPrefs(context, PREFS_SECURITY_OLD)
     }
 
     fun isAutoClearOnSleepEnabled(context: Context): Boolean {
@@ -264,12 +264,33 @@ object KioskSecurity {
         return enteredPin == getAdminPin(context)
     }
 
+    /**
+     * Computes HMAC-SHA256 hex string over data with the given key.
+     * Single source of truth across service, security, and hardware lock modules.
+     */
     fun calculateHmac(data: String, key: String): String {
         val mac = Mac.getInstance("HmacSHA256")
-        val secretKey = SecretKeySpec(key.toByteArray(), "HmacSHA256")
+        val secretKey = SecretKeySpec(key.toByteArray(Charsets.UTF_8), "HmacSHA256")
         mac.init(secretKey)
-        val hmacBytes = mac.doFinal(data.toByteArray())
+        val hmacBytes = mac.doFinal(data.toByteArray(Charsets.UTF_8))
         return hmacBytes.joinToString("") { "%02x".format(it) }
+    }
+
+    /**
+     * Computes HMAC-SHA256 signature for WebSocket/ESP32 timestamped payload: "$deviceId:$ts"
+     */
+    fun generateTimestampSignature(deviceId: String, ts: String, secret: String): String {
+        return calculateHmac("$deviceId:$ts", secret)
+    }
+
+    /**
+     * Constant-time string equality check to prevent timing attacks.
+     */
+    fun constantTimeEquals(a: String, b: String): Boolean {
+        return java.security.MessageDigest.isEqual(
+            a.toByteArray(Charsets.UTF_8),
+            b.toByteArray(Charsets.UTF_8)
+        )
     }
     
     // --- Kiosk Hardening & Escape Prevention ---

@@ -181,8 +181,7 @@ object HardwareLockManager {
     }
 
     private fun getPrefs(context: Context): SharedPreferences {
-        val deviceContext = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) context.createDeviceProtectedStorageContext() else context
-        return deviceContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return KioskSecurity.getDirectBootPrefs(context, PREFS_NAME)
     }
 
     /**
@@ -476,17 +475,15 @@ object HardwareLockManager {
     }
 
     /**
-     * Helper to verify legacy HMAC-SHA256 signatures for backward compatibility.
+     * Backward-compatibility fallback for pre-v2 symmetric license tokens.
+     * Note: Production license tokens use RSA-2048 (verifyRsaSignature).
+     * This fallback handles existing field-deployed units during the migration window.
      */
     private fun verifyLegacyHmac(data: String, signatureHex: String): Boolean {
         return try {
-            val mac = Mac.getInstance("HmacSHA256")
             val signingSecret = "piso_master_lic_secret_2026_89a1f"
-            val secretKey = SecretKeySpec(signingSecret.toByteArray(Charsets.UTF_8), "HmacSHA256")
-            mac.init(secretKey)
-            val expectedBytes = mac.doFinal(data.toByteArray(Charsets.UTF_8))
-            val expectedHex = expectedBytes.joinToString("") { "%02x".format(it) }
-            expectedHex.equals(signatureHex, ignoreCase = true)
+            val expectedHex = KioskSecurity.calculateHmac(data, signingSecret)
+            KioskSecurity.constantTimeEquals(expectedHex, signatureHex)
         } catch (e: Exception) {
             false
         }
@@ -743,19 +740,11 @@ object HardwareLockManager {
 
     private fun generateSignature(hwId: String, devName: String, timestamp: Long): String {
         val payload = "$hwId|$devName|$timestamp|$HARDWARE_SECRET_SALT"
-        val mac = Mac.getInstance("HmacSHA256")
-        val secretKey = SecretKeySpec(HARDWARE_SECRET_SALT.toByteArray(), "HmacSHA256")
-        mac.init(secretKey)
-        val hmacBytes = mac.doFinal(payload.toByteArray())
-        return hmacBytes.joinToString("") { "%02x".format(it) }
+        return KioskSecurity.calculateHmac(payload, HARDWARE_SECRET_SALT)
     }
 
     private fun generateLicenseSignature(hwId: String, status: String, paidExp: Long, lastCheck: Long = 0L): String {
         val payload = "LIC|$hwId|$status|$paidExp|$lastCheck|$HARDWARE_SECRET_SALT"
-        val mac = Mac.getInstance("HmacSHA256")
-        val secretKey = SecretKeySpec(HARDWARE_SECRET_SALT.toByteArray(), "HmacSHA256")
-        mac.init(secretKey)
-        val hmacBytes = mac.doFinal(payload.toByteArray())
-        return hmacBytes.joinToString("") { "%02x".format(it) }
+        return KioskSecurity.calculateHmac(payload, HARDWARE_SECRET_SALT)
     }
 }
