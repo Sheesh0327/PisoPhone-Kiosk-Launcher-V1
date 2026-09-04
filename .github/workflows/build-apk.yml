@@ -35,15 +35,22 @@ jobs:
             echo "$KEYSTORE_BASE64" | base64 -d > /tmp/release-keystore.jks
             echo "Production keystore successfully decoded."
           else
-            echo "Notice: KEYSTORE_BASE64 secret not set. Building unsigned release APK."
+            echo "Notice: KEYSTORE_BASE64 secret not set. Generating temporary signing certificate for installable build."
+            keytool -genkeypair -v -keystore /tmp/release-keystore.jks \
+              -alias upload -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass android -keypass android \
+              -dname "CN=PisoPhone, OU=Kiosk, O=PisoPhone, L=City, ST=State, C=PH"
+            echo "STORE_PASSWORD=android" >> $GITHUB_ENV
+            echo "KEY_ALIAS=upload" >> $GITHUB_ENV
+            echo "KEY_PASSWORD=android" >> $GITHUB_ENV
           fi
 
       - name: Build Release APK
         env:
           KEYSTORE_PATH: /tmp/release-keystore.jks
-          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ env.STORE_PASSWORD || secrets.STORE_PASSWORD }}
+          KEY_ALIAS: ${{ env.KEY_ALIAS || secrets.KEY_ALIAS || 'upload' }}
+          KEY_PASSWORD: ${{ env.KEY_PASSWORD || secrets.KEY_PASSWORD }}
         run: ./gradlew :app:assembleRelease --no-daemon
 
       - name: Clean up Keystore
