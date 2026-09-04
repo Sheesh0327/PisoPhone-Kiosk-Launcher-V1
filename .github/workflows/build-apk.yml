@@ -28,11 +28,9 @@ jobs:
         run: chmod +x gradlew
 
       - name: Decode Production Keystore
-        if: env.KEYSTORE_BASE64 != ''
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
         run: |
-          echo "$KEYSTORE_BASE64" | base64 -d > /tmp/release-keystore.jks
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > /tmp/release-keystore.jks
 
       - name: Build Release APK
         env:
@@ -48,7 +46,15 @@ jobs:
 
       - name: Copy APK to website directory and commit
         run: |
-          cp app/build/outputs/apk/release/app-release.apk website/app-release.apk
+          if [ -f "app/build/outputs/apk/release/app-release.apk" ]; then
+            cp app/build/outputs/apk/release/app-release.apk website/app-release.apk
+          elif [ -f "app/build/outputs/apk/release/app-release-unsigned.apk" ]; then
+            echo "Notice: No signing keystore secret provided. Using unsigned release APK."
+            cp app/build/outputs/apk/release/app-release-unsigned.apk website/app-release.apk
+          else
+            echo "Error: No release APK found in app/build/outputs/apk/release/"
+            exit 1
+          fi
           
           # Calculate file SHA-256 checksum for audit & logs
           FILE_SHA256_HEX=$(sha256sum website/app-release.apk | awk '{print $1}')
@@ -69,6 +75,6 @@ jobs:
           gh release delete latest --cleanup-tag -y || true
           
           # Create a new 'latest' release and upload the fresh APK
-          gh release create latest app/build/outputs/apk/release/app-release.apk \
+          gh release create latest website/app-release.apk \
             --title "Latest Android Build" \
             --notes "Automated rolling release from the main branch."

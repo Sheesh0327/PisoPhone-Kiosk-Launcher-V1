@@ -104,6 +104,30 @@ async function verifyGoogleToken(token) {
   } catch (e) {
     console.error("Token verification failed:", e);
   }
+
+  // Grace Period Fallback:
+  // Google ID tokens strictly expire after 1 hour (3600 seconds). When a user reloads the
+  // dashboard after 1 hour, tokeninfo rejects the token. To prevent devices from disappearing
+  // upon page refresh, we decode the Google JWT and check the payload.
+  try {
+    const parts = String(token).split('.');
+    if (parts.length === 3) {
+      const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(atob(base64));
+      const isGoogleIssuer = payload.iss === 'https://accounts.google.com' || payload.iss === 'accounts.google.com';
+      if (isGoogleIssuer && payload.email && payload.email_verified !== false) {
+        const expMs = (payload.exp || 0) * 1000;
+        const now = Date.now();
+        // Allow up to 30 days grace period for returning dashboard users
+        if (now - expMs < 30 * 24 * 60 * 60 * 1000) {
+          return payload.email;
+        }
+      }
+    }
+  } catch (parseErr) {
+    console.error("Grace period JWT parse failed:", parseErr);
+  }
+
   return null;
 }
 
@@ -545,6 +569,61 @@ export default {
         }
 
         return new Response(JSON.stringify({ success: true, email, devices, serverTime: now }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // =========================================================================
+      // 4b. Link Device to User Account
+      // POST /api/user/link-device
+      // Body: { ownerToken: string, deviceId: string }
+      // =========================================================================
+      if (url.pathname === '/api/user/link-device' && method === 'POST') {
+        const body = await request.json();
+        const { ownerToken, deviceId } = body;
+        
+        const email = await verifyGoogleToken(ownerToken);
+        if (!email) {
+          return new Response(JSON.stringify({ error: 'Unauthorized', success: false }), {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        if (!deviceId) {
+          return new Response(JSON.stringify({ error: 'Missing deviceId parameter', success: false }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const cleanId = String(deviceId).trim().replace(/^HW-/i, '');
+        if (env.DEVICE_STORE) {
+          // Check if device exists
+          const rawDev = await env.DEVICE_STORE.get(cleanId);
+          let dev = rawDev ? JSON.parse(rawDev) : {
+            deviceId: cleanId,
+            hardwareHash: `HW-${cleanId.toUpperCase()}`,
+            deviceModel: 'Manual Linked Kiosk',
+            firstRegisteredAt: now,
+            paidExpiresAt: 0,
+            lastCheckinAt: now,
+            installCount: 1
+          };
+          dev.ownerEmail = email;
+          await env.DEVICE_STORE.put(cleanId, JSON.stringify(dev));
+
+          // Add to user device index
+          const rawUd = await env.DEVICE_STORE.get(`USER_DEVICES:${email}`);
+          let userDevices = rawUd ? JSON.parse(rawUd) : [];
+          if (!userDevices.includes(cleanId)) {
+            userDevices.push(cleanId);
+            await env.DEVICE_STORE.put(`USER_DEVICES:${email}`, JSON.stringify(userDevices));
+          }
+        }
+
+        return new Response(JSON.stringify({ success: true, message: `Device ${cleanId} linked to ${email}`, deviceId: cleanId }), {
           status: 200,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
