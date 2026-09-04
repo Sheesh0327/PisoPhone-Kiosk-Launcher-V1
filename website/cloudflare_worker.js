@@ -4,6 +4,15 @@
  * Bound KV Namespace: DEVICE_STORE -> pisophone-production-kv
  */
 
+// ============================================================================
+// CONFIGURATION: LICENSE DURATION
+// Default is 365 days (1 year). For testing, you can change DEFAULT_LICENSE_DURATION_MS:
+// e.g., 3 minutes = 3 * 60 * 1000
+// You can also set LICENSE_DURATION_MS in Cloudflare Worker Environment Variables.
+// ============================================================================
+const DEFAULT_LICENSE_DURATION_MS = 365 * 24 * 60 * 60 * 1000; // 365 Days
+// const DEFAULT_LICENSE_DURATION_MS = 3 * 60 * 1000; // Uncomment for 3-minute testing
+
 // Helper: Asymmetric RSA-SHA256 signature using Web Crypto API
 // The RSA private key MUST be provided via Cloudflare Worker Secret: LICENSE_RSA_PRIVATE_KEY
 async function signRsaSha256(message, privateKeyPem) {
@@ -118,7 +127,9 @@ export default {
 
     try {
       const now = Date.now();
-      const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
+      const LICENSE_DURATION_MS = env.LICENSE_DURATION_MS 
+        ? parseInt(env.LICENSE_DURATION_MS, 10) 
+        : DEFAULT_LICENSE_DURATION_MS;
 
       // =========================================================================
       // 1. Device Registration & Hardware Status Check
@@ -149,7 +160,8 @@ export default {
 
         if (existing) {
           const isPaid = existing.paidExpiresAt > now;
-          const isLocked = !isPaid;
+          const isExpired = existing.paidExpiresAt > 0 && existing.paidExpiresAt <= now;
+          const status = isPaid ? 'PAID' : (isExpired ? 'EXPIRED' : 'UNACTIVATED');
 
           existing.lastCheckinAt = now;
           existing.installCount = (existing.installCount || 1) + 1;
@@ -185,19 +197,24 @@ export default {
 
           return new Response(
             JSON.stringify({
-              status: isPaid ? 'PAID' : 'UNACTIVATED',
+              status,
+              isPaid,
+              isActivated: isPaid,
+              isValid: isPaid,
+              isExpired,
               deviceId: existing.deviceId,
               deviceModel: existing.deviceModel || deviceModel || 'Unknown Device',
               paidExpiresAt: existing.paidExpiresAt || 0,
               daysRemaining: isPaid
                 ? Math.max(0, Math.ceil((existing.paidExpiresAt - now) / (24 * 60 * 60 * 1000)))
                 : 0,
+              checkIntervalDays: 7,
               signature,
               licenseKey,
               serverTime: now,
               message: isPaid
-                ? 'Active 1-Year Commercial License'
-                : 'Device registered. Activation required to unlock kiosk.',
+                ? 'Active Commercial License'
+                : (isExpired ? 'Subscription has expired. Renewal required.' : 'Device registered. Activation required to unlock kiosk.'),
             }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
@@ -231,10 +248,15 @@ export default {
         return new Response(
           JSON.stringify({
             status: 'UNACTIVATED',
+            isPaid: false,
+            isActivated: false,
+            isValid: false,
+            isExpired: false,
             deviceId,
             deviceModel: newRecord.deviceModel,
             paidExpiresAt: 0,
             daysRemaining: 0,
+            checkIntervalDays: 7,
             serverTime: now,
             message: 'Device registered successfully. Ready for license QR activation.',
           }),
@@ -244,9 +266,9 @@ export default {
 
       // =========================================================================
       // 2. Query Payment & Activation Status for a Specific Device
-      // GET /api/payment/check?deviceId=...
+      // GET /api/payment/check?deviceId=... OR GET /api/device/status?deviceId=...
       // =========================================================================
-      if (url.pathname === '/api/payment/check' && method === 'GET') {
+      if ((url.pathname === '/api/payment/check' || url.pathname === '/api/device/status') && method === 'GET') {
         const deviceId = url.searchParams.get('deviceId');
         if (!deviceId) {
           return new Response(JSON.stringify({ error: 'Missing deviceId parameter', serverTime: now }), {
@@ -262,14 +284,23 @@ export default {
         }
 
         if (!record || !(record.paidExpiresAt > now)) {
+          const isExpired = record && record.paidExpiresAt > 0 && record.paidExpiresAt <= now;
+          const status = record ? (isExpired ? 'EXPIRED' : 'UNACTIVATED') : 'UNREGISTERED';
           return new Response(
             JSON.stringify({
               paid: false,
+              isPaid: false,
+              isActivated: false,
+              isValid: false,
+              isExpired: Boolean(isExpired),
               deviceId,
               deviceModel: record ? (record.deviceModel || 'Android Device') : 'Unknown Device',
-              status: record ? 'UNACTIVATED' : 'UNREGISTERED',
+              status,
+              paidExpiresAt: record ? (record.paidExpiresAt || 0) : 0,
+              daysRemaining: 0,
+              checkIntervalDays: 7,
               serverTime: now,
-              message: 'No confirmed payment found for this device ID.',
+              message: isExpired ? 'Subscription has expired.' : 'No active license found for this device ID.',
             }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
@@ -284,16 +315,21 @@ export default {
         return new Response(
           JSON.stringify({
             paid: true,
+            isPaid: true,
+            isActivated: true,
+            isValid: true,
+            isExpired: false,
             status: 'PAID',
             deviceId,
             deviceModel: record.deviceModel || 'Android Device',
             paidExpiresAt: record.paidExpiresAt,
             paymentReference: lastRef,
             daysRemaining: Math.max(0, Math.ceil((record.paidExpiresAt - now) / (24 * 60 * 60 * 1000))),
+            checkIntervalDays: 7,
             signature: token.signature,
             licenseKey: token.licenseKey,
             serverTime: now,
-            message: 'Payment confirmed. 1-Year Commercial License ready.',
+            message: 'Subscription active.',
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
@@ -383,9 +419,9 @@ export default {
           );
         }
 
-        // Extend 1-Year Commercial License
+        // Extend Commercial License (Configurable Duration)
         const currentPaidExpires = record.paidExpiresAt || 0;
-        const newPaidExpires = (currentPaidExpires > now ? currentPaidExpires : now) + ONE_YEAR_MS;
+        const newPaidExpires = (currentPaidExpires > now ? currentPaidExpires : now) + LICENSE_DURATION_MS;
 
         record.paidExpiresAt = newPaidExpires;
         record.lastCheckinAt = now;
@@ -545,7 +581,7 @@ export default {
         }
 
         const currentPaidExpires = record.paidExpiresAt || 0;
-        const newPaidExpires = (currentPaidExpires > now ? currentPaidExpires : now) + ONE_YEAR_MS;
+        const newPaidExpires = (currentPaidExpires > now ? currentPaidExpires : now) + LICENSE_DURATION_MS;
 
         record.paidExpiresAt = newPaidExpires;
         record.lastCheckinAt = now;

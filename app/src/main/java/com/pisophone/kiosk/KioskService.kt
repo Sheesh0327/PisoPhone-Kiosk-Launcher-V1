@@ -932,10 +932,13 @@ class KioskService : Service() {
         registerBatteryMonitor()
 
         scope.launch {
-            try {
-                HardwareLockManager.syncWithBackend(this@KioskService)
-            } catch (e: Exception) {
-                Log.d(TAG, "Initial hardware lock sync deferred: ${e.message}")
+            while (isActive) {
+                try {
+                    HardwareLockManager.syncWithBackend(this@KioskService)
+                } catch (e: Exception) {
+                    Log.d(TAG, "Periodic server license sync: ${e.message}")
+                }
+                delay(60_000L)
             }
         }
 

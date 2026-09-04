@@ -60,12 +60,15 @@ object HardwareLockManager {
     private const val KEY_LICENSE_STATUS = "license_status" // "UNACTIVATED", "PAID", "EXPIRED"
     private const val KEY_TUTORIAL_COMPLETED = "kiosk_tutorial_completed"
     private const val KEY_PAID_EXPIRES_TIME = "license_paid_expires_time"
+    private const val KEY_LAST_SERVER_CHECK_TIME = "license_last_server_check_time"
+    private const val KEY_SERVER_DAYS_REMAINING = "license_server_days_remaining"
     private const val KEY_LAST_KNOWN_WALL_CLOCK = "license_last_wall_clock"
     private const val KEY_TIME_TAMPER_LOCKED = "license_time_tamper_locked"
     private const val KEY_LICENSE_SIGNATURE = "license_integrity_signature"
 
     private const val HARDWARE_SECRET_SALT = "kiosk_hw_bind_salt_2026_x89a"
     private const val ONE_YEAR_MS = 365L * 24L * 60L * 60L * 1000L
+    private const val CHECK_INTERVAL_MS = 7L * 24L * 60L * 60L * 1000L // 7-day server recheck interval
 
     // Cloudflare Worker backend endpoint
     private const val DEFAULT_BACKEND_URL = "https://pisophone-licensing-api.evankhell897.workers.dev"
@@ -294,7 +297,9 @@ object HardwareLockManager {
         prefs.edit().putLong(KEY_LAST_KNOWN_WALL_CLOCK, maxOf(lastKnownClock, now)).apply()
 
         val status = prefs.getString(KEY_LICENSE_STATUS, "UNACTIVATED") ?: "UNACTIVATED"
+        val lastCheck = prefs.getLong(KEY_LAST_SERVER_CHECK_TIME, 0L)
         val paidExpires = prefs.getLong(KEY_PAID_EXPIRES_TIME, 0L)
+        val savedDays = prefs.getInt(KEY_SERVER_DAYS_REMAINING, 0)
         val licSig = prefs.getString(KEY_LICENSE_SIGNATURE, "") ?: ""
 
         // Check tamper signature
@@ -311,21 +316,49 @@ object HardwareLockManager {
             )
         }
 
-        // 1. Check Paid License
-        if (status == "PAID" && paidExpires > now) {
-            val days = Math.max(0, Math.ceil((paidExpires - now).toDouble() / (24 * 60 * 60 * 1000)).toInt())
-            return LicenseInfo(
-                state = LicenseState.PAID_ACTIVE,
-                daysRemaining = days,
-                expiresAtMs = paidExpires,
-                isPaid = true,
-                hardwareId = hwId,
-                deviceName = devName
-            )
+        // 1. Check Paid License (Server-Authoritative with 7-Day verification interval)
+        if (status == "PAID") {
+            val timeSinceLastCheck = if (lastCheck > 0L) now - lastCheck else Long.MAX_VALUE
+
+            // Within the 7-day verification window
+            if (timeSinceLastCheck in 0..CHECK_INTERVAL_MS) {
+                val days = if (savedDays > 0) {
+                    savedDays
+                } else if (paidExpires > now) {
+                    Math.max(1, Math.ceil((paidExpires - now).toDouble() / (24 * 60 * 60 * 1000)).toInt())
+                } else {
+                    Math.max(1, Math.ceil((CHECK_INTERVAL_MS - timeSinceLastCheck).toDouble() / (24 * 60 * 60 * 1000)).toInt())
+                }
+
+                return LicenseInfo(
+                    state = LicenseState.PAID_ACTIVE,
+                    daysRemaining = days,
+                    expiresAtMs = paidExpires,
+                    isPaid = true,
+                    hardwareId = hwId,
+                    deviceName = devName
+                )
+            } else {
+                // 7 days have passed since the last verified server check!
+                // Trigger background server check immediately
+                coroutineScope.launch {
+                    syncWithBackend(context)
+                }
+
+                // If past 7-day check window and not yet verified, lock until server verification completes
+                return LicenseInfo(
+                    state = LicenseState.EXPIRED_LOCKED,
+                    daysRemaining = 0,
+                    expiresAtMs = paidExpires,
+                    isPaid = false,
+                    hardwareId = hwId,
+                    deviceName = devName
+                )
+            }
         }
 
         // 2. Check Unactivated Status
-        if (status == "UNACTIVATED" || (status != "PAID" && paidExpires == 0L)) {
+        if (status == "UNACTIVATED") {
             return LicenseInfo(
                 state = LicenseState.UNACTIVATED,
                 daysRemaining = 0,
@@ -511,6 +544,8 @@ object HardwareLockManager {
             prefs.edit()
                 .putString(KEY_LICENSE_STATUS, "PAID")
                 .putLong(KEY_PAID_EXPIRES_TIME, targetExpires)
+                .putLong(KEY_LAST_SERVER_CHECK_TIME, System.currentTimeMillis())
+                .putInt(KEY_SERVER_DAYS_REMAINING, 365)
                 .putString(KEY_LICENSE_SIGNATURE, sig)
                 .putLong(KEY_LAST_KNOWN_WALL_CLOCK, now)
                 .putBoolean(KEY_TIME_TAMPER_LOCKED, false) // authenticated license clears tamper flag
@@ -564,8 +599,8 @@ object HardwareLockManager {
     }
 
     /**
-     * Synchronizes hardware status with Cloudflare KV / D1 backend.
-     * Also synchronizes trusted server time to resolve clock drift and self-heal tamper locks.
+     * Synchronizes hardware status with Cloudflare backend as the single source of truth.
+     * Checks if the device is active/valid or expired, recording the 7-day validation check time.
      */
     suspend fun syncWithBackend(context: Context): Boolean = withContext(Dispatchers.IO) {
         try {
@@ -595,44 +630,47 @@ object HardwareLockManager {
                 val respStr = conn.inputStream.bufferedReader().use { it.readText() }
                 val respJson = JSONObject(respStr)
                 val status = respJson.optString("status", "")
+                val isPaid = respJson.optBoolean("isPaid", false) || status == "PAID"
+                val isExpired = respJson.optBoolean("isExpired", false) || status == "EXPIRED"
                 val paidExpires = respJson.optLong("paidExpiresAt", 0L)
-                val trialExpires = respJson.optLong("trialExpiresAt", 0L)
-                val serverTime = respJson.optLong("serverTime", 0L)
+                val daysRemaining = respJson.optInt("daysRemaining", 0)
+                val serverTime = respJson.optLong("serverTime", System.currentTimeMillis())
 
                 val prefs = getPrefs(context)
+                val previousStatus = prefs.getString(KEY_LICENSE_STATUS, "UNACTIVATED")
                 val editor = prefs.edit()
 
-                // Server-side trusted time anchor: if trusted server edge confirms time, self-heal tamper flag
-                val lastKnown = prefs.getLong(KEY_LAST_KNOWN_WALL_CLOCK, 0L)
-                if (serverTime > 0L) {
-                    if (serverTime >= lastKnown - 300_000L) {
-                        editor.putBoolean(KEY_TIME_TAMPER_LOCKED, false)
-                        editor.putLong(KEY_LAST_KNOWN_WALL_CLOCK, maxOf(serverTime, System.currentTimeMillis()))
-                    }
-                }
+                val now = System.currentTimeMillis()
+                editor.putLong(KEY_LAST_SERVER_CHECK_TIME, now)
+                editor.putLong(KEY_PAID_EXPIRES_TIME, paidExpires)
+                editor.putInt(KEY_SERVER_DAYS_REMAINING, daysRemaining)
+                editor.putBoolean(KEY_TIME_TAMPER_LOCKED, false)
+                editor.putLong(KEY_LAST_KNOWN_WALL_CLOCK, maxOf(serverTime, now))
 
-                // If signed license key token is provided, verify it
-                if (status == "PAID" && paidExpires > 0L) {
+                if (isPaid) {
                     editor.putString(KEY_LICENSE_STATUS, "PAID")
-                    editor.putLong(KEY_PAID_EXPIRES_TIME, paidExpires)
-                } else if (status == "LOCKED") {
+                    editor.putString(KEY_LICENSE_SIGNATURE, generateLicenseSignature(hwId, "PAID", paidExpires))
+                    if (previousStatus != "PAID") {
+                        activationCelebrationEvent.value = true
+                    }
+                } else if (isExpired || (paidExpires in 1..serverTime)) {
                     editor.putString(KEY_LICENSE_STATUS, "EXPIRED")
+                    editor.putString(KEY_LICENSE_SIGNATURE, generateLicenseSignature(hwId, "EXPIRED", paidExpires))
+                } else {
+                    editor.putString(KEY_LICENSE_STATUS, "UNACTIVATED")
+                    editor.putString(KEY_LICENSE_SIGNATURE, generateLicenseSignature(hwId, "UNACTIVATED", 0L))
                 }
 
-                val currentStatus = prefs.getString(KEY_LICENSE_STATUS, if (status == "PAID") "PAID" else "UNACTIVATED") ?: "UNACTIVATED"
-                val currPaid = if (status == "PAID" && paidExpires > 0L) paidExpires else prefs.getLong(KEY_PAID_EXPIRES_TIME, 0L)
-                editor.putString(KEY_LICENSE_SIGNATURE, generateLicenseSignature(hwId, currentStatus, currPaid))
                 editor.apply()
-
                 notifyLicenseChanged()
-                Log.i(TAG, "Backend sync success. Status: $status, PaidExpires: $paidExpires, ServerTime: $serverTime")
+                Log.i(TAG, "Backend sync success: ServerStatus=$status, isPaid=$isPaid, isExpired=$isExpired, DaysRemaining=$daysRemaining")
                 true
             } else {
-                Log.w(TAG, "Backend sync responded with HTTP ${conn.responseCode}")
+                Log.w(TAG, "Backend sync returned HTTP ${conn.responseCode}")
                 false
             }
         } catch (e: Exception) {
-            Log.d(TAG, "Backend sync skipped (offline or server unavailable): ${e.message}")
+            Log.d(TAG, "Backend sync deferred (offline or unreachable): ${e.message}")
             false
         }
     }

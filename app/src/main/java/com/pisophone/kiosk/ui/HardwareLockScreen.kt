@@ -43,6 +43,7 @@ import com.pisophone.kiosk.MainActivity
 import com.pisophone.kiosk.receiver.KioskAdminActionReceiver
 import com.pisophone.kiosk.security.HardwareLockManager
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun HardwareLockScreen(
@@ -64,16 +65,22 @@ fun HardwareLockScreen(
     val isUnactivated = licenseInfo.state == HardwareLockManager.LicenseState.UNACTIVATED
     val isExpiredLicense = licenseInfo.state == HardwareLockManager.LicenseState.EXPIRED_LOCKED
 
-    // Polling background license status: Automatically unlocks when WebADB pushes license key over USB
+    val coroutineScope = rememberCoroutineScope()
+    var isCheckingServer by remember { mutableStateOf(false) }
+
+    // Polling background license status: Periodically checks Cloudflare server and WebADB USB signals
     LaunchedEffect(Unit) {
         while (true) {
-            delay(2000)
+            try {
+                HardwareLockManager.syncWithBackend(context)
+            } catch (_: Exception) {}
             val updated = HardwareLockManager.getLicenseInfo(context)
+            licenseInfo = updated
             if (updated.state == HardwareLockManager.LicenseState.PAID_ACTIVE) {
-                licenseInfo = updated
                 onRebindSuccess()
                 break
             }
+            delay(3000)
         }
     }
 
@@ -333,15 +340,30 @@ fun HardwareLockScreen(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Option 2: Refresh Status / Check USB Activation
+            // Option 2: Refresh Status / Check Server & USB Activation
             OutlinedButton(
                 onClick = {
-                    licenseInfo = HardwareLockManager.getLicenseInfo(context)
-                    if (licenseInfo.state == HardwareLockManager.LicenseState.PAID_ACTIVE) {
-                        Toast.makeText(context, "✅ License active! Unlocking...", Toast.LENGTH_SHORT).show()
-                        onRebindSuccess()
-                    } else {
-                        Toast.makeText(context, "Status checked. Awaiting WebADB USB activation signal.", Toast.LENGTH_SHORT).show()
+                    if (!isCheckingServer) {
+                        isCheckingServer = true
+                        coroutineScope.launch {
+                            val syncSuccess = HardwareLockManager.syncWithBackend(context)
+                            val updated = HardwareLockManager.getLicenseInfo(context)
+                            licenseInfo = updated
+                            isCheckingServer = false
+
+                            if (updated.state == HardwareLockManager.LicenseState.PAID_ACTIVE) {
+                                Toast.makeText(context, "✅ License active! Unlocking...", Toast.LENGTH_SHORT).show()
+                                onRebindSuccess()
+                            } else if (updated.state == HardwareLockManager.LicenseState.EXPIRED_LOCKED) {
+                                Toast.makeText(context, "⚠️ Subscription is expired on server. Please renew on website.", Toast.LENGTH_LONG).show()
+                            } else {
+                                if (syncSuccess) {
+                                    Toast.makeText(context, "Server checked: Device registered. Activation required.", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, "Server check deferred (offline). Awaiting WebADB or network.", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
                     }
                 },
                 modifier = Modifier
@@ -352,14 +374,25 @@ fun HardwareLockScreen(
                 border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.5f)),
                 shape = RoundedCornerShape(14.dp)
             ) {
-                Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color(0xFF38BDF8))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Check USB Activation Signal",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF38BDF8)
-                )
+                if (isCheckingServer) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color(0xFF38BDF8), strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Checking Server...",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF38BDF8)
+                    )
+                } else {
+                    Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color(0xFF38BDF8))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Check Server / USB Activation",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF38BDF8)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
