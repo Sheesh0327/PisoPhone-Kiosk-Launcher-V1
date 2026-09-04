@@ -200,7 +200,7 @@ fun HardwareLockScreen(
             Text(
                 text = when {
                     isUnactivated ->
-                        "Connect this phone via USB cable to your computer. Open the PisoPhone portal (pisophone.pages.dev/activate.html) to activate with 1 click, or enter your license key below."
+                        "Connect this phone via USB cable to your computer. Open the PisoPhone portal (web-pisophone.pages.dev/activate) to activate with 1 click, or enter your license key below."
                     isExpiredLicense ->
                         "Your 1-year commercial license on this hardware has ended. Activate a renewal license key to unlock."
                     else ->

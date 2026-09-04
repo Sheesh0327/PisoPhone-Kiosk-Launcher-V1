@@ -160,13 +160,20 @@ object HardwareLockManager {
     }
 
     /**
-     * Returns human-readable device model information.
+     * Returns human-readable device model information without redundant manufacturer or device duplicates.
      */
     fun getHardwareDescription(): String {
-        val manufacturer = Build.MANUFACTURER.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
-        val model = Build.MODEL
-        val device = Build.DEVICE
-        return "$manufacturer $model ($device)"
+        val mfg = (Build.MANUFACTURER ?: "").trim()
+        val model = (Build.MODEL ?: "").trim()
+
+        return if (model.isNotEmpty() && mfg.isNotEmpty() && model.startsWith(mfg, ignoreCase = true)) {
+            model
+        } else if (mfg.isNotEmpty() && model.isNotEmpty()) {
+            val prettyMfg = mfg.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+            "$prettyMfg $model"
+        } else {
+            model.ifEmpty { mfg.ifEmpty { "Android Device" } }
+        }
     }
 
     private fun getPrefs(context: Context): SharedPreferences {

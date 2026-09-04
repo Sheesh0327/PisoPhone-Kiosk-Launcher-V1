@@ -297,7 +297,10 @@
 
             const brandProp = (await getProp("ro.product.brand")) || (await getProp("ro.product.manufacturer")) || "";
             const modelProp = (await getProp("ro.product.model")) || "Android Device";
-            const deviceModel = `${brandProp} ${modelProp}`.trim();
+            let deviceModel = modelProp;
+            if (brandProp && modelProp && !modelProp.toLowerCase().startsWith(brandProp.toLowerCase())) {
+                deviceModel = `${brandProp} ${modelProp}`.trim();
+            }
 
             // Priority 1: Direct app query via administrative broadcast
             try {
