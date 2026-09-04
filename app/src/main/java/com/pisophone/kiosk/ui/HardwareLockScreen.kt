@@ -1,12 +1,8 @@
 package com.pisophone.kiosk.ui
 
-import android.Manifest
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -18,8 +14,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -27,8 +26,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -38,12 +39,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.core.content.ContextCompat
-import com.journeyapps.barcodescanner.ScanContract
-import com.journeyapps.barcodescanner.ScanOptions
 import com.pisophone.kiosk.MainActivity
 import com.pisophone.kiosk.receiver.KioskAdminActionReceiver
 import com.pisophone.kiosk.security.HardwareLockManager
+import kotlinx.coroutines.delay
 
 @Composable
 fun HardwareLockScreen(
@@ -51,22 +50,36 @@ fun HardwareLockScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
     var showAdminDialog by remember { mutableStateOf(false) }
     var showActivationCodeDialog by remember { mutableStateOf(false) }
     var pinInput by remember { mutableStateOf("") }
     var codeInput by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    val licenseInfo = remember { HardwareLockManager.getLicenseInfo(context) }
-    val currentHwId = remember { licenseInfo.hardwareId }
-    val currentDevName = remember { licenseInfo.deviceName }
+    var licenseInfo by remember { mutableStateOf(HardwareLockManager.getLicenseInfo(context)) }
+    val currentHwId = licenseInfo.hardwareId
+    val currentDevName = licenseInfo.deviceName
 
     val isUnactivated = licenseInfo.state == HardwareLockManager.LicenseState.UNACTIVATED
     val isExpiredLicense = licenseInfo.state == HardwareLockManager.LicenseState.EXPIRED_LOCKED
 
+    // Polling background license status: Automatically unlocks when WebADB pushes license key over USB
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(2000)
+            val updated = HardwareLockManager.getLicenseInfo(context)
+            if (updated.state == HardwareLockManager.LicenseState.PAID_ACTIVE) {
+                licenseInfo = updated
+                onRebindSuccess()
+                break
+            }
+        }
+    }
+
     // Helper: apply activation and restart application to guarantee clean state
-    fun applyActivationAndRestart(scannedLicenseKey: String) {
-        val trimmed = scannedLicenseKey.trim()
+    fun applyActivationAndRestart(licenseKey: String) {
+        val trimmed = licenseKey.trim()
         if (trimmed.isNotBlank()) {
             val activated = HardwareLockManager.activateOneYearLicense(context, trimmed)
             if (activated) {
@@ -89,65 +102,10 @@ fun HardwareLockScreen(
                     // Fallback to onRebindSuccess
                 }
             } else {
-                Toast.makeText(context, "❌ Invalid License QR code or signature mismatch.", Toast.LENGTH_LONG).show()
-                errorMessage = "Invalid License Key or Device Mismatch. Please check the QR code."
+                Toast.makeText(context, "❌ Invalid License Key or Device Mismatch.", Toast.LENGTH_LONG).show()
+                errorMessage = "Invalid License Key or Device Mismatch. Please check the code."
                 showActivationCodeDialog = true
             }
-        }
-    }
-
-    // QR Code scanner launcher using zxing ScanContract
-    val qrScannerLauncher = rememberLauncherForActivityResult(
-        contract = ScanContract(),
-        onResult = { result ->
-            val scannedContent = result.contents
-            if (!scannedContent.isNullOrBlank()) {
-                applyActivationAndRestart(scannedContent)
-            }
-        }
-    )
-
-    // Camera permission request launcher
-    val cameraPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-        onResult = { isGranted ->
-            if (isGranted) {
-                val options = ScanOptions().apply {
-                    setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-                    setPrompt("Align PisoPhone Activation QR Code within frame")
-                    setCameraId(0)
-                    setBeepEnabled(true)
-                    setBarcodeImageEnabled(false)
-                    setOrientationLocked(true)
-                    setCaptureActivity(PisoQrScannerActivity::class.java)
-                }
-                qrScannerLauncher.launch(options)
-            } else {
-                Toast.makeText(context, "Camera permission required to scan QR code. You can also enter the code manually.", Toast.LENGTH_LONG).show()
-                showActivationCodeDialog = true
-            }
-        }
-    )
-
-    fun startQrScan() {
-        val hasCamPermission = ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.CAMERA
-        ) == PackageManager.PERMISSION_GRANTED
-
-        if (hasCamPermission) {
-            val options = ScanOptions().apply {
-                setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-                setPrompt("Align PisoPhone Activation QR Code within frame")
-                setCameraId(0)
-                setBeepEnabled(true)
-                setBarcodeImageEnabled(false)
-                setOrientationLocked(true)
-                setCaptureActivity(PisoQrScannerActivity::class.java)
-            }
-            qrScannerLauncher.launch(options)
-        } else {
-            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
         }
     }
 
@@ -197,7 +155,7 @@ fun HardwareLockScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = if (isUnactivated) Icons.Filled.QrCodeScanner else Icons.Filled.Lock,
+                    imageVector = if (isUnactivated) Icons.Filled.Usb else Icons.Filled.Lock,
                     contentDescription = "Device Lock",
                     tint = badgeIconTint,
                     modifier = Modifier.size(44.dp)
@@ -227,7 +185,7 @@ fun HardwareLockScreen(
 
             Text(
                 text = when {
-                    isUnactivated -> "Ready to Link with PisoPhone Coin Hardware"
+                    isUnactivated -> "Connect via USB or Enter License Key"
                     isExpiredLicense -> "Commercial License Required to Continue"
                     else -> "Unauthorized Device Detected"
                 },
@@ -242,7 +200,7 @@ fun HardwareLockScreen(
             Text(
                 text = when {
                     isUnactivated ->
-                        "Your hardware profile is securely registered. Scan your activation QR code from your web dashboard or enter the license key to unlock the kiosk."
+                        "Connect this phone via USB cable to your computer. Open the PisoPhone portal (pisophone.pages.dev/activate.html) to activate with 1 click, or enter your license key below."
                     isExpiredLicense ->
                         "Your 1-year commercial license on this hardware has ended. Activate a renewal license key to unlock."
                     else ->
@@ -268,7 +226,7 @@ fun HardwareLockScreen(
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            if (isUnactivated) Icons.Filled.QrCodeScanner else Icons.Filled.Warning,
+                            if (isUnactivated) Icons.Filled.Usb else Icons.Filled.Warning,
                             contentDescription = null,
                             tint = when {
                                 isUnactivated -> Color(0xFF10B981)
@@ -280,7 +238,7 @@ fun HardwareLockScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = when {
-                                isUnactivated -> "Status: Pending License Activation"
+                                isUnactivated -> "Status: Pending USB Activation"
                                 isExpiredLicense -> "Hardware Status: License Expired"
                                 else -> "Hardware Signature Mismatch"
                             },
@@ -299,21 +257,44 @@ fun HardwareLockScreen(
                     // Current Device
                     Text("HARDWARE IDENTIFIER (THIS PHONE):", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
                     Text(currentDevName, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Color.White)
-                    Text(
-                        currentHwId,
-                        fontSize = 12.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = Color(0xFF10B981),
-                        fontWeight = FontWeight.Bold
-                    )
+                    
+                    Spacer(modifier = Modifier.height(4.dp))
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            currentHwId,
+                            fontSize = 13.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = Color(0xFF10B981),
+                            fontWeight = FontWeight.Bold
+                        )
+                        IconButton(
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(currentHwId))
+                                Toast.makeText(context, "Device ID copied to clipboard!", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Filled.ContentCopy,
+                                contentDescription = "Copy Device ID",
+                                tint = Color(0xFF38BDF8),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     // Bound Device
                     Text("LICENSE STATUS:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
                     Text(
                         when {
-                            isUnactivated -> "Awaiting Activation (No USB/ADB required)"
+                            isUnactivated -> "Awaiting WebADB USB Activation (1-Click)"
                             isExpiredLicense -> "Expired (Renewal required)"
                             else -> "Unbound / Mismatch"
                         },
@@ -326,22 +307,24 @@ fun HardwareLockScreen(
 
             Spacer(modifier = Modifier.height(28.dp))
 
-            // Option 1: Scan License QR Code (Primary / Recommended)
+            // Option 1: Enter Code Manually (Primary button)
             Button(
                 onClick = {
-                    startQrScan()
+                    codeInput = ""
+                    errorMessage = null
+                    showActivationCodeDialog = true
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(54.dp)
-                    .testTag("scan_qr_code_button"),
+                    .height(52.dp)
+                    .testTag("activate_machine_button"),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981), contentColor = Color(0xFF020617)),
                 shape = RoundedCornerShape(14.dp)
             ) {
-                Icon(Icons.Filled.QrCodeScanner, contentDescription = "Scan QR Code", modifier = Modifier.size(22.dp), tint = Color(0xFF020617))
-                Spacer(modifier = Modifier.width(10.dp))
+                Icon(Icons.Filled.Key, contentDescription = null, modifier = Modifier.size(20.dp), tint = Color(0xFF020617))
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Scan License QR Code",
+                    text = "Enter License Key Manually",
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF020617)
@@ -350,34 +333,38 @@ fun HardwareLockScreen(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Option 2: Enter Code Manually (Fallback if camera is unavailable)
+            // Option 2: Refresh Status / Check USB Activation
             OutlinedButton(
                 onClick = {
-                    codeInput = ""
-                    errorMessage = null
-                    showActivationCodeDialog = true
+                    licenseInfo = HardwareLockManager.getLicenseInfo(context)
+                    if (licenseInfo.state == HardwareLockManager.LicenseState.PAID_ACTIVE) {
+                        Toast.makeText(context, "✅ License active! Unlocking...", Toast.LENGTH_SHORT).show()
+                        onRebindSuccess()
+                    } else {
+                        Toast.makeText(context, "Status checked. Awaiting WebADB USB activation signal.", Toast.LENGTH_SHORT).show()
+                    }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(48.dp)
-                    .testTag("activate_machine_button"),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF10B981)),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.5f)),
+                    .testTag("refresh_activation_button"),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF38BDF8)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.5f)),
                 shape = RoundedCornerShape(14.dp)
             ) {
-                Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color(0xFF10B981))
+                Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color(0xFF38BDF8))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Enter Code Manually",
+                    text = "Check USB Activation Signal",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF10B981)
+                    color = Color(0xFF38BDF8)
                 )
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Admin Authorization Button (Option 3)
+            // Option 3: Admin Authorization Button
             OutlinedButton(
                 onClick = {
                     pinInput = ""
@@ -424,20 +411,20 @@ fun HardwareLockScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Icon(
-                        Icons.Filled.CheckCircle,
+                        Icons.Filled.Key,
                         contentDescription = null,
                         tint = Color(0xFF10B981),
                         modifier = Modifier.size(36.dp)
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = "Enter License Code",
+                        text = "Enter License Key",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
                     Text(
-                        text = "Enter your purchase activation code or license token to permanently bind a 1-Year License to this device.",
+                        text = "Paste or enter your 1-year commercial license key to permanently activate this device.",
                         fontSize = 12.sp,
                         color = Color(0xFF94A3B8),
                         textAlign = TextAlign.Center,
@@ -450,7 +437,7 @@ fun HardwareLockScreen(
                             codeInput = it
                             errorMessage = null
                         },
-                        placeholder = { Text("e.g. FULL-1YEAR-XXXX", color = Color(0xFF64748B)) },
+                        placeholder = { Text("PISO-1Y.HW-XXXX-XXXX...", color = Color(0xFF64748B), fontSize = 12.sp) },
                         singleLine = false,
                         maxLines = 3,
                         modifier = Modifier.fillMaxWidth(),
@@ -476,21 +463,6 @@ fun HardwareLockScreen(
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
-
-                    // Shortcut to open camera scanner from inside dialog
-                    TextButton(
-                        onClick = {
-                            showActivationCodeDialog = false
-                            startQrScan()
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Filled.QrCodeScanner, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Or scan via Camera QR Scanner", color = Color(0xFF38BDF8), fontSize = 13.sp)
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),

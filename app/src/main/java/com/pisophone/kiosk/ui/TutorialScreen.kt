@@ -36,11 +36,11 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Paid
-import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -177,21 +177,21 @@ fun TutorialScreen(
             ),
             TutorialStep(
                 stepNumber = 4,
-                title = "QUICK ACTIVATION",
-                subtitle = "No Computer or ADB Needed",
-                description = "You're all set! Because you already purchased your coin slot hardware and registered this phone during setup, activating your commercial license is instant.",
-                icon = Icons.Filled.QrCodeScanner,
+                title = "1-CLICK USB ACTIVATION",
+                subtitle = "Consistent Hardware ID & Fast WebADB",
+                description = "Connect your phone to your computer via USB cable. Open the PisoPhone portal (pisophone.pages.dev/activate.html) to read your device ID and activate with 1 click!",
+                icon = Icons.Filled.Usb,
                 accentColor = EmeraldAccent,
                 features = listOf(
                     TutorialFeature(
-                        icon = Icons.Filled.QrCodeScanner,
-                        title = "Scan License QR",
-                        detail = "Open your confirmation page on any device and point your phone camera at the QR code."
+                        icon = Icons.Filled.Usb,
+                        title = "1-Click USB Activation",
+                        detail = "WebADB reads your consistent hardware ID directly from the device and pushes your license key."
                     ),
                     TutorialFeature(
                         icon = Icons.Filled.CheckCircle,
                         title = "Manual License Key",
-                        detail = "You can also type your commercial key directly if you prefer offline entry."
+                        detail = "You can also paste or type your commercial key directly on the device."
                     )
                 ),
                 interactiveType = TutorialInteractiveType.ACTIVATION_PREVIEW
@@ -720,7 +720,7 @@ fun ActivationPreviewCard() {
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                "Click Continue below to open the QR Scanner and activate this kiosk immediately.",
+                "Click Finish below to open the Activation screen. Connect your phone via USB or enter your license key to activate.",
                 fontSize = 12.sp,
                 color = TextSecondary,
                 textAlign = TextAlign.Center

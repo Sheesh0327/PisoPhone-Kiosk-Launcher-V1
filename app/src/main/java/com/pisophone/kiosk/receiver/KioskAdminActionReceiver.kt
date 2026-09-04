@@ -38,6 +38,7 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
         const val ACTION_ADMIN_BYPASS = "com.pisophone.kiosk.ADMIN_BYPASS"
         const val ACTION_TEST_TTS = "com.pisophone.kiosk.TEST_TTS"
         const val ACTION_ACTIVATE = "com.pisophone.kiosk.ACTIVATE"
+        const val ACTION_GET_DEVICE_ID = "com.pisophone.kiosk.GET_DEVICE_ID"
         private const val TAG = "KioskAdminAction"
     }
 
@@ -130,10 +131,29 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                 }
             }
 
+            ACTION_GET_DEVICE_ID -> {
+                val hwId = com.pisophone.kiosk.security.HardwareLockManager.getHardwareFingerprint(context)
+                val devName = com.pisophone.kiosk.security.HardwareLockManager.getHardwareDescription()
+                val licenseInfo = com.pisophone.kiosk.security.HardwareLockManager.getLicenseInfo(context)
+                Log.i(TAG, "GET_DEVICE_ID requested via ADB broadcast. Returning: $hwId ($devName), status=${licenseInfo.state}")
+                setResultCode(android.app.Activity.RESULT_OK)
+                setResultData(hwId)
+                val extras = android.os.Bundle().apply {
+                    putString("hardware_id", hwId)
+                    putString("device_name", devName)
+                    putString("license_state", licenseInfo.state.name)
+                    putInt("days_remaining", licenseInfo.daysRemaining)
+                    putBoolean("is_paid", licenseInfo.isPaid)
+                }
+                setResultExtras(extras)
+            }
+
             ACTION_ACTIVATE -> {
                 val key = intent.getStringExtra("key") ?: intent.getStringExtra("code") ?: "ACTIVATION_KEY"
                 Log.i(TAG, "Activation broadcast received with key: $key")
                 val success = com.pisophone.kiosk.security.HardwareLockManager.activateOneYearLicense(context, key)
+                setResultCode(if (success) android.app.Activity.RESULT_OK else android.app.Activity.RESULT_CANCELED)
+                setResultData(if (success) "SUCCESS" else "FAILED")
                 if (success) {
                     Toast.makeText(context, "PisoPhone 1-Year License Activated Successfully!", Toast.LENGTH_LONG).show()
                     // Restart Kiosk Service and reload UI

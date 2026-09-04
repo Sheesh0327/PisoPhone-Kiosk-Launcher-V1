@@ -89,8 +89,26 @@ object HardwareLockManager {
     /**
      * Computes a stable, canonical hardware fingerprint derived strictly from immutable hardware attributes.
      * Excludes volatile Build.FINGERPRINT and Build.BOOTLOADER to survive OTA firmware and OS updates.
+     * Synchronizes with Settings.Global ("pisophone_hw_id") so WebADB over USB reads the identical ID.
      */
     fun getHardwareFingerprint(context: Context): String {
+        val prefs = getPrefs(context)
+        val boundHwId = prefs.getString(KEY_BOUND_HW_ID, null)
+        if (!boundHwId.isNullOrBlank() && boundHwId.startsWith("HW-")) {
+            syncToGlobalSettings(context, boundHwId)
+            return boundHwId
+        }
+
+        // Check if WebADB provisioned a persistent hardware ID in Settings.Global
+        val globalHwId = try {
+            Settings.Global.getString(context.contentResolver, "pisophone_hw_id")
+        } catch (e: Exception) {
+            null
+        }
+        if (!globalHwId.isNullOrBlank() && globalHwId.startsWith("HW-")) {
+            return globalHwId.trim()
+        }
+
         val androidId = try {
             Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN_ID"
         } catch (e: Exception) {
@@ -114,13 +132,30 @@ object HardwareLockManager {
             Build.PRODUCT ?: ""
         ).joinToString("|")
 
-        return try {
+        val computed = try {
             val md = MessageDigest.getInstance("SHA-256")
             val digest = md.digest(rawHardwareString.toByteArray(Charsets.UTF_8))
             val hex = digest.joinToString("") { "%02X".format(it) }
             "HW-${hex.substring(0, 4)}-${hex.substring(4, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}"
         } catch (e: Exception) {
             "HW-GENERIC-${androidId.take(8).uppercase()}"
+        }
+
+        syncToGlobalSettings(context, computed)
+        return computed
+    }
+
+    /**
+     * Synchronizes hardware ID into Android Global Settings so WebADB can read it directly.
+     */
+    fun syncToGlobalSettings(context: Context, hwId: String) {
+        try {
+            val current = Settings.Global.getString(context.contentResolver, "pisophone_hw_id")
+            if (current != hwId) {
+                Settings.Global.putString(context.contentResolver, "pisophone_hw_id", hwId)
+            }
+        } catch (e: Exception) {
+            // Ignored if permissions not yet granted
         }
     }
 
@@ -427,8 +462,18 @@ object HardwareLockManager {
                     return false
                 }
 
-                // Verify device binding
-                if (!licDevId.equals(hwId, ignoreCase = true) && !licDevId.equals(androidId, ignoreCase = true)) {
+                val globalHwId = try {
+                    Settings.Global.getString(context.contentResolver, "pisophone_hw_id")
+                } catch (e: Exception) { null }
+                val boundHwId = prefs.getString(KEY_BOUND_HW_ID, null)
+
+                // Verify device binding across all synchronized identity sources
+                val isMatchingDevice = licDevId.equals(hwId, ignoreCase = true) ||
+                        licDevId.equals(androidId, ignoreCase = true) ||
+                        (!globalHwId.isNullOrBlank() && licDevId.equals(globalHwId, ignoreCase = true)) ||
+                        (!boundHwId.isNullOrBlank() && licDevId.equals(boundHwId, ignoreCase = true))
+
+                if (!isMatchingDevice) {
                     Log.w(TAG, "License device ID mismatch: token is for $licDevId, actual device is $hwId")
                     return false
                 }
@@ -443,11 +488,18 @@ object HardwareLockManager {
                     return false
                 }
 
+                // Synchronize and lock the verified license device ID to prevent any future mismatch
+                if (licDevId.startsWith("HW-")) {
+                    prefs.edit().putString(KEY_BOUND_HW_ID, licDevId).apply()
+                    syncToGlobalSettings(context, licDevId)
+                }
+
                 targetExpires = licExpires
                 Log.i(TAG, "Valid cryptographically verified license token received (Algorithm: ${if (isRsaValid) "RSA-2048" else "HMAC"}).")
             }
 
-            val sig = generateLicenseSignature(hwId, "PAID", targetExpires)
+            val targetHwId = prefs.getString(KEY_BOUND_HW_ID, null) ?: hwId
+            val sig = generateLicenseSignature(targetHwId, "PAID", targetExpires)
 
             prefs.edit()
                 .putString(KEY_LICENSE_STATUS, "PAID")

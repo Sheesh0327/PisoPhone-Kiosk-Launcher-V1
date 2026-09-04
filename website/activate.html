@@ -115,50 +115,28 @@
                 </div>
             </div>
 
-            <!-- Instant QR Code Activation Section (Zero USB Needed) -->
-            <div id="qrActivationSection" class="hidden mb-6 bg-slate-900 border-2 border-emerald-500/50 rounded-2xl p-6 text-center shadow-[0_0_50px_rgba(16,185,129,0.15)]">
-                <div class="inline-flex items-center gap-2 bg-emerald-500/20 text-emerald-300 text-xs font-black px-3 py-1 rounded-full border border-emerald-500/40 mb-3">
-                    <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
-                    <span>Instant Wireless Activation</span>
-                </div>
-                <h3 class="text-xl font-black text-white mb-1">Scan to Activate PisoPhone</h3>
-                <p class="text-xs text-slate-400 mb-4 max-w-sm mx-auto">
-                    On your phone screen, tap <strong class="text-emerald-400">"Scan License QR Code"</strong> and point your camera at this QR code. No USB cable needed!
-                </p>
+            <!-- Step 3: 1-Click WebADB USB Activation (Primary Action) -->
+            <div class="mt-4 pt-4 border-t border-slate-800 flex flex-col gap-3">
+                <label class="block text-xs font-bold text-slate-400 mb-1 uppercase tracking-wider">Step 3: 1-Click USB Activation</label>
+                
+                <button id="activateBtn" disabled class="w-full bg-slate-800 text-slate-500 font-bold py-4 rounded-xl transition text-base cursor-not-allowed border border-slate-700 flex items-center justify-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                    <span>Activate Phone via USB (1-Click)</span>
+                </button>
 
-                <!-- QR Code Display Box -->
-                <div class="bg-white p-4 rounded-2xl inline-block shadow-2xl mx-auto border-4 border-emerald-400 mb-4">
-                    <div id="licenseQrCanvasContainer" class="w-64 h-64 flex items-center justify-center">
-                        <img id="licenseQrImage" class="w-64 h-64 object-contain rounded-lg" alt="Activation License QR Code">
-                    </div>
-                </div>
-
-                <!-- License Key Copy fallback -->
-                <div class="mt-2 text-left bg-slate-950 border border-slate-800 rounded-xl p-3 max-w-md mx-auto">
+                <!-- License Key Manual Copy Card (Available once paid) -->
+                <div id="licenseKeySection" class="hidden bg-slate-950 border border-slate-800 rounded-xl p-3">
                     <div class="flex items-center justify-between mb-1">
-                        <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">License Key (Or enter manually)</span>
+                        <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">License Key (Or enter manually in app)</span>
                         <button id="copyKeyBtn" class="text-xs font-bold text-emerald-400 hover:text-emerald-300 transition flex items-center gap-1 cursor-pointer">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                             Copy Key
                         </button>
                     </div>
-                    <p id="licenseKeyDisplay" class="text-xs font-mono text-slate-300 break-all bg-slate-900/90 p-2 rounded border border-slate-800 select-all"></p>
+                    <p id="licenseKeyDisplay" class="text-xs font-mono text-emerald-400 break-all bg-slate-900/90 p-2.5 rounded border border-slate-800 select-all"></p>
                 </div>
-            </div>
 
-            <!-- Step 3: Optional USB Push (Secondary Fallback) -->
-            <div class="mt-4 pt-4 border-t border-slate-800/80 text-center">
-                <button id="toggleUsbSectionBtn" class="text-xs text-slate-400 hover:text-slate-300 transition underline cursor-pointer mb-3">
-                    Prefer activating via USB ADB instead? Click here
-                </button>
-
-                <div id="usbActivationContainer" class="hidden flex flex-col gap-3">
-                    <button id="activateBtn" disabled class="w-full bg-slate-800 text-slate-500 font-bold py-4 rounded-xl transition text-base cursor-not-allowed border border-slate-700 flex items-center justify-center gap-2">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
-                        <span>Push License via USB (Sends Restart Command)</span>
-                    </button>
-                    <div id="logContainer" class="hidden bg-slate-950 border border-slate-800 rounded-lg p-4 font-mono text-xs text-slate-400 h-44 overflow-y-auto text-left"></div>
-                </div>
+                <div id="logContainer" class="hidden bg-slate-950 border border-slate-800 rounded-lg p-4 font-mono text-xs text-slate-400 h-44 overflow-y-auto text-left"></div>
             </div>
         </div>
 
@@ -187,12 +165,9 @@
         const unpaidActionSection = document.getElementById('unpaidActionSection');
         const simulateWebhookBtn = document.getElementById('simulateWebhookBtn');
 
-        const qrActivationSection = document.getElementById('qrActivationSection');
-        const licenseQrImage = document.getElementById('licenseQrImage');
+        const licenseKeySection = document.getElementById('licenseKeySection');
         const licenseKeyDisplay = document.getElementById('licenseKeyDisplay');
         const copyKeyBtn = document.getElementById('copyKeyBtn');
-        const toggleUsbSectionBtn = document.getElementById('toggleUsbSectionBtn');
-        const usbActivationContainer = document.getElementById('usbActivationContainer');
 
         let isPaymentVerified = false;
         let verifiedLicenseKey = null;
@@ -202,16 +177,6 @@
         if (!navigator.usb) {
             document.getElementById('browserWarning').classList.remove('hidden');
         }
-
-        // Toggle USB fallback section
-        toggleUsbSectionBtn.addEventListener('click', () => {
-            usbActivationContainer.classList.toggle('hidden');
-            if (!usbActivationContainer.classList.contains('hidden')) {
-                toggleUsbSectionBtn.textContent = 'Hide USB ADB activation option';
-            } else {
-                toggleUsbSectionBtn.textContent = 'Prefer activating via USB ADB instead? Click here';
-            }
-        });
 
         // Copy license key to clipboard
         copyKeyBtn.addEventListener('click', async () => {
@@ -250,7 +215,7 @@
                 statusTitle.textContent = 'Payment Status: Enter Device ID';
                 statusDescription.textContent = 'Please enter a device ID or read via USB to check payment status.';
                 unpaidActionSection.classList.add('hidden');
-                qrActivationSection.classList.add('hidden');
+                licenseKeySection.classList.add('hidden');
                 setActivateButtonState(false, 'Enter Device ID');
                 return;
             }
@@ -276,15 +241,14 @@
                     statusIndicatorDot.className = 'w-3 h-3 rounded-full bg-emerald-400';
                     statusTitle.textContent = 'Device Paid & 1-Year Commercial License Ready';
                     statusTitle.className = 'text-sm font-bold text-emerald-400';
-                    statusDescription.textContent = `Verified payment for ${modelName} (${data.daysRemaining} days). Scan the QR code below on your phone to activate instantly without any USB cables.`;
+                    statusDescription.textContent = `Verified payment for ${modelName} (${data.daysRemaining} days remaining). Click "Activate Phone via USB" below to push the license directly over WebADB.`;
                     unpaidActionSection.classList.add('hidden');
 
-                    // Display QR Code dynamically for wireless scanning
-                    licenseQrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=10&data=${encodeURIComponent(verifiedLicenseKey)}`;
+                    // Display License key for manual entry fallback
                     licenseKeyDisplay.textContent = verifiedLicenseKey;
-                    qrActivationSection.classList.remove('hidden');
+                    licenseKeySection.classList.remove('hidden');
                     
-                    setActivateButtonState(true, `Push License via USB to ${modelName}`);
+                    setActivateButtonState(true, `Push 1-Year License via USB to ${modelName}`);
                 } else {
                     isPaymentVerified = false;
                     verifiedLicenseKey = null;
@@ -292,9 +256,9 @@
                     statusIndicatorDot.className = 'w-3 h-3 rounded-full bg-amber-400';
                     statusTitle.textContent = 'Payment Required';
                     statusTitle.className = 'text-sm font-bold text-amber-400';
-                    statusDescription.textContent = 'No payment signal received yet for this Device ID. Once paid, the QR code and activation unlock automatically.';
+                    statusDescription.textContent = 'No payment signal received yet for this Device ID. Once paid, the 1-click activation button unlocks automatically.';
                     unpaidActionSection.classList.remove('hidden');
-                    qrActivationSection.classList.add('hidden');
+                    licenseKeySection.classList.add('hidden');
 
                     setActivateButtonState(false, 'Payment Required — Please Pay to Unlock');
                 }
@@ -303,7 +267,7 @@
                 statusTitle.textContent = 'Network Error';
                 statusDescription.textContent = `Could not reach licensing server: ${err.message}`;
                 setActivateButtonState(false, 'Server Offline');
-                qrActivationSection.classList.add('hidden');
+                licenseKeySection.classList.add('hidden');
             }
         }
 

@@ -278,6 +278,13 @@
          * @param {function} logCallback Function to log progress
          * @returns {Promise<{deviceId: string, deviceModel: string, hardwareHash: string, rawHardwareString: string}>}
          */
+        /**
+         * Inspects and computes canonical hardware identifier.
+         * Ensures 100% consistency with the Android app by:
+         * 1. Directly querying the app via GET_DEVICE_ID broadcast if installed
+         * 2. Querying persistent Global Settings (pisophone_hw_id)
+         * 3. Computing canonical hash and syncing it to device settings
+         */
         async getHardwareInfo(logCallback = console.log) {
             if (!this.adb) throw new Error("Device not connected.");
 
@@ -288,18 +295,58 @@
                 } catch (e) { return ""; }
             };
 
+            const brandProp = (await getProp("ro.product.brand")) || (await getProp("ro.product.manufacturer")) || "";
+            const modelProp = (await getProp("ro.product.model")) || "Android Device";
+            const deviceModel = `${brandProp} ${modelProp}`.trim();
+
+            // Priority 1: Direct app query via administrative broadcast
+            try {
+                const broadcastRes = await this.shell("am broadcast -a com.pisophone.kiosk.GET_DEVICE_ID -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver");
+                const match = broadcastRes.match(/data="([^"]+)"/) || broadcastRes.match(/(HW-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4})/);
+                if (match && match[1] && match[1].startsWith("HW-")) {
+                    const directId = match[1].trim();
+                    logCallback(`Directly retrieved synchronized Device ID from app: ${directId}`);
+                    try {
+                        await this.shell(`settings put global pisophone_hw_id ${directId}`);
+                    } catch (e) {}
+                    return {
+                        deviceId: directId,
+                        deviceModel,
+                        source: 'app_direct'
+                    };
+                }
+            } catch (e) {
+                // App not installed or not active yet, proceed to next priority
+            }
+
+            // Priority 2: Check persistent Global Setting (pisophone_hw_id)
+            try {
+                const globalSetting = (await this.shell("settings get global pisophone_hw_id")).trim();
+                if (globalSetting && globalSetting.startsWith("HW-") && !globalSetting.includes("null") && !globalSetting.includes("not found")) {
+                    logCallback(`Retrieved persistent Device ID from global settings: ${globalSetting}`);
+                    return {
+                        deviceId: globalSetting,
+                        deviceModel,
+                        source: 'global_setting'
+                    };
+                }
+            } catch (e) {
+                // Fall through
+            }
+
+            // Priority 3: Compute canonical immutable hardware identity
             const androidId = (await this.shell("settings get secure android_id")).trim() || "UNKNOWN_ID";
             const board = await getProp("ro.product.board");
-            const brand = (await getProp("ro.product.brand")) || (await getProp("ro.product.manufacturer"));
+            let brand = await getProp("ro.product.brand");
+            const manufacturer = await getProp("ro.product.manufacturer");
+            if (!brand || brand.toLowerCase() === "unknown") {
+                brand = manufacturer || "";
+            }
             const device = await getProp("ro.product.device");
             const hardware = await getProp("ro.hardware");
-            const manufacturer = await getProp("ro.product.manufacturer");
             const model = await getProp("ro.product.model");
             const product = await getProp("ro.product.name");
 
-            // Canonical immutable hardware identity:
-            // Excludes volatile build fingerprint, bootloader revision, and OS build numbers
-            // so device ID survives OTA updates, security patches, and OS upgrades.
             const rawHardwareString = `${androidId}|${board}|${brand}|${device}|${hardware}|${manufacturer}|${model}|${product}`;
             
             const encoder = new TextEncoder();
@@ -309,13 +356,19 @@
             const hex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
             
             const deviceId = `HW-${hex.substring(0, 4)}-${hex.substring(4, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}`;
-            const deviceModel = `${brand || manufacturer} ${model}`.trim() || 'Android Device';
+
+            // Persist synchronized ID to device settings so app reads the exact same ID
+            try {
+                await this.shell(`settings put global pisophone_hw_id ${deviceId}`);
+                logCallback(`Synchronized canonical Device ID to device settings: ${deviceId}`);
+            } catch (e) {}
 
             return {
                 deviceId,
                 deviceModel,
                 hardwareHash: hex,
-                rawHardwareString
+                rawHardwareString,
+                source: 'computed_synced'
             };
         }
 
@@ -440,6 +493,18 @@
             // Launch the main activity
             await this.shell(`am start -n ${PACKAGE_NAME}/.MainActivity`);
             
+            // Ensure canonical hardware ID is synchronized between app and system
+            try {
+                await new Promise(r => setTimeout(r, 1000));
+                const syncBroadcast = await this.shell(`am broadcast -a ${PACKAGE_NAME}.GET_DEVICE_ID -n ${PACKAGE_NAME}/.receiver.KioskAdminActionReceiver`);
+                const match = syncBroadcast.match(/data="([^"]+)"/) || syncBroadcast.match(/(HW-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4})/);
+                if (match && match[1]) {
+                    const verifiedId = match[1].trim();
+                    await this.shell(`settings put global pisophone_hw_id ${verifiedId}`);
+                    logCallback(`Verified app hardware seal ID: ${verifiedId}`);
+                }
+            } catch (e) {}
+
             // If the device is already paid on Cloudflare database, push license key immediately
             if (serverLicenseData && serverLicenseData.status === 'PAID' && serverLicenseData.licenseKey) {
                 logCallback("🌟 Syncing active 1-Year Commercial License directly to device...");
