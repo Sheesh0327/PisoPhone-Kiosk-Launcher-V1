@@ -217,7 +217,8 @@ class LockScreenOverlay(
         }
         if (isViewAdded) return
 
-        val initialVisible = appStateFlow.value == 0 || appStateFlow.value == 1 || appStateFlow.value == 4
+        val isTutorialComplete = com.pisophone.kiosk.security.HardwareLockManager.isTutorialCompleted(context)
+        val initialVisible = isTutorialComplete && (appStateFlow.value == 0 || appStateFlow.value == 1 || appStateFlow.value == 4)
         val baseFlags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or 
                         WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                         WindowManager.LayoutParams.FLAG_FULLSCREEN or
@@ -246,8 +247,13 @@ class LockScreenOverlay(
             val deviceIp by deviceIpFlow.collectAsState()
             val batteryStatus by batteryStatusFlow.collectAsState()
             val esp32MacAddress by esp32MacAddressFlow.collectAsState()
+            val licenseUpdateVersion by com.pisophone.kiosk.security.HardwareLockManager.licenseUpdateVersion.collectAsState()
             
-            val isVisible = appState == 0 || appState == 1 || appState == 4
+            val isTutorialComplete = remember(licenseUpdateVersion) { 
+                com.pisophone.kiosk.security.HardwareLockManager.isTutorialCompleted(context) 
+            }
+            
+            val isVisible = isTutorialComplete && (appState == 0 || appState == 1 || appState == 4)
             var renderLockScreen by remember { mutableStateOf(isVisible) }
             val unlockAlpha by androidx.compose.animation.core.animateFloatAsState(
                 targetValue = if (isVisible) 1f else 0f,
@@ -2408,7 +2414,7 @@ fun SecurityVaultView(
                 // Test TTS Voice Button
                 Button(
                     onClick = {
-                        KioskService.triggerTestTts(context, "Arcade OS voice system online and functional.")
+                        KioskService.triggerTestTts(context, "Piso Phone voice system online and functional.")
                         Toast.makeText(context, "Testing TTS Audio Output...", Toast.LENGTH_SHORT).show()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1), contentColor = Color.White),
