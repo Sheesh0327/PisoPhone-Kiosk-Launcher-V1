@@ -84,6 +84,20 @@ async function generateLicenseToken(deviceId, paidExpiresAt, env) {
   };
 }
 
+async function verifyGoogleToken(token) {
+  if (!token) return null;
+  try {
+    const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${token}`);
+    if (res.ok) {
+      const data = await res.json();
+      return data.email;
+    }
+  } catch (e) {
+    console.error("Token verification failed:", e);
+  }
+  return null;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -113,13 +127,18 @@ export default {
       // =========================================================================
       if (url.pathname === '/api/device/register' && method === 'POST') {
         const body = await request.json();
-        const { deviceId, hardwareHash, deviceModel } = body;
+        const { deviceId, hardwareHash, deviceModel, ownerToken } = body;
 
         if (!deviceId || !hardwareHash) {
           return new Response(JSON.stringify({ error: 'Missing deviceId or hardwareHash', serverTime: now }), {
             status: 400,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
+        }
+
+        let ownerEmail = null;
+        if (ownerToken) {
+          ownerEmail = await verifyGoogleToken(ownerToken);
         }
 
         let existing = null;
@@ -135,6 +154,7 @@ export default {
           existing.lastCheckinAt = now;
           existing.installCount = (existing.installCount || 1) + 1;
           existing.deviceModel = deviceModel || existing.deviceModel;
+          if (ownerEmail) existing.ownerEmail = ownerEmail;
 
           // Clean up old redundant properties if they exist
           delete existing.licenseType;
@@ -143,6 +163,16 @@ export default {
 
           if (env.DEVICE_STORE) {
             await env.DEVICE_STORE.put(deviceId, JSON.stringify(existing));
+            
+            // Also update the USER_DEVICES index if ownerEmail is present
+            if (ownerEmail) {
+              const rawUd = await env.DEVICE_STORE.get(`USER_DEVICES:${ownerEmail}`);
+              let userDevices = rawUd ? JSON.parse(rawUd) : [];
+              if (!userDevices.includes(deviceId)) {
+                userDevices.push(deviceId);
+                await env.DEVICE_STORE.put(`USER_DEVICES:${ownerEmail}`, JSON.stringify(userDevices));
+              }
+            }
           }
 
           let signature = '';
@@ -183,8 +213,19 @@ export default {
           installCount: 1,
         };
 
+        if (ownerEmail) newRecord.ownerEmail = ownerEmail;
+
         if (env.DEVICE_STORE) {
           await env.DEVICE_STORE.put(deviceId, JSON.stringify(newRecord));
+          
+          if (ownerEmail) {
+            const rawUd = await env.DEVICE_STORE.get(`USER_DEVICES:${ownerEmail}`);
+            let userDevices = rawUd ? JSON.parse(rawUd) : [];
+            if (!userDevices.includes(deviceId)) {
+              userDevices.push(deviceId);
+              await env.DEVICE_STORE.put(`USER_DEVICES:${ownerEmail}`, JSON.stringify(userDevices));
+            }
+          }
         }
 
         return new Response(
@@ -274,6 +315,11 @@ export default {
           });
         }
 
+        let ownerEmail = null;
+        if (body.ownerToken) {
+          ownerEmail = await verifyGoogleToken(body.ownerToken);
+        }
+
         let deviceId = body.deviceId || 
                        body.data?.attributes?.metadata?.deviceId || 
                        body.metadata?.deviceId || 
@@ -312,6 +358,8 @@ export default {
             processedPaymentRefs: [],
           };
         }
+
+        if (ownerEmail) record.ownerEmail = ownerEmail;
 
         // Webhook Idempotency Check: Prevent duplicate webhook charges/extensions
         const processedRefs = Array.isArray(record.processedPaymentRefs) ? record.processedPaymentRefs : [];
@@ -354,6 +402,15 @@ export default {
 
         if (env.DEVICE_STORE) {
           await env.DEVICE_STORE.put(deviceId, JSON.stringify(record));
+          
+          if (record.ownerEmail) {
+            const rawUd = await env.DEVICE_STORE.get(`USER_DEVICES:${record.ownerEmail}`);
+            let userDevices = rawUd ? JSON.parse(rawUd) : [];
+            if (!userDevices.includes(deviceId)) {
+              userDevices.push(deviceId);
+              await env.DEVICE_STORE.put(`USER_DEVICES:${record.ownerEmail}`, JSON.stringify(userDevices));
+            }
+          }
         }
 
         // Generate asymmetric RSA token
@@ -377,19 +434,72 @@ export default {
       }
 
       // =========================================================================
-      // 4. Manual Payment Confirmation / Admin Trigger
+      // 4. User Devices Retrieval (Dashboard)
+      // POST /api/user/devices
+      // Body: { ownerToken: string }
+      // =========================================================================
+      if (url.pathname === '/api/user/devices' && method === 'POST') {
+        const body = await request.json();
+        
+        const email = await verifyGoogleToken(body.ownerToken);
+        if (!email) {
+          return new Response(JSON.stringify({ error: 'Unauthorized', devices: [] }), {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        let userDevices = [];
+        if (env.DEVICE_STORE) {
+          const rawUd = await env.DEVICE_STORE.get(`USER_DEVICES:${email}`);
+          if (rawUd) userDevices = JSON.parse(rawUd);
+        }
+
+        let devices = [];
+        for (const did of userDevices) {
+          if (env.DEVICE_STORE) {
+            const rawDev = await env.DEVICE_STORE.get(did);
+            if (rawDev) {
+              const dev = JSON.parse(rawDev);
+              const isPaid = dev.paidExpiresAt > now;
+              
+              devices.push({
+                deviceId: dev.deviceId,
+                deviceModel: dev.deviceModel || 'Unknown Device',
+                firstRegisteredAt: dev.firstRegisteredAt || now,
+                paidExpiresAt: dev.paidExpiresAt || 0,
+                status: isPaid ? 'PAID' : 'UNACTIVATED',
+                daysRemaining: isPaid ? Math.max(0, Math.ceil((dev.paidExpiresAt - now) / (24 * 60 * 60 * 1000))) : 0
+              });
+            }
+          }
+        }
+
+        return new Response(JSON.stringify({ success: true, email, devices, serverTime: now }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // =========================================================================
+      // 5. Manual Payment Confirmation / Admin Trigger
       // POST /api/payment/confirm
       // Body: { adminSecret?: string, deviceId: string, paymentRef?: string }
       // =========================================================================
       if (url.pathname === '/api/payment/confirm' && method === 'POST') {
         const body = await request.json();
-        const { deviceId, paymentRef, adminSecret: reqSecret } = body;
+        const { deviceId, paymentRef, adminSecret: reqSecret, ownerToken } = body;
 
         if (!deviceId) {
           return new Response(JSON.stringify({ error: 'Missing deviceId', serverTime: now }), {
             status: 400,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
+        }
+        
+        let ownerEmail = null;
+        if (ownerToken) {
+          ownerEmail = await verifyGoogleToken(ownerToken);
         }
 
         const cleanId = String(deviceId).trim();
@@ -411,6 +521,8 @@ export default {
             processedPaymentRefs: [],
           };
         }
+        
+        if (ownerEmail) record.ownerEmail = ownerEmail;
 
         const processedRefs = Array.isArray(record.processedPaymentRefs) ? record.processedPaymentRefs : [];
         if (paymentRef && processedRefs.includes(cleanPaymentRef)) {
@@ -448,6 +560,15 @@ export default {
 
         if (env.DEVICE_STORE) {
           await env.DEVICE_STORE.put(cleanId, JSON.stringify(record));
+          
+          if (record.ownerEmail) {
+            const rawUd = await env.DEVICE_STORE.get(`USER_DEVICES:${record.ownerEmail}`);
+            let userDevices = rawUd ? JSON.parse(rawUd) : [];
+            if (!userDevices.includes(cleanId)) {
+              userDevices.push(cleanId);
+              await env.DEVICE_STORE.put(`USER_DEVICES:${record.ownerEmail}`, JSON.stringify(userDevices));
+            }
+          }
         }
 
         const token = await generateLicenseToken(cleanId, newPaidExpires, env);

@@ -339,11 +339,23 @@
             simulateWebhookBtn.disabled = true;
             simulateWebhookBtn.textContent = 'Sending signal...';
             try {
+                // Read ownerToken from session
+                let ownerToken = null;
+                const storedUser = localStorage.getItem('piso_google_user');
+                if (storedUser) {
+                    try {
+                        const userObj = JSON.parse(storedUser);
+                        ownerToken = userObj.token || userObj.credential || userObj.sub; 
+                        // Note: index.html isn't currently saving the raw credential string, it only saved decoded values. Let me double check what index.html saves.
+                    } catch (e) {}
+                }
+
                 const res = await fetch(`${API_BASE}/api/payment/webhook`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         deviceId: devId,
+                        ownerToken: ownerToken,
                         paymentRef: `PAY-GCASH-${Date.now()}`
                     })
                 });

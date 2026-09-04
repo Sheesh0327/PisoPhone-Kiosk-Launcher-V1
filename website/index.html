@@ -232,44 +232,10 @@
                 </a>
             </div>
             
-            <div class="grid grid-cols-1 gap-4 w-full">
-                <!-- Device Row 1 -->
-                <div class="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-center justify-between hover:border-slate-700 transition">
-                    <div class="flex items-center gap-4">
-                        <div class="bg-emerald-500/20 text-emerald-400 p-3 rounded-xl">
-                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
-                        </div>
-                        <div>
-                            <div class="text-white font-bold flex items-center gap-2">
-                                Infinix HOT 40i 
-                                <span class="bg-emerald-500/20 text-emerald-400 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">Active</span>
-                            </div>
-                            <div class="text-xs text-slate-400 font-mono mt-1">ID: HW-8A7C-D36A-582E-7E0C</div>
-                        </div>
-                    </div>
-                    <div class="text-right">
-                        <div class="text-sm text-slate-300">Expires: <span class="font-bold text-white">Sep 04, 2027</span></div>
-                        <div class="text-xs text-slate-500 mt-1">Activated via WebUSB</div>
-                    </div>
-                </div>
-                
-                <!-- Device Row 2 -->
-                <div class="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-center justify-between hover:border-slate-700 transition">
-                    <div class="flex items-center gap-4">
-                        <div class="bg-amber-500/20 text-amber-400 p-3 rounded-xl">
-                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
-                        </div>
-                        <div>
-                            <div class="text-white font-bold flex items-center gap-2">
-                                Samsung Galaxy Tab A8
-                                <span class="bg-amber-500/20 text-amber-400 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border border-amber-500/30">Pending Setup</span>
-                            </div>
-                            <div class="text-xs text-slate-400 font-mono mt-1">ID: HW-B129-C432-881F-A90B</div>
-                        </div>
-                    </div>
-                    <div class="text-right">
-                        <a href="activate.html" class="text-sm font-bold text-amber-400 hover:text-amber-300 transition underline">Complete Activation →</a>
-                    </div>
+            <div id="deviceListContainer" class="grid grid-cols-1 gap-4 w-full">
+                <div class="text-center text-slate-500 py-8 text-sm">
+                    <div class="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                    Loading your licensed devices...
                 </div>
             </div>
         </div>
@@ -319,7 +285,8 @@
                     name: payload.name || payload.given_name || 'Arcade Owner',
                     email: payload.email,
                     picture: payload.picture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(payload.email)}&backgroundColor=10b981`,
-                    sub: payload.sub
+                    sub: payload.sub,
+                    token: response.credential
                 };
 
                 localStorage.setItem('piso_google_user', JSON.stringify(userData));
@@ -386,6 +353,91 @@
             dashboardView.classList.add('flex');
             mainContainer.classList.remove('items-center', 'justify-center', 'text-center');
             mainContainer.classList.add('items-start', 'text-left');
+            
+            if (user.token) {
+                fetchUserDevices(user.token);
+            }
+        }
+
+        async function fetchUserDevices(token) {
+            const container = document.getElementById('deviceListContainer');
+            if (!container) return;
+
+            try {
+                // Assuming worker is hosted at same origin or properly configured. 
+                // We'll use absolute path for the API.
+                const res = await fetch('/api/user/devices', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ownerToken: token })
+                });
+
+                if (!res.ok) throw new Error("Failed to load devices");
+                const data = await res.json();
+                
+                container.innerHTML = ''; // Clear loading spinner
+
+                if (!data.devices || data.devices.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-center text-slate-500 py-8 text-sm bg-slate-900 border border-slate-800 rounded-2xl">
+                            <svg class="w-12 h-12 mx-auto mb-3 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                            You have no devices registered to this account yet.<br>
+                            Connect a device via WebUSB to get started.
+                        </div>
+                    `;
+                    return;
+                }
+
+                data.devices.forEach(dev => {
+                    const isPaid = dev.status === 'PAID';
+                    
+                    let statusBadge = '';
+                    let actionArea = '';
+
+                    if (isPaid) {
+                        const expiryDate = new Date(dev.paidExpiresAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit' });
+                        statusBadge = `<span class="bg-emerald-500/20 text-emerald-400 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">Active</span>`;
+                        actionArea = `
+                            <div class="text-sm text-slate-300">Expires: <span class="font-bold text-white">${expiryDate}</span></div>
+                            <div class="text-xs ${dev.daysRemaining < 30 ? 'text-rose-400' : 'text-emerald-400'} mt-1 font-bold">${dev.daysRemaining} days left</div>
+                        `;
+                    } else {
+                        statusBadge = `<span class="bg-amber-500/20 text-amber-400 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border border-amber-500/30">Pending Setup</span>`;
+                        actionArea = `
+                            <a href="activate.html" class="text-sm font-bold text-amber-400 hover:text-amber-300 transition underline">Complete Activation →</a>
+                        `;
+                    }
+
+                    const card = document.createElement('div');
+                    card.className = "bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-center justify-between hover:border-slate-700 transition";
+                    card.innerHTML = `
+                        <div class="flex items-center gap-4">
+                            <div class="${isPaid ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'} p-3 rounded-xl">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                            </div>
+                            <div>
+                                <div class="text-white font-bold flex items-center gap-2">
+                                    ${dev.deviceModel} 
+                                    ${statusBadge}
+                                </div>
+                                <div class="text-xs text-slate-400 font-mono mt-1">ID: HW-${dev.deviceId.toUpperCase()}</div>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            ${actionArea}
+                        </div>
+                    `;
+                    container.appendChild(card);
+                });
+
+            } catch (e) {
+                console.error("Error fetching devices:", e);
+                container.innerHTML = `
+                    <div class="text-center text-rose-500 py-8 text-sm">
+                        Failed to load devices. Please try refreshing.
+                    </div>
+                `;
+            }
         }
 
         function signOut() {
