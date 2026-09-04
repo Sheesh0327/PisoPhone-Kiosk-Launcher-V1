@@ -400,6 +400,14 @@
                 
                 // Query Cloudflare KV / Worker endpoint for license status
                 try {
+                    let ownerToken = null;
+                    try {
+                        const userStr = localStorage.getItem('piso_google_user');
+                        if (userStr) {
+                            ownerToken = JSON.parse(userStr).token;
+                        }
+                    } catch(e) {}
+
                     const workerApiBase = 'https://pisophone-licensing-api.evankhell897.workers.dev';
                     const checkResp = await fetch(`${workerApiBase}/api/device/register`, {
                         method: 'POST',
@@ -407,7 +415,8 @@
                         body: JSON.stringify({
                             deviceId: deviceId,
                             hardwareHash: deviceId,
-                            deviceModel: deviceModel
+                            deviceModel: deviceModel,
+                            ownerToken: ownerToken
                         })
                     });
                     if (checkResp.ok) {

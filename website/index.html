@@ -359,6 +359,8 @@
             }
         }
 
+        const API_BASE = 'https://pisophone-licensing-api.evankhell897.workers.dev';
+
         async function fetchUserDevices(token) {
             const container = document.getElementById('deviceListContainer');
             if (!container) return;
@@ -366,7 +368,7 @@
             try {
                 // Assuming worker is hosted at same origin or properly configured. 
                 // We'll use absolute path for the API.
-                const res = await fetch('/api/user/devices', {
+                const res = await fetch(`${API_BASE}/api/user/devices`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ ownerToken: token })
