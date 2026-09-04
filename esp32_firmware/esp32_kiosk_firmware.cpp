@@ -21,7 +21,7 @@
 const char* DEFAULT_SSID        = "AdminSetup";
 const char* DEFAULT_PASS        = "Admin@123";
 const char* DEFAULT_ADMIN_PW    = "admin";
-const char* MASTER_CRYPTO_SECRET  = "e9a3b7c1f4d8025e619b4c7d03a8f2e5167b094c2d3e5f8a1b6c9d0e7f4a2b5c";
+const char* MASTER_CRYPTO_SECRET  = ""; // SET VIA CAPTIVE PORTAL
 const int   DEFAULT_COIN_PIN           = 4;
 const int   DEFAULT_UNIVERSAL_COIN_PIN = 3;
 const int   DEFAULT_LED_PIN            = 8;
@@ -259,8 +259,14 @@ void triggerUniversalCoinEvent(int pulses);
 void factoryResetDefaults();
 int getDeviceTimeRemainingSeconds(String targetIp, String* errOut = nullptr);
 
+// Helper function to check if default credentials are still active
+bool areDefaultCredentialsActive() {
+    return (webPassword == DEFAULT_ADMIN_PW || wifiPass == DEFAULT_PASS);
+}
+
 // Helper function to check if the coin slot is currently armed
 bool isSlotArmed() {
+    if (areDefaultCredentialsActive()) return false;
     return (isWsConnected && wsClient.connected()) || (armedIp.length() > 0 && millis() < armedUntil);
 }
 
@@ -291,8 +297,8 @@ void processCoinDetector() {
         return;
     }
     
-    // Disable coin acceptance if the device is not licensed
-    if (!is_licensed) {
+    // Disable coin acceptance if the device is not licensed or default credentials are active
+    if (!is_licensed || areDefaultCredentialsActive()) {
         currentCoinState = COIN_IDLE;
         return;
     }
@@ -356,7 +362,7 @@ void IRAM_ATTR universalCoinIsr() {
 
 void processUniversalCoinDetector() {
     unsigned long now = millis();
-    if (now < 3000 || !is_licensed) {
+    if (now < 3000 || !is_licensed || areDefaultCredentialsActive()) {
         if (isrUniversalPulseCount > 0) {
             noInterrupts();
             isrUniversalPulseCount = 0;
@@ -2208,7 +2214,7 @@ void handlePing() {
 }
 
 String generateActivationCode(String mac) {
-    String expectedSig = calculateHMAC(mac, MASTER_CRYPTO_SECRET);
+    String expectedSig = calculateHMAC(mac, sharedSecret.c_str());
     String code = expectedSig.substring(0, 12);
     code.toUpperCase();
     return code;

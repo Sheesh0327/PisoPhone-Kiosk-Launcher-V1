@@ -1,12 +1,12 @@
 # 🎮 Phone Rental & Coin-Operated Gaming Kiosk
 
-A turnkey, enterprise-grade Android Kiosk Launcher and Hardware Timer system designed for coin-operated gaming phones, rental stations, and arcade setups. Features hardware-level screen lockdown, ESP32 coin slot integration, smart battery protection, and an offline AES-256 hardware-locked licensing engine for annual subscription deployment (500 PHP/device/year).
+A turnkey, enterprise-grade Android Kiosk Launcher and Hardware Timer system designed for coin-operated gaming phones, rental stations, and arcade setups. Features hardware-level screen lockdown, ESP32 coin slot integration, smart battery protection, per-device encrypted cryptographic provisioning, and offline HMAC-SHA256 hardware licensing.
 
 ---
 
 ## 📑 Table of Contents
 1. [System Architecture & Workflow](#-system-architecture--workflow)
-2. [Licensing & Subscription System](#-licensing--subscription-system)
+2. [Hardware Lock & Device Provisioning](#-hardware-lock--device-provisioning)
 3. [Website & Zero-Cost Deployment Architecture](#-website--zero-cost-deployment-architecture)
 4. [Device Provisioning & Device Owner Setup](#-device-provisioning--device-owner-setup)
 5. [ESP32 Hardware Coin Slot Integration](#-esp32-hardware-coin-slot-integration)
@@ -29,8 +29,10 @@ A turnkey, enterprise-grade Android Kiosk Launcher and Hardware Timer system des
                                          │
                                          ▼
 +-----------------------------------------------------------------------------------+
-|                              2. SUBSCRIPTION ACTIVATION                           |
-|  App displays Device ID  -->  Website / Admin generates QR  -->  App Scans & Unlocks  |
+|                              2. MANDATORY ONBOARDING                              |
+|  - Force Change Default Admin PIN away from 1234                                  |
+|  - Generate Unique 256-bit Per-Device Secret in EncryptedSharedPreferences        |
+|  - Provision Secret to ESP32 Firmware via Captive Portal (Port 80)                |
 +-----------------------------------------------------------------------------------+
                                          │
                                          ▼
@@ -44,7 +46,8 @@ A turnkey, enterprise-grade Android Kiosk Launcher and Hardware Timer system des
                                          ▼
 +-----------------------------------------------------------------------------------+
 |                              4. ESP32 COIN INSERTION                              |
-|  Coin dropped  -->  ESP32 requests HMAC challenge  -->  HTTP POST /coin validated   |
+|  Coin dropped  -->  ESP32 requests single-use HMAC challenge                      |
+|  --> HTTP GET /coin validated via SecureRandom nonce & HMAC-SHA256                |
 |  --> Session Timer Starts  -->  Fullscreen Lock unlocks to Floating HUD Pill      |
 +-----------------------------------------------------------------------------------+
                                          │
@@ -59,43 +62,36 @@ A turnkey, enterprise-grade Android Kiosk Launcher and Hardware Timer system des
 
 ---
 
-## 🔑 Licensing & Subscription System
+## 🔑 Hardware Lock & Device Provisioning
 
-The application incorporates a **tamper-proof, zero-internet offline cryptographic licensing engine** (`LicenseManager.kt`) designed to support an annual recurring subscription model.
+The kiosk integrates a multi-layered security and hardware authorization architecture:
 
-### 1. Hardware Fingerprinting (Immutable Android ID)
-- The app binds each license strictly to the device's hardware identifier: `Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)`.
-- A license created for Phone A **will never activate Phone B**, preventing APK piracy and unauthorized phone sharing.
+### 1. Per-Device Cryptographic Secret
+- Each device generates its own high-entropy 256-bit cryptographically secure secret (`EncryptedSharedPreferences` backed by the Android Keystore).
+- There are **no hardcoded master secrets** in the client app or firmware.
+- The secret is displayed once during the mandatory initial provisioning flow so the technician can pair it with the corresponding ESP32 coin controller.
 
-### 2. Cryptographic Payload & Verification
-- **Algorithm:** AES-256-CBC with SHA-256 key derivation.
-- **Payload Format:** `"<ANDROID_ID>|<EXPIRATION_TIMESTAMP_MS>"`
-- **Offline Integrity:** Because the expiration timestamp is encrypted with a server-side `MASTER_SECRET`, the user cannot alter their subscription date.
-- **Startup Gate:** `MainActivity` intercepts all launches. If the license is missing or expired (`System.currentTimeMillis() > expirationTime`), the app blocks access and launches `LicenseScreen`.
+### 2. Mandatory First-Run Provisioning
+- The kiosk enforces changing the default Admin PIN away from `1234` before any normal kiosk operations can proceed.
+- The ESP32 captive portal similarly blocks coin processing and arming until default Wi-Fi and admin credentials (`Admin@123` / `admin`) are changed.
 
-### 3. In-App QR Code Scanner
-- Powered by `zxing-android-embedded`.
-- On the `LicenseScreen`, clicking **SCAN QR CODE** launches the camera view.
-- Scanning the license QR code automatically parses, saves, and validates the subscription key with zero manual typing or copy-pasting.
+### 3. Hardware Lock & Activation
+- Unlicensed hardware is locked down until authorized via `HardwareLockManager`.
+- The ESP32 reports its MAC address, and an authorized activation key generated with `python esp32_firmware/keygen.py <MAC_ADDRESS> <DEVICE_SECRET>` unlocks coin processing and burns the state into NVS.
 
-### 4. Admin CLI Key Generator (`generate_license.py`)
-To generate an annual license key for any customer manually:
+### 4. Admin CLI Key Generator (`esp32_firmware/keygen.py`)
+To generate an activation key for any paired unit:
 ```bash
-python generate_license.py
+python esp32_firmware/keygen.py <MAC_ADDRESS> <DEVICE_SECRET>
 ```
-**Prompt:**
+**Example:**
 ```text
-Enter Customer's Device ID: 8f9b2c140a77e129
-Enter Expiration Date (YYYY-MM-DD): 2027-08-17
-
-SUCCESS!
---------------------------------------------------
-Device ID: 8f9b2c140a77e129
-Expires:   2027-08-17
---------------------------------------------------
-LICENSE KEY:
-QWpkYjEyMzgxMjhq... (Base64 Encrypted String)
---------------------------------------------------
+================================================
+PISOPHONE ACTIVATION CODE GENERATOR
+================================================
+MAC Address   : 24:D7:EB:12:34:56
+Activation Code: D6246BB8520D
+================================================
 ```
 
 ---

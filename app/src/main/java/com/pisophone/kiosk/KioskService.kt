@@ -154,6 +154,23 @@ class KioskService : Service() {
     }
 
     private val activeChallenges = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val rateLimits = java.util.concurrent.ConcurrentHashMap<String, MutableList<Long>>()
+
+    private fun isRateLimited(ip: String): Boolean {
+        val now = System.currentTimeMillis()
+        val window = 60000L
+        val maxRequests = 60
+        
+        val timestamps = rateLimits.getOrPut(ip) { mutableListOf() }
+        synchronized(timestamps) {
+            timestamps.removeAll { now - it > window }
+            if (timestamps.size >= maxRequests) {
+                return true
+            }
+            timestamps.add(now)
+            return false
+        }
+    }
     private val processedCoinTxIds = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private var lastCoinCreditedTime = 0L
     private var multicastLock: android.net.wifi.WifiManager.MulticastLock? = null
@@ -1065,13 +1082,15 @@ class KioskService : Service() {
     }
 
     private fun generateChallenge(): String {
-        val token = UUID.randomUUID().toString()
+        val randomBytes = ByteArray(16)
+        java.security.SecureRandom().nextBytes(randomBytes)
+        val token = randomBytes.joinToString("") { "%02x".format(it) }
         val now = System.currentTimeMillis()
         activeChallenges[token] = now
         val iterator = activeChallenges.entries.iterator()
         while (iterator.hasNext()) {
             val entry = iterator.next()
-            if (now - entry.value > 60000) {
+            if (now - entry.value > 15000) {
                 iterator.remove()
             }
         }
@@ -1079,17 +1098,12 @@ class KioskService : Service() {
     }
 
     private fun verifyChallengeAndSignature(challenge: String, signature: String): Boolean {
-        val issueTime = activeChallenges[challenge] ?: return false
-        if (System.currentTimeMillis() - issueTime > 60000) {
-            activeChallenges.remove(challenge)
+        val issueTime = activeChallenges.remove(challenge) ?: return false
+        if (System.currentTimeMillis() - issueTime > 15000) {
             return false
         }
         val expectedSignature = calculateHmac(challenge, getSecretKey())
-        if (signature.equals(expectedSignature, ignoreCase = true)) {
-            activeChallenges.remove(challenge)
-            return true
-        }
-        return false
+        return signature.equals(expectedSignature, ignoreCase = true)
     }
 
     // ========================================================================
@@ -1577,30 +1591,18 @@ class KioskService : Service() {
                 return newFixedLengthResponse(Response.Status.FORBIDDEN, "text/plain", "Hardware lock active on unauthorized device")
             }
 
+            val clientIp = session.headers["remote-addr"] ?: session.headers["http-client-ip"] ?: "unknown"
+            if (isRateLimited(clientIp)) {
+                return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Rate limit exceeded")
+            }
+
             if (uri == "/coin") {
                 val txId = params["tx_id"] ?: params["nonce"] ?: UUID.randomUUID().toString()
                 val seconds = params["seconds"]?.toIntOrNull() ?: (minutesPerCoin.value * 60)
                 val challenge = params["challenge"]
                 val signature = params["signature"] ?: params["sig"]
-                val ts = params["ts"] ?: params["timestamp"]
 
-                var isAuthorized = false
                 if (challenge != null && signature != null && verifyChallengeAndSignature(challenge, signature)) {
-                    isAuthorized = true
-                } else if (ts != null && signature != null) {
-                    val expected1 = generateSignature(deviceId.value, ts, getSecretKey())
-                    val expected2 = calculateHmac("$txId:$ts", getSecretKey())
-                    if (signature.equals(expected1, ignoreCase = true) || signature.equals(expected2, ignoreCase = true)) {
-                        isAuthorized = true
-                    }
-                } else if (signature != null) {
-                    val expected = calculateHmac(txId, getSecretKey())
-                    if (signature.equals(expected, ignoreCase = true)) {
-                        isAuthorized = true
-                    }
-                }
-
-                if (isAuthorized) {
                     val amount = params["amount"]?.toDoubleOrNull() ?: pricePerCoin.value
                     addTimeFromMaster(seconds, "HTTP /coin", txId, amount)
                     return newFixedLengthResponse(Response.Status.OK, "text/plain", "OK")
@@ -1898,17 +1900,12 @@ class KioskService : Service() {
                         val seconds = json.optInt("seconds", minutesPerCoin.value * 60)
                         val amount = json.optDouble("amount", pricePerCoin.value)
                         val txId = json.optString("tx_id", "")
-                        val msgTs = json.optString("ts", "")
+                        val challenge = json.optString("challenge", "")
                         val sig = json.optString("sig", json.optString("signature", ""))
 
-                        // If signature provided by master, verify integrity
-                        if (sig.isNotBlank()) {
-                            val payload = if (msgTs.isNotBlank()) "$txId:$msgTs" else txId
-                            val expectedSig = calculateHmac(payload, getSecretKey())
-                            val expectedSigAlt = calculateHmac(txId, getSecretKey())
-                            if (!sig.equals(expectedSig, ignoreCase = true) && !sig.equals(expectedSigAlt, ignoreCase = true)) {
-                                Log.w(TAG, "Warning: Unverified coin message signature over WebSocket: sig=$sig")
-                            }
+                        if (challenge.isBlank() || sig.isBlank() || !verifyChallengeAndSignature(challenge, sig)) {
+                            Log.e(TAG, "Unverified coin message over WebSocket: challenge or signature missing/invalid")
+                            return
                         }
 
                         Log.d(TAG, "Received $event via WebSocket: seconds=$seconds, amount=₱$amount, tx_id=$txId")

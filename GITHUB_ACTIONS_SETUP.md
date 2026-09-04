@@ -6,7 +6,7 @@ This guide explains how to automatically compile your Android Kiosk application 
 
 We have configured a GitHub Actions workflow (`.github/workflows/build-apk.yml`) that triggers automatically when you push code to the `main` branch. It will:
 1. Check out your code.
-2. Set up the Java JDK and compile the **Debug APK**.
+2. Set up the Java JDK and compile the **Release APK**.
 3. Overwrite the `latest` tag in your GitHub repository's **Releases** page.
 4. Upload the fresh `.apk` file to this public release.
 
@@ -17,12 +17,12 @@ Because GitHub Releases are 100% public (unlike GitHub Actions Artifacts), your 
 Since your web dashboard is hosted on Cloudflare Pages, it needs to point the QR code to this public release URL on GitHub.
 
 1. Open `website/install.html`.
-2. Locate the JavaScript section at the bottom (around line 142).
+2. Locate the JavaScript section at the bottom.
 3. Change the placeholder `apkUrl` to match your GitHub username and repository name:
 ```javascript
-const apkUrl = "https://github.com/YOUR_USERNAME/YOUR_REPO/releases/latest/download/app-debug.apk";
+const apkUrl = "https://github.com/YOUR_USERNAME/YOUR_REPO/releases/latest/download/app-release.apk";
 ```
-*(Example: `https://github.com/google/aistudio-kiosk/releases/latest/download/app-debug.apk`)*
+*(Example: `https://github.com/google/aistudio-kiosk/releases/latest/download/app-release.apk`)*
 
 Now, every time you push code to GitHub:
 * Cloudflare Pages will automatically update your dashboard UI.

@@ -77,6 +77,7 @@ import com.pisophone.kiosk.security.KioskSecurity
 import com.pisophone.kiosk.util.AppLauncher
 import com.pisophone.kiosk.ui.DeviceOwnerScreen
 import com.pisophone.kiosk.ui.HardwareLockScreen
+import com.pisophone.kiosk.ui.ProvisioningScreen
 import com.pisophone.kiosk.ui.TutorialScreen
 import com.pisophone.kiosk.ui.ActivationCelebrationDialog
 import com.pisophone.kiosk.ui.theme.PisoPhoneLauncherTheme
@@ -152,6 +153,7 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     var isAppAllowed by remember { mutableStateOf(HardwareLockManager.isAppAllowedToRun(this@MainActivity)) }
                     var isTutorialCompleted by remember { mutableStateOf(HardwareLockManager.isTutorialCompleted(this@MainActivity)) }
+                    var isProvisioned by remember { mutableStateOf(KioskSecurity.getAdminPin(this@MainActivity) != "1234") }
                     var showCelebration by remember { mutableStateOf(false) }
                     var licenseInfo by remember { mutableStateOf(HardwareLockManager.getLicenseInfo(this@MainActivity)) }
 
@@ -189,6 +191,10 @@ class MainActivity : ComponentActivity() {
                         DeviceOwnerScreen(
                             onCheckAgain = { checkDeviceOwner() },
                         )
+                    } else if (!isProvisioned) {
+                        ProvisioningScreen(onComplete = {
+                            isProvisioned = true
+                        })
                     } else if (!hasOverlayPermission) {
                         PermissionScreen(onRequest = {
                             val intent =

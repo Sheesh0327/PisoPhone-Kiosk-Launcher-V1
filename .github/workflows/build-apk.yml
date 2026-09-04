@@ -27,20 +27,36 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build Debug APK
-        run: ./gradlew :app:assembleDebug --no-daemon
+      - name: Decode Production Keystore
+        if: env.KEYSTORE_BASE64 != ''
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > /tmp/release-keystore.jks
+
+      - name: Build Release APK
+        env:
+          KEYSTORE_PATH: /tmp/release-keystore.jks
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: ./gradlew :app:assembleRelease --no-daemon
+
+      - name: Clean up Keystore
+        if: always()
+        run: rm -f /tmp/release-keystore.jks
 
       - name: Copy APK to website directory and commit
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk website/app-debug.apk
+          cp app/build/outputs/apk/release/app-release.apk website/app-release.apk
           
           # Calculate file SHA-256 checksum for audit & logs
-          FILE_SHA256_HEX=$(sha256sum website/app-debug.apk | awk '{print $1}')
+          FILE_SHA256_HEX=$(sha256sum website/app-release.apk | awk '{print $1}')
           echo "Generated APK SHA-256 (Hex): $FILE_SHA256_HEX"
           
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add website/app-debug.apk
+          git add website/app-release.apk
           # Only commit if there are changes to avoid failing the workflow
           git diff --staged --quiet || git commit -m "chore: auto-update APK in website directory"
           git push
@@ -53,6 +69,6 @@ jobs:
           gh release delete latest --cleanup-tag -y || true
           
           # Create a new 'latest' release and upload the fresh APK
-          gh release create latest app/build/outputs/apk/debug/app-debug.apk \
+          gh release create latest app/build/outputs/apk/release/app-release.apk \
             --title "Latest Android Build" \
             --notes "Automated rolling release from the main branch."

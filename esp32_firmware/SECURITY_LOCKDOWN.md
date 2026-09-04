@@ -45,10 +45,10 @@ In this system, a **256-bit High-Entropy Master Secret Key** (`MASTER_CRYPTO_SEC
 
 ### Operational Steps
 
-1. Keep `MASTER_CRYPTO_SECRET` identical across `esp32_kiosk_firmware.cpp`, `KioskSecurity.kt`, and `keygen.py`.
+1. Each device gets its own secret, generated securely on the Android kiosk during initial setup and entered once during provisioning via the ESP32 captive config portal.
 2. Flash the firmware onto the locked-down ESP32.
 3. When a customer powers on an unlicensed unit, the Android App displays the **Device Activation Required** overlay along with the ESP32's MAC Address.
-4. The customer sends you their payment and MAC Address (e.g., `12:34:56:78:90:AB`).
-5. You run `python keygen.py <MAC_ADDRESS>` to generate their unique 12-character activation key (e.g., `D6246BB8520D`).
+4. The customer sends you their payment, MAC Address (e.g., `12:34:56:78:90:AB`), and Device Provisioning Secret.
+5. You run `python keygen.py <MAC_ADDRESS> <DEVICE_SECRET>` to generate their unique 12-character activation key (e.g., `D6246BB8520D`).
 6. The customer enters the key into the app. The app sends it to the ESP32 `/activate` endpoint.
-7. The ESP32 verifies the HMAC signature natively using `MASTER_CRYPTO_SECRET`. If valid, it burns `licensed = true` into its NVS and immediately enables coin processing.
+7. The ESP32 verifies the HMAC signature natively using its configured device secret. If valid, it burns `licensed = true` into its NVS and immediately enables coin processing.

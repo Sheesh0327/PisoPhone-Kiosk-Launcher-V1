@@ -29,19 +29,45 @@ object KioskSecurity {
     private const val KEY_CONFIGURED_ESP32_IP = "configured_esp32_ip"
     private const val KEY_PROVISIONING_ADB_ALLOWED = "provisioning_adb_allowed"
     
-    // High-entropy 256-bit Master Cryptographic Secret (unified for activation & HMAC challenge security)
-    // Obfuscated using bitwise XOR to prevent simple extraction from decompiled APK strings.
-    private val OBFUSCATED_SECRET = intArrayOf(63, 99, 59, 105, 56, 109, 57, 107, 60, 110, 62, 98, 106, 104, 111, 63, 108, 107, 99, 56, 110, 57, 109, 62, 106, 105, 59, 98, 60, 104, 63, 111, 107, 108, 109, 56, 106, 99, 110, 57, 104, 62, 105, 63, 111, 60, 98, 59, 107, 56, 108, 57, 99, 62, 106, 63, 109, 60, 110, 59, 104, 56, 111, 57)
     private const val DEFAULT_PIN = "1234"
     private const val TAG = "KioskSecurity"
+    private const val KEY_DEVICE_SECRET = "device_crypto_secret"
 
     @Volatile
     private var prefsInstance: SharedPreferences? = null
+
+    @Volatile
+    private var encryptedPrefsInstance: SharedPreferences? = null
 
     private fun getPrefs(context: Context): SharedPreferences {
         return prefsInstance ?: synchronized(this) {
             prefsInstance ?: buildPrefs(context.applicationContext).also { 
                 prefsInstance = it 
+            }
+        }
+    }
+
+    private fun getEncryptedPrefs(context: Context): SharedPreferences? {
+        if (encryptedPrefsInstance != null) return encryptedPrefsInstance
+        
+        return synchronized(this) {
+            if (encryptedPrefsInstance != null) return encryptedPrefsInstance
+            try {
+                val masterKey = androidx.security.crypto.MasterKey.Builder(context)
+                    .setKeyScheme(androidx.security.crypto.MasterKey.KeyScheme.AES256_GCM)
+                    .build()
+                    
+                encryptedPrefsInstance = androidx.security.crypto.EncryptedSharedPreferences.create(
+                    context,
+                    "secret_prefs",
+                    masterKey,
+                    androidx.security.crypto.EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                    androidx.security.crypto.EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+                )
+                encryptedPrefsInstance
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to create EncryptedSharedPreferences: ${e.message}")
+                null
             }
         }
     }
@@ -192,11 +218,38 @@ object KioskSecurity {
     }
 
     fun getSharedSecret(context: Context): String {
-        return OBFUSCATED_SECRET.map { (it xor 0x5A).toChar() }.joinToString("")
+        val encryptedPrefs = getEncryptedPrefs(context)
+        if (encryptedPrefs != null) {
+            val existingSecret = encryptedPrefs.getString(KEY_DEVICE_SECRET, null)
+            if (existingSecret != null) return existingSecret
+
+            // Generate new 256-bit random secret if none exists
+            val randomBytes = ByteArray(32)
+            java.security.SecureRandom().nextBytes(randomBytes)
+            val newSecret = randomBytes.joinToString("") { "%02x".format(it) }
+            encryptedPrefs.edit().putString(KEY_DEVICE_SECRET, newSecret).apply()
+            return newSecret
+        }
+        
+        // Fallback for DirectBoot if encrypted prefs crash
+        val prefs = getPrefs(context)
+        var secret = prefs.getString(KEY_DEVICE_SECRET, null)
+        if (secret == null) {
+            val randomBytes = ByteArray(32)
+            java.security.SecureRandom().nextBytes(randomBytes)
+            secret = randomBytes.joinToString("") { "%02x".format(it) }
+            prefs.edit().putString(KEY_DEVICE_SECRET, secret).apply()
+        }
+        return secret!!
     }
 
     fun setSharedSecret(context: Context, newSecret: String) {
-        // Unified Master Secret Key is cryptographically locked and immutable
+        val encryptedPrefs = getEncryptedPrefs(context)
+        if (encryptedPrefs != null) {
+            encryptedPrefs.edit().putString(KEY_DEVICE_SECRET, newSecret.trim()).apply()
+        } else {
+            getPrefs(context).edit().putString(KEY_DEVICE_SECRET, newSecret.trim()).apply()
+        }
     }
 
     fun getAdminPin(context: Context): String {
