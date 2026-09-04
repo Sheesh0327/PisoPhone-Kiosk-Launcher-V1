@@ -113,6 +113,8 @@
 
         /**
          * Connects to Android device via WebUSB ADB
+         * Supports connecting to already-paired devices (without showing picker popup if possible)
+         * as well as prompting the user with the WebUSB device picker.
          * @param {function} logCallback Function to output log messages
          * @returns {Promise<boolean>} Connection success status
          */
@@ -134,14 +136,41 @@
                     throw new Error("WebUSB is not supported by your browser. Please use Google Chrome, Microsoft Edge, or Brave.");
                 }
 
-                logCallback("Requesting WebUSB permission (select your Android phone from popup)...");
-                const webusbDevice = await Manager.requestDevice();
-                if (!webusbDevice) {
-                    throw new Error("No USB device selected.");
+                let webusbDevice = null;
+                let connection = null;
+
+                // Attempt to check if device is already paired/authorized in this browser session
+                try {
+                    const pairedDevices = await Manager.getDevices();
+                    if (pairedDevices && pairedDevices.length > 0) {
+                        for (const dev of pairedDevices) {
+                            try {
+                                logCallback(`Checking previously paired USB device: ${dev.name || dev.serial || 'Android Device'}...`);
+                                connection = await dev.connect();
+                                webusbDevice = dev;
+                                logCallback(`Connected to previously paired device: ${dev.name || dev.serial || 'Android Device'}`);
+                                break;
+                            } catch (devErr) {
+                                console.debug("Paired device connect attempt failed, falling back to picker:", devErr);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.debug("getDevices check:", e);
                 }
 
-                logCallback(`Device selected: ${webusbDevice.name || webusbDevice.serial || 'Android Device'}`);
-                this.connection = await webusbDevice.connect();
+                // If no paired device connected successfully, prompt user with standard WebUSB picker
+                if (!webusbDevice || !connection) {
+                    logCallback("Requesting WebUSB permission (select your Android phone from popup)...");
+                    webusbDevice = await Manager.requestDevice();
+                    if (!webusbDevice) {
+                        throw new Error("No USB device selected.");
+                    }
+                    logCallback(`Device selected: ${webusbDevice.name || webusbDevice.serial || 'Android Device'}`);
+                    connection = await webusbDevice.connect();
+                }
+
+                this.connection = connection;
                 this.credentialStore = new AdbCredentialWeb();
 
                 logCallback("Authenticating with device (Accept prompt on phone screen)...");
