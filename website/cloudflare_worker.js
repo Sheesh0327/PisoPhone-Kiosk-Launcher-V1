@@ -129,12 +129,17 @@ export default {
         }
 
         if (existing) {
-          const isPaid = existing.licenseType === 'PAID' && existing.paidExpiresAt > now;
+          const isPaid = existing.paidExpiresAt > now;
           const isLocked = !isPaid;
 
           existing.lastCheckinAt = now;
           existing.installCount = (existing.installCount || 1) + 1;
           existing.deviceModel = deviceModel || existing.deviceModel;
+
+          // Clean up old redundant properties if they exist
+          delete existing.licenseType;
+          delete existing.trialExpiresAt;
+          delete existing.paymentReference;
 
           if (env.DEVICE_STORE) {
             await env.DEVICE_STORE.put(deviceId, JSON.stringify(existing));
@@ -151,10 +156,8 @@ export default {
           return new Response(
             JSON.stringify({
               status: isPaid ? 'PAID' : 'UNACTIVATED',
-              licenseType: existing.licenseType || 'UNACTIVATED',
               deviceId: existing.deviceId,
               deviceModel: existing.deviceModel || deviceModel || 'Unknown Device',
-              trialExpiresAt: 0,
               paidExpiresAt: existing.paidExpiresAt || 0,
               daysRemaining: isPaid
                 ? Math.max(0, Math.ceil((existing.paidExpiresAt - now) / (24 * 60 * 60 * 1000)))
@@ -174,9 +177,7 @@ export default {
           deviceId,
           hardwareHash,
           deviceModel: deviceModel || 'Unknown Device',
-          licenseType: 'UNACTIVATED',
           firstRegisteredAt: now,
-          trialExpiresAt: 0,
           paidExpiresAt: 0,
           lastCheckinAt: now,
           installCount: 1,
@@ -189,10 +190,8 @@ export default {
         return new Response(
           JSON.stringify({
             status: 'UNACTIVATED',
-            licenseType: 'UNACTIVATED',
             deviceId,
             deviceModel: newRecord.deviceModel,
-            trialExpiresAt: 0,
             paidExpiresAt: 0,
             daysRemaining: 0,
             serverTime: now,
@@ -221,7 +220,7 @@ export default {
           if (raw) record = JSON.parse(raw);
         }
 
-        if (!record || record.licenseType !== 'PAID' || record.paidExpiresAt <= now) {
+        if (!record || !(record.paidExpiresAt > now)) {
           return new Response(
             JSON.stringify({
               paid: false,
@@ -237,6 +236,9 @@ export default {
 
         // Generate cryptographically unforgeable asymmetric RSA license token
         const token = await generateLicenseToken(deviceId, record.paidExpiresAt, env);
+        const lastRef = Array.isArray(record.processedPaymentRefs) && record.processedPaymentRefs.length > 0 
+          ? record.processedPaymentRefs[record.processedPaymentRefs.length - 1] 
+          : 'CONFIRMED';
 
         return new Response(
           JSON.stringify({
@@ -245,7 +247,7 @@ export default {
             deviceId,
             deviceModel: record.deviceModel || 'Android Device',
             paidExpiresAt: record.paidExpiresAt,
-            paymentReference: record.paymentReference || 'CONFIRMED',
+            paymentReference: lastRef,
             daysRemaining: Math.max(0, Math.ceil((record.paidExpiresAt - now) / (24 * 60 * 60 * 1000))),
             signature: token.signature,
             licenseKey: token.licenseKey,
@@ -337,15 +339,18 @@ export default {
         const currentPaidExpires = record.paidExpiresAt || 0;
         const newPaidExpires = (currentPaidExpires > now ? currentPaidExpires : now) + ONE_YEAR_MS;
 
-        record.licenseType = 'PAID';
         record.paidExpiresAt = newPaidExpires;
         record.lastCheckinAt = now;
-        record.paymentReference = cleanPaymentRef;
         record.paidAt = now;
         
         // Track recent payment references for deduplication
         processedRefs.push(cleanPaymentRef);
         record.processedPaymentRefs = processedRefs.slice(-25); // retain last 25 refs
+        
+        // Clean up old redundant properties
+        delete record.licenseType;
+        delete record.paymentReference;
+        delete record.trialExpiresAt;
 
         if (env.DEVICE_STORE) {
           await env.DEVICE_STORE.put(deviceId, JSON.stringify(record));
@@ -430,13 +435,16 @@ export default {
         const currentPaidExpires = record.paidExpiresAt || 0;
         const newPaidExpires = (currentPaidExpires > now ? currentPaidExpires : now) + ONE_YEAR_MS;
 
-        record.licenseType = 'PAID';
         record.paidExpiresAt = newPaidExpires;
         record.lastCheckinAt = now;
-        record.paymentReference = cleanPaymentRef;
         record.paidAt = now;
         processedRefs.push(cleanPaymentRef);
         record.processedPaymentRefs = processedRefs.slice(-25);
+
+        // Clean up old redundant properties
+        delete record.licenseType;
+        delete record.paymentReference;
+        delete record.trialExpiresAt;
 
         if (env.DEVICE_STORE) {
           await env.DEVICE_STORE.put(cleanId, JSON.stringify(record));
