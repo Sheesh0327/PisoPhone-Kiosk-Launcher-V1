@@ -161,23 +161,41 @@
         }
 
         /**
-         * Executes an ADB shell command and returns its text output
+         * Executes an ADB shell command and returns its text output with safety timeout
          * @param {string} command The shell command to execute
+         * @param {number} timeoutMs Maximum duration to wait before aborting
          * @returns {Promise<string>} Output of the shell command
          */
-        async shell(command) {
+        async shell(command, timeoutMs = 12000) {
             if (!this.adb) throw new Error("Device not connected.");
             
-            if (this.adb.subprocess && this.adb.subprocess.noneProtocol && typeof this.adb.subprocess.noneProtocol.spawnWaitText === 'function') {
-                return await this.adb.subprocess.noneProtocol.spawnWaitText(command);
+            const execPromise = (async () => {
+                if (this.adb.subprocess && this.adb.subprocess.noneProtocol && typeof this.adb.subprocess.noneProtocol.spawnWaitText === 'function') {
+                    return await this.adb.subprocess.noneProtocol.spawnWaitText(command);
+                }
+                if (this.adb.subprocess && typeof this.adb.subprocess.spawnWaitText === 'function') {
+                    return await this.adb.subprocess.spawnWaitText(command);
+                }
+                if (typeof this.adb.shell === 'function') {
+                    return await this.adb.shell(command);
+                }
+                throw new Error("Shell service unavailable on this device.");
+            })();
+
+            if (!timeoutMs || timeoutMs <= 0) return await execPromise;
+
+            let timer;
+            const timeoutPromise = new Promise((_, reject) => {
+                timer = setTimeout(() => {
+                    reject(new Error(`ADB command timed out (${Math.round(timeoutMs / 1000)}s): ${command.substring(0, 40)}`));
+                }, timeoutMs);
+            });
+
+            try {
+                return await Promise.race([execPromise, timeoutPromise]);
+            } finally {
+                clearTimeout(timer);
             }
-            if (this.adb.subprocess && typeof this.adb.subprocess.spawnWaitText === 'function') {
-                return await this.adb.subprocess.spawnWaitText(command);
-            }
-            if (typeof this.adb.shell === 'function') {
-                return await this.adb.shell(command);
-            }
-            throw new Error("Shell service unavailable on this device.");
         }
 
         /**
@@ -281,95 +299,95 @@
         /**
          * Inspects and computes canonical hardware identifier.
          * Ensures 100% consistency with the Android app by:
-         * 1. Directly querying the app via GET_DEVICE_ID broadcast if installed
-         * 2. Querying persistent Global Settings (pisophone_hw_id)
-         * 3. Computing canonical hash and syncing it to device settings
+         * 1. Querying persistent Global Settings (pisophone_hw_id)
+         * 2. Computing canonical hash in a single high-speed shell round-trip
+         * 3. Syncing the canonical ID to device settings
          */
         async getHardwareInfo(logCallback = console.log) {
             if (!this.adb) throw new Error("Device not connected.");
 
-            const getProp = async (prop) => {
-                try {
-                    const res = await this.shell(`getprop ${prop}`);
-                    return res ? res.trim() : "";
-                } catch (e) { return ""; }
-            };
+            // Probe hardware properties in a single consolidated shell execution to prevent stream freezes
+            const dumpCmd = `echo "===PISO_START==="; settings get global pisophone_hw_id; echo "---"; settings get secure android_id; echo "---"; getprop ro.product.brand; echo "---"; getprop ro.product.manufacturer; echo "---"; getprop ro.product.model; echo "---"; getprop ro.product.board; echo "---"; getprop ro.product.device; echo "---"; getprop ro.hardware; echo "---"; getprop ro.product.name; echo "===PISO_END==="`;
 
-            const brandProp = (await getProp("ro.product.brand")) || (await getProp("ro.product.manufacturer")) || "";
-            const modelProp = (await getProp("ro.product.model")) || "Android Device";
-            let deviceModel = modelProp;
-            if (brandProp && modelProp && !modelProp.toLowerCase().startsWith(brandProp.toLowerCase())) {
-                deviceModel = `${brandProp} ${modelProp}`.trim();
-            }
+            let globalSetting = "";
+            let androidId = "UNKNOWN_ID";
+            let brand = "";
+            let manufacturer = "";
+            let model = "Android Device";
+            let board = "";
+            let device = "";
+            let hardware = "";
+            let product = "";
 
-            // Priority 1: Direct app query via administrative broadcast
             try {
-                const broadcastRes = await this.shell("am broadcast -a com.pisophone.kiosk.GET_DEVICE_ID -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver");
-                const match = broadcastRes.match(/data="([^"]+)"/) || broadcastRes.match(/(HW-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4})/);
-                if (match && match[1] && match[1].startsWith("HW-")) {
-                    const directId = match[1].trim();
-                    logCallback(`Directly retrieved synchronized Device ID from app: ${directId}`);
-                    try {
-                        await this.shell(`settings put global pisophone_hw_id ${directId}`);
-                    } catch (e) {}
-                    return {
-                        deviceId: directId,
-                        deviceModel,
-                        source: 'app_direct'
-                    };
+                const rawOutput = await this.shell(dumpCmd, 8000);
+                const startIndex = rawOutput.indexOf("===PISO_START===");
+                const endIndex = rawOutput.indexOf("===PISO_END===");
+                if (startIndex !== -1 && endIndex !== -1) {
+                    const block = rawOutput.substring(startIndex + 16, endIndex).trim();
+                    const parts = block.split("---").map(s => s.trim());
+                    globalSetting = parts[0] || "";
+                    androidId = parts[1] || "UNKNOWN_ID";
+                    brand = parts[2] || "";
+                    manufacturer = parts[3] || "";
+                    model = parts[4] || "Android Device";
+                    board = parts[5] || "";
+                    device = parts[6] || "";
+                    hardware = parts[7] || "";
+                    product = parts[8] || "";
                 }
-            } catch (e) {
-                // App not installed or not active yet, proceed to next priority
+            } catch (err) {
+                logCallback(`Notice: Quick hardware probe note: ${err.message || err}. Continuing with default profile.`);
             }
 
-            // Priority 2: Check persistent Global Setting (pisophone_hw_id)
-            try {
-                const globalSetting = (await this.shell("settings get global pisophone_hw_id")).trim();
-                if (globalSetting && globalSetting.startsWith("HW-") && !globalSetting.includes("null") && !globalSetting.includes("not found")) {
-                    logCallback(`Retrieved persistent Device ID from global settings: ${globalSetting}`);
-                    return {
-                        deviceId: globalSetting,
-                        deviceModel,
-                        source: 'global_setting'
-                    };
-                }
-            } catch (e) {
-                // Fall through
+            let deviceModel = model;
+            const effectiveBrand = brand || manufacturer || "";
+            if (effectiveBrand && model && !model.toLowerCase().startsWith(effectiveBrand.toLowerCase())) {
+                deviceModel = `${effectiveBrand} ${model}`.trim();
             }
 
-            // Priority 3: Compute canonical immutable hardware identity
-            const androidId = (await this.shell("settings get secure android_id")).trim() || "UNKNOWN_ID";
-            const board = await getProp("ro.product.board");
-            let brand = await getProp("ro.product.brand");
-            const manufacturer = await getProp("ro.product.manufacturer");
-            if (!brand || brand.toLowerCase() === "unknown") {
+            // Priority 1: Check persistent Global Setting (pisophone_hw_id)
+            if (globalSetting && globalSetting.startsWith("HW-") && !globalSetting.includes("null") && !globalSetting.includes("not found")) {
+                logCallback(`Retrieved persistent Device ID from global settings: ${globalSetting}`);
+                return {
+                    deviceId: globalSetting,
+                    deviceModel,
+                    source: 'global_setting'
+                };
+            }
+
+            // Priority 2: Compute canonical immutable hardware identity
+            if (!effectiveBrand || effectiveBrand.toLowerCase() === "unknown") {
                 brand = manufacturer || "";
+            } else {
+                brand = effectiveBrand;
             }
-            const device = await getProp("ro.product.device");
-            const hardware = await getProp("ro.hardware");
-            const model = await getProp("ro.product.model");
-            const product = await getProp("ro.product.name");
 
             const rawHardwareString = `${androidId}|${board}|${brand}|${device}|${hardware}|${manufacturer}|${model}|${product}`;
             
-            const encoder = new TextEncoder();
-            const data = encoder.encode(rawHardwareString);
-            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            const hex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
-            
-            const deviceId = `HW-${hex.substring(0, 4)}-${hex.substring(4, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}`;
+            let deviceId;
+            let hex = "";
+            try {
+                const encoder = new TextEncoder();
+                const data = encoder.encode(rawHardwareString);
+                const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+                const hashArray = Array.from(new Uint8Array(hashBuffer));
+                hex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+                deviceId = `HW-${hex.substring(0, 4)}-${hex.substring(4, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}`;
+            } catch (hashErr) {
+                deviceId = `HW-${(androidId.replace(/[^a-zA-Z0-9]/g, '') || "DEVICE").substring(0, 16).toUpperCase()}`;
+            }
 
             // Persist synchronized ID to device settings so app reads the exact same ID
             try {
-                await this.shell(`settings put global pisophone_hw_id ${deviceId}`);
+                await this.shell(`settings put global pisophone_hw_id ${deviceId}`, 4000);
                 logCallback(`Synchronized canonical Device ID to device settings: ${deviceId}`);
             } catch (e) {}
 
             return {
                 deviceId,
                 deviceModel,
-                hardwareHash: hex,
+                hardwareHash: hex || deviceId,
                 rawHardwareString,
                 source: 'computed_synced'
             };
@@ -398,7 +416,7 @@
                 const deviceModel = hwInfo.deviceModel;
                 logCallback(`Device Hardware ID: ${deviceId} (${deviceModel})`);
                 
-                // Query Cloudflare KV / Worker endpoint for license status
+                // Query Cloudflare KV / Worker endpoint for license status with 4s timeout
                 try {
                     let ownerToken = null;
                     try {
@@ -409,9 +427,13 @@
                     } catch(e) {}
 
                     const workerApiBase = 'https://pisophone-licensing-api.evankhell897.workers.dev';
+                    const controller = new AbortController();
+                    const abortTimer = setTimeout(() => controller.abort(), 4000);
+
                     const checkResp = await fetch(`${workerApiBase}/api/device/register`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
+                        signal: controller.signal,
                         body: JSON.stringify({
                             deviceId: deviceId,
                             hardwareHash: deviceId,
@@ -419,6 +441,8 @@
                             ownerToken: ownerToken
                         })
                     });
+                    clearTimeout(abortTimer);
+
                     if (checkResp.ok) {
                         serverLicenseData = await checkResp.json();
                         if (serverLicenseData.status === 'PAID') {
@@ -428,10 +452,10 @@
                         }
                     }
                 } catch (apiErr) {
-                    logCallback(`Note: Cloudflare backend offline/unreachable; proceeding with hardware local seal.`);
+                    logCallback(`Note: Cloudflare check bypassed (${apiErr.name === 'AbortError' ? 'timeout' : 'offline'}); continuing local installation.`);
                 }
             } catch (e) {
-                logCallback(`Hardware check warning: ${e.message}`);
+                logCallback(`Hardware check notice: ${e.message}`);
             }
 
             const apkBytes = this.cachedApkBytes;
