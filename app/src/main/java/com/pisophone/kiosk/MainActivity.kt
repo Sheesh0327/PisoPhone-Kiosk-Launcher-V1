@@ -172,7 +172,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    if (!isAppAllowed && !isTutorialCompleted) {
+                    if (!isTutorialCompleted) {
                         TutorialScreen(
                             onCompleteTutorial = {
                                 HardwareLockManager.setTutorialCompleted(this@MainActivity, true)
@@ -189,25 +189,22 @@ class MainActivity : ComponentActivity() {
                         DeviceOwnerScreen(
                             onCheckAgain = { checkDeviceOwner() },
                         )
+                    } else if (!hasOverlayPermission) {
+                        PermissionScreen(onRequest = {
+                            val intent =
+                                Intent(
+                                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                    Uri.parse("package:$packageName"),
+                                )
+                            overlayPermissionLauncher.launch(intent)
+                        })
                     } else {
-                        val hasPerm = hasOverlayPermission
-                        if (!hasPerm) {
-                            PermissionScreen(onRequest = {
-                                val intent =
-                                    Intent(
-                                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                        Uri.parse("package:$packageName"),
-                                    )
-                                overlayPermissionLauncher.launch(intent)
-                            })
-                        } else {
-                            LauncherScreen(
-                                apps = appsList,
-                                onAppClick = { appInfo ->
-                                    AppLauncher.launchApp(this@MainActivity, appInfo.packageName)
-                                }
-                            )
-                        }
+                        LauncherScreen(
+                            apps = appsList,
+                            onAppClick = { appInfo ->
+                                AppLauncher.launchApp(this@MainActivity, appInfo.packageName)
+                            }
+                        )
                     }
 
                     if (showCelebration) {

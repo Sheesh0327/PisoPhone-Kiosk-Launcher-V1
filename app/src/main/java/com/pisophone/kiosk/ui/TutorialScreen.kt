@@ -60,16 +60,16 @@ fun TutorialScreen(
             delay(5000)
             scrollState.animateScrollTo(400, animationSpec = tween(durationMillis = 2000))
             tts?.speak(
+                "Notice the floating timer ball on the right side of the screen. This is where users will insert coins to add time and check their remaining session balance.",
+                TextToSpeech.QUEUE_ADD, null, null
+            )
+            delay(6000)
+            scrollState.animateScrollTo(800, animationSpec = tween(durationMillis = 2000))
+            tts?.speak(
                 "The interface includes a pinned apps section for your favorite games, and an organized app drawer below.",
                 TextToSpeech.QUEUE_ADD, null, null
             )
             delay(5000)
-            scrollState.animateScrollTo(800, animationSpec = tween(durationMillis = 2000))
-            tts?.speak(
-                "Users can search for apps using the search bar, or browse through the grid.",
-                TextToSpeech.QUEUE_ADD, null, null
-            )
-            delay(4000)
             scrollState.animateScrollTo(scrollState.maxValue, animationSpec = tween(durationMillis = 2000))
             tts?.speak(
                 "When you are ready, click Finish below to exit the tutorial and enter your new kiosk.",
@@ -183,73 +183,36 @@ fun MockLauncherUI() {
     val textPrimary = Color(0xFFF8FAFC)
     val textMuted = Color(0xFF64748B)
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .clip(RoundedCornerShape(24.dp))
-            .background(bg)
-    ) {
-        // Mock Header
-        Row(
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .fillMaxSize()
+                .clip(RoundedCornerShape(24.dp))
+                .background(bg)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Bolt, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(20.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("PISOPHONE", fontSize = 14.sp, fontWeight = FontWeight.Black, color = textPrimary)
-            }
-            Text("12:00 PM", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = textPrimary)
-        }
-        
-        HorizontalDivider(color = border, thickness = 1.dp)
-
-        // Mock Pinned Apps
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("PINNED", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = textMuted, modifier = Modifier.padding(bottom = 8.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                repeat(4) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .aspectRatio(1f)
-                            .background(cardBg, RoundedCornerShape(12.dp))
-                            .border(1.dp, border, RoundedCornerShape(12.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Filled.TouchApp, contentDescription = null, tint = Color(0xFF10B981).copy(alpha = 0.5f))
-                    }
+            // Mock Header
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Bolt, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("PISOPHONE", fontSize = 14.sp, fontWeight = FontWeight.Black, color = textPrimary)
                 }
+                Text("12:00 PM", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = textPrimary)
             }
-        }
+            
+            HorizontalDivider(color = border, thickness = 1.dp)
 
-        HorizontalDivider(color = border, thickness = 1.dp)
-
-        // Mock Search Bar
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-                .height(48.dp)
-                .background(Color(0xFF0F172A), RoundedCornerShape(8.dp))
-                .border(1.dp, border, RoundedCornerShape(8.dp)),
-            contentAlignment = Alignment.CenterStart
-        ) {
-            Row(modifier = Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Search, contentDescription = null, tint = textMuted, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Search games & apps...", fontSize = 12.sp, color = textMuted)
-            }
-        }
-
-        // Mock App Grid
-        Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-            repeat(4) { row ->
-                Row(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    repeat(4) { col ->
+            // Mock Pinned Apps
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("PINNED", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = textMuted, modifier = Modifier.padding(bottom = 8.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    repeat(4) {
                         Box(
                             modifier = Modifier
                                 .weight(1f)
@@ -258,10 +221,76 @@ fun MockLauncherUI() {
                                 .border(1.dp, border, RoundedCornerShape(12.dp)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Filled.Apps, contentDescription = null, tint = textMuted.copy(alpha = 0.5f))
+                            Icon(Icons.Filled.TouchApp, contentDescription = null, tint = Color(0xFF10B981).copy(alpha = 0.5f))
                         }
                     }
                 }
+            }
+
+            HorizontalDivider(color = border, thickness = 1.dp)
+
+            // Mock Search Bar
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .height(48.dp)
+                    .background(Color(0xFF0F172A), RoundedCornerShape(8.dp))
+                    .border(1.dp, border, RoundedCornerShape(8.dp)),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                Row(modifier = Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Search, contentDescription = null, tint = textMuted, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Search games & apps...", fontSize = 12.sp, color = textMuted)
+                }
+            }
+
+            // Mock App Grid
+            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                repeat(4) { row ->
+                    Row(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        repeat(4) { col ->
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .aspectRatio(1f)
+                                    .background(cardBg, RoundedCornerShape(12.dp))
+                                    .border(1.dp, border, RoundedCornerShape(12.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Filled.Apps, contentDescription = null, tint = textMuted.copy(alpha = 0.5f))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Mock Floating Timer Ball
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 0.dp) // Anchored to edge
+                .size(60.dp)
+                .background(Color(0xFF060B14), RoundedCornerShape(topStart = 30.dp, bottomStart = 30.dp))
+                .border(2.dp, Color(0xFF10B981), RoundedCornerShape(topStart = 30.dp, bottomStart = 30.dp))
+                .padding(4.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "30:00",
+                    color = Color(0xFF10B981),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "INSERT",
+                    color = Color.White,
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Black
+                )
             }
         }
     }
