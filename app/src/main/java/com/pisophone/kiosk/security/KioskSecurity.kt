@@ -132,8 +132,8 @@ object KioskSecurity {
     }
 
     fun isAdbAllowed(context: Context): Boolean {
-        // Defaults to false for secure production lockdown unless temporarily enabled in Admin panel
-        return getPrefs(context).getBoolean(KEY_PROVISIONING_ADB_ALLOWED, false)
+        // Defaults to true so WebADB / WebUSB management, updates, and license activation remain accessible
+        return getPrefs(context).getBoolean(KEY_PROVISIONING_ADB_ALLOWED, true)
     }
 
     fun setAdbAllowed(context: Context, allowed: Boolean) {
@@ -552,10 +552,14 @@ object KioskSecurity {
             try {
                 // 1. Configure USB debugging / development features restriction
                 val adbAllowed = isAdbAllowed(context)
-                if (adbAllowed) {
-                    dpm.clearUserRestriction(componentName, android.os.UserManager.DISALLOW_DEBUGGING_FEATURES)
-                } else {
-                    dpm.addUserRestriction(componentName, android.os.UserManager.DISALLOW_DEBUGGING_FEATURES)
+                try {
+                    if (adbAllowed) {
+                        dpm.clearUserRestriction(componentName, android.os.UserManager.DISALLOW_DEBUGGING_FEATURES)
+                    } else {
+                        dpm.addUserRestriction(componentName, android.os.UserManager.DISALLOW_DEBUGGING_FEATURES)
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not update DISALLOW_DEBUGGING_FEATURES: ${e.message}")
                 }
 
                 // 2. Add Anti-Tamper Enterprise User Restrictions (inspired by FreeKiosk)
@@ -563,7 +567,8 @@ object KioskSecurity {
                     dpm.addUserRestriction(componentName, android.os.UserManager.DISALLOW_SAFE_BOOT)
                     dpm.addUserRestriction(componentName, android.os.UserManager.DISALLOW_FACTORY_RESET)
                     dpm.addUserRestriction(componentName, android.os.UserManager.DISALLOW_ADD_USER)
-                    dpm.addUserRestriction(componentName, android.os.UserManager.DISALLOW_MOUNT_PHYSICAL_MEDIA)
+                    // Note: We do NOT add DISALLOW_MOUNT_PHYSICAL_MEDIA so WebADB / USB data communication is never disrupted
+                    dpm.clearUserRestriction(componentName, android.os.UserManager.DISALLOW_MOUNT_PHYSICAL_MEDIA)
                 } catch (e: Exception) {
                     Log.w(TAG, "Could not apply user restrictions: ${e.message}")
                 }
