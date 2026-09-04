@@ -253,7 +253,7 @@ class LockScreenOverlay(
                 com.pisophone.kiosk.security.HardwareLockManager.isTutorialCompleted(context) 
             }
             
-            val isVisible = isTutorialComplete && (appState == 0 || appState == 1 || appState == 4)
+            val isVisible = isTutorialComplete && (appState == 0 || appState == 1)
             var renderLockScreen by remember { mutableStateOf(isVisible) }
             val unlockAlpha by androidx.compose.animation.core.animateFloatAsState(
                 targetValue = if (isVisible) 1f else 0f,
