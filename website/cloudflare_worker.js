@@ -107,6 +107,30 @@ async function verifyGoogleToken(token) {
   return null;
 }
 
+async function checkRateLimit(request, env, limit = 60, windowSeconds = 60) {
+  if (!env.DEVICE_STORE) return true;
+  try {
+    const clientIp = request.headers.get('cf-connecting-ip') || request.headers.get('x-real-ip') || 'unknown-client';
+    const currentWindow = Math.floor(Date.now() / (windowSeconds * 1000));
+    const rateLimitKey = `RATELIMIT:${clientIp}:${currentWindow}`;
+    
+    const countStr = await env.DEVICE_STORE.get(rateLimitKey);
+    const count = countStr ? parseInt(countStr, 10) : 0;
+    
+    if (count >= limit) {
+      return false;
+    }
+    
+    await env.DEVICE_STORE.put(rateLimitKey, (count + 1).toString(), {
+      expirationTtl: windowSeconds + 10
+    });
+    return true;
+  } catch (e) {
+    console.error('Rate limit error:', e);
+    return true; // Fail open to prevent service denial if KV is experiencing transient issues
+  }
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -123,6 +147,15 @@ export default {
 
     if (method === 'OPTIONS') {
       return new Response(null, { headers: corsHeaders });
+    }
+
+    // Apply Rate Limiting (60 requests per minute per IP)
+    const isAllowed = await checkRateLimit(request, env, 60, 60);
+    if (!isAllowed) {
+      return new Response(JSON.stringify({ error: 'Too many requests. Please slow down.', serverTime: Date.now() }), {
+        status: 429,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': '60' },
+      });
     }
 
     try {

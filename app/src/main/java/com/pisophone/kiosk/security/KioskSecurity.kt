@@ -27,6 +27,7 @@ object KioskSecurity {
     private const val KEY_LOW_BATTERY_THRESHOLD = "low_battery_threshold"
     private const val KEY_HIGH_BATTERY_THRESHOLD = "high_battery_threshold"
     private const val KEY_CONFIGURED_ESP32_IP = "configured_esp32_ip"
+    private const val KEY_PROVISIONING_ADB_ALLOWED = "provisioning_adb_allowed"
     
     // High-entropy 256-bit Master Cryptographic Secret (unified for activation & HMAC challenge security)
     // Obfuscated using bitwise XOR to prevent simple extraction from decompiled APK strings.
@@ -102,6 +103,16 @@ object KioskSecurity {
 
     fun setConfiguredEsp32Ip(context: Context, ip: String) {
         getPrefs(context).edit().putString(KEY_CONFIGURED_ESP32_IP, ip.trim()).apply()
+    }
+
+    fun isAdbAllowed(context: Context): Boolean {
+        // Defaults to false for secure production lockdown unless temporarily enabled in Admin panel
+        return getPrefs(context).getBoolean(KEY_PROVISIONING_ADB_ALLOWED, false)
+    }
+
+    fun setAdbAllowed(context: Context, allowed: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_PROVISIONING_ADB_ALLOWED, allowed).apply()
+        applyStrictKioskPolicies(context)
     }
 
     fun clearAppCacheAndData(context: Context): Boolean {
@@ -486,8 +497,13 @@ object KioskSecurity {
 
         if (dpm.isDeviceOwnerApp(context.packageName)) {
             try {
-                // 1. Explicitly clear any restrictions preventing USB debugging / development features
-                dpm.clearUserRestriction(componentName, android.os.UserManager.DISALLOW_DEBUGGING_FEATURES)
+                // 1. Configure USB debugging / development features restriction
+                val adbAllowed = isAdbAllowed(context)
+                if (adbAllowed) {
+                    dpm.clearUserRestriction(componentName, android.os.UserManager.DISALLOW_DEBUGGING_FEATURES)
+                } else {
+                    dpm.addUserRestriction(componentName, android.os.UserManager.DISALLOW_DEBUGGING_FEATURES)
+                }
 
                 // 2. Add Anti-Tamper Enterprise User Restrictions (inspired by FreeKiosk)
                 try {
@@ -499,9 +515,9 @@ object KioskSecurity {
                     Log.w(TAG, "Could not apply user restrictions: ${e.message}")
                 }
 
-                // 3. Enable ADB globally if permitted by device policy
+                // 3. Set ADB global setting if permitted by device policy
                 try {
-                    dpm.setGlobalSetting(componentName, Settings.Global.ADB_ENABLED, "1")
+                    dpm.setGlobalSetting(componentName, Settings.Global.ADB_ENABLED, if (adbAllowed) "1" else "0")
                 } catch (e: Exception) {
                     Log.w(TAG, "Could not set ADB_ENABLED global setting: ${e.message}")
                 }

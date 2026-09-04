@@ -1898,6 +1898,19 @@ class KioskService : Service() {
                         val seconds = json.optInt("seconds", minutesPerCoin.value * 60)
                         val amount = json.optDouble("amount", pricePerCoin.value)
                         val txId = json.optString("tx_id", "")
+                        val msgTs = json.optString("ts", "")
+                        val sig = json.optString("sig", json.optString("signature", ""))
+
+                        // If signature provided by master, verify integrity
+                        if (sig.isNotBlank()) {
+                            val payload = if (msgTs.isNotBlank()) "$txId:$msgTs" else txId
+                            val expectedSig = calculateHmac(payload, getSecretKey())
+                            val expectedSigAlt = calculateHmac(txId, getSecretKey())
+                            if (!sig.equals(expectedSig, ignoreCase = true) && !sig.equals(expectedSigAlt, ignoreCase = true)) {
+                                Log.w(TAG, "Warning: Unverified coin message signature over WebSocket: sig=$sig")
+                            }
+                        }
+
                         Log.d(TAG, "Received $event via WebSocket: seconds=$seconds, amount=₱$amount, tx_id=$txId")
                         addTimeFromMaster(seconds, "WebSocket Port 81", if (txId.isNotBlank()) txId else null, amount)
                         paymentTimeout.value = ARMING_TIMEOUT_SECONDS

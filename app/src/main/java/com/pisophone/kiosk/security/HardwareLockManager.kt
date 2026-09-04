@@ -65,6 +65,7 @@ object HardwareLockManager {
     private const val KEY_LAST_KNOWN_WALL_CLOCK = "license_last_wall_clock"
     private const val KEY_TIME_TAMPER_LOCKED = "license_time_tamper_locked"
     private const val KEY_LICENSE_SIGNATURE = "license_integrity_signature"
+    private const val KEY_SERVER_RSA_SIGNATURE = "license_server_rsa_signature"
 
     private const val HARDWARE_SECRET_SALT = "kiosk_hw_bind_salt_2026_x89a"
     private const val ONE_YEAR_MS = 365L * 24L * 60L * 60L * 1000L
@@ -301,9 +302,10 @@ object HardwareLockManager {
         val paidExpires = prefs.getLong(KEY_PAID_EXPIRES_TIME, 0L)
         val savedDays = prefs.getInt(KEY_SERVER_DAYS_REMAINING, 0)
         val licSig = prefs.getString(KEY_LICENSE_SIGNATURE, "") ?: ""
+        val serverRsaSig = prefs.getString(KEY_SERVER_RSA_SIGNATURE, "") ?: ""
 
-        // Check tamper signature
-        val expectedSig = generateLicenseSignature(hwId, status, paidExpires)
+        // Check tamper signature (includes lastCheck timestamp to prevent freezing 7-day clock)
+        val expectedSig = generateLicenseSignature(hwId, status, paidExpires, lastCheck)
         if (licSig.isNotEmpty() && licSig != expectedSig) {
             Log.w(TAG, "License signature mismatch! Lock enforced.")
             return LicenseInfo(
@@ -318,6 +320,24 @@ object HardwareLockManager {
 
         // 1. Check Paid License (Server-Authoritative with 7-Day verification interval)
         if (status == "PAID") {
+            // Must have a valid server RSA or HMAC signature stored
+            if (serverRsaSig.isNotEmpty()) {
+                val payload = "$hwId|$paidExpires"
+                val isRsaValid = verifyRsaSignature(payload, serverRsaSig)
+                val isLegacyValid = !isRsaValid && verifyLegacyHmac(payload, serverRsaSig)
+                if (!isRsaValid && !isLegacyValid) {
+                    Log.w(TAG, "Stored server cryptographic signature invalid! Lock enforced.")
+                    return LicenseInfo(
+                        state = LicenseState.EXPIRED_LOCKED,
+                        daysRemaining = 0,
+                        expiresAtMs = 0L,
+                        isPaid = false,
+                        hardwareId = hwId,
+                        deviceName = devName
+                    )
+                }
+            }
+
             val timeSinceLastCheck = if (lastCheck > 0L) now - lastCheck else Long.MAX_VALUE
 
             // Within the 7-day verification window
@@ -490,9 +510,10 @@ object HardwareLockManager {
 
             val trimmedKey = keyOrRef.trim()
             val parts = trimmedKey.split(".")
+            val isTokenFormat = parts.size == 4 && parts[0] == "PISO-1Y"
             var targetExpires = (if (currentPaidExpires > now) currentPaidExpires else now) + ONE_YEAR_MS
 
-            if (parts.size == 4 && parts[0] == "PISO-1Y") {
+            if (isTokenFormat) {
                 val licDevId = parts[1]
                 val licExpires = parts[2].toLongOrNull()
                 val licSig = parts[3]
@@ -539,14 +560,23 @@ object HardwareLockManager {
             }
 
             val targetHwId = prefs.getString(KEY_BOUND_HW_ID, null) ?: hwId
-            val sig = generateLicenseSignature(targetHwId, "PAID", targetExpires)
+            val checkTime = System.currentTimeMillis()
+            val sig = generateLicenseSignature(targetHwId, "PAID", targetExpires, checkTime)
 
             prefs.edit()
                 .putString(KEY_LICENSE_STATUS, "PAID")
                 .putLong(KEY_PAID_EXPIRES_TIME, targetExpires)
-                .putLong(KEY_LAST_SERVER_CHECK_TIME, System.currentTimeMillis())
+                .putLong(KEY_LAST_SERVER_CHECK_TIME, checkTime)
                 .putInt(KEY_SERVER_DAYS_REMAINING, 365)
                 .putString(KEY_LICENSE_SIGNATURE, sig)
+                .apply {
+                    if (isTokenFormat) {
+                        val tokenParts = trimmedKey.split(".")
+                        if (tokenParts.size >= 4) {
+                            putString(KEY_SERVER_RSA_SIGNATURE, tokenParts[3])
+                        }
+                    }
+                }
                 .putLong(KEY_LAST_KNOWN_WALL_CLOCK, now)
                 .putBoolean(KEY_TIME_TAMPER_LOCKED, false) // authenticated license clears tamper flag
                 .apply()
@@ -634,7 +664,20 @@ object HardwareLockManager {
                 val isExpired = respJson.optBoolean("isExpired", false) || status == "EXPIRED"
                 val paidExpires = respJson.optLong("paidExpiresAt", 0L)
                 val daysRemaining = respJson.optInt("daysRemaining", 0)
+                val signature = respJson.optString("signature", "")
                 val serverTime = respJson.optLong("serverTime", System.currentTimeMillis())
+
+                // Verify RSA / HMAC signature if status indicates PAID
+                var verifiedPaid = isPaid
+                if (isPaid && signature.isNotEmpty()) {
+                    val payload = "$hwId|$paidExpires"
+                    val isRsaValid = verifyRsaSignature(payload, signature)
+                    val isLegacyValid = !isRsaValid && verifyLegacyHmac(payload, signature)
+                    if (!isRsaValid && !isLegacyValid) {
+                        Log.w(TAG, "Backend sync returned unverified signature for PAID license! Marking unactivated.")
+                        verifiedPaid = false
+                    }
+                }
 
                 val prefs = getPrefs(context)
                 val previousStatus = prefs.getString(KEY_LICENSE_STATUS, "UNACTIVATED")
@@ -646,19 +689,22 @@ object HardwareLockManager {
                 editor.putInt(KEY_SERVER_DAYS_REMAINING, daysRemaining)
                 editor.putBoolean(KEY_TIME_TAMPER_LOCKED, false)
                 editor.putLong(KEY_LAST_KNOWN_WALL_CLOCK, maxOf(serverTime, now))
+                if (signature.isNotEmpty()) {
+                    editor.putString(KEY_SERVER_RSA_SIGNATURE, signature)
+                }
 
-                if (isPaid) {
+                if (verifiedPaid) {
                     editor.putString(KEY_LICENSE_STATUS, "PAID")
-                    editor.putString(KEY_LICENSE_SIGNATURE, generateLicenseSignature(hwId, "PAID", paidExpires))
+                    editor.putString(KEY_LICENSE_SIGNATURE, generateLicenseSignature(hwId, "PAID", paidExpires, now))
                     if (previousStatus != "PAID") {
                         activationCelebrationEvent.value = true
                     }
                 } else if (isExpired || (paidExpires in 1..serverTime)) {
                     editor.putString(KEY_LICENSE_STATUS, "EXPIRED")
-                    editor.putString(KEY_LICENSE_SIGNATURE, generateLicenseSignature(hwId, "EXPIRED", paidExpires))
+                    editor.putString(KEY_LICENSE_SIGNATURE, generateLicenseSignature(hwId, "EXPIRED", paidExpires, now))
                 } else {
                     editor.putString(KEY_LICENSE_STATUS, "UNACTIVATED")
-                    editor.putString(KEY_LICENSE_SIGNATURE, generateLicenseSignature(hwId, "UNACTIVATED", 0L))
+                    editor.putString(KEY_LICENSE_SIGNATURE, generateLicenseSignature(hwId, "UNACTIVATED", 0L, now))
                 }
 
                 editor.apply()
@@ -704,8 +750,8 @@ object HardwareLockManager {
         return hmacBytes.joinToString("") { "%02x".format(it) }
     }
 
-    private fun generateLicenseSignature(hwId: String, status: String, paidExp: Long): String {
-        val payload = "LIC|$hwId|$status|$paidExp|$HARDWARE_SECRET_SALT"
+    private fun generateLicenseSignature(hwId: String, status: String, paidExp: Long, lastCheck: Long = 0L): String {
+        val payload = "LIC|$hwId|$status|$paidExp|$lastCheck|$HARDWARE_SECRET_SALT"
         val mac = Mac.getInstance("HmacSHA256")
         val secretKey = SecretKeySpec(HARDWARE_SECRET_SALT.toByteArray(), "HmacSHA256")
         mac.init(secretKey)
