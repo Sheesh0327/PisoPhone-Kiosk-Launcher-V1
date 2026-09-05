@@ -134,7 +134,9 @@ class LockScreenOverlay(
         if (isViewAdded) return
 
         val isTutorialComplete = com.pisophone.kiosk.security.HardwareLockManager.isTutorialCompleted(context)
-        val initialVisible = isTutorialComplete && (appStateFlow.value == 0 || appStateFlow.value == 1 || appStateFlow.value == 4)
+        val isAppAllowed = com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
+        val isFullySetup = isTutorialComplete && isAppAllowed
+        val initialVisible = isFullySetup && (appStateFlow.value == 0 || appStateFlow.value == 1)
         val baseFlags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or 
                         WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                         WindowManager.LayoutParams.FLAG_FULLSCREEN or
@@ -165,11 +167,12 @@ class LockScreenOverlay(
             val esp32MacAddress by esp32MacAddressFlow.collectAsState()
             val licenseUpdateVersion by com.pisophone.kiosk.security.HardwareLockManager.licenseUpdateVersion.collectAsState()
             
-            val isTutorialComplete = remember(licenseUpdateVersion) { 
-                com.pisophone.kiosk.security.HardwareLockManager.isTutorialCompleted(context) 
+            val isSetupReady = remember(licenseUpdateVersion) { 
+                com.pisophone.kiosk.security.HardwareLockManager.isTutorialCompleted(context) &&
+                com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
             }
             
-            val isVisible = isTutorialComplete && (appState == 0 || appState == 1)
+            val isVisible = isSetupReady && (appState == 0 || appState == 1)
             var renderLockScreen by remember { mutableStateOf(isVisible) }
             val unlockAlpha by androidx.compose.animation.core.animateFloatAsState(
                 targetValue = if (isVisible) 1f else 0f,
@@ -263,7 +266,9 @@ class LockScreenOverlay(
         if (!isViewAdded) return
         try {
             overlayView.onResume()
-            val isVisible = appStateFlow.value == 0 || appStateFlow.value == 1
+            val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isTutorialCompleted(context) &&
+                               com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
+            val isVisible = isFullySetup && (appStateFlow.value == 0 || appStateFlow.value == 1)
             updateWindowFlagsAndDimensions(isVisible)
             overlayView.view.visibility = if (isVisible) View.VISIBLE else View.GONE
             overlayView.view.requestLayout()
@@ -347,16 +352,23 @@ class FloatingBallOverlay(
             val isSlotBusy by isSlotBusyFlow.collectAsState()
             val themeIndex by themeIndexFlow.collectAsState()
             val batteryStatus by batteryStatusFlow.collectAsState()
+            val licenseUpdateVersion by com.pisophone.kiosk.security.HardwareLockManager.licenseUpdateVersion.collectAsState()
             
-            LaunchedEffect(appState) {
-                if (appState == 2 || appState == 3) {
+            val isSetupReady = remember(licenseUpdateVersion) { 
+                com.pisophone.kiosk.security.HardwareLockManager.isTutorialCompleted(context) &&
+                com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
+            }
+            val isVisible = isSetupReady && (appState == 2 || appState == 3)
+            
+            LaunchedEffect(isVisible) {
+                if (isVisible) {
                     overlayView.view.visibility = View.VISIBLE
                 } else {
                     overlayView.view.visibility = View.GONE
                 }
             }
 
-            if (appState == 2 || appState == 3) {
+            if (isVisible) {
                 FloatingBall(
                     timeRemaining = sessionTime,
                     onInsertCoinClick = onInsertCoinClick,
@@ -428,8 +440,11 @@ class FloatingBallOverlay(
         if (!isViewAdded) return
         try {
             overlayView.onResume()
+            val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isTutorialCompleted(context) &&
+                               com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
             val appState = appStateFlow.value
-            overlayView.view.visibility = if (appState == 2 || appState == 3) View.VISIBLE else View.GONE
+            val isVisible = isFullySetup && (appState == 2 || appState == 3)
+            overlayView.view.visibility = if (isVisible) View.VISIBLE else View.GONE
             windowManager.updateViewLayout(overlayView.view, layoutParams)
             overlayView.view.requestLayout()
             overlayView.view.invalidate()

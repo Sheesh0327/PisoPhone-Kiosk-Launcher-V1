@@ -44,7 +44,8 @@ class MainActivity : ComponentActivity() {
     private fun checkDeviceOwner() {
         val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
         isDeviceOwner = dpm.isDeviceOwnerApp(packageName)
-        if (isDeviceOwner) {
+        val isFullySetup = HardwareLockManager.isTutorialCompleted(this) && HardwareLockManager.isAppAllowedToRun(this)
+        if (isDeviceOwner && isFullySetup) {
             if (!strictPoliciesApplied) {
                 KioskSecurity.applyStrictKioskPolicies(this)
                 strictPoliciesApplied = true
@@ -92,7 +93,6 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     var isAppAllowed by remember { mutableStateOf(HardwareLockManager.isAppAllowedToRun(this@MainActivity)) }
                     var isTutorialCompleted by remember { mutableStateOf(HardwareLockManager.isTutorialCompleted(this@MainActivity)) }
-                    var isProvisioned by remember { mutableStateOf(KioskSecurity.getAdminPin(this@MainActivity) != "1234") }
                     var showCelebration by remember { mutableStateOf(false) }
                     var licenseInfo by remember { mutableStateOf(HardwareLockManager.getLicenseInfo(this@MainActivity)) }
 
@@ -103,6 +103,7 @@ class MainActivity : ComponentActivity() {
                         isAppAllowed = HardwareLockManager.isAppAllowedToRun(this@MainActivity)
                         isTutorialCompleted = HardwareLockManager.isTutorialCompleted(this@MainActivity)
                         licenseInfo = HardwareLockManager.getLicenseInfo(this@MainActivity)
+                        checkDeviceOwner()
                     }
 
                     LaunchedEffect(celebrationTrigger) {
@@ -110,6 +111,7 @@ class MainActivity : ComponentActivity() {
                             isAppAllowed = HardwareLockManager.isAppAllowedToRun(this@MainActivity)
                             licenseInfo = HardwareLockManager.getLicenseInfo(this@MainActivity)
                             showCelebration = true
+                            checkDeviceOwner()
                         }
                     }
 
@@ -118,22 +120,20 @@ class MainActivity : ComponentActivity() {
                             onCompleteTutorial = {
                                 HardwareLockManager.setTutorialCompleted(this@MainActivity, true)
                                 isTutorialCompleted = true
+                                checkDeviceOwner()
                             }
                         )
                     } else if (!isAppAllowed) {
                         HardwareLockScreen(
                             onRebindSuccess = {
                                 isAppAllowed = true
+                                checkDeviceOwner()
                             },
                         )
                     } else if (!isDeviceOwner) {
                         DeviceOwnerScreen(
                             onCheckAgain = { checkDeviceOwner() },
                         )
-                    } else if (!isProvisioned) {
-                        ProvisioningScreen(onComplete = {
-                            isProvisioned = true
-                        })
                     } else if (!hasOverlayPermission) {
                         PermissionScreen(onRequest = {
                             val intent =
@@ -247,6 +247,11 @@ class MainActivity : ComponentActivity() {
     }
 
     fun tryEnableLockTaskMode() {
+        val isFullySetup = HardwareLockManager.isTutorialCompleted(this) && HardwareLockManager.isAppAllowedToRun(this)
+        if (!isFullySetup) {
+            isLockTaskActive = false
+            return
+        }
         try {
             val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as? android.app.admin.DevicePolicyManager
             val am = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
