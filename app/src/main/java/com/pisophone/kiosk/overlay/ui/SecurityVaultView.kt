@@ -27,7 +27,8 @@ import com.pisophone.kiosk.security.KioskSecurity
 @Composable
 fun SecurityVaultView(
     context: Context,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    onOpenRecoveryHub: (() -> Unit)? = null
 ) {
     var activeHelpDialog by remember { mutableStateOf<Pair<String, String>?>(null) }
     var showRecoveryHub by remember { mutableStateOf(false) }
@@ -81,7 +82,13 @@ fun SecurityVaultView(
                 context = context,
                 onClose = onClose,
                 onShowHelp = { t, d -> activeHelpDialog = Pair(t, d) },
-                onOpenRecoveryHub = { showRecoveryHub = true }
+                onOpenRecoveryHub = {
+                    if (onOpenRecoveryHub != null) {
+                        onOpenRecoveryHub()
+                    } else {
+                        showRecoveryHub = true
+                    }
+                }
             )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp), color = Color(0xFF334155))

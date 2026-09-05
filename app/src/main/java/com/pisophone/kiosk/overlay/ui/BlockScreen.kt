@@ -412,7 +412,11 @@ fun BlockScreen(
                         Box(modifier = Modifier.padding(12.dp)) {
                             SecurityVaultView(
                                 context = context,
-                                onClose = { showSecurityDialog = false }
+                                onClose = { showSecurityDialog = false },
+                                onOpenRecoveryHub = {
+                                    showSecurityDialog = false
+                                    showEmergencyRecoveryDialog = true
+                                }
                             )
                         }
                     }
