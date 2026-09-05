@@ -32,13 +32,13 @@ android {
         keyPassword = "android"
       }
     }
-    val keystorePath = System.getenv("KEYSTORE_PATH")
+    val keystorePath = System.getenv("KEYSTORE_PATH")?.trim()
     if (!keystorePath.isNullOrBlank() && file(keystorePath).exists()) {
       create("release") {
         storeFile = file(keystorePath)
-        storePassword = System.getenv("STORE_PASSWORD")
-        keyAlias = System.getenv("KEY_ALIAS")
-        keyPassword = System.getenv("KEY_PASSWORD")
+        storePassword = System.getenv("STORE_PASSWORD")?.trim()
+        keyAlias = System.getenv("KEY_ALIAS")?.trim()
+        keyPassword = System.getenv("KEY_PASSWORD")?.trim()
       }
     }
   }
