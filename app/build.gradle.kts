@@ -24,16 +24,6 @@ android {
     versionName = "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-    
-    val envFile = file("${rootDir}/.env")
-    val licenseSecret = if (envFile.exists()) {
-        val props = Properties()
-        props.load(FileInputStream(envFile))
-        props.getProperty("LICENSE_SIGNING_SECRET", "fallback")
-    } else {
-        System.getenv("LICENSE_SIGNING_SECRET") ?: "fallback"
-    }
-    buildConfigField("String", "LICENSE_SIGNING_SECRET", "\"$licenseSecret\"")
   }
 
   signingConfigs {

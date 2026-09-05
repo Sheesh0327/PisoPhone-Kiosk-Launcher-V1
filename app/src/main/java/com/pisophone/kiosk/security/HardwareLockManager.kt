@@ -7,7 +7,6 @@ import android.os.SystemClock
 import android.provider.Settings
 import android.util.Base64
 import android.util.Log
-import com.pisophone.kiosk.BuildConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -324,8 +323,7 @@ object HardwareLockManager {
             if (serverRsaSig.isNotEmpty()) {
                 val payload = "$hwId|$paidExpires"
                 val isRsaValid = verifyRsaSignature(payload, serverRsaSig)
-                val isLegacyValid = !isRsaValid && verifyLegacyHmac(payload, serverRsaSig)
-                if (!isRsaValid && !isLegacyValid) {
+                if (!isRsaValid) {
                     Log.w(TAG, "Stored server cryptographic signature invalid! Lock enforced.")
                     return LicenseInfo(
                         state = LicenseState.EXPIRED_LOCKED,
@@ -475,21 +473,7 @@ object HardwareLockManager {
         }
     }
 
-    /**
-     * Backward-compatibility fallback for pre-v2 symmetric license tokens.
-     * Note: Production license tokens use RSA-2048 (verifyRsaSignature).
-     * This fallback handles existing field-deployed units during the migration window.
-     */
-    private fun verifyLegacyHmac(data: String, signatureHex: String): Boolean {
-        return try {
-            val signingSecret = BuildConfig.LICENSE_SIGNING_SECRET
-            if (signingSecret.isEmpty()) return false
-            val expectedHex = KioskSecurity.calculateHmac(data, signingSecret)
-            KioskSecurity.constantTimeEquals(expectedHex, signatureHex)
-        } catch (e: Exception) {
-            false
-        }
-    }
+
 
     /**
      * Activates a 1-Year Commercial License on this hardware.
@@ -538,13 +522,12 @@ object HardwareLockManager {
                     return false
                 }
 
-                // Asymmetric cryptographic verification (RSA-2048 SHA-256)
+                // Asymmetric cryptographic verification (RSA-2048 SHA-256) - Single authoritative path
                 val payload = "$licDevId|$licExpires"
                 val isRsaValid = verifyRsaSignature(payload, licSig)
-                val isLegacyValid = !isRsaValid && verifyLegacyHmac(payload, licSig)
 
-                if (!isRsaValid && !isLegacyValid) {
-                    Log.e(TAG, "Cryptographic signature verification failed! License rejected.")
+                if (!isRsaValid) {
+                    Log.e(TAG, "Cryptographic RSA-2048 signature verification failed! License rejected.")
                     return false
                 }
 
@@ -555,7 +538,7 @@ object HardwareLockManager {
                 }
 
                 targetExpires = licExpires
-                Log.i(TAG, "Valid cryptographically verified license token received (Algorithm: ${if (isRsaValid) "RSA-2048" else "HMAC"}).")
+                Log.i(TAG, "Valid cryptographically verified RSA-2048 license token received.")
             }
 
             val targetHwId = prefs.getString(KEY_BOUND_HW_ID, null) ?: hwId
@@ -671,8 +654,7 @@ object HardwareLockManager {
                 if (isPaid && signature.isNotEmpty()) {
                     val payload = "$hwId|$paidExpires"
                     val isRsaValid = verifyRsaSignature(payload, signature)
-                    val isLegacyValid = !isRsaValid && verifyLegacyHmac(payload, signature)
-                    if (!isRsaValid && !isLegacyValid) {
+                    if (!isRsaValid) {
                         Log.w(TAG, "Backend sync returned unverified signature for PAID license! Marking unactivated.")
                         verifiedPaid = false
                     }

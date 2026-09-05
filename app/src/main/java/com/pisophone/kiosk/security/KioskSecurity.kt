@@ -242,7 +242,7 @@ object KioskSecurity {
     }
 
     fun verifyAdminPin(context: Context, enteredPin: String): Boolean {
-        return enteredPin == getAdminPin(context)
+        return constantTimeEquals(enteredPin.trim(), getAdminPin(context))
     }
 
     fun calculateHmac(data: String, key: String): String {
