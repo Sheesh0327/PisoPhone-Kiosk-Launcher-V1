@@ -84,7 +84,10 @@ async function generateLicenseToken(deviceId, paidExpiresAt, env) {
   }
   
   // Fallback to HMAC if RSA secret is not configured
-  const signingSecret = env.LICENSE_SIGNING_SECRET || 'PISO_SEC_9xK4mP2vL8jR1cW3hY7nF5bT6qM0dX9zL4aV2bC8nN5mM7kX3jH9gF1d';
+  const signingSecret = env.LICENSE_SIGNING_SECRET;
+  if (!signingSecret) {
+    throw new Error('Server configuration error: Missing signing secret');
+  }
   const hmacSig = await signHmacSha256(payload, signingSecret);
   return {
     signature: hmacSig,
@@ -168,7 +171,7 @@ export default {
     const url = new URL(request.url);
     const method = request.method;
 
-    const signingSecret = env.LICENSE_SIGNING_SECRET || 'PISO_SEC_9xK4mP2vL8jR1cW3hY7nF5bT6qM0dX9zL4aV2bC8nN5mM7kX3jH9gF1d';
+    const signingSecret = env.LICENSE_SIGNING_SECRET;
     const adminSecret = env.ADMIN_SECRET || 'piso_admin_secret_2026';
 
     const corsHeaders = {

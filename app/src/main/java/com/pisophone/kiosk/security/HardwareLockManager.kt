@@ -7,6 +7,7 @@ import android.os.SystemClock
 import android.provider.Settings
 import android.util.Base64
 import android.util.Log
+import com.pisophone.kiosk.BuildConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -481,7 +482,8 @@ object HardwareLockManager {
      */
     private fun verifyLegacyHmac(data: String, signatureHex: String): Boolean {
         return try {
-            val signingSecret = "PISO_SEC_9xK4mP2vL8jR1cW3hY7nF5bT6qM0dX9zL4aV2bC8nN5mM7kX3jH9gF1d"
+            val signingSecret = BuildConfig.LICENSE_SIGNING_SECRET
+            if (signingSecret.isEmpty()) return false
             val expectedHex = KioskSecurity.calculateHmac(data, signingSecret)
             KioskSecurity.constantTimeEquals(expectedHex, signatureHex)
         } catch (e: Exception) {
