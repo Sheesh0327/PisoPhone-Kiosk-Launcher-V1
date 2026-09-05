@@ -36,6 +36,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
 
@@ -359,6 +360,18 @@ class KioskService : Service() {
                 }
             }
         }
+
+        scope.launch {
+            com.pisophone.kiosk.security.HardwareLockManager.licenseUpdateVersion.collect {
+                val isSetup = com.pisophone.kiosk.security.HardwareLockManager.isTutorialCompleted(this@KioskService) &&
+                              com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(this@KioskService)
+                if (isSetup && overlay == null) {
+                    withContext(Dispatchers.Main) {
+                        setupOverlay()
+                    }
+                }
+            }
+        }
     }
 
     private fun verifyChallengeAndSignature(challenge: String, signature: String): Boolean {
@@ -565,6 +578,14 @@ class KioskService : Service() {
     }
     
     private fun setupOverlay() {
+        val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isTutorialCompleted(this) &&
+                           com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(this)
+        if (!isFullySetup) {
+            Log.d(TAG, "Device not activated or fully setup. Lock screen overlay deferred.")
+            return
+        }
+        if (overlay != null) return
+
         overlay = KioskOverlay(
             context = this,
             appStateFlow = stateManager.appState,

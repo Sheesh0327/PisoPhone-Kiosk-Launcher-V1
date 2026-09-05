@@ -82,6 +82,12 @@ class KioskWatchdogReceiver : BroadcastReceiver() {
         }
 
         if (!isProcessRunning || !isHttpHealthy) {
+            val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isTutorialCompleted(context) &&
+                               com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
+            if (!isFullySetup) {
+                Log.d(TAG, "Device not yet fully setup/activated. Watchdog skipping KioskService start.")
+                return
+            }
             Log.w(TAG, "KioskService is NOT healthy (Process: $isProcessRunning, HTTP: $isHttpHealthy)! Reviving foreground service immediately...")
             val serviceIntent = Intent(context, KioskService::class.java)
             try {

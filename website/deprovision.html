@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PisoPhone - Deprovision & Uninstall</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Universal Auth Guard & Google Identity Services SDK -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="auth.js"></script>
     <style>
         @keyframes gradientShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(30px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
@@ -69,6 +72,7 @@
             <a href="debloater.html" class="hover:text-emerald-400 transition">Debloater</a>
             <a href="sideload.html" class="hover:text-emerald-400 transition">Sideloader</a>
             <a href="deprovision.html" class="text-rose-400">Deprovision</a>
+            <div id="navAuthContainer"></div>
         </div>
     </nav>
 
@@ -126,6 +130,9 @@
 
     <script src="webadb_manager.js"></script>
     <script>
+        const currentUser = requireAuth();
+        renderNavAuth(document.getElementById('navAuthContainer'));
+
         const deprovisionBtn = document.getElementById('deprovisionBtn');
         const logContainer = document.getElementById('logContainer');
 

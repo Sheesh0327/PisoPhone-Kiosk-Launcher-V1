@@ -136,6 +136,10 @@ class LockScreenOverlay(
         val isTutorialComplete = com.pisophone.kiosk.security.HardwareLockManager.isTutorialCompleted(context)
         val isAppAllowed = com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
         val isFullySetup = isTutorialComplete && isAppAllowed
+        if (!isFullySetup) {
+            android.util.Log.d("LockScreenOverlay", "Device not activated or fully setup. Lock screen overlay deferred.")
+            return
+        }
         val initialVisible = isFullySetup && (appStateFlow.value == 0 || appStateFlow.value == 1)
         val baseFlags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or 
                         WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
@@ -339,6 +343,12 @@ class FloatingBallOverlay(
     fun show() {
         if (!android.provider.Settings.canDrawOverlays(context)) {
             android.util.Log.w("FloatingBallOverlay", "Overlay permission not granted yet, deferring window attachment")
+            return
+        }
+        val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isTutorialCompleted(context) &&
+                           com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
+        if (!isFullySetup) {
+            android.util.Log.d("FloatingBallOverlay", "Device not activated or fully setup. Floating ball overlay deferred.")
             return
         }
         if (isViewAdded) return

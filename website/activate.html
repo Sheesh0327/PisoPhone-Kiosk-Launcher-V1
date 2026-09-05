@@ -6,6 +6,9 @@
     <title>PisoPhone - Activate License</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+    <!-- Universal Auth Guard & Google Identity Services SDK -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="auth.js"></script>
     <style>
         @keyframes gradientShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(30px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
@@ -40,9 +43,12 @@
         </div>
         <div class="flex items-center space-x-6 text-sm font-semibold text-slate-300">
             <a href="index.html" class="hover:text-emerald-400 transition">Dashboard</a>
-            <a href="purchase.html" class="hover:text-emerald-400 transition">Buy Credits</a>
+            <a href="purchase.html" class="hover:text-emerald-400 transition">Plans & Pricing</a>
             <a href="install.html" class="hover:text-emerald-400 transition">Install</a>
             <a href="activate.html" class="text-emerald-400">Activate</a>
+            <a href="debloater.html" class="hover:text-emerald-400 transition">Debloater</a>
+            <a href="sideload.html" class="hover:text-emerald-400 transition">Sideloader</a>
+            <div id="navAuthContainer"></div>
         </div>
     </nav>
 
@@ -143,21 +149,15 @@
         const copyKeyBtn = document.getElementById('copyKeyBtn');
         const qrStatusHeader = document.getElementById('qrStatusHeader');
 
-        let ownerToken = null;
-        const storedUser = localStorage.getItem('piso_google_user');
-        if (storedUser) {
-            try {
-                ownerToken = JSON.parse(storedUser).token;
-            } catch (e) {}
-        }
+        const currentUser = requireAuth();
+        let ownerToken = currentUser ? currentUser.token : null;
+        renderNavAuth(document.getElementById('navAuthContainer'));
 
         let currentCredits = 0;
         let selectedDeviceId = null;
         let cachedDevices = [];
 
-        if (!ownerToken) {
-            loginWarning.classList.remove('hidden');
-        } else {
+        if (currentUser) {
             mainAppUi.classList.remove('hidden');
             mainAppUi.classList.add('flex');
             init();

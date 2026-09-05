@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PisoPhone - Device Cleaner & Debloater</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Universal Auth Guard & Google Identity Services SDK -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="auth.js"></script>
     <style>
         body { 
             background: linear-gradient(-45deg, #020617, #0B1120, #0f172a, #064e3b); 
@@ -132,6 +135,7 @@
             <a href="debloater.html" class="text-emerald-400">Debloater</a>
             <a href="sideload.html" class="hover:text-emerald-400 transition">Sideloader</a>
             <a href="deprovision.html" class="hover:text-rose-400 text-slate-400 transition">Deprovision</a>
+            <div id="navAuthContainer"></div>
         </div>
     </nav>
 
@@ -293,6 +297,9 @@
 
     <script src="webadb_manager.js"></script>
     <script>
+        const currentUser = requireAuth();
+        renderNavAuth(document.getElementById('navAuthContainer'));
+
         // Minimal Curated App Dictionary
         const APP_CATALOG = {
             // Meta Suite
