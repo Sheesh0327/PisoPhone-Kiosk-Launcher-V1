@@ -53,22 +53,6 @@ async function signRsaSha256(message, privateKeyPem) {
   }
 }
 
-// Helper: Legacy HMAC-SHA256 signature
-async function signHmacSha256(message, secret) {
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    'raw',
-    enc.encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-  const sigBuffer = await crypto.subtle.sign('HMAC', key, enc.encode(message));
-  return Array.from(new Uint8Array(sigBuffer))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
 // Core helper: Generate cryptographic license token
 async function generateLicenseToken(deviceId, paidExpiresAt, env) {
   const payload = `${deviceId}|${paidExpiresAt}`;
@@ -165,7 +149,6 @@ export default {
     const method = request.method;
 
     const signingSecret = env.LICENSE_SIGNING_SECRET;
-    const adminSecret = env.ADMIN_SECRET || 'piso_admin_secret_2026';
 
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
@@ -867,16 +850,19 @@ export default {
       // =========================================================================
       // 5. Manual Payment Confirmation / Admin Trigger
       // POST /api/payment/confirm
-      // Body: { adminSecret?: string, deviceId?: string, paymentRef?: string, ownerToken?: string, addCredits?: number, ownerEmail?: string }
+      // Body: { adminSecret: string, deviceId?: string, paymentRef?: string, ownerEmail?: string, addCredits?: number }
       // =========================================================================
       if (url.pathname === '/api/payment/confirm' && method === 'POST') {
         const body = await request.json();
-        const { deviceId, paymentRef, adminSecret: reqSecret, ownerToken, addCredits } = body;
+        const { deviceId, paymentRef, adminSecret: reqSecret, addCredits, ownerEmail } = body;
 
-        let ownerEmail = body.ownerEmail || null;
-        if (ownerToken) {
-          const verified = await verifyGoogleToken(ownerToken);
-          if (verified) ownerEmail = verified;
+        // Rule 6/7: Must provide valid adminSecret to mint credits or manually activate devices
+        const adminSecret = env.ADMIN_SECRET;
+        if (!adminSecret || reqSecret !== adminSecret) {
+          return new Response(JSON.stringify({ error: 'Unauthorized: Invalid or missing Admin Secret.' }), {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
         }
 
         const cleanPaymentRef = paymentRef ? String(paymentRef).trim() : `MANUAL-${now}`;

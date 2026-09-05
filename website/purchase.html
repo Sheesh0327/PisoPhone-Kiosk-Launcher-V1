@@ -75,6 +75,11 @@
                     <span class="text-slate-400 font-medium">/ credit</span>
                 </div>
                 
+                <div class="mb-6">
+                    <label class="block text-slate-400 text-xs font-bold mb-2 uppercase tracking-wider">Admin Secret (Required to simulate)</label>
+                    <input type="password" id="adminSecretInput" placeholder="Enter Admin Secret" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all text-sm">
+                </div>
+
                 <button id="simulateBuyBtn" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-4 rounded-xl transition text-base shadow-lg shadow-emerald-500/25 flex justify-center items-center gap-2">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
                     Simulate Payment (1 Credit)
@@ -107,29 +112,38 @@
 
         simulateBuyBtn.addEventListener('click', async () => {
             if (!ownerToken) return;
+            const adminSecret = document.getElementById('adminSecretInput').value;
+            if (!adminSecret) {
+                alert('Please enter the Admin Secret to simulate a payment.');
+                return;
+            }
 
             simulateBuyBtn.disabled = true;
             const origText = simulateBuyBtn.innerHTML;
             simulateBuyBtn.innerHTML = 'Processing...';
 
             try {
+                let userEmail = null;
+                try { userEmail = JSON.parse(storedUser).email; } catch(e) {}
+
                 // Simulate a webhook for 1 credit purchase without a deviceId
                 const res = await fetch(`${API_BASE}/api/payment/confirm`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        ownerToken: ownerToken,
+                        adminSecret: adminSecret,
+                        ownerEmail: userEmail,
                         addCredits: 1,
                         paymentRef: `PAY-GCASH-${Date.now()}`
                     })
                 });
 
                 const data = await res.json();
-                if (data.success) {
+                if (data.success || data.totalCredits !== undefined) {
                     alert(`✅ Payment confirmed! You have purchased 1 credit.\nYour new balance is ${data.totalCredits} credits.`);
                     window.location.href = 'activate.html';
                 } else {
-                    alert(`Error: ${data.error}`);
+                    alert(`Error: ${data.error || 'Unknown error'}`);
                 }
             } catch (err) {
                 alert(`Error: ${err.message}`);

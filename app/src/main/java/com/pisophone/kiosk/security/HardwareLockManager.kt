@@ -67,7 +67,6 @@ object HardwareLockManager {
     private const val KEY_LICENSE_SIGNATURE = "license_integrity_signature"
     private const val KEY_SERVER_RSA_SIGNATURE = "license_server_rsa_signature"
 
-    private const val HARDWARE_SECRET_SALT = "kiosk_hw_bind_salt_2026_x89a"
     private const val ONE_YEAR_MS = 365L * 24L * 60L * 60L * 1000L
     private const val CHECK_INTERVAL_MS = 7L * 24L * 60L * 60L * 1000L // 7-day server recheck interval
 
@@ -198,8 +197,8 @@ object HardwareLockManager {
 
         if (boundHwId == null) {
             // First run on this hardware: bind hardware and set status as UNACTIVATED (requires license activation)
-            val sig = generateSignature(currentHwId, currentDevName, now)
-            val licSig = generateLicenseSignature(currentHwId, "UNACTIVATED", 0L)
+            val sig = generateSignature(context, currentHwId, currentDevName, now)
+            val licSig = generateLicenseSignature(context, currentHwId, "UNACTIVATED", 0L)
 
             prefs.edit()
                 .putString(KEY_BOUND_HW_ID, currentHwId)
@@ -228,7 +227,7 @@ object HardwareLockManager {
         val storedTimestamp = prefs.getLong(KEY_BOUND_TIMESTAMP, 0L)
         val storedSig = prefs.getString(KEY_BOUND_SIGNATURE, "") ?: ""
 
-        val expectedSig = generateSignature(boundHwId, storedDevName, storedTimestamp)
+        val expectedSig = generateSignature(context, boundHwId, storedDevName, storedTimestamp)
 
         if (boundHwId != currentHwId || storedSig != expectedSig) {
             Log.e(TAG, "HARDWARE SEAL BREACH! Bound: $boundHwId, Actual: $currentHwId")
@@ -304,7 +303,7 @@ object HardwareLockManager {
         val serverRsaSig = prefs.getString(KEY_SERVER_RSA_SIGNATURE, "") ?: ""
 
         // Check tamper signature (includes lastCheck timestamp to prevent freezing 7-day clock)
-        val expectedSig = generateLicenseSignature(hwId, status, paidExpires, lastCheck)
+        val expectedSig = generateLicenseSignature(context, hwId, status, paidExpires, lastCheck)
         if (licSig.isNotEmpty() && licSig != expectedSig) {
             Log.w(TAG, "License signature mismatch! Lock enforced.")
             return LicenseInfo(
@@ -319,7 +318,7 @@ object HardwareLockManager {
 
         // 1. Check Paid License (Server-Authoritative with 7-Day verification interval)
         if (status == "PAID") {
-            // Must have a valid server RSA or HMAC signature stored
+            // Must have a valid server RSA signature stored
             if (serverRsaSig.isNotEmpty()) {
                 val payload = "$hwId|$paidExpires"
                 val isRsaValid = verifyRsaSignature(payload, serverRsaSig)
@@ -553,7 +552,7 @@ object HardwareLockManager {
 
             val targetHwId = prefs.getString(KEY_BOUND_HW_ID, null) ?: hwId
             val checkTime = System.currentTimeMillis()
-            val sig = generateLicenseSignature(targetHwId, "PAID", targetExpires, checkTime)
+            val sig = generateLicenseSignature(context, targetHwId, "PAID", targetExpires, checkTime)
 
             prefs.edit()
                 .putString(KEY_LICENSE_STATUS, "PAID")
@@ -659,7 +658,7 @@ object HardwareLockManager {
                 val signature = respJson.optString("signature", "")
                 val serverTime = respJson.optLong("serverTime", System.currentTimeMillis())
 
-                // Verify RSA / HMAC signature if status indicates PAID
+                // Verify RSA signature if status indicates PAID
                 var verifiedPaid = isPaid
                 if (isPaid && signature.isNotEmpty()) {
                     val payload = "$hwId|$paidExpires"
@@ -686,16 +685,16 @@ object HardwareLockManager {
 
                 if (verifiedPaid) {
                     editor.putString(KEY_LICENSE_STATUS, "PAID")
-                    editor.putString(KEY_LICENSE_SIGNATURE, generateLicenseSignature(hwId, "PAID", paidExpires, now))
+                    editor.putString(KEY_LICENSE_SIGNATURE, generateLicenseSignature(context, hwId, "PAID", paidExpires, now))
                     if (previousStatus != "PAID") {
                         activationCelebrationEvent.value = true
                     }
                 } else if (isExpired || (paidExpires in 1..serverTime)) {
                     editor.putString(KEY_LICENSE_STATUS, "EXPIRED")
-                    editor.putString(KEY_LICENSE_SIGNATURE, generateLicenseSignature(hwId, "EXPIRED", paidExpires, now))
+                    editor.putString(KEY_LICENSE_SIGNATURE, generateLicenseSignature(context, hwId, "EXPIRED", paidExpires, now))
                 } else {
                     editor.putString(KEY_LICENSE_STATUS, "UNACTIVATED")
-                    editor.putString(KEY_LICENSE_SIGNATURE, generateLicenseSignature(hwId, "UNACTIVATED", 0L, now))
+                    editor.putString(KEY_LICENSE_SIGNATURE, generateLicenseSignature(context, hwId, "UNACTIVATED", 0L, now))
                 }
 
                 editor.apply()
@@ -732,13 +731,15 @@ object HardwareLockManager {
         return success
     }
 
-    private fun generateSignature(hwId: String, devName: String, timestamp: Long): String {
-        val payload = "$hwId|$devName|$timestamp|$HARDWARE_SECRET_SALT"
-        return KioskSecurity.calculateHmac(payload, HARDWARE_SECRET_SALT)
+    private fun generateSignature(context: Context, hwId: String, devName: String, timestamp: Long): String {
+        val secret = KioskSecurity.getSharedSecret(context)
+        val payload = "$hwId|$devName|$timestamp|$secret"
+        return KioskSecurity.calculateHmac(payload, secret)
     }
 
-    private fun generateLicenseSignature(hwId: String, status: String, paidExp: Long, lastCheck: Long = 0L): String {
-        val payload = "LIC|$hwId|$status|$paidExp|$lastCheck|$HARDWARE_SECRET_SALT"
-        return KioskSecurity.calculateHmac(payload, HARDWARE_SECRET_SALT)
+    private fun generateLicenseSignature(context: Context, hwId: String, status: String, paidExp: Long, lastCheck: Long = 0L): String {
+        val secret = KioskSecurity.getSharedSecret(context)
+        val payload = "LIC|$hwId|$status|$paidExp|$lastCheck|$secret"
+        return KioskSecurity.calculateHmac(payload, secret)
     }
 }

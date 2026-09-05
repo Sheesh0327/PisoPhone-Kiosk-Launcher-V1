@@ -242,7 +242,12 @@ object KioskSecurity {
     }
 
     fun verifyAdminPin(context: Context, enteredPin: String): Boolean {
-        return constantTimeEquals(enteredPin.trim(), getAdminPin(context))
+        val storedPin = getAdminPin(context)
+        if (storedPin == DEFAULT_PIN) {
+            // Rule 7 Compliance: Default credential must not be usable in production.
+            return false 
+        }
+        return constantTimeEquals(enteredPin.trim(), storedPin)
     }
 
     fun calculateHmac(data: String, key: String): String {

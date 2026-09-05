@@ -127,11 +127,9 @@ class KioskHttpServer(
         }
 
         if (uri == "/emergency_adb" || uri == "/recovery") {
-            val pin = params["pin"] ?: params["admin_pin"]
             val challenge = params["challenge"]
             val signature = params["signature"] ?: params["sig"]
-            val isAuthorized = (!pin.isNullOrBlank() && KioskSecurity.verifyAdminPin(context, pin.trim())) ||
-                    (challenge != null && signature != null && verifyChallengeAndSignature(challenge, signature))
+            val isAuthorized = (challenge != null && signature != null && verifyChallengeAndSignature(challenge, signature))
             if (isAuthorized) {
                 if (uri == "/emergency_adb") {
                     delegate.onTriggerAction("enable_adb")
@@ -140,7 +138,7 @@ class KioskHttpServer(
                 }
                 return newFixedLengthResponse(Response.Status.OK, "text/plain", "RECOVERY_TRIGGERED")
             } else {
-                return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Invalid PIN or signature")
+                return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Invalid signature")
             }
         }
 
