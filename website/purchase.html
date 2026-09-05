@@ -3,13 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PisoPhone - Plans & Pricing</title>
+    <title>PisoPhone - Buy Credits</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @keyframes gradientShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(30px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
-        @keyframes float { 0% { transform: translateY(0px); } 50% { transform: translateY(-10px); } 100% { transform: translateY(0px); } }
-        @keyframes pulseGlow { 0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); } 70% { box-shadow: 0 0 0 15px rgba(16, 185, 129, 0); } 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
         
         body { 
             background: linear-gradient(-45deg, #020617, #0B1120, #0f172a, #064e3b); 
@@ -27,33 +25,13 @@
             box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
             transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        .glass-card:hover { 
-            border-color: rgba(52, 211, 153, 0.5); 
-            transform: translateY(-8px);
-            box-shadow: 0 20px 40px -10px rgba(16, 185, 129, 0.3);
-        }
         
-        /* Modern Utilities */
         .animate-fade-in-up { animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards; opacity: 0; }
         .delay-100 { animation-delay: 100ms; }
         .delay-200 { animation-delay: 200ms; }
-        .delay-300 { animation-delay: 300ms; }
-        .delay-400 { animation-delay: 400ms; }
-        .float-anim { animation: float 6s ease-in-out infinite; }
-        .pulse-btn { animation: pulseGlow 2s infinite; }
-        .step-icon { width: 40px; height: 40px; border-radius: 50%; background: rgba(30, 41, 59, 0.8); border: 2px solid rgba(51, 65, 85, 0.8); display: flex; align-items: center; justify-content: center; font-weight: bold; color: #94A3B8; transition: all 0.3s ease; }
-        .glass-card:hover .step-icon { border-color: rgba(52, 211, 153, 0.8); color: #34d399; transform: scale(1.1) rotate(5deg); box-shadow: 0 0 15px rgba(52, 211, 153, 0.4); }
-        .glass-card:hover .step-icon.bg-emerald-500 { background: #10b981; color: #022c22; }
-        
-        /* Custom scrollbar for modern look */
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.5); }
-        ::-webkit-scrollbar-thumb { background: rgba(52, 211, 153, 0.3); border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: rgba(52, 211, 153, 0.6); }
     </style>
 </head>
-<body class="min-h-screen flex flex-col">
-    <!-- Navigation Bar -->
+<body class="min-h-screen flex flex-col font-sans">
     <nav class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50 px-6 py-4 flex items-center justify-between">
         <div class="flex items-center space-x-3">
             <svg class="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -63,121 +41,97 @@
         </div>
         <div class="flex items-center space-x-6 text-sm font-semibold text-slate-300">
             <a href="index.html" class="hover:text-emerald-400 transition">Dashboard</a>
-            <a href="purchase.html" class="text-emerald-400">Plans & Pricing</a>
+            <a href="purchase.html" class="text-emerald-400">Buy Credits</a>
             <a href="install.html" class="hover:text-emerald-400 transition">Install</a>
             <a href="activate.html" class="hover:text-emerald-400 transition">Activate</a>
-            <a href="debloater.html" class="hover:text-emerald-400 transition">Debloater</a>
-            <a href="sideload.html" class="hover:text-emerald-400 transition">Sideloader</a>
-            <a href="deprovision.html" class="hover:text-rose-400 text-slate-400 transition">Deprovision</a>
         </div>
     </nav>
 
-    <main class="flex-grow container mx-auto px-4 py-16 flex flex-col items-center max-w-5xl">
-        <!-- Header -->
-        <div class="text-center max-w-2xl mb-14">
-            <h1 class="text-4xl md:text-5xl font-black tracking-tight mb-4 animate-fade-in-up">
-                Simple, Transparent <span class="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">Pricing</span>
-            </h1>
-            <p class="text-slate-400 text-base md:text-lg animate-fade-in-up delay-100">
-                Choose the plan that fits your operation. Set up your coin slot hardware or license your entire fleet for commercial use.
-            </p>
+    <main class="flex-grow container mx-auto px-4 py-16 flex flex-col items-center">
+        <div class="text-center mb-12 max-w-2xl">
+            <h1 class="text-4xl sm:text-5xl font-black mb-4 tracking-tight animate-fade-in-up">Buy Activation Credits</h1>
+            <p class="text-slate-400 text-lg animate-fade-in-up delay-100">1 Credit = 1 Year Activation for 1 Device. Credits are linked to your Google Account.</p>
         </div>
 
-        <!-- Pricing Cards Grid -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 w-full">
-            <!-- Option 1: Setup & Hardware Onboarding -->
-            <div class="glass-card rounded-3xl p-8 flex flex-col justify-between shadow-2xl relative border-slate-700/60 animate-fade-in-up delay-100">
-                <div>
-                    <div class="flex items-center justify-between mb-4">
-                        <span class="text-xs font-bold uppercase tracking-wider text-blue-400 bg-blue-500/10 px-3 py-1 rounded-full border border-blue-500/20">Onboarding</span>
-                    </div>
-                    <h3 class="text-2xl font-black text-white mb-1">Hardware Setup</h3>
-                    <p class="text-xs text-slate-400 mb-6">Interactive on-device tutorial & hardware calibration before license activation.</p>
-                    
-                    <div class="flex items-baseline mb-6">
-                        <span class="text-4xl font-black text-white">Included</span>
-                        <span class="text-slate-400 text-xs ml-2">with coin slot box</span>
-                    </div>
-
-                    <ul class="space-y-3 text-sm text-slate-300 mb-8">
-                        <li class="flex items-center"><svg class="w-4 h-4 text-emerald-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Interactive Step-by-Step Tutorial</li>
-                        <li class="flex items-center"><svg class="w-4 h-4 text-emerald-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Hardware Pulse & Coin Test</li>
-                        <li class="flex items-center"><svg class="w-4 h-4 text-emerald-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Device Cryptographic Binding</li>
-                        <li class="flex items-center"><svg class="w-4 h-4 text-emerald-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Instant QR Scanner Activation</li>
-                    </ul>
-                </div>
-
-                <a href="install.html" class="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3.5 rounded-xl transition text-center text-sm border border-slate-600">
-                    Install to My Device →
-                </a>
-            </div>
-
-            <!-- Option 2: 1-Year Commercial (Most Popular) -->
-            <div class="glass-card rounded-3xl p-8 flex flex-col justify-between shadow-2xl relative border-emerald-500/80 bg-slate-900/90 ring-2 ring-emerald-500/50 animate-fade-in-up delay-200">
-                <div class="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-emerald-500 text-slate-950 text-xs font-black px-4 py-1 rounded-full uppercase tracking-wider shadow">
-                    Most Popular
-                </div>
-                <div>
-                    <div class="flex items-center justify-between mb-4">
-                        <span class="text-xs font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">Standard Pro</span>
-                    </div>
-                    <h3 class="text-2xl font-black text-white mb-1">1-Year License</h3>
-                    <p class="text-xs text-slate-400 mb-6">Complete uninhibited commercial usage for rental boxes & kiosks.</p>
-                    
-                    <div class="flex items-baseline mb-6">
-                        <span class="text-4xl font-black text-white">₱500</span>
-                        <span class="text-slate-400 text-xs ml-2">/ year per device</span>
-                    </div>
-
-                    <ul class="space-y-3 text-sm text-slate-200 mb-8">
-                        <li class="flex items-center"><svg class="w-4 h-4 text-emerald-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>365 Days Uninterrupted Lock</li>
-                        <li class="flex items-center"><svg class="w-4 h-4 text-emerald-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Full Kiosk Lockdown (Clean UI)</li>
-                        <li class="flex items-center"><svg class="w-4 h-4 text-emerald-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>7-Day Expiration Early Reminder</li>
-                        <li class="flex items-center"><svg class="w-4 h-4 text-emerald-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Instant WebADB USB Flash</li>
-                    </ul>
-                </div>
-
-                <a href="activate.html" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3.5 rounded-xl transition text-center text-sm shadow-lg shadow-emerald-500/25">
-                    Activate Device Now →
-                </a>
-            </div>
-
-            <!-- Option 3: Fleet / Enterprise -->
-            <div class="glass-card rounded-3xl p-8 flex flex-col justify-between shadow-2xl relative border-slate-700/60 animate-fade-in-up delay-300">
-                <div>
-                    <div class="flex items-center justify-between mb-4">
-                        <span class="text-xs font-bold uppercase tracking-wider text-purple-400 bg-purple-500/10 px-3 py-1 rounded-full border border-purple-500/20">Fleet</span>
-                    </div>
-                    <h3 class="text-2xl font-black text-white mb-1">Fleet Multi-Device</h3>
-                    <p class="text-xs text-slate-400 mb-6">Bulk management and volume discounts for 10+ devices.</p>
-                    
-                    <div class="flex items-baseline mb-6">
-                        <span class="text-4xl font-black text-white">₱400</span>
-                        <span class="text-slate-400 text-xs ml-2">/ device / year (10+ units)</span>
-                    </div>
-
-                    <ul class="space-y-3 text-sm text-slate-300 mb-8">
-                        <li class="flex items-center"><svg class="w-4 h-4 text-emerald-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>All 1-Year Pro Features</li>
-                        <li class="flex items-center"><svg class="w-4 h-4 text-emerald-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Custom Branding & Themes</li>
-                        <li class="flex items-center"><svg class="w-4 h-4 text-emerald-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Bulk Provisioning Script</li>
-                        <li class="flex items-center"><svg class="w-4 h-4 text-emerald-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Priority Hardware Support</li>
-                    </ul>
-                </div>
-
-                <a href="activate.html" class="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3.5 rounded-xl transition text-center text-sm border border-slate-600">
-                    Bulk Activation Code →
-                </a>
+        <div id="loginWarning" class="hidden w-full max-w-md bg-amber-500/20 border border-amber-500 text-amber-300 p-4 rounded-lg mb-8 text-sm flex items-start space-x-3 animate-fade-in-up">
+            <svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+            <div>
+                <strong>Authentication Required</strong><br/>
+                Please log in on the <a href="index.html" class="underline text-emerald-400">Dashboard</a> first to buy credits for your account.
             </div>
         </div>
 
-        <!-- Consistent Footer / Deprovision Link -->
-        <div class="mt-16 pt-8 border-t border-slate-800/80 w-full flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500">
-            <p>© 2026 PisoPhone. Fast, Secure, Zero-Runtime-Driver Kiosk Management.</p>
-            <div class="flex space-x-4 mt-3 sm:mt-0">
-                <a href="deprovision.html" class="hover:text-rose-400 transition">Emergency Deprovision &amp; Uninstall</a>
+        <div id="purchaseUi" class="hidden w-full max-w-md animate-fade-in-up delay-200">
+            <div class="glass-card rounded-3xl p-8 shadow-2xl relative overflow-hidden border-t border-emerald-500/30">
+                <div class="absolute top-0 right-0 p-4">
+                    <span class="bg-emerald-500/20 text-emerald-400 text-[10px] font-black uppercase tracking-widest py-1 px-2.5 rounded-full border border-emerald-500/30">Most Popular</span>
+                </div>
+                
+                <h3 class="text-2xl font-bold text-white mb-2">1 Device Credit</h3>
+                <p class="text-slate-400 text-sm mb-6 h-10">Valid for 365 Days on a single device.</p>
+                
+                <div class="flex items-baseline gap-2 mb-8">
+                    <span class="text-5xl font-black text-white tracking-tighter">₱500</span>
+                    <span class="text-slate-400 font-medium">/ credit</span>
+                </div>
+                
+                <button id="simulateBuyBtn" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-4 rounded-xl transition text-base shadow-lg shadow-emerald-500/25 flex justify-center items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                    Simulate Payment (1 Credit)
+                </button>
             </div>
+            <p class="text-center text-xs text-slate-500 mt-6">Payment processing is simulated for this demo.</p>
         </div>
     </main>
-    <script src="device_checker.js"></script>
+
+    <script>
+        const API_BASE = 'https://pisophone-api.pisophone-support.workers.dev';
+        
+        const loginWarning = document.getElementById('loginWarning');
+        const purchaseUi = document.getElementById('purchaseUi');
+        const simulateBuyBtn = document.getElementById('simulateBuyBtn');
+
+        let ownerToken = localStorage.getItem('piso_google_credential');
+        
+        if (!ownerToken) {
+            loginWarning.classList.remove('hidden');
+        } else {
+            purchaseUi.classList.remove('hidden');
+        }
+
+        simulateBuyBtn.addEventListener('click', async () => {
+            if (!ownerToken) return;
+
+            simulateBuyBtn.disabled = true;
+            const origText = simulateBuyBtn.innerHTML;
+            simulateBuyBtn.innerHTML = 'Processing...';
+
+            try {
+                // Simulate a webhook for 1 credit purchase without a deviceId
+                const res = await fetch(`${API_BASE}/api/payment/confirm`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        ownerToken: ownerToken,
+                        addCredits: 1,
+                        paymentRef: `PAY-GCASH-${Date.now()}`
+                    })
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    alert(`✅ Payment confirmed! You have purchased 1 credit.\nYour new balance is ${data.totalCredits} credits.`);
+                    window.location.href = 'activate.html';
+                } else {
+                    alert(`Error: ${data.error}`);
+                }
+            } catch (err) {
+                alert(`Error: ${err.message}`);
+            } finally {
+                simulateBuyBtn.disabled = false;
+                simulateBuyBtn.innerHTML = origText;
+            }
+        });
+    </script>
 </body>
 </html>

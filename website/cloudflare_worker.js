@@ -201,6 +201,8 @@ export default {
       '/api/user/devices',
       '/api/user/link-device',
       '/api/payment/confirm',
+      '/api/user/credits',
+      '/api/user/activate-device',
     ];
 
     if (!KNOWN_PATHS.includes(url.pathname)) {
@@ -456,6 +458,8 @@ export default {
         let ownerEmail = null;
         if (body.ownerToken) {
           ownerEmail = await verifyGoogleToken(body.ownerToken);
+        } else if (body.ownerEmail) {
+          ownerEmail = body.ownerEmail;
         }
 
         let deviceId = body.deviceId || 
@@ -470,15 +474,67 @@ export default {
                            body.transaction_id || 
                            `PAY-${now}`;
 
+        const cleanPaymentRef = String(paymentRef).trim();
+
+        // 1. If no deviceId is provided but we have an ownerEmail, process it as a Credit Purchase
+        if (!deviceId && ownerEmail) {
+          let processedRefs = [];
+          if (env.DEVICE_STORE) {
+            const rawRefs = await env.DEVICE_STORE.get(`USER_PAYMENTS:${ownerEmail}`);
+            if (rawRefs) processedRefs = JSON.parse(rawRefs);
+          }
+          
+          if (processedRefs.includes(cleanPaymentRef)) {
+            return new Response(
+              JSON.stringify({
+                success: true,
+                idempotent: true,
+                serverTime: now,
+                message: `Payment ${cleanPaymentRef} already processed. Credits were already added.`,
+              }),
+              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+
+          let credits = 0;
+          if (env.DEVICE_STORE) {
+            const rawCredits = await env.DEVICE_STORE.get(`USER_CREDITS:${ownerEmail}`);
+            if (rawCredits) credits = parseInt(rawCredits, 10);
+          }
+
+          // Determine quantity (default to 1 credit per payment)
+          const quantity = parseInt(body.quantity || body.data?.attributes?.metadata?.quantity || body.metadata?.quantity || 1, 10);
+          credits += quantity;
+
+          processedRefs.push(cleanPaymentRef);
+          processedRefs = processedRefs.slice(-50); // retain last 50 refs
+
+          if (env.DEVICE_STORE) {
+            await env.DEVICE_STORE.put(`USER_CREDITS:${ownerEmail}`, credits.toString());
+            await env.DEVICE_STORE.put(`USER_PAYMENTS:${ownerEmail}`, JSON.stringify(processedRefs));
+          }
+
+          return new Response(
+            JSON.stringify({
+              success: true,
+              idempotent: false,
+              serverTime: now,
+              creditsAdded: quantity,
+              totalCredits: credits,
+              message: `Payment confirmed. ${quantity} credit(s) added to ${ownerEmail}.`,
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
         if (!deviceId) {
-          return new Response(JSON.stringify({ error: 'Missing deviceId in webhook payload metadata', serverTime: now }), {
+          return new Response(JSON.stringify({ error: 'Missing deviceId in webhook payload metadata and no ownerEmail for credits', serverTime: now }), {
             status: 400,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
         }
 
         deviceId = String(deviceId).trim();
-        const cleanPaymentRef = String(paymentRef).trim();
 
         let record = null;
         if (env.DEVICE_STORE) {
@@ -675,13 +731,176 @@ export default {
       }
 
       // =========================================================================
+      // 4c. Get User Credits
+      // POST /api/user/credits
+      // Body: { ownerToken: string }
+      // =========================================================================
+      if (url.pathname === '/api/user/credits' && method === 'POST') {
+        const body = await request.json();
+        
+        const email = await verifyGoogleToken(body.ownerToken);
+        if (!email) {
+          return new Response(JSON.stringify({ error: 'Unauthorized', credits: 0 }), {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        let credits = 0;
+        if (env.DEVICE_STORE) {
+          const rawCredits = await env.DEVICE_STORE.get(`USER_CREDITS:${email}`);
+          if (rawCredits) credits = parseInt(rawCredits, 10);
+        }
+
+        return new Response(JSON.stringify({ success: true, email, credits, serverTime: now }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // =========================================================================
+      // 4d. Use Credit to Activate Device
+      // POST /api/user/activate-device
+      // Body: { ownerToken: string, deviceId: string }
+      // =========================================================================
+      if (url.pathname === '/api/user/activate-device' && method === 'POST') {
+        const body = await request.json();
+        
+        const email = await verifyGoogleToken(body.ownerToken);
+        if (!email) {
+          return new Response(JSON.stringify({ error: 'Unauthorized', success: false }), {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const deviceId = body.deviceId ? String(body.deviceId).trim() : null;
+        if (!deviceId) {
+          return new Response(JSON.stringify({ error: 'Missing deviceId parameter', success: false }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        if (env.DEVICE_STORE) {
+          const rawCredits = await env.DEVICE_STORE.get(`USER_CREDITS:${email}`);
+          let credits = rawCredits ? parseInt(rawCredits, 10) : 0;
+
+          if (credits <= 0) {
+            return new Response(JSON.stringify({ error: 'No credits available', success: false }), {
+              status: 403,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            });
+          }
+
+          // Deduct 1 credit
+          credits -= 1;
+          await env.DEVICE_STORE.put(`USER_CREDITS:${email}`, credits.toString());
+
+          // Activate device
+          const cleanId = deviceId.replace(/^HW-/i, '');
+          const rawDev = await env.DEVICE_STORE.get(cleanId);
+          let dev = rawDev ? JSON.parse(rawDev) : {
+            deviceId: cleanId,
+            hardwareHash: `HW-${cleanId.toUpperCase()}`,
+            deviceModel: 'Linked Kiosk',
+            firstRegisteredAt: now,
+            installCount: 1,
+            processedPaymentRefs: []
+          };
+
+          const currentPaidExpires = dev.paidExpiresAt || 0;
+          const newPaidExpires = (currentPaidExpires > now ? currentPaidExpires : now) + LICENSE_DURATION_MS;
+          dev.paidExpiresAt = newPaidExpires;
+          dev.lastCheckinAt = now;
+          dev.paidAt = now;
+          dev.ownerEmail = email; // Ensure it's linked to this user
+
+          await env.DEVICE_STORE.put(cleanId, JSON.stringify(dev));
+
+          // Also ensure it's in the user's device list
+          const rawUd = await env.DEVICE_STORE.get(`USER_DEVICES:${email}`);
+          let userDevices = rawUd ? JSON.parse(rawUd) : [];
+          if (!userDevices.includes(cleanId)) {
+            userDevices.push(cleanId);
+            await env.DEVICE_STORE.put(`USER_DEVICES:${email}`, JSON.stringify(userDevices));
+          }
+
+          const token = await generateLicenseToken(cleanId, newPaidExpires, env);
+
+          return new Response(JSON.stringify({ 
+            success: true, 
+            message: `Device ${cleanId} successfully activated using 1 credit.`, 
+            deviceId: cleanId,
+            creditsRemaining: credits,
+            signature: token.signature,
+            licenseKey: token.licenseKey,
+            paidExpiresAt: newPaidExpires
+          }), {
+            status: 200,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        return new Response(JSON.stringify({ error: 'KV Store not configured', success: false }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // =========================================================================
       // 5. Manual Payment Confirmation / Admin Trigger
       // POST /api/payment/confirm
-      // Body: { adminSecret?: string, deviceId: string, paymentRef?: string }
+      // Body: { adminSecret?: string, deviceId?: string, paymentRef?: string, ownerToken?: string, addCredits?: number, ownerEmail?: string }
       // =========================================================================
       if (url.pathname === '/api/payment/confirm' && method === 'POST') {
         const body = await request.json();
-        const { deviceId, paymentRef, adminSecret: reqSecret, ownerToken } = body;
+        const { deviceId, paymentRef, adminSecret: reqSecret, ownerToken, addCredits } = body;
+
+        let ownerEmail = body.ownerEmail || null;
+        if (ownerToken) {
+          const verified = await verifyGoogleToken(ownerToken);
+          if (verified) ownerEmail = verified;
+        }
+
+        const cleanPaymentRef = paymentRef ? String(paymentRef).trim() : `MANUAL-${now}`;
+
+        // Admin add credits
+        if (!deviceId && addCredits && ownerEmail) {
+          let processedRefs = [];
+          if (env.DEVICE_STORE) {
+            const rawRefs = await env.DEVICE_STORE.get(`USER_PAYMENTS:${ownerEmail}`);
+            if (rawRefs) processedRefs = JSON.parse(rawRefs);
+          }
+          
+          if (processedRefs.includes(cleanPaymentRef)) {
+            return new Response(
+              JSON.stringify({ success: true, idempotent: true, serverTime: now, message: 'Credits already added for this ref.' }),
+              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+
+          let credits = 0;
+          if (env.DEVICE_STORE) {
+            const rawCredits = await env.DEVICE_STORE.get(`USER_CREDITS:${ownerEmail}`);
+            if (rawCredits) credits = parseInt(rawCredits, 10);
+          }
+
+          credits += parseInt(addCredits, 10);
+
+          processedRefs.push(cleanPaymentRef);
+          processedRefs = processedRefs.slice(-50);
+
+          if (env.DEVICE_STORE) {
+            await env.DEVICE_STORE.put(`USER_CREDITS:${ownerEmail}`, credits.toString());
+            await env.DEVICE_STORE.put(`USER_PAYMENTS:${ownerEmail}`, JSON.stringify(processedRefs));
+          }
+
+          return new Response(
+            JSON.stringify({ success: true, serverTime: now, creditsAdded: addCredits, totalCredits: credits, message: `Added ${addCredits} credits.` }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
 
         if (!deviceId) {
           return new Response(JSON.stringify({ error: 'Missing deviceId', serverTime: now }), {
@@ -690,11 +909,6 @@ export default {
           });
         }
         
-        let ownerEmail = null;
-        if (ownerToken) {
-          ownerEmail = await verifyGoogleToken(ownerToken);
-        }
-
         const cleanId = String(deviceId).trim();
         const cleanPaymentRef = paymentRef ? String(paymentRef).trim() : `MANUAL-${now}`;
 
