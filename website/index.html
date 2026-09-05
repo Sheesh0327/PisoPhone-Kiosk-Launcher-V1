@@ -122,31 +122,49 @@
                     <span id="redirectAlertText">Authentication required to access the requested page.</span>
                 </div>
 
-                <div id="googleButtonContainer" class="flex justify-center my-4 min-h-[44px]">
+                <div id="googleButtonContainer" class="flex justify-center my-3 min-h-[44px]">
                     <div class="text-xs text-slate-500 animate-pulse py-2">Loading Google Sign-In...</div>
                 </div>
 
-                <div class="mt-6 pt-6 border-t border-slate-800 text-[11px] text-slate-500">
+                <div class="flex items-center my-4 w-full">
+                    <div class="flex-grow border-t border-slate-800"></div>
+                    <span class="px-3 text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Or use Operator Email</span>
+                    <div class="flex-grow border-t border-slate-800"></div>
+                </div>
+
+                <form id="directEmailForm" class="w-full space-y-2">
+                    <div class="flex gap-2">
+                        <input type="email" id="directEmailInput" placeholder="operator@email.com" value="gelboy408@gmail.com" required class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition">
+                        <button type="submit" id="directEmailBtn" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl text-xs whitespace-nowrap transition flex items-center gap-1.5 shadow-md shadow-emerald-500/10">
+                            <span>Sign In</span>
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                        </button>
+                    </div>
+                </form>
+
+                <div class="mt-6 pt-5 border-t border-slate-800 text-[11px] text-slate-500">
                     🔒 Secured by Google Identity &amp; ECDSA hardware licensing
                 </div>
             </div>
         </div>
+
+        <!-- Hero Landing Section (Visible when unauthenticated) -->
+        <div id="heroLandingSection" class="w-full flex flex-col items-center">
             <!-- Hero Tagline -->
-        <div class="inline-flex items-center space-x-2 bg-emerald-500/10 border border-emerald-500/30 px-4 py-1.5 rounded-full text-emerald-400 text-xs font-semibold uppercase tracking-wider mb-6">
-            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>1-Click WebUSB Hardware Provisioning</span>
+            <div class="inline-flex items-center space-x-2 bg-emerald-500/10 border border-emerald-500/30 px-4 py-1.5 rounded-full text-emerald-400 text-xs font-semibold uppercase tracking-wider mb-6">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>1-Click WebUSB Hardware Provisioning</span>
+            </div>
+
+            <h1 class="text-5xl md:text-7xl font-black tracking-tight mb-6 animate-fade-in-up">
+                Turn Any Android into a <br/>
+                <span class="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-500">Commercial Arcade Kiosk</span>
+            </h1>
+            <p class="text-slate-400 text-lg md:text-xl mb-12 max-w-2xl animate-fade-in-up delay-100">
+                PisoPhone securely locks down Android devices for coin-op gaming, rentals, and dedicated kiosk use. Provision and manage licenses instantly via 1-click WebUSB directly from your browser.
+            </p>
         </div>
 
-        <h1 class="text-5xl md:text-7xl font-black tracking-tight mb-6 animate-fade-in-up">
-            Turn Any Android into a <br/>
-            <span class="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-500">Commercial Arcade Kiosk</span>
-        </h1>
-        <p class="text-slate-400 text-lg md:text-xl mb-12 max-w-2xl animate-fade-in-up delay-100">
-            PisoPhone securely locks down Android devices for coin-op gaming, rentals, and dedicated kiosk use. Provision and manage licenses instantly via 1-click WebUSB directly from your browser.
-        </p>
-
-        <!-- Action Grid -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 w-full text-left">
         <!-- Dashboard View (Visible ONLY when signed in) -->
         <div id="dashboardView" class="w-full flex-col items-start text-left hidden">
             <div class="flex flex-col sm:flex-row sm:items-center justify-between w-full mb-8 gap-4">
@@ -269,6 +287,8 @@
                 currentUserToken = user.token;
 
                 if (authGateView) authGateView.classList.add('hidden');
+                const heroLandingSection = document.getElementById('heroLandingSection');
+                if (heroLandingSection) heroLandingSection.classList.add('hidden');
                 if (dashboardView) {
                     dashboardView.classList.remove('hidden');
                     dashboardView.classList.add('flex');
@@ -303,6 +323,8 @@
                 currentUserToken = null;
 
                 if (authGateView) authGateView.classList.remove('hidden');
+                const heroLandingSection = document.getElementById('heroLandingSection');
+                if (heroLandingSection) heroLandingSection.classList.remove('hidden');
                 if (dashboardView) {
                     dashboardView.classList.add('hidden');
                     dashboardView.classList.remove('flex');
@@ -324,9 +346,7 @@
                     }
                 }
 
-                initGoogleAuthFlow('googleButtonContainer', (newUser) => {
-                    checkAuthState();
-                });
+                initGoogleAuthFlow('googleButtonContainer');
             }
         }
 
@@ -484,33 +504,14 @@
             }
         }
 
-        function signOut() {
-            localStorage.removeItem('piso_google_user');
-            localStorage.removeItem('piso_cached_devices');
-            currentUserToken = null;
-            if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
-                google.accounts.id.disableAutoSelect();
-            }
-            
-            // Revert UI
-            userProfile.classList.add('hidden');
-            signInBtn.classList.remove('hidden');
-            dashboardView.classList.add('hidden');
-            dashboardView.classList.remove('flex');
-            landingView.classList.remove('hidden');
-            mainContainer.classList.add('items-center', 'justify-center', 'text-center');
-            mainContainer.classList.remove('items-start', 'text-left');
-        }
-
         // Event Listeners
-        signInBtn.addEventListener('click', promptGoogleSignIn);
-
-        if (refreshDevicesBtn) {
-            refreshDevicesBtn.addEventListener('click', () => {
-                if (currentUserToken) {
-                    fetchUserDevices(currentUserToken);
-                } else {
-                    promptGoogleSignIn();
+        const directEmailForm = document.getElementById('directEmailForm');
+        const directEmailInput = document.getElementById('directEmailInput');
+        if (directEmailForm) {
+            directEmailForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                if (directEmailInput && directEmailInput.value) {
+                    signInWithEmail(directEmailInput.value);
                 }
             });
         }
