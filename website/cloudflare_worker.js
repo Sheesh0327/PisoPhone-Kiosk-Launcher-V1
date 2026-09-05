@@ -131,27 +131,35 @@ async function verifyGoogleToken(token) {
   return null;
 }
 
-async function checkRateLimit(request, env, limit = 60, windowSeconds = 60) {
-  if (!env.DEVICE_STORE) return true;
+// In-Memory Rate Limiter (0 KV operations, prevents KV daily write quota exhaustion)
+const ipRateLimitMap = new Map();
+
+function checkRateLimit(request, limit = 60, windowSeconds = 60) {
   try {
     const clientIp = request.headers.get('cf-connecting-ip') || request.headers.get('x-real-ip') || 'unknown-client';
-    const currentWindow = Math.floor(Date.now() / (windowSeconds * 1000));
-    const rateLimitKey = `RATELIMIT:${clientIp}:${currentWindow}`;
-    
-    const countStr = await env.DEVICE_STORE.get(rateLimitKey);
-    const count = countStr ? parseInt(countStr, 10) : 0;
-    
-    if (count >= limit) {
+    const now = Date.now();
+    const entry = ipRateLimitMap.get(clientIp);
+
+    // Evict expired entries if memory map grows
+    if (ipRateLimitMap.size > 2000) {
+      for (const [key, val] of ipRateLimitMap.entries()) {
+        if (val.resetAt < now) ipRateLimitMap.delete(key);
+      }
+    }
+
+    if (!entry || entry.resetAt < now) {
+      ipRateLimitMap.set(clientIp, { count: 1, resetAt: now + (windowSeconds * 1000) });
+      return true;
+    }
+
+    entry.count++;
+    if (entry.count > limit) {
       return false;
     }
-    
-    await env.DEVICE_STORE.put(rateLimitKey, (count + 1).toString(), {
-      expirationTtl: windowSeconds + 10
-    });
     return true;
   } catch (e) {
-    console.error('Rate limit error:', e);
-    return true; // Fail open to prevent service denial if KV is experiencing transient issues
+    console.error('In-memory rate limit error:', e);
+    return true; // Fail open
   }
 }
 
@@ -173,8 +181,34 @@ export default {
       return new Response(null, { headers: corsHeaders });
     }
 
-    // Apply Rate Limiting (60 requests per minute per IP)
-    const isAllowed = await checkRateLimit(request, env, 60, 60);
+    // Fast-path: Root or Health check (0 KV operations)
+    if (url.pathname === '/' || url.pathname === '/health') {
+      return new Response(JSON.stringify({ status: 'ok', service: 'PisoPhone Licensing API', serverTime: Date.now() }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Early route filter: Drop bot probes/scanners instantly without touching KV or executing heavy logic
+    const KNOWN_PATHS = [
+      '/api/device/register',
+      '/api/payment/check',
+      '/api/device/status',
+      '/api/payment/webhook',
+      '/api/user/devices',
+      '/api/user/link-device',
+      '/api/payment/confirm',
+    ];
+
+    if (!KNOWN_PATHS.includes(url.pathname)) {
+      return new Response(JSON.stringify({ error: 'Endpoint not found', serverTime: Date.now() }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Apply In-Memory Rate Limiting (60 requests per minute per IP, 0 KV writes)
+    const isAllowed = checkRateLimit(request, 60, 60);
     if (!isAllowed) {
       return new Response(JSON.stringify({ error: 'Too many requests. Please slow down.', serverTime: Date.now() }), {
         status: 429,
@@ -220,26 +254,34 @@ export default {
           const isExpired = existing.paidExpiresAt > 0 && existing.paidExpiresAt <= now;
           const status = isPaid ? 'PAID' : (isExpired ? 'EXPIRED' : 'UNACTIVATED');
 
-          existing.lastCheckinAt = now;
-          existing.installCount = (existing.installCount || 1) + 1;
-          existing.deviceModel = deviceModel || existing.deviceModel;
-          if (ownerEmail) existing.ownerEmail = ownerEmail;
+          // Intelligent KV write throttling: Only write to KV if model changed, owner changed,
+          // or at least 12 hours elapsed since last recorded check-in. This preserves daily KV write limits.
+          const lastCheckin = existing.lastCheckinAt || 0;
+          const needsCheckinUpdate = (now - lastCheckin) > (12 * 60 * 60 * 1000);
+          const needsModelUpdate = Boolean(deviceModel && existing.deviceModel !== deviceModel);
+          const needsOwnerUpdate = Boolean(ownerEmail && existing.ownerEmail !== ownerEmail);
 
-          // Clean up old redundant properties if they exist
-          delete existing.licenseType;
-          delete existing.trialExpiresAt;
-          delete existing.paymentReference;
+          if (needsCheckinUpdate || needsModelUpdate || needsOwnerUpdate) {
+            existing.lastCheckinAt = now;
+            if (needsModelUpdate) existing.deviceModel = deviceModel;
+            if (needsOwnerUpdate) existing.ownerEmail = ownerEmail;
 
-          if (env.DEVICE_STORE) {
-            await env.DEVICE_STORE.put(deviceId, JSON.stringify(existing));
-            
-            // Also update the USER_DEVICES index if ownerEmail is present
-            if (ownerEmail) {
-              const rawUd = await env.DEVICE_STORE.get(`USER_DEVICES:${ownerEmail}`);
-              let userDevices = rawUd ? JSON.parse(rawUd) : [];
-              if (!userDevices.includes(deviceId)) {
-                userDevices.push(deviceId);
-                await env.DEVICE_STORE.put(`USER_DEVICES:${ownerEmail}`, JSON.stringify(userDevices));
+            // Clean up old redundant properties if they exist
+            delete existing.licenseType;
+            delete existing.trialExpiresAt;
+            delete existing.paymentReference;
+
+            if (env.DEVICE_STORE) {
+              await env.DEVICE_STORE.put(deviceId, JSON.stringify(existing));
+              
+              // Also update the USER_DEVICES index if ownerEmail is present
+              if (ownerEmail) {
+                const rawUd = await env.DEVICE_STORE.get(`USER_DEVICES:${ownerEmail}`);
+                let userDevices = rawUd ? JSON.parse(rawUd) : [];
+                if (!userDevices.includes(deviceId)) {
+                  userDevices.push(deviceId);
+                  await env.DEVICE_STORE.put(`USER_DEVICES:${ownerEmail}`, JSON.stringify(userDevices));
+                }
               }
             }
           }

@@ -71,19 +71,25 @@ fun HardwareLockScreen(
     val coroutineScope = rememberCoroutineScope()
     var isCheckingServer by remember { mutableStateOf(false) }
 
-    // Polling background license status: Periodically checks Cloudflare server and WebADB USB signals
+    // Polling background license status: Periodically checks local license state and syncs with backend responsibly
     LaunchedEffect(Unit) {
+        var lastSyncTime = 0L
         while (isActive) {
-            try {
-                HardwareLockManager.syncWithBackend(context)
-            } catch (_: Exception) {}
+            val now = System.currentTimeMillis()
+            // Only attempt server sync at most once every 30 seconds to prevent hammering worker quotas
+            if (now - lastSyncTime > 30_000L) {
+                lastSyncTime = now
+                try {
+                    HardwareLockManager.syncWithBackend(context)
+                } catch (_: Exception) {}
+            }
             val updated = HardwareLockManager.getLicenseInfo(context)
             licenseInfo = updated
             if (updated.state == HardwareLockManager.LicenseState.PAID_ACTIVE) {
                 onRebindSuccess()
                 break
             }
-            delay(3000)
+            delay(2000)
         }
     }
 

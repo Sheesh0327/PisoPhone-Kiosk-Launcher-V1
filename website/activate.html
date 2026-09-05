@@ -484,13 +484,44 @@
             }
         });
 
-        // Polling if waiting for payment
-        setInterval(() => {
-            const devId = getCleanDeviceId();
-            if (devId && !isPaymentVerified) {
-                verifyDevicePayment();
+        // Intelligent, visibility-aware polling with backoff and quota protection
+        let pollTimer = null;
+        let pollAttempts = 0;
+        const MAX_POLL_ATTEMPTS = 60; // Auto-pause after ~15-20 mins if unattended
+
+        function scheduleNextPoll() {
+            if (pollTimer) clearTimeout(pollTimer);
+            if (isPaymentVerified) return; // Stop immediately once verified
+            if (document.hidden) return;   // Do not poll when tab is backgrounded
+
+            if (pollAttempts >= MAX_POLL_ATTEMPTS) {
+                return; // Auto-pause to conserve worker quotas
             }
-        }, 8000);
+
+            pollAttempts++;
+            // Progressive backoff: 8s, 9s, 10s ... up to 30s
+            const delayMs = Math.min(30000, 8000 + (pollAttempts * 1000));
+            pollTimer = setTimeout(async () => {
+                const devId = getCleanDeviceId();
+                if (devId && !isPaymentVerified && !document.hidden) {
+                    await verifyDevicePayment();
+                }
+                scheduleNextPoll();
+            }, delayMs);
+        }
+
+        // Resume and verify immediately when user returns to this tab
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && !isPaymentVerified) {
+                pollAttempts = 0;
+                const devId = getCleanDeviceId();
+                if (devId) verifyDevicePayment();
+                scheduleNextPoll();
+            }
+        });
+
+        // Start polling loop
+        scheduleNextPoll();
     </script>
     <script src="device_checker.js"></script>
 </body>

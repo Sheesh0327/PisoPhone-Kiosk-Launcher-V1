@@ -346,7 +346,13 @@ class KioskService : Service() {
                 } catch (e: Exception) {
                     Log.d(TAG, "Periodic server license sync: ${e.message}")
                 }
-                delay(60_000L)
+                val lic = HardwareLockManager.getLicenseInfo(this@KioskService)
+                val nextDelay = if (lic.isPaid) {
+                    6 * 60 * 60_000L // 6 hours when commercial license is active
+                } else {
+                    15 * 60_000L // 15 minutes when unactivated/pending
+                }
+                delay(nextDelay)
             }
         }
 
