@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PisoPhone - Activate License</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
     <style>
         @keyframes gradientShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(30px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
@@ -56,7 +57,7 @@
                 Please log in on the <a href="index.html" class="underline text-emerald-400">Dashboard</a> first to access your linked devices and credits.
             </div>
         </div>
-        
+
         <div id="mainAppUi" class="hidden w-full flex-col gap-6 animate-fade-in-up">
             <!-- Account Overview -->
             <div class="glass-card rounded-2xl p-6 shadow-xl flex items-center justify-between">
@@ -76,7 +77,7 @@
                     <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider">Step 1: Select or Link a Device</label>
                 </div>
                 <div class="flex gap-2">
-                    <input type="text" id="linkDeviceIdInput" placeholder="Enter Hardware ID (e.g. HW-XXXX)" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-emerald-500">
+                    <input type="text" id="linkDeviceIdInput" placeholder="Enter Hardware ID (e.g. HW-XXXX)" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-emerald-500 font-mono">
                     <button id="linkDeviceBtn" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-bold transition whitespace-nowrap">Link Device</button>
                 </div>
                 <div id="deviceListLoading" class="text-sm text-slate-500 italic mt-2">Loading your devices...</div>
@@ -95,25 +96,33 @@
             </div>
 
             <!-- QR Code Section -->
-            <div id="qrCodeSection" class="hidden glass-card rounded-2xl p-6 shadow-xl flex-col items-center text-center gap-4">
+            <div id="qrCodeSection" class="hidden glass-card rounded-2xl p-6 shadow-xl flex-col items-center text-center gap-4 scroll-mt-24">
                 <div class="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 w-full p-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                    Device Activated!
+                    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    <span id="qrStatusHeader">Device Activated — Ready to Scan!</span>
                 </div>
-                <p class="text-sm text-slate-300">Scan this QR Code using the PisoPhone lock screen to apply the license locally.</p>
                 
-                <div class="bg-white p-4 rounded-xl inline-block mt-2">
-                    <div id="qrcodeDisplay"></div>
+                <p class="text-sm text-slate-300">
+                    Open your locked PisoPhone device, tap <strong class="text-emerald-400">Scan Activation QR Code</strong>, and point the camera here:
+                </p>
+                
+                <!-- QR Code Box -->
+                <div class="bg-white p-4 rounded-2xl inline-flex items-center justify-center shadow-2xl mt-2 min-w-[240px] min-h-[240px] relative">
+                    <canvas id="qrCanvas" class="w-[220px] h-[220px] block"></canvas>
+                    <img id="qrFallbackImg" class="hidden w-[220px] h-[220px] object-contain" alt="Activation QR Code" />
                 </div>
 
-                <p class="text-xs text-slate-500 mt-2">Or enter this key manually (Not Recommended):</p>
-                <div id="licenseKeyDisplay" class="w-full font-mono text-[10px] text-emerald-400 break-all select-all bg-slate-950 p-3 rounded-lg border border-slate-800 text-left"></div>
+                <div class="w-full mt-3">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-xs text-slate-400 font-semibold">License Key Signature</span>
+                        <button id="copyKeyBtn" class="text-xs text-emerald-400 hover:text-emerald-300 font-bold underline cursor-pointer">Copy Key</button>
+                    </div>
+                    <div id="licenseKeyDisplay" class="w-full font-mono text-[11px] text-emerald-300 break-all select-all bg-slate-950 p-3 rounded-lg border border-slate-800 text-left"></div>
+                </div>
             </div>
         </div>
-
     </main>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script>
         const API_BASE = 'https://pisophone-api.pisophone-support.workers.dev';
         
@@ -122,14 +131,17 @@
         const creditsCount = document.getElementById('creditsCount');
         const deviceList = document.getElementById('deviceList');
         const deviceListLoading = document.getElementById('deviceListLoading');
+        const linkDeviceBtn = document.getElementById('linkDeviceBtn');
+        const linkDeviceIdInput = document.getElementById('linkDeviceIdInput');
         const activationSection = document.getElementById('activationSection');
         const selectedDeviceInfo = document.getElementById('selectedDeviceInfo');
         const useCreditBtn = document.getElementById('useCreditBtn');
-        const linkDeviceBtn = document.getElementById('linkDeviceBtn');
-        const linkDeviceIdInput = document.getElementById('linkDeviceIdInput');
         const qrCodeSection = document.getElementById('qrCodeSection');
-        const qrcodeDisplay = document.getElementById('qrcodeDisplay');
+        const qrCanvas = document.getElementById('qrCanvas');
+        const qrFallbackImg = document.getElementById('qrFallbackImg');
         const licenseKeyDisplay = document.getElementById('licenseKeyDisplay');
+        const copyKeyBtn = document.getElementById('copyKeyBtn');
+        const qrStatusHeader = document.getElementById('qrStatusHeader');
 
         let ownerToken = null;
         const storedUser = localStorage.getItem('piso_google_user');
@@ -138,9 +150,10 @@
                 ownerToken = JSON.parse(storedUser).token;
             } catch (e) {}
         }
+
         let currentCredits = 0;
         let selectedDeviceId = null;
-        let qrCodeInstance = null;
+        let cachedDevices = [];
 
         if (!ownerToken) {
             loginWarning.classList.remove('hidden');
@@ -153,6 +166,20 @@
         async function init() {
             await fetchCredits();
             await fetchDevices();
+
+            // Auto-select device from query parameter if present
+            const urlParams = new URLSearchParams(window.location.search);
+            const paramDevId = urlParams.get('deviceId');
+            if (paramDevId) {
+                const cleanParam = paramDevId.trim();
+                const matched = cachedDevices.find(d => d.deviceId.toUpperCase() === cleanParam.toUpperCase() || d.deviceId.replace(/^HW-/i, '') === cleanParam.replace(/^HW-/i, ''));
+                if (matched) {
+                    const btn = document.querySelector(`[data-device-id="${matched.deviceId}"]`);
+                    selectDevice(matched, btn);
+                } else {
+                    linkDeviceIdInput.value = paramDevId;
+                }
+            }
         }
 
         async function fetchCredits() {
@@ -186,25 +213,27 @@
 
                 if (res.ok) {
                     const data = await res.json();
-                    if (data.devices && data.devices.length > 0) {
-                        data.devices.forEach(dev => {
+                    cachedDevices = data.devices || [];
+
+                    if (cachedDevices.length > 0) {
+                        cachedDevices.forEach(dev => {
                             const btn = document.createElement('button');
-                            btn.className = 'w-full text-left bg-slate-800/50 hover:bg-slate-800 border border-slate-700 rounded-lg p-4 flex justify-between items-center transition';
+                            btn.setAttribute('data-device-id', dev.deviceId);
+                            btn.className = 'w-full text-left bg-slate-800/50 hover:bg-slate-800 border border-slate-700 rounded-xl p-4 flex justify-between items-center transition cursor-pointer';
                             
                             const isPaid = dev.status === 'PAID';
-                            const statusColor = isPaid ? 'text-emerald-400' : 'text-amber-400';
+                            const statusColor = isPaid ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' : 'text-amber-400 bg-amber-500/10 border-amber-500/30';
                             
                             btn.innerHTML = `
                                 <div>
-                                    <div class="font-bold text-slate-200">${dev.deviceId}</div>
+                                    <div class="font-bold text-slate-100 font-mono">${dev.deviceId}</div>
                                     <div class="text-xs text-slate-400 mt-1">${dev.deviceModel}</div>
                                 </div>
                                 <div class="text-right">
-                                    <div class="text-xs font-bold ${statusColor}">${dev.status}</div>
-                                    ${isPaid ? `<div class="text-[10px] text-slate-500">${dev.daysRemaining} days left</div>` : ''}
+                                    <span class="text-xs font-bold px-2 py-0.5 rounded-full border ${statusColor}">${dev.status}</span>
+                                    ${isPaid ? `<div class="text-[11px] text-emerald-400/80 mt-1 font-semibold">${dev.daysRemaining} days remaining</div>` : ''}
                                 </div>
                             `;
-
                             btn.onclick = () => selectDevice(dev, btn);
                             deviceList.appendChild(btn);
                         });
@@ -236,6 +265,12 @@
                 if (res.ok) {
                     linkDeviceIdInput.value = '';
                     await fetchDevices();
+                    // Auto select newly linked device
+                    const newDev = cachedDevices.find(d => d.deviceId.toUpperCase() === (data.deviceId || deviceId).toUpperCase());
+                    if (newDev) {
+                        const btn = document.querySelector(`[data-device-id="${newDev.deviceId}"]`);
+                        selectDevice(newDev, btn);
+                    }
                 } else {
                     alert(`Failed to link device: ${data.error}`);
                 }
@@ -248,29 +283,42 @@
         };
 
         function selectDevice(dev, btnElem) {
-            // Reset UI
-            qrCodeSection.classList.add('hidden');
-            document.querySelectorAll('#deviceList button').forEach(b => b.classList.remove('border-emerald-500', 'bg-slate-800'));
+            // Reset selection highlights
+            document.querySelectorAll('#deviceList button').forEach(b => {
+                b.classList.remove('border-emerald-500', 'bg-slate-800', 'ring-2', 'ring-emerald-500/50');
+            });
             
-            btnElem.classList.add('border-emerald-500', 'bg-slate-800');
+            if (btnElem) {
+                btnElem.classList.add('border-emerald-500', 'bg-slate-800', 'ring-2', 'ring-emerald-500/50');
+            }
             selectedDeviceId = dev.deviceId;
             
             if (dev.status === 'PAID') {
                 activationSection.classList.add('hidden');
-                // Auto fetch the current key so we can show QR code again
-                showExistingLicenseQR(dev.deviceId);
+                qrStatusHeader.textContent = `${dev.deviceId} Active License QR`;
+                
+                if (dev.licenseKey) {
+                    displayQR(dev.licenseKey);
+                } else {
+                    showExistingLicenseQR(dev.deviceId);
+                }
             } else {
+                qrCodeSection.classList.add('hidden');
                 activationSection.classList.remove('hidden');
                 activationSection.classList.add('flex');
-                selectedDeviceInfo.innerHTML = `You selected <strong class="text-white">${dev.deviceId}</strong>. Activating this device will consume 1 credit.`;
+                selectedDeviceInfo.innerHTML = `You selected <strong class="text-white font-mono">${dev.deviceId}</strong> (${dev.deviceModel}). Activating this device will consume 1 credit.`;
                 
                 if (currentCredits > 0) {
                     useCreditBtn.disabled = false;
                     useCreditBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                    useCreditBtn.innerHTML = `
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        <span>Use 1 Credit to Activate</span>
+                    `;
                 } else {
                     useCreditBtn.disabled = true;
                     useCreditBtn.classList.add('opacity-50', 'cursor-not-allowed');
-                    useCreditBtn.innerHTML = `<span>Insufficient Credits</span>`;
+                    useCreditBtn.innerHTML = `<span>Insufficient Credits (Buy credits first)</span>`;
                 }
             }
         }
@@ -281,9 +329,11 @@
                 const data = await res.json();
                 if (data.isPaid && data.licenseKey) {
                     displayQR(data.licenseKey);
+                } else {
+                    console.warn("Could not retrieve license key for paid device:", data);
                 }
             } catch(e) {
-                console.error(e);
+                console.error("Error fetching license token:", e);
             }
         }
 
@@ -292,7 +342,7 @@
             
             useCreditBtn.disabled = true;
             const originalText = useCreditBtn.innerHTML;
-            useCreditBtn.innerHTML = `Activating...`;
+            useCreditBtn.innerHTML = `Activating & Generating Key...`;
 
             try {
                 const res = await fetch(`${API_BASE}/api/user/activate-device`, {
@@ -300,18 +350,19 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ ownerToken, deviceId: selectedDeviceId })
                 });
-
                 const data = await res.json();
                 
-                if (res.ok && data.success) {
-                    // Refresh credits & devices
+                if (res.ok && data.success && data.licenseKey) {
+                    // Refresh credits & devices in background
                     await fetchCredits();
                     await fetchDevices();
+                    
                     activationSection.classList.add('hidden');
+                    qrStatusHeader.textContent = `Device ${data.deviceId || selectedDeviceId} Activated!`;
                     
                     displayQR(data.licenseKey);
                 } else {
-                    alert(`Activation failed: ${data.error}`);
+                    alert(`Activation failed: ${data.error || 'Unknown error'}`);
                     useCreditBtn.disabled = false;
                     useCreditBtn.innerHTML = originalText;
                 }
@@ -323,22 +374,60 @@
         };
 
         function displayQR(licenseKey) {
+            if (!licenseKey) {
+                console.error("displayQR called without licenseKey");
+                return;
+            }
+
             qrCodeSection.classList.remove('hidden');
             qrCodeSection.classList.add('flex');
             
-            qrcodeDisplay.innerHTML = '';
-            qrCodeInstance = new QRCode(qrcodeDisplay, {
-                text: licenseKey,
-                width: 200,
-                height: 200,
-                colorDark : "#000000",
-                colorLight : "#ffffff",
-                correctLevel : QRCode.CorrectLevel.M
-            });
-
             licenseKeyDisplay.textContent = licenseKey;
+
+            // Method 1: High quality client-side canvas render via QRious
+            let rendered = false;
+            try {
+                if (typeof QRious !== 'undefined') {
+                    new QRious({
+                        element: qrCanvas,
+                        value: licenseKey,
+                        size: 220,
+                        level: 'M'
+                    });
+                    qrCanvas.classList.remove('hidden');
+                    qrFallbackImg.classList.add('hidden');
+                    rendered = true;
+                }
+            } catch (canvasErr) {
+                console.warn("Canvas QRious render failed, switching to image fallback:", canvasErr);
+            }
+
+            // Method 2: Fallback to reliable QR image service
+            if (!rendered) {
+                qrCanvas.classList.add('hidden');
+                qrFallbackImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(licenseKey)}`;
+                qrFallbackImg.classList.remove('hidden');
+            }
+
+            // Smooth scroll to QR code
+            setTimeout(() => {
+                qrCodeSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }, 100);
         }
 
+        copyKeyBtn.onclick = () => {
+            const text = licenseKeyDisplay.textContent;
+            if (!text) return;
+            navigator.clipboard.writeText(text).then(() => {
+                const orig = copyKeyBtn.textContent;
+                copyKeyBtn.textContent = 'Copied!';
+                copyKeyBtn.classList.add('text-white');
+                setTimeout(() => {
+                    copyKeyBtn.textContent = orig;
+                    copyKeyBtn.classList.remove('text-white');
+                }, 2000);
+            });
+        };
     </script>
 </body>
 </html>

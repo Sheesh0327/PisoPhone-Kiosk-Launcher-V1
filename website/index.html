@@ -400,20 +400,6 @@
 
             container.innerHTML = '';
 
-            if (isCached) {
-                const notice = document.createElement('div');
-                notice.id = 'cacheNotice';
-                notice.className = 'col-span-full mb-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center justify-between text-xs text-amber-300';
-                notice.innerHTML = `
-                    <div class="flex items-center gap-2">
-                        <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
-                        <span>Showing saved device cache. Session token expired.</span>
-                    </div>
-                    <button onclick="promptGoogleSignIn()" class="underline font-bold text-amber-300 hover:text-white transition">Sign in to sync live</button>
-                `;
-                container.appendChild(notice);
-            }
-
             if (!devices || devices.length === 0) {
                 const empty = document.createElement('div');
                 empty.className = 'col-span-full text-center text-slate-500 py-10 text-sm bg-slate-900 border border-slate-800 rounded-2xl p-6';

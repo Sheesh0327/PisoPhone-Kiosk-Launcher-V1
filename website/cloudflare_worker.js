@@ -381,9 +381,15 @@ export default {
           });
         }
 
+        let cleanId = String(deviceId).trim();
+        if (!cleanId.toUpperCase().startsWith('HW-')) {
+          cleanId = 'HW-' + cleanId;
+        }
+
         let record = null;
         if (env.DEVICE_STORE) {
-          const raw = await env.DEVICE_STORE.get(deviceId);
+          let raw = await env.DEVICE_STORE.get(cleanId);
+          if (!raw) raw = await env.DEVICE_STORE.get(deviceId);
           if (raw) record = JSON.parse(raw);
         }
 
@@ -656,6 +662,13 @@ export default {
             if (rawDev) {
               const dev = JSON.parse(rawDev);
               const isPaid = dev.paidExpiresAt > now;
+              let licenseKey = null;
+              if (isPaid) {
+                try {
+                  const token = await generateLicenseToken(dev.deviceId, dev.paidExpiresAt, env);
+                  licenseKey = token.licenseKey;
+                } catch(e) {}
+              }
               
               devices.push({
                 deviceId: dev.deviceId,
@@ -663,7 +676,8 @@ export default {
                 firstRegisteredAt: dev.firstRegisteredAt || now,
                 paidExpiresAt: dev.paidExpiresAt || 0,
                 status: isPaid ? 'PAID' : 'UNACTIVATED',
-                daysRemaining: isPaid ? Math.max(0, Math.ceil((dev.paidExpiresAt - now) / (24 * 60 * 60 * 1000))) : 0
+                daysRemaining: isPaid ? Math.max(0, Math.ceil((dev.paidExpiresAt - now) / (24 * 60 * 60 * 1000))) : 0,
+                licenseKey: licenseKey
               });
             }
           }
