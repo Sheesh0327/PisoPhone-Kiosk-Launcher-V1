@@ -35,7 +35,7 @@ jobs:
             echo "::error::Missing secret 'KEYSTORE_BASE64'. Please add KEYSTORE_BASE64 to your repository GitHub Secrets."
             exit 1
           fi
-          echo "$KEYSTORE_BASE64" | base64 -d > /tmp/release-keystore.jks
+          echo -n "$KEYSTORE_BASE64" | tr -d '\r\n ' | base64 -d -i > /tmp/release-keystore.jks
           echo "Production keystore successfully decoded from GitHub Secrets."
 
       - name: Build Release APK
