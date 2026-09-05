@@ -145,11 +145,21 @@ fun ActivationCelebrationDialog(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     Text(
-                        text = "CONGRATULATIONS!",
-                        fontSize = 22.sp,
+                        text = "🎉 CONGRATULATIONS!",
+                        fontSize = 24.sp,
                         fontWeight = FontWeight.Black,
                         color = Color(0xFF34D399),
                         letterSpacing = 1.sp,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Text(
+                        text = "Welcome to PisoPhone!",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
                         textAlign = TextAlign.Center
                     )
 
@@ -157,16 +167,16 @@ fun ActivationCelebrationDialog(
 
                     Text(
                         text = "1-Year Commercial License Activated",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF10B981),
                         textAlign = TextAlign.Center
                     )
 
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     Text(
-                        text = "All trial restrictions have been removed. Your machine is now permanently authorized.",
+                        text = "All trial restrictions have been lifted. Your device hardware is now permanently authorized and secured.",
                         fontSize = 12.sp,
                         color = Color(0xFF94A3B8),
                         textAlign = TextAlign.Center,
@@ -239,8 +249,8 @@ fun ActivationCelebrationDialog(
                                     )
                                 }
                                 Text(
-                                    text = licenseInfo.hardwareId.take(12),
-                                    fontSize = 12.sp,
+                                    text = licenseInfo.hardwareId,
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     fontFamily = FontFamily.Monospace,
                                     color = Color.White
@@ -286,18 +296,18 @@ fun ActivationCelebrationDialog(
                         onClick = onDismiss,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(50.dp),
-                        shape = RoundedCornerShape(12.dp),
+                            .height(54.dp),
+                        shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color(0xFF10B981),
                             contentColor = Color(0xFF020617)
                         )
                     ) {
                         Text(
-                            text = "START USING PISOPHONE",
-                            fontWeight = FontWeight.Black,
+                            text = "Click button to continue and restart application",
+                            fontWeight = FontWeight.Bold,
                             fontSize = 13.sp,
-                            letterSpacing = 0.5.sp
+                            textAlign = TextAlign.Center
                         )
                     }
                 }

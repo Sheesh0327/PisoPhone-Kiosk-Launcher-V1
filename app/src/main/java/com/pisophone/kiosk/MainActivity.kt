@@ -24,6 +24,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import com.pisophone.kiosk.model.AppInfo
+import com.pisophone.kiosk.receiver.KioskAdminActionReceiver
 import com.pisophone.kiosk.receiver.KioskWatchdogReceiver
 import com.pisophone.kiosk.security.HardwareLockManager
 import com.pisophone.kiosk.security.KioskSecurity
@@ -178,6 +179,12 @@ class MainActivity : ComponentActivity() {
                             onDismiss = {
                                 showCelebration = false
                                 HardwareLockManager.activationCelebrationEvent.value = false
+                                try {
+                                    val restartIntent = Intent(KioskAdminActionReceiver.ACTION_RESTART).apply {
+                                        setPackage(packageName)
+                                    }
+                                    sendBroadcast(restartIntent)
+                                } catch (e: Exception) {}
                             }
                         )
                     }

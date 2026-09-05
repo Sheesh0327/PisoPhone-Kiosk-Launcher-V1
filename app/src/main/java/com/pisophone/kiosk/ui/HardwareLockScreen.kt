@@ -67,6 +67,9 @@ fun HardwareLockScreen(
     
     var checkServerCooldown by remember { mutableLongStateOf(0L) }
 
+    var showCelebrationDialog by remember { mutableStateOf(false) }
+    var activatedLicenseInfo by remember { mutableStateOf<HardwareLockManager.LicenseInfo?>(null) }
+
     var licenseInfo by remember { mutableStateOf(HardwareLockManager.getLicenseInfo(context)) }
     val currentHwId = licenseInfo.hardwareId
     val currentDevName = licenseInfo.deviceName
@@ -77,31 +80,17 @@ fun HardwareLockScreen(
     val coroutineScope = rememberCoroutineScope()
     var isCheckingServer by remember { mutableStateOf(false) }
 
-
-    // Helper: apply activation and restart application to guarantee clean state
-    fun applyActivationAndRestart(licenseKey: String) {
+    // Helper: apply activation and show celebratory confirmation before restart
+    fun applyActivation(licenseKey: String) {
         val trimmed = licenseKey.trim()
         if (trimmed.isNotBlank()) {
             val activated = HardwareLockManager.activateOneYearLicense(context, trimmed)
             if (activated) {
-                Toast.makeText(context, "✅ 1-Year License activated! Restarting app...", Toast.LENGTH_LONG).show()
                 showActivationCodeDialog = false
-                onRebindSuccess()
-
-                // Trigger application restart via broadcast to ensure kiosk services reload cleanly
-                try {
-                    val restartIntent = Intent(KioskAdminActionReceiver.ACTION_RESTART).apply {
-                        setPackage(context.packageName)
-                    }
-                    context.sendBroadcast(restartIntent)
-
-                    val mainIntent = Intent(context, MainActivity::class.java).apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                    }
-                    context.startActivity(mainIntent)
-                } catch (e: Exception) {
-                    // Fallback to onRebindSuccess
-                }
+                val updatedLicense = HardwareLockManager.getLicenseInfo(context)
+                licenseInfo = updatedLicense
+                activatedLicenseInfo = updatedLicense
+                showCelebrationDialog = true
             } else {
                 Toast.makeText(context, "❌ Invalid License Key or Device Mismatch.", Toast.LENGTH_LONG).show()
                 errorMessage = "Invalid License Key or Device Mismatch. Please check the code."
@@ -112,7 +101,7 @@ fun HardwareLockScreen(
 
     val scanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
         if (result.contents != null) {
-            applyActivationAndRestart(result.contents)
+            applyActivation(result.contents)
         }
     }
 
@@ -555,7 +544,7 @@ fun HardwareLockScreen(
                         Button(
                             onClick = {
                                 if (codeInput.isNotBlank()) {
-                                    applyActivationAndRestart(codeInput)
+                                    applyActivation(codeInput)
                                 } else {
                                     errorMessage = "Please enter a valid activation code."
                                 }
@@ -694,5 +683,32 @@ fun HardwareLockScreen(
                 }
             }
         }
+    }
+
+    // License Activation Celebration Dialog
+    if (showCelebrationDialog) {
+        ActivationCelebrationDialog(
+            licenseInfo = activatedLicenseInfo ?: licenseInfo,
+            onDismiss = {
+                showCelebrationDialog = false
+                HardwareLockManager.activationCelebrationEvent.value = false
+                onRebindSuccess()
+
+                // Trigger application restart via broadcast to ensure kiosk services reload cleanly
+                try {
+                    val restartIntent = Intent(KioskAdminActionReceiver.ACTION_RESTART).apply {
+                        setPackage(context.packageName)
+                    }
+                    context.sendBroadcast(restartIntent)
+
+                    val mainIntent = Intent(context, MainActivity::class.java).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    }
+                    context.startActivity(mainIntent)
+                } catch (e: Exception) {
+                    // Fallback to onRebindSuccess
+                }
+            }
+        )
     }
 }
