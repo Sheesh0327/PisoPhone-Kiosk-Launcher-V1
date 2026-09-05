@@ -124,16 +124,23 @@
                     <span>Activate Phone via USB (1-Click)</span>
                 </button>
 
-                <!-- License Key Manual Copy Card (Available once paid) -->
+                <!-- License Key & QR Code Card (Available once paid) -->
                 <div id="licenseKeySection" class="hidden bg-slate-950 border border-slate-800 rounded-xl p-3">
-                    <div class="flex items-center justify-between mb-1">
-                        <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">License Key (Or enter manually in app)</span>
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Activation QR & License Key</span>
                         <button id="copyKeyBtn" class="text-xs font-bold text-emerald-400 hover:text-emerald-300 transition flex items-center gap-1 cursor-pointer">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                             Copy Key
                         </button>
                     </div>
-                    <p id="licenseKeyDisplay" class="text-xs font-mono text-emerald-400 break-all bg-slate-900/90 p-2.5 rounded border border-slate-800 select-all"></p>
+                    
+                    <div class="flex flex-col sm:flex-row gap-4 items-center sm:items-start bg-slate-900/90 p-4 rounded border border-slate-800">
+                        <div id="qrcodeDisplay" class="bg-white p-2 rounded-lg shrink-0 hidden"></div>
+                        <div class="flex flex-col h-full justify-center w-full">
+                            <p class="text-[11px] text-slate-400 mb-2 leading-relaxed">Tap <strong>Scan Activation QR Code</strong> on the locked device and point its camera at this code to activate instantly.</p>
+                            <p id="licenseKeyDisplay" class="text-[10px] sm:text-[11px] font-mono text-emerald-400 break-all select-all bg-slate-950 p-2 rounded border border-slate-800"></p>
+                        </div>
+                    </div>
                 </div>
 
                 <div id="logContainer" class="hidden bg-slate-950 border border-slate-800 rounded-lg p-4 font-mono text-xs text-slate-400 h-44 overflow-y-auto text-left"></div>
@@ -150,9 +157,10 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="webadb_manager.js"></script>
     <script>
-        const API_BASE = 'https://pisophone-licensing-api.evankhell897.workers.dev';
+        const API_BASE = 'https://pisophone-api.pisophone-support.workers.dev';
         
         const deviceIdInput = document.getElementById('deviceIdInput');
         const readUsbIdBtn = document.getElementById('readUsbIdBtn');
@@ -168,6 +176,9 @@
         const licenseKeySection = document.getElementById('licenseKeySection');
         const licenseKeyDisplay = document.getElementById('licenseKeyDisplay');
         const copyKeyBtn = document.getElementById('copyKeyBtn');
+        const qrcodeDisplay = document.getElementById('qrcodeDisplay');
+        
+        let qrCodeInstance = null;
 
         let isPaymentVerified = false;
         let verifiedLicenseKey = null;
@@ -246,6 +257,19 @@
 
                     // Display License key for manual entry fallback
                     licenseKeyDisplay.textContent = verifiedLicenseKey;
+                    
+                    // Generate QR Code
+                    qrcodeDisplay.classList.remove('hidden');
+                    qrcodeDisplay.innerHTML = ''; // Clear previous
+                    qrCodeInstance = new QRCode(qrcodeDisplay, {
+                        text: verifiedLicenseKey,
+                        width: 128,
+                        height: 128,
+                        colorDark : "#000000",
+                        colorLight : "#ffffff",
+                        correctLevel : QRCode.CorrectLevel.L
+                    });
+                    
                     licenseKeySection.classList.remove('hidden');
                     
                     setActivateButtonState(true, `Push 1-Year License via USB to ${modelName}`);

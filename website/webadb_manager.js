@@ -455,7 +455,7 @@
                         }
                     } catch(e) {}
 
-                    const workerApiBase = 'https://pisophone-licensing-api.evankhell897.workers.dev';
+                    const workerApiBase = 'https://pisophone-api.pisophone-support.workers.dev';
                     const controller = new AbortController();
                     const abortTimer = setTimeout(() => controller.abort(), 4000);
 

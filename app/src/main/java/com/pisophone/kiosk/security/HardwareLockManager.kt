@@ -72,7 +72,7 @@ object HardwareLockManager {
     private const val CHECK_INTERVAL_MS = 7L * 24L * 60L * 60L * 1000L // 7-day server recheck interval
 
     // Cloudflare Worker backend endpoint
-    private const val DEFAULT_BACKEND_URL = "https://pisophone-licensing-api.evankhell897.workers.dev"
+    private const val DEFAULT_BACKEND_URL = "https://pisophone-api.pisophone-support.workers.dev"
 
     enum class LicenseState {
         UNACTIVATED,
@@ -481,7 +481,7 @@ object HardwareLockManager {
      */
     private fun verifyLegacyHmac(data: String, signatureHex: String): Boolean {
         return try {
-            val signingSecret = "piso_master_lic_secret_2026_89a1f"
+            val signingSecret = "PISO_SEC_9xK4mP2vL8jR1cW3hY7nF5bT6qM0dX9zL4aV2bC8nN5mM7kX3jH9gF1d"
             val expectedHex = KioskSecurity.calculateHmac(data, signingSecret)
             KioskSecurity.constantTimeEquals(expectedHex, signatureHex)
         } catch (e: Exception) {

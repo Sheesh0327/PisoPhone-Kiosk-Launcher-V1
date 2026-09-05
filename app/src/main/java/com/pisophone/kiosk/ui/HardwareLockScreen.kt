@@ -7,6 +7,10 @@ import android.content.Context
 import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.activity.compose.rememberLauncherForActivityResult
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -60,6 +64,8 @@ fun HardwareLockScreen(
     var pinInput by remember { mutableStateOf("") }
     var codeInput by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    
+    var checkServerCooldown by remember { mutableLongStateOf(0L) }
 
     var licenseInfo by remember { mutableStateOf(HardwareLockManager.getLicenseInfo(context)) }
     val currentHwId = licenseInfo.hardwareId
@@ -71,27 +77,6 @@ fun HardwareLockScreen(
     val coroutineScope = rememberCoroutineScope()
     var isCheckingServer by remember { mutableStateOf(false) }
 
-    // Polling background license status: Periodically checks local license state and syncs with backend responsibly
-    LaunchedEffect(Unit) {
-        var lastSyncTime = 0L
-        while (isActive) {
-            val now = System.currentTimeMillis()
-            // Only attempt server sync at most once every 30 seconds to prevent hammering worker quotas
-            if (now - lastSyncTime > 30_000L) {
-                lastSyncTime = now
-                try {
-                    HardwareLockManager.syncWithBackend(context)
-                } catch (_: Exception) {}
-            }
-            val updated = HardwareLockManager.getLicenseInfo(context)
-            licenseInfo = updated
-            if (updated.state == HardwareLockManager.LicenseState.PAID_ACTIVE) {
-                onRebindSuccess()
-                break
-            }
-            delay(2000)
-        }
-    }
 
     // Helper: apply activation and restart application to guarantee clean state
     fun applyActivationAndRestart(licenseKey: String) {
@@ -122,6 +107,12 @@ fun HardwareLockScreen(
                 errorMessage = "Invalid License Key or Device Mismatch. Please check the code."
                 showActivationCodeDialog = true
             }
+        }
+    }
+
+    val scanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
+        if (result.contents != null) {
+            applyActivationAndRestart(result.contents)
         }
     }
 
@@ -323,84 +314,126 @@ fun HardwareLockScreen(
 
             Spacer(modifier = Modifier.height(28.dp))
 
-            // Option 1: Enter Code Manually (Primary button)
+            // Option 1: Scan QR Code (Primary button)
             Button(
                 onClick = {
-                    codeInput = ""
-                    errorMessage = null
-                    showActivationCodeDialog = true
+                    val options = ScanOptions()
+                    options.setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                    options.setPrompt("Scan PisoPhone Activation QR Code")
+                    options.setCameraId(0)
+                    options.setBeepEnabled(true)
+                    options.setBarcodeImageEnabled(false)
+                    options.setOrientationLocked(false)
+                    scanLauncher.launch(options)
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp)
-                    .testTag("activate_machine_button"),
+                    .testTag("scan_qr_button"),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981), contentColor = Color(0xFF020617)),
                 shape = RoundedCornerShape(14.dp)
             ) {
-                Icon(Icons.Filled.Key, contentDescription = null, modifier = Modifier.size(20.dp), tint = Color(0xFF020617))
+                Icon(Icons.Filled.QrCodeScanner, contentDescription = null, modifier = Modifier.size(20.dp), tint = Color(0xFF020617))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Enter License Key Manually",
+                    text = "Scan Activation QR Code",
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF020617)
                 )
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            Text(
+                text = "Tip: You can also activate instantly via USB directly from your dashboard.",
+                fontSize = 12.sp,
+                color = Color(0xFF64748B),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+            )
 
-            // Option 2: Refresh Status / Check Server & USB Activation
-            OutlinedButton(
-                onClick = {
-                    if (!isCheckingServer) {
-                        isCheckingServer = true
-                        coroutineScope.launch {
-                            val syncSuccess = HardwareLockManager.syncWithBackend(context)
-                            val updated = HardwareLockManager.getLicenseInfo(context)
-                            licenseInfo = updated
-                            isCheckingServer = false
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                HorizontalDivider(modifier = Modifier.weight(1f), color = Color(0xFF334155))
+                Text("Fallback Options", fontSize = 11.sp, color = Color(0xFF64748B), modifier = Modifier.padding(horizontal = 12.dp), fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                HorizontalDivider(modifier = Modifier.weight(1f), color = Color(0xFF334155))
+            }
 
-                            if (updated.state == HardwareLockManager.LicenseState.PAID_ACTIVE) {
-                                Toast.makeText(context, "✅ License active! Unlocking...", Toast.LENGTH_SHORT).show()
-                                onRebindSuccess()
-                            } else if (updated.state == HardwareLockManager.LicenseState.EXPIRED_LOCKED) {
-                                Toast.makeText(context, "⚠️ Subscription is expired on server. Please renew on website.", Toast.LENGTH_LONG).show()
-                            } else {
-                                if (syncSuccess) {
-                                    Toast.makeText(context, "Server checked: Device registered. Activation required.", Toast.LENGTH_SHORT).show()
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                TextButton(
+                    onClick = {
+                        codeInput = ""
+                        errorMessage = null
+                        showActivationCodeDialog = true
+                    }
+                ) {
+                    Icon(Icons.Filled.Key, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF94A3B8))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Manual Code",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF94A3B8)
+                    )
+                }
+
+                TextButton(
+                    onClick = {
+                        val now = System.currentTimeMillis()
+                        if (now < checkServerCooldown) {
+                            val remaining = (checkServerCooldown - now) / 1000
+                            Toast.makeText(context, "Checking... Please wait ${remaining}s.", Toast.LENGTH_SHORT).show()
+                            return@TextButton
+                        }
+                        
+                        if (!isCheckingServer) {
+                            isCheckingServer = true
+                            checkServerCooldown = now + 60_000L // 60s cooldown
+                            
+                            coroutineScope.launch {
+                                val syncSuccess = HardwareLockManager.syncWithBackend(context)
+                                val updated = HardwareLockManager.getLicenseInfo(context)
+                                licenseInfo = updated
+                                isCheckingServer = false
+                                if (updated.state == HardwareLockManager.LicenseState.PAID_ACTIVE) {
+                                    Toast.makeText(context, "✅ License active! Unlocking...", Toast.LENGTH_SHORT).show()
+                                    onRebindSuccess()
+                                } else if (updated.state == HardwareLockManager.LicenseState.EXPIRED_LOCKED) {
+                                    Toast.makeText(context, "⚠️ Subscription is expired on server. Please renew on website.", Toast.LENGTH_LONG).show()
                                 } else {
-                                    Toast.makeText(context, "Server check deferred (offline). Awaiting WebADB or network.", Toast.LENGTH_SHORT).show()
+                                    if (syncSuccess) {
+                                        Toast.makeText(context, "Server checked: Device registered. Activation required.", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(context, "Server check deferred (offline). Awaiting WebADB or network.", Toast.LENGTH_SHORT).show()
+                                    }
                                 }
                             }
                         }
                     }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .testTag("refresh_activation_button"),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF38BDF8)),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.5f)),
-                shape = RoundedCornerShape(14.dp)
-            ) {
-                if (isCheckingServer) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color(0xFF38BDF8), strokeWidth = 2.dp)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Checking Server...",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF38BDF8)
-                    )
-                } else {
-                    Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color(0xFF38BDF8))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Check Server / USB Activation",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF38BDF8)
-                    )
+                ) {
+                    if (isCheckingServer) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color(0xFF94A3B8), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Checking...",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF94A3B8)
+                        )
+                    } else {
+                        Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF94A3B8))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Fetch via Wi-Fi",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF94A3B8)
+                        )
+                    }
                 }
             }
 

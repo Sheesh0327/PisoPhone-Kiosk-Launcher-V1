@@ -340,23 +340,6 @@ class KioskService : Service() {
         systemMonitor.registerBatteryMonitor()
 
         scope.launch {
-            while (isActive) {
-                try {
-                    HardwareLockManager.syncWithBackend(this@KioskService)
-                } catch (e: Exception) {
-                    Log.d(TAG, "Periodic server license sync: ${e.message}")
-                }
-                val lic = HardwareLockManager.getLicenseInfo(this@KioskService)
-                val nextDelay = if (lic.isPaid) {
-                    6 * 60 * 60_000L // 6 hours when commercial license is active
-                } else {
-                    15 * 60_000L // 15 minutes when unactivated/pending
-                }
-                delay(nextDelay)
-            }
-        }
-
-        scope.launch {
             try {
                 val recentEvents = coinEventRepo.getLatestEvents(200)
                 val txSet = recentEvents.mapNotNull { it.txId.takeIf { tx -> tx.isNotBlank() } }.toSet()
