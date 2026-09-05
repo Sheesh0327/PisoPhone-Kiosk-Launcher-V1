@@ -137,8 +137,10 @@ class MainActivity : ComponentActivity() {
                     } else if (!isAppAllowed) {
                         HardwareLockScreen(
                             onRebindSuccess = {
-                                isAppAllowed = true
-                                checkDeviceOwner()
+                                isAppAllowed = HardwareLockManager.isAppAllowedToRun(this@MainActivity)
+                                if (isAppAllowed) {
+                                    checkDeviceOwner()
+                                }
                             },
                         )
                     } else if (!isDeviceOwner) {

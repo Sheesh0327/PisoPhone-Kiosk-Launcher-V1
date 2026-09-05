@@ -22,6 +22,12 @@ object AppLauncher {
     fun launchApp(context: Context, packageName: String, bypassKiosk: Boolean = false): Boolean {
         Log.i(TAG, "Attempting to launch app: $packageName (bypassKiosk=$bypassKiosk)")
         
+        if (!com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)) {
+            Log.w(TAG, "Launch app blocked: Device is not activated or licensed.")
+            Toast.makeText(context, "App launch blocked: License activation required.", Toast.LENGTH_SHORT).show()
+            return false
+        }
+
         if (bypassKiosk) {
             try {
                 KioskService.triggerAdminBypass(context, 900)

@@ -188,6 +188,28 @@
                 </div>
             </div>
 
+            <!-- Coin Slot Box Quota Overview Card -->
+            <div id="dashBoxStatusCard" class="glass-card rounded-2xl p-6 border border-emerald-500/30 w-full mb-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl">
+                <div class="flex items-center gap-4">
+                    <div class="w-14 h-14 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h3 class="text-lg font-black text-white">Coin Slot Box Hardware</h3>
+                            <span id="dashBoxBadge" class="text-xs font-bold px-2.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30">Verification Required</span>
+                        </div>
+                        <p id="dashBoxSubtext" class="text-xs text-slate-400 mt-1">Each ₱5,000 Coin Slot Box unit provides a hardware build number licensing up to 12 phones.</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3 w-full md:w-auto">
+                    <button id="dashVerifyBoxBtn" class="w-full md:w-auto bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-5 py-3 rounded-xl text-xs transition shadow-lg shadow-emerald-500/20 whitespace-nowrap flex items-center justify-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <span>Verify Box Build Number</span>
+                    </button>
+                </div>
+            </div>
+
             <!-- Quick Access Tool Grid for Authenticated Operator -->
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full mb-8">
                 <a href="install.html" class="glass-card rounded-2xl p-5 border border-emerald-500/20 hover:border-emerald-500/50 flex items-center gap-4 transition shadow-md">
@@ -319,6 +341,7 @@
                 if (user.token) {
                     fetchUserDevices(user.token);
                 }
+                refreshDashboardBoxStatus();
             } else {
                 currentUserToken = null;
 
@@ -591,6 +614,52 @@
             });
         }
 
+        // Coin Slot Box Dashboard Management
+        const dashBoxBadge = document.getElementById('dashBoxBadge');
+        const dashBoxSubtext = document.getElementById('dashBoxSubtext');
+        const dashVerifyBoxBtn = document.getElementById('dashVerifyBoxBtn');
+
+        async function refreshDashboardBoxStatus() {
+            const box = await fetchUserBoxStatus();
+            if (box && box.buildNumber) {
+                if (dashBoxBadge) {
+                    dashBoxBadge.textContent = `Active (#${box.buildNumber})`;
+                    dashBoxBadge.className = "text-xs font-bold px-2.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
+                }
+                if (dashBoxSubtext) {
+                    dashBoxSubtext.innerHTML = `<strong>Unit Verified:</strong> Build #${box.buildNumber} • <span class="text-emerald-400 font-semibold">${box.devicesUsed} / ${box.maxDevices} Devices Used</span> (${box.slotsRemaining} slots remaining)`;
+                }
+                if (dashVerifyBoxBtn) {
+                    dashVerifyBoxBtn.innerHTML = `
+                        <svg class="w-4 h-4 text-slate-950" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                        <span>Add / Verify Another Box</span>
+                    `;
+                }
+            } else {
+                if (dashBoxBadge) {
+                    dashBoxBadge.textContent = "Verification Required";
+                    dashBoxBadge.className = "text-xs font-bold px-2.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30";
+                }
+                if (dashBoxSubtext) {
+                    dashBoxSubtext.textContent = "Each ₱5,000 Coin Slot Box unit provides a hardware build number licensing up to 12 phones.";
+                }
+                if (dashVerifyBoxBtn) {
+                    dashVerifyBoxBtn.innerHTML = `
+                        <svg class="w-4 h-4 text-slate-950" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <span>Verify Box Build Number</span>
+                    `;
+                }
+            }
+        }
+
+        if (dashVerifyBoxBtn) {
+            dashVerifyBoxBtn.addEventListener('click', () => {
+                showBoxVerificationModal(() => {
+                    refreshDashboardBoxStatus();
+                });
+            });
+        }
+
         if (refreshDevicesBtn) {
             refreshDevicesBtn.addEventListener('click', () => {
                 if (currentUserToken) {
@@ -598,6 +667,7 @@
                 } else {
                     checkAuthState();
                 }
+                refreshDashboardBoxStatus();
             });
         }
 

@@ -724,11 +724,30 @@ object HardwareLockManager {
             Log.w(TAG, "Rebind failed: Incorrect Admin PIN.")
             return false
         }
-        val success = sealToCurrentDevice(context)
-        if (success) {
-            Log.i(TAG, "Device hardware successfully re-bound to current device by administrator.")
-        }
-        return success
+        val prefs = getPrefs(context)
+        val currentHwId = getHardwareFingerprint(context)
+        val currentDevName = getHardwareDescription()
+        val now = System.currentTimeMillis()
+        val sig = generateSignature(context, currentHwId, currentDevName, now)
+
+        // Preserve current license status and expiration without altering license validity
+        val currentStatus = prefs.getString(KEY_LICENSE_STATUS, "UNACTIVATED") ?: "UNACTIVATED"
+        val paidExp = prefs.getLong(KEY_PAID_EXPIRES_TIME, 0L)
+        val lastCheck = prefs.getLong(KEY_LAST_SERVER_CHECK_TIME, 0L)
+        val licSig = generateLicenseSignature(context, currentHwId, currentStatus, paidExp, lastCheck)
+
+        prefs.edit()
+            .putString(KEY_BOUND_HW_ID, currentHwId)
+            .putString(KEY_BOUND_DEVICE_NAME, currentDevName)
+            .putLong(KEY_BOUND_TIMESTAMP, now)
+            .putString(KEY_BOUND_SIGNATURE, sig)
+            .putBoolean(KEY_HARDWARE_LOCKED, false)
+            .putString(KEY_LICENSE_SIGNATURE, licSig)
+            .apply()
+
+        notifyLicenseChanged()
+        Log.i(TAG, "Device hardware successfully re-bound to current device ($currentDevName - $currentHwId). License state remains: $currentStatus")
+        return true
     }
 
     private fun generateSignature(context: Context, hwId: String, devName: String, timestamp: Long): String {

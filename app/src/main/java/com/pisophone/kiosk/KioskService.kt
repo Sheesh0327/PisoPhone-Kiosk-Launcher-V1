@@ -163,6 +163,13 @@ class KioskService : Service() {
     }
 
     fun performAdminBypass(durationSeconds: Int = 900) {
+        if (!com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(this) || stateManager.appState.value == 4) {
+            Log.w(TAG, "Admin bypass rejected: Device is not activated or is unlicensed.")
+            Handler(Looper.getMainLooper()).post {
+                Toast.makeText(this, "⚠️ Bypass Unavailable: Device requires license activation.", Toast.LENGTH_LONG).show()
+            }
+            return
+        }
         Log.i(TAG, "Admin bypass granted for $durationSeconds seconds.")
         stateManager.appState.value = 2
         stateManager.sessionTimeRemaining.value = durationSeconds

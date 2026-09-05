@@ -668,9 +668,15 @@ fun HardwareLockScreen(
                         Button(
                             onClick = {
                                 if (HardwareLockManager.rebindWithAdminPin(context, pinInput)) {
-                                    Toast.makeText(context, "✅ Device authorized and bound successfully!", Toast.LENGTH_LONG).show()
+                                    val updated = HardwareLockManager.getLicenseInfo(context)
+                                    licenseInfo = updated
                                     showAdminDialog = false
-                                    onRebindSuccess()
+                                    if (HardwareLockManager.isAppAllowedToRun(context)) {
+                                        Toast.makeText(context, "✅ Device authorized and bound successfully!", Toast.LENGTH_LONG).show()
+                                        onRebindSuccess()
+                                    } else {
+                                        Toast.makeText(context, "✅ Hardware seal updated. License activation required.", Toast.LENGTH_LONG).show()
+                                    }
                                 } else {
                                     errorMessage = "Invalid Admin Password. Authorization rejected."
                                 }

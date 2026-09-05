@@ -179,6 +179,10 @@ export default {
       '/api/payment/confirm',
       '/api/user/credits',
       '/api/user/activate-device',
+      '/api/box/verify',
+      '/api/box/status',
+      '/api/box/link-device',
+      '/api/admin/create-box',
     ];
 
     if (!KNOWN_PATHS.includes(url.pathname)) {
@@ -992,6 +996,258 @@ export default {
             licenseKey: token.licenseKey,
             serverTime: now,
             message: 'Device successfully marked as paid & license issued.',
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // =========================================================================
+      // 6. Coin Slot Box (₱5,000 Hardware) Build Number Verification & Device Limit
+      // POST /api/box/verify
+      // Body: { buildNumber: string, ownerToken?: string, ownerEmail?: string }
+      // =========================================================================
+      if (url.pathname === '/api/box/verify' && method === 'POST') {
+        const body = await request.json();
+        const { buildNumber, ownerToken, ownerEmail: explicitEmail } = body;
+
+        let email = explicitEmail;
+        if (!email && ownerToken) {
+          email = await verifyGoogleToken(ownerToken);
+        }
+
+        if (!email) {
+          return new Response(JSON.stringify({ error: 'Authentication required. Please sign in.' }), {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        if (!buildNumber || typeof buildNumber !== 'string') {
+          return new Response(JSON.stringify({ error: 'Please enter a valid Coin Slot Box Build Number.' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const cleanBuildNumber = buildNumber.trim().toUpperCase();
+        if (cleanBuildNumber.length < 5) {
+          return new Response(JSON.stringify({ error: 'Invalid Build Number format. Check the label on your Coin Slot Box.' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        let boxRecord = null;
+        if (env.DEVICE_STORE) {
+          const rawBox = await env.DEVICE_STORE.get(`BOX:${cleanBuildNumber}`);
+          if (rawBox) boxRecord = JSON.parse(rawBox);
+        }
+
+        // If not in KV, initialize valid registered box record (allows hardware codes like PISO-BOX-XXXX-XXXX or alphanumeric 5k box codes)
+        if (!boxRecord) {
+          boxRecord = {
+            buildNumber: cleanBuildNumber,
+            maxDevices: 12,
+            linkedDevices: [],
+            pricePhp: 5000,
+            firstClaimedBy: email,
+            claimedAt: now,
+          };
+        }
+
+        // Check if box was claimed by another user
+        if (boxRecord.firstClaimedBy && boxRecord.firstClaimedBy.toLowerCase() !== email.toLowerCase()) {
+          return new Response(JSON.stringify({ error: 'This Coin Slot Box build number has already been registered to another account.' }), {
+            status: 403,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        boxRecord.firstClaimedBy = email;
+        const linkedDevices = Array.isArray(boxRecord.linkedDevices) ? boxRecord.linkedDevices : [];
+
+        if (env.DEVICE_STORE) {
+          await env.DEVICE_STORE.put(`BOX:${cleanBuildNumber}`, JSON.stringify(boxRecord));
+
+          const rawUserBoxes = await env.DEVICE_STORE.get(`USER_BOXES:${email}`);
+          let userBoxes = rawUserBoxes ? JSON.parse(rawUserBoxes) : [];
+          if (!userBoxes.includes(cleanBuildNumber)) {
+            userBoxes.push(cleanBuildNumber);
+            await env.DEVICE_STORE.put(`USER_BOXES:${email}`, JSON.stringify(userBoxes));
+          }
+        }
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message: 'Coin Slot Box verified successfully! (12 Devices Allowed)',
+            buildNumber: cleanBuildNumber,
+            maxDevices: 12,
+            devicesUsed: linkedDevices.length,
+            slotsRemaining: Math.max(0, 12 - linkedDevices.length),
+            linkedDevices: linkedDevices,
+            serverTime: now,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // =========================================================================
+      // 7. Coin Slot Box Status
+      // POST /api/box/status
+      // Body: { ownerToken?: string, ownerEmail?: string }
+      // =========================================================================
+      if (url.pathname === '/api/box/status' && method === 'POST') {
+        const body = await request.json();
+        const { ownerToken, ownerEmail: explicitEmail } = body;
+
+        let email = explicitEmail;
+        if (!email && ownerToken) {
+          email = await verifyGoogleToken(ownerToken);
+        }
+
+        if (!email) {
+          return new Response(JSON.stringify({ error: 'Authentication required.' }), {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        let userBoxes = [];
+        if (env.DEVICE_STORE) {
+          const rawUserBoxes = await env.DEVICE_STORE.get(`USER_BOXES:${email}`);
+          if (rawUserBoxes) userBoxes = JSON.parse(rawUserBoxes);
+        }
+
+        let totalAllowed = userBoxes.length * 12;
+        let allLinked = [];
+        let boxDetails = [];
+
+        for (const bNum of userBoxes) {
+          if (env.DEVICE_STORE) {
+            const rawBox = await env.DEVICE_STORE.get(`BOX:${bNum}`);
+            if (rawBox) {
+              const bData = JSON.parse(rawBox);
+              const bLinked = Array.isArray(bData.linkedDevices) ? bData.linkedDevices : [];
+              allLinked = allLinked.concat(bLinked);
+              boxDetails.push({
+                buildNumber: bNum,
+                maxDevices: bData.maxDevices || 12,
+                devicesUsed: bLinked.length,
+                slotsRemaining: Math.max(0, (bData.maxDevices || 12) - bLinked.length),
+                linkedDevices: bLinked,
+              });
+            }
+          }
+        }
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            hasVerifiedBox: userBoxes.length > 0,
+            boxes: boxDetails,
+            totalBoxes: userBoxes.length,
+            totalMaxDevices: totalAllowed,
+            totalDevicesUsed: allLinked.length,
+            totalSlotsRemaining: Math.max(0, totalAllowed - allLinked.length),
+            serverTime: now,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // =========================================================================
+      // 8. Link Device to Box with 12-Device Maximum Limit Check
+      // POST /api/box/link-device
+      // Body: { buildNumber: string, deviceId: string, ownerToken?: string, ownerEmail?: string }
+      // =========================================================================
+      if (url.pathname === '/api/box/link-device' && method === 'POST') {
+        const body = await request.json();
+        const { buildNumber, deviceId, ownerToken, ownerEmail: explicitEmail } = body;
+
+        let email = explicitEmail;
+        if (!email && ownerToken) {
+          email = await verifyGoogleToken(ownerToken);
+        }
+
+        if (!email) {
+          return new Response(JSON.stringify({ error: 'Authentication required.' }), {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        if (!deviceId) {
+          return new Response(JSON.stringify({ error: 'Missing deviceId.' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const cleanDevId = String(deviceId).trim();
+        let targetBoxNumber = buildNumber ? String(buildNumber).trim().toUpperCase() : null;
+
+        // If targetBoxNumber not specified, find user's box that has free slot
+        if (!targetBoxNumber && env.DEVICE_STORE) {
+          const rawUserBoxes = await env.DEVICE_STORE.get(`USER_BOXES:${email}`);
+          const userBoxes = rawUserBoxes ? JSON.parse(rawUserBoxes) : [];
+          for (const bNum of userBoxes) {
+            const rawBox = await env.DEVICE_STORE.get(`BOX:${bNum}`);
+            if (rawBox) {
+              const bData = JSON.parse(rawBox);
+              const bLinked = Array.isArray(bData.linkedDevices) ? bData.linkedDevices : [];
+              if (bLinked.includes(cleanDevId) || bLinked.length < (bData.maxDevices || 12)) {
+                targetBoxNumber = bNum;
+                break;
+              }
+            }
+          }
+        }
+
+        if (!targetBoxNumber) {
+          return new Response(JSON.stringify({ error: 'No verified Coin Slot Box found with available device slots. Please verify a Coin Slot Box build number.' }), {
+            status: 403,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        let boxData = null;
+        if (env.DEVICE_STORE) {
+          const rawBox = await env.DEVICE_STORE.get(`BOX:${targetBoxNumber}`);
+          if (rawBox) boxData = JSON.parse(rawBox);
+        }
+
+        if (!boxData) {
+          return new Response(JSON.stringify({ error: 'Coin Slot Box not found.' }), {
+            status: 404,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const linked = Array.isArray(boxData.linkedDevices) ? boxData.linkedDevices : [];
+        if (!linked.includes(cleanDevId)) {
+          if (linked.length >= (boxData.maxDevices || 12)) {
+            return new Response(JSON.stringify({ error: 'This Coin Slot Box has reached its maximum limit of 12 devices.' }), {
+              status: 400,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            });
+          }
+          linked.push(cleanDevId);
+          boxData.linkedDevices = linked;
+          if (env.DEVICE_STORE) {
+            await env.DEVICE_STORE.put(`BOX:${targetBoxNumber}`, JSON.stringify(boxData));
+          }
+        }
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            buildNumber: targetBoxNumber,
+            deviceId: cleanDevId,
+            devicesUsed: linked.length,
+            maxDevices: boxData.maxDevices || 12,
+            slotsRemaining: Math.max(0, (boxData.maxDevices || 12) - linked.length),
+            message: `Device linked to Coin Slot Box (${linked.length}/12 slots used).`,
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );

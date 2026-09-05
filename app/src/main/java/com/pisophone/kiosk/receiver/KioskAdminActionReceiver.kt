@@ -90,6 +90,11 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                     Toast.makeText(context, "Unauthorized: Valid Admin PIN required.", Toast.LENGTH_SHORT).show()
                     return
                 }
+                if (!com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)) {
+                    Log.w(TAG, "ADMIN_BYPASS rejected: Device is not activated or licensed.")
+                    Toast.makeText(context, "Bypass rejected: License activation required.", Toast.LENGTH_SHORT).show()
+                    return
+                }
                 val duration = intent.getIntExtra("duration", 900)
                 Log.i(TAG, "Admin bypass command authenticated & received for $duration seconds.")
                 KioskService.triggerAdminBypass(context, duration)

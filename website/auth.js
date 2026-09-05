@@ -311,6 +311,190 @@ function initGoogleAuthFlow(containerId = 'googleButtonContainer') {
     tryInit();
 }
 
+// =========================================================================
+// COIN SLOT BOX (₱5,000 HARDWARE) VERIFICATION & 12-DEVICE ENFORCEMENT
+// =========================================================================
+const PISO_BOX_STORAGE_KEY = "piso_verified_box";
+const PISO_API_BASE = 'https://pisophone-api.pisophone-support.workers.dev';
+
+function getPisoBox() {
+    try {
+        const raw = localStorage.getItem(PISO_BOX_STORAGE_KEY);
+        if (!raw) return null;
+        return JSON.parse(raw);
+    } catch (e) {
+        return null;
+    }
+}
+
+function setPisoBox(boxData) {
+    if (!boxData) {
+        localStorage.removeItem(PISO_BOX_STORAGE_KEY);
+    } else {
+        localStorage.setItem(PISO_BOX_STORAGE_KEY, JSON.stringify(boxData));
+    }
+}
+
+/**
+ * Verifies the Coin Slot Box build number with the backend API
+ */
+async function verifyCoinSlotBox(buildNumber) {
+    const user = getPisoUser();
+    if (!user) throw new Error("Please sign in first.");
+
+    const res = await fetch(`${PISO_API_BASE}/api/box/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            buildNumber: buildNumber,
+            ownerEmail: user.email,
+            ownerToken: user.token
+        })
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to verify Coin Slot Box build number.');
+    }
+
+    const boxObj = {
+        buildNumber: data.buildNumber,
+        maxDevices: data.maxDevices || 12,
+        devicesUsed: data.devicesUsed || 0,
+        slotsRemaining: data.slotsRemaining !== undefined ? data.slotsRemaining : 12,
+        verifiedAt: Date.now()
+    };
+    setPisoBox(boxObj);
+    return boxObj;
+}
+
+/**
+ * Checks server for user's verified boxes
+ */
+async function fetchUserBoxStatus() {
+    const user = getPisoUser();
+    if (!user) return null;
+
+    try {
+        const res = await fetch(`${PISO_API_BASE}/api/box/status`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                ownerEmail: user.email,
+                ownerToken: user.token
+            })
+        });
+        if (res.ok) {
+            const data = await res.json();
+            if (data.hasVerifiedBox && data.boxes && data.boxes.length > 0) {
+                const primary = data.boxes[0];
+                const boxObj = {
+                    buildNumber: primary.buildNumber,
+                    maxDevices: data.totalMaxDevices || 12,
+                    devicesUsed: data.totalDevicesUsed || 0,
+                    slotsRemaining: data.totalSlotsRemaining || 12,
+                    verifiedAt: Date.now(),
+                    allBoxes: data.boxes
+                };
+                setPisoBox(boxObj);
+                return boxObj;
+            }
+        }
+    } catch (e) {
+        console.warn("PisoAuth: Error fetching box status", e);
+    }
+    return getPisoBox();
+}
+
+/**
+ * Renders modal prompting user to enter their ₱5,000 Coin Slot Box Build Number
+ */
+function showBoxVerificationModal(onSuccessCallback) {
+    let existingModal = document.getElementById('coinSlotBoxModal');
+    if (existingModal) existingModal.remove();
+
+    const modalHtml = `
+        <div id="coinSlotBoxModal" class="fixed inset-0 z-[999] flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 animate-fade-in-up">
+            <div class="glass-card bg-slate-900 border border-emerald-500/40 rounded-3xl w-full max-w-md p-8 shadow-2xl relative text-slate-100 overflow-hidden">
+                <div class="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-600"></div>
+                
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 flex-shrink-0">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold text-white leading-tight">Coin Slot Box Verification</h3>
+                        <p class="text-xs text-emerald-400 font-semibold mt-0.5">₱5,000 Hardware Unit Authorization</p>
+                    </div>
+                </div>
+
+                <p class="text-xs text-slate-300 mb-5 leading-relaxed">
+                    To install apps and activate devices, please enter the <strong class="text-white">Build Number</strong> printed on your physical Coin Slot Box. Each box licenses up to <strong class="text-emerald-400 font-bold">12 devices</strong>.
+                </p>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Box Build Number / Serial</label>
+                        <input type="text" id="modalBoxBuildInput" placeholder="e.g. PISO-BOX-5K-XXXX or BOX-1001" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white font-mono uppercase focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition text-sm">
+                    </div>
+
+                    <div id="modalBoxError" class="hidden text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 p-3 rounded-lg"></div>
+
+                    <div class="flex gap-3 pt-2">
+                        <button id="modalBoxCancelBtn" type="button" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold py-3 rounded-xl transition text-sm">
+                            Cancel
+                        </button>
+                        <button id="modalBoxVerifyBtn" type="button" class="flex-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-3 rounded-xl transition text-sm shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2">
+                            <span>Verify Box</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    const modal = document.getElementById('coinSlotBoxModal');
+    const input = document.getElementById('modalBoxBuildInput');
+    const errorDiv = document.getElementById('modalBoxError');
+    const cancelBtn = document.getElementById('modalBoxCancelBtn');
+    const verifyBtn = document.getElementById('modalBoxVerifyBtn');
+
+    cancelBtn.onclick = () => modal.remove();
+
+    verifyBtn.onclick = async () => {
+        const val = input.value.trim();
+        if (!val) {
+            errorDiv.textContent = 'Please enter your Coin Slot Box Build Number.';
+            errorDiv.classList.remove('hidden');
+            return;
+        }
+
+        verifyBtn.disabled = true;
+        verifyBtn.innerHTML = 'Verifying...';
+        errorDiv.classList.add('hidden');
+
+        try {
+            const result = await verifyCoinSlotBox(val);
+            modal.remove();
+            alert(`✅ Coin Slot Box verified! (Build #${result.buildNumber} — 12 Device capacity unlocked)`);
+            if (typeof onSuccessCallback === 'function') {
+                onSuccessCallback(result);
+            } else {
+                window.location.reload();
+            }
+        } catch (err) {
+            errorDiv.textContent = err.message || 'Verification failed. Please check the build number.';
+            errorDiv.classList.remove('hidden');
+            verifyBtn.disabled = false;
+            verifyBtn.innerHTML = 'Verify Box';
+        }
+    };
+}
+
 // Auto-run lightweight check on load to prevent content flash for protected subpages
 (function() {
     const currentPage = window.location.pathname.split('/').pop() || 'index.html';

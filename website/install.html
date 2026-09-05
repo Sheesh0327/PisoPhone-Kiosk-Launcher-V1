@@ -255,7 +255,7 @@
     <!-- Main Container -->
     <main class="flex-grow container mx-auto px-4 py-6 flex flex-col items-center max-w-6xl">
         <!-- Hero Header -->
-        <div class="text-center mb-5 animate-fade-in-up">
+        <div class="text-center mb-4 animate-fade-in-up">
             <div class="inline-flex items-center space-x-2 bg-emerald-500/10 border border-emerald-500/30 px-3 py-0.5 rounded-full text-emerald-400 text-xs font-semibold uppercase tracking-wider mb-2">
                 <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                 <span>WebUSB Fast Provisioning • Step-By-Step Interactive Guide</span>
@@ -266,6 +266,25 @@
             <p class="text-slate-400 text-xs md:text-sm max-w-xl mx-auto mb-2">
                 Follow the interactive guide below to prepare and lock down your Android phone into an automated coin kiosk in minutes.
             </p>
+        </div>
+
+        <!-- Coin Slot Box Authorization Banner -->
+        <div id="boxHardwareBanner" class="w-full max-w-4xl glass-card border border-emerald-500/30 rounded-2xl p-4 mb-6 flex flex-col sm:flex-row items-center justify-between gap-4 animate-fade-in-up">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center flex-shrink-0">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-sm font-bold text-white">Coin Slot Box Authorization</span>
+                        <span id="installBoxBadge" class="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">Verification Required</span>
+                    </div>
+                    <p id="installBoxText" class="text-xs text-slate-400 mt-0.5">Please enter the Build Number from your ₱5,000 Coin Slot Box to authorize device installations (Max 12 devices).</p>
+                </div>
+            </div>
+            <button id="installVerifyBoxBtn" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-4 py-2 rounded-xl text-xs transition shadow-md shadow-emerald-500/20 whitespace-nowrap flex-shrink-0">
+                Enter Box Build Number
+            </button>
         </div>
 
         <!-- 2-Column Responsive Layout: Sliding Instructions (Left) + Themed Device Mockup (Right) -->
@@ -988,6 +1007,35 @@
             }
         });
 
+        // Coin Slot Box Verification Header Logic
+        const installBoxBadge = document.getElementById('installBoxBadge');
+        const installBoxText = document.getElementById('installBoxText');
+        const installVerifyBoxBtn = document.getElementById('installVerifyBoxBtn');
+
+        async function refreshInstallBoxStatus() {
+            const box = await fetchUserBoxStatus();
+            if (box && box.buildNumber) {
+                installBoxBadge.textContent = `Authorized (#${box.buildNumber})`;
+                installBoxBadge.className = "text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
+                installBoxText.innerHTML = `<strong>Unit Verified:</strong> Build #${box.buildNumber} • <span class="text-emerald-400 font-semibold">${box.devicesUsed} / ${box.maxDevices} Devices Used</span> (${box.slotsRemaining} slots remaining)`;
+                installVerifyBoxBtn.textContent = 'Manage Box';
+            } else {
+                installBoxBadge.textContent = "Verification Required";
+                installBoxBadge.className = "text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30";
+                installBoxText.textContent = "Please enter the Build Number from your ₱5,000 Coin Slot Box to authorize device installations (Max 12 devices).";
+                installVerifyBoxBtn.textContent = "Enter Box Build Number";
+            }
+        }
+
+        installVerifyBoxBtn.addEventListener('click', () => {
+            showBoxVerificationModal(() => {
+                refreshInstallBoxStatus();
+            });
+        });
+
+        // Initialize on load
+        refreshInstallBoxStatus();
+
         // App Installation Logic
         const installBtn = document.getElementById('installAppBtn');
         const installLog = document.getElementById('installLog');
@@ -1003,6 +1051,21 @@
         installBtn.addEventListener('click', async () => {
             if (!navigator.usb) {
                 return alert("WebUSB is not supported in this browser. Please use Google Chrome, Microsoft Edge, or Brave on a desktop computer.");
+            }
+
+            // Enforce Coin Slot Box Verification (₱5,000 Hardware)
+            const box = await fetchUserBoxStatus();
+            if (!box || !box.buildNumber) {
+                alert("⚠️ Coin Slot Box Verification Required!\n\nYou must enter the Build Number from your purchased ₱5,000 Coin Slot Box before you can install and flash the PisoPhone Kiosk app.");
+                showBoxVerificationModal(() => {
+                    refreshInstallBoxStatus();
+                });
+                return;
+            }
+
+            if (box.slotsRemaining <= 0) {
+                alert(`⚠️ Device Limit Reached!\n\nYour Coin Slot Box (Build #${box.buildNumber}) has already reached its maximum limit of ${box.maxDevices || 12} devices.\n\nTo install on more devices, please register an additional Coin Slot Box unit.`);
+                return;
             }
 
             // Pause auto-advance during installation
@@ -1028,6 +1091,28 @@
                 // Step 3: Install locally cached APK & provision device owner
                 logInstall("Step 3: Transferring payload to device & setting up kiosk admin...");
                 await window.webADB.installKioskApp(candidateApkUrls, logInstall);
+
+                // Step 4: Link device to user's Coin Slot Box quota
+                try {
+                    logInstall("Step 4: Registering hardware slot with Coin Slot Box #" + box.buildNumber + "...");
+                    const user = getPisoUser();
+                    if (user && user.email) {
+                        const serial = window.webADB.serial || `HW-${Date.now()}`;
+                        await fetch(`${PISO_API_BASE}/api/box/link-device`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                buildNumber: box.buildNumber,
+                                deviceId: serial,
+                                ownerEmail: user.email,
+                                ownerToken: user.token
+                            })
+                        });
+                        await refreshInstallBoxStatus();
+                    }
+                } catch (linkErr) {
+                    console.warn("Could not link device to box in backend:", linkErr);
+                }
 
                 installBtn.innerHTML = '<span>🎉 Installation &amp; Lockdown Complete!</span>';
                 installBtn.className = "w-full bg-emerald-600 text-white font-black py-4 rounded-xl shadow-xl shadow-emerald-500/30 text-base flex items-center justify-center gap-3";

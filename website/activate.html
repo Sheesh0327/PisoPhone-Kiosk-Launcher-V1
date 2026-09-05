@@ -65,7 +65,26 @@
         </div>
 
         <div id="mainAppUi" class="hidden w-full flex-col gap-6 animate-fade-in-up">
-            <!-- Account Overview -->
+            <!-- Coin Slot Box Quota Overview -->
+            <div id="boxOverviewCard" class="glass-card rounded-2xl p-6 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-emerald-500/30">
+                <div class="flex items-center gap-3">
+                    <div class="w-12 h-12 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h2 class="text-base font-bold text-white">Coin Slot Box (₱5,000 Hardware)</h2>
+                            <span id="activateBoxBadge" class="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">Not Verified</span>
+                        </div>
+                        <p id="activateBoxQuotaText" class="text-xs text-slate-400 mt-0.5">Enter your Box Build Number to activate up to 12 kiosk devices.</p>
+                    </div>
+                </div>
+                <button id="activateVerifyBoxBtn" class="bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 font-bold px-4 py-2.5 rounded-xl text-xs transition whitespace-nowrap">
+                    Verify Box
+                </button>
+            </div>
+
+            <!-- Account Credits Overview -->
             <div class="glass-card rounded-2xl p-6 shadow-xl flex items-center justify-between">
                 <div>
                     <h2 class="text-lg font-bold text-slate-200">Available Credits</h2>
@@ -153,9 +172,14 @@
         let ownerToken = currentUser ? currentUser.token : null;
         renderNavAuth(document.getElementById('navAuthContainer'));
 
+        const activateBoxBadge = document.getElementById('activateBoxBadge');
+        const activateBoxQuotaText = document.getElementById('activateBoxQuotaText');
+        const activateVerifyBoxBtn = document.getElementById('activateVerifyBoxBtn');
+
         let currentCredits = 0;
         let selectedDeviceId = null;
         let cachedDevices = [];
+        let verifiedBox = null;
 
         if (currentUser) {
             mainAppUi.classList.remove('hidden');
@@ -163,7 +187,33 @@
             init();
         }
 
+        async function refreshActivateBoxStatus() {
+            verifiedBox = await fetchUserBoxStatus();
+            if (verifiedBox && verifiedBox.buildNumber) {
+                activateBoxBadge.textContent = `Active (#${verifiedBox.buildNumber})`;
+                activateBoxBadge.className = "text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
+                activateBoxQuotaText.innerHTML = `<strong>Unit Verified:</strong> Build #${verifiedBox.buildNumber} • <span class="text-emerald-400 font-semibold">${verifiedBox.devicesUsed} / ${verifiedBox.maxDevices} Devices Used</span> (${verifiedBox.slotsRemaining} slots remaining)`;
+                activateVerifyBoxBtn.textContent = 'Manage Box';
+            } else {
+                activateBoxBadge.textContent = "Verification Required";
+                activateBoxBadge.className = "text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30";
+                activateBoxQuotaText.textContent = "Please enter the Build Number from your ₱5,000 Coin Slot Box to authorize device activations (Max 12 devices).";
+                activateVerifyBoxBtn.textContent = "Verify Box";
+            }
+        }
+
+        activateVerifyBoxBtn.addEventListener('click', () => {
+            showBoxVerificationModal(async () => {
+                await refreshActivateBoxStatus();
+                if (selectedDeviceId) {
+                    const dev = cachedDevices.find(d => d.deviceId === selectedDeviceId);
+                    if (dev) selectDevice(dev);
+                }
+            });
+        });
+
         async function init() {
+            await refreshActivateBoxStatus();
             await fetchCredits();
             await fetchDevices();
 
@@ -340,6 +390,21 @@
         useCreditBtn.onclick = async () => {
             if (!selectedDeviceId) return;
             
+            // Enforce Coin Slot Box Verification
+            const box = await fetchUserBoxStatus();
+            if (!box || !box.buildNumber) {
+                alert("⚠️ Coin Slot Box Verification Required!\n\nYou must verify the Build Number from your ₱5,000 Coin Slot Box before you can activate devices.");
+                showBoxVerificationModal(async () => {
+                    await refreshActivateBoxStatus();
+                });
+                return;
+            }
+
+            if (box.slotsRemaining <= 0) {
+                alert(`⚠️ Maximum Device Limit Reached!\n\nYour Coin Slot Box (#${box.buildNumber}) has reached its limit of ${box.maxDevices || 12} devices. Please register an additional Coin Slot Box to activate more devices.`);
+                return;
+            }
+
             useCreditBtn.disabled = true;
             const originalText = useCreditBtn.innerHTML;
             useCreditBtn.innerHTML = `Activating & Generating Key...`;
@@ -353,7 +418,24 @@
                 const data = await res.json();
                 
                 if (res.ok && data.success && data.licenseKey) {
+                    // Link to coin slot box
+                    try {
+                        await fetch(`${API_BASE}/api/box/link-device`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                buildNumber: box.buildNumber,
+                                deviceId: selectedDeviceId,
+                                ownerEmail: currentUser.email,
+                                ownerToken: ownerToken
+                            })
+                        });
+                    } catch (linkErr) {
+                        console.warn("Could not link device to box:", linkErr);
+                    }
+
                     // Refresh credits & devices in background
+                    await refreshActivateBoxStatus();
                     await fetchCredits();
                     await fetchDevices();
                     
