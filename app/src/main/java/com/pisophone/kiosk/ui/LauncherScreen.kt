@@ -1,4 +1,11 @@
+
+
 package com.pisophone.kiosk.ui
+import kotlinx.coroutines.isActive
+import com.pisophone.kiosk.ui.PinAppPickerModal
+import com.pisophone.kiosk.ui.PinnedSlotOptionsModal
+import com.pisophone.kiosk.ui.PinAppToSlotModal
+import com.pisophone.kiosk.ui.LauncherThemeColors
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -63,7 +70,7 @@ fun LauncherScreen(
         LaunchedEffect(Unit) {
             val timeFormat = SimpleDateFormat("h:mm a", Locale.getDefault())
             val dateFormat = SimpleDateFormat("EEEE, MMMM d", Locale.getDefault())
-            while (true) {
+            while (isActive) {
                 val now = Date()
                 time = timeFormat.format(now)
                 date = dateFormat.format(now)

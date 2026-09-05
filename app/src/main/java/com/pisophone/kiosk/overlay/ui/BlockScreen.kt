@@ -1,4 +1,12 @@
+
+
 package com.pisophone.kiosk.overlay.ui
+import kotlinx.coroutines.isActive
+import com.pisophone.kiosk.overlay.ui.AdminAuthenticationDialog
+import com.pisophone.kiosk.overlay.ui.SecurityVaultView
+import com.pisophone.kiosk.overlay.ui.EmergencyRecoveryDialog
+import com.pisophone.kiosk.overlay.ui.UnlicensedActivationOverlay
+import com.pisophone.kiosk.overlay.ui.BatteryAlertBanner
 
 import android.content.Context
 import android.content.res.Configuration
@@ -173,7 +181,7 @@ fun BlockScreen(
     }
 
     LaunchedEffect(Unit) {
-        while (true) {
+        while (isActive) {
             licenseInfo = HardwareLockManager.getLicenseInfo(context)
             delay(10000)
         }

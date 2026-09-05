@@ -56,25 +56,25 @@ fun SecurityVaultView(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(4.dp)
+                .padding(8.dp)
         ) {
             // Vault Header
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.Lock, contentDescription = null, tint = Color(0xFF6366F1), modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Security Vault & Admin Console", fontWeight = FontWeight.ExtraBold, color = Color.White, fontSize = 15.sp)
+                    Text("Security Vault & Admin Console", fontWeight = FontWeight.ExtraBold, color = Color.White, fontSize = 16.sp)
                 }
                 IconButton(onClick = onClose, modifier = Modifier.size(24.dp)) {
-                    Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color.White, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color.White, modifier = Modifier.size(20.dp))
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Section 1: Admin System Bypass & Quick Tools
             VaultBypassSection(
@@ -84,7 +84,7 @@ fun SecurityVaultView(
                 onOpenRecoveryHub = { showRecoveryHub = true }
             )
 
-            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = Color(0xFF334155))
+            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp), color = Color(0xFF334155))
 
             // Section 2: Auto-Clear Cache & Battery TTS Voice Reminders
             VaultSleepAndBatterySection(
@@ -92,7 +92,7 @@ fun SecurityVaultView(
                 onShowHelp = { t, d -> activeHelpDialog = Pair(t, d) }
             )
 
-            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = Color(0xFF334155))
+            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp), color = Color(0xFF334155))
 
             // Section 3: Hidden Apps Vault
             VaultHiddenAppsSection(
@@ -104,16 +104,17 @@ fun SecurityVaultView(
                 onShowHelp = { t, d -> activeHelpDialog = Pair(t, d) }
             )
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             // Bottom Done Button
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 Button(
                     onClick = onClose,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155), contentColor = Color.White),
-                    shape = RoundedCornerShape(10.dp)
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1), contentColor = Color.White),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.height(44.dp)
                 ) {
-                    Text("Done", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("Exit Admin Console", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }

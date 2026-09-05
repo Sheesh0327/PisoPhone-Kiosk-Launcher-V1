@@ -1,4 +1,7 @@
+
+
 package com.pisophone.kiosk.overlay.ui
+import kotlinx.coroutines.isActive
 
 import android.content.Context
 import androidx.compose.foundation.background
@@ -31,7 +34,7 @@ fun BlockScreenTimeHeader(batteryStatus: BatteryStatus, themeTextPrimary: Color)
     
     LaunchedEffect(Unit) {
         val timeFormat = SimpleDateFormat("h:mm a", Locale.getDefault())
-        while (true) {
+        while (isActive) {
             currentTimeStr = timeFormat.format(Date())
             delay(1000)
         }
@@ -71,7 +74,7 @@ fun DeviceTitleBadge(
     val ctx = LocalContext.current
     var customAlias by remember { mutableStateOf(KioskSecurity.getDeviceAlias(ctx)) }
     LaunchedEffect(Unit) {
-        while (true) {
+        while (isActive) {
             customAlias = KioskSecurity.getDeviceAlias(ctx)
             delay(5000)
         }

@@ -306,86 +306,46 @@ fun VaultSleepAndBatterySection(
     if (batteryAlertsEnabled) {
         Spacer(modifier = Modifier.height(10.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Low Battery Warning Threshold:", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            Text("Battery Protection Range:", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
             Spacer(modifier = Modifier.width(4.dp))
             HelpInfoButton(
-                title = "Low Battery Warning Threshold",
-                description = "Triggers voice reminders and alert tones when battery falls to or below this percentage.",
+                title = "Battery Protection Range",
+                description = "Triggers voice reminders to plug in when battery hits the lower threshold, and to unplug when it reaches the upper threshold. Protects lithium battery lifespan.",
                 onShowHelp = onShowHelp
             )
         }
         Spacer(modifier = Modifier.height(4.dp))
-        val lowOptions = listOf(10, 15, 20, 25, 30)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            lowOptions.forEach { pct ->
-                val isSelected = lowBatteryThresh == pct
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (isSelected) Color(0xFFEF4444) else Color(0xFF1E293B))
-                        .border(1.dp, if (isSelected) Color(0xFFF87171) else Color(0xFF334155), RoundedCornerShape(8.dp))
-                        .clickable {
-                            lowBatteryThresh = pct
-                            KioskSecurity.setLowBatteryThreshold(context, pct)
-                            Toast.makeText(context, "Low battery reminder threshold: ${pct}%", Toast.LENGTH_SHORT).show()
-                        }
-                        .padding(vertical = 6.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "${pct}%",
-                        color = Color.White,
-                        fontSize = 11.sp,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Full Battery Warning Threshold:", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(modifier = Modifier.width(4.dp))
-            HelpInfoButton(
-                title = "Full Battery Warning Threshold",
-                description = "Triggers voice reminders to unplug the charger when battery reaches this percentage to preserve lithium battery lifespan.",
-                onShowHelp = onShowHelp
+        
+        var sliderPosition by remember { mutableStateOf(lowBatteryThresh.toFloat()..highBatteryThresh.toFloat()) }
+        
+        Column(modifier = Modifier.padding(horizontal = 8.dp)) {
+            RangeSlider(
+                value = sliderPosition,
+                onValueChange = { range ->
+                    sliderPosition = range
+                },
+                onValueChangeFinished = {
+                    val newLow = sliderPosition.start.toInt()
+                    val newHigh = sliderPosition.endInclusive.toInt()
+                    lowBatteryThresh = newLow
+                    highBatteryThresh = newHigh
+                    KioskSecurity.setLowBatteryThreshold(context, newLow)
+                    KioskSecurity.setHighBatteryThreshold(context, newHigh)
+                },
+                valueRange = 0f..100f,
+                steps = 99,
+                colors = SliderDefaults.colors(
+                    thumbColor = Color(0xFF6366F1),
+                    activeTrackColor = Color(0xFF6366F1),
+                    inactiveTrackColor = Color(0xFF334155)
+                )
             )
-        }
-        Spacer(modifier = Modifier.height(4.dp))
-        val highOptions = listOf(70, 75, 80, 85, 90, 95)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            highOptions.forEach { pct ->
-                val isSelected = highBatteryThresh == pct
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (isSelected) Color(0xFFF59E0B) else Color(0xFF1E293B))
-                        .border(1.dp, if (isSelected) Color(0xFFFBBF24) else Color(0xFF334155), RoundedCornerShape(8.dp))
-                        .clickable {
-                            highBatteryThresh = pct
-                            KioskSecurity.setHighBatteryThreshold(context, pct)
-                            Toast.makeText(context, "High battery disconnect threshold: ${pct}%", Toast.LENGTH_SHORT).show()
-                        }
-                        .padding(vertical = 6.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "${pct}%",
-                        color = Color.White,
-                        fontSize = 11.sp,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                    )
-                }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Low: ${sliderPosition.start.toInt()}%", color = Color(0xFFEF4444), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text("High: ${sliderPosition.endInclusive.toInt()}%", color = Color(0xFFF59E0B), fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
 

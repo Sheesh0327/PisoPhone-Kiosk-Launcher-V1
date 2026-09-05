@@ -142,7 +142,7 @@ fun FloatingBall(
     var batteryPct by remember { mutableIntStateOf(88) }
 
     LaunchedEffect(Unit) {
-        while (true) {
+        while (isActive) {
             delay(3000)
             try {
                 batteryPct = batteryManager?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: 88
@@ -204,7 +204,7 @@ fun FloatingBall(
 
                         var currentAlias by remember { mutableStateOf(KioskSecurity.getDeviceAlias(context)) }
                         LaunchedEffect(Unit) {
-                            while(true) {
+                            while (isActive) {
                                 currentAlias = KioskSecurity.getDeviceAlias(context)
                                 delay(2000)
                             }

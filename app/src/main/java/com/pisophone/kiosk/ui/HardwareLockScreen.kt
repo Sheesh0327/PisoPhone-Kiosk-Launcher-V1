@@ -1,4 +1,7 @@
+
+
 package com.pisophone.kiosk.ui
+import kotlinx.coroutines.isActive
 
 import android.content.Context
 import android.content.Intent
@@ -70,7 +73,7 @@ fun HardwareLockScreen(
 
     // Polling background license status: Periodically checks Cloudflare server and WebADB USB signals
     LaunchedEffect(Unit) {
-        while (true) {
+        while (isActive) {
             try {
                 HardwareLockManager.syncWithBackend(context)
             } catch (_: Exception) {}

@@ -284,6 +284,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private var lastKnownAppCount = -1
+
     private fun loadApps() {
         lifecycleScope.launch(Dispatchers.IO) {
             val pm = packageManager
@@ -292,6 +294,13 @@ class MainActivity : ComponentActivity() {
                     addCategory(Intent.CATEGORY_LAUNCHER)
                 }
             val resolveInfoList = pm.queryIntentActivities(intent, 0)
+            
+            // Optimization: Skip heavy bitmap rendering if app list hasn't changed
+            if (appsList.isNotEmpty() && resolveInfoList.size == lastKnownAppCount) {
+                return@launch
+            }
+            lastKnownAppCount = resolveInfoList.size
+            
             val hiddenApps = KioskSecurity.getHiddenApps(this@MainActivity)
 
             val apps =
