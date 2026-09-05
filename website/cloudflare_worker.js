@@ -699,13 +699,16 @@ export default {
           });
         }
 
-        const cleanId = String(deviceId).trim().replace(/^HW-/i, '');
+        let cleanId = String(deviceId).trim();
+        if (!cleanId.toUpperCase().startsWith('HW-')) {
+            cleanId = 'HW-' + cleanId;
+        }
         if (env.DEVICE_STORE) {
           // Check if device exists
           const rawDev = await env.DEVICE_STORE.get(cleanId);
           let dev = rawDev ? JSON.parse(rawDev) : {
             deviceId: cleanId,
-            hardwareHash: `HW-${cleanId.toUpperCase()}`,
+            hardwareHash: cleanId.toUpperCase(),
             deviceModel: 'Manual Linked Kiosk',
             firstRegisteredAt: now,
             paidExpiresAt: 0,
@@ -798,11 +801,14 @@ export default {
           await env.DEVICE_STORE.put(`USER_CREDITS:${email}`, credits.toString());
 
           // Activate device
-          const cleanId = deviceId.replace(/^HW-/i, '');
+          let cleanId = String(deviceId).trim();
+          if (!cleanId.toUpperCase().startsWith('HW-')) {
+              cleanId = 'HW-' + cleanId;
+          }
           const rawDev = await env.DEVICE_STORE.get(cleanId);
           let dev = rawDev ? JSON.parse(rawDev) : {
             deviceId: cleanId,
-            hardwareHash: `HW-${cleanId.toUpperCase()}`,
+            hardwareHash: cleanId.toUpperCase(),
             deviceModel: 'Linked Kiosk',
             firstRegisteredAt: now,
             installCount: 1,
@@ -910,7 +916,6 @@ export default {
         }
         
         const cleanId = String(deviceId).trim();
-        const cleanPaymentRef = paymentRef ? String(paymentRef).trim() : `MANUAL-${now}`;
 
         let record = null;
         if (env.DEVICE_STORE) {
@@ -921,7 +926,7 @@ export default {
         if (!record) {
           record = {
             deviceId: cleanId,
-            hardwareHash: `HW-${cleanId.toUpperCase()}`,
+            hardwareHash: cleanId.toUpperCase(),
             deviceModel: 'Manual Activation',
             firstRegisteredAt: now,
             installCount: 1,
