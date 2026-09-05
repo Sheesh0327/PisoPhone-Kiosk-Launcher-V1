@@ -73,26 +73,19 @@ async function signHmacSha256(message, secret) {
 async function generateLicenseToken(deviceId, paidExpiresAt, env) {
   const payload = `${deviceId}|${paidExpiresAt}`;
   const privKey = env.LICENSE_RSA_PRIVATE_KEY;
+  if (!privKey) {
+    throw new Error("Missing Cloudflare Worker Secret: LICENSE_RSA_PRIVATE_KEY. Please configure this secret in your Cloudflare Worker Settings -> Variables and Secrets.");
+  }
   const rsaSig = await signRsaSha256(payload, privKey);
   
-  if (rsaSig) {
-    return {
-      signature: rsaSig,
-      licenseKey: `PISO-1Y.${deviceId}.${paidExpiresAt}.${rsaSig}`,
-      algorithm: 'RSA-2048-PKCS1v15'
-    };
+  if (!rsaSig) {
+    throw new Error("Failed to sign license token with LICENSE_RSA_PRIVATE_KEY. Please verify your RSA private key formatting.");
   }
-  
-  // Fallback to HMAC if RSA secret is not configured
-  const signingSecret = env.LICENSE_SIGNING_SECRET;
-  if (!signingSecret) {
-    throw new Error('Server configuration error: Missing signing secret');
-  }
-  const hmacSig = await signHmacSha256(payload, signingSecret);
+
   return {
-    signature: hmacSig,
-    licenseKey: `PISO-1Y.${deviceId}.${paidExpiresAt}.${hmacSig}`,
-    algorithm: 'HMAC-SHA256'
+    signature: rsaSig,
+    licenseKey: `PISO-1Y.${deviceId}.${paidExpiresAt}.${rsaSig}`,
+    algorithm: 'RSA-2048-PKCS1v15'
   };
 }
 
@@ -810,11 +803,7 @@ export default {
             });
           }
 
-          // Deduct 1 credit
-          credits -= 1;
-          await env.DEVICE_STORE.put(`USER_CREDITS:${email}`, credits.toString());
-
-          // Activate device
+          // Determine clean hardware ID
           let cleanId = String(deviceId).trim();
           if (!cleanId.toUpperCase().startsWith('HW-')) {
               cleanId = 'HW-' + cleanId;
@@ -831,6 +820,15 @@ export default {
 
           const currentPaidExpires = dev.paidExpiresAt || 0;
           const newPaidExpires = (currentPaidExpires > now ? currentPaidExpires : now) + LICENSE_DURATION_MS;
+
+          // 1. Generate cryptographic license token FIRST - ensures atomic failure if secret is missing
+          const token = await generateLicenseToken(cleanId, newPaidExpires, env);
+
+          // 2. Deduct 1 credit atomically after cryptographic signature succeeds
+          credits -= 1;
+          await env.DEVICE_STORE.put(`USER_CREDITS:${email}`, credits.toString());
+
+          // 3. Save active state to KV
           dev.paidExpiresAt = newPaidExpires;
           dev.lastCheckinAt = now;
           dev.paidAt = now;
@@ -845,8 +843,6 @@ export default {
             userDevices.push(cleanId);
             await env.DEVICE_STORE.put(`USER_DEVICES:${email}`, JSON.stringify(userDevices));
           }
-
-          const token = await generateLicenseToken(cleanId, newPaidExpires, env);
 
           return new Response(JSON.stringify({ 
             success: true, 

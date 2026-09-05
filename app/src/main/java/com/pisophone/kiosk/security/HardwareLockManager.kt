@@ -39,7 +39,7 @@ object HardwareLockManager {
     // Used to verify digitally signed licenses issued by the Cloudflare Worker.
     // An adversary decompiling this APK cannot forge licenses without the private key on Cloudflare.
     private const val LICENSE_PUBLIC_KEY_BASE64 = 
-        "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtv5IQqpyOqByzeYp2co5hCfbJ+sJJQ81wiXMBkcS+Q/yXOseqSYS87+Sks+QQS+zmN7cPS3518Ej4qKNCbSGgGLqzG1j7Kpy/YyfOdABqEB/ary6VH52enGMOaxvKWl3VyzGSapPHd7oq95ftUAOT23qqNLqViWq2A4ZJ+xC3FiwIIaGd4T4m+3E/mPfyOvcpw08Ag6yJsVjr51q0zt1/BSXWScNkCbx2VRdMaHk2Rr/YbEue4086oMJGKK3t/SOox+MAQF1ALIjUGldA4gxlGfhqbB/fBRk7gOXhDWfNutE+MHSonaFh4xO1W2RU6NKKEHsOmX+WNox0lYY2WYvFQIDAQAB"
+        "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA9rryQHAobYKw1K992SZtDUXslWdbOLBsi929aoXEGLnmDeP7P7FiFL8hWyYcfUc2DyeDKH81dYAGX/V28DwFvYFkl0Ai4mJj1QZQn9yLKIJgNDtzi4SnkmgcKyZWIkDEGJ+1o2Lk4j3WnTf8Y0moOqhrJGCK574hGOrd10i3oZK2iWMRV9WcKWV/50IOXYsz/uKvfHIZyHCRlAgRZ9uBP3Gk+3I5fZEKoKDiuV/MOqJhaPSWU01utZt8Bch14HajzD+sRuL5sgax2ZluUwUnZ6mU6AXLqREscJDEV5/Eisq8keHnm5qKyhW3n+GkgFccBN+BFSrDUgpJMxINlVGDPwIDAQAB"
 
     val licenseUpdateVersion = MutableStateFlow<Long>(System.currentTimeMillis())
     val activationCelebrationEvent = MutableStateFlow<Boolean>(false)
@@ -450,9 +450,17 @@ object HardwareLockManager {
      * Verifies an asymmetric RSA-SHA256 digital signature from the Cloudflare licensing server.
      * Uses PKCS#1 v1.5 padding with SHA-256.
      */
+    private fun decodeBase64Safe(input: String): ByteArray {
+        return try {
+            java.util.Base64.getDecoder().decode(input)
+        } catch (e: Throwable) {
+            Base64.decode(input, Base64.DEFAULT)
+        }
+    }
+
     fun verifyRsaSignature(data: String, signatureBase64Url: String): Boolean {
         return try {
-            val pubKeyBytes = Base64.decode(LICENSE_PUBLIC_KEY_BASE64, Base64.DEFAULT)
+            val pubKeyBytes = decodeBase64Safe(LICENSE_PUBLIC_KEY_BASE64)
             val keySpec = X509EncodedKeySpec(pubKeyBytes)
             val keyFactory = KeyFactory.getInstance("RSA")
             val publicKey = keyFactory.generatePublic(keySpec)
@@ -461,14 +469,16 @@ object HardwareLockManager {
             while (b64.length % 4 != 0) {
                 b64 += "="
             }
-            val sigBytes = Base64.decode(b64, Base64.DEFAULT)
+            val sigBytes = decodeBase64Safe(b64)
 
             val verifier = Signature.getInstance("SHA256withRSA")
             verifier.initVerify(publicKey)
             verifier.update(data.toByteArray(Charsets.UTF_8))
             verifier.verify(sigBytes)
         } catch (e: Exception) {
-            Log.e(TAG, "RSA signature verification exception: ${e.message}")
+            try {
+                Log.e(TAG, "RSA signature verification exception: ${e.message}")
+            } catch (_: Throwable) {}
             false
         }
     }
