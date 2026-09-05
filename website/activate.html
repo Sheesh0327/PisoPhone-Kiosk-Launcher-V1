@@ -131,7 +131,13 @@
         const qrcodeDisplay = document.getElementById('qrcodeDisplay');
         const licenseKeyDisplay = document.getElementById('licenseKeyDisplay');
 
-        let ownerToken = localStorage.getItem('piso_google_credential');
+        let ownerToken = null;
+        const storedUser = localStorage.getItem('piso_google_user');
+        if (storedUser) {
+            try {
+                ownerToken = JSON.parse(storedUser).token;
+            } catch (e) {}
+        }
         let currentCredits = 0;
         let selectedDeviceId = null;
         let qrCodeInstance = null;
