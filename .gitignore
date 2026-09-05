@@ -19,3 +19,8 @@ debug.keystore
 *.jks
 *.keystore
 *.p12
+
+# Build Outputs & APKs
+*.apk
+website/app-release.apk
+website/*.apk
