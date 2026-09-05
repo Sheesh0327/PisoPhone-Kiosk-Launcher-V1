@@ -1189,12 +1189,51 @@ export default {
               const bData = JSON.parse(rawBox);
               const bLinked = Array.isArray(bData.linkedDevices) ? bData.linkedDevices : [];
               allLinked = allLinked.concat(bLinked);
+
+              const boxDeviceList = [];
+              for (const did of bLinked) {
+                const rawDev = await env.DEVICE_STORE.get(did);
+                if (rawDev) {
+                  const dev = JSON.parse(rawDev);
+                  const isPaid = dev.paidExpiresAt > now;
+                  let licenseKey = null;
+                  if (isPaid) {
+                    try {
+                      const token = await generateLicenseToken(dev.deviceId, dev.paidExpiresAt, env);
+                      licenseKey = token.licenseKey;
+                    } catch(e) {}
+                  }
+                  boxDeviceList.push({
+                    deviceId: dev.deviceId,
+                    deviceModel: dev.deviceModel || 'Kiosk Device',
+                    firstRegisteredAt: dev.firstRegisteredAt || now,
+                    paidExpiresAt: dev.paidExpiresAt || 0,
+                    status: isPaid ? 'PAID' : 'UNACTIVATED',
+                    daysRemaining: isPaid ? Math.max(0, Math.ceil((dev.paidExpiresAt - now) / (24 * 60 * 60 * 1000))) : 0,
+                    licenseKey: licenseKey,
+                    boxBuildNumber: bNum,
+                  });
+                } else {
+                  boxDeviceList.push({
+                    deviceId: did,
+                    deviceModel: 'Kiosk Phone',
+                    firstRegisteredAt: now,
+                    paidExpiresAt: now + 365 * 24 * 60 * 60 * 1000,
+                    status: 'PAID',
+                    daysRemaining: 365,
+                    licenseKey: null,
+                    boxBuildNumber: bNum,
+                  });
+                }
+              }
+
               boxDetails.push({
                 buildNumber: bNum,
                 maxDevices: bData.maxDevices || 12,
                 devicesUsed: bLinked.length,
                 slotsRemaining: Math.max(0, (bData.maxDevices || 12) - bLinked.length),
                 linkedDevices: bLinked,
+                devices: boxDeviceList,
               });
             }
           }
@@ -1243,7 +1282,10 @@ export default {
           });
         }
 
-        const cleanDevId = String(deviceId).trim();
+        let cleanDevId = String(deviceId).trim();
+        if (!cleanDevId.toUpperCase().startsWith('HW-')) {
+          cleanDevId = 'HW-' + cleanDevId;
+        }
         let targetBoxNumber = buildNumber ? String(buildNumber).trim().toUpperCase() : null;
 
         // If targetBoxNumber not specified, find user's box that has free slot
@@ -1295,6 +1337,32 @@ export default {
           boxData.linkedDevices = linked;
           if (env.DEVICE_STORE) {
             await env.DEVICE_STORE.put(`BOX:${targetBoxNumber}`, JSON.stringify(boxData));
+
+            // Also ensure device record exists and has boxBuildNumber + is added to USER_DEVICES
+            const rawDev = await env.DEVICE_STORE.get(cleanDevId);
+            let dev = rawDev ? JSON.parse(rawDev) : {
+              deviceId: cleanDevId,
+              hardwareHash: cleanDevId.toUpperCase(),
+              deviceModel: 'PisoPhone Kiosk Phone',
+              firstRegisteredAt: now,
+              paidExpiresAt: now + (365 * 24 * 60 * 60 * 1000), // Activated under hardware box
+              lastCheckinAt: now,
+              installCount: 1
+            };
+            dev.ownerEmail = email;
+            dev.boxBuildNumber = targetBoxNumber;
+            // Extend license under hardware box quota
+            if (!dev.paidExpiresAt || dev.paidExpiresAt < now) {
+              dev.paidExpiresAt = now + (365 * 24 * 60 * 60 * 1000);
+            }
+            await env.DEVICE_STORE.put(cleanDevId, JSON.stringify(dev));
+
+            const rawUd = await env.DEVICE_STORE.get(`USER_DEVICES:${email}`);
+            let userDevices = rawUd ? JSON.parse(rawUd) : [];
+            if (!userDevices.includes(cleanDevId)) {
+              userDevices.push(cleanDevId);
+              await env.DEVICE_STORE.put(`USER_DEVICES:${email}`, JSON.stringify(userDevices));
+            }
           }
         }
 
@@ -1307,6 +1375,55 @@ export default {
             maxDevices: boxData.maxDevices || 12,
             slotsRemaining: Math.max(0, (boxData.maxDevices || 12) - linked.length),
             message: `Device linked to Coin Slot Box (${linked.length}/12 slots used).`,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // =========================================================================
+      // 9. Unlink Device from Box
+      // POST /api/box/unlink-device
+      // Body: { buildNumber: string, deviceId: string, ownerToken?: string, ownerEmail?: string }
+      // =========================================================================
+      if (url.pathname === '/api/box/unlink-device' && method === 'POST') {
+        const body = await request.json();
+        const { buildNumber, deviceId, ownerToken, ownerEmail: explicitEmail } = body;
+
+        let email = explicitEmail;
+        if (!email && ownerToken) {
+          email = await verifyGoogleToken(ownerToken);
+        }
+
+        if (!email) {
+          return new Response(JSON.stringify({ error: 'Authentication required.' }), {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        if (!buildNumber || !deviceId) {
+          return new Response(JSON.stringify({ error: 'Missing buildNumber or deviceId.' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const cleanDevId = String(deviceId).trim();
+        const cleanBoxNum = String(buildNumber).trim().toUpperCase();
+
+        if (env.DEVICE_STORE) {
+          const rawBox = await env.DEVICE_STORE.get(`BOX:${cleanBoxNum}`);
+          if (rawBox) {
+            const boxData = JSON.parse(rawBox);
+            boxData.linkedDevices = (boxData.linkedDevices || []).filter(id => id !== cleanDevId && id !== cleanDevId.replace('HW-', ''));
+            await env.DEVICE_STORE.put(`BOX:${cleanBoxNum}`, JSON.stringify(boxData));
+          }
+        }
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message: `Device ${cleanDevId} unlinked from Coin Slot Box #${cleanBoxNum}.`,
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );

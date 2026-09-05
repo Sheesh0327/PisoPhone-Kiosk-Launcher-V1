@@ -369,6 +369,56 @@ async function verifyCoinSlotBox(buildNumber) {
 }
 
 /**
+ * Links a device ID directly to a specific Coin Slot Box
+ */
+async function linkDeviceToBox(buildNumber, deviceId) {
+    const user = getPisoUser();
+    if (!user) throw new Error("Please sign in first.");
+
+    const res = await fetch(`${PISO_API_BASE}/api/box/link-device`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            buildNumber: buildNumber,
+            deviceId: deviceId,
+            ownerEmail: user.email,
+            ownerToken: user.token
+        })
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to link device to Coin Slot Box.');
+    }
+    return data;
+}
+
+/**
+ * Unlinks a device ID from a Coin Slot Box
+ */
+async function unlinkDeviceFromBox(buildNumber, deviceId) {
+    const user = getPisoUser();
+    if (!user) throw new Error("Please sign in first.");
+
+    const res = await fetch(`${PISO_API_BASE}/api/box/unlink-device`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            buildNumber: buildNumber,
+            deviceId: deviceId,
+            ownerEmail: user.email,
+            ownerToken: user.token
+        })
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to unlink device from Coin Slot Box.');
+    }
+    return data;
+}
+
+/**
  * Checks server for user's verified boxes
  */
 async function fetchUserBoxStatus() {

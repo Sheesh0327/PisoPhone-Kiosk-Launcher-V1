@@ -78,8 +78,8 @@
     </nav>
 
     <!-- Link Device Modal -->
-    <div id="linkDeviceModal" class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm hidden">
-        <div class="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-sm p-7 shadow-2xl transform transition-all text-slate-100 relative">
+    <div id="linkDeviceModal" class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm hidden animate-fade-in-up">
+        <div class="bg-slate-900 border border-emerald-500/30 rounded-3xl w-full max-w-md p-7 shadow-2xl transform transition-all text-slate-100 relative">
             <button id="closeLinkModalBtn" class="absolute top-4 right-4 text-slate-400 hover:text-white transition p-2">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
             </button>
@@ -88,16 +88,22 @@
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
                 </div>
                 <h3 class="text-xl font-bold text-white">Link Kiosk Device</h3>
-                <p class="text-xs text-slate-400 mt-1">Bind your phone's Hardware ID to your account</p>
+                <p class="text-xs text-slate-400 mt-1">Bind your phone to a verified Coin Slot Box quota</p>
             </div>
             <form id="linkDeviceForm" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Target Coin Slot Box</label>
+                    <select id="targetBoxSelect" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500 transition">
+                        <option value="">Auto-Assign to Available Box</option>
+                    </select>
+                </div>
                 <div>
                     <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Device Hardware ID</label>
                     <input type="text" id="manualDeviceIdInput" placeholder="e.g. 9774d56d682e549c or HW-..." required class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white font-mono uppercase focus:outline-none focus:border-emerald-500 transition">
                 </div>
                 <div id="linkStatusText" class="text-xs text-center min-h-[16px] text-slate-400"></div>
-                <button type="submit" id="submitLinkBtn" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-3 rounded-xl transition text-sm flex items-center justify-center gap-2 shadow-lg">
-                    Link to Account
+                <button type="submit" id="submitLinkBtn" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-3 rounded-xl transition text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20">
+                    Link Device to Box
                 </button>
             </form>
         </div>
@@ -189,14 +195,15 @@
             </div>
 
             <!-- Coin Slot Box Quota Overview Card -->
-            <div id="dashBoxStatusCard" class="glass-card rounded-2xl p-6 border border-emerald-500/30 w-full mb-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl">
+            <div id="dashBoxStatusCard" class="glass-card rounded-3xl p-6 border border-emerald-500/30 w-full mb-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl relative overflow-hidden">
+                <div class="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-500"></div>
                 <div class="flex items-center gap-4">
-                    <div class="w-14 h-14 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center flex-shrink-0">
+                    <div class="w-14 h-14 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center flex-shrink-0 shadow-lg shadow-emerald-500/10">
                         <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
                     </div>
                     <div>
                         <div class="flex items-center gap-2">
-                            <h3 class="text-lg font-black text-white">Coin Slot Box Hardware</h3>
+                            <h3 class="text-lg font-black text-white">Coin Slot Box Hardware Fleet</h3>
                             <span id="dashBoxBadge" class="text-xs font-bold px-2.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30">Verification Required</span>
                         </div>
                         <p id="dashBoxSubtext" class="text-xs text-slate-400 mt-1">Each ₱5,000 Coin Slot Box unit provides a hardware build number licensing up to 12 phones.</p>
@@ -249,11 +256,20 @@
                     </div>
                 </a>
             </div>
+
+            <!-- Section Heading: Coin Slot Boxes & Fleet Structure -->
+            <div class="flex items-center justify-between w-full mb-4">
+                <div class="flex items-center gap-2">
+                    <h3 class="text-xl font-bold text-white tracking-tight">Coin Slot Boxes &amp; Linked Devices</h3>
+                    <span id="boxCountBadge" class="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">0 Boxes</span>
+                </div>
+                <div class="text-xs text-slate-400">Click any box to view or manage its 12 linked phones</div>
+            </div>
             
-            <div id="deviceListContainer" class="grid grid-cols-1 gap-4 w-full">
-                <div class="text-center text-slate-500 py-8 text-sm">
+            <div id="deviceListContainer" class="space-y-4 w-full">
+                <div class="text-center text-slate-500 py-8 text-sm bg-slate-900 border border-slate-800 rounded-2xl p-6">
                     <div class="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-                    Loading your licensed devices...
+                    Loading your Coin Slot Boxes &amp; licensed devices...
                 </div>
             </div>
 
@@ -327,16 +343,21 @@
                     mainContainer.classList.add('items-start', 'text-left');
                 }
 
-                // Render cached devices immediately
+                // Render cached boxes & devices immediately
+                const cachedBox = getPisoBox();
+                if (cachedBox) {
+                    currentBoxData = cachedBox;
+                }
                 const cachedStr = localStorage.getItem('piso_cached_devices');
                 if (cachedStr) {
                     try {
                         const cached = JSON.parse(cachedStr);
                         if (Array.isArray(cached) && cached.length > 0) {
-                            renderDeviceCards(cached, false);
+                            currentUserDevices = cached;
                         }
                     } catch(e) {}
                 }
+                renderBoxHierarchy();
 
                 if (user.token) {
                     fetchUserDevices(user.token);
@@ -373,86 +394,326 @@
             }
         }
 
-        function renderDeviceCards(devices, isCached = false) {
-            const container = document.getElementById('deviceListContainer');
-            if (!container) return;
+        let currentBoxData = null;
+        let currentUserDevices = [];
+        let expandedBoxes = new Set(); // Tracks which boxes are expanded
 
-            container.innerHTML = '';
-
-            if (!devices || devices.length === 0) {
-                const empty = document.createElement('div');
-                empty.className = 'col-span-full text-center text-slate-500 py-10 text-sm bg-slate-900 border border-slate-800 rounded-2xl p-6';
-                empty.innerHTML = `
-                    <svg class="w-12 h-12 mx-auto mb-3 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
-                    <div class="text-slate-300 font-bold mb-1">No devices linked yet</div>
-                    <p class="text-slate-500 text-xs mb-4">Connect a device via WebUSB or link an existing hardware ID.</p>
-                    <button onclick="if (linkDeviceModal) linkDeviceModal.classList.remove('hidden')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-emerald-400 font-semibold text-xs rounded-xl border border-slate-700 transition">
-                        + Link Device ID
-                    </button>
+        function copyBoxBuildNumber(bNum, event) {
+            if (event) event.stopPropagation();
+            navigator.clipboard.writeText(bNum).then(() => {
+                const toast = document.createElement('div');
+                toast.className = 'fixed bottom-6 right-6 z-[999] bg-emerald-500 text-slate-950 font-bold px-4 py-2.5 rounded-xl shadow-2xl text-xs flex items-center gap-2 animate-fade-in-up';
+                toast.innerHTML = `
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                    <span>Build Number <strong>${bNum}</strong> copied!</span>
                 `;
-                container.appendChild(empty);
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 2500);
+            }).catch(() => {
+                alert(`Build Number: ${bNum}`);
+            });
+        }
+
+        function toggleBoxExpansion(boxId, event) {
+            if (event) event.stopPropagation();
+            if (expandedBoxes.has(boxId)) {
+                expandedBoxes.delete(boxId);
+            } else {
+                expandedBoxes.add(boxId);
+            }
+            renderBoxHierarchy();
+        }
+
+        function openLinkModalForBox(boxBuildNum) {
+            if (!linkDeviceModal) return;
+            linkDeviceModal.classList.remove('hidden');
+            if (targetBoxSelect && boxBuildNum) {
+                targetBoxSelect.value = boxBuildNum;
+            }
+            if (linkStatusText) linkStatusText.textContent = '';
+            if (manualDeviceIdInput) {
+                manualDeviceIdInput.value = '';
+                manualDeviceIdInput.focus();
+            }
+        }
+
+        async function handleUnlinkDevice(boxBuildNum, devId, event) {
+            if (event) event.stopPropagation();
+            if (!confirm(`Are you sure you want to unlink device ${devId} from Coin Slot Box #${boxBuildNum}? This will free up 1 of your 12 slots.`)) {
                 return;
             }
 
-            devices.forEach(dev => {
-                const isPaid = dev.status === 'PAID';
-                let statusBadge = '';
-                let actionArea = '';
-
-                if (isPaid) {
-                    const expiryDate = new Date(dev.paidExpiresAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit' });
-                    statusBadge = `<span class="bg-emerald-500/20 text-emerald-400 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">Active</span>`;
-                    actionArea = `
-                        <div class="text-sm text-slate-300">Expires: <span class="font-bold text-white">${expiryDate}</span></div>
-                        <div class="text-xs ${dev.daysRemaining < 30 ? 'text-rose-400' : 'text-emerald-400'} mt-1 font-bold">${dev.daysRemaining} days left</div>
-                    `;
+            try {
+                const res = await unlinkDeviceFromBox(boxBuildNum, devId);
+                if (res && res.success) {
+                    // Refresh data
+                    await refreshDashboardBoxStatus();
+                    if (currentUserToken) await fetchUserDevices(currentUserToken);
                 } else {
-                    statusBadge = `<span class="bg-amber-500/20 text-amber-400 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border border-amber-500/30">Pending Setup</span>`;
-                    actionArea = `
-                        <a href="activate.html?deviceId=${encodeURIComponent(dev.deviceId)}" class="text-sm font-bold text-amber-400 hover:text-amber-300 transition underline">Complete Activation →</a>
-                    `;
+                    alert(res?.error || 'Failed to unlink device');
                 }
+            } catch(e) {
+                alert(e.message || 'Error unlinking device');
+            }
+        }
 
-                const card = document.createElement('div');
-                card.className = "bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-center justify-between hover:border-slate-700 transition";
-                card.innerHTML = `
-                    <div class="flex items-center gap-4">
-                        <div class="${isPaid ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'} p-3 rounded-xl">
-                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+        function renderBoxHierarchy() {
+            const container = document.getElementById('deviceListContainer');
+            const boxCountBadge = document.getElementById('boxCountBadge');
+            if (!container) return;
+
+            const boxes = currentBoxData?.allBoxes || currentBoxData?.boxes || [];
+            if (boxCountBadge) {
+                boxCountBadge.textContent = `${boxes.length} ${boxes.length === 1 ? 'Box' : 'Boxes'} Verified`;
+            }
+
+            // Populate modal box dropdown
+            if (targetBoxSelect) {
+                const currentVal = targetBoxSelect.value;
+                targetBoxSelect.innerHTML = `<option value="">Auto-Assign to Available Box</option>`;
+                boxes.forEach(b => {
+                    const opt = document.createElement('option');
+                    opt.value = b.buildNumber;
+                    const used = b.devicesUsed !== undefined ? b.devicesUsed : (b.linkedDevices?.length || 0);
+                    const max = b.maxDevices || 12;
+                    opt.textContent = `Box #${b.buildNumber} (${max - used} free slots)`;
+                    targetBoxSelect.appendChild(opt);
+                });
+                if (currentVal) targetBoxSelect.value = currentVal;
+            }
+
+            // Case 1: No boxes verified yet
+            if (boxes.length === 0) {
+                container.innerHTML = `
+                    <div class="glass-card bg-slate-900 border border-emerald-500/30 rounded-3xl p-8 text-center shadow-xl">
+                        <div class="w-16 h-16 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-500/10">
+                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
                         </div>
-                        <div>
-                            <div class="text-white font-bold flex items-center gap-2">
-                                ${dev.deviceModel} 
-                                ${statusBadge}
-                            </div>
-                            <div class="text-xs text-slate-400 font-mono mt-1">ID: HW-${dev.deviceId.toUpperCase()}</div>
-                        </div>
-                    </div>
-                    <div class="text-right">
-                        ${actionArea}
+                        <h3 class="text-xl font-bold text-white mb-2">No Coin Slot Box Verified Yet</h3>
+                        <p class="text-xs text-slate-400 max-w-md mx-auto mb-6">
+                            Each physical ₱5,000 Coin Slot Box comes with a unique 12-character Build Number sticker authorizing up to 12 phones. Verify your box to link and install devices.
+                        </p>
+                        <button onclick="showBoxVerificationModal(() => { refreshDashboardBoxStatus(); if(currentUserToken) fetchUserDevices(currentUserToken); })" class="px-6 py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-xs transition shadow-lg shadow-emerald-500/20 inline-flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <span>Verify Your Coin Slot Box Build Number</span>
+                        </button>
                     </div>
                 `;
-                container.appendChild(card);
+                return;
+            }
+
+            container.innerHTML = '';
+
+            // Default first box to expanded if none expanded
+            if (expandedBoxes.size === 0 && boxes.length > 0) {
+                expandedBoxes.add(boxes[0].buildNumber);
+            }
+
+            // Track which devices are in boxes to identify unassigned devices
+            const boxDeviceIds = new Set();
+
+            boxes.forEach((box, index) => {
+                const bNum = box.buildNumber;
+                const isExpanded = expandedBoxes.has(bNum);
+                const max = box.maxDevices || 12;
+                
+                // Collect devices inside this box
+                let boxDevices = Array.isArray(box.devices) ? box.devices : [];
+                if (boxDevices.length === 0 && Array.isArray(box.linkedDevices)) {
+                    // Match from currentUserDevices
+                    boxDevices = currentUserDevices.filter(d => {
+                        const cleanDId = d.deviceId.replace('HW-', '').toUpperCase();
+                        return box.linkedDevices.some(ld => ld.replace('HW-', '').toUpperCase() === cleanDId);
+                    });
+                }
+                boxDevices.forEach(d => boxDeviceIds.add(d.deviceId.replace('HW-', '').toUpperCase()));
+
+                const usedCount = Math.max(boxDevices.length, box.devicesUsed || 0);
+                const slotsRemaining = Math.max(0, max - usedCount);
+                const percentUsed = Math.min(100, Math.round((usedCount / max) * 100));
+
+                const boxCard = document.createElement('div');
+                boxCard.className = `glass-card bg-slate-900/90 border rounded-3xl overflow-hidden transition-all duration-300 shadow-xl ${isExpanded ? 'border-emerald-500/50 ring-1 ring-emerald-500/30' : 'border-slate-800 hover:border-slate-700'}`;
+
+                // Box Header (Clickable Accordion)
+                const header = document.createElement('div');
+                header.className = "p-5 sm:p-6 cursor-pointer select-none flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-slate-900/95 to-slate-900/80 hover:bg-slate-800/60 transition";
+                header.onclick = (e) => toggleBoxExpansion(bNum, e);
+
+                header.innerHTML = `
+                    <div class="flex items-center gap-4">
+                        <div class="w-13 h-13 rounded-2xl ${usedCount >= max ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'} flex items-center justify-center p-3 flex-shrink-0 shadow-lg">
+                            <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
+                        </div>
+                        <div>
+                            <div class="flex items-center gap-2.5 flex-wrap">
+                                <h4 class="text-base sm:text-lg font-black text-white flex items-center gap-2">
+                                    Coin Slot Box #${index + 1}
+                                </h4>
+                                <span class="bg-slate-950 border border-slate-700 text-emerald-400 font-mono font-bold text-xs px-2.5 py-1 rounded-lg flex items-center gap-1.5 shadow-inner">
+                                    <span>${bNum}</span>
+                                    <button type="button" onclick="copyBoxBuildNumber('${bNum}', event)" title="Copy Build Number" class="text-slate-400 hover:text-white transition p-0.5">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                                    </button>
+                                </span>
+                                <span class="text-[11px] font-bold px-2 py-0.5 rounded-full ${usedCount >= max ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'}">
+                                    ${usedCount} / ${max} Phones Linked
+                                </span>
+                            </div>
+                            <div class="text-xs text-slate-400 mt-1 flex items-center gap-2">
+                                <span>₱5,000 Hardware Unit Authorization</span>
+                                <span>•</span>
+                                <span class="${slotsRemaining > 0 ? 'text-emerald-400 font-semibold' : 'text-slate-500'}">${slotsRemaining} slots remaining</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-3 self-end md:self-center">
+                        <div class="hidden sm:block text-right min-w-[130px]">
+                            <div class="w-full bg-slate-950 rounded-full h-2 border border-slate-800 overflow-hidden mb-1">
+                                <div class="h-full ${usedCount >= max ? 'bg-amber-500' : 'bg-emerald-500'} transition-all duration-500" style="width: ${percentUsed}%"></div>
+                            </div>
+                            <div class="text-[10px] text-slate-400 font-mono text-right">${percentUsed}% Capacity</div>
+                        </div>
+                        <button type="button" class="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition border border-slate-700">
+                            <svg class="w-4 h-4 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </button>
+                    </div>
+                `;
+                boxCard.appendChild(header);
+
+                // Box Body (Linked Devices List)
+                if (isExpanded) {
+                    const body = document.createElement('div');
+                    body.className = "p-5 sm:p-6 border-t border-slate-800 bg-slate-950/60 animate-fade-in-up";
+
+                    let devicesHtml = '';
+                    if (boxDevices.length === 0) {
+                        devicesHtml = `
+                            <div class="text-center py-8 px-4 bg-slate-900/60 border border-dashed border-slate-800 rounded-2xl">
+                                <svg class="w-10 h-10 mx-auto mb-2 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                                <div class="text-white font-bold text-sm mb-1">No Phones Linked to this Box Yet</div>
+                                <p class="text-slate-400 text-xs mb-4">This Coin Slot Box has 12 available phone slots ready to provision.</p>
+                                <button onclick="openLinkModalForBox('${bNum}')" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-xs transition shadow-md shadow-emerald-500/20 inline-flex items-center gap-1.5">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                    <span>Link First Phone to this Box</span>
+                                </button>
+                            </div>
+                        `;
+                    } else {
+                        devicesHtml = `
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                                ${boxDevices.map(dev => {
+                                    const isPaid = dev.status === 'PAID';
+                                    const cleanId = dev.deviceId.replace('HW-', '').toUpperCase();
+                                    const days = dev.daysRemaining !== undefined ? dev.daysRemaining : 365;
+                                    return `
+                                        <div class="bg-slate-900 border border-slate-800/90 hover:border-slate-700 p-4 rounded-2xl flex flex-col justify-between gap-3 shadow-md">
+                                            <div class="flex items-start justify-between gap-3">
+                                                <div class="flex items-center gap-3">
+                                                    <div class="w-10 h-10 rounded-xl ${isPaid ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/15 text-amber-400 border border-amber-500/20'} flex items-center justify-center flex-shrink-0">
+                                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                                                    </div>
+                                                    <div>
+                                                        <div class="text-white font-bold text-sm flex items-center gap-2">
+                                                            <span>${dev.deviceModel || 'Kiosk Phone'}</span>
+                                                            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${isPaid ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}">${isPaid ? 'Active' : 'Pending'}</span>
+                                                        </div>
+                                                        <div class="text-xs text-slate-400 font-mono mt-0.5">ID: HW-${cleanId}</div>
+                                                    </div>
+                                                </div>
+                                                <button type="button" onclick="handleUnlinkDevice('${bNum}', '${dev.deviceId}', event)" title="Unlink phone from this box" class="text-slate-500 hover:text-rose-400 transition p-1.5 rounded-lg hover:bg-slate-800">
+                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                                </button>
+                                            </div>
+
+                                            <div class="flex items-center justify-between pt-2 border-t border-slate-800/80 text-xs">
+                                                <div class="text-[11px] text-slate-400 font-medium">
+                                                    <span class="${days < 30 ? 'text-rose-400' : 'text-emerald-400'} font-bold">${days} days</span> license remaining
+                                                </div>
+                                                <div class="flex items-center gap-2">
+                                                    <a href="install.html?deviceId=${encodeURIComponent(cleanId)}" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-lg text-[11px] border border-slate-700 transition">
+                                                        Flash APK
+                                                    </a>
+                                                    <a href="activate.html?deviceId=${encodeURIComponent(cleanId)}" class="px-2.5 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 font-semibold rounded-lg text-[11px] border border-emerald-500/30 transition">
+                                                        Key
+                                                    </a>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        `;
+                    }
+
+                    body.innerHTML = `
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="text-xs font-bold uppercase tracking-wider text-slate-400">
+                                Devices Assigned to Box #${bNum} (${boxDevices.length} / ${max})
+                            </div>
+                            ${slotsRemaining > 0 ? `
+                                <button onclick="openLinkModalForBox('${bNum}')" class="text-xs text-emerald-400 hover:text-emerald-300 font-bold transition flex items-center gap-1">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                    <span>+ Link Phone to this Box</span>
+                                </button>
+                            ` : `
+                                <span class="text-xs text-amber-400 font-semibold">Box is Full (12/12)</span>
+                            `}
+                        </div>
+                        ${devicesHtml}
+                    `;
+                    boxCard.appendChild(body);
+                }
+
+                container.appendChild(boxCard);
             });
+
+            // Check for unassigned devices (devices on user account not mapped to any box)
+            const unassigned = currentUserDevices.filter(d => !boxDeviceIds.has(d.deviceId.replace('HW-', '').toUpperCase()));
+            if (unassigned.length > 0) {
+                const unassignedCard = document.createElement('div');
+                unassignedCard.className = 'glass-card bg-slate-900/60 border border-slate-800 rounded-3xl p-6 shadow-lg';
+                unassignedCard.innerHTML = `
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-2">
+                            <h4 class="text-base font-bold text-white">Unassigned Devices (${unassigned.length})</h4>
+                            <span class="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded-md">Pending Box Assignment</span>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        ${unassigned.map(dev => `
+                            <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex items-center justify-between">
+                                <div>
+                                    <div class="text-white font-bold text-sm">${dev.deviceModel || 'Kiosk Device'}</div>
+                                    <div class="text-xs text-slate-400 font-mono mt-0.5">ID: HW-${dev.deviceId.replace('HW-', '').toUpperCase()}</div>
+                                </div>
+                                <button onclick="openLinkModalForBox()" class="px-3 py-1.5 bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 text-xs font-bold rounded-xl border border-emerald-500/30 transition">
+                                    Assign to Box
+                                </button>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+                container.appendChild(unassignedCard);
+            }
         }
 
         const API_BASE = 'https://pisophone-api.pisophone-support.workers.dev';
 
         async function fetchUserDevices(token) {
-            const container = document.getElementById('deviceListContainer');
-            if (!container || isFetchingDevices) return;
+            if (isFetchingDevices) return;
             isFetchingDevices = true;
 
             const refreshIcon = document.getElementById('refreshIcon');
             if (refreshIcon) refreshIcon.classList.add('animate-spin');
 
             const cachedStr = localStorage.getItem('piso_cached_devices');
-            let hasCached = false;
             if (cachedStr) {
                 try {
                     const cached = JSON.parse(cachedStr);
-                    if (Array.isArray(cached) && cached.length > 0) {
-                        hasCached = true;
+                    if (Array.isArray(cached)) {
+                        currentUserDevices = cached;
                     }
                 } catch(e) {}
             }
@@ -465,65 +726,26 @@
                 });
 
                 if (res.status === 401) {
-                    // Try silent background re-auth prompt
                     if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
                         google.accounts.id.prompt();
                     }
-
-                    if (hasCached) {
-                        const cached = JSON.parse(cachedStr);
-                        renderDeviceCards(cached, true);
-                    } else {
-                        container.innerHTML = `
-                            <div class="col-span-full text-center py-10 text-sm bg-slate-900 border border-slate-800 rounded-2xl p-6">
-                                <svg class="w-12 h-12 mx-auto mb-3 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-                                <div class="text-white font-bold text-base mb-1">Session Expired</div>
-                                <p class="text-slate-400 text-xs mb-5 max-w-sm mx-auto">Your Google sign-in session expired. Please sign in again to sync your kiosk fleet.</p>
-                                <button onclick="promptGoogleSignIn()" class="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-xs transition shadow-lg">
-                                    Sign In with Google
-                                </button>
-                            </div>
-                        `;
-                    }
+                    renderBoxHierarchy();
                     return;
                 }
 
-                if (!res.ok) throw new Error("Failed to load devices");
-                const data = await res.json();
-                
-                // Cache fresh devices locally
-                if (data.devices) {
-                    localStorage.setItem('piso_cached_devices', JSON.stringify(data.devices));
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.devices) {
+                        currentUserDevices = data.devices;
+                        localStorage.setItem('piso_cached_devices', JSON.stringify(data.devices));
+                    }
                 }
-
-                renderDeviceCards(data.devices || [], false);
-
             } catch (e) {
                 console.error("Error fetching devices:", e);
-                if (hasCached) {
-                    // Do not wipe out cached devices on network or transient error!
-                    const cached = JSON.parse(cachedStr);
-                    renderDeviceCards(cached, true);
-                } else {
-                    container.innerHTML = `
-                        <div class="col-span-full text-center text-slate-400 py-10 text-sm bg-slate-900 border border-slate-800 rounded-2xl p-6">
-                            <svg class="w-12 h-12 mx-auto mb-3 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                            <div class="text-white font-bold text-base mb-1">Unable to Load Devices</div>
-                            <p class="text-slate-400 text-xs mb-5 max-w-sm mx-auto">Could not reach the server or verify session credentials.</p>
-                            <div class="flex items-center justify-center gap-3">
-                                <button onclick="promptGoogleSignIn()" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-xs transition shadow-md">
-                                    Re-authenticate
-                                </button>
-                                <button onclick="fetchUserDevices(currentUserToken)" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-xl text-xs border border-slate-700 transition">
-                                    Retry
-                                </button>
-                            </div>
-                        </div>
-                    `;
-                }
             } finally {
                 isFetchingDevices = false;
                 if (refreshIcon) refreshIcon.classList.remove('animate-spin');
+                renderBoxHierarchy();
             }
         }
 
@@ -541,11 +763,7 @@
 
         if (openLinkModalBtn) {
             openLinkModalBtn.addEventListener('click', () => {
-                if (linkDeviceModal) {
-                    linkDeviceModal.classList.remove('hidden');
-                    if (linkStatusText) linkStatusText.textContent = '';
-                    if (manualDeviceIdInput) manualDeviceIdInput.value = '';
-                }
+                openLinkModalForBox();
             });
         }
 
@@ -569,6 +787,8 @@
                 const devId = manualDeviceIdInput.value.trim();
                 if (!devId) return;
 
+                const chosenBox = targetBoxSelect ? targetBoxSelect.value : '';
+
                 submitLinkBtn.disabled = true;
                 submitLinkBtn.textContent = 'Linking...';
                 if (linkStatusText) {
@@ -577,25 +797,39 @@
                 }
 
                 try {
-                    const res = await fetch(`${API_BASE}/api/user/link-device`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            ownerToken: currentUserToken,
-                            deviceId: devId
-                        })
-                    });
+                    let res;
+                    if (chosenBox) {
+                        res = await fetch(`${API_BASE}/api/box/link-device`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                ownerToken: currentUserToken,
+                                buildNumber: chosenBox,
+                                deviceId: devId
+                            })
+                        });
+                    } else {
+                        res = await fetch(`${API_BASE}/api/box/link-device`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                ownerToken: currentUserToken,
+                                deviceId: devId
+                            })
+                        });
+                    }
 
                     const data = await res.json();
                     if (res.ok && data.success) {
                         if (linkStatusText) {
                             linkStatusText.className = 'text-xs text-center min-h-[16px] text-emerald-400 font-semibold';
-                            linkStatusText.textContent = 'Device linked successfully!';
+                            linkStatusText.textContent = data.message || 'Device linked successfully to Coin Slot Box!';
                         }
-                        setTimeout(() => {
+                        setTimeout(async () => {
                             if (linkDeviceModal) linkDeviceModal.classList.add('hidden');
+                            await refreshDashboardBoxStatus();
                             if (currentUserToken) fetchUserDevices(currentUserToken);
-                        }, 800);
+                        }, 900);
                     } else {
                         if (linkStatusText) {
                             linkStatusText.className = 'text-xs text-center min-h-[16px] text-rose-400';
@@ -609,7 +843,7 @@
                     }
                 } finally {
                     submitLinkBtn.disabled = false;
-                    submitLinkBtn.textContent = 'Link to Account';
+                    submitLinkBtn.textContent = 'Link Device to Box';
                 }
             });
         }
@@ -621,18 +855,26 @@
 
         async function refreshDashboardBoxStatus() {
             const box = await fetchUserBoxStatus();
-            if (box && box.buildNumber) {
+            currentBoxData = box;
+
+            const boxes = box?.allBoxes || box?.boxes || [];
+            const totalBoxes = boxes.length;
+            const totalUsed = box?.devicesUsed || 0;
+            const totalMax = box?.maxDevices || (totalBoxes * 12);
+            const totalSlotsRemaining = box?.slotsRemaining !== undefined ? box.slotsRemaining : (totalMax - totalUsed);
+
+            if (box && (box.buildNumber || totalBoxes > 0)) {
                 if (dashBoxBadge) {
-                    dashBoxBadge.textContent = `Active (#${box.buildNumber})`;
+                    dashBoxBadge.textContent = `${totalBoxes} ${totalBoxes === 1 ? 'Box' : 'Boxes'} Active`;
                     dashBoxBadge.className = "text-xs font-bold px-2.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
                 }
                 if (dashBoxSubtext) {
-                    dashBoxSubtext.innerHTML = `<strong>Unit Verified:</strong> Build #${box.buildNumber} • <span class="text-emerald-400 font-semibold">${box.devicesUsed} / ${box.maxDevices} Devices Used</span> (${box.slotsRemaining} slots remaining)`;
+                    dashBoxSubtext.innerHTML = `<strong>Fleet Capacity:</strong> ${totalBoxes} Verified Box${totalBoxes > 1 ? 'es' : ''} • <span class="text-emerald-400 font-semibold">${totalUsed} / ${totalMax} Devices Used</span> (${totalSlotsRemaining} slots remaining across all units)`;
                 }
                 if (dashVerifyBoxBtn) {
                     dashVerifyBoxBtn.innerHTML = `
                         <svg class="w-4 h-4 text-slate-950" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-                        <span>Add / Verify Another Box</span>
+                        <span>Verify Another Box</span>
                     `;
                 }
             } else {
@@ -650,12 +892,14 @@
                     `;
                 }
             }
+            renderBoxHierarchy();
         }
 
         if (dashVerifyBoxBtn) {
             dashVerifyBoxBtn.addEventListener('click', () => {
-                showBoxVerificationModal(() => {
-                    refreshDashboardBoxStatus();
+                showBoxVerificationModal(async () => {
+                    await refreshDashboardBoxStatus();
+                    if (currentUserToken) fetchUserDevices(currentUserToken);
                 });
             });
         }
