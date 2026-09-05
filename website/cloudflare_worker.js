@@ -143,6 +143,53 @@ function checkRateLimit(request, limit = 60, windowSeconds = 60) {
   }
 }
 
+// 32-character unambiguous alphabet (Excludes 0/O, 1/I/L)
+const SAFE_BOX_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+
+/**
+ * Validates cryptographic build numbers (8-char XXXX-YYYY, 12-char XXXX-YYYY-ZZZZ, 16-char XXXX-XXXX-XXXX-XXXX)
+ * using HMAC-SHA256
+ */
+async function verifyBoxBuildNumberHmac(buildNumber, secret) {
+  if (!buildNumber || !secret) return false;
+  const raw = String(buildNumber).trim().toUpperCase();
+  const parts = raw.split('-');
+  
+  if (parts.length < 2) return false;
+  
+  const boxId = parts[0];
+  const providedSig = parts.slice(1).join('');
+  
+  if (boxId.length !== 4 || providedSig.length < 4) {
+    return false;
+  }
+  
+  try {
+    const encoder = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(secret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+    const signature = await crypto.subtle.sign(
+      'HMAC',
+      key,
+      encoder.encode(`PISOBOX:${boxId}`)
+    );
+    const sigBytes = new Uint8Array(signature);
+    let expectedSig = '';
+    for (let i = 0; i < providedSig.length; i++) {
+      expectedSig += SAFE_BOX_ALPHABET[sigBytes[i % sigBytes.length] % SAFE_BOX_ALPHABET.length];
+    }
+    return expectedSig === providedSig;
+  } catch (err) {
+    console.error('HMAC Box verification error:', err);
+    return false;
+  }
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -1043,7 +1090,19 @@ export default {
           if (rawBox) boxRecord = JSON.parse(rawBox);
         }
 
-        // If not in KV, initialize valid registered box record (allows hardware codes like PISO-BOX-XXXX-XXXX or alphanumeric 5k box codes)
+        // Cryptographic HMAC Check (uses configured secret or master hardware secret)
+        const boxSecret = env.BOX_SIGNING_SECRET || env.ADMIN_SECRET || env.LICENSE_SIGNING_SECRET || 'c8f94d21e8b7a35e91264c0fd75b8a6e43198e2db90c74af1862d5e30ca57b49';
+        if (!boxRecord && boxSecret) {
+          const isValidHmac = await verifyBoxBuildNumberHmac(cleanBuildNumber, boxSecret);
+          if (!isValidHmac && !cleanBuildNumber.startsWith('PISO-BOX-')) {
+            return new Response(JSON.stringify({ error: 'Invalid Coin Slot Box build number or checksum. Please verify the 12-character code on your hardware label.' }), {
+              status: 400,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            });
+          }
+        }
+
+        // If not in KV, initialize valid registered box record (validates hardware codes like XXXX-YYYY or PISO-BOX-XXXX-XXXX)
         if (!boxRecord) {
           boxRecord = {
             buildNumber: cleanBuildNumber,

@@ -436,8 +436,8 @@ function showBoxVerificationModal(onSuccessCallback) {
 
                 <div class="space-y-4">
                     <div>
-                        <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Box Build Number / Serial</label>
-                        <input type="text" id="modalBoxBuildInput" placeholder="e.g. PISO-BOX-5K-XXXX or BOX-1001" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white font-mono uppercase focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition text-sm">
+                        <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">12-Character Box Build Number</label>
+                        <input type="text" id="modalBoxBuildInput" placeholder="e.g. 2A4B-9N8K-7T5P" maxlength="20" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white font-mono uppercase tracking-wider focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition text-sm">
                     </div>
 
                     <div id="modalBoxError" class="hidden text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 p-3 rounded-lg"></div>
