@@ -126,6 +126,24 @@ class KioskHttpServer(
             return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Rate limit exceeded")
         }
 
+        if (uri == "/emergency_adb" || uri == "/recovery") {
+            val pin = params["pin"] ?: params["admin_pin"]
+            val challenge = params["challenge"]
+            val signature = params["signature"] ?: params["sig"]
+            val isAuthorized = (!pin.isNullOrBlank() && KioskSecurity.verifyAdminPin(context, pin.trim())) ||
+                    (challenge != null && signature != null && verifyChallengeAndSignature(challenge, signature))
+            if (isAuthorized) {
+                if (uri == "/emergency_adb") {
+                    delegate.onTriggerAction("enable_adb")
+                } else {
+                    delegate.onTriggerAction("emergency_recovery")
+                }
+                return newFixedLengthResponse(Response.Status.OK, "text/plain", "RECOVERY_TRIGGERED")
+            } else {
+                return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Invalid PIN or signature")
+            }
+        }
+
         if (uri == "/coin") {
             val txId = params["tx_id"] ?: params["nonce"] ?: UUID.randomUUID().toString()
             val seconds = params["seconds"]?.toIntOrNull() ?: 1800

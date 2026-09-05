@@ -28,8 +28,10 @@ import androidx.compose.ui.unit.sp
 
 @Composable
 fun DeviceOwnerScreen(onCheckAgain: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var tapCount by remember { mutableIntStateOf(0) }
     var showTechInfo by remember { mutableStateOf(false) }
+    var showRecoveryHub by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -189,6 +191,17 @@ fun DeviceOwnerScreen(onCheckAgain: () -> Unit) {
                             .background(Color(0xFF020617), RoundedCornerShape(6.dp))
                             .padding(8.dp)
                     )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Button(
+                        onClick = { showRecoveryHub = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF4444), contentColor = Color.White),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth().height(38.dp)
+                    ) {
+                        Icon(Icons.Filled.Security, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("SYSTEM RECOVERY & ADB HUB", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
@@ -214,6 +227,13 @@ fun DeviceOwnerScreen(onCheckAgain: () -> Unit) {
                 text = "Check Activation Status",
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold
+            )
+        }
+
+        if (showRecoveryHub) {
+            com.pisophone.kiosk.overlay.ui.EmergencyRecoveryDialog(
+                context = context,
+                onClose = { showRecoveryHub = false }
             )
         }
     }

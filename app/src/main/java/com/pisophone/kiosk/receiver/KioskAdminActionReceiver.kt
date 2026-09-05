@@ -26,6 +26,10 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
 
     companion object {
         const val ACTION_DEPROVISION = "com.pisophone.kiosk.DEPROVISION"
+        const val ACTION_ENABLE_ADB = "com.pisophone.kiosk.ENABLE_ADB"
+        const val ACTION_EMERGENCY_RECOVERY = "com.pisophone.kiosk.EMERGENCY_RECOVERY"
+        const val ACTION_EXIT_KIOSK = "com.pisophone.kiosk.EXIT_KIOSK"
+        const val ACTION_OPEN_SETTINGS = "com.pisophone.kiosk.OPEN_SETTINGS"
         const val ACTION_STATUS_REFRESH = "com.pisophone.kiosk.STATUS_REFRESH"
         const val ACTION_RESTART = "com.pisophone.kiosk.RESTART"
         const val ACTION_REBOOT = "com.pisophone.kiosk.REBOOT"
@@ -47,6 +51,39 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
         Log.d(TAG, "Received admin action: $action")
 
         when (action) {
+            ACTION_ENABLE_ADB, "com.pisophone.kiosk.ACTION_ENABLE_ADB" -> {
+                Log.i(TAG, "Emergency Enable ADB broadcast received.")
+                val success = com.pisophone.kiosk.security.KioskSecurity.emergencyEnableUsbDebugging(context)
+                Toast.makeText(context, "⚡ Emergency: USB Debugging Re-Enabled!", Toast.LENGTH_LONG).show()
+                setResultCode(if (success) android.app.Activity.RESULT_OK else android.app.Activity.RESULT_CANCELED)
+            }
+
+            ACTION_EMERGENCY_RECOVERY, "com.pisophone.kiosk.ACTION_EMERGENCY_RECOVERY" -> {
+                Log.i(TAG, "Emergency Full Recovery broadcast received.")
+                com.pisophone.kiosk.security.KioskSecurity.emergencyEnableUsbDebugging(context)
+                com.pisophone.kiosk.security.KioskSecurity.emergencyExitKiosk(context)
+                Toast.makeText(context, "⚠️ Emergency Recovery: Kiosk Exited & ADB Enabled!", Toast.LENGTH_LONG).show()
+                setResultCode(android.app.Activity.RESULT_OK)
+            }
+
+            ACTION_EXIT_KIOSK, "com.pisophone.kiosk.ACTION_EXIT_KIOSK" -> {
+                if (!isAuthorized(context, intent)) {
+                    Log.w(TAG, "Unauthorized attempt to trigger EXIT_KIOSK rejected.")
+                    return
+                }
+                Log.i(TAG, "Exit Kiosk command received.")
+                com.pisophone.kiosk.security.KioskSecurity.emergencyExitKiosk(context)
+            }
+
+            ACTION_OPEN_SETTINGS, "com.pisophone.kiosk.ACTION_OPEN_SETTINGS" -> {
+                try {
+                    val sIntent = Intent(android.provider.Settings.ACTION_SETTINGS).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(sIntent)
+                } catch (_: Exception) {}
+            }
+
             ACTION_ADMIN_BYPASS -> {
                 if (!isAuthorized(context, intent)) {
                     Log.w(TAG, "Unauthorized attempt to trigger ADMIN_BYPASS rejected. Valid PIN or secret required.")
