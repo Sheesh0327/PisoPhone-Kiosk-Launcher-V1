@@ -79,7 +79,7 @@ async function verifyGoogleToken(token) {
     const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${token}`);
     if (res.ok) {
       const data = await res.json();
-      return data.email;
+      if (data.email) return data.email.trim().toLowerCase();
     }
   } catch (e) {
     console.error("Token verification failed:", e);
@@ -100,7 +100,7 @@ async function verifyGoogleToken(token) {
         const now = Date.now();
         // Allow up to 30 days grace period for returning dashboard users
         if (now - expMs < 30 * 24 * 60 * 60 * 1000) {
-          return payload.email;
+          return payload.email.trim().toLowerCase();
         }
       }
     }
@@ -109,6 +109,27 @@ async function verifyGoogleToken(token) {
   }
 
   return null;
+}
+
+// Helper: Securely authenticate user email from request body
+async function authenticateUserEmail(body) {
+  if (!body) return null;
+  const token = body.ownerToken;
+  if (!token) return null;
+
+  const verifiedEmail = await verifyGoogleToken(token);
+  if (!verifiedEmail) return null;
+
+  // If explicit ownerEmail is also passed, verify it matches the authenticated token email
+  if (body.ownerEmail) {
+    const explicitNorm = String(body.ownerEmail).trim().toLowerCase();
+    if (explicitNorm !== verifiedEmail) {
+      console.warn(`Email mismatch: token email ${verifiedEmail} vs explicit ${explicitNorm}`);
+      return null;
+    }
+  }
+
+  return verifiedEmail;
 }
 
 // In-Memory Rate Limiter (0 KV operations, prevents KV daily write quota exhaustion)
@@ -283,7 +304,8 @@ export default {
 
         let ownerEmail = null;
         if (ownerToken) {
-          ownerEmail = await verifyGoogleToken(ownerToken);
+          const verified = await verifyGoogleToken(ownerToken);
+          if (verified) ownerEmail = verified.trim().toLowerCase();
         }
 
         let existing = null;
@@ -297,12 +319,18 @@ export default {
           const isExpired = existing.paidExpiresAt > 0 && existing.paidExpiresAt <= now;
           const status = isPaid ? 'PAID' : (isExpired ? 'EXPIRED' : 'UNACTIVATED');
 
+          // Normalize existing ownerEmail if present
+          if (existing.ownerEmail) {
+            existing.ownerEmail = existing.ownerEmail.trim().toLowerCase();
+          }
+
           // Intelligent KV write throttling: Only write to KV if model changed, owner changed,
           // or at least 12 hours elapsed since last recorded check-in. This preserves daily KV write limits.
           const lastCheckin = existing.lastCheckinAt || 0;
           const needsCheckinUpdate = (now - lastCheckin) > (12 * 60 * 60 * 1000);
           const needsModelUpdate = Boolean(deviceModel && existing.deviceModel !== deviceModel);
-          const needsOwnerUpdate = Boolean(ownerEmail && existing.ownerEmail !== ownerEmail);
+          const oldOwner = existing.ownerEmail;
+          const needsOwnerUpdate = Boolean(ownerEmail && oldOwner !== ownerEmail);
 
           if (needsCheckinUpdate || needsModelUpdate || needsOwnerUpdate) {
             existing.lastCheckinAt = now;
@@ -317,6 +345,16 @@ export default {
             if (env.DEVICE_STORE) {
               await env.DEVICE_STORE.put(deviceId, JSON.stringify(existing));
               
+              // If owner changed, clean up old owner index
+              if (needsOwnerUpdate && oldOwner) {
+                const rawOldUd = await env.DEVICE_STORE.get(`USER_DEVICES:${oldOwner}`);
+                if (rawOldUd) {
+                  let oldUserDevices = JSON.parse(rawOldUd);
+                  oldUserDevices = oldUserDevices.filter(id => id !== deviceId);
+                  await env.DEVICE_STORE.put(`USER_DEVICES:${oldOwner}`, JSON.stringify(oldUserDevices));
+                }
+              }
+
               // Also update the USER_DEVICES index if ownerEmail is present
               if (ownerEmail) {
                 const rawUd = await env.DEVICE_STORE.get(`USER_DEVICES:${ownerEmail}`);
@@ -679,7 +717,7 @@ export default {
       if (url.pathname === '/api/user/devices' && method === 'POST') {
         const body = await request.json();
         
-        const email = await verifyGoogleToken(body.ownerToken);
+        const email = await authenticateUserEmail(body);
         if (!email) {
           return new Response(JSON.stringify({ error: 'Unauthorized', devices: [] }), {
             status: 401,
@@ -694,11 +732,18 @@ export default {
         }
 
         let devices = [];
+        let validUserDevices = [];
         for (const did of userDevices) {
           if (env.DEVICE_STORE) {
             const rawDev = await env.DEVICE_STORE.get(did);
             if (rawDev) {
               const dev = JSON.parse(rawDev);
+              const devOwner = dev.ownerEmail ? dev.ownerEmail.trim().toLowerCase() : null;
+              if (devOwner && devOwner !== email) {
+                continue;
+              }
+              validUserDevices.push(did);
+
               const isPaid = dev.paidExpiresAt > now;
               let licenseKey = null;
               if (isPaid) {
@@ -721,6 +766,10 @@ export default {
           }
         }
 
+        if (env.DEVICE_STORE && validUserDevices.length !== userDevices.length) {
+          await env.DEVICE_STORE.put(`USER_DEVICES:${email}`, JSON.stringify(validUserDevices));
+        }
+
         return new Response(JSON.stringify({ success: true, email, devices, serverTime: now }), {
           status: 200,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -734,16 +783,16 @@ export default {
       // =========================================================================
       if (url.pathname === '/api/user/link-device' && method === 'POST') {
         const body = await request.json();
-        const { ownerToken, deviceId } = body;
         
-        const email = await verifyGoogleToken(ownerToken);
+        const email = await authenticateUserEmail(body);
         if (!email) {
-          return new Response(JSON.stringify({ error: 'Unauthorized', success: false }), {
+          return new Response(JSON.stringify({ error: 'Unauthorized: Authentication required.', success: false }), {
             status: 401,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
         }
 
+        const { deviceId } = body;
         if (!deviceId) {
           return new Response(JSON.stringify({ error: 'Missing deviceId parameter', success: false }), {
             status: 400,
@@ -756,21 +805,32 @@ export default {
             cleanId = 'HW-' + cleanId;
         }
         if (env.DEVICE_STORE) {
-          // Check if device exists
           const rawDev = await env.DEVICE_STORE.get(cleanId);
-          let dev = rawDev ? JSON.parse(rawDev) : {
-            deviceId: cleanId,
-            hardwareHash: cleanId.toUpperCase(),
-            deviceModel: 'Manual Linked Kiosk',
-            firstRegisteredAt: now,
-            paidExpiresAt: 0,
-            lastCheckinAt: now,
-            installCount: 1
-          };
-          dev.ownerEmail = email;
-          await env.DEVICE_STORE.put(cleanId, JSON.stringify(dev));
+          if (rawDev) {
+            let dev = JSON.parse(rawDev);
+            const devOwner = dev.ownerEmail ? dev.ownerEmail.trim().toLowerCase() : null;
+            if (devOwner && devOwner !== email) {
+              return new Response(JSON.stringify({ error: 'This device is registered to another user account.', success: false }), {
+                status: 403,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              });
+            }
+            dev.ownerEmail = email;
+            await env.DEVICE_STORE.put(cleanId, JSON.stringify(dev));
+          } else {
+            let dev = {
+              deviceId: cleanId,
+              hardwareHash: cleanId.toUpperCase(),
+              deviceModel: 'Manual Linked Kiosk',
+              firstRegisteredAt: now,
+              paidExpiresAt: 0,
+              lastCheckinAt: now,
+              installCount: 1,
+              ownerEmail: email
+            };
+            await env.DEVICE_STORE.put(cleanId, JSON.stringify(dev));
+          }
 
-          // Add to user device index
           const rawUd = await env.DEVICE_STORE.get(`USER_DEVICES:${email}`);
           let userDevices = rawUd ? JSON.parse(rawUd) : [];
           if (!userDevices.includes(cleanId)) {
@@ -793,9 +853,9 @@ export default {
       if (url.pathname === '/api/user/credits' && method === 'POST') {
         const body = await request.json();
         
-        const email = await verifyGoogleToken(body.ownerToken);
+        const email = await authenticateUserEmail(body);
         if (!email) {
-          return new Response(JSON.stringify({ error: 'Unauthorized', credits: 0 }), {
+          return new Response(JSON.stringify({ error: 'Unauthorized: Authentication required.', credits: 0 }), {
             status: 401,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
@@ -821,9 +881,9 @@ export default {
       if (url.pathname === '/api/user/activate-device' && method === 'POST') {
         const body = await request.json();
         
-        const email = await verifyGoogleToken(body.ownerToken);
+        const email = await authenticateUserEmail(body);
         if (!email) {
-          return new Response(JSON.stringify({ error: 'Unauthorized', success: false }), {
+          return new Response(JSON.stringify({ error: 'Unauthorized: Authentication required.', success: false }), {
             status: 401,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
@@ -848,7 +908,6 @@ export default {
             });
           }
 
-          // Determine clean hardware ID
           let cleanId = String(deviceId).trim();
           if (!cleanId.toUpperCase().startsWith('HW-')) {
               cleanId = 'HW-' + cleanId;
@@ -862,6 +921,14 @@ export default {
             installCount: 1,
             processedPaymentRefs: []
           };
+
+          const devOwner = dev.ownerEmail ? dev.ownerEmail.trim().toLowerCase() : null;
+          if (devOwner && devOwner !== email) {
+            return new Response(JSON.stringify({ error: 'This device is owned by another user account.', success: false }), {
+              status: 403,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            });
+          }
 
           const currentPaidExpires = dev.paidExpiresAt || 0;
           const newPaidExpires = (currentPaidExpires > now ? currentPaidExpires : now) + LICENSE_DURATION_MS;
@@ -1066,13 +1133,9 @@ export default {
       // =========================================================================
       if (url.pathname === '/api/box/verify' && method === 'POST') {
         const body = await request.json();
-        const { buildNumber, ownerToken, ownerEmail: explicitEmail } = body;
+        const { buildNumber } = body;
 
-        let email = explicitEmail;
-        if (!email && ownerToken) {
-          email = await verifyGoogleToken(ownerToken);
-        }
-
+        const email = await authenticateUserEmail(body);
         if (!email) {
           return new Response(JSON.stringify({ error: 'Authentication required. Please sign in.' }), {
             status: 401,
@@ -1130,7 +1193,7 @@ export default {
         }
 
         // Check if box was claimed by another user
-        if (boxRecord.firstClaimedBy && boxRecord.firstClaimedBy.toLowerCase() !== email.toLowerCase()) {
+        if (boxRecord.firstClaimedBy && boxRecord.firstClaimedBy.trim().toLowerCase() !== email) {
           return new Response(JSON.stringify({ error: 'This Coin Slot Box build number has already been registered to another account.' }), {
             status: 403,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -1173,13 +1236,8 @@ export default {
       // =========================================================================
       if (url.pathname === '/api/box/status' && method === 'POST') {
         const body = await request.json();
-        const { ownerToken, ownerEmail: explicitEmail } = body;
 
-        let email = explicitEmail;
-        if (!email && ownerToken) {
-          email = await verifyGoogleToken(ownerToken);
-        }
-
+        const email = await authenticateUserEmail(body);
         if (!email) {
           return new Response(JSON.stringify({ error: 'Authentication required.' }), {
             status: 401,
@@ -1193,7 +1251,8 @@ export default {
           if (rawUserBoxes) userBoxes = JSON.parse(rawUserBoxes);
         }
 
-        let totalAllowed = userBoxes.length * 12;
+        let validUserBoxes = [];
+        let totalAllowed = 0;
         let allLinked = [];
         let boxDetails = [];
 
@@ -1202,6 +1261,12 @@ export default {
             const rawBox = await env.DEVICE_STORE.get(`BOX:${bNum}`);
             if (rawBox) {
               const bData = JSON.parse(rawBox);
+              const claimedBy = bData.firstClaimedBy ? bData.firstClaimedBy.trim().toLowerCase() : null;
+              if (claimedBy && claimedBy !== email) {
+                continue; // Box belongs to another user
+              }
+              validUserBoxes.push(bNum);
+
               const bLinked = Array.isArray(bData.linkedDevices) ? bData.linkedDevices : [];
               allLinked = allLinked.concat(bLinked);
 
@@ -1254,12 +1319,18 @@ export default {
           }
         }
 
+        totalAllowed = validUserBoxes.length * 12;
+
+        if (env.DEVICE_STORE && validUserBoxes.length !== userBoxes.length) {
+          await env.DEVICE_STORE.put(`USER_BOXES:${email}`, JSON.stringify(validUserBoxes));
+        }
+
         return new Response(
           JSON.stringify({
             success: true,
-            hasVerifiedBox: userBoxes.length > 0,
+            hasVerifiedBox: validUserBoxes.length > 0,
             boxes: boxDetails,
-            totalBoxes: userBoxes.length,
+            totalBoxes: validUserBoxes.length,
             totalMaxDevices: totalAllowed,
             totalDevicesUsed: allLinked.length,
             totalSlotsRemaining: Math.max(0, totalAllowed - allLinked.length),
@@ -1276,13 +1347,9 @@ export default {
       // =========================================================================
       if (url.pathname === '/api/box/link-device' && method === 'POST') {
         const body = await request.json();
-        const { buildNumber, deviceId, ownerToken, ownerEmail: explicitEmail } = body;
+        const { buildNumber, deviceId } = body;
 
-        let email = explicitEmail;
-        if (!email && ownerToken) {
-          email = await verifyGoogleToken(ownerToken);
-        }
-
+        const email = await authenticateUserEmail(body);
         if (!email) {
           return new Response(JSON.stringify({ error: 'Authentication required.' }), {
             status: 401,
@@ -1303,6 +1370,21 @@ export default {
         }
         let targetBoxNumber = buildNumber ? String(buildNumber).trim().toUpperCase() : null;
 
+        // Verify device ownership if device exists
+        if (env.DEVICE_STORE) {
+          const rawDev = await env.DEVICE_STORE.get(cleanDevId);
+          if (rawDev) {
+            const dev = JSON.parse(rawDev);
+            const devOwner = dev.ownerEmail ? dev.ownerEmail.trim().toLowerCase() : null;
+            if (devOwner && devOwner !== email) {
+              return new Response(JSON.stringify({ error: 'This device belongs to another user account.', success: false }), {
+                status: 403,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              });
+            }
+          }
+        }
+
         // If targetBoxNumber not specified, find user's box that has free slot
         if (!targetBoxNumber && env.DEVICE_STORE) {
           const rawUserBoxes = await env.DEVICE_STORE.get(`USER_BOXES:${email}`);
@@ -1311,6 +1393,9 @@ export default {
             const rawBox = await env.DEVICE_STORE.get(`BOX:${bNum}`);
             if (rawBox) {
               const bData = JSON.parse(rawBox);
+              const claimedBy = bData.firstClaimedBy ? bData.firstClaimedBy.trim().toLowerCase() : null;
+              if (claimedBy && claimedBy !== email) continue;
+
               const bLinked = Array.isArray(bData.linkedDevices) ? bData.linkedDevices : [];
               if (bLinked.includes(cleanDevId) || bLinked.length < (bData.maxDevices || 12)) {
                 targetBoxNumber = bNum;
@@ -1336,6 +1421,14 @@ export default {
         if (!boxData) {
           return new Response(JSON.stringify({ error: 'Coin Slot Box not found.' }), {
             status: 404,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const claimedBy = boxData.firstClaimedBy ? boxData.firstClaimedBy.trim().toLowerCase() : null;
+        if (claimedBy && claimedBy !== email) {
+          return new Response(JSON.stringify({ error: 'This Coin Slot Box belongs to another user account.' }), {
+            status: 403,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
         }
@@ -1402,13 +1495,9 @@ export default {
       // =========================================================================
       if (url.pathname === '/api/box/unlink-device' && method === 'POST') {
         const body = await request.json();
-        const { buildNumber, deviceId, ownerToken, ownerEmail: explicitEmail } = body;
+        const { buildNumber, deviceId } = body;
 
-        let email = explicitEmail;
-        if (!email && ownerToken) {
-          email = await verifyGoogleToken(ownerToken);
-        }
-
+        const email = await authenticateUserEmail(body);
         if (!email) {
           return new Response(JSON.stringify({ error: 'Authentication required.' }), {
             status: 401,
@@ -1430,6 +1519,13 @@ export default {
           const rawBox = await env.DEVICE_STORE.get(`BOX:${cleanBoxNum}`);
           if (rawBox) {
             const boxData = JSON.parse(rawBox);
+            const claimedBy = boxData.firstClaimedBy ? boxData.firstClaimedBy.trim().toLowerCase() : null;
+            if (claimedBy && claimedBy !== email) {
+              return new Response(JSON.stringify({ error: 'This Coin Slot Box belongs to another user account.' }), {
+                status: 403,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              });
+            }
             boxData.linkedDevices = (boxData.linkedDevices || []).filter(id => id !== cleanDevId && id !== cleanDevId.replace('HW-', ''));
             await env.DEVICE_STORE.put(`BOX:${cleanBoxNum}`, JSON.stringify(boxData));
           }

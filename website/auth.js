@@ -43,6 +43,8 @@ function getPisoUser() {
 function pisoSignOut() {
     localStorage.removeItem(PISO_AUTH_STORAGE_KEY);
     localStorage.removeItem('piso_cached_devices');
+    localStorage.removeItem(PISO_BOX_STORAGE_KEY);
+    localStorage.removeItem('piso_user_credits');
     if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
         google.accounts.id.disableAutoSelect();
     }
