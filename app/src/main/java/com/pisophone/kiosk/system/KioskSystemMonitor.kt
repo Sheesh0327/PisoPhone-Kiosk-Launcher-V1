@@ -24,7 +24,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 interface KioskSystemMonitorDelegate {
-    fun isUnlicensed(): Boolean
     fun onScreenSleep()
     fun onScreenWake()
     fun onPerformSleepClear()
@@ -219,7 +218,6 @@ class KioskSystemMonitor(
                 val highThreshold = KioskSecurity.getHighBatteryThreshold(context)
 
                 val newAlertState = when {
-                    delegate.isUnlicensed() -> BatteryAlertState.NONE
                     !alertsEnabled -> BatteryAlertState.NONE
                     pct <= lowThreshold && !isCharging -> BatteryAlertState.LOW_BATTERY_UNPLUGGED
                     pct >= highThreshold && isCharging -> BatteryAlertState.HIGH_BATTERY_PLUGGED
@@ -260,7 +258,6 @@ class KioskSystemMonitor(
         val highThreshold = KioskSecurity.getHighBatteryThreshold(context)
 
         val newAlertState = when {
-            delegate.isUnlicensed() -> BatteryAlertState.NONE
             !alertsEnabled -> BatteryAlertState.NONE
             pct <= lowThreshold && !isCharging -> BatteryAlertState.LOW_BATTERY_UNPLUGGED
             pct >= highThreshold && isCharging -> BatteryAlertState.HIGH_BATTERY_PLUGGED
@@ -268,7 +265,7 @@ class KioskSystemMonitor(
         }
 
         val audioMgr = delegate.getAudioManager()
-        if (!delegate.isUnlicensed() && audioMgr != null) {
+        if (audioMgr != null) {
             if (previousAlertState == BatteryAlertState.LOW_BATTERY_UNPLUGGED && isCharging) {
                 audioMgr.speakWarning("Charger connected. Battery charging.")
                 audioMgr.playSynthesizedTone(1046, 220) // High C6 confirmation chime
@@ -287,8 +284,7 @@ class KioskSystemMonitor(
         val now = System.currentTimeMillis()
         val audioMgr = delegate.getAudioManager() ?: return
 
-        if (!delegate.isUnlicensed()) {
-            if (currentBattery.alertState == BatteryAlertState.LOW_BATTERY_UNPLUGGED) {
+        if (currentBattery.alertState == BatteryAlertState.LOW_BATTERY_UNPLUGGED) {
                 if (now - lastBatteryVoiceReminderMs >= 15000L) {
                     lastBatteryVoiceReminderMs = now
                     audioMgr.playAnnoyingLowBatteryTone()
@@ -304,7 +300,6 @@ class KioskSystemMonitor(
                 }
             }
         }
-    }
 
     fun shutdown() {
         unregisterScreenOffReceiver()

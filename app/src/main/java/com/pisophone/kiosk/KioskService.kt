@@ -255,7 +255,6 @@ class KioskService : Service() {
             context = this,
             scope = scope,
             delegate = object : KioskSystemMonitorDelegate {
-                override fun isUnlicensed(): Boolean = stateManager.appState.value == 4
                 override fun onScreenSleep() { overlay?.onScreenSleep() }
                 override fun onScreenWake() { overlay?.onScreenWake() }
                 override fun onPerformSleepClear() {
@@ -289,7 +288,7 @@ class KioskService : Service() {
                     if (!mac.isNullOrBlank()) stateManager.esp32MacAddress.value = mac
                 }
 
-                override fun onConfigSynced(price: Double?, minutes: Int?, alias: String?, isUnlicensed: Boolean) {
+                override fun onConfigSynced(price: Double?, minutes: Int?, alias: String?) {
                     price?.let { stateManager.pricePerCoin.value = it }
                     minutes?.let { stateManager.minutesPerCoin.value = it }
                     alias?.takeIf { it.isNotBlank() }?.let {
@@ -298,12 +297,6 @@ class KioskService : Service() {
                             KioskSecurity.setDeviceAlias(this@KioskService, it)
                             Log.d(TAG, "[+] Synchronized device nickname from Master: $it")
                         }
-                    }
-                    if (isUnlicensed) {
-                        if (stateManager.appState.value != 4) stateManager.appState.value = 4
-                    } else if (stateManager.appState.value == 4) {
-                        stateManager.appState.value = 0
-                        HardwareLockManager.sealToCurrentDevice(this@KioskService)
                     }
                     stateManager.saveState()
                 }
@@ -395,7 +388,7 @@ class KioskService : Service() {
         }
 
         scope.launch {
-            com.pisophone.kiosk.security.HardwareLockManager.licenseUpdateVersion.collect {
+            com.pisophone.kiosk.security.HardwareLockManager.securityUpdateVersion.collect {
                 val isSetup = com.pisophone.kiosk.security.HardwareLockManager.isTutorialCompleted(this@KioskService) &&
                               com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(this@KioskService)
                 if (isSetup && overlay == null) {
@@ -638,14 +631,7 @@ class KioskService : Service() {
                 armSlot()
             },
             onDoneClick = { finishPayment() },
-            onThemeChange = { stateManager.themeIndex.value = (stateManager.themeIndex.value + 1) % 3 },
-            onActivateClick = { code ->
-                HardwareLockManager.sealToCurrentDevice(this@KioskService)
-                HardwareLockManager.activateOneYearLicense(this@KioskService, code)
-                if (::esp32Manager.isInitialized) {
-                    esp32Manager.sendActivationCode(code)
-                }
-            }
+            onThemeChange = { stateManager.themeIndex.value = (stateManager.themeIndex.value + 1) % 3 }
         )
         scope.launch(Dispatchers.Main) {
             overlay?.show()

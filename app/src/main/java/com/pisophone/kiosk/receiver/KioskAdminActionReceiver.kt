@@ -177,16 +177,14 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
             ACTION_GET_DEVICE_ID -> {
                 val hwId = com.pisophone.kiosk.security.HardwareLockManager.getHardwareFingerprint(context)
                 val devName = com.pisophone.kiosk.security.HardwareLockManager.getHardwareDescription()
-                val licenseInfo = com.pisophone.kiosk.security.HardwareLockManager.getLicenseInfo(context)
-                Log.i(TAG, "GET_DEVICE_ID requested via ADB broadcast. Returning: $hwId ($devName), status=${licenseInfo.state}")
+                val isAuthorized = com.pisophone.kiosk.security.HardwareLockManager.isHardwareAuthorized(context)
+                Log.i(TAG, "GET_DEVICE_ID requested via ADB broadcast. Returning: $hwId ($devName), hardwareSealed=$isAuthorized")
                 setResultCode(android.app.Activity.RESULT_OK)
                 setResultData(hwId)
                 val extras = android.os.Bundle().apply {
                     putString("hardware_id", hwId)
                     putString("device_name", devName)
-                    putString("license_state", licenseInfo.state.name)
-                    putInt("days_remaining", licenseInfo.daysRemaining)
-                    putBoolean("is_paid", licenseInfo.isPaid)
+                    putBoolean("hardware_sealed", isAuthorized)
                 }
                 setResultExtras(extras)
             }
@@ -220,11 +218,11 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                 }
 
                 Log.i(TAG, "Activation broadcast received with key: $key")
-                val success = com.pisophone.kiosk.security.HardwareLockManager.activateOneYearLicense(context, key)
+                val success = com.pisophone.kiosk.security.HardwareLockManager.sealToCurrentDevice(context)
                 setResultCode(if (success) android.app.Activity.RESULT_OK else android.app.Activity.RESULT_CANCELED)
                 setResultData(if (success) "SUCCESS" else "FAILED")
                 if (success) {
-                    Toast.makeText(context, "PisoPhone 1-Year License Activated Successfully!", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "PisoPhone Cryptographic Hardware Seal Established!", Toast.LENGTH_LONG).show()
                     // Restart Kiosk Service and reload UI
                     try {
                         val serviceIntent = Intent(context, KioskService::class.java)

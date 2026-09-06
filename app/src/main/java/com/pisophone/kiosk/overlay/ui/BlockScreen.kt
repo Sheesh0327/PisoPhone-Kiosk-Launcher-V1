@@ -5,7 +5,6 @@ import kotlinx.coroutines.isActive
 import com.pisophone.kiosk.overlay.ui.AdminAuthenticationDialog
 import com.pisophone.kiosk.overlay.ui.SecurityVaultView
 import com.pisophone.kiosk.overlay.ui.EmergencyRecoveryDialog
-import com.pisophone.kiosk.overlay.ui.UnlicensedActivationOverlay
 import com.pisophone.kiosk.overlay.ui.BatteryAlertBanner
 
 import android.content.Context
@@ -36,7 +35,6 @@ import com.pisophone.kiosk.model.BatteryAlertState
 import com.pisophone.kiosk.model.BatteryStatus
 import com.pisophone.kiosk.security.HardwareLockManager
 import com.pisophone.kiosk.security.KioskSecurity
-import com.pisophone.kiosk.ui.ActivationCelebrationDialog
 import kotlinx.coroutines.delay
 
 @Composable
@@ -55,9 +53,6 @@ fun BlockScreen(
     batteryStatus: BatteryStatus = BatteryStatus(),
     onThemeChange: () -> Unit = {},
     buttonText: String = "READY FOR COIN",
-    isUnlicensed: Boolean = false,
-    macAddress: String = "",
-    onActivateClick: (String) -> Unit = {},
     modifier: Modifier = Modifier.fillMaxSize()
 ) {
     data class OverlayTheme(
@@ -163,29 +158,6 @@ fun BlockScreen(
     var showEmergencyRecoveryDialog by remember { mutableStateOf(false) }
 
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
-    var licenseInfo by remember { mutableStateOf(HardwareLockManager.getLicenseInfo(context)) }
-    var showActivationCelebration by remember { mutableStateOf(false) }
-
-    val licenseUpdateVer by HardwareLockManager.licenseUpdateVersion.collectAsState()
-    val celebrationTrigger by HardwareLockManager.activationCelebrationEvent.collectAsState()
-
-    LaunchedEffect(licenseUpdateVer) {
-        licenseInfo = HardwareLockManager.getLicenseInfo(context)
-    }
-
-    LaunchedEffect(celebrationTrigger) {
-        if (celebrationTrigger) {
-            licenseInfo = HardwareLockManager.getLicenseInfo(context)
-            showActivationCelebration = true
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        while (isActive) {
-            licenseInfo = HardwareLockManager.getLicenseInfo(context)
-            delay(10000)
-        }
-    }
 
     Box(
         modifier = modifier.background(Background)
@@ -199,7 +171,7 @@ fun BlockScreen(
             BlockScreenTimeHeader(batteryStatus = batteryStatus, themeTextPrimary = TextPrimary)
 
             // Battery Alert Banner
-            if (!isUnlicensed && batteryStatus.alertState != BatteryAlertState.NONE) {
+            if (batteryStatus.alertState != BatteryAlertState.NONE) {
                 BatteryAlertBanner(batteryStatus = batteryStatus)
             }
 
@@ -427,30 +399,6 @@ fun BlockScreen(
                 EmergencyRecoveryDialog(
                     context = context,
                     onClose = { showEmergencyRecoveryDialog = false }
-                )
-            }
-            
-            if (isUnlicensed) {
-                UnlicensedActivationOverlay(
-                    macAddress = macAddress,
-                    backgroundColor = Background,
-                    surfaceColor = Surface,
-                    borderColor = Border,
-                    primaryColor = Primary,
-                    onPrimaryColor = OnPrimary,
-                    textPrimaryColor = TextPrimary,
-                    textSecondaryColor = TextSecondary,
-                    onActivateClick = onActivateClick
-                )
-            }
-
-            if (showActivationCelebration) {
-                ActivationCelebrationDialog(
-                    licenseInfo = licenseInfo,
-                    onDismiss = {
-                        showActivationCelebration = false
-                        HardwareLockManager.activationCelebrationEvent.value = false
-                    }
                 )
             }
         }

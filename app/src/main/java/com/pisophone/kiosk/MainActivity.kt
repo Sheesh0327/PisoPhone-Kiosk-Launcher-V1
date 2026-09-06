@@ -84,11 +84,7 @@ class MainActivity : ComponentActivity() {
         loadApps()
         KioskWatchdogReceiver.scheduleWatchdog(this)
         checkDeviceOwner()
-        
-        lifecycleScope.launch {
-            HardwareLockManager.syncWithBackend(this@MainActivity)
-        }
-        
+
         try {
             val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
             if (!pm.isIgnoringBatteryOptimizations(packageName)) {
@@ -105,26 +101,13 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     var isAppAllowed by remember { mutableStateOf(HardwareLockManager.isAppAllowedToRun(this@MainActivity)) }
                     var isTutorialCompleted by remember { mutableStateOf(HardwareLockManager.isTutorialCompleted(this@MainActivity)) }
-                    var showCelebration by remember { mutableStateOf(false) }
-                    var licenseInfo by remember { mutableStateOf(HardwareLockManager.getLicenseInfo(this@MainActivity)) }
 
-                    val licenseUpdateVer by HardwareLockManager.licenseUpdateVersion.collectAsState()
-                    val celebrationTrigger by HardwareLockManager.activationCelebrationEvent.collectAsState()
+                    val securityUpdateVer by HardwareLockManager.securityUpdateVersion.collectAsState()
 
-                    LaunchedEffect(licenseUpdateVer) {
+                    LaunchedEffect(securityUpdateVer) {
                         isAppAllowed = HardwareLockManager.isAppAllowedToRun(this@MainActivity)
                         isTutorialCompleted = HardwareLockManager.isTutorialCompleted(this@MainActivity)
-                        licenseInfo = HardwareLockManager.getLicenseInfo(this@MainActivity)
                         checkDeviceOwner()
-                    }
-
-                    LaunchedEffect(celebrationTrigger) {
-                        if (celebrationTrigger) {
-                            isAppAllowed = HardwareLockManager.isAppAllowedToRun(this@MainActivity)
-                            licenseInfo = HardwareLockManager.getLicenseInfo(this@MainActivity)
-                            showCelebration = true
-                            checkDeviceOwner()
-                        }
                     }
 
                     if (!isAppAllowed) {
@@ -172,17 +155,6 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     }
-
-                    if (showCelebration) {
-                        ActivationCelebrationDialog(
-                            licenseInfo = licenseInfo,
-                            isTutorialCompleted = isTutorialCompleted,
-                            onDismiss = {
-                                showCelebration = false
-                                HardwareLockManager.activationCelebrationEvent.value = false
-                            }
-                        )
-                    }
                 }
             }
         }
@@ -206,9 +178,6 @@ class MainActivity : ComponentActivity() {
         loadApps()
         KioskWatchdogReceiver.scheduleWatchdog(this)
         checkDeviceOwner()
-        lifecycleScope.launch {
-            HardwareLockManager.syncWithBackend(this@MainActivity)
-        }
     }
 
     override fun onNewIntent(intent: Intent) {

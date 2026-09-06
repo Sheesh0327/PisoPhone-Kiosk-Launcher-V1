@@ -33,7 +33,7 @@ interface Esp32ConnectionDelegate {
     fun getRealTimeBatteryInfo(): Pair<Int, Boolean>
     fun onEsp32Discovered(ip: String)
     fun onOnlineStatusChanged(isOnline: Boolean, mac: String?)
-    fun onConfigSynced(price: Double?, minutes: Int?, alias: String?, isUnlicensed: Boolean)
+    fun onConfigSynced(price: Double?, minutes: Int?, alias: String?)
     fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?)
     fun onSlotBusy()
     fun onArmSuccess()
@@ -410,7 +410,7 @@ class Esp32ConnectionManager(
                 val price = if (json.has("price")) json.optDouble("price", 5.0) else null
                 val minutes = if (json.has("minutes")) json.optInt("minutes", 30) else null
                 val alias = if (json.has("device_name")) json.optString("device_name", "").trim() else null
-                delegate.onConfigSynced(price, minutes, alias, false)
+                delegate.onConfigSynced(price, minutes, alias)
             }
             resp.close()
         } catch (_: Exception) {}
@@ -447,13 +447,12 @@ class Esp32ConnectionManager(
                                     try {
                                         val json = JSONObject(body)
                                         val mac = if (json.has("mac")) json.optString("mac", "") else null
-                                        val isUnlicensed = json.optString("status") == "unlicensed"
                                         val alias = if (json.has("device_name")) json.optString("device_name", "").trim() else null
                                         val price = if (json.has("price")) json.optDouble("price", 5.0) else null
                                         val minutes = if (json.has("minutes")) json.optInt("minutes", 30) else null
 
                                         delegate.onOnlineStatusChanged(true, mac)
-                                        delegate.onConfigSynced(price, minutes, alias, isUnlicensed)
+                                        delegate.onConfigSynced(price, minutes, alias)
                                     } catch (_: Exception) {}
                                 } else {
                                     delegate.onOnlineStatusChanged(true, null)

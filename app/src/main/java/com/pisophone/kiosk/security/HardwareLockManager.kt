@@ -3,51 +3,26 @@ package com.pisophone.kiosk.security
 import android.content.Context
 import android.content.SharedPreferences
 import android.os.Build
-import android.os.SystemClock
 import android.provider.Settings
-import android.util.Base64
 import android.util.Log
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
-import java.security.KeyFactory
 import java.security.MessageDigest
-import java.security.Signature
-import java.security.spec.X509EncodedKeySpec
-import javax.crypto.Mac
-import javax.crypto.spec.SecretKeySpec
 
 /**
  * HardwareLockManager
  *
- * Cryptographically binds the kiosk application to the target device's physical hardware
- * and enforces device activation for committed coin-slot hardware users.
- * Supports Cloudflare KV remote synchronization while providing asymmetric RSA-2048
- * signature verification and tamper-resistant offline clock tracking.
+ * Cryptographically binds and seals the kiosk application to the target device's physical hardware.
+ * Provides immutable hardware fingerprinting, Direct-Boot tamper-sealed signatures (HMAC-SHA256),
+ * and anti-cloning security to prevent unauthorized copying of the application to other devices.
  */
 object HardwareLockManager {
     private const val TAG = "HardwareLock"
     private const val PREFS_NAME = "kiosk_hardware_seal_vault"
 
-    // Production RSA-2048 Public Key (X.509 SPKI Base64)
-    // Used to verify digitally signed licenses issued by the Cloudflare Worker.
-    // An adversary decompiling this APK cannot forge licenses without the private key on Cloudflare.
-    private const val LICENSE_PUBLIC_KEY_BASE64 = 
-        "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA9rryQHAobYKw1K992SZtDUXslWdbOLBsi929aoXEGLnmDeP7P7FiFL8hWyYcfUc2DyeDKH81dYAGX/V28DwFvYFkl0Ai4mJj1QZQn9yLKIJgNDtzi4SnkmgcKyZWIkDEGJ+1o2Lk4j3WnTf8Y0moOqhrJGCK574hGOrd10i3oZK2iWMRV9WcKWV/50IOXYsz/uKvfHIZyHCRlAgRZ9uBP3Gk+3I5fZEKoKDiuV/MOqJhaPSWU01utZt8Bch14HajzD+sRuL5sgax2ZluUwUnZ6mU6AXLqREscJDEV5/Eisq8keHnm5qKyhW3n+GkgFccBN+BFSrDUgpJMxINlVGDPwIDAQAB"
+    val securityUpdateVersion = MutableStateFlow<Long>(System.currentTimeMillis())
 
-    val licenseUpdateVersion = MutableStateFlow<Long>(System.currentTimeMillis())
-    val activationCelebrationEvent = MutableStateFlow<Boolean>(false)
-
-    private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-
-    fun notifyLicenseChanged() {
-        licenseUpdateVersion.value = System.currentTimeMillis()
+    fun notifySecurityChanged() {
+        securityUpdateVersion.value = System.currentTimeMillis()
     }
 
     private const val KEY_BOUND_HW_ID = "bound_hardware_fingerprint"
@@ -55,40 +30,7 @@ object HardwareLockManager {
     private const val KEY_BOUND_TIMESTAMP = "bound_timestamp_ms"
     private const val KEY_BOUND_SIGNATURE = "bound_hardware_sig"
     private const val KEY_HARDWARE_LOCKED = "hardware_lock_enforced"
-
-    // Licensing & Activation State Keys
-    private const val KEY_LICENSE_STATUS = "license_status" // "UNACTIVATED", "PAID", "EXPIRED"
     private const val KEY_TUTORIAL_COMPLETED = "kiosk_tutorial_completed"
-    private const val KEY_PAID_EXPIRES_TIME = "license_paid_expires_time"
-    private const val KEY_LAST_SERVER_CHECK_TIME = "license_last_server_check_time"
-    private const val KEY_SERVER_DAYS_REMAINING = "license_server_days_remaining"
-    private const val KEY_LAST_KNOWN_WALL_CLOCK = "license_last_wall_clock"
-    private const val KEY_TIME_TAMPER_LOCKED = "license_time_tamper_locked"
-    private const val KEY_LICENSE_SIGNATURE = "license_integrity_signature"
-    private const val KEY_SERVER_RSA_SIGNATURE = "license_server_rsa_signature"
-
-    private const val ONE_YEAR_MS = 365L * 24L * 60L * 60L * 1000L
-    private const val CHECK_INTERVAL_MS = 7L * 24L * 60L * 60L * 1000L // 7-day server recheck interval
-
-    // Cloudflare Worker backend endpoint
-    private const val DEFAULT_BACKEND_URL = "https://pisophone-api.pisophone-support.workers.dev"
-
-    enum class LicenseState {
-        UNACTIVATED,
-        PAID_ACTIVE,
-        EXPIRED_LOCKED,
-        TRANSFERRED_LOCKED,
-        HARDWARE_MISMATCH
-    }
-
-    data class LicenseInfo(
-        val state: LicenseState,
-        val daysRemaining: Int,
-        val expiresAtMs: Long,
-        val isPaid: Boolean,
-        val hardwareId: String,
-        val deviceName: String
-    )
 
     /**
      * Computes a stable, canonical hardware fingerprint derived strictly from immutable hardware attributes.
@@ -185,7 +127,7 @@ object HardwareLockManager {
     }
 
     /**
-     * Binds and cryptographically seals the application to the current device's hardware.
+     * Cryptographically binds and seals the application to the current device's hardware.
      * Safe to call on every boot/app launch.
      */
     fun sealToCurrentDevice(context: Context): Boolean {
@@ -197,9 +139,8 @@ object HardwareLockManager {
         val boundHwId = prefs.getString(KEY_BOUND_HW_ID, null)
 
         if (boundHwId == null) {
-            // First run on this hardware: bind hardware and set status as UNACTIVATED (requires license activation)
+            // First run on this hardware: establish initial cryptographic hardware seal
             val sig = generateSignature(context, currentHwId, currentDevName, now)
-            val licSig = generateLicenseSignature(context, currentHwId, "UNACTIVATED", 0L)
 
             prefs.edit()
                 .putString(KEY_BOUND_HW_ID, currentHwId)
@@ -207,23 +148,13 @@ object HardwareLockManager {
                 .putLong(KEY_BOUND_TIMESTAMP, now)
                 .putString(KEY_BOUND_SIGNATURE, sig)
                 .putBoolean(KEY_HARDWARE_LOCKED, false)
-                .putString(KEY_LICENSE_STATUS, "UNACTIVATED")
-                .putLong(KEY_PAID_EXPIRES_TIME, 0L)
-                .putLong(KEY_LAST_KNOWN_WALL_CLOCK, now)
-                .putBoolean(KEY_TIME_TAMPER_LOCKED, false)
-                .putString(KEY_LICENSE_SIGNATURE, licSig)
                 .apply()
 
-            Log.i(TAG, "Cryptographic hardware seal established for $currentDevName ($currentHwId). Awaiting activation.")
-            
-            // Asynchronously register device with Cloudflare KV backend
-            coroutineScope.launch {
-                syncWithBackend(context)
-            }
+            Log.i(TAG, "Cryptographic hardware seal established for $currentDevName ($currentHwId).")
             return true
         }
 
-        // Verify stored seal signature against current hardware
+        // Verify stored seal signature against current physical hardware
         val storedDevName = prefs.getString(KEY_BOUND_DEVICE_NAME, "") ?: ""
         val storedTimestamp = prefs.getLong(KEY_BOUND_TIMESTAMP, 0L)
         val storedSig = prefs.getString(KEY_BOUND_SIGNATURE, "") ?: ""
@@ -240,185 +171,6 @@ object HardwareLockManager {
     }
 
     /**
-     * Evaluates current license status: 7-Day Trial, Paid, or Expired Lockdown.
-     * Incorporates anti-time-travel high-water mark validation.
-     */
-    fun getLicenseInfo(context: Context): LicenseInfo {
-        val hwId = getHardwareFingerprint(context)
-        val devName = getHardwareDescription()
-
-        // Verify hardware binding
-        val isHardwareValid = isHardwareBound(context)
-        if (!isHardwareValid) {
-            return LicenseInfo(
-                state = LicenseState.HARDWARE_MISMATCH,
-                daysRemaining = 0,
-                expiresAtMs = 0L,
-                isPaid = false,
-                hardwareId = hwId,
-                deviceName = devName
-            )
-        }
-
-        val prefs = getPrefs(context)
-        val now = System.currentTimeMillis()
-
-        // Anti-Time-Travel Check: Detect if user rolled back device system clock
-        val lastKnownClock = prefs.getLong(KEY_LAST_KNOWN_WALL_CLOCK, 0L)
-        val isTamperLocked = prefs.getBoolean(KEY_TIME_TAMPER_LOCKED, false)
-
-        // 1-hour grace window for daylight saving / minor NTP clock synchronization adjustments
-        if (lastKnownClock > 0L && now < lastKnownClock - 3_600_000L) {
-            Log.w(TAG, "System clock rollback detected! (Now: $now, LastKnown: $lastKnownClock). Tamper lock engaged.")
-            prefs.edit().putBoolean(KEY_TIME_TAMPER_LOCKED, true).apply()
-            return LicenseInfo(
-                state = LicenseState.EXPIRED_LOCKED,
-                daysRemaining = 0,
-                expiresAtMs = 0L,
-                isPaid = false,
-                hardwareId = hwId,
-                deviceName = devName
-            )
-        }
-
-        if (isTamperLocked) {
-            Log.w(TAG, "Device clock is tamper-locked. Awaiting verified network time sync.")
-            return LicenseInfo(
-                state = LicenseState.EXPIRED_LOCKED,
-                daysRemaining = 0,
-                expiresAtMs = 0L,
-                isPaid = false,
-                hardwareId = hwId,
-                deviceName = devName
-            )
-        }
-
-        // Advance monotonic high-water mark
-        prefs.edit().putLong(KEY_LAST_KNOWN_WALL_CLOCK, maxOf(lastKnownClock, now)).apply()
-
-        val status = prefs.getString(KEY_LICENSE_STATUS, "UNACTIVATED") ?: "UNACTIVATED"
-        val lastCheck = prefs.getLong(KEY_LAST_SERVER_CHECK_TIME, 0L)
-        val paidExpires = prefs.getLong(KEY_PAID_EXPIRES_TIME, 0L)
-        val savedDays = prefs.getInt(KEY_SERVER_DAYS_REMAINING, 0)
-        val licSig = prefs.getString(KEY_LICENSE_SIGNATURE, "") ?: ""
-        val serverRsaSig = prefs.getString(KEY_SERVER_RSA_SIGNATURE, "") ?: ""
-
-        // Check tamper signature (includes lastCheck timestamp to prevent freezing 7-day clock)
-        val expectedSig = generateLicenseSignature(context, hwId, status, paidExpires, lastCheck)
-        if (licSig.isNotEmpty() && licSig != expectedSig) {
-            Log.w(TAG, "License signature mismatch! Lock enforced.")
-            return LicenseInfo(
-                state = LicenseState.EXPIRED_LOCKED,
-                daysRemaining = 0,
-                expiresAtMs = 0L,
-                isPaid = false,
-                hardwareId = hwId,
-                deviceName = devName
-            )
-        }
-
-        // 1. Check Paid License (Server-Authoritative with 7-Day verification interval)
-        if (status == "PAID") {
-            // Must have a valid server RSA signature stored
-            if (serverRsaSig.isNotEmpty()) {
-                val payload = "$hwId|$paidExpires"
-                val isRsaValid = verifyRsaSignature(payload, serverRsaSig)
-                if (!isRsaValid) {
-                    Log.w(TAG, "Stored server cryptographic signature invalid! Lock enforced.")
-                    return LicenseInfo(
-                        state = LicenseState.EXPIRED_LOCKED,
-                        daysRemaining = 0,
-                        expiresAtMs = 0L,
-                        isPaid = false,
-                        hardwareId = hwId,
-                        deviceName = devName
-                    )
-                }
-            }
-
-            val timeSinceLastCheck = if (lastCheck > 0L) now - lastCheck else Long.MAX_VALUE
-
-            // Within the 7-day verification window
-            if (timeSinceLastCheck in 0..CHECK_INTERVAL_MS) {
-                val days = if (savedDays > 0) {
-                    savedDays
-                } else if (paidExpires > now) {
-                    Math.max(1, Math.ceil((paidExpires - now).toDouble() / (24 * 60 * 60 * 1000)).toInt())
-                } else {
-                    Math.max(1, Math.ceil((CHECK_INTERVAL_MS - timeSinceLastCheck).toDouble() / (24 * 60 * 60 * 1000)).toInt())
-                }
-
-                return LicenseInfo(
-                    state = LicenseState.PAID_ACTIVE,
-                    daysRemaining = days,
-                    expiresAtMs = paidExpires,
-                    isPaid = true,
-                    hardwareId = hwId,
-                    deviceName = devName
-                )
-            } else {
-                // 7 days have passed since the last verified server check!
-                // Trigger background server check immediately
-                coroutineScope.launch {
-                    syncWithBackend(context)
-                }
-
-                // If past 7-day check window and not yet verified, lock until server verification completes
-                return LicenseInfo(
-                    state = LicenseState.EXPIRED_LOCKED,
-                    daysRemaining = 0,
-                    expiresAtMs = paidExpires,
-                    isPaid = false,
-                    hardwareId = hwId,
-                    deviceName = devName
-                )
-            }
-        }
-
-        // 2. Check Transferred Status (License transferred to replacement hardware)
-        if (status == "TRANSFERRED") {
-            return LicenseInfo(
-                state = LicenseState.TRANSFERRED_LOCKED,
-                daysRemaining = 0,
-                expiresAtMs = 0L,
-                isPaid = false,
-                hardwareId = hwId,
-                deviceName = devName
-            )
-        }
-
-        // 3. Check Unactivated Status
-        if (status == "UNACTIVATED") {
-            return LicenseInfo(
-                state = LicenseState.UNACTIVATED,
-                daysRemaining = 0,
-                expiresAtMs = 0L,
-                isPaid = false,
-                hardwareId = hwId,
-                deviceName = devName
-            )
-        }
-
-        // 4. Expired Lockdown
-        return LicenseInfo(
-            state = LicenseState.EXPIRED_LOCKED,
-            daysRemaining = 0,
-            expiresAtMs = paidExpires,
-            isPaid = false,
-            hardwareId = hwId,
-            deviceName = devName
-        )
-    }
-
-    /**
-     * Checks if kiosk features are allowed to operate under the current license.
-     */
-    fun isLicenseActive(context: Context): Boolean {
-        val info = getLicenseInfo(context)
-        return info.state == LicenseState.PAID_ACTIVE
-    }
-
-    /**
      * Checks if the user has completed the interactive first-time setup tutorial.
      */
     fun isTutorialCompleted(context: Context): Boolean {
@@ -430,305 +182,33 @@ object HardwareLockManager {
      */
     fun setTutorialCompleted(context: Context, completed: Boolean = true) {
         getPrefs(context).edit().putBoolean(KEY_TUTORIAL_COMPLETED, completed).apply()
-        notifyLicenseChanged()
+        notifySecurityChanged()
     }
 
     /**
-     * Checks if the kiosk application is authorized to operate (hardware bound and valid license active).
+     * Checks if the kiosk application is authorized to operate on this hardware (single auth path).
      */
     fun isAppAllowedToRun(context: Context): Boolean {
-        return isHardwareBound(context) && isLicenseActive(context)
+        return isHardwareAuthorized(context)
     }
 
     /**
-     * Checks if the physical hardware is authorized and sealed.
+     * Checks if the physical hardware is authorized and sealed without tampering.
      */
     fun isHardwareAuthorized(context: Context): Boolean {
-        return isHardwareBound(context)
-    }
-
-    /**
-     * Checks if current physical hardware matches the bound seal.
-     */
-    fun isHardwareBound(context: Context): Boolean {
         val prefs = getPrefs(context)
         if (prefs.getBoolean(KEY_HARDWARE_LOCKED, false)) return false
-        val boundHwId = prefs.getString(KEY_BOUND_HW_ID, null) ?: return true
+        val boundHwId = prefs.getString(KEY_BOUND_HW_ID, null) ?: return sealToCurrentDevice(context)
         val currentHwId = getHardwareFingerprint(context)
-        return boundHwId == currentHwId
-    }
-
-    /**
-     * Verifies an asymmetric RSA-SHA256 digital signature from the Cloudflare licensing server.
-     * Uses PKCS#1 v1.5 padding with SHA-256.
-     */
-    private fun decodeBase64Safe(input: String): ByteArray {
-        return try {
-            java.util.Base64.getDecoder().decode(input)
-        } catch (e: Throwable) {
-            Base64.decode(input, Base64.DEFAULT)
-        }
-    }
-
-    fun verifyRsaSignature(data: String, signatureBase64Url: String): Boolean {
-        return try {
-            val pubKeyBytes = decodeBase64Safe(LICENSE_PUBLIC_KEY_BASE64)
-            val keySpec = X509EncodedKeySpec(pubKeyBytes)
-            val keyFactory = KeyFactory.getInstance("RSA")
-            val publicKey = keyFactory.generatePublic(keySpec)
-
-            var b64 = signatureBase64Url.replace('-', '+').replace('_', '/')
-            while (b64.length % 4 != 0) {
-                b64 += "="
-            }
-            val sigBytes = decodeBase64Safe(b64)
-
-            val verifier = Signature.getInstance("SHA256withRSA")
-            verifier.initVerify(publicKey)
-            verifier.update(data.toByteArray(Charsets.UTF_8))
-            verifier.verify(sigBytes)
-        } catch (e: Exception) {
-            try {
-                Log.e(TAG, "RSA signature verification exception: ${e.message}")
-            } catch (_: Throwable) {}
-            false
-        }
-    }
-
-
-
-    /**
-     * Activates a 1-Year Commercial License on this hardware.
-     * Accepts:
-     * - Asymmetrically signed license tokens: "PISO-1Y.<deviceId>.<expiresAt>.<rsaSignature>"
-     * - Manual redemption / activation codes with Cloudflare backend verification
-     */
-    fun activateOneYearLicense(context: Context, keyOrRef: String = "MANUAL"): Boolean {
-        return try {
-            val hwId = getHardwareFingerprint(context)
-            val androidId = try {
-                Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: ""
-            } catch (e: Exception) { "" }
-            val now = System.currentTimeMillis()
-            val prefs = getPrefs(context)
-            val currentPaidExpires = prefs.getLong(KEY_PAID_EXPIRES_TIME, 0L)
-
-            val trimmedKey = keyOrRef.trim()
-            val parts = trimmedKey.split(".")
-            val isTokenFormat = parts.size == 4 && parts[0] == "PISO-1Y"
-            var targetExpires = (if (currentPaidExpires > now) currentPaidExpires else now) + ONE_YEAR_MS
-
-            if (isTokenFormat) {
-                val licDevId = parts[1]
-                val licExpires = parts[2].toLongOrNull()
-                val licSig = parts[3]
-
-                if (licExpires == null || licExpires <= now) {
-                    Log.w(TAG, "License token is expired or invalid expiry: $licExpires")
-                    return false
-                }
-
-                val globalHwId = try {
-                    Settings.Global.getString(context.contentResolver, "pisophone_hw_id")
-                } catch (e: Exception) { null }
-                val boundHwId = prefs.getString(KEY_BOUND_HW_ID, null)
-
-                // Verify device binding across all synchronized identity sources
-                val isMatchingDevice = licDevId.equals(hwId, ignoreCase = true) ||
-                        licDevId.equals(androidId, ignoreCase = true) ||
-                        (!globalHwId.isNullOrBlank() && licDevId.equals(globalHwId, ignoreCase = true)) ||
-                        (!boundHwId.isNullOrBlank() && licDevId.equals(boundHwId, ignoreCase = true))
-
-                if (!isMatchingDevice) {
-                    Log.w(TAG, "License device ID mismatch: token is for $licDevId, actual device is $hwId")
-                    return false
-                }
-
-                // Asymmetric cryptographic verification (RSA-2048 SHA-256) - Single authoritative path
-                val payload = "$licDevId|$licExpires"
-                val isRsaValid = verifyRsaSignature(payload, licSig)
-
-                if (!isRsaValid) {
-                    Log.e(TAG, "Cryptographic RSA-2048 signature verification failed! License rejected.")
-                    return false
-                }
-
-                // Synchronize and lock the verified license device ID to prevent any future mismatch
-                if (licDevId.startsWith("HW-")) {
-                    prefs.edit().putString(KEY_BOUND_HW_ID, licDevId).apply()
-                    syncToGlobalSettings(context, licDevId)
-                }
-
-                targetExpires = licExpires
-                Log.i(TAG, "Valid cryptographically verified RSA-2048 license token received.")
-            }
-
-            val targetHwId = prefs.getString(KEY_BOUND_HW_ID, null) ?: hwId
-            val checkTime = System.currentTimeMillis()
-            val sig = generateLicenseSignature(context, targetHwId, "PAID", targetExpires, checkTime)
-
-            prefs.edit()
-                .putString(KEY_LICENSE_STATUS, "PAID")
-                .putLong(KEY_PAID_EXPIRES_TIME, targetExpires)
-                .putLong(KEY_LAST_SERVER_CHECK_TIME, checkTime)
-                .putInt(KEY_SERVER_DAYS_REMAINING, 365)
-                .putString(KEY_LICENSE_SIGNATURE, sig)
-                .apply {
-                    if (isTokenFormat) {
-                        val tokenParts = trimmedKey.split(".")
-                        if (tokenParts.size >= 4) {
-                            putString(KEY_SERVER_RSA_SIGNATURE, tokenParts[3])
-                        }
-                    }
-                }
-                .putLong(KEY_LAST_KNOWN_WALL_CLOCK, now)
-                .putBoolean(KEY_TIME_TAMPER_LOCKED, false) // authenticated license clears tamper flag
-                .apply()
-
-            // Asynchronously notify Cloudflare backend of manual activation / redemption
-            coroutineScope.launch {
-                try {
-                    val devModel = getHardwareDescription()
-                    val url = URL("$DEFAULT_BACKEND_URL/api/payment/confirm")
-                    val conn = (url.openConnection() as HttpURLConnection).apply {
-                        requestMethod = "POST"
-                        connectTimeout = 8000
-                        readTimeout = 8000
-                        doOutput = true
-                        setRequestProperty("Content-Type", "application/json")
-                    }
-
-                    val payload = JSONObject().apply {
-                        put("deviceId", hwId)
-                        put("paymentRef", trimmedKey)
-                        put("hardwareHash", hwId)
-                        put("deviceModel", devModel)
-                    }
-
-                    conn.outputStream.use { os ->
-                        os.write(payload.toString().toByteArray(Charsets.UTF_8))
-                    }
-
-                    val respCode = conn.responseCode
-                    if (respCode == 200) {
-                        val respStr = conn.inputStream.bufferedReader().use { it.readText() }
-                        Log.i(TAG, "Cloudflare Worker synced license activation: $respStr")
-                    } else {
-                        val errStr = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
-                        Log.w(TAG, "Cloudflare Worker returned HTTP $respCode: $errStr")
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Could not reach Cloudflare Worker during activation: ${e.message}")
-                }
-            }
-
-            Log.i(TAG, "1-Year License successfully activated on hardware $hwId (Expires: $targetExpires)")
-            activationCelebrationEvent.value = true
-            notifyLicenseChanged()
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to activate license: ${e.message}", e)
-            false
-        }
-    }
-
-    /**
-     * Synchronizes hardware status with Cloudflare backend as the single source of truth.
-     * Checks if the device is active/valid or expired, recording the 7-day validation check time.
-     */
-    suspend fun syncWithBackend(context: Context): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val hwId = getHardwareFingerprint(context)
-            val devModel = getHardwareDescription()
-
-            val url = URL("$DEFAULT_BACKEND_URL/api/device/register")
-            val conn = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "POST"
-                connectTimeout = 6000
-                readTimeout = 6000
-                doOutput = true
-                setRequestProperty("Content-Type", "application/json")
-            }
-
-            val payload = JSONObject().apply {
-                put("deviceId", hwId)
-                put("hardwareHash", hwId)
-                put("deviceModel", devModel)
-            }
-
-            conn.outputStream.use { os ->
-                os.write(payload.toString().toByteArray(Charsets.UTF_8))
-            }
-
-            if (conn.responseCode == 200) {
-                val respStr = conn.inputStream.bufferedReader().use { it.readText() }
-                val respJson = JSONObject(respStr)
-                val status = respJson.optString("status", "")
-                val isTransferred = respJson.optBoolean("isTransferred", false) || status == "TRANSFERRED"
-                val isPaid = !isTransferred && (respJson.optBoolean("isPaid", false) || status == "PAID")
-                val isExpired = !isTransferred && (respJson.optBoolean("isExpired", false) || status == "EXPIRED")
-                val paidExpires = if (isTransferred) 0L else respJson.optLong("paidExpiresAt", 0L)
-                val daysRemaining = if (isTransferred) 0 else respJson.optInt("daysRemaining", 0)
-                val signature = respJson.optString("signature", "")
-                val serverTime = respJson.optLong("serverTime", System.currentTimeMillis())
-
-                // Verify RSA signature if status indicates PAID
-                var verifiedPaid = isPaid
-                if (isPaid && signature.isNotEmpty()) {
-                    val payload = "$hwId|$paidExpires"
-                    val isRsaValid = verifyRsaSignature(payload, signature)
-                    if (!isRsaValid) {
-                        Log.w(TAG, "Backend sync returned unverified signature for PAID license! Marking unactivated.")
-                        verifiedPaid = false
-                    }
-                }
-
-                val prefs = getPrefs(context)
-                val previousStatus = prefs.getString(KEY_LICENSE_STATUS, "UNACTIVATED")
-                val editor = prefs.edit()
-
-                val now = System.currentTimeMillis()
-                editor.putLong(KEY_LAST_SERVER_CHECK_TIME, now)
-                editor.putLong(KEY_PAID_EXPIRES_TIME, paidExpires)
-                editor.putInt(KEY_SERVER_DAYS_REMAINING, daysRemaining)
-                editor.putBoolean(KEY_TIME_TAMPER_LOCKED, false)
-                editor.putLong(KEY_LAST_KNOWN_WALL_CLOCK, maxOf(serverTime, now))
-                if (isTransferred) {
-                    editor.remove(KEY_SERVER_RSA_SIGNATURE)
-                } else if (signature.isNotEmpty()) {
-                    editor.putString(KEY_SERVER_RSA_SIGNATURE, signature)
-                }
-
-                if (isTransferred) {
-                    editor.putString(KEY_LICENSE_STATUS, "TRANSFERRED")
-                    editor.putString(KEY_LICENSE_SIGNATURE, generateLicenseSignature(context, hwId, "TRANSFERRED", 0L, now))
-                    Log.w(TAG, "Backend sync: License was transferred to another device! Immediately revoking and locking.")
-                } else if (verifiedPaid) {
-                    editor.putString(KEY_LICENSE_STATUS, "PAID")
-                    editor.putString(KEY_LICENSE_SIGNATURE, generateLicenseSignature(context, hwId, "PAID", paidExpires, now))
-                    if (previousStatus != "PAID") {
-                        activationCelebrationEvent.value = true
-                    }
-                } else if (isExpired || (paidExpires in 1..serverTime)) {
-                    editor.putString(KEY_LICENSE_STATUS, "EXPIRED")
-                    editor.putString(KEY_LICENSE_SIGNATURE, generateLicenseSignature(context, hwId, "EXPIRED", paidExpires, now))
-                } else {
-                    editor.putString(KEY_LICENSE_STATUS, "UNACTIVATED")
-                    editor.putString(KEY_LICENSE_SIGNATURE, generateLicenseSignature(context, hwId, "UNACTIVATED", 0L, now))
-                }
-
-                editor.apply()
-                notifyLicenseChanged()
-                Log.i(TAG, "Backend sync success: ServerStatus=$status, isPaid=$isPaid, isTransferred=$isTransferred, isExpired=$isExpired, DaysRemaining=$daysRemaining")
-                true
-            } else {
-                Log.w(TAG, "Backend sync returned HTTP ${conn.responseCode}")
-                false
-            }
-        } catch (e: Exception) {
-            Log.d(TAG, "Backend sync deferred (offline or unreachable): ${e.message}")
-            false
-        }
+        
+        if (boundHwId != currentHwId) return false
+        
+        val storedDevName = prefs.getString(KEY_BOUND_DEVICE_NAME, "") ?: ""
+        val storedTimestamp = prefs.getLong(KEY_BOUND_TIMESTAMP, 0L)
+        val storedSig = prefs.getString(KEY_BOUND_SIGNATURE, "") ?: ""
+        val expectedSig = generateSignature(context, boundHwId, storedDevName, storedTimestamp)
+        
+        return storedSig.isNotEmpty() && storedSig == expectedSig
     }
 
     fun getBoundHardwareId(context: Context): String {
@@ -739,6 +219,9 @@ object HardwareLockManager {
         return getPrefs(context).getString(KEY_BOUND_DEVICE_NAME, "Unknown Device") ?: "Unknown Device"
     }
 
+    /**
+     * Allows an authorized administrator to re-seal hardware after authorized maintenance or mainboard repair.
+     */
     fun rebindWithAdminPin(context: Context, enteredPin: String): Boolean {
         if (!KioskSecurity.verifyAdminPin(context, enteredPin)) {
             Log.w(TAG, "Rebind failed: Incorrect Admin PIN.")
@@ -750,35 +233,22 @@ object HardwareLockManager {
         val now = System.currentTimeMillis()
         val sig = generateSignature(context, currentHwId, currentDevName, now)
 
-        // Preserve current license status and expiration without altering license validity
-        val currentStatus = prefs.getString(KEY_LICENSE_STATUS, "UNACTIVATED") ?: "UNACTIVATED"
-        val paidExp = prefs.getLong(KEY_PAID_EXPIRES_TIME, 0L)
-        val lastCheck = prefs.getLong(KEY_LAST_SERVER_CHECK_TIME, 0L)
-        val licSig = generateLicenseSignature(context, currentHwId, currentStatus, paidExp, lastCheck)
-
         prefs.edit()
             .putString(KEY_BOUND_HW_ID, currentHwId)
             .putString(KEY_BOUND_DEVICE_NAME, currentDevName)
             .putLong(KEY_BOUND_TIMESTAMP, now)
             .putString(KEY_BOUND_SIGNATURE, sig)
             .putBoolean(KEY_HARDWARE_LOCKED, false)
-            .putString(KEY_LICENSE_SIGNATURE, licSig)
             .apply()
 
-        notifyLicenseChanged()
-        Log.i(TAG, "Device hardware successfully re-bound to current device ($currentDevName - $currentHwId). License state remains: $currentStatus")
+        notifySecurityChanged()
+        Log.i(TAG, "Device hardware successfully re-sealed to current device ($currentDevName - $currentHwId).")
         return true
     }
 
     private fun generateSignature(context: Context, hwId: String, devName: String, timestamp: Long): String {
         val secret = KioskSecurity.getSharedSecret(context)
         val payload = "$hwId|$devName|$timestamp|$secret"
-        return KioskSecurity.calculateHmac(payload, secret)
-    }
-
-    private fun generateLicenseSignature(context: Context, hwId: String, status: String, paidExp: Long, lastCheck: Long = 0L): String {
-        val secret = KioskSecurity.getSharedSecret(context)
-        val payload = "LIC|$hwId|$status|$paidExp|$lastCheck|$secret"
         return KioskSecurity.calculateHmac(payload, secret)
     }
 }

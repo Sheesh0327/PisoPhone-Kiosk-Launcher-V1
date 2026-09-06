@@ -169,9 +169,9 @@ class LockScreenOverlay(
             val deviceIp by deviceIpFlow.collectAsState()
             val batteryStatus by batteryStatusFlow.collectAsState()
             val esp32MacAddress by esp32MacAddressFlow.collectAsState()
-            val licenseUpdateVersion by com.pisophone.kiosk.security.HardwareLockManager.licenseUpdateVersion.collectAsState()
+            val securityUpdateVersion by com.pisophone.kiosk.security.HardwareLockManager.securityUpdateVersion.collectAsState()
             
-            val isSetupReady = remember(licenseUpdateVersion) { 
+            val isSetupReady = remember(securityUpdateVersion) { 
                 com.pisophone.kiosk.security.HardwareLockManager.isTutorialCompleted(context) &&
                 com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
             }
@@ -213,10 +213,8 @@ class LockScreenOverlay(
                             scaleY = unlockScale
                         )
                 ) {
-                    if (appState == 0) {
+                    if (appState == 0 || appState == 4) {
                         BlockScreen(onInsertCoinClick, isWaiting = false, 0, 0, {}, isEsp32Online, isSlotBusy = isSlotBusy, pricePerCoin = pricePerCoin, minutesPerCoin = minutesPerCoin, deviceIp = deviceIp, themeIndex = themeIndex, batteryStatus = batteryStatus, onThemeChange = onThemeChange)
-                    } else if (appState == 4) {
-                        BlockScreen(onInsertCoinClick, isWaiting = false, 0, 0, {}, isEsp32Online, isSlotBusy = isSlotBusy, pricePerCoin = pricePerCoin, minutesPerCoin = minutesPerCoin, deviceIp = deviceIp, themeIndex = themeIndex, batteryStatus = batteryStatus, onThemeChange = onThemeChange, isUnlicensed = true, macAddress = esp32MacAddress, onActivateClick = onActivateClick)
                     } else if (appState == 1 || (!isVisible && coinsInserted > 0)) {
                         BlockScreen(onInsertCoinClick, isWaiting = isVisible, coinsInserted, paymentTimeout, onDoneClick, isEsp32Online, isSlotBusy = isSlotBusy, pricePerCoin = pricePerCoin, minutesPerCoin = minutesPerCoin, deviceIp = deviceIp, themeIndex = themeIndex, batteryStatus = batteryStatus, onThemeChange = onThemeChange)
                     }
@@ -362,9 +360,9 @@ class FloatingBallOverlay(
             val isSlotBusy by isSlotBusyFlow.collectAsState()
             val themeIndex by themeIndexFlow.collectAsState()
             val batteryStatus by batteryStatusFlow.collectAsState()
-            val licenseUpdateVersion by com.pisophone.kiosk.security.HardwareLockManager.licenseUpdateVersion.collectAsState()
+            val securityUpdateVersion by com.pisophone.kiosk.security.HardwareLockManager.securityUpdateVersion.collectAsState()
             
-            val isSetupReady = remember(licenseUpdateVersion) { 
+            val isSetupReady = remember(securityUpdateVersion) { 
                 com.pisophone.kiosk.security.HardwareLockManager.isTutorialCompleted(context) &&
                 com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
             }

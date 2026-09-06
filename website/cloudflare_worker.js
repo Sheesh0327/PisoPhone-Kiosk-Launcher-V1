@@ -250,7 +250,7 @@ export default {
     const url = new URL(request.url);
     const method = request.method;
 
-    const signingSecret = env.LICENSE_SIGNING_SECRET;
+    const signingSecret = env.LICENSE_SIGNING_SECRET || env.ADMIN_SECRET || 'PISOPHONE_HMAC_MASTER_KEY';
 
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
@@ -2038,7 +2038,7 @@ export default {
         const days = Math.max(1, parseInt(durationDays) || 365);
         const expiresAt = now + (days * 86400000);
 
-        const secret = signingSecret || MASTER_CRYPTO_SECRET;
+        const secret = signingSecret || env.LICENSE_SIGNING_SECRET || env.ADMIN_SECRET || 'PISOPHONE_HMAC_MASTER_KEY';
         const sigPayload = `PISOSLOT:${cleanMac}:${targetSlots}:${expiresAt}`;
         const signature = await calculateHmacSha256Hex(sigPayload, secret);
         const slotToken = `PISOSLOT.${cleanMac}.${targetSlots}.${expiresAt}.${signature}`;

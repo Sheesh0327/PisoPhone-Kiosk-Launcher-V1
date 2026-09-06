@@ -1402,6 +1402,18 @@ String renderLicenseSlotsHtml() {
     return html;
 }
 
+String renderSlotOptions() {
+    String html = "";
+    for (int i = 0; i < maxLicensedSlots; i++) {
+        int sNum = licenseSlots[i].slotNum;
+        String devId = licenseSlots[i].deviceId;
+        String name = licenseSlots[i].name.length() > 0 ? licenseSlots[i].name : ("Slot #" + String(sNum));
+        String status = (devId.length() > 0) ? " (Armed: " + devId + ")" : " (Available / Empty)";
+        html += "<option value=\"" + String(sNum) + "\">Slot #" + String(sNum) + ": " + name + status + "</option>";
+    }
+    return html;
+}
+
 const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
 <!DOCTYPE html>
 <html lang="en">
@@ -1957,12 +1969,20 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
         window.switchTab = function(tabId) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            document.querySelector(`[onclick="switchTab('${tabId}')"]`).classList.add('active');
-            document.getElementById(tabId).classList.add('active');
+            const tabBtn = document.querySelector(`[onclick="switchTab('${tabId}')"]`);
+            if (tabBtn) tabBtn.classList.add('active');
+            const tabEl = document.getElementById(tabId);
+            if (tabEl) tabEl.classList.add('active');
             localStorage.setItem('activeTab', tabId);
         }
         document.addEventListener('DOMContentLoaded', () => {
-            const savedTab = localStorage.getItem('activeTab') || 'tab-dashboard';
+            let savedTab = localStorage.getItem('activeTab') || 'tab-dashboard';
+            const path = window.location.pathname.toLowerCase();
+            const search = window.location.search.toLowerCase();
+            const hash = window.location.hash.toLowerCase();
+            if (path.includes('install') || path.includes('provision') || search.includes('install') || search.includes('provision') || hash.includes('install') || hash.includes('provision')) {
+                savedTab = 'tab-install';
+            }
             if(document.getElementById(savedTab)) switchTab(savedTab);
             updateThemeButtonText();
         });
@@ -2037,6 +2057,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
         <!-- Navigation Tabs -->
         <div class="tabs">
             <div class="tab active" onclick="switchTab('tab-dashboard')">📊 Dashboard</div>
+            <div class="tab" onclick="switchTab('tab-install')">📱 1-Click Install & Activate</div>
             <div class="tab" onclick="switchTab('tab-settings')">🛠️ Settings</div>
             <div class="tab" onclick="switchTab('tab-tools')">⚡ Advanced Tools</div>
         </div>
@@ -2058,6 +2079,21 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                         <button type="button" class="btn btn-sm" onclick="navigator.clipboard.writeText('{MAC_ADDRESS}'); alert('Copied MAC Address: {MAC_ADDRESS}');">📋 Copy MAC Address</button>
                     </div>
                     <div class="hint" style="margin-top: 6px;">Use this MAC address to register this box on your operator portal (<a href="https://ais-dev-g7scqeix6nfioamxhwhwff-815400452294.asia-southeast1.run.app" target="_blank" style="color: var(--primary); font-weight: 600;">Step 1: Register Box</a>) to authorize licenses for up to 12 phones.</div>
+                </div>
+
+                <!-- Quick Setup Action Banner -->
+                <div class="card grid-full" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(6, 78, 59, 0.08)); border: 1.5px solid var(--border-focus); display: flex; flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
+                    <div>
+                        <div style="font-size: 16px; font-weight: 800; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
+                            <span>📱</span> 1-Click Phone Installation & Activation
+                        </div>
+                        <div class="hint" style="margin-top: 4px;">
+                            Plug new Android phones via USB to install the kiosk APK, enroll Device Owner, and link directly to this coin slot box (<code style="color:var(--primary); font-family:monospace;">{MAC_ADDRESS}</code>).
+                        </div>
+                    </div>
+                    <button type="button" class="btn" onclick="switchTab('tab-install')" style="font-weight: 700;">
+                        🚀 Open Install & Activation Page &rarr;
+                    </button>
                 </div>
 
                 <!-- Live Devices -->
@@ -2115,6 +2151,147 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                         <button type="submit" name="action" value="subtract" class="btn btn-danger" style="flex: 1;">- Subtract</button>
                     </div>
                 </form>
+            </div>
+        </div>
+
+        <!-- TAB: 1-CLICK INSTALL & ACTIVATE -->
+        <div id="tab-install" class="tab-content">
+            <div class="grid">
+                <!-- Step-by-Step Overview Hero Banner -->
+                <div class="card grid-full" style="background: var(--card-bg); border: 1px solid var(--border);">
+                    <div class="card-header">
+                        <h3 class="card-title">📱 1-Click Android Phone Setup & Activation</h3>
+                        <span class="status-badge" style="background: var(--status-good-bg); color: var(--status-good);">WebUSB Zero-Config</span>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-top: 4px;">
+                        <div style="background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; display: flex; gap: 12px; align-items: flex-start;">
+                            <div style="background: var(--primary); color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; flex-shrink: 0;">1</div>
+                            <div>
+                                <strong style="font-size: 14px; color: var(--text-main); display: block; margin-bottom: 2px;">Connect via USB</strong>
+                                <span class="hint">Plug phone into PC or OTG host running Google Chrome, MS Edge, or Brave.</span>
+                            </div>
+                        </div>
+                        <div style="background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; display: flex; gap: 12px; align-items: flex-start;">
+                            <div style="background: var(--primary); color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; flex-shrink: 0;">2</div>
+                            <div>
+                                <strong style="font-size: 14px; color: var(--text-main); display: block; margin-bottom: 2px;">Enable USB Debugging</strong>
+                                <span class="hint">Settings &rarr; Developer Options &rarr; Turn ON USB Debugging. (Accept RSA prompt on phone).</span>
+                            </div>
+                        </div>
+                        <div style="background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; display: flex; gap: 12px; align-items: flex-start;">
+                            <div style="background: var(--primary); color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; flex-shrink: 0;">3</div>
+                            <div>
+                                <strong style="font-size: 14px; color: var(--text-main); display: block; margin-bottom: 2px;">1-Click Install & Arm</strong>
+                                <span class="hint">Click Start below. WebUSB pushes APK, sets Device Owner, and infuses this box's MAC.</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: var(--radius-md); padding: 12px 16px; margin-top: 12px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+                        <div style="display: flex; align-items: center; gap: 8px; font-size: 13px;">
+                            <span>🔒</span>
+                            <span><b>Infused Master Box:</b> MAC <code style="font-family: monospace; font-weight: 700; color: var(--primary);">{MAC_ADDRESS}</code></span>
+                        </div>
+                        <span class="hint" style="font-size: 12px; color: var(--primary);">Heartbeats, locks, and coin time route directly to this hardware box.</span>
+                    </div>
+                </div>
+
+                <!-- Chromium HTTP WebUSB Security Guide Banner -->
+                <div id="secure_context_banner" class="card grid-full" style="display: none; background: rgba(245, 158, 11, 0.1); border: 1.5px solid rgba(245, 158, 11, 0.4);">
+                    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <div style="font-size: 24px;">⚠️</div>
+                            <div>
+                                <strong style="color: #F59E0B; font-size: 14px; display: block;">Chromium WebUSB Setup Required for Local HTTP Webpage</strong>
+                                <span style="font-size: 12px; color: var(--text-muted);">Chrome, Edge, and Brave block WebUSB on local HTTP pages (<code>http://kioskmanager.local</code>) until flagged as secure.</span>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-sm" onclick="openSecureOriginModal()" style="background: #F59E0B; color: #000; font-weight: 700; border: none; padding: 8px 14px;">
+                            🛠️ Open 30-Sec Browser Setup Guide
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Direct In-Page 1-Click Installer Console -->
+                <div class="card grid-full" style="border: 1.5px solid var(--border-focus);">
+                    <div class="card-header">
+                        <h3 class="card-title">🚀 1-Click WebUSB Installer Console</h3>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <button type="button" class="btn btn-outline btn-sm" onclick="openSecureOriginModal()" style="font-size: 11px; padding: 4px 8px; border-color: #F59E0B; color: #F59E0B;">❓ Browser Safe Origin Help</button>
+                            <span class="status-badge" style="background: var(--status-good-bg); color: var(--status-good);">AUTOMATED</span>
+                        </div>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;">
+                        <div class="form-group">
+                            <label>Target Seat Slot</label>
+                            <select id="main_prov_slot_select" onchange="activeSlotNum = parseInt(this.value)">
+                                {SLOT_OPTIONS}
+                            </select>
+                            <div class="hint">Choose which slot number to pair with this device.</div>
+                        </div>
+                        <div class="form-group">
+                            <label>APK Package Source</label>
+                            <input type="file" id="main_local_apk_input" accept=".apk" onchange="handleMainLocalApkSelected(this)">
+                            <div class="hint">Optional: Select custom local APK or leave empty to auto-download latest release from CDN.</div>
+                        </div>
+                    </div>
+
+                    <!-- Progress Bar & Interactive Terminal Output -->
+                    <div style="background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; margin-top: 8px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; margin-bottom: 8px;">
+                            <span id="main_prov_step_label" style="color: var(--text-main);">Status: Ready to install</span>
+                            <span id="main_prov_percent" style="color: var(--primary); font-family: monospace;">0%</span>
+                        </div>
+                        <div style="background: var(--border); height: 10px; border-radius: 6px; overflow: hidden;">
+                            <div id="main_prov_progress_bar" style="background: var(--primary); height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+                        </div>
+                        <div id="main_prov_log" style="font-family: monospace; font-size: 11.5px; color: var(--text-muted); margin-top: 12px; max-height: 160px; overflow-y: auto; white-space: pre-wrap; background: var(--bg); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); line-height: 1.5;">Connect phone via USB, enable USB Debugging, and click Start 1-Click Install & Arm.</div>
+                    </div>
+
+                    <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 8px; flex-wrap: wrap;">
+                        <button type="button" id="main_start_prov_btn" class="btn" style="padding: 14px 28px; font-size: 15px; font-weight: 700;" onclick="executeMainProvisioningFlow()">
+                            🚀 Start 1-Click Install & Arm Phone
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Seat Slots Grid -->
+                <div class="card grid-full">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 4px;">
+                        <div>
+                            <h3 class="card-title" style="margin-bottom: 2px;">🎛️ Licensed Device Seats & Terminals</h3>
+                            <div class="hint">The ESP32 hardware manages seat allocation locally. Plug new phones via USB to install & activate in 1 fluid motion.</div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: var(--primary); font-weight: 700; padding: 6px 14px; border-radius: 20px; font-size: 13px;">
+                                Capacity: <span id="capacity_badge">{MAX_SLOTS}</span> Seats
+                            </span>
+                            <button type="button" class="btn btn-outline btn-sm" onclick="openTokenModal()">🔑 Upgrade Capacity</button>
+                            <button type="button" class="btn btn-outline btn-sm" onclick="syncCloudSnapshot(this)">☁️ Sync to Cloud</button>
+                        </div>
+                    </div>
+
+                    <!-- Interactive Seats Grid -->
+                    <div id="install_slots_grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-top: 12px;">
+                        {DEVICE_SLOTS_MANAGER}
+                    </div>
+                </div>
+
+                <!-- Deprovisioning & Phone Recovery Tool -->
+                <div class="card grid-full">
+                    <div class="card-header">
+                        <h3 class="card-title">🔓 Deprovisioning & Phone Reassignment</h3>
+                        <span class="status-badge" style="background: rgba(239, 68, 68, 0.1); color: var(--danger);">MAINTENANCE</span>
+                    </div>
+                    <p style="font-size: 13px; color: var(--text-muted);">If a phone needs to be removed, reassigned, or repaired, you can remove Device Owner kiosk privileges via WebUSB. <b>The seat license on this box remains completely preserved for your next replacement phone!</b></p>
+                    <div style="display: flex; gap: 12px; margin-top: 8px; flex-wrap: wrap;">
+                        <button type="button" class="btn btn-outline btn-sm" style="color: var(--danger); border-color: var(--danger);" onclick="openDeprovisionModal(activeSlotNum || 1, '')">
+                            🔓 Open Deprovisioning Tool
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -2514,6 +2691,70 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
         </div>
     </div>
 
+    <!-- Secure Origin Guide Modal -->
+    <div id="secure_origin_modal" class="modal-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 10001; align-items: center; justify-content: center; padding: 16px;">
+        <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; max-width: 600px; width: 100%; box-shadow: var(--shadow-lg); max-height: 90vh; overflow-y: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: #F59E0B; display: flex; align-items: center; gap: 8px;">
+                    <span>🛡️</span> Enable WebUSB on Local Network (HTTP)
+                </h3>
+                <button type="button" onclick="closeSecureOriginModal()" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-muted);">&times;</button>
+            </div>
+            
+            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.5;">
+                Chrome, Edge, and Brave block WebADB/WebUSB on plain HTTP domains like <code>http://kioskmanager.local</code> for security. To enable 1-click installation locally, follow these 3 quick steps:
+            </p>
+
+            <div style="display: flex; flex-direction: column; gap: 14px; font-size: 13px;">
+                <!-- Step 1 -->
+                <div style="background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px;">
+                    <div style="font-weight: 700; color: var(--text-main); margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+                        <span style="background: var(--primary); color: white; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px;">1</span>
+                        Copy & Paste Flag URL into Browser Address Bar
+                    </div>
+                    <div style="display: flex; gap: 8px; margin-top: 8px;">
+                        <input type="text" id="flag_url_input" readonly value="chrome://flags/#unsafely-treat-insecure-origin-as-secure" style="flex: 1; font-family: monospace; font-size: 12px; padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--input-bg);">
+                        <button type="button" class="btn btn-sm" onclick="copyFlagUrl()" style="padding: 6px 12px;">📋 Copy</button>
+                    </div>
+                    <div class="hint" style="margin-top: 4px;">
+                        <i>Tip:</i> On Edge use <code>edge://flags</code>. On Brave use <code>brave://flags</code>.
+                    </div>
+                </div>
+
+                <!-- Step 2 -->
+                <div style="background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px;">
+                    <div style="font-weight: 700; color: var(--text-main); margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+                        <span style="background: var(--primary); color: white; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px;">2</span>
+                        Paste Origins into "Insecure origins treated as secure"
+                    </div>
+                    <div style="display: flex; gap: 8px; margin-top: 8px;">
+                        <input type="text" id="origins_list_input" readonly value="http://kioskmanager.local,http://192.168.4.1" style="flex: 1; font-family: monospace; font-size: 12px; padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--input-bg);">
+                        <button type="button" class="btn btn-sm" onclick="copyOriginsList()" style="padding: 6px 12px;">📋 Copy</button>
+                    </div>
+                </div>
+
+                <!-- Step 3 -->
+                <div style="background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px;">
+                    <div style="font-weight: 700; color: var(--text-main); margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
+                        <span style="background: var(--primary); color: white; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px;">3</span>
+                        Select "Enabled" and Click "Relaunch"
+                    </div>
+                    <p style="color: var(--text-muted); font-size: 12px; margin: 0;">
+                        Switch the dropdown to <b>Enabled</b> and click the blue <b>Relaunch</b> button at the bottom of Chrome/Edge. Once reopened, WebUSB will work with full 1-click speed!
+                    </p>
+                </div>
+            </div>
+
+            <div style="margin-top: 16px; padding: 12px; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: var(--radius-md); font-size: 12px;">
+                💡 <b>Zero-Flag Alternative:</b> You can also run 1-click installation from our hosted HTTPS portal where WebUSB is always enabled natively with zero flags required!
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px;">
+                <button type="button" class="btn btn-primary" onclick="closeSecureOriginModal()">Got It!</button>
+            </div>
+        </div>
+    </div>
+
     <!-- WebADB CDN Script Loader -->
     <script src="https://pisophone-v1.pages.dev/yume-chan-bundle.js"></script>
     <script src="https://pisophone-v1.pages.dev/webadb_manager.js"></script>
@@ -2523,6 +2764,49 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
     const ESP32_HOST = window.location.hostname;
     let activeSlotNum = 1;
     let localApkBytes = null;
+
+    window.openSecureOriginModal = function() {
+        const modal = document.getElementById('secure_origin_modal');
+        if (modal) modal.style.display = 'flex';
+    };
+    window.closeSecureOriginModal = function() {
+        const modal = document.getElementById('secure_origin_modal');
+        if (modal) modal.style.display = 'none';
+    };
+    window.copyFlagUrl = function() {
+        const input = document.getElementById('flag_url_input');
+        if (input) {
+            navigator.clipboard.writeText(input.value);
+            alert('Copied flag URL to clipboard: ' + input.value + '\n\nPaste this into your browser address bar.');
+        }
+    };
+    window.copyOriginsList = function() {
+        const input = document.getElementById('origins_list_input');
+        if (input) {
+            navigator.clipboard.writeText(input.value);
+            alert('Copied origins to clipboard: ' + input.value + '\n\nPaste this into the flag text box and click Relaunch.');
+        }
+    };
+
+    function initSecureOriginDetection() {
+        const originInput = document.getElementById('origins_list_input');
+        if (originInput) {
+            const host = window.location.hostname;
+            const port = window.location.port ? (':' + window.location.port) : '';
+            const currentOrigin = 'http://' + host + port;
+            const origins = ['http://kioskmanager.local', 'http://192.168.4.1', currentOrigin];
+            const uniqueOrigins = [...new Set(origins)].join(',');
+            originInput.value = uniqueOrigins;
+        }
+
+        const isHttp = window.location.protocol === 'http:';
+        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        if (isHttp && !isLocalhost && !navigator.usb) {
+            const banner = document.getElementById('secure_context_banner');
+            if (banner) banner.style.display = 'block';
+        }
+    }
+    document.addEventListener('DOMContentLoaded', initSecureOriginDetection);
 
     window.openTokenModal = function() {
         document.getElementById('token_modal').style.display = 'flex';
@@ -2610,99 +2894,137 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                 localApkBytes = new Uint8Array(e.target.result);
                 if (window.webADB) window.webADB.setCachedApkBytes(localApkBytes);
                 const log = document.getElementById('prov_log');
-                log.textContent += '[+] Loaded local APK file: ' + input.files[0].name + ' (' + Math.round(localApkBytes.length / 1024) + ' KB)\n';
+                if (log) log.textContent += '[+] Loaded local APK file: ' + input.files[0].name + ' (' + Math.round(localApkBytes.length / 1024) + ' KB)\n';
             };
             reader.readAsArrayBuffer(input.files[0]);
         }
     };
 
-    window.executeProvisioningFlow = async function() {
-        const btn = document.getElementById('start_prov_btn');
-        const log = document.getElementById('prov_log');
-        const pBar = document.getElementById('prov_progress_bar');
-        const pLbl = document.getElementById('prov_step_label');
-        const pPct = document.getElementById('prov_percent');
+    window.handleMainLocalApkSelected = function(input) {
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                localApkBytes = new Uint8Array(e.target.result);
+                if (window.webADB) window.webADB.setCachedApkBytes(localApkBytes);
+                const log = document.getElementById('main_prov_log');
+                if (log) log.textContent += '[+] Loaded local APK file: ' + input.files[0].name + ' (' + Math.round(localApkBytes.length / 1024) + ' KB)\n';
+            };
+            reader.readAsArrayBuffer(input.files[0]);
+        }
+    };
 
-        btn.disabled = true;
+    async function runUniversalProvision(slotNum, isMainConsole) {
+        const btn = document.getElementById(isMainConsole ? 'main_start_prov_btn' : 'start_prov_btn');
+        const log = document.getElementById(isMainConsole ? 'main_prov_log' : 'prov_log');
+        const pBar = document.getElementById(isMainConsole ? 'main_prov_progress_bar' : 'prov_progress_bar');
+        const pLbl = document.getElementById(isMainConsole ? 'main_prov_step_label' : 'prov_step_label');
+        const pPct = document.getElementById(isMainConsole ? 'main_prov_percent' : 'prov_percent');
+
+        if (btn) btn.disabled = true;
         const setProgress = (label, pct) => {
-            pLbl.textContent = label;
-            pPct.textContent = pct + '%';
-            pBar.style.width = pct + '%';
+            if (pLbl) pLbl.textContent = label;
+            if (pPct) pPct.textContent = pct + '%';
+            if (pBar) pBar.style.width = pct + '%';
         };
 
         const appendLog = (msg) => {
-            log.textContent += msg + '\n';
-            log.scrollTop = log.scrollHeight;
+            if (log) {
+                log.textContent += msg + '\n';
+                log.scrollTop = log.scrollHeight;
+            }
         };
 
         try {
+            if (!navigator.usb) {
+                openSecureOriginModal();
+                throw new Error('WebUSB is blocked on insecure HTTP by Chromium. Please enable the browser flag for kioskmanager.local using the guide shown on your screen.');
+            }
             if (!window.webADB) {
-                throw new Error('WebADB library not loaded. Check internet connection or browser WebUSB support.');
+                throw new Error('WebADB manager is still loading. Please wait 2 seconds and try again.');
             }
 
-            setProgress('Step 1/5: Downloading APK...', 20);
-            if (!localApkBytes) {
-                appendLog('[1/5] Downloading APK from CDN...');
-                await window.webADB.downloadToLocalTemp(['https://pisophone-v1.pages.dev/app-release.apk', '/apk/latest.apk'], (txt) => appendLog(txt));
-            } else {
-                appendLog('[1/5] Using selected local APK bytes.');
-            }
-
-            setProgress('Step 2/5: Connecting WebUSB...', 40);
-            appendLog('[2/5] Requesting USB device...');
+            // Step 1: Connect WebUSB FIRST (preserving user gesture requirement)
+            setProgress('Step 1/5: Connecting WebUSB...', 20);
+            appendLog('[1/5] Requesting USB device connection (Select your Android phone from browser popup)...');
             await window.webADB.connect((txt) => appendLog(txt));
 
-            setProgress('Step 3/5: Pushing APK...', 60);
-            appendLog('[3/5] Pushing APK to /data/local/tmp/app.apk...');
-            await window.webADB.pushFile((txt) => appendLog(txt));
+            // Step 2: Download or verify APK payload
+            setProgress('Step 2/5: Preparing APK...', 40);
+            let apkBytes = localApkBytes;
+            if (!apkBytes) {
+                appendLog('[2/5] Fetching latest PisoPhone Kiosk APK payload...');
+                apkBytes = await window.webADB.downloadToLocalTemp([
+                    'https://pisophone-v1.pages.dev/app-release.apk',
+                    'https://pisophone.pages.dev/app-release.apk',
+                    '/apk/latest.apk'
+                ], (txt) => appendLog(txt));
+            } else {
+                appendLog('[2/5] Using selected custom local APK file.');
+            }
 
-            setProgress('Step 4/5: Installing & Enrolling Owner...', 80);
-            appendLog('[4/5] Installing package & setting Device Owner...');
+            // Step 3: Push APK to Android device
+            setProgress('Step 3/5: Pushing APK payload...', 60);
+            appendLog('[3/5] Pushing APK to device via ADB Sync protocol...');
+            await window.webADB.pushFile(apkBytes, '/data/local/tmp/app.apk', (txt) => appendLog(txt));
+
+            // Step 4: Install APK & Setup Device Owner
+            setProgress('Step 4/5: Installing & Enrolling Kiosk...', 80);
+            appendLog('[4/5] Running Android Package Manager...');
             await window.webADB.installApk((txt) => appendLog(txt));
             await window.webADB.setDeviceOwner((txt) => appendLog(txt));
             await window.webADB.grantPermissions((txt) => appendLog(txt));
 
-            setProgress('Step 5/5: Pairing to Slot #' + activeSlotNum + '...', 90);
-            appendLog('[5/5] Registering hardware with ESP32 manager...');
-            
-            // Read hardware device ID via adb shell
-            let devId = 'HW-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+            // Step 5: Read Hardware ID & Pair to ESP32 Slot
+            setProgress('Step 5/5: Pairing to Slot #' + slotNum + '...', 90);
+            appendLog('[5/5] Registering hardware with ESP32 Master Kiosk...');
+            let devId = 'HW-DEV-' + Math.random().toString(36).substring(2, 8).toUpperCase();
             try {
-                const out = await window.webADB.runShell('settings get secure android_id');
-                if (out && out.trim().length > 4) devId = 'HW-' + out.trim().substring(0, 8).toUpperCase();
-            } catch (e) {
-                appendLog('[*] Using generated ID: ' + devId);
+                const hwInfo = await window.webADB.getHardwareInfo((txt) => appendLog(txt));
+                if (hwInfo && hwInfo.deviceId) devId = hwInfo.deviceId;
+            } catch (hwErr) {
+                appendLog('[*] Notice: Hardware probe fallback: ' + hwErr.message);
             }
 
-            // Infuse ESP32 MAC Address, IP, and Slot assignment directly into Android Kiosk Configuration
-            appendLog('[*] Infusing ESP32 Master MAC (' + ESP32_MAC + ') & Host (' + ESP32_HOST + ')...');
+            // Configure ESP32 parameters inside the Android app
+            appendLog('[*] Infusing ESP32 Master MAC (' + ESP32_MAC + ') & Slot #' + slotNum + '...');
             try {
-                await window.webADB.runShell('am broadcast -a com.pisophone.kiosk.CONFIGURE_ESP32 -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es esp32_mac "' + ESP32_MAC + '" --es esp32_ip "' + ESP32_HOST + '" --ei slot ' + activeSlotNum);
+                await window.webADB.runShell('am broadcast -a com.pisophone.kiosk.CONFIGURE_ESP32 -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es esp32_mac "' + ESP32_MAC + '" --es esp32_ip "' + ESP32_HOST + '" --ei slot ' + slotNum);
             } catch (cfgErr) {
-                appendLog('[!] Note on configuration broadcast: ' + cfgErr.message);
+                appendLog('[!] Configuration broadcast notice: ' + cfgErr.message);
             }
 
-            // Pair with ESP32
-            const pairRes = await fetch('/api/slots/pair?slot=' + activeSlotNum + '&id=' + encodeURIComponent(devId) + '&name=PisoPhone+' + activeSlotNum, { method: 'POST' });
+            // Register seat pairing on ESP32
+            const pairRes = await fetch('/api/slots/pair?slot=' + slotNum + '&id=' + encodeURIComponent(devId) + '&name=PisoPhone+' + slotNum, { method: 'POST' });
             const pairData = await pairRes.json();
-            if (!pairData.success) throw new Error(pairData.error || 'Failed to pair with ESP32');
+            if (!pairData.success) throw new Error(pairData.error || 'Failed to pair seat with ESP32');
 
-            // Arm with 1-Year Offline License Activation Infused with ESP32 MAC
+            // Send activation broadcast
             try {
-                await window.webADB.runShell('am broadcast -a com.pisophone.kiosk.ACTIVATE -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es key "PISOPHONE-BOX-ACTIVATED" --es esp32_mac "' + ESP32_MAC + '" --es esp32_ip "' + ESP32_HOST + '" --ei slot ' + activeSlotNum);
+                await window.webADB.runShell('am broadcast -a com.pisophone.kiosk.ACTIVATE -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es key "PISOPHONE-BOX-ACTIVATED" --es esp32_mac "' + ESP32_MAC + '" --es esp32_ip "' + ESP32_HOST + '" --ei slot ' + slotNum);
             } catch (_) {}
 
             // Launch app
             await window.webADB.launchApp((txt) => appendLog(txt));
 
             setProgress('✅ Complete!', 100);
-            appendLog('\n🎉 INSTALLATION & PAIRING COMPLETE! Device is now armed.');
-            setTimeout(() => location.reload(), 1800);
+            appendLog('\n🎉 INSTALLATION & PAIRING COMPLETE! Device is armed, locked down, and connected.');
+            setTimeout(() => location.reload(), 2000);
         } catch (err) {
             setProgress('❌ Error', 0);
-            appendLog('\n[ERROR] ' + err.message);
-            btn.disabled = false;
+            appendLog('\n[ERROR] ' + (err.message || err));
+            appendLog('💡 TIP: Use a USB DATA cable. Tap "Always Allow" USB debugging on your phone.');
+            if (btn) btn.disabled = false;
         }
+    }
+
+    window.executeProvisioningFlow = async function() {
+        await runUniversalProvision(activeSlotNum || 1, false);
+    };
+
+    window.executeMainProvisioningFlow = async function() {
+        const slotSelect = document.getElementById('main_prov_slot_select');
+        const slot = slotSelect ? parseInt(slotSelect.value) : (activeSlotNum || 1);
+        await runUniversalProvision(slot, true);
     };
 
     window.openDeprovisionModal = function(slot, devId) {
@@ -2727,22 +3049,22 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
         };
 
         try {
+            if (!navigator.usb) throw new Error('WebUSB not supported in this browser.');
             if (!window.webADB) throw new Error('WebADB library not loaded.');
+
             appendLog('[1/3] Connecting USB device...');
             await window.webADB.connect((t) => appendLog(t));
 
-            appendLog('[2/3] Sending deprovision broadcast...');
-            await window.webADB.runShell('am broadcast -a com.pisophone.kiosk.DEPROVISION -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es pin ' + pin);
-            await window.webADB.runShell('dpm remove-active-admin com.pisophone.kiosk/com.pisophone.kiosk.receiver.KioskDeviceAdminReceiver');
-            await window.webADB.runShell('pm uninstall com.pisophone.kiosk');
+            appendLog('[2/3] Deprovisioning Device Owner and removing kiosk package...');
+            await window.webADB.deprovisionDevice(pin, (t) => appendLog(t));
 
             appendLog('[3/3] Freeing Slot #' + activeSlotNum + ' on ESP32...');
             await fetch('/api/slots/unpair?slot=' + activeSlotNum, { method: 'POST' });
 
-            appendLog('\n✅ DEPROVISION COMPLETE! Phone restored, slot is open.');
+            appendLog('\n✅ DEPROVISION COMPLETE! Phone restored, seat slot is open.');
             setTimeout(() => location.reload(), 1500);
         } catch (err) {
-            appendLog('\n[ERROR] ' + err.message);
+            appendLog('\n[ERROR] ' + (err.message || err));
             btn.disabled = false;
         }
     };
@@ -2918,7 +3240,7 @@ bool checkAuth() {
         }
     }
     if (!webServer.authenticate("admin", webPassword.c_str())) {
-        webServer.requestAuthentication(DIGEST_AUTH, "HARDWARE Admin Login", "Unauthorized");
+        webServer.requestAuthentication(BASIC_AUTH, "HARDWARE Admin Login", "Unauthorized: Please enter admin credentials.");
         return false;
     }
     return true;
@@ -2930,8 +3252,7 @@ void redirectHome() {
 }
 
 void handleLogout() {
-    // Send a bogus digest nonce to invalidate the browser's cached credentials
-    webServer.sendHeader("WWW-Authenticate", "Digest realm=\"HARDWARE Admin Login\", qop=\"auth\", nonce=\"logout_nonce\", opaque=\"\"");
+    webServer.requestAuthentication(BASIC_AUTH, "HARDWARE Admin Login", "Logged out");
     webServer.send(401, "text/html; charset=utf-8", R"HTML(
 <!DOCTYPE html>
 <html lang="en">
@@ -2946,8 +3267,8 @@ void handleLogout() {
             --text-main: #f8fafc;
             --text-muted: #94a3b8;
             --border: #334155;
-            --primary: #6366f1;
-            --primary-hover: #4f46e5;
+            --primary: #10b981;
+            --primary-hover: #059669;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -3006,6 +3327,109 @@ void handleLogout() {
 )HTML");
 }
 
+static bool isPlaceholderTag(const char* start, const char* end) {
+    int len = end - start + 1;
+    if (len < 3 || len > 32) return false;
+    if (*start != '{' || *end != '}') return false;
+    for (const char* p = start + 1; p < end; p++) {
+        char c = *p;
+        if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_')) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static String getPlaceholderValue(const String& tag) {
+    if (tag == "{WIFI_SSID}") return wifiSsid;
+    if (tag == "{WIFI_PASS}") return wifiPass;
+    if (tag == "{MAC_ADDRESS}") return macAddressStr;
+    if (tag == "{COIN_PIN}") return String(coinPin);
+    if (tag == "{U_COIN_PIN}") return String(universalCoinPin);
+    if (tag == "{LED_PIN}") return String(ledPin);
+    if (tag == "{LED_ACTIVE_LOW_SELECTED}") return ledActiveLow ? "selected" : "";
+    if (tag == "{LED_ACTIVE_HIGH_SELECTED}") return !ledActiveLow ? "selected" : "";
+    if (tag == "{RELAY_PIN}") return String(relayPin);
+    if (tag == "{IPS}") return androidIps;
+    if (tag == "{DEVICE_SLOTS_MANAGER}") return renderLicenseSlotsHtml();
+    if (tag == "{SLOT_OPTIONS}") return renderSlotOptions();
+    if (tag == "{MAX_SLOTS}") return String(maxLicensedSlots);
+    if (tag == "{PORT}") return String(targetPort);
+    if (tag == "{ADMIN_PASSWORD}") return webPassword;
+    if (tag == "{PRICE}") return String(coinPrice);
+    if (tag == "{MINUTES}") return String(minutesPerCoin);
+    if (tag == "{DEBOUNCE}") return String(lockoutDebounceMs);
+    if (tag == "{DEVICE_OPTIONS}") return renderDeviceOptions("");
+    if (tag == "{MATCH_MINUTES}") return String(matchMinutes);
+    if (tag == "{P1_OPTIONS}") return renderDeviceOptions(p1Ip.length() > 0 ? p1Ip : getFirstKnownIp());
+    if (tag == "{P2_OPTIONS}") return renderDeviceOptions(p2Ip);
+    if (tag == "{MATCH_ALERT}") {
+        if (matchStatusMsg.length() > 0) {
+            String msg = matchStatusMsg;
+            matchStatusMsg = "";
+            return msg;
+        }
+        return "";
+    }
+    if (tag == "{TOTAL_COINS}") return String(totalCoinsLifetime);
+    if (tag == "{SESSION_COINS}") return String(totalCoinsSession);
+    return tag;
+}
+
+void streamPortalHtml() {
+    webServer.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    webServer.send(200, "text/html; charset=utf-8", "");
+
+    const char* ptr = PORTAL_HTML_TEMPLATE;
+    const char* chunkStart = ptr;
+
+    while (*ptr != '\0') {
+        if (*ptr == '{') {
+            const char* tagEnd = strchr(ptr, '}');
+            if (tagEnd && isPlaceholderTag(ptr, tagEnd)) {
+                if (ptr > chunkStart) {
+                    while (chunkStart < ptr) {
+                        int len = min((int)(ptr - chunkStart), 1024);
+                        char buf[1025];
+                        memcpy(buf, chunkStart, len);
+                        buf[len] = '\0';
+                        webServer.sendContent(buf);
+                        chunkStart += len;
+                    }
+                }
+                
+                int tagLen = tagEnd - ptr + 1;
+                char tagBuf[33];
+                memcpy(tagBuf, ptr, tagLen);
+                tagBuf[tagLen] = '\0';
+                
+                String val = getPlaceholderValue(String(tagBuf));
+                if (val.length() > 0) {
+                    webServer.sendContent(val);
+                }
+                
+                ptr = tagEnd + 1;
+                chunkStart = ptr;
+                continue;
+            }
+        }
+        ptr++;
+    }
+
+    if (ptr > chunkStart) {
+        while (chunkStart < ptr) {
+            int len = min((int)(ptr - chunkStart), 1024);
+            char buf[1025];
+            memcpy(buf, chunkStart, len);
+            buf[len] = '\0';
+            webServer.sendContent(buf);
+            chunkStart += len;
+        }
+    }
+
+    webServer.sendContent("");
+}
+
 void handlePortalRoot() {
     if (!checkAuth()) return;
     if (macAddressStr.length() == 0) {
@@ -3015,42 +3439,7 @@ void handlePortalRoot() {
         snprintf(macBuf, sizeof(macBuf), "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
         macAddressStr = String(macBuf);
     }
-    String html = PORTAL_HTML_TEMPLATE;
-    html.replace("{WIFI_SSID}", wifiSsid);
-    html.replace("{WIFI_PASS}", wifiPass);
-    html.replace("{MAC_ADDRESS}", macAddressStr);
-    html.replace("{COIN_PIN}", String(coinPin));
-    html.replace("{U_COIN_PIN}", String(universalCoinPin));
-    html.replace("{LED_PIN}", String(ledPin));
-    html.replace("{LED_ACTIVE_LOW_SELECTED}", ledActiveLow ? "selected" : "");
-    html.replace("{LED_ACTIVE_HIGH_SELECTED}", !ledActiveLow ? "selected" : "");
-    html.replace("{RELAY_PIN}", String(relayPin));
-    html.replace("{IPS}", androidIps);
-    html.replace("{DEVICE_SLOTS_MANAGER}", renderLicenseSlotsHtml());
-    html.replace("{MAX_SLOTS}", String(maxLicensedSlots));
-    html.replace("{PORT}", String(targetPort));
-    html.replace("{ADMIN_PASSWORD}", webPassword);
-    html.replace("{PRICE}", String(coinPrice));
-    html.replace("{MINUTES}", String(minutesPerCoin));
-    html.replace("{DEBOUNCE}", String(lockoutDebounceMs));
-    html.replace("{DEVICE_OPTIONS}", renderDeviceOptions(""));
-    html.replace("{MATCH_MINUTES}", String(matchMinutes));
-    html.replace("{P1_OPTIONS}", renderDeviceOptions(p1Ip.length() > 0 ? p1Ip : getFirstKnownIp()));
-    html.replace("{P2_OPTIONS}", renderDeviceOptions(p2Ip));
-    
-    // Match Alert Message
-    if (matchStatusMsg.length() > 0) {
-        html.replace("{MATCH_ALERT}", matchStatusMsg);
-        matchStatusMsg = ""; // Clear after displaying once
-    } else {
-        html.replace("{MATCH_ALERT}", "");
-    }
-    
-    // Revenue Vault stats (Total coins in PHP)
-    html.replace("{TOTAL_COINS}", String(totalCoinsLifetime));
-    html.replace("{SESSION_COINS}", String(totalCoinsSession));
-    
-    webServer.send(200, "text/html; charset=utf-8", html);
+    streamPortalHtml();
 }
 
 void handleReboot() {
@@ -4225,6 +4614,8 @@ void setup() {
 
     // Port 80: HTTP Portal & API routes
     webServer.on("/", HTTP_GET, handlePortalRoot);
+    webServer.on("/install", HTTP_GET, handlePortalRoot);
+    webServer.on("/provision", HTTP_GET, handlePortalRoot);
     webServer.on("/logout", HTTP_GET, handleLogout);
     webServer.on("/save", HTTP_POST, handleSave);
     webServer.on("/reboot", HTTP_POST, handleReboot);

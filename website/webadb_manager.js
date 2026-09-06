@@ -8,11 +8,33 @@
     const DEVICE_TEMP_APK_PATH = "/data/local/tmp/app.apk";
     const PACKAGE_NAME = "com.pisophone.kiosk";
 
-    // Eagerly preload WebADB bundle on script evaluation to prevent microtask delays during user click
+    // Candidate bundle URLs for robust universal loading across Cloudflare, Local ESP32, or Localhost
+    const BUNDLE_CANDIDATE_URLS = [
+        (typeof window !== 'undefined' && window.YUME_CHAN_BUNDLE_URL) ? window.YUME_CHAN_BUNDLE_URL : null,
+        'https://pisophone-v1.pages.dev/yume-chan-bundle.js',
+        './yume-chan-bundle.js',
+        '/yume-chan-bundle.js'
+    ].filter(Boolean);
+
+    async function loadYumeChanModules() {
+        for (const url of BUNDLE_CANDIDATE_URLS) {
+            try {
+                const mod = await import(url);
+                if (mod && (mod.Adb || (mod.default && mod.default.Adb))) {
+                    return mod.Adb ? mod : mod.default;
+                }
+            } catch (e) {
+                console.debug(`Failed loading WebADB bundle from ${url}:`, e);
+            }
+        }
+        throw new Error("Unable to load WebADB core bundle. Please check your internet connection.");
+    }
+
+    // Eagerly preload WebADB bundle on script evaluation
     let bundlePromise = null;
     try {
-        bundlePromise = import('./yume-chan-bundle.js').catch(err => {
-            console.warn("WebADB bundle background preload:", err);
+        bundlePromise = loadYumeChanModules().catch(err => {
+            console.warn("WebADB bundle background preload warning:", err);
             return null;
         });
     } catch (e) {}
@@ -23,6 +45,7 @@
             this.connection = null;
             this.credentialStore = null;
             this.cachedApkBytes = null;
+            this.serial = null;
         }
 
         /**
@@ -49,7 +72,7 @@
             let response = null;
             let chosenUrl = null;
 
-            logCallback("Step 1: Downloading APK to local computer temporary cache...");
+            logCallback("Step 1: Downloading APK to local temporary cache...");
 
             for (const url of urls) {
                 try {
@@ -68,7 +91,7 @@
             }
 
             if (!response || !response.ok) {
-                throw new Error(`Failed to download APK from any source. Please verify internet connection or load a local APK file.`);
+                throw new Error(`Failed to download APK from any source. Please check connection or load a local APK.`);
             }
 
             const contentLength = +(response.headers.get('Content-Length') || 0);
@@ -89,11 +112,11 @@
                     const totalMb = (contentLength / (1024 * 1024)).toFixed(1);
                     
                     if (receivedBytes % LOG_INTERVAL_BYTES < value.length || receivedBytes === contentLength) {
-                        logCallback(`Downloading: ${pct}% (${mb} / ${totalMb} MB)`);
+                        logCallback(`Downloading APK: ${pct}% (${mb} / ${totalMb} MB)`);
                     }
                 } else if (receivedBytes % LOG_INTERVAL_BYTES < value.length) {
                     const mb = (receivedBytes / (1024 * 1024)).toFixed(1);
-                    logCallback(`Downloading: ${mb} MB received...`);
+                    logCallback(`Downloading APK: ${mb} MB received...`);
                 }
             }
 
@@ -107,14 +130,13 @@
 
             this.cachedApkBytes = apkBytes;
             const sizeMB = (apkBytes.length / (1024 * 1024)).toFixed(2);
-            logCallback(`✅ APK cached locally on computer (${sizeMB} MB). Ready to transfer.`);
+            logCallback(`✅ APK cached locally (${sizeMB} MB).`);
             return apkBytes;
         }
 
         /**
          * Connects to Android device via WebUSB ADB
-         * Supports connecting to already-paired devices (without showing picker popup if possible)
-         * as well as prompting the user with the WebUSB device picker.
+         * Supports connecting to already-paired devices as well as prompting user picker.
          * @param {function} logCallback Function to output log messages
          * @returns {Promise<boolean>} Connection success status
          */
@@ -122,8 +144,7 @@
             logCallback("Initializing WebADB connection...");
             
             try {
-                // Dynamically import local bundled yume-chan WebADB modules
-                const modules = (bundlePromise ? await bundlePromise : null) || await import('./yume-chan-bundle.js');
+                const modules = (bundlePromise ? await bundlePromise : null) || await loadYumeChanModules();
                 const {
                     Adb,
                     AdbDaemonTransport,
@@ -139,7 +160,7 @@
                 let webusbDevice = null;
                 let connection = null;
 
-                // Attempt to check if device is already paired/authorized in this browser session
+                // Attempt to check if device is already paired/authorized
                 try {
                     const pairedDevices = await Manager.getDevices();
                     if (pairedDevices && pairedDevices.length > 0) {
@@ -171,6 +192,7 @@
                 }
 
                 this.connection = connection;
+                this.serial = webusbDevice.serial || 'UNKNOWN';
                 this.credentialStore = new AdbCredentialWeb();
 
                 logCallback("Authenticating with device (Accept prompt on phone screen)...");
@@ -593,6 +615,100 @@
             } catch (e) {}
 
             logCallback("🎉 PisoPhone Kiosk setup complete! Device is now secured.");
+        }
+
+        /**
+         * Alias for shell command execution
+         */
+        async runShell(command, timeoutMs = 12000) {
+            return await this.shell(command, timeoutMs);
+        }
+
+        /**
+         * Granular step: Installs APK from device temp path or Uint8Array
+         */
+        async installApk(logCallback = console.log, destPath = DEVICE_TEMP_APK_PATH) {
+            if (!this.adb) throw new Error("Device not connected.");
+            logCallback("Installing APK via Android Package Manager...");
+            await this.shell(`chmod 777 ${destPath}`);
+            const res = await this.shell(`pm install -r -d -g ${destPath}`);
+            logCallback(`Install output: ${res.trim()}`);
+            if (res.includes("Failure") || res.includes("Error") || res.includes("Exception")) {
+                throw new Error(`APK installation failed: ${res.trim()}`);
+            }
+            logCallback("✅ Package installed successfully.");
+        }
+
+        /**
+         * Granular step: Sets Kiosk Device Owner
+         */
+        async setDeviceOwner(logCallback = console.log, receiverClass = `${PACKAGE_NAME}/${PACKAGE_NAME}.receiver.KioskDeviceAdminReceiver`) {
+            if (!this.adb) throw new Error("Device not connected.");
+            logCallback("Setting PisoPhone as Device Owner administrator...");
+            
+            // Check accounts first
+            try {
+                const accountsDump = await this.shell("dumpsys account");
+                const hasAccounts = /Account\s*\{/i.test(accountsDump) || /Accounts:\s*[1-9]/i.test(accountsDump);
+                if (hasAccounts) {
+                    throw new Error("Cannot set Device Owner: An active user account is logged in. Please remove all Google/app accounts in Android Settings > Accounts, or Factory Reset the device.");
+                }
+            } catch (accErr) {
+                if (accErr.message.includes("Cannot set Device Owner")) throw accErr;
+            }
+
+            const dpmResult = await this.shell(`dpm set-device-owner ${receiverClass}`);
+            logCallback(`Device Admin output: ${dpmResult.trim()}`);
+            if (dpmResult.includes("Exception") || dpmResult.includes("java.lang") || dpmResult.includes("Error") || dpmResult.includes("illegal state")) {
+                if (dpmResult.includes("accounts") || dpmResult.includes("already")) {
+                    throw new Error("Cannot set Device Owner: Device has existing accounts. Android requires 0 accounts for kiosk mode.");
+                }
+                throw new Error(`Device Owner setup failed: ${dpmResult.trim()}`);
+            }
+            logCallback("✅ Device Owner enrolled successfully.");
+        }
+
+        /**
+         * Granular step: Grants necessary kiosk permissions
+         */
+        async grantPermissions(logCallback = console.log, pkg = PACKAGE_NAME) {
+            if (!this.adb) throw new Error("Device not connected.");
+            logCallback("Configuring system permissions for 24/7 kiosk reliability...");
+            try {
+                await this.shell(`appops set ${pkg} SYSTEM_ALERT_WINDOW allow 2>/dev/null || true`);
+                await this.shell(`cmd overlay enable --user 0 ${pkg} 2>/dev/null || true`);
+                await this.shell(`pm grant ${pkg} android.permission.WRITE_SECURE_SETTINGS 2>/dev/null || true`);
+                await this.shell(`dumpsys deviceidle whitelist +${pkg} 2>/dev/null || true`);
+            } catch (e) {
+                logCallback(`Notice: Permission grant warning: ${e.message}`);
+            }
+            logCallback("✅ Permissions configured.");
+        }
+
+        /**
+         * Granular step: Launches PisoPhone Kiosk app
+         */
+        async launchApp(logCallback = console.log, mainActivity = `${PACKAGE_NAME}/.MainActivity`) {
+            if (!this.adb) throw new Error("Device not connected.");
+            logCallback("Launching PisoPhone application...");
+            await this.shell(`am start -n ${mainActivity}`);
+            logCallback("✅ App launched.");
+        }
+
+        /**
+         * Granular step: Deprovisions device and removes kiosk administrator
+         */
+        async deprovisionDevice(pin = "1234", logCallback = console.log) {
+            if (!this.adb) throw new Error("Device not connected.");
+            logCallback("Sending deprovision broadcast intent...");
+            try {
+                await this.shell(`am broadcast -a ${PACKAGE_NAME}.DEPROVISION -n ${PACKAGE_NAME}/.receiver.KioskAdminActionReceiver --es pin "${pin}"`);
+                await this.shell(`dpm remove-active-admin ${PACKAGE_NAME}/${PACKAGE_NAME}.receiver.KioskDeviceAdminReceiver 2>/dev/null || true`);
+                await this.shell(`pm uninstall ${PACKAGE_NAME} 2>/dev/null || true`);
+            } catch (e) {
+                logCallback(`Deprovision warning: ${e.message}`);
+            }
+            logCallback("✅ Deprovision commands sent.");
         }
 
         /**
