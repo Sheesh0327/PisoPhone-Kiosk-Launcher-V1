@@ -184,7 +184,7 @@
                     <button onclick="copyGeneratedToken()" class="flex-1 bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold py-3 rounded-xl transition text-xs flex items-center justify-center gap-2 shadow-lg shadow-teal-500/20">
                         📋 Copy Token
                     </button>
-                    <a href="http://192.168.4.1" target="_blank" class="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-xl transition text-xs flex items-center justify-center gap-2 border border-slate-700">
+                    <a href="http://kioskmanager.local" target="_blank" class="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-xl transition text-xs flex items-center justify-center gap-2 border border-slate-700">
                         🌐 Open ESP32 Portal
                     </a>
                 </div>
@@ -248,7 +248,7 @@
             existingOrders.unshift(order);
             localStorage.setItem('piso_box_orders', JSON.stringify(existingOrders));
 
-            alert(`🎉 Order Confirmed! Reference: ${order.id}\n\nPackage: ${seats}-Terminal Seat Coin Slot Box\nTotal: ${price}\nShipping to: ${address}\n\nOnce your box arrives, plug it into power, connect your phone to its Wi-Fi, and open http://192.168.4.1 to begin provisioning!`);
+            alert(`🎉 Order Confirmed! Reference: ${order.id}\n\nPackage: ${seats}-Terminal Seat Coin Slot Box\nTotal: ${price}\nShipping to: ${address}\n\nOnce your box arrives, power it on and connect your browser or phone to your local Wi-Fi, then open http://kioskmanager.local to begin provisioning!`);
             window.location.href = 'index.html';
         }
 

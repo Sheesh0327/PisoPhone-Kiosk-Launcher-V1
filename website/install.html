@@ -1052,7 +1052,7 @@
 
         installBtn.addEventListener('click', async () => {
             if (!navigator.usb) {
-                return alert("WebUSB is not supported in this browser. Please use Google Chrome, Microsoft Edge, or Brave on a desktop computer.");
+                return alert("For hardware flashing, connect your phone to the ESP32 box and open http://kioskmanager.local or use Google Chrome on a USB-connected device.");
             }
 
             // Enforce Coin Slot Box Verification (₱5,000 Hardware)

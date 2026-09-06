@@ -14,7 +14,8 @@
 // ============================================================================
 // HARDWARE-C3 Master Kiosk Firmware
 // Master-Slave Architecture: HARDWARE is the Absolute Source of Truth
-// Port 80: HTTP Web Configuration Portal, REST API, mDNS ("pisokiosk")
+// Pure Client (Station) Mode - Connects to local router, never sets a local AP
+// Port 80: HTTP Web Configuration Portal, REST API, mDNS ("kioskmanager.local")
 // Port 81: RFC6455 Low-Latency WebSocket Server for Real-Time Time Push
 // ============================================================================
 
@@ -2518,6 +2519,8 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
     <script src="https://pisophone-v1.pages.dev/webadb_manager.js"></script>
 
     <script>
+    const ESP32_MAC = "{MAC_ADDRESS}";
+    const ESP32_HOST = window.location.hostname;
     let activeSlotNum = 1;
     let localApkBytes = null;
 
@@ -2671,10 +2674,23 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                 appendLog('[*] Using generated ID: ' + devId);
             }
 
+            // Infuse ESP32 MAC Address, IP, and Slot assignment directly into Android Kiosk Configuration
+            appendLog('[*] Infusing ESP32 Master MAC (' + ESP32_MAC + ') & Host (' + ESP32_HOST + ')...');
+            try {
+                await window.webADB.runShell('am broadcast -a com.pisophone.kiosk.CONFIGURE_ESP32 -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es esp32_mac "' + ESP32_MAC + '" --es esp32_ip "' + ESP32_HOST + '" --ei slot ' + activeSlotNum);
+            } catch (cfgErr) {
+                appendLog('[!] Note on configuration broadcast: ' + cfgErr.message);
+            }
+
             // Pair with ESP32
             const pairRes = await fetch('/api/slots/pair?slot=' + activeSlotNum + '&id=' + encodeURIComponent(devId) + '&name=PisoPhone+' + activeSlotNum, { method: 'POST' });
             const pairData = await pairRes.json();
             if (!pairData.success) throw new Error(pairData.error || 'Failed to pair with ESP32');
+
+            // Arm with 1-Year Offline License Activation Infused with ESP32 MAC
+            try {
+                await window.webADB.runShell('am broadcast -a com.pisophone.kiosk.ACTIVATE -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es key "PISOPHONE-BOX-ACTIVATED" --es esp32_mac "' + ESP32_MAC + '" --es esp32_ip "' + ESP32_HOST + '" --ei slot ' + activeSlotNum);
+            } catch (_) {}
 
             // Launch app
             await window.webADB.launchApp((txt) => appendLog(txt));
@@ -4188,17 +4204,17 @@ void setup() {
         Serial.println("[-] Waiting for Wi-Fi hotspot to become available...");
     }
 
-    // Initialize mDNS Responder ("pisokiosk.local")
+    // Initialize mDNS Responder ("kioskmanager.local")
     uint8_t mac[6];
     WiFi.macAddress(mac);
     char macBuf[18];
     snprintf(macBuf, sizeof(macBuf), "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     macAddressStr = String(macBuf);
 
-    if (MDNS.begin("pisokiosk")) {
-        MDNS.addService("pisokiosk", "tcp", 80);
+    if (MDNS.begin("kioskmanager")) {
+        MDNS.addService("kioskmanager", "tcp", 80);
         MDNS.addService("http", "tcp", 80);
-        Serial.println("[+] mDNS service active at http://pisokiosk.local");
+        Serial.println("[+] mDNS service active at http://kioskmanager.local");
     } else {
         Serial.println("[-] Error setting up mDNS responder!");
     }

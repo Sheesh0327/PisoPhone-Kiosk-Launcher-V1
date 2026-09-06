@@ -36,6 +36,7 @@ object KioskSecurity {
     private const val KEY_HIGH_BATTERY_THRESHOLD = "high_battery_threshold"
     private const val KEY_CONFIGURED_ESP32_IP = "configured_esp32_ip"
     private const val KEY_CONFIGURED_ESP32_MAC = "configured_esp32_mac"
+    private const val KEY_ASSIGNED_BOX_SLOT = "assigned_box_slot"
     private const val KEY_PROVISIONING_ADB_ALLOWED = "provisioning_adb_allowed"
     
     private const val DEFAULT_PIN = "1234"
@@ -149,6 +150,16 @@ object KioskSecurity {
     fun setConfiguredEsp32Mac(context: Context, mac: String) {
         val clean = formatMacAddress(mac)
         getPrefs(context).edit().putString(KEY_CONFIGURED_ESP32_MAC, clean).apply()
+    }
+
+    fun getAssignedBoxSlot(context: Context): Int {
+        return getPrefs(context).getInt(KEY_ASSIGNED_BOX_SLOT, 1)
+    }
+
+    fun setAssignedBoxSlot(context: Context, slot: Int) {
+        if (slot > 0) {
+            getPrefs(context).edit().putInt(KEY_ASSIGNED_BOX_SLOT, slot).apply()
+        }
     }
 
     fun formatMacAddress(input: String?): String {

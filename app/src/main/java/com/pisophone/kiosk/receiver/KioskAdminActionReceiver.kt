@@ -42,6 +42,7 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
         const val ACTION_ADMIN_BYPASS = "com.pisophone.kiosk.ADMIN_BYPASS"
         const val ACTION_TEST_TTS = "com.pisophone.kiosk.TEST_TTS"
         const val ACTION_ACTIVATE = "com.pisophone.kiosk.ACTIVATE"
+        const val ACTION_CONFIGURE_ESP32 = "com.pisophone.kiosk.CONFIGURE_ESP32"
         const val ACTION_GET_DEVICE_ID = "com.pisophone.kiosk.GET_DEVICE_ID"
         private const val TAG = "KioskAdminAction"
     }
@@ -190,8 +191,34 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                 setResultExtras(extras)
             }
 
+            ACTION_CONFIGURE_ESP32, "com.pisophone.kiosk.ACTION_CONFIGURE_ESP32" -> {
+                val mac = intent.getStringExtra("esp32_mac") ?: intent.getStringExtra("mac") ?: intent.getStringExtra("box_mac")
+                val ip = intent.getStringExtra("esp32_ip") ?: intent.getStringExtra("ip")
+                val slot = intent.getIntExtra("slot", -1)
+
+                Log.i(TAG, "CONFIGURE_ESP32 received. Infusing Master MAC: '$mac', IP: '$ip', Slot: $slot")
+
+                if (!mac.isNullOrBlank() || !ip.isNullOrBlank() || slot > 0) {
+                    KioskService.configureMasterBox(context, mac ?: "", ip, slot)
+                }
+
+                val savedMac = com.pisophone.kiosk.security.KioskSecurity.getConfiguredEsp32Mac(context)
+                Toast.makeText(context, "Hardware Box Paired! MAC: ${savedMac.ifEmpty { "Auto" }}", Toast.LENGTH_SHORT).show()
+                setResultCode(android.app.Activity.RESULT_OK)
+                setResultData("SUCCESS")
+            }
+
             ACTION_ACTIVATE -> {
                 val key = intent.getStringExtra("key") ?: intent.getStringExtra("code") ?: "ACTIVATION_KEY"
+                val esp32Mac = intent.getStringExtra("esp32_mac") ?: intent.getStringExtra("mac") ?: intent.getStringExtra("box_mac")
+                val esp32Ip = intent.getStringExtra("esp32_ip") ?: intent.getStringExtra("ip")
+                val slot = intent.getIntExtra("slot", -1)
+
+                if (!esp32Mac.isNullOrBlank() || !esp32Ip.isNullOrBlank() || slot > 0) {
+                    Log.i(TAG, "Infusing ESP32 Master params with activation: MAC '$esp32Mac', IP '$esp32Ip', Slot $slot")
+                    KioskService.configureMasterBox(context, esp32Mac ?: "", esp32Ip, slot)
+                }
+
                 Log.i(TAG, "Activation broadcast received with key: $key")
                 val success = com.pisophone.kiosk.security.HardwareLockManager.activateOneYearLicense(context, key)
                 setResultCode(if (success) android.app.Activity.RESULT_OK else android.app.Activity.RESULT_CANCELED)

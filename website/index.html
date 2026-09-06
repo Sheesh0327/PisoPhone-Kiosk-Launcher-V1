@@ -65,21 +65,23 @@
             <a href="index.html" class="text-xl font-black tracking-wider">PISO<span class="text-emerald-400">PHONE</span></a>
         </div>
         <!-- Nav Links & Auth -->
-        <div class="flex items-center space-x-3 sm:space-x-4">
+        <div class="flex items-center space-x-2 sm:space-x-4">
             <!-- Protected Nav Links (Visible only when signed in) -->
-            <div id="navLinksContainer" class="hidden items-center space-x-4 text-sm font-semibold text-slate-300">
-                <a href="index.html" class="text-emerald-400 font-bold">Dashboard</a>
-                <a href="javascript:void(0)" onclick="openBoxVerificationModalFromNav()" class="hover:text-emerald-400 transition">Register Box</a>
-                <a href="purchase.html" class="hover:text-emerald-400 transition">Order Boxes &amp; Seats</a>
-                <a href="http://192.168.4.1" target="_blank" class="hover:text-emerald-300 text-emerald-400 font-semibold transition flex items-center gap-1">
-                    <span>ESP32 Local Portal</span>
+            <div id="navLinksContainer" class="hidden items-center space-x-3 text-xs sm:text-sm font-semibold text-slate-300">
+                <a href="index.html" class="text-emerald-400 font-bold hidden sm:inline">Fleet</a>
+                <button type="button" onclick="openQrBoxScanner(async () => { await refreshDashboardBoxStatus(); if(currentUserToken) fetchUserDevices(currentUserToken); })" class="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold px-3 py-1.5 rounded-lg transition shadow-md flex items-center gap-1 text-xs">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
+                    <span>Scan QR</span>
+                </button>
+                <a href="http://kioskmanager.local" target="_blank" class="hidden sm:flex hover:text-emerald-300 text-emerald-400 font-semibold transition items-center gap-1">
+                    <span>ESP32 Portal</span>
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
                 </a>
             </div>
             <!-- Always Visible Deprovision Tool Link -->
-            <a href="deprovision.html" title="Emergency Deprovision &amp; Unlock Kiosk" class="text-rose-400 hover:text-rose-300 font-bold transition flex items-center gap-1.5 bg-rose-500/10 hover:bg-rose-500/20 px-2.5 py-1.5 rounded-lg border border-rose-500/20 text-xs sm:text-sm whitespace-nowrap">
+            <a href="deprovision.html" title="Emergency Deprovision &amp; Unlock Kiosk" class="text-rose-400 hover:text-rose-300 font-bold transition flex items-center gap-1 bg-rose-500/10 hover:bg-rose-500/20 px-2 py-1.5 rounded-lg border border-rose-500/20 text-xs whitespace-nowrap">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                <span>Deprovision</span>
+                <span class="hidden sm:inline">Deprovision</span>
             </a>
             <div id="navAuthContainer"></div>
         </div>
@@ -238,16 +240,24 @@
             <!-- Hero Tagline -->
             <div class="inline-flex items-center space-x-2 bg-emerald-500/10 border border-emerald-500/30 px-4 py-1.5 rounded-full text-emerald-400 text-xs font-semibold uppercase tracking-wider mb-6">
                 <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span>1-Click WebUSB Hardware Provisioning</span>
+                <span>Mobile Fleet Management • Instant QR Box Claim</span>
             </div>
 
-            <h1 class="text-5xl md:text-7xl font-black tracking-tight mb-6 animate-fade-in-up">
+            <h1 class="text-4xl sm:text-6xl md:text-7xl font-black tracking-tight mb-6 animate-fade-in-up">
                 Turn Any Android into a <br/>
                 <span class="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-500">Commercial Arcade Kiosk</span>
             </h1>
-            <p class="text-slate-400 text-lg md:text-xl mb-8 max-w-2xl animate-fade-in-up delay-100">
-                PisoPhone securely locks down Android devices for coin-op gaming, rentals, and dedicated kiosk use. Provision and manage licenses instantly via 1-click WebUSB directly from your browser.
+            <p class="text-slate-400 text-base sm:text-lg md:text-xl mb-8 max-w-2xl animate-fade-in-up delay-100">
+                Manage your coin-op kiosk fleet on the go. Scan the QR code printed on your coin slot box with your phone to instantly claim hardware and manage licensed Android terminals.
             </p>
+
+            <!-- Quick Action Buttons for Unauthenticated Mobile Users -->
+            <div class="flex flex-col sm:flex-row items-center gap-3 w-full max-w-md mb-8">
+                <button onclick="directEmailInput.focus()" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3.5 px-6 rounded-2xl text-sm transition shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path></svg>
+                    <span>Sign In to Claim Box via QR</span>
+                </button>
+            </div>
 
             <!-- Emergency Deprovision Action for Kiosk Operators -->
             <div class="flex items-center gap-3 bg-slate-900/90 border border-slate-800 hover:border-rose-500/40 p-3 px-5 rounded-2xl text-xs text-slate-300 transition shadow-lg mb-12 animate-fade-in-up delay-200">
@@ -264,21 +274,21 @@
         <div id="dashboardView" class="w-full flex-col items-start text-left hidden">
             <div class="flex flex-col sm:flex-row sm:items-center justify-between w-full mb-8 gap-4">
                 <div>
-                    <h2 class="text-3xl font-black text-white tracking-tight">Device Management</h2>
-                    <p class="text-slate-400 mt-1">Manage, provision, and monitor your kiosk fleet.</p>
+                    <h2 class="text-2xl sm:text-3xl font-black text-white tracking-tight">Fleet Dashboard</h2>
+                    <p class="text-xs sm:text-sm text-slate-400 mt-1">Manage boxes, scan hardware QR codes, and monitor kiosk terminals.</p>
                 </div>
                 <div class="flex items-center gap-2 sm:gap-3 flex-wrap">
                     <button id="refreshDevicesBtn" title="Refresh device list" class="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-3.5 py-2.5 rounded-xl transition text-xs sm:text-sm font-semibold border border-slate-700 flex items-center gap-2 shadow-sm">
                         <svg id="refreshIcon" class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                         <span>Refresh</span>
                     </button>
-                    <button id="openLinkModalBtn" class="bg-slate-800 hover:bg-slate-700 text-emerald-400 hover:text-emerald-300 px-3.5 py-2.5 rounded-xl transition text-xs sm:text-sm font-semibold border border-slate-700 flex items-center gap-2 shadow-sm">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
-                        <span>+ Link Device</span>
+                    <button type="button" onclick="openQrBoxScanner(async () => { await refreshDashboardBoxStatus(); if(currentUserToken) fetchUserDevices(currentUserToken); })" class="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl transition text-xs sm:text-sm shadow-lg flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
+                        <span>📷 Scan Box QR</span>
                     </button>
-                    <a href="purchase.html" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-4 py-2.5 rounded-xl transition font-bold shadow-lg flex items-center gap-2 text-xs sm:text-sm">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-                        <span>Buy Credits</span>
+                    <a href="purchase.html" class="bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 px-4 py-2.5 rounded-xl transition font-semibold flex items-center gap-2 text-xs sm:text-sm">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path></svg>
+                        <span>Order Units</span>
                     </a>
                 </div>
             </div>
@@ -288,20 +298,20 @@
                 <div class="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-500"></div>
                 <div class="flex items-center gap-4">
                     <div class="w-14 h-14 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center flex-shrink-0 shadow-lg shadow-emerald-500/10">
-                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
                     </div>
                     <div>
                         <div class="flex items-center gap-2">
                             <h3 class="text-lg font-black text-white">Coin Slot Box Hardware Fleet</h3>
                             <span id="dashBoxBadge" class="text-xs font-bold px-2.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30">Verification Required</span>
                         </div>
-                        <p id="dashBoxSubtext" class="text-xs text-slate-400 mt-1">Each ₱5,000 Coin Slot Box unit provides a hardware build number licensing up to 12 phones.</p>
+                        <p id="dashBoxSubtext" class="text-xs text-slate-400 mt-1">Scan the QR code printed on your Coin Slot Box to register it to your account (12 terminal capacity per box).</p>
                     </div>
                 </div>
                 <div class="flex items-center gap-3 w-full md:w-auto">
-                    <button id="dashVerifyBoxBtn" class="w-full md:w-auto bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-5 py-3 rounded-xl text-xs transition shadow-lg shadow-emerald-500/20 whitespace-nowrap flex items-center justify-center gap-2">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                        <span>Verify Box Build Number</span>
+                    <button id="dashVerifyBoxBtn" class="w-full md:w-auto bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold px-5 py-3 rounded-xl text-xs transition shadow-lg shadow-emerald-500/20 whitespace-nowrap flex items-center justify-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
+                        <span>📷 Scan / Register Box</span>
                     </button>
                 </div>
             </div>
@@ -344,16 +354,16 @@
                     </div>
 
                     <!-- Step 3 -->
-                    <a href="http://192.168.4.1" target="_blank" class="bg-slate-950/80 border border-slate-800 hover:border-emerald-500/60 p-4 rounded-2xl cursor-pointer transition flex flex-col justify-between group">
+                    <a href="http://kioskmanager.local" target="_blank" class="bg-slate-950/80 border border-slate-800 hover:border-emerald-500/60 p-4 rounded-2xl cursor-pointer transition flex flex-col justify-between group">
                         <div>
                             <div class="flex items-center justify-between mb-2">
                                 <span class="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-bold text-xs flex items-center justify-center">3</span>
                                 <span class="text-[10px] text-emerald-400 font-semibold group-hover:underline">Open Portal →</span>
                             </div>
                             <div class="font-bold text-sm text-white mb-1">3. Connect to ESP32</div>
-                            <p class="text-xs text-slate-400">Join Wi-Fi (PisoPhone-Kiosk-...) &amp; open 192.168.4.1 in browser.</p>
+                            <p class="text-xs text-slate-400">Open http://kioskmanager.local in browser on your local network.</p>
                         </div>
-                        <div class="mt-3 text-[10px] font-bold px-2 py-0.5 rounded text-teal-300 bg-teal-500/20 w-fit">192.168.4.1</div>
+                        <div class="mt-3 text-[10px] font-bold px-2 py-0.5 rounded text-teal-300 bg-teal-500/20 w-fit font-mono">kioskmanager.local</div>
                     </a>
 
                     <!-- Step 4 -->
@@ -382,7 +392,7 @@
                         <div class="text-slate-400 text-xs mt-0.5">Flexible Seats</div>
                     </div>
                 </a>
-                <a href="http://192.168.4.1" target="_blank" class="glass-card rounded-2xl p-4 border border-cyan-500/20 hover:border-cyan-500/50 flex items-center gap-3 transition shadow-md">
+                <a href="http://kioskmanager.local" target="_blank" class="glass-card rounded-2xl p-4 border border-cyan-500/20 hover:border-cyan-500/50 flex items-center gap-3 transition shadow-md">
                     <div class="bg-cyan-500/20 text-cyan-400 p-2.5 rounded-xl">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
                     </div>
@@ -898,16 +908,21 @@
                 container.innerHTML = `
                     <div class="glass-card bg-slate-900 border border-emerald-500/30 rounded-3xl p-8 text-center shadow-xl">
                         <div class="w-16 h-16 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-500/10">
-                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
+                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
                         </div>
-                        <h3 class="text-xl font-bold text-white mb-2">No Coin Slot Box Verified Yet</h3>
+                        <h3 class="text-xl font-bold text-white mb-2">No Coin Slot Box Registered Yet</h3>
                         <p class="text-xs text-slate-400 max-w-md mx-auto mb-6">
-                            Each physical ₱5,000 Coin Slot Box comes with a unique 12-character Build Number sticker authorizing up to 12 phones. Verify your box to link and install devices.
+                            Point your smartphone camera at the QR code sticker on the Coin Slot Box to register it to your account in seconds.
                         </p>
-                        <button onclick="showBoxVerificationModal(() => { refreshDashboardBoxStatus(); if(currentUserToken) fetchUserDevices(currentUserToken); })" class="px-6 py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-xs transition shadow-lg shadow-emerald-500/20 inline-flex items-center gap-2">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                            <span>Verify Your Coin Slot Box Build Number</span>
-                        </button>
+                        <div class="flex flex-col sm:flex-row items-center justify-center gap-3 max-w-md mx-auto">
+                            <button onclick="openQrBoxScanner(async () => { await refreshDashboardBoxStatus(); if(currentUserToken) fetchUserDevices(currentUserToken); })" class="w-full sm:w-auto px-6 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black rounded-xl text-xs transition shadow-lg shadow-emerald-500/20 inline-flex items-center justify-center gap-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                                <span>📷 Scan Box QR Code</span>
+                            </button>
+                            <button onclick="showBoxVerificationModal(() => { refreshDashboardBoxStatus(); if(currentUserToken) fetchUserDevices(currentUserToken); })" class="w-full sm:w-auto px-5 py-3.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-xl text-xs transition border border-slate-700">
+                                Enter Serial Manually
+                            </button>
+                        </div>
                     </div>
                 `;
                 return;
@@ -976,7 +991,7 @@
                                 <span>•</span>
                                 <span class="${slotsRemaining > 0 ? 'text-emerald-400 font-semibold' : 'text-slate-500'}">${slotsRemaining} slots remaining</span>
                                 <span>•</span>
-                                <a href="http://192.168.4.1" target="_blank" onclick="event.stopPropagation()" class="text-teal-400 hover:text-teal-300 font-bold underline inline-flex items-center gap-1">
+                                <a href="http://kioskmanager.local" target="_blank" onclick="event.stopPropagation()" class="text-teal-400 hover:text-teal-300 font-bold underline inline-flex items-center gap-1">
                                     <span>Open ESP32 Portal</span>
                                     <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
                                 </a>
@@ -1010,10 +1025,10 @@
                                 <svg class="w-10 h-10 mx-auto mb-2 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
                                 <div class="text-white font-bold text-sm mb-1">No Phones Paired to this Box Yet</div>
                                 <p class="text-slate-400 text-xs mb-4 max-w-md mx-auto">
-                                    This Coin Slot Box has ${max} licensed seats managed directly by the ESP32. Connect your phone or laptop to the box Wi-Fi and open the ESP32 Local Portal to install the APK and activate in 1 fluid motion.
+                                    This Coin Slot Box has ${max} licensed seats managed directly by the ESP32. Connect your phone or laptop to your local network and open the ESP32 Local Portal at <strong class="text-teal-400 font-mono">http://kioskmanager.local</strong> to install the APK and activate in 1 fluid motion.
                                 </p>
                                 <div class="flex items-center justify-center gap-3">
-                                    <a href="http://192.168.4.1" target="_blank" class="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-xs transition shadow-md shadow-emerald-500/20 inline-flex items-center gap-1.5">
+                                    <a href="http://kioskmanager.local" target="_blank" class="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-xs transition shadow-md shadow-emerald-500/20 inline-flex items-center gap-1.5">
                                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
                                         <span>Open ESP32 Local Portal</span>
                                     </a>
@@ -1424,5 +1439,31 @@
         });
         checkAuthState();
     </script>
+
+    <!-- Mobile Fixed Bottom Navigation Bar -->
+    <div id="mobileBottomNav" class="fixed bottom-0 inset-x-0 bg-slate-900/95 backdrop-blur-lg border-t border-slate-800 flex items-center justify-around px-2 py-2 sm:hidden z-40 shadow-2xl">
+        <a href="index.html" class="flex flex-col items-center gap-1 text-emerald-400 py-1 px-3">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+            <span class="text-[10px] font-bold">Fleet</span>
+        </a>
+
+        <!-- Center Highlighted QR Scan Button -->
+        <button type="button" onclick="openQrBoxScanner(async () => { await refreshDashboardBoxStatus(); if(currentUserToken) fetchUserDevices(currentUserToken); })" class="flex flex-col items-center -mt-5 group">
+            <div class="w-13 h-13 p-3 bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 rounded-full shadow-lg shadow-emerald-500/40 border-4 border-slate-900 group-hover:scale-105 transition-transform flex items-center justify-center">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
+            </div>
+            <span class="text-[10px] font-bold text-white mt-1">Scan Box QR</span>
+        </button>
+
+        <a href="http://kioskmanager.local" target="_blank" class="flex flex-col items-center gap-1 text-slate-400 hover:text-white py-1 px-3">
+            <svg class="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+            <span class="text-[10px] font-semibold">ESP32 Portal</span>
+        </a>
+
+        <a href="purchase.html" class="flex flex-col items-center gap-1 text-slate-400 hover:text-white py-1 px-3">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path></svg>
+            <span class="text-[10px] font-semibold">Store</span>
+        </a>
+    </div>
 </body>
 </html>

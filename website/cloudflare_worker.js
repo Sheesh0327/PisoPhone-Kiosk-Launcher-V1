@@ -1376,9 +1376,24 @@ export default {
           });
         }
 
-        const rawInput = buildNumber.trim().toUpperCase();
-        const formattedMac = formatMacAddress(rawInput);
-        const cleanBuildNumber = formattedMac || rawInput;
+        let rawInput = buildNumber.trim();
+        // If scanned payload is a URL (e.g. https://pisophone-v1.pages.dev/?box=BOX-9482-1049)
+        if (rawInput.includes('?')) {
+          try {
+            const urlObj = new URL(rawInput.startsWith('http') ? rawInput : 'https://dummy.local/' + rawInput);
+            const param = urlObj.searchParams.get('box') || urlObj.searchParams.get('b') || urlObj.searchParams.get('mac') || urlObj.searchParams.get('id');
+            if (param) rawInput = param.trim();
+          } catch (_) {}
+        } else if (rawInput.startsWith('{') && rawInput.endsWith('}')) {
+          try {
+            const parsed = JSON.parse(rawInput);
+            rawInput = parsed.box || parsed.buildNumber || parsed.mac || parsed.boxId || rawInput;
+          } catch (_) {}
+        }
+
+        const rawUpper = rawInput.trim().toUpperCase();
+        const formattedMac = formatMacAddress(rawUpper);
+        const cleanBuildNumber = formattedMac || rawUpper;
 
         if (cleanBuildNumber.length < 2) {
           return new Response(JSON.stringify({ error: 'Please enter a valid Coin Slot Box MAC Address or Build Number.' }), {

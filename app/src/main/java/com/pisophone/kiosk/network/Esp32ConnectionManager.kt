@@ -183,7 +183,7 @@ class Esp32ConnectionManager(
         esp32Ip?.let { if (it.isNotBlank() && !candidates.contains(it)) candidates.add(it) }
 
         // Hostname resolution for mDNS hostnames
-        val hostnames = listOf("pisokiosk.local", "esp32.local", "piso.local", "master.local")
+        val hostnames = listOf("kioskmanager.local", "pisokiosk.local", "esp32.local", "piso.local", "master.local")
         for (hn in hostnames) {
             try {
                 val addr = InetAddress.getByName(hn)
