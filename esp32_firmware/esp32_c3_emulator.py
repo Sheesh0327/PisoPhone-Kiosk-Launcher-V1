@@ -40,6 +40,7 @@ MASTER_CRYPTO_SECRET = "e9a3b7c1f4d8025e619b4c7d03a8f2e5167b094c2d3e5f8a1b6c9d0e
 DEFAULT_COIN_PIN = 4
 DEFAULT_UNIVERSAL_COIN_PIN = 3
 DEFAULT_LED_PIN = 8
+DEFAULT_LED_ACTIVE_LOW = True
 DEFAULT_RELAY_PIN = 5
 DEFAULT_PORT = 8080
 DEFAULT_PRICE = 5.0
@@ -60,6 +61,7 @@ class KioskState:
         self.coin_pin = DEFAULT_COIN_PIN
         self.universal_coin_pin = DEFAULT_UNIVERSAL_COIN_PIN
         self.led_pin = DEFAULT_LED_PIN
+        self.led_active_low = DEFAULT_LED_ACTIVE_LOW
         self.relay_pin = DEFAULT_RELAY_PIN
         self.target_port = DEFAULT_PORT
         self.coin_price = DEFAULT_PRICE
@@ -100,6 +102,7 @@ class KioskState:
                     self.coin_pin = data.get("coin_pin", self.coin_pin)
                     self.universal_coin_pin = data.get("universal_coin_pin", self.universal_coin_pin)
                     self.led_pin = data.get("led_pin", self.led_pin)
+                    self.led_active_low = data.get("led_active_low", self.led_active_low)
                     self.relay_pin = data.get("relay_pin", self.relay_pin)
                     self.target_port = data.get("target_port", self.target_port)
                     self.coin_price = float(data.get("coin_price", self.coin_price))
@@ -126,6 +129,7 @@ class KioskState:
                 "coin_pin": self.coin_pin,
                 "universal_coin_pin": self.universal_coin_pin,
                 "led_pin": self.led_pin,
+                "led_active_low": self.led_active_low,
                 "relay_pin": self.relay_pin,
                 "target_port": self.target_port,
                 "coin_price": self.coin_price,
@@ -154,6 +158,7 @@ class KioskState:
             self.coin_pin = DEFAULT_COIN_PIN
             self.universal_coin_pin = DEFAULT_UNIVERSAL_COIN_PIN
             self.led_pin = DEFAULT_LED_PIN
+            self.led_active_low = DEFAULT_LED_ACTIVE_LOW
             self.relay_pin = DEFAULT_RELAY_PIN
             self.target_port = DEFAULT_PORT
             self.coin_price = DEFAULT_PRICE
@@ -344,6 +349,9 @@ def trigger_coin_event():
 
     tx_id = f"{int(now * 1000)}-{os.urandom(2).hex()}"
     added_seconds = state.minutes_per_coin * 60
+    ts_str = str(int(now * 1000))
+    amount_str = f"{state.coin_price:.2f}"
+    sig = calculate_hmac(f"{tx_id}:{added_seconds}:{amount_str}:{ts_str}", state.shared_secret)
 
     print(f"[⚡] SIMPLE BEAM COIN: Awarding ₱{state.coin_price:.2f} credit (+{state.minutes_per_coin} mins / {added_seconds}s)")
 
@@ -354,7 +362,9 @@ def trigger_coin_event():
         "minutes": state.minutes_per_coin,
         "amount": f"{state.coin_price:.2f}",
         "slot": "beam",
-        "tx_id": tx_id
+        "tx_id": tx_id,
+        "ts": ts_str,
+        "sig": sig
     })
     broadcast_ws(ws_payload)
     state.armed_until = now + 15
@@ -404,6 +414,8 @@ def trigger_universal_coin_event(pulses: int):
     state.save()
 
     tx_id = f"{int(now * 1000)}-{os.urandom(2).hex()}"
+    ts_str = str(int(now * 1000))
+    sig = calculate_hmac(f"{tx_id}:{added_seconds}:{pulses}:{ts_str}", state.shared_secret)
     print(f"[⚡] UNIVERSAL COIN: Awarding ₱{pulses} (+{added_minutes}m / {added_seconds}s)")
 
     ws_payload = json.dumps({
@@ -412,7 +424,9 @@ def trigger_universal_coin_event(pulses: int):
         "minutes": added_minutes,
         "amount": pulses,
         "slot": "universal",
-        "tx_id": tx_id
+        "tx_id": tx_id,
+        "ts": ts_str,
+        "sig": sig
     })
     broadcast_ws(ws_payload)
     state.armed_until = now + 15
@@ -940,6 +954,14 @@ PORTAL_HTML = """<!DOCTYPE html>
                             <input type="number" name="led_pin" value="{LED_PIN}">
                         </div>
                         <div class="form-group">
+                            <label>LED Polarity / Active Logic</label>
+                            <select name="led_active_low" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; font-size: 14px;">
+                                <option value="1" {LED_ACTIVE_LOW_SELECTED}>Active LOW (Tenstar Robot / ESP32-C3 Super Mini)</option>
+                                <option value="0" {LED_ACTIVE_HIGH_SELECTED}>Active HIGH (Standard DevKit / External LED)</option>
+                            </select>
+                            <div class="hint">Tenstar Robot and ESP32-C3 Super Mini onboard blue LEDs require Active LOW logic.</div>
+                        </div>
+                        <div class="form-group">
                             <label>Coin Slot Relay GPIO (Auto Power Cutoff)</label>
                             <input type="number" name="relay_pin" value="{RELAY_PIN}">
                             <div class="hint">Relay control pin to power/enable the coin slot when a user presses 'Insert Coin' on their phone (Default GPIO 5). Automatically cuts power / disables coin slot when idle or session expires to prevent lost coins.</div>
@@ -1291,6 +1313,8 @@ def render_portal_html():
     html = html.replace("{COIN_PIN}", str(state.coin_pin))
     html = html.replace("{U_COIN_PIN}", str(state.universal_coin_pin))
     html = html.replace("{LED_PIN}", str(state.led_pin))
+    html = html.replace("{LED_ACTIVE_LOW_SELECTED}", "selected" if state.led_active_low else "")
+    html = html.replace("{LED_ACTIVE_HIGH_SELECTED}", "selected" if not state.led_active_low else "")
     html = html.replace("{RELAY_PIN}", str(state.relay_pin))
     html = html.replace("{DEVICE_IP_INPUTS}", render_device_ip_inputs())
     html = html.replace("{PORT}", str(state.target_port))
@@ -1569,6 +1593,7 @@ class KioskHTTPHandler(BaseHTTPRequestHandler):
             if "coin_pin" in form: state.coin_pin = int(form["coin_pin"][0])
             if "u_coin_pin" in form: state.universal_coin_pin = int(form["u_coin_pin"][0])
             if "led_pin" in form: state.led_pin = int(form["led_pin"][0])
+            if "led_active_low" in form: state.led_active_low = (form["led_active_low"][0] == "1")
             if "relay_pin" in form: state.relay_pin = int(form["relay_pin"][0])
             if "ips" in form:
                 state.android_ips = form["ips"][0]

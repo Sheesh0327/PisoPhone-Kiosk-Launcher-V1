@@ -258,6 +258,28 @@ object KioskSecurity {
         return calculateHmac("$deviceId:$ts", secret)
     }
 
+    fun verifyCoinSignature(txId: String, seconds: Int, amount: Double, ts: String, sig: String, secret: String): Boolean {
+        if (txId.isBlank() || sig.isBlank() || secret.isBlank()) return false
+        val amountFormatted = String.format(java.util.Locale.US, "%.2f", amount)
+        val amountInt = if (amount == amount.toLong().toDouble()) amount.toInt().toString() else amountFormatted
+        
+        // Format 1: tx_id:seconds:amount.2f:ts
+        val expected1 = calculateHmac("$txId:$seconds:$amountFormatted:$ts", secret)
+        if (constantTimeEquals(sig, expected1)) return true
+        
+        // Format 2: tx_id:seconds:amountInt:ts (e.g. pulses as integer)
+        val expected2 = calculateHmac("$txId:$seconds:$amountInt:$ts", secret)
+        if (constantTimeEquals(sig, expected2)) return true
+
+        // Format 3: tx_id:seconds:ts (amount omitted)
+        if (ts.isNotBlank()) {
+            val expected3 = calculateHmac("$txId:$seconds:$ts", secret)
+            if (constantTimeEquals(sig, expected3)) return true
+        }
+
+        return false
+    }
+
     fun constantTimeEquals(a: String, b: String): Boolean {
         return MessageDigest.isEqual(
             a.toByteArray(Charsets.UTF_8),

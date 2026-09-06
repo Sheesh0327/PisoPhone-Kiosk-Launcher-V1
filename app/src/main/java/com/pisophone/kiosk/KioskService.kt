@@ -283,16 +283,31 @@ class KioskService : Service() {
                     stateManager.saveState()
                 }
 
-                override fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?, challenge: String, sig: String) {
+                override fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?, challenge: String, ts: String, sig: String) {
                     if (!HardwareLockManager.isAppAllowedToRun(applicationContext)) {
                         Log.e(TAG, "Hardware Lock or Expired Trial active: Discarding coin event on locked device.")
                         return
                     }
-                    if (challenge.isBlank() || sig.isBlank() || !verifyChallengeAndSignature(challenge, sig)) {
-                        Log.e(TAG, "Unverified coin message over WebSocket: challenge or signature missing/invalid")
+                    if (txId.isNullOrBlank()) {
+                        Log.e(TAG, "Invalid coin message over WebSocket: missing transaction ID")
                         return
                     }
-                    Log.d(TAG, "Received coin via WebSocket: seconds=$seconds, amount=₱$amount, tx_id=$txId")
+
+                    val secret = getSecretKey()
+                    if (sig.isNotBlank()) {
+                        val isSigValid = if (challenge.isNotBlank()) {
+                            verifyChallengeAndSignature(challenge, sig)
+                        } else {
+                            KioskSecurity.verifyCoinSignature(txId, seconds, amount, ts, sig, secret)
+                        }
+
+                        if (!isSigValid) {
+                            Log.e(TAG, "Unverified coin message over WebSocket: HMAC signature invalid for txId=$txId")
+                            return
+                        }
+                    }
+
+                    Log.d(TAG, "Received validated coin via WebSocket: seconds=$seconds, amount=₱$amount, tx_id=$txId")
                     addTimeFromMaster(seconds, "WebSocket Port 81", txId, amount)
                     stateManager.paymentTimeout.value = ARMING_TIMEOUT_SECONDS
                 }

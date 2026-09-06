@@ -32,7 +32,7 @@ interface Esp32ConnectionDelegate {
     fun onEsp32Discovered(ip: String)
     fun onOnlineStatusChanged(isOnline: Boolean, mac: String?)
     fun onConfigSynced(price: Double?, minutes: Int?, alias: String?, isUnlicensed: Boolean)
-    fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?, challenge: String, sig: String)
+    fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?, challenge: String, ts: String, sig: String)
     fun onSlotBusy()
     fun onArmSuccess()
 }
@@ -44,7 +44,7 @@ class Esp32ConnectionManager(
 ) {
     companion object {
         private const val TAG = "Esp32ConnectionManager"
-        private const val NSD_SERVICE_TYPE = "_pisokiosk._tcp."
+        private const val NSD_SERVICE_TYPE = "_pisokiosk._tcp"
         private const val ESP32_WEB_PORT = 80
         private const val ESP32_WS_PORT = 81
         private const val HEARTBEAT_TIMEOUT_MS = 12000L
@@ -217,11 +217,34 @@ class Esp32ConnectionManager(
         }
     }
 
+    private fun getLocalIpAddress(): String {
+        try {
+            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+            while (interfaces != null && interfaces.hasMoreElements()) {
+                val networkInterface = interfaces.nextElement()
+                val addresses = networkInterface.inetAddresses
+                while (addresses.hasMoreElements()) {
+                    val address = addresses.nextElement()
+                    if (!address.isLoopbackAddress && address is java.net.Inet4Address) {
+                        val ip = address.hostAddress
+                        if (ip != null) {
+                            if (networkInterface.name.contains("wlan") || networkInterface.name.contains("eth")) {
+                                return ip
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+        return ""
+    }
+
     fun probeEsp32Connection(ip: String): Boolean {
         val (host, esp32Port) = getEsp32HostAndPort(ip)
         val deviceId = delegate.getDeviceId()
         val ts = System.currentTimeMillis().toString()
         val sig = KioskSecurity.generateTimestampSignature(deviceId, ts, delegate.getSecretKey())
+        val localIp = getLocalIpAddress()
 
         // 1. Try /identify
         try {
@@ -245,7 +268,7 @@ class Esp32ConnectionManager(
         try {
             val (curBat, isChg) = delegate.getRealTimeBatteryInfo()
             val req = Request.Builder()
-                .url("http://$host:${esp32Port}/heartbeat?device_id=$deviceId&ip=&time=${delegate.getSessionTimeRemaining()}&state=${delegate.getAppState()}&battery=$curBat&charging=${if (isChg) 1 else 0}&ts=$ts&sig=$sig")
+                .url("http://$host:${esp32Port}/heartbeat?device_id=$deviceId&ip=$localIp&time=${delegate.getSessionTimeRemaining()}&state=${delegate.getAppState()}&battery=$curBat&charging=${if (isChg) 1 else 0}&ts=$ts&sig=$sig")
                 .build()
             val resp = httpClient.newCall(req).execute()
             if (resp.isSuccessful) {
@@ -408,9 +431,10 @@ class Esp32ConnectionManager(
                         val amount = json.optDouble("amount", 5.0)
                         val txId = json.optString("tx_id", "")
                         val challenge = json.optString("challenge", "")
+                        val ts = json.optString("ts", "")
                         val sig = json.optString("sig", json.optString("signature", ""))
 
-                        delegate.onCoinMessageReceived(seconds, amount, if (txId.isNotBlank()) txId else null, challenge, sig)
+                        delegate.onCoinMessageReceived(seconds, amount, if (txId.isNotBlank()) txId else null, challenge, ts, sig)
                     } else if (event == "TIMEOUT" || event == "CLOSED") {
                         Log.d(TAG, "Received $event event from ESP32 WebSocket")
                         closeSession(sendUnarmToEsp = false)

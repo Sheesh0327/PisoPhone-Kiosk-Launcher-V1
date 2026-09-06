@@ -25,6 +25,8 @@ const char* MASTER_CRYPTO_SECRET  = ""; // SET VIA CAPTIVE PORTAL
 const int   DEFAULT_COIN_PIN           = 4;
 const int   DEFAULT_UNIVERSAL_COIN_PIN = 3;
 const int   DEFAULT_LED_PIN            = 8;
+const bool  DEFAULT_LED_ACTIVE_LOW     = true; // Tenstar Robot & ESP32-C3 Super Mini onboard LED is Active LOW
+const int   DEFAULT_RELAY_PIN          = 5;
 const int   DEFAULT_PORT               = 8080;
 const float DEFAULT_PRICE              = 5.0f;
 const int   DEFAULT_MINUTES            = 30;
@@ -42,7 +44,9 @@ WiFiServer wsServer(81); // Port 81: Real-time RFC6455 WebSocket Server
 // Dynamic Hardware Pin Configuration (Persisted in NVS)
 int coinPin          = DEFAULT_COIN_PIN;           // Linear beam sensor pin (Default GPIO 4, Pull-Up)
 int universalCoinPin = DEFAULT_UNIVERSAL_COIN_PIN; // Universal multi-coin pulse sensor pin (Default GPIO 3, Pull-Up)
-int ledPin           = DEFAULT_LED_PIN;            // Status/Drop indicator LED (Default GPIO 8, Active HIGH)
+int ledPin           = DEFAULT_LED_PIN;            // Status/Drop indicator LED (Default GPIO 8)
+bool ledActiveLow    = DEFAULT_LED_ACTIVE_LOW;     // Active LOW logic for Tenstar Robot & Super Mini onboard blue LED
+int relayPin         = DEFAULT_RELAY_PIN;          // Coin slot enable / power relay pin (Default GPIO 5, Floating High-Z in Standby)
 
 // Configuration Variables (Persisted in NVS)
 String wifiSsid       = DEFAULT_SSID;
@@ -184,13 +188,19 @@ const unsigned long LED_COIN_PULSE_MS   = 60;   // 60ms per pulse step for a qui
 int ledBlinksRemaining = 0;
 bool ledState = false;
 
+// Universal LED Hardware Writer
+// Correctly handles Active LOW (Tenstar Robot / ESP32-C3 Super Mini onboard blue LED) and Active HIGH (External LED)
+void setLedHardware(bool on) {
+    pinMode(ledPin, OUTPUT);
+    digitalWrite(ledPin, (on ^ ledActiveLow) ? HIGH : LOW);
+}
+
 void triggerLedBlink(int blinkCount = 2) {
     // A quick double blink from solid ON state means:
     // OFF (0-60ms) -> ON (60-120ms) -> OFF (120-180ms) -> ON (returns to solid)
-    // This requires 3 toggle steps.
     ledBlinksRemaining = 3;
     ledState = false;
-    digitalWrite(ledPin, LOW);
+    setLedHardware(false);
     lastLedToggleTime = millis();
 }
 
@@ -203,11 +213,13 @@ void processLedBlink() {
             lastLedToggleTime = now;
             ledBlinksRemaining--;
             ledState = !ledState;
-            digitalWrite(ledPin, ledState ? HIGH : LOW);
+            setLedHardware(ledState);
             if (ledBlinksRemaining == 0) {
-                // Ensure we return cleanly to solid ON (or whatever the state machine needs)
-                digitalWrite(ledPin, HIGH);
-                ledState = true;
+                // Ensure we return cleanly to solid ON if connected
+                if (currentLedState == LED_STATE_CONNECTED) {
+                    setLedHardware(true);
+                    ledState = true;
+                }
             }
         }
         return;
@@ -216,24 +228,28 @@ void processLedBlink() {
     // 2. Wi-Fi Status LED Indicator Patterns
     switch (currentLedState) {
         case LED_STATE_CONNECTING:
+            // Fast rapid blink (100ms ON / 100ms OFF) when searching for networks or connecting
             if (now - lastLedToggleTime >= LED_RAPID_TOGGLE_MS) {
                 lastLedToggleTime = now;
                 ledState = !ledState;
-                digitalWrite(ledPin, ledState ? HIGH : LOW);
+                setLedHardware(ledState);
             }
             break;
 
         case LED_STATE_FAILED:
+            // Slow heartbeat blink (500ms ON / 500ms OFF) when disconnected or in retry cooldown
             if (now - lastLedToggleTime >= LED_SLOW_TOGGLE_MS) {
                 lastLedToggleTime = now;
                 ledState = !ledState;
-                digitalWrite(ledPin, ledState ? HIGH : LOW);
+                setLedHardware(ledState);
             }
             break;
 
         case LED_STATE_CONNECTED:
-            digitalWrite(ledPin, HIGH);
-            ledState = true;
+            if (!ledState) {
+                setLedHardware(true);
+                ledState = true;
+            }
             break;
     }
 }
@@ -276,11 +292,14 @@ void processRelayState() {
     static bool lastRelayState = false;
     if (shouldBeOn != lastRelayState) {
         lastRelayState = shouldBeOn;
-        digitalWrite(relayPin, shouldBeOn ? HIGH : LOW);
         if (shouldBeOn) {
-            Serial.printf("[⚡ RELAY] Coin Slot Relay (GPIO %d) turned ON (Coin Slot Powered & Active - %s)\n", relayPin, armedIp.c_str());
+            pinMode(relayPin, OUTPUT);
+            digitalWrite(relayPin, HIGH);
+            Serial.printf("[⚡ RELAY] Coin Slot Relay (GPIO %d) driven ACTIVE HIGH (Coin Slot Powered & Active - %s)\n", relayPin, armedIp.c_str());
         } else {
-            Serial.printf("[⚡ RELAY] Coin Slot Relay (GPIO %d) turned OFF (Standby / Coin Slot Disabled)\n", relayPin);
+            // Completely floating / high-impedance mode (neither positive nor ground)
+            pinMode(relayPin, INPUT);
+            Serial.printf("[⚡ RELAY] Coin Slot Relay (GPIO %d) set to completely FLOATING (High-Z Standby / Coin Slot Disabled)\n", relayPin);
         }
     }
 }
@@ -1284,6 +1303,14 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                             <input type="number" name="led_pin" value="{LED_PIN}">
                         </div>
                         <div class="form-group">
+                            <label>LED Polarity / Active Logic</label>
+                            <select name="led_active_low" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; font-size: 14px;">
+                                <option value="1" {LED_ACTIVE_LOW_SELECTED}>Active LOW (Tenstar Robot / ESP32-C3 Super Mini)</option>
+                                <option value="0" {LED_ACTIVE_HIGH_SELECTED}>Active HIGH (Standard DevKit / External LED)</option>
+                            </select>
+                            <div class="hint">Tenstar Robot and ESP32-C3 Super Mini onboard blue LEDs require Active LOW logic.</div>
+                        </div>
+                        <div class="form-group">
                             <label>Coin Slot Relay GPIO (Auto Power Cutoff)</label>
                             <input type="number" name="relay_pin" value="{RELAY_PIN}">
                             <div class="hint">Relay control pin to power/enable the coin slot when a user presses 'Insert Coin' on their phone (Default GPIO 5). Automatically cuts power / disables coin slot when idle or session expires to prevent lost coins.</div>
@@ -1534,13 +1561,16 @@ void triggerCoinEvent() {
 
     triggerLedBlink();
     
+    unsigned long long ts = (unsigned long long)millis();
     String txId = String(millis()) + "-" + String(random(1000, 9999));
     int addedSeconds = minutesPerCoin * 60;
+    String sigData = txId + ":" + String(addedSeconds) + ":" + String(coinPrice, 2) + ":" + String(ts);
+    String sig = calculateHMAC(sigData, sharedSecret);
     
     // Broadcast instantly over WebSocket if connected
     if (isWsConnected && wsClient.connected()) {
         Serial.printf("[⚡] Pushing Simple Beam Coin (₱%.2f PHP credit, +%d mins) instantly over WebSocket!\n", coinPrice, minutesPerCoin);
-        String json = "{\"event\":\"COIN_DETECTED\",\"seconds\":" + String(addedSeconds) + ",\"minutes\":" + String(minutesPerCoin) + ",\"amount\":" + String(coinPrice, 2) + ",\"slot\":\"beam\",\"tx_id\":\"" + txId + "\"}";
+        String json = "{\"event\":\"COIN_DETECTED\",\"seconds\":" + String(addedSeconds) + ",\"minutes\":" + String(minutesPerCoin) + ",\"amount\":" + String(coinPrice, 2) + ",\"slot\":\"beam\",\"tx_id\":\"" + txId + "\",\"ts\":\"" + String(ts) + "\",\"sig\":\"" + sig + "\"}";
         sendWsText(wsClient, json);
         armedUntil = millis() + ARM_TTL;
     }
@@ -1593,12 +1623,15 @@ void triggerUniversalCoinEvent(int pulses) {
 
     triggerLedBlink(pulses > 1 ? 4 : 2);
 
+    unsigned long long ts = (unsigned long long)millis();
     String txId = String(millis()) + "-" + String(random(1000, 9999));
+    String sigData = txId + ":" + String(addedSeconds) + ":" + String((float)pulses, 2) + ":" + String(ts);
+    String sig = calculateHMAC(sigData, sharedSecret);
 
     // Broadcast instantly over WebSocket if connected
     if (isWsConnected && wsClient.connected()) {
         Serial.printf("[⚡] Pushing ₱%d (+%d mins / %d secs) over WebSocket!\n", pulses, addedMinutes, addedSeconds);
-        String json = "{\"event\":\"COIN_DETECTED\",\"seconds\":" + String(addedSeconds) + ",\"minutes\":" + String(addedMinutes) + ",\"amount\":" + String(pulses) + ",\"slot\":\"universal\",\"tx_id\":\"" + txId + "\"}";
+        String json = "{\"event\":\"COIN_DETECTED\",\"seconds\":" + String(addedSeconds) + ",\"minutes\":" + String(addedMinutes) + ",\"amount\":" + String(pulses) + ",\"slot\":\"universal\",\"tx_id\":\"" + txId + "\",\"ts\":\"" + String(ts) + "\",\"sig\":\"" + sig + "\"}";
         sendWsText(wsClient, json);
         armedUntil = millis() + ARM_TTL;
     }
@@ -1740,6 +1773,8 @@ void handlePortalRoot() {
     html.replace("{COIN_PIN}", String(coinPin));
     html.replace("{U_COIN_PIN}", String(universalCoinPin));
     html.replace("{LED_PIN}", String(ledPin));
+    html.replace("{LED_ACTIVE_LOW_SELECTED}", ledActiveLow ? "selected" : "");
+    html.replace("{LED_ACTIVE_HIGH_SELECTED}", !ledActiveLow ? "selected" : "");
     html.replace("{RELAY_PIN}", String(relayPin));
     html.replace("{IPS}", androidIps);
     html.replace("{DEVICE_IP_INPUTS}", renderDeviceIpInputs());
@@ -1824,6 +1859,10 @@ void handleSave() {
     if (webServer.hasArg("coin_pin"))   { coinPin = webServer.arg("coin_pin").toInt(); prefs.putInt("coin_pin", coinPin); }
     if (webServer.hasArg("u_coin_pin")) { universalCoinPin = webServer.arg("u_coin_pin").toInt(); prefs.putInt("u_coin_pin", universalCoinPin); }
     if (webServer.hasArg("led_pin"))    { ledPin  = webServer.arg("led_pin").toInt();  prefs.putInt("led_pin", ledPin); }
+    if (webServer.hasArg("led_active_low")) {
+        ledActiveLow = (webServer.arg("led_active_low") == "1");
+        prefs.putBool("led_active_low", ledActiveLow);
+    }
     if (webServer.hasArg("relay_pin"))  { relayPin = webServer.arg("relay_pin").toInt(); prefs.putInt("relay_pin", relayPin); }
     if (webServer.hasArg("ips")) {
         String rawIps = webServer.arg("ips");
@@ -1890,9 +1929,13 @@ void handleSave() {
     detachInterrupt(digitalPinToInterrupt(universalCoinPin));
     pinMode(universalCoinPin, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(universalCoinPin), universalCoinIsr, FALLING);
-    pinMode(ledPin, OUTPUT);
-    pinMode(relayPin, OUTPUT);
-    digitalWrite(relayPin, isSlotArmed() ? HIGH : LOW);
+    setLedHardware(currentLedState == LED_STATE_CONNECTED);
+    if (isSlotArmed()) {
+        pinMode(relayPin, OUTPUT);
+        digitalWrite(relayPin, HIGH);
+    } else {
+        pinMode(relayPin, INPUT); // Completely floating
+    }
 
     Serial.println("\n[+] Config updated and saved. Pushing live config to registered Android terminals...");
 
@@ -2643,6 +2686,7 @@ void factoryResetDefaults() {
     coinPin           = DEFAULT_COIN_PIN;
     universalCoinPin  = DEFAULT_UNIVERSAL_COIN_PIN;
     ledPin            = DEFAULT_LED_PIN;
+    ledActiveLow      = DEFAULT_LED_ACTIVE_LOW;
     relayPin          = DEFAULT_RELAY_PIN;
     androidIps        = "";
     targetPort        = DEFAULT_PORT;
@@ -2662,11 +2706,10 @@ void factoryResetDefaults() {
     lastSavedTotalEarnings = 0.0f;
 
     // Visual confirmation on LED: 10 rapid strobe flashes
-    pinMode(ledPin, OUTPUT);
     for (int i = 0; i < 10; i++) {
-        digitalWrite(ledPin, HIGH);
+        setLedHardware(true);
         delay(60);
-        digitalWrite(ledPin, LOW);
+        setLedHardware(false);
         delay(60);
     }
     
@@ -2719,6 +2762,7 @@ void setup() {
     coinPin           = prefs.getInt("coin_pin", coinPin);
     universalCoinPin  = prefs.getInt("u_coin_pin", universalCoinPin);
     ledPin            = prefs.getInt("led_pin", ledPin);
+    ledActiveLow      = prefs.getBool("led_active_low", DEFAULT_LED_ACTIVE_LOW);
     relayPin          = prefs.getInt("relay_pin", relayPin);
     androidIps        = prefs.getString("ips", androidIps);
     // Sanitize and purge any corrupted legacy entries on boot
@@ -2764,11 +2808,10 @@ void setup() {
     pinMode(universalCoinPin, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(universalCoinPin), universalCoinIsr, FALLING);
     pinMode(HARDWARE_RESET_PIN, INPUT_PULLUP);
-    pinMode(ledPin, OUTPUT);
-    digitalWrite(ledPin, LOW);
-    pinMode(relayPin, OUTPUT);
-    digitalWrite(relayPin, LOW);
-    Serial.printf("[+] Hardware Pins bound: Beam Coin Pin = GPIO %d, Universal Multi-Coin Pin = GPIO %d (ISR active), LED Pin = GPIO %d, Relay Pin = GPIO %d, Reset Pin = GPIO %d\n", coinPin, universalCoinPin, ledPin, relayPin, HARDWARE_RESET_PIN);
+    setLedHardware(false);
+    // Initialize relay pin as completely floating (High-Z input, neither positive nor ground)
+    pinMode(relayPin, INPUT);
+    Serial.printf("[+] Hardware Pins bound: Beam Coin Pin = GPIO %d, Universal Multi-Coin Pin = GPIO %d (ISR active), LED Pin = GPIO %d, Relay Pin = GPIO %d (Floating Standby), Reset Pin = GPIO %d\n", coinPin, universalCoinPin, ledPin, relayPin, HARDWARE_RESET_PIN);
 
     WiFi.persistent(false);
     WiFi.disconnect(true, true);
@@ -2786,19 +2829,20 @@ void setup() {
     const unsigned long WIFI_BOOT_TIMEOUT_MS = 10000; // 10 second boot connection attempt window
 
     while (WiFi.status() != WL_CONNECTED && (millis() - wifiConnectStart < WIFI_BOOT_TIMEOUT_MS)) {
-        delay(50);
+        delay(20);
         processLedBlink(); // Rapid flash while connecting
-        if ((millis() - wifiConnectStart) % 500 < 50) {
+        if ((millis() - wifiConnectStart) % 500 < 20) {
             Serial.print(".");
         }
     }
 
     if (WiFi.status() == WL_CONNECTED) {
         currentLedState = LED_STATE_CONNECTED;
-        digitalWrite(ledPin, HIGH);
+        setLedHardware(true);
         Serial.printf("\n[+] HARDWARE Online at %s\n", WiFi.localIP().toString().c_str());
     } else {
         currentLedState = LED_STATE_FAILED;
+        setLedHardware(false);
         Serial.printf("\n[-] Wi-Fi Connection to \"%s\" Failed or Timed Out.\n", wifiSsid.c_str());
         Serial.println("[-] Waiting for Wi-Fi hotspot to become available...");
     }
@@ -2811,6 +2855,7 @@ void setup() {
     macAddressStr = String(macBuf);
 
     if (MDNS.begin("pisokiosk")) {
+        MDNS.addService("pisokiosk", "tcp", 80);
         MDNS.addService("http", "tcp", 80);
         Serial.println("[+] mDNS service active at http://pisokiosk.local");
     } else {
