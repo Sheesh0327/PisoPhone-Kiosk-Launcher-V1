@@ -150,7 +150,18 @@ const SAFE_BOX_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
  * Validates cryptographic build numbers (8-char XXXX-YYYY, 12-char XXXX-YYYY-ZZZZ, 16-char XXXX-XXXX-XXXX-XXXX)
  * using HMAC-SHA256
  */
+// Helper to format/normalize ESP32 MAC addresses (e.g. 24DCC3123456 -> 24:DC:C3:12:34:56)
+function formatMacAddress(input) {
+  if (!input || typeof input !== 'string') return null;
+  const clean = input.replace(/[^a-fA-F0-9]/g, '').toUpperCase();
+  if (clean.length === 12) {
+    return clean.match(/.{1,2}/g).join(':');
+  }
+  return null;
+}
+
 async function verifyBoxBuildNumberHmac(buildNumber, secret) {
+
   if (!buildNumber || !secret) return false;
   const raw = String(buildNumber).trim().toUpperCase();
   const parts = raw.split('-');
@@ -1070,15 +1081,18 @@ export default {
         }
 
         if (!buildNumber || typeof buildNumber !== 'string') {
-          return new Response(JSON.stringify({ error: 'Please enter a valid Coin Slot Box Build Number.' }), {
+          return new Response(JSON.stringify({ error: 'Please enter a valid Coin Slot Box Build Number or ESP32 MAC Address.' }), {
             status: 400,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
         }
 
-        const cleanBuildNumber = buildNumber.trim().toUpperCase();
+        const rawInput = buildNumber.trim().toUpperCase();
+        const formattedMac = formatMacAddress(rawInput);
+        const cleanBuildNumber = formattedMac || rawInput;
+
         if (cleanBuildNumber.length < 5) {
-          return new Response(JSON.stringify({ error: 'Invalid Build Number format. Check the label on your Coin Slot Box.' }), {
+          return new Response(JSON.stringify({ error: 'Invalid format. Enter a valid Coin Slot Box Build Number or 12-character ESP32 MAC Address.' }), {
             status: 400,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
@@ -1090,22 +1104,23 @@ export default {
           if (rawBox) boxRecord = JSON.parse(rawBox);
         }
 
-        // Cryptographic HMAC Check (uses configured secret or master hardware secret)
+        // Cryptographic HMAC Check for legacy build numbers (MAC addresses are valid physical hardware IDs)
         const boxSecret = env.BOX_SIGNING_SECRET || env.ADMIN_SECRET || env.LICENSE_SIGNING_SECRET || 'c8f94d21e8b7a35e91264c0fd75b8a6e43198e2db90c74af1862d5e30ca57b49';
-        if (!boxRecord && boxSecret) {
+        if (!boxRecord && boxSecret && !formattedMac) {
           const isValidHmac = await verifyBoxBuildNumberHmac(cleanBuildNumber, boxSecret);
           if (!isValidHmac && !cleanBuildNumber.startsWith('PISO-BOX-')) {
-            return new Response(JSON.stringify({ error: 'Invalid Coin Slot Box build number or checksum. Please verify the 12-character code on your hardware label.' }), {
+            return new Response(JSON.stringify({ error: 'Invalid Coin Slot Box build number or checksum. Please verify the 12-character code on your hardware label or enter the ESP32 MAC Address.' }), {
               status: 400,
               headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             });
           }
         }
 
-        // If not in KV, initialize valid registered box record (validates hardware codes like XXXX-YYYY or PISO-BOX-XXXX-XXXX)
+        // If not in KV, initialize valid registered box record
         if (!boxRecord) {
           boxRecord = {
             buildNumber: cleanBuildNumber,
+            esp32MacAddress: formattedMac || cleanBuildNumber,
             maxDevices: 12,
             linkedDevices: [],
             pricePhp: 5000,

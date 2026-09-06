@@ -279,7 +279,7 @@
                         <span class="text-sm font-bold text-white">Coin Slot Box Authorization</span>
                         <span id="installBoxBadge" class="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">Verification Required</span>
                     </div>
-                    <p id="installBoxText" class="text-xs text-slate-400 mt-0.5">Please enter the Build Number from your ₱5,000 Coin Slot Box to authorize device installations (Max 12 devices).</p>
+                    <p id="installBoxText" class="text-xs text-slate-400 mt-0.5">Please enter the ESP32 MAC Address or Build Number from your ₱5,000 Coin Slot Box to authorize device installations (Max 12 devices).</p>
                 </div>
             </div>
             <button id="installVerifyBoxBtn" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-4 py-2 rounded-xl text-xs transition shadow-md shadow-emerald-500/20 whitespace-nowrap flex-shrink-0">
@@ -1022,7 +1022,7 @@
             } else {
                 installBoxBadge.textContent = "Verification Required";
                 installBoxBadge.className = "text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30";
-                installBoxText.textContent = "Please enter the Build Number from your ₱5,000 Coin Slot Box to authorize device installations (Max 12 devices).";
+                installBoxText.textContent = "Please enter the ESP32 MAC Address or Build Number from your ₱5,000 Coin Slot Box to authorize device installations (Max 12 devices).";
                 installVerifyBoxBtn.textContent = "Enter Box Build Number";
             }
         }

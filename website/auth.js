@@ -481,13 +481,13 @@ function showBoxVerificationModal(onSuccessCallback) {
                 </div>
 
                 <p class="text-xs text-slate-300 mb-5 leading-relaxed">
-                    To install apps and activate devices, please enter the <strong class="text-white">Build Number</strong> printed on your physical Coin Slot Box. Each box licenses up to <strong class="text-emerald-400 font-bold">12 devices</strong>.
+                    To install apps and activate devices, please enter the <strong class="text-white">ESP32 MAC Address</strong> (e.g. <code class="text-emerald-400 bg-slate-950 px-1 py-0.5 rounded">24:DC:C3:XX:XX:XX</code> seen on your phone hotspot) or the printed <strong class="text-white">Box Build Number</strong>. Each box licenses up to <strong class="text-emerald-400 font-bold">12 devices</strong>.
                 </p>
 
                 <div class="space-y-4">
                     <div>
-                        <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">12-Character Box Build Number</label>
-                        <input type="text" id="modalBoxBuildInput" placeholder="e.g. 2A4B-9N8K-7T5P" maxlength="20" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white font-mono uppercase tracking-wider focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition text-sm">
+                        <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">ESP32 MAC Address or Box Build Number</label>
+                        <input type="text" id="modalBoxBuildInput" placeholder="e.g. 24:DC:C3:12:34:56" maxlength="24" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white font-mono uppercase tracking-wider focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition text-sm">
                     </div>
 
                     <div id="modalBoxError" class="hidden text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 p-3 rounded-lg"></div>

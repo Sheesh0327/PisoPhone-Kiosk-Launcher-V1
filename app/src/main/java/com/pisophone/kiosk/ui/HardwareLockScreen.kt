@@ -687,27 +687,14 @@ fun HardwareLockScreen(
 
     // License Activation Celebration Dialog
     if (showCelebrationDialog) {
+        val isTutorialDone = remember { HardwareLockManager.isTutorialCompleted(context) }
         ActivationCelebrationDialog(
             licenseInfo = activatedLicenseInfo ?: licenseInfo,
+            isTutorialCompleted = isTutorialDone,
             onDismiss = {
                 showCelebrationDialog = false
                 HardwareLockManager.activationCelebrationEvent.value = false
                 onRebindSuccess()
-
-                // Trigger application restart via broadcast to ensure kiosk services reload cleanly
-                try {
-                    val restartIntent = Intent(KioskAdminActionReceiver.ACTION_RESTART).apply {
-                        setPackage(context.packageName)
-                    }
-                    context.sendBroadcast(restartIntent)
-
-                    val mainIntent = Intent(context, MainActivity::class.java).apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                    }
-                    context.startActivity(mainIntent)
-                } catch (e: Exception) {
-                    // Fallback to onRebindSuccess
-                }
             }
         )
     }

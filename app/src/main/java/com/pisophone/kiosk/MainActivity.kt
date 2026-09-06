@@ -127,15 +127,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    if (!isTutorialCompleted) {
-                        TutorialScreen(
-                            onCompleteTutorial = {
-                                HardwareLockManager.setTutorialCompleted(this@MainActivity, true)
-                                isTutorialCompleted = true
-                                checkDeviceOwner()
-                            }
-                        )
-                    } else if (!isAppAllowed) {
+                    if (!isAppAllowed) {
                         HardwareLockScreen(
                             onRebindSuccess = {
                                 isAppAllowed = HardwareLockManager.isAppAllowedToRun(this@MainActivity)
@@ -143,6 +135,14 @@ class MainActivity : ComponentActivity() {
                                     checkDeviceOwner()
                                 }
                             },
+                        )
+                    } else if (!isTutorialCompleted) {
+                        TutorialScreen(
+                            onCompleteTutorial = {
+                                HardwareLockManager.setTutorialCompleted(this@MainActivity, true)
+                                isTutorialCompleted = true
+                                checkDeviceOwner()
+                            }
                         )
                     } else if (!isDeviceOwner) {
                         DeviceOwnerScreen(
@@ -176,15 +176,10 @@ class MainActivity : ComponentActivity() {
                     if (showCelebration) {
                         ActivationCelebrationDialog(
                             licenseInfo = licenseInfo,
+                            isTutorialCompleted = isTutorialCompleted,
                             onDismiss = {
                                 showCelebration = false
                                 HardwareLockManager.activationCelebrationEvent.value = false
-                                try {
-                                    val restartIntent = Intent(KioskAdminActionReceiver.ACTION_RESTART).apply {
-                                        setPackage(packageName)
-                                    }
-                                    sendBroadcast(restartIntent)
-                                } catch (e: Exception) {}
                             }
                         )
                     }

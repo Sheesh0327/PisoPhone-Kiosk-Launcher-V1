@@ -331,7 +331,7 @@ class KioskService : Service() {
         
         setupOverlay()
         startServer()
-        esp32Manager.startNsdDiscovery()
+        esp32Manager.triggerCandidateDiscovery(stateManager.deviceIp.value)
         esp32Manager.startHeartbeatLoop { stateManager.deviceIp.value }
         
         supervisor = KioskSessionSupervisor(

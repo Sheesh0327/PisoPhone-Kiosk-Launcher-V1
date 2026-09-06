@@ -1,9 +1,6 @@
 package com.pisophone.kiosk.network
 
 import android.content.Context
-import android.net.nsd.NsdManager
-import android.net.nsd.NsdServiceInfo
-import android.net.wifi.WifiManager
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -12,6 +9,8 @@ import com.pisophone.kiosk.security.KioskSecurity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -21,6 +20,9 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 
 interface Esp32ConnectionDelegate {
@@ -44,7 +46,6 @@ class Esp32ConnectionManager(
 ) {
     companion object {
         private const val TAG = "Esp32ConnectionManager"
-        private const val NSD_SERVICE_TYPE = "_pisokiosk._tcp"
         private const val ESP32_WEB_PORT = 80
         private const val ESP32_WS_PORT = 81
         private const val HEARTBEAT_TIMEOUT_MS = 12000L
@@ -59,11 +60,6 @@ class Esp32ConnectionManager(
         .connectTimeout(1500, TimeUnit.MILLISECONDS)
         .readTimeout(1500, TimeUnit.MILLISECONDS)
         .build()
-
-    private var nsdManager: NsdManager? = null
-    private var nsdDiscoveryListener: NsdManager.DiscoveryListener? = null
-    private var isNsdDiscovering = false
-    private var multicastLock: WifiManager.MulticastLock? = null
 
     private var esp32Ip: String? = null
     private var lastHeartbeatTime: Long = 0
@@ -84,111 +80,98 @@ class Esp32ConnectionManager(
     fun getEsp32HostAndPort(rawIp: String?): Pair<String, Int> {
         if (rawIp.isNullOrBlank()) return Pair("", ESP32_WEB_PORT)
         val parts = rawIp.split(":")
-        var host = parts[0]
+        val host = parts[0]
         val port = if (parts.size > 1) parts[1].toIntOrNull() ?: ESP32_WEB_PORT else ESP32_WEB_PORT
-        if (host == "127.0.0.1" || host == "localhost") host = "10.0.2.2"
         return Pair(host, port)
     }
 
     // ========================================================================
-    // mDNS NSD DISCOVERY
+    // IP PROBING & UDP BROADCAST HEARTBEATS (STRICT ESP32 MAC MATCHING)
     // ========================================================================
 
-    fun startNsdDiscovery() {
-        if (nsdManager == null) {
-            nsdManager = context.getSystemService(Context.NSD_SERVICE) as? NsdManager
-        }
-        stopNsdDiscovery()
-
-        if (multicastLock == null) {
-            val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-            multicastLock = wifi?.createMulticastLock("KioskMDNSLock")
-            multicastLock?.setReferenceCounted(false)
-        }
-        if (multicastLock?.isHeld == false) {
-            multicastLock?.acquire()
-        }
-
-        nsdDiscoveryListener = object : NsdManager.DiscoveryListener {
-            override fun onDiscoveryStarted(regType: String) {
-                Log.d(TAG, "mDNS Service discovery started for $regType")
-                isNsdDiscovering = true
-            }
-
-            override fun onServiceFound(service: NsdServiceInfo) {
-                Log.d(TAG, "mDNS Service discovered: ${service.serviceName} (${service.serviceType})")
-                resolveNsdService(service)
-            }
-
-            override fun onServiceLost(service: NsdServiceInfo) {
-                Log.d(TAG, "mDNS Service lost: ${service.serviceName}")
-            }
-
-            override fun onDiscoveryStopped(serviceType: String) {
-                Log.d(TAG, "mDNS Discovery stopped: $serviceType")
-                isNsdDiscovering = false
-            }
-
-            override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
-                Log.e(TAG, "mDNS Discovery start failed: $errorCode")
-                stopNsdDiscovery()
-            }
-
-            override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {
-                Log.e(TAG, "mDNS Discovery stop failed: $errorCode")
-            }
-        }
-
-        try {
-            nsdManager?.discoverServices(NSD_SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, nsdDiscoveryListener)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to initiate NSD discovery: ${e.message}")
-        }
-    }
-
-    private fun resolveNsdService(service: NsdServiceInfo) {
-        try {
-            nsdManager?.resolveService(service, object : NsdManager.ResolveListener {
-                override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
-                    Log.e(TAG, "mDNS Service resolve failed: $errorCode")
-                }
-
-                override fun onServiceResolved(serviceInfo: NsdServiceInfo) {
-                    val resolvedHost = serviceInfo.host?.hostAddress
-                    Log.d(TAG, "mDNS Service resolved: ${serviceInfo.serviceName} at $resolvedHost:${serviceInfo.port}")
-                    if (!resolvedHost.isNullOrBlank() && resolvedHost != "127.0.0.1") {
-                        handleEsp32Discovered(resolvedHost)
-                    }
-                }
-            })
-        } catch (e: Exception) {
-            Log.e(TAG, "ResolveService error: ${e.message}")
-        }
-    }
-
-    fun stopNsdDiscovery() {
-        if (isNsdDiscovering && nsdDiscoveryListener != null) {
-            try {
-                nsdManager?.stopServiceDiscovery(nsdDiscoveryListener)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error stopping NSD discovery: ${e.message}")
-            }
-            nsdDiscoveryListener = null
-            isNsdDiscovering = false
-        }
-        if (multicastLock?.isHeld == true) {
-            multicastLock?.release()
-        }
-    }
-
-    // ========================================================================
-    // IP PROBING
-    // ========================================================================
+    private var udpListenerJob: Job? = null
 
     fun triggerCandidateDiscovery(localIp: String) {
-        startNsdDiscovery()
+        startUdpListener()
         scope.launch(Dispatchers.IO) {
+            sendUdpBroadcastHeartbeat(localIp)
             probeCandidateIps(localIp)
+        }
+    }
+
+    fun startUdpListener() {
+        if (udpListenerJob?.isActive == true) return
+        udpListenerJob = scope.launch(Dispatchers.IO) {
+            var socket: DatagramSocket? = null
+            try {
+                socket = DatagramSocket(8888)
+                socket.broadcast = true
+                val buffer = ByteArray(2048)
+                Log.d(TAG, "Started UDP Broadcast Listener on port 8888")
+                while (isActive) {
+                    val packet = DatagramPacket(buffer, buffer.size)
+                    socket.receive(packet)
+                    val senderIp = packet.address?.hostAddress
+                    val message = String(packet.data, 0, packet.length)
+                    if (!senderIp.isNullOrBlank() && senderIp != "127.0.0.1" && senderIp != getLocalIpAddress()) {
+                        if (isEsp32MacMatching(senderIp, message)) {
+                            handleEsp32Discovered(senderIp)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "UDP listener closed: ${e.message}")
+            } finally {
+                socket?.close()
+            }
+        }
+    }
+
+    fun sendUdpBroadcastHeartbeat(localIp: String) {
+        try {
+            val deviceId = delegate.getDeviceId()
+            val ts = System.currentTimeMillis().toString()
+            val sig = KioskSecurity.generateTimestampSignature(deviceId, ts, delegate.getSecretKey())
+            val (curBat, isChg) = delegate.getRealTimeBatteryInfo()
+
+            val json = JSONObject().apply {
+                put("type", "HEARTBEAT")
+                put("device_id", deviceId)
+                put("ip", localIp)
+                put("time", delegate.getSessionTimeRemaining())
+                put("state", delegate.getAppState())
+                put("battery", curBat)
+                put("charging", if (isChg) 1 else 0)
+                put("ts", ts)
+                put("sig", sig)
+            }
+
+            val data = json.toString().toByteArray(Charsets.UTF_8)
+            val broadcastTargets = mutableListOf<String>()
+            broadcastTargets.add("255.255.255.255")
+
+            if (localIp.isNotBlank() && localIp.contains(".")) {
+                val subnet = localIp.substringBeforeLast(".")
+                broadcastTargets.add("$subnet.255")
+            }
+
+            val ports = listOf(8080, 8888, 81)
+            val socket = DatagramSocket()
+            socket.broadcast = true
+
+            for (target in broadcastTargets) {
+                try {
+                    val address = InetAddress.getByName(target)
+                    for (port in ports) {
+                        val packet = DatagramPacket(data, data.size, address, port)
+                        socket.send(packet)
+                    }
+                } catch (_: Exception) {}
+            }
+            socket.close()
+            Log.d(TAG, "Sent UDP Broadcast Heartbeat to targets: $broadcastTargets")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error sending UDP broadcast heartbeat: ${e.message}")
         }
     }
 
@@ -199,20 +182,58 @@ class Esp32ConnectionManager(
 
         esp32Ip?.let { if (it.isNotBlank() && !candidates.contains(it)) candidates.add(it) }
 
-        if (localIp.isNotBlank() && localIp != "127.0.0.1" && localIp.contains(".")) {
-            val subnet = localIp.substringBeforeLast(".")
+        // Hostname resolution for mDNS hostnames
+        val hostnames = listOf("pisokiosk.local", "esp32.local", "piso.local", "master.local")
+        for (hn in hostnames) {
+            try {
+                val addr = InetAddress.getByName(hn)
+                val resolvedIp = addr.hostAddress
+                if (!resolvedIp.isNullOrBlank() && !candidates.contains(resolvedIp)) {
+                    candidates.add(resolvedIp)
+                }
+            } catch (_: Exception) {}
+        }
+
+        val activeIp = if (localIp.isNotBlank() && localIp != "127.0.0.1") localIp else getLocalIpAddress()
+        var subnet = ""
+        if (activeIp.isNotBlank() && activeIp.contains(".")) {
+            subnet = activeIp.substringBeforeLast(".")
             val gw = "$subnet.1"
             if (!candidates.contains(gw)) candidates.add(gw)
         }
 
         if (!candidates.contains("192.168.4.1")) candidates.add("192.168.4.1")
-        if (!candidates.contains("10.0.2.2")) candidates.add("10.0.2.2")
 
+        // 1. Probe explicit candidate list first
         for (cand in candidates) {
             val success = probeEsp32Connection(cand)
             if (success) {
                 Log.i(TAG, "Candidate probe succeeded for ESP32 at $cand")
-                break
+                return
+            }
+        }
+
+        // 2. Fast parallel sweep across active subnet if still not found
+        if (subnet.isNotBlank() && subnet != "127.0.0" && esp32Ip == null) {
+            Log.d(TAG, "Starting fast parallel subnet sweep on $subnet.1 - $subnet.254")
+            probeSubnetInParallel(subnet, activeIp)
+        }
+    }
+
+    private fun probeSubnetInParallel(subnet: String, myIp: String) {
+        scope.launch(Dispatchers.IO) {
+            val jobs = (1..254).map { i ->
+                val targetIp = "$subnet.$i"
+                if (targetIp == myIp) return@map null
+                async {
+                    if (esp32Ip != null) return@async false
+                    probeEsp32Connection(targetIp)
+                }
+            }.filterNotNull()
+
+            val results = jobs.awaitAll()
+            if (results.any { it }) {
+                Log.i(TAG, "Subnet parallel sweep successfully found ESP32 on $subnet.x")
             }
         }
     }
@@ -228,7 +249,7 @@ class Esp32ConnectionManager(
                     if (!address.isLoopbackAddress && address is java.net.Inet4Address) {
                         val ip = address.hostAddress
                         if (ip != null) {
-                            if (networkInterface.name.contains("wlan") || networkInterface.name.contains("eth")) {
+                            if (networkInterface.name.contains("wlan") || networkInterface.name.contains("eth") || networkInterface.name.contains("ap") || networkInterface.name.contains("rndis")) {
                                 return ip
                             }
                         }
@@ -240,11 +261,14 @@ class Esp32ConnectionManager(
     }
 
     fun probeEsp32Connection(ip: String): Boolean {
+        if (ip.isBlank()) return false
         val (host, esp32Port) = getEsp32HostAndPort(ip)
         val deviceId = delegate.getDeviceId()
         val ts = System.currentTimeMillis().toString()
         val sig = KioskSecurity.generateTimestampSignature(deviceId, ts, delegate.getSecretKey())
         val localIp = getLocalIpAddress()
+
+        val probeKeywords = listOf("price", "minutes", "piso", "esp32", "status", "mac", "device", "chip", "ok", "version", "state", "time", "{")
 
         // 1. Try /identify
         try {
@@ -253,18 +277,42 @@ class Esp32ConnectionManager(
                 .build()
             val resp = httpClient.newCall(req).execute()
             if (resp.isSuccessful) {
-                val body = resp.body?.string() ?: ""
+                val rawBody = resp.body?.string() ?: ""
                 resp.close()
-                if (body.contains("price") || body.contains("minutes") || body.contains("piso") || body.contains("esp32")) {
-                    handleEsp32Discovered(host)
-                    return true
+                val bodyLower = rawBody.lowercase()
+                if (probeKeywords.any { bodyLower.contains(it) }) {
+                    if (isEsp32MacMatching(host, rawBody)) {
+                        handleEsp32Discovered(host)
+                        return true
+                    }
                 }
             } else {
                 resp.close()
             }
         } catch (_: Exception) {}
 
-        // 2. Try /heartbeat
+        // 2. Try /status or /
+        try {
+            val req = Request.Builder()
+                .url("http://$host:${esp32Port}/status")
+                .build()
+            val resp = httpClient.newCall(req).execute()
+            if (resp.isSuccessful) {
+                val rawBody = resp.body?.string() ?: ""
+                resp.close()
+                val bodyLower = rawBody.lowercase()
+                if (probeKeywords.any { bodyLower.contains(it) }) {
+                    if (isEsp32MacMatching(host, rawBody)) {
+                        handleEsp32Discovered(host)
+                        return true
+                    }
+                }
+            } else {
+                resp.close()
+            }
+        } catch (_: Exception) {}
+
+        // 3. Try /heartbeat
         try {
             val (curBat, isChg) = delegate.getRealTimeBatteryInfo()
             val req = Request.Builder()
@@ -272,9 +320,12 @@ class Esp32ConnectionManager(
                 .build()
             val resp = httpClient.newCall(req).execute()
             if (resp.isSuccessful) {
+                val rawBody = resp.body?.string() ?: ""
                 resp.close()
-                handleEsp32Discovered(host)
-                return true
+                if (isEsp32MacMatching(host, rawBody)) {
+                    handleEsp32Discovered(host)
+                    return true
+                }
             }
             resp.close()
         } catch (_: Exception) {}
@@ -282,10 +333,61 @@ class Esp32ConnectionManager(
         return false
     }
 
+    fun getMacFromArpTable(ip: String): String? {
+        try {
+            val file = java.io.File("/proc/net/arp")
+            if (!file.exists()) return null
+            file.bufferedReader().use { reader ->
+                var line: String?
+                while (reader.readLine().also { line = it } != null) {
+                    val parts = line!!.split("\\s+".toRegex())
+                    if (parts.size >= 4 && parts[0] == ip) {
+                        val mac = parts[3]
+                        if (mac != "00:00:00:00:00:00" && mac.contains(":")) {
+                            return mac.uppercase()
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+        return null
+    }
+
+    private fun isEsp32MacMatching(ip: String, rawResponseBody: String?): Boolean {
+        val configuredMac = KioskSecurity.getConfiguredEsp32Mac(context)
+        if (configuredMac.isBlank()) return true // No hardware MAC lock configured
+
+        var deviceMac = ""
+        if (!rawResponseBody.isNullOrBlank()) {
+            try {
+                val json = JSONObject(rawResponseBody)
+                deviceMac = json.optString("mac", "")
+                    .ifBlank { json.optString("esp32_mac", "") }
+                    .ifBlank { json.optString("hardware_mac", "") }
+            } catch (_: Exception) {}
+        }
+
+        if (deviceMac.isBlank()) {
+            deviceMac = getMacFromArpTable(ip) ?: ""
+        }
+
+        if (deviceMac.isNotBlank()) {
+            val cleanDeviceMac = KioskSecurity.formatMacAddress(deviceMac)
+            val cleanConfiguredMac = KioskSecurity.formatMacAddress(configuredMac)
+            if (cleanDeviceMac.equals(cleanConfiguredMac, ignoreCase = true)) {
+                return true
+            } else {
+                Log.w(TAG, "Rejected ESP32 at $ip: MAC '$cleanDeviceMac' does not match configured box MAC '$cleanConfiguredMac'")
+                return false
+            }
+        }
+
+        return true
+    }
+
     private fun handleEsp32Discovered(ip: String) {
         val (ipHost, esp32Port) = getEsp32HostAndPort(ip)
         esp32Ip = ip
-        stopNsdDiscovery()
         lastHeartbeatTime = System.currentTimeMillis()
         delegate.onEsp32Discovered(ip)
         delegate.onOnlineStatusChanged(true, null)
@@ -361,16 +463,10 @@ class Esp32ConnectionManager(
                         } catch (_: Exception) {
                             if (System.currentTimeMillis() - lastHeartbeatTime > HEARTBEAT_TIMEOUT_MS) {
                                 delegate.onOnlineStatusChanged(false, null)
-                                if (!isNsdDiscovering) {
-                                    startNsdDiscovery()
-                                }
                             }
                         }
                     } else {
                         probeCandidateIps(currentIp)
-                        if (!isNsdDiscovering) {
-                            startNsdDiscovery()
-                        }
                     }
                 } catch (_: Exception) {}
                 delay(4000)
@@ -396,9 +492,11 @@ class Esp32ConnectionManager(
 
     fun armSlot(armingTimeoutSeconds: Int) {
         closeSession(sendUnarmToEsp = false)
-        var ip = esp32Ip ?: "10.0.2.2"
-        if (ip == "127.0.0.1" || ip == "localhost") {
-            ip = "10.0.2.2"
+        val ip = esp32Ip ?: KioskSecurity.getConfiguredEsp32Ip(context).takeIf { it.isNotBlank() }
+        if (ip.isNullOrBlank()) {
+            Log.e(TAG, "Cannot arm slot: No active or configured ESP32 IP available")
+            delegate.onOnlineStatusChanged(false, null)
+            return
         }
 
         val deviceId = delegate.getDeviceId()
@@ -497,6 +595,5 @@ class Esp32ConnectionManager(
     fun shutdown() {
         heartbeatJob?.cancel()
         closeSession(sendUnarmToEsp = false)
-        stopNsdDiscovery()
     }
 }

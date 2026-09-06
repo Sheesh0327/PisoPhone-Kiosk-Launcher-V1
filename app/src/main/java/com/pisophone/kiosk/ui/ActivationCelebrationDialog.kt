@@ -34,6 +34,7 @@ import java.util.*
 @Composable
 fun ActivationCelebrationDialog(
     licenseInfo: HardwareLockManager.LicenseInfo,
+    isTutorialCompleted: Boolean = true,
     onDismiss: () -> Unit
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
@@ -304,9 +305,9 @@ fun ActivationCelebrationDialog(
                         )
                     ) {
                         Text(
-                            text = "Click button to continue and restart application",
+                            text = if (isTutorialCompleted) "Get Started" else "Continue to Tutorial",
                             fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
+                            fontSize = 15.sp,
                             textAlign = TextAlign.Center
                         )
                     }

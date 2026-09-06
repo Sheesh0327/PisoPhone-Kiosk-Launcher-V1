@@ -35,6 +35,7 @@ object KioskSecurity {
     private const val KEY_LOW_BATTERY_THRESHOLD = "low_battery_threshold"
     private const val KEY_HIGH_BATTERY_THRESHOLD = "high_battery_threshold"
     private const val KEY_CONFIGURED_ESP32_IP = "configured_esp32_ip"
+    private const val KEY_CONFIGURED_ESP32_MAC = "configured_esp32_mac"
     private const val KEY_PROVISIONING_ADB_ALLOWED = "provisioning_adb_allowed"
     
     private const val DEFAULT_PIN = "1234"
@@ -139,6 +140,24 @@ object KioskSecurity {
 
     fun setConfiguredEsp32Ip(context: Context, ip: String) {
         getPrefs(context).edit().putString(KEY_CONFIGURED_ESP32_IP, ip.trim()).apply()
+    }
+
+    fun getConfiguredEsp32Mac(context: Context): String {
+        return getPrefs(context).getString(KEY_CONFIGURED_ESP32_MAC, "") ?: ""
+    }
+
+    fun setConfiguredEsp32Mac(context: Context, mac: String) {
+        val clean = formatMacAddress(mac)
+        getPrefs(context).edit().putString(KEY_CONFIGURED_ESP32_MAC, clean).apply()
+    }
+
+    fun formatMacAddress(input: String?): String {
+        if (input.isNullOrBlank()) return ""
+        val clean = input.replace("[^a-fA-F0-9]".toRegex(), "").uppercase()
+        if (clean.length == 12) {
+            return clean.chunked(2).joinToString(":")
+        }
+        return input.trim().uppercase()
     }
 
     fun isAdbAllowed(context: Context): Boolean {

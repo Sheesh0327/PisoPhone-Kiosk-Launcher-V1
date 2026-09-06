@@ -1091,76 +1091,524 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg: #f8fafc;
-            --sub-bg: #ffffff;
-            --input-bg: #f8fafc;
-            --text-main: #0f172a;
-            --text-muted: #64748b;
-            --primary: #4f46e5;
-            --primary-hover: #4338ca;
-            --border: #e2e8f0;
-            --danger: #ef4444;
-            --danger-hover: #dc2626;
-            --success: #10b981;
-            --warning: #f59e0b;
-            --info: #0ea5e9;
-            --card-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
+            --bg: #F1F5F9;
+            --card-bg: #FFFFFF;
+            --input-bg: #F8FAFC;
+            --text-main: #0F172A;
+            --text-muted: #64748B;
+            --primary: #059669;
+            --primary-hover: #047857;
+            --primary-glow: rgba(5, 150, 105, 0.15);
+            --border: #E2E8F0;
+            --border-focus: #10B981;
+            --danger: #EF4444;
+            --danger-hover: #DC2626;
+            --warning: #F59E0B;
+            --warning-hover: #D97706;
+            --success: #10B981;
+            --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+            --radius-lg: 16px;
+            --radius-md: 12px;
+            --radius-sm: 8px;
+            
+            --status-good: #10B981;
+            --status-good-bg: rgba(16, 185, 129, 0.1);
+            --status-good-border: rgba(16, 185, 129, 0.2);
+            --status-warning: #F59E0B;
+            --status-warning-bg: rgba(245, 158, 11, 0.1);
+            --status-warning-border: rgba(245, 158, 11, 0.2);
+            --status-critical: #EF4444;
+            --status-critical-bg: rgba(239, 68, 68, 0.1);
+            --status-critical-border: rgba(239, 68, 68, 0.2);
         }
         [data-theme="dark"] {
-            --bg: #0b1120;
-            --sub-bg: #1e293b;
-            --input-bg: #0f172a;
-            --text-main: #f8fafc;
-            --text-muted: #94a3b8;
-            --primary: #6366f1;
-            --primary-hover: #4f46e5;
-            --border: #334155;
-            --card-shadow: 0 4px 6px -1px rgba(0,0,0,0.3);
+            --bg: #060B14;
+            --card-bg: #0F172A;
+            --input-bg: #0B0F19;
+            --text-main: #F8FAFC;
+            --text-muted: #94A3B8;
+            --primary: #10B981;
+            --primary-hover: #34D399;
+            --primary-glow: rgba(16, 185, 129, 0.2);
+            --border: rgba(255, 255, 255, 0.08);
+            --border-focus: #10B981;
+            --danger: #EF4444;
+            --danger-hover: #F87171;
+            --warning: #F59E0B;
+            --warning-hover: #FBBF24;
+            --success: #10B981;
+            --card-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+            
+            --status-good: #34D399;
+            --status-good-bg: rgba(52, 211, 153, 0.1);
+            --status-good-border: rgba(52, 211, 153, 0.2);
+            --status-warning: #FBBF24;
+            --status-warning-bg: rgba(251, 191, 36, 0.1);
+            --status-warning-border: rgba(251, 191, 36, 0.2);
+            --status-critical: #F87171;
+            --status-critical-bg: rgba(248, 113, 113, 0.1);
+            --status-critical-border: rgba(248, 113, 113, 0.2);
         }
-        * { box-sizing: border-box; }
-        body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text-main); margin: 0; padding: 20px; line-height: 1.5; transition: background-color 0.2s ease, color 0.2s ease; }
-        .app-container { max-width: 900px; margin: 0 auto; }
-        .header-bar { display: flex; justify-content: space-between; align-items: center; background: var(--sub-bg); padding: 20px 24px; border-radius: 16px; box-shadow: var(--card-shadow); margin-bottom: 24px; border: 1px solid var(--border); }
-        h2 { margin: 0; font-size: 22px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
-        .status-badge { background: #dbeafe; color: #1e40af; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; }
-        [data-theme="dark"] .status-badge { background: #1e3a8a; color: #93c5fd; }
-        .btn { background: var(--primary); color: white; border: none; padding: 10px 18px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.2s; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; box-sizing: border-box; }
-        .btn:hover { background: var(--primary-hover); transform: translateY(-1px); }
-        .btn-danger { background: var(--danger); }
-        .btn-danger:hover { background: var(--danger-hover); }
-        .btn-warning { background: var(--warning); color: #fff; }
-        .btn-warning:hover { background: #d97706; }
-        .btn-outline { background: var(--sub-bg); border: 1px solid var(--border); color: var(--text-main); }
-        .btn-outline:hover { background: var(--border); }
-        
-        /* Tabs */
-        .tabs { display: flex; gap: 8px; margin-bottom: 24px; border-bottom: 2px solid var(--border); padding-bottom: 12px; overflow-x: auto; }
-        .tab { padding: 10px 20px; border-radius: 8px; font-weight: 600; font-size: 15px; color: var(--text-muted); cursor: pointer; transition: 0.2s; white-space: nowrap; }
-        .tab:hover:not(.active) { background: var(--border); color: var(--text-main); }
-        .tab.active { background: var(--primary); color: white; }
-        .tab-content { display: none; animation: fadeIn 0.3s ease; }
-        .tab-content.active { display: block; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-        
-        /* Grid & Cards */
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
-        .grid-full { grid-column: 1 / -1; }
-        .card { background: var(--sub-bg); border: 1px solid var(--border); border-radius: 16px; padding: 24px; box-shadow: var(--card-shadow); }
-        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
-        .card-title { margin: 0; font-size: 16px; font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 8px; }
-        
-        /* Forms */
-        .form-group { margin-bottom: 16px; }
-        label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
-        input[type=text], input[type=password], input[type=number], select { width: 100%; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; font-size: 15px; background: var(--input-bg); transition: all 0.2s; color: var(--text-main); box-sizing: border-box; }
-        input:focus, select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2); background: var(--sub-bg); }
-        .hint { font-size: 12px; color: var(--text-muted); margin-top: 4px; line-height: 1.4; }
-        
-        /* Stats */
-        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-        .stat-box { background: var(--input-bg); padding: 16px; border-radius: 12px; text-align: center; border: 1px solid var(--border); }
-        .stat-val { font-size: 28px; font-weight: 800; color: var(--success); margin: 4px 0; font-variant-numeric: tabular-nums; }
-        .stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg);
+            color: var(--text-main);
+            padding: 24px 16px;
+            line-height: 1.6;
+            transition: background-color 0.3s ease, color 0.3s ease;
+            -webkit-font-smoothing: antialiased;
+        }
+        .app-container {
+            max-width: 960px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+        .header-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--card-bg);
+            padding: 16px 24px;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--card-shadow);
+            border: 1px solid var(--border);
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+        .logo-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .logo-icon {
+            color: var(--primary);
+            filter: drop-shadow(0 0 4px var(--primary-glow));
+            animation: pulse-glow 2s infinite alternate;
+        }
+        @keyframes pulse-glow {
+            0% { filter: drop-shadow(0 0 2px var(--primary-glow)); }
+            100% { filter: drop-shadow(0 0 8px var(--primary)); }
+        }
+        .logo-text {
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+        }
+        .logo-piso {
+            color: var(--text-main);
+        }
+        .logo-phone {
+            color: var(--primary);
+        }
+        .badge-pill {
+            background: var(--primary-glow);
+            color: var(--primary);
+            border: 1px solid var(--border-focus);
+            padding: 3px 10px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+        .btn {
+            background: var(--primary);
+            color: #ffffff;
+            border: none;
+            padding: 12px 20px;
+            border-radius: var(--radius-md);
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 14px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            text-decoration: none;
+            min-height: 48px;
+            box-shadow: 0 4px 12px var(--primary-glow);
+        }
+        .btn:hover {
+            background: var(--primary-hover);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px var(--primary-glow);
+        }
+        .btn:active {
+            transform: translateY(1px);
+        }
+        .btn-sm {
+            padding: 8px 16px;
+            min-height: 38px;
+            font-size: 13px;
+            border-radius: var(--radius-sm);
+        }
+        .btn-danger {
+            background: var(--danger);
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.15);
+        }
+        .btn-danger:hover {
+            background: var(--danger-hover);
+            box-shadow: 0 6px 16px rgba(239, 68, 68, 0.25);
+        }
+        .btn-warning {
+            background: var(--warning);
+            color: #0F172A;
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.15);
+        }
+        .btn-warning:hover {
+            background: var(--warning-hover);
+            box-shadow: 0 6px 16px rgba(245, 158, 11, 0.25);
+        }
+        .btn-outline {
+            background: transparent;
+            border: 1.5px solid var(--border);
+            color: var(--text-main);
+            box-shadow: none;
+        }
+        .btn-outline:hover {
+            background: var(--input-bg);
+            border-color: var(--text-muted);
+        }
+        .tabs {
+            display: flex;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            padding: 6px;
+            border-radius: var(--radius-md);
+            gap: 4px;
+            overflow-x: auto;
+            box-shadow: var(--card-shadow);
+        }
+        .tab {
+            flex: 1;
+            padding: 10px 16px;
+            border-radius: var(--radius-sm);
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .tab:hover:not(.active) {
+            background: var(--input-bg);
+            color: var(--text-main);
+        }
+        .tab.active {
+            background: var(--primary);
+            color: #ffffff;
+            box-shadow: 0 4px 12px var(--primary-glow);
+        }
+        .tab-content {
+            display: none;
+            animation: scaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .tab-content.active {
+            display: block;
+        }
+        @keyframes scaleIn {
+            from { opacity: 0; transform: scale(0.98) translateY(4px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 20px;
+        }
+        .grid-full {
+            grid-column: 1 / -1;
+        }
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            box-shadow: var(--card-shadow);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 12px;
+            margin-bottom: 4px;
+        }
+        .card-title {
+            margin: 0;
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        label {
+            font-weight: 700;
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.75px;
+        }
+        input[type=text], input[type=password], input[type=number], select {
+            width: 100%;
+            height: 48px;
+            padding: 0 16px;
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-md);
+            font-size: 15px;
+            background: var(--input-bg);
+            transition: all 0.2s ease;
+            color: var(--text-main);
+            font-family: inherit;
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--border-focus);
+            background: var(--card-bg);
+            box-shadow: 0 0 0 3px var(--primary-glow);
+        }
+        .hint {
+            font-size: 12px;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+        .danger-hint {
+            color: var(--danger);
+            font-weight: 500;
+        }
+        .status-badge {
+            background: var(--primary-glow);
+            color: var(--primary);
+            border: 1px solid var(--border-focus);
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+        .status-badge.accent {
+            background: rgba(126, 34, 206, 0.1);
+            color: #A78BFA;
+            border: 1px solid rgba(126, 34, 206, 0.3);
+        }
+        [data-theme="light"] .status-badge.accent {
+            background: #F3E8FF;
+            color: #7E22CE;
+            border: 1px solid #E9D5FF;
+        }
+        .device-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 16px;
+        }
+        .device-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            box-shadow: var(--card-shadow);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .device-card:hover {
+            transform: translateY(-2px);
+            border-color: var(--primary);
+            box-shadow: 0 8px 24px -4px rgba(16, 185, 129, 0.12);
+        }
+        .device-card.offline {
+            opacity: 0.65;
+        }
+        .device-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+        .device-identity {
+            display: flex;
+            flex-direction: column;
+        }
+        .device-name {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 2px;
+        }
+        .device-ip {
+            font-size: 12px;
+            font-family: monospace;
+            color: var(--text-muted);
+        }
+        .device-stats {
+            text-align: right;
+        }
+        .device-timer {
+            font-size: 20px;
+            font-weight: 800;
+            color: var(--text-main);
+            font-variant-numeric: tabular-nums;
+            line-height: 1.2;
+            margin-bottom: 4px;
+        }
+        .device-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        .device-badge.active {
+            background: rgba(16, 185, 129, 0.15);
+            color: #10B981;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+        .device-badge.standby {
+            background: rgba(148, 163, 184, 0.15);
+            color: var(--text-muted);
+            border: 1px solid rgba(148, 163, 184, 0.3);
+        }
+        .device-badge.offline {
+            background: rgba(239, 68, 68, 0.15);
+            color: #EF4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+        .battery-section {
+            padding: 12px;
+            border-radius: 12px;
+        }
+        .battery-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+        .battery-bar-bg {
+            height: 8px;
+            background: var(--border);
+            border-radius: 999px;
+            overflow: hidden;
+        }
+        .battery-bar-fill {
+            height: 100%;
+            border-radius: 999px;
+            transition: width 0.4s ease-in-out, background-color 0.3s ease;
+        }
+        .battery-section.status-good {
+            background: var(--status-good-bg);
+            border: 1px solid var(--status-good-border);
+        }
+        .battery-section.status-good .battery-label,
+        .battery-section.status-good .battery-status-tag {
+            color: var(--status-good);
+        }
+        .battery-section.status-good .battery-bar-fill {
+            background: var(--status-good);
+        }
+        .battery-section.status-warning {
+            background: var(--status-warning-bg);
+            border: 1px solid var(--status-warning-border);
+        }
+        .battery-section.status-warning .battery-label,
+        .battery-section.status-warning .battery-status-tag {
+            color: var(--status-warning);
+        }
+        .battery-section.status-warning .battery-bar-fill {
+            background: var(--status-warning);
+        }
+        .battery-section.status-critical {
+            background: var(--status-critical-bg);
+            border: 1px solid var(--status-critical-border);
+        }
+        .battery-section.status-critical .battery-label,
+        .battery-section.status-critical .battery-status-tag {
+            color: var(--status-critical);
+        }
+        .battery-section.status-critical .battery-bar-fill {
+            background: var(--status-critical);
+        }
+        .alert-box {
+            padding: 16px;
+            border-radius: var(--radius-md);
+            font-size: 14px;
+            line-height: 1.5;
+            margin-top: 16px;
+            display: none;
+        }
+        .alert-box.info {
+            background: var(--input-bg);
+            border: 1px solid var(--border);
+            color: var(--text-main);
+        }
+        .alert-box.success {
+            background: var(--status-good-bg);
+            border: 1px solid var(--status-good-border);
+            color: var(--status-good);
+        }
+        .alert-box.error {
+            background: var(--status-critical-bg);
+            border: 1px solid var(--status-critical-border);
+            color: var(--status-critical);
+        }
+        .dev-ip-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: var(--input-bg);
+            padding: 12px 16px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+        .dev-ip-row input {
+            flex: 1;
+            min-width: 140px;
+        }
+        .remove-btn {
+            background: transparent;
+            border: none;
+            color: var(--danger);
+            font-size: 22px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 44px;
+            height: 44px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: var(--radius-sm);
+            transition: all 0.2s;
+        }
+        .remove-btn:hover {
+            background: rgba(239, 68, 68, 0.1);
+        }
     </style>
     <script>
         // Apply saved theme immediately to prevent flashing
@@ -1245,13 +1693,22 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
 </head>
 <body>
     <div class="app-container">
-        <!-- Header -->
+        <!-- Brand Header Bar -->
         <div class="header-bar">
-            <h2>⚙️ Kiosk Admin</h2>
+            <div class="logo-container">
+                <svg class="logo-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2.5" />
+                    <path d="M13 7L8 13H12L11 17L16 11H12L13 7Z" fill="currentColor" />
+                </svg>
+                <h1 class="logo-text">
+                    <span class="logo-piso">Piso</span><span class="logo-phone">Phone</span>
+                </h1>
+                <span class="badge-pill">Kiosk Admin</span>
+            </div>
             <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                <button type="button" id="theme_toggle_btn" onclick="toggleTheme()" class="btn btn-outline" style="padding: 6px 12px; font-size: 13px;">🌙 Dark Mode</button>
+                <button type="button" id="theme_toggle_btn" onclick="toggleTheme()" class="btn btn-outline btn-sm">🌙 Dark Mode</button>
                 <span class="status-badge">🟢 ONLINE</span>
-                <a href="/logout" onclick="return confirm('Log out?');" class="btn btn-outline" style="padding: 6px 12px; font-size: 13px;">🚪 Logout</a>
+                <a href="/logout" onclick="return confirm('Log out?');" class="btn btn-outline btn-sm">🚪 Logout</a>
             </div>
         </div>
 
@@ -1269,10 +1726,10 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                 <div class="card grid-full">
                     <div class="card-header">
                         <h3 class="card-title">📡 Live Device Status</h3>
-                        <span class="status-badge" style="background: #ecfccb; color: #3f6212;">LIVE SYNC</span>
+                        <span class="status-badge" style="background: var(--status-good-bg); color: var(--status-good); border-color: var(--status-good-border);">LIVE SYNC</span>
                     </div>
-                    <div id="live_devices_container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;">
-                        <div style="padding: 16px; text-align: center; color: var(--text-muted); grid-column: 1/-1;">Loading devices...</div>
+                    <div id="live_devices_container" class="device-grid">
+                        <div style="padding: 24px; text-align: center; color: var(--text-muted); grid-column: 1/-1;">Loading devices...</div>
                     </div>
                 </div>
 
@@ -1281,20 +1738,20 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                     <div class="card-header">
                         <h3 class="card-title">💰 Revenue Vault</h3>
                     </div>
-                    <div style="background: var(--input-bg); padding: 18px; border-radius: 12px; text-align: center; border: 1px solid var(--border); margin-bottom: 12px;">
-                        <div class="stat-label" style="font-size: 13px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">Total Coins (PHP)</div>
-                        <div class="stat-val" style="font-size: 32px; font-weight: 800; color: var(--primary);">₱{TOTAL_COINS}</div>
+                    <div style="background: var(--input-bg); padding: 24px; border-radius: var(--radius-lg); text-align: center; border: 1px solid var(--border); margin-bottom: 4px;">
+                        <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.75px; margin-bottom: 6px;">Total Coins (PHP)</div>
+                        <div style="font-size: 36px; font-weight: 800; color: var(--primary);">₱{TOTAL_COINS}</div>
                     </div>
-                    <div style="font-size: 13px; text-align: center; color: var(--text-muted); background: var(--bg); padding: 10px; border-radius: 8px; border: 1px solid var(--border);">
-                        Session: <b style="color: var(--text);">₱{SESSION_COINS}</b>
+                    <div style="font-size: 13px; text-align: center; color: var(--text-muted); background: var(--bg); padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border); font-weight: 500;">
+                        Session Coins: <b style="color: var(--text-main); font-weight: 700;">₱{SESSION_COINS}</b>
                     </div>
-                    <div style="margin-top: 16px; display: flex; flex-direction: column; gap: 8px;">
-                        <button type="button" class="btn" style="width: 100%; font-size: 13px;" onclick="triggerCoin()">🪙 Simulate Simple Beam Coin (GPIO 4: ₱{PRICE})</button>
+                    <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 10px;">
+                        <button type="button" class="btn" onclick="triggerCoin()">🪙 Simulate Simple Beam Coin (₱{PRICE})</button>
                         <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;">
-                            <button type="button" class="btn btn-outline" style="padding: 6px; font-size: 12px; font-weight: 700;" onclick="triggerUniversalCoin(1)">₱1 (1p)</button>
-                            <button type="button" class="btn btn-outline" style="padding: 6px; font-size: 12px; font-weight: 700;" onclick="triggerUniversalCoin(5)">₱5 (5p)</button>
-                            <button type="button" class="btn btn-outline" style="padding: 6px; font-size: 12px; font-weight: 700;" onclick="triggerUniversalCoin(10)">₱10 (10p)</button>
-                            <button type="button" class="btn btn-outline" style="padding: 6px; font-size: 12px; font-weight: 700;" onclick="triggerUniversalCoin(20)">₱20 (20p)</button>
+                            <button type="button" class="btn btn-outline btn-sm" onclick="triggerUniversalCoin(1)">₱1</button>
+                            <button type="button" class="btn btn-outline btn-sm" onclick="triggerUniversalCoin(5)">₱5</button>
+                            <button type="button" class="btn btn-outline btn-sm" onclick="triggerUniversalCoin(10)">₱10</button>
+                            <button type="button" class="btn btn-outline btn-sm" onclick="triggerUniversalCoin(20)">₱20</button>
                         </div>
                     </div>
                 </div>
@@ -1315,7 +1772,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                         <label>Minutes</label>
                         <input type="number" name="add_minutes" value="60">
                     </div>
-                    <div style="display: flex; gap: 10px; margin-top: 20px;">
+                    <div style="display: flex; gap: 12px; margin-top: 12px;">
                         <button type="submit" name="action" value="add" class="btn btn-warning" style="flex: 1;">+ Add</button>
                         <button type="submit" name="action" value="subtract" class="btn btn-danger" style="flex: 1;">- Subtract</button>
                     </div>
@@ -1343,13 +1800,14 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                 document.getElementById('ips_hidden').value = ips.join(',');
                 const formData = new FormData(this);
                 fetch('/save', { method: 'POST', body: new URLSearchParams(formData) })
-                    .then(res => { if (res.ok) alert('✅ Configuration saved & pushed!'); else alert('❌ Failed to save.'); })
+                    .then(res => { if (res.ok) alert('✅ Configuration saved & pushed live!'); else alert('❌ Failed to save configuration.'); })
                     .catch(err => alert('Error: ' + err));
             ">
+                <input type="hidden" name="ips" id="ips_hidden" value="">
                 <div class="grid">
                     <!-- Network -->
                     <div class="card">
-                        <h3 class="card-title" style="margin-bottom: 16px;">📡 Wi-Fi & Network</h3>
+                        <h3 class="card-title">📡 Wi-Fi & Network</h3>
                         <div class="form-group">
                             <label>SSID</label>
                             <input type="text" name="wifi_ssid" value="{WIFI_SSID}">
@@ -1365,43 +1823,41 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                         </div>
                     </div>
 
-                    <!-- Pricing & Rules (Simple Beam Sensor Only) -->
+                    <!-- Pricing & Rules -->
                     <div class="card">
-                        <div class="card-header" style="margin-bottom: 12px;">
-                            <h3 class="card-title">🪙 Simple Beam Sensor Pricing & Rules</h3>
-                            <span class="status-badge" style="background: #fef3c7; color: #92400e; font-size: 11px;">GPIO 4 ONLY</span>
+                        <div class="card-header" style="margin-bottom: 0;">
+                            <h3 class="card-title">🪙 Simple Beam Pricing</h3>
+                            <span class="status-badge" style="background: var(--status-warning-bg); color: var(--status-warning); border-color: var(--status-warning-border);">GPIO 4</span>
                         </div>
-                        <div class="hint" style="background: var(--input-bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-bottom: 14px; font-size: 12px; line-height: 1.4;">
-                            ⚠️ <b>Note:</b> These pricing, minutes, and debounce settings apply <b>exclusively to the Simple Optical Beam Sensor (GPIO 4)</b>.<br>
-                            The <i>Universal Multi-Coin Acceptor (GPIO 3)</i> automatically recognizes hardware pulse denominations (₱1, ₱5, ₱10, ₱20) and calculates time dynamically from this rate.
+                        <div class="hint" style="background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px; font-size: 12px; line-height: 1.4;">
+                            ⚠️ These pricing settings apply <b>exclusively to the Simple optical sensor</b> (GPIO 4). The multi-coin acceptor dynamically calculates rate from coin pulses.
                         </div>
                         <div class="form-group">
-                            <label>Simple Beam Coin Price / Credit (PHP)</label>
+                            <label>Coin Price (PHP)</label>
                             <input type="number" step="0.01" name="price" value="{PRICE}">
-                            <div class="hint">Fixed PHP credit awarded per coin drop on the simple beam sensor (GPIO 4).</div>
                         </div>
                         <div class="form-group">
-                            <label>Minutes per Beam Coin Drop</label>
+                            <label>Minutes granted per Coin Drop</label>
                             <input type="number" name="minutes" value="{MINUTES}">
-                            <div class="hint">Session minutes granted per coin drop on the simple beam sensor (GPIO 4).</div>
                         </div>
                         <div class="form-group">
-                            <label>Simple Beam Lockout Debounce (ms)</label>
+                            <label>Debounce lock (ms)</label>
                             <input type="number" name="debounce" value="{DEBOUNCE}">
-                            <div class="hint">Debounce lockout period for simple beam sensor to prevent double-counting. Default 25ms.</div>
                         </div>
                     </div>
 
                     <!-- Devices -->
                     <div class="card grid-full">
-                        <h3 class="card-title" style="margin-bottom: 16px;">📱 Registered Android Terminals</h3>
-                        <div class="hint" style="margin-bottom: 12px;">Devices automatically register here when they connect to this Wi-Fi network and authenticate via the Android App.</div>
-                        {DEVICE_IP_INPUTS}
+                        <h3 class="card-title">📱 Registered Android Terminals</h3>
+                        <div class="hint" style="margin-bottom: 4px;">Connected terminals automatically register when they sync over Wi-Fi. Add or modify terminal details below.</div>
+                        <div style="background: var(--bg); padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-lg);">
+                            {DEVICE_IP_INPUTS}
+                        </div>
                     </div>
 
                     <!-- Advanced Security & Pins -->
                     <div class="card">
-                        <h3 class="card-title" style="margin-bottom: 16px;">🔒 Security</h3>
+                        <h3 class="card-title">🔒 Security</h3>
                         <div class="form-group">
                             <label>Admin Web Password</label>
                             <input type="password" name="admin_pw" value="{ADMIN_PASSWORD}">
@@ -1409,38 +1865,37 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                     </div>
 
                     <div class="card">
-                        <h3 class="card-title" style="margin-bottom: 16px;">🔌 Hardware Pins</h3>
+                        <h3 class="card-title">🔌 Hardware GPIO Pins</h3>
                         <div class="form-group">
-                            <label>Simple Beam Sensor GPIO (Uses Rules Above)</label>
+                            <label>Simple Beam Sensor GPIO</label>
                             <input type="number" name="coin_pin" value="{COIN_PIN}">
-                            <div class="hint">Single-coin infrared/optical beam sensor (Default GPIO 4). Awards the configured Coin Price and Minutes.</div>
+                            <div class="hint">GPIO 4 is typical.</div>
                         </div>
                         <div class="form-group">
-                            <label>Universal Multi-Coin Slot GPIO</label>
+                            <label>Multi-Coin Slot GPIO</label>
                             <input type="number" name="u_coin_pin" value="{U_COIN_PIN}">
-                            <div class="hint">Pulse-based multi-coin acceptor for ₱1, ₱5, ₱10, ₱20 (Default GPIO 3).</div>
+                            <div class="hint">Pulse slot on GPIO 3.</div>
                         </div>
                         <div class="form-group">
                             <label>Indicator LED GPIO</label>
                             <input type="number" name="led_pin" value="{LED_PIN}">
                         </div>
                         <div class="form-group">
-                            <label>LED Polarity / Active Logic</label>
-                            <select name="led_active_low" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; font-size: 14px;">
-                                <option value="1" {LED_ACTIVE_LOW_SELECTED}>Active LOW (Tenstar Robot / ESP32-C3 Super Mini)</option>
-                                <option value="0" {LED_ACTIVE_HIGH_SELECTED}>Active HIGH (Standard DevKit / External LED)</option>
+                            <label>LED Polarity Logic</label>
+                            <select name="led_active_low">
+                                <option value="1" {LED_ACTIVE_LOW_SELECTED}>Active LOW (Onboard blue LED)</option>
+                                <option value="0" {LED_ACTIVE_HIGH_SELECTED}>Active HIGH (Standard External LED)</option>
                             </select>
-                            <div class="hint">Tenstar Robot and ESP32-C3 Super Mini onboard blue LEDs require Active LOW logic.</div>
                         </div>
                         <div class="form-group">
-                            <label>Coin Slot Relay GPIO (Auto Power Cutoff)</label>
+                            <label>Relay Power GPIO</label>
                             <input type="number" name="relay_pin" value="{RELAY_PIN}">
-                            <div class="hint">Relay control pin to power/enable the coin slot when a user presses 'Insert Coin' on their phone (Default GPIO 5). Automatically cuts power / disables coin slot when idle or session expires to prevent lost coins.</div>
+                            <div class="hint">Cut coin power automatically when idle (GPIO 5).</div>
                         </div>
                     </div>
 
                     <div class="grid-full">
-                        <button type="submit" class="btn" style="width: 100%; padding: 14px; font-size: 16px;">💾 Save & Push Configuration Live</button>
+                        <button type="submit" class="btn" style="width: 100%; font-size: 16px;">💾 Save & Push Configuration Live</button>
                     </div>
                 </div>
             </form>
@@ -1453,7 +1908,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                 <div class="card grid-full">
                     <div class="card-header">
                         <h3 class="card-title">⚔️ 1v1 Match Mode</h3>
-                        <span class="status-badge" style="background: #f3e8ff; color: #7e22ce;">ESPORTS</span>
+                        <span class="status-badge accent">ESPORTS</span>
                     </div>
                     {MATCH_ALERT}
                     <form action="/one_vs_one" method="POST" style="display: flex; flex-direction: column; gap: 16px;">
@@ -1463,21 +1918,21 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                         </div>
                         
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px;">
-                            <div style="background: var(--bg); padding: 16px; border-radius: 12px; border: 1px solid var(--border);">
+                            <div style="background: var(--bg); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border);">
                                 <label style="color: var(--primary);">🎮 Player 1</label>
                                 <select id="p1_select" name="p1_ip" style="margin-bottom: 12px;">{P1_OPTIONS}</select>
                                 <button type="submit" name="winner" value="p1" class="btn btn-outline" style="width: 100%;">🏆 Award Win to P1</button>
                             </div>
-                            <div style="background: var(--bg); padding: 16px; border-radius: 12px; border: 1px solid var(--border);">
+                            <div style="background: var(--bg); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border);">
                                 <label style="color: var(--danger);">🎮 Player 2</label>
                                 <select id="p2_select" name="p2_ip" style="margin-bottom: 12px;">{P2_OPTIONS}</select>
                                 <button type="submit" name="winner" value="p2" class="btn btn-outline" style="width: 100%;">🏆 Award Win to P2</button>
                             </div>
                         </div>
                         
-                        <button type="button" onclick="checkMatchQualification()" class="btn" style="background: #7e22ce; align-self: flex-start;">🔍 Verify Both Players' Balances</button>
+                        <button type="button" onclick="checkMatchQualification()" class="btn btn-outline" style="align-self: flex-start; border-color: var(--primary); color: var(--primary);">🔍 Verify Both Players' Balances</button>
                     </form>
-                    <div id="match_qual_result" style="display: none; margin-top: 16px; padding: 16px; border-radius: 8px; font-size: 14px;"></div>
+                    <div id="match_qual_result" class="alert-box"></div>
                 </div>
 
                 <!-- OTA Update -->
@@ -1485,7 +1940,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                     <div class="card-header">
                         <h3 class="card-title">🚀 Firmware Upgrade</h3>
                     </div>
-                    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">Flash a new <code style="background: #e2e8f0; padding: 2px 4px; border-radius: 4px;">.bin</code> compiled firmware wirelessly without a USB cable.</p>
+                    <p style="font-size: 13px; color: var(--text-muted);">Upload a compiled binary to upgrade your Kiosk controller wirelessly without USB cables.</p>
                     <a href="/update" class="btn btn-outline" style="width: 100%;">Upload Firmware (OTA) &rarr;</a>
                 </div>
 
@@ -1495,19 +1950,19 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                         <h3 class="card-title">⚠️ System Recovery</h3>
                     </div>
                     
-                    <form action="/reset_vault" method="POST" onsubmit="return confirm('Reset lifetime coin counts?');" style="margin-bottom: 24px;">
+                    <form action="/reset_vault" method="POST" onsubmit="return confirm('Reset lifetime coin counts?');" style="margin-bottom: 12px;">
                         <label>Reset Vault Counters</label>
-                        <div style="display: flex; gap: 8px;">
+                        <div style="display: flex; gap: 8px; margin-top: 6px;">
                             <input type="password" name="reset_pw" placeholder="Admin password">
-                            <button type="submit" class="btn btn-danger">Reset</button>
+                            <button type="submit" class="btn btn-danger btn-sm" style="min-height:48px;">Reset</button>
                         </div>
                     </form>
-                    <hr style="border: none; border-top: 1px solid var(--border); margin: 16px 0;">
+                    <hr style="border: none; border-top: 1px solid var(--border); margin: 12px 0;">
                     <div style="display: flex; flex-direction: column; gap: 10px;">
-                        <button type="button" class="btn" style="width: 100%; background: #0284c7;" onclick="if(confirm('🔄 Reboot HARDWARE controller?')) { fetch('/reboot', {method: 'POST'}).then(() => { alert('HARDWARE is rebooting. Reconnecting in 5 seconds...'); setTimeout(() => window.location.reload(), 5000); }); }">
-                            🔄 Reboot HARDWARE Controller
+                        <button type="button" class="btn" style="background: #0284c7; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.2);" onclick="if(confirm('🔄 Reboot controller?')) { fetch('/reboot', {method: 'POST'}).then(() => { alert('Rebooting... returning in 5 seconds.'); setTimeout(() => window.location.reload(), 5000); }); }">
+                            🔄 Reboot Controller
                         </button>
-                        <button type="button" class="btn btn-danger" style="width: 100%;" onclick="if(confirm('⚠️ Factory Reset? All settings will be wiped.')) { fetch('/factory_reset', {method: 'POST'}).then(() => { alert('Resetting...'); setTimeout(() => window.location.reload(), 6000); }); }">
+                        <button type="button" class="btn btn-danger" onclick="if(confirm('⚠️ Factory Reset? All settings will be wiped.')) { fetch('/factory_reset', {method: 'POST'}).then(() => { alert('Resetting...'); setTimeout(() => window.location.reload(), 6000); }); }">
                             Restore Factory Defaults
                         </button>
                     </div>
@@ -1524,7 +1979,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                 const container = document.getElementById('live_devices_container');
                 if (!container) return;
                 if (data.length === 0) {
-                    container.innerHTML = '<div style="padding: 16px; text-align: center; color: var(--text-muted); grid-column: 1/-1;">No PisoPhone devices registered.</div>';
+                    container.innerHTML = '<div style="padding: 24px; text-align: center; color: var(--text-muted); grid-column: 1/-1;">No PisoPhone devices registered.</div>';
                     return;
                 }
                 let html = '';
@@ -1533,21 +1988,14 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                     const battery = (typeof dev.battery === 'number' && dev.battery >= 0) ? dev.battery : 100;
                     const isCharging = !!dev.charging;
                     
-                    // Intuitive battery status styling: Red for critically low, yellow for warning, green for good charge
-                    let batteryColor = '#16a34a'; // Green (>20%)
-                    let batteryBg = '#f0fdf4';
-                    let batteryBorder = '1.5px solid #bbf7d0';
+                    let batteryStatusClass = 'status-good';
                     let statusLabel = 'GOOD CHARGE';
                     
                     if (battery <= 15) {
-                        batteryColor = '#dc2626'; // Red for critically low (<=15%)
-                        batteryBg = '#fef2f2';
-                        batteryBorder = '1.5px solid #fca5a5';
+                        batteryStatusClass = 'status-critical';
                         statusLabel = 'CRITICAL LOW';
                     } else if (battery <= 30) {
-                        batteryColor = '#d97706'; // Yellow/Amber for low warning (16%-30%)
-                        batteryBg = '#fffbeb';
-                        batteryBorder = '1.5px solid #fcd34d';
+                        batteryStatusClass = 'status-warning';
                         statusLabel = 'LOW BATTERY';
                     }
 
@@ -1556,44 +2004,48 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                         const secs = dev.time % 60;
                         const timeStr = mins + 'm ' + secs + 's';
                         const active = dev.time > 0;
-                        const stateBadge = active 
-                            ? '<span style="padding:4px 8px;background:#16a34a;color:white;border-radius:6px;font-size:11px;font-weight:700;">ACTIVE</span>'
-                            : '<span style="padding:4px 8px;background:#64748b;color:white;border-radius:6px;font-size:11px;font-weight:700;">STANDBY</span>';
+                        
+                        const badgeHtml = active 
+                            ? '<span class="device-badge active">ACTIVE</span>'
+                            : '<span class="device-badge standby">STANDBY</span>';
                             
                         const batteryIcon = isCharging ? '⚡' : '🔋';
                         const batteryText = (isCharging ? '⚡ Charging ' : '') + battery + '%';
 
-                        html += '<div style="display:flex; flex-direction:column; justify-content:space-between; padding:16px; border-radius:14px; background:' + batteryBg + '; border:' + batteryBorder + '; box-shadow: 0 2px 4px rgba(0,0,0,0.03); gap: 12px; transition: all 0.3s ease;">' +
-                                '<div style="display:flex; justify-content:space-between; align-items:center;">' +
-                                    '<div><strong style="color:#0f172a; font-size: 16px; display:block; margin-bottom:2px;">' + name + '</strong><span style="font-size:12px; color:var(--text-muted); font-family: monospace;">' + dev.ip + '</span></div>' +
-                                    '<div style="text-align:right;">' +
-                                        '<div style="font-weight:800; font-size:18px; color:#0f172a; font-variant-numeric: tabular-nums; line-height: 1.2; margin-bottom:6px;">' + timeStr + '</div>' +
-                                        '<div>' + stateBadge + '</div>' +
+                        html += '<div class="device-card">' +
+                                '<div class="device-card-header">' +
+                                    '<div class="device-identity">' +
+                                        '<strong class="device-name">' + name + '</strong>' +
+                                        '<span class="device-ip">' + dev.ip + '</span>' +
+                                    '</div>' +
+                                    '<div class="device-stats">' +
+                                        '<div class="device-timer">' + timeStr + '</div>' +
+                                        '<div>' + badgeHtml + '</div>' +
                                     '</div>' +
                                 '</div>' +
-                                '<!-- Dynamic Battery Level Bar -->' +
-                                '<div style="background: rgba(255,255,255,0.7); padding: 10px; border-radius: 10px; border: 1px solid rgba(0,0,0,0.06);">' +
-                                    '<div style="display:flex; justify-content:space-between; align-items:center; font-size: 12px; font-weight: 700; margin-bottom: 6px;">' +
-                                        '<span style="color:' + batteryColor + '; display:flex; align-items:center; gap:4px;">' + batteryIcon + ' ' + batteryText + '</span>' +
-                                        '<span style="font-size: 10px; color:' + batteryColor + '; text-transform: uppercase; letter-spacing: 0.5px;">' + statusLabel + '</span>' +
+                                '<div class="battery-section ' + batteryStatusClass + '">' +
+                                    '<div class="battery-info">' +
+                                        '<span class="battery-label" style="display:flex; align-items:center; gap:4px;">' + batteryIcon + ' ' + batteryText + '</span>' +
+                                        '<span class="battery-status-tag" style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;">' + statusLabel + '</span>' +
                                     '</div>' +
-                                    '<div style="height: 8px; background: #e2e8f0; border-radius: 999px; overflow: hidden;">' +
-                                        '<div style="height: 100%; width: ' + battery + '%; background: ' + batteryColor + '; border-radius: 999px; transition: width 0.4s ease-in-out;"></div>' +
+                                    '<div class="battery-bar-bg">' +
+                                        '<div class="battery-bar-fill" style="width: ' + battery + '%;"></div>' +
                                     '</div>' +
                                 '</div>' +
-                                '<div style="display:flex; gap: 8px; margin-top: 2px;">' +
-                                    '<button type="button" class="btn" onclick="triggerAction(\'' + dev.ip + '\', \'locate\', this)" style="flex:1; padding: 8px 12px; font-size: 12px; font-weight: 700; background: #6366f1; color: white; border: none; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 1px 2px rgba(99,102,241,0.2);">' +
-                                        '📍 Locate Device (Sound, Vibrate & Flash)' +
-                                    '</button>' +
-                                '</div>' +
+                                '<button type="button" class="btn btn-outline btn-sm" onclick="triggerAction(\'' + dev.ip + '\', \'locate\', this)">' +
+                                    '📍 Locate Device' +
+                                </button>' +
                                 '</div>';
                     } else {
-                        html += '<div style="display:flex; flex-direction:column; justify-content:space-between; padding:16px; border-radius:14px; background:#f8fafc; border:1px solid #e2e8f0; opacity: 0.75; gap: 12px;">' +
-                                '<div style="display:flex; justify-content:space-between; align-items:center;">' +
-                                    '<div><strong style="color:#64748b; font-size: 16px;">' + name + '</strong><br><span style="font-size:12px; color:var(--text-muted); font-family: monospace;">' + dev.ip + '</span></div>' +
-                                    '<div><span style="padding:4px 8px;background:#94a3b8;color:white;border-radius:6px;font-size:11px;font-weight:700;">OFFLINE</span></div>' +
+                        html += '<div class="device-card offline">' +
+                                '<div class="device-card-header">' +
+                                    '<div class="device-identity">' +
+                                        '<strong class="device-name">' + name + '</strong>' +
+                                        '<span class="device-ip">' + dev.ip + '</span>' +
+                                    '</div>' +
+                                    '<div><span class="device-badge offline">OFFLINE</span></div>' +
                                 '</div>' +
-                                '<div style="background: rgba(241,245,249,0.8); padding: 8px 10px; border-radius: 8px; font-size: 12px; color: #64748b; text-align: center;">Disconnected / Reconnecting...</div>' +
+                                '<div style="background: var(--input-bg); padding: 12px; border-radius: var(--radius-sm); font-size: 13px; color: var(--text-muted); text-align: center; border: 1px solid var(--border);">Disconnected</div>' +
                                 '</div>';
                     }
                 });
