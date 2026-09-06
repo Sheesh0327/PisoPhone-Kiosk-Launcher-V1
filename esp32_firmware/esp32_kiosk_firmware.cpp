@@ -2783,7 +2783,7 @@ void handleCheckQualification() {
 void handleIdentify() {
     String reqIp = webServer.hasArg("ip") ? webServer.arg("ip") : webServer.client().remoteIP().toString();
     String devName = getDeviceNameByIpOrId(reqIp, "");
-    String json = "{\"device\":\"HARDWARE_kiosk\",\"version\":\"3.0\",\"price\":" + String(coinPrice) + ",\"minutes\":" + String(minutesPerCoin);
+    String json = "{\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\",\"version\":\"3.0\",\"price\":" + String(coinPrice) + ",\"minutes\":" + String(minutesPerCoin);
     if (devName.length() > 0) {
         json += ",\"device_name\":\"" + devName + "\"";
     }
