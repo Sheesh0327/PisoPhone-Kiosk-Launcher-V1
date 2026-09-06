@@ -92,7 +92,10 @@ async function verifyGoogleToken(token) {
   try {
     const parts = String(token).split('.');
     if (parts.length === 3) {
-      const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      let base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      while (base64.length % 4 !== 0) {
+        base64 += '=';
+      }
       const payload = JSON.parse(atob(base64));
       const isGoogleIssuer = payload.iss === 'https://accounts.google.com' || payload.iss === 'accounts.google.com';
       if (isGoogleIssuer && payload.email && payload.email_verified !== false) {
@@ -222,6 +225,26 @@ async function verifyBoxBuildNumberHmac(buildNumber, secret) {
   }
 }
 
+async function calculateHmacSha256Hex(message, secret) {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const signature = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    encoder.encode(message)
+  );
+  const sigBytes = new Uint8Array(signature);
+  return Array.from(sigBytes)
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -247,6 +270,11 @@ export default {
       });
     }
 
+    // Fast-path: APK download redirect
+    if (url.pathname === '/apk/latest.apk' || url.pathname === '/app-release.apk') {
+      return Response.redirect('https://pisophone-v1.pages.dev/app-release.apk', 302);
+    }
+
     // Early route filter: Drop bot probes/scanners instantly without touching KV or executing heavy logic
     const KNOWN_PATHS = [
       '/api/device/register',
@@ -258,10 +286,18 @@ export default {
       '/api/payment/confirm',
       '/api/user/credits',
       '/api/user/activate-device',
+      '/api/user/transfer-license',
       '/api/box/verify',
       '/api/box/status',
       '/api/box/link-device',
+      '/api/box/unlink-device',
+      '/api/user/remove-device',
       '/api/admin/create-box',
+      '/api/box/report-snapshot',
+      '/api/box/issue-slot-token',
+      '/api/box/pricing',
+      '/apk/latest.apk',
+      '/app-release.apk',
     ];
 
     if (!KNOWN_PATHS.includes(url.pathname)) {
@@ -317,7 +353,8 @@ export default {
         if (existing) {
           const isPaid = existing.paidExpiresAt > now;
           const isExpired = existing.paidExpiresAt > 0 && existing.paidExpiresAt <= now;
-          const status = isPaid ? 'PAID' : (isExpired ? 'EXPIRED' : 'UNACTIVATED');
+          const isTransferred = !isPaid && existing.licenseStatus === 'TRANSFERRED';
+          const status = isPaid ? 'PAID' : (isTransferred ? 'TRANSFERRED' : (isExpired ? 'EXPIRED' : 'UNACTIVATED'));
 
           // Normalize existing ownerEmail if present
           if (existing.ownerEmail) {
@@ -394,7 +431,7 @@ export default {
               serverTime: now,
               message: isPaid
                 ? 'Active Commercial License'
-                : (isExpired ? 'Subscription has expired. Renewal required.' : 'Device registered. Activation required to unlock kiosk.'),
+                : (isTransferred ? `License was transferred to replacement device (${existing.transferredTo || 'new hardware'}). Kiosk is locked.` : (isExpired ? 'Subscription has expired. Renewal required.' : 'Device registered. Activation required to unlock kiosk.')),
             }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
@@ -471,7 +508,8 @@ export default {
 
         if (!record || !(record.paidExpiresAt > now)) {
           const isExpired = record && record.paidExpiresAt > 0 && record.paidExpiresAt <= now;
-          const status = record ? (isExpired ? 'EXPIRED' : 'UNACTIVATED') : 'UNREGISTERED';
+          const isTransferred = record && !record.paidExpiresAt && record.licenseStatus === 'TRANSFERRED';
+          const status = record ? (isTransferred ? 'TRANSFERRED' : (isExpired ? 'EXPIRED' : 'UNACTIVATED')) : 'UNREGISTERED';
           return new Response(
             JSON.stringify({
               paid: false,
@@ -479,6 +517,8 @@ export default {
               isActivated: false,
               isValid: false,
               isExpired: Boolean(isExpired),
+              isTransferred: Boolean(isTransferred),
+              transferredTo: record ? (record.transferredTo || null) : null,
               deviceId,
               deviceModel: record ? (record.deviceModel || 'Android Device') : 'Unknown Device',
               status,
@@ -486,7 +526,7 @@ export default {
               daysRemaining: 0,
               checkIntervalDays: 7,
               serverTime: now,
-              message: isExpired ? 'Subscription has expired.' : 'No active license found for this device ID.',
+              message: isTransferred ? `License was transferred to replacement device (${record.transferredTo || 'new hardware'}).` : (isExpired ? 'Subscription has expired.' : 'No active license found for this device ID.'),
             }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
@@ -745,6 +785,8 @@ export default {
               validUserDevices.push(did);
 
               const isPaid = dev.paidExpiresAt > now;
+              const isExpired = dev.paidExpiresAt > 0 && dev.paidExpiresAt <= now;
+              const isTransferred = !isPaid && dev.licenseStatus === 'TRANSFERRED';
               let licenseKey = null;
               if (isPaid) {
                 try {
@@ -758,9 +800,12 @@ export default {
                 deviceModel: dev.deviceModel || 'Unknown Device',
                 firstRegisteredAt: dev.firstRegisteredAt || now,
                 paidExpiresAt: dev.paidExpiresAt || 0,
-                status: isPaid ? 'PAID' : 'UNACTIVATED',
+                status: isPaid ? 'PAID' : (isTransferred ? 'TRANSFERRED' : (isExpired ? 'EXPIRED' : 'UNACTIVATED')),
                 daysRemaining: isPaid ? Math.max(0, Math.ceil((dev.paidExpiresAt - now) / (24 * 60 * 60 * 1000))) : 0,
-                licenseKey: licenseKey
+                licenseKey: licenseKey,
+                boxBuildNumber: dev.boxBuildNumber || null,
+                transferredTo: dev.transferredTo || null,
+                transferredFrom: dev.licenseTransferredFrom || null
               });
             }
           }
@@ -972,6 +1017,187 @@ export default {
 
         return new Response(JSON.stringify({ error: 'KV Store not configured', success: false }), {
           status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // =========================================================================
+      // 4e. Transfer License to Another Device (1-Device-Only Enforcement)
+      // POST /api/user/transfer-license
+      // Body: { ownerToken?: string, ownerEmail?: string, sourceDeviceId: string, targetDeviceId: string, transferBoxAssignment?: boolean }
+      // =========================================================================
+      if (url.pathname === '/api/user/transfer-license' && method === 'POST') {
+        const body = await request.json();
+
+        const email = await authenticateUserEmail(body);
+        if (!email) {
+          return new Response(JSON.stringify({ error: 'Unauthorized: Authentication required.', success: false }), {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const { sourceDeviceId, targetDeviceId, transferBoxAssignment } = body;
+        if (!sourceDeviceId || !targetDeviceId) {
+          return new Response(JSON.stringify({ error: 'Missing sourceDeviceId or targetDeviceId parameter.', success: false }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        let cleanSourceId = String(sourceDeviceId).trim();
+        if (!cleanSourceId.toUpperCase().startsWith('HW-')) {
+          cleanSourceId = 'HW-' + cleanSourceId;
+        }
+        let cleanTargetId = String(targetDeviceId).trim();
+        if (!cleanTargetId.toUpperCase().startsWith('HW-')) {
+          cleanTargetId = 'HW-' + cleanTargetId;
+        }
+
+        const normSource = cleanSourceId.toUpperCase().replace(/^HW-/, '');
+        const normTarget = cleanTargetId.toUpperCase().replace(/^HW-/, '');
+
+        if (normSource === normTarget) {
+          return new Response(JSON.stringify({ error: 'Source and target device cannot be the same.', success: false }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        if (!env.DEVICE_STORE) {
+          return new Response(JSON.stringify({ error: 'KV Store not configured', success: false }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // 1. Retrieve and validate source device
+        let rawSource = await env.DEVICE_STORE.get(cleanSourceId);
+        if (!rawSource) rawSource = await env.DEVICE_STORE.get(normSource);
+
+        if (!rawSource) {
+          return new Response(JSON.stringify({ error: `Source device ${cleanSourceId} not found.`, success: false }), {
+            status: 404,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const sourceDev = JSON.parse(rawSource);
+        const sourceOwner = sourceDev.ownerEmail ? sourceDev.ownerEmail.trim().toLowerCase() : null;
+        if (sourceOwner && sourceOwner !== email) {
+          return new Response(JSON.stringify({ error: 'You are not the registered owner of the source device.', success: false }), {
+            status: 403,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const sourceExpires = sourceDev.paidExpiresAt || 0;
+        if (sourceExpires <= now) {
+          return new Response(JSON.stringify({ error: `Source device ${cleanSourceId} does not have an active license to transfer.`, success: false }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Calculate remaining duration strictly
+        const remainingMs = sourceExpires - now;
+        if (remainingMs <= 0) {
+          return new Response(JSON.stringify({ error: 'Source license has expired.', success: false }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+        const remainingDays = Math.max(1, Math.ceil(remainingMs / (24 * 60 * 60 * 1000)));
+
+        // 2. Retrieve or initialize target device
+        let rawTarget = await env.DEVICE_STORE.get(cleanTargetId);
+        if (!rawTarget) rawTarget = await env.DEVICE_STORE.get(normTarget);
+
+        let targetDev = rawTarget ? JSON.parse(rawTarget) : {
+          deviceId: cleanTargetId,
+          hardwareHash: cleanTargetId.toUpperCase(),
+          deviceModel: 'Replacement Kiosk Phone',
+          firstRegisteredAt: now,
+          installCount: 1,
+          processedPaymentRefs: []
+        };
+
+        const targetOwner = targetDev.ownerEmail ? targetDev.ownerEmail.trim().toLowerCase() : null;
+        if (targetOwner && targetOwner !== email) {
+          return new Response(JSON.stringify({ error: 'Target device is registered to another user account.', success: false }), {
+            status: 403,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Compute new expiration for target device (extends existing if already active, else now + remainingMs)
+        const currentTargetExpires = targetDev.paidExpiresAt || 0;
+        const newTargetExpires = (currentTargetExpires > now ? currentTargetExpires : now) + remainingMs;
+
+        // 3. Generate cryptographic RSA-2048 token for TARGET device first (fails fast if crypto/keys misconfigured)
+        const token = await generateLicenseToken(cleanTargetId, newTargetExpires, env);
+
+        // 4. Atomically revoke source device's license (1-Device-Only rule)
+        const oldBoxNumber = sourceDev.boxBuildNumber || null;
+        sourceDev.paidExpiresAt = 0;
+        sourceDev.licenseStatus = 'TRANSFERRED';
+        sourceDev.transferredTo = cleanTargetId;
+        sourceDev.transferredAt = now;
+
+        // If user wants to transfer the Coin Slot Box slot:
+        let boxTransferred = false;
+        if (transferBoxAssignment && oldBoxNumber) {
+          delete sourceDev.boxBuildNumber;
+          targetDev.boxBuildNumber = oldBoxNumber;
+
+          // Update BOX record
+          const rawBox = await env.DEVICE_STORE.get(`BOX:${oldBoxNumber}`);
+          if (rawBox) {
+            const boxData = JSON.parse(rawBox);
+            boxData.linkedDevices = (boxData.linkedDevices || []).filter(id => {
+              const nid = String(id).trim().toUpperCase().replace(/^HW-/, '');
+              return nid !== normSource && nid !== normTarget;
+            });
+            boxData.linkedDevices.push(cleanTargetId);
+            await env.DEVICE_STORE.put(`BOX:${oldBoxNumber}`, JSON.stringify(boxData));
+            boxTransferred = true;
+          }
+        }
+
+        // 5. Save updated records to KV
+        await env.DEVICE_STORE.put(cleanSourceId, JSON.stringify(sourceDev));
+        await env.DEVICE_STORE.put(normSource, JSON.stringify(sourceDev));
+
+        targetDev.paidExpiresAt = newTargetExpires;
+        targetDev.ownerEmail = email;
+        targetDev.lastCheckinAt = now;
+        targetDev.licenseTransferredFrom = cleanSourceId;
+        targetDev.licenseTransferredAt = now;
+        await env.DEVICE_STORE.put(cleanTargetId, JSON.stringify(targetDev));
+        await env.DEVICE_STORE.put(normTarget, JSON.stringify(targetDev));
+
+        // 6. Ensure target device is in USER_DEVICES index
+        const rawUd = await env.DEVICE_STORE.get(`USER_DEVICES:${email}`);
+        let userDevices = rawUd ? JSON.parse(rawUd) : [];
+        if (!userDevices.includes(cleanTargetId)) {
+          userDevices.push(cleanTargetId);
+          await env.DEVICE_STORE.put(`USER_DEVICES:${email}`, JSON.stringify(userDevices));
+        }
+
+        return new Response(JSON.stringify({
+          success: true,
+          message: `License successfully transferred from ${cleanSourceId} to ${cleanTargetId} (${remainingDays} days remaining).`,
+          sourceDeviceId: cleanSourceId,
+          targetDeviceId: cleanTargetId,
+          daysRemaining: remainingDays,
+          paidExpiresAt: newTargetExpires,
+          licenseKey: token.licenseKey,
+          signature: token.signature,
+          boxTransferred,
+          boxBuildNumber: boxTransferred ? oldBoxNumber : null,
+          serverTime: now
+        }), {
+          status: 200,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
@@ -1570,6 +1796,20 @@ export default {
         const normDevId = cleanDevId.toUpperCase().replace(/^HW-/, '');
 
         if (env.DEVICE_STORE) {
+          // 0. Fetch existing device record to find its boxBuildNumber and owner
+          let devBoxBuildNumber = null;
+          let devOwnerEmail = null;
+          const rawDev = (await env.DEVICE_STORE.get(`HW-${normDevId}`)) ||
+                         (await env.DEVICE_STORE.get(normDevId)) ||
+                         (await env.DEVICE_STORE.get(cleanDevId));
+          if (rawDev) {
+            try {
+              const d = JSON.parse(rawDev);
+              if (d.boxBuildNumber) devBoxBuildNumber = d.boxBuildNumber;
+              if (d.ownerEmail) devOwnerEmail = d.ownerEmail.trim().toLowerCase();
+            } catch(e) {}
+          }
+
           // 1. Remove from USER_DEVICES:${email}
           const rawUd = await env.DEVICE_STORE.get(`USER_DEVICES:${email}`);
           if (rawUd) {
@@ -1581,32 +1821,242 @@ export default {
             await env.DEVICE_STORE.put(`USER_DEVICES:${email}`, JSON.stringify(userDevices));
           }
 
-          // 2. Unlink from any user boxes in USER_BOXES:${email}
-          const rawUb = await env.DEVICE_STORE.get(`USER_BOXES:${email}`);
-          if (rawUb) {
-            const userBoxNums = JSON.parse(rawUb);
-            for (const boxNum of userBoxNums) {
-              const rawBox = await env.DEVICE_STORE.get(`BOX:${boxNum}`);
-              if (rawBox) {
-                const boxData = JSON.parse(rawBox);
-                boxData.linkedDevices = (boxData.linkedDevices || []).filter(id => {
-                  const normId = String(id).trim().toUpperCase().replace(/^HW-/, '');
-                  return normId !== normDevId;
-                });
-                await env.DEVICE_STORE.put(`BOX:${boxNum}`, JSON.stringify(boxData));
-              }
+          // Also clean up from devOwnerEmail if different
+          if (devOwnerEmail && devOwnerEmail !== email) {
+            const rawOtherUd = await env.DEVICE_STORE.get(`USER_DEVICES:${devOwnerEmail}`);
+            if (rawOtherUd) {
+              let otherDevices = JSON.parse(rawOtherUd);
+              otherDevices = otherDevices.filter(id => {
+                const normId = String(id).trim().toUpperCase().replace(/^HW-/, '');
+                return normId !== normDevId;
+              });
+              await env.DEVICE_STORE.put(`USER_DEVICES:${devOwnerEmail}`, JSON.stringify(otherDevices));
             }
           }
 
-          // 3. Delete device records
+          // 2. Unlink from any user boxes in USER_BOXES:${email}
+          const rawUb = await env.DEVICE_STORE.get(`USER_BOXES:${email}`);
+          const userBoxNums = rawUb ? JSON.parse(rawUb) : [];
+          if (devBoxBuildNumber && !userBoxNums.includes(devBoxBuildNumber)) {
+            userBoxNums.push(devBoxBuildNumber);
+          }
+
+          for (const boxNum of userBoxNums) {
+            const rawBox = await env.DEVICE_STORE.get(`BOX:${boxNum}`);
+            if (rawBox) {
+              const boxData = JSON.parse(rawBox);
+              boxData.linkedDevices = (boxData.linkedDevices || []).filter(id => {
+                const normId = String(id).trim().toUpperCase().replace(/^HW-/, '');
+                return normId !== normDevId;
+              });
+              await env.DEVICE_STORE.put(`BOX:${boxNum}`, JSON.stringify(boxData));
+            }
+          }
+
+          // 3. Delete all device record key variants
           await env.DEVICE_STORE.delete(`HW-${normDevId}`);
           await env.DEVICE_STORE.delete(normDevId);
+          await env.DEVICE_STORE.delete(cleanDevId);
         }
 
         return new Response(
           JSON.stringify({
             success: true,
             message: `Device HW-${normDevId} successfully removed from your account.`,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // =========================================================================
+      // 12. Flexible Box Pricing
+      // GET /api/box/pricing
+      // =========================================================================
+      if (url.pathname === '/api/box/pricing' && (method === 'GET' || method === 'POST')) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            basePrice: 5000,
+            baseIncludedSlots: 2,
+            additionalSlotPrice: 500,
+            tiers: [
+              { slots: 2, name: 'Starter Dual Kiosk', price: 5000, description: 'Complete Coin Slot Box + 2 Device Slots included' },
+              { slots: 3, name: 'Standard Triple Kiosk', price: 5500, description: 'Complete Coin Slot Box + 3 Device Slots' },
+              { slots: 5, name: 'Pro 5-Terminal Kiosk', price: 6500, description: 'Complete Coin Slot Box + 5 Device Slots' },
+              { slots: 8, name: 'Enterprise 8-Terminal Hub', price: 8000, description: 'Complete Coin Slot Box + 8 Device Slots' },
+              { slots: 12, name: 'Mega Arcade 12-Slot Fleet', price: 10000, description: 'Complete Coin Slot Box + 12 Device Slots' },
+            ],
+            serverTime: now,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // =========================================================================
+      // 13. ESP32 Snapshot Reporting (Single Batch Payload)
+      // POST /api/box/report-snapshot
+      // Body: { mac: string, tier?: number, slots: Array, lifetimeCoins?: number, lifetimeEarnings?: number, wifiSsid?: string }
+      // =========================================================================
+      if (url.pathname === '/api/box/report-snapshot' && method === 'POST') {
+        const body = await request.json();
+        const { mac, tier, slots, lifetimeCoins, lifetimeEarnings, wifiSsid, firmwareVersion } = body;
+
+        if (!mac || typeof mac !== 'string') {
+          return new Response(JSON.stringify({ error: 'Missing or invalid MAC address' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const rawMac = mac.trim().toUpperCase();
+        const formattedMac = formatMacAddress(rawMac);
+        const cleanMac = formattedMac || rawMac;
+
+        let boxData = null;
+        const rawBox = await env.DEVICE_STORE.get(`BOX:${cleanMac}`);
+        if (rawBox) {
+          try {
+            boxData = JSON.parse(rawBox);
+          } catch (e) {}
+        }
+
+        if (!boxData) {
+          boxData = {
+            buildNumber: cleanMac,
+            macAddress: cleanMac,
+            maxDevices: Math.max(2, parseInt(tier) || 2),
+            linkedDevices: [],
+            claimedAt: now,
+          };
+        }
+
+        if (tier && parseInt(tier) > (boxData.maxDevices || 2)) {
+          boxData.maxDevices = parseInt(tier);
+        }
+
+        const cleanSlots = Array.isArray(slots) ? slots : [];
+        boxData.slots = cleanSlots;
+        boxData.linkedDevices = cleanSlots
+          .filter(s => s && s.deviceId && s.deviceId.trim().length > 0)
+          .map(s => s.deviceId.trim().toUpperCase());
+
+        boxData.lastSnapshotAt = now;
+        if (lifetimeCoins !== undefined) boxData.lifetimeCoins = parseInt(lifetimeCoins) || 0;
+        if (lifetimeEarnings !== undefined) boxData.lifetimeEarnings = parseFloat(lifetimeEarnings) || 0;
+        if (wifiSsid) boxData.wifiSsid = String(wifiSsid);
+        if (firmwareVersion) boxData.firmwareVersion = String(firmwareVersion);
+
+        await env.DEVICE_STORE.put(`BOX:${cleanMac}`, JSON.stringify(boxData));
+
+        // Sync each paired device slot record in KV so user dashboard reflects active state
+        for (const slot of cleanSlots) {
+          if (slot && slot.deviceId && slot.deviceId.trim().length > 0) {
+            const devId = slot.deviceId.trim().toUpperCase();
+            const normDevId = devId.replace(/^HW-/, '');
+            const existingDevRaw = await env.DEVICE_STORE.get(`HW-${normDevId}`);
+            let devRecord = null;
+            if (existingDevRaw) {
+              try { devRecord = JSON.parse(existingDevRaw); } catch(e) {}
+            }
+            if (!devRecord) {
+              devRecord = {
+                deviceId: `HW-${normDevId}`,
+                status: 'PAID',
+                firstRegisteredAt: now,
+                ownerEmail: boxData.firstClaimedBy || null,
+              };
+            }
+            devRecord.boundBoxMac = cleanMac;
+            devRecord.slotNum = slot.slotNum || slot.slot || 1;
+            devRecord.paidExpiresAt = slot.expiresAt || (now + 365 * 86400000);
+            devRecord.status = 'PAID';
+            devRecord.lastSnapshotAt = now;
+            if (slot.name) devRecord.deviceName = slot.name;
+            if (slot.ip) devRecord.lastKnownIp = slot.ip;
+
+            await env.DEVICE_STORE.put(`HW-${normDevId}`, JSON.stringify(devRecord));
+          }
+        }
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message: 'Box snapshot recorded successfully.',
+            boxMac: cleanMac,
+            maxDevices: boxData.maxDevices,
+            activeSlotsCount: boxData.linkedDevices.length,
+            serverTime: now,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // =========================================================================
+      // 14. Issue Flexible Slot Upgrade Token
+      // POST /api/box/issue-slot-token
+      // Body: { boxMac: string, slotsCount: number, durationDays?: number, ownerToken?: string, ownerEmail?: string }
+      // =========================================================================
+      if (url.pathname === '/api/box/issue-slot-token' && method === 'POST') {
+        const body = await request.json();
+        const { boxMac, slotsCount, durationDays } = body;
+
+        const email = await authenticateUserEmail(body);
+        if (!email) {
+          return new Response(JSON.stringify({ error: 'Authentication required to issue slot tokens.' }), {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        if (!boxMac || typeof boxMac !== 'string') {
+          return new Response(JSON.stringify({ error: 'Valid Box MAC Address required.' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const rawMac = boxMac.trim().toUpperCase();
+        const formattedMac = formatMacAddress(rawMac);
+        const cleanMac = formattedMac || rawMac;
+
+        const targetSlots = Math.max(1, Math.min(32, parseInt(slotsCount) || 2));
+        const days = Math.max(1, parseInt(durationDays) || 365);
+        const expiresAt = now + (days * 86400000);
+
+        const secret = signingSecret || MASTER_CRYPTO_SECRET;
+        const sigPayload = `PISOSLOT:${cleanMac}:${targetSlots}:${expiresAt}`;
+        const signature = await calculateHmacSha256Hex(sigPayload, secret);
+        const slotToken = `PISOSLOT.${cleanMac}.${targetSlots}.${expiresAt}.${signature}`;
+
+        // Save/Update box capacity in KV
+        let boxData = null;
+        const rawBox = await env.DEVICE_STORE.get(`BOX:${cleanMac}`);
+        if (rawBox) {
+          try { boxData = JSON.parse(rawBox); } catch(e) {}
+        }
+        if (!boxData) {
+          boxData = {
+            buildNumber: cleanMac,
+            macAddress: cleanMac,
+            maxDevices: targetSlots,
+            linkedDevices: [],
+            firstClaimedBy: email,
+            claimedAt: now,
+          };
+        } else {
+          boxData.maxDevices = Math.max(boxData.maxDevices || 2, targetSlots);
+        }
+        await env.DEVICE_STORE.put(`BOX:${cleanMac}`, JSON.stringify(boxData));
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            boxMac: cleanMac,
+            slotsCount: targetSlots,
+            expiresAt: expiresAt,
+            token: slotToken,
+            message: `Slot token for ${targetSlots} seats issued successfully.`,
+            serverTime: now,
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );

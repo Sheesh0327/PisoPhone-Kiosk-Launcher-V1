@@ -77,6 +77,7 @@ object HardwareLockManager {
         UNACTIVATED,
         PAID_ACTIVE,
         EXPIRED_LOCKED,
+        TRANSFERRED_LOCKED,
         HARDWARE_MISMATCH
     }
 
@@ -374,7 +375,19 @@ object HardwareLockManager {
             }
         }
 
-        // 2. Check Unactivated Status
+        // 2. Check Transferred Status (License transferred to replacement hardware)
+        if (status == "TRANSFERRED") {
+            return LicenseInfo(
+                state = LicenseState.TRANSFERRED_LOCKED,
+                daysRemaining = 0,
+                expiresAtMs = 0L,
+                isPaid = false,
+                hardwareId = hwId,
+                deviceName = devName
+            )
+        }
+
+        // 3. Check Unactivated Status
         if (status == "UNACTIVATED") {
             return LicenseInfo(
                 state = LicenseState.UNACTIVATED,
@@ -386,7 +399,7 @@ object HardwareLockManager {
             )
         }
 
-        // 3. Expired Lockdown
+        // 4. Expired Lockdown
         return LicenseInfo(
             state = LicenseState.EXPIRED_LOCKED,
             daysRemaining = 0,
@@ -651,10 +664,11 @@ object HardwareLockManager {
                 val respStr = conn.inputStream.bufferedReader().use { it.readText() }
                 val respJson = JSONObject(respStr)
                 val status = respJson.optString("status", "")
-                val isPaid = respJson.optBoolean("isPaid", false) || status == "PAID"
-                val isExpired = respJson.optBoolean("isExpired", false) || status == "EXPIRED"
-                val paidExpires = respJson.optLong("paidExpiresAt", 0L)
-                val daysRemaining = respJson.optInt("daysRemaining", 0)
+                val isTransferred = respJson.optBoolean("isTransferred", false) || status == "TRANSFERRED"
+                val isPaid = !isTransferred && (respJson.optBoolean("isPaid", false) || status == "PAID")
+                val isExpired = !isTransferred && (respJson.optBoolean("isExpired", false) || status == "EXPIRED")
+                val paidExpires = if (isTransferred) 0L else respJson.optLong("paidExpiresAt", 0L)
+                val daysRemaining = if (isTransferred) 0 else respJson.optInt("daysRemaining", 0)
                 val signature = respJson.optString("signature", "")
                 val serverTime = respJson.optLong("serverTime", System.currentTimeMillis())
 
@@ -679,11 +693,17 @@ object HardwareLockManager {
                 editor.putInt(KEY_SERVER_DAYS_REMAINING, daysRemaining)
                 editor.putBoolean(KEY_TIME_TAMPER_LOCKED, false)
                 editor.putLong(KEY_LAST_KNOWN_WALL_CLOCK, maxOf(serverTime, now))
-                if (signature.isNotEmpty()) {
+                if (isTransferred) {
+                    editor.remove(KEY_SERVER_RSA_SIGNATURE)
+                } else if (signature.isNotEmpty()) {
                     editor.putString(KEY_SERVER_RSA_SIGNATURE, signature)
                 }
 
-                if (verifiedPaid) {
+                if (isTransferred) {
+                    editor.putString(KEY_LICENSE_STATUS, "TRANSFERRED")
+                    editor.putString(KEY_LICENSE_SIGNATURE, generateLicenseSignature(context, hwId, "TRANSFERRED", 0L, now))
+                    Log.w(TAG, "Backend sync: License was transferred to another device! Immediately revoking and locking.")
+                } else if (verifiedPaid) {
                     editor.putString(KEY_LICENSE_STATUS, "PAID")
                     editor.putString(KEY_LICENSE_SIGNATURE, generateLicenseSignature(context, hwId, "PAID", paidExpires, now))
                     if (previousStatus != "PAID") {
@@ -699,7 +719,7 @@ object HardwareLockManager {
 
                 editor.apply()
                 notifyLicenseChanged()
-                Log.i(TAG, "Backend sync success: ServerStatus=$status, isPaid=$isPaid, isExpired=$isExpired, DaysRemaining=$daysRemaining")
+                Log.i(TAG, "Backend sync success: ServerStatus=$status, isPaid=$isPaid, isTransferred=$isTransferred, isExpired=$isExpired, DaysRemaining=$daysRemaining")
                 true
             } else {
                 Log.w(TAG, "Backend sync returned HTTP ${conn.responseCode}")

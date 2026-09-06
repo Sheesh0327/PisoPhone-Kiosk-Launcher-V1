@@ -76,6 +76,7 @@ fun HardwareLockScreen(
 
     val isUnactivated = licenseInfo.state == HardwareLockManager.LicenseState.UNACTIVATED
     val isExpiredLicense = licenseInfo.state == HardwareLockManager.LicenseState.EXPIRED_LOCKED
+    val isTransferred = licenseInfo.state == HardwareLockManager.LicenseState.TRANSFERRED_LOCKED
 
     val coroutineScope = rememberCoroutineScope()
     var isCheckingServer by remember { mutableStateOf(false) }
@@ -130,16 +131,19 @@ fun HardwareLockScreen(
             val badgeBgColor = when {
                 isUnactivated -> Color(0x2210B981)
                 isExpiredLicense -> Color(0x22F59E0B)
+                isTransferred -> Color(0x22F43F5E)
                 else -> Color(0x22EF4444)
             }
             val badgeBorderColor = when {
                 isUnactivated -> Color(0xFF10B981)
                 isExpiredLicense -> Color(0xFFF59E0B)
+                isTransferred -> Color(0xFFF43F5E)
                 else -> Color(0xFFEF4444)
             }
             val badgeIconTint = when {
                 isUnactivated -> Color(0xFF10B981)
                 isExpiredLicense -> Color(0xFFF59E0B)
+                isTransferred -> Color(0xFFF43F5E)
                 else -> Color(0xFFEF4444)
             }
 
@@ -164,6 +168,7 @@ fun HardwareLockScreen(
                 text = when {
                     isUnactivated -> "ACTIVATION REQUIRED"
                     isExpiredLicense -> "LICENSE EXPIRED"
+                    isTransferred -> "LICENSE TRANSFERRED"
                     else -> "HARDWARE LOCK ACTIVE"
                 },
                 fontSize = 22.sp,
@@ -171,6 +176,7 @@ fun HardwareLockScreen(
                 color = when {
                     isUnactivated -> Color(0xFF10B981)
                     isExpiredLicense -> Color(0xFFFBBF24)
+                    isTransferred -> Color(0xFFFB7185)
                     else -> Color(0xFFF87171)
                 },
                 letterSpacing = 1.5.sp,
@@ -183,6 +189,7 @@ fun HardwareLockScreen(
                 text = when {
                     isUnactivated -> "Connect via USB or Enter License Key"
                     isExpiredLicense -> "Commercial License Required to Continue"
+                    isTransferred -> "License Moved to Replacement Phone"
                     else -> "Unauthorized Device Detected"
                 },
                 fontSize = 15.sp,
@@ -199,6 +206,8 @@ fun HardwareLockScreen(
                         "Connect this phone via USB cable to your computer. Open the PisoPhone portal (web-pisophone.pages.dev/activate) to activate with 1 click, or enter your license key below."
                     isExpiredLicense ->
                         "Your 1-year commercial license on this hardware has ended. Activate a renewal license key to unlock."
+                    isTransferred ->
+                        "The commercial license on this hardware was transferred to a replacement phone. Because each license is strictly bound to 1 device at a time, this kiosk has been deactivated."
                     else ->
                         "This application is cryptographically sealed to its authorized phone hardware. Copying or cloning this app to an unauthorized device is prohibited."
                 },
@@ -236,6 +245,7 @@ fun HardwareLockScreen(
                             text = when {
                                 isUnactivated -> "Status: Pending USB Activation"
                                 isExpiredLicense -> "Hardware Status: License Expired"
+                                isTransferred -> "Hardware Status: License Transferred"
                                 else -> "Hardware Signature Mismatch"
                             },
                             fontSize = 13.sp,
@@ -243,6 +253,7 @@ fun HardwareLockScreen(
                             color = when {
                                 isUnactivated -> Color(0xFF10B981)
                                 isExpiredLicense -> Color(0xFFF59E0B)
+                                isTransferred -> Color(0xFFFB7185)
                                 else -> Color(0xFFEF4444)
                             }
                         )
@@ -292,11 +303,17 @@ fun HardwareLockScreen(
                         when {
                             isUnactivated -> "Awaiting WebADB USB Activation (1-Click)"
                             isExpiredLicense -> "Expired (Renewal required)"
+                            isTransferred -> "Transferred (Kiosk Deactivated)"
                             else -> "Unbound / Mismatch"
                         },
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
-                        color = if (isUnactivated) Color(0xFF10B981) else Color(0xFFEF4444)
+                        color = when {
+                            isUnactivated -> Color(0xFF10B981)
+                            isExpiredLicense -> Color(0xFFF59E0B)
+                            isTransferred -> Color(0xFFFB7185)
+                            else -> Color(0xFFEF4444)
+                        }
                     )
                 }
             }
@@ -391,6 +408,8 @@ fun HardwareLockScreen(
                                 if (updated.state == HardwareLockManager.LicenseState.PAID_ACTIVE) {
                                     Toast.makeText(context, "✅ License active! Unlocking...", Toast.LENGTH_SHORT).show()
                                     onRebindSuccess()
+                                } else if (updated.state == HardwareLockManager.LicenseState.TRANSFERRED_LOCKED) {
+                                    Toast.makeText(context, "⚠️ License was transferred to a replacement phone. This device is locked.", Toast.LENGTH_LONG).show()
                                 } else if (updated.state == HardwareLockManager.LicenseState.EXPIRED_LOCKED) {
                                     Toast.makeText(context, "⚠️ Subscription is expired on server. Please renew on website.", Toast.LENGTH_LONG).show()
                                 } else {

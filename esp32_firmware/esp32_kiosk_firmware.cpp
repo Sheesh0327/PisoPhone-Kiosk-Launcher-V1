@@ -133,6 +133,167 @@ bool parseDeviceEntry(String entry, DeviceConfig& out) {
     return true;
 }
 
+// ============================================================================
+// FLEXIBLE SEAT & SLOT LICENSING SYSTEM (ESP32 HARDWARE-BOUND)
+// ============================================================================
+#define MAX_SUPPORTED_SLOTS 16
+#define DEFAULT_MAX_SLOTS 2
+
+struct LicenseSlot {
+    int slotNum;            // 1 to 16
+    String deviceId;        // Canonical hardware ID (e.g., "HW-A1B2C3D4")
+    String ip;              // Terminal local IP (e.g., "192.168.4.2")
+    String name;            // Display label (e.g., "PisoPhone 1")
+    uint64_t expiresAt;     // Expiration timestamp in ms
+    bool active;            // Whether slot is valid/licensed
+};
+
+int maxLicensedSlots = DEFAULT_MAX_SLOTS;
+LicenseSlot licenseSlots[MAX_SUPPORTED_SLOTS];
+
+void syncAndroidIpsFromSlots() {
+    String newIps = "";
+    for (int i = 0; i < maxLicensedSlots; i++) {
+        if (licenseSlots[i].deviceId.length() > 0 && licenseSlots[i].ip.length() > 0) {
+            if (newIps.length() > 0) newIps += ",";
+            newIps += licenseSlots[i].deviceId + "|" + licenseSlots[i].ip + "|" + licenseSlots[i].name;
+        }
+    }
+    androidIps = newIps;
+}
+
+void saveSlotLicenses() {
+    prefs.begin("kiosk_cfg", false);
+    prefs.putInt("max_slots", maxLicensedSlots);
+    String raw = "";
+    for (int i = 0; i < maxLicensedSlots; i++) {
+        if (i > 0) raw += ";";
+        char expBuf[24];
+        snprintf(expBuf, sizeof(expBuf), "%llu", (unsigned long long)licenseSlots[i].expiresAt);
+        raw += String(licenseSlots[i].slotNum) + "|" +
+               licenseSlots[i].deviceId + "|" +
+               licenseSlots[i].ip + "|" +
+               licenseSlots[i].name + "|" +
+               String(expBuf) + "|" +
+               (licenseSlots[i].active ? "1" : "0");
+    }
+    prefs.putString("slots_data", raw);
+    syncAndroidIpsFromSlots();
+    prefs.putString("ips", androidIps);
+    prefs.end();
+}
+
+void loadSlotLicenses() {
+    prefs.begin("kiosk_cfg", false);
+    maxLicensedSlots = prefs.getInt("max_slots", DEFAULT_MAX_SLOTS);
+    if (maxLicensedSlots < 1) maxLicensedSlots = DEFAULT_MAX_SLOTS;
+    if (maxLicensedSlots > MAX_SUPPORTED_SLOTS) maxLicensedSlots = MAX_SUPPORTED_SLOTS;
+
+    for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
+        licenseSlots[i].slotNum = i + 1;
+        licenseSlots[i].deviceId = "";
+        licenseSlots[i].ip = "";
+        licenseSlots[i].name = "PisoPhone " + String(i + 1);
+        licenseSlots[i].expiresAt = 0;
+        licenseSlots[i].active = (i < maxLicensedSlots);
+    }
+
+    String raw = prefs.getString("slots_data", "");
+    if (raw.length() > 0) {
+        int startIdx = 0;
+        int slotIdx = 0;
+        while (startIdx < raw.length() && slotIdx < MAX_SUPPORTED_SLOTS) {
+            int semi = raw.indexOf(';', startIdx);
+            if (semi == -1) semi = raw.length();
+            String item = raw.substring(startIdx, semi);
+            item.trim();
+            if (item.length() > 0) {
+                int p1 = item.indexOf('|');
+                int p2 = (p1 != -1) ? item.indexOf('|', p1 + 1) : -1;
+                int p3 = (p2 != -1) ? item.indexOf('|', p2 + 1) : -1;
+                int p4 = (p3 != -1) ? item.indexOf('|', p3 + 1) : -1;
+                int p5 = (p4 != -1) ? item.indexOf('|', p4 + 1) : -1;
+
+                if (p1 != -1 && p2 != -1 && p3 != -1 && p4 != -1) {
+                    int sNum = item.substring(0, p1).toInt();
+                    if (sNum >= 1 && sNum <= MAX_SUPPORTED_SLOTS) {
+                        int idx = sNum - 1;
+                        licenseSlots[idx].slotNum = sNum;
+                        licenseSlots[idx].deviceId = item.substring(p1 + 1, p2);
+                        licenseSlots[idx].ip = item.substring(p2 + 1, p3);
+                        licenseSlots[idx].name = item.substring(p3 + 1, p4);
+                        String expStr = (p5 != -1) ? item.substring(p4 + 1, p5) : item.substring(p4 + 1);
+                        licenseSlots[idx].expiresAt = strtoull(expStr.c_str(), NULL, 10);
+                        if (p5 != -1) {
+                            licenseSlots[idx].active = (item.substring(p5 + 1) == "1");
+                        } else {
+                            licenseSlots[idx].active = (idx < maxLicensedSlots);
+                        }
+                    }
+                }
+            }
+            startIdx = semi + 1;
+            slotIdx++;
+        }
+    } else {
+        int startIdx = 0;
+        int slotIdx = 0;
+        while (startIdx < androidIps.length() && slotIdx < maxLicensedSlots) {
+            int comma = androidIps.indexOf(',', startIdx);
+            if (comma == -1) comma = androidIps.length();
+            String entry = androidIps.substring(startIdx, comma);
+            DeviceConfig cfg;
+            if (parseDeviceEntry(entry, cfg)) {
+                licenseSlots[slotIdx].deviceId = cfg.id;
+                licenseSlots[slotIdx].ip = cfg.ip;
+                licenseSlots[slotIdx].name = cfg.name.length() > 0 ? cfg.name : ("PisoPhone " + String(slotIdx + 1));
+                licenseSlots[slotIdx].active = true;
+                slotIdx++;
+            }
+            startIdx = comma + 1;
+        }
+    }
+    prefs.end();
+    syncAndroidIpsFromSlots();
+}
+
+bool pairDeviceToSlot(int slotNum, String devId, String ip, String name) {
+    if (slotNum < 1 || slotNum > maxLicensedSlots) return false;
+    int targetIdx = slotNum - 1;
+    devId.trim();
+    ip.trim();
+    name.trim();
+
+    for (int i = 0; i < maxLicensedSlots; i++) {
+        if (i != targetIdx && licenseSlots[i].deviceId.length() > 0 && licenseSlots[i].deviceId == devId) {
+            licenseSlots[i].deviceId = "";
+            licenseSlots[i].ip = "";
+        }
+    }
+
+    licenseSlots[targetIdx].deviceId = devId;
+    if (ip.length() > 0) licenseSlots[targetIdx].ip = ip;
+    if (name.length() > 0) licenseSlots[targetIdx].name = name;
+    licenseSlots[targetIdx].active = true;
+    if (licenseSlots[targetIdx].expiresAt == 0) {
+        licenseSlots[targetIdx].expiresAt = 1798761600000ULL; // 1 Year Default
+    }
+
+    saveSlotLicenses();
+    Serial.printf("[+] Paired device %s (%s) to Slot #%d\n", devId.c_str(), ip.c_str(), slotNum);
+    return true;
+}
+
+bool unpairSlot(int slotNum) {
+    if (slotNum < 1 || slotNum > maxLicensedSlots) return false;
+    int idx = slotNum - 1;
+    Serial.printf("[+] Unpairing Slot #%d (was %s). Seat remains open.\n", slotNum, licenseSlots[idx].deviceId.c_str());
+    licenseSlots[idx].deviceId = "";
+    licenseSlots[idx].ip = "";
+    saveSlotLicenses();
+    return true;
+}
+
 
 int targetPort        = DEFAULT_PORT;
 String sharedSecret   = MASTER_CRYPTO_SECRET;
@@ -430,6 +591,104 @@ String calculateHMAC(String challenge, String secret) {
         hex += buf;
     }
     return hex;
+}
+
+// SINGLE-AUTH-PATH Verification for Hardware License Slot Expansion
+bool applySlotToken(String token) {
+    token.trim();
+    if (!token.startsWith("PISOSLOT.")) return false;
+
+    int dot1 = token.indexOf('.');
+    int dot2 = token.indexOf('.', dot1 + 1);
+    int dot3 = token.indexOf('.', dot2 + 1);
+    int dot4 = token.indexOf('.', dot3 + 1);
+
+    if (dot1 == -1 || dot2 == -1 || dot3 == -1 || dot4 == -1) return false;
+
+    String tokenMac = token.substring(dot1 + 1, dot2);
+    String slotsStr = token.substring(dot2 + 1, dot3);
+    String expStr   = token.substring(dot3 + 1, dot4);
+    String sig      = token.substring(dot4 + 1);
+
+    tokenMac.trim(); tokenMac.toUpperCase();
+    slotsStr.trim();
+    expStr.trim();
+    sig.trim();
+
+    String myMac = macAddressStr;
+    myMac.trim(); myMac.toUpperCase();
+    if (!tokenMac.equalsIgnoreCase(myMac)) {
+        Serial.printf("[-] Slot token MAC mismatch: Token has %s, Box is %s\n", tokenMac.c_str(), myMac.c_str());
+        return false;
+    }
+
+    String payload = "PISOSLOT:" + tokenMac + ":" + slotsStr + ":" + expStr;
+    String expectedSig = calculateHMAC(payload, sharedSecret);
+    if (!sig.equalsIgnoreCase(expectedSig)) {
+        Serial.println("[-] Invalid slot token HMAC signature!");
+        return false;
+    }
+
+    int newSlots = slotsStr.toInt();
+    if (newSlots < 1) newSlots = DEFAULT_MAX_SLOTS;
+    if (newSlots > MAX_SUPPORTED_SLOTS) newSlots = MAX_SUPPORTED_SLOTS;
+
+    uint64_t newExp = strtoull(expStr.c_str(), NULL, 10);
+
+    maxLicensedSlots = max(maxLicensedSlots, newSlots);
+    for (int i = 0; i < maxLicensedSlots; i++) {
+        licenseSlots[i].active = true;
+        if (licenseSlots[i].expiresAt < newExp) {
+            licenseSlots[i].expiresAt = newExp;
+        }
+    }
+
+    is_licensed = true;
+    saveSlotLicenses();
+    Serial.printf("[+] Successfully applied Slot License Token: Capacity expanded to %d slots!\n", maxLicensedSlots);
+    return true;
+}
+
+// Single Snapshot Reporting to Cloudflare Worker
+void sendCloudSnapshot() {
+    if (WiFi.status() != WL_CONNECTED) return;
+    
+    HTTPClient http;
+    http.setTimeout(4000);
+    if (!http.begin("https://pisophone-api.pisophone-support.workers.dev/api/box/report-snapshot")) {
+        return;
+    }
+    http.addHeader("Content-Type", "application/json");
+
+    String json = "{";
+    json += "\"mac\":\"" + macAddressStr + "\",";
+    json += "\"tier\":" + String(maxLicensedSlots) + ",";
+    json += "\"lifetimeCoins\":" + String(totalCoinsLifetime) + ",";
+    json += "\"lifetimeEarnings\":" + String(totalEarningsLifetime, 2) + ",";
+    json += "\"wifiSsid\":\"" + wifiSsid + "\",";
+    json += "\"firmwareVersion\":\"2.4.0-SLOT-MANAGER\",";
+    json += "\"slots\":[";
+    for (int i = 0; i < maxLicensedSlots; i++) {
+        if (i > 0) json += ",";
+        char expBuf[24];
+        snprintf(expBuf, sizeof(expBuf), "%llu", (unsigned long long)licenseSlots[i].expiresAt);
+        json += "{";
+        json += "\"slotNum\":" + String(licenseSlots[i].slotNum) + ",";
+        json += "\"deviceId\":\"" + licenseSlots[i].deviceId + "\",";
+        json += "\"ip\":\"" + licenseSlots[i].ip + "\",";
+        json += "\"name\":\"" + licenseSlots[i].name + "\",";
+        json += "\"expiresAt\":" + String(expBuf);
+        json += "}";
+    }
+    json += "]}";
+
+    int code = http.POST(json);
+    if (code > 0) {
+        Serial.printf("[☁️ CLOUD] Snapshot reported successfully (HTTP %d)\n", code);
+    } else {
+        Serial.printf("[☁️ CLOUD] Snapshot report failed: %s\n", http.errorToString(code).c_str());
+    }
+    http.end();
 }
 
 String aes_encrypt(String plaintext, String secret) {
@@ -808,17 +1067,32 @@ void updateDynamicDeviceList(String deviceId, String ip) {
     }
     
     if (!found) {
-        if (newIps.length() > 0) newIps += ",";
-        newIps += deviceId + "|" + ip + "|";
-        changed = true;
-        Serial.printf("[+] Auto-registered new PisoPhone device IP: %s (ID: %s)\n", ip.c_str(), deviceId.c_str());
+        // Assign to first open licensed slot
+        for (int i = 0; i < maxLicensedSlots; i++) {
+            if (licenseSlots[i].deviceId.length() == 0) {
+                licenseSlots[i].deviceId = deviceId;
+                licenseSlots[i].ip = ip;
+                if (licenseSlots[i].name.length() == 0) {
+                    licenseSlots[i].name = "PisoPhone " + String(i + 1);
+                }
+                found = true;
+                changed = true;
+                Serial.printf("[+] Auto-assigned incoming terminal %s (%s) to open Seat Slot #%d\n", deviceId.c_str(), ip.c_str(), i + 1);
+                break;
+            }
+        }
+    } else {
+        // Update slot IP
+        for (int i = 0; i < maxLicensedSlots; i++) {
+            if (licenseSlots[i].deviceId == deviceId) {
+                licenseSlots[i].ip = ip;
+                break;
+            }
+        }
     }
     
     if (changed) {
-        androidIps = newIps;
-        prefs.begin("kiosk_cfg", false);
-        prefs.putString("ips", androidIps);
-        prefs.end();
+        saveSlotLicenses();
     }
 }
 
@@ -1079,6 +1353,52 @@ void sendAddTime(int minutes, String targetIp, String txId = "") {
         }
         startIdx = comma + 1;
     }
+}
+
+String renderLicenseSlotsHtml() {
+    String html = "";
+    for (int i = 0; i < maxLicensedSlots; i++) {
+        int sNum = licenseSlots[i].slotNum;
+        String devId = licenseSlots[i].deviceId;
+        String ip = licenseSlots[i].ip;
+        String name = licenseSlots[i].name.length() > 0 ? licenseSlots[i].name : ("PisoPhone " + String(sNum));
+        bool isBound = (devId.length() > 0);
+        
+        html += "<div class=\"slot-card\" style=\"background: var(--card-bg); border: 1px solid var(--border); border-left: 4px solid " + String(isBound ? "var(--primary)" : "var(--text-muted)") + "; border-radius: var(--radius-md); padding: 14px; display: flex; flex-direction: column; justify-content: space-between; gap: 10px;\">";
+        html += "<div style=\"display: flex; justify-content: space-between; align-items: flex-start;\">";
+        html += "<div>";
+        html += "<div style=\"font-size: 11px; font-weight: 800; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px;\">Seat Slot #" + String(sNum) + "</div>";
+        html += "<div style=\"font-size: 15px; font-weight: 700; color: var(--text-main); margin-top: 2px;\">" + (isBound ? name : "Empty Seat") + "</div>";
+        html += "</div>";
+        
+        if (isBound) {
+            html += "<span style=\"font-size: 10px; font-weight: 800; background: var(--status-good-bg); color: var(--status-good); border: 1px solid var(--status-good-border); padding: 2px 8px; border-radius: 12px;\">BOUND</span>";
+        } else {
+            html += "<span style=\"font-size: 10px; font-weight: 800; background: rgba(100, 116, 139, 0.1); color: var(--text-muted); border: 1px solid var(--border); padding: 2px 8px; border-radius: 12px;\">AVAILABLE</span>";
+        }
+        html += "</div>";
+
+        if (isBound) {
+            html += "<div style=\"background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; font-size: 12px; display: flex; flex-direction: column; gap: 4px;\">";
+            html += "<div style=\"display: flex; justify-content: space-between;\"><span style=\"color: var(--text-muted);\">Hardware ID:</span><span style=\"font-family: monospace; font-weight: 600;\">" + devId + "</span></div>";
+            html += "<div style=\"display: flex; justify-content: space-between;\"><span style=\"color: var(--text-muted);\">Terminal IP:</span><span style=\"font-family: monospace; font-weight: 600;\">" + (ip.length() > 0 ? ip : "Waiting Wi-Fi...") + "</span></div>";
+            html += "</div>";
+            html += "<div style=\"display: flex; gap: 8px; margin-top: 4px;\">";
+            html += "<button type=\"button\" class=\"btn btn-outline btn-sm\" style=\"flex: 1; font-size: 11px; padding: 6px 8px;\" onclick=\"unpairSlot(" + String(sNum) + ")\">⏏ Unpair Slot</button>";
+            html += "<button type=\"button\" class=\"btn btn-outline btn-sm\" style=\"flex: 1; font-size: 11px; padding: 6px 8px; color: var(--danger); border-color: var(--danger);\" onclick=\"openDeprovisionModal(" + String(sNum) + ", '" + devId + "')\">🔓 Deprovision</button>";
+            html += "</div>";
+        } else {
+            html += "<div style=\"background: var(--bg); border: 1px dashed var(--border); border-radius: var(--radius-sm); padding: 12px; font-size: 12px; text-align: center; color: var(--text-muted);\">";
+            html += "Seat is open & ready. Plug new Android phone via USB to install & activate in 1 click.";
+            html += "</div>";
+            html += "<div style=\"margin-top: 4px;\">";
+            html += "<button type=\"button\" class=\"btn btn-primary btn-sm\" style=\"width: 100%; font-size: 12px; padding: 8px 10px; font-weight: 700;\" onclick=\"openProvisionModal(" + String(sNum) + ")\">📱 1-Click Install APK & Pair</button>";
+            html += "</div>";
+        }
+
+        html += "</div>";
+    }
+    return html;
 }
 
 const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
@@ -1704,7 +2024,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                     <span class="logo-piso">Piso</span><span class="logo-phone">Phone</span>
                 </h1>
                 <span class="badge-pill">Kiosk Admin</span>
-                <span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #10B981; border: 1px solid rgba(16, 185, 129, 0.3); font-family: monospace;">MAC: {MAC_ADDRESS}</span>
+                <span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #10B981; border: 1px solid rgba(16, 185, 129, 0.3); font-family: monospace; cursor: pointer;" onclick="navigator.clipboard.writeText('{MAC_ADDRESS}'); alert('Copied MAC Address: {MAC_ADDRESS}');" title="Click to copy MAC address">📋 MAC: {MAC_ADDRESS}</span>
             </div>
             <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                 <button type="button" id="theme_toggle_btn" onclick="toggleTheme()" class="btn btn-outline btn-sm">🌙 Dark Mode</button>
@@ -1838,6 +2158,14 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                             <input type="number" name="port" value="{PORT}">
                             <div class="hint">Default is 8080.</div>
                         </div>
+                        <div class="form-group" style="background: var(--input-bg); padding: 12px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border); margin-top: 12px;">
+                            <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">ESP32 MAC Address (Box Hardware ID)</div>
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 6px;">
+                                <code style="font-size: 14px; font-weight: 800; color: var(--primary); font-family: monospace;">{MAC_ADDRESS}</code>
+                                <button type="button" class="btn btn-sm" onclick="navigator.clipboard.writeText('{MAC_ADDRESS}'); alert('Copied MAC Address: {MAC_ADDRESS}');" style="padding: 4px 10px; font-size: 11px;">📋 Copy</button>
+                            </div>
+                            <div class="hint" style="margin-top: 4px;">Use this MAC address on your dashboard to register this coin slot box and license up to 12 phones.</div>
+                        </div>
                     </div>
 
                     <!-- Pricing & Rules -->
@@ -1863,12 +2191,25 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                         </div>
                     </div>
 
-                    <!-- Devices -->
-                    <div class="card grid-full">
-                        <h3 class="card-title">📱 Registered Android Terminals</h3>
-                        <div class="hint" style="margin-bottom: 4px;">Connected terminals automatically register when they sync over Wi-Fi. Add or modify terminal details below.</div>
-                        <div style="background: var(--bg); padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-lg);">
-                            {DEVICE_IP_INPUTS}
+                    <!-- Flexible Device Seats & Slot Management -->
+                    <div class="card grid-full" id="license_slots_card">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px;">
+                            <div>
+                                <h3 class="card-title" style="margin-bottom: 2px;">🎛️ Licensed Device Seats & Terminals</h3>
+                                <div class="hint">The ESP32 hardware manages seat allocation locally. Plug new phones via USB to install & activate in 1 fluid motion.</div>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: var(--primary); font-weight: 700; padding: 6px 14px; border-radius: 20px; font-size: 13px;">
+                                    Capacity: <span id="capacity_badge">{MAX_SLOTS}</span> Seats
+                                </span>
+                                <button type="button" class="btn btn-outline btn-sm" onclick="openTokenModal()">🔑 Upgrade Capacity</button>
+                                <button type="button" class="btn btn-outline btn-sm" onclick="syncCloudSnapshot(this)">☁️ Sync to Cloud</button>
+                            </div>
+                        </div>
+
+                        <!-- Interactive Seats Grid -->
+                        <div id="slots_grid_container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-top: 12px;">
+                            {DEVICE_SLOTS_MANAGER}
                         </div>
                     </div>
 
@@ -2096,6 +2437,301 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
             }).catch(err => resDiv.innerHTML = '❌ Network error.');
     }
     </script>
+
+    <!-- Token Upgrade Modal -->
+    <div id="token_modal" class="modal-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 10000; align-items: center; justify-content: center; padding: 16px;">
+        <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; max-width: 500px; width: 100%; box-shadow: var(--shadow-lg);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 style="margin: 0; font-size: 18px; font-weight: 700;">🔑 Upgrade Hardware Capacity</h3>
+                <button type="button" onclick="closeTokenModal()" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-muted);">&times;</button>
+            </div>
+            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">Paste the signed Slot Token issued from your Pisophone Cloud Dashboard to expand terminal capacity on this box.</p>
+            <div class="form-group">
+                <label>PISOSLOT Token</label>
+                <textarea id="token_input" rows="3" placeholder="PISOSLOT.AA:BB:CC:DD:EE:FF.5.1798761600000.abcd..." style="width: 100%; font-family: monospace; font-size: 12px; padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg);"></textarea>
+            </div>
+            <div id="token_error" style="display: none; color: var(--danger); font-size: 12px; margin-bottom: 12px; font-weight: 600;"></div>
+            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;">
+                <button type="button" class="btn btn-outline" onclick="closeTokenModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="submitSlotToken()">Verify & Upgrade</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- WebUSB 1-Click Provisioning Modal -->
+    <div id="provision_modal" class="modal-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 10000; align-items: center; justify-content: center; padding: 16px;">
+        <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; max-width: 540px; width: 100%; box-shadow: var(--shadow-lg);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 style="margin: 0; font-size: 18px; font-weight: 700;">📱 1-Click Install & Activate (Slot #<span id="prov_slot_num">1</span>)</h3>
+                <button type="button" onclick="closeProvisionModal()" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-muted);">&times;</button>
+            </div>
+            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">Connect the Android phone to your computer or Android tablet via USB. Ensure <b>USB Debugging</b> is enabled.</p>
+            
+            <div style="background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: 700; margin-bottom: 6px;">
+                    <span id="prov_step_label">Step 1: Ready</span>
+                    <span id="prov_percent">0%</span>
+                </div>
+                <div style="background: var(--border); height: 8px; border-radius: 4px; overflow: hidden;">
+                    <div id="prov_progress_bar" style="background: var(--primary); height: 100%; width: 0%; transition: width 0.3s;"></div>
+                </div>
+                <div id="prov_log" style="font-family: monospace; font-size: 11px; color: var(--text-muted); margin-top: 8px; max-height: 120px; overflow-y: auto; white-space: pre-wrap;">Ready to start installation...</div>
+            </div>
+
+            <div style="margin-bottom: 16px; font-size: 12px;">
+                <label style="display: block; font-weight: 600; margin-bottom: 4px;">APK Source:</label>
+                <input type="file" id="local_apk_input" accept=".apk" style="font-size: 12px;" onchange="handleLocalApkSelected(this)">
+                <div class="hint" style="margin-top: 2px;">Default will download latest release APK automatically from CDN.</div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                <button type="button" class="btn btn-outline" onclick="closeProvisionModal()">Close</button>
+                <button type="button" id="start_prov_btn" class="btn btn-primary" onclick="executeProvisioningFlow()">🚀 Start 1-Click Install & Pair</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- WebUSB Deprovision Modal -->
+    <div id="deprovision_modal" class="modal-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 10000; align-items: center; justify-content: center; padding: 16px;">
+        <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; max-width: 480px; width: 100%; box-shadow: var(--shadow-lg);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: var(--danger);">🔓 Deprovision Terminal</h3>
+                <button type="button" onclick="closeDeprovisionModal()" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-muted);">&times;</button>
+            </div>
+            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">This will remove Device Owner kiosk privileges and free Slot #<span id="deprov_slot_num">1</span>. <b>The slot seat and expiry time will remain fully preserved for your next phone!</b></p>
+            
+            <div class="form-group">
+                <label>Admin Security PIN</label>
+                <input type="password" id="deprov_pin_input" value="1234" placeholder="1234" style="width: 100%; padding: 8px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg);">
+            </div>
+            <div id="deprov_log" style="font-family: monospace; font-size: 11px; color: var(--text-muted); margin-top: 8px; max-height: 100px; overflow-y: auto; white-space: pre-wrap;"></div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;">
+                <button type="button" class="btn btn-outline" onclick="closeDeprovisionModal()">Cancel</button>
+                <button type="button" id="start_deprov_btn" class="btn btn-outline" style="color: var(--danger); border-color: var(--danger);" onclick="executeDeprovisionFlow()">🔓 Confirm Deprovision</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- WebADB CDN Script Loader -->
+    <script src="https://pisophone-v1.pages.dev/yume-chan-bundle.js"></script>
+    <script src="https://pisophone-v1.pages.dev/webadb_manager.js"></script>
+
+    <script>
+    let activeSlotNum = 1;
+    let localApkBytes = null;
+
+    window.openTokenModal = function() {
+        document.getElementById('token_modal').style.display = 'flex';
+        document.getElementById('token_input').value = '';
+        document.getElementById('token_error').style.display = 'none';
+    };
+    window.closeTokenModal = function() {
+        document.getElementById('token_modal').style.display = 'none';
+    };
+
+    window.submitSlotToken = function() {
+        const token = document.getElementById('token_input').value.trim();
+        const errDiv = document.getElementById('token_error');
+        if (!token) {
+            errDiv.textContent = 'Please paste a token.';
+            errDiv.style.display = 'block';
+            return;
+        }
+        errDiv.style.display = 'none';
+        fetch('/api/slots/apply_token?token=' + encodeURIComponent(token), { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert('🎉 Capacity upgraded to ' + data.maxSlots + ' seats!');
+                    location.reload();
+                } else {
+                    errDiv.textContent = data.error || 'Invalid token.';
+                    errDiv.style.display = 'block';
+                }
+            })
+            .catch(err => {
+                errDiv.textContent = 'Network error: ' + err.message;
+                errDiv.style.display = 'block';
+            });
+    };
+
+    window.syncCloudSnapshot = function(btn) {
+        btn.textContent = '⏳ Syncing...';
+        btn.disabled = true;
+        fetch('/api/slots/cloud_sync', { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                alert('☁️ Cloud snapshot report sent successfully!');
+                btn.textContent = '☁️ Sync to Cloud';
+                btn.disabled = false;
+            })
+            .catch(err => {
+                alert('Cloud sync failed: ' + err.message);
+                btn.textContent = '☁️ Sync to Cloud';
+                btn.disabled = false;
+            });
+    };
+
+    window.unpairSlot = function(slot) {
+        if (!confirm('Unpair Slot #' + slot + '? The seat will remain valid and open for a replacement terminal.')) return;
+        fetch('/api/slots/unpair?slot=' + slot, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            })
+            .catch(err => alert('Network error: ' + err.message));
+    };
+
+    window.openProvisionModal = function(slot) {
+        activeSlotNum = slot;
+        document.getElementById('prov_slot_num').textContent = slot;
+        document.getElementById('prov_step_label').textContent = 'Step 1: Ready';
+        document.getElementById('prov_percent').textContent = '0%';
+        document.getElementById('prov_progress_bar').style.width = '0%';
+        document.getElementById('prov_log').textContent = 'Plug Android device via USB and click Start.\n';
+        document.getElementById('provision_modal').style.display = 'flex';
+    };
+    window.closeProvisionModal = function() {
+        document.getElementById('provision_modal').style.display = 'none';
+    };
+
+    window.handleLocalApkSelected = function(input) {
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                localApkBytes = new Uint8Array(e.target.result);
+                if (window.webADB) window.webADB.setCachedApkBytes(localApkBytes);
+                const log = document.getElementById('prov_log');
+                log.textContent += '[+] Loaded local APK file: ' + input.files[0].name + ' (' + Math.round(localApkBytes.length / 1024) + ' KB)\n';
+            };
+            reader.readAsArrayBuffer(input.files[0]);
+        }
+    };
+
+    window.executeProvisioningFlow = async function() {
+        const btn = document.getElementById('start_prov_btn');
+        const log = document.getElementById('prov_log');
+        const pBar = document.getElementById('prov_progress_bar');
+        const pLbl = document.getElementById('prov_step_label');
+        const pPct = document.getElementById('prov_percent');
+
+        btn.disabled = true;
+        const setProgress = (label, pct) => {
+            pLbl.textContent = label;
+            pPct.textContent = pct + '%';
+            pBar.style.width = pct + '%';
+        };
+
+        const appendLog = (msg) => {
+            log.textContent += msg + '\n';
+            log.scrollTop = log.scrollHeight;
+        };
+
+        try {
+            if (!window.webADB) {
+                throw new Error('WebADB library not loaded. Check internet connection or browser WebUSB support.');
+            }
+
+            setProgress('Step 1/5: Downloading APK...', 20);
+            if (!localApkBytes) {
+                appendLog('[1/5] Downloading APK from CDN...');
+                await window.webADB.downloadToLocalTemp(['https://pisophone-v1.pages.dev/app-release.apk', '/apk/latest.apk'], (txt) => appendLog(txt));
+            } else {
+                appendLog('[1/5] Using selected local APK bytes.');
+            }
+
+            setProgress('Step 2/5: Connecting WebUSB...', 40);
+            appendLog('[2/5] Requesting USB device...');
+            await window.webADB.connect((txt) => appendLog(txt));
+
+            setProgress('Step 3/5: Pushing APK...', 60);
+            appendLog('[3/5] Pushing APK to /data/local/tmp/app.apk...');
+            await window.webADB.pushFile((txt) => appendLog(txt));
+
+            setProgress('Step 4/5: Installing & Enrolling Owner...', 80);
+            appendLog('[4/5] Installing package & setting Device Owner...');
+            await window.webADB.installApk((txt) => appendLog(txt));
+            await window.webADB.setDeviceOwner((txt) => appendLog(txt));
+            await window.webADB.grantPermissions((txt) => appendLog(txt));
+
+            setProgress('Step 5/5: Pairing to Slot #' + activeSlotNum + '...', 90);
+            appendLog('[5/5] Registering hardware with ESP32 manager...');
+            
+            // Read hardware device ID via adb shell
+            let devId = 'HW-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+            try {
+                const out = await window.webADB.runShell('settings get secure android_id');
+                if (out && out.trim().length > 4) devId = 'HW-' + out.trim().substring(0, 8).toUpperCase();
+            } catch (e) {
+                appendLog('[*] Using generated ID: ' + devId);
+            }
+
+            // Pair with ESP32
+            const pairRes = await fetch('/api/slots/pair?slot=' + activeSlotNum + '&id=' + encodeURIComponent(devId) + '&name=PisoPhone+' + activeSlotNum, { method: 'POST' });
+            const pairData = await pairRes.json();
+            if (!pairData.success) throw new Error(pairData.error || 'Failed to pair with ESP32');
+
+            // Launch app
+            await window.webADB.launchApp((txt) => appendLog(txt));
+
+            setProgress('✅ Complete!', 100);
+            appendLog('\n🎉 INSTALLATION & PAIRING COMPLETE! Device is now armed.');
+            setTimeout(() => location.reload(), 1800);
+        } catch (err) {
+            setProgress('❌ Error', 0);
+            appendLog('\n[ERROR] ' + err.message);
+            btn.disabled = false;
+        }
+    };
+
+    window.openDeprovisionModal = function(slot, devId) {
+        activeSlotNum = slot;
+        document.getElementById('deprov_slot_num').textContent = slot;
+        document.getElementById('deprov_log').textContent = 'Connect phone via USB and click Confirm Deprovision.\n';
+        document.getElementById('deprovision_modal').style.display = 'flex';
+    };
+    window.closeDeprovisionModal = function() {
+        document.getElementById('deprovision_modal').style.display = 'none';
+    };
+
+    window.executeDeprovisionFlow = async function() {
+        const btn = document.getElementById('start_deprov_btn');
+        const log = document.getElementById('deprov_log');
+        const pin = document.getElementById('deprov_pin_input').value.trim() || '1234';
+        btn.disabled = true;
+
+        const appendLog = (msg) => {
+            log.textContent += msg + '\n';
+            log.scrollTop = log.scrollHeight;
+        };
+
+        try {
+            if (!window.webADB) throw new Error('WebADB library not loaded.');
+            appendLog('[1/3] Connecting USB device...');
+            await window.webADB.connect((t) => appendLog(t));
+
+            appendLog('[2/3] Sending deprovision broadcast...');
+            await window.webADB.runShell('am broadcast -a com.pisophone.kiosk.DEPROVISION -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es pin ' + pin);
+            await window.webADB.runShell('dpm remove-active-admin com.pisophone.kiosk/com.pisophone.kiosk.receiver.KioskDeviceAdminReceiver');
+            await window.webADB.runShell('pm uninstall com.pisophone.kiosk');
+
+            appendLog('[3/3] Freeing Slot #' + activeSlotNum + ' on ESP32...');
+            await fetch('/api/slots/unpair?slot=' + activeSlotNum, { method: 'POST' });
+
+            appendLog('\n✅ DEPROVISION COMPLETE! Phone restored, slot is open.');
+            setTimeout(() => location.reload(), 1500);
+        } catch (err) {
+            appendLog('\n[ERROR] ' + err.message);
+            btn.disabled = false;
+        }
+    };
+    </script>
+
 </body>
 </html>
 )HTML";
@@ -2356,9 +2992,14 @@ void handleLogout() {
 
 void handlePortalRoot() {
     if (!checkAuth()) return;
+    if (macAddressStr.length() == 0) {
+        uint8_t mac[6];
+        esp_read_mac(mac, ESP_MAC_WIFI_STA);
+        char macBuf[18];
+        snprintf(macBuf, sizeof(macBuf), "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        macAddressStr = String(macBuf);
+    }
     String html = PORTAL_HTML_TEMPLATE;
-    html.reserve(14000);
-
     html.replace("{WIFI_SSID}", wifiSsid);
     html.replace("{WIFI_PASS}", wifiPass);
     html.replace("{MAC_ADDRESS}", macAddressStr);
@@ -2369,7 +3010,8 @@ void handlePortalRoot() {
     html.replace("{LED_ACTIVE_HIGH_SELECTED}", !ledActiveLow ? "selected" : "");
     html.replace("{RELAY_PIN}", String(relayPin));
     html.replace("{IPS}", androidIps);
-    html.replace("{DEVICE_IP_INPUTS}", renderDeviceIpInputs());
+    html.replace("{DEVICE_SLOTS_MANAGER}", renderLicenseSlotsHtml());
+    html.replace("{MAX_SLOTS}", String(maxLicensedSlots));
     html.replace("{PORT}", String(targetPort));
     html.replace("{ADMIN_PASSWORD}", webPassword);
     html.replace("{PRICE}", String(coinPrice));
@@ -2689,6 +3331,89 @@ void handleQueryTime() {
     webServer.send(200, "application/json", jsonBuf);
 }
 
+
+void handleApiSlots() {
+    if (!checkAuth()) return;
+    String json = "{\"maxSlots\":" + String(maxLicensedSlots) + ",\"mac\":\"" + macAddressStr + "\",\"slots\":[";
+    for (int i = 0; i < maxLicensedSlots; i++) {
+        if (i > 0) json += ",";
+        char expBuf[24];
+        snprintf(expBuf, sizeof(expBuf), "%llu", (unsigned long long)licenseSlots[i].expiresAt);
+        json += "{";
+        json += "\"slotNum\":" + String(licenseSlots[i].slotNum) + ",";
+        json += "\"deviceId\":\"" + licenseSlots[i].deviceId + "\",";
+        json += "\"ip\":\"" + licenseSlots[i].ip + "\",";
+        json += "\"name\":\"" + licenseSlots[i].name + "\",";
+        json += "\"expiresAt\":" + String(expBuf) + ",";
+        json += "\"active\":" + String(licenseSlots[i].active ? "true" : "false") + ",";
+        json += "\"isBound\":" + String(licenseSlots[i].deviceId.length() > 0 ? "true" : "false");
+        json += "}";
+    }
+    json += "]}";
+    webServer.send(200, "application/json", json);
+}
+
+void handleApiSlotPair() {
+    if (!checkAuth()) return;
+    int slot = webServer.hasArg("slot") ? webServer.arg("slot").toInt() : 0;
+    String id = webServer.hasArg("id") ? webServer.arg("id") : "";
+    String ip = webServer.hasArg("ip") ? webServer.arg("ip") : "";
+    String name = webServer.hasArg("name") ? webServer.arg("name") : "";
+
+    if (slot < 1 || slot > maxLicensedSlots || id.length() == 0) {
+        webServer.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid slot or device ID\"}");
+        return;
+    }
+
+    bool res = pairDeviceToSlot(slot, id, ip, name);
+    if (res) {
+        sendCloudSnapshot();
+        webServer.send(200, "application/json", "{\"success\":true,\"slot\":" + String(slot) + "}");
+    } else {
+        webServer.send(500, "application/json", "{\"success\":false,\"error\":\"Failed to pair\"}");
+    }
+}
+
+void handleApiSlotUnpair() {
+    if (!checkAuth()) return;
+    int slot = webServer.hasArg("slot") ? webServer.arg("slot").toInt() : 0;
+    if (slot < 1 || slot > maxLicensedSlots) {
+        webServer.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid slot number\"}");
+        return;
+    }
+
+    bool res = unpairSlot(slot);
+    if (res) {
+        sendCloudSnapshot();
+        webServer.send(200, "application/json", "{\"success\":true,\"slot\":" + String(slot) + "}");
+    } else {
+        webServer.send(500, "application/json", "{\"success\":false,\"error\":\"Failed to unpair\"}");
+    }
+}
+
+void handleApiSlotApplyToken() {
+    if (!checkAuth()) return;
+    String token = webServer.hasArg("token") ? webServer.arg("token") : "";
+    if (token.length() == 0) {
+        webServer.send(400, "application/json", "{\"success\":false,\"error\":\"Missing token\"}");
+        return;
+    }
+
+    bool ok = applySlotToken(token);
+    if (ok) {
+        sendCloudSnapshot();
+        webServer.send(200, "application/json", "{\"success\":true,\"maxSlots\":" + String(maxLicensedSlots) + "}");
+    } else {
+        webServer.send(403, "application/json", "{\"success\":false,\"error\":\"Invalid slot token or cryptographic signature mismatch\"}");
+    }
+}
+
+void handleApiSlotCloudSync() {
+    if (!checkAuth()) return;
+    sendCloudSnapshot();
+    webServer.send(200, "application/json", "{\"success\":true,\"message\":\"Cloud snapshot sent\"}");
+}
+
 void handleApiStatus() {
     if (!checkAuth()) return;
     String json = "[";
@@ -2964,6 +3689,13 @@ void handleOtaForm() {
             <h2>📲 Firmware OTA Update</h2>
             <button type="button" class="theme-btn" id="theme_toggle_btn" onclick="toggleTheme()">🌙 Dark</button>
         </div>
+        <div style="margin-bottom: 16px; padding: 10px 14px; background: var(--input-bg); border: 1px solid var(--border); border-radius: 10px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="text-align: left;">
+                <div style="font-size: 10px; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">ESP32 Hardware MAC</div>
+                <code style="font-size: 14px; font-weight: 800; color: var(--primary); font-family: monospace;">{MAC_ADDRESS}</code>
+            </div>
+            <button type="button" class="theme-btn" onclick="navigator.clipboard.writeText('{MAC_ADDRESS}'); alert('Copied MAC Address: {MAC_ADDRESS}');" style="padding: 4px 10px;">📋 Copy</button>
+        </div>
         <p style="font-size:13px; color:var(--text-muted); margin-bottom: 20px; line-height: 1.5;">
             Select a compiled <b>.bin</b> firmware file (from PlatformIO <code>firmware.bin</code> or Arduino IDE) to update your controller wirelessly.
         </p>
@@ -3083,6 +3815,14 @@ void handleOtaForm() {
 </body>
 </html>
 )HTML";
+    if (macAddressStr.length() == 0) {
+        uint8_t mac[6];
+        esp_read_mac(mac, ESP_MAC_WIFI_STA);
+        char macBuf[18];
+        snprintf(macBuf, sizeof(macBuf), "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        macAddressStr = String(macBuf);
+    }
+    html.replace("{MAC_ADDRESS}", macAddressStr);
     webServer.send(200, "text/html; charset=utf-8", html);
 }
 
@@ -3375,6 +4115,7 @@ void setup() {
         bootIdx = comma + 1;
     }
     androidIps = bootCleanIps;
+    loadSlotLicenses();
     targetPort        = prefs.getInt("port", targetPort);
     webPassword       = prefs.getString("admin_pw", webPassword);
     coinPrice         = prefs.getFloat("price", coinPrice);
@@ -3404,6 +4145,14 @@ void setup() {
     // Initialize relay pin as completely floating (High-Z input, neither positive nor ground)
     pinMode(relayPin, INPUT);
     Serial.printf("[+] Hardware Pins bound: Beam Coin Pin = GPIO %d, Universal Multi-Coin Pin = GPIO %d (ISR active), LED Pin = GPIO %d, Relay Pin = GPIO %d (Floating Standby), Reset Pin = GPIO %d\n", coinPin, universalCoinPin, ledPin, relayPin, HARDWARE_RESET_PIN);
+
+    // Immediately read hardware factory MAC address from eFuse
+    uint8_t macInit[6];
+    esp_read_mac(macInit, ESP_MAC_WIFI_STA);
+    char macBufInit[18];
+    snprintf(macBufInit, sizeof(macBufInit), "%02X:%02X:%02X:%02X:%02X:%02X", macInit[0], macInit[1], macInit[2], macInit[3], macInit[4], macInit[5]);
+    macAddressStr = String(macBufInit);
+    Serial.printf("[+] Hardware MAC Address: %s\n", macAddressStr.c_str());
 
     WiFi.persistent(false);
     WiFi.disconnect(true, true);
@@ -3480,6 +4229,11 @@ void setup() {
     webServer.on("/announce", HTTP_GET, handleAnnounce);
     webServer.on("/trigger_android", HTTP_GET, handleTriggerAndroid);
     webServer.on("/crash_report", HTTP_POST, handleCrashReport);
+    webServer.on("/api/slots", HTTP_GET, handleApiSlots);
+    webServer.on("/api/slots/pair", HTTP_POST, handleApiSlotPair);
+    webServer.on("/api/slots/unpair", HTTP_POST, handleApiSlotUnpair);
+    webServer.on("/api/slots/apply_token", HTTP_POST, handleApiSlotApplyToken);
+    webServer.on("/api/slots/cloud_sync", HTTP_POST, handleApiSlotCloudSync);
     
     // Port 80: Web OTA Firmware Update Endpoints
     webServer.on("/update", HTTP_GET, handleOtaForm);
@@ -3607,4 +4361,11 @@ void loop() {
         }
     }
     processLedBlink();
+    
+    // Periodic Cloud Snapshot Sync (Every 15 mins if connected)
+    static unsigned long lastCloudSnapshotMs = 0;
+    if (WiFi.status() == WL_CONNECTED && (millis() - lastCloudSnapshotMs > 900000 || lastCloudSnapshotMs == 0)) {
+        lastCloudSnapshotMs = millis();
+        sendCloudSnapshot();
+    }
 }

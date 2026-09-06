@@ -402,6 +402,31 @@ async function unlinkDeviceFromBox(buildNumber, deviceId) {
     const user = getPisoUser();
     if (!user) throw new Error("Please sign in first.");
 
+    const normId = String(deviceId).trim().toUpperCase().replace(/^HW-/, '');
+
+    // Purge immediately from local storage box cache
+    try {
+        const boxStr = localStorage.getItem(PISO_BOX_STORAGE_KEY);
+        if (boxStr) {
+            const box = JSON.parse(boxStr);
+            if (box && Array.isArray(box.allBoxes)) {
+                box.allBoxes.forEach(b => {
+                    if (b.buildNumber === buildNumber) {
+                        if (Array.isArray(b.linkedDevices)) {
+                            b.linkedDevices = b.linkedDevices.filter(id => String(id).trim().toUpperCase().replace(/^HW-/, '') !== normId);
+                        }
+                        if (Array.isArray(b.devices)) {
+                            b.devices = b.devices.filter(d => String(d.deviceId || '').trim().toUpperCase().replace(/^HW-/, '') !== normId);
+                        }
+                        b.devicesUsed = (b.devices || b.linkedDevices || []).length;
+                        b.slotsRemaining = Math.max(0, (b.maxDevices || 12) - b.devicesUsed);
+                    }
+                });
+                localStorage.setItem(PISO_BOX_STORAGE_KEY, JSON.stringify(box));
+            }
+        }
+    } catch(e) {}
+
     const res = await fetch(`${PISO_API_BASE}/api/box/unlink-device`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -427,6 +452,51 @@ async function removeDeviceFromAccount(deviceId) {
     const user = getPisoUser();
     if (!user) throw new Error("Please sign in first.");
 
+    const normId = String(deviceId).trim().toUpperCase().replace(/^HW-/, '');
+
+    // Purge immediately from local device cache
+    try {
+        const cachedStr = localStorage.getItem('piso_cached_devices');
+        if (cachedStr) {
+            const list = JSON.parse(cachedStr);
+            if (Array.isArray(list)) {
+                const updated = list.filter(d => String(d.deviceId || '').trim().toUpperCase().replace(/^HW-/, '') !== normId);
+                localStorage.setItem('piso_cached_devices', JSON.stringify(updated));
+            }
+        }
+    } catch(e) {}
+
+    // Purge immediately from local box cache
+    try {
+        const boxStr = localStorage.getItem(PISO_BOX_STORAGE_KEY);
+        if (boxStr) {
+            const box = JSON.parse(boxStr);
+            if (box) {
+                if (Array.isArray(box.allBoxes)) {
+                    box.allBoxes.forEach(b => {
+                        if (Array.isArray(b.linkedDevices)) {
+                            b.linkedDevices = b.linkedDevices.filter(id => String(id).trim().toUpperCase().replace(/^HW-/, '') !== normId);
+                        }
+                        if (Array.isArray(b.devices)) {
+                            b.devices = b.devices.filter(d => String(d.deviceId || '').trim().toUpperCase().replace(/^HW-/, '') !== normId);
+                        }
+                        b.devicesUsed = (b.devices || b.linkedDevices || []).length;
+                        b.slotsRemaining = Math.max(0, (b.maxDevices || 12) - b.devicesUsed);
+                    });
+                }
+                if (Array.isArray(box.devices)) {
+                    box.devices = box.devices.filter(d => String(d.deviceId || '').trim().toUpperCase().replace(/^HW-/, '') !== normId);
+                }
+                if (Array.isArray(box.linkedDevices)) {
+                    box.linkedDevices = box.linkedDevices.filter(id => String(id).trim().toUpperCase().replace(/^HW-/, '') !== normId);
+                }
+                box.devicesUsed = (box.devices || box.linkedDevices || []).length;
+                box.slotsRemaining = Math.max(0, (box.maxDevices || 12) - box.devicesUsed);
+                localStorage.setItem(PISO_BOX_STORAGE_KEY, JSON.stringify(box));
+            }
+        }
+    } catch(e) {}
+
     const res = await fetch(`${PISO_API_BASE}/api/user/remove-device`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -440,6 +510,32 @@ async function removeDeviceFromAccount(deviceId) {
     const data = await res.json();
     if (!res.ok || !data.success) {
         throw new Error(data.error || 'Failed to remove device from account.');
+    }
+    return data;
+}
+
+/**
+ * Transfers commercial license from one device to another (1-device-only policy)
+ */
+async function transferLicenseBetweenDevices(sourceDeviceId, targetDeviceId, transferBoxAssignment = true) {
+    const user = getPisoUser();
+    if (!user) throw new Error("Please sign in first.");
+
+    const res = await fetch(`${PISO_API_BASE}/api/user/transfer-license`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            sourceDeviceId,
+            targetDeviceId,
+            transferBoxAssignment: Boolean(transferBoxAssignment),
+            ownerEmail: user.email,
+            ownerToken: user.token
+        })
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to transfer license to target device.');
     }
     return data;
 }
