@@ -1154,8 +1154,8 @@ export default {
         const formattedMac = formatMacAddress(rawInput);
         const cleanBuildNumber = formattedMac || rawInput;
 
-        if (cleanBuildNumber.length < 5) {
-          return new Response(JSON.stringify({ error: 'Invalid format. Enter a valid Coin Slot Box Build Number or 12-character ESP32 MAC Address.' }), {
+        if (cleanBuildNumber.length < 2) {
+          return new Response(JSON.stringify({ error: 'Please enter a valid Coin Slot Box MAC Address or Build Number.' }), {
             status: 400,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
@@ -1167,19 +1167,7 @@ export default {
           if (rawBox) boxRecord = JSON.parse(rawBox);
         }
 
-        // Cryptographic HMAC Check for legacy build numbers (MAC addresses are valid physical hardware IDs)
-        const boxSecret = env.BOX_SIGNING_SECRET || env.ADMIN_SECRET || env.LICENSE_SIGNING_SECRET || 'c8f94d21e8b7a35e91264c0fd75b8a6e43198e2db90c74af1862d5e30ca57b49';
-        if (!boxRecord && boxSecret && !formattedMac) {
-          const isValidHmac = await verifyBoxBuildNumberHmac(cleanBuildNumber, boxSecret);
-          if (!isValidHmac && !cleanBuildNumber.startsWith('PISO-BOX-')) {
-            return new Response(JSON.stringify({ error: 'Invalid Coin Slot Box build number or checksum. Please verify the 12-character code on your hardware label or enter the ESP32 MAC Address.' }), {
-              status: 400,
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            });
-          }
-        }
-
-        // If not in KV, initialize valid registered box record
+        // If not in KV, initialize valid registered box record directly (no checksum check required)
         if (!boxRecord) {
           boxRecord = {
             buildNumber: cleanBuildNumber,
@@ -1513,6 +1501,7 @@ export default {
         }
 
         const cleanDevId = String(deviceId).trim();
+        const normDevId = cleanDevId.toUpperCase().replace(/^HW-/, '');
         const cleanBoxNum = String(buildNumber).trim().toUpperCase();
 
         if (env.DEVICE_STORE) {
@@ -1526,15 +1515,98 @@ export default {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
               });
             }
-            boxData.linkedDevices = (boxData.linkedDevices || []).filter(id => id !== cleanDevId && id !== cleanDevId.replace('HW-', ''));
+            boxData.linkedDevices = (boxData.linkedDevices || []).filter(id => {
+              const normId = String(id).trim().toUpperCase().replace(/^HW-/, '');
+              return normId !== normDevId;
+            });
             await env.DEVICE_STORE.put(`BOX:${cleanBoxNum}`, JSON.stringify(boxData));
+          }
+
+          // Clear box assignment on device record itself
+          const keyWithPrefix = `HW-${normDevId}`;
+          const keyRaw = normDevId;
+          const rawDev = (await env.DEVICE_STORE.get(keyWithPrefix)) || (await env.DEVICE_STORE.get(keyRaw));
+          if (rawDev) {
+            const devData = JSON.parse(rawDev);
+            delete devData.boxBuildNumber;
+            await env.DEVICE_STORE.put(keyWithPrefix, JSON.stringify(devData));
           }
         }
 
         return new Response(
           JSON.stringify({
             success: true,
-            message: `Device ${cleanDevId} unlinked from Coin Slot Box #${cleanBoxNum}.`,
+            message: `Device HW-${normDevId} unlinked from Coin Slot Box #${cleanBoxNum}.`,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // =========================================================================
+      // 10. Remove / Delete Device from Dashboard User Account
+      // POST /api/user/remove-device
+      // Body: { deviceId: string, ownerToken?: string, ownerEmail?: string }
+      // =========================================================================
+      if (url.pathname === '/api/user/remove-device' && method === 'POST') {
+        const body = await request.json();
+        const { deviceId } = body;
+
+        const email = await authenticateUserEmail(body);
+        if (!email) {
+          return new Response(JSON.stringify({ error: 'Authentication required.' }), {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        if (!deviceId) {
+          return new Response(JSON.stringify({ error: 'Missing deviceId parameter.' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const cleanDevId = String(deviceId).trim();
+        const normDevId = cleanDevId.toUpperCase().replace(/^HW-/, '');
+
+        if (env.DEVICE_STORE) {
+          // 1. Remove from USER_DEVICES:${email}
+          const rawUd = await env.DEVICE_STORE.get(`USER_DEVICES:${email}`);
+          if (rawUd) {
+            let userDevices = JSON.parse(rawUd);
+            userDevices = userDevices.filter(id => {
+              const normId = String(id).trim().toUpperCase().replace(/^HW-/, '');
+              return normId !== normDevId;
+            });
+            await env.DEVICE_STORE.put(`USER_DEVICES:${email}`, JSON.stringify(userDevices));
+          }
+
+          // 2. Unlink from any user boxes in USER_BOXES:${email}
+          const rawUb = await env.DEVICE_STORE.get(`USER_BOXES:${email}`);
+          if (rawUb) {
+            const userBoxNums = JSON.parse(rawUb);
+            for (const boxNum of userBoxNums) {
+              const rawBox = await env.DEVICE_STORE.get(`BOX:${boxNum}`);
+              if (rawBox) {
+                const boxData = JSON.parse(rawBox);
+                boxData.linkedDevices = (boxData.linkedDevices || []).filter(id => {
+                  const normId = String(id).trim().toUpperCase().replace(/^HW-/, '');
+                  return normId !== normDevId;
+                });
+                await env.DEVICE_STORE.put(`BOX:${boxNum}`, JSON.stringify(boxData));
+              }
+            }
+          }
+
+          // 3. Delete device records
+          await env.DEVICE_STORE.delete(`HW-${normDevId}`);
+          await env.DEVICE_STORE.delete(normDevId);
+        }
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message: `Device HW-${normDevId} successfully removed from your account.`,
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );

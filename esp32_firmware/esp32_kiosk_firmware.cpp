@@ -1704,6 +1704,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                     <span class="logo-piso">Piso</span><span class="logo-phone">Phone</span>
                 </h1>
                 <span class="badge-pill">Kiosk Admin</span>
+                <span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #10B981; border: 1px solid rgba(16, 185, 129, 0.3); font-family: monospace;">MAC: {MAC_ADDRESS}</span>
             </div>
             <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                 <button type="button" id="theme_toggle_btn" onclick="toggleTheme()" class="btn btn-outline btn-sm">🌙 Dark Mode</button>
@@ -1722,6 +1723,22 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
         <!-- TAB 1: DASHBOARD -->
         <div id="tab-dashboard" class="tab-content active">
             <div class="grid">
+                <!-- Box MAC Registration Info -->
+                <div class="card grid-full" style="background: var(--input-bg); border: 1.5px dashed var(--border-focus);">
+                    <div class="card-header">
+                        <h3 class="card-title">📦 Coin Slot Box Registration ID</h3>
+                        <span class="status-badge" style="background: var(--status-good-bg); color: var(--status-good);">ESP32 MAC</span>
+                    </div>
+                    <div style="display: flex; flex-wrap: wrap; items-center; justify-content: space-between; gap: 12px; background: var(--card-bg); padding: 14px 18px; border-radius: var(--radius-md); border: 1px solid var(--border);">
+                        <div>
+                            <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;">ESP32 MAC Address</div>
+                            <code style="font-size: 18px; font-weight: 800; color: var(--primary); font-family: monospace;">{MAC_ADDRESS}</code>
+                        </div>
+                        <button type="button" class="btn btn-sm" onclick="navigator.clipboard.writeText('{MAC_ADDRESS}'); alert('Copied MAC Address: {MAC_ADDRESS}');">📋 Copy MAC Address</button>
+                    </div>
+                    <div class="hint" style="margin-top: 6px;">Use this MAC address to register this box on your operator portal (<a href="https://ais-dev-g7scqeix6nfioamxhwhwff-815400452294.asia-southeast1.run.app" target="_blank" style="color: var(--primary); font-weight: 600;">Step 1: Register Box</a>) to authorize licenses for up to 12 phones.</div>
+                </div>
+
                 <!-- Live Devices -->
                 <div class="card grid-full">
                     <div class="card-header">
@@ -2344,6 +2361,7 @@ void handlePortalRoot() {
 
     html.replace("{WIFI_SSID}", wifiSsid);
     html.replace("{WIFI_PASS}", wifiPass);
+    html.replace("{MAC_ADDRESS}", macAddressStr);
     html.replace("{COIN_PIN}", String(coinPin));
     html.replace("{U_COIN_PIN}", String(universalCoinPin));
     html.replace("{LED_PIN}", String(ledPin));

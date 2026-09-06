@@ -421,6 +421,30 @@ async function unlinkDeviceFromBox(buildNumber, deviceId) {
 }
 
 /**
+ * Completely removes a device from user's account and unlinks it from any boxes
+ */
+async function removeDeviceFromAccount(deviceId) {
+    const user = getPisoUser();
+    if (!user) throw new Error("Please sign in first.");
+
+    const res = await fetch(`${PISO_API_BASE}/api/user/remove-device`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            deviceId: deviceId,
+            ownerEmail: user.email,
+            ownerToken: user.token
+        })
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to remove device from account.');
+    }
+    return data;
+}
+
+/**
  * Checks server for user's verified boxes
  */
 async function fetchUserBoxStatus() {

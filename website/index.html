@@ -520,6 +520,26 @@
             }
         }
 
+        async function handleRemoveDevice(devId, event) {
+            if (event) event.stopPropagation();
+            const cleanId = String(devId).replace('HW-', '').toUpperCase();
+            if (!confirm(`Are you sure you want to completely remove device HW-${cleanId} from your dashboard? This will remove it from your account and free up any linked box slot.`)) {
+                return;
+            }
+
+            try {
+                const res = await removeDeviceFromAccount(devId);
+                if (res && res.success) {
+                    await refreshDashboardBoxStatus();
+                    if (currentUserToken) await fetchUserDevices(currentUserToken);
+                } else {
+                    alert(res?.error || 'Failed to remove device');
+                }
+            } catch(e) {
+                alert(e.message || 'Error removing device');
+            }
+        }
+
         function renderBoxHierarchy() {
             const container = document.getElementById('deviceListContainer');
             const boxCountBadge = document.getElementById('boxCountBadge');
@@ -685,9 +705,15 @@
                                                         <div class="text-xs text-slate-400 font-mono mt-0.5">ID: HW-${cleanId}</div>
                                                     </div>
                                                 </div>
-                                                <button type="button" onclick="handleUnlinkDevice('${bNum}', '${dev.deviceId}', event)" title="Unlink phone from this box" class="text-slate-500 hover:text-rose-400 transition p-1.5 rounded-lg hover:bg-slate-800">
-                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                                                </button>
+                                                 <div class="flex items-center gap-1">
+                                                    <button type="button" onclick="handleUnlinkDevice('${bNum}', '${dev.deviceId}', event)" title="Unlink phone from Box #${bNum}" class="text-xs text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 px-2.5 py-1.5 rounded-lg border border-amber-500/20 transition flex items-center gap-1 font-semibold">
+                                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+                                                        <span>Unlink</span>
+                                                    </button>
+                                                    <button type="button" onclick="handleRemoveDevice('${dev.deviceId}', event)" title="Remove device from account" class="text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition p-1.5 rounded-lg border border-transparent hover:border-rose-500/20" aria-label="Remove device">
+                                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                                    </button>
+                                                </div>
                                             </div>
 
                                             <div class="flex items-center justify-between pt-2 border-t border-slate-800/80 text-xs">
@@ -751,9 +777,14 @@
                                     <div class="text-white font-bold text-sm">${dev.deviceModel || 'Kiosk Device'}</div>
                                     <div class="text-xs text-slate-400 font-mono mt-0.5">ID: HW-${dev.deviceId.replace('HW-', '').toUpperCase()}</div>
                                 </div>
-                                <button onclick="openLinkModalForBox()" class="px-3 py-1.5 bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 text-xs font-bold rounded-xl border border-emerald-500/30 transition">
-                                    Assign to Box
-                                </button>
+                                <div class="flex items-center gap-2">
+                                    <button onclick="openLinkModalForBox()" class="px-3 py-1.5 bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 text-xs font-bold rounded-xl border border-emerald-500/30 transition">
+                                        Assign to Box
+                                    </button>
+                                    <button type="button" onclick="handleRemoveDevice('${dev.deviceId}', event)" title="Remove device from account" class="text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition p-1.5 rounded-lg border border-transparent hover:border-rose-500/20" aria-label="Remove device">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                    </button>
+                                </div>
                             </div>
                         `).join('')}
                     </div>
