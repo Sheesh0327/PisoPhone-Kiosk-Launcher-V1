@@ -56,10 +56,21 @@ To permanently activate hardware flash encryption on a new ESP32 board:
 
 ---
 
-## Step 3: Flash the Encrypted Binary
+## Step 3: Flash the Firmware (Complete Flash Wipe)
+
+`platformio.ini` is configured with `board_upload.erase_flash = yes`, which automatically forces `esptool` to perform a **full chip erase** (wiping NVS, partitions, WiFi settings, and prior code) before flashing the new firmware binary.
 
 Upload the compiled production firmware using PlatformIO:
 ```bash
+pio run -e esp32-c3-production-encrypted -t upload
+```
+
+Alternatively, to manually perform a complete wipe via `esptool.py` before flashing:
+```bash
+# 1. Manually erase full chip
+esptool.py --port COM3 erase_flash
+
+# 2. Upload firmware
 pio run -e esp32-c3-production-encrypted -t upload
 ```
 

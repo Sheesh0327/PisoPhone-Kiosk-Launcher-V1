@@ -1,10 +1,10 @@
 # 🚀 GitHub Actions Setup for Automatic APK Releases
 
-This guide explains how to automatically compile your Android Kiosk application (APK) and publish it to a **Public GitHub Release** every time you push code to your repository.
+This guide explains how to compile your Android Kiosk application (APK) and publish it to a **Public GitHub Release** automatically whenever changes are pushed to the Android app directory or on-demand via GitHub Actions.
 
 ## 1. How It Works
 
-We have configured a GitHub Actions workflow (`.github/workflows/build-apk.yml`) that triggers automatically when you push code to the `main` branch. It will:
+We have configured a GitHub Actions workflow (`.github/workflows/build-apk.yml`) that triggers automatically when commits touching the `app/` directory are pushed to the `main` branch (or manually triggered via `workflow_dispatch`). It will:
 1. Check out your code.
 2. Set up the Java JDK and compile the **Release APK**.
 3. Overwrite the `latest` tag in your GitHub repository's **Releases** page.
