@@ -32,39 +32,44 @@ class KioskHttpServer(
 
     companion object {
         private const val TAG = "KioskHttpServer"
-        private const val CHALLENGE_EXPIRY_MS = 15000L
         private const val RATE_LIMIT_WINDOW_MS = 60000L
         private const val MAX_REQUESTS_PER_WINDOW = 60
+        private const val MAX_TRACKED_TX = 200
     }
 
-    private val activeChallenges = ConcurrentHashMap<String, Long>()
     private val rateLimits = ConcurrentHashMap<String, MutableList<Long>>()
+    private val processedTxIds = java.util.Collections.synchronizedSet(java.util.LinkedHashSet<String>())
 
-    fun generateChallenge(): String {
-        val randomBytes = ByteArray(16)
-        java.security.SecureRandom().nextBytes(randomBytes)
-        val token = randomBytes.joinToString("") { "%02x".format(it) }
-        val now = System.currentTimeMillis()
-        activeChallenges[token] = now
-        
-        // Clean up expired challenges older than 15s
-        val iterator = activeChallenges.entries.iterator()
-        while (iterator.hasNext()) {
-            val entry = iterator.next()
-            if (now - entry.value > CHALLENGE_EXPIRY_MS) {
-                iterator.remove()
+    private fun isTxIdProcessed(txId: String): Boolean {
+        return processedTxIds.contains(txId)
+    }
+
+    private fun markTxIdProcessed(txId: String) {
+        synchronized(processedTxIds) {
+            if (processedTxIds.size >= MAX_TRACKED_TX) {
+                val iterator = processedTxIds.iterator()
+                if (iterator.hasNext()) {
+                    iterator.next()
+                    iterator.remove()
+                }
+            }
+            processedTxIds.add(txId)
+        }
+    }
+
+    private fun parseQueryString(queryString: String): Map<String, String> {
+        val result = mutableMapOf<String, String>()
+        if (queryString.isBlank()) return result
+        val pairs = queryString.split("&")
+        for (pair in pairs) {
+            val idx = pair.indexOf("=")
+            if (idx > 0) {
+                val key = pair.substring(0, idx).trim()
+                val value = pair.substring(idx + 1).trim()
+                result[key] = value
             }
         }
-        return token
-    }
-
-    fun verifyChallengeAndSignature(challenge: String, signature: String): Boolean {
-        val issueTime = activeChallenges.remove(challenge) ?: return false
-        if (System.currentTimeMillis() - issueTime > CHALLENGE_EXPIRY_MS) {
-            return false
-        }
-        val expectedSignature = KioskSecurity.calculateHmac(challenge, delegate.getSecretKey())
-        return KioskSecurity.constantTimeEquals(signature, expectedSignature)
+        return result
     }
 
     private fun isRateLimited(ip: String): Boolean {
@@ -84,7 +89,7 @@ class KioskHttpServer(
         val uri = session.uri
         val params = session.parameters.mapValues { it.value.firstOrNull() ?: "" }
 
-        // Public status & heartbeat endpoints (no prior HMAC challenge exchange needed)
+        // Public status & heartbeat endpoints (no prior AES decryption required)
         if (uri == "/heartbeat" || uri == "/ping") {
             val clientIp = session.headers["remote-addr"] ?: session.headers["http-client-ip"]
             delegate.onHeartbeat(clientIp)
@@ -99,7 +104,7 @@ class KioskHttpServer(
         }
 
         if (uri == "/challenge" || uri == "/heartbeat_challenge") {
-            return newFixedLengthResponse(Response.Status.OK, "text/plain", generateChallenge())
+            return newFixedLengthResponse(Response.Status.OK, "text/plain", "OK")
         }
 
         if (uri == "/get_time") {
@@ -115,7 +120,7 @@ class KioskHttpServer(
             return newFixedLengthResponse(Response.Status.OK, "application/json", auditJson)
         }
 
-        // Protected action endpoints (require cryptographic HMAC authentication)
+        // Protected action endpoints (require cryptographic AES payload decryption)
         if (!HardwareLockManager.isHardwareAuthorized(context)) {
             Log.e(TAG, "Rejecting HTTP action: Hardware lock is active on unauthorized device.")
             return newFixedLengthResponse(Response.Status.FORBIDDEN, "text/plain", "Hardware lock active on unauthorized device")
@@ -126,50 +131,36 @@ class KioskHttpServer(
             return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Rate limit exceeded")
         }
 
-        if (uri == "/emergency_adb" || uri == "/recovery") {
-            val challenge = params["challenge"]
-            val signature = params["signature"] ?: params["sig"]
-            val isAuthorized = (challenge != null && signature != null && verifyChallengeAndSignature(challenge, signature))
-            if (isAuthorized) {
-                if (uri == "/emergency_adb") {
-                    delegate.onTriggerAction("enable_adb")
-                } else {
-                    delegate.onTriggerAction("emergency_recovery")
-                }
-                return newFixedLengthResponse(Response.Status.OK, "text/plain", "RECOVERY_TRIGGERED")
-            } else {
-                return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Invalid signature")
-            }
+        val payload = params["payload"]
+        if (payload.isNullOrBlank()) {
+            Log.e(TAG, "Rejecting HTTP action: Missing encrypted payload parameter")
+            return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Missing encrypted payload")
         }
 
-        if (uri == "/coin") {
-            val txId = params["tx_id"] ?: params["nonce"] ?: UUID.randomUUID().toString()
-            val seconds = params["seconds"]?.toIntOrNull() ?: 1800
-            val challenge = params["challenge"]
-            val signature = params["signature"] ?: params["sig"]
-
-            if (challenge != null && signature != null && verifyChallengeAndSignature(challenge, signature)) {
-                val amount = params["amount"]?.toDoubleOrNull() ?: 5.0
-                delegate.onCoinCredited(seconds, "HTTP /coin", txId, amount)
-                return newFixedLengthResponse(Response.Status.OK, "text/plain", "OK")
-            } else {
-                return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Invalid signature or challenge")
-            }
+        val decryptedStr = KioskSecurity.decrypt(payload, delegate.getSecretKey())
+        if (decryptedStr.isBlank()) {
+            Log.e(TAG, "Rejecting HTTP action: Decryption failed")
+            return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Invalid encrypted payload")
         }
 
-        val challenge = params["challenge"]
-        val signature = params["signature"]
-        if (challenge == null || signature == null || !verifyChallengeAndSignature(challenge, signature)) {
-            return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Invalid challenge")
+        val decryptedParams = parseQueryString(decryptedStr)
+
+        // Replay Protection check: verify unique tx_id
+        val txId = decryptedParams["tx_id"] ?: decryptedParams["nonce"]
+        if (txId != null) {
+            if (isTxIdProcessed(txId)) {
+                Log.w(TAG, "Rejecting replayed or duplicate transaction: $txId")
+                return newFixedLengthResponse(Response.Status.OK, "text/plain", "ALREADY_PROCESSED")
+            }
+            markTxIdProcessed(txId)
         }
 
         return when (uri) {
-            "/add_time" -> {
-                val minutes = params["minutes"]?.toIntOrNull() ?: 0
-                val secondsParam = params["seconds"]?.toIntOrNull()
+            "/add_time", "/coin" -> {
+                val minutes = decryptedParams["minutes"]?.toIntOrNull() ?: 0
+                val secondsParam = decryptedParams["seconds"]?.toIntOrNull()
                 val seconds = secondsParam ?: (minutes * 60)
-                val amount = params["amount"]?.toDoubleOrNull() ?: 1.0
-                val txId = params["tx_id"]
+                val amount = decryptedParams["amount"]?.toDoubleOrNull() ?: 1.0
                 if (seconds > 0) {
                     delegate.onCoinCredited(seconds, "HTTP /add_time", if (!txId.isNullOrBlank()) txId else null, amount)
                 } else if (seconds < 0) {
@@ -178,17 +169,25 @@ class KioskHttpServer(
                 newFixedLengthResponse(Response.Status.OK, "text/plain", "OK")
             }
             "/config" -> {
-                val price = params["price"]?.toDoubleOrNull()
-                val minutes = params["minutes"]?.toIntOrNull()
-                val devName = params["device_name"]?.trim()
-                val pin = params["admin_pin"]
+                val price = decryptedParams["price"]?.toDoubleOrNull()
+                val minutes = decryptedParams["minutes"]?.toIntOrNull()
+                val devName = decryptedParams["device_name"]?.trim()
+                val pin = decryptedParams["admin_pin"]
                 delegate.onConfigUpdated(price, minutes, devName, pin)
                 newFixedLengthResponse(Response.Status.OK, "text/plain", "OK")
             }
             "/trigger_action" -> {
-                val actionType = params["action"] ?: ""
+                val actionType = decryptedParams["action"] ?: ""
                 delegate.onTriggerAction(actionType)
                 newFixedLengthResponse(Response.Status.OK, "text/plain", "OK")
+            }
+            "/emergency_adb" -> {
+                delegate.onTriggerAction("enable_adb")
+                newFixedLengthResponse(Response.Status.OK, "text/plain", "RECOVERY_TRIGGERED")
+            }
+            "/recovery" -> {
+                delegate.onTriggerAction("emergency_recovery")
+                newFixedLengthResponse(Response.Status.OK, "text/plain", "RECOVERY_TRIGGERED")
             }
             "/crash" -> {
                 val crashText = delegate.getCrashLog()

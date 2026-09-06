@@ -9,7 +9,9 @@ import android.os.BatteryManager
 import android.util.Log
 import java.security.MessageDigest
 import java.security.SecureRandom
+import javax.crypto.Cipher
 import javax.crypto.Mac
+import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 /**
@@ -258,26 +260,61 @@ object KioskSecurity {
         return calculateHmac("$deviceId:$ts", secret)
     }
 
-    fun verifyCoinSignature(txId: String, seconds: Int, amount: Double, ts: String, sig: String, secret: String): Boolean {
-        if (txId.isBlank() || sig.isBlank() || secret.isBlank()) return false
-        val amountFormatted = String.format(java.util.Locale.US, "%.2f", amount)
-        val amountInt = if (amount == amount.toLong().toDouble()) amount.toInt().toString() else amountFormatted
-        
-        // Format 1: tx_id:seconds:amount.2f:ts
-        val expected1 = calculateHmac("$txId:$seconds:$amountFormatted:$ts", secret)
-        if (constantTimeEquals(sig, expected1)) return true
-        
-        // Format 2: tx_id:seconds:amountInt:ts (e.g. pulses as integer)
-        val expected2 = calculateHmac("$txId:$seconds:$amountInt:$ts", secret)
-        if (constantTimeEquals(sig, expected2)) return true
+    fun getAesKeySpec(secret: String): SecretKeySpec {
+        val md = MessageDigest.getInstance("SHA-256")
+        val keyBytes = md.digest(secret.toByteArray(Charsets.UTF_8))
+        return SecretKeySpec(keyBytes, "AES")
+    }
 
-        // Format 3: tx_id:seconds:ts (amount omitted)
-        if (ts.isNotBlank()) {
-            val expected3 = calculateHmac("$txId:$seconds:$ts", secret)
-            if (constantTimeEquals(sig, expected3)) return true
+    fun bytesToHex(bytes: ByteArray): String {
+        return bytes.joinToString("") { "%02x".format(it) }
+    }
+
+    fun hexToBytes(hex: String): ByteArray {
+        val len = hex.length
+        val data = ByteArray(len / 2)
+        var i = 0
+        while (i < len) {
+            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
+            i += 2
         }
+        return data
+    }
 
-        return false
+    fun encrypt(plainText: String, secret: String): String {
+        try {
+            val keySpec = getAesKeySpec(secret)
+            val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+            val iv = ByteArray(16)
+            SecureRandom().nextBytes(iv)
+            val ivSpec = IvParameterSpec(iv)
+            cipher.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec)
+            val encrypted = cipher.doFinal(plainText.toByteArray(Charsets.UTF_8))
+            return bytesToHex(iv) + bytesToHex(encrypted)
+        } catch (e: Exception) {
+            Log.e(TAG, "AES Encryption error: ${e.message}")
+            return ""
+        }
+    }
+
+    fun decrypt(encryptedHex: String, secret: String): String {
+        try {
+            val hex = encryptedHex.trim()
+            if (hex.length < 32) return ""
+            val encryptedBytes = hexToBytes(hex)
+            if (encryptedBytes.size < 17) return ""
+            val iv = encryptedBytes.copyOfRange(0, 16)
+            val cipherText = encryptedBytes.copyOfRange(16, encryptedBytes.size)
+            val keySpec = getAesKeySpec(secret)
+            val ivSpec = IvParameterSpec(iv)
+            val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+            cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
+            val decryptedBytes = cipher.doFinal(cipherText)
+            return String(decryptedBytes, Charsets.UTF_8)
+        } catch (e: Exception) {
+            Log.e(TAG, "AES Decryption error: ${e.message}")
+            return ""
+        }
     }
 
     fun constantTimeEquals(a: String, b: String): Boolean {

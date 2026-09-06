@@ -9,6 +9,7 @@
 #include "mbedtls/md.h"
 #include "mbedtls/sha1.h"
 #include "mbedtls/base64.h"
+#include "mbedtls/aes.h"
 
 // ============================================================================
 // HARDWARE-C3 Master Kiosk Firmware
@@ -431,6 +432,127 @@ String calculateHMAC(String challenge, String secret) {
     return hex;
 }
 
+String aes_encrypt(String plaintext, String secret) {
+    uint8_t aes_key[32];
+    mbedtls_md_context_t sha_ctx;
+    mbedtls_md_init(&sha_ctx);
+    mbedtls_md_setup(&sha_ctx, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), 0);
+    mbedtls_md_starts(&sha_ctx);
+    mbedtls_md_update(&sha_ctx, (const unsigned char*)secret.c_str(), secret.length());
+    mbedtls_md_finish(&sha_ctx, aes_key);
+    mbedtls_md_free(&sha_ctx);
+
+    uint8_t iv[16];
+    for (int i = 0; i < 16; i += 4) {
+        uint32_t r = esp_random();
+        memcpy(iv + i, &r, 4);
+    }
+
+    size_t plaintext_len = plaintext.length();
+    size_t padding_len = 16 - (plaintext_len % 16);
+    size_t padded_len = plaintext_len + padding_len;
+    uint8_t* padded_input = (uint8_t*)malloc(padded_len);
+    if (!padded_input) return "";
+    memcpy(padded_input, plaintext.c_str(), plaintext_len);
+    for (size_t i = plaintext_len; i < padded_len; i++) {
+        padded_input[i] = (uint8_t)padding_len;
+    }
+
+    mbedtls_aes_context aes_ctx;
+    mbedtls_aes_init(&aes_ctx);
+    mbedtls_aes_setkey_enc(&aes_ctx, aes_key, 256);
+
+    uint8_t* ciphertext = (uint8_t*)malloc(padded_len);
+    if (!ciphertext) {
+        free(padded_input);
+        mbedtls_aes_free(&aes_ctx);
+        return "";
+    }
+    uint8_t iv_tmp[16];
+    memcpy(iv_tmp, iv, 16);
+
+    mbedtls_aes_crypt_cbc(&aes_ctx, MBEDTLS_AES_ENCRYPT, padded_len, iv_tmp, padded_input, ciphertext);
+    mbedtls_aes_free(&aes_ctx);
+    free(padded_input);
+
+    String hex_result = "";
+    char hex_char[3];
+    for (int i = 0; i < 16; i++) {
+        sprintf(hex_char, "%02x", iv[i]);
+        hex_result += hex_char;
+    }
+    for (size_t i = 0; i < padded_len; i++) {
+        sprintf(hex_char, "%02x", ciphertext[i]);
+        hex_result += hex_char;
+    }
+    free(ciphertext);
+    return hex_result;
+}
+
+String aes_decrypt(String encryptedHex, String secret) {
+    if (encryptedHex.length() < 32) return "";
+    
+    size_t total_bytes = encryptedHex.length() / 2;
+    uint8_t* data = (uint8_t*)malloc(total_bytes);
+    if (!data) return "";
+    for (size_t i = 0; i < total_bytes; i++) {
+        String part = encryptedHex.substring(i * 2, i * 2 + 2);
+        data[i] = (uint8_t)strtol(part.c_str(), NULL, 16);
+    }
+    
+    if (total_bytes < 17) {
+        free(data);
+        return "";
+    }
+    
+    uint8_t iv[16];
+    memcpy(iv, data, 16);
+    
+    size_t ciphertext_len = total_bytes - 16;
+    uint8_t* ciphertext = data + 16;
+    
+    uint8_t aes_key[32];
+    mbedtls_md_context_t sha_ctx;
+    mbedtls_md_init(&sha_ctx);
+    mbedtls_md_setup(&sha_ctx, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), 0);
+    mbedtls_md_starts(&sha_ctx);
+    mbedtls_md_update(&sha_ctx, (const unsigned char*)secret.c_str(), secret.length());
+    mbedtls_md_finish(&sha_ctx, aes_key);
+    mbedtls_md_free(&sha_ctx);
+    
+    mbedtls_aes_context aes_ctx;
+    mbedtls_aes_init(&aes_ctx);
+    mbedtls_aes_setkey_dec(&aes_ctx, aes_key, 256);
+    
+    uint8_t* decrypted = (uint8_t*)malloc(ciphertext_len);
+    if (!decrypted) {
+        mbedtls_aes_free(&aes_ctx);
+        free(data);
+        return "";
+    }
+    uint8_t iv_tmp[16];
+    memcpy(iv_tmp, iv, 16);
+    
+    mbedtls_aes_crypt_cbc(&aes_ctx, MBEDTLS_AES_DECRYPT, ciphertext_len, iv_tmp, ciphertext, decrypted);
+    mbedtls_aes_free(&aes_ctx);
+    free(data);
+    
+    uint8_t padding_len = decrypted[ciphertext_len - 1];
+    if (padding_len > 16 || padding_len == 0) {
+        free(decrypted);
+        return "";
+    }
+    
+    size_t plaintext_len = ciphertext_len - padding_len;
+    String plaintext = "";
+    for (size_t i = 0; i < plaintext_len; i++) {
+        plaintext += (char)decrypted[i];
+    }
+    
+    free(decrypted);
+    return plaintext;
+}
+
 String computeSecWebSocketAccept(String key) {
     key.trim();
     String concat = key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -582,25 +704,25 @@ void authWorkerTask(void *pvParameters) {
             http.setReuse(true);
 
             String ip = String(req.ip);
-            String challengeUrl = "http://" + ip + ":" + String(req.port) + String(req.challengePath);
+            String actionUrl = "http://" + ip + ":" + String(req.port) + String(req.actionPath);
             
-            if (http.begin(challengeUrl)) {
-                int cCode = http.GET();
-                if (cCode == 200) {
-                    String challenge = http.getString();
-                    http.end();
-                    challenge.trim();
+            String finalParams = String(req.params);
+            if (finalParams.length() > 0) {
+                finalParams += "&ts=" + String(millis());
+            } else {
+                finalParams = "ts=" + String(millis());
+            }
+            
+            if (finalParams.indexOf("tx_id=") == -1 && finalParams.indexOf("nonce=") == -1) {
+                String txId = String(millis()) + "-" + String(random(1000, 9999));
+                finalParams += "&tx_id=" + txId;
+            }
 
-                    String signature = calculateHMAC(challenge, sharedSecret);
-                    String actionUrl = "http://" + ip + ":" + String(req.port) + String(req.actionPath) + "?challenge=" + challenge + "&signature=" + signature;
-                    if (strlen(req.params) > 0) {
-                        actionUrl += "&" + String(req.params);
-                    }
+            String encryptedPayload = aes_encrypt(finalParams, sharedSecret);
+            actionUrl += "?payload=" + encryptedPayload;
 
-                    if (http.begin(actionUrl)) {
-                        http.GET();
-                    }
-                }
+            if (http.begin(actionUrl)) {
+                http.GET();
                 http.end();
             }
             vTaskDelay(pdMS_TO_TICKS(40)); // Prevent socket/radio contention
@@ -1564,13 +1686,13 @@ void triggerCoinEvent() {
     unsigned long long ts = (unsigned long long)millis();
     String txId = String(millis()) + "-" + String(random(1000, 9999));
     int addedSeconds = minutesPerCoin * 60;
-    String sigData = txId + ":" + String(addedSeconds) + ":" + String(coinPrice, 2) + ":" + String(ts);
-    String sig = calculateHMAC(sigData, sharedSecret);
     
     // Broadcast instantly over WebSocket if connected
     if (isWsConnected && wsClient.connected()) {
         Serial.printf("[⚡] Pushing Simple Beam Coin (₱%.2f PHP credit, +%d mins) instantly over WebSocket!\n", coinPrice, minutesPerCoin);
-        String json = "{\"event\":\"COIN_DETECTED\",\"seconds\":" + String(addedSeconds) + ",\"minutes\":" + String(minutesPerCoin) + ",\"amount\":" + String(coinPrice, 2) + ",\"slot\":\"beam\",\"tx_id\":\"" + txId + "\",\"ts\":\"" + String(ts) + "\",\"sig\":\"" + sig + "\"}";
+        String innerJson = "{\"seconds\":" + String(addedSeconds) + ",\"minutes\":" + String(minutesPerCoin) + ",\"amount\":" + String(coinPrice, 2) + ",\"tx_id\":\"" + txId + "\",\"ts\":\"" + String(ts) + "\"}";
+        String payload = aes_encrypt(innerJson, sharedSecret);
+        String json = "{\"event\":\"COIN_DETECTED\",\"payload\":\"" + payload + "\"}";
         sendWsText(wsClient, json);
         armedUntil = millis() + ARM_TTL;
     }
@@ -1625,13 +1747,13 @@ void triggerUniversalCoinEvent(int pulses) {
 
     unsigned long long ts = (unsigned long long)millis();
     String txId = String(millis()) + "-" + String(random(1000, 9999));
-    String sigData = txId + ":" + String(addedSeconds) + ":" + String((float)pulses, 2) + ":" + String(ts);
-    String sig = calculateHMAC(sigData, sharedSecret);
 
     // Broadcast instantly over WebSocket if connected
     if (isWsConnected && wsClient.connected()) {
         Serial.printf("[⚡] Pushing ₱%d (+%d mins / %d secs) over WebSocket!\n", pulses, addedMinutes, addedSeconds);
-        String json = "{\"event\":\"COIN_DETECTED\",\"seconds\":" + String(addedSeconds) + ",\"minutes\":" + String(addedMinutes) + ",\"amount\":" + String(pulses) + ",\"slot\":\"universal\",\"tx_id\":\"" + txId + "\",\"ts\":\"" + String(ts) + "\",\"sig\":\"" + sig + "\"}";
+        String innerJson = "{\"seconds\":" + String(addedSeconds) + ",\"minutes\":" + String(addedMinutes) + ",\"amount\":" + String(pulses) + ",\"tx_id\":\"" + txId + "\",\"ts\":\"" + String(ts) + "\"}";
+        String payload = aes_encrypt(innerJson, sharedSecret);
+        String json = "{\"event\":\"COIN_DETECTED\",\"payload\":\"" + payload + "\"}";
         sendWsText(wsClient, json);
         armedUntil = millis() + ARM_TTL;
     }

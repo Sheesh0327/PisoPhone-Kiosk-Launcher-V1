@@ -32,7 +32,7 @@ interface Esp32ConnectionDelegate {
     fun onEsp32Discovered(ip: String)
     fun onOnlineStatusChanged(isOnline: Boolean, mac: String?)
     fun onConfigSynced(price: Double?, minutes: Int?, alias: String?, isUnlicensed: Boolean)
-    fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?, challenge: String, ts: String, sig: String)
+    fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?)
     fun onSlotBusy()
     fun onArmSuccess()
 }
@@ -426,15 +426,26 @@ class Esp32ConnectionManager(
                     val json = JSONObject(text)
                     val event = json.optString("event", "")
 
-                    if (event == "ADD_TIME" || event == "COIN_DETECTED") {
-                        val seconds = json.optInt("seconds", 1800)
-                        val amount = json.optDouble("amount", 5.0)
-                        val txId = json.optString("tx_id", "")
-                        val challenge = json.optString("challenge", "")
-                        val ts = json.optString("ts", "")
-                        val sig = json.optString("sig", json.optString("signature", ""))
-
-                        delegate.onCoinMessageReceived(seconds, amount, if (txId.isNotBlank()) txId else null, challenge, ts, sig)
+                    if (event == "COIN_DETECTED") {
+                        val payload = json.optString("payload", "")
+                        if (payload.isNotBlank()) {
+                            val decryptedStr = KioskSecurity.decrypt(payload, delegate.getSecretKey())
+                            if (decryptedStr.isNotBlank()) {
+                                val decryptedJson = JSONObject(decryptedStr)
+                                val seconds = decryptedJson.optInt("seconds", 1800)
+                                val amount = decryptedJson.optDouble("amount", 5.0)
+                                val txId = decryptedJson.optString("tx_id", "")
+                                if (txId.isNotBlank()) {
+                                    delegate.onCoinMessageReceived(seconds, amount, txId)
+                                } else {
+                                    Log.e(TAG, "Missing tx_id in decrypted WebSocket payload")
+                                }
+                            } else {
+                                Log.e(TAG, "Failed to decrypt WebSocket coin payload")
+                            }
+                        } else {
+                            Log.e(TAG, "Missing encrypted payload in WebSocket COIN_DETECTED event")
+                        }
                     } else if (event == "TIMEOUT" || event == "CLOSED") {
                         Log.d(TAG, "Received $event event from ESP32 WebSocket")
                         closeSession(sendUnarmToEsp = false)

@@ -283,7 +283,7 @@ class KioskService : Service() {
                     stateManager.saveState()
                 }
 
-                override fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?, challenge: String, ts: String, sig: String) {
+                override fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?) {
                     if (!HardwareLockManager.isAppAllowedToRun(applicationContext)) {
                         Log.e(TAG, "Hardware Lock or Expired Trial active: Discarding coin event on locked device.")
                         return
@@ -291,20 +291,6 @@ class KioskService : Service() {
                     if (txId.isNullOrBlank()) {
                         Log.e(TAG, "Invalid coin message over WebSocket: missing transaction ID")
                         return
-                    }
-
-                    val secret = getSecretKey()
-                    if (sig.isNotBlank()) {
-                        val isSigValid = if (challenge.isNotBlank()) {
-                            verifyChallengeAndSignature(challenge, sig)
-                        } else {
-                            KioskSecurity.verifyCoinSignature(txId, seconds, amount, ts, sig, secret)
-                        }
-
-                        if (!isSigValid) {
-                            Log.e(TAG, "Unverified coin message over WebSocket: HMAC signature invalid for txId=$txId")
-                            return
-                        }
                     }
 
                     Log.d(TAG, "Received validated coin via WebSocket: seconds=$seconds, amount=₱$amount, tx_id=$txId")
@@ -393,13 +379,6 @@ class KioskService : Service() {
                     }
                 }
             }
-        }
-    }
-
-    private fun verifyChallengeAndSignature(challenge: String, signature: String): Boolean {
-        return nanoServer?.verifyChallengeAndSignature(challenge, signature) ?: run {
-            val expectedSignature = KioskSecurity.calculateHmac(challenge, getSecretKey())
-            KioskSecurity.constantTimeEquals(signature, expectedSignature)
         }
     }
 
