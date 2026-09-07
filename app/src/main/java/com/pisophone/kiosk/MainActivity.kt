@@ -43,12 +43,9 @@ class MainActivity : ComponentActivity() {
     private var strictPoliciesApplied = false
 
     private fun isFullySetup(): Boolean {
-        val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as? android.app.admin.DevicePolicyManager
-        val isOwner = dpm?.isDeviceOwnerApp(packageName) == true
         val hasOverlay = Settings.canDrawOverlays(this)
         return HardwareLockManager.isTutorialCompleted(this) &&
                HardwareLockManager.isAppAllowedToRun(this) &&
-               isOwner &&
                hasOverlay
     }
 
@@ -62,6 +59,8 @@ class MainActivity : ComponentActivity() {
                 strictPoliciesApplied = true
             }
             tryEnableLockTaskMode()
+        }
+        if (fullySetup) {
             checkOverlayPermission()
         }
     }
@@ -127,10 +126,6 @@ class MainActivity : ComponentActivity() {
                                 isTutorialCompleted = true
                                 checkDeviceOwner()
                             }
-                        )
-                    } else if (!isDeviceOwner) {
-                        DeviceOwnerScreen(
-                            onCheckAgain = { checkDeviceOwner() },
                         )
                     } else if (!hasOverlayPermission) {
                         PermissionScreen(onRequest = {
