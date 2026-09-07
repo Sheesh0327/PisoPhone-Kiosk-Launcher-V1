@@ -272,7 +272,7 @@ export default {
 
     // Fast-path: APK download redirect
     if (url.pathname === '/apk/latest.apk' || url.pathname === '/app-release.apk') {
-      return Response.redirect('https://pisophone-v1.pages.dev/app-release.apk', 302);
+      return Response.redirect('https://pisophone.pages.dev/app-release.apk', 302);
     }
 
     // Early route filter: Drop bot probes/scanners instantly without touching KV or executing heavy logic
@@ -1377,7 +1377,7 @@ export default {
         }
 
         let rawInput = buildNumber.trim();
-        // If scanned payload is a URL (e.g. https://pisophone-v1.pages.dev/?box=BOX-9482-1049)
+        // If scanned payload is a URL (e.g. https://pisophone.pages.dev/?box=BOX-9482-1049)
         if (rawInput.includes('?')) {
           try {
             const urlObj = new URL(rawInput.startsWith('http') ? rawInput : 'https://dummy.local/' + rawInput);

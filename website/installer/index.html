@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PisoPhone - Dedicated Hardware Flasher</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background: linear-gradient(-45deg, #090d16, #0e1726, #052e16);
+            background-size: 400% 400%;
+            animation: gradientShift 12s ease infinite;
+            color: #f1f5f9;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        .glass-card {
+            background: #0f172a;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.7);
+        }
+        .btn-glow {
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.3), 0 8px 25px -4px rgba(16, 185, 129, 0.25);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .btn-glow:hover {
+            box-shadow: 0 0 28px rgba(52, 211, 153, 0.55), 0 10px 30px -4px rgba(16, 185, 129, 0.4);
+            transform: translateY(-1px);
+        }
+        .btn-glow:active {
+            transform: translateY(1px);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+
+    <div class="glass-card max-w-lg w-full rounded-2xl p-6 md:p-8 space-y-6">
+        
+        <!-- Header -->
+        <div class="text-center space-y-2">
+            <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-2xl font-black">
+                ₱
+            </div>
+            <h1 class="text-2xl font-extrabold tracking-tight bg-gradient-to-r from-emerald-400 to-teal-200 bg-clip-text text-transparent">
+                PisoPhone Flashing Utility
+            </h1>
+            <p class="text-xs text-slate-400">
+                Authorized hardware-connected installer for Coin Slot System.
+            </p>
+        </div>
+
+        <!-- Connection Parameters Card -->
+        <div class="bg-slate-900/60 rounded-xl p-4 border border-slate-800 space-y-3">
+            <div class="flex items-center justify-between text-xs border-b border-slate-800/80 pb-2">
+                <span class="text-slate-400 font-medium">Box Hardware MAC</span>
+                <span id="p_mac" class="font-mono text-emerald-400 font-semibold">Scanning...</span>
+            </div>
+            <div class="flex items-center justify-between text-xs border-b border-slate-800/80 pb-2">
+                <span class="text-slate-400 font-medium">Target Cabinet Slot</span>
+                <span id="p_slot" class="font-mono bg-emerald-500/20 px-2 py-0.5 rounded text-emerald-300 font-bold">Slot #--</span>
+            </div>
+            <div class="flex items-center justify-between text-xs">
+                <span class="text-slate-400 font-medium">Local Router Address</span>
+                <span id="p_ip" class="font-mono text-slate-300">Scanning...</span>
+            </div>
+        </div>
+
+        <!-- Instructions Box -->
+        <div class="text-xs text-slate-400 space-y-2 leading-relaxed bg-emerald-950/20 p-3.5 border border-emerald-500/15 rounded-xl">
+            <div class="flex items-center gap-2 font-bold text-emerald-400">
+                <span>⚡ Setup Checklist:</span>
+            </div>
+            <ul class="list-disc pl-4 space-y-1 text-[11px]">
+                <li>Plug Android phone into your computer or flashing hub.</li>
+                <li>Ensure **USB Debugging** is turned ON in Developer Options.</li>
+                <li>Unlock the phone's screen and use a high-quality data cable.</li>
+            </ul>
+        </div>
+
+        <!-- Primary Action Button -->
+        <div class="space-y-3">
+            <button id="installAppBtn" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-4 px-6 rounded-xl transition-all duration-300 shadow-lg text-sm flex items-center justify-center gap-2.5 pulse-btn btn-glow cursor-pointer">
+                🚀 Start 1-Click Install & Pair
+            </button>
+        </div>
+
+        <!-- Installation Progress Logs -->
+        <div id="installLogContainer" class="hidden space-y-2">
+            <div class="flex justify-between items-center text-[10px]">
+                <span class="text-slate-400 font-semibold tracking-wider uppercase">Flashing Console</span>
+                <span class="text-emerald-400 font-mono animate-pulse">Running</span>
+            </div>
+            <div id="installLog" class="bg-slate-950 rounded-xl p-4 font-mono text-[11px] text-slate-300 leading-relaxed border border-slate-800 h-44 overflow-y-auto whitespace-pre-wrap">
+                Ready to initialize connection...
+            </div>
+        </div>
+
+    </div>
+
+    <!-- WebADB CDN Script Loader -->
+    <script src="../webadb_manager.js"></script>
+
+    <script>
+        // Parse incoming ESP32 context parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const esp32Mac = urlParams.get('mac') || 'FF:FF:FF:FF:FF:FF';
+        const esp32Ip = urlParams.get('ip') || window.location.hostname || 'kioskmanager.local';
+        const slotNum = parseInt(urlParams.get('slot') || '1', 10);
+
+        // Update parameters UI
+        document.getElementById('p_mac').textContent = esp32Mac;
+        document.getElementById('p_slot').textContent = `Slot #${slotNum}`;
+        document.getElementById('p_ip').textContent = `http://${esp32Ip}/`;
+
+        const candidateApkUrls = [
+            '../app-release.apk',
+            'https://pisophone.pages.dev/app-release.apk',
+            'https://raw.githubusercontent.com/Sheesh0327/PisoPhone-Kiosk-Launcher-V1/main/website/app-release.apk'
+        ];
+
+        const installBtn = document.getElementById('installAppBtn');
+        const installLogContainer = document.getElementById('installLogContainer');
+        const installLog = document.getElementById('installLog');
+
+        function logInstall(msg) {
+            installLogContainer.classList.remove('hidden');
+            const div = document.createElement('div');
+            div.textContent = `> ${msg}`;
+            installLog.appendChild(div);
+            installLog.scrollTop = installLog.scrollHeight;
+        }
+
+        installBtn.addEventListener('click', async () => {
+            if (!navigator.usb) {
+                return alert("WebUSB is not supported in this browser. Please use Google Chrome, Edge, or Brave.");
+            }
+
+            installBtn.disabled = true;
+            installBtn.classList.remove('bg-emerald-500', 'hover:bg-emerald-400', 'btn-glow');
+            installBtn.classList.add('bg-slate-800', 'text-slate-400', 'cursor-not-allowed');
+            installBtn.innerHTML = '<span>⏳ Keep USB Connected... Flashing PisoPhone Kiosk</span>';
+            installLog.innerHTML = '';
+            installLogContainer.classList.remove('hidden');
+
+            try {
+                // Step 1: Request connection
+                logInstall("Step 1: Connecting via WebUSB... Choose your Android device from the popup.");
+                await window.webADB.connect(logInstall);
+
+                // Step 2: Download / cache APK
+                logInstall("Step 2: Preparing PisoPhone Kiosk APK binary...");
+                await window.webADB.downloadToLocalTemp(candidateApkUrls, logInstall);
+
+                // Step 3: Flash and install
+                logInstall("Step 3: Flashing package onto device & configuring Device Owner lockdown...");
+                await window.webADB.installKioskApp(candidateApkUrls, logInstall);
+
+                // Step 4: Broadcast configuration to the app
+                logInstall("Step 4: Infusing hardware configuration parameters inside Android...");
+                try {
+                    await window.webADB.runShell('am broadcast -a com.pisophone.kiosk.CONFIGURE_ESP32 -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es esp32_mac "' + esp32Mac + '" --es esp32_ip "' + esp32Ip + '" --ei slot ' + slotNum);
+                    await window.webADB.runShell('am broadcast -a com.pisophone.kiosk.ACTIVATE -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es key "PISOPHONE-BOX-ACTIVATED" --es esp32_mac "' + esp32Mac + '" --es esp32_ip "' + esp32Ip + '" --ei slot ' + slotNum);
+                } catch (bErr) {
+                    logInstall(`[!] Configuration broadcast notice: ${bErr.message}`);
+                }
+
+                // Step 5: Read Hardware ID
+                let serial = window.webADB.serial || `HW-${Date.now()}`;
+                try {
+                    const hwInfo = await window.webADB.getHardwareInfo(logInstall);
+                    if (hwInfo && hwInfo.deviceId) serial = hwInfo.deviceId;
+                } catch (_) {}
+
+                // Launch app
+                try {
+                    await window.webADB.launchApp(logInstall);
+                } catch (_) {}
+
+                logInstall("\n🎉 INSTALLATION & LOCKDOWN COMPLETE! Device is secured.");
+                logInstall("\n🔄 Redirecting you back to your local Cabinet Board to finalize pairing...");
+                
+                installBtn.innerHTML = '<span>🎉 Sideload Success! Redirecting...</span>';
+                installBtn.className = "w-full bg-emerald-600 text-white font-black py-4 rounded-xl text-sm flex items-center justify-center";
+
+                await window.webADB.disconnect();
+
+                // Redirect back to ESP32 for zero-configuration, secure local HTTP pairing
+                setTimeout(() => {
+                    window.location.href = `http://${esp32Ip}/?action=pair&slot=${slotNum}&id=${encodeURIComponent(serial)}&name=PisoPhone+Slot+${slotNum}`;
+                }, 3000);
+
+            } catch (err) {
+                logInstall(`❌ ERROR: ${err.message || err}`);
+                logInstall(`💡 TIP: Ensure your phone is connected with a USB DATA cable. Tap "Always Allow" for USB Debugging if prompted on your screen.`);
+                installBtn.disabled = false;
+                installBtn.className = "w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-4 px-6 rounded-xl transition-all duration-300 shadow-lg text-sm flex items-center justify-center gap-2.5 pulse-btn btn-glow cursor-pointer";
+                installBtn.innerHTML = '<span>Retry Flashing &amp; Pairing</span>';
+            }
+        });
+    </script>
+</body>
+</html>

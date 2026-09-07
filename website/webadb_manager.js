@@ -11,23 +11,32 @@
     // Candidate bundle URLs for robust universal loading across Cloudflare, Local ESP32, or Localhost
     const BUNDLE_CANDIDATE_URLS = [
         (typeof window !== 'undefined' && window.YUME_CHAN_BUNDLE_URL) ? window.YUME_CHAN_BUNDLE_URL : null,
-        'https://pisophone-v1.pages.dev/yume-chan-bundle.js',
+        'https://pisophone.pages.dev/yume-chan-bundle.js',
+        'https://cdn.jsdelivr.net/gh/Sheesh0327/PisoPhone-Kiosk-Launcher-V1@main/website/yume-chan-bundle.js',
+        'https://raw.githubusercontent.com/Sheesh0327/PisoPhone-Kiosk-Launcher-V1/main/website/yume-chan-bundle.js',
         './yume-chan-bundle.js',
         '/yume-chan-bundle.js'
     ].filter(Boolean);
 
     async function loadYumeChanModules() {
+        console.log("[WebADB] Initializing dynamic import of WebADB bundle...");
+        console.log("[WebADB] Candidate bundle URLs:", BUNDLE_CANDIDATE_URLS);
+        const errors = [];
         for (const url of BUNDLE_CANDIDATE_URLS) {
             try {
+                console.log(`[WebADB] Attempting to import bundle from: ${url}`);
                 const mod = await import(url);
                 if (mod && (mod.Adb || (mod.default && mod.default.Adb))) {
+                    console.log(`[WebADB] Dynamic import SUCCEEDED from: ${url}`);
                     return mod.Adb ? mod : mod.default;
                 }
+                console.warn(`[WebADB] Module imported from ${url} did not have Adb export.`);
             } catch (e) {
-                console.debug(`Failed loading WebADB bundle from ${url}:`, e);
+                console.warn(`[WebADB] Failed loading WebADB bundle from ${url}:`, e);
+                errors.push(`${url}: ${e.message || e}`);
             }
         }
-        throw new Error("Unable to load WebADB core bundle. Please check your internet connection.");
+        throw new Error("Unable to load WebADB core bundle. Details:\n" + errors.join("\n"));
     }
 
     // Eagerly preload WebADB bundle on script evaluation
@@ -142,9 +151,14 @@
          */
         async connect(logCallback = console.log) {
             logCallback("Initializing WebADB connection...");
+            console.log("[WebADB] connect() called.");
             
             try {
+                logCallback("[DEBUG] Loading WebADB modules...");
                 const modules = (bundlePromise ? await bundlePromise : null) || await loadYumeChanModules();
+                console.log("[WebADB] Core modules resolved:", modules);
+                logCallback("[DEBUG] WebADB modules loaded successfully.");
+
                 const {
                     Adb,
                     AdbDaemonTransport,
@@ -152,17 +166,21 @@
                     AdbCredentialWeb
                 } = modules;
 
+                logCallback("[DEBUG] Fetching WebUSB browser manager...");
                 const Manager = AdbDaemonWebUsbDeviceManager.BROWSER;
                 if (!Manager) {
-                    throw new Error("WebUSB is not supported by your browser. Please use Google Chrome, Microsoft Edge, or Brave.");
+                    throw new Error("WebUSB is not supported by your browser or inside this insecure context. Please ensure you are on HTTPS, localhost, or have enabled the Chrome/Edge flag: chrome://flags/#unsafely-treat-insecure-origin-as-secure");
                 }
+                logCallback("[DEBUG] WebUSB browser manager found.");
 
                 let webusbDevice = null;
                 let connection = null;
 
                 // Attempt to check if device is already paired/authorized
                 try {
+                    logCallback("[DEBUG] Checking for previously paired USB devices...");
                     const pairedDevices = await Manager.getDevices();
+                    logCallback(`[DEBUG] Found ${pairedDevices ? pairedDevices.length : 0} previously paired devices.`);
                     if (pairedDevices && pairedDevices.length > 0) {
                         for (const dev of pairedDevices) {
                             try {
@@ -172,23 +190,42 @@
                                 logCallback(`Connected to previously paired device: ${dev.name || dev.serial || 'Android Device'}`);
                                 break;
                             } catch (devErr) {
+                                logCallback(`[DEBUG] Paired device connect failed, trying next: ${devErr.message || devErr}`);
                                 console.debug("Paired device connect attempt failed, falling back to picker:", devErr);
                             }
                         }
                     }
                 } catch (e) {
+                    logCallback(`[DEBUG] getDevices check threw an error: ${e.message || e}`);
                     console.debug("getDevices check:", e);
                 }
 
                 // If no paired device connected successfully, prompt user with standard WebUSB picker
                 if (!webusbDevice || !connection) {
                     logCallback("Requesting WebUSB permission (select your Android phone from popup)...");
-                    webusbDevice = await Manager.requestDevice();
+                    console.log("[WebADB] Triggering Manager.requestDevice(). This must show the browser picker.");
+                    
+                    try {
+                        webusbDevice = await Manager.requestDevice();
+                    } catch (reqErr) {
+                        logCallback(`❌ WebUSB Picker failed to open: ${reqErr.message || reqErr}`);
+                        console.error("[WebADB] Manager.requestDevice() failed:", reqErr);
+                        throw reqErr;
+                    }
+
                     if (!webusbDevice) {
                         throw new Error("No USB device selected.");
                     }
                     logCallback(`Device selected: ${webusbDevice.name || webusbDevice.serial || 'Android Device'}`);
-                    connection = await webusbDevice.connect();
+                    
+                    logCallback("[DEBUG] Establishing connection to selected USB device...");
+                    try {
+                        connection = await webusbDevice.connect();
+                    } catch (connErr) {
+                        logCallback(`❌ Device connection failed: ${connErr.message || connErr}`);
+                        console.error("[WebADB] webusbDevice.connect() failed:", connErr);
+                        throw connErr;
+                    }
                 }
 
                 this.connection = connection;
@@ -196,6 +233,7 @@
                 this.credentialStore = new AdbCredentialWeb();
 
                 logCallback("Authenticating with device (Accept prompt on phone screen)...");
+                console.log("[WebADB] Authenticating...");
                 const transport = await AdbDaemonTransport.authenticate({
                     serial: webusbDevice.serial,
                     connection: this.connection,
@@ -207,6 +245,7 @@
                 return true;
             } catch (err) {
                 logCallback(`❌ Connection error: ${err.message || err}`);
+                console.error("[WebADB] connect() error:", err);
                 throw err;
             }
         }
