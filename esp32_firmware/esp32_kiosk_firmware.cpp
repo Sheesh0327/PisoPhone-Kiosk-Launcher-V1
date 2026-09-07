@@ -2987,7 +2987,7 @@ bool checkAuth() {
     if (webServer.hasArg("challenge") && webServer.hasArg("sig")) {
         String challenge = webServer.arg("challenge");
         String sig = webServer.arg("sig");
-        if (sig.equals(calculateHMAC(challenge, sharedSecret)) || sig.equals(calculateHMAC(challenge, webPassword))) {
+        if (sig.equals(calculateHMAC(challenge, sharedSecret))) {
             return true;
         }
     }

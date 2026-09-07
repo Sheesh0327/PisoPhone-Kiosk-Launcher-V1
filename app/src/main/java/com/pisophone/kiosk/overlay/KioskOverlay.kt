@@ -107,17 +107,24 @@ class LockScreenOverlay(
         val baseFlags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or 
                         WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                         WindowManager.LayoutParams.FLAG_FULLSCREEN or
-                        WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS or WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+                        WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS or 
+                        WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or 
+                        WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+        
+        // CRITICAL PERFORMANCE FIX: Keep layoutParams.width and height ALWAYS MATCH_PARENT.
+        // Resizing to 0x0 forces SurfaceFlinger to deallocate/reallocate native graphic buffers
+        // when games are rendering, causing severe stutter and EGL_BAD_ALLOC / OOM crashes.
+        layoutParams.width = WindowManager.LayoutParams.MATCH_PARENT
+        layoutParams.height = WindowManager.LayoutParams.MATCH_PARENT
+
         if (visible) {
             layoutParams.flags = baseFlags
-            layoutParams.width = WindowManager.LayoutParams.MATCH_PARENT
-            layoutParams.height = WindowManager.LayoutParams.MATCH_PARENT
+            overlayView.view.alpha = 1f
         } else {
             layoutParams.flags = baseFlags or 
                                  WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or 
                                  WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-            layoutParams.width = 0
-            layoutParams.height = 0
+            overlayView.view.alpha = 0f
         }
         try {
             windowManager.updateViewLayout(overlayView.view, layoutParams)
@@ -144,17 +151,20 @@ class LockScreenOverlay(
         val baseFlags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or 
                         WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                         WindowManager.LayoutParams.FLAG_FULLSCREEN or
-                        WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS or WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+                        WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS or 
+                        WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or 
+                        WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+        
+        layoutParams.width = WindowManager.LayoutParams.MATCH_PARENT
+        layoutParams.height = WindowManager.LayoutParams.MATCH_PARENT
         if (initialVisible) {
             layoutParams.flags = baseFlags
-            layoutParams.width = WindowManager.LayoutParams.MATCH_PARENT
-            layoutParams.height = WindowManager.LayoutParams.MATCH_PARENT
+            overlayView.view.alpha = 1f
         } else {
             layoutParams.flags = baseFlags or 
                                  WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or 
                                  WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-            layoutParams.width = 0
-            layoutParams.height = 0
+            overlayView.view.alpha = 0f
         }
 
         overlayView.setContent {
@@ -177,47 +187,72 @@ class LockScreenOverlay(
             }
             
             val isVisible = isSetupReady && (appState == 0 || appState == 1)
-            var renderLockScreen by remember { mutableStateOf(isVisible) }
             val unlockAlpha by androidx.compose.animation.core.animateFloatAsState(
                 targetValue = if (isVisible) 1f else 0f,
-                animationSpec = tween(durationMillis = 400, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                animationSpec = tween(durationMillis = 350, easing = androidx.compose.animation.core.FastOutSlowInEasing),
                 label = "unlockAlpha"
             )
             val unlockScale by androidx.compose.animation.core.animateFloatAsState(
-                targetValue = if (isVisible) 1f else 1.06f,
-                animationSpec = tween(durationMillis = 400, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                targetValue = if (isVisible) 1f else 1.05f,
+                animationSpec = tween(durationMillis = 350, easing = androidx.compose.animation.core.FastOutSlowInEasing),
                 label = "unlockScale"
             )
 
             LaunchedEffect(isVisible) {
                 if (isVisible) {
+                    // Instantly take over touches and inputs within 1 frame (16ms)
                     updateWindowFlagsAndDimensions(true)
-                    renderLockScreen = true
-                    overlayView.view.visibility = View.VISIBLE
                 } else {
-                    // Allow exit animation to play smoothly before hiding window
-                    delay(400)
-                    renderLockScreen = false
-                    overlayView.view.visibility = View.GONE
+                    // Allow exit fade to complete before allowing touches to pass through to underlying games
+                    delay(350)
                     updateWindowFlagsAndDimensions(false)
                 }
             }
 
-            if (renderLockScreen) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer(
-                            alpha = unlockAlpha,
-                            scaleX = unlockScale,
-                            scaleY = unlockScale
-                        )
-                ) {
-                    if (appState == 0 || appState == 4) {
-                        BlockScreen(onInsertCoinClick, isWaiting = false, 0, 0, {}, isEsp32Online, isSlotBusy = isSlotBusy, pricePerCoin = pricePerCoin, minutesPerCoin = minutesPerCoin, deviceIp = deviceIp, themeIndex = themeIndex, batteryStatus = batteryStatus, onThemeChange = onThemeChange)
-                    } else if (appState == 1 || (!isVisible && coinsInserted > 0)) {
-                        BlockScreen(onInsertCoinClick, isWaiting = isVisible, coinsInserted, paymentTimeout, onDoneClick, isEsp32Online, isSlotBusy = isSlotBusy, pricePerCoin = pricePerCoin, minutesPerCoin = minutesPerCoin, deviceIp = deviceIp, themeIndex = themeIndex, batteryStatus = batteryStatus, onThemeChange = onThemeChange)
-                    }
+            // CRITICAL PERFORMANCE FIX: Keep BlockScreen permanently rendered and pre-warmed in memory.
+            // When unlockAlpha == 0f, the hardware pipeline skips drawing passes completely,
+            // consuming 0% GPU during games, but takes over instantly with zero jank when time expires.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer(
+                        alpha = unlockAlpha,
+                        scaleX = unlockScale,
+                        scaleY = unlockScale
+                    )
+            ) {
+                if (appState == 0 || appState == 4 || (appState == 2 && !isVisible)) {
+                    BlockScreen(
+                        onInsertCoin = onInsertCoinClick,
+                        isWaiting = false,
+                        coinsInserted = 0,
+                        paymentTimeout = 0,
+                        onDoneClick = {},
+                        isEsp32Online = isEsp32Online,
+                        isSlotBusy = isSlotBusy,
+                        pricePerCoin = pricePerCoin,
+                        minutesPerCoin = minutesPerCoin,
+                        deviceIp = deviceIp,
+                        themeIndex = themeIndex,
+                        batteryStatus = batteryStatus,
+                        onThemeChange = onThemeChange
+                    )
+                } else if (appState == 1 || appState == 3 || coinsInserted > 0) {
+                    BlockScreen(
+                        onInsertCoin = onInsertCoinClick,
+                        isWaiting = isVisible,
+                        coinsInserted = coinsInserted,
+                        paymentTimeout = paymentTimeout,
+                        onDoneClick = onDoneClick,
+                        isEsp32Online = isEsp32Online,
+                        isSlotBusy = isSlotBusy,
+                        pricePerCoin = pricePerCoin,
+                        minutesPerCoin = minutesPerCoin,
+                        deviceIp = deviceIp,
+                        themeIndex = themeIndex,
+                        batteryStatus = batteryStatus,
+                        onThemeChange = onThemeChange
+                    )
                 }
             }
         }
@@ -272,7 +307,6 @@ class LockScreenOverlay(
                                com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
             val isVisible = isFullySetup && (appStateFlow.value == 0 || appStateFlow.value == 1)
             updateWindowFlagsAndDimensions(isVisible)
-            overlayView.view.visibility = if (isVisible) View.VISIBLE else View.GONE
             overlayView.view.requestLayout()
             overlayView.view.invalidate()
         } catch (e: Exception) {
@@ -290,183 +324,3 @@ class LockScreenOverlay(
     }
 }
 
-class FloatingBallOverlay(
-    private val context: Context,
-    private val appStateFlow: StateFlow<Int>,
-    private val sessionTimeFlow: StateFlow<Int>,
-    private val paymentTimeoutFlow: StateFlow<Int>,
-    private val coinsInsertedFlow: StateFlow<Int>,
-    private val themeIndexFlow: StateFlow<Int>,
-    private val isEsp32OnlineFlow: StateFlow<Boolean>,
-    private val isSlotBusyFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
-    private val pricePerCoinFlow: StateFlow<Double>,
-    private val minutesPerCoinFlow: StateFlow<Int>,
-    private val batteryStatusFlow: StateFlow<BatteryStatus> = kotlinx.coroutines.flow.MutableStateFlow(BatteryStatus()),
-    private val onInsertCoinClick: () -> Unit,
-    private val onDoneClick: () -> Unit
-) {
-    private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    private val overlayView = ComposeOverlayView(context)
-    private var isViewAdded = false
-    
-    private val layoutParams = WindowManager.LayoutParams(
-        WindowManager.LayoutParams.WRAP_CONTENT,
-        WindowManager.LayoutParams.WRAP_CONTENT,
-        WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD,
-        PixelFormat.TRANSLUCENT
-    ).apply {
-        gravity = Gravity.TOP or Gravity.START
-        x = 20
-        y = 20
-        softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE
-    }
-
-    fun updateFocusable(focusable: Boolean) {
-        val oldFlags = layoutParams.flags
-        if (focusable) {
-            layoutParams.flags = layoutParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
-        } else {
-            layoutParams.flags = layoutParams.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-        }
-        if (oldFlags != layoutParams.flags && isViewAdded) {
-            try {
-                windowManager.updateViewLayout(overlayView.view, layoutParams)
-            } catch (e: Exception) {
-                android.util.Log.e("FloatingBallOverlay", "Failed to update focus layout: ${e.message}")
-            }
-        }
-    }
-
-    fun show() {
-        if (!android.provider.Settings.canDrawOverlays(context)) {
-            android.util.Log.w("FloatingBallOverlay", "Overlay permission not granted yet, deferring window attachment")
-            return
-        }
-        val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isTutorialCompleted(context) &&
-                           com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
-        if (!isFullySetup) {
-            android.util.Log.d("FloatingBallOverlay", "Device not activated or fully setup. Floating ball overlay deferred.")
-            return
-        }
-        if (isViewAdded) return
-
-        overlayView.setContent {
-            val appState by appStateFlow.collectAsState()
-            val sessionTime by sessionTimeFlow.collectAsState()
-            val paymentTimeout by paymentTimeoutFlow.collectAsState()
-            val coinsInserted by coinsInsertedFlow.collectAsState()
-            val isEsp32Online by isEsp32OnlineFlow.collectAsState()
-            val isSlotBusy by isSlotBusyFlow.collectAsState()
-            val themeIndex by themeIndexFlow.collectAsState()
-            val batteryStatus by batteryStatusFlow.collectAsState()
-            val securityUpdateVersion by com.pisophone.kiosk.security.HardwareLockManager.securityUpdateVersion.collectAsState()
-            
-            val isSetupReady = remember(securityUpdateVersion) { 
-                com.pisophone.kiosk.security.HardwareLockManager.isTutorialCompleted(context) &&
-                com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
-            }
-            val isVisible = isSetupReady && (appState == 2 || appState == 3)
-            
-            LaunchedEffect(isVisible) {
-                if (isVisible) {
-                    overlayView.view.visibility = View.VISIBLE
-                } else {
-                    overlayView.view.visibility = View.GONE
-                }
-            }
-
-            if (isVisible) {
-                FloatingBall(
-                    timeRemaining = sessionTime,
-                    onInsertCoinClick = onInsertCoinClick,
-                    coinsInserted = coinsInserted,
-                    paymentTimeout = paymentTimeout,
-                    onDoneClick = onDoneClick,
-                    isEsp32Online = isEsp32Online,
-                    isSlotBusy = isSlotBusy,
-                    isWaiting = appState == 3,
-                    themeIndex = themeIndex,
-                    batteryStatus = batteryStatus,
-                    onRequestFocus = { focusable -> updateFocusable(focusable) },
-                    onBrightnessChange = { ratio ->
-                        layoutParams.screenBrightness = ratio
-                        if (isViewAdded) {
-                            try {
-                                windowManager.updateViewLayout(overlayView.view, layoutParams)
-                            } catch (e: Exception) {}
-                        }
-                    },
-                    onDrag = { dx, dy ->
-                        layoutParams.x += dx.toInt()
-                        layoutParams.y += dy.toInt()
-                        try {
-                            windowManager.updateViewLayout(overlayView.view, layoutParams)
-                        } catch (e: Exception) {
-                            android.util.Log.e("FloatingBallOverlay", "Failed to update layout: ${e.message}")
-                        }
-                    }
-                )
-            }
-        }
-        try {
-            windowManager.addView(overlayView.view, layoutParams)
-            isViewAdded = true
-            overlayView.view.viewTreeObserver.addOnWindowFocusChangeListener { hasFocus ->
-                if (hasFocus) {
-                    overlayView.view.systemUiVisibility = (
-                        View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                        or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                        or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                        or View.SYSTEM_UI_FLAG_FULLSCREEN
-                        or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                        or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                    )
-                }
-            }
-
-            overlayView.start()
-        } catch (e: Exception) {
-            android.util.Log.e("FloatingBallOverlay", "Failed to add floating view: ${e.message}")
-        }
-    }
-    
-    fun remove() {
-        if (!isViewAdded) return
-        overlayView.stop()
-        overlayView.destroy()
-        try {
-            windowManager.removeView(overlayView.view)
-        } catch (e: Exception) {
-            android.util.Log.e("FloatingBallOverlay", "Failed to remove floating view: ${e.message}")
-        } finally {
-            isViewAdded = false
-        }
-    }
-
-    fun onScreenWake() {
-        if (!isViewAdded) return
-        try {
-            overlayView.onResume()
-            val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isTutorialCompleted(context) &&
-                               com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
-            val appState = appStateFlow.value
-            val isVisible = isFullySetup && (appState == 2 || appState == 3)
-            overlayView.view.visibility = if (isVisible) View.VISIBLE else View.GONE
-            windowManager.updateViewLayout(overlayView.view, layoutParams)
-            overlayView.view.requestLayout()
-            overlayView.view.invalidate()
-        } catch (e: Exception) {
-            android.util.Log.e("FloatingBallOverlay", "onScreenWake error: ${e.message}")
-        }
-    }
-
-    fun onScreenSleep() {
-        if (!isViewAdded) return
-        try {
-            overlayView.onPause()
-        } catch (e: Exception) {
-            android.util.Log.e("FloatingBallOverlay", "onScreenSleep error: ${e.message}")
-        }
-    }
-}

@@ -78,7 +78,9 @@ class KioskSessionSupervisor(
                                 
                                 val startMain = Intent(Intent.ACTION_MAIN).apply {
                                     addCategory(Intent.CATEGORY_HOME)
-                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or 
+                                            Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or 
+                                            Intent.FLAG_ACTIVITY_CLEAR_TOP
                                 }
                                 try {
                                     context.startActivity(startMain)
