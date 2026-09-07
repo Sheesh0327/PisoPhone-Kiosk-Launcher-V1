@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WiFiUdp.h>
 #include <HTTPClient.h>
 #include <WebServer.h>
 #include <Preferences.h>
@@ -42,6 +43,8 @@ unsigned long resetPinLowStart = 0;
 Preferences prefs;
 WebServer webServer(80); // Port 80: Web Portal & REST API
 WiFiServer wsServer(81); // Port 81: Real-time RFC6455 WebSocket Server
+const int UDP_DISCOVERY_PORT = 8888; // Port 8888: Auto-Discovery Broadcast & Probe
+WiFiUDP udpServer;
 
 // Dynamic Hardware Pin Configuration (Persisted in NVS)
 int coinPin          = DEFAULT_COIN_PIN;           // Linear beam sensor pin (Default GPIO 4, Pull-Up)
@@ -4260,6 +4263,71 @@ void processWebSocketServer() {
 }
 
 // ============================================================================
+// UDP BROADCAST DISCOVERY SERVICE (Port 8888)
+// Listens for UDP broadcasts from Android Kiosk devices and responds
+// with the ESP32 Master box identity, IP, MAC address, and configuration.
+// ============================================================================
+void sendUdpDiscoveryResponse(IPAddress targetIp, uint16_t targetPort) {
+    if (WiFi.status() != WL_CONNECTED) return;
+
+    String resp = "{\"type\":\"PISOPHONE_ESP32_RESPONSE\","
+                  "\"device\":\"PISOPHONE_MASTER\","
+                  "\"mac\":\"" + macAddressStr + "\","
+                  "\"ip\":\"" + WiFi.localIP().toString() + "\","
+                  "\"port\":80,"
+                  "\"ws_port\":81,"
+                  "\"device_name\":\"PisoPhone Master\","
+                  "\"price\":" + String(coinPrice, 2) + ","
+                  "\"minutes\":" + String(minutesPerCoin) + ","
+                  "\"slots\":" + String(MAX_SLOTS) + ","
+                  "\"uptime\":" + String(millis() / 1000) + "}";
+
+    // 1. Direct unicast response to client
+    if (targetIp != IPAddress(0, 0, 0, 0) && targetPort > 0) {
+        udpServer.beginPacket(targetIp, targetPort);
+        udpServer.write((const uint8_t*)resp.c_str(), resp.length());
+        udpServer.endPacket();
+    }
+
+    // 2. Local broadcast on discovery port 8888 (handles clients listening on fixed port)
+    IPAddress bcast(255, 255, 255, 255);
+    udpServer.beginPacket(bcast, UDP_DISCOVERY_PORT);
+    udpServer.write((const uint8_t*)resp.c_str(), resp.length());
+    udpServer.endPacket();
+}
+
+void processUdpDiscovery() {
+    if (WiFi.status() != WL_CONNECTED) return;
+
+    int packetSize = udpServer.parsePacket();
+    if (packetSize > 0) {
+        char packetBuffer[512];
+        int len = udpServer.read(packetBuffer, sizeof(packetBuffer) - 1);
+        if (len > 0) {
+            packetBuffer[len] = '\0';
+            String msg = String(packetBuffer);
+            msg.trim();
+
+            // Canonical UDP discovery protocol
+            if (msg.indexOf("PISOPHONE_DISCOVER") >= 0) {
+                IPAddress remoteIp = udpServer.remoteIP();
+                uint16_t remotePort = udpServer.remotePort();
+                Serial.printf("[⚡ UDP Discovery] Valid probe received from %s:%d. Responding...\n",
+                              remoteIp.toString().c_str(), remotePort);
+                sendUdpDiscoveryResponse(remoteIp, remotePort);
+            }
+        }
+    }
+
+    // Periodic announcement beacon (every 10 seconds while connected to WiFi)
+    static unsigned long lastUdpAnnounceMs = 0;
+    if (millis() - lastUdpAnnounceMs > 10000 || lastUdpAnnounceMs == 0) {
+        lastUdpAnnounceMs = millis();
+        sendUdpDiscoveryResponse(IPAddress(255, 255, 255, 255), UDP_DISCOVERY_PORT);
+    }
+}
+
+// ============================================================================
 // SERIAL CLI (For USB Console Testing)
 // ============================================================================
 void processSerialCli() {
@@ -4593,9 +4661,15 @@ void setup() {
     // Port 81: Real-time WebSocket Server
     wsServer.begin();
 
+    // Port 8888: UDP Broadcast Discovery Service
+    udpServer.begin(UDP_DISCOVERY_PORT);
+    Serial.printf("[!] Port %d: UDP Discovery Server active\n", UDP_DISCOVERY_PORT);
+
     if (WiFi.status() == WL_CONNECTED) {
         Serial.printf("[!] Port 80: Management at http://%s:80\n", WiFi.localIP().toString().c_str());
         Serial.printf("[!] Port 81: WebSocket at ws://%s:81/ws\n\n", WiFi.localIP().toString().c_str());
+        // Broadcast initial arrival on network
+        sendUdpDiscoveryResponse(IPAddress(255, 255, 255, 255), UDP_DISCOVERY_PORT);
     } else {
         Serial.printf("[!] Wi-Fi disconnected. Waiting for hotspot '%s' to become available...\n", wifiSsid.c_str());
     }
@@ -4625,10 +4699,13 @@ void loop() {
     // 4. Handle Port 81 WebSocket Client & Frames
     processWebSocketServer();
     
-    // 4. Handle USB Serial CLI commands
+    // 5. Handle Port 8888 UDP Broadcast Discovery
+    processUdpDiscovery();
+    
+    // 6. Handle USB Serial CLI commands
     processSerialCli();
     
-    // 5 & 6. Robust Non-Blocking Wi-Fi Reconnection Watchdog & LED Status Sync
+    // 7. Robust Non-Blocking Wi-Fi Reconnection Watchdog & LED Status Sync
     if (WiFi.status() == WL_CONNECTED) {
         currentLedState = LED_STATE_CONNECTED;
     } else {
@@ -4645,6 +4722,8 @@ void loop() {
             Serial.println("\n[📶 WATCHDOG] Wi-Fi connection lost. Re-initiating non-blocking reconnection...");
             WiFi.disconnect();
             WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
+            udpServer.stop();
+            udpServer.begin(UDP_DISCOVERY_PORT);
         }
     }
     processLedBlink();

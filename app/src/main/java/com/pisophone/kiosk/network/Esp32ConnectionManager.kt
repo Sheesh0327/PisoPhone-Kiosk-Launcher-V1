@@ -113,6 +113,21 @@ class Esp32ConnectionManager(
         delegate.onOnlineStatusChanged(true, null)
         Log.d(TAG, "[+] ESP32 Master bound at $ipHost")
 
+        // Parse immediate config from UDP response if present
+        if (!rawResponseBody.isNullOrBlank()) {
+            try {
+                val json = JSONObject(rawResponseBody)
+                val price = if (json.has("price")) json.optDouble("price", 5.0) else null
+                val minutes = if (json.has("minutes")) json.optInt("minutes", 30) else null
+                val alias = if (json.has("device_name")) json.optString("device_name", "").trim() else null
+                val mac = if (json.has("mac")) json.optString("mac", "") else null
+                delegate.onConfigSynced(price, minutes, alias)
+                if (!mac.isNullOrBlank()) {
+                    delegate.onOnlineStatusChanged(true, mac)
+                }
+            } catch (_: Exception) {}
+        }
+
         scope.launch(Dispatchers.IO) {
             fetchMasterConfig(ipHost, esp32Port)
         }
@@ -180,11 +195,21 @@ class Esp32ConnectionManager(
                             }
                             response.close()
                         } catch (_: Exception) {
-                            if (System.currentTimeMillis() - lastHeartbeatTime > HEARTBEAT_TIMEOUT_MS) {
+                            val offlineDuration = System.currentTimeMillis() - lastHeartbeatTime
+                            if (offlineDuration > HEARTBEAT_TIMEOUT_MS) {
                                 delegate.onOnlineStatusChanged(false, null)
+                                // Broadcast discovery probe while offline to quickly rediscover if ESP32 changed IP
+                                discoveryScanner.sendUdpDiscoveryBroadcast(currentIp)
+                                if (offlineDuration > 20000L && KioskSecurity.getConfiguredEsp32Ip(context).isBlank()) {
+                                    Log.w(TAG, "ESP32 disconnected for >20s, resetting cached IP for auto-rediscovery")
+                                    esp32Ip = null
+                                    discoveryScanner.triggerDiscovery(currentIp)
+                                }
                             }
                         }
                     } else {
+                        // Not bound yet: broadcast UDP discovery and probe candidate hostnames/gateways
+                        discoveryScanner.sendUdpDiscoveryBroadcast(currentIp)
                         discoveryScanner.probeCandidateIps(currentIp)
                     }
                 } catch (_: Exception) {}
