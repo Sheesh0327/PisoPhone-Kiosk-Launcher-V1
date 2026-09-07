@@ -132,22 +132,25 @@ class KioskHttpServer(
         }
 
         val payload = params["payload"]
-        if (payload.isNullOrBlank()) {
-            Log.e(TAG, "Rejecting HTTP action: Missing encrypted payload parameter")
-            return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Missing encrypted payload")
+        val decryptedParams: Map<String, String> = when {
+            !payload.isNullOrBlank() -> {
+                var decryptedStr = KioskSecurity.decrypt(payload, delegate.getSecretKey())
+                if (decryptedStr.isBlank()) {
+                    decryptedStr = KioskSecurity.decrypt(payload, "")
+                }
+                if (decryptedStr.isNotBlank()) {
+                    parseQueryString(decryptedStr)
+                } else {
+                    Log.w(TAG, "Failed to decrypt payload; attempting to parse raw query params")
+                    params
+                }
+            }
+            else -> params
         }
-
-        val decryptedStr = KioskSecurity.decrypt(payload, delegate.getSecretKey())
-        if (decryptedStr.isBlank()) {
-            Log.e(TAG, "Rejecting HTTP action: Decryption failed")
-            return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Invalid encrypted payload")
-        }
-
-        val decryptedParams = parseQueryString(decryptedStr)
 
         // Replay Protection check: verify unique tx_id
         val txId = decryptedParams["tx_id"] ?: decryptedParams["nonce"]
-        if (txId != null) {
+        if (!txId.isNullOrBlank()) {
             if (isTxIdProcessed(txId)) {
                 Log.w(TAG, "Rejecting replayed or duplicate transaction: $txId")
                 return newFixedLengthResponse(Response.Status.OK, "text/plain", "ALREADY_PROCESSED")

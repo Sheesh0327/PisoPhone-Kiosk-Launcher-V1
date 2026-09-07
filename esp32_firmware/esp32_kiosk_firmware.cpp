@@ -449,9 +449,15 @@ bool areDefaultCredentialsActive() {
 
 // Controls the physical relay state based on polarity (relayActiveLow)
 void setRelayHardware(bool active) {
-    pinMode(relayPin, OUTPUT);
-    bool pinLevel = relayActiveLow ? !active : active;
-    digitalWrite(relayPin, pinLevel ? HIGH : LOW);
+    if (active) {
+        pinMode(relayPin, OUTPUT);
+        bool pinLevel = relayActiveLow ? LOW : HIGH;
+        digitalWrite(relayPin, pinLevel);
+    } else {
+        // Sensitive relays trigger on both +V and GND.
+        // Set pin to INPUT (High Impedance / floating) so neither +V nor GND potential activates it when idle.
+        pinMode(relayPin, INPUT);
+    }
 }
 
 // Helper function to check if the coin slot is currently armed
@@ -3000,14 +3006,9 @@ void triggerCoinEvent() {
     if (targetIp.length() == 0) {
         targetIp = getPrimaryTerminalIp();
         if (targetIp.length() > 0) {
-            Serial.printf("[⚡ AUTO-ROUTED COIN] No armed session; auto-routing coin credit to primary terminal: %s\n", targetIp.c_str());
+            Serial.printf("[⚡ AUTO-ROUTED COIN] Auto-routing coin credit to primary terminal: %s\n", targetIp.c_str());
             isArmed = true;
         }
-    }
-
-    if (!isArmed && targetIp.length() == 0) {
-        Serial.println("[-] COIN IGNORED: No terminal is currently connected or configured to receive time.");
-        return;
     }
 
     // Automatically credit the configured coinPrice (PHP) and minutesPerCoin time for Simple Beam Sensor
@@ -3038,7 +3039,7 @@ void triggerCoinEvent() {
         Serial.printf("[⚡] Pushing Simple Beam Coin (₱%.2f PHP credit, +%d mins) instantly over WebSocket!\n", coinPrice, minutesPerCoin);
         String innerJson = "{\"seconds\":" + String(addedSeconds) + ",\"minutes\":" + String(minutesPerCoin) + ",\"amount\":" + String(coinPrice, 2) + ",\"tx_id\":\"" + txId + "\",\"ts\":\"" + String(ts) + "\"}";
         String payload = aes_encrypt(innerJson, sharedSecret);
-        String json = "{\"event\":\"COIN_DETECTED\",\"payload\":\"" + payload + "\"}";
+        String json = "{\"event\":\"COIN_DETECTED\",\"payload\":\"" + payload + "\",\"seconds\":" + String(addedSeconds) + ",\"amount\":" + String(coinPrice, 2) + ",\"tx_id\":\"" + txId + "\"}";
         sendWsText(wsClient, json);
         armedUntil = millis() + ARM_TTL;
     }
@@ -3047,6 +3048,14 @@ void triggerCoinEvent() {
         Serial.printf("[⚡] Routing Simple Beam Coin (₱%.2f, +%d mins) to IP: %s\n", coinPrice, minutesPerCoin, targetIp.c_str());
         sendAuthenticated(targetIp, targetPort, "/add_time", "/challenge", "minutes=" + String(minutesPerCoin) + "&seconds=" + String(addedSeconds) + "&amount=" + String(coinPrice, 2) + "&tx_id=" + txId, 1000);
         armedUntil = millis() + ARM_TTL;
+    } else if (trackedDeviceCount > 0) {
+        // Fallback: Dispatch to all tracked devices if no specific primary IP is resolved
+        for (int i = 0; i < trackedDeviceCount; i++) {
+            if (trackedDevices[i].lastKnownIp.length() > 0 && trackedDevices[i].lastKnownIp != "127.0.0.1") {
+                Serial.printf("[⚡ FALLBACK] Dispatching coin to tracked device IP: %s\n", trackedDevices[i].lastKnownIp.c_str());
+                sendAuthenticated(trackedDevices[i].lastKnownIp, targetPort, "/add_time", "/challenge", "minutes=" + String(minutesPerCoin) + "&seconds=" + String(addedSeconds) + "&amount=" + String(coinPrice, 2) + "&tx_id=" + txId, 1000);
+            }
+        }
     }
 }
 
@@ -3063,14 +3072,9 @@ void triggerUniversalCoinEvent(int pulses) {
     if (targetIp.length() == 0) {
         targetIp = getPrimaryTerminalIp();
         if (targetIp.length() > 0) {
-            Serial.printf("[⚡ AUTO-ROUTED COIN] No armed session; auto-routing ₱%d universal coin to terminal: %s\n", pulses, targetIp.c_str());
+            Serial.printf("[⚡ AUTO-ROUTED COIN] Auto-routing ₱%d universal coin to terminal: %s\n", pulses, targetIp.c_str());
             isArmed = true;
         }
-    }
-
-    if (!isArmed && targetIp.length() == 0) {
-        Serial.println("[-] COIN IGNORED: No terminal is currently connected or configured to receive time.");
-        return;
     }
 
     // Dynamic rate calculation: minutesPerCoin for coinPrice PHP
@@ -3108,7 +3112,7 @@ void triggerUniversalCoinEvent(int pulses) {
         Serial.printf("[⚡] Pushing ₱%d (+%d mins / %d secs) over WebSocket!\n", pulses, addedMinutes, addedSeconds);
         String innerJson = "{\"seconds\":" + String(addedSeconds) + ",\"minutes\":" + String(addedMinutes) + ",\"amount\":" + String(pulses) + ",\"tx_id\":\"" + txId + "\",\"ts\":\"" + String(ts) + "\"}";
         String payload = aes_encrypt(innerJson, sharedSecret);
-        String json = "{\"event\":\"COIN_DETECTED\",\"payload\":\"" + payload + "\"}";
+        String json = "{\"event\":\"COIN_DETECTED\",\"payload\":\"" + payload + "\",\"seconds\":" + String(addedSeconds) + ",\"amount\":" + String(pulses) + ",\"tx_id\":\"" + txId + "\"}";
         sendWsText(wsClient, json);
         armedUntil = millis() + ARM_TTL;
     }
@@ -3117,6 +3121,13 @@ void triggerUniversalCoinEvent(int pulses) {
         Serial.printf("[⚡] Routing universal coin to IP: %s\n", targetIp.c_str());
         sendAuthenticated(targetIp, targetPort, "/add_time", "/challenge", "minutes=" + String(addedMinutes) + "&seconds=" + String(addedSeconds) + "&amount=" + String(pulses) + "&tx_id=" + txId, 1000);
         armedUntil = millis() + ARM_TTL;
+    } else if (trackedDeviceCount > 0) {
+        for (int i = 0; i < trackedDeviceCount; i++) {
+            if (trackedDevices[i].lastKnownIp.length() > 0 && trackedDevices[i].lastKnownIp != "127.0.0.1") {
+                Serial.printf("[⚡ FALLBACK] Dispatching coin to tracked device IP: %s\n", trackedDevices[i].lastKnownIp.c_str());
+                sendAuthenticated(trackedDevices[i].lastKnownIp, targetPort, "/add_time", "/challenge", "minutes=" + String(addedMinutes) + "&seconds=" + String(addedSeconds) + "&amount=" + String(pulses) + "&tx_id=" + txId, 1000);
+            }
+        }
     }
 }
 

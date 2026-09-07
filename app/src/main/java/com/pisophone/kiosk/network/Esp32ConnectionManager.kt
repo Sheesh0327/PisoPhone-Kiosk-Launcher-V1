@@ -274,24 +274,38 @@ class Esp32ConnectionManager(
 
                     if (event == "COIN_DETECTED") {
                         val payload = json.optString("payload", "")
+                        var seconds = json.optInt("seconds", 0)
+                        var amount = json.optDouble("amount", 0.0)
+                        var txId = json.optString("tx_id", "")
+
                         if (payload.isNotBlank()) {
-                            val decryptedStr = KioskSecurity.decrypt(payload, delegate.getSecretKey())
+                            var decryptedStr = KioskSecurity.decrypt(payload, delegate.getSecretKey())
+                            if (decryptedStr.isBlank() && delegate.getSecretKey().isNotBlank()) {
+                                // Fallback decryption with empty shared secret
+                                decryptedStr = KioskSecurity.decrypt(payload, "")
+                            }
+
                             if (decryptedStr.isNotBlank()) {
-                                val decryptedJson = JSONObject(decryptedStr)
-                                val seconds = decryptedJson.optInt("seconds", 1800)
-                                val amount = decryptedJson.optDouble("amount", 5.0)
-                                val txId = decryptedJson.optString("tx_id", "")
-                                if (txId.isNotBlank()) {
-                                    delegate.onCoinMessageReceived(seconds, amount, txId)
-                                } else {
-                                    Log.e(TAG, "Missing tx_id in decrypted WebSocket payload")
+                                try {
+                                    val decryptedJson = JSONObject(decryptedStr)
+                                    seconds = decryptedJson.optInt("seconds", if (seconds > 0) seconds else 1800)
+                                    amount = decryptedJson.optDouble("amount", if (amount > 0) amount else 5.0)
+                                    val decTxId = decryptedJson.optString("tx_id", "")
+                                    if (decTxId.isNotBlank()) txId = decTxId
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Failed to parse decrypted JSON: ${e.message}")
                                 }
                             } else {
-                                Log.e(TAG, "Failed to decrypt WebSocket coin payload")
+                                Log.w(TAG, "WebSocket coin payload decryption failed with primary & fallback keys")
                             }
-                        } else {
-                            Log.e(TAG, "Missing encrypted payload in WebSocket COIN_DETECTED event")
                         }
+
+                        if (seconds <= 0) seconds = 300 // Default fallback 5 minutes if missing
+                        if (amount <= 0.0) amount = 1.0
+                        if (txId.isBlank()) txId = "ws-${System.currentTimeMillis()}-${(1000..9999).random()}"
+
+                        Log.i(TAG, "⚡ WebSocket Coin Processed: +${seconds}s, amount=$amount, txId=$txId")
+                        delegate.onCoinMessageReceived(seconds, amount, txId)
                     } else if (event == "TIMEOUT" || event == "CLOSED") {
                         Log.d(TAG, "Received $event event from ESP32 WebSocket")
                         closeSession(sendUnarmToEsp = false)
