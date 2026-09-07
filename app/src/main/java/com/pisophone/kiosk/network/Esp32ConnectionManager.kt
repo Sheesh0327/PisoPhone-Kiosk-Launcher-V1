@@ -70,11 +70,6 @@ class Esp32ConnectionManager(
         context = context,
         scope = scope,
         delegate = object : Esp32DiscoveryDelegate {
-            override fun getDeviceId(): String = delegate.getDeviceId()
-            override fun getSecretKey(): String = delegate.getSecretKey()
-            override fun getAppState(): Int = delegate.getAppState()
-            override fun getSessionTimeRemaining(): Int = delegate.getSessionTimeRemaining()
-            override fun getRealTimeBatteryInfo(): Pair<Int, Boolean> = delegate.getRealTimeBatteryInfo()
             override fun onEsp32Discovered(ip: String, rawResponseBody: String?) {
                 handleEsp32Discovered(ip, rawResponseBody)
             }
@@ -208,9 +203,8 @@ class Esp32ConnectionManager(
                             }
                         }
                     } else {
-                        // Not bound yet: broadcast UDP discovery and probe candidate hostnames/gateways
-                        discoveryScanner.sendUdpDiscoveryBroadcast(currentIp)
-                        discoveryScanner.probeCandidateIps(currentIp)
+                        // Not bound yet: trigger clean discovery probe and direct candidate check
+                        discoveryScanner.triggerDiscovery(currentIp)
                     }
                 } catch (_: Exception) {}
                 delay(4000)

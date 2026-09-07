@@ -142,6 +142,7 @@ bool parseDeviceEntry(String entry, DeviceConfig& out) {
 // ============================================================================
 #define MAX_SUPPORTED_SLOTS 12
 #define DEFAULT_MAX_SLOTS 12
+#define MAX_SLOTS maxLicensedSlots
 
 struct LicenseSlot {
     int slotNum;            // 1 to 12
@@ -4279,7 +4280,7 @@ void sendUdpDiscoveryResponse(IPAddress targetIp, uint16_t targetPort) {
                   "\"device_name\":\"PisoPhone Master\","
                   "\"price\":" + String(coinPrice, 2) + ","
                   "\"minutes\":" + String(minutesPerCoin) + ","
-                  "\"slots\":" + String(MAX_SLOTS) + ","
+                  "\"slots\":" + String(maxLicensedSlots) + ","
                   "\"uptime\":" + String(millis() / 1000) + "}";
 
     // 1. Direct unicast response to client
