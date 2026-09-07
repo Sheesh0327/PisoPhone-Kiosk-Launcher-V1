@@ -281,6 +281,7 @@ class Esp32DiscoveryScanner(
                 deviceMac = json.optString("mac", "")
                     .ifBlank { json.optString("esp32_mac", "") }
                     .ifBlank { json.optString("hardware_mac", "") }
+                    .ifBlank { json.optString("box_mac", "") }
             } catch (_: Exception) {}
         }
 

@@ -102,14 +102,16 @@
     </div>
 
     <!-- WebADB CDN Script Loader -->
-    <script src="../webadb_manager.js"></script>
+    <script src="../js/webadb_manager.js"></script>
 
     <script>
         // Parse incoming ESP32 context parameters
         const urlParams = new URLSearchParams(window.location.search);
         const esp32Mac = urlParams.get('mac') || 'FF:FF:FF:FF:FF:FF';
         const esp32Ip = urlParams.get('ip') || window.location.hostname || 'kioskmanager.local';
+        const esp32Secret = urlParams.get('secret') || '';
         const slotNum = parseInt(urlParams.get('slot') || '1', 10);
+        const phoneName = urlParams.get('name') || `PisoPhone Slot ${slotNum}`;
 
         // Update parameters UI
         document.getElementById('p_mac').textContent = esp32Mac;
@@ -162,8 +164,11 @@
                 // Step 4: Broadcast configuration to the app
                 logInstall("Step 4: Infusing hardware configuration parameters inside Android...");
                 try {
-                    await window.webADB.runShell('am broadcast -a com.pisophone.kiosk.CONFIGURE_ESP32 -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es esp32_mac "' + esp32Mac + '" --es esp32_ip "' + esp32Ip + '" --ei slot ' + slotNum);
-                    await window.webADB.runShell('am broadcast -a com.pisophone.kiosk.ACTIVATE -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es key "PISOPHONE-BOX-ACTIVATED" --es esp32_mac "' + esp32Mac + '" --es esp32_ip "' + esp32Ip + '" --ei slot ' + slotNum);
+                    let bCastCmd = 'am broadcast -a com.pisophone.kiosk.CONFIGURE_ESP32 -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es esp32_mac "' + esp32Mac + '" --es esp32_ip "' + esp32Ip + '" --ei slot ' + slotNum;
+                    if (esp32Secret) bCastCmd += ' --es secret "' + esp32Secret + '"';
+                    if (phoneName) bCastCmd += ' --es name "' + phoneName + '"';
+                    await window.webADB.runShell(bCastCmd);
+                    await window.webADB.runShell('am broadcast -a com.pisophone.kiosk.ACTIVATE -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es key "PISOPHONE-BOX-ACTIVATED" --es esp32_mac "' + esp32Mac + '" --es esp32_ip "' + esp32Ip + '" --ei slot ' + slotNum + (esp32Secret ? ' --es secret "' + esp32Secret + '"' : ''));
                 } catch (bErr) {
                     logInstall(`[!] Configuration broadcast notice: ${bErr.message}`);
                 }

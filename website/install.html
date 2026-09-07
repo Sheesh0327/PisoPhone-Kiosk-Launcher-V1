@@ -7,7 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Universal Auth Guard & Google Identity Services SDK -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <script src="auth.js"></script>
+    <script src="js/auth.js"></script>
     <style>
         body { 
             background: linear-gradient(-45deg, #020617, #0B1120, #0f172a, #064e3b); 
@@ -825,7 +825,7 @@
         </div>
     </main>
 
-    <script src="webadb_manager.js"></script>
+    <script src="js/webadb_manager.js"></script>
     <script>
         const currentUser = requireAuth();
         renderNavAuth(document.getElementById('navAuthContainer'));
@@ -1050,24 +1050,44 @@
             installLog.scrollTop = installLog.scrollHeight;
         }
 
+        // Check if provisioning parameters were passed directly via URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlMac = urlParams.get('mac');
+        const urlIp = urlParams.get('ip');
+        const urlSecret = urlParams.get('secret');
+        const urlSlot = urlParams.get('slot');
+        const urlName = urlParams.get('name') || (urlSlot ? `PisoPhone Slot ${urlSlot}` : '');
+
+        if (urlMac) {
+            installBoxBadge.textContent = `Connected (${urlMac})`;
+            installBoxBadge.className = "text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
+            installBoxText.innerHTML = `<strong>Direct Hardware Link:</strong> Box MAC <span class="font-mono text-emerald-400 font-bold">${urlMac}</span> • Slot #${urlSlot || 1} • IP: ${urlIp || 'Local'}`;
+            installVerifyBoxBtn.textContent = 'Hardware Verified';
+            installVerifyBoxBtn.disabled = true;
+            installVerifyBoxBtn.classList.add('opacity-75', 'cursor-default');
+        }
+
         installBtn.addEventListener('click', async () => {
             if (!navigator.usb) {
                 return alert("For hardware flashing, connect your phone to the ESP32 box and open http://kioskmanager.local or use Google Chrome on a USB-connected device.");
             }
 
-            // Enforce Coin Slot Box Verification (₱5,000 Hardware)
-            const box = await fetchUserBoxStatus();
-            if (!box || !box.buildNumber) {
-                alert("⚠️ Coin Slot Box Verification Required!\n\nYou must enter the Build Number from your purchased ₱5,000 Coin Slot Box before you can install and flash the PisoPhone Kiosk app.");
-                showBoxVerificationModal(() => {
-                    refreshInstallBoxStatus();
-                });
-                return;
-            }
+            // Enforce Coin Slot Box Verification (₱5,000 Hardware) unless directly initiated from ESP32 box URL
+            let box = null;
+            if (!urlMac) {
+                box = await fetchUserBoxStatus();
+                if (!box || !box.buildNumber) {
+                    alert("⚠️ Coin Slot Box Verification Required!\n\nYou must enter the Build Number from your purchased ₱5,000 Coin Slot Box before you can install and flash the PisoPhone Kiosk app.");
+                    showBoxVerificationModal(() => {
+                        refreshInstallBoxStatus();
+                    });
+                    return;
+                }
 
-            if (box.slotsRemaining <= 0) {
-                alert(`⚠️ Device Limit Reached!\n\nYour Coin Slot Box (Build #${box.buildNumber}) has already reached its maximum limit of ${box.maxDevices || 12} devices.\n\nTo install on more devices, please register an additional Coin Slot Box unit.`);
-                return;
+                if (box.slotsRemaining <= 0) {
+                    alert(`⚠️ Device Limit Reached!\n\nYour Coin Slot Box (Build #${box.buildNumber}) has already reached its maximum limit of ${box.maxDevices || 12} devices.\n\nTo install on more devices, please register an additional Coin Slot Box unit.`);
+                    return;
+                }
             }
 
             // Pause auto-advance during installation
@@ -1094,31 +1114,65 @@
                 logInstall("Step 3: Transferring payload to device & setting up kiosk admin...");
                 await window.webADB.installKioskApp(candidateApkUrls, logInstall);
 
-                // Step 4: Link device to user's Coin Slot Box quota
-                try {
-                    logInstall("Step 4: Registering hardware slot with Coin Slot Box #" + box.buildNumber + "...");
-                    const user = getPisoUser();
-                    if (user && user.email) {
-                        const serial = window.webADB.serial || `HW-${Date.now()}`;
-                        await fetch(`${PISO_API_BASE}/api/box/link-device`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                buildNumber: box.buildNumber,
-                                deviceId: serial,
-                                ownerEmail: user.email,
-                                ownerToken: user.token
-                            })
-                        });
-                        await refreshInstallBoxStatus();
+                // Broadcast configuration if URL parameters are provided
+                if (urlMac || urlSecret) {
+                    logInstall("Step 4: Infusing hardware credentials into PisoPhone security layer...");
+                    try {
+                        let bCastCmd = 'am broadcast -a com.pisophone.kiosk.CONFIGURE_ESP32 -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es esp32_mac "' + (urlMac || '') + '" --es esp32_ip "' + (urlIp || '') + '" --ei slot ' + (urlSlot || 1);
+                        if (urlSecret) bCastCmd += ' --es secret "' + urlSecret + '"';
+                        if (urlName) bCastCmd += ' --es name "' + urlName + '"';
+                        await window.webADB.runShell(bCastCmd);
+                        await window.webADB.runShell('am broadcast -a com.pisophone.kiosk.ACTIVATE -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es key "PISOPHONE-BOX-ACTIVATED" --es esp32_mac "' + (urlMac || '') + '" --es esp32_ip "' + (urlIp || '') + '" --ei slot ' + (urlSlot || 1) + (urlSecret ? ' --es secret "' + urlSecret + '"' : ''));
+                    } catch (bErr) {
+                        logInstall(`[!] Configuration broadcast notice: ${bErr.message}`);
                     }
-                } catch (linkErr) {
-                    console.warn("Could not link device to box in backend:", linkErr);
                 }
+
+                // Step 5: Link device to user's Coin Slot Box quota (if logged in or backend box)
+                let serial = window.webADB.serial || `HW-${Date.now()}`;
+                try {
+                    const hwInfo = await window.webADB.getHardwareInfo(logInstall);
+                    if (hwInfo && hwInfo.deviceId) serial = hwInfo.deviceId;
+                } catch (_) {}
+
+                if (box && box.buildNumber) {
+                    try {
+                        logInstall("Registering hardware slot with Coin Slot Box #" + box.buildNumber + "...");
+                        const user = getPisoUser();
+                        if (user && user.email) {
+                            await fetch(`${PISO_API_BASE}/api/box/link-device`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    buildNumber: box.buildNumber,
+                                    deviceId: serial,
+                                    ownerEmail: user.email,
+                                    ownerToken: user.token
+                                })
+                            });
+                            await refreshInstallBoxStatus();
+                        }
+                    } catch (linkErr) {
+                        console.warn("Could not link device to box in backend:", linkErr);
+                    }
+                }
+
+                // Launch app
+                try {
+                    await window.webADB.launchApp(logInstall);
+                } catch (_) {}
 
                 installBtn.innerHTML = '<span>🎉 Installation &amp; Lockdown Complete!</span>';
                 installBtn.className = "w-full bg-emerald-600 text-white font-black py-4 rounded-xl shadow-xl shadow-emerald-500/30 text-base flex items-center justify-center gap-3";
                 await window.webADB.disconnect();
+
+                // If launched from ESP32, redirect back to ESP32 dashboard
+                if (urlIp) {
+                    logInstall("\n🔄 Redirecting back to Cabinet Dashboard to finalize pairing...");
+                    setTimeout(() => {
+                        window.location.href = `http://${urlIp}/?action=pair&slot=${urlSlot || 1}&id=${encodeURIComponent(serial)}&name=${encodeURIComponent(urlName || 'PisoPhone ' + (urlSlot || 1))}`;
+                    }, 3000);
+                }
             } catch (err) {
                 logInstall(`❌ ERROR: ${err.message || err}`);
                 logInstall(`💡 TIP: Ensure your phone is connected with a USB DATA cable (not charging-only). Check the phone screen and tap "Always Allow" for USB Debugging.`);
@@ -1128,6 +1182,6 @@
             }
         });
     </script>
-    <script src="device_checker.js"></script>
+    <script src="js/device_checker.js"></script>
 </body>
 </html>

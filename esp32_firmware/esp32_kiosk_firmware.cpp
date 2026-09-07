@@ -1120,7 +1120,12 @@ String getDeviceNameByIpOrId(String reqIp, String devId = "") {
 bool checkReplayProtection(String deviceId, unsigned long long newTs) {
     for (int i = 0; i < trackedDeviceCount; i++) {
         if (trackedDevices[i].deviceId == deviceId) {
-            if (newTs <= trackedDevices[i].lastNonceTs) return false;
+            // Allow sliding window or resync to prevent permanent lockout after phone reboot or NTP sync
+            if (trackedDevices[i].lastNonceTs > 0 && newTs + 300000ULL < trackedDevices[i].lastNonceTs) {
+                if (millis() - trackedDevices[i].lastSeenMs < 30000) {
+                    return false;
+                }
+            }
             return true;
         }
     }
@@ -1355,7 +1360,7 @@ void sendAddTime(int minutes, String targetIp, String txId = "") {
 }
 
 String renderLicenseSlotsHtml() {
-    String html = "";
+    String html = "<div style=\"display: flex; flex-direction: column; gap: 10px;\">";
     for (int i = 0; i < maxLicensedSlots; i++) {
         int sNum = licenseSlots[i].slotNum;
         String devId = licenseSlots[i].deviceId;
@@ -1363,40 +1368,32 @@ String renderLicenseSlotsHtml() {
         String name = licenseSlots[i].name.length() > 0 ? licenseSlots[i].name : ("PisoPhone " + String(sNum));
         bool isBound = (devId.length() > 0);
         
-        html += "<div class=\"slot-card\" style=\"background: var(--card-bg); border: 1px solid var(--border); border-left: 4px solid " + String(isBound ? "var(--primary)" : "var(--text-muted)") + "; border-radius: var(--radius-md); padding: 14px; display: flex; flex-direction: column; justify-content: space-between; gap: 10px;\">";
-        html += "<div style=\"display: flex; justify-content: space-between; align-items: flex-start;\">";
+        html += "<div class=\"slot-row\" style=\"background: var(--card-bg); border: 1px solid var(--border); border-left: 4px solid " + String(isBound ? "var(--primary)" : "var(--text-muted)") + "; border-radius: var(--radius-md); padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;\">";
+        html += "<div style=\"display: flex; align-items: center; gap: 12px;\">";
+        html += "<span style=\"font-size: 11px; font-weight: 800; background: " + String(isBound ? "rgba(16, 185, 129, 0.15)" : "rgba(100, 116, 139, 0.15)") + "; color: " + String(isBound ? "var(--primary)" : "var(--text-muted)") + "; border: 1px solid " + String(isBound ? "rgba(16, 185, 129, 0.3)" : "var(--border)") + "; padding: 4px 8px; border-radius: 6px; font-family: monospace;\">Slot #" + String(sNum) + "</span>";
         html += "<div>";
-        html += "<div style=\"font-size: 11px; font-weight: 800; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px;\">Seat Slot #" + String(sNum) + "</div>";
-        html += "<div style=\"font-size: 15px; font-weight: 700; color: var(--text-main); margin-top: 2px;\">" + (isBound ? name : "Empty Seat") + "</div>";
-        html += "</div>";
-        
+        html += "<div style=\"font-size: 14px; font-weight: 700; color: var(--text-main);\">" + (isBound ? name : "Empty / Available Slot") + "</div>";
         if (isBound) {
-            html += "<span style=\"font-size: 10px; font-weight: 800; background: var(--status-good-bg); color: var(--status-good); border: 1px solid var(--status-good-border); padding: 2px 8px; border-radius: 12px;\">BOUND</span>";
+            html += "<div style=\"font-size: 11px; color: var(--text-muted); font-family: monospace;\">IP: " + (ip.length() > 0 ? ip : "Waiting Wi-Fi...") + " • HW: " + devId + "</div>";
         } else {
-            html += "<span style=\"font-size: 10px; font-weight: 800; background: rgba(100, 116, 139, 0.1); color: var(--text-muted); border: 1px solid var(--border); padding: 2px 8px; border-radius: 12px;\">AVAILABLE</span>";
+            html += "<div style=\"font-size: 11px; color: var(--text-muted);\">Slot is ready for WebADB provisioning</div>";
         }
+        html += "</div>";
         html += "</div>";
 
         if (isBound) {
-            html += "<div style=\"background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; font-size: 12px; display: flex; flex-direction: column; gap: 4px;\">";
-            html += "<div style=\"display: flex; justify-content: space-between;\"><span style=\"color: var(--text-muted);\">Hardware ID:</span><span style=\"font-family: monospace; font-weight: 600;\">" + devId + "</span></div>";
-            html += "<div style=\"display: flex; justify-content: space-between;\"><span style=\"color: var(--text-muted);\">Terminal IP:</span><span style=\"font-family: monospace; font-weight: 600;\">" + (ip.length() > 0 ? ip : "Waiting Wi-Fi...") + "</span></div>";
-            html += "</div>";
-            html += "<div style=\"display: flex; gap: 8px; margin-top: 4px;\">";
-            html += "<button type=\"button\" class=\"btn btn-outline btn-sm\" style=\"flex: 1; font-size: 11px; padding: 6px 8px;\" onclick=\"unpairSlot(" + String(sNum) + ")\">⏏ Unpair Slot</button>";
-            html += "<button type=\"button\" class=\"btn btn-outline btn-sm\" style=\"flex: 1; font-size: 11px; padding: 6px 8px; color: var(--danger); border-color: var(--danger);\" onclick=\"openDeprovisionModal(" + String(sNum) + ", '" + devId + "')\">🔓 Deprovision</button>";
+            html += "<div style=\"display: flex; gap: 8px; align-items: center;\">";
+            html += "<button type=\"button\" class=\"btn btn-outline btn-sm\" style=\"font-size: 11px; padding: 6px 10px; border-color: var(--danger); color: var(--danger);\" onclick=\"unpairSlot(" + String(sNum) + ")\">🔓 Unpair</button>";
             html += "</div>";
         } else {
-            html += "<div style=\"background: var(--bg); border: 1px dashed var(--border); border-radius: var(--radius-sm); padding: 12px; font-size: 12px; text-align: center; color: var(--text-muted);\">";
-            html += "Seat is open & ready. Plug new Android phone via USB to install & activate in 1 click.";
-            html += "</div>";
-            html += "<div style=\"margin-top: 4px;\">";
-            html += "<button type=\"button\" class=\"btn btn-primary btn-sm\" style=\"width: 100%; font-size: 12px; padding: 8px 10px; font-weight: 700;\" onclick=\"openProvisionModal(" + String(sNum) + ")\">📱 1-Click Install APK & Pair</button>";
+            html += "<div style=\"display: flex; gap: 8px; align-items: center;\">";
+            html += "<button type=\"button\" class=\"btn btn-primary btn-sm\" style=\"font-size: 12px; padding: 8px 14px; font-weight: 700;\" onclick=\"occupySlot(" + String(sNum) + ")\">⚡ Occupy Slot & Install</button>";
             html += "</div>";
         }
 
         html += "</div>";
     }
+    html += "</div>";
     return html;
 }
 
@@ -1420,6 +1417,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HARDWARE Admin Console</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
     <style>
         :root {
             --bg: #F1F5F9;
@@ -1753,6 +1751,94 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
             grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
             gap: 16px;
         }
+        .device-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .device-row {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 14px 18px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            box-shadow: var(--card-shadow);
+            transition: all 0.2s ease;
+        }
+        .device-row:hover {
+            border-color: var(--primary);
+            box-shadow: 0 4px 16px -2px rgba(16, 185, 129, 0.15);
+        }
+        .device-row.empty {
+            border: 1.5px dashed var(--border);
+            background: var(--input-bg);
+        }
+        .device-row.offline {
+            opacity: 0.7;
+        }
+        .device-row-identity {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            min-width: 220px;
+        }
+        .device-slot-badge {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--primary);
+            font-size: 11px;
+            font-weight: 800;
+            padding: 5px 10px;
+            border-radius: 8px;
+            border: 1px solid rgba(16, 185, 129, 0.25);
+            white-space: nowrap;
+        }
+        .device-row-info {
+            display: flex;
+            flex-direction: column;
+        }
+        .device-row-name {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+        .device-row-sub {
+            font-size: 12px;
+            font-family: monospace;
+            color: var(--text-muted);
+        }
+        .device-row-metrics {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .device-row-timer {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 15px;
+            font-weight: 800;
+            color: var(--text-main);
+            font-variant-numeric: tabular-nums;
+        }
+        .device-row-battery {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 5px 10px;
+            border-radius: 8px;
+            background: var(--input-bg);
+            border: 1px solid var(--border);
+        }
+        .device-row-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
         .device-card {
             background: var(--card-bg);
             border: 1px solid var(--border);
@@ -2043,7 +2129,10 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                     <span class="logo-piso">Piso</span><span class="logo-phone">Phone</span>
                 </h1>
                 <span class="badge-pill">Kiosk Admin</span>
-                <span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #10B981; border: 1px solid rgba(16, 185, 129, 0.3); font-family: monospace; cursor: pointer;" onclick="navigator.clipboard.writeText('{MAC_ADDRESS}'); alert('Copied MAC Address: {MAC_ADDRESS}');" title="Click to copy MAC address">📋 MAC: {MAC_ADDRESS}</span>
+                <button type="button" class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #10B981; border: 1px solid rgba(16, 185, 129, 0.3); font-family: monospace; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-weight: 700; padding: 4px 10px; border-radius: 20px;" onclick="copyMacToClipboard('{MAC_ADDRESS}')" title="Click to copy MAC address">
+                    <span>📋 MAC: {MAC_ADDRESS}</span>
+                    <span style="font-size: 10px; background: rgba(16, 185, 129, 0.25); padding: 2px 6px; border-radius: 10px;">Copy</span>
+                </button>
             </div>
             <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                 <button type="button" id="theme_toggle_btn" onclick="toggleTheme()" class="btn btn-outline btn-sm">🌙 Dark Mode</button>
@@ -2055,7 +2144,6 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
         <!-- Navigation Tabs -->
         <div class="tabs">
             <div class="tab active" onclick="switchTab('tab-dashboard')">📊 Dashboard</div>
-            <div class="tab" onclick="switchTab('tab-install')">📱 1-Click Install & Activate</div>
             <div class="tab" onclick="switchTab('tab-settings')">🛠️ Settings</div>
             <div class="tab" onclick="switchTab('tab-tools')">⚡ Advanced Tools</div>
         </div>
@@ -2063,45 +2151,22 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
         <!-- TAB 1: DASHBOARD -->
         <div id="tab-dashboard" class="tab-content active">
             <div class="grid">
-                <!-- Box MAC Registration Info -->
-                <div class="card grid-full" style="background: var(--input-bg); border: 1.5px dashed var(--border-focus);">
-                    <div class="card-header">
-                        <h3 class="card-title">📦 Coin Slot Box Registration ID</h3>
-                        <span class="status-badge" style="background: var(--status-good-bg); color: var(--status-good);">ESP32 MAC</span>
-                    </div>
-                    <div style="display: flex; flex-wrap: wrap; items-center; justify-content: space-between; gap: 12px; background: var(--card-bg); padding: 14px 18px; border-radius: var(--radius-md); border: 1px solid var(--border);">
-                        <div>
-                            <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;">ESP32 MAC Address</div>
-                            <code style="font-size: 18px; font-weight: 800; color: var(--primary); font-family: monospace;">{MAC_ADDRESS}</code>
-                        </div>
-                        <button type="button" class="btn btn-sm" onclick="navigator.clipboard.writeText('{MAC_ADDRESS}'); alert('Copied MAC Address: {MAC_ADDRESS}');">📋 Copy MAC Address</button>
-                    </div>
-                    <div class="hint" style="margin-top: 6px;">Use this MAC address to register this box on your operator portal (<a href="https://ais-dev-g7scqeix6nfioamxhwhwff-815400452294.asia-southeast1.run.app" target="_blank" style="color: var(--primary); font-weight: 600;">Step 1: Register Box</a>) to authorize licenses for up to 12 phones.</div>
-                </div>
-
-                <!-- Quick Setup Action Banner -->
-                <div class="card grid-full" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(6, 78, 59, 0.08)); border: 1.5px solid var(--border-focus); display: flex; flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
-                    <div>
-                        <div style="font-size: 16px; font-weight: 800; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
-                            <span>📱</span> 1-Click Phone Installation & Activation
-                        </div>
-                        <div class="hint" style="margin-top: 4px;">
-                            Plug new Android phones via USB to install the kiosk APK, enroll Device Owner, and link directly to this coin slot box (<code style="color:var(--primary); font-family:monospace;">{MAC_ADDRESS}</code>).
-                        </div>
-                    </div>
-                    <button type="button" class="btn" onclick="switchTab('tab-install')" style="font-weight: 700;">
-                        🚀 Open Install & Activation Page &rarr;
-                    </button>
-                </div>
-
-                <!-- Live Devices -->
+                <!-- Live Devices List (Horizontal) -->
                 <div class="card grid-full">
                     <div class="card-header">
-                        <h3 class="card-title">📡 Live Device Status</h3>
-                        <span class="status-badge" style="background: var(--status-good-bg); color: var(--status-good); border-color: var(--status-good-border);">LIVE SYNC</span>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <h3 class="card-title">📡 Live Device Status</h3>
+                            <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: var(--primary); font-weight: 700; padding: 3px 10px; border-radius: 12px; font-size: 11px;">
+                                {MAX_SLOTS} Seats
+                            </span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span class="status-badge" style="background: var(--status-good-bg); color: var(--status-good); border-color: var(--status-good-border);">LIVE SYNC</span>
+                            <button type="button" class="btn btn-outline btn-sm" onclick="fetchDeviceStatus()">🔄 Refresh</button>
+                        </div>
                     </div>
-                    <div id="live_devices_container" class="device-grid">
-                        <div style="padding: 24px; text-align: center; color: var(--text-muted); grid-column: 1/-1;">Loading devices...</div>
+                    <div id="live_devices_container" class="device-list">
+                        <div style="padding: 24px; text-align: center; color: var(--text-muted);">Loading devices...</div>
                     </div>
                 </div>
 
@@ -2149,113 +2214,6 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                         <button type="submit" name="action" value="subtract" class="btn btn-danger" style="flex: 1;">- Subtract</button>
                     </div>
                 </form>
-            </div>
-        </div>
-
-        <!-- TAB: 1-CLICK INSTALL & ACTIVATE -->
-        <div id="tab-install" class="tab-content">
-            <div class="grid">
-                <!-- Step-by-Step Overview Hero Banner -->
-                <div class="card grid-full" style="background: var(--card-bg); border: 1px solid var(--border);">
-                    <div class="card-header">
-                        <h3 class="card-title">📱 1-Click Android Phone Setup & Activation</h3>
-                        <span class="status-badge" style="background: var(--status-good-bg); color: var(--status-good);">WebUSB Zero-Config</span>
-                    </div>
-                    
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-top: 4px;">
-                        <div style="background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; display: flex; gap: 12px; align-items: flex-start;">
-                            <div style="background: var(--primary); color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; flex-shrink: 0;">1</div>
-                            <div>
-                                <strong style="font-size: 14px; color: var(--text-main); display: block; margin-bottom: 2px;">Connect via USB</strong>
-                                <span class="hint">Plug phone into PC or OTG host running Google Chrome, MS Edge, or Brave.</span>
-                            </div>
-                        </div>
-                        <div style="background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; display: flex; gap: 12px; align-items: flex-start;">
-                            <div style="background: var(--primary); color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; flex-shrink: 0;">2</div>
-                            <div>
-                                <strong style="font-size: 14px; color: var(--text-main); display: block; margin-bottom: 2px;">Enable USB Debugging</strong>
-                                <span class="hint">Settings &rarr; Developer Options &rarr; Turn ON USB Debugging. (Accept RSA prompt on phone).</span>
-                            </div>
-                        </div>
-                        <div style="background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; display: flex; gap: 12px; align-items: flex-start;">
-                            <div style="background: var(--primary); color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; flex-shrink: 0;">3</div>
-                            <div>
-                                <strong style="font-size: 14px; color: var(--text-main); display: block; margin-bottom: 2px;">1-Click Install & Arm</strong>
-                                <span class="hint">Click Start below. WebUSB pushes APK, sets Device Owner, and infuses this box's MAC.</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: var(--radius-md); padding: 12px 16px; margin-top: 12px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
-                        <div style="display: flex; align-items: center; gap: 8px; font-size: 13px;">
-                            <span>🔒</span>
-                            <span><b>Infused Master Box:</b> MAC <code style="font-family: monospace; font-weight: 700; color: var(--primary);">{MAC_ADDRESS}</code></span>
-                        </div>
-                        <span class="hint" style="font-size: 12px; color: var(--primary);">Heartbeats, locks, and coin time route directly to this hardware box.</span>
-                    </div>
-                </div>
-
-                <!-- Streamlined 1-Click Secure Installer Card -->
-                <div class="card grid-full" style="border: 1.5px solid var(--border-focus); background: linear-gradient(135deg, rgba(16, 185, 129, 0.05), rgba(6, 182, 212, 0.05));">
-                    <div class="card-header" style="margin-bottom: 12px;">
-                        <h3 class="card-title">🚀 Streamlined WebUSB Installer Console</h3>
-                        <span class="status-badge" style="background: var(--status-good-bg); color: var(--status-good); font-weight: 700;">SECURE HTTPS</span>
-                    </div>
-                    <p style="font-size: 13px; color: var(--text-muted); margin: 0 0 16px 0; line-height: 1.5;">
-                        To secure WebUSB natively under Google Chrome/Edge and completely bypass browser flag configurations, PisoPhone leverages an HTTPS-secured cloud flasher utility. Make sure **USB Debugging** is enabled on your Android device before beginning.
-                    </p>
-                    
-                    <div style="display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap;">
-                        <div class="form-group" style="flex: 1; min-width: 200px; margin-bottom: 0;">
-                            <label style="margin-bottom: 6px; font-weight: 600;">Target Seat Slot</label>
-                            <select id="main_prov_slot_select" onchange="activeSlotNum = parseInt(this.value)" style="width: 100%;">
-                                {SLOT_OPTIONS}
-                            </select>
-                            <div class="hint" style="margin-top: 4px;">Choose which cabinet slot to flash and pair.</div>
-                        </div>
-                        <div style="flex-shrink: 0;">
-                            <button type="button" class="btn btn-primary" style="padding: 12px 24px; font-weight: 700;" onclick="launchHttpsFlasherMain()">
-                                ⚡ Launch Secure Cloud Flasher
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Seat Slots Grid -->
-                <div class="card grid-full">
-                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 4px;">
-                        <div>
-                            <h3 class="card-title" style="margin-bottom: 2px;">🎛️ Licensed Device Seats & Terminals</h3>
-                            <div class="hint">The ESP32 hardware manages seat allocation locally. Plug new phones via USB to install & activate in 1 fluid motion.</div>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 10px;">
-                            <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: var(--primary); font-weight: 700; padding: 6px 14px; border-radius: 20px; font-size: 13px;">
-                                Capacity: <span id="capacity_badge">{MAX_SLOTS}</span> Seats
-                            </span>
-                            <button type="button" class="btn btn-outline btn-sm" onclick="openTokenModal()">🔑 Upgrade Capacity</button>
-                            <button type="button" class="btn btn-outline btn-sm" onclick="syncCloudSnapshot(this)">☁️ Sync to Cloud</button>
-                        </div>
-                    </div>
-
-                    <!-- Interactive Seats Grid -->
-                    <div id="install_slots_grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-top: 12px;">
-                        {DEVICE_SLOTS_MANAGER}
-                    </div>
-                </div>
-
-                <!-- Deprovisioning & Phone Recovery Tool -->
-                <div class="card grid-full">
-                    <div class="card-header">
-                        <h3 class="card-title">🔓 Deprovisioning & Phone Reassignment</h3>
-                        <span class="status-badge" style="background: rgba(239, 68, 68, 0.1); color: var(--danger);">MAINTENANCE</span>
-                    </div>
-                    <p style="font-size: 13px; color: var(--text-muted);">If a phone needs to be removed, reassigned, or repaired, you can remove Device Owner kiosk privileges via WebUSB. <b>The seat license on this box remains completely preserved for your next replacement phone!</b></p>
-                    <div style="display: flex; gap: 12px; margin-top: 8px; flex-wrap: wrap;">
-                        <button type="button" class="btn btn-outline btn-sm" style="color: var(--danger); border-color: var(--danger);" onclick="openDeprovisionModal(activeSlotNum || 1, '')">
-                            🔓 Open Deprovisioning Tool
-                        </button>
-                    </div>
-                </div>
             </div>
         </div>
 
@@ -2500,10 +2458,22 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                     }
 
                     if (!dev.isBound) {
-                        html += '<div class="device-card empty" style="border: 2px dashed var(--border); display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 24px; min-height: 220px; cursor: pointer; border-radius: var(--radius-lg); background: transparent; transition: all 0.2s;" onclick="window.location.href=\'https://pisophone.pages.dev/installer/?mac=\' + ESP32_MAC + \'&ip=\' + ESP32_HOST + \'&slot=\' + dev.slotNum">' +
-                                    '<div style="font-size: 32px; margin-bottom: 12px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15));">➕</div>' +
-                                    '<div style="font-size: 15px; font-weight: 700; color: var(--text-main); margin-bottom: 4px;">Empty Slot #' + dev.slotNum + '</div>' +
-                                    '<div style="font-size: 12px; color: var(--text-muted); max-width: 180px;">Click to install &amp; pair this slot</div>' +
+                        html += '<div class="device-row empty">' +
+                                    '<div class="device-row-identity">' +
+                                        '<span class="device-slot-badge">Slot #' + dev.slotNum + '</span>' +
+                                        '<div class="device-row-info">' +
+                                            '<span class="device-row-name">Empty Slot #' + dev.slotNum + '</span>' +
+                                            '<span class="device-row-sub">Seat open & ready for setup</span>' +
+                                        '</div>' +
+                                    '</div>' +
+                                    '<div style="color: var(--text-muted); font-size: 13px; font-style: italic;">' +
+                                        'No terminal bound' +
+                                    '</div>' +
+                                    '<div class="device-row-actions">' +
+                                        '<button type="button" class="btn btn-primary btn-sm" onclick="occupySlot(' + dev.slotNum + ')" style="padding: 8px 16px; font-weight: 700;">' +
+                                            '⚡ Occupy Slot & Install' +
+                                        '</button>' +
+                                    '</div>' +
                                 '</div>';
                     } else if (dev.online) {
                         const mins = Math.floor(dev.time / 60);
@@ -2516,52 +2486,54 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                             : '<span class="device-badge standby">STANDBY</span>';
                             
                         const batteryIcon = isCharging ? '⚡' : '🔋';
-                        const batteryText = (isCharging ? '⚡ Charging ' : '') + battery + '%';
+                        const batteryText = (isCharging ? '⚡ ' : '') + battery + '%';
 
-                        html += '<div class="device-card">' +
-                                '<div class="device-card-header">' +
-                                    '<div class="device-identity">' +
-                                        '<strong class="device-name">' + name + '</strong>' +
-                                        '<span class="device-ip">' + dev.ip + '</span>' +
+                        html += '<div class="device-row">' +
+                                    '<div class="device-row-identity">' +
+                                        '<span class="device-slot-badge">Slot #' + dev.slotNum + '</span>' +
+                                        '<div class="device-row-info">' +
+                                            '<span class="device-row-name">' + name + '</span>' +
+                                            '<span class="device-row-sub">' + dev.ip + (dev.deviceId ? ' • ' + dev.deviceId : '') + '</span>' +
+                                        '</div>' +
                                     '</div>' +
-                                    '<div class="device-stats">' +
-                                        '<div class="device-timer">' + timeStr + '</div>' +
-                                        '<div>' + badgeHtml + '</div>' +
+                                    '<div class="device-row-metrics">' +
+                                        '<div class="device-row-timer">' +
+                                            '<span>⏱️ ' + timeStr + '</span>' +
+                                            badgeHtml +
+                                        '</div>' +
+                                        '<div class="device-row-battery ' + batteryStatusClass + '">' +
+                                            '<span style="font-size: 12px; font-weight: 700;">' + batteryIcon + ' ' + batteryText + '</span>' +
+                                            '<div class="battery-bar-bg" style="width: 50px; height: 6px; display: inline-block; margin-left: 4px;">' +
+                                                '<div class="battery-bar-fill" style="width: ' + battery + '%;"></div>' +
+                                            '</div>' +
+                                        '</div>' +
                                     '</div>' +
-                                '</div>' +
-                                '<div class="battery-section ' + batteryStatusClass + '">' +
-                                    '<div class="battery-info">' +
-                                        '<span class="battery-label" style="display:flex; align-items:center; gap:4px;">' + batteryIcon + ' ' + batteryText + '</span>' +
-                                        '<span class="battery-status-tag" style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;">' + statusLabel + '</span>' +
+                                    '<div class="device-row-actions">' +
+                                        '<button type="button" class="btn btn-outline btn-sm" onclick="triggerAction(\'' + dev.ip + '\', \'locate\', this)">' +
+                                            '📍 Locate' +
+                                        '</button>' +
+                                        '<button type="button" class="btn btn-outline btn-sm" style="border-color: var(--danger); color: var(--danger);" onclick="unpairSlot(' + dev.slotNum + ')">' +
+                                            '🔓 Unpair' +
+                                        '</button>' +
                                     '</div>' +
-                                    '<div class="battery-bar-bg">' +
-                                        '<div class="battery-bar-fill" style="width: ' + battery + '%;"></div>' +
-                                    '</div>' +
-                                '</div>' +
-                                '<div style="display: flex; gap: 8px; margin-top: 12px;">' +
-                                    '<button type="button" class="btn btn-outline btn-sm" style="flex: 1;" onclick="triggerAction(\'' + dev.ip + '\', \'locate\', this)">' +
-                                        '📍 Locate' +
-                                    '</button>' +
-                                    '<button type="button" class="btn btn-outline btn-sm" style="flex: 1; border-color: var(--danger); color: var(--danger);" onclick="unpairSlot(' + dev.slotNum + ')">' +
-                                        '🔓 Unpair' +
-                                    '</button>' +
-                                '</div>' +
                                 '</div>';
                     } else {
-                        html += '<div class="device-card offline">' +
-                                '<div class="device-card-header">' +
-                                    '<div class="device-identity">' +
-                                        '<strong class="device-name">' + name + '</strong>' +
-                                        '<span class="device-ip">' + dev.ip + '</span>' +
+                        html += '<div class="device-row offline">' +
+                                    '<div class="device-row-identity">' +
+                                        '<span class="device-slot-badge">Slot #' + dev.slotNum + '</span>' +
+                                        '<div class="device-row-info">' +
+                                            '<span class="device-row-name">' + name + '</span>' +
+                                            '<span class="device-row-sub">' + dev.ip + '</span>' +
+                                        '</div>' +
                                     '</div>' +
-                                    '<div><span class="device-badge offline">OFFLINE</span></div>' +
-                                '</div>' +
-                                '<div style="background: var(--input-bg); padding: 12px; border-radius: var(--radius-sm); font-size: 13px; color: var(--text-muted); text-align: center; border: 1px solid var(--border); margin-bottom: 12px;">Disconnected</div>' +
-                                '<div style="display: flex; gap: 8px;">' +
-                                    '<button type="button" class="btn btn-outline btn-sm" style="flex: 1; border-color: var(--danger); color: var(--danger);" onclick="unpairSlot(' + dev.slotNum + ')">' +
-                                        '🔓 Unpair' +
-                                    '</button>' +
-                                '</div>' +
+                                    '<div class="device-row-metrics">' +
+                                        '<span class="device-badge offline">OFFLINE / DISCONNECTED</span>' +
+                                    '</div>' +
+                                    '<div class="device-row-actions">' +
+                                        '<button type="button" class="btn btn-outline btn-sm" style="border-color: var(--danger); color: var(--danger);" onclick="unpairSlot(' + dev.slotNum + ')">' +
+                                            '🔓 Unpair' +
+                                        '</button>' +
+                                    '</div>' +
                                 '</div>';
                     }
                 });
@@ -2616,6 +2588,38 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
         </div>
     </div>
 
+    <!-- QR Code Handshake Pairing Modal -->
+    <div id="qr_pair_modal" class="modal-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 10000; align-items: center; justify-content: center; padding: 16px;">
+        <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; max-width: 440px; width: 100%; box-shadow: var(--shadow-lg); text-align: center;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h3 style="margin: 0; font-size: 18px; font-weight: 700;">📱 Pair Phone to Slot #<span id="qr_slot_title">1</span></h3>
+                <button type="button" onclick="closePairingQrModal()" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-muted);">&times;</button>
+            </div>
+            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+                Open the PisoPhone Kiosk App on your phone and scan this QR code to initialize pairing and exchange shared cryptographic keys.
+            </p>
+            
+            <div style="background: white; padding: 16px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin-bottom: 14px;">
+                <canvas id="qr_canvas" width="260" height="260" style="display: block; margin: 0 auto;"></canvas>
+            </div>
+            
+            <div id="qr_fallback_text" style="display: none; font-family: monospace; font-size: 11px; word-break: break-all; color: var(--primary); margin-bottom: 12px;"></div>
+
+            <div style="background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px; font-size: 12px; text-align: left; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                    <span style="color: var(--text-muted);">Master Box:</span>
+                    <span style="font-family: monospace; font-weight: 700; color: var(--primary);">{MAC_ADDRESS}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: var(--text-muted);">Cabinet IP:</span>
+                    <span id="qr_modal_ip" style="font-family: monospace; font-weight: 600;">{IP_ADDRESS}</span>
+                </div>
+            </div>
+
+            <button type="button" class="btn btn-outline" style="width: 100%;" onclick="closePairingQrModal()">Done</button>
+        </div>
+    </div>
+
     <!-- WebUSB 1-Click Provisioning Modal -->
     <div id="provision_modal" class="modal-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 10000; align-items: center; justify-content: center; padding: 16px;">
         <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; max-width: 480px; width: 100%; box-shadow: var(--shadow-lg);">
@@ -2648,9 +2652,81 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
 
     <script>
     const ESP32_MAC = "{MAC_ADDRESS}";
+    const ESP32_SECRET = "{SHARED_SECRET}";
     const ESP32_HOST = window.location.hostname;
     let activeSlotNum = 1;
     let localApkBytes = null;
+
+    window.copyMacToClipboard = function(mac) {
+        const val = (mac && mac !== '{MAC_ADDRESS}') ? mac : ESP32_MAC;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(val).then(() => {
+                alert('Copied MAC Address: ' + val);
+            }).catch(() => {
+                prompt('Copy MAC address:', val);
+            });
+        } else {
+            prompt('Copy MAC address:', val);
+        }
+    };
+
+    window.occupySlot = function(slot) {
+        const s = slot || activeSlotNum || 1;
+        const targetUrl = 'https://pisophone.pages.dev/installer/?mac=' + encodeURIComponent(ESP32_MAC) + 
+                          '&ip=' + encodeURIComponent(ESP32_HOST) + 
+                          '&slot=' + encodeURIComponent(s) + 
+                          '&secret=' + encodeURIComponent(ESP32_SECRET) +
+                          '&name=' + encodeURIComponent('PisoPhone ' + s);
+        window.location.href = targetUrl;
+    };
+
+    window.showPairingQrModal = function(slotNum) {
+        activeSlotNum = slotNum || 1;
+        const modal = document.getElementById('qr_pair_modal');
+        if (!modal) return;
+        const slotTitle = document.getElementById('qr_slot_title');
+        if (slotTitle) slotTitle.textContent = activeSlotNum;
+        const ipElem = document.getElementById('qr_modal_ip');
+        const hostIp = window.location.hostname || "192.168.4.1";
+        if (ipElem) ipElem.textContent = hostIp;
+
+        const payloadObj = {
+            pisophone_pair: 1,
+            ip: hostIp,
+            port: 80,
+            ws_port: 81,
+            mac: ESP32_MAC,
+            secret: ESP32_SECRET,
+            slot: activeSlotNum,
+            name: "Slot #" + activeSlotNum
+        };
+        const payloadStr = JSON.stringify(payloadObj);
+
+        modal.style.display = 'flex';
+        try {
+            if (typeof QRious !== 'undefined') {
+                new QRious({
+                    element: document.getElementById('qr_canvas'),
+                    value: payloadStr,
+                    size: 260,
+                    level: 'M'
+                });
+            } else {
+                const fb = document.getElementById('qr_fallback_text');
+                if (fb) {
+                    fb.textContent = payloadStr;
+                    fb.style.display = 'block';
+                }
+            }
+        } catch (e) {
+            console.error("QR render error:", e);
+        }
+    };
+
+    window.closePairingQrModal = function() {
+        const modal = document.getElementById('qr_pair_modal');
+        if (modal) modal.style.display = 'none';
+    };
 
     window.openSecureOriginModal = function() {
         const modal = document.getElementById('secure_origin_modal');
@@ -3125,6 +3201,8 @@ static String getPlaceholderValue(const String& tag) {
     }
     if (tag == "{TOTAL_COINS}") return String(totalCoinsLifetime);
     if (tag == "{SESSION_COINS}") return String(totalCoinsSession);
+    if (tag == "{SHARED_SECRET}") return sharedSecret;
+    if (tag == "{IP_ADDRESS}") return WiFi.localIP().toString();
     return tag;
 }
 

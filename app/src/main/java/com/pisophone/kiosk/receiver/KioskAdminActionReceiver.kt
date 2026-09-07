@@ -190,14 +190,16 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
             }
 
             ACTION_CONFIGURE_ESP32, "com.pisophone.kiosk.ACTION_CONFIGURE_ESP32" -> {
+                val secret = intent.getStringExtra("secret") ?: intent.getStringExtra("setup_secret") ?: intent.getStringExtra("shared_secret")
                 val mac = intent.getStringExtra("esp32_mac") ?: intent.getStringExtra("mac") ?: intent.getStringExtra("box_mac")
                 val ip = intent.getStringExtra("esp32_ip") ?: intent.getStringExtra("ip")
-                val slot = intent.getIntExtra("slot", -1)
+                val slot = intent.getIntExtra("slot", intent.getIntExtra("setup_slot", -1))
+                val name = intent.getStringExtra("name") ?: intent.getStringExtra("alias")
 
-                Log.i(TAG, "CONFIGURE_ESP32 received. Infusing Master MAC: '$mac', IP: '$ip', Slot: $slot")
+                Log.i(TAG, "CONFIGURE_ESP32 received. Infusing Master MAC: '$mac', IP: '$ip', Slot: $slot, SecretSet=${!secret.isNullOrBlank()}")
 
-                if (!mac.isNullOrBlank() || !ip.isNullOrBlank() || slot > 0) {
-                    KioskService.configureMasterBox(context, mac ?: "", ip, slot)
+                if (!mac.isNullOrBlank() || !ip.isNullOrBlank() || slot > 0 || !secret.isNullOrBlank()) {
+                    KioskService.configureMasterBox(context, mac ?: "", ip, slot, secret, name)
                 }
 
                 val savedMac = com.pisophone.kiosk.security.KioskSecurity.getConfiguredEsp32Mac(context)
@@ -208,17 +210,20 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
 
             ACTION_ACTIVATE -> {
                 val key = intent.getStringExtra("key") ?: intent.getStringExtra("code") ?: "ACTIVATION_KEY"
+                val secret = intent.getStringExtra("secret") ?: intent.getStringExtra("setup_secret") ?: intent.getStringExtra("shared_secret")
                 val esp32Mac = intent.getStringExtra("esp32_mac") ?: intent.getStringExtra("mac") ?: intent.getStringExtra("box_mac")
                 val esp32Ip = intent.getStringExtra("esp32_ip") ?: intent.getStringExtra("ip")
-                val slot = intent.getIntExtra("slot", -1)
+                val slot = intent.getIntExtra("slot", intent.getIntExtra("setup_slot", -1))
+                val name = intent.getStringExtra("name") ?: intent.getStringExtra("alias")
 
-                if (!esp32Mac.isNullOrBlank() || !esp32Ip.isNullOrBlank() || slot > 0) {
-                    Log.i(TAG, "Infusing ESP32 Master params with activation: MAC '$esp32Mac', IP '$esp32Ip', Slot $slot")
-                    KioskService.configureMasterBox(context, esp32Mac ?: "", esp32Ip, slot)
+                if (!esp32Mac.isNullOrBlank() || !esp32Ip.isNullOrBlank() || slot > 0 || !secret.isNullOrBlank()) {
+                    Log.i(TAG, "Infusing ESP32 Master params with activation: MAC '$esp32Mac', IP '$esp32Ip', Slot $slot, SecretSet=${!secret.isNullOrBlank()}")
+                    KioskService.configureMasterBox(context, esp32Mac ?: "", esp32Ip, slot, secret, name)
                 }
 
                 Log.i(TAG, "Activation broadcast received with key: $key")
                 val success = com.pisophone.kiosk.security.HardwareLockManager.sealToCurrentDevice(context)
+                com.pisophone.kiosk.security.HardwareLockManager.setTutorialCompleted(context, true)
                 setResultCode(if (success) android.app.Activity.RESULT_OK else android.app.Activity.RESULT_CANCELED)
                 setResultData(if (success) "SUCCESS" else "FAILED")
                 if (success) {

@@ -11,11 +11,15 @@
     // Candidate bundle URLs for robust universal loading across Cloudflare, Local ESP32, or Localhost
     const BUNDLE_CANDIDATE_URLS = [
         (typeof window !== 'undefined' && window.YUME_CHAN_BUNDLE_URL) ? window.YUME_CHAN_BUNDLE_URL : null,
-        'https://pisophone.pages.dev/yume-chan-bundle.js',
-        'https://cdn.jsdelivr.net/gh/Sheesh0327/PisoPhone-Kiosk-Launcher-V1@main/website/yume-chan-bundle.js',
-        'https://raw.githubusercontent.com/Sheesh0327/PisoPhone-Kiosk-Launcher-V1/main/website/yume-chan-bundle.js',
+        './js/yume-chan-bundle.js',
+        '/js/yume-chan-bundle.js',
+        '../js/yume-chan-bundle.js',
         './yume-chan-bundle.js',
-        '/yume-chan-bundle.js'
+        '/yume-chan-bundle.js',
+        'https://pisophone.pages.dev/js/yume-chan-bundle.js',
+        'https://pisophone.pages.dev/yume-chan-bundle.js',
+        'https://cdn.jsdelivr.net/gh/Sheesh0327/PisoPhone-Kiosk-Launcher-V1@main/website/js/yume-chan-bundle.js',
+        'https://raw.githubusercontent.com/Sheesh0327/PisoPhone-Kiosk-Launcher-V1/main/website/js/yume-chan-bundle.js'
     ].filter(Boolean);
 
     async function loadYumeChanModules() {
@@ -616,8 +620,34 @@
                 await this.shell(`dumpsys deviceidle whitelist +${PACKAGE_NAME} 2>/dev/null || true`);
             } catch (e) {}
 
-            // Launch the main activity
-            await this.shell(`am start -n ${PACKAGE_NAME}/.MainActivity`);
+            // Parse provisioning credentials if supplied via URL
+            let provExtras = '';
+            try {
+                const urlParams = new URLSearchParams(window.location.search);
+                const provSecret = urlParams.get('secret');
+                const provMac = urlParams.get('mac');
+                const provIp = urlParams.get('ip');
+                const provSlot = urlParams.get('slot');
+                const provName = urlParams.get('name');
+
+                if (provSecret) provExtras += ` --es secret "${provSecret}"`;
+                if (provMac) provExtras += ` --es mac "${provMac}" --es esp32_mac "${provMac}"`;
+                if (provIp) provExtras += ` --es ip "${provIp}" --es esp32_ip "${provIp}"`;
+                if (provSlot) provExtras += ` --ei slot ${provSlot}`;
+                if (provName) provExtras += ` --es name "${provName}"`;
+            } catch (e) {}
+
+            // Launch the main activity with provisioning params
+            await this.shell(`am start -n ${PACKAGE_NAME}/.MainActivity -a ${PACKAGE_NAME}.SETUP_DIRECT${provExtras}`);
+            
+            // Broadcast provisioning configuration to ensure immediate persistence
+            if (provExtras) {
+                logCallback("⚡ Injecting ESP32 cryptographically protected secret key and provisioning configuration...");
+                try {
+                    await this.shell(`am broadcast -a ${PACKAGE_NAME}.CONFIGURE_ESP32 -n ${PACKAGE_NAME}/.receiver.KioskAdminActionReceiver${provExtras}`);
+                    await this.shell(`am broadcast -a ${PACKAGE_NAME}.CONFIGURE_ESP32 -p ${PACKAGE_NAME}${provExtras}`);
+                } catch (bErr) {}
+            }
             
             // Ensure canonical hardware ID is synchronized between app and system
             try {

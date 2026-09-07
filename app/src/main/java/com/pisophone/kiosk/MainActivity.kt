@@ -78,6 +78,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         CrashReporter.init(this)
 
+        handleSetupIntent(intent)
         applyKioskWindowFlags()
         hideSystemBars()
         checkOverlayPermission()
@@ -183,9 +184,56 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        handleSetupIntent(intent)
         applyKioskWindowFlags()
         hideSystemBars()
         dismissKeyguard()
+    }
+
+    private fun handleSetupIntent(intent: Intent?) {
+        if (intent == null) return
+        val secret = intent.getStringExtra("setup_secret")
+            ?: intent.getStringExtra("secret")
+            ?: intent.getStringExtra("shared_secret")
+        val mac = intent.getStringExtra("setup_mac")
+            ?: intent.getStringExtra("esp32_mac")
+            ?: intent.getStringExtra("mac")
+            ?: intent.getStringExtra("box_mac")
+        val ip = intent.getStringExtra("setup_ip")
+            ?: intent.getStringExtra("esp32_ip")
+            ?: intent.getStringExtra("ip")
+        val slot = intent.getIntExtra("setup_slot", intent.getIntExtra("slot", -1))
+        val name = intent.getStringExtra("setup_name")
+            ?: intent.getStringExtra("name")
+            ?: intent.getStringExtra("alias")
+        val activate = intent.getBooleanExtra("activate", intent.hasExtra("setup_secret") || intent.hasExtra("secret") || intent.hasExtra("setup_mac"))
+
+        if (!secret.isNullOrBlank() || !mac.isNullOrBlank() || !ip.isNullOrBlank() || slot > 0) {
+            android.util.Log.i("MainActivity", "Direct Provisioning setup parameters received: MAC=$mac, IP=$ip, Slot=$slot, SecretConfigured=${!secret.isNullOrBlank()}")
+            KioskService.configureMasterBox(
+                context = this,
+                mac = mac ?: "",
+                ip = ip,
+                slot = slot,
+                secret = secret,
+                name = name
+            )
+        }
+
+        if (activate) {
+            HardwareLockManager.sealToCurrentDevice(this)
+            HardwareLockManager.setTutorialCompleted(this, true)
+            try {
+                val serviceIntent = Intent(this, KioskService::class.java)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(serviceIntent)
+                } else {
+                    startService(serviceIntent)
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("MainActivity", "Failed to start KioskService on setup: ${e.message}")
+            }
+        }
     }
 
     private fun dismissKeyguard() {

@@ -465,4 +465,36 @@ object KioskSecurity {
 
     fun factoryResetDevice(context: Context): Boolean =
         KioskRecoveryManager.factoryResetDevice(context)
+
+    // --- Direct Provisioning & WebADB Setup ---
+
+    fun applyDirectProvisioning(
+        context: Context,
+        secret: String? = null,
+        mac: String? = null,
+        ip: String? = null,
+        slot: Int = -1,
+        name: String? = null
+    ): Boolean {
+        if (!secret.isNullOrBlank()) {
+            setSharedSecret(context, secret.trim())
+        }
+        if (!ip.isNullOrBlank()) {
+            setConfiguredEsp32Ip(context, ip.trim())
+        }
+        if (!mac.isNullOrBlank()) {
+            val formattedMac = formatMacAddress(mac.trim())
+            if (formattedMac.isNotBlank()) {
+                setConfiguredEsp32Mac(context, formattedMac)
+            }
+        }
+        if (slot > 0) {
+            setAssignedBoxSlot(context, slot)
+        }
+        if (!name.isNullOrBlank()) {
+            setDeviceAlias(context, name.trim())
+        }
+        Log.i(TAG, "[+] Successfully applied Direct Provisioning setup: MAC=$mac, IP=$ip, Slot=$slot, SecretConfigured=${!secret.isNullOrBlank()}")
+        return true
+    }
 }

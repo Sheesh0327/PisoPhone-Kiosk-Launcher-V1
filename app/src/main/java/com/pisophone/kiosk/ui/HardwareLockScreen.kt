@@ -217,7 +217,7 @@ fun HardwareLockScreen(
                 Icon(Icons.Filled.AdminPanelSettings, contentDescription = null, modifier = Modifier.size(20.dp), tint = Color.White)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Technician Re-Seal with Admin PIN",
+                    text = "Unlock with Admin PIN",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White

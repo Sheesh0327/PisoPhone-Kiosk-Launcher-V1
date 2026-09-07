@@ -58,17 +58,23 @@ class KioskService : Service() {
         var activeInstance: KioskService? = null
             private set
 
-        fun configureMasterBox(context: Context, mac: String, ip: String? = null, slot: Int = -1) {
+        fun configureMasterBox(
+            context: Context,
+            mac: String,
+            ip: String? = null,
+            slot: Int = -1,
+            secret: String? = null,
+            name: String? = null
+        ) {
+            KioskSecurity.applyDirectProvisioning(
+                context = context,
+                secret = secret,
+                mac = mac,
+                ip = ip,
+                slot = slot,
+                name = name
+            )
             val cleanMac = KioskSecurity.formatMacAddress(mac)
-            if (cleanMac.isNotBlank()) {
-                KioskSecurity.setConfiguredEsp32Mac(context, cleanMac)
-            }
-            if (!ip.isNullOrBlank()) {
-                KioskSecurity.setConfiguredEsp32Ip(context, ip.trim())
-            }
-            if (slot > 0) {
-                KioskSecurity.setAssignedBoxSlot(context, slot)
-            }
             activeInstance?.let { service ->
                 if (cleanMac.isNotBlank()) {
                     service.stateManager.esp32MacAddress.value = cleanMac
@@ -167,6 +173,8 @@ class KioskService : Service() {
     private var slotBusyJob: Job? = null
     private var overlay: KioskOverlay? = null
     private var serviceStartTimeMs = 0L
+    private var multicastLock: android.net.wifi.WifiManager.MulticastLock? = null
+    private var wakeLock: android.os.PowerManager.WakeLock? = null
 
     private fun getRealTimeBatteryInfo(): Pair<Int, Boolean> {
         return if (::systemMonitor.isInitialized) {
@@ -217,6 +225,21 @@ class KioskService : Service() {
         activeInstance = this
         serviceStartTimeMs = System.currentTimeMillis()
         CrashReporter.init(this)
+
+        try {
+            val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
+            multicastLock = wifi?.createMulticastLock("pisophone_multicast_lock")?.apply {
+                setReferenceCounted(true)
+                acquire()
+            }
+            val powerManager = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+            wakeLock = powerManager?.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "pisophone:kiosk_service_wakelock")?.apply {
+                acquire(10 * 60 * 1000L)
+            }
+            Log.d(TAG, "[+] Acquired MulticastLock and Partial WakeLock for reliable ESP32 networking.")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to acquire MulticastLock or WakeLock: ${e.message}")
+        }
 
         stateManager = KioskStateManager(this)
         val initialTxSet = stateManager.restoreState()
@@ -697,5 +720,9 @@ class KioskService : Service() {
         }
         nanoServer?.stop()
         overlay?.remove()
+        try {
+            if (multicastLock?.isHeld == true) multicastLock?.release()
+            if (wakeLock?.isHeld == true) wakeLock?.release()
+        } catch (_: Exception) {}
     }
 }

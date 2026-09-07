@@ -7,7 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Universal Auth Guard & Google Identity Services SDK -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <script src="auth.js"></script>
+    <script src="js/auth.js"></script>
     <style>
         body { 
             background: linear-gradient(-45deg, #020617, #0B1120, #0f172a, #064e3b); 
@@ -297,7 +297,7 @@
         </div>
     </main>
 
-    <script src="webadb_manager.js"></script>
+    <script src="js/webadb_manager.js"></script>
     <script>
         const currentUser = requireAuth();
         renderNavAuth(document.getElementById('navAuthContainer'));
@@ -850,6 +850,6 @@
             bulkRestoreBtn.disabled = false;
         });
     </script>
-    <script src="device_checker.js"></script>
+    <script src="js/device_checker.js"></script>
 </body>
 </html>
