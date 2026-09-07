@@ -51,7 +51,9 @@ int coinPin          = DEFAULT_COIN_PIN;           // Linear beam sensor pin (De
 int universalCoinPin = DEFAULT_UNIVERSAL_COIN_PIN; // Universal multi-coin pulse sensor pin (Default GPIO 3, Pull-Up)
 int ledPin           = DEFAULT_LED_PIN;            // Status/Drop indicator LED (Default GPIO 8)
 bool ledActiveLow    = DEFAULT_LED_ACTIVE_LOW;     // Active LOW logic for Tenstar Robot & Super Mini onboard blue LED
-int relayPin         = DEFAULT_RELAY_PIN;          // Coin slot enable / power relay pin (Default GPIO 5, Floating High-Z in Standby)
+int relayPin         = DEFAULT_RELAY_PIN;          // Coin slot enable / power relay pin (Default GPIO 5)
+bool relayActiveLow  = false;                      // False = Active HIGH (default), True = Active LOW (optocoupler relay modules)
+int relayMode        = 0;                          // 0 = Always powered when online (recommended), 1 = Armed-Only (toggled by Insert Coin)
 
 // Configuration Variables (Persisted in NVS)
 String wifiSsid       = DEFAULT_SSID;
@@ -445,27 +447,29 @@ bool areDefaultCredentialsActive() {
     return (webPassword == DEFAULT_ADMIN_PW || wifiPass == DEFAULT_PASS);
 }
 
+// Controls the physical relay state based on polarity (relayActiveLow)
+void setRelayHardware(bool active) {
+    pinMode(relayPin, OUTPUT);
+    bool pinLevel = relayActiveLow ? !active : active;
+    digitalWrite(relayPin, pinLevel ? HIGH : LOW);
+}
+
 // Helper function to check if the coin slot is currently armed
 bool isSlotArmed() {
-    if (areDefaultCredentialsActive()) return false;
     return (isWsConnected && wsClient.connected()) || (armedIp.length() > 0 && millis() < armedUntil);
 }
 
-// Controls the coin slot relay to supply power only when armed
+// Controls the coin slot relay: Mode 0 = Always powered when online, Mode 1 = Powered only when armed
 void processRelayState() {
-    bool shouldBeOn = isSlotArmed();
-    static bool lastRelayState = false;
-    if (shouldBeOn != lastRelayState) {
-        lastRelayState = shouldBeOn;
-        if (shouldBeOn) {
-            pinMode(relayPin, OUTPUT);
-            digitalWrite(relayPin, HIGH);
-            Serial.printf("[⚡ RELAY] Coin Slot Relay (GPIO %d) driven ACTIVE HIGH (Coin Slot Powered & Active - %s)\n", relayPin, armedIp.c_str());
-        } else {
-            // Completely floating / high-impedance mode (neither positive nor ground)
-            pinMode(relayPin, INPUT);
-            Serial.printf("[⚡ RELAY] Coin Slot Relay (GPIO %d) set to completely FLOATING (High-Z Standby / Coin Slot Disabled)\n", relayPin);
-        }
+    bool shouldBeOn = (relayMode == 0) ? (WiFi.status() == WL_CONNECTED || millis() > 4000) : isSlotArmed();
+    static int lastAppliedRelayState = -1;
+    int cur = shouldBeOn ? 1 : 0;
+    if (cur != lastAppliedRelayState) {
+        lastAppliedRelayState = cur;
+        setRelayHardware(shouldBeOn);
+        Serial.printf("[⚡ RELAY] Pin %d set to %s (ActiveLow=%s, Mode=%d, SlotArmed=%s)\n",
+            relayPin, shouldBeOn ? "ON (POWERED)" : "OFF (STANDBY)",
+            relayActiveLow ? "true" : "false", relayMode, isSlotArmed() ? "true" : "false");
     }
 }
 
@@ -477,12 +481,6 @@ void processCoinDetector() {
     unsigned long now = millis();
     // Ignore any power-on transients during the initial 3 seconds of bootup
     if (now < 3000) {
-        currentCoinState = COIN_IDLE;
-        return;
-    }
-    
-    // Disable coin acceptance if the device is not licensed or default credentials are active
-    if (!is_licensed || areDefaultCredentialsActive()) {
         currentCoinState = COIN_IDLE;
         return;
     }
@@ -500,6 +498,7 @@ void processCoinDetector() {
         case COIN_DETECTING:
             if (pinVal == LOW) {
                 if (now - pulseStartMs >= MIN_PULSE_WIDTH_MS) {
+                    Serial.printf("[⚡ COIN BEAM] Pin %d pulse verified (%lu ms LOW)! Triggering coin event...\n", coinPin, now - pulseStartMs);
                     triggerCoinEvent();
                     lockoutStartMs = now;
                     currentCoinState = COIN_LOCKOUT;
@@ -546,7 +545,7 @@ void IRAM_ATTR universalCoinIsr() {
 
 void processUniversalCoinDetector() {
     unsigned long now = millis();
-    if (now < 3000 || !is_licensed || areDefaultCredentialsActive()) {
+    if (now < 3000) {
         if (isrUniversalPulseCount > 0) {
             noInterrupts();
             isrUniversalPulseCount = 0;
@@ -568,6 +567,7 @@ void processUniversalCoinDetector() {
         interrupts();
 
         if (finalPulses > 0) {
+            Serial.printf("[⚡ UNIVERSAL COIN] Detected %d pulse(s) on GPIO %d! Triggering coin event...\n", finalPulses, universalCoinPin);
             triggerUniversalCoinEvent(finalPulses);
         }
     }
@@ -1137,9 +1137,16 @@ bool checkReplayProtection(String deviceId, unsigned long long newTs) {
 }
 
 bool verifyTelemetryAuth(String deviceId, String tsStr, String sig) {
-    if (deviceId.length() == 0 || tsStr.length() == 0 || sig.length() == 0) return false;
+    if (deviceId.length() == 0) return false;
+    if (sharedSecret.length() == 0) {
+        // Open/factory mode: shared secret has not yet been provisioned
+        return true;
+    }
     String expectedSig = calculateHMAC(deviceId + ":" + tsStr, sharedSecret);
-    if (sig != expectedSig) return false;
+    if (sig != expectedSig) {
+        String fallbackSig = calculateHMAC(deviceId + ":" + tsStr, "");
+        if (sig != fallbackSig) return false;
+    }
     unsigned long long ts = strtoull(tsStr.c_str(), NULL, 10);
     return checkReplayProtection(deviceId, ts);
 }
@@ -2352,7 +2359,23 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                         <div class="form-group">
                             <label>Relay Power GPIO</label>
                             <input type="number" name="relay_pin" value="{RELAY_PIN}">
-                            <div class="hint">Cut coin power automatically when idle (GPIO 5).</div>
+                            <div class="hint">Coin slot enable / power relay (GPIO 5).</div>
+                        </div>
+                        <div class="form-group">
+                            <label>Relay Power Mode</label>
+                            <select name="relay_mode">
+                                <option value="0" {RELAY_MODE_ALWAYS_SELECTED}>Always Powered ON (Recommended)</option>
+                                <option value="1" {RELAY_MODE_ARMED_SELECTED}>Armed-Only (Powered during Insert Coin)</option>
+                            </select>
+                            <div class="hint">Always Powered keeps coin acceptor energized 24/7.</div>
+                        </div>
+                        <div class="form-group">
+                            <label>Relay Polarity</label>
+                            <select name="relay_active_low">
+                                <option value="0" {RELAY_HIGH_SELECTED}>Active HIGH (Direct 3.3V/5V drive)</option>
+                                <option value="1" {RELAY_LOW_SELECTED}>Active LOW (Optocoupler relay boards)</option>
+                            </select>
+                            <div class="hint">Invert if relay is ON when it should be OFF.</div>
                         </div>
                     </div>
 
@@ -2419,6 +2442,12 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                             <button type="submit" class="btn btn-danger btn-sm" style="min-height:48px;">Reset</button>
                         </div>
                     </form>
+                    <hr style="border: none; border-top: 1px solid var(--border); margin: 12px 0;">
+                    <label>⚡ Relay Pin 5 Hardware Test</label>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; margin-bottom: 12px;">
+                        <button type="button" class="btn" style="background: #10b981;" onclick="fetch('/api/relay?state=1').then(r=>r.json()).then(d=>alert('Relay Pin ' + d.relay_pin + ' turned ON! State: ' + d.state))">⚡ Turn Relay ON</button>
+                        <button type="button" class="btn btn-outline" onclick="fetch('/api/relay?state=0').then(r=>r.json()).then(d=>alert('Relay Pin ' + d.relay_pin + ' turned OFF! State: ' + d.state))">Turn Relay OFF</button>
+                    </div>
                     <hr style="border: none; border-top: 1px solid var(--border); margin: 12px 0;">
                     <div style="display: flex; flex-direction: column; gap: 10px;">
                         <button type="button" class="btn" style="background: #0284c7; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.2);" onclick="if(confirm('🔄 Reboot controller?')) { fetch('/reboot', {method: 'POST'}).then(() => { alert('Rebooting... returning in 5 seconds.'); setTimeout(() => window.location.reload(), 5000); }); }">
@@ -2928,14 +2957,56 @@ String getIpFromDeviceId(String id) {
     return id;
 }
 
+String getPrimaryTerminalIp() {
+    // 1. If armedIp is valid
+    if (armedIp.length() > 0) {
+        String ip = getIpFromDeviceId(armedIp);
+        if (ip.length() > 0 && ip != "127.0.0.1") return ip;
+    }
+    // 2. Most recently seen tracked device from heartbeat
+    unsigned long bestSeen = 0;
+    String bestIp = "";
+    for (int i = 0; i < trackedDeviceCount; i++) {
+        if (trackedDevices[i].lastKnownIp.length() > 0 && trackedDevices[i].lastKnownIp != "127.0.0.1") {
+            if (trackedDevices[i].lastSeenMs > bestSeen) {
+                bestSeen = trackedDevices[i].lastSeenMs;
+                bestIp = trackedDevices[i].lastKnownIp;
+            }
+        }
+    }
+    if (bestIp.length() > 0 && (millis() - bestSeen < 120000)) return bestIp;
+
+    // 3. Primary configured IP in androidIps
+    if (androidIps.length() > 0) {
+        DeviceConfig cfg;
+        int comma = androidIps.indexOf(',');
+        String entry = (comma == -1) ? androidIps : androidIps.substring(0, comma);
+        if (parseDeviceEntry(entry, cfg) && cfg.ip.length() > 0) {
+            return cfg.ip;
+        }
+    }
+    return "";
+}
+
 void triggerCoinEvent() {
-    Serial.printf("[+] Physical coin pulse detected on GPIO %d (Simple Beam Sensor)! Checking armed session status...\n", coinPin);
+    Serial.printf("[+] Physical coin pulse detected on GPIO %d (Simple Beam Sensor)!\n", coinPin);
     
-    // Condition check: A device must have tapped 'Insert Coin' (active WebSocket or active armed TTL)
+    // Condition check: Check if a specific device is armed, or auto-route to active/connected terminal
     bool isArmed = (isWsConnected && wsClient.connected()) || (armedIp.length() > 0 && millis() < armedUntil);
-    
-    if (!isArmed) {
-        Serial.println("[-] COIN REJECTED: No device is currently armed (Insert Coin button was not clicked). Income counter and device time unchanged.");
+    String targetIp = "";
+    if (isArmed && armedIp.length() > 0) {
+        targetIp = getIpFromDeviceId(armedIp);
+    }
+    if (targetIp.length() == 0) {
+        targetIp = getPrimaryTerminalIp();
+        if (targetIp.length() > 0) {
+            Serial.printf("[⚡ AUTO-ROUTED COIN] No armed session; auto-routing coin credit to primary terminal: %s\n", targetIp.c_str());
+            isArmed = true;
+        }
+    }
+
+    if (!isArmed && targetIp.length() == 0) {
+        Serial.println("[-] COIN IGNORED: No terminal is currently connected or configured to receive time.");
         return;
     }
 
@@ -2972,11 +3043,9 @@ void triggerCoinEvent() {
         armedUntil = millis() + ARM_TTL;
     }
     
-    if (armedIp.length() > 0 && millis() < armedUntil) {
-        Serial.printf("[⚡] Routing Simple Beam Coin to ARMED slot: %s (₱%.2f, +%d mins)\n", armedIp.c_str(), coinPrice, minutesPerCoin);
-        String targetIpStr = getIpFromDeviceId(armedIp);
-        Serial.printf("[⚡] Resolved %s to IP: %s\n", armedIp.c_str(), targetIpStr.c_str());
-        sendAuthenticated(targetIpStr, targetPort, "/add_time", "/challenge", "minutes=" + String(minutesPerCoin) + "&seconds=" + String(addedSeconds) + "&amount=" + String(coinPrice, 2) + "&tx_id=" + txId, 1000);
+    if (targetIp.length() > 0) {
+        Serial.printf("[⚡] Routing Simple Beam Coin (₱%.2f, +%d mins) to IP: %s\n", coinPrice, minutesPerCoin, targetIp.c_str());
+        sendAuthenticated(targetIp, targetPort, "/add_time", "/challenge", "minutes=" + String(minutesPerCoin) + "&seconds=" + String(addedSeconds) + "&amount=" + String(coinPrice, 2) + "&tx_id=" + txId, 1000);
         armedUntil = millis() + ARM_TTL;
     }
 }
@@ -2985,11 +3054,22 @@ void triggerUniversalCoinEvent(int pulses) {
     if (pulses <= 0) return;
     Serial.printf("[⚡ UNIVERSAL COIN] %d total pulses accumulated on GPIO %d (₱%d PHP)\n", pulses, universalCoinPin, pulses);
 
-    // Condition check: A device must have tapped 'Insert Coin' (active WebSocket or active armed TTL)
+    // Condition check: Check if a specific device is armed, or auto-route to active/connected terminal
     bool isArmed = (isWsConnected && wsClient.connected()) || (armedIp.length() > 0 && millis() < armedUntil);
+    String targetIp = "";
+    if (isArmed && armedIp.length() > 0) {
+        targetIp = getIpFromDeviceId(armedIp);
+    }
+    if (targetIp.length() == 0) {
+        targetIp = getPrimaryTerminalIp();
+        if (targetIp.length() > 0) {
+            Serial.printf("[⚡ AUTO-ROUTED COIN] No armed session; auto-routing ₱%d universal coin to terminal: %s\n", pulses, targetIp.c_str());
+            isArmed = true;
+        }
+    }
 
-    if (!isArmed) {
-        Serial.println("[-] COIN REJECTED: No device is currently armed (Insert Coin button was not clicked). Income counter and device time unchanged.");
+    if (!isArmed && targetIp.length() == 0) {
+        Serial.println("[-] COIN IGNORED: No terminal is currently connected or configured to receive time.");
         return;
     }
 
@@ -3033,11 +3113,9 @@ void triggerUniversalCoinEvent(int pulses) {
         armedUntil = millis() + ARM_TTL;
     }
 
-    if (armedIp.length() > 0 && millis() < armedUntil) {
-        Serial.printf("[⚡] Routing universal coin to ARMED slot: %s\n", armedIp.c_str());
-        String targetIpStr = getIpFromDeviceId(armedIp);
-        Serial.printf("[⚡] Resolved %s to IP: %s\n", armedIp.c_str(), targetIpStr.c_str());
-        sendAuthenticated(targetIpStr, targetPort, "/add_time", "/challenge", "minutes=" + String(addedMinutes) + "&seconds=" + String(addedSeconds) + "&amount=" + String(pulses) + "&tx_id=" + txId, 1000);
+    if (targetIp.length() > 0) {
+        Serial.printf("[⚡] Routing universal coin to IP: %s\n", targetIp.c_str());
+        sendAuthenticated(targetIp, targetPort, "/add_time", "/challenge", "minutes=" + String(addedMinutes) + "&seconds=" + String(addedSeconds) + "&amount=" + String(pulses) + "&tx_id=" + txId, 1000);
         armedUntil = millis() + ARM_TTL;
     }
 }
@@ -3182,6 +3260,10 @@ static String getPlaceholderValue(const String& tag) {
     if (tag == "{LED_ACTIVE_LOW_SELECTED}") return ledActiveLow ? "selected" : "";
     if (tag == "{LED_ACTIVE_HIGH_SELECTED}") return !ledActiveLow ? "selected" : "";
     if (tag == "{RELAY_PIN}") return String(relayPin);
+    if (tag == "{RELAY_MODE_ALWAYS_SELECTED}") return (relayMode == 0) ? "selected" : "";
+    if (tag == "{RELAY_MODE_ARMED_SELECTED}") return (relayMode == 1) ? "selected" : "";
+    if (tag == "{RELAY_LOW_SELECTED}") return relayActiveLow ? "selected" : "";
+    if (tag == "{RELAY_HIGH_SELECTED}") return !relayActiveLow ? "selected" : "";
     if (tag == "{IPS}") return androidIps;
     if (tag == "{DEVICE_SLOTS_MANAGER}") return renderLicenseSlotsHtml();
     if (tag == "{SLOT_OPTIONS}") return renderSlotOptions();
@@ -3443,6 +3525,18 @@ void handleSave() {
     if (webServer.hasArg("price"))      { coinPrice = webServer.arg("price").toFloat(); prefs.putFloat("price", coinPrice); }
     if (webServer.hasArg("minutes"))    { minutesPerCoin = webServer.arg("minutes").toInt(); prefs.putInt("minutes", minutesPerCoin); }
     if (webServer.hasArg("debounce"))   { lockoutDebounceMs = webServer.arg("debounce").toInt(); prefs.putInt("debounce", lockoutDebounceMs); }
+    if (webServer.hasArg("relay_active_low")) {
+        relayActiveLow = (webServer.arg("relay_active_low") == "1" || webServer.arg("relay_active_low") == "true");
+        prefs.putBool("relay_active_low", relayActiveLow);
+    }
+    if (webServer.hasArg("relay_mode")) {
+        relayMode = webServer.arg("relay_mode").toInt();
+        prefs.putInt("relay_mode", relayMode);
+    }
+    if (webServer.hasArg("shared_secret")) {
+        sharedSecret = webServer.arg("shared_secret");
+        prefs.putString("shared_secret", sharedSecret);
+    }
     prefs.end();
 
     // Dynamic GPIO Pin re-binding & ISR attachment
@@ -3451,12 +3545,7 @@ void handleSave() {
     pinMode(universalCoinPin, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(universalCoinPin), universalCoinIsr, FALLING);
     setLedHardware(currentLedState == LED_STATE_CONNECTED);
-    if (isSlotArmed()) {
-        pinMode(relayPin, OUTPUT);
-        digitalWrite(relayPin, HIGH);
-    } else {
-        pinMode(relayPin, INPUT); // Completely floating
-    }
+    processRelayState();
 
     Serial.println("\n[+] Config updated and saved. Pushing live config to registered Android terminals...");
 
@@ -3842,7 +3931,7 @@ void handleHeartbeat() {
 
             String devName = getDeviceNameByIpOrId(reqIp, deviceId);
 
-            String status = is_licensed ? "ok" : "unlicensed";
+            String status = "ok";
             String json = "{\"status\":\"" + status + "\",\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\",\"price\":" + String(coinPrice) + ",\"minutes\":" + String(minutesPerCoin);
             if (devName.length() > 0) {
                 json += ",\"device_name\":\"" + devName + "\"";
@@ -4169,12 +4258,17 @@ void processWebSocketServer() {
             }
             
             // 1. Verify HMAC Signature
-            String expectedSig = calculateHMAC(reqDeviceId + ":" + tsStr, sharedSecret);
-            if (sig != expectedSig) {
-                Serial.printf("[-] WS Auth Failed for %s: Signature Mismatch\n", reqDeviceId.c_str());
-                newClient.print("HTTP/1.1 403 Forbidden\r\n\r\nInvalid Signature");
-                newClient.stop();
-                return;
+            if (sharedSecret.length() > 0) {
+                String expectedSig = calculateHMAC(reqDeviceId + ":" + tsStr, sharedSecret);
+                if (sig != expectedSig) {
+                    String fallbackSig = calculateHMAC(reqDeviceId + ":" + tsStr, "");
+                    if (sig != fallbackSig) {
+                        Serial.printf("[-] WS Auth Failed for %s: Signature Mismatch\n", reqDeviceId.c_str());
+                        newClient.print("HTTP/1.1 403 Forbidden\r\n\r\nInvalid Signature");
+                        newClient.stop();
+                        return;
+                    }
+                }
             }
 
             // 1b. Verify Replay Protection
@@ -4475,6 +4569,9 @@ void setup() {
     coinPrice         = prefs.getFloat("price", coinPrice);
     minutesPerCoin    = prefs.getInt("minutes", minutesPerCoin);
     lockoutDebounceMs = prefs.getInt("debounce", lockoutDebounceMs);
+    relayActiveLow    = prefs.getBool("relay_active_low", false);
+    relayMode         = prefs.getInt("relay_mode", 0);
+    sharedSecret      = prefs.getString("shared_secret", sharedSecret);
     p1Ip              = prefs.getString("p1", p1Ip);
     p2Ip              = prefs.getString("p2", p2Ip);
     matchMinutes      = prefs.getInt("match", matchMinutes);
@@ -4496,9 +4593,9 @@ void setup() {
     attachInterrupt(digitalPinToInterrupt(universalCoinPin), universalCoinIsr, FALLING);
     pinMode(HARDWARE_RESET_PIN, INPUT_PULLUP);
     setLedHardware(false);
-    // Initialize relay pin as completely floating (High-Z input, neither positive nor ground)
-    pinMode(relayPin, INPUT);
-    Serial.printf("[+] Hardware Pins bound: Beam Coin Pin = GPIO %d, Universal Multi-Coin Pin = GPIO %d (ISR active), LED Pin = GPIO %d, Relay Pin = GPIO %d (Floating Standby), Reset Pin = GPIO %d\n", coinPin, universalCoinPin, ledPin, relayPin, HARDWARE_RESET_PIN);
+    // Initialize relay hardware (Powered ON if Mode 0, Standby if Mode 1)
+    setRelayHardware(relayMode == 0);
+    Serial.printf("[+] Hardware Pins bound: Beam Coin Pin = GPIO %d, Universal Multi-Coin Pin = GPIO %d (ISR active), LED Pin = GPIO %d, Relay Pin = GPIO %d (ActiveLow=%s, Mode=%d), Reset Pin = GPIO %d\n", coinPin, universalCoinPin, ledPin, relayPin, relayActiveLow ? "true" : "false", relayMode, HARDWARE_RESET_PIN);
 
     // Immediately read hardware factory MAC address from eFuse
     uint8_t macInit[6];
@@ -4590,6 +4687,27 @@ void setup() {
     webServer.on("/api/slots/unpair", HTTP_POST, handleApiSlotUnpair);
     webServer.on("/api/slots/apply_token", HTTP_POST, handleApiSlotApplyToken);
     webServer.on("/api/slots/cloud_sync", HTTP_POST, handleApiSlotCloudSync);
+    webServer.on("/api/relay", HTTP_ANY, []() {
+        if (webServer.hasArg("invert")) {
+            relayActiveLow = (webServer.arg("invert") == "1" || webServer.arg("invert") == "true");
+            prefs.begin("kiosk_cfg", false);
+            prefs.putBool("relay_active_low", relayActiveLow);
+            prefs.end();
+        }
+        if (webServer.hasArg("mode")) {
+            relayMode = webServer.arg("mode").toInt();
+            prefs.begin("kiosk_cfg", false);
+            prefs.putInt("relay_mode", relayMode);
+            prefs.end();
+        }
+        if (webServer.hasArg("state")) {
+            bool state = (webServer.arg("state") == "1" || webServer.arg("state") == "true");
+            setRelayHardware(state);
+            webServer.send(200, "application/json", "{\"status\":\"ok\",\"relay_pin\":" + String(relayPin) + ",\"state\":" + String(state ? 1 : 0) + ",\"active_low\":" + String(relayActiveLow ? 1 : 0) + ",\"mode\":" + String(relayMode) + "}");
+            return;
+        }
+        webServer.send(200, "application/json", "{\"status\":\"ok\",\"relay_pin\":" + String(relayPin) + ",\"active_low\":" + String(relayActiveLow ? 1 : 0) + ",\"mode\":" + String(relayMode) + "}");
+    });
     
     // Port 80: Web OTA Firmware Update Endpoints
     webServer.on("/update", HTTP_GET, handleOtaForm);

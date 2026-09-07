@@ -48,21 +48,22 @@ class Esp32ConnectionManager(
     companion object {
         private const val TAG = "Esp32ConnectionManager"
         private const val ESP32_WS_PORT = 81
-        private const val HEARTBEAT_TIMEOUT_MS = 12000L
+        private const val HEARTBEAT_TIMEOUT_MS = 20000L
     }
 
     private val okHttpClient = OkHttpClient.Builder()
-        .connectTimeout(3, TimeUnit.SECONDS)
+        .connectTimeout(4, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
 
     private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(1500, TimeUnit.MILLISECONDS)
-        .readTimeout(1500, TimeUnit.MILLISECONDS)
+        .connectTimeout(3500, TimeUnit.MILLISECONDS)
+        .readTimeout(3500, TimeUnit.MILLISECONDS)
         .build()
 
     private var esp32Ip: String? = null
-    private var lastHeartbeatTime: Long = 0
+    private var lastHeartbeatTime: Long = System.currentTimeMillis()
+    private var consecutiveHeartbeatFailures: Int = 0
     private var activeWebSocket: WebSocket? = null
     private var heartbeatJob: Job? = null
 
@@ -171,6 +172,7 @@ class Esp32ConnectionManager(
                         try {
                             val response = httpClient.newCall(req).execute()
                             if (response.isSuccessful) {
+                                consecutiveHeartbeatFailures = 0
                                 lastHeartbeatTime = System.currentTimeMillis()
                                 val body = response.body?.string() ?: ""
                                 if (body.isNotBlank()) {
@@ -187,20 +189,14 @@ class Esp32ConnectionManager(
                                 } else {
                                     delegate.onOnlineStatusChanged(true, null)
                                 }
+                            } else {
+                                consecutiveHeartbeatFailures++
+                                checkOfflineThreshold(currentIp)
                             }
                             response.close()
                         } catch (_: Exception) {
-                            val offlineDuration = System.currentTimeMillis() - lastHeartbeatTime
-                            if (offlineDuration > HEARTBEAT_TIMEOUT_MS) {
-                                delegate.onOnlineStatusChanged(false, null)
-                                // Broadcast discovery probe while offline to quickly rediscover if ESP32 changed IP
-                                discoveryScanner.sendUdpDiscoveryBroadcast(currentIp)
-                                if (offlineDuration > 20000L && KioskSecurity.getConfiguredEsp32Ip(context).isBlank()) {
-                                    Log.w(TAG, "ESP32 disconnected for >20s, resetting cached IP for auto-rediscovery")
-                                    esp32Ip = null
-                                    discoveryScanner.triggerDiscovery(currentIp)
-                                }
-                            }
+                            consecutiveHeartbeatFailures++
+                            checkOfflineThreshold(currentIp)
                         }
                     } else {
                         // Not bound yet: trigger clean discovery probe and direct candidate check
@@ -208,6 +204,20 @@ class Esp32ConnectionManager(
                     }
                 } catch (_: Exception) {}
                 delay(4000)
+            }
+        }
+    }
+
+    private fun checkOfflineThreshold(currentIp: String) {
+        val offlineDuration = System.currentTimeMillis() - lastHeartbeatTime
+        if (consecutiveHeartbeatFailures >= 3 && offlineDuration > HEARTBEAT_TIMEOUT_MS) {
+            delegate.onOnlineStatusChanged(false, null)
+            // Broadcast discovery probe while offline to quickly rediscover if ESP32 changed IP
+            discoveryScanner.sendUdpDiscoveryBroadcast(currentIp)
+            if (offlineDuration > 30000L && KioskSecurity.getConfiguredEsp32Ip(context).isBlank()) {
+                Log.w(TAG, "ESP32 disconnected for >30s, resetting cached IP for auto-rediscovery")
+                esp32Ip = null
+                discoveryScanner.triggerDiscovery(currentIp)
             }
         }
     }
@@ -301,7 +311,7 @@ class Esp32ConnectionManager(
                         Toast.makeText(context, "Slot is currently busy with another device.", Toast.LENGTH_LONG).show()
                     }
                 } else {
-                    delegate.onOnlineStatusChanged(false, null)
+                    Log.w(TAG, "WebSocket arming failed (HTTP $code) - letting heartbeat loop manage connectivity")
                 }
                 closeSession(sendUnarmToEsp = false)
             }
