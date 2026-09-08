@@ -57,21 +57,21 @@ fun HardwareLockScreen(
     }
 
     val headerTitle = when {
-        isSlotLocked -> "SLOT LICENSE EXPIRED"
-        boundHwId.isEmpty() -> "UNPROVISIONED TERMINAL"
-        else -> "HARDWARE TAMPER LOCK"
+        isSlotLocked -> "DEVICE NOT ACTIVATED"
+        boundHwId.isEmpty() -> "DEVICE NOT ACTIVATED"
+        else -> "DEVICE ACTIVATION REQUIRED"
     }
 
     val headerSubtitle = when {
-        isSlotLocked -> "HARD LOCKDOWN ACTIVE"
-        boundHwId.isEmpty() -> "Activation & ESP32 Pairing Required"
-        else -> "Unauthorized Device or Cloned Storage Detected"
+        isSlotLocked -> "Activation Required in ESP32 Kiosk Manager"
+        boundHwId.isEmpty() -> "Activation Required in ESP32 Kiosk Manager"
+        else -> "Activation Required in ESP32 Kiosk Manager"
     }
 
     val headerDescription = when {
-        isSlotLocked -> "This terminal's slot has expired in the ESP32 Master controller's memory. The app will not accept coins and will remain locked until credits are added to pair the device to the ESP32."
-        boundHwId.isEmpty() -> "This kiosk terminal has not been provisioned. Connect this device to an authorized PisoPhone ESP32 Box via WebADB to pair a licensed terminal seat."
-        else -> "This kiosk application is cryptographically sealed to its original physical hardware to prevent unauthorized copying, disk cloning, or firmware extraction."
+        isSlotLocked -> "This device requires activation in the ESP32 Kiosk Manager before inserting coins."
+        boundHwId.isEmpty() -> "This device requires activation in the ESP32 Kiosk Manager before inserting coins."
+        else -> "This device requires activation in the ESP32 Kiosk Manager before inserting coins."
     }
 
     Box(
@@ -163,11 +163,7 @@ fun HardwareLockScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = when {
-                                isSlotLocked -> "Device Not Activated"
-                                boundHwId.isEmpty() -> "Awaiting WebADB / ESP32 Provisioning"
-                                else -> "Hardware Signature Mismatch"
-                            },
+                            text = "Device Not Activated",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFFEF4444)
@@ -177,7 +173,7 @@ fun HardwareLockScreen(
                     HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = Color(0xFF1E293B))
 
                     if (isSlotLocked) {
-                        Text("ESP32 CONTROLLER LOCKDOWN STATUS:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
+                        Text("ESP32 CONTROLLER ACTIVATION STATUS:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
                         Text(
                             if (slotNum > 0) "Assigned Slot: #$slotNum" else "Unassigned / Unactivated Slot",
                             fontSize = 13.sp,

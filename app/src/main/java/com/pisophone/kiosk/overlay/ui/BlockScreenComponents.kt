@@ -225,7 +225,7 @@ fun BlockScreenRateTableCard(
         } else if (!isWaiting) {
             val activeContainerColor = if (isSlotExpired) Color(0xFF7F1D1D) else if (isSlotBusy) Color(0xFFDC3545) else if (isEsp32Online) primaryColor else surfaceVariantColor
             val activeContentColor = if (isSlotExpired) Color(0xFFFCA5A5) else if (isSlotBusy) Color.White else if (isEsp32Online) onPrimaryColor else textTertiaryColor
-            val activeText = if (isSlotExpired) "DEVICE NOT ACTIVATED (ADD CREDITS)" else if (isSlotBusy) "COINSLOT BUSY" else if (isEsp32Online) buttonText else "CONNECTING TO COINSLOT..."
+            val activeText = if (isSlotExpired) "DEVICE NOT ACTIVATED" else if (isSlotBusy) "COINSLOT BUSY" else if (isEsp32Online) buttonText else "CONNECTING TO COINSLOT..."
             Button(
                 onClick = onInsertCoin,
                 modifier = Modifier
@@ -238,7 +238,7 @@ fun BlockScreenRateTableCard(
                     disabledContentColor = activeContentColor
                 ),
                 shape = RoundedCornerShape(14.dp),
-                enabled = isEsp32Online && !isSlotBusy && !isSlotExpired
+                enabled = isEsp32Online && !isSlotBusy
             ) {
                 if (isSlotExpired) {
                     Icon(Icons.Filled.Lock, contentDescription = null, tint = Color(0xFFFCA5A5))
@@ -339,7 +339,7 @@ fun SlotExpirationWarningBanner(
                     letterSpacing = 0.5.sp
                 )
                 Text(
-                    text = "Renew your slot license on the ESP32 to prevent kiosk lockdown.",
+                    text = "Renew slot credits in the ESP32 Kiosk Manager.",
                     fontSize = 11.sp,
                     color = Color(0xFFFEF3C7)
                 )

@@ -138,81 +138,69 @@ object HardwareLockManager {
     }
 
     /**
-     * Checks if the kiosk application is authorized to operate on this hardware and licensed slot (single auth path).
+     * Checks if the kiosk application is authorized to operate on this hardware.
+     * Installing the APK installs like normal and runs automatically.
      */
     fun isAppAllowedToRun(context: Context): Boolean {
-        return isHardwareAuthorized(context) && !isSlotLockedDown(context)
+        return isHardwareAuthorized(context)
     }
 
     /**
-     * Returns true if the ESP32 controller has marked this device's slot as expired,
-     * triggering a hard lockdown.
+     * Legacy slot lockdown check - always returns false as hard lockdown screen is removed.
      */
     fun isSlotLockedDown(context: Context): Boolean {
-        return getPrefs(context).getBoolean(KEY_SLOT_EXPIRED, false)
+        return false
     }
 
     /**
-     * Details regarding the slot expiration lockdown: (Reason, Slot Number, Expiration Timestamp).
+     * Details regarding activation status on the ESP32.
      */
     fun getSlotLockdownDetails(context: Context): Triple<String, Int, Long> {
         val prefs = getPrefs(context)
-        val reason = prefs.getString(KEY_SLOT_EXPIRED_REASON, "Slot license expired in ESP32 memory") ?: "Slot license expired in ESP32 memory"
+        val reason = prefs.getString(KEY_SLOT_EXPIRED_REASON, "Device activation required") ?: "Device activation required"
         val slotNum = prefs.getInt(KEY_SLOT_NUM, 0)
         val expiryTs = prefs.getLong(KEY_SLOT_EXPIRY_TS, 0L)
         return Triple(reason, slotNum, expiryTs)
     }
 
     /**
-     * Sets or clears the hard lockdown triggered by the ESP32's authoritative slot memory.
+     * Sets activation status details received from ESP32 memory.
      */
     fun setSlotLockdown(context: Context, locked: Boolean, reason: String = "", slotNum: Int = 0, expiryTs: Long = 0L) {
         val prefs = getPrefs(context)
-        val currentLocked = prefs.getBoolean(KEY_SLOT_EXPIRED, false)
-        if (currentLocked != locked || reason.isNotEmpty()) {
-            prefs.edit()
-                .putBoolean(KEY_SLOT_EXPIRED, locked)
-                .putString(KEY_SLOT_EXPIRED_REASON, reason)
-                .putInt(KEY_SLOT_NUM, slotNum)
-                .putLong(KEY_SLOT_EXPIRY_TS, expiryTs)
-                .apply()
-            notifySecurityChanged()
-            if (locked) {
-                Log.w(TAG, "🔒 HARD LOCKDOWN ENFORCED: Slot #$slotNum expired on ESP32 ($reason)")
-            } else {
-                Log.i(TAG, "🔓 Slot lockdown lifted: Valid slot verified on ESP32")
-            }
-        }
+        prefs.edit()
+            .putBoolean(KEY_SLOT_EXPIRED, locked)
+            .putString(KEY_SLOT_EXPIRED_REASON, reason)
+            .putInt(KEY_SLOT_NUM, slotNum)
+            .putLong(KEY_SLOT_EXPIRY_TS, expiryTs)
+            .apply()
+        notifySecurityChanged()
     }
 
     /**
-     * Checks if the physical hardware is authorized and sealed without tampering.
-     * Returns false on unprovisioned/sideloaded devices or hardware mismatches.
+     * Auto-saves device ID on installation / first launch and validates hardware identity.
      */
     fun isHardwareAuthorized(context: Context): Boolean {
         val prefs = getPrefs(context)
-        if (prefs.getBoolean(KEY_HARDWARE_LOCKED, false)) return false
-        
-        // Sideload / extraction countermeasure: Unprovisioned devices must not self-seal
-        val boundHwId = prefs.getString(KEY_BOUND_HW_ID, null) ?: return false
+        val boundHwId = prefs.getString(KEY_BOUND_HW_ID, null)
         val currentHwId = getHardwareFingerprint(context)
         
-        if (boundHwId != currentHwId) {
-            Log.e(TAG, "Hardware mismatch! Bound: $boundHwId, Current: $currentHwId")
-            prefs.edit().putBoolean(KEY_HARDWARE_LOCKED, true).apply()
-            return false
+        if (boundHwId.isNullOrBlank() || boundHwId != currentHwId) {
+            sealToCurrentDevice(context)
         }
         
-        val storedDevName = prefs.getString(KEY_BOUND_DEVICE_NAME, "") ?: ""
-        val storedTimestamp = prefs.getLong(KEY_BOUND_TIMESTAMP, 0L)
-        val storedSig = prefs.getString(KEY_BOUND_SIGNATURE, "") ?: ""
-        val expectedSig = generateSignature(context, boundHwId, storedDevName, storedTimestamp)
-        
-        return storedSig.isNotEmpty() && storedSig == expectedSig
+        return true
     }
 
     fun getBoundHardwareId(context: Context): String {
-        return getPrefs(context).getString(KEY_BOUND_HW_ID, "") ?: ""
+        val prefs = getPrefs(context)
+        val bound = prefs.getString(KEY_BOUND_HW_ID, null)
+        if (bound.isNullOrBlank()) {
+            val current = getHardwareFingerprint(context)
+            sealToCurrentDevice(context)
+            return current
+        }
+        return bound
     }
 
     fun getBoundDeviceName(context: Context): String {

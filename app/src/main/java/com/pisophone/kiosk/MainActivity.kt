@@ -77,39 +77,19 @@ class MainActivity : ComponentActivity() {
         setContent {
             PisoPhoneLauncherTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    var isAppAllowed by remember { mutableStateOf(HardwareLockManager.isAppAllowedToRun(this@MainActivity)) }
-
-                    val securityUpdateVer by HardwareLockManager.securityUpdateVersion.collectAsState()
-
-                    LaunchedEffect(securityUpdateVer) {
-                        isAppAllowed = HardwareLockManager.isAppAllowedToRun(this@MainActivity)
+                    LaunchedEffect(Unit) {
                         checkDeviceOwner()
+                        checkOverlayPermission()
+                        applyKioskWindowFlags()
+                        hideSystemBars()
+                        dismissKeyguard()
                     }
-
-                    if (!isAppAllowed) {
-                        HardwareLockScreen(
-                            onRebindSuccess = {
-                                isAppAllowed = HardwareLockManager.isAppAllowedToRun(this@MainActivity)
-                                if (isAppAllowed) {
-                                    checkDeviceOwner()
-                                }
-                            },
-                        )
-                    } else {
-                        LaunchedEffect(Unit) {
-                            checkDeviceOwner()
-                            checkOverlayPermission()
-                            applyKioskWindowFlags()
-                            hideSystemBars()
-                            dismissKeyguard()
+                    LauncherScreen(
+                        apps = appsList,
+                        onAppClick = { appInfo ->
+                            AppLauncher.launchApp(this@MainActivity, appInfo.packageName)
                         }
-                        LauncherScreen(
-                            apps = appsList,
-                            onAppClick = { appInfo ->
-                                AppLauncher.launchApp(this@MainActivity, appInfo.packageName)
-                            }
-                        )
-                    }
+                    )
                 }
             }
         }

@@ -2474,6 +2474,11 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
         <!-- TAB 1: DASHBOARD -->
         <div id="tab-dashboard" class="tab-content active">
             <div class="grid">
+                <!-- Master Credit Vault & Seat Slots Manager -->
+                <div class="grid-full">
+                    {DEVICE_SLOTS_MANAGER}
+                </div>
+
                 <!-- Live Devices List (Horizontal) -->
                 <div class="card grid-full">
                     <div class="card-header">

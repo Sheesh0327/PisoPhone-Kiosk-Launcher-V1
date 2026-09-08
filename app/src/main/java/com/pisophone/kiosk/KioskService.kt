@@ -362,22 +362,22 @@ class KioskService : Service() {
 
                 override fun onSlotLockdown(reason: String, slotNum: Int, expiresAt: Long) {
                     stateManager.isSlotExpired.value = true
-                    stateManager.slotExpiryMessage.value = reason
+                    stateManager.slotExpiryMessage.value = if (reason.isNotBlank()) reason else "Device activation required."
                     stateManager.slotNumber.value = slotNum
                     stateManager.slotWarningDaysLeft.value = 0
                     stateManager.sessionTimeRemaining.value = 0
                     stateManager.appState.value = 0
                     stateManager.saveState()
-                    HardwareLockManager.setSlotLockdown(applicationContext, true, reason, slotNum, expiresAt)
+                    HardwareLockManager.setSlotLockdown(applicationContext, false)
                 }
 
                 override fun onSlotRestored() {
-                    if (stateManager.isSlotExpired.value || HardwareLockManager.isSlotLockedDown(applicationContext)) {
+                    if (stateManager.isSlotExpired.value) {
                         stateManager.isSlotExpired.value = false
                         stateManager.slotExpiryMessage.value = ""
                         stateManager.slotWarningDaysLeft.value = null
                         HardwareLockManager.setSlotLockdown(applicationContext, false)
-                        Log.i(TAG, "Slot renewed on ESP32: Hard lockdown cleared automatically.")
+                        Log.i(TAG, "Slot activated on ESP32: Ready for coins.")
                     }
                 }
             }
@@ -575,15 +575,13 @@ class KioskService : Service() {
                                 stateManager.sessionTimeRemaining.value = 0
                                 stateManager.appState.value = 0
                                 stateManager.saveState()
-                                HardwareLockManager.setSlotLockdown(applicationContext, true, "Lockdown signal pushed from ESP32")
-                                Toast.makeText(this@KioskService, "🔒 Slot Expired: Hard Lockdown Active", Toast.LENGTH_LONG).show()
+                                Toast.makeText(this@KioskService, "Device activation required.", Toast.LENGTH_LONG).show()
                             }
                             "slot_restore", "slot_renew" -> {
                                 stateManager.isSlotExpired.value = false
                                 stateManager.slotExpiryMessage.value = ""
                                 stateManager.slotWarningDaysLeft.value = null
-                                HardwareLockManager.setSlotLockdown(applicationContext, false)
-                                Toast.makeText(this@KioskService, "🔓 Slot Renewed: Lockdown Lifted", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(this@KioskService, "Device activated.", Toast.LENGTH_SHORT).show()
                             }
                             "vibrate" -> HardwareFeedback.triggerVibration(this@KioskService, longArrayOf(0, 1500))
                             "sound" -> {
@@ -703,9 +701,9 @@ class KioskService : Service() {
             onInsertCoinClick = { 
                 if (stateManager.appState.value == 4) return@KioskOverlay
                 if (stateManager.isSlotExpired.value || com.pisophone.kiosk.security.HardwareLockManager.isSlotLockedDown(this@KioskService)) {
-                    Log.w(TAG, "Coin insertion blocked: Device slot is expired on ESP32.")
+                    Log.w(TAG, "Coin insertion blocked: Device not activated on ESP32.")
                     android.os.Handler(android.os.Looper.getMainLooper()).post {
-                        android.widget.Toast.makeText(applicationContext, "Device expired. Please add credits to pair device to ESP32.", android.widget.Toast.LENGTH_LONG).show()
+                        android.widget.Toast.makeText(applicationContext, "Device not activated. Please activate this device in the ESP32 Kiosk Manager.", android.widget.Toast.LENGTH_LONG).show()
                     }
                     return@KioskOverlay
                 }
