@@ -32,6 +32,9 @@ interface Esp32ConnectionDelegate {
     fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?)
     fun onSlotBusy()
     fun onArmSuccess()
+    fun onSlotWarning(daysLeft: Int, expiresAt: Long, slotNum: Int, message: String)
+    fun onSlotLockdown(reason: String, slotNum: Int, expiresAt: Long)
+    fun onSlotRestored()
 }
 
 /**
@@ -171,13 +174,37 @@ class Esp32ConnectionManager(
                             .build()
                         try {
                             val response = httpClient.newCall(req).execute()
-                            if (response.isSuccessful) {
+                            val code = response.code
+                            val body = response.body?.string() ?: ""
+
+                            if (response.isSuccessful || code == 403 || code == 423) {
                                 consecutiveHeartbeatFailures = 0
                                 lastHeartbeatTime = System.currentTimeMillis()
-                                val body = response.body?.string() ?: ""
                                 if (body.isNotBlank()) {
                                     try {
                                         val json = JSONObject(body)
+                                        val isExpired = json.optBoolean("slot_expired", false) ||
+                                                json.optBoolean("lockdown", false) ||
+                                                json.optString("status", "") == "expired" ||
+                                                json.optString("slot_status", "") == "expired"
+                                        val slotNum = json.optInt("slot_num", 0)
+                                        val expiresAt = json.optLong("expires_at", 0L)
+                                        val errorMsg = json.optString("error", "Slot license expired in ESP32 memory")
+
+                                        if (isExpired) {
+                                            delegate.onSlotLockdown(errorMsg, slotNum, expiresAt)
+                                        } else {
+                                            delegate.onSlotRestored()
+
+                                            val isWarning = json.optBoolean("slot_warning", false) ||
+                                                    json.optString("slot_status", "") == "warning"
+                                            val daysLeft = if (json.has("days_left")) json.optInt("days_left", -1) else -1
+                                            val warnMsg = json.optString("warning_message", "Slot license nearing expiration")
+                                            if (isWarning && daysLeft in 0..7) {
+                                                delegate.onSlotWarning(daysLeft, expiresAt, slotNum, warnMsg)
+                                            }
+                                        }
+
                                         val mac = if (json.has("mac")) json.optString("mac", "") else null
                                         val alias = if (json.has("device_name")) json.optString("device_name", "").trim() else null
                                         val price = if (json.has("price")) json.optDouble("price", 5.0) else null
@@ -329,13 +356,17 @@ class Esp32ConnectionManager(
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 val code = response?.code ?: 0
-                Log.e(TAG, "WebSocket failure (HTTP $code): ${t.message}")
+                val msg = t.message ?: ""
+                Log.e(TAG, "WebSocket failure (HTTP $code): $msg")
                 if (code == 409) {
                     Log.e(TAG, "Slot is BUSY with another session (HTTP 409)")
                     delegate.onSlotBusy()
                     Handler(Looper.getMainLooper()).post {
                         Toast.makeText(context, "Slot is currently busy with another device.", Toast.LENGTH_LONG).show()
                     }
+                } else if (code == 403 || msg.contains("SLOT_EXPIRED", ignoreCase = true)) {
+                    Log.e(TAG, "Slot is EXPIRED on ESP32 (HTTP $code). Enforcing lockdown.")
+                    delegate.onSlotLockdown("Slot license expired on ESP32 memory", 0, 0L)
                 } else {
                     Log.w(TAG, "WebSocket arming failed (HTTP $code) - letting heartbeat loop manage connectivity")
                 }

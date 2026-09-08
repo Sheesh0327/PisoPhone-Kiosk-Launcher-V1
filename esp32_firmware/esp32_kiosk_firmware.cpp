@@ -299,6 +299,52 @@ bool unpairSlot(int slotNum) {
     return true;
 }
 
+int findSlotIndexForDevice(String devId, String ip) {
+    devId.trim();
+    ip.trim();
+    if (devId.length() > 0) {
+        for (int i = 0; i < maxLicensedSlots; i++) {
+            if (licenseSlots[i].deviceId.length() > 0 && licenseSlots[i].deviceId == devId) {
+                return i;
+            }
+        }
+    }
+    if (ip.length() > 0 && ip != "127.0.0.1") {
+        for (int i = 0; i < maxLicensedSlots; i++) {
+            if (licenseSlots[i].ip.length() > 0 && licenseSlots[i].ip == ip) {
+                return i;
+            }
+        }
+    }
+    return -1;
+}
+
+// Returns: 0 = Active, 1 = Warning (<= 7 days left), 2 = Expired / Inactive
+int getSlotExpirationStatus(int slotIdx, uint64_t currentMs, int& outDaysLeft) {
+    outDaysLeft = -1;
+    if (slotIdx < 0 || slotIdx >= maxLicensedSlots) {
+        return 2; // Expired / Not assigned
+    }
+    if (!licenseSlots[slotIdx].active) {
+        return 2; // Inactive
+    }
+    if (licenseSlots[slotIdx].expiresAt == 0) {
+        outDaysLeft = 999;
+        return 0; // Unbounded / default
+    }
+    if (currentMs >= licenseSlots[slotIdx].expiresAt) {
+        outDaysLeft = 0;
+        return 2; // Expired!
+    }
+    uint64_t diff = licenseSlots[slotIdx].expiresAt - currentMs;
+    uint64_t oneDayMs = 86400000ULL;
+    outDaysLeft = (int)(diff / oneDayMs);
+    if (diff <= (7ULL * oneDayMs)) {
+        return 1; // Nearing expiration (within 7 days)
+    }
+    return 0; // Active
+}
+
 
 int targetPort        = DEFAULT_PORT;
 String sharedSecret   = MASTER_CRYPTO_SECRET;
@@ -4150,10 +4196,31 @@ void handleHeartbeat() {
 
             String devName = getDeviceNameByIpOrId(reqIp, deviceId);
 
-            String status = "ok";
+            int slotIdx = findSlotIndexForDevice(deviceId, reqIp);
+            int daysLeft = -1;
+            int expStatus = getSlotExpirationStatus(slotIdx, ts, daysLeft);
+
+            String status = (expStatus == 2) ? "slot_expired" : "ok";
             String json = "{\"status\":\"" + status + "\",\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\",\"price\":" + String(coinPrice) + ",\"minutes\":" + String(minutesPerCoin);
             if (devName.length() > 0) {
                 json += ",\"device_name\":\"" + devName + "\"";
+            }
+            if (slotIdx >= 0) {
+                json += ",\"slot_num\":" + String(licenseSlots[slotIdx].slotNum);
+                char expBuf[24];
+                snprintf(expBuf, sizeof(expBuf), "%llu", (unsigned long long)licenseSlots[slotIdx].expiresAt);
+                json += ",\"expires_at\":" + String(expBuf);
+            }
+            if (expStatus == 2) {
+                // HARD LOCKDOWN: Slot is expired on ESP32
+                json += ",\"slot_expired\":true,\"slot_status\":\"expired\",\"slot_warning\":false";
+                json += ",\"message\":\"Slot license expired on ESP32. Kiosk entered hard lockdown.\"";
+            } else if (expStatus == 1) {
+                // WARNING: Slot nearing expiration
+                json += ",\"slot_expired\":false,\"slot_status\":\"warning\",\"slot_warning\":true";
+                json += ",\"slot_warning_days_left\":" + String(daysLeft);
+            } else {
+                json += ",\"slot_expired\":false,\"slot_status\":\"active\",\"slot_warning\":false";
             }
             json += "}";
             webServer.send(200, "application/json", json);
@@ -4492,6 +4559,19 @@ void processWebSocketServer() {
             if (!checkReplayProtection(reqDeviceId, ts)) {
                 Serial.printf("[-] WS Auth Failed for %s: Replay Detected\n", reqDeviceId.c_str());
                 newClient.print("HTTP/1.1 403 Forbidden\r\n\r\nReplay Detected");
+                newClient.stop();
+                return;
+            }
+
+            // 1c. Verify Slot Expiration & Lockdown
+            String clientIp = newClient.remoteIP().toString();
+            int wsSlotIdx = findSlotIndexForDevice(reqDeviceId, clientIp);
+            int wsDaysLeft = -1;
+            int wsExpStatus = getSlotExpirationStatus(wsSlotIdx, ts, wsDaysLeft);
+            if (wsExpStatus == 2) {
+                Serial.printf("[-] WS Mutex Rejected for %s: Slot Expired / Lockdown Active (Slot #%d)\n", 
+                    reqDeviceId.c_str(), (wsSlotIdx >= 0) ? licenseSlots[wsSlotIdx].slotNum : 0);
+                newClient.print("HTTP/1.1 423 Locked\r\n\r\nSLOT_EXPIRED");
                 newClient.stop();
                 return;
             }

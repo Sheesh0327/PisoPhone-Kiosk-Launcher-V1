@@ -34,12 +34,13 @@ class KioskOverlay(
     private val minutesPerCoinFlow: StateFlow<Int>,
     private val deviceIpFlow: StateFlow<String> = kotlinx.coroutines.flow.MutableStateFlow("127.0.0.1"),
     private val batteryStatusFlow: StateFlow<BatteryStatus> = kotlinx.coroutines.flow.MutableStateFlow(BatteryStatus()),
+    private val slotWarningDaysLeftFlow: StateFlow<Int?> = kotlinx.coroutines.flow.MutableStateFlow(null),
     private val onInsertCoinClick: () -> Unit,
     private val onDoneClick: () -> Unit,
     private val onThemeChange: () -> Unit,
     private val onActivateClick: (String) -> Unit = {}
 ) {
-    private val lockScreenOverlay = LockScreenOverlay(context, appStateFlow, paymentTimeoutFlow, coinsInsertedFlow, themeIndexFlow, isEsp32OnlineFlow, esp32MacAddressFlow, isSlotBusyFlow, pricePerCoinFlow, minutesPerCoinFlow, deviceIpFlow, batteryStatusFlow, onInsertCoinClick, onDoneClick, onThemeChange, onActivateClick)
+    private val lockScreenOverlay = LockScreenOverlay(context, appStateFlow, paymentTimeoutFlow, coinsInsertedFlow, themeIndexFlow, isEsp32OnlineFlow, esp32MacAddressFlow, isSlotBusyFlow, pricePerCoinFlow, minutesPerCoinFlow, deviceIpFlow, batteryStatusFlow, slotWarningDaysLeftFlow, onInsertCoinClick, onDoneClick, onThemeChange, onActivateClick)
     private val floatingBallOverlay = FloatingBallOverlay(context, appStateFlow, sessionTimeFlow, paymentTimeoutFlow, coinsInsertedFlow, themeIndexFlow, isEsp32OnlineFlow, isSlotBusyFlow, pricePerCoinFlow, minutesPerCoinFlow, batteryStatusFlow, onInsertCoinClick, onDoneClick)
     
     fun show() {
@@ -76,6 +77,7 @@ class LockScreenOverlay(
     private val minutesPerCoinFlow: StateFlow<Int>,
     private val deviceIpFlow: StateFlow<String> = kotlinx.coroutines.flow.MutableStateFlow("127.0.0.1"),
     private val batteryStatusFlow: StateFlow<BatteryStatus> = kotlinx.coroutines.flow.MutableStateFlow(BatteryStatus()),
+    private val slotWarningDaysLeftFlow: StateFlow<Int?> = kotlinx.coroutines.flow.MutableStateFlow(null),
     private val onInsertCoinClick: () -> Unit,
     private val onDoneClick: () -> Unit,
     private val onThemeChange: () -> Unit,
@@ -177,6 +179,7 @@ class LockScreenOverlay(
             val deviceIp by deviceIpFlow.collectAsState()
             val batteryStatus by batteryStatusFlow.collectAsState()
             val esp32MacAddress by esp32MacAddressFlow.collectAsState()
+            val slotWarningDaysLeft by slotWarningDaysLeftFlow.collectAsState()
             val securityUpdateVersion by com.pisophone.kiosk.security.HardwareLockManager.securityUpdateVersion.collectAsState()
             
             val isSetupReady = remember(securityUpdateVersion) { 
@@ -232,7 +235,8 @@ class LockScreenOverlay(
                         deviceIp = deviceIp,
                         themeIndex = themeIndex,
                         batteryStatus = batteryStatus,
-                        onThemeChange = onThemeChange
+                        onThemeChange = onThemeChange,
+                        slotWarningDaysLeft = slotWarningDaysLeft
                     )
                 } else if (appState == 1 || appState == 3 || coinsInserted > 0) {
                     BlockScreen(
@@ -248,7 +252,8 @@ class LockScreenOverlay(
                         deviceIp = deviceIp,
                         themeIndex = themeIndex,
                         batteryStatus = batteryStatus,
-                        onThemeChange = onThemeChange
+                        onThemeChange = onThemeChange,
+                        slotWarningDaysLeft = slotWarningDaysLeft
                     )
                 }
             }

@@ -53,6 +53,7 @@ fun BlockScreen(
     batteryStatus: BatteryStatus = BatteryStatus(),
     onThemeChange: () -> Unit = {},
     buttonText: String = "READY FOR COIN",
+    slotWarningDaysLeft: Int? = null,
     modifier: Modifier = Modifier.fillMaxSize()
 ) {
     data class OverlayTheme(
@@ -173,6 +174,11 @@ fun BlockScreen(
             // Battery Alert Banner
             if (batteryStatus.alertState != BatteryAlertState.NONE) {
                 BatteryAlertBanner(batteryStatus = batteryStatus)
+            }
+
+            // Slot Expiration Warning Banner
+            if (slotWarningDaysLeft != null && slotWarningDaysLeft >= 0) {
+                SlotExpirationWarningBanner(daysLeft = slotWarningDaysLeft)
             }
 
             // Scrollable Content

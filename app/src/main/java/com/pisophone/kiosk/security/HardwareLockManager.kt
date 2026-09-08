@@ -30,6 +30,10 @@ object HardwareLockManager {
     private const val KEY_BOUND_TIMESTAMP = "bound_timestamp_ms"
     private const val KEY_BOUND_SIGNATURE = "bound_hardware_sig"
     private const val KEY_HARDWARE_LOCKED = "hardware_lock_enforced"
+    private const val KEY_SLOT_EXPIRED = "slot_expired_lockdown"
+    private const val KEY_SLOT_EXPIRED_REASON = "slot_expired_reason"
+    private const val KEY_SLOT_NUM = "slot_number"
+    private const val KEY_SLOT_EXPIRY_TS = "slot_expiry_timestamp"
 
     /**
      * Computes a stable, canonical hardware fingerprint derived strictly from immutable hardware attributes.
@@ -134,10 +138,51 @@ object HardwareLockManager {
     }
 
     /**
-     * Checks if the kiosk application is authorized to operate on this hardware (single auth path).
+     * Checks if the kiosk application is authorized to operate on this hardware and licensed slot (single auth path).
      */
     fun isAppAllowedToRun(context: Context): Boolean {
-        return isHardwareAuthorized(context)
+        return isHardwareAuthorized(context) && !isSlotLockedDown(context)
+    }
+
+    /**
+     * Returns true if the ESP32 controller has marked this device's slot as expired,
+     * triggering a hard lockdown.
+     */
+    fun isSlotLockedDown(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_SLOT_EXPIRED, false)
+    }
+
+    /**
+     * Details regarding the slot expiration lockdown: (Reason, Slot Number, Expiration Timestamp).
+     */
+    fun getSlotLockdownDetails(context: Context): Triple<String, Int, Long> {
+        val prefs = getPrefs(context)
+        val reason = prefs.getString(KEY_SLOT_EXPIRED_REASON, "Slot license expired in ESP32 memory") ?: "Slot license expired in ESP32 memory"
+        val slotNum = prefs.getInt(KEY_SLOT_NUM, 0)
+        val expiryTs = prefs.getLong(KEY_SLOT_EXPIRY_TS, 0L)
+        return Triple(reason, slotNum, expiryTs)
+    }
+
+    /**
+     * Sets or clears the hard lockdown triggered by the ESP32's authoritative slot memory.
+     */
+    fun setSlotLockdown(context: Context, locked: Boolean, reason: String = "", slotNum: Int = 0, expiryTs: Long = 0L) {
+        val prefs = getPrefs(context)
+        val currentLocked = prefs.getBoolean(KEY_SLOT_EXPIRED, false)
+        if (currentLocked != locked || reason.isNotEmpty()) {
+            prefs.edit()
+                .putBoolean(KEY_SLOT_EXPIRED, locked)
+                .putString(KEY_SLOT_EXPIRED_REASON, reason)
+                .putInt(KEY_SLOT_NUM, slotNum)
+                .putLong(KEY_SLOT_EXPIRY_TS, expiryTs)
+                .apply()
+            notifySecurityChanged()
+            if (locked) {
+                Log.w(TAG, "🔒 HARD LOCKDOWN ENFORCED: Slot #$slotNum expired on ESP32 ($reason)")
+            } else {
+                Log.i(TAG, "🔓 Slot lockdown lifted: Valid slot verified on ESP32")
+            }
+        }
     }
 
     /**

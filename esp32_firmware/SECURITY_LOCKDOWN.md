@@ -52,3 +52,18 @@ In this system, a **256-bit High-Entropy Master Secret Key** (`MASTER_CRYPTO_SEC
 5. You run `python keygen.py <MAC_ADDRESS> <DEVICE_SECRET>` to generate their unique 12-character activation key (e.g., `D6246BB8520D`).
 6. The customer enters the key into the app. The app sends it to the ESP32 `/activate` endpoint.
 7. The ESP32 verifies the HMAC signature natively using its configured device secret. If valid, it burns `licensed = true` into its NVS and immediately enables coin processing.
+
+## 4. ESP32 Slot Memory Expiration & Hard Lockdown Architecture
+
+In multi-seat / per-slot licensing deployments, the ESP32 acts as the authoritative master clock and license governor for all connected Android terminals.
+
+### Slot Expiration & Warning States
+
+- **Nearing Expiration (<= 7 Days)**:
+  - During periodic heartbeat exchanges, the ESP32 returns `"slot_warning": true` and `"slot_warning_days_left": N`.
+  - The Android kiosk displays an amber banner warning the operator that the slot license is expiring soon, without interrupting kiosk gameplay or coin acceptance.
+- **Hard Lockdown (Expired)**:
+  - Once a slot's `expiresAt` timestamp is reached in the ESP32's NVS memory, the ESP32 flags the terminal as expired (`"slot_expired": true`).
+  - **No Coin Registers**: The ESP32 immediately terminates the terminal's WebSocket connection and rejects any WebSocket arming attempts with `HTTP 423 Locked / SLOT_EXPIRED`. The coin mechanism will never register or credit coins to this terminal.
+  - **Terminal Lock Screen**: The Android kiosk transitions into a persistent **Hard Lockdown Screen** (`SLOT LICENSE EXPIRED - HARD LOCKDOWN ACTIVE`), dismissing floating balls and locking out user interaction.
+  - **Continuous Heartbeat Reconnect**: The locked terminal continues sending periodic heartbeats to the ESP32. As soon as the operator purchases a new slot license and the ESP32 slot memory is renewed, the ESP32 signals `"slot_expired": false`, and the Android app automatically lifts the lockdown without requiring a device reboot.

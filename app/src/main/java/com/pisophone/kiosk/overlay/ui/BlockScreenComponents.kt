@@ -255,3 +255,48 @@ fun BlockScreenRateTableCard(
         }
     }
 }
+
+@Composable
+fun SlotExpirationWarningBanner(
+    daysLeft: Int?,
+    modifier: Modifier = Modifier
+) {
+    if (daysLeft == null || daysLeft < 0) return
+
+    val daysText = if (daysLeft == 0) "TODAY" else if (daysLeft == 1) "IN 1 DAY" else "IN $daysLeft DAYS"
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 6.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0x33F59E0B)),
+        shape = RoundedCornerShape(12.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF59E0B))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Filled.Warning,
+                contentDescription = "Warning",
+                tint = Color(0xFFF59E0B),
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "⚠️ SLOT LICENSE EXPIRES $daysText",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color(0xFFFBBF24),
+                    letterSpacing = 0.5.sp
+                )
+                Text(
+                    text = "Renew your slot license on the ESP32 to prevent kiosk lockdown.",
+                    fontSize = 11.sp,
+                    color = Color(0xFFFEF3C7)
+                )
+            }
+        }
+    }
+}

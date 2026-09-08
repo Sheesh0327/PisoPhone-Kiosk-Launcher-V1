@@ -353,6 +353,33 @@ class KioskService : Service() {
                 override fun onArmSuccess() {
                     stateManager.isEsp32Online.value = true
                 }
+
+                override fun onSlotWarning(daysLeft: Int, expiresAt: Long, slotNum: Int, message: String) {
+                    stateManager.slotWarningDaysLeft.value = daysLeft
+                    stateManager.slotExpiryMessage.value = message
+                    stateManager.slotNumber.value = slotNum
+                }
+
+                override fun onSlotLockdown(reason: String, slotNum: Int, expiresAt: Long) {
+                    stateManager.isSlotExpired.value = true
+                    stateManager.slotExpiryMessage.value = reason
+                    stateManager.slotNumber.value = slotNum
+                    stateManager.slotWarningDaysLeft.value = 0
+                    stateManager.sessionTimeRemaining.value = 0
+                    stateManager.appState.value = 0
+                    stateManager.saveState()
+                    HardwareLockManager.setSlotLockdown(applicationContext, true, reason, slotNum, expiresAt)
+                }
+
+                override fun onSlotRestored() {
+                    if (stateManager.isSlotExpired.value || HardwareLockManager.isSlotLockedDown(applicationContext)) {
+                        stateManager.isSlotExpired.value = false
+                        stateManager.slotExpiryMessage.value = ""
+                        stateManager.slotWarningDaysLeft.value = null
+                        HardwareLockManager.setSlotLockdown(applicationContext, false)
+                        Log.i(TAG, "Slot renewed on ESP32: Hard lockdown cleared automatically.")
+                    }
+                }
             }
         )
         if (!stateManager.esp32Ip.isNullOrBlank()) {
@@ -373,6 +400,19 @@ class KioskService : Service() {
         }
         
         setupOverlay()
+        scope.launch {
+            HardwareLockManager.securityUpdateVersion.collect {
+                val allowed = HardwareLockManager.isAppAllowedToRun(this@KioskService)
+                Handler(Looper.getMainLooper()).post {
+                    if (!allowed) {
+                        overlay?.remove()
+                        overlay = null
+                    } else if (overlay == null) {
+                        setupOverlay()
+                    }
+                }
+            }
+        }
         startServer()
         esp32Manager.triggerCandidateDiscovery(stateManager.deviceIp.value)
         esp32Manager.startHeartbeatLoop { stateManager.deviceIp.value }
@@ -530,6 +570,21 @@ class KioskService : Service() {
                 override fun onTriggerAction(action: String) {
                     Handler(Looper.getMainLooper()).post {
                         when (action) {
+                            "slot_lockdown" -> {
+                                stateManager.isSlotExpired.value = true
+                                stateManager.sessionTimeRemaining.value = 0
+                                stateManager.appState.value = 0
+                                stateManager.saveState()
+                                HardwareLockManager.setSlotLockdown(applicationContext, true, "Lockdown signal pushed from ESP32")
+                                Toast.makeText(this@KioskService, "🔒 Slot Expired: Hard Lockdown Active", Toast.LENGTH_LONG).show()
+                            }
+                            "slot_restore", "slot_renew" -> {
+                                stateManager.isSlotExpired.value = false
+                                stateManager.slotExpiryMessage.value = ""
+                                stateManager.slotWarningDaysLeft.value = null
+                                HardwareLockManager.setSlotLockdown(applicationContext, false)
+                                Toast.makeText(this@KioskService, "🔓 Slot Renewed: Lockdown Lifted", Toast.LENGTH_SHORT).show()
+                            }
                             "vibrate" -> HardwareFeedback.triggerVibration(this@KioskService, longArrayOf(0, 1500))
                             "sound" -> {
                                 val ringtone = android.media.RingtoneManager.getRingtone(applicationContext, android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION))
@@ -642,6 +697,7 @@ class KioskService : Service() {
             minutesPerCoinFlow = stateManager.minutesPerCoin,
             deviceIpFlow = stateManager.deviceIp,
             batteryStatusFlow = systemMonitor.batteryStatus,
+            slotWarningDaysLeftFlow = stateManager.slotWarningDaysLeft,
             onInsertCoinClick = { 
                 if (stateManager.appState.value == 4) return@KioskOverlay
                 if (stateManager.appState.value == 2) {

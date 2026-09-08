@@ -26,6 +26,10 @@ class KioskStateManager(private val context: Context) {
     val pricePerCoin = MutableStateFlow(5.0)
     val minutesPerCoin = MutableStateFlow(30)
     var esp32Ip: String? = null
+    val slotWarningDaysLeft = MutableStateFlow<Int?>(null)
+    val isSlotExpired = MutableStateFlow(false)
+    val slotExpiryMessage = MutableStateFlow("")
+    val slotNumber = MutableStateFlow(0)
 
     init {
         deviceIp.value = getLocalIpAddress()
@@ -103,6 +107,10 @@ class KioskStateManager(private val context: Context) {
             }
             
             coinsInserted.value = 0
+            val (reason, slotNum, _) = com.pisophone.kiosk.security.HardwareLockManager.getSlotLockdownDetails(context)
+            isSlotExpired.value = com.pisophone.kiosk.security.HardwareLockManager.isSlotLockedDown(context)
+            slotExpiryMessage.value = reason
+            slotNumber.value = slotNum
             saveState(savedTxSet)
             savedTxSet
         } catch (e: Exception) {
