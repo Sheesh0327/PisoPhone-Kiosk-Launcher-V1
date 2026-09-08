@@ -698,8 +698,17 @@ class KioskService : Service() {
             deviceIpFlow = stateManager.deviceIp,
             batteryStatusFlow = systemMonitor.batteryStatus,
             slotWarningDaysLeftFlow = stateManager.slotWarningDaysLeft,
+            isSlotExpiredFlow = stateManager.isSlotExpired,
+            slotExpiryReasonFlow = stateManager.slotExpiryMessage,
             onInsertCoinClick = { 
                 if (stateManager.appState.value == 4) return@KioskOverlay
+                if (stateManager.isSlotExpired.value || com.pisophone.kiosk.security.HardwareLockManager.isSlotLockedDown(this@KioskService)) {
+                    Log.w(TAG, "Coin insertion blocked: Device slot is expired on ESP32.")
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        android.widget.Toast.makeText(applicationContext, "Device expired. Please add credits to pair device to ESP32.", android.widget.Toast.LENGTH_LONG).show()
+                    }
+                    return@KioskOverlay
+                }
                 if (stateManager.appState.value == 2) {
                     stateManager.appState.value = 3
                 } else {

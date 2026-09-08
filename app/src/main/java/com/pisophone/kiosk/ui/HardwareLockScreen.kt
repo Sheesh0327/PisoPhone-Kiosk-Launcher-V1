@@ -69,7 +69,7 @@ fun HardwareLockScreen(
     }
 
     val headerDescription = when {
-        isSlotLocked -> "This terminal's slot license has expired in the ESP32 Master controller's memory. The app will not accept coins and will remain locked until a new slot is purchased on the ESP32."
+        isSlotLocked -> "This terminal's slot has expired in the ESP32 Master controller's memory. The app will not accept coins and will remain locked until credits are added to pair the device to the ESP32."
         boundHwId.isEmpty() -> "This kiosk terminal has not been provisioned. Connect this device to an authorized PisoPhone ESP32 Box via WebADB to pair a licensed terminal seat."
         else -> "This kiosk application is cryptographically sealed to its original physical hardware to prevent unauthorized copying, disk cloning, or firmware extraction."
     }
@@ -188,7 +188,7 @@ fun HardwareLockScreen(
                         Text("Reason: $slotReason", fontSize = 12.sp, color = Color(0xFFF87171))
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            "🔄 Automatic Reconnect Active: The app keeps heartbeating to the ESP32 and will auto-unlock once a new slot license is purchased on the controller.",
+                            "🔄 Automatic Reconnect Active: The app continuously heartbeats to the ESP32 and will auto-unlock once credits are added on the ESP32.",
                             fontSize = 11.sp,
                             color = Color(0xFF38BDF8),
                             lineHeight = 16.sp

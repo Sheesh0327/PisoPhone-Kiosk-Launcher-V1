@@ -70,7 +70,106 @@
             </div>
         </div>
 
-        <div id="purchaseUi" class="hidden w-full max-w-5xl grid grid-cols-1 md:grid-cols-2 gap-8 animate-fade-in-up delay-200">
+        <div id="purchaseUi" class="hidden w-full max-w-5xl flex flex-col gap-8 animate-fade-in-up delay-200">
+            <!-- Payment Emulator & Credit Vault Section -->
+            <div class="glass-card rounded-3xl p-8 shadow-2xl relative overflow-hidden border-t-2 border-emerald-400 bg-slate-900/90">
+                <div class="absolute top-0 right-0 p-4">
+                    <span class="bg-emerald-500/20 text-emerald-300 text-[10px] font-black uppercase tracking-widest py-1 px-3 rounded-full border border-emerald-500/30">Payment Emulator</span>
+                </div>
+
+                <div class="flex items-center gap-4 mb-6">
+                    <div class="w-12 h-12 bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 rounded-2xl flex items-center justify-center text-2xl">
+                        💳
+                    </div>
+                    <div>
+                        <h2 class="text-2xl font-black text-white">Buy Terminal Credits (Payment Emulator)</h2>
+                        <p class="text-slate-400 text-xs mt-0.5">1 Credit pairs &amp; activates 1 Android terminal. Manual operator allocation keeps unused credits safe.</p>
+                    </div>
+                </div>
+
+                <!-- ESP32 Target Config -->
+                <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-5 mb-6">
+                    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div class="flex-1">
+                            <label class="block text-slate-300 text-xs font-bold uppercase tracking-wider mb-1">ESP32 Master Controller Address</label>
+                            <div class="flex items-center gap-2">
+                                <input type="text" id="esp32HostInput" value="192.168.4.1" placeholder="192.168.4.1 or IP" class="bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white font-mono w-full sm:w-64 focus:outline-none focus:border-emerald-500">
+                                <button type="button" onclick="checkEsp32VaultStatus()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold px-4 py-2 rounded-xl text-xs transition border border-slate-700">
+                                    🔄 Check Vault
+                                </button>
+                            </div>
+                        </div>
+                        <div id="vaultLiveStatus" class="flex items-center gap-3 text-xs bg-slate-900/90 px-4 py-2.5 rounded-xl border border-slate-800 text-slate-400">
+                            <span>Vault Balance: <b>Unknown (Click Check)</b></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Credit Products Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
+                    <!-- 1 Month Credit -->
+                    <div class="bg-slate-950/60 border border-slate-800 hover:border-emerald-500/50 rounded-2xl p-5 flex flex-col justify-between transition">
+                        <div>
+                            <div class="flex justify-between items-start mb-3">
+                                <span class="text-xs font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20">Monthly</span>
+                                <span class="text-2xl font-black text-white">₱50</span>
+                            </div>
+                            <h4 class="font-bold text-white text-base mb-1">1-Month Credit</h4>
+                            <p class="text-xs text-slate-400 mb-4">Adds 30 days of pairing and coin slot operation to a single terminal seat. Stacks onto existing days.</p>
+                        </div>
+                        <button type="button" onclick="emulatePayment('month')" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3 rounded-xl transition text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20">
+                            ⚡ Emulate Payment (₱50)
+                        </button>
+                    </div>
+
+                    <!-- 1 Year Credit -->
+                    <div class="bg-slate-950/60 border border-emerald-500/40 rounded-2xl p-5 flex flex-col justify-between relative">
+                        <div class="absolute -top-3 right-4 bg-emerald-500 text-slate-950 font-black text-[10px] uppercase px-2.5 py-0.5 rounded-full shadow">
+                            Best Value
+                        </div>
+                        <div>
+                            <div class="flex justify-between items-start mb-3">
+                                <span class="text-xs font-bold uppercase tracking-wider text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-lg border border-blue-500/20">Annual</span>
+                                <div>
+                                    <span class="text-2xl font-black text-white">₱500</span>
+                                    <span class="text-[10px] text-emerald-400 block line-through">₱600</span>
+                                </div>
+                            </div>
+                            <h4 class="font-bold text-white text-base mb-1">1-Year Credit</h4>
+                            <p class="text-xs text-slate-400 mb-4">Adds 365 days of pairing and operation (₱41.60/month). Stacks onto remaining days without losing time.</p>
+                        </div>
+                        <button type="button" onclick="emulatePayment('year')" class="w-full bg-blue-500 hover:bg-blue-400 text-white font-black py-3 rounded-xl transition text-xs flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20">
+                            👑 Emulate Payment (₱500)
+                        </button>
+                    </div>
+
+                    <!-- 2-Minute Test Credit -->
+                    <div class="bg-slate-950/60 border border-amber-500/30 rounded-2xl p-5 flex flex-col justify-between">
+                        <div>
+                            <div class="flex justify-between items-start mb-3">
+                                <span class="text-xs font-bold uppercase tracking-wider text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20">Testing Only</span>
+                                <span class="text-2xl font-black text-amber-400">FREE</span>
+                            </div>
+                            <h4 class="font-bold text-white text-base mb-1">2-Minute Test Credit</h4>
+                            <p class="text-xs text-slate-400 mb-4">Adds 2 minutes of active time to quickly test warning banners and automatic lockdown behavior on expiration.</p>
+                        </div>
+                        <button type="button" onclick="emulatePayment('test')" class="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-black py-3 rounded-xl transition text-xs flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20">
+                            🧪 Emulate Test Credit (2 Min)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Live Emulator Result Box -->
+                <div id="emulatorResultBox" class="hidden bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs font-mono">
+                    <div class="flex items-center justify-between mb-2">
+                        <span id="emulatorStatusBadge" class="font-bold text-emerald-400">SUCCESS</span>
+                        <span class="text-slate-500 text-[11px]" id="emulatorTimestamp"></span>
+                    </div>
+                    <div id="emulatorMessage" class="text-slate-300"></div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
             <!-- Box Ordering Card (Option B: Flexible Seats) -->
             <div class="glass-card rounded-3xl p-8 shadow-2xl relative overflow-hidden border-t border-emerald-500/40 flex flex-col justify-between">
                 <div class="absolute top-0 right-0 p-4">
@@ -161,6 +260,7 @@
                     <span>Generate Signed Slot Token</span>
                 </button>
             </div>
+            </div>
         </div>
 
         <!-- Generated Token Modal -->
@@ -184,9 +284,9 @@
                     <button onclick="copyGeneratedToken()" class="flex-1 bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold py-3 rounded-xl transition text-xs flex items-center justify-center gap-2 shadow-lg shadow-teal-500/20">
                         📋 Copy Token
                     </button>
-                    <a href="http://kioskmanager.local" target="_blank" class="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-xl transition text-xs flex items-center justify-center gap-2 border border-slate-700">
-                        🌐 Open ESP32 Portal
-                    </a>
+                    <button onclick="document.getElementById('generatedTokenModal').classList.add('hidden')" class="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-xl transition text-xs flex items-center justify-center gap-2 border border-slate-700">
+                        Done
+                    </button>
                 </div>
             </div>
         </div>
@@ -248,7 +348,7 @@
             existingOrders.unshift(order);
             localStorage.setItem('piso_box_orders', JSON.stringify(existingOrders));
 
-            alert(`🎉 Order Confirmed! Reference: ${order.id}\n\nPackage: ${seats}-Terminal Seat Coin Slot Box\nTotal: ${price}\nShipping to: ${address}\n\nOnce your box arrives, power it on and connect your browser or phone to your local Wi-Fi, then open http://kioskmanager.local to begin provisioning!`);
+            alert(`🎉 Order Confirmed! Reference: ${order.id}\n\nPackage: ${seats}-Terminal Seat Coin Slot Box\nTotal: ${price}\nShipping to: ${address}\n\nOnce your box arrives, power it on and connect your browser or phone to the local kiosk network to begin provisioning!`);
             window.location.href = 'index.html';
         }
 
@@ -308,6 +408,73 @@
             }).catch(() => {
                 prompt('Copy your token:', token);
             });
+        }
+
+        function getEsp32Host() {
+            const val = document.getElementById('esp32HostInput').value.trim();
+            return val || '192.168.4.1';
+        }
+
+        async function checkEsp32VaultStatus() {
+            const host = getEsp32Host();
+            const statusEl = document.getElementById('vaultLiveStatus');
+            statusEl.innerHTML = `<span class="text-amber-400">Connecting to ${host}...</span>`;
+            
+            try {
+                const res = await fetch(`http://${host}/api/credits/status`, { method: 'GET' });
+                const data = await res.json();
+                statusEl.innerHTML = `
+                    <span class="text-emerald-400 font-bold">🟢 Connected:</span>
+                    <span>Monthly: <b>${data.monthly}</b></span> |
+                    <span>Annual: <b>${data.annual}</b></span> |
+                    <span>Test (2m): <b>${data.test}</b></span>
+                `;
+            } catch (err) {
+                statusEl.innerHTML = `<span class="text-rose-400">⚠️ Offline / Unreachable at ${host}</span>`;
+            }
+        }
+
+        async function emulatePayment(type) {
+            const host = getEsp32Host();
+            const resultBox = document.getElementById('emulatorResultBox');
+            const badge = document.getElementById('emulatorStatusBadge');
+            const msgEl = document.getElementById('emulatorMessage');
+            const tsEl = document.getElementById('emulatorTimestamp');
+
+            resultBox.classList.remove('hidden');
+            badge.className = 'font-bold text-amber-400';
+            badge.textContent = 'TRANSACTING...';
+            tsEl.textContent = new Date().toLocaleTimeString();
+            msgEl.textContent = `Emulating gateway payment for 1 x ${type} credit -> sending to ESP32 (${host})...`;
+
+            try {
+                const res = await fetch(`http://${host}/api/credits/emulate_payment?type=${type}&count=1`, {
+                    method: 'POST'
+                });
+                const data = await res.json();
+                if (data.success) {
+                    badge.className = 'font-bold text-emerald-400';
+                    badge.textContent = 'PAYMENT EMULATED & VAULT CREDITED';
+                    msgEl.innerHTML = `
+                        ✅ ${data.message}<br/>
+                        <span class="text-slate-400">New Vault Balance: Monthly = <b>${data.monthly}</b>, Annual = <b>${data.annual}</b>, Test = <b>${data.test}</b></span><br/>
+                        <span class="text-emerald-300 font-semibold mt-1 inline-block">Credits are now stored in ESP32 hardware memory. Ready to allocate to any terminal slot.</span>
+                    `;
+                    checkEsp32VaultStatus();
+                } else {
+                    badge.className = 'font-bold text-rose-400';
+                    badge.textContent = 'ERROR';
+                    msgEl.textContent = data.error || 'Failed to credit ESP32 vault.';
+                }
+            } catch (err) {
+                badge.className = 'font-bold text-rose-400';
+                badge.textContent = 'NETWORK TIMEOUT';
+                msgEl.innerHTML = `
+                    ❌ Unable to connect to ESP32 at <b>http://${host}</b>.<br/>
+                    • Ensure your computer/phone is connected to the same Wi-Fi network as the ESP32 (or PisoPhone-Setup AP).<br/>
+                    • Error details: ${err.message}
+                `;
+            }
         }
     </script>
 </body>

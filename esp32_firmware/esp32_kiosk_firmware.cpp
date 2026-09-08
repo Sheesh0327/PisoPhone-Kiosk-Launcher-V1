@@ -280,12 +280,10 @@ bool pairDeviceToSlot(int slotNum, String devId, String ip, String name) {
     if (ip.length() > 0) licenseSlots[targetIdx].ip = ip;
     if (name.length() > 0) licenseSlots[targetIdx].name = name;
     licenseSlots[targetIdx].active = true;
-    if (licenseSlots[targetIdx].expiresAt == 0) {
-        licenseSlots[targetIdx].expiresAt = 1798761600000ULL; // 1 Year Default
-    }
+    // Note: Credit-based activation requires manual or voucher credit allocation to pair/arm
 
     saveSlotLicenses();
-    Serial.printf("[+] Paired device %s (%s) to Slot #%d\n", devId.c_str(), ip.c_str(), slotNum);
+    Serial.printf("[+] Paired device %s (%s) to Slot #%d (requires credit allocation to arm)\n", devId.c_str(), ip.c_str(), slotNum);
     return true;
 }
 
@@ -319,7 +317,96 @@ int findSlotIndexForDevice(String devId, String ip) {
     return -1;
 }
 
-// Returns: 0 = Active, 1 = Warning (<= 7 days left), 2 = Expired / Inactive
+// ============================================================================
+// CREDIT-BASED ACTIVATION & EXPIRATION VAULT (NVS-BACKED)
+// ============================================================================
+int monthlyCredits = 0; // 1 Credit = 30 Days (₱50)
+int annualCredits  = 0; // 1 Credit = 365 Days (₱500)
+int testCredits    = 0; // 1 Credit = 2 Minutes (For rapid expiration testing)
+
+void saveCreditVault() {
+    prefs.begin("kiosk_cfg", false);
+    prefs.putInt("cr_monthly", monthlyCredits);
+    prefs.putInt("cr_annual", annualCredits);
+    prefs.putInt("cr_test", testCredits);
+    prefs.end();
+}
+
+void loadCreditVault() {
+    prefs.begin("kiosk_cfg", false);
+    monthlyCredits = prefs.getInt("cr_monthly", 0);
+    annualCredits  = prefs.getInt("cr_annual", 0);
+    testCredits    = prefs.getInt("cr_test", 0);
+    prefs.end();
+}
+
+// Monotonic Master Clock derived from synchronized Android telemetry timestamps
+uint64_t lastMasterTimestamp = 0;
+unsigned long lastMasterMillis = 0;
+
+uint64_t getCurrentMasterTimeMs() {
+    if (lastMasterTimestamp > 0) {
+        return lastMasterTimestamp + (uint64_t)(millis() - lastMasterMillis);
+    }
+    // Safe baseline if telemetry has not arrived yet
+    return 1772950000000ULL + (uint64_t)millis();
+}
+
+void updateMasterTime(uint64_t ts) {
+    if (ts > lastMasterTimestamp) {
+        lastMasterTimestamp = ts;
+        lastMasterMillis = millis();
+    }
+}
+
+// Allocates 1 credit from vault to extend or activate a terminal slot with stacking
+bool allocateCreditToSlot(int slotNum, String type, String& errorMsg) {
+    if (slotNum < 1 || slotNum > maxLicensedSlots) {
+        errorMsg = "Invalid slot number";
+        return false;
+    }
+    int idx = slotNum - 1;
+    type.toLowerCase();
+    type.trim();
+
+    uint64_t durationMs = 0;
+    if (type == "month") {
+        if (monthlyCredits < 1) {
+            errorMsg = "No monthly credits available in vault. Please purchase credits on website.";
+            return false;
+        }
+        monthlyCredits--;
+        durationMs = 30ULL * 86400000ULL; // 30 days
+    } else if (type == "year") {
+        if (annualCredits < 1) {
+            errorMsg = "No annual credits available in vault. Please purchase credits on website.";
+            return false;
+        }
+        annualCredits--;
+        durationMs = 365ULL * 86400000ULL; // 365 days
+    } else if (type == "test") {
+        if (testCredits > 0) testCredits--;
+        durationMs = 120000ULL; // 2 minutes (120,000 ms)
+    } else {
+        errorMsg = "Unknown credit type. Must be 'month', 'year', or 'test'";
+        return false;
+    }
+
+    uint64_t currentMs = getCurrentMasterTimeMs();
+    // Stacking: If slot has not expired yet, stack onto remaining time! Otherwise, start from current master time.
+    uint64_t baseTs = (licenseSlots[idx].expiresAt > currentMs) ? licenseSlots[idx].expiresAt : currentMs;
+    licenseSlots[idx].expiresAt = baseTs + durationMs;
+    licenseSlots[idx].active = true;
+
+    saveCreditVault();
+    saveSlotLicenses();
+    Serial.printf("[+] Credit Allocated: Slot #%d +%s (New Expiry: %llu). Vault: M=%d, Y=%d, T=%d\n",
+        slotNum, type.c_str(), (unsigned long long)licenseSlots[idx].expiresAt,
+        monthlyCredits, annualCredits, testCredits);
+    return true;
+}
+
+// Returns: 0 = Active, 1 = Warning (<= 7 days left, or <= 1 min if test), 2 = Expired / Inactive / Uncredited
 int getSlotExpirationStatus(int slotIdx, uint64_t currentMs, int& outDaysLeft) {
     outDaysLeft = -1;
     if (slotIdx < 0 || slotIdx >= maxLicensedSlots) {
@@ -329,8 +416,8 @@ int getSlotExpirationStatus(int slotIdx, uint64_t currentMs, int& outDaysLeft) {
         return 2; // Inactive
     }
     if (licenseSlots[slotIdx].expiresAt == 0) {
-        outDaysLeft = 999;
-        return 0; // Unbounded / default
+        outDaysLeft = 0;
+        return 2; // Uncredited slot: requires credit allocation to pair/arm
     }
     if (currentMs >= licenseSlots[slotIdx].expiresAt) {
         outDaysLeft = 0;
@@ -339,8 +426,9 @@ int getSlotExpirationStatus(int slotIdx, uint64_t currentMs, int& outDaysLeft) {
     uint64_t diff = licenseSlots[slotIdx].expiresAt - currentMs;
     uint64_t oneDayMs = 86400000ULL;
     outDaysLeft = (int)(diff / oneDayMs);
-    if (diff <= (7ULL * oneDayMs)) {
-        return 1; // Nearing expiration (within 7 days)
+    // Warning if <= 7 days left, or if test credit under 60 seconds
+    if (diff <= (7ULL * oneDayMs) || (diff <= 60000ULL)) {
+        return 1; // Nearing expiration
     }
     return 0; // Active
 }
@@ -1456,36 +1544,80 @@ void sendAddTime(int minutes, String targetIp, String txId = "") {
 }
 
 String renderLicenseSlotsHtml() {
-    String html = "<div style=\"display: flex; flex-direction: column; gap: 10px;\">";
+    uint64_t currentMs = getCurrentMasterTimeMs();
+    String html = "<div style=\"background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px 18px; margin-bottom: 14px;\">";
+    html += "<div style=\"display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;\">";
+    html += "<div>";
+    html += "<div style=\"font-size: 13px; font-weight: 800; color: var(--text-main); text-transform: uppercase; letter-spacing: 0.5px;\">💳 Master Credit Vault</div>";
+    html += "<div style=\"font-size: 11px; color: var(--text-muted); margin-top: 2px;\">1 Credit = 1 Paired Terminal Seat. Manual operator allocation (credits never auto-burn).</div>";
+    html += "</div>";
+    html += "<div style=\"display: flex; gap: 8px; flex-wrap: wrap;\">";
+    html += "<span style=\"font-size: 11px; font-weight: 700; background: rgba(16, 185, 129, 0.15); color: var(--primary); border: 1px solid rgba(16, 185, 129, 0.3); padding: 4px 10px; border-radius: 8px;\">📅 1-Month (₱50): <b>" + String(monthlyCredits) + "</b></span>";
+    html += "<span style=\"font-size: 11px; font-weight: 700; background: rgba(59, 130, 246, 0.15); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.3); padding: 4px 10px; border-radius: 8px;\">👑 1-Year (₱500): <b>" + String(annualCredits) + "</b></span>";
+    html += "<span style=\"font-size: 11px; font-weight: 700; background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); padding: 4px 10px; border-radius: 8px;\">⚡ 2-Min Test: <b>" + String(testCredits) + "</b></span>";
+    html += "</div>";
+    html += "</div>";
+    html += "</div>";
+
+    html += "<div style=\"display: flex; flex-direction: column; gap: 10px;\">";
     for (int i = 0; i < maxLicensedSlots; i++) {
         int sNum = licenseSlots[i].slotNum;
         String devId = licenseSlots[i].deviceId;
         String ip = licenseSlots[i].ip;
         String name = licenseSlots[i].name.length() > 0 ? licenseSlots[i].name : ("PisoPhone " + String(sNum));
         bool isBound = (devId.length() > 0);
+        int daysLeft = -1;
+        int expStatus = getSlotExpirationStatus(i, currentMs, daysLeft);
         
-        html += "<div class=\"slot-row\" style=\"background: var(--card-bg); border: 1px solid var(--border); border-left: 4px solid " + String(isBound ? "var(--primary)" : "var(--text-muted)") + "; border-radius: var(--radius-md); padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;\">";
+        String borderCol = "var(--border)";
+        String statusBadge = "";
+        if (expStatus == 2) {
+            borderCol = "var(--danger)";
+            statusBadge = "<span style=\"font-size: 10px; font-weight: 800; background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.3); padding: 2px 6px; border-radius: 4px;\">🔴 EXPIRED / UNCREDITED</span>";
+        } else if (expStatus == 1) {
+            borderCol = "#f59e0b";
+            statusBadge = "<span style=\"font-size: 10px; font-weight: 800; background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); padding: 2px 6px; border-radius: 4px;\">⚠️ EXPIRING SOON</span>";
+        } else {
+            borderCol = "var(--primary)";
+            statusBadge = "<span style=\"font-size: 10px; font-weight: 800; background: rgba(16, 185, 129, 0.15); color: var(--primary); border: 1px solid rgba(16, 185, 129, 0.3); padding: 2px 6px; border-radius: 4px;\">🟢 ACTIVE</span>";
+        }
+
+        html += "<div class=\"slot-row\" style=\"background: var(--card-bg); border: 1px solid var(--border); border-left: 4px solid " + borderCol + "; border-radius: var(--radius-md); padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;\">";
         html += "<div style=\"display: flex; align-items: center; gap: 12px;\">";
         html += "<span style=\"font-size: 11px; font-weight: 800; background: " + String(isBound ? "rgba(16, 185, 129, 0.15)" : "rgba(100, 116, 139, 0.15)") + "; color: " + String(isBound ? "var(--primary)" : "var(--text-muted)") + "; border: 1px solid " + String(isBound ? "rgba(16, 185, 129, 0.3)" : "var(--border)") + "; padding: 4px 8px; border-radius: 6px; font-family: monospace;\">Slot #" + String(sNum) + "</span>";
         html += "<div>";
-        html += "<div style=\"font-size: 14px; font-weight: 700; color: var(--text-main);\">" + (isBound ? name : "Empty / Available Slot") + "</div>";
+        html += "<div style=\"font-size: 14px; font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 8px;\">" + (isBound ? name : "Empty / Available Slot") + " " + statusBadge + "</div>";
         if (isBound) {
-            html += "<div style=\"font-size: 11px; color: var(--text-muted); font-family: monospace;\">IP: " + (ip.length() > 0 ? ip : "Waiting Wi-Fi...") + " • HW: " + devId + "</div>";
+            String expInfo = "No Credit";
+            if (licenseSlots[i].expiresAt > 0) {
+                if (licenseSlots[i].expiresAt <= currentMs) {
+                    expInfo = "Expired";
+                } else {
+                    uint64_t diffMs = licenseSlots[i].expiresAt - currentMs;
+                    if (diffMs > 86400000ULL) {
+                        expInfo = String((int)(diffMs / 86400000ULL)) + " day(s) left";
+                    } else {
+                        expInfo = String((int)(diffMs / 60000ULL)) + " min(s) left";
+                    }
+                }
+            }
+            html += "<div style=\"font-size: 11px; color: var(--text-muted); font-family: monospace;\">IP: " + (ip.length() > 0 ? ip : "Waiting Wi-Fi...") + " • HW: " + devId + " • Expires: <b>" + expInfo + "</b></div>";
         } else {
-            html += "<div style=\"font-size: 11px; color: var(--text-muted);\">Slot is ready for WebADB provisioning</div>";
+            html += "<div style=\"font-size: 11px; color: var(--text-muted);\">Slot is ready for terminal pairing (requires credit to arm)</div>";
         }
         html += "</div>";
         html += "</div>";
 
+        html += "<div style=\"display: flex; gap: 6px; align-items: center; flex-wrap: wrap;\">";
+        html += "<button type=\"button\" class=\"btn btn-outline btn-sm\" style=\"font-size: 11px; padding: 5px 8px;\" onclick=\"allocateSlotCredit(" + String(sNum) + ", 'month')\">+30d (Month)</button>";
+        html += "<button type=\"button\" class=\"btn btn-outline btn-sm\" style=\"font-size: 11px; padding: 5px 8px; border-color: #3b82f6; color: #3b82f6;\" onclick=\"allocateSlotCredit(" + String(sNum) + ", 'year')\">+1y (Year)</button>";
+        html += "<button type=\"button\" class=\"btn btn-outline btn-sm\" style=\"font-size: 11px; padding: 5px 8px; border-color: #f59e0b; color: #f59e0b;\" onclick=\"allocateSlotCredit(" + String(sNum) + ", 'test')\">+2m (Test)</button>";
         if (isBound) {
-            html += "<div style=\"display: flex; gap: 8px; align-items: center;\">";
-            html += "<button type=\"button\" class=\"btn btn-outline btn-sm\" style=\"font-size: 11px; padding: 6px 10px; border-color: var(--danger); color: var(--danger);\" onclick=\"unpairSlot(" + String(sNum) + ")\">🔓 Unpair</button>";
-            html += "</div>";
+            html += "<button type=\"button\" class=\"btn btn-outline btn-sm\" style=\"font-size: 11px; padding: 5px 8px; border-color: var(--danger); color: var(--danger);\" onclick=\"unpairSlot(" + String(sNum) + ")\">🔓 Unpair</button>";
         } else {
-            html += "<div style=\"display: flex; gap: 8px; align-items: center;\">";
-            html += "<button type=\"button\" class=\"btn btn-primary btn-sm\" style=\"font-size: 12px; padding: 8px 14px; font-weight: 700;\" onclick=\"occupySlot(" + String(sNum) + ")\">⚡ Occupy Slot & Install</button>";
-            html += "</div>";
+            html += "<button type=\"button\" class=\"btn btn-primary btn-sm\" style=\"font-size: 11px; padding: 6px 10px; font-weight: 700;\" onclick=\"occupySlot(" + String(sNum) + ")\">⚡ Occupy</button>";
         }
+        html += "</div>";
 
         html += "</div>";
     }
@@ -3075,6 +3207,21 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
             .catch(err => alert('Network error: ' + err.message));
     };
 
+    window.allocateSlotCredit = function(slot, type) {
+        const desc = type === 'month' ? '30 Days (1 Month Credit)' : (type === 'year' ? '1 Year (1 Annual Credit)' : '2 Minutes (Test Credit)');
+        if (!confirm('Allocate ' + desc + ' to Slot #' + slot + '?')) return;
+        fetch('/api/credits/allocate?slot=' + slot + '&type=' + type, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('Credit Allocation Failed: ' + (data.error || 'Check vault credits balance'));
+                }
+            })
+            .catch(err => alert('Network error: ' + err.message));
+    };
+
     window.openProvisionModal = function(slot) {
         activeSlotNum = slot;
         document.getElementById('prov_slot_num').textContent = slot;
@@ -4027,6 +4174,87 @@ void handleApiSlotCloudSync() {
     webServer.send(200, "application/json", "{\"success\":true,\"message\":\"Cloud snapshot sent\"}");
 }
 
+// Emulate Payment API: Allows browser/website emulator to credit the ESP32 vault
+void handleApiCreditsEmulatePayment() {
+    webServer.sendHeader("Access-Control-Allow-Origin", "*");
+    webServer.sendHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+    webServer.sendHeader("Access-Control-Allow-Headers", "Content-Type");
+    if (webServer.method() == HTTP_OPTIONS) {
+        webServer.send(204);
+        return;
+    }
+
+    String type = webServer.hasArg("type") ? webServer.arg("type") : "month";
+    int count = webServer.hasArg("count") ? webServer.arg("count").toInt() : 1;
+    if (count < 1) count = 1;
+    if (count > 100) count = 100;
+
+    type.toLowerCase();
+    type.trim();
+
+    if (type == "month") {
+        monthlyCredits += count;
+    } else if (type == "year") {
+        annualCredits += count;
+    } else if (type == "test") {
+        testCredits += count;
+    } else {
+        webServer.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid type. Must be 'month', 'year', or 'test'\"}");
+        return;
+    }
+
+    saveCreditVault();
+    Serial.printf("[+] Emulate Payment: Added %d x %s credit(s). Vault: M=%d, Y=%d, T=%d\n",
+        count, type.c_str(), monthlyCredits, annualCredits, testCredits);
+
+    String json = "{\"success\":true,\"type\":\"" + type + "\",\"added\":" + String(count) + 
+        ",\"monthly\":" + String(monthlyCredits) + 
+        ",\"annual\":" + String(annualCredits) + 
+        ",\"test\":" + String(testCredits) + 
+        ",\"message\":\"Successfully credited " + String(count) + " " + type + " credit(s) to ESP32 vault.\"}";
+    webServer.send(200, "application/json", json);
+}
+
+// Allocate Credit API: Consumes 1 credit from vault and updates slot expiration
+void handleApiCreditsAllocate() {
+    webServer.sendHeader("Access-Control-Allow-Origin", "*");
+    webServer.sendHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+    webServer.sendHeader("Access-Control-Allow-Headers", "Content-Type");
+    if (webServer.method() == HTTP_OPTIONS) {
+        webServer.send(204);
+        return;
+    }
+
+    int slot = webServer.hasArg("slot") ? webServer.arg("slot").toInt() : 0;
+    String type = webServer.hasArg("type") ? webServer.arg("type") : "month";
+    String err = "";
+
+    if (allocateCreditToSlot(slot, type, err)) {
+        int idx = slot - 1;
+        char expBuf[24];
+        snprintf(expBuf, sizeof(expBuf), "%llu", (unsigned long long)licenseSlots[idx].expiresAt);
+        String json = "{\"success\":true,\"slot\":" + String(slot) + 
+            ",\"type\":\"" + type + "\"" + 
+            ",\"expiresAt\":" + String(expBuf) + 
+            ",\"monthly\":" + String(monthlyCredits) + 
+            ",\"annual\":" + String(annualCredits) + 
+            ",\"test\":" + String(testCredits) + "}";
+        webServer.send(200, "application/json", json);
+    } else {
+        webServer.send(400, "application/json", "{\"success\":false,\"error\":\"" + err + "\"}");
+    }
+}
+
+// Status API: Inspect credit vault counts
+void handleApiCreditsStatus() {
+    webServer.sendHeader("Access-Control-Allow-Origin", "*");
+    String json = "{\"monthly\":" + String(monthlyCredits) + 
+        ",\"annual\":" + String(annualCredits) + 
+        ",\"test\":" + String(testCredits) + 
+        ",\"maxSlots\":" + String(maxLicensedSlots) + "}";
+    webServer.send(200, "application/json", json);
+}
+
 void handleApiStatus() {
     if (!checkAuth()) return;
 
@@ -4187,6 +4415,7 @@ void handleHeartbeat() {
         
         if (verifyTelemetryAuth(deviceId, tsStr, sig)) {
             unsigned long long ts = strtoull(tsStr.c_str(), NULL, 10);
+            updateMasterTime(ts);
             int timeRem = webServer.hasArg("time") ? webServer.arg("time").toInt() : 0;
             int state = webServer.hasArg("state") ? webServer.arg("state").toInt() : 0;
             int battery = webServer.hasArg("battery") ? webServer.arg("battery").toInt() : 100;
@@ -4212,13 +4441,18 @@ void handleHeartbeat() {
                 json += ",\"expires_at\":" + String(expBuf);
             }
             if (expStatus == 2) {
-                // HARD LOCKDOWN: Slot is expired on ESP32
+                // HARD LOCKDOWN: Slot is expired or uncredited on ESP32
                 json += ",\"slot_expired\":true,\"slot_status\":\"expired\",\"slot_warning\":false";
-                json += ",\"message\":\"Slot license expired on ESP32. Kiosk entered hard lockdown.\"";
+                json += ",\"message\":\"Device Expired: Please add credits to pair device to ESP32.\"";
             } else if (expStatus == 1) {
                 // WARNING: Slot nearing expiration
                 json += ",\"slot_expired\":false,\"slot_status\":\"warning\",\"slot_warning\":true";
                 json += ",\"slot_warning_days_left\":" + String(daysLeft);
+                if (daysLeft == 0) {
+                    json += ",\"warning_message\":\"Device slot expiring soon (< 24 hours). Add credits to extend.\"";
+                } else {
+                    json += ",\"warning_message\":\"Device slot expires in " + String(daysLeft) + " day(s). Add credits to extend.\"";
+                }
             } else {
                 json += ",\"slot_expired\":false,\"slot_status\":\"active\",\"slot_warning\":false";
             }
@@ -4908,6 +5142,7 @@ void setup() {
     }
     androidIps = bootCleanIps;
     loadSlotLicenses();
+    loadCreditVault();
     targetPort        = prefs.getInt("port", targetPort);
     webPassword       = prefs.getString("admin_pw", webPassword);
     coinPrice         = prefs.getFloat("price", coinPrice);
@@ -5031,6 +5266,9 @@ void setup() {
     webServer.on("/api/slots/unpair", HTTP_POST, handleApiSlotUnpair);
     webServer.on("/api/slots/apply_token", HTTP_POST, handleApiSlotApplyToken);
     webServer.on("/api/slots/cloud_sync", HTTP_POST, handleApiSlotCloudSync);
+    webServer.on("/api/credits/emulate_payment", HTTP_ANY, handleApiCreditsEmulatePayment);
+    webServer.on("/api/credits/allocate", HTTP_ANY, handleApiCreditsAllocate);
+    webServer.on("/api/credits/status", HTTP_GET, handleApiCreditsStatus);
     webServer.on("/api/relay", HTTP_ANY, []() {
         if (webServer.hasArg("invert")) {
             relayActiveLow = (webServer.arg("invert") == "1" || webServer.arg("invert") == "true");

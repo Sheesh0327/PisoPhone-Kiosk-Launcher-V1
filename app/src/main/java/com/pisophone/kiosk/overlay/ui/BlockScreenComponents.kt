@@ -139,6 +139,7 @@ fun BlockScreenRateTableCard(
     paymentTimeout: Int,
     isEsp32Online: Boolean,
     isSlotBusy: Boolean,
+    isSlotExpired: Boolean = false,
     buttonText: String,
     primaryColor: Color,
     onPrimaryColor: Color,
@@ -222,9 +223,9 @@ fun BlockScreenRateTableCard(
                 Text("DONE (${paymentTimeout}s)", fontWeight = FontWeight.Bold, fontSize = 14.sp, letterSpacing = 1.sp)
             }
         } else if (!isWaiting) {
-            val activeContainerColor = if (isSlotBusy) Color(0xFFDC3545) else if (isEsp32Online) primaryColor else surfaceVariantColor
-            val activeContentColor = if (isSlotBusy) Color.White else if (isEsp32Online) onPrimaryColor else textTertiaryColor
-            val activeText = if (isSlotBusy) "COINSLOT BUSY" else if (isEsp32Online) buttonText else "CONNECTING TO COINSLOT..."
+            val activeContainerColor = if (isSlotExpired) Color(0xFF7F1D1D) else if (isSlotBusy) Color(0xFFDC3545) else if (isEsp32Online) primaryColor else surfaceVariantColor
+            val activeContentColor = if (isSlotExpired) Color(0xFFFCA5A5) else if (isSlotBusy) Color.White else if (isEsp32Online) onPrimaryColor else textTertiaryColor
+            val activeText = if (isSlotExpired) "DEVICE EXPIRED (ADD CREDITS)" else if (isSlotBusy) "COINSLOT BUSY" else if (isEsp32Online) buttonText else "CONNECTING TO COINSLOT..."
             Button(
                 onClick = onInsertCoin,
                 modifier = Modifier
@@ -237,9 +238,11 @@ fun BlockScreenRateTableCard(
                     disabledContentColor = activeContentColor
                 ),
                 shape = RoundedCornerShape(14.dp),
-                enabled = isEsp32Online && !isSlotBusy
+                enabled = isEsp32Online && !isSlotBusy && !isSlotExpired
             ) {
-                if (isSlotBusy) {
+                if (isSlotExpired) {
+                    Icon(Icons.Filled.Lock, contentDescription = null, tint = Color(0xFFFCA5A5))
+                } else if (isSlotBusy) {
                     Icon(Icons.Filled.Lock, contentDescription = null, tint = Color.White)
                 } else if (isEsp32Online) {
                     Icon(Icons.Filled.AddCircle, contentDescription = null)
@@ -250,6 +253,50 @@ fun BlockScreenRateTableCard(
                     fontWeight = FontWeight.Bold, 
                     fontSize = 14.sp, 
                     letterSpacing = 1.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun SlotExpiredBanner(
+    reason: String = "Please add credits to pair device to ESP32.",
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 6.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0x33DC2626)),
+        shape = RoundedCornerShape(12.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Filled.ErrorOutline,
+                contentDescription = "Expired",
+                tint = Color(0xFFEF4444),
+                modifier = Modifier.size(26.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "🚫 DEVICE EXPIRED / SLOT UNPAIRED",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color(0xFFFCA5A5),
+                    letterSpacing = 0.5.sp
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = if (reason.isNotBlank()) reason else "Please add credits to pair device to ESP32.",
+                    fontSize = 11.sp,
+                    color = Color(0xFFFEE2E2),
+                    lineHeight = 15.sp
                 )
             }
         }

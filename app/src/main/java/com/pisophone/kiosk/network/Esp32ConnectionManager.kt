@@ -189,7 +189,11 @@ class Esp32ConnectionManager(
                                                 json.optString("slot_status", "") == "expired"
                                         val slotNum = json.optInt("slot_num", 0)
                                         val expiresAt = json.optLong("expires_at", 0L)
-                                        val errorMsg = json.optString("error", "Slot license expired in ESP32 memory")
+                                        val errorMsg = if (json.has("message") && json.optString("message").isNotBlank()) {
+                                            json.optString("message")
+                                        } else {
+                                            json.optString("error", "Please add credits to pair device to ESP32.")
+                                        }
 
                                         if (isExpired) {
                                             delegate.onSlotLockdown(errorMsg, slotNum, expiresAt)
@@ -364,9 +368,9 @@ class Esp32ConnectionManager(
                     Handler(Looper.getMainLooper()).post {
                         Toast.makeText(context, "Slot is currently busy with another device.", Toast.LENGTH_LONG).show()
                     }
-                } else if (code == 403 || msg.contains("SLOT_EXPIRED", ignoreCase = true)) {
+                } else if (code == 403 || code == 423 || msg.contains("SLOT_EXPIRED", ignoreCase = true) || msg.contains("423", ignoreCase = true)) {
                     Log.e(TAG, "Slot is EXPIRED on ESP32 (HTTP $code). Enforcing lockdown.")
-                    delegate.onSlotLockdown("Slot license expired on ESP32 memory", 0, 0L)
+                    delegate.onSlotLockdown("Please add credits to pair device to ESP32.", 0, 0L)
                 } else {
                     Log.w(TAG, "WebSocket arming failed (HTTP $code) - letting heartbeat loop manage connectivity")
                 }

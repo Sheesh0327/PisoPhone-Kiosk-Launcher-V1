@@ -54,6 +54,8 @@ fun BlockScreen(
     onThemeChange: () -> Unit = {},
     buttonText: String = "READY FOR COIN",
     slotWarningDaysLeft: Int? = null,
+    isSlotExpired: Boolean = false,
+    slotExpiryReason: String = "",
     modifier: Modifier = Modifier.fillMaxSize()
 ) {
     data class OverlayTheme(
@@ -176,8 +178,10 @@ fun BlockScreen(
                 BatteryAlertBanner(batteryStatus = batteryStatus)
             }
 
-            // Slot Expiration Warning Banner
-            if (slotWarningDaysLeft != null && slotWarningDaysLeft >= 0) {
+            // Slot Expiration Warning & Expired Banners
+            if (isSlotExpired) {
+                SlotExpiredBanner(reason = slotExpiryReason)
+            } else if (slotWarningDaysLeft != null && slotWarningDaysLeft >= 0) {
                 SlotExpirationWarningBanner(daysLeft = slotWarningDaysLeft)
             }
 
@@ -232,6 +236,7 @@ fun BlockScreen(
                             paymentTimeout = paymentTimeout,
                             isEsp32Online = isEsp32Online,
                             isSlotBusy = isSlotBusy,
+                            isSlotExpired = isSlotExpired,
                             buttonText = buttonText,
                             primaryColor = Primary,
                             onPrimaryColor = OnPrimary,
