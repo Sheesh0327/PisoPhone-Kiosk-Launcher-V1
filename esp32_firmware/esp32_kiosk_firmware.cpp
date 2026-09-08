@@ -53,7 +53,7 @@ int ledPin           = DEFAULT_LED_PIN;            // Status/Drop indicator LED 
 bool ledActiveLow    = DEFAULT_LED_ACTIVE_LOW;     // Active LOW logic for Tenstar Robot & Super Mini onboard blue LED
 int relayPin         = DEFAULT_RELAY_PIN;          // Coin slot enable / power relay pin (Default GPIO 5)
 bool relayActiveLow  = false;                      // False = Active HIGH (default), True = Active LOW (optocoupler relay modules)
-int relayMode        = 0;                          // 0 = Always powered when online (recommended), 1 = Armed-Only (toggled by Insert Coin)
+int relayMode        = 1;                          // 0 = Always powered when online, 1 = Armed-Only (Powered only when Insert Coin is active)
 
 // Configuration Variables (Persisted in NVS)
 String wifiSsid       = DEFAULT_SSID;
@@ -462,7 +462,7 @@ void setRelayHardware(bool active) {
 
 // Helper function to check if the coin slot is currently armed
 bool isSlotArmed() {
-    return (isWsConnected && wsClient.connected()) || (armedIp.length() > 0 && millis() < armedUntil);
+    return (armedIp.length() > 0 && millis() < armedUntil);
 }
 
 // Controls the coin slot relay: Mode 0 = Always powered when online, Mode 1 = Powered only when armed
@@ -2043,6 +2043,75 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
         .remove-btn:hover {
             background: rgba(239, 68, 68, 0.1);
         }
+        @media (max-width: 640px) {
+            body {
+                padding: 10px 8px;
+            }
+            .app-container {
+                gap: 14px;
+            }
+            .header-bar {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 12px;
+                padding: 14px 16px;
+            }
+            .header-right {
+                justify-content: space-between;
+                width: 100%;
+            }
+            .tabs {
+                display: flex;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
+                gap: 4px;
+                padding: 4px;
+            }
+            .tabs::-webkit-scrollbar {
+                display: none;
+            }
+            .tab {
+                flex: 0 0 auto;
+                padding: 8px 14px;
+                font-size: 13px;
+                white-space: nowrap;
+            }
+            .grid {
+                grid-template-columns: 1fr !important;
+                gap: 14px;
+            }
+            .card {
+                padding: 16px;
+            }
+            .device-row {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 12px;
+                padding: 14px;
+            }
+            .device-row-identity {
+                width: 100%;
+                min-width: unset;
+                justify-content: flex-start;
+            }
+            .device-row-metrics {
+                width: 100%;
+                justify-content: space-between;
+                gap: 8px;
+            }
+            .device-row-actions {
+                width: 100%;
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 8px;
+            }
+            .device-row-actions .btn {
+                width: 100%;
+                text-align: center;
+                justify-content: center;
+            }
+        }
     </style>
     <script>
         // Apply saved theme immediately to prevent flashing
@@ -2238,26 +2307,11 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
         <div id="tab-settings" class="tab-content">
             <form action="/save" method="POST" onsubmit="
                 event.preventDefault();
-                const rows = document.querySelectorAll('.dev-ip-row');
-                const ips = [];
-                rows.forEach(row => {
-                    const idField = row.querySelector('.dev-id-field');
-                    const ipField = row.querySelector('.dev-ip-field');
-                    const nameField = row.querySelector('.dev-name-field');
-                    if(ipField) {
-                        const ipVal = ipField.value.trim();
-                        const idVal = idField ? idField.value.trim() : '';
-                        let nameVal = nameField ? nameField.value.trim().replace(/\|/g, '') : '';
-                        if (ipVal.length > 0) ips.push(idVal + '|' + ipVal + '|' + nameVal);
-                    }
-                });
-                document.getElementById('ips_hidden').value = ips.join(',');
                 const formData = new FormData(this);
                 fetch('/save', { method: 'POST', body: new URLSearchParams(formData) })
                     .then(res => { if (res.ok) alert('✅ Configuration saved & pushed live!'); else alert('❌ Failed to save configuration.'); })
                     .catch(err => alert('Error: ' + err));
             ">
-                <input type="hidden" name="ips" id="ips_hidden" value="">
                 <div class="grid">
                     <!-- Network -->
                     <div class="card">
@@ -2305,28 +2359,6 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                         <div class="form-group">
                             <label>Debounce lock (ms)</label>
                             <input type="number" name="debounce" value="{DEBOUNCE}">
-                        </div>
-                    </div>
-
-                    <!-- Flexible Device Seats & Slot Management -->
-                    <div class="card grid-full" id="license_slots_card">
-                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px;">
-                            <div>
-                                <h3 class="card-title" style="margin-bottom: 2px;">🎛️ Licensed Device Seats & Terminals</h3>
-                                <div class="hint">The ESP32 hardware manages seat allocation locally. Plug new phones via USB to install & activate in 1 fluid motion.</div>
-                            </div>
-                            <div style="display: flex; align-items: center; gap: 10px;">
-                                <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: var(--primary); font-weight: 700; padding: 6px 14px; border-radius: 20px; font-size: 13px;">
-                                    Capacity: <span id="capacity_badge">{MAX_SLOTS}</span> Seats
-                                </span>
-                                <button type="button" class="btn btn-outline btn-sm" onclick="openTokenModal()">🔑 Upgrade Capacity</button>
-                                <button type="button" class="btn btn-outline btn-sm" onclick="syncCloudSnapshot(this)">☁️ Sync to Cloud</button>
-                            </div>
-                        </div>
-
-                        <!-- Interactive Seats Grid -->
-                        <div id="slots_grid_container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-top: 12px;">
-                            {DEVICE_SLOTS_MANAGER}
                         </div>
                     </div>
 
@@ -2997,8 +3029,14 @@ String getPrimaryTerminalIp() {
 void triggerCoinEvent() {
     Serial.printf("[+] Physical coin pulse detected on GPIO %d (Simple Beam Sensor)!\n", coinPin);
     
+    // In Armed-Only mode (relayMode == 1), reject any stray drop if not actively armed
+    if (relayMode == 1 && !isSlotArmed()) {
+        Serial.printf("[-] Dropped coin rejected: Slot is in Armed-Only mode and is NOT armed!\n");
+        return;
+    }
+
     // Condition check: Check if a specific device is armed, or auto-route to active/connected terminal
-    bool isArmed = (isWsConnected && wsClient.connected()) || (armedIp.length() > 0 && millis() < armedUntil);
+    bool isArmed = isSlotArmed();
     String targetIp = "";
     if (isArmed && armedIp.length() > 0) {
         targetIp = getIpFromDeviceId(armedIp);
@@ -3063,8 +3101,14 @@ void triggerUniversalCoinEvent(int pulses) {
     if (pulses <= 0) return;
     Serial.printf("[⚡ UNIVERSAL COIN] %d total pulses accumulated on GPIO %d (₱%d PHP)\n", pulses, universalCoinPin, pulses);
 
+    // In Armed-Only mode (relayMode == 1), reject any stray drop if not actively armed
+    if (relayMode == 1 && !isSlotArmed()) {
+        Serial.printf("[-] Universal coin pulses rejected: Slot is in Armed-Only mode and is NOT armed!\n");
+        return;
+    }
+
     // Condition check: Check if a specific device is armed, or auto-route to active/connected terminal
-    bool isArmed = (isWsConnected && wsClient.connected()) || (armedIp.length() > 0 && millis() < armedUntil);
+    bool isArmed = isSlotArmed();
     String targetIp = "";
     if (isArmed && armedIp.length() > 0) {
         targetIp = getIpFromDeviceId(armedIp);
@@ -4581,7 +4625,7 @@ void setup() {
     minutesPerCoin    = prefs.getInt("minutes", minutesPerCoin);
     lockoutDebounceMs = prefs.getInt("debounce", lockoutDebounceMs);
     relayActiveLow    = prefs.getBool("relay_active_low", false);
-    relayMode         = prefs.getInt("relay_mode", 0);
+    relayMode         = prefs.getInt("relay_mode", 1);
     sharedSecret      = prefs.getString("shared_secret", sharedSecret);
     p1Ip              = prefs.getString("p1", p1Ip);
     p2Ip              = prefs.getString("p2", p2Ip);

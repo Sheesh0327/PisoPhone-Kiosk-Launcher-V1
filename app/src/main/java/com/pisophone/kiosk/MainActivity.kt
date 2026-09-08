@@ -85,28 +85,15 @@ class MainActivity : ComponentActivity() {
         KioskWatchdogReceiver.scheduleWatchdog(this)
         checkDeviceOwner()
 
-        try {
-            val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
-            if (!pm.isIgnoringBatteryOptimizations(packageName)) {
-                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-                intent.data = Uri.parse("package:$packageName")
-                startActivity(intent)
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-
         setContent {
             PisoPhoneLauncherTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     var isAppAllowed by remember { mutableStateOf(HardwareLockManager.isAppAllowedToRun(this@MainActivity)) }
-                    var isTutorialCompleted by remember { mutableStateOf(HardwareLockManager.isTutorialCompleted(this@MainActivity)) }
 
                     val securityUpdateVer by HardwareLockManager.securityUpdateVersion.collectAsState()
 
                     LaunchedEffect(securityUpdateVer) {
                         isAppAllowed = HardwareLockManager.isAppAllowedToRun(this@MainActivity)
-                        isTutorialCompleted = HardwareLockManager.isTutorialCompleted(this@MainActivity)
                         checkDeviceOwner()
                     }
 
@@ -118,14 +105,6 @@ class MainActivity : ComponentActivity() {
                                     checkDeviceOwner()
                                 }
                             },
-                        )
-                    } else if (!isTutorialCompleted) {
-                        TutorialScreen(
-                            onCompleteTutorial = {
-                                HardwareLockManager.setTutorialCompleted(this@MainActivity, true)
-                                isTutorialCompleted = true
-                                checkDeviceOwner()
-                            }
                         )
                     } else if (!hasOverlayPermission) {
                         PermissionScreen(onRequest = {

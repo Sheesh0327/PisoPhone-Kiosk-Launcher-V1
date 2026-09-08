@@ -174,7 +174,7 @@ object HardwareLockManager {
      * Checks if the user has completed the interactive first-time setup tutorial.
      */
     fun isTutorialCompleted(context: Context): Boolean {
-        return getPrefs(context).getBoolean(KEY_TUTORIAL_COMPLETED, false)
+        return getPrefs(context).getBoolean(KEY_TUTORIAL_COMPLETED, true)
     }
 
     /**
