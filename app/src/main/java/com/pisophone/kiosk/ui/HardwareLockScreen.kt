@@ -164,7 +164,7 @@ fun HardwareLockScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = when {
-                                isSlotLocked -> "ESP32 Slot Memory Expired"
+                                isSlotLocked -> "Device Not Activated"
                                 boundHwId.isEmpty() -> "Awaiting WebADB / ESP32 Provisioning"
                                 else -> "Hardware Signature Mismatch"
                             },
@@ -179,7 +179,7 @@ fun HardwareLockScreen(
                     if (isSlotLocked) {
                         Text("ESP32 CONTROLLER LOCKDOWN STATUS:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
                         Text(
-                            if (slotNum > 0) "Assigned Slot: #$slotNum" else "Unassigned / Expired Slot",
+                            if (slotNum > 0) "Assigned Slot: #$slotNum" else "Unassigned / Unactivated Slot",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = Color.White

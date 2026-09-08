@@ -306,7 +306,15 @@
         let ownerToken = currentUser ? currentUser.token : null;
         renderNavAuth(document.getElementById('navAuthContainer'));
         
-        if (currentUser) {
+        // Extract URL params if redirected from ESP32 portal
+        const urlParams = new URLSearchParams(window.location.search);
+        const paramEsp32Ip = urlParams.get('esp32_ip') || urlParams.get('ip') || urlParams.get('host');
+        if (paramEsp32Ip) {
+            document.getElementById('esp32HostInput').value = paramEsp32Ip;
+            purchaseUi.classList.remove('hidden');
+            if (loginWarning) loginWarning.classList.add('hidden');
+            checkEsp32VaultStatus();
+        } else if (currentUser) {
             purchaseUi.classList.remove('hidden');
         }
 
@@ -459,6 +467,11 @@
                         ✅ ${data.message}<br/>
                         <span class="text-slate-400">New Vault Balance: Monthly = <b>${data.monthly}</b>, Annual = <b>${data.annual}</b>, Test = <b>${data.test}</b></span><br/>
                         <span class="text-emerald-300 font-semibold mt-1 inline-block">Credits are now stored in ESP32 hardware memory. Ready to allocate to any terminal slot.</span>
+                        <div class="mt-4 pt-3 border-t border-slate-800">
+                            <a href="http://${host}/" class="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black px-5 py-3 rounded-xl text-xs shadow-lg transition text-decoration-none">
+                                🔙 Return to Kiosk Manager (ESP32 Portal)
+                            </a>
+                        </div>
                     `;
                     checkEsp32VaultStatus();
                 } else {

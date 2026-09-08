@@ -1072,24 +1072,6 @@
                 return alert("For hardware flashing, connect your phone to the ESP32 box and open http://kioskmanager.local or use Google Chrome on a USB-connected device.");
             }
 
-            // Enforce Coin Slot Box Verification (₱5,000 Hardware) unless directly initiated from ESP32 box URL
-            let box = null;
-            if (!urlMac) {
-                box = await fetchUserBoxStatus();
-                if (!box || !box.buildNumber) {
-                    alert("⚠️ Coin Slot Box Verification Required!\n\nYou must enter the Build Number from your purchased ₱5,000 Coin Slot Box before you can install and flash the PisoPhone Kiosk app.");
-                    showBoxVerificationModal(() => {
-                        refreshInstallBoxStatus();
-                    });
-                    return;
-                }
-
-                if (box.slotsRemaining <= 0) {
-                    alert(`⚠️ Device Limit Reached!\n\nYour Coin Slot Box (Build #${box.buildNumber}) has already reached its maximum limit of ${box.maxDevices || 12} devices.\n\nTo install on more devices, please register an additional Coin Slot Box unit.`);
-                    return;
-                }
-            }
-
             // Pause auto-advance during installation
             isPlaying = false;
             sliderStatusHint.textContent = "Installing...";

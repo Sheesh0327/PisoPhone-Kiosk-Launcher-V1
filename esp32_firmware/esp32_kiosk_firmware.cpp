@@ -444,6 +444,7 @@ String p1Ip           = "";
 String p2Ip           = "";
 int matchMinutes      = 15;
 String matchStatusMsg = "";
+String quickTimeStatusMsg = "";
 
 // Persistent Local Revenue Counter (NVS Coin & Earnings Audit)
 uint32_t totalCoinsLifetime = 0;
@@ -575,6 +576,7 @@ void triggerCoinEvent();
 void triggerUniversalCoinEvent(int pulses);
 void factoryResetDefaults();
 int getDeviceTimeRemainingSeconds(String targetIp, String* errOut = nullptr);
+String getIpFromDeviceId(String id);
 
 // Helper function to check if default credentials are still active
 bool areDefaultCredentialsActive() {
@@ -1437,6 +1439,7 @@ String getFirstKnownIp() {
 String renderDeviceOptions(String selectedIp) {
     String opts = "";
     int startIdx = 0, devNum = 1;
+    uint64_t currentMs = getCurrentMasterTimeMs();
     while (startIdx < androidIps.length()) {
         int comma = androidIps.indexOf(',', startIdx);
         if (comma == -1) comma = androidIps.length();
@@ -1447,7 +1450,13 @@ String renderDeviceOptions(String selectedIp) {
             if (parseDeviceEntry(entry, cfg)) {
                 String name = "PisoPhone " + String(devNum);
                 String sel = (cfg.ip == selectedIp) ? " selected" : "";
-                opts += "<option value=\"" + cfg.ip + "\"" + sel + ">" + name + " (" + cfg.ip + ")</option>";
+                int slotIdx = findSlotIndexForDevice(cfg.id, cfg.ip);
+                int daysLeft = -1;
+                int expStatus = getSlotExpirationStatus(slotIdx, currentMs, daysLeft);
+                bool isExpired = (expStatus == 2);
+                String expAttr = isExpired ? " data-expired=\"true\"" : " data-expired=\"false\"";
+                String badge = isExpired ? " [🔴 EXPIRED]" : "";
+                opts += "<option value=\"" + cfg.ip + "\"" + sel + expAttr + ">" + name + " (" + cfg.ip + ")" + badge + "</option>";
                 devNum++;
             }
         }
@@ -1524,6 +1533,7 @@ String renderDeviceIpInputs() {
 void sendAddTime(int minutes, String targetIp, String txId = "") {
     if (androidIps.length() == 0) return;
     int startIdx = 0;
+    uint64_t currentMs = getCurrentMasterTimeMs();
     while (startIdx < androidIps.length()) {
         int comma = androidIps.indexOf(',', startIdx);
         if (comma == -1) comma = androidIps.length();
@@ -1533,9 +1543,17 @@ void sendAddTime(int minutes, String targetIp, String txId = "") {
             DeviceConfig cfg;
             if (parseDeviceEntry(entry, cfg)) {
                 if (targetIp == "ALL" || targetIp == cfg.ip) {
-                    String params = "minutes=" + String(minutes);
-                    if (txId.length() > 0) params += "&tx_id=" + txId;
-                    sendAuthenticated(cfg.ip, targetPort, "/add_time", "/challenge", params, 1000);
+                    int slotIdx = findSlotIndexForDevice(cfg.id, cfg.ip);
+                    int daysLeft = -1;
+                    int expStatus = getSlotExpirationStatus(slotIdx, currentMs, daysLeft);
+                    if (expStatus == 2) {
+                        Serial.printf("[-] sendAddTime skipped for %s (Slot #%d): Device Expired / Uncredited\n",
+                            cfg.ip.c_str(), (slotIdx >= 0) ? licenseSlots[slotIdx].slotNum : 0);
+                    } else {
+                        String params = "minutes=" + String(minutes);
+                        if (txId.length() > 0) params += "&tx_id=" + txId;
+                        sendAuthenticated(cfg.ip, targetPort, "/add_time", "/challenge", params, 1000);
+                    }
                 }
             }
         }
@@ -1545,16 +1563,20 @@ void sendAddTime(int minutes, String targetIp, String txId = "") {
 
 String renderLicenseSlotsHtml() {
     uint64_t currentMs = getCurrentMasterTimeMs();
+    String myIp = WiFi.localIP().toString();
+    if (myIp == "0.0.0.0" || myIp.length() == 0) myIp = "192.168.4.1";
+
     String html = "<div style=\"background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px 18px; margin-bottom: 14px;\">";
     html += "<div style=\"display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;\">";
     html += "<div>";
     html += "<div style=\"font-size: 13px; font-weight: 800; color: var(--text-main); text-transform: uppercase; letter-spacing: 0.5px;\">💳 Master Credit Vault</div>";
     html += "<div style=\"font-size: 11px; color: var(--text-muted); margin-top: 2px;\">1 Credit = 1 Paired Terminal Seat. Manual operator allocation (credits never auto-burn).</div>";
     html += "</div>";
-    html += "<div style=\"display: flex; gap: 8px; flex-wrap: wrap;\">";
+    html += "<div style=\"display: flex; gap: 8px; flex-wrap: wrap; align-items: center;\">";
     html += "<span style=\"font-size: 11px; font-weight: 700; background: rgba(16, 185, 129, 0.15); color: var(--primary); border: 1px solid rgba(16, 185, 129, 0.3); padding: 4px 10px; border-radius: 8px;\">📅 1-Month (₱50): <b>" + String(monthlyCredits) + "</b></span>";
     html += "<span style=\"font-size: 11px; font-weight: 700; background: rgba(59, 130, 246, 0.15); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.3); padding: 4px 10px; border-radius: 8px;\">👑 1-Year (₱500): <b>" + String(annualCredits) + "</b></span>";
     html += "<span style=\"font-size: 11px; font-weight: 700; background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); padding: 4px 10px; border-radius: 8px;\">⚡ 2-Min Test: <b>" + String(testCredits) + "</b></span>";
+    html += "<a href=\"https://pisophone.pages.dev/purchase.html?esp32_ip=" + myIp + "\" target=\"_blank\" class=\"btn btn-primary\" style=\"font-size: 11px; font-weight: 800; padding: 5px 12px; background: #10b981; color: #020617; border-radius: 8px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; border: none; cursor: pointer;\">➕ Buy Terminal Credits</a>";
     html += "</div>";
     html += "</div>";
     html += "</div>";
@@ -2495,24 +2517,28 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                 </div>
 
                 <!-- Quick Add Time -->
-                <form action="/add_time" method="POST" class="card">
+                <form id="quick_adjust_form" action="/add_time" method="POST" class="card" onsubmit="return validateQuickAdjust(event)">
                     <div class="card-header">
                         <h3 class="card-title">⏱️ Quick Adjust Time</h3>
                     </div>
+                    {QUICK_TIME_ALERT}
                     <div class="form-group">
                         <label>Target Device</label>
-                        <select name="target_ip">
+                        <select id="quick_adjust_target" name="target_ip" onchange="checkQuickAdjustExpired()">
                             <option value="ALL">All Devices (Broadcast)</option>
                             {DEVICE_OPTIONS}
                         </select>
+                        <div id="quick_adjust_warn" style="display: none; margin-top: 6px; padding: 6px 10px; background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; font-size: 11px; font-weight: 700;">
+                            🚫 Selected device is EXPIRED. Manual time adjustment is blocked until credits are allocated.
+                        </div>
                     </div>
                     <div class="form-group">
                         <label>Minutes</label>
-                        <input type="number" name="add_minutes" value="60">
+                        <input type="number" name="add_minutes" value="60" min="1">
                     </div>
                     <div style="display: flex; gap: 12px; margin-top: 12px;">
-                        <button type="submit" name="action" value="add" class="btn btn-warning" style="flex: 1;">+ Add</button>
-                        <button type="submit" name="action" value="subtract" class="btn btn-danger" style="flex: 1;">- Subtract</button>
+                        <button type="submit" name="action" value="add" class="btn btn-warning" style="flex: 1;" onclick="return validateQuickAdjust(event, 'add')">+ Add</button>
+                        <button type="submit" name="action" value="subtract" class="btn btn-danger" style="flex: 1;" onclick="return validateQuickAdjust(event, 'subtract')">- Subtract</button>
                     </div>
                 </form>
             </div>
@@ -3281,6 +3307,55 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
             btn.disabled = false;
         }
     };
+
+    window.checkQuickAdjustExpired = function() {
+        const sel = document.getElementById('quick_adjust_target');
+        const warn = document.getElementById('quick_adjust_warn');
+        if (!sel || !warn) return false;
+        let hasExpired = false;
+        if (sel.value === 'ALL') {
+            const expiredOpts = sel.querySelectorAll('option[data-expired="true"]');
+            hasExpired = (expiredOpts.length > 0);
+            if (hasExpired) {
+                warn.innerHTML = '🚫 <b>Broadcast Notice:</b> ' + expiredOpts.length + ' registered device(s) are EXPIRED. Adjusting time is blocked until credits are allocated.';
+                warn.style.display = 'block';
+            } else {
+                warn.style.display = 'none';
+            }
+        } else {
+            const opt = sel.options[sel.selectedIndex];
+            hasExpired = (opt && opt.getAttribute('data-expired') === 'true');
+            if (hasExpired) {
+                const label = opt ? opt.text : 'Selected Device';
+                warn.innerHTML = '🚫 <b>Device Expired:</b> ' + label + ' is EXPIRED. Manual time adjustment is blocked until credits are allocated.';
+                warn.style.display = 'block';
+            } else {
+                warn.style.display = 'none';
+            }
+        }
+        return hasExpired;
+    };
+
+    window.validateQuickAdjust = function(e, action) {
+        if (window.checkQuickAdjustExpired()) {
+            if (e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            const sel = document.getElementById('quick_adjust_target');
+            const isAll = (sel && sel.value === 'ALL');
+            const msg = isAll 
+                ? "❌ Action Blocked: One or more devices in broadcast are EXPIRED!\n\nPlease allocate credits in the Master Credit Vault to pair and reactivate all devices before adjusting time."
+                : "❌ Action Blocked: The selected device is EXPIRED!\n\nPlease allocate credits in the Master Credit Vault to pair and reactivate the device before adjusting time.";
+            alert(msg);
+            return false;
+        }
+        return true;
+    };
+
+    document.addEventListener('DOMContentLoaded', function() {
+        if (window.checkQuickAdjustExpired) window.checkQuickAdjustExpired();
+    });
     </script>
 
 </body>
@@ -3662,6 +3737,14 @@ static String getPlaceholderValue(const String& tag) {
         }
         return "";
     }
+    if (tag == "{QUICK_TIME_ALERT}") {
+        if (quickTimeStatusMsg.length() > 0) {
+            String msg = quickTimeStatusMsg;
+            quickTimeStatusMsg = "";
+            return msg;
+        }
+        return "";
+    }
     if (tag == "{TOTAL_COINS}") return String(totalCoinsLifetime);
     if (tag == "{SESSION_COINS}") return String(totalCoinsSession);
     if (tag == "{SHARED_SECRET}") return sharedSecret;
@@ -3968,7 +4051,75 @@ void handleAddTime() {
         minutes = -abs(minutes);
     }
     String targetIp = webServer.hasArg("target_ip") ? webServer.arg("target_ip") : "ALL";
+
+    // Enforce Expiration Check (RULE 6: Single verification path)
+    uint64_t currentMs = getCurrentMasterTimeMs();
+    if (targetIp == "ALL") {
+        int expiredCount = 0;
+        String expiredDetails = "";
+        int startIdx = 0, devNum = 1;
+        while (startIdx < androidIps.length()) {
+            int comma = androidIps.indexOf(',', startIdx);
+            if (comma == -1) comma = androidIps.length();
+            String entry = androidIps.substring(startIdx, comma);
+            entry.trim();
+            if (entry.length() > 0) {
+                DeviceConfig cfg;
+                if (parseDeviceEntry(entry, cfg)) {
+                    int slotIdx = findSlotIndexForDevice(cfg.id, cfg.ip);
+                    int daysLeft = -1;
+                    int expStatus = getSlotExpirationStatus(slotIdx, currentMs, daysLeft);
+                    if (expStatus == 2) {
+                        expiredCount++;
+                        if (expiredDetails.length() > 0) expiredDetails += ", ";
+                        expiredDetails += "PisoPhone " + String(devNum) + " (" + cfg.ip + ")";
+                    }
+                    devNum++;
+                }
+            }
+            startIdx = comma + 1;
+        }
+
+        if (expiredCount > 0) {
+            Serial.printf("[-] handleAddTime blocked: %d device(s) are EXPIRED: %s\n", expiredCount, expiredDetails.c_str());
+            quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Adjustment Blocked: " + String(expiredCount) + " device(s) are EXPIRED (" + expiredDetails + ")! Add credits in the Master Credit Vault to pair and reactivate all devices.</div>";
+            redirectHome();
+            return;
+        }
+    } else {
+        // Specific target IP
+        DeviceConfig targetCfg;
+        targetCfg.ip = targetIp;
+        int startIdx = 0;
+        while (startIdx < androidIps.length()) {
+            int comma = androidIps.indexOf(',', startIdx);
+            if (comma == -1) comma = androidIps.length();
+            String entry = androidIps.substring(startIdx, comma);
+            entry.trim();
+            if (entry.length() > 0) {
+                DeviceConfig cfg;
+                if (parseDeviceEntry(entry, cfg) && cfg.ip == targetIp) {
+                    targetCfg = cfg;
+                    break;
+                }
+            }
+            startIdx = comma + 1;
+        }
+
+        int slotIdx = findSlotIndexForDevice(targetCfg.id, targetCfg.ip);
+        int daysLeft = -1;
+        int expStatus = getSlotExpirationStatus(slotIdx, currentMs, daysLeft);
+        if (expStatus == 2) {
+            Serial.printf("[-] handleAddTime blocked: Target device %s (Slot #%d) is EXPIRED!\n",
+                targetIp.c_str(), (slotIdx >= 0) ? licenseSlots[slotIdx].slotNum : 0);
+            quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Adjustment Blocked: Target device " + targetIp + " is EXPIRED! Add credits in the Master Credit Vault to pair device.</div>";
+            redirectHome();
+            return;
+        }
+    }
+
     sendAddTime(minutes, targetIp);
+    quickTimeStatusMsg = "<div style='background:#e8f5e9;color:#2e7d32;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(16,185,129,0.3);'>✅ Adjusted " + String(minutes > 0 ? "+" : "") + String(minutes) + "m for " + (targetIp == "ALL" ? "All Devices" : targetIp) + ".</div>";
     redirectHome();
 }
 
