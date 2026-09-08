@@ -540,7 +540,7 @@
                     if (checkResp.ok) {
                         serverLicenseData = await checkResp.json();
                         if (serverLicenseData.status === 'PAID') {
-                            logCallback(`🌟 Verified: Commercial License Active (${serverLicenseData.daysRemaining} days remaining).`);
+                            logCallback(`🌟 Verified: Software License Active (${serverLicenseData.daysRemaining} days remaining).`);
                         } else {
                             logCallback(`✨ Device registered with hardware ID: ${deviceId}. Ready for setup tutorial and activation.`);
                         }
@@ -663,7 +663,7 @@
 
             // If the device is already paid on Cloudflare database, push license key immediately
             if (serverLicenseData && serverLicenseData.status === 'PAID' && serverLicenseData.licenseKey) {
-                logCallback("🌟 Syncing active 1-Year Commercial License directly to device...");
+                logCallback("🌟 Syncing active Software License directly to device...");
                 try {
                     await this.shell(`am broadcast -a ${PACKAGE_NAME}.ACTIVATE -n ${PACKAGE_NAME}/.receiver.KioskAdminActionReceiver --es key "${serverLicenseData.licenseKey}"`);
                     await this.shell(`am broadcast -a ${PACKAGE_NAME}.ACTIVATE -p ${PACKAGE_NAME} --es key "${serverLicenseData.licenseKey}"`);

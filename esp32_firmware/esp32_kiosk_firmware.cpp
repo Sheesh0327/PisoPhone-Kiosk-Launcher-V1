@@ -273,6 +273,7 @@ bool pairDeviceToSlot(int slotNum, String devId, String ip, String name) {
         if (i != targetIdx && licenseSlots[i].deviceId.length() > 0 && licenseSlots[i].deviceId == devId) {
             licenseSlots[i].deviceId = "";
             licenseSlots[i].ip = "";
+            licenseSlots[i].expiresAt = 0;
         }
     }
 
@@ -293,6 +294,7 @@ bool unpairSlot(int slotNum) {
     Serial.printf("[+] Unpairing Slot #%d (was %s). Seat remains open.\n", slotNum, licenseSlots[idx].deviceId.c_str());
     licenseSlots[idx].deviceId = "";
     licenseSlots[idx].ip = "";
+    licenseSlots[idx].expiresAt = 0;
     saveSlotLicenses();
     return true;
 }
@@ -1246,7 +1248,7 @@ void updateDynamicDeviceList(String deviceId, String ip) {
     }
     
     if (!found) {
-        // Assign to first open licensed slot
+        // Automatically assign incoming terminal to the first open seat slot (uncredited until activated)
         for (int i = 0; i < maxLicensedSlots; i++) {
             if (licenseSlots[i].deviceId.length() == 0) {
                 licenseSlots[i].deviceId = deviceId;
@@ -1254,9 +1256,11 @@ void updateDynamicDeviceList(String deviceId, String ip) {
                 if (licenseSlots[i].name.length() == 0) {
                     licenseSlots[i].name = "PisoPhone " + String(i + 1);
                 }
+                licenseSlots[i].expiresAt = 0;
+                licenseSlots[i].active = true;
                 found = true;
                 changed = true;
-                Serial.printf("[+] Auto-assigned incoming terminal %s (%s) to open Seat Slot #%d\n", deviceId.c_str(), ip.c_str(), i + 1);
+                Serial.printf("[+] Auto-assigned incoming terminal %s (%s) to open Seat Slot #%d (Uncredited - Requires Activation)\n", deviceId.c_str(), ip.c_str(), i + 1);
                 break;
             }
         }
@@ -1566,50 +1570,92 @@ String renderLicenseSlotsHtml() {
     String myIp = WiFi.localIP().toString();
     if (myIp == "0.0.0.0" || myIp.length() == 0) myIp = "192.168.4.1";
 
-    String html = "<div style=\"background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px 18px; margin-bottom: 14px;\">";
-    html += "<div style=\"display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;\">";
-    html += "<div>";
-    html += "<div style=\"font-size: 13px; font-weight: 800; color: var(--text-main); text-transform: uppercase; letter-spacing: 0.5px;\">💳 Master Credit Vault</div>";
-    html += "<div style=\"font-size: 11px; color: var(--text-muted); margin-top: 2px;\">1 Credit = 1 Paired Terminal Seat. Manual operator allocation (credits never auto-burn).</div>";
-    html += "</div>";
-    html += "<div style=\"display: flex; gap: 8px; flex-wrap: wrap; align-items: center;\">";
-    html += "<span style=\"font-size: 11px; font-weight: 700; background: rgba(16, 185, 129, 0.15); color: var(--primary); border: 1px solid rgba(16, 185, 129, 0.3); padding: 4px 10px; border-radius: 8px;\">📅 1-Month (₱50): <b>" + String(monthlyCredits) + "</b></span>";
-    html += "<span style=\"font-size: 11px; font-weight: 700; background: rgba(59, 130, 246, 0.15); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.3); padding: 4px 10px; border-radius: 8px;\">👑 1-Year (₱500): <b>" + String(annualCredits) + "</b></span>";
-    html += "<span style=\"font-size: 11px; font-weight: 700; background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); padding: 4px 10px; border-radius: 8px;\">⚡ 2-Min Test: <b>" + String(testCredits) + "</b></span>";
-    html += "<a href=\"https://pisophone.pages.dev/purchase.html?esp32_ip=" + myIp + "\" target=\"_blank\" class=\"btn btn-primary\" style=\"font-size: 11px; font-weight: 800; padding: 5px 12px; background: #10b981; color: #020617; border-radius: 8px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; border: none; cursor: pointer;\">➕ Buy Terminal Credits</a>";
-    html += "</div>";
-    html += "</div>";
-    html += "</div>";
-
-    html += "<div style=\"display: flex; flex-direction: column; gap: 10px;\">";
+    int installedCount = 0;
     for (int i = 0; i < maxLicensedSlots; i++) {
-        int sNum = licenseSlots[i].slotNum;
-        String devId = licenseSlots[i].deviceId;
-        String ip = licenseSlots[i].ip;
-        String name = licenseSlots[i].name.length() > 0 ? licenseSlots[i].name : ("PisoPhone " + String(sNum));
-        bool isBound = (devId.length() > 0);
-        int daysLeft = -1;
-        int expStatus = getSlotExpirationStatus(i, currentMs, daysLeft);
-        
-        String borderCol = "var(--border)";
-        String statusBadge = "";
-        if (expStatus == 2) {
-            borderCol = "var(--danger)";
-            statusBadge = "<span style=\"font-size: 10px; font-weight: 800; background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.3); padding: 2px 6px; border-radius: 4px;\">🔴 EXPIRED / UNCREDITED</span>";
-        } else if (expStatus == 1) {
-            borderCol = "#f59e0b";
-            statusBadge = "<span style=\"font-size: 10px; font-weight: 800; background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); padding: 2px 6px; border-radius: 4px;\">⚠️ EXPIRING SOON</span>";
-        } else {
-            borderCol = "var(--primary)";
-            statusBadge = "<span style=\"font-size: 10px; font-weight: 800; background: rgba(16, 185, 129, 0.15); color: var(--primary); border: 1px solid rgba(16, 185, 129, 0.3); padding: 2px 6px; border-radius: 4px;\">🟢 ACTIVE</span>";
+        if (licenseSlots[i].deviceId.length() > 0) {
+            installedCount++;
         }
+    }
 
-        html += "<div class=\"slot-row\" style=\"background: var(--card-bg); border: 1px solid var(--border); border-left: 4px solid " + borderCol + "; border-radius: var(--radius-md); padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;\">";
-        html += "<div style=\"display: flex; align-items: center; gap: 12px;\">";
-        html += "<span style=\"font-size: 11px; font-weight: 800; background: " + String(isBound ? "rgba(16, 185, 129, 0.15)" : "rgba(100, 116, 139, 0.15)") + "; color: " + String(isBound ? "var(--primary)" : "var(--text-muted)") + "; border: 1px solid " + String(isBound ? "rgba(16, 185, 129, 0.3)" : "var(--border)") + "; padding: 4px 8px; border-radius: 6px; font-family: monospace;\">Slot #" + String(sNum) + "</span>";
-        html += "<div>";
-        html += "<div style=\"font-size: 14px; font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 8px;\">" + (isBound ? name : "Empty / Available Slot") + " " + statusBadge + "</div>";
-        if (isBound) {
+    String html = "<div class=\"master-vault-card\" style=\"background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px 24px; box-shadow: var(--card-shadow); margin-bottom: 16px;\">";
+    
+    // Top Row: Title, Subtitle & Professional Buy Button
+    html += "<div style=\"display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;\">";
+    html += "<div style=\"display: flex; align-items: center; gap: 12px;\">";
+    html += "<div style=\"background: rgba(16, 185, 129, 0.12); color: var(--primary); width: 42px; height: 42px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px;\">💳</div>";
+    html += "<div>";
+    html += "<div style=\"font-size: 15px; font-weight: 800; color: var(--text-main); letter-spacing: 0.3px; text-transform: uppercase;\">Master Credit Vault</div>";
+    html += "<div style=\"font-size: 11px; color: var(--text-muted); margin-top: 2px;\">1 Credit = 1 Paired Terminal Seat • Manual Operator Allocation</div>";
+    html += "</div>";
+    html += "</div>";
+
+    html += "<a href=\"https://pisophone.pages.dev/purchase.html?esp32_ip=" + myIp + "\" target=\"_blank\" style=\"font-size: 12px; font-weight: 700; padding: 8px 16px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #ffffff; border-radius: 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25); transition: transform 0.15s ease;\">";
+    html += "<span style=\"font-size: 14px;\">➕</span> Buy Terminal Credits</a>";
+    html += "</div>";
+
+    // Middle Row: Clearly Visible Displays of Total Credit Types
+    html += "<div style=\"display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border);\">";
+    
+    html += "<div style=\"background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 14px;\">";
+    html += "<div style=\"font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;\">📅 1-Month (₱50)</div>";
+    html += "<div style=\"font-size: 18px; font-weight: 800; color: var(--primary); margin-top: 2px;\">" + String(monthlyCredits) + " <span style=\"font-size: 11px; font-weight: 600; color: var(--text-muted);\">Credits</span></div>";
+    html += "</div>";
+
+    html += "<div style=\"background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 14px;\">";
+    html += "<div style=\"font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;\">👑 1-Year (₱500)</div>";
+    html += "<div style=\"font-size: 18px; font-weight: 800; color: #3b82f6; margin-top: 2px;\">" + String(annualCredits) + " <span style=\"font-size: 11px; font-weight: 600; color: var(--text-muted);\">Credits</span></div>";
+    html += "</div>";
+
+    html += "<div style=\"background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 14px;\">";
+    html += "<div style=\"font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;\">⚡ 2-Min Test</div>";
+    html += "<div style=\"font-size: 18px; font-weight: 800; color: #f59e0b; margin-top: 2px;\">" + String(testCredits) + " <span style=\"font-size: 11px; font-weight: 600; color: var(--text-muted);\">Credits</span></div>";
+    html += "</div>";
+
+    html += "</div>";
+
+    // Dropdown Trigger for ONLY Installed Devices
+    html += "<div style=\"margin-top: 16px;\">";
+    html += "<button type=\"button\" onclick=\"toggleInstalledDevicesDropdown()\" style=\"width: 100%; background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; color: var(--text-main); font-family: inherit; font-size: 13px; font-weight: 700; transition: background 0.15s ease;\">";
+    html += "<div style=\"display: flex; align-items: center; gap: 8px;\">";
+    html += "<span>📱 Installed Devices Under This Hardware</span>";
+    html += "<span style=\"font-size: 11px; font-weight: 800; background: " + String(installedCount > 0 ? "rgba(16, 185, 129, 0.15)" : "rgba(100, 116, 139, 0.15)") + "; color: " + String(installedCount > 0 ? "var(--primary)" : "var(--text-muted)") + "; padding: 2px 8px; border-radius: 12px;\">" + String(installedCount) + " Devices</span>";
+    html += "</div>";
+    html += "<span id=\"vault-dropdown-arrow\" style=\"font-size: 12px; color: var(--text-muted); transition: transform 0.2s ease;\">▼</span>";
+    html += "</button>";
+
+    // Dropdown Content (Contains ONLY Installed Devices)
+    html += "<div id=\"installed-devices-dropdown-content\" style=\"display: none; margin-top: 12px; flex-direction: column; gap: 10px;\">";
+
+    if (installedCount == 0) {
+        html += "<div style=\"background: var(--input-bg); border: 1px dashed var(--border); border-radius: var(--radius-md); padding: 20px; text-align: center; color: var(--text-muted); font-size: 12px;\">";
+        html += "<div style=\"font-size: 24px; margin-bottom: 6px;\">📱</div>";
+        html += "<div style=\"font-weight: 700; color: var(--text-main);\">No Installed Devices</div>";
+        html += "<div style=\"margin-top: 4px;\">No terminal devices are currently paired under this ESP32 hardware. Connect an Android terminal via WebADB or Wi-Fi to pair a slot seat.</div>";
+        html += "</div>";
+    } else {
+        for (int i = 0; i < maxLicensedSlots; i++) {
+            if (licenseSlots[i].deviceId.length() == 0) continue; // FILTER: ONLY INSTALLED DEVICES!
+
+            int sNum = licenseSlots[i].slotNum;
+            String devId = licenseSlots[i].deviceId;
+            String ip = licenseSlots[i].ip;
+            String name = licenseSlots[i].name.length() > 0 ? licenseSlots[i].name : ("PisoPhone Slot #" + String(sNum));
+            int daysLeft = -1;
+            int expStatus = getSlotExpirationStatus(i, currentMs, daysLeft);
+
+            String borderCol = "var(--border)";
+            String statusBadge = "";
+            if (expStatus == 2) {
+                borderCol = "var(--danger)";
+                statusBadge = "<span style=\"font-size: 10px; font-weight: 800; background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.3); padding: 3px 8px; border-radius: 6px;\">🔴 EXPIRED / UNCREDITED</span>";
+            } else if (expStatus == 1) {
+                borderCol = "#f59e0b";
+                statusBadge = "<span style=\"font-size: 10px; font-weight: 800; background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); padding: 3px 8px; border-radius: 6px;\">⚠️ EXPIRING SOON</span>";
+            } else {
+                borderCol = "var(--primary)";
+                statusBadge = "<span style=\"font-size: 10px; font-weight: 800; background: rgba(16, 185, 129, 0.15); color: var(--primary); border: 1px solid rgba(16, 185, 129, 0.3); padding: 3px 8px; border-radius: 6px;\">🟢 ACTIVE</span>";
+            }
+
             String expInfo = "No Credit";
             if (licenseSlots[i].expiresAt > 0) {
                 if (licenseSlots[i].expiresAt <= currentMs) {
@@ -1623,26 +1669,31 @@ String renderLicenseSlotsHtml() {
                     }
                 }
             }
-            html += "<div style=\"font-size: 11px; color: var(--text-muted); font-family: monospace;\">IP: " + (ip.length() > 0 ? ip : "Waiting Wi-Fi...") + " • HW: " + devId + " • Expires: <b>" + expInfo + "</b></div>";
-        } else {
-            html += "<div style=\"font-size: 11px; color: var(--text-muted);\">Slot is ready for terminal pairing (requires credit to arm)</div>";
-        }
-        html += "</div>";
-        html += "</div>";
 
-        html += "<div style=\"display: flex; gap: 6px; align-items: center; flex-wrap: wrap;\">";
-        html += "<button type=\"button\" class=\"btn btn-outline btn-sm\" style=\"font-size: 11px; padding: 5px 8px;\" onclick=\"allocateSlotCredit(" + String(sNum) + ", 'month')\">+30d (Month)</button>";
-        html += "<button type=\"button\" class=\"btn btn-outline btn-sm\" style=\"font-size: 11px; padding: 5px 8px; border-color: #3b82f6; color: #3b82f6;\" onclick=\"allocateSlotCredit(" + String(sNum) + ", 'year')\">+1y (Year)</button>";
-        html += "<button type=\"button\" class=\"btn btn-outline btn-sm\" style=\"font-size: 11px; padding: 5px 8px; border-color: #f59e0b; color: #f59e0b;\" onclick=\"allocateSlotCredit(" + String(sNum) + ", 'test')\">+2m (Test)</button>";
-        if (isBound) {
-            html += "<button type=\"button\" class=\"btn btn-outline btn-sm\" style=\"font-size: 11px; padding: 5px 8px; border-color: var(--danger); color: var(--danger);\" onclick=\"unpairSlot(" + String(sNum) + ")\">🔓 Unpair</button>";
-        } else {
-            html += "<button type=\"button\" class=\"btn btn-primary btn-sm\" style=\"font-size: 11px; padding: 6px 10px; font-weight: 700;\" onclick=\"occupySlot(" + String(sNum) + ")\">⚡ Occupy</button>";
-        }
-        html += "</div>";
+            html += "<div class=\"slot-row\" style=\"background: var(--input-bg); border: 1px solid var(--border); border-left: 4px solid " + borderCol + "; border-radius: var(--radius-md); padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;\">";
+            
+            html += "<div style=\"display: flex; align-items: center; gap: 12px;\">";
+            html += "<span style=\"font-size: 11px; font-weight: 800; background: rgba(16, 185, 129, 0.15); color: var(--primary); border: 1px solid rgba(16, 185, 129, 0.3); padding: 4px 8px; border-radius: 6px; font-family: monospace;\">Slot #" + String(sNum) + "</span>";
+            html += "<div>";
+            html += "<div style=\"font-size: 14px; font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 8px;\">" + name + " " + statusBadge + "</div>";
+            html += "<div style=\"font-size: 11px; color: var(--text-muted); font-family: monospace; margin-top: 2px;\">IP: " + (ip.length() > 0 ? ip : "Offline / Unbound") + " • HW: <b>" + devId + "</b> • Expires: <b>" + expInfo + "</b></div>";
+            html += "</div>";
+            html += "</div>";
 
-        html += "</div>";
+            // Unified Credit Allocators
+            html += "<div style=\"display: flex; gap: 8px; align-items: center; flex-wrap: wrap;\">";
+            html += "<button type=\"button\" class=\"btn btn-outline btn-sm\" style=\"font-size: 11px; font-weight: 700; padding: 6px 10px; border-color: rgba(16, 185, 129, 0.4); color: var(--primary);\" onclick=\"allocateSlotCredit(" + String(sNum) + ", 'month')\">+30d (Month)</button>";
+            html += "<button type=\"button\" class=\"btn btn-outline btn-sm\" style=\"font-size: 11px; font-weight: 700; padding: 6px 10px; border-color: rgba(59, 130, 246, 0.4); color: #3b82f6;\" onclick=\"allocateSlotCredit(" + String(sNum) + ", 'year')\">+1y (Year)</button>";
+            html += "<button type=\"button\" class=\"btn btn-outline btn-sm\" style=\"font-size: 11px; font-weight: 700; padding: 6px 10px; border-color: rgba(245, 158, 11, 0.4); color: #f59e0b;\" onclick=\"allocateSlotCredit(" + String(sNum) + ", 'test')\">+2m (Test)</button>";
+            html += "<button type=\"button\" class=\"btn btn-outline btn-sm\" style=\"font-size: 11px; font-weight: 700; padding: 6px 10px; border-color: rgba(239, 68, 68, 0.4); color: var(--danger);\" onclick=\"unpairSlot(" + String(sNum) + ")\">🔓 Unpair</button>";
+            html += "</div>";
+
+            html += "</div>";
+        }
     }
+
+    html += "</div>";
+    html += "</div>";
     html += "</div>";
     return html;
 }
@@ -2359,6 +2410,20 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
             document.documentElement.setAttribute('data-theme', next);
             localStorage.setItem('kiosk_theme', next);
             updateThemeButtonText();
+        };
+
+        window.toggleInstalledDevicesDropdown = function() {
+            const content = document.getElementById('installed-devices-dropdown-content');
+            const arrow = document.getElementById('vault-dropdown-arrow');
+            if (content) {
+                if (content.style.display === 'none' || content.style.display === '') {
+                    content.style.display = 'flex';
+                    if (arrow) arrow.textContent = '▲';
+                } else {
+                    content.style.display = 'none';
+                    if (arrow) arrow.textContent = '▼';
+                }
+            }
         };
 
         function updateThemeButtonText() {
