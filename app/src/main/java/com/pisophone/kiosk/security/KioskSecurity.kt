@@ -235,14 +235,14 @@ object KioskSecurity {
     fun getSharedSecret(context: Context): String {
         val encryptedPrefs = getEncryptedPrefs(context)
         if (encryptedPrefs != null) {
-            val existingSecret = encryptedPrefs.getString(KEY_DEVICE_SECRET, null)
+            try { val existingSecret = encryptedPrefs.getString(KEY_DEVICE_SECRET, null)
             if (existingSecret != null) return existingSecret
 
             val randomBytes = ByteArray(32)
             SecureRandom().nextBytes(randomBytes)
             val newSecret = randomBytes.joinToString("") { "%02x".format(it) }
             encryptedPrefs.edit().putString(KEY_DEVICE_SECRET, newSecret).apply()
-            return newSecret
+            return newSecret } catch (e: Exception) { Log.e(TAG, "Encrypted prefs read failed: ${e.message}") }
         }
         
         val prefs = getPrefs(context)
@@ -259,7 +259,7 @@ object KioskSecurity {
     fun setSharedSecret(context: Context, newSecret: String) {
         val encryptedPrefs = getEncryptedPrefs(context)
         if (encryptedPrefs != null) {
-            encryptedPrefs.edit().putString(KEY_DEVICE_SECRET, newSecret.trim()).apply()
+            try { encryptedPrefs.edit().putString(KEY_DEVICE_SECRET, newSecret.trim()).apply() } catch (e: Exception) { getPrefs(context).edit().putString(KEY_DEVICE_SECRET, newSecret.trim()).apply() }
         } else {
             getPrefs(context).edit().putString(KEY_DEVICE_SECRET, newSecret.trim()).apply()
         }

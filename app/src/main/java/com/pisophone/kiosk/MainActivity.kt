@@ -47,8 +47,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun checkDeviceOwner() {
-        val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
-        isDeviceOwner = dpm.isDeviceOwnerApp(packageName)
+        val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as? android.app.admin.DevicePolicyManager
+        isDeviceOwner = dpm?.isDeviceOwnerApp(packageName) == true
         val fullySetup = isFullySetup()
         if (isDeviceOwner && fullySetup) {
             if (!strictPoliciesApplied) {
