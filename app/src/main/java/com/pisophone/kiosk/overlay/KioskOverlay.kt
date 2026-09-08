@@ -37,15 +37,12 @@ class KioskOverlay(
     private val slotWarningDaysLeftFlow: StateFlow<Int?> = kotlinx.coroutines.flow.MutableStateFlow(null),
     private val isSlotExpiredFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
     private val slotExpiryReasonFlow: StateFlow<String> = kotlinx.coroutines.flow.MutableStateFlow(""),
-    private val isLocateActiveFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
-    private val locateMessageFlow: StateFlow<String> = kotlinx.coroutines.flow.MutableStateFlow(""),
-    private val onDismissLocate: () -> Unit = {},
     private val onInsertCoinClick: () -> Unit,
     private val onDoneClick: () -> Unit,
     private val onThemeChange: () -> Unit,
     private val onActivateClick: (String) -> Unit = {}
 ) {
-    private val lockScreenOverlay = LockScreenOverlay(context, appStateFlow, paymentTimeoutFlow, coinsInsertedFlow, themeIndexFlow, isEsp32OnlineFlow, esp32MacAddressFlow, isSlotBusyFlow, pricePerCoinFlow, minutesPerCoinFlow, deviceIpFlow, batteryStatusFlow, slotWarningDaysLeftFlow, isSlotExpiredFlow, slotExpiryReasonFlow, isLocateActiveFlow, locateMessageFlow, onDismissLocate, onInsertCoinClick, onDoneClick, onThemeChange, onActivateClick)
+    private val lockScreenOverlay = LockScreenOverlay(context, appStateFlow, paymentTimeoutFlow, coinsInsertedFlow, themeIndexFlow, isEsp32OnlineFlow, esp32MacAddressFlow, isSlotBusyFlow, pricePerCoinFlow, minutesPerCoinFlow, deviceIpFlow, batteryStatusFlow, slotWarningDaysLeftFlow, isSlotExpiredFlow, slotExpiryReasonFlow, onInsertCoinClick, onDoneClick, onThemeChange, onActivateClick)
     private val floatingBallOverlay = FloatingBallOverlay(context, appStateFlow, sessionTimeFlow, paymentTimeoutFlow, coinsInsertedFlow, themeIndexFlow, isEsp32OnlineFlow, isSlotBusyFlow, pricePerCoinFlow, minutesPerCoinFlow, batteryStatusFlow, onInsertCoinClick, onDoneClick)
     
     fun show() {
@@ -85,9 +82,6 @@ class LockScreenOverlay(
     private val slotWarningDaysLeftFlow: StateFlow<Int?> = kotlinx.coroutines.flow.MutableStateFlow(null),
     private val isSlotExpiredFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
     private val slotExpiryReasonFlow: StateFlow<String> = kotlinx.coroutines.flow.MutableStateFlow(""),
-    private val isLocateActiveFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
-    private val locateMessageFlow: StateFlow<String> = kotlinx.coroutines.flow.MutableStateFlow(""),
-    private val onDismissLocate: () -> Unit = {},
     private val onInsertCoinClick: () -> Unit,
     private val onDoneClick: () -> Unit,
     private val onThemeChange: () -> Unit,
@@ -192,15 +186,13 @@ class LockScreenOverlay(
             val slotWarningDaysLeft by slotWarningDaysLeftFlow.collectAsState()
             val isSlotExpired by isSlotExpiredFlow.collectAsState()
             val slotExpiryReason by slotExpiryReasonFlow.collectAsState()
-            val isLocateActive by isLocateActiveFlow.collectAsState()
-            val locateMessage by locateMessageFlow.collectAsState()
             val securityUpdateVersion by com.pisophone.kiosk.security.HardwareLockManager.securityUpdateVersion.collectAsState()
             
             val isSetupReady = remember(securityUpdateVersion) { 
                 com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
             }
             
-            val isVisible = (isSetupReady && (appState == 0 || appState == 1)) || isLocateActive
+            val isVisible = isSetupReady && (appState == 0 || appState == 1)
             val unlockAlpha by androidx.compose.animation.core.animateFloatAsState(
                 targetValue = if (isVisible) 1f else 0f,
                 animationSpec = tween(durationMillis = 350, easing = androidx.compose.animation.core.FastOutSlowInEasing),
@@ -252,12 +244,9 @@ class LockScreenOverlay(
                         onThemeChange = onThemeChange,
                         slotWarningDaysLeft = slotWarningDaysLeft,
                         isSlotExpired = isSlotExpired,
-                        slotExpiryReason = slotExpiryReason,
-                        isLocateActive = isLocateActive,
-                        locateMessage = locateMessage,
-                        onDismissLocate = onDismissLocate
+                        slotExpiryReason = slotExpiryReason
                     )
-                } else if (appState == 1 || appState == 3 || coinsInserted > 0 || isLocateActive) {
+                } else if (appState == 1 || appState == 3 || coinsInserted > 0) {
                     BlockScreen(
                         onInsertCoin = onInsertCoinClick,
                         isWaiting = isVisible,
@@ -274,10 +263,7 @@ class LockScreenOverlay(
                         onThemeChange = onThemeChange,
                         slotWarningDaysLeft = slotWarningDaysLeft,
                         isSlotExpired = isSlotExpired,
-                        slotExpiryReason = slotExpiryReason,
-                        isLocateActive = isLocateActive,
-                        locateMessage = locateMessage,
-                        onDismissLocate = onDismissLocate
+                        slotExpiryReason = slotExpiryReason
                     )
                 }
             }

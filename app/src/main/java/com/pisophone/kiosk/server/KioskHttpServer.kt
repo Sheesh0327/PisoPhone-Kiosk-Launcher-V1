@@ -115,15 +115,6 @@ class KioskHttpServer(
             return newFixedLengthResponse(Response.Status.OK, "text/plain", delegate.getAppState().toString())
         }
 
-        if (uri == "/locate" || uri == "/api/locate") {
-            val clientIp = session.headers["remote-addr"] ?: session.headers["http-client-ip"]
-            delegate.onHeartbeat(clientIp)
-            val actionType = params["action"]?.ifBlank { "locate" } ?: "locate"
-            Log.i(TAG, "Processing public locator trigger '$actionType' for device identification (URI: $uri).")
-            delegate.onTriggerAction(actionType)
-            return newFixedLengthResponse(Response.Status.OK, "text/plain", "OK")
-        }
-
         if (uri == "/audit") {
             val auditJson = delegate.getAuditEventsJson()
             return newFixedLengthResponse(Response.Status.OK, "application/json", auditJson)
@@ -137,18 +128,21 @@ class KioskHttpServer(
         val secretKey = delegate.getSecretKey()
         val payload = params["payload"]
         val decryptedParams: Map<String, String> = when {
-            !payload.isNullOrBlank() -> {
-                val decryptedStr = if (secretKey.isNotBlank()) KioskSecurity.decrypt(payload, secretKey) else ""
-                val result = if (decryptedStr.isNotBlank()) parseQueryString(decryptedStr) else emptyMap()
-                if (result.isNotEmpty()) result else params
-            }
-            // Allow unencrypted locator actions on /trigger_action
-            uri == "/trigger_action" && (params["action"] == "locate" || params["action"] == "sound" || params["action"] == "vibrate" || params["action"] == "flash") -> {
-                params
-            }
             secretKey.isNotBlank() -> {
-                Log.w(TAG, "Rejected unauthenticated request to protected endpoint: $uri")
-                return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Encrypted payload required")
+                if (payload.isNullOrBlank()) {
+                    Log.w(TAG, "Rejected unauthenticated request to protected endpoint: $uri")
+                    return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Encrypted payload required")
+                }
+                val decryptedStr = KioskSecurity.decrypt(payload, secretKey)
+                if (decryptedStr.isBlank()) {
+                    Log.w(TAG, "Rejected payload with invalid AES key or corrupted signature: $uri")
+                    return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Decryption failed")
+                }
+                parseQueryString(decryptedStr)
+            }
+            !payload.isNullOrBlank() -> {
+                val decryptedStr = KioskSecurity.decrypt(payload, "")
+                if (decryptedStr.isNotBlank()) parseQueryString(decryptedStr) else params
             }
             else -> params
         }

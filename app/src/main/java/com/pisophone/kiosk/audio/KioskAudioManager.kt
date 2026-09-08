@@ -379,45 +379,6 @@ class KioskAudioManager(
         }
     }
 
-    fun playLocateAlarm() {
-        scope.launch(Dispatchers.IO) {
-            try {
-                val androidAudioManager = context.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager
-                androidAudioManager?.let { am ->
-                    try {
-                        val maxVol = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
-                        am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, maxVol, 0)
-                    } catch (_: Exception) {}
-                }
-
-                val sampleRate = 44100
-                val durationSec = 2.5
-                val numSamples = (sampleRate * durationSec).toInt()
-                val buffer = ShortArray(numSamples)
-                for (i in 0 until numSamples) {
-                    val t = i.toDouble() / sampleRate
-                    val cycleT = t % 0.3
-                    val freq = if (cycleT < 0.15) 1200.0 else 1600.0
-                    val isBeepOn = (t % 0.6) < 0.45
-                    val sampleVal = if (isBeepOn) (Math.sin(2.0 * Math.PI * freq * t) * 32767 * 0.95).toInt().coerceIn(-32768, 32767) else 0
-                    buffer[i] = sampleVal.toShort()
-                }
-                playPcmBuffer(buffer, sampleRate, (durationSec * 1000).toInt())
-
-                if (isTtsReady && tts != null) {
-                    try {
-                        val params = Bundle().apply {
-                            putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f)
-                        }
-                        tts?.speak("Terminal Located! Terminal Identified!", TextToSpeech.QUEUE_ADD, params, "kiosk_locate_${System.currentTimeMillis()}")
-                    } catch (_: Exception) {}
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to play locate alarm: ${e.message}")
-            }
-        }
-    }
-
     fun shutdown() {
         stopWaitingMusic()
         try {
