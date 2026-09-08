@@ -153,8 +153,15 @@ object KioskPolicyManager {
                 try {
                     dpm.addUserRestriction(componentName, UserManager.DISALLOW_SAFE_BOOT)
                     dpm.addUserRestriction(componentName, UserManager.DISALLOW_FACTORY_RESET)
-                    dpm.addUserRestriction(componentName, UserManager.DISALLOW_ADD_USER)
-                    dpm.clearUserRestriction(componentName, UserManager.DISALLOW_MOUNT_PHYSICAL_MEDIA)
+                    dpm.clearUserRestriction(componentName, UserManager.DISALLOW_ADD_USER)
+                    dpm.clearUserRestriction(componentName, UserManager.DISALLOW_MODIFY_ACCOUNTS)
+                    dpm.addUserRestriction(componentName, UserManager.DISALLOW_USB_FILE_TRANSFER)
+                    dpm.addUserRestriction(componentName, UserManager.DISALLOW_MOUNT_PHYSICAL_MEDIA)
+                    dpm.addUserRestriction(componentName, UserManager.DISALLOW_APPS_CONTROL)
+                    dpm.addUserRestriction(componentName, UserManager.DISALLOW_UNINSTALL_APPS)
+                    dpm.addUserRestriction(componentName, UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES)
+                    dpm.addUserRestriction(componentName, UserManager.DISALLOW_SYSTEM_ERROR_DIALOGS)
+                    dpm.addUserRestriction(componentName, UserManager.DISALLOW_NETWORK_RESET)
                 } catch (e: Exception) {
                     Log.w(TAG, "Could not apply user restrictions: ${e.message}")
                 }

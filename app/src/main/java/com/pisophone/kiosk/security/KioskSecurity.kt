@@ -13,6 +13,13 @@ import javax.crypto.Cipher
 import javax.crypto.Mac
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.util.Base64
+import java.security.KeyStore
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 
 /**
  * Core security coordinator, configuration storage, and cryptographic authentication manager.
@@ -232,37 +239,111 @@ object KioskSecurity {
         getPrefs(context).edit().putString(KEY_DEVICE_ALIAS, alias.trim()).apply()
     }
 
+    private const val CUSTOM_KEYSTORE_ALIAS = "kiosk_custom_secret_key"
+    private const val KEY_CUSTOM_ENCRYPTED_SECRET = "custom_encrypted_device_secret"
+
+    private fun getCustomKeystoreEncryptedSecret(prefs: SharedPreferences): String? {
+        val encryptedBase64 = prefs.getString(KEY_CUSTOM_ENCRYPTED_SECRET, null) ?: return null
+        return try {
+            val parts = encryptedBase64.split(":")
+            if (parts.size != 2) return null
+            val iv = Base64.decode(parts[0], Base64.DEFAULT)
+            val cipherText = Base64.decode(parts[1], Base64.DEFAULT)
+            
+            val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+            val secretKey = keyStore.getKey(CUSTOM_KEYSTORE_ALIAS, null) as? SecretKey ?: return null
+            
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(128, iv))
+            val plainTextBytes = cipher.doFinal(cipherText)
+            String(plainTextBytes, Charsets.UTF_8)
+        } catch (e: Exception) {
+            Log.e(TAG, "Custom Keystore decryption failed: ${e.message}")
+            null
+        }
+    }
+
+    private fun setCustomKeystoreEncryptedSecret(prefs: SharedPreferences, secret: String) {
+        try {
+            val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+            if (!keyStore.containsAlias(CUSTOM_KEYSTORE_ALIAS)) {
+                val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+                val keySpec = KeyGenParameterSpec.Builder(
+                    CUSTOM_KEYSTORE_ALIAS,
+                    KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+                )
+                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                    .setRandomizedEncryptionRequired(true)
+                    .build()
+                keyGenerator.init(keySpec)
+                keyGenerator.generateKey()
+            }
+            val secretKey = keyStore.getKey(CUSTOM_KEYSTORE_ALIAS, null) as SecretKey
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.ENCRYPT_MODE, secretKey)
+            val iv = cipher.iv
+            val cipherText = cipher.doFinal(secret.toByteArray(Charsets.UTF_8))
+            val ivBase64 = Base64.encodeToString(iv, Base64.NO_WRAP)
+            val cipherTextBase64 = Base64.encodeToString(cipherText, Base64.NO_WRAP)
+            prefs.edit().putString(KEY_CUSTOM_ENCRYPTED_SECRET, "$ivBase64:$cipherTextBase64").apply()
+        } catch (e: Exception) {
+            Log.e(TAG, "Custom Keystore encryption failed: ${e.message}")
+        }
+    }
+
     fun getSharedSecret(context: Context): String {
         val encryptedPrefs = getEncryptedPrefs(context)
         if (encryptedPrefs != null) {
-            try { val existingSecret = encryptedPrefs.getString(KEY_DEVICE_SECRET, null)
-            if (existingSecret != null) return existingSecret
-
-            val randomBytes = ByteArray(32)
-            SecureRandom().nextBytes(randomBytes)
-            val newSecret = randomBytes.joinToString("") { "%02x".format(it) }
-            encryptedPrefs.edit().putString(KEY_DEVICE_SECRET, newSecret).apply()
-            return newSecret } catch (e: Exception) { Log.e(TAG, "Encrypted prefs read failed: ${e.message}") }
+            try { 
+                val existingSecret = encryptedPrefs.getString(KEY_DEVICE_SECRET, null)
+                if (existingSecret != null) return existingSecret
+            } catch (e: Exception) { Log.e(TAG, "Encrypted prefs read failed: ${e.message}") }
         }
         
         val prefs = getPrefs(context)
-        var secret = prefs.getString(KEY_DEVICE_SECRET, null)
+        
+        var secret = getCustomKeystoreEncryptedSecret(prefs)
+        
+        if (secret == null && prefs.contains(KEY_DEVICE_SECRET)) {
+            val oldPlainSecret = prefs.getString(KEY_DEVICE_SECRET, null)
+            if (oldPlainSecret != null) {
+                setCustomKeystoreEncryptedSecret(prefs, oldPlainSecret)
+                prefs.edit().remove(KEY_DEVICE_SECRET).apply()
+                secret = oldPlainSecret
+            }
+        }
+        
         if (secret == null) {
             val randomBytes = ByteArray(32)
             SecureRandom().nextBytes(randomBytes)
             secret = randomBytes.joinToString("") { "%02x".format(it) }
-            prefs.edit().putString(KEY_DEVICE_SECRET, secret).apply()
+            
+            if (encryptedPrefs != null) {
+                try {
+                    encryptedPrefs.edit().putString(KEY_DEVICE_SECRET, secret).apply()
+                    return secret
+                } catch (e: Exception) { Log.e(TAG, "Encrypted prefs write failed: ${e.message}") }
+            }
+            setCustomKeystoreEncryptedSecret(prefs, secret!!)
         }
         return secret!!
     }
 
     fun setSharedSecret(context: Context, newSecret: String) {
         val encryptedPrefs = getEncryptedPrefs(context)
+        var successWithEncryptedPrefs = false
         if (encryptedPrefs != null) {
-            try { encryptedPrefs.edit().putString(KEY_DEVICE_SECRET, newSecret.trim()).apply() } catch (e: Exception) { getPrefs(context).edit().putString(KEY_DEVICE_SECRET, newSecret.trim()).apply() }
-        } else {
-            getPrefs(context).edit().putString(KEY_DEVICE_SECRET, newSecret.trim()).apply()
+            try { 
+                encryptedPrefs.edit().putString(KEY_DEVICE_SECRET, newSecret.trim()).apply()
+                successWithEncryptedPrefs = true
+            } catch (e: Exception) { Log.e(TAG, "Encrypted prefs write failed: ${e.message}") }
+        } 
+        
+        if (!successWithEncryptedPrefs) {
+            setCustomKeystoreEncryptedSecret(getPrefs(context), newSecret.trim())
         }
+        getPrefs(context).edit().remove(KEY_DEVICE_SECRET).apply()
     }
 
     fun getAdminPin(context: Context): String {
