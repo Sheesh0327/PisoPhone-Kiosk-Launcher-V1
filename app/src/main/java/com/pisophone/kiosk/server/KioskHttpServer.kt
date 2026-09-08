@@ -120,12 +120,6 @@ class KioskHttpServer(
             return newFixedLengthResponse(Response.Status.OK, "application/json", auditJson)
         }
 
-        // Protected action endpoints (require cryptographic AES payload decryption)
-        if (!HardwareLockManager.isHardwareAuthorized(context)) {
-            Log.e(TAG, "Rejecting HTTP action: Hardware lock is active on unauthorized device.")
-            return newFixedLengthResponse(Response.Status.FORBIDDEN, "text/plain", "Hardware lock active on unauthorized device")
-        }
-
         val clientIp = session.headers["remote-addr"] ?: session.headers["http-client-ip"] ?: "unknown"
         if (isRateLimited(clientIp)) {
             return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Rate limit exceeded")
@@ -161,6 +155,22 @@ class KioskHttpServer(
                 return newFixedLengthResponse(Response.Status.OK, "text/plain", "ALREADY_PROCESSED")
             }
             markTxIdProcessed(txId)
+        }
+
+        // Handle Locator / Identification triggers regardless of hardware lock status
+        if (uri == "/trigger_action") {
+            val actionType = decryptedParams["action"] ?: ""
+            if (actionType == "locate" || actionType == "sound" || actionType == "vibrate" || actionType == "flash") {
+                Log.i(TAG, "Processing locator action '$actionType' for device identification.")
+                delegate.onTriggerAction(actionType)
+                return newFixedLengthResponse(Response.Status.OK, "text/plain", "OK")
+            }
+        }
+
+        // Protected action endpoints require active hardware license/authorization
+        if (!HardwareLockManager.isHardwareAuthorized(context)) {
+            Log.e(TAG, "Rejecting HTTP action: Hardware lock is active on unauthorized device.")
+            return newFixedLengthResponse(Response.Status.FORBIDDEN, "text/plain", "Hardware lock active on unauthorized device")
         }
 
         return when (uri) {

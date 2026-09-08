@@ -585,15 +585,15 @@ class KioskService : Service() {
                             }
                             "vibrate" -> HardwareFeedback.triggerVibration(this@KioskService, longArrayOf(0, 1500))
                             "sound" -> {
-                                val ringtone = android.media.RingtoneManager.getRingtone(applicationContext, android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION))
-                                ringtone?.play()
+                                audioManager?.playHighBatteryAttentionTone()
                             }
-                            "flash" -> HardwareFeedback.triggerFlashlight(this@KioskService, 1500L)
+                            "flash" -> HardwareFeedback.triggerFlashlight(this@KioskService, 2000L)
                             "locate" -> {
-                                HardwareFeedback.triggerVibration(this@KioskService, longArrayOf(0, 1500))
-                                val ringtone = android.media.RingtoneManager.getRingtone(applicationContext, android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION))
-                                ringtone?.play()
-                                HardwareFeedback.triggerFlashlight(this@KioskService, 1500L)
+                                audioManager?.speakWarning("Terminal Located! Terminal Located!")
+                                audioManager?.playHighBatteryAttentionTone()
+                                HardwareFeedback.triggerVibration(this@KioskService, longArrayOf(0, 1000, 200, 1000, 200, 1000))
+                                HardwareFeedback.triggerFlashlight(this@KioskService, 3000L)
+                                Toast.makeText(this@KioskService, "📍 LOCATE SIGNAL: Terminal Identified!", Toast.LENGTH_LONG).show()
                             }
                             "enable_adb" -> {
                                 KioskSecurity.emergencyEnableUsbDebugging(applicationContext)

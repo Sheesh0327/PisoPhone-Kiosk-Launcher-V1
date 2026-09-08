@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <WiFiUdp.h>
 #include <HTTPClient.h>
 #include <WebServer.h>
@@ -833,10 +834,18 @@ bool applySlotToken(String token) {
 // Single Snapshot Reporting to Cloudflare Worker
 void sendCloudSnapshot() {
     if (WiFi.status() != WL_CONNECTED) return;
+    if (ESP.getFreeHeap() < 35000) {
+        Serial.printf("[☁️ CLOUD] Skipping snapshot report, free heap low (%u bytes)\n", ESP.getFreeHeap());
+        return;
+    }
     
+    WiFiClientSecure client;
+    client.setInsecure();
+    client.setTimeout(4);
+
     HTTPClient http;
     http.setTimeout(4000);
-    if (!http.begin("https://pisophone-api.pisophone-support.workers.dev/api/box/report-snapshot")) {
+    if (!http.begin(client, "https://pisophone-api.pisophone-support.workers.dev/api/box/report-snapshot")) {
         return;
     }
     http.addHeader("Content-Type", "application/json");
@@ -978,7 +987,7 @@ String aes_decrypt(String encryptedHex, String secret) {
     free(data);
     
     uint8_t padding_len = decrypted[ciphertext_len - 1];
-    if (padding_len > 16 || padding_len == 0) {
+    if (padding_len > ciphertext_len || padding_len > 16 || padding_len == 0) {
         free(decrypted);
         return "";
     }
@@ -1141,9 +1150,11 @@ void authWorkerTask(void *pvParameters) {
             HTTPClient http;
             http.setConnectTimeout(req.timeoutMs);
             http.setTimeout(req.timeoutMs);
-            http.setReuse(true);
+            http.setReuse(false);
 
             String ip = String(req.ip);
+            if (ip.length() == 0) continue;
+
             String actionUrl = "http://" + ip + ":" + String(req.port) + String(req.actionPath);
             
             String finalParams = String(req.params);
@@ -1162,7 +1173,8 @@ void authWorkerTask(void *pvParameters) {
             actionUrl += "?payload=" + encryptedPayload;
 
             if (http.begin(actionUrl)) {
-                http.GET();
+                int code = http.GET();
+                Serial.printf("[⚡ AUTH WORKER] GET %s -> Response %d\n", actionUrl.c_str(), code);
                 http.end();
             }
             vTaskDelay(pdMS_TO_TICKS(40)); // Prevent socket/radio contention
@@ -5365,6 +5377,8 @@ void setup() {
     loadSlotLicenses();
     loadCreditVault();
     targetPort        = prefs.getInt("port", targetPort);
+    if (targetPort <= 0) targetPort = 8080;
+    lastWifiCheckTime = millis();
     webPassword       = prefs.getString("admin_pw", webPassword);
     coinPrice         = prefs.getFloat("price", coinPrice);
     minutesPerCoin    = prefs.getInt("minutes", minutesPerCoin);
@@ -5632,27 +5646,28 @@ void loop() {
         currentLedState = LED_STATE_CONNECTED;
     } else {
         // Not connected. Check how long we've been trying to connect in this cycle
-        if (millis() - lastWifiCheckTime < 15000) {
-            // We are actively trying to reconnect: show rapid flashing (connecting state)
+        if (millis() - lastWifiCheckTime < 20000) {
             currentLedState = LED_STATE_CONNECTING;
         } else {
-            // Attempt window timed out: show slow flashing (failed state)
             currentLedState = LED_STATE_FAILED;
             
-            // Trigger a fresh, clean connection attempt every 15 seconds
-            lastWifiCheckTime = millis();
-            Serial.println("\n[📶 WATCHDOG] Wi-Fi connection lost. Re-initiating non-blocking reconnection...");
-            WiFi.disconnect();
-            WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
-            udpServer.stop();
-            udpServer.begin(UDP_DISCOVERY_PORT);
+            // Trigger a fresh connection attempt every 30 seconds if SSID is set
+            if (wifiSsid.length() > 0 && (millis() - lastWifiCheckTime > 30000)) {
+                lastWifiCheckTime = millis();
+                Serial.printf("\n[📶 WATCHDOG] Wi-Fi lost. Attempting reconnection to \"%s\"...\n", wifiSsid.c_str());
+                WiFi.disconnect();
+                WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
+                udpServer.stop();
+                udpServer.begin(UDP_DISCOVERY_PORT);
+            }
         }
     }
     processLedBlink();
     
     // Periodic Cloud Snapshot Sync (Every 15 mins if connected)
     static unsigned long lastCloudSnapshotMs = 0;
-    if (WiFi.status() == WL_CONNECTED && (millis() - lastCloudSnapshotMs > 900000 || lastCloudSnapshotMs == 0)) {
+    if (lastCloudSnapshotMs == 0) lastCloudSnapshotMs = millis();
+    if (WiFi.status() == WL_CONNECTED && (millis() - lastCloudSnapshotMs > 900000)) {
         lastCloudSnapshotMs = millis();
         sendCloudSnapshot();
     }
