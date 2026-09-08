@@ -678,7 +678,34 @@
                 await this.shell(`rm -f ${DEVICE_TEMP_APK_PATH}`); 
             } catch (e) {}
 
-            logCallback("🎉 PisoPhone Kiosk setup complete! Device is now secured.");
+            logCallback("Step 6: Restarting device to verify clean boot and initialization...");
+            try {
+                await this.rebootDevice(logCallback);
+            } catch (rErr) {
+                logCallback(`Notice on reboot: ${rErr.message}`);
+            }
+
+            logCallback("🎉 PisoPhone Kiosk setup complete! Device is rebooting into secured kiosk mode.");
+        }
+
+        /**
+         * Granular step: Restarts device cleanly
+         */
+        async rebootDevice(logCallback = console.log) {
+            if (!this.adb) throw new Error("Device not connected.");
+            logCallback("🔄 Sending reboot command to device...");
+            try {
+                if (this.adb.power && typeof this.adb.power.reboot === "function") {
+                    await this.adb.power.reboot();
+                } else {
+                    await this.shell("svc power reboot || reboot || true");
+                }
+            } catch (e) {
+                try {
+                    await this.shell("reboot || true");
+                } catch (_) {}
+            }
+            logCallback("✅ Device reboot signal dispatched.");
         }
 
         /**

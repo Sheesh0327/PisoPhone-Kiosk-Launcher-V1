@@ -68,8 +68,7 @@ class FloatingBallOverlay(
             android.util.Log.w("FloatingBallOverlay", "Overlay permission not granted yet, deferring window attachment")
             return
         }
-        val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isTutorialCompleted(context) &&
-                           com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
+        val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
         if (!isFullySetup) {
             android.util.Log.d("FloatingBallOverlay", "Device not activated or fully setup. Floating ball overlay deferred.")
             return
@@ -88,7 +87,6 @@ class FloatingBallOverlay(
             val securityUpdateVersion by com.pisophone.kiosk.security.HardwareLockManager.securityUpdateVersion.collectAsState()
             
             val isSetupReady = remember(securityUpdateVersion) { 
-                com.pisophone.kiosk.security.HardwareLockManager.isTutorialCompleted(context) &&
                 com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
             }
             val isVisible = isSetupReady && (appState == 2 || appState == 3)
@@ -173,8 +171,7 @@ class FloatingBallOverlay(
         if (!isViewAdded) return
         try {
             overlayView.onResume()
-            val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isTutorialCompleted(context) &&
-                               com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
+            val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
             val appState = appStateFlow.value
             val isVisible = isFullySetup && (appState == 2 || appState == 3)
             overlayView.view.visibility = if (isVisible) View.VISIBLE else View.GONE

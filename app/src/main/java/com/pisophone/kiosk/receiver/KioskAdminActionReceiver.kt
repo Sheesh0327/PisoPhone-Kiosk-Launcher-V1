@@ -92,8 +92,8 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                     return
                 }
                 if (!com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)) {
-                    Log.w(TAG, "ADMIN_BYPASS rejected: Device is not activated or licensed.")
-                    Toast.makeText(context, "Bypass rejected: License activation required.", Toast.LENGTH_SHORT).show()
+                    Log.w(TAG, "ADMIN_BYPASS rejected: Device is not provisioned or is hardware locked.")
+                    Toast.makeText(context, "Bypass rejected: Hardware provisioning required.", Toast.LENGTH_SHORT).show()
                     return
                 }
                 val duration = intent.getIntExtra("duration", 900)
@@ -223,7 +223,6 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
 
                 Log.i(TAG, "Activation broadcast received with key: $key")
                 val success = com.pisophone.kiosk.security.HardwareLockManager.sealToCurrentDevice(context)
-                com.pisophone.kiosk.security.HardwareLockManager.setTutorialCompleted(context, true)
                 setResultCode(if (success) android.app.Activity.RESULT_OK else android.app.Activity.RESULT_CANCELED)
                 setResultData(if (success) "SUCCESS" else "FAILED")
                 if (success) {

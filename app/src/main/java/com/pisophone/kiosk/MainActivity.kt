@@ -43,10 +43,7 @@ class MainActivity : ComponentActivity() {
     private var strictPoliciesApplied = false
 
     private fun isFullySetup(): Boolean {
-        val hasOverlay = Settings.canDrawOverlays(this)
-        return HardwareLockManager.isTutorialCompleted(this) &&
-               HardwareLockManager.isAppAllowedToRun(this) &&
-               hasOverlay
+        return HardwareLockManager.isAppAllowedToRun(this)
     }
 
     private fun checkDeviceOwner() {
@@ -64,14 +61,6 @@ class MainActivity : ComponentActivity() {
             checkOverlayPermission()
         }
     }
-
-    @android.annotation.SuppressLint("InvalidFragmentVersionForActivityResult")
-    private val overlayPermissionLauncher =
-        registerForActivityResult(
-            ActivityResultContracts.StartActivityForResult(),
-        ) {
-            checkOverlayPermission()
-        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -106,15 +95,6 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                         )
-                    } else if (!hasOverlayPermission) {
-                        PermissionScreen(onRequest = {
-                            val intent =
-                                Intent(
-                                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                    Uri.parse("package:$packageName"),
-                                )
-                            overlayPermissionLauncher.launch(intent)
-                        })
                     } else {
                         LaunchedEffect(Unit) {
                             checkDeviceOwner()
@@ -196,7 +176,6 @@ class MainActivity : ComponentActivity() {
 
         if (activate) {
             HardwareLockManager.sealToCurrentDevice(this)
-            HardwareLockManager.setTutorialCompleted(this, true)
             try {
                 val serviceIntent = Intent(this, KioskService::class.java)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

@@ -91,7 +91,7 @@ fun HardwareLockScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             Text(
-                text = "HARDWARE TAMPER LOCK",
+                text = if (boundHwId.isEmpty()) "UNPROVISIONED TERMINAL" else "HARDWARE TAMPER LOCK",
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Black,
                 color = Color(0xFFF87171),
@@ -102,7 +102,7 @@ fun HardwareLockScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "Unauthorized Device or Cloned Storage Detected",
+                text = if (boundHwId.isEmpty()) "Activation & ESP32 Pairing Required" else "Unauthorized Device or Cloned Storage Detected",
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = Color.White,
@@ -112,7 +112,10 @@ fun HardwareLockScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "This kiosk application is cryptographically sealed to its original physical hardware to prevent unauthorized copying, disk cloning, or firmware extraction.",
+                text = if (boundHwId.isEmpty())
+                    "This kiosk terminal has not been provisioned. Connect this device to an authorized PisoPhone ESP32 Box via WebADB to pair a licensed terminal seat."
+                else
+                    "This kiosk application is cryptographically sealed to its original physical hardware to prevent unauthorized copying, disk cloning, or firmware extraction.",
                 fontSize = 13.sp,
                 color = Color(0xFF94A3B8),
                 textAlign = TextAlign.Center,
@@ -140,7 +143,7 @@ fun HardwareLockScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Hardware Signature Mismatch",
+                            text = if (boundHwId.isEmpty()) "Awaiting WebADB / ESP32 Provisioning" else "Hardware Signature Mismatch",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFFEF4444)

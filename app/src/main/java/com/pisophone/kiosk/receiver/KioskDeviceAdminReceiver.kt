@@ -14,8 +14,7 @@ class KioskDeviceAdminReceiver : DeviceAdminReceiver() {
         val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
         val componentName = android.content.ComponentName(context, KioskDeviceAdminReceiver::class.java)
         try {
-            val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isTutorialCompleted(context) &&
-                               com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
+            val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
             if (dpm.isDeviceOwnerApp(context.packageName) && isFullySetup) {
                 com.pisophone.kiosk.security.KioskSecurity.applyStrictKioskPolicies(context)
                 Log.d("KioskDeviceAdmin", "Successfully provisioned as Device Owner & Lock Task Policies set.")

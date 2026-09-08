@@ -26,8 +26,7 @@ class BootReceiver : BroadcastReceiver() {
             Log.d(TAG, "Auto-starting Kiosk services post-boot/update...")
 
             // 1. Start Kiosk Foreground Service if fully activated & setup
-            val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isTutorialCompleted(context) &&
-                               com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
+            val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
             if (isFullySetup) {
                 try {
                     val serviceIntent = Intent(context, KioskService::class.java)

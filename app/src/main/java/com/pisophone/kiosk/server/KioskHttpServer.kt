@@ -131,19 +131,24 @@ class KioskHttpServer(
             return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Rate limit exceeded")
         }
 
+        val secretKey = delegate.getSecretKey()
         val payload = params["payload"]
         val decryptedParams: Map<String, String> = when {
-            !payload.isNullOrBlank() -> {
-                var decryptedStr = KioskSecurity.decrypt(payload, delegate.getSecretKey())
+            secretKey.isNotBlank() -> {
+                if (payload.isNullOrBlank()) {
+                    Log.w(TAG, "Rejected unauthenticated request to protected endpoint: $uri")
+                    return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Encrypted payload required")
+                }
+                val decryptedStr = KioskSecurity.decrypt(payload, secretKey)
                 if (decryptedStr.isBlank()) {
-                    decryptedStr = KioskSecurity.decrypt(payload, "")
+                    Log.w(TAG, "Rejected payload with invalid AES key or corrupted signature: $uri")
+                    return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Decryption failed")
                 }
-                if (decryptedStr.isNotBlank()) {
-                    parseQueryString(decryptedStr)
-                } else {
-                    Log.w(TAG, "Failed to decrypt payload; attempting to parse raw query params")
-                    params
-                }
+                parseQueryString(decryptedStr)
+            }
+            !payload.isNullOrBlank() -> {
+                val decryptedStr = KioskSecurity.decrypt(payload, "")
+                if (decryptedStr.isNotBlank()) parseQueryString(decryptedStr) else params
             }
             else -> params
         }

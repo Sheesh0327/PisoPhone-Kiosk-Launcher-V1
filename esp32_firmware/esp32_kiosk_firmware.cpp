@@ -540,6 +540,17 @@ volatile unsigned long isrLastPulseTimeMs = 0;
 const unsigned long U_MIN_PULSE_DEBOUNCE_MS = 8;      // 8ms debounce filters electrical noise while capturing 10ms-100ms coin pulses
 const unsigned long U_INTER_PULSE_TIMEOUT_MS = 280;   // 280ms quiet period marks end of coin insertion train
 
+// Session and pulse train tracking for zero credit loss during rapid clicks or session transitions
+String lastArmedDeviceId = "";
+String lastArmedIp = "";
+unsigned long lastArmedTimeMs = 0;
+String pulseTrainDeviceId = "";
+String pulseTrainDeviceIp = "";
+bool pulseTrainWasArmed = false;
+unsigned long pulseTrainStartTime = 0;
+bool pendingWsGracefulClose = false;
+unsigned long pendingWsGracefulCloseUntil = 0;
+
 void IRAM_ATTR universalCoinIsr() {
     unsigned long now = millis();
     // Debounce to filter out high frequency contact bounces (< 8ms)
@@ -565,6 +576,14 @@ void processUniversalCoinDetector() {
     unsigned long lastPulseTime = isrLastPulseTimeMs;
     interrupts();
 
+    // Lock in the device origin and armed status as soon as the first pulse arrives
+    if (count > 0 && pulseTrainStartTime == 0) {
+        pulseTrainStartTime = lastPulseTime;
+        pulseTrainDeviceId = (armedIp.length() > 0) ? armedIp : lastArmedDeviceId;
+        pulseTrainDeviceIp = (armedIp.length() > 0) ? getIpFromDeviceId(armedIp) : lastArmedIp;
+        pulseTrainWasArmed = isSlotArmed() || (millis() - lastArmedTimeMs < 10000);
+    }
+
     // When pulses have arrived and no new pulses occurred for U_INTER_PULSE_TIMEOUT_MS, train is complete!
     if (count > 0 && (now - lastPulseTime >= U_INTER_PULSE_TIMEOUT_MS)) {
         noInterrupts();
@@ -572,9 +591,24 @@ void processUniversalCoinDetector() {
         isrUniversalPulseCount = 0;
         interrupts();
 
+        pulseTrainStartTime = 0; // Reset for next coin train
+
         if (finalPulses > 0) {
             Serial.printf("[⚡ UNIVERSAL COIN] Detected %d pulse(s) on GPIO %d! Triggering coin event...\n", finalPulses, universalCoinPin);
             triggerUniversalCoinEvent(finalPulses);
+        }
+
+        // If client sent DONE while this coin was pulsing, finalize session closure now
+        if (pendingWsGracefulClose) {
+            pendingWsGracefulClose = false;
+            if (isWsConnected && wsClient.connected()) {
+                wsClient.stop();
+            }
+            isWsConnected = false;
+            armedIp = "";
+            armedUntil = 0;
+            sessionStartTime = 0;
+            Serial.println("[*] Graceful WS session close completed after delivering final coin pulses.");
         }
     }
 }
@@ -1149,9 +1183,8 @@ bool verifyTelemetryAuth(String deviceId, String tsStr, String sig) {
         return true;
     }
     String expectedSig = calculateHMAC(deviceId + ":" + tsStr, sharedSecret);
-    if (sig != expectedSig) {
-        String fallbackSig = calculateHMAC(deviceId + ":" + tsStr, "");
-        if (sig != fallbackSig) return false;
+    if (!sig.equalsIgnoreCase(expectedSig)) {
+        return false;
     }
     unsigned long long ts = strtoull(tsStr.c_str(), NULL, 10);
     return checkReplayProtection(deviceId, ts);
@@ -2219,6 +2252,10 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                     <span>📋 MAC: {MAC_ADDRESS}</span>
                     <span style="font-size: 10px; background: rgba(16, 185, 129, 0.25); padding: 2px 6px; border-radius: 10px;">Copy</span>
                 </button>
+                <div id="wifi_quality_pill" class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #10B981; border: 1px solid rgba(16, 185, 129, 0.3); display: inline-flex; align-items: center; gap: 6px; font-weight: 700; padding: 4px 10px; border-radius: 20px;" title="ESP32 Real-Time Wi-Fi RSSI Signal Quality">
+                    <span id="wifi_icon">📶</span>
+                    <span id="wifi_signal_text">Wi-Fi: {WIFI_RSSI} dBm ({WIFI_QUALITY}%)</span>
+                </div>
             </div>
             <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                 <button type="button" id="theme_toggle_btn" onclick="toggleTheme()" class="btn btn-outline btn-sm">🌙 Dark Mode</button>
@@ -2316,6 +2353,23 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                     <!-- Network -->
                     <div class="card">
                         <h3 class="card-title">📡 Wi-Fi & Network</h3>
+                        <div class="form-group" style="background: var(--input-bg); padding: 14px; border-radius: var(--radius-md); border: 1px solid var(--border); margin-bottom: 14px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Real-Time Wi-Fi Quality (RSSI)</span>
+                                <span id="wifi_status_badge" class="badge" style="background: var(--status-good-bg); color: var(--status-good); font-weight: 700; padding: 2px 8px; border-radius: 10px; font-size: 11px;">Live</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
+                                <span id="wifi_rssi_display" style="font-size: 20px; font-weight: 800; color: var(--text-main); font-family: monospace;">{WIFI_RSSI} dBm</span>
+                                <span id="wifi_quality_pct" style="font-size: 13px; font-weight: 700; color: var(--primary);">{WIFI_QUALITY}% Quality</span>
+                            </div>
+                            <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 10px; height: 8px; overflow: hidden; margin-bottom: 6px;">
+                                <div id="wifi_meter_fill" style="background: var(--primary); height: 100%; width: {WIFI_QUALITY}%; transition: width 0.4s ease, background-color 0.4s ease;"></div>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+                                <span>SSID: <b id="wifi_ssid_display" style="color: var(--text-main);">{WIFI_SSID}</b></span>
+                                <span>IP: <b id="wifi_ip_display" style="color: var(--text-main);">{IP_ADDRESS}</b></span>
+                            </div>
+                        </div>
                         <div class="form-group">
                             <label>SSID</label>
                             <input type="text" name="wifi_ssid" value="{WIFI_SSID}">
@@ -2505,14 +2559,81 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
         fetch('/api/status')
             .then(res => res.json())
             .then(data => {
+                const devices = Array.isArray(data) ? data : (data.devices || []);
+                const wifi = data.wifi || null;
+
+                if (wifi) {
+                    const rssi = typeof wifi.rssi === 'number' ? wifi.rssi : -100;
+                    const quality = typeof wifi.quality === 'number' ? wifi.quality : 0;
+                    const status = wifi.status || (quality >= 50 ? 'Good' : 'Weak');
+                    const isConnected = !!wifi.connected;
+                    
+                    let wifiColor = 'var(--status-good)';
+                    let wifiBg = 'var(--status-good-bg)';
+                    let wifiBorder = 'var(--status-good-border)';
+                    let icon = '📶';
+
+                    if (!isConnected || quality <= 0) {
+                        wifiColor = 'var(--status-critical)';
+                        wifiBg = 'var(--status-critical-bg)';
+                        wifiBorder = 'var(--status-critical-border)';
+                        icon = '❌';
+                    } else if (quality < 25) {
+                        wifiColor = 'var(--status-critical)';
+                        wifiBg = 'var(--status-critical-bg)';
+                        wifiBorder = 'var(--status-critical-border)';
+                        icon = '⚠️';
+                    } else if (quality < 50) {
+                        wifiColor = 'var(--status-warning)';
+                        wifiBg = 'var(--status-warning-bg)';
+                        wifiBorder = 'var(--status-warning-border)';
+                        icon = '📶';
+                    }
+
+                    const pill = document.getElementById('wifi_quality_pill');
+                    const sigText = document.getElementById('wifi_signal_text');
+                    const iconEl = document.getElementById('wifi_icon');
+                    if (pill && sigText) {
+                        pill.style.background = wifiBg;
+                        pill.style.color = wifiColor;
+                        pill.style.borderColor = wifiBorder;
+                        if (iconEl) iconEl.textContent = icon;
+                        sigText.textContent = isConnected ? ('Wi-Fi: ' + rssi + ' dBm (' + quality + '%)') : 'Wi-Fi: Disconnected';
+                    }
+
+                    const rssiDisp = document.getElementById('wifi_rssi_display');
+                    const qualPct = document.getElementById('wifi_quality_pct');
+                    const fill = document.getElementById('wifi_meter_fill');
+                    const badge = document.getElementById('wifi_status_badge');
+                    const ssidDisp = document.getElementById('wifi_ssid_display');
+                    const ipDisp = document.getElementById('wifi_ip_display');
+
+                    if (rssiDisp) rssiDisp.textContent = isConnected ? (rssi + ' dBm') : 'Disconnected';
+                    if (qualPct) {
+                        qualPct.textContent = quality + '% ' + status;
+                        qualPct.style.color = wifiColor;
+                    }
+                    if (fill) {
+                        fill.style.width = quality + '%';
+                        fill.style.backgroundColor = wifiColor;
+                    }
+                    if (badge) {
+                        badge.textContent = status;
+                        badge.style.background = wifiBg;
+                        badge.style.color = wifiColor;
+                    }
+                    if (ssidDisp && wifi.ssid) ssidDisp.textContent = wifi.ssid;
+                    if (ipDisp && wifi.ip) ipDisp.textContent = wifi.ip;
+                }
+
                 const container = document.getElementById('live_devices_container');
                 if (!container) return;
-                if (data.length === 0) {
+                if (devices.length === 0) {
                     container.innerHTML = '<div style="padding: 24px; text-align: center; color: var(--text-muted); grid-column: 1/-1;">No PisoPhone devices registered.</div>';
                     return;
                 }
                 let html = '';
-                data.forEach((dev, idx) => {
+                devices.forEach((dev, idx) => {
                     const name = dev.name || ('PisoPhone ' + dev.slotNum);
                     const battery = (typeof dev.battery === 'number' && dev.battery >= 0) ? dev.battery : 100;
                     const isCharging = !!dev.charging;
@@ -3029,17 +3150,20 @@ String getPrimaryTerminalIp() {
 void triggerCoinEvent() {
     Serial.printf("[+] Physical coin pulse detected on GPIO %d (Simple Beam Sensor)!\n", coinPin);
     
-    // In Armed-Only mode (relayMode == 1), reject any stray drop if not actively armed
-    if (relayMode == 1 && !isSlotArmed()) {
+    // In Armed-Only mode (relayMode == 1), check active armed state or recent session grace window
+    bool wasArmed = isSlotArmed() || (millis() - lastArmedTimeMs < 10000);
+    if (relayMode == 1 && !wasArmed) {
         Serial.printf("[-] Dropped coin rejected: Slot is in Armed-Only mode and is NOT armed!\n");
         return;
     }
 
     // Condition check: Check if a specific device is armed, or auto-route to active/connected terminal
-    bool isArmed = isSlotArmed();
+    bool isArmed = isSlotArmed() || wasArmed;
     String targetIp = "";
-    if (isArmed && armedIp.length() > 0) {
+    if (armedIp.length() > 0) {
         targetIp = getIpFromDeviceId(armedIp);
+    } else if (lastArmedIp.length() > 0 && (millis() - lastArmedTimeMs < 30000)) {
+        targetIp = lastArmedIp;
     }
     if (targetIp.length() == 0) {
         targetIp = getPrimaryTerminalIp();
@@ -3101,17 +3225,22 @@ void triggerUniversalCoinEvent(int pulses) {
     if (pulses <= 0) return;
     Serial.printf("[⚡ UNIVERSAL COIN] %d total pulses accumulated on GPIO %d (₱%d PHP)\n", pulses, universalCoinPin, pulses);
 
-    // In Armed-Only mode (relayMode == 1), reject any stray drop if not actively armed
-    if (relayMode == 1 && !isSlotArmed()) {
+    // In Armed-Only mode (relayMode == 1), check if train started armed or was armed recently
+    bool wasArmed = isSlotArmed() || pulseTrainWasArmed || (millis() - lastArmedTimeMs < 10000);
+    if (relayMode == 1 && !wasArmed) {
         Serial.printf("[-] Universal coin pulses rejected: Slot is in Armed-Only mode and is NOT armed!\n");
         return;
     }
 
     // Condition check: Check if a specific device is armed, or auto-route to active/connected terminal
-    bool isArmed = isSlotArmed();
+    bool isArmed = isSlotArmed() || wasArmed;
     String targetIp = "";
-    if (isArmed && armedIp.length() > 0) {
+    if (armedIp.length() > 0) {
         targetIp = getIpFromDeviceId(armedIp);
+    } else if (pulseTrainDeviceIp.length() > 0) {
+        targetIp = pulseTrainDeviceIp;
+    } else if (lastArmedIp.length() > 0 && (millis() - lastArmedTimeMs < 30000)) {
+        targetIp = lastArmedIp;
     }
     if (targetIp.length() == 0) {
         targetIp = getPrimaryTerminalIp();
@@ -3344,6 +3473,13 @@ static String getPlaceholderValue(const String& tag) {
     if (tag == "{SESSION_COINS}") return String(totalCoinsSession);
     if (tag == "{SHARED_SECRET}") return sharedSecret;
     if (tag == "{IP_ADDRESS}") return WiFi.localIP().toString();
+    if (tag == "{WIFI_RSSI}") return String(WiFi.RSSI());
+    if (tag == "{WIFI_QUALITY}") {
+        int rssi = WiFi.RSSI();
+        if (WiFi.status() != WL_CONNECTED || rssi <= -100) return "0";
+        if (rssi >= -50) return "100";
+        return String(2 * (rssi + 100));
+    }
     return tag;
 }
 
@@ -3847,7 +3983,35 @@ void handleApiSlotCloudSync() {
 
 void handleApiStatus() {
     if (!checkAuth()) return;
-    String json = "[";
+
+    int rssi = WiFi.RSSI();
+    int quality = 0;
+    bool isConnected = (WiFi.status() == WL_CONNECTED);
+    if (isConnected) {
+        if (rssi <= -100) quality = 0;
+        else if (rssi >= -50) quality = 100;
+        else quality = 2 * (rssi + 100);
+    }
+    
+    String qualityStatus = "Disconnected";
+    if (isConnected) {
+        if (quality >= 75) qualityStatus = "Excellent";
+        else if (quality >= 50) qualityStatus = "Good";
+        else if (quality >= 25) qualityStatus = "Fair";
+        else qualityStatus = "Weak";
+    }
+
+    String json = "{";
+    json += "\"wifi\":{";
+    json += "\"rssi\":" + String(rssi) + ",";
+    json += "\"quality\":" + String(quality) + ",";
+    json += "\"status\":\"" + qualityStatus + "\",";
+    json += "\"ssid\":\"" + String(wifiSsid) + "\",";
+    json += "\"ip\":\"" + WiFi.localIP().toString() + "\",";
+    json += "\"connected\":" + String(isConnected ? "true" : "false");
+    json += "},";
+    json += "\"devices\":[";
+
     bool first = true;
     for (int i = 0; i < maxLicensedSlots; i++) {
         if (!first) json += ",";
@@ -3883,7 +4047,7 @@ void handleApiStatus() {
         json += "\"charging\":" + String(chg ? "true" : "false");
         json += "}";
     }
-    json += "]";
+    json += "]}";
     webServer.send(200, "application/json", json);
 }
 
@@ -4315,14 +4479,11 @@ void processWebSocketServer() {
             // 1. Verify HMAC Signature
             if (sharedSecret.length() > 0) {
                 String expectedSig = calculateHMAC(reqDeviceId + ":" + tsStr, sharedSecret);
-                if (sig != expectedSig) {
-                    String fallbackSig = calculateHMAC(reqDeviceId + ":" + tsStr, "");
-                    if (sig != fallbackSig) {
-                        Serial.printf("[-] WS Auth Failed for %s: Signature Mismatch\n", reqDeviceId.c_str());
-                        newClient.print("HTTP/1.1 403 Forbidden\r\n\r\nInvalid Signature");
-                        newClient.stop();
-                        return;
-                    }
+                if (!sig.equalsIgnoreCase(expectedSig)) {
+                    Serial.printf("[-] WS Auth Failed for %s: Signature Mismatch\n", reqDeviceId.c_str());
+                    newClient.print("HTTP/1.1 403 Forbidden\r\n\r\nInvalid Signature");
+                    newClient.stop();
+                    return;
                 }
             }
 
@@ -4368,7 +4529,11 @@ void processWebSocketServer() {
                 sessionStartTime = now;
             }
             armedIp = reqDeviceId;
+            lastArmedDeviceId = reqDeviceId;
+            lastArmedIp = getIpFromDeviceId(reqDeviceId);
+            lastArmedTimeMs = now;
             armedUntil = now + ARM_TTL;
+            pendingWsGracefulClose = false;
             
             Serial.printf("[⚡ WS Port 81] WebSocket ARMED securely for %s (TTL: %lu s)\n", reqDeviceId.c_str(), ARM_TTL / 1000);
             sendWsText(wsClient, "{\"event\":\"ARMED\"}");
@@ -4380,6 +4545,11 @@ void processWebSocketServer() {
         if (!wsClient.connected()) {
             Serial.printf("[*] WS Client %s disconnected. Slot released.\n", armedIp.c_str());
             isWsConnected = false;
+            if (armedIp.length() > 0) {
+                lastArmedDeviceId = armedIp;
+                lastArmedIp = getIpFromDeviceId(armedIp);
+                lastArmedTimeMs = millis();
+            }
             armedIp = "";
             armedUntil = 0;
             sessionStartTime = 0;
@@ -4389,22 +4559,61 @@ void processWebSocketServer() {
         if (wsClient.available()) {
             String frameText = readWsText(wsClient);
             if (frameText == "DONE" || frameText == "CLOSE") {
-                wsClient.stop();
-                isWsConnected = false;
-                armedIp = "";
-                armedUntil = 0;
-                sessionStartTime = 0;
-                return;
+                noInterrupts();
+                int currentPulses = isrUniversalPulseCount;
+                unsigned long lastPulse = isrLastPulseTimeMs;
+                interrupts();
+
+                // If coin pulses are actively in progress or arrived in the last 600ms, hold graceful close to deliver credit!
+                if (currentPulses > 0 || (millis() - lastPulse < 600 && lastPulse > 0)) {
+                    Serial.printf("[⚡ WS Port 81] 'DONE' received while coin pulses are active (%d pulses). Holding graceful close to finalize credit...\n", currentPulses);
+                    pendingWsGracefulClose = true;
+                    pendingWsGracefulCloseUntil = millis() + 2000;
+                    armedUntil = millis() + 3000; // Extend temporary guard so pulse train completes safely
+                } else {
+                    wsClient.stop();
+                    isWsConnected = false;
+                    if (armedIp.length() > 0) {
+                        lastArmedDeviceId = armedIp;
+                        lastArmedIp = getIpFromDeviceId(armedIp);
+                        lastArmedTimeMs = millis();
+                    }
+                    armedIp = "";
+                    armedUntil = 0;
+                    sessionStartTime = 0;
+                    return;
+                }
             }
         }
         
-        // Check session TTL expiration
+        // Check session TTL expiration or pending graceful close timeout
         unsigned long now = millis();
+        if (pendingWsGracefulClose && now >= pendingWsGracefulCloseUntil) {
+            Serial.println("[*] Pending graceful close timed out after coin train window. Slot released.");
+            pendingWsGracefulClose = false;
+            wsClient.stop();
+            isWsConnected = false;
+            if (armedIp.length() > 0) {
+                lastArmedDeviceId = armedIp;
+                lastArmedIp = getIpFromDeviceId(armedIp);
+                lastArmedTimeMs = millis();
+            }
+            armedIp = "";
+            armedUntil = 0;
+            sessionStartTime = 0;
+            return;
+        }
+
         if (now >= armedUntil || (sessionStartTime > 0 && (now - sessionStartTime >= MAX_SESSION_DURATION))) {
             Serial.printf("[*] WS Session TTL expired for %s. Slot released.\n", armedIp.c_str());
             sendWsText(wsClient, "{\"event\":\"TIMEOUT\"}");
             wsClient.stop();
             isWsConnected = false;
+            if (armedIp.length() > 0) {
+                lastArmedDeviceId = armedIp;
+                lastArmedIp = getIpFromDeviceId(armedIp);
+                lastArmedTimeMs = millis();
+            }
             armedIp = "";
             armedUntil = 0;
             sessionStartTime = 0;

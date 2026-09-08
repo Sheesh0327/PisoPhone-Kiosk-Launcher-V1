@@ -23,8 +23,8 @@ object AppLauncher {
         Log.i(TAG, "Attempting to launch app: $packageName (bypassKiosk=$bypassKiosk)")
         
         if (!com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)) {
-            Log.w(TAG, "Launch app blocked: Device is not activated or licensed.")
-            Toast.makeText(context, "App launch blocked: License activation required.", Toast.LENGTH_SHORT).show()
+            Log.w(TAG, "Launch app blocked: Device is not provisioned or is hardware locked.")
+            Toast.makeText(context, "App launch blocked: Hardware provisioning required.", Toast.LENGTH_SHORT).show()
             return false
         }
 

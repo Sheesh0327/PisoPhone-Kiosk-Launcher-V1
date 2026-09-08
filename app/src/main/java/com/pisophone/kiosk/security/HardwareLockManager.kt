@@ -30,7 +30,6 @@ object HardwareLockManager {
     private const val KEY_BOUND_TIMESTAMP = "bound_timestamp_ms"
     private const val KEY_BOUND_SIGNATURE = "bound_hardware_sig"
     private const val KEY_HARDWARE_LOCKED = "hardware_lock_enforced"
-    private const val KEY_TUTORIAL_COMPLETED = "kiosk_tutorial_completed"
 
     /**
      * Computes a stable, canonical hardware fingerprint derived strictly from immutable hardware attributes.
@@ -38,23 +37,6 @@ object HardwareLockManager {
      * Synchronizes with Settings.Global ("pisophone_hw_id") so WebADB over USB reads the identical ID.
      */
     fun getHardwareFingerprint(context: Context): String {
-        val prefs = getPrefs(context)
-        val boundHwId = prefs.getString(KEY_BOUND_HW_ID, null)
-        if (!boundHwId.isNullOrBlank() && boundHwId.startsWith("HW-")) {
-            syncToGlobalSettings(context, boundHwId)
-            return boundHwId
-        }
-
-        // Check if WebADB provisioned a persistent hardware ID in Settings.Global
-        val globalHwId = try {
-            Settings.Global.getString(context.contentResolver, "pisophone_hw_id")
-        } catch (e: Exception) {
-            null
-        }
-        if (!globalHwId.isNullOrBlank() && globalHwId.startsWith("HW-")) {
-            return globalHwId.trim()
-        }
-
         val androidId = try {
             Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN_ID"
         } catch (e: Exception) {
@@ -128,7 +110,7 @@ object HardwareLockManager {
 
     /**
      * Cryptographically binds and seals the application to the current device's hardware.
-     * Safe to call on every boot/app launch.
+     * Called during official WebADB/ESP32 provisioning or admin manual binding.
      */
     fun sealToCurrentDevice(context: Context): Boolean {
         val prefs = getPrefs(context)
@@ -136,53 +118,19 @@ object HardwareLockManager {
         val currentDevName = getHardwareDescription()
         val now = System.currentTimeMillis()
 
-        val boundHwId = prefs.getString(KEY_BOUND_HW_ID, null)
+        val sig = generateSignature(context, currentHwId, currentDevName, now)
 
-        if (boundHwId == null) {
-            // First run on this hardware: establish initial cryptographic hardware seal
-            val sig = generateSignature(context, currentHwId, currentDevName, now)
+        prefs.edit()
+            .putString(KEY_BOUND_HW_ID, currentHwId)
+            .putString(KEY_BOUND_DEVICE_NAME, currentDevName)
+            .putLong(KEY_BOUND_TIMESTAMP, now)
+            .putString(KEY_BOUND_SIGNATURE, sig)
+            .putBoolean(KEY_HARDWARE_LOCKED, false)
+            .apply()
 
-            prefs.edit()
-                .putString(KEY_BOUND_HW_ID, currentHwId)
-                .putString(KEY_BOUND_DEVICE_NAME, currentDevName)
-                .putLong(KEY_BOUND_TIMESTAMP, now)
-                .putString(KEY_BOUND_SIGNATURE, sig)
-                .putBoolean(KEY_HARDWARE_LOCKED, false)
-                .apply()
-
-            Log.i(TAG, "Cryptographic hardware seal established for $currentDevName ($currentHwId).")
-            return true
-        }
-
-        // Verify stored seal signature against current physical hardware
-        val storedDevName = prefs.getString(KEY_BOUND_DEVICE_NAME, "") ?: ""
-        val storedTimestamp = prefs.getLong(KEY_BOUND_TIMESTAMP, 0L)
-        val storedSig = prefs.getString(KEY_BOUND_SIGNATURE, "") ?: ""
-
-        val expectedSig = generateSignature(context, boundHwId, storedDevName, storedTimestamp)
-
-        if (boundHwId != currentHwId || storedSig != expectedSig) {
-            Log.e(TAG, "HARDWARE SEAL BREACH! Bound: $boundHwId, Actual: $currentHwId")
-            prefs.edit().putBoolean(KEY_HARDWARE_LOCKED, true).apply()
-            return false
-        }
-
-        return true
-    }
-
-    /**
-     * Checks if the user has completed the interactive first-time setup tutorial.
-     */
-    fun isTutorialCompleted(context: Context): Boolean {
-        return getPrefs(context).getBoolean(KEY_TUTORIAL_COMPLETED, true)
-    }
-
-    /**
-     * Sets whether the user has completed the interactive first-time setup tutorial.
-     */
-    fun setTutorialCompleted(context: Context, completed: Boolean = true) {
-        getPrefs(context).edit().putBoolean(KEY_TUTORIAL_COMPLETED, completed).apply()
         notifySecurityChanged()
+        Log.i(TAG, "Cryptographic hardware seal established for $currentDevName ($currentHwId).")
+        return true
     }
 
     /**
@@ -194,14 +142,21 @@ object HardwareLockManager {
 
     /**
      * Checks if the physical hardware is authorized and sealed without tampering.
+     * Returns false on unprovisioned/sideloaded devices or hardware mismatches.
      */
     fun isHardwareAuthorized(context: Context): Boolean {
         val prefs = getPrefs(context)
         if (prefs.getBoolean(KEY_HARDWARE_LOCKED, false)) return false
-        val boundHwId = prefs.getString(KEY_BOUND_HW_ID, null) ?: return sealToCurrentDevice(context)
+        
+        // Sideload / extraction countermeasure: Unprovisioned devices must not self-seal
+        val boundHwId = prefs.getString(KEY_BOUND_HW_ID, null) ?: return false
         val currentHwId = getHardwareFingerprint(context)
         
-        if (boundHwId != currentHwId) return false
+        if (boundHwId != currentHwId) {
+            Log.e(TAG, "Hardware mismatch! Bound: $boundHwId, Current: $currentHwId")
+            prefs.edit().putBoolean(KEY_HARDWARE_LOCKED, true).apply()
+            return false
+        }
         
         val storedDevName = prefs.getString(KEY_BOUND_DEVICE_NAME, "") ?: ""
         val storedTimestamp = prefs.getLong(KEY_BOUND_TIMESTAMP, 0L)

@@ -227,15 +227,26 @@ class Esp32ConnectionManager(
     // ========================================================================
 
     fun closeSession(sendUnarmToEsp: Boolean = false) {
-        if (sendUnarmToEsp) {
-            try {
-                activeWebSocket?.send("DONE")
-            } catch (_: Exception) {}
-        }
-        try {
-            activeWebSocket?.close(1000, "Session closed")
-        } catch (_: Exception) {}
+        val ws = activeWebSocket
         activeWebSocket = null
+        if (ws != null) {
+            if (sendUnarmToEsp) {
+                try {
+                    ws.send("DONE")
+                } catch (_: Exception) {}
+                // Give a brief 500ms window for the ESP32 to drain any active pulse train responses
+                scope.launch(Dispatchers.IO) {
+                    try {
+                        kotlinx.coroutines.delay(500)
+                        ws.close(1000, "Session closed")
+                    } catch (_: Exception) {}
+                }
+            } else {
+                try {
+                    ws.close(1000, "Session closed")
+                } catch (_: Exception) {}
+            }
+        }
     }
 
     fun armSlot(armingTimeoutSeconds: Int) {
@@ -279,10 +290,11 @@ class Esp32ConnectionManager(
                         var txId = json.optString("tx_id", "")
 
                         if (payload.isNotBlank()) {
-                            var decryptedStr = KioskSecurity.decrypt(payload, delegate.getSecretKey())
-                            if (decryptedStr.isBlank() && delegate.getSecretKey().isNotBlank()) {
-                                // Fallback decryption with empty shared secret
-                                decryptedStr = KioskSecurity.decrypt(payload, "")
+                            val secretKey = delegate.getSecretKey()
+                            val decryptedStr = if (secretKey.isNotBlank()) {
+                                KioskSecurity.decrypt(payload, secretKey)
+                            } else {
+                                KioskSecurity.decrypt(payload, "")
                             }
 
                             if (decryptedStr.isNotBlank()) {
@@ -296,7 +308,7 @@ class Esp32ConnectionManager(
                                     Log.e(TAG, "Failed to parse decrypted JSON: ${e.message}")
                                 }
                             } else {
-                                Log.w(TAG, "WebSocket coin payload decryption failed with primary & fallback keys")
+                                Log.w(TAG, "WebSocket coin payload decryption failed with configured secret key")
                             }
                         }
 

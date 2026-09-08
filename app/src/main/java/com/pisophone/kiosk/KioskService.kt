@@ -196,10 +196,10 @@ class KioskService : Service() {
     }
 
     fun performAdminBypass(durationSeconds: Int = 900) {
-        if (!com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(this) || stateManager.appState.value == 4) {
-            Log.w(TAG, "Admin bypass rejected: Device is not activated or is unlicensed.")
+        if (!com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(this)) {
+            Log.w(TAG, "Admin bypass rejected: Device is not provisioned or is hardware locked.")
             Handler(Looper.getMainLooper()).post {
-                Toast.makeText(this, "⚠️ Bypass Unavailable: Device requires license activation.", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "⚠️ Bypass Unavailable: Device requires hardware activation.", Toast.LENGTH_LONG).show()
             }
             return
         }
@@ -252,13 +252,15 @@ class KioskService : Service() {
             scope = scope,
             coinEventRepo = coinEventRepo,
             onCreditsApplied = { seconds, pesoAmount ->
-                stateManager.coinsInserted.value += pesoAmount
                 stateManager.sessionTimeRemaining.value += seconds
                 stateManager.paymentTimeout.value = ARMING_TIMEOUT_SECONDS
                 if (stateManager.appState.value == 0) {
+                    stateManager.coinsInserted.value += pesoAmount
                     stateManager.appState.value = 1
+                } else if (stateManager.appState.value == 1 || stateManager.appState.value == 3) {
+                    stateManager.coinsInserted.value += pesoAmount
                 } else if (stateManager.appState.value == 2) {
-                    stateManager.appState.value = 3
+                    Log.d(TAG, "Coin credited directly to active session: +${seconds}s (₱$pesoAmount)")
                 }
                 stateManager.saveState()
             },
@@ -326,7 +328,7 @@ class KioskService : Service() {
 
                 override fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?) {
                     if (!HardwareLockManager.isAppAllowedToRun(applicationContext)) {
-                        Log.e(TAG, "Hardware Lock or Expired Trial active: Discarding coin event on locked device.")
+                        Log.e(TAG, "Hardware Lock active: Discarding coin event on unprovisioned/locked device.")
                         return
                     }
                     if (txId.isNullOrBlank()) {
@@ -412,8 +414,7 @@ class KioskService : Service() {
 
         scope.launch {
             com.pisophone.kiosk.security.HardwareLockManager.securityUpdateVersion.collect {
-                val isSetup = com.pisophone.kiosk.security.HardwareLockManager.isTutorialCompleted(this@KioskService) &&
-                              com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(this@KioskService)
+                val isSetup = com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(this@KioskService)
                 if (isSetup && overlay == null) {
                     withContext(Dispatchers.Main) {
                         setupOverlay()
@@ -620,8 +621,7 @@ class KioskService : Service() {
     }
     
     private fun setupOverlay() {
-        val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isTutorialCompleted(this) &&
-                           com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(this)
+        val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(this)
         if (!isFullySetup) {
             Log.d(TAG, "Device not activated or fully setup. Lock screen overlay deferred.")
             return
