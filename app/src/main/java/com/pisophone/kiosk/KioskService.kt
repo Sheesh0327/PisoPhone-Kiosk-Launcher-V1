@@ -585,14 +585,16 @@ class KioskService : Service() {
                             }
                             "vibrate" -> HardwareFeedback.triggerVibration(this@KioskService, longArrayOf(0, 1500))
                             "sound" -> {
-                                audioManager?.playHighBatteryAttentionTone()
+                                if (::audioManager.isInitialized) audioManager.playLocateAlarm()
                             }
-                            "flash" -> HardwareFeedback.triggerFlashlight(this@KioskService, 2000L)
+                            "flash" -> HardwareFeedback.triggerFlashlightStrobe(this@KioskService, 3000L)
                             "locate" -> {
-                                audioManager?.speakWarning("Terminal Located! Terminal Located!")
-                                audioManager?.playHighBatteryAttentionTone()
-                                HardwareFeedback.triggerVibration(this@KioskService, longArrayOf(0, 1000, 200, 1000, 200, 1000))
-                                HardwareFeedback.triggerFlashlight(this@KioskService, 3000L)
+                                stateManager.triggerLocateSignal("Terminal Identified!")
+                                if (::audioManager.isInitialized) {
+                                    audioManager.playLocateAlarm()
+                                }
+                                HardwareFeedback.triggerVibration(this@KioskService, longArrayOf(0, 500, 200, 500, 200, 500, 200, 1000))
+                                HardwareFeedback.triggerFlashlightStrobe(this@KioskService, 3000L)
                                 Toast.makeText(this@KioskService, "📍 LOCATE SIGNAL: Terminal Identified!", Toast.LENGTH_LONG).show()
                             }
                             "enable_adb" -> {
@@ -698,6 +700,9 @@ class KioskService : Service() {
             slotWarningDaysLeftFlow = stateManager.slotWarningDaysLeft,
             isSlotExpiredFlow = stateManager.isSlotExpired,
             slotExpiryReasonFlow = stateManager.slotExpiryMessage,
+            isLocateActiveFlow = stateManager.isLocateActive,
+            locateMessageFlow = stateManager.locateMessage,
+            onDismissLocate = { stateManager.dismissLocateSignal() },
             onInsertCoinClick = { 
                 if (stateManager.appState.value == 4) return@KioskOverlay
                 if (stateManager.isSlotExpired.value || com.pisophone.kiosk.security.HardwareLockManager.isSlotLockedDown(this@KioskService)) {

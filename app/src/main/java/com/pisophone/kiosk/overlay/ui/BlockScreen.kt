@@ -56,6 +56,9 @@ fun BlockScreen(
     slotWarningDaysLeft: Int? = null,
     isSlotExpired: Boolean = false,
     slotExpiryReason: String = "",
+    isLocateActive: Boolean = false,
+    locateMessage: String = "",
+    onDismissLocate: () -> Unit = {},
     modifier: Modifier = Modifier.fillMaxSize()
 ) {
     data class OverlayTheme(
@@ -410,6 +413,15 @@ fun BlockScreen(
                 EmergencyRecoveryDialog(
                     context = context,
                     onClose = { showEmergencyRecoveryDialog = false }
+                )
+            }
+
+            if (isLocateActive) {
+                LocateSignalOverlay(
+                    isLocateActive = isLocateActive,
+                    locateMessage = locateMessage,
+                    deviceIp = deviceIp,
+                    onDismiss = onDismissLocate
                 )
             }
         }

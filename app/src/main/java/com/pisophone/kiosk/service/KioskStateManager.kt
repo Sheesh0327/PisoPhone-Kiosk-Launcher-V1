@@ -30,6 +30,20 @@ class KioskStateManager(private val context: Context) {
     val isSlotExpired = MutableStateFlow(false)
     val slotExpiryMessage = MutableStateFlow("")
     val slotNumber = MutableStateFlow(0)
+    val isLocateActive = MutableStateFlow(false)
+    val locateMessage = MutableStateFlow("")
+
+    fun triggerLocateSignal(msg: String = "Terminal Identified!") {
+        locateMessage.value = msg
+        isLocateActive.value = true
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            isLocateActive.value = false
+        }, 8000L)
+    }
+
+    fun dismissLocateSignal() {
+        isLocateActive.value = false
+    }
 
     init {
         deviceIp.value = getLocalIpAddress()
