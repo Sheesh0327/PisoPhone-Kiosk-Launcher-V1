@@ -175,103 +175,75 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
             }
 
             ACTION_GET_DEVICE_ID -> {
-                val canonicalId = com.pisophone.kiosk.security.HardwareLockManager.getCanonicalDeviceId(context)
+                val hwId = com.pisophone.kiosk.security.HardwareLockManager.getHardwareFingerprint(context)
                 val devName = com.pisophone.kiosk.security.HardwareLockManager.getHardwareDescription()
                 val isAuthorized = com.pisophone.kiosk.security.HardwareLockManager.isHardwareAuthorized(context)
-                Log.i(TAG, "GET_DEVICE_ID requested via ADB broadcast. Returning: $canonicalId ($devName), hardwareSealed=$isAuthorized")
+                Log.i(TAG, "GET_DEVICE_ID requested via ADB broadcast. Returning: $hwId ($devName), hardwareSealed=$isAuthorized")
                 setResultCode(android.app.Activity.RESULT_OK)
-                setResultData(canonicalId)
+                setResultData(hwId)
                 val extras = android.os.Bundle().apply {
-                    putString("device_id", canonicalId)
-                    putString("hardware_id", canonicalId)
+                    putString("hardware_id", hwId)
                     putString("device_name", devName)
                     putBoolean("hardware_sealed", isAuthorized)
                 }
                 setResultExtras(extras)
             }
 
-            ACTION_CONFIGURE_ESP32, "com.pisophone.kiosk.ACTION_CONFIGURE_ESP32", ACTION_ACTIVATE -> {
-                val secret = intent.getStringExtra("secret")
-                    ?: intent.getStringExtra("setup_secret")
-                    ?: intent.getStringExtra("shared_secret")
-                    ?: com.pisophone.kiosk.security.KioskSecurity.getSharedSecret(context)
-                val mac = intent.getStringExtra("esp32_mac")
-                    ?: intent.getStringExtra("mac")
-                    ?: intent.getStringExtra("box_mac")
-                    ?: com.pisophone.kiosk.security.KioskSecurity.getConfiguredEsp32Mac(context)
-                val ip = intent.getStringExtra("esp32_ip")
-                    ?: intent.getStringExtra("ip")
-                    ?: com.pisophone.kiosk.security.KioskSecurity.getConfiguredEsp32Ip(context)
-                val rawSlot = intent.getIntExtra("slot", intent.getIntExtra("setup_slot", com.pisophone.kiosk.security.KioskSecurity.getAssignedBoxSlot(context)))
-                val slot = if (rawSlot in 1..12) rawSlot else 1
-                val name = intent.getStringExtra("name")
-                    ?: intent.getStringExtra("alias")
-                    ?: intent.getStringExtra("setup_name")
+            ACTION_CONFIGURE_ESP32, "com.pisophone.kiosk.ACTION_CONFIGURE_ESP32" -> {
+                val secret = intent.getStringExtra("secret") ?: intent.getStringExtra("setup_secret") ?: intent.getStringExtra("shared_secret")
+                val mac = intent.getStringExtra("esp32_mac") ?: intent.getStringExtra("mac") ?: intent.getStringExtra("box_mac")
+                val ip = intent.getStringExtra("esp32_ip") ?: intent.getStringExtra("ip")
+                val slot = intent.getIntExtra("slot", intent.getIntExtra("setup_slot", -1))
+                val name = intent.getStringExtra("name") ?: intent.getStringExtra("alias")
 
-                Log.i(TAG, "Configure/Activate broadcast received: MAC='$mac', IP='$ip', Slot=$slot, SecretConfigured=${!secret.isNullOrBlank()}")
+                Log.i(TAG, "CONFIGURE_ESP32 received. Infusing Master MAC: '$mac', IP: '$ip', Slot: $slot, SecretSet=${!secret.isNullOrBlank()}")
 
-                if (secret.isNullOrBlank()) {
-                    Log.w(TAG, "Pairing rejected: Missing shared secret")
-                    setResultCode(android.app.Activity.RESULT_CANCELED)
-                    setResultData("CONFIG_ERROR: Missing shared secret")
-                    Toast.makeText(context, "Pairing Failed: Missing shared secret", Toast.LENGTH_LONG).show()
-                    return
+                if (!mac.isNullOrBlank() || !ip.isNullOrBlank() || slot > 0 || !secret.isNullOrBlank()) {
+                    KioskService.configureMasterBox(context, mac ?: "", ip, slot, secret, name)
                 }
 
-                val pendingResult = goAsync()
-                com.pisophone.kiosk.provisioning.PairingCoordinator.configureAndPair(
-                    context = context,
-                    secret = secret,
-                    mac = mac ?: "",
-                    ip = if (!ip.isNullOrBlank()) ip else "kioskmanager.local",
-                    slot = slot,
-                    name = name
-                ) { result ->
+                val savedMac = com.pisophone.kiosk.security.KioskSecurity.getConfiguredEsp32Mac(context)
+                Toast.makeText(context, "Hardware Box Paired! MAC: ${savedMac.ifEmpty { "Auto" }}", Toast.LENGTH_SHORT).show()
+                setResultCode(android.app.Activity.RESULT_OK)
+                setResultData("SUCCESS")
+            }
+
+            ACTION_ACTIVATE -> {
+                val key = intent.getStringExtra("key") ?: intent.getStringExtra("code") ?: "ACTIVATION_KEY"
+                val secret = intent.getStringExtra("secret") ?: intent.getStringExtra("setup_secret") ?: intent.getStringExtra("shared_secret")
+                val esp32Mac = intent.getStringExtra("esp32_mac") ?: intent.getStringExtra("mac") ?: intent.getStringExtra("box_mac")
+                val esp32Ip = intent.getStringExtra("esp32_ip") ?: intent.getStringExtra("ip")
+                val slot = intent.getIntExtra("slot", intent.getIntExtra("setup_slot", -1))
+                val name = intent.getStringExtra("name") ?: intent.getStringExtra("alias")
+
+                if (!esp32Mac.isNullOrBlank() || !esp32Ip.isNullOrBlank() || slot > 0 || !secret.isNullOrBlank()) {
+                    Log.i(TAG, "Infusing ESP32 Master params with activation: MAC '$esp32Mac', IP '$esp32Ip', Slot $slot, SecretSet=${!secret.isNullOrBlank()}")
+                    KioskService.configureMasterBox(context, esp32Mac ?: "", esp32Ip, slot, secret, name)
+                }
+
+                Log.i(TAG, "Activation broadcast received with key: $key")
+                val success = com.pisophone.kiosk.security.HardwareLockManager.sealToCurrentDevice(context)
+                setResultCode(if (success) android.app.Activity.RESULT_OK else android.app.Activity.RESULT_CANCELED)
+                setResultData(if (success) "SUCCESS" else "FAILED")
+                if (success) {
+                    Toast.makeText(context, "PisoPhone Cryptographic Hardware Seal Established!", Toast.LENGTH_LONG).show()
+                    // Restart Kiosk Service and reload UI
                     try {
-                        when (result) {
-                            is com.pisophone.kiosk.provisioning.PairingResult.Success -> {
-                                pendingResult.setResultCode(android.app.Activity.RESULT_OK)
-                                pendingResult.setResultData("SUCCESS")
-                                Toast.makeText(context, "PisoPhone Hardware Box Paired to Slot ${result.slot}!", Toast.LENGTH_LONG).show()
-                                try {
-                                    val serviceIntent = Intent(context, KioskService::class.java)
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                        context.startForegroundService(serviceIntent)
-                                    } else {
-                                        context.startService(serviceIntent)
-                                    }
-                                    val mainIntent = Intent(context, MainActivity::class.java).apply {
-                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                                    }
-                                    context.startActivity(mainIntent)
-                                } catch (e: Exception) {
-                                    Log.w(TAG, "Could not start service / activity after pairing: ${e.message}")
-                                }
-                            }
-                            is com.pisophone.kiosk.provisioning.PairingResult.OccupiedSlot -> {
-                                pendingResult.setResultCode(android.app.Activity.RESULT_CANCELED)
-                                pendingResult.setResultData("OCCUPIED: ${result.message}")
-                                Toast.makeText(context, "Pairing Failed: Slot already occupied", Toast.LENGTH_LONG).show()
-                            }
-                            is com.pisophone.kiosk.provisioning.PairingResult.AuthFailed -> {
-                                pendingResult.setResultCode(android.app.Activity.RESULT_CANCELED)
-                                pendingResult.setResultData("AUTH_FAILED: ${result.message}")
-                                Toast.makeText(context, "Pairing Auth Failed: ${result.message}", Toast.LENGTH_LONG).show()
-                            }
-                            is com.pisophone.kiosk.provisioning.PairingResult.ConfigurationError -> {
-                                pendingResult.setResultCode(android.app.Activity.RESULT_CANCELED)
-                                pendingResult.setResultData("CONFIG_ERROR: ${result.message}")
-                                Toast.makeText(context, "Pairing Error: ${result.message}", Toast.LENGTH_LONG).show()
-                            }
-                            is com.pisophone.kiosk.provisioning.PairingResult.NetworkError -> {
-                                pendingResult.setResultCode(android.app.Activity.RESULT_CANCELED)
-                                pendingResult.setResultData("NETWORK_ERROR: ${result.message}")
-                                Toast.makeText(context, "Pairing Network Error: ${result.message}", Toast.LENGTH_LONG).show()
-                            }
+                        val serviceIntent = Intent(context, KioskService::class.java)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            context.startForegroundService(serviceIntent)
+                        } else {
+                            context.startService(serviceIntent)
                         }
-                    } finally {
-                        pendingResult.finish()
+                        val mainIntent = Intent(context, MainActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        }
+                        context.startActivity(mainIntent)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Could not bring MainActivity to top after activation: ${e.message}")
                     }
+                } else {
+                    Toast.makeText(context, "Activation Failed. Please contact administrator.", Toast.LENGTH_LONG).show()
                 }
             }
 

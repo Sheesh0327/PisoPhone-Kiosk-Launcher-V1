@@ -138,25 +138,9 @@
         } else {
             const esp32Mac = urlMac;
             const esp32Ip = urlIp;
-            let esp32Secret = '';
+            const esp32Secret = urlParams.get('secret') || '';
             const slotNum = parseInt(urlParams.get('slot') || '1', 10);
             const phoneName = urlParams.get('name') || `PisoPhone Slot ${slotNum}`;
-
-            // Request setup token securely from opening window if available
-            if (window.opener) {
-                window.addEventListener('message', (event) => {
-                    if (event.data && event.data.type === 'PISOPHONE_SETUP_TOKEN_RESPONSE') {
-                        if (event.data.secret) {
-                            esp32Secret = event.data.secret;
-                            const statusElem = document.getElementById('secret_status');
-                            if (statusElem) statusElem.textContent = 'Hardware Token Linked ✅';
-                        }
-                    }
-                });
-                try {
-                    window.opener.postMessage({ type: 'PISOPHONE_GET_SETUP_TOKEN' }, '*');
-                } catch (_) {}
-            }
 
             // Update parameters UI
             document.getElementById('p_mac').textContent = esp32Mac;
@@ -204,27 +188,22 @@
 
                     // Step 3: Flash and install
                     logInstall("Step 3: Flashing package onto device & configuring Device Owner lockdown...");
-                    await window.webADB.installKioskApp(candidateApkUrls, logInstall, {
-                        secret: esp32Secret,
-                        mac: esp32Mac,
-                        ip: esp32Ip,
-                        slot: slotNum,
-                        name: phoneName
-                    });
+                    await window.webADB.installKioskApp(candidateApkUrls, logInstall);
 
-                    // Step 4: Broadcast configuration to the app (secret is transferred safely without log output)
-                    logInstall("Step 4: Provisioning hardware credentials & pairing via PairingCoordinator...");
+                    // Step 4: Broadcast configuration to the app
+                    logInstall("Step 4: Infusing hardware configuration parameters inside Android...");
                     try {
                         let bCastCmd = 'am broadcast -a com.pisophone.kiosk.CONFIGURE_ESP32 -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es esp32_mac "' + esp32Mac + '" --es esp32_ip "' + esp32Ip + '" --ei slot ' + slotNum;
                         if (esp32Secret) bCastCmd += ' --es secret "' + esp32Secret + '"';
                         if (phoneName) bCastCmd += ' --es name "' + phoneName + '"';
                         await window.webADB.runShell(bCastCmd);
+                        await window.webADB.runShell('am broadcast -a com.pisophone.kiosk.ACTIVATE -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es key "PISOPHONE-BOX-ACTIVATED" --es esp32_mac "' + esp32Mac + '" --es esp32_ip "' + esp32Ip + '" --ei slot ' + slotNum + (esp32Secret ? ' --es secret "' + esp32Secret + '"' : ''));
                     } catch (bErr) {
-                        logInstall(`[!] Provisioning notice: ${bErr.message}`);
+                        logInstall(`[!] Configuration broadcast notice: ${bErr.message}`);
                     }
 
                     // Step 5: Read Hardware ID
-                    let serial = "HW-DEVICE";
+                    let serial = window.webADB.serial || `HW-${Date.now()}`;
                     try {
                         const hwInfo = await window.webADB.getHardwareInfo(logInstall);
                         if (hwInfo && hwInfo.deviceId) serial = hwInfo.deviceId;
@@ -236,17 +215,16 @@
                     } catch (_) {}
 
                     logInstall("\n🎉 INSTALLATION & LOCKDOWN COMPLETE! Device is secured.");
-                    logInstall(`\nCanonical Hardware ID: ${serial}`);
-                    logInstall("\n🔄 Returning to your local Cabinet Board...");
+                    logInstall("\n🔄 Redirecting you back to your local Cabinet Board to finalize pairing...");
                     
-                    installBtn.innerHTML = '<span>🎉 Setup Success! Returning to Dashboard...</span>';
+                    installBtn.innerHTML = '<span>🎉 Sideload Success! Redirecting...</span>';
                     installBtn.className = "w-full bg-emerald-600 text-white font-black py-4 rounded-xl text-sm flex items-center justify-center";
 
                     await window.webADB.disconnect();
 
-                    // Redirect back to ESP32 local portal
+                    // Redirect back to ESP32 for zero-configuration, secure local HTTP pairing
                     setTimeout(() => {
-                        window.location.href = `http://${esp32Ip}/`;
+                        window.location.href = `http://${esp32Ip}/?action=pair&slot=${slotNum}&id=${encodeURIComponent(serial)}&name=PisoPhone+Slot+${slotNum}`;
                     }, 3000);
 
                 } catch (err) {

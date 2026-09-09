@@ -44,7 +44,7 @@ website/
 1. **Dashboard (`index.html`)**: Register new ESP32 Coin Slot boxes and view fleet telemetry.
 2. **Credits & Plans (`purchase.html`)**: Top up operator credit balance for phone slots.
 3. **Flashing & Setup (`install.html`)**: Plug Android device via USB and flash PisoPhone as Device Owner in 1 click.
-4. **Activation (`activate.html`)**: Assign device to a cabinet slot and activate with signed cryptographic license key.
+4. **Activation (`activate.html`)**: Assign device to a cabinet slot and activate with signed QR license.
 
 ## Auxiliary Utilities
 
