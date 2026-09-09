@@ -492,7 +492,7 @@
          * @param {string} apkUrl URL of the APK to install
          * @param {function} logCallback Function to output log messages
          */
-        async installKioskApp(apkUrl, logCallback = console.log) {
+        async installKioskApp(apkUrl, logCallback = console.log, options = {}) {
             // Step 1: Cache APK locally
             if (!this.cachedApkBytes) {
                 await this.downloadToLocalTemp(apkUrl, logCallback);
@@ -620,15 +620,15 @@
                 await this.shell(`dumpsys deviceidle whitelist +${PACKAGE_NAME} 2>/dev/null || true`);
             } catch (e) {}
 
-            // Parse provisioning credentials if supplied via URL
+            // Parse provisioning credentials if supplied via options or context
             let provExtras = '';
             try {
                 const urlParams = new URLSearchParams(window.location.search);
-                const provSecret = urlParams.get('secret');
-                const provMac = urlParams.get('mac');
-                const provIp = urlParams.get('ip');
-                const provSlot = urlParams.get('slot');
-                const provName = urlParams.get('name');
+                const provSecret = options.secret || '';
+                const provMac = options.mac || urlParams.get('mac');
+                const provIp = options.ip || urlParams.get('ip');
+                const provSlot = options.slot || urlParams.get('slot');
+                const provName = options.name || urlParams.get('name');
 
                 if (provSecret) provExtras += ` --es secret "${provSecret}"`;
                 if (provMac) provExtras += ` --es mac "${provMac}" --es esp32_mac "${provMac}"`;

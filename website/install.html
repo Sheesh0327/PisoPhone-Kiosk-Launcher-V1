@@ -1176,9 +1176,9 @@
 
                     // If launched from ESP32, redirect back to ESP32 dashboard
                     if (urlIp) {
-                        logInstall("\n🔄 Redirecting back to Cabinet Dashboard to finalize pairing...");
+                        logInstall("\n🔄 Returning to Cabinet Dashboard...");
                         setTimeout(() => {
-                            window.location.href = `http://${urlIp}/?action=pair&slot=${urlSlot || 1}&id=${encodeURIComponent(serial)}&name=${encodeURIComponent(urlName || 'PisoPhone ' + (urlSlot || 1))}`;
+                            window.location.href = `http://${urlIp}/`;
                         }, 3000);
                     }
                 } catch (err) {

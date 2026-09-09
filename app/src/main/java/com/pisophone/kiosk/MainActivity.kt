@@ -67,37 +67,72 @@ class MainActivity : ComponentActivity() {
         CrashReporter.init(this)
 
         handleSetupIntent(intent)
-        applyKioskWindowFlags()
-        hideSystemBars()
-        checkOverlayPermission()
+        if (isFullySetup()) {
+            applyKioskWindowFlags()
+            hideSystemBars()
+            checkOverlayPermission()
+            checkDeviceOwner()
+        }
         loadApps()
         KioskWatchdogReceiver.scheduleWatchdog(this)
-        checkDeviceOwner()
 
         setContent {
             PisoPhoneLauncherTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    LaunchedEffect(Unit) {
-                        checkDeviceOwner()
-                        checkOverlayPermission()
-                        applyKioskWindowFlags()
-                        hideSystemBars()
-                        dismissKeyguard()
-                    }
-                    LauncherScreen(
-                        apps = appsList,
-                        onAppClick = { appInfo ->
-                            AppLauncher.launchApp(this@MainActivity, appInfo.packageName)
+                    val securityVer by HardwareLockManager.securityUpdateVersion.collectAsState()
+                    val fullySetup = remember(securityVer) { isFullySetup() }
+
+                    if (!fullySetup) {
+                        HardwareLockScreen(
+                            onRebindSuccess = {
+                                if (isFullySetup()) {
+                                    checkDeviceOwner()
+                                    checkOverlayPermission()
+                                    applyKioskWindowFlags()
+                                    hideSystemBars()
+                                    dismissKeyguard()
+                                    startKioskService()
+                                }
+                            }
+                        )
+                    } else {
+                        LaunchedEffect(Unit) {
+                            checkDeviceOwner()
+                            checkOverlayPermission()
+                            applyKioskWindowFlags()
+                            hideSystemBars()
+                            dismissKeyguard()
+                            startKioskService()
                         }
-                    )
+                        LauncherScreen(
+                            apps = appsList,
+                            onAppClick = { appInfo ->
+                                AppLauncher.launchApp(this@MainActivity, appInfo.packageName)
+                            }
+                        )
+                    }
                 }
             }
         }
     }
 
+    private fun startKioskService() {
+        if (!isFullySetup()) return
+        try {
+            val serviceIntent = Intent(this, KioskService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent)
+            } else {
+                startService(serviceIntent)
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("MainActivity", "Failed to start KioskService: ${e.message}")
+        }
+    }
+
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) {
+        if (hasFocus && isFullySetup()) {
             applyKioskWindowFlags()
             hideSystemBars()
             dismissKeyguard()
@@ -106,13 +141,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        applyKioskWindowFlags()
-        hideSystemBars()
-        dismissKeyguard()
-        checkOverlayPermission()
+        if (isFullySetup()) {
+            applyKioskWindowFlags()
+            hideSystemBars()
+            dismissKeyguard()
+            checkOverlayPermission()
+            checkDeviceOwner()
+        }
         loadApps()
         KioskWatchdogReceiver.scheduleWatchdog(this)
-        checkDeviceOwner()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -129,42 +166,50 @@ class MainActivity : ComponentActivity() {
         val secret = intent.getStringExtra("setup_secret")
             ?: intent.getStringExtra("secret")
             ?: intent.getStringExtra("shared_secret")
+            ?: KioskSecurity.getSharedSecret(this)
         val mac = intent.getStringExtra("setup_mac")
             ?: intent.getStringExtra("esp32_mac")
             ?: intent.getStringExtra("mac")
             ?: intent.getStringExtra("box_mac")
+            ?: KioskSecurity.getConfiguredEsp32Mac(this)
         val ip = intent.getStringExtra("setup_ip")
             ?: intent.getStringExtra("esp32_ip")
             ?: intent.getStringExtra("ip")
-        val slot = intent.getIntExtra("setup_slot", intent.getIntExtra("slot", -1))
+            ?: KioskSecurity.getConfiguredEsp32Ip(this)
+        val slot = intent.getIntExtra("setup_slot", intent.getIntExtra("slot", KioskSecurity.getAssignedBoxSlot(this)))
         val name = intent.getStringExtra("setup_name")
             ?: intent.getStringExtra("name")
             ?: intent.getStringExtra("alias")
-        val activate = intent.getBooleanExtra("activate", intent.hasExtra("setup_secret") || intent.hasExtra("secret") || intent.hasExtra("setup_mac"))
+            ?: KioskSecurity.getDeviceAlias(this)
 
-        if (!secret.isNullOrBlank() || !mac.isNullOrBlank() || !ip.isNullOrBlank() || slot > 0) {
-            android.util.Log.i("MainActivity", "Direct Provisioning setup parameters received: MAC=$mac, IP=$ip, Slot=$slot, SecretConfigured=${!secret.isNullOrBlank()}")
-            KioskService.configureMasterBox(
+        if (!secret.isNullOrBlank() && slot in 1..12) {
+            android.util.Log.i("MainActivity", "PairingCoordinator: initiating configureAndPair for slot $slot, IP $ip, MAC $mac")
+            com.pisophone.kiosk.provisioning.PairingCoordinator.configureAndPair(
                 context = this,
-                mac = mac ?: "",
-                ip = ip,
-                slot = slot,
                 secret = secret,
+                mac = mac ?: "",
+                ip = if (!ip.isNullOrBlank()) ip else "kioskmanager.local",
+                slot = slot,
                 name = name
-            )
-        }
-
-        if (activate) {
-            HardwareLockManager.sealToCurrentDevice(this)
-            try {
-                val serviceIntent = Intent(this, KioskService::class.java)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(serviceIntent)
-                } else {
-                    startService(serviceIntent)
+            ) { result ->
+                when (result) {
+                    is com.pisophone.kiosk.provisioning.PairingResult.Success -> {
+                        android.widget.Toast.makeText(this, "Paired to Hardware Box Slot ${result.slot}!", android.widget.Toast.LENGTH_SHORT).show()
+                        startKioskService()
+                    }
+                    is com.pisophone.kiosk.provisioning.PairingResult.OccupiedSlot -> {
+                        android.widget.Toast.makeText(this, "Pairing Failed: ${result.message}", android.widget.Toast.LENGTH_LONG).show()
+                    }
+                    is com.pisophone.kiosk.provisioning.PairingResult.AuthFailed -> {
+                        android.widget.Toast.makeText(this, "Authentication Failed: ${result.message}", android.widget.Toast.LENGTH_LONG).show()
+                    }
+                    is com.pisophone.kiosk.provisioning.PairingResult.ConfigurationError -> {
+                        android.widget.Toast.makeText(this, "Configuration Error: ${result.message}", android.widget.Toast.LENGTH_LONG).show()
+                    }
+                    is com.pisophone.kiosk.provisioning.PairingResult.NetworkError -> {
+                        android.widget.Toast.makeText(this, "Network Error: ${result.message}", android.widget.Toast.LENGTH_LONG).show()
+                    }
                 }
-            } catch (e: Exception) {
-                android.util.Log.w("MainActivity", "Failed to start KioskService on setup: ${e.message}")
             }
         }
     }

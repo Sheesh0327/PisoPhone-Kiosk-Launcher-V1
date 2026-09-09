@@ -248,28 +248,8 @@ class Esp32DiscoveryScanner(
     }
 
     fun getLocalIpAddress(): String {
-        try {
-            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
-            while (interfaces != null && interfaces.hasMoreElements()) {
-                val networkInterface = interfaces.nextElement()
-                val addresses = networkInterface.inetAddresses
-                while (addresses.hasMoreElements()) {
-                    val address = addresses.nextElement()
-                    if (!address.isLoopbackAddress && address is java.net.Inet4Address) {
-                        val ip = address.hostAddress
-                        if (ip != null) {
-                            if (networkInterface.name.contains("wlan") ||
-                                networkInterface.name.contains("eth") ||
-                                networkInterface.name.contains("ap") ||
-                                networkInterface.name.contains("rndis")) {
-                                return ip
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (_: Exception) {}
-        return ""
+        val ip = com.pisophone.kiosk.util.NetworkUtils.getLocalIpAddress()
+        return if (ip == "127.0.0.1") "" else ip
     }
 
     fun getEsp32HostAndPort(rawIp: String?): Pair<String, Int> {

@@ -32,7 +32,7 @@ class KioskStateManager(private val context: Context) {
     val slotNumber = MutableStateFlow(0)
 
     init {
-        deviceIp.value = getLocalIpAddress()
+        deviceIp.value = com.pisophone.kiosk.util.NetworkUtils.getLocalIpAddress()
         initDeviceId()
         restoreState()
     }
@@ -43,13 +43,8 @@ class KioskStateManager(private val context: Context) {
         } else {
             context
         }
-        val prefs = deviceContext.getSharedPreferences("kiosk_prefs", Context.MODE_PRIVATE)
-        var savedUuid = prefs.getString("device_uuid", null)
-        if (savedUuid == null) {
-            savedUuid = UUID.randomUUID().toString()
-            prefs.edit().putString("device_uuid", savedUuid).apply()
-        }
-        deviceId.value = savedUuid
+        val canonicalId = com.pisophone.kiosk.security.HardwareLockManager.getCanonicalDeviceId(deviceContext)
+        deviceId.value = canonicalId
     }
 
     fun saveState(txSet: Set<String> = emptySet()) {
@@ -120,30 +115,6 @@ class KioskStateManager(private val context: Context) {
     }
 
     fun getLocalIpAddress(): String {
-        var fallbackIp: String? = null
-        try {
-            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
-            while (interfaces != null && interfaces.hasMoreElements()) {
-                val networkInterface = interfaces.nextElement()
-                val addresses = networkInterface.inetAddresses
-                while (addresses.hasMoreElements()) {
-                    val address = addresses.nextElement()
-                    if (!address.isLoopbackAddress && address is java.net.Inet4Address) {
-                        val ip = address.hostAddress
-                        if (ip != null) {
-                            if (networkInterface.name.contains("wlan") || networkInterface.name.contains("eth")) {
-                                return ip
-                            }
-                            if (fallbackIp == null) {
-                                fallbackIp = ip
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (ex: Exception) {
-            ex.printStackTrace()
-        }
-        return fallbackIp ?: "127.0.0.1"
+        return com.pisophone.kiosk.util.NetworkUtils.getLocalIpAddress()
     }
 }

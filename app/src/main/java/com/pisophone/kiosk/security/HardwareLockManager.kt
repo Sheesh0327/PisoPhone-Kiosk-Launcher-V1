@@ -78,6 +78,29 @@ object HardwareLockManager {
     }
 
     /**
+     * Retrieves the single canonical device identity.
+     * Preserves existing bound identities or UUIDs from previous installations to prevent
+     * breaking existing slot pairings, and derives a deterministic hardware fingerprint on fresh installs.
+     */
+    fun getCanonicalDeviceId(context: Context): String {
+        val kioskPrefs = KioskSecurity.getDirectBootPrefs(context, "kiosk_prefs")
+        val legacyUuid = kioskPrefs.getString("device_uuid", null)
+        if (!legacyUuid.isNullOrBlank()) {
+            syncToGlobalSettings(context, legacyUuid)
+            return legacyUuid
+        }
+        val prefs = getPrefs(context)
+        val bound = prefs.getString(KEY_BOUND_HW_ID, null)
+        if (!bound.isNullOrBlank()) {
+            syncToGlobalSettings(context, bound)
+            return bound
+        }
+        val computed = getHardwareFingerprint(context)
+        kioskPrefs.edit().putString("device_uuid", computed).apply()
+        return computed
+    }
+
+    /**
      * Synchronizes hardware ID into Android Global Settings so WebADB can read it directly.
      */
     fun syncToGlobalSettings(context: Context, hwId: String) {
@@ -118,7 +141,7 @@ object HardwareLockManager {
      */
     fun sealToCurrentDevice(context: Context): Boolean {
         val prefs = getPrefs(context)
-        val currentHwId = getHardwareFingerprint(context)
+        val currentHwId = getCanonicalDeviceId(context)
         val currentDevName = getHardwareDescription()
         val now = System.currentTimeMillis()
 
@@ -137,12 +160,88 @@ object HardwareLockManager {
         return true
     }
 
+    private fun migrateAndClearStaleProvisioningState(context: Context) {
+        try {
+            val provPrefs = KioskSecurity.getDirectBootPrefs(context, "provisioning_state")
+            if (provPrefs.contains("pairing_pending")) {
+                val wasCompleted = provPrefs.getBoolean("pairing_completed", false)
+                val setupSlot = provPrefs.getInt("setup_slot", -1)
+                val setupMac = provPrefs.getString("setup_mac", "")
+                val setupIp = provPrefs.getString("setup_ip", "")
+                val setupName = provPrefs.getString("setup_name", "")
+
+                if (setupSlot in 1..12) {
+                    if (KioskSecurity.getAssignedBoxSlot(context) <= 0) {
+                        KioskSecurity.setAssignedBoxSlot(context, setupSlot)
+                    }
+                    if (!setupMac.isNullOrBlank() && KioskSecurity.getConfiguredEsp32Mac(context).isBlank()) {
+                        KioskSecurity.setConfiguredEsp32Mac(context, setupMac)
+                    }
+                    if (!setupIp.isNullOrBlank() && KioskSecurity.getConfiguredEsp32Ip(context).isBlank()) {
+                        KioskSecurity.setConfiguredEsp32Ip(context, setupIp)
+                    }
+                    if (!setupName.isNullOrBlank() && KioskSecurity.getDeviceAlias(context).isBlank()) {
+                        KioskSecurity.setDeviceAlias(context, setupName)
+                    }
+                }
+
+                val hasValidConfig = KioskSecurity.getAssignedBoxSlot(context) in 1..12 &&
+                        KioskSecurity.hasConfiguredSharedSecret(context)
+
+                if (wasCompleted || hasValidConfig) {
+                    provPrefs.edit().putBoolean("pairing_pending", false).putBoolean("pairing_completed", true).apply()
+                    Log.i(TAG, "Cleared stale pairing_pending flag for completed/valid setup.")
+                } else {
+                    provPrefs.edit().putBoolean("pairing_pending", false).apply()
+                    Log.i(TAG, "Cleared stale pairing_pending flag for incomplete setup; device will route to retained setup screen.")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking legacy provisioning state: ${e.message}")
+        }
+    }
+
     /**
-     * Checks if the kiosk application is authorized to operate on this hardware.
-     * Installing the APK installs like normal and runs automatically.
+     * Checks if the kiosk application is authorized and fully configured to operate on this hardware.
+     * Centralized decision across MainActivity, BootReceiver, watchdogs, and background services.
      */
     fun isAppAllowedToRun(context: Context): Boolean {
-        return isHardwareAuthorized(context)
+        migrateAndClearStaleProvisioningState(context)
+
+        val userSetup = try {
+            Settings.Secure.getInt(context.contentResolver, "user_setup_complete", 1)
+        } catch (e: Exception) { 1 }
+        val deviceProvisioned = try {
+            Settings.Global.getInt(context.contentResolver, Settings.Global.DEVICE_PROVISIONED, 1)
+        } catch (e: Exception) { 1 }
+        if (userSetup == 0 || deviceProvisioned == 0) {
+            Log.w(TAG, "App is not allowed to run fully yet: Android System Setup Wizard is still in progress.")
+            return false
+        }
+
+        val prefs = getPrefs(context)
+        if (prefs.getBoolean(KEY_HARDWARE_LOCKED, false)) {
+            Log.w(TAG, "App is locked: hardware lock enforced.")
+            return false
+        }
+
+        val currentHwId = getCanonicalDeviceId(context)
+        val boundHwId = prefs.getString(KEY_BOUND_HW_ID, null)
+        if (boundHwId.isNullOrBlank()) {
+            Log.w(TAG, "App is not allowed to run: Hardware seal has not been established yet.")
+            return false
+        } else if (boundHwId != currentHwId) {
+            Log.w(TAG, "App is not allowed to run: Hardware mismatch (bound: $boundHwId, current: $currentHwId)")
+            return false
+        }
+
+        // Must have valid box configuration and shared secret
+        if (!KioskSecurity.hasConfiguredSharedSecret(context) || KioskSecurity.getAssignedBoxSlot(context) !in 1..12) {
+            Log.w(TAG, "App is not allowed to run: Device is not paired or missing box configuration.")
+            return false
+        }
+
+        return true
     }
 
     /**
@@ -178,29 +277,20 @@ object HardwareLockManager {
     }
 
     /**
-     * Auto-saves device ID on installation / first launch and validates hardware identity.
+     * Validates hardware identity binding.
      */
     fun isHardwareAuthorized(context: Context): Boolean {
         val prefs = getPrefs(context)
+        if (prefs.getBoolean(KEY_HARDWARE_LOCKED, false)) return false
         val boundHwId = prefs.getString(KEY_BOUND_HW_ID, null)
-        val currentHwId = getHardwareFingerprint(context)
-        
-        if (boundHwId.isNullOrBlank() || boundHwId != currentHwId) {
-            sealToCurrentDevice(context)
-        }
-        
-        return true
+        val currentHwId = getCanonicalDeviceId(context)
+        if (boundHwId.isNullOrBlank()) return false
+        return boundHwId == currentHwId
     }
 
     fun getBoundHardwareId(context: Context): String {
         val prefs = getPrefs(context)
-        val bound = prefs.getString(KEY_BOUND_HW_ID, null)
-        if (bound.isNullOrBlank()) {
-            val current = getHardwareFingerprint(context)
-            sealToCurrentDevice(context)
-            return current
-        }
-        return bound
+        return prefs.getString(KEY_BOUND_HW_ID, null) ?: ""
     }
 
     fun getBoundDeviceName(context: Context): String {
@@ -216,10 +306,14 @@ object HardwareLockManager {
             return false
         }
         val prefs = getPrefs(context)
-        val currentHwId = getHardwareFingerprint(context)
+        val currentHwId = getCanonicalDeviceId(context)
         val currentDevName = getHardwareDescription()
         val now = System.currentTimeMillis()
         val sig = generateSignature(context, currentHwId, currentDevName, now)
+
+        if (KioskSecurity.getAssignedBoxSlot(context) <= 0) {
+            KioskSecurity.setAssignedBoxSlot(context, 1)
+        }
 
         prefs.edit()
             .putString(KEY_BOUND_HW_ID, currentHwId)
