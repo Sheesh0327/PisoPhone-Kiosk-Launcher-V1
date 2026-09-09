@@ -53,6 +53,12 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
 
         when (action) {
             ACTION_ENABLE_ADB, "com.pisophone.kiosk.ACTION_ENABLE_ADB" -> {
+                if (!isAuthorized(context, intent)) {
+                    Log.w(TAG, "Unauthorized attempt to trigger ENABLE_ADB rejected.")
+                    Toast.makeText(context, "Unauthorized: Valid Admin PIN or Secret required.", Toast.LENGTH_SHORT).show()
+                    setResultCode(android.app.Activity.RESULT_CANCELED)
+                    return
+                }
                 Log.i(TAG, "Emergency Enable ADB broadcast received.")
                 val success = com.pisophone.kiosk.security.KioskSecurity.emergencyEnableUsbDebugging(context)
                 Toast.makeText(context, "⚡ Emergency: USB Debugging Re-Enabled!", Toast.LENGTH_LONG).show()
@@ -60,6 +66,12 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
             }
 
             ACTION_EMERGENCY_RECOVERY, "com.pisophone.kiosk.ACTION_EMERGENCY_RECOVERY" -> {
+                if (!isAuthorized(context, intent)) {
+                    Log.w(TAG, "Unauthorized attempt to trigger EMERGENCY_RECOVERY rejected.")
+                    Toast.makeText(context, "Unauthorized: Valid Admin PIN or Secret required.", Toast.LENGTH_SHORT).show()
+                    setResultCode(android.app.Activity.RESULT_CANCELED)
+                    return
+                }
                 Log.i(TAG, "Emergency Full Recovery broadcast received.")
                 com.pisophone.kiosk.security.KioskSecurity.emergencyEnableUsbDebugging(context)
                 com.pisophone.kiosk.security.KioskSecurity.emergencyExitKiosk(context)
@@ -77,6 +89,11 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
             }
 
             ACTION_OPEN_SETTINGS, "com.pisophone.kiosk.ACTION_OPEN_SETTINGS" -> {
+                if (!isAuthorized(context, intent)) {
+                    Log.w(TAG, "Unauthorized attempt to trigger OPEN_SETTINGS rejected.")
+                    Toast.makeText(context, "Unauthorized: Valid Admin PIN or Secret required.", Toast.LENGTH_SHORT).show()
+                    return
+                }
                 try {
                     val sIntent = Intent(android.provider.Settings.ACTION_SETTINGS).apply {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -190,6 +207,14 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
             }
 
             ACTION_CONFIGURE_ESP32, "com.pisophone.kiosk.ACTION_CONFIGURE_ESP32" -> {
+                val isProvisioned = com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context) || com.pisophone.kiosk.security.KioskSecurity.getSharedSecret(context).isNotBlank()
+                if (isProvisioned && !isAuthorized(context, intent)) {
+                    Log.w(TAG, "Unauthorized attempt to re-configure ESP32 on provisioned device rejected.")
+                    Toast.makeText(context, "Unauthorized: Valid Admin PIN or Secret required.", Toast.LENGTH_SHORT).show()
+                    setResultCode(android.app.Activity.RESULT_CANCELED)
+                    return
+                }
+
                 val secret = intent.getStringExtra("secret") ?: intent.getStringExtra("setup_secret") ?: intent.getStringExtra("shared_secret")
                 val mac = intent.getStringExtra("esp32_mac") ?: intent.getStringExtra("mac") ?: intent.getStringExtra("box_mac")
                 val ip = intent.getStringExtra("esp32_ip") ?: intent.getStringExtra("ip")
@@ -209,6 +234,14 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
             }
 
             ACTION_ACTIVATE -> {
+                val isProvisioned = com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context) || com.pisophone.kiosk.security.KioskSecurity.getSharedSecret(context).isNotBlank()
+                if (isProvisioned && !isAuthorized(context, intent)) {
+                    Log.w(TAG, "Unauthorized attempt to re-activate already provisioned device rejected.")
+                    Toast.makeText(context, "Unauthorized: Valid Admin PIN or Secret required.", Toast.LENGTH_SHORT).show()
+                    setResultCode(android.app.Activity.RESULT_CANCELED)
+                    return
+                }
+
                 val key = intent.getStringExtra("key") ?: intent.getStringExtra("code") ?: "ACTIVATION_KEY"
                 val secret = intent.getStringExtra("secret") ?: intent.getStringExtra("setup_secret") ?: intent.getStringExtra("shared_secret")
                 val esp32Mac = intent.getStringExtra("esp32_mac") ?: intent.getStringExtra("mac") ?: intent.getStringExtra("box_mac")

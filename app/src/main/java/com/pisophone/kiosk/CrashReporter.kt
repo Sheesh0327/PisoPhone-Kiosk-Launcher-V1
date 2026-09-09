@@ -8,11 +8,10 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.PrintWriter
 import java.io.StringWriter
-import java.net.HttpURLConnection
-import java.net.URL
+import java.util.concurrent.atomic.AtomicBoolean
 
 class CrashReporter(private val context: Context) : Thread.UncaughtExceptionHandler {
-    private val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+    private val defaultHandler: Thread.UncaughtExceptionHandler? = Thread.getDefaultUncaughtExceptionHandler()
 
     override fun uncaughtException(t: Thread, e: Throwable) {
         try {
@@ -33,33 +32,7 @@ class CrashReporter(private val context: Context) : Thread.UncaughtExceptionHand
                 Log.e("CrashReporter", "Failed to write crash log to file: ${ex.message}")
             }
 
-            // 2. Telemetry: Send to dynamically discovered ESP32 Master controller
-            try {
-                val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) context.createDeviceProtectedStorageContext() else context
-                val prefs = deviceContext.getSharedPreferences("kiosk_persistent_state", Context.MODE_PRIVATE)
-                val esp32Ip = prefs.getString("esp32_ip", null)
-                val targetPort = prefs.getInt("target_port", 80)
-
-                if (!esp32Ip.isNullOrBlank()) {
-                    val url = URL("http://$esp32Ip:$targetPort/crash_report")
-                    val conn = url.openConnection() as HttpURLConnection
-                    conn.connectTimeout = 2000
-                    conn.readTimeout = 2000
-                    conn.requestMethod = "POST"
-                    conn.setRequestProperty("Content-Type", "text/plain")
-                    conn.doOutput = true
-                    conn.outputStream.use { os ->
-                        os.write(crashLog.toByteArray())
-                        os.flush()
-                    }
-                    conn.responseCode // execute request
-                    conn.disconnect()
-                }
-            } catch (ex: Exception) {
-                Log.w("CrashReporter", "Remote crash report to ESP32 failed gracefully: ${ex.message}")
-            }
-
-            // 3. Auto-Relaunch Kiosk: Schedule immediate revive via AlarmManager in 1000ms
+            // 2. Auto-Relaunch Kiosk: Schedule immediate revive via AlarmManager in 1000ms
             try {
                 val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? android.app.AlarmManager
                 val intent = Intent(context, MainActivity::class.java).apply {
@@ -85,8 +58,14 @@ class CrashReporter(private val context: Context) : Thread.UncaughtExceptionHand
     }
 
     companion object {
+        private val isInstalled = AtomicBoolean(false)
+
         fun init(context: Context) {
-            Thread.setDefaultUncaughtExceptionHandler(CrashReporter(context))
+            if (isInstalled.compareAndSet(false, true)) {
+                val appContext = context.applicationContext
+                Thread.setDefaultUncaughtExceptionHandler(CrashReporter(appContext))
+                Log.d("CrashReporter", "Installed global UncaughtExceptionHandler.")
+            }
         }
     }
 }

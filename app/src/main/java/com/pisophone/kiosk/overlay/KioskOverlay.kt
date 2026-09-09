@@ -45,9 +45,14 @@ class KioskOverlay(
     private val lockScreenOverlay = LockScreenOverlay(context, appStateFlow, paymentTimeoutFlow, coinsInsertedFlow, themeIndexFlow, isEsp32OnlineFlow, esp32MacAddressFlow, isSlotBusyFlow, pricePerCoinFlow, minutesPerCoinFlow, deviceIpFlow, batteryStatusFlow, slotWarningDaysLeftFlow, isSlotExpiredFlow, slotExpiryReasonFlow, onInsertCoinClick, onDoneClick, onThemeChange, onActivateClick)
     private val floatingBallOverlay = FloatingBallOverlay(context, appStateFlow, sessionTimeFlow, paymentTimeoutFlow, coinsInsertedFlow, themeIndexFlow, isEsp32OnlineFlow, isSlotBusyFlow, pricePerCoinFlow, minutesPerCoinFlow, batteryStatusFlow, onInsertCoinClick, onDoneClick)
     
-    fun show() {
-        lockScreenOverlay.show()
+    fun show(): Boolean {
+        val lockShown = lockScreenOverlay.show()
         floatingBallOverlay.show()
+        return lockShown
+    }
+
+    fun isAttached(): Boolean {
+        return lockScreenOverlay.isAttached()
     }
     
     fun remove() {
@@ -139,17 +144,19 @@ class LockScreenOverlay(
         }
     }
 
-    fun show() {
+    fun isAttached(): Boolean = isViewAdded
+
+    fun show(): Boolean {
         if (!android.provider.Settings.canDrawOverlays(context)) {
             android.util.Log.w("LockScreenOverlay", "Overlay permission not granted yet, deferring window attachment")
-            return
+            return false
         }
-        if (isViewAdded) return
+        if (isViewAdded) return true
 
         val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
         if (!isFullySetup) {
             android.util.Log.d("LockScreenOverlay", "Device not activated or fully setup. Lock screen overlay deferred.")
-            return
+            return false
         }
         val initialVisible = isFullySetup && (appStateFlow.value == 0 || appStateFlow.value == 1)
         val baseFlags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or 
@@ -294,8 +301,10 @@ class LockScreenOverlay(
 
             overlayView.start()
         } catch (e: Exception) {
+            isViewAdded = false
             android.util.Log.e("LockScreenOverlay", "Failed to add overlay view: ${e.message}")
         }
+        return isViewAdded
     }
     
     fun remove() {

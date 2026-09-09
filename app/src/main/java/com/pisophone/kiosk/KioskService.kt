@@ -224,6 +224,20 @@ class KioskService : Service() {
         isServiceRunning = true
         activeInstance = this
         serviceStartTimeMs = System.currentTimeMillis()
+
+        createNotificationChannel()
+        val notification = NotificationCompat.Builder(this, "kiosk_channel")
+            .setContentTitle("Kiosk Active")
+            .setContentText("Monitoring coin slot on port 8080")
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .build()
+            
+        if (android.os.Build.VERSION.SDK_INT >= 34) {
+            startForeground(1, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        } else {
+            startForeground(1, notification)
+        }
+
         CrashReporter.init(this)
 
         try {
@@ -252,7 +266,15 @@ class KioskService : Service() {
             scope = scope,
             coinEventRepo = coinEventRepo,
             onCreditsApplied = { seconds, pesoAmount ->
-                stateManager.sessionTimeRemaining.value += seconds
+                val now = System.currentTimeMillis()
+                val currentDeadline = stateManager.sessionExpiryDeadlineMs.value
+                val newDeadline = if (currentDeadline > now) {
+                    currentDeadline + (seconds * 1000L)
+                } else {
+                    now + (seconds * 1000L)
+                }
+                stateManager.sessionExpiryDeadlineMs.value = newDeadline
+                stateManager.sessionTimeRemaining.value = ((newDeadline - now) / 1000L).toInt()
                 stateManager.paymentTimeout.value = ARMING_TIMEOUT_SECONDS
                 if (stateManager.appState.value == 0) {
                     stateManager.coinsInserted.value += pesoAmount
@@ -367,9 +389,10 @@ class KioskService : Service() {
                     stateManager.slotNumber.value = slotNum
                     stateManager.slotWarningDaysLeft.value = 0
                     stateManager.sessionTimeRemaining.value = 0
+                    stateManager.sessionExpiryDeadlineMs.value = 0L
                     stateManager.appState.value = 0
                     stateManager.saveState()
-                    HardwareLockManager.setSlotLockdown(applicationContext, false)
+                    HardwareLockManager.setSlotLockdown(applicationContext, true, reason, slotNum, expiresAt)
                 }
 
                 override fun onSlotRestored() {
@@ -387,19 +410,6 @@ class KioskService : Service() {
             esp32Manager.setEsp32Ip(stateManager.esp32Ip)
         }
 
-        createNotificationChannel()
-        val notification = NotificationCompat.Builder(this, "kiosk_channel")
-            .setContentTitle("Kiosk Active")
-            .setContentText("Monitoring coin slot on port 8080")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .build()
-            
-        if (android.os.Build.VERSION.SDK_INT >= 34) {
-            startForeground(1, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-        } else {
-            startForeground(1, notification)
-        }
-        
         setupOverlay()
         scope.launch {
             HardwareLockManager.securityUpdateVersion.collect {
@@ -667,54 +677,67 @@ class KioskService : Service() {
         stateManager.saveState()
     }
     
-    private fun setupOverlay() {
+    fun isOverlayHealthy(): Boolean {
+        val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(this)
+        if (!isFullySetup) return true
+        return overlay != null && overlay?.isAttached() == true
+    }
+
+    fun setupOverlay() {
         val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(this)
         if (!isFullySetup) {
             Log.d(TAG, "Device not activated or fully setup. Lock screen overlay deferred.")
             return
         }
-        if (overlay != null) return
+        if (overlay != null && overlay?.isAttached() == true) return
 
-        overlay = KioskOverlay(
-            context = this,
-            appStateFlow = stateManager.appState,
-            sessionTimeFlow = stateManager.sessionTimeRemaining,
-            paymentTimeoutFlow = stateManager.paymentTimeout,
-            coinsInsertedFlow = stateManager.coinsInserted,
-            themeIndexFlow = stateManager.themeIndex,
-            isEsp32OnlineFlow = stateManager.isEsp32Online,
-            esp32MacAddressFlow = stateManager.esp32MacAddress,
-            isSlotBusyFlow = stateManager.isSlotBusy,
-            pricePerCoinFlow = stateManager.pricePerCoin,
-            minutesPerCoinFlow = stateManager.minutesPerCoin,
-            deviceIpFlow = stateManager.deviceIp,
-            batteryStatusFlow = systemMonitor.batteryStatus,
-            slotWarningDaysLeftFlow = stateManager.slotWarningDaysLeft,
-            isSlotExpiredFlow = stateManager.isSlotExpired,
-            slotExpiryReasonFlow = stateManager.slotExpiryMessage,
-            onInsertCoinClick = { 
-                if (stateManager.appState.value == 4) return@KioskOverlay
-                if (stateManager.isSlotExpired.value || com.pisophone.kiosk.security.HardwareLockManager.isSlotLockedDown(this@KioskService)) {
-                    Log.w(TAG, "Coin insertion blocked: Device not activated on ESP32.")
-                    android.os.Handler(android.os.Looper.getMainLooper()).post {
-                        android.widget.Toast.makeText(applicationContext, "Device not activated. Please activate this device in the ESP32 Kiosk Manager.", android.widget.Toast.LENGTH_LONG).show()
+        if (overlay == null) {
+            overlay = KioskOverlay(
+                context = this,
+                appStateFlow = stateManager.appState,
+                sessionTimeFlow = stateManager.sessionTimeRemaining,
+                paymentTimeoutFlow = stateManager.paymentTimeout,
+                coinsInsertedFlow = stateManager.coinsInserted,
+                themeIndexFlow = stateManager.themeIndex,
+                isEsp32OnlineFlow = stateManager.isEsp32Online,
+                esp32MacAddressFlow = stateManager.esp32MacAddress,
+                isSlotBusyFlow = stateManager.isSlotBusy,
+                pricePerCoinFlow = stateManager.pricePerCoin,
+                minutesPerCoinFlow = stateManager.minutesPerCoin,
+                deviceIpFlow = stateManager.deviceIp,
+                batteryStatusFlow = systemMonitor.batteryStatus,
+                slotWarningDaysLeftFlow = stateManager.slotWarningDaysLeft,
+                isSlotExpiredFlow = stateManager.isSlotExpired,
+                slotExpiryReasonFlow = stateManager.slotExpiryMessage,
+                onInsertCoinClick = { 
+                    if (stateManager.appState.value == 4) return@KioskOverlay
+                    if (stateManager.isSlotExpired.value || com.pisophone.kiosk.security.HardwareLockManager.isSlotLockedDown(this@KioskService)) {
+                        Log.w(TAG, "Coin insertion blocked: Device not activated on ESP32.")
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            android.widget.Toast.makeText(applicationContext, "Device not activated. Please activate this device in the ESP32 Kiosk Manager.", android.widget.Toast.LENGTH_LONG).show()
+                        }
+                        return@KioskOverlay
                     }
-                    return@KioskOverlay
-                }
-                if (stateManager.appState.value == 2) {
-                    stateManager.appState.value = 3
-                } else {
-                    stateManager.appState.value = 1
-                }
-                stateManager.coinsInserted.value = 0
-                stateManager.paymentTimeout.value = ARMING_TIMEOUT_SECONDS
-                armSlot()
-            },
-            onDoneClick = { finishPayment() },
-            onThemeChange = { stateManager.themeIndex.value = (stateManager.themeIndex.value + 1) % 3 }
-        )
+                    if (stateManager.appState.value == 2) {
+                        stateManager.appState.value = 3
+                    } else {
+                        stateManager.appState.value = 1
+                    }
+                    stateManager.coinsInserted.value = 0
+                    stateManager.paymentTimeout.value = ARMING_TIMEOUT_SECONDS
+                    armSlot()
+                },
+                onDoneClick = { finishPayment() },
+                onThemeChange = { stateManager.themeIndex.value = (stateManager.themeIndex.value + 1) % 3 }
+            )
+        }
         scope.launch(Dispatchers.Main) {
-            overlay?.show()
+            val attached = overlay?.show() ?: false
+            if (!attached) {
+                Log.w(TAG, "Failed to attach overlay window. Resetting overlay reference for retry.")
+                overlay?.remove()
+                overlay = null
+            }
         }
     }
     

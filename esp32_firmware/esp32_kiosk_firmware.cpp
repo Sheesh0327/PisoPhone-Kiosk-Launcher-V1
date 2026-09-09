@@ -278,7 +278,6 @@ bool pairDeviceToSlot(int slotNum, String devId, String ip, String name) {
         if (i != targetIdx && licenseSlots[i].deviceId.length() > 0 && licenseSlots[i].deviceId == devId) {
             licenseSlots[i].deviceId = "";
             licenseSlots[i].ip = "";
-            licenseSlots[i].expiresAt = 0;
         }
     }
 
@@ -1142,12 +1141,7 @@ bool unpairSlot(int slotNum) {
 
     licenseSlots[idx].deviceId = "";
     licenseSlots[idx].ip = "";
-    
-    // Only clear expiresAt if the credit is already expired
-    uint64_t currentMs = getCurrentMasterTimeMs();
-    if (licenseSlots[idx].expiresAt > 0 && currentMs >= licenseSlots[idx].expiresAt) {
-        licenseSlots[idx].expiresAt = 0;
-    }
+    // Remaining expiry time is persistent on that slot (tied to the slot, not the device)
     
     saveSlotLicenses();
     return true;
@@ -1624,6 +1618,16 @@ String renderLicenseSlotsHtml() {
         }
     }
 
+    int unassignedCount = 0;
+    unsigned long currentMillis = millis();
+    for (int i = 0; i < trackedDeviceCount; i++) {
+        if (trackedDevices[i].deviceId.length() == 0) continue;
+        if (findSlotIndexForDevice(trackedDevices[i].deviceId, trackedDevices[i].lastKnownIp) >= 0) continue;
+        if (currentMillis - trackedDevices[i].lastSeenMs < 300000) {
+            unassignedCount++;
+        }
+    }
+
     String html = "<div class=\"master-vault-card\" style=\"background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px 24px; box-shadow: var(--card-shadow); margin-bottom: 16px;\">";
     
     // Top Row: Title, Subtitle & Professional Buy Button
@@ -1636,8 +1640,12 @@ String renderLicenseSlotsHtml() {
     html += "</div>";
     html += "</div>";
 
+    html += "<div style=\"display: flex; align-items: center; gap: 10px; flex-wrap: wrap;\">";
+    html += "<a href=\"https://pisophone.pages.dev/installer/?mac=" + macAddressStr + "&ip=" + myIp + "&secret=" + sharedSecret + "\" target=\"_blank\" style=\"font-size: 12px; font-weight: 700; padding: 8px 16px; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: #ffffff; border-radius: 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25); transition: transform 0.15s ease;\">";
+    html += "<span style=\"font-size: 14px;\">📥</span> Install</a>";
     html += "<a href=\"https://pisophone.pages.dev/purchase.html?esp32_ip=" + myIp + "\" target=\"_blank\" style=\"font-size: 12px; font-weight: 700; padding: 8px 16px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #ffffff; border-radius: 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25); transition: transform 0.15s ease;\">";
     html += "<span style=\"font-size: 14px;\">➕</span> Buy Terminal Credits</a>";
+    html += "</div>";
     html += "</div>";
 
     // Middle Row: Clearly Visible Displays of Total Credit Types
@@ -1660,83 +1668,95 @@ String renderLicenseSlotsHtml() {
 
     html += "</div>";
 
-    // Dropdown Trigger for ONLY Installed Devices
+    // Dropdown Trigger for Hardware Terminal Slots & Credit Allocation
     html += "<div style=\"margin-top: 16px;\">";
     html += "<button type=\"button\" onclick=\"toggleInstalledDevicesDropdown()\" style=\"width: 100%; background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; color: var(--text-main); font-family: inherit; font-size: 13px; font-weight: 700; transition: background 0.15s ease;\">";
     html += "<div style=\"display: flex; align-items: center; gap: 8px;\">";
-    html += "<span>📱 Installed Devices Under This Hardware</span>";
-    html += "<span style=\"font-size: 11px; font-weight: 800; background: " + String(installedCount > 0 ? "rgba(16, 185, 129, 0.15)" : "rgba(100, 116, 139, 0.15)") + "; color: " + String(installedCount > 0 ? "var(--primary)" : "var(--text-muted)") + "; padding: 2px 8px; border-radius: 12px;\">" + String(installedCount) + " Devices</span>";
+    html += "<span>🗄️ Hardware Slot Seats & Credit Allocator</span>";
+    html += "<span style=\"font-size: 11px; font-weight: 800; background: rgba(16, 185, 129, 0.15); color: var(--primary); padding: 2px 8px; border-radius: 12px;\">" + String(maxLicensedSlots) + " Slots</span>";
+    if (unassignedCount > 0) {
+        html += "<span style=\"font-size: 11px; font-weight: 800; background: rgba(245, 158, 11, 0.2); color: #f59e0b; padding: 2px 8px; border-radius: 12px; border: 1px solid rgba(245, 158, 11, 0.4);\">🟡 " + String(unassignedCount) + " Connection Request(s)</span>";
+    }
     html += "</div>";
     html += "<span id=\"vault-dropdown-arrow\" style=\"font-size: 12px; color: var(--text-muted); transition: transform 0.2s ease;\">▼</span>";
     html += "</button>";
 
-    // Dropdown Content (Contains ONLY Installed Devices)
-    html += "<div id=\"installed-devices-dropdown-content\" style=\"display: none; margin-top: 12px; flex-direction: column; gap: 10px;\">";
+    // Dropdown Content (Contains ALL Hardware Slots in a Square Grid Layout)
+    html += "<div id=\"installed-devices-dropdown-content\" style=\"display: none; margin-top: 14px; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px;\">";
 
-    if (installedCount == 0) {
-        html += "<div style=\"background: var(--input-bg); border: 1px dashed var(--border); border-radius: var(--radius-md); padding: 20px; text-align: center; color: var(--text-muted); font-size: 12px;\">";
-        html += "<div style=\"font-size: 24px; margin-bottom: 6px;\">📱</div>";
-        html += "<div style=\"font-weight: 700; color: var(--text-main);\">No Installed Devices</div>";
-        html += "<div style=\"margin-top: 4px;\">No terminal devices are currently paired under this ESP32 hardware. Connect an Android terminal via WebADB or Wi-Fi to pair a slot seat.</div>";
-        html += "</div>";
-    } else {
-        for (int i = 0; i < maxLicensedSlots; i++) {
-            if (licenseSlots[i].deviceId.length() == 0) continue; // FILTER: ONLY INSTALLED DEVICES!
+    for (int i = 0; i < maxLicensedSlots; i++) {
+        int sNum = licenseSlots[i].slotNum;
+        String devId = licenseSlots[i].deviceId;
+        String ip = licenseSlots[i].ip;
+        bool isBound = (devId.length() > 0);
+        String fullSlotName = isBound ? (licenseSlots[i].name.length() > 0 ? licenseSlots[i].name : ("PisoPhone Slot #" + String(sNum))) : ("Slot #" + String(sNum));
+        String shortName = isBound ? (licenseSlots[i].name.length() > 0 ? licenseSlots[i].name : ("PisoPhone #" + String(sNum))) : ("Empty #" + String(sNum));
+        
+        int daysLeft = -1;
+        int expStatus = getSlotExpirationStatus(i, currentMs, daysLeft);
 
-            int sNum = licenseSlots[i].slotNum;
-            String devId = licenseSlots[i].deviceId;
-            String ip = licenseSlots[i].ip;
-            String name = licenseSlots[i].name.length() > 0 ? licenseSlots[i].name : ("PisoPhone Slot #" + String(sNum));
-            int daysLeft = -1;
-            int expStatus = getSlotExpirationStatus(i, currentMs, daysLeft);
+        String borderCol = "rgba(16, 185, 129, 0.35)";
+        String dotCol = "#10b981";
+        String expCol = "var(--primary)";
+        String plusBg = "rgba(16, 185, 129, 0.12)";
+        String plusCol = "var(--primary)";
+        String plusShadow = "rgba(16, 185, 129, 0.15)";
+        String statusText = "Active Seat";
 
-            String borderCol = "var(--border)";
-            String statusBadge = "";
-            if (expStatus == 2) {
-                borderCol = "var(--danger)";
-                statusBadge = "<span style=\"font-size: 10px; font-weight: 800; background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.3); padding: 3px 8px; border-radius: 6px;\">🔴 EXPIRED / UNCREDITED</span>";
-            } else if (expStatus == 1) {
-                borderCol = "#f59e0b";
-                statusBadge = "<span style=\"font-size: 10px; font-weight: 800; background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); padding: 3px 8px; border-radius: 6px;\">⚠️ EXPIRING SOON</span>";
+        if (expStatus == 2) {
+            borderCol = "rgba(239, 68, 68, 0.4)";
+            dotCol = "#ef4444";
+            expCol = "var(--danger)";
+            plusBg = "rgba(239, 68, 68, 0.12)";
+            plusCol = "#ef4444";
+            plusShadow = "rgba(239, 68, 68, 0.15)";
+            statusText = "Expired / Uncredited";
+        } else if (expStatus == 1) {
+            borderCol = "rgba(245, 158, 11, 0.4)";
+            dotCol = "#f59e0b";
+            expCol = "#f59e0b";
+            plusBg = "rgba(245, 158, 11, 0.12)";
+            plusCol = "#f59e0b";
+            plusShadow = "rgba(245, 158, 11, 0.15)";
+            statusText = "Expiring Soon";
+        }
+
+        String expInfo = "No Credit";
+        if (licenseSlots[i].expiresAt > 0) {
+            if (licenseSlots[i].expiresAt <= currentMs) {
+                expInfo = "Expired";
             } else {
-                borderCol = "var(--primary)";
-                statusBadge = "<span style=\"font-size: 10px; font-weight: 800; background: rgba(16, 185, 129, 0.15); color: var(--primary); border: 1px solid rgba(16, 185, 129, 0.3); padding: 3px 8px; border-radius: 6px;\">🟢 ACTIVE</span>";
-            }
-
-            String expInfo = "No Credit";
-            if (licenseSlots[i].expiresAt > 0) {
-                if (licenseSlots[i].expiresAt <= currentMs) {
-                    expInfo = "Expired";
+                uint64_t diffMs = licenseSlots[i].expiresAt - currentMs;
+                if (diffMs > 86400000ULL) {
+                    expInfo = String((int)(diffMs / 86400000ULL)) + "d left";
                 } else {
-                    uint64_t diffMs = licenseSlots[i].expiresAt - currentMs;
-                    if (diffMs > 86400000ULL) {
-                        expInfo = String((int)(diffMs / 86400000ULL)) + " day(s) left";
-                    } else {
-                        expInfo = String((int)(diffMs / 60000ULL)) + " min(s) left";
-                    }
+                    expInfo = String((int)(diffMs / 60000ULL)) + "m left";
                 }
             }
-
-            html += "<div class=\"slot-row\" style=\"background: var(--input-bg); border: 1px solid var(--border); border-left: 4px solid " + borderCol + "; border-radius: var(--radius-md); padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;\">";
-            
-            html += "<div style=\"display: flex; align-items: center; gap: 12px;\">";
-            html += "<span style=\"font-size: 11px; font-weight: 800; background: rgba(16, 185, 129, 0.15); color: var(--primary); border: 1px solid rgba(16, 185, 129, 0.3); padding: 4px 8px; border-radius: 6px; font-family: monospace;\">Slot #" + String(sNum) + "</span>";
-            html += "<div>";
-            html += "<div style=\"font-size: 14px; font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 8px;\">" + name + " " + statusBadge + "</div>";
-            html += "<div style=\"font-size: 11px; color: var(--text-muted); font-family: monospace; margin-top: 2px;\">IP: " + (ip.length() > 0 ? ip : "Offline / Unbound") + " • HW: <b>" + devId + "</b> • Expires: <b>" + expInfo + "</b></div>";
-            html += "</div>";
-            html += "</div>";
-
-            // Unified Credit Allocators
-            html += "<div style=\"display: flex; gap: 8px; align-items: center; flex-wrap: wrap;\">";
-            html += "<button type=\"button\" class=\"btn btn-outline btn-sm\" style=\"font-size: 11px; font-weight: 700; padding: 6px 10px; border-color: rgba(16, 185, 129, 0.4); color: var(--primary);\" onclick=\"allocateSlotCredit(" + String(sNum) + ", 'month')\">+30d (Month)</button>";
-            html += "<button type=\"button\" class=\"btn btn-outline btn-sm\" style=\"font-size: 11px; font-weight: 700; padding: 6px 10px; border-color: rgba(59, 130, 246, 0.4); color: #3b82f6;\" onclick=\"allocateSlotCredit(" + String(sNum) + ", 'year')\">+1y (Year)</button>";
-            html += "<button type=\"button\" class=\"btn btn-outline btn-sm\" style=\"font-size: 11px; font-weight: 700; padding: 6px 10px; border-color: rgba(245, 158, 11, 0.4); color: #f59e0b;\" onclick=\"allocateSlotCredit(" + String(sNum) + ", 'test')\">+2m (Test)</button>";
-            html += "<button type=\"button\" class=\"btn btn-outline btn-sm\" style=\"font-size: 11px; font-weight: 700; padding: 6px 10px; border-color: rgba(239, 68, 68, 0.4); color: var(--danger);\" onclick=\"unpairSlot(" + String(sNum) + ")\">🔓 Unpair</button>";
-            html += "</div>";
-
-            html += "</div>";
         }
+
+        String escapedName = fullSlotName;
+        escapedName.replace("'", "\\'");
+        escapedName.replace("\"", "&quot;");
+
+        html += "<div class=\"slot-square-card\" onclick=\"openSlotCreditModal(" + String(sNum) + ", '" + escapedName + "', '" + ip + "', '" + devId + "', '" + expInfo + "', " + String(expStatus) + ", " + (isBound ? "true" : "false") + ")\" style=\"aspect-ratio: 1 / 1; background: var(--input-bg); border: 1px solid " + borderCol + "; border-radius: 14px; padding: 12px; display: flex; flex-direction: column; align-items: center; justify-content: space-between; cursor: pointer; position: relative; transition: all 0.2s ease; box-shadow: 0 2px 8px rgba(0,0,0,0.04); text-align: center; user-select: none;\">";
+        
+        // Top Row: Slot # & Status Dot
+        html += "<div style=\"display: flex; align-items: center; justify-content: space-between; width: 100%;\">";
+        html += "<span style=\"font-size: 10px; font-weight: 800; background: rgba(16, 185, 129, 0.12); color: var(--text-main); padding: 2px 6px; border-radius: 6px; font-family: monospace;\">#" + String(sNum) + "</span>";
+        html += "<span style=\"width: 8px; height: 8px; border-radius: 50%; background: " + dotCol + "; display: inline-block;\" title=\"" + statusText + "\"></span>";
+        html += "</div>";
+
+        // Center: Prominent Big Plus Symbol
+        html += "<div style=\"width: 42px; height: 42px; border-radius: 50%; background: " + plusBg + "; color: " + plusCol + "; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 800; line-height: 1; transition: transform 0.15s ease; box-shadow: 0 4px 10px " + plusShadow + ";\">+</div>";
+
+        // Bottom: Minimal Text (Name & Expiry)
+        html += "<div style=\"width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;\">";
+        html += "<div style=\"font-size: 12px; font-weight: 700; color: var(--text-main); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;\">" + shortName + "</div>";
+        html += "<div style=\"font-size: 10px; font-weight: 700; color: " + expCol + "; margin-top: 2px;\">" + expInfo + "</div>";
+        html += "</div>";
+
+        html += "</div>";
     }
 
     html += "</div>";
@@ -2467,7 +2487,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
             const arrow = document.getElementById('vault-dropdown-arrow');
             if (content) {
                 if (content.style.display === 'none' || content.style.display === '') {
-                    content.style.display = 'flex';
+                    content.style.display = 'grid';
                     if (arrow) arrow.textContent = '▲';
                 } else {
                     content.style.display = 'none';
@@ -2561,7 +2581,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                     <div class="card-header">
                         <div style="display: flex; align-items: center; gap: 10px;">
                             <h3 class="card-title">📡 Live Device Status</h3>
-                            <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: var(--primary); font-weight: 700; padding: 3px 10px; border-radius: 12px; font-size: 11px;">
+                            <span id="available_slots_badge" class="badge" style="background: rgba(16, 185, 129, 0.15); color: var(--primary); font-weight: 700; padding: 3px 10px; border-radius: 12px; font-size: 11px;">
                                 {MAX_SLOTS} Seats
                             </span>
                         </div>
@@ -2912,7 +2932,37 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
 
                 const container = document.getElementById('live_devices_container');
                 if (!container) return;
-                if (devices.length === 0) {
+                
+                window.latestDevicesList = devices;
+                const unassigned = data.unassigned_devices || [];
+                window.unassignedDevices = unassigned;
+
+                let availableSlotsCount = 0;
+                let totalActiveSlotsCount = 0;
+
+                devices.forEach(dev => {
+                    const isExp = dev.isExpiredOrInactive || (dev.expStatus === 2) || (!dev.active) || (dev.expiresAt === "0" || dev.expiresAt === 0);
+                    if (!isExp) {
+                        totalActiveSlotsCount++;
+                        if (!dev.isBound) {
+                            availableSlotsCount++;
+                        }
+                    }
+                });
+
+                const availableBadge = document.getElementById('available_slots_badge');
+                if (availableBadge) {
+                    availableBadge.innerHTML = '<b>' + availableSlotsCount + '</b> Open / ' + totalActiveSlotsCount + ' Active Seats';
+                    if (availableSlotsCount > 0) {
+                        availableBadge.style.background = 'rgba(16, 185, 129, 0.15)';
+                        availableBadge.style.color = 'var(--primary)';
+                    } else {
+                        availableBadge.style.background = 'rgba(239, 68, 68, 0.15)';
+                        availableBadge.style.color = '#ef4444';
+                    }
+                }
+
+                if (devices.length === 0 && unassigned.length === 0) {
                     container.innerHTML = '<div style="padding: 24px; text-align: center; color: var(--text-muted); grid-column: 1/-1;">No PisoPhone devices registered.</div>';
                     return;
                 }
@@ -2921,6 +2971,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                     const name = dev.name || ('PisoPhone ' + dev.slotNum);
                     const battery = (typeof dev.battery === 'number' && dev.battery >= 0) ? dev.battery : 100;
                     const isCharging = !!dev.charging;
+                    const isExp = dev.isExpiredOrInactive || (dev.expStatus === 2) || (!dev.active) || (dev.expiresAt === "0" || dev.expiresAt === 0);
                     
                     let batteryStatusClass = 'status-good';
                     let statusLabel = 'GOOD CHARGE';
@@ -2934,37 +2985,61 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                     }
 
                     if (!dev.isBound) {
-                        html += '<div class="device-row empty">' +
-                                    '<div class="device-row-identity">' +
-                                        '<span class="device-slot-badge">Slot #' + dev.slotNum + '</span>' +
-                                        '<div class="device-row-info">' +
-                                            '<span class="device-row-name">Empty Slot #' + dev.slotNum + '</span>' +
-                                            '<span class="device-row-sub">Seat open & ready for setup</span>' +
+                        if (isExp) {
+                            html += '<div class="device-row empty expired" style="opacity: 0.55; filter: grayscale(0.8); background: rgba(255, 255, 255, 0.02); border: 1px dashed rgba(239, 68, 68, 0.35); pointer-events: none;">' +
+                                        '<div class="device-row-identity">' +
+                                            '<span class="device-slot-badge" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);">Slot #' + dev.slotNum + ' • EXPIRED</span>' +
+                                            '<div class="device-row-info">' +
+                                                '<span class="device-row-name" style="color: var(--text-muted);">Empty Slot #' + dev.slotNum + ' (Expired/Uncredited)</span>' +
+                                                '<span class="device-row-sub" style="color: #ef4444; font-weight: 600;">Allocate credits in Vault to activate seat</span>' +
+                                            '</div>' +
                                         '</div>' +
-                                    '</div>' +
-                                    '<div style="color: var(--text-muted); font-size: 13px; font-style: italic;">' +
-                                        'No terminal bound' +
-                                    '</div>' +
-                                    '<div class="device-row-actions">' +
-                                        '<button type="button" class="btn btn-primary btn-sm" onclick="occupySlot(' + dev.slotNum + ')" style="padding: 8px 16px; font-weight: 700;">' +
-                                            '⚡ Occupy Slot & Install' +
-                                        '</button>' +
-                                    '</div>' +
-                                '</div>';
+                                        '<div style="color: #ef4444; font-size: 12px; font-weight: 700;">' +
+                                            '⛔ Slot Inactive' +
+                                        '</div>' +
+                                        '<div class="device-row-actions">' +
+                                            '<button type="button" class="btn btn-secondary btn-sm" disabled style="padding: 8px 16px; font-weight: 700; opacity: 0.5; cursor: not-allowed; pointer-events: none; background: rgba(255, 255, 255, 0.05); color: var(--text-muted); border: 1px solid var(--border);">' +
+                                                '⚡ Occupy slot (Disabled)' +
+                                            '</button>' +
+                                        '</div>' +
+                                    '</div>';
+                        } else {
+                            html += '<div class="device-row empty">' +
+                                        '<div class="device-row-identity">' +
+                                            '<span class="device-slot-badge">Slot #' + dev.slotNum + '</span>' +
+                                            '<div class="device-row-info">' +
+                                                '<span class="device-row-name">Empty Slot #' + dev.slotNum + '</span>' +
+                                                '<span class="device-row-sub">Seat open & ready for setup</span>' +
+                                            '</div>' +
+                                        '</div>' +
+                                        '<div style="color: var(--text-muted); font-size: 13px; font-style: italic;">' +
+                                            'No terminal bound' +
+                                        '</div>' +
+                                        '<div class="device-row-actions">' +
+                                            '<button type="button" class="btn btn-primary btn-sm" onclick="occupySlot(' + dev.slotNum + ')" style="padding: 8px 16px; font-weight: 700;">' +
+                                                '⚡ Occupy slot' +
+                                            '</button>' +
+                                        '</div>' +
+                                    '</div>';
+                        }
                     } else if (dev.online) {
                         const mins = Math.floor(dev.time / 60);
                         const secs = dev.time % 60;
                         const timeStr = mins + 'm ' + secs + 's';
                         const active = dev.time > 0;
                         
-                        const badgeHtml = active 
+                        let badgeHtml = active 
                             ? '<span class="device-badge active">ACTIVE</span>'
                             : '<span class="device-badge standby">STANDBY</span>';
+
+                        if (isExp) {
+                            badgeHtml += ' <span class="device-badge expired" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);">EXPIRED SLOT</span>';
+                        }
                             
                         const batteryIcon = isCharging ? '⚡' : '🔋';
                         const batteryText = (isCharging ? '⚡ ' : '') + battery + '%';
 
-                        html += '<div class="device-row">' +
+                        html += '<div class="device-row" ' + (isExp ? 'style="opacity: 0.8;"' : '') + '>' +
                                     '<div class="device-row-identity">' +
                                         '<span class="device-slot-badge">Slot #' + dev.slotNum + '</span>' +
                                         '<div class="device-row-info">' +
@@ -3001,6 +3076,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                                     '</div>' +
                                     '<div class="device-row-metrics">' +
                                         '<span class="device-badge offline">OFFLINE / DISCONNECTED</span>' +
+                                        (isExp ? ' <span class="device-badge expired" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);">EXPIRED</span>' : '') +
                                     '</div>' +
                                     '<div class="device-row-actions">' +
                                         '<button type="button" class="btn btn-outline btn-sm" style="border-color: var(--danger); color: var(--danger);" onclick="unpairSlot(' + dev.slotNum + ')">' +
@@ -3010,6 +3086,46 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                                 '</div>';
                     }
                 });
+
+                if (unassigned.length > 0) {
+                    html += '<div style="grid-column: 1/-1; margin-top: 18px; margin-bottom: 6px;">' +
+                            '<div style="font-size: 12px; font-weight: 800; color: #f59e0b; display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: var(--radius-md);">' +
+                                '<div style="display: flex; align-items: center; gap: 8px;">' +
+                                    '<span>🟡 PENDING CONNECTION REQUESTS</span>' +
+                                    '<span style="font-size: 10px; background: #f59e0b; color: #000000; font-weight: 800; padding: 2px 8px; border-radius: 10px;">' + unassigned.length + ' Terminal(s)</span>' +
+                                '</div>' +
+                                '<span style="font-size: 11px; color: var(--text-muted); font-weight: 600;">Unassigned devices requesting pairing</span>' +
+                            '</div>' +
+                            '</div>';
+
+                    unassigned.forEach((uDev) => {
+                        const uName = uDev.name || 'PisoPhone Terminal';
+                        const uBat = (typeof uDev.battery === 'number' && uDev.battery >= 0) ? uDev.battery : 100;
+                        const uChg = !!uDev.charging;
+                        const uBatText = (uChg ? '⚡ ' : '🔋 ') + uBat + '%';
+
+                        html += '<div class="device-row" style="border-left: 4px solid #f59e0b; background: rgba(245, 158, 11, 0.04);">' +
+                                    '<div class="device-row-identity">' +
+                                        '<span class="device-slot-badge" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4);">🟡 UNASSIGNED</span>' +
+                                        '<div class="device-row-info">' +
+                                            '<span class="device-row-name">' + uName + '</span>' +
+                                            '<span class="device-row-sub">IP: <b>' + uDev.ip + '</b> • HW: <b>' + uDev.id + '</b></span>' +
+                                        '</div>' +
+                                    '</div>' +
+                                    '<div class="device-row-metrics">' +
+                                        '<div class="device-row-battery status-good">' +
+                                            '<span style="font-size: 12px; font-weight: 700;">' + uBatText + '</span>' +
+                                        '</div>' +
+                                    '</div>' +
+                                    '<div class="device-row-actions">' +
+                                        '<button type="button" class="btn btn-primary btn-sm" onclick="showSelectSlotModalForDevice(\'' + uDev.id + '\', \'' + uDev.ip + '\', \'' + uName.replace(/'/g, "\\'") + '\')" style="padding: 8px 14px; font-weight: 700; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); border: none;">' +
+                                            '⚡ Confirm Connection' +
+                                        '</button>' +
+                                    '</div>' +
+                                '</div>';
+                    });
+                }
+
                 container.innerHTML = html;
             })
             .catch(err => console.log('Status polling error', err));
@@ -3040,6 +3156,83 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
             }).catch(err => resDiv.innerHTML = '❌ Network error.');
     }
     </script>
+
+    <!-- Slot Credit Allocation Modal -->
+    <div id="slot_credit_modal" class="modal-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); backdrop-filter: blur(4px); z-index: 10000; align-items: center; justify-content: center; padding: 16px;">
+        <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: 20px; padding: 24px; max-width: 420px; width: 100%; box-shadow: 0 20px 40px rgba(0,0,0,0.3);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 14px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 38px; height: 38px; border-radius: 10px; background: rgba(16, 185, 129, 0.15); color: var(--primary); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800;">💳</div>
+                    <div>
+                        <h3 id="modal_slot_title" style="margin: 0; font-size: 16px; font-weight: 800; color: var(--text-main);">Slot #1 Allocation</h3>
+                        <div id="modal_slot_sub" style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Manage seat subscription & credit</div>
+                    </div>
+                </div>
+                <button type="button" onclick="closeSlotCreditModal()" style="background: none; border: none; font-size: 22px; cursor: pointer; color: var(--text-muted); padding: 4px; line-height: 1;">&times;</button>
+            </div>
+
+            <!-- Current Expiry & Binding Info Box -->
+            <div style="background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <div style="font-size: 11px; color: var(--text-muted); font-weight: 600;">Current Expiry</div>
+                    <div id="modal_slot_expiry_text" style="font-size: 14px; font-weight: 800; color: var(--text-main); margin-top: 2px;">30 day(s) left</div>
+                </div>
+                <div id="modal_slot_status_badge">
+                    <span style="font-size: 10px; font-weight: 800; background: rgba(16, 185, 129, 0.15); color: var(--primary); padding: 3px 8px; border-radius: 6px;">🟢 ACTIVE</span>
+                </div>
+            </div>
+
+            <!-- Choose Credit Option Header -->
+            <div style="font-size: 11px; font-weight: 800; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;">
+                Select Credit Type To Apply
+            </div>
+
+            <!-- Credit Options Buttons -->
+            <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px;">
+                <!-- Monthly Credit Option -->
+                <button type="button" onclick="submitModalCredit('month')" style="background: var(--input-bg); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 12px; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.15s ease; text-align: left;" onmouseover="this.style.background='rgba(16, 185, 129, 0.08)';" onmouseout="this.style.background='var(--input-bg)';">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span style="font-size: 22px;">📅</span>
+                        <div>
+                            <div style="font-size: 14px; font-weight: 800; color: var(--primary);">+30 Days (1 Monthly Credit)</div>
+                            <div style="font-size: 11px; color: var(--text-muted); margin-top: 1px;">Standard 30-day seat extension</div>
+                        </div>
+                    </div>
+                    <span style="font-size: 12px; font-weight: 800; background: rgba(16, 185, 129, 0.15); color: var(--primary); padding: 4px 10px; border-radius: 8px;">Apply</span>
+                </button>
+
+                <!-- Annual Credit Option -->
+                <button type="button" onclick="submitModalCredit('year')" style="background: var(--input-bg); border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 12px; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.15s ease; text-align: left;" onmouseover="this.style.background='rgba(59, 130, 246, 0.08)';" onmouseout="this.style.background='var(--input-bg)';">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span style="font-size: 22px;">👑</span>
+                        <div>
+                            <div style="font-size: 14px; font-weight: 800; color: #3b82f6;">+1 Year (1 Annual Credit)</div>
+                            <div style="font-size: 11px; color: var(--text-muted); margin-top: 1px;">Full 365-day seat license</div>
+                        </div>
+                    </div>
+                    <span style="font-size: 12px; font-weight: 800; background: rgba(59, 130, 246, 0.15); color: #3b82f6; padding: 4px 10px; border-radius: 8px;">Apply</span>
+                </button>
+
+                <!-- Test Credit Option -->
+                <button type="button" onclick="submitModalCredit('test')" style="background: var(--input-bg); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 12px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.15s ease; text-align: left;" onmouseover="this.style.background='rgba(245, 158, 11, 0.08)';" onmouseout="this.style.background='var(--input-bg)';">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span style="font-size: 20px;">⚡</span>
+                        <div>
+                            <div style="font-size: 13px; font-weight: 700; color: #f59e0b;">+2 Minutes (Test Credit)</div>
+                            <div style="font-size: 10px; color: var(--text-muted);">Short diagnostic run</div>
+                        </div>
+                    </div>
+                    <span style="font-size: 11px; font-weight: 700; background: rgba(245, 158, 11, 0.15); color: #f59e0b; padding: 3px 8px; border-radius: 6px;">Test</span>
+                </button>
+            </div>
+
+            <div id="modal_unpair_container" style="display: none; border-top: 1px solid var(--border); pt-3; margin-top: 12px; padding-top: 12px;">
+                <button type="button" onclick="submitModalUnpair()" class="btn btn-outline" style="width: 100%; border-color: rgba(239, 68, 68, 0.4); color: var(--danger); font-size: 12px; font-weight: 700; padding: 8px 12px;">
+                    🔓 Unpair Terminal Seat
+                </button>
+            </div>
+        </div>
+    </div>
 
     <!-- Token Upgrade Modal -->
     <div id="token_modal" class="modal-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 10000; align-items: center; justify-content: center; padding: 16px;">
@@ -3119,12 +3312,112 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
         </div>
     </div>
 
+    <!-- Unassigned Device Connection Request Pairing Modal -->
+    <div id="unassigned_pair_modal" class="modal-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 10000; align-items: center; justify-content: center; padding: 16px;">
+        <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; max-width: 500px; width: 100%; box-shadow: var(--shadow-lg);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 style="margin: 0; font-size: 18px; font-weight: 700;" id="unassigned_modal_title">⚡ Confirm Connection</h3>
+                <button type="button" onclick="closeUnassignedPairModal()" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-muted);">&times;</button>
+            </div>
+            
+            <div id="unassigned_modal_body" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px;">
+                <!-- Populated dynamically -->
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; pt-3; border-top: 1px solid var(--border); margin-top: 16px;">
+                <button type="button" class="btn btn-outline" onclick="openInstallerForActiveSlot()" style="font-size: 12px; font-weight: 600;">📥 Open Web Installer</button>
+                <button type="button" class="btn btn-outline" onclick="closeUnassignedPairModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
     <script>
     const ESP32_MAC = "{MAC_ADDRESS}";
     const ESP32_SECRET = "{SHARED_SECRET}";
     const ESP32_HOST = window.location.hostname;
     let activeSlotNum = 1;
     let localApkBytes = null;
+    window.unassignedDevices = [];
+
+    window.closeUnassignedPairModal = function() {
+        const modal = document.getElementById('unassigned_pair_modal');
+        if (modal) modal.style.display = 'none';
+    };
+
+    window.openInstallerForActiveSlot = function() {
+        const s = activeSlotNum || 1;
+        const targetUrl = 'https://pisophone.pages.dev/installer/?mac=' + encodeURIComponent(ESP32_MAC) + 
+                          '&ip=' + encodeURIComponent(ESP32_HOST) + 
+                          '&slot=' + encodeURIComponent(s) + 
+                          '&secret=' + encodeURIComponent(ESP32_SECRET) +
+                          '&name=' + encodeURIComponent('PisoPhone ' + s);
+        window.open(targetUrl, '_blank');
+        closeUnassignedPairModal();
+    };
+
+    window.confirmConnection = function(devId, devIp, slotNum, devName) {
+        const slot = slotNum || activeSlotNum || 1;
+        const name = devName || ('PisoPhone Slot #' + slot);
+        fetch('/api/slots/pair?slot=' + slot + '&id=' + encodeURIComponent(devId) + '&ip=' + encodeURIComponent(devIp) + '&name=' + encodeURIComponent(name), { method: 'POST' })
+            .then(res => {
+                if (!res.ok) {
+                    return res.text().then(text => { throw new Error('HTTP ' + res.status + ': ' + text); });
+                }
+                return res.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    alert('✅ Successfully paired terminal (' + devIp + ') to Slot #' + slot + '!');
+                    closeUnassignedPairModal();
+                    if (typeof fetchDeviceStatus === 'function') fetchDeviceStatus();
+                    setTimeout(() => window.location.reload(), 1000);
+                } else {
+                    alert('❌ Failed to pair: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(err => alert('❌ Error pairing device: ' + (err.message || err)));
+    };
+
+    window.showSelectSlotModalForDevice = function(devId, devIp, devName) {
+        const modal = document.getElementById('unassigned_pair_modal');
+        const title = document.getElementById('unassigned_modal_title');
+        const body = document.getElementById('unassigned_modal_body');
+        if (!modal || !body) return;
+
+        if (title) title.innerHTML = '⚡ Assign Device to Slot Seat';
+
+        let html = '<div style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px;">' +
+                   'Select an available slot seat to pair terminal <b>' + (devName || devId) + '</b> (' + devIp + '):' +
+                   '</div>' +
+                   '<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;">';
+
+        const devicesList = window.latestDevicesList || [];
+        const maxS = devicesList.length > 0 ? devicesList.length : 10;
+
+        for (let s = 1; s <= maxS; s++) {
+            const slotInfo = devicesList.find(d => d.slotNum === s);
+            const isBound = slotInfo ? slotInfo.isBound : false;
+            const isExp = slotInfo ? (slotInfo.isExpiredOrInactive || slotInfo.expStatus === 2 || !slotInfo.active || slotInfo.expiresAt === "0" || slotInfo.expiresAt === 0) : false;
+
+            if (isBound) {
+                html += '<button disabled class="btn btn-outline" style="padding: 10px; font-size: 13px; font-weight: 700; opacity: 0.4; cursor: not-allowed; background: rgba(255,255,255,0.03); border-color: var(--border); color: var(--text-muted); pointer-events: none;">' +
+                        'Slot #' + s + '<span style="font-size: 10px; font-weight: 400; display: block; color: var(--text-muted);">(Occupied)</span>' +
+                        '</button>';
+            } else if (isExp) {
+                html += '<button disabled class="btn btn-outline" style="padding: 10px; font-size: 13px; font-weight: 700; opacity: 0.45; cursor: not-allowed; background: rgba(239, 68, 68, 0.05); border-color: rgba(239, 68, 68, 0.2); color: #ef4444; pointer-events: none;">' +
+                        'Slot #' + s + '<span style="font-size: 10px; font-weight: 400; display: block; color: #ef4444;">(Expired)</span>' +
+                        '</button>';
+            } else {
+                html += '<button type="button" class="btn btn-primary" style="padding: 10px; font-size: 13px; font-weight: 700; background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%); border: none; color: #ffffff;" onclick="confirmConnection(\'' + devId + '\', \'' + devIp + '\', ' + s + ', \'' + (devName || '').replace(/'/g, "\\'") + '\')">' +
+                        'Slot #' + s + '<span style="font-size: 10px; font-weight: 400; display: block; color: rgba(255,255,255,0.8);">(Available)</span>' +
+                        '</button>';
+            }
+        }
+        html += '</div>';
+
+        body.innerHTML = html;
+        modal.style.display = 'flex';
+    };
 
     window.copyMacToClipboard = function(mac) {
         const val = (mac && mac !== '{MAC_ADDRESS}') ? mac : ESP32_MAC;
@@ -3139,14 +3432,61 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
         }
     };
 
-    window.occupySlot = function(slot) {
-        const s = slot || activeSlotNum || 1;
+    window.openInstaller = function() {
         const targetUrl = 'https://pisophone.pages.dev/installer/?mac=' + encodeURIComponent(ESP32_MAC) + 
                           '&ip=' + encodeURIComponent(ESP32_HOST) + 
-                          '&slot=' + encodeURIComponent(s) + 
-                          '&secret=' + encodeURIComponent(ESP32_SECRET) +
-                          '&name=' + encodeURIComponent('PisoPhone ' + s);
-        window.location.href = targetUrl;
+                          '&secret=' + encodeURIComponent(ESP32_SECRET);
+        window.open(targetUrl, '_blank');
+    };
+
+    window.occupySlot = function(slot) {
+        activeSlotNum = slot || 1;
+        const devicesList = window.latestDevicesList || [];
+        const slotInfo = devicesList.find(d => d.slotNum === activeSlotNum);
+        if (slotInfo && (slotInfo.isExpiredOrInactive || slotInfo.expStatus === 2 || !slotInfo.active || slotInfo.expiresAt === "0" || slotInfo.expiresAt === 0)) {
+            alert('⛔ Cannot occupy Slot #' + activeSlotNum + ': This slot seat is expired or uncredited.\n\nPlease allocate credits in the Master Credit Vault to activate this slot.');
+            return;
+        }
+
+        const modal = document.getElementById('unassigned_pair_modal');
+        const title = document.getElementById('unassigned_modal_title');
+        const body = document.getElementById('unassigned_modal_body');
+        if (!modal || !body) {
+            openInstallerForActiveSlot();
+            return;
+        }
+
+        if (title) title.innerHTML = '⚡ Occupy Slot #' + activeSlotNum;
+
+        const unassigned = window.unassignedDevices || [];
+        if (unassigned.length > 0) {
+            let html = '<div style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px;">' +
+                       'Unassigned terminals requesting connection found on network! Click to pair to <b>Slot #' + activeSlotNum + '</b>:' +
+                       '</div>';
+
+            unassigned.forEach(uDev => {
+                const uName = uDev.name || 'PisoPhone Terminal';
+                html += '<div style="background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">' +
+                        '<div>' +
+                            '<div style="font-size: 13px; font-weight: 700; color: var(--text-main);">' + uName + '</div>' +
+                            '<div style="font-size: 11px; color: var(--text-muted); font-family: monospace;">IP: ' + uDev.ip + ' • HW: ' + uDev.id + '</div>' +
+                        '</div>' +
+                        '<button type="button" class="btn btn-primary btn-sm" onclick="confirmConnection(\'' + uDev.id + '\', \'' + uDev.ip + '\', ' + activeSlotNum + ', \'' + uName.replace(/'/g, "\\'") + '\')" style="padding: 6px 12px; font-weight: 700; font-size: 12px;">' +
+                            '⚡ Pair to Slot #' + activeSlotNum +
+                        '</button>' +
+                        '</div>';
+            });
+
+            body.innerHTML = html;
+        } else {
+            body.innerHTML = '<div style="background: var(--input-bg); border: 1px dashed var(--border); border-radius: var(--radius-md); padding: 18px; text-align: center; color: var(--text-muted); font-size: 12px;">' +
+                             '<div style="font-size: 24px; margin-bottom: 6px;">📱</div>' +
+                             '<div style="font-weight: 700; color: var(--text-main);">No Unassigned Terminal Requesting Connection</div>' +
+                             '<div style="margin-top: 6px; line-height: 1.4; color: var(--text-muted);">Make sure your Android terminal is powered on and connected to this ESP32 Wi-Fi network.<br>Alternatively, click below to open the Web Installer to sideload the PisoPhone Kiosk App.</div>' +
+                             '</div>';
+        }
+
+        modal.style.display = 'flex';
     };
 
     window.showPairingQrModal = function(slotNum) {
@@ -3306,6 +3646,55 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
             .catch(err => {
                 alert('Network error unpairing slot: ' + err.message);
             });
+    };
+
+    let targetModalSlot = 1;
+
+    window.openSlotCreditModal = function(sNum, name, ip, devId, expInfo, expStatus, isBound) {
+        targetModalSlot = sNum;
+        const modal = document.getElementById('slot_credit_modal');
+        if (!modal) return;
+
+        const titleEl = document.getElementById('modal_slot_title');
+        const subEl = document.getElementById('modal_slot_sub');
+        const expTextEl = document.getElementById('modal_slot_expiry_text');
+        const badgeEl = document.getElementById('modal_slot_status_badge');
+        const unpairCont = document.getElementById('modal_unpair_container');
+
+        if (titleEl) titleEl.textContent = 'Slot #' + sNum + ' Credit Allocation';
+        if (subEl) subEl.textContent = name || ('PisoPhone Slot #' + sNum);
+        if (expTextEl) expTextEl.textContent = expInfo || 'No Credit';
+
+        if (badgeEl) {
+            if (expStatus === 2) {
+                badgeEl.innerHTML = '<span style="font-size: 10px; font-weight: 800; background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.3); padding: 3px 8px; border-radius: 6px;">🔴 UNCREDITED / EXPIRED</span>';
+            } else if (expStatus === 1) {
+                badgeEl.innerHTML = '<span style="font-size: 10px; font-weight: 800; background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); padding: 3px 8px; border-radius: 6px;">⚠️ EXPIRING SOON</span>';
+            } else {
+                badgeEl.innerHTML = '<span style="font-size: 10px; font-weight: 800; background: rgba(16, 185, 129, 0.15); color: var(--primary); border: 1px solid rgba(16, 185, 129, 0.3); padding: 3px 8px; border-radius: 6px;">🟢 ACTIVE</span>';
+            }
+        }
+
+        if (unpairCont) {
+            unpairCont.style.display = isBound ? 'block' : 'none';
+        }
+
+        modal.style.display = 'flex';
+    };
+
+    window.closeSlotCreditModal = function() {
+        const modal = document.getElementById('slot_credit_modal');
+        if (modal) modal.style.display = 'none';
+    };
+
+    window.submitModalCredit = function(type) {
+        closeSlotCreditModal();
+        allocateSlotCredit(targetModalSlot, type);
+    };
+
+    window.submitModalUnpair = function() {
+        closeSlotCreditModal();
+        unpairSlot(targetModalSlot);
     };
 
     window.allocateSlotCredit = function(slot, type) {
@@ -4332,11 +4721,16 @@ void handleQueryTime() {
 
 void handleApiSlots() {
     if (!checkAuth()) return;
+    uint64_t currentMs = getCurrentMasterTimeMs();
     String json = "{\"maxSlots\":" + String(maxLicensedSlots) + ",\"mac\":\"" + macAddressStr + "\",\"slots\":[";
     for (int i = 0; i < maxLicensedSlots; i++) {
         if (i > 0) json += ",";
         char expBuf[24];
         snprintf(expBuf, sizeof(expBuf), "%llu", (unsigned long long)licenseSlots[i].expiresAt);
+        int daysLeft = 0;
+        int expStatus = getSlotExpirationStatus(i, currentMs, daysLeft);
+        bool isExpiredOrInactive = (expStatus == 2);
+
         json += "{";
         json += "\"slotNum\":" + String(licenseSlots[i].slotNum) + ",";
         json += "\"deviceId\":\"" + licenseSlots[i].deviceId + "\",";
@@ -4344,7 +4738,9 @@ void handleApiSlots() {
         json += "\"name\":\"" + licenseSlots[i].name + "\",";
         json += "\"expiresAt\":" + String(expBuf) + ",";
         json += "\"active\":" + String(licenseSlots[i].active ? "true" : "false") + ",";
-        json += "\"isBound\":" + String(licenseSlots[i].deviceId.length() > 0 ? "true" : "false");
+        json += "\"isBound\":" + String(licenseSlots[i].deviceId.length() > 0 ? "true" : "false") + ",";
+        json += "\"expStatus\":" + String(expStatus) + ",";
+        json += "\"isExpiredOrInactive\":" + String(isExpiredOrInactive ? "true" : "false");
         json += "}";
     }
     json += "]}";
@@ -4525,6 +4921,7 @@ void handleApiStatus() {
     json += "\"devices\":[";
 
     bool first = true;
+    uint64_t currentMs = getCurrentMasterTimeMs();
     for (int i = 0; i < maxLicensedSlots; i++) {
         if (!first) json += ",";
         first = false;
@@ -4535,6 +4932,13 @@ void handleApiStatus() {
         String name = licenseSlots[i].name.length() > 0 ? licenseSlots[i].name : ("PisoPhone " + String(sNum));
         bool isBound = (devId.length() > 0);
         
+        int daysLeft = 0;
+        int expStatus = getSlotExpirationStatus(i, currentMs, daysLeft);
+        bool isExpiredOrInactive = (expStatus == 2);
+
+        char expBuf[24];
+        snprintf(expBuf, sizeof(expBuf), "%llu", (unsigned long long)licenseSlots[i].expiresAt);
+
         int rem = -1;
         int bat = 100;
         bool chg = false;
@@ -4556,7 +4960,36 @@ void handleApiStatus() {
         json += "\"time\":" + String(rem) + ",";
         json += "\"online\":" + String(online ? "true" : "false") + ",";
         json += "\"battery\":" + String(bat) + ",";
-        json += "\"charging\":" + String(chg ? "true" : "false");
+        json += "\"charging\":" + String(chg ? "true" : "false") + ",";
+        json += "\"active\":" + String(licenseSlots[i].active ? "true" : "false") + ",";
+        json += "\"expiresAt\":" + String(expBuf) + ",";
+        json += "\"expStatus\":" + String(expStatus) + ",";
+        json += "\"isExpiredOrInactive\":" + String(isExpiredOrInactive ? "true" : "false");
+        json += "}";
+    }
+    json += "],\"unassigned_devices\":[";
+    bool firstUnassigned = true;
+    unsigned long nowMs = millis();
+    for (int i = 0; i < trackedDeviceCount; i++) {
+        if (trackedDevices[i].deviceId.length() == 0) continue;
+        if (findSlotIndexForDevice(trackedDevices[i].deviceId, trackedDevices[i].lastKnownIp) >= 0) continue;
+        
+        bool isOnline = (nowMs - trackedDevices[i].lastSeenMs < 15000);
+        if (nowMs - trackedDevices[i].lastSeenMs > 300000) continue;
+        
+        if (!firstUnassigned) json += ",";
+        firstUnassigned = false;
+        
+        String dName = getDeviceNameByIpOrId(trackedDevices[i].lastKnownIp, trackedDevices[i].deviceId);
+        if (dName.length() == 0) dName = "PisoPhone Terminal";
+        
+        json += "{";
+        json += "\"id\":\"" + trackedDevices[i].deviceId + "\",";
+        json += "\"ip\":\"" + trackedDevices[i].lastKnownIp + "\",";
+        json += "\"name\":\"" + dName + "\",";
+        json += "\"battery\":" + String(trackedDevices[i].batteryLevel) + ",";
+        json += "\"charging\":" + String(trackedDevices[i].isCharging ? "true" : "false") + ",";
+        json += "\"online\":" + String(isOnline ? "true" : "false");
         json += "}";
     }
     json += "]}";
@@ -4679,13 +5112,17 @@ void handleHeartbeat() {
                 snprintf(expBuf, sizeof(expBuf), "%llu", (unsigned long long)licenseSlots[slotIdx].expiresAt);
                 json += ",\"expires_at\":" + String(expBuf);
             }
-            if (expStatus == 2) {
+            if (slotIdx < 0) {
+                // UNASSIGNED DEVICE: Connected to ESP32, awaiting operator confirmation/slot assignment
+                json += ",\"slot_num\":0,\"is_paired\":false,\"slot_expired\":true,\"slot_status\":\"unassigned\",\"slot_warning\":false";
+                json += ",\"message\":\"Connected to ESP32: Awaiting Slot Assignment in Admin Portal.\"";
+            } else if (expStatus == 2) {
                 // HARD LOCKDOWN: Slot is expired or uncredited on ESP32
-                json += ",\"slot_expired\":true,\"slot_status\":\"expired\",\"slot_warning\":false";
+                json += ",\"is_paired\":true,\"slot_expired\":true,\"slot_status\":\"expired\",\"slot_warning\":false";
                 json += ",\"message\":\"Device Expired: Please add credits to pair device to ESP32.\"";
             } else if (expStatus == 1) {
                 // WARNING: Slot nearing expiration
-                json += ",\"slot_expired\":false,\"slot_status\":\"warning\",\"slot_warning\":true";
+                json += ",\"is_paired\":true,\"slot_expired\":false,\"slot_status\":\"warning\",\"slot_warning\":true";
                 json += ",\"slot_warning_days_left\":" + String(daysLeft);
                 if (daysLeft == 0) {
                     json += ",\"warning_message\":\"Device slot expiring soon (< 24 hours). Add credits to extend.\"";
@@ -4693,7 +5130,7 @@ void handleHeartbeat() {
                     json += ",\"warning_message\":\"Device slot expires in " + String(daysLeft) + " day(s). Add credits to extend.\"";
                 }
             } else {
-                json += ",\"slot_expired\":false,\"slot_status\":\"active\",\"slot_warning\":false";
+                json += ",\"is_paired\":true,\"slot_expired\":false,\"slot_status\":\"active\",\"slot_warning\":false";
             }
             json += "}";
             webServer.send(200, "application/json", json);
@@ -5490,8 +5927,8 @@ void setup() {
     webServer.on("/announce", HTTP_GET, handleAnnounce);
     webServer.on("/crash_report", HTTP_POST, handleCrashReport);
     webServer.on("/api/slots", HTTP_GET, handleApiSlots);
-    webServer.on("/api/slots/pair", HTTP_POST, handleApiSlotPair);
-    webServer.on("/api/slots/unpair", HTTP_POST, handleApiSlotUnpair);
+    webServer.on("/api/slots/pair", HTTP_ANY, handleApiSlotPair);
+    webServer.on("/api/slots/unpair", HTTP_ANY, handleApiSlotUnpair);
     webServer.on("/api/slots/apply_token", HTTP_POST, handleApiSlotApplyToken);
     webServer.on("/api/slots/cloud_sync", HTTP_POST, handleApiSlotCloudSync);
     webServer.on("/api/credits/emulate_payment", HTTP_ANY, handleApiCreditsEmulatePayment);

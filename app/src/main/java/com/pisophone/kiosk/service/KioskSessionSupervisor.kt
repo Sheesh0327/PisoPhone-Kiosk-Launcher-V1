@@ -52,14 +52,39 @@ class KioskSessionSupervisor(
                     
                     // Active session countdown
                     if (curState == 2 || curState == 3) {
-                        if (stateManager.sessionTimeRemaining.value > 0) {
-                            stateManager.sessionTimeRemaining.value -= 1
+                        val deadline = stateManager.sessionExpiryDeadlineMs.value
+                        val now = System.currentTimeMillis()
+                        val remainingSec = if (deadline > 0L) {
+                            maxOf(0, ((deadline - now) / 1000L).toInt())
+                        } else {
+                            maxOf(0, stateManager.sessionTimeRemaining.value - 1)
+                        }
+
+                        stateManager.sessionTimeRemaining.value = remainingSec
+
+                        if (remainingSec <= 0) {
+                            stateManager.appState.value = 0 // Lock screen
+                            stateManager.sessionExpiryDeadlineMs.value = 0L
+                            onSpeakWarning("Time expired")
+                            stateManager.saveState()
                             
-                            if (stateManager.sessionTimeRemaining.value % 60 == 0) {
+                            val startMain = Intent(Intent.ACTION_MAIN).apply {
+                                addCategory(Intent.CATEGORY_HOME)
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK or 
+                                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or 
+                                        Intent.FLAG_ACTIVITY_CLEAR_TOP
+                            }
+                            try {
+                                context.startActivity(startMain)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed to start HOME activity: ${e.message}")
+                            }
+                        } else {
+                            if (remainingSec % 10 == 0) {
                                 stateManager.saveState()
                             }
 
-                            when (stateManager.sessionTimeRemaining.value) {
+                            when (remainingSec) {
                                 300 -> onSpeakWarning("5 minutes time remaining")
                                 180 -> onSpeakWarning("3 minutes time remaining")
                                 60 -> onSpeakWarning("1 minute time remaining")
@@ -69,24 +94,6 @@ class KioskSessionSupervisor(
                                 3 -> onSpeakWarning("Three")
                                 2 -> onSpeakWarning("Two")
                                 1 -> onSpeakWarning("One")
-                            }
-
-                            if (stateManager.sessionTimeRemaining.value == 0) {
-                                stateManager.appState.value = 0 // Lock screen
-                                onSpeakWarning("Time expired")
-                                stateManager.saveState()
-                                
-                                val startMain = Intent(Intent.ACTION_MAIN).apply {
-                                    addCategory(Intent.CATEGORY_HOME)
-                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or 
-                                            Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or 
-                                            Intent.FLAG_ACTIVITY_CLEAR_TOP
-                                }
-                                try {
-                                    context.startActivity(startMain)
-                                } catch (e: Exception) {
-                                    Log.e(TAG, "Failed to start HOME activity: ${e.message}")
-                                }
                             }
                         }
                     }

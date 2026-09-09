@@ -146,10 +146,11 @@ object HardwareLockManager {
     }
 
     /**
-     * Legacy slot lockdown check - always returns false as hard lockdown screen is removed.
+     * Checks if slot lockdown / activation requirement is currently enforced.
      */
     fun isSlotLockedDown(context: Context): Boolean {
-        return false
+        val prefs = getPrefs(context)
+        return prefs.getBoolean(KEY_SLOT_EXPIRED, false)
     }
 
     /**

@@ -64,6 +64,7 @@ class KioskWatchdogReceiver : BroadcastReceiver() {
     }
 
     private fun ensureKioskServiceRunningAsync(context: Context) {
+        val serviceInstance = KioskService.activeInstance
         val isProcessRunning = KioskService.isServiceRunning || isServiceRunning(context, KioskService::class.java)
         
         // 1. Local App Loopback Health Check
@@ -81,25 +82,34 @@ class KioskWatchdogReceiver : BroadcastReceiver() {
             false
         }
 
-        if (!isProcessRunning || !isHttpHealthy) {
+        // 2. Overlay Attachment Health Check
+        val isOverlayHealthy = serviceInstance?.isOverlayHealthy() ?: false
+
+        if (!isProcessRunning || !isHttpHealthy || !isOverlayHealthy) {
             val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
             if (!isFullySetup) {
                 Log.d(TAG, "Device not yet fully setup/activated. Watchdog skipping KioskService start.")
                 return
             }
-            Log.w(TAG, "KioskService is NOT healthy (Process: $isProcessRunning, HTTP: $isHttpHealthy)! Reviving foreground service immediately...")
-            val serviceIntent = Intent(context, KioskService::class.java)
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    context.startForegroundService(serviceIntent)
-                } else {
-                    context.startService(serviceIntent)
+
+            if (isProcessRunning && serviceInstance != null && isHttpHealthy && !isOverlayHealthy) {
+                Log.w(TAG, "KioskService process & HTTP server are running, but overlay is missing/unattached! Rebuilding overlay immediately...")
+                serviceInstance.setupOverlay()
+            } else {
+                Log.w(TAG, "KioskService is NOT healthy (Process: $isProcessRunning, HTTP: $isHttpHealthy, Overlay: $isOverlayHealthy)! Reviving foreground service immediately...")
+                val serviceIntent = Intent(context, KioskService::class.java)
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        context.startForegroundService(serviceIntent)
+                    } else {
+                        context.startService(serviceIntent)
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to revive KioskService: ${e.message}")
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to revive KioskService: ${e.message}")
             }
         } else {
-            Log.d(TAG, "KioskService is alive and healthy (HTTP 200 OK).")
+            Log.d(TAG, "KioskService is alive and healthy (HTTP 200 OK & Overlay Attached).")
         }
     }
 

@@ -15,6 +15,7 @@ class KioskStateManager(private val context: Context) {
 
     val appState = MutableStateFlow(0) // 0: block, 1: wait, 2: unlocked, 3: unlocked+wait, 4: unlicensed
     val sessionTimeRemaining = MutableStateFlow(0)
+    val sessionExpiryDeadlineMs = MutableStateFlow(0L)
     val paymentTimeout = MutableStateFlow(0)
     val coinsInserted = MutableStateFlow(0)
     val themeIndex = MutableStateFlow(0)
@@ -63,6 +64,7 @@ class KioskStateManager(private val context: Context) {
             prefs.edit()
                 .putInt("app_state", appState.value)
                 .putInt("session_time_remaining", sessionTimeRemaining.value)
+                .putLong("session_expiry_deadline_ms", sessionExpiryDeadlineMs.value)
                 .putInt("coins_inserted", coinsInserted.value)
                 .putFloat("price_per_coin", pricePerCoin.value.toFloat())
                 .putInt("minutes_per_coin", minutesPerCoin.value)
@@ -84,6 +86,7 @@ class KioskStateManager(private val context: Context) {
             }
             val prefs = deviceContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             val savedState = prefs.getInt("app_state", 0)
+            val savedDeadline = prefs.getLong("session_expiry_deadline_ms", 0L)
             val savedTime = prefs.getInt("session_time_remaining", 0)
             pricePerCoin.value = prefs.getFloat("price_per_coin", 5.0f).toDouble()
             minutesPerCoin.value = prefs.getInt("minutes_per_coin", 30)
@@ -96,21 +99,41 @@ class KioskStateManager(private val context: Context) {
             }
 
             val savedTxSet = prefs.getStringSet("processed_tx_ids", emptySet()) ?: emptySet()
+            val now = System.currentTimeMillis()
 
-            if (savedTime > 0) {
-                sessionTimeRemaining.value = savedTime
+            val effectiveRemainingSec = if (savedDeadline > now) {
+                ((savedDeadline - now) / 1000L).toInt()
+            } else if (savedDeadline > 0L) {
+                0 // Deadline already elapsed while app/process was killed
+            } else {
+                // Legacy fallback if no deadline was persisted
+                savedTime
+            }
+
+            if (effectiveRemainingSec > 0) {
+                sessionTimeRemaining.value = effectiveRemainingSec
+                sessionExpiryDeadlineMs.value = if (savedDeadline > now) savedDeadline else (now + (effectiveRemainingSec * 1000L))
                 appState.value = if (savedState == 1 || savedState == 3) 3 else 2
-                Log.d(TAG, "Restored active session: ${savedTime}s remaining")
+                Log.d(TAG, "Restored active session: ${effectiveRemainingSec}s remaining (Deadline: ${sessionExpiryDeadlineMs.value})")
             } else {
                 appState.value = 0
                 sessionTimeRemaining.value = 0
+                sessionExpiryDeadlineMs.value = 0L
             }
             
             coinsInserted.value = 0
             val (reason, slotNum, _) = com.pisophone.kiosk.security.HardwareLockManager.getSlotLockdownDetails(context)
-            isSlotExpired.value = com.pisophone.kiosk.security.HardwareLockManager.isSlotLockedDown(context)
+            val isLocked = com.pisophone.kiosk.security.HardwareLockManager.isSlotLockedDown(context)
+            isSlotExpired.value = isLocked
             slotExpiryMessage.value = reason
             slotNumber.value = slotNum
+
+            if (isLocked) {
+                appState.value = 0
+                sessionTimeRemaining.value = 0
+                sessionExpiryDeadlineMs.value = 0L
+            }
+
             saveState(savedTxSet)
             savedTxSet
         } catch (e: Exception) {
