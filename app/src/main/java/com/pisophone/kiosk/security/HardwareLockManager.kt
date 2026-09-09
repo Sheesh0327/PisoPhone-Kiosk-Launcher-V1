@@ -83,18 +83,17 @@ object HardwareLockManager {
      * breaking existing slot pairings, and derives a deterministic hardware fingerprint on fresh installs.
      */
     fun getCanonicalDeviceId(context: Context): String {
+        val kioskPrefs = KioskSecurity.getDirectBootPrefs(context, "kiosk_prefs")
+        val legacyUuid = kioskPrefs.getString("device_uuid", null)
+        if (!legacyUuid.isNullOrBlank()) {
+            syncToGlobalSettings(context, legacyUuid)
+            return legacyUuid
+        }
         val prefs = getPrefs(context)
         val bound = prefs.getString(KEY_BOUND_HW_ID, null)
         if (!bound.isNullOrBlank()) {
             syncToGlobalSettings(context, bound)
             return bound
-        }
-        val kioskPrefs = KioskSecurity.getDirectBootPrefs(context, "kiosk_prefs")
-        val legacyUuid = kioskPrefs.getString("device_uuid", null)
-        if (!legacyUuid.isNullOrBlank()) {
-            prefs.edit().putString(KEY_BOUND_HW_ID, legacyUuid).apply()
-            syncToGlobalSettings(context, legacyUuid)
-            return legacyUuid
         }
         val computed = getHardwareFingerprint(context)
         kioskPrefs.edit().putString("device_uuid", computed).apply()
@@ -229,9 +228,16 @@ object HardwareLockManager {
         val currentHwId = getCanonicalDeviceId(context)
         val boundHwId = prefs.getString(KEY_BOUND_HW_ID, null)
         if (boundHwId.isNullOrBlank()) {
-            sealToCurrentDevice(context)
+            Log.w(TAG, "App is not allowed to run: Hardware seal has not been established yet.")
+            return false
         } else if (boundHwId != currentHwId) {
             Log.w(TAG, "App is not allowed to run: Hardware mismatch (bound: $boundHwId, current: $currentHwId)")
+            return false
+        }
+
+        // Must have valid box configuration and shared secret
+        if (!KioskSecurity.hasConfiguredSharedSecret(context) || KioskSecurity.getAssignedBoxSlot(context) !in 1..12) {
+            Log.w(TAG, "App is not allowed to run: Device is not paired or missing box configuration.")
             return false
         }
 
@@ -278,19 +284,13 @@ object HardwareLockManager {
         if (prefs.getBoolean(KEY_HARDWARE_LOCKED, false)) return false
         val boundHwId = prefs.getString(KEY_BOUND_HW_ID, null)
         val currentHwId = getCanonicalDeviceId(context)
-        if (boundHwId.isNullOrBlank()) return true
+        if (boundHwId.isNullOrBlank()) return false
         return boundHwId == currentHwId
     }
 
     fun getBoundHardwareId(context: Context): String {
         val prefs = getPrefs(context)
-        val bound = prefs.getString(KEY_BOUND_HW_ID, null)
-        if (bound.isNullOrBlank()) {
-            val current = getCanonicalDeviceId(context)
-            sealToCurrentDevice(context)
-            return current
-        }
-        return bound
+        return prefs.getString(KEY_BOUND_HW_ID, null) ?: ""
     }
 
     fun getBoundDeviceName(context: Context): String {

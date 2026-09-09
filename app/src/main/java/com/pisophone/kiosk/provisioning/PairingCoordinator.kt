@@ -58,7 +58,7 @@ object PairingCoordinator {
             onComplete(PairingResult.ConfigurationError("Invalid or missing controller IP: $trimmedIp"))
             return
         }
-        if (trimmedMac.length < 12) {
+        if (trimmedMac.isNotEmpty() && trimmedMac.length < 12) {
             onComplete(PairingResult.ConfigurationError("Invalid controller MAC address: $trimmedMac"))
             return
         }
@@ -89,6 +89,16 @@ object PairingCoordinator {
             )
             withContext(Dispatchers.Main) {
                 if (result is PairingResult.Success) {
+                    if (trimmedMac.isBlank() && result.mac.isNotBlank()) {
+                        KioskSecurity.applyDirectProvisioning(
+                            context = context,
+                            secret = trimmedSecret,
+                            mac = result.mac,
+                            ip = trimmedIp,
+                            slot = slot,
+                            name = cleanName
+                        )
+                    }
                     HardwareLockManager.sealToCurrentDevice(context)
                 }
                 onComplete(result)
@@ -206,8 +216,8 @@ object PairingCoordinator {
                         if (cleanExpected.isNotBlank() && cleanResp.isNotBlank() && !cleanExpected.equals(cleanResp, ignoreCase = true)) {
                             PairingResult.ConfigurationError("Controller MAC mismatch: expected $expectedMac, got $respMac")
                         } else {
-                            // Verify response signature: HMAC("success:$deviceId:$slot:$respMac", secret)
-                            val expectedRespSig = KioskSecurity.calculateHmac("success:$deviceId:$slot:$respMac", secret)
+                            // Verify response signature: HMAC("success:$deviceId:$slot:$respMac:$ts", secret)
+                            val expectedRespSig = KioskSecurity.calculateHmac("success:$deviceId:$slot:$respMac:$ts", secret)
                             if (!expectedRespSig.equals(respSig, ignoreCase = true)) {
                                 PairingResult.AuthFailed("Controller response signature invalid! Possible unauthorized device.")
                             } else {

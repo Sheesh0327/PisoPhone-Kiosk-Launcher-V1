@@ -66,26 +66,39 @@ class KioskService : Service() {
             secret: String? = null,
             name: String? = null
         ) {
-            KioskSecurity.applyDirectProvisioning(
-                context = context,
-                secret = secret,
-                mac = mac,
-                ip = ip,
-                slot = slot,
-                name = name
-            )
-            val cleanMac = KioskSecurity.formatMacAddress(mac)
-            activeInstance?.let { service ->
-                if (cleanMac.isNotBlank()) {
-                    service.stateManager.esp32MacAddress.value = cleanMac
+            val effSecret = secret ?: com.pisophone.kiosk.security.KioskSecurity.getSharedSecret(context)
+            if (effSecret.isNotBlank() && slot in 1..12) {
+                com.pisophone.kiosk.provisioning.PairingCoordinator.configureAndPair(
+                    context = context,
+                    secret = effSecret,
+                    mac = mac,
+                    ip = if (!ip.isNullOrBlank()) ip else "kioskmanager.local",
+                    slot = slot,
+                    name = name
+                ) { result ->
+                    if (result is com.pisophone.kiosk.provisioning.PairingResult.Success) {
+                        activeInstance?.let { service ->
+                            val cleanMac = com.pisophone.kiosk.security.KioskSecurity.formatMacAddress(if (result.mac.isNotBlank()) result.mac else mac)
+                            if (cleanMac.isNotBlank()) {
+                                service.stateManager.esp32MacAddress.value = cleanMac
+                            }
+                            if (!ip.isNullOrBlank()) {
+                                service.stateManager.esp32Ip = ip.trim()
+                                service.stateManager.saveState()
+                                service.probeEsp32Connection(ip.trim())
+                            }
+                        }
+                    }
                 }
-                if (!ip.isNullOrBlank()) {
-                    service.stateManager.esp32Ip = ip.trim()
-                    service.stateManager.saveState()
-                    service.probeEsp32Connection(ip.trim())
-                } else {
-                    service.triggerCandidateDiscovery()
-                }
+            } else {
+                com.pisophone.kiosk.security.KioskSecurity.applyDirectProvisioning(
+                    context = context,
+                    secret = secret,
+                    mac = mac,
+                    ip = ip,
+                    slot = slot,
+                    name = name
+                )
             }
         }
 
