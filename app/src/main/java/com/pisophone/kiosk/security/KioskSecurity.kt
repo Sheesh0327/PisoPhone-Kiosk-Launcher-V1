@@ -348,13 +348,7 @@ object KioskSecurity {
     }
 
     fun getAdminPin(context: Context): String {
-        val pin = getPrefs(context).getString(KEY_ADMIN_PIN, DEFAULT_PIN) ?: DEFAULT_PIN
-        // Recover from AES decryption garbage corruption (wrong key matching 1/256 padding)
-        if (pin.any { it < ' ' || it > '~' }) {
-            setAdminPin(context, DEFAULT_PIN)
-            return DEFAULT_PIN
-        }
-        return pin
+        return getPrefs(context).getString(KEY_ADMIN_PIN, DEFAULT_PIN) ?: DEFAULT_PIN
     }
 
     fun setAdminPin(context: Context, newPin: String) {
