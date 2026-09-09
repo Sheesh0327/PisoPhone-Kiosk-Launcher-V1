@@ -47,6 +47,9 @@ WiFiServer wsServer(81); // Port 81: Real-time RFC6455 WebSocket Server
 const int UDP_DISCOVERY_PORT = 8888; // Port 8888: Auto-Discovery Broadcast & Probe
 WiFiUDP udpServer;
 
+// Forward Declarations
+uint64_t getCurrentMasterTimeMs();
+
 // Dynamic Hardware Pin Configuration (Persisted in NVS)
 int coinPin          = DEFAULT_COIN_PIN;           // Linear beam sensor pin (Default GPIO 4, Pull-Up)
 int universalCoinPin = DEFAULT_UNIVERSAL_COIN_PIN; // Universal multi-coin pulse sensor pin (Default GPIO 3, Pull-Up)
@@ -2720,10 +2723,15 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
 
                     <!-- Advanced Security & Pins -->
                     <div class="card">
-                        <h3 class="card-title">🔒 Security</h3>
+                        <h3 class="card-title">🔒 Security Vault & Admin Console Password</h3>
                         <div class="form-group">
-                            <label>Admin Web Password</label>
+                            <label>Admin Web & Kiosk App Password</label>
                             <input type="password" name="admin_pw" value="{ADMIN_PASSWORD}">
+                            <div class="hint" style="margin-top: 8px; color: var(--text-muted); line-height: 1.4;">
+                                💡 Changing this password updates access to both this ESP32 Admin Web Portal and the 
+                                <strong>Security Vault & Admin Console</strong> on all paired PisoPhone Android kiosk terminals. 
+                                Changes are pushed and synchronized automatically to all active paired devices.
+                            </div>
                         </div>
                     </div>
 
