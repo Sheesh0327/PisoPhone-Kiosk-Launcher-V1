@@ -589,11 +589,15 @@ class KioskService : Service() {
                             }
                             "flash" -> HardwareFeedback.triggerFlashlight(this@KioskService, 2000L)
                             "locate" -> {
-                                audioManager?.speakWarning("Terminal Located! Terminal Located!")
-                                audioManager?.playHighBatteryAttentionTone()
-                                HardwareFeedback.triggerVibration(this@KioskService, longArrayOf(0, 1000, 200, 1000, 200, 1000))
+                                audioManager?.playLocateAlert()
+                                HardwareFeedback.triggerVibration(this@KioskService, longArrayOf(0, 1000, 200, 1000, 200, 1000, 200, 1000))
                                 HardwareFeedback.triggerFlashlight(this@KioskService, 3000L)
-                                Toast.makeText(this@KioskService, "📍 LOCATE SIGNAL: Terminal Identified!", Toast.LENGTH_LONG).show()
+                                Log.i(TAG, "📍 LOCATING TERMINAL: Sounding Siren, Strobing Flashlight, and Vibrating!")
+                                for (i in 0..2) {
+                                    Handler(Looper.getMainLooper()).postDelayed({
+                                        Toast.makeText(this@KioskService, "📍 LOCATE SIGNAL: Terminal Identified!", Toast.LENGTH_LONG).show()
+                                    }, i * 3500L)
+                                }
                             }
                             "enable_adb" -> {
                                 KioskSecurity.emergencyEnableUsbDebugging(applicationContext)

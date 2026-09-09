@@ -43,15 +43,47 @@ object HardwareFeedback {
     fun triggerFlashlight(context: Context, durationMs: Long = 1500L) {
         Handler(Looper.getMainLooper()).post {
             try {
-                val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
-                val cameraId = cameraManager?.cameraIdList?.firstOrNull()
+                val hasCameraPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, 
+                    android.Manifest.permission.CAMERA
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                if (!hasCameraPermission) {
+                    Log.w(TAG, "CAMERA permission is NOT granted! Camera and flashlight queries might fail on some device models.")
+                }
+
+                val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as? CameraManager ?: return@post
+                // Find a camera that actually supports FLASH
+                val cameraId = cameraManager.cameraIdList.firstOrNull { id ->
+                    try {
+                        val characteristics = cameraManager.getCameraCharacteristics(id)
+                        characteristics.get(android.hardware.camera2.CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+                    } catch (_: Exception) {
+                        false
+                    }
+                } ?: cameraManager.cameraIdList.firstOrNull() // Fallback to first if none report flash info available
+
                 if (cameraId != null) {
-                    cameraManager.setTorchMode(cameraId, true)
-                    Handler(Looper.getMainLooper()).postDelayed({
-                        try {
-                            cameraManager.setTorchMode(cameraId, false)
-                        } catch (_: Exception) {}
-                    }, durationMs)
+                    val handler = Handler(Looper.getMainLooper())
+                    val intervalMs = 150L
+                    val endTime = System.currentTimeMillis() + durationMs
+                    
+                    val strobeRunnable = object : Runnable {
+                        var state = false
+                        override fun run() {
+                            if (System.currentTimeMillis() < endTime) {
+                                state = !state
+                                try {
+                                    cameraManager.setTorchMode(cameraId, state)
+                                } catch (_: Exception) {}
+                                handler.postDelayed(this, intervalMs)
+                            } else {
+                                try {
+                                    cameraManager.setTorchMode(cameraId, false)
+                                } catch (_: Exception) {}
+                            }
+                        }
+                    }
+                    handler.post(strobeRunnable)
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to toggle torch: ${e.message}")

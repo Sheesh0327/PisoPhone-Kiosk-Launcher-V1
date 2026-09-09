@@ -126,26 +126,21 @@ class KioskHttpServer(
         }
 
         val secretKey = delegate.getSecretKey()
-        val payload = params["payload"]
-        val decryptedParams: Map<String, String> = when {
-            secretKey.isNotBlank() -> {
-                if (payload.isNullOrBlank()) {
-                    Log.w(TAG, "Rejected unauthenticated request to protected endpoint: $uri")
-                    return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Encrypted payload required")
-                }
-                val decryptedStr = KioskSecurity.decrypt(payload, secretKey)
-                if (decryptedStr.isBlank()) {
-                    Log.w(TAG, "Rejected payload with invalid AES key or corrupted signature: $uri")
-                    return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Decryption failed")
-                }
-                parseQueryString(decryptedStr)
-            }
-            !payload.isNullOrBlank() -> {
-                val decryptedStr = KioskSecurity.decrypt(payload, "")
-                if (decryptedStr.isNotBlank()) parseQueryString(decryptedStr) else params
-            }
-            else -> params
+        if (secretKey.isBlank()) {
+            Log.e(TAG, "Rejected request to protected endpoint because device is not yet paired (missing shared secret).")
+            return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Incomplete pairing error: Missing shared secret")
         }
+        val payload = params["payload"]
+        if (payload.isNullOrBlank()) {
+            Log.w(TAG, "Rejected unauthenticated request to protected endpoint: $uri")
+            return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Encrypted payload required")
+        }
+        val decryptedStr = KioskSecurity.decrypt(payload, secretKey)
+        if (decryptedStr.isBlank()) {
+            Log.w(TAG, "Rejected payload with invalid AES key or corrupted signature: $uri")
+            return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Decryption failed")
+        }
+        val decryptedParams = parseQueryString(decryptedStr)
 
         // Replay Protection check: verify unique tx_id
         val txId = decryptedParams["tx_id"] ?: decryptedParams["nonce"]

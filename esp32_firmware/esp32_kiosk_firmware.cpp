@@ -12,6 +12,7 @@
 #include "mbedtls/sha1.h"
 #include "mbedtls/base64.h"
 #include "mbedtls/aes.h"
+#include "mbedtls/gcm.h"
 
 // ============================================================================
 // HARDWARE-C3 Master Kiosk Firmware
@@ -891,55 +892,56 @@ String aes_encrypt(String plaintext, String secret) {
     mbedtls_md_finish(&sha_ctx, aes_key);
     mbedtls_md_free(&sha_ctx);
 
-    uint8_t iv[16];
-    for (int i = 0; i < 16; i += 4) {
+    // 12-byte IV for GCM
+    uint8_t iv[12];
+    for (int i = 0; i < 12; i += 4) {
         uint32_t r = esp_random();
         memcpy(iv + i, &r, 4);
     }
 
     size_t plaintext_len = plaintext.length();
-    size_t padding_len = 16 - (plaintext_len % 16);
-    size_t padded_len = plaintext_len + padding_len;
-    uint8_t* padded_input = (uint8_t*)malloc(padded_len);
-    if (!padded_input) return "";
-    memcpy(padded_input, plaintext.c_str(), plaintext_len);
-    for (size_t i = plaintext_len; i < padded_len; i++) {
-        padded_input[i] = (uint8_t)padding_len;
-    }
+    uint8_t* ciphertext = (uint8_t*)malloc(plaintext_len);
+    uint8_t tag[16];
+    if (!ciphertext) return "";
 
-    mbedtls_aes_context aes_ctx;
-    mbedtls_aes_init(&aes_ctx);
-    mbedtls_aes_setkey_enc(&aes_ctx, aes_key, 256);
+    mbedtls_gcm_context gcm;
+    mbedtls_gcm_init(&gcm);
+    mbedtls_gcm_setkey(&gcm, MBEDTLS_CIPHER_ID_AES, aes_key, 256);
 
-    uint8_t* ciphertext = (uint8_t*)malloc(padded_len);
-    if (!ciphertext) {
-        free(padded_input);
-        mbedtls_aes_free(&aes_ctx);
+    int ret = mbedtls_gcm_crypt_and_tag(&gcm, MBEDTLS_GCM_ENCRYPT, plaintext_len, iv, 12, NULL, 0, 
+                                        (const unsigned char*)plaintext.c_str(), ciphertext, 16, tag);
+
+    mbedtls_gcm_free(&gcm);
+
+    if (ret != 0) {
+        free(ciphertext);
         return "";
     }
-    uint8_t iv_tmp[16];
-    memcpy(iv_tmp, iv, 16);
-
-    mbedtls_aes_crypt_cbc(&aes_ctx, MBEDTLS_AES_ENCRYPT, padded_len, iv_tmp, padded_input, ciphertext);
-    mbedtls_aes_free(&aes_ctx);
-    free(padded_input);
 
     String hex_result = "";
     char hex_char[3];
-    for (int i = 0; i < 16; i++) {
+    // 12 bytes IV
+    for (int i = 0; i < 12; i++) {
         sprintf(hex_char, "%02x", iv[i]);
         hex_result += hex_char;
     }
-    for (size_t i = 0; i < padded_len; i++) {
+    // ciphertext
+    for (size_t i = 0; i < plaintext_len; i++) {
         sprintf(hex_char, "%02x", ciphertext[i]);
         hex_result += hex_char;
     }
+    // 16 bytes tag
+    for (int i = 0; i < 16; i++) {
+        sprintf(hex_char, "%02x", tag[i]);
+        hex_result += hex_char;
+    }
+
     free(ciphertext);
     return hex_result;
 }
 
 String aes_decrypt(String encryptedHex, String secret) {
-    if (encryptedHex.length() < 32) return "";
+    if (encryptedHex.length() < 56) return ""; // minimum 12 bytes IV (24 hex) + 16 bytes tag (32 hex)
     
     size_t total_bytes = encryptedHex.length() / 2;
     uint8_t* data = (uint8_t*)malloc(total_bytes);
@@ -949,16 +951,12 @@ String aes_decrypt(String encryptedHex, String secret) {
         data[i] = (uint8_t)strtol(part.c_str(), NULL, 16);
     }
     
-    if (total_bytes < 17) {
-        free(data);
-        return "";
-    }
+    uint8_t iv[12];
+    memcpy(iv, data, 12);
     
-    uint8_t iv[16];
-    memcpy(iv, data, 16);
-    
-    size_t ciphertext_len = total_bytes - 16;
-    uint8_t* ciphertext = data + 16;
+    size_t ciphertext_len = total_bytes - 12 - 16;
+    uint8_t* ciphertext = data + 12;
+    uint8_t* tag = data + 12 + ciphertext_len;
     
     uint8_t aes_key[32];
     mbedtls_md_context_t sha_ctx;
@@ -969,35 +967,27 @@ String aes_decrypt(String encryptedHex, String secret) {
     mbedtls_md_finish(&sha_ctx, aes_key);
     mbedtls_md_free(&sha_ctx);
     
-    mbedtls_aes_context aes_ctx;
-    mbedtls_aes_init(&aes_ctx);
-    mbedtls_aes_setkey_dec(&aes_ctx, aes_key, 256);
-    
-    uint8_t* decrypted = (uint8_t*)malloc(ciphertext_len);
+    uint8_t* decrypted = (uint8_t*)malloc(ciphertext_len + 1);
     if (!decrypted) {
-        mbedtls_aes_free(&aes_ctx);
         free(data);
         return "";
     }
-    uint8_t iv_tmp[16];
-    memcpy(iv_tmp, iv, 16);
     
-    mbedtls_aes_crypt_cbc(&aes_ctx, MBEDTLS_AES_DECRYPT, ciphertext_len, iv_tmp, ciphertext, decrypted);
-    mbedtls_aes_free(&aes_ctx);
+    mbedtls_gcm_context gcm;
+    mbedtls_gcm_init(&gcm);
+    mbedtls_gcm_setkey(&gcm, MBEDTLS_CIPHER_ID_AES, aes_key, 256);
+    
+    int ret = mbedtls_gcm_auth_decrypt(&gcm, ciphertext_len, iv, 12, NULL, 0, tag, 16, ciphertext, decrypted);
+    mbedtls_gcm_free(&gcm);
     free(data);
     
-    uint8_t padding_len = decrypted[ciphertext_len - 1];
-    if (padding_len > ciphertext_len || padding_len > 16 || padding_len == 0) {
+    if (ret != 0) {
         free(decrypted);
         return "";
     }
     
-    size_t plaintext_len = ciphertext_len - padding_len;
-    String plaintext = "";
-    for (size_t i = 0; i < plaintext_len; i++) {
-        plaintext += (char)decrypted[i];
-    }
-    
+    decrypted[ciphertext_len] = '\0';
+    String plaintext = String((char*)decrypted);
     free(decrypted);
     return plaintext;
 }
@@ -1196,6 +1186,45 @@ void sendAuthenticated(String ip, int port, String actionPath, String challengeP
     
     // Non-blocking post to queue (drops if full rather than crashing)
     xQueueSend(authQueue, &req, 0);
+}
+
+int sendAuthenticatedSync(String ip, int port, String actionPath, String params, int timeoutMs = 2500, String* responseBody = nullptr) {
+    if (WiFi.status() != WL_CONNECTED) return -1; // Unreachable/offline
+
+    HTTPClient http;
+    http.setConnectTimeout(timeoutMs);
+    http.setTimeout(timeoutMs);
+    http.setReuse(false);
+
+    String actionUrl = "http://" + ip + ":" + String(port) + actionPath;
+    String finalParams = params;
+    if (finalParams.length() > 0) {
+        finalParams += "&ts=" + String(millis());
+    } else {
+        finalParams = "ts=" + String(millis());
+    }
+    
+    if (finalParams.indexOf("tx_id=") == -1 && finalParams.indexOf("nonce=") == -1) {
+        String txId = String(millis()) + "-" + String(random(1000, 9999));
+        finalParams += "&tx_id=" + txId;
+    }
+
+    String encryptedPayload = aes_encrypt(finalParams, sharedSecret);
+    actionUrl += "?payload=" + encryptedPayload;
+
+    Serial.printf("[⚡ AUTH SYNC] Connecting to %s...\n", actionUrl.c_str());
+    if (!http.begin(actionUrl)) {
+        return -2; // Connection failed
+    }
+
+    int code = http.GET();
+    if (code > 0 && responseBody != nullptr) {
+        *responseBody = http.getString();
+        responseBody->trim();
+        Serial.printf("[⚡ AUTH SYNC] Response Code: %d, Response: %s\n", code, responseBody->c_str());
+    }
+    http.end();
+    return code;
 }
 
 // ============================================================================
@@ -4739,11 +4768,29 @@ void handleTriggerAndroid() {
     String ip = webServer.arg("ip");
     String action = webServer.arg("action");
     if (ip.length() > 0 && action.length() > 0) {
-        Serial.printf("[⚡ TRIGGER] Sending %s to %s\n", action.c_str(), ip.c_str());
-        sendAuthenticated(ip, targetPort, "/trigger_action", "/challenge", "action=" + action, 800);
-        webServer.send(200, "text/plain", "Trigger sent");
+        Serial.printf("[⚡ TRIGGER] Sending %s to %s synchronously\n", action.c_str(), ip.c_str());
+        String responseBody = "";
+        int httpCode = sendAuthenticatedSync(ip, targetPort, "/trigger_action", "action=" + action, 3500, &responseBody);
+        
+        if (httpCode == 200) {
+            if (responseBody == "OK") {
+                webServer.send(200, "application/json", "{\"success\":true,\"message\":\"Signal Sent\"}");
+            } else {
+                webServer.send(200, "application/json", "{\"success\":true,\"message\":\"" + responseBody + "\"}");
+            }
+        } else if (httpCode == -1) {
+            webServer.send(530, "application/json", "{\"success\":false,\"error\":\"ESP32 WiFi disconnected\"}");
+        } else if (httpCode == -2) {
+            webServer.send(502, "application/json", "{\"success\":false,\"error\":\"Connection initiation failed\"}");
+        } else if (httpCode == 401) {
+            webServer.send(401, "application/json", "{\"success\":false,\"error\":\"Authentication failure / Decryption failed\"}");
+        } else if (httpCode == 403) {
+            webServer.send(403, "application/json", "{\"success\":false,\"error\":\"Android rejected command / Expired license\"}");
+        } else {
+            webServer.send(504, "application/json", "{\"success\":false,\"error\":\"Device unreachable or request timed out (" + String(httpCode) + ")\"}");
+        }
     } else {
-        webServer.send(400, "text/plain", "Missing IP or action");
+        webServer.send(400, "application/json", "{\"success\":false,\"error\":\"Missing IP or action\"}");
     }
 }
 
@@ -5386,6 +5433,18 @@ void setup() {
     relayActiveLow    = prefs.getBool("relay_active_low", false);
     relayMode         = prefs.getInt("relay_mode", 1);
     sharedSecret      = prefs.getString("shared_secret", sharedSecret);
+    if (sharedSecret.length() == 0) {
+        String generatedSecret = "";
+        char hex_char[3];
+        for (int i = 0; i < 16; i++) {
+            uint32_t r = esp_random() % 256;
+            sprintf(hex_char, "%02x", r);
+            generatedSecret += hex_char;
+        }
+        sharedSecret = generatedSecret;
+        prefs.putString("shared_secret", sharedSecret);
+        Serial.printf("[Security] Generated and stored new random 16-byte shared secret: %s\n", sharedSecret.c_str());
+    }
     p1Ip              = prefs.getString("p1", p1Ip);
     p2Ip              = prefs.getString("p2", p2Ip);
     matchMinutes      = prefs.getInt("match", matchMinutes);
