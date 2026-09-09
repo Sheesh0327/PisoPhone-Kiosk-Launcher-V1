@@ -9,11 +9,6 @@ import android.widget.Toast
 
 class KioskDeviceAdminReceiver : DeviceAdminReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == "android.app.action.PROFILE_PROVISIONING_COMPLETE") {
-            Log.i("KioskDeviceAdmin", "Profile provisioning complete received. Setup Wizard will launch Home later.")
-            return
-        }
-        
         if (intent.action == "com.pisophone.kiosk.ACTION_INSTALL_COMPLETE") {
             val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
             val msg = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)

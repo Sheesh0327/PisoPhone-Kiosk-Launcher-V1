@@ -1762,7 +1762,6 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HARDWARE Admin Console</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
     <style>
         :root {
             --bg: #F1F5F9;
@@ -3094,52 +3093,6 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
             </div>
         </div>
     </div>
-
-    <!-- QR Code Handshake Pairing Modal -->
-    <div id="qr_pair_modal" class="modal-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 10000; align-items: center; justify-content: center; padding: 16px;">
-        <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; max-width: 440px; width: 100%; box-shadow: var(--shadow-lg); text-align: center;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                <h3 style="margin: 0; font-size: 18px; font-weight: 700;">📱 Pair Phone to Slot #<span id="qr_slot_title">1</span></h3>
-                <button type="button" onclick="closePairingQrModal()" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-muted);">&times;</button>
-            </div>
-            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
-                Open the PisoPhone Kiosk App on your phone and scan this QR code to initialize pairing and exchange shared cryptographic keys.
-            </p>
-            
-            <div style="background: white; padding: 16px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin-bottom: 14px;">
-                <canvas id="qr_canvas" width="260" height="260" style="display: block; margin: 0 auto;"></canvas>
-            </div>
-            
-            <div id="qr_fallback_text" style="display: none; font-family: monospace; font-size: 11px; word-break: break-all; color: var(--primary); margin-bottom: 12px;"></div>
-
-            <div style="background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px; font-size: 12px; text-align: left; margin-bottom: 16px;">
-                <div style="display: flex; justify-content: space-between;">
-                    <span style="color: var(--text-muted);">Cabinet IP:</span>
-                    <span id="qr_modal_ip" style="font-family: monospace; font-weight: 600;">{IP_ADDRESS}</span>
-                </div>
-            </div>
-
-            <button type="button" class="btn btn-outline" style="width: 100%;" onclick="closePairingQrModal()">Done</button>
-        </div>
-    </div>
-
-    <!-- QR Provisioning Modal -->
-    <div id="qr_provision_modal" class="modal-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 10000; align-items: center; justify-content: center; padding: 16px;">
-        <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; max-width: 480px; width: 100%; box-shadow: var(--shadow-lg); text-align: center;">
-            <h3 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 700;">Android Enterprise QR Enrollment</h3>
-            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
-                On a factory-reset device (Android 12+), tap the welcome screen 6 times to open the QR scanner, then scan this code.
-            </p>
-            <div id="qr_prov_spinner" style="margin: 32px 0;">
-                <div class="loader" style="width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto;"></div>
-                <p style="margin-top: 12px; font-size: 12px; color: var(--text-muted);" id="qr_prov_status">Downloading APK to calculate checksum...</p>
-            </div>
-            <div id="qr_prov_container" style="display: none; background: white; padding: 16px; border-radius: 8px; margin: 0 auto 16px auto; width: 332px; height: 332px;">
-                <canvas id="qr_prov_canvas" width="300" height="300"></canvas>
-            </div>
-            <button type="button" class="btn btn-outline" style="width: 100%;" onclick="closeQRProvisionModal()">Close</button>
-        </div>
-    </div>
     
     <!-- WebUSB 1-Click Provisioning Modal -->
     <div id="provision_modal" class="modal-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 10000; align-items: center; justify-content: center; padding: 16px;">
@@ -3168,9 +3121,6 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                 <button type="button" class="btn btn-outline" onclick="closeProvisionModal()">Close</button>
                 <button type="button" class="btn btn-primary" onclick="launchHttpsFlasher()">⚡ Proceed to HTTPS Flasher</button>
             </div>
-            <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">
-                <button type="button" class="btn btn-outline" style="width: 100%; justify-content: center; border-color: var(--primary); color: var(--primary);" onclick="launchQRProvisioning()">📷 Factory-reset setup — Android 12+</button>
-            </div>
         </div>
     </div>
 
@@ -3198,54 +3148,6 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
 
     window.occupySlot = function(slot) {
         openProvisionModal(slot || activeSlotNum || 1);
-    };
-
-    window.showPairingQrModal = function(slotNum) {
-        activeSlotNum = slotNum || 1;
-        const modal = document.getElementById('qr_pair_modal');
-        if (!modal) return;
-        const slotTitle = document.getElementById('qr_slot_title');
-        if (slotTitle) slotTitle.textContent = activeSlotNum;
-        const ipElem = document.getElementById('qr_modal_ip');
-        const hostIp = window.location.hostname || "192.168.4.1";
-        if (ipElem) ipElem.textContent = hostIp;
-
-        const payloadObj = {
-            pisophone_pair: 1,
-            ip: hostIp,
-            port: 80,
-            ws_port: 81,
-            mac: ESP32_MAC,
-            secret: ESP32_SECRET,
-            slot: activeSlotNum,
-            name: "Slot #" + activeSlotNum
-        };
-        const payloadStr = JSON.stringify(payloadObj);
-
-        modal.style.display = 'flex';
-        try {
-            if (typeof QRious !== 'undefined') {
-                new QRious({
-                    element: document.getElementById('qr_canvas'),
-                    value: payloadStr,
-                    size: 260,
-                    level: 'M'
-                });
-            } else {
-                const fb = document.getElementById('qr_fallback_text');
-                if (fb) {
-                    fb.textContent = payloadStr;
-                    fb.style.display = 'block';
-                }
-            }
-        } catch (e) {
-            console.error("QR render error:", e);
-        }
-    };
-
-    window.closePairingQrModal = function() {
-        const modal = document.getElementById('qr_pair_modal');
-        if (modal) modal.style.display = 'none';
     };
 
     window.openSecureOriginModal = function() {
@@ -3436,103 +3338,6 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
 
     window.closeProvisionModal = function() {
         document.getElementById('provision_modal').style.display = 'none';
-    };
-    window.closeQRProvisionModal = function() {
-        const modal = document.getElementById('qr_provision_modal');
-        if (modal) modal.style.display = 'none';
-        const canvas = document.getElementById('qr_prov_canvas');
-        if (canvas) {
-            const ctx = canvas.getContext('2d');
-            if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
-        }
-        const container = document.getElementById('qr_prov_container');
-        if (container) container.style.display = 'none';
-        const spinner = document.getElementById('qr_prov_spinner');
-        if (spinner) spinner.style.display = 'none';
-        const status = document.getElementById('qr_prov_status');
-        if (status) status.textContent = '';
-    };
-
-    window.launchQRProvisioning = async function() {
-        closeProvisionModal();
-        document.getElementById('qr_provision_modal').style.display = 'flex';
-        document.getElementById('qr_prov_spinner').style.display = 'block';
-        document.getElementById('qr_prov_container').style.display = 'none';
-        
-        try {
-            document.getElementById('qr_prov_status').textContent = 'Fetching APK size...';
-            const apkUrl = 'https://pisophone.pages.dev/app-release.apk';
-            const res = await fetch(apkUrl);
-            if (!res.ok) throw new Error('Failed to fetch APK');
-            
-            document.getElementById('qr_prov_status').textContent = 'Downloading APK...';
-            const buffer = await res.arrayBuffer();
-            
-            document.getElementById('qr_prov_status').textContent = 'Calculating SHA-256...';
-            
-            let hashArray;
-            if (window.crypto && window.crypto.subtle) {
-                const hashBuffer = await window.crypto.subtle.digest('SHA-256', buffer);
-                hashArray = Array.from(new Uint8Array(hashBuffer));
-            } else {
-                // Convert ArrayBuffer to binary string
-                let binary = '';
-                const bytes = new Uint8Array(buffer);
-                const len = bytes.byteLength;
-                for (let i = 0; i < len; i++) {
-                    binary += String.fromCharCode(bytes[i]);
-                }
-                const fallbackHashBuffer = sha256(binary);
-                hashArray = Array.from(fallbackHashBuffer);
-            }
-            
-            const base64Str = btoa(String.fromCharCode.apply(null, hashArray));
-            const urlSafeHash = base64Str.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-            
-            const wifiSsid = ESP32_WIFI_SSID || "";
-            const wifiPass = ESP32_WIFI_PASS || "";
-            const wifiType = wifiPass ? "WPA" : "NONE";
-            
-            const slot = activeSlotNum || 1;
-            
-            const adminExtras = {
-                setup_schema_version: 1,
-                setup_secret: ESP32_SECRET,
-                setup_mac: ESP32_MAC,
-                setup_ip: ESP32_HOST,
-                setup_slot: slot,
-                setup_name: "PisoPhone Kiosk " + slot
-            };
-            
-            const provJson = {
-                "android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME": "com.pisophone.kiosk/com.pisophone.kiosk.receiver.KioskDeviceAdminReceiver",
-                "android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION": apkUrl,
-                "android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_CHECKSUM": urlSafeHash,
-                "android.app.extra.PROVISIONING_WIFI_SSID": wifiSsid,
-                "android.app.extra.PROVISIONING_WIFI_SECURITY_TYPE": wifiType,
-                "android.app.extra.PROVISIONING_WIFI_PASSWORD": wifiPass,
-                "android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE": adminExtras
-            };
-            
-            const jsonString = JSON.stringify(provJson);
-            
-            document.getElementById('qr_prov_spinner').style.display = 'none';
-            document.getElementById('qr_prov_container').style.display = 'block';
-            
-            if (typeof QRious !== 'undefined') {
-                new QRious({
-                    element: document.getElementById('qr_prov_canvas'),
-                    value: jsonString,
-                    size: 300,
-                    level: 'M'
-                });
-            } else {
-                alert("QRious library failed to load.");
-            }
-        } catch (err) {
-            document.getElementById('qr_prov_status').textContent = 'Error: ' + err.message;
-            console.error(err);
-        }
     };
 
     window.launchHttpsFlasher = function() {
@@ -4609,6 +4414,10 @@ void handleApiSlotPair() {
         return;
     }
     recordDeviceNonce(devId, ts);
+
+    if (ip.length() == 0 || ip == "127.0.0.1" || ip == "0.0.0.0") {
+        ip = webServer.client().remoteIP().toString();
+    }
 
     bool res = pairDeviceToSlot(slot, id, ip, name);
     if (res) {

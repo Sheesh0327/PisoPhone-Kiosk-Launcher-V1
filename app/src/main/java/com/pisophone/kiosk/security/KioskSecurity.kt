@@ -326,6 +326,16 @@ object KioskSecurity {
         return secret!!
     }
 
+    fun hasConfiguredSharedSecret(context: Context): Boolean {
+        val prefs = getPrefs(context)
+        if (prefs.getBoolean("secret_configured", false)) return true
+        val customSecret = getCustomKeystoreEncryptedSecret(prefs)
+        if (!customSecret.isNullOrBlank()) return true
+        val encryptedPrefs = getEncryptedPrefs(context)
+        val encSecret = encryptedPrefs?.getString(KEY_DEVICE_SECRET, null)
+        return !encSecret.isNullOrBlank()
+    }
+
     fun setSharedSecret(context: Context, newSecret: String) {
         val trimmed = newSecret.trim()
         if (trimmed.isEmpty()) {
@@ -333,18 +343,15 @@ object KioskSecurity {
             return
         }
         val encryptedPrefs = getEncryptedPrefs(context)
-        var successWithEncryptedPrefs = false
         if (encryptedPrefs != null) {
             try { 
                 encryptedPrefs.edit().putString(KEY_DEVICE_SECRET, trimmed).apply()
-                successWithEncryptedPrefs = true
             } catch (e: Exception) { Log.e(TAG, "Encrypted prefs write failed: ${e.message}") }
         } 
         
-        if (!successWithEncryptedPrefs) {
-            setCustomKeystoreEncryptedSecret(getPrefs(context), trimmed)
-        }
-        getPrefs(context).edit().remove(KEY_DEVICE_SECRET).apply()
+        val prefs = getPrefs(context)
+        setCustomKeystoreEncryptedSecret(prefs, trimmed)
+        prefs.edit().remove(KEY_DEVICE_SECRET).putBoolean("secret_configured", true).apply()
     }
 
     fun getAdminPin(context: Context): String {

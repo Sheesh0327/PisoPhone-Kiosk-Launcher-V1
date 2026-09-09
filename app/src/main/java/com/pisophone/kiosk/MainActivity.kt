@@ -62,13 +62,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private var isPairingPending by androidx.compose.runtime.mutableStateOf(false)
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         CrashReporter.init(this)
-        
-        isPairingPending = com.pisophone.kiosk.provisioning.ProvisioningCoordinator.isPairingPending(this)
 
         handleSetupIntent(intent)
         if (isFullySetup()) {
@@ -83,35 +79,30 @@ class MainActivity : ComponentActivity() {
         setContent {
             PisoPhoneLauncherTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    if (isPairingPending) {
-                        com.pisophone.kiosk.provisioning.ProvisioningPairingScreen(
-                            onRetry = {
-                                com.pisophone.kiosk.provisioning.ProvisioningCoordinator.initiatePairingAsync(this@MainActivity) { success ->
-                                    if (success) {
-                                        isPairingPending = false
-                                        HardwareLockManager.sealToCurrentDevice(this@MainActivity)
-                                        val serviceIntent = Intent(this@MainActivity, KioskService::class.java)
-                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                            startForegroundService(serviceIntent)
-                                        } else {
-                                            startService(serviceIntent)
-                                        }
-                                        if (isFullySetup()) {
-                                            tryEnableLockTaskMode()
-                                        }
-                                    }
+                    val securityVer by HardwareLockManager.securityUpdateVersion.collectAsState()
+                    val fullySetup = remember(securityVer) { isFullySetup() }
+
+                    if (!fullySetup) {
+                        HardwareLockScreen(
+                            onRebindSuccess = {
+                                if (isFullySetup()) {
+                                    checkDeviceOwner()
+                                    checkOverlayPermission()
+                                    applyKioskWindowFlags()
+                                    hideSystemBars()
+                                    dismissKeyguard()
+                                    startKioskService()
                                 }
                             }
                         )
                     } else {
                         LaunchedEffect(Unit) {
-                            if (isFullySetup()) {
-                                checkDeviceOwner()
-                                checkOverlayPermission()
-                                applyKioskWindowFlags()
-                                hideSystemBars()
-                                dismissKeyguard()
-                            }
+                            checkDeviceOwner()
+                            checkOverlayPermission()
+                            applyKioskWindowFlags()
+                            hideSystemBars()
+                            dismissKeyguard()
+                            startKioskService()
                         }
                         LauncherScreen(
                             apps = appsList,
@@ -122,6 +113,20 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    private fun startKioskService() {
+        if (!isFullySetup()) return
+        try {
+            val serviceIntent = Intent(this, KioskService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent)
+            } else {
+                startService(serviceIntent)
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("MainActivity", "Failed to start KioskService: ${e.message}")
         }
     }
 
@@ -176,27 +181,16 @@ class MainActivity : ComponentActivity() {
 
         if (!secret.isNullOrBlank() || !mac.isNullOrBlank() || !ip.isNullOrBlank() || slot > 0) {
             android.util.Log.i("MainActivity", "Direct Provisioning setup parameters received: MAC=$mac, IP=$ip, Slot=$slot, SecretConfigured=${!secret.isNullOrBlank()}")
-            KioskService.configureMasterBox(
+            KioskSecurity.applyDirectProvisioning(
                 context = this,
-                mac = mac ?: "",
+                secret = secret,
+                mac = mac,
                 ip = ip,
                 slot = slot,
-                secret = secret,
                 name = name
             )
-        }
-
-        if (activate) {
-            HardwareLockManager.sealToCurrentDevice(this)
-            try {
-                val serviceIntent = Intent(this, KioskService::class.java)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(serviceIntent)
-                } else {
-                    startService(serviceIntent)
-                }
-            } catch (e: Exception) {
-                android.util.Log.w("MainActivity", "Failed to start KioskService on setup: ${e.message}")
+            if (isFullySetup()) {
+                startKioskService()
             }
         }
     }
