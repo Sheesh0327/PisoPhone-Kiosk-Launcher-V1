@@ -1164,7 +1164,7 @@ void authWorkerTask(void *pvParameters) {
 
             if (http.begin(actionUrl)) {
                 int code = http.GET();
-                Serial.printf("[⚡ AUTH WORKER] GET %s -> Response %d\n", actionUrl.c_str(), code);
+                Serial.printf("[⚡ AUTH WORKER] %s:%d%s -> Response %d\n", ip.c_str(), req.port, req.actionPath, code);
                 http.end();
             }
             vTaskDelay(pdMS_TO_TICKS(40)); // Prevent socket/radio contention
@@ -1210,9 +1210,10 @@ int sendAuthenticatedSync(String ip, int port, String actionPath, String params,
     }
 
     String encryptedPayload = aes_encrypt(finalParams, sharedSecret);
+    if (encryptedPayload.length() == 0) return -3;
     actionUrl += "?payload=" + encryptedPayload;
 
-    Serial.printf("[⚡ AUTH SYNC] Connecting to %s...\n", actionUrl.c_str());
+    Serial.printf("[⚡ AUTH SYNC] Connecting to %s:%d%s...\n", ip.c_str(), port, actionPath.c_str());
     if (!http.begin(actionUrl)) {
         return -2; // Connection failed
     }
@@ -1221,7 +1222,7 @@ int sendAuthenticatedSync(String ip, int port, String actionPath, String params,
     if (code > 0 && responseBody != nullptr) {
         *responseBody = http.getString();
         responseBody->trim();
-        Serial.printf("[⚡ AUTH SYNC] Response Code: %d, Response: %s\n", code, responseBody->c_str());
+        Serial.printf("[⚡ AUTH SYNC] Response Code: %d\n", code);
     }
     http.end();
     return code;
@@ -2503,8 +2504,10 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                 btn.innerHTML = '⏳ Locating...';
             }
             fetch('/trigger_android?ip=' + encodeURIComponent(ip) + '&action=' + encodeURIComponent(action))
-                .then(res => { 
-                    if (res.ok) {
+                .then(async res => {
+                    let data = {};
+                    try { data = await res.json(); } catch (_) {}
+                    if (res.ok && data.success !== false) {
                         if (btn) {
                             btn.innerHTML = '🔔 Signal Sent!';
                             setTimeout(() => { btn.disabled = false; btn.innerHTML = origText; }, 2500);
@@ -2513,10 +2516,10 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                         }
                     } else {
                         if (btn) {
-                            btn.innerHTML = '❌ Unreachable';
+                            btn.innerHTML = res.status === 401 ? '❌ Re-pair required' : '❌ Unreachable';
                             setTimeout(() => { btn.disabled = false; btn.innerHTML = origText; }, 2500);
                         } else {
-                            alert('Failed to send trigger to ' + ip);
+                            alert(data.error || ('Failed to send trigger to ' + ip));
                         }
                     }
                 })
@@ -3179,9 +3182,9 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
 
     window.occupySlot = function(slot) {
         const s = slot || activeSlotNum || 1;
-        const targetUrl = 'https://pisophone.pages.dev/installer/?mac=' + encodeURIComponent(ESP32_MAC) + 
-                          '&ip=' + encodeURIComponent(ESP32_HOST) + 
-                          '&slot=' + encodeURIComponent(s) + 
+        const targetUrl = 'https://pisophone.pages.dev/installer/#mac=' + encodeURIComponent(ESP32_MAC) +
+                          '&ip=' + encodeURIComponent(ESP32_HOST) +
+                          '&slot=' + encodeURIComponent(s) +
                           '&secret=' + encodeURIComponent(ESP32_SECRET) +
                           '&name=' + encodeURIComponent('PisoPhone ' + s);
         window.location.href = targetUrl;
@@ -3368,13 +3371,13 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
         document.getElementById('provision_modal').style.display = 'none';
     };
     window.launchHttpsFlasher = function() {
-        window.open('https://pisophone.pages.dev/installer/?mac=' + ESP32_MAC + '&ip=' + ESP32_HOST + '&slot=' + activeSlotNum, '_blank');
+        window.open('https://pisophone.pages.dev/installer/#mac=' + encodeURIComponent(ESP32_MAC) + '&ip=' + encodeURIComponent(ESP32_HOST) + '&slot=' + encodeURIComponent(activeSlotNum) + '&secret=' + encodeURIComponent(ESP32_SECRET), '_blank');
         closeProvisionModal();
     };
     window.launchHttpsFlasherMain = function() {
         const slotSelect = document.getElementById('main_prov_slot_select');
         const slot = slotSelect ? parseInt(slotSelect.value) : (activeSlotNum || 1);
-        window.open('https://pisophone.pages.dev/installer/?mac=' + ESP32_MAC + '&ip=' + ESP32_HOST + '&slot=' + slot, '_blank');
+        window.open('https://pisophone.pages.dev/installer/#mac=' + encodeURIComponent(ESP32_MAC) + '&ip=' + encodeURIComponent(ESP32_HOST) + '&slot=' + encodeURIComponent(slot) + '&secret=' + encodeURIComponent(ESP32_SECRET), '_blank');
     };
 
     window.openDeprovisionModal = function(slot, devId) {
@@ -4772,18 +4775,18 @@ void handleTriggerAndroid() {
         String responseBody = "";
         int httpCode = sendAuthenticatedSync(ip, targetPort, "/trigger_action", "action=" + action, 3500, &responseBody);
         
-        if (httpCode == 200) {
-            if (responseBody == "OK") {
-                webServer.send(200, "application/json", "{\"success\":true,\"message\":\"Signal Sent\"}");
-            } else {
-                webServer.send(200, "application/json", "{\"success\":true,\"message\":\"" + responseBody + "\"}");
-            }
+        if (httpCode == 200 && responseBody == "OK") {
+            webServer.send(200, "application/json", "{\"success\":true,\"message\":\"Signal Sent\"}");
+        } else if (httpCode == 200) {
+            webServer.send(502, "application/json", "{\"success\":false,\"error\":\"Unexpected Android response\"}");
         } else if (httpCode == -1) {
-            webServer.send(530, "application/json", "{\"success\":false,\"error\":\"ESP32 WiFi disconnected\"}");
+            webServer.send(503, "application/json", "{\"success\":false,\"error\":\"ESP32 WiFi disconnected\"}");
         } else if (httpCode == -2) {
             webServer.send(502, "application/json", "{\"success\":false,\"error\":\"Connection initiation failed\"}");
+        } else if (httpCode == -3) {
+            webServer.send(500, "application/json", "{\"success\":false,\"error\":\"Request encryption failed\"}");
         } else if (httpCode == 401) {
-            webServer.send(401, "application/json", "{\"success\":false,\"error\":\"Authentication failure / Decryption failed\"}");
+            webServer.send(401, "application/json", "{\"success\":false,\"error\":\"Authentication failed; re-pair this terminal\"}");
         } else if (httpCode == 403) {
             webServer.send(403, "application/json", "{\"success\":false,\"error\":\"Android rejected command / Expired license\"}");
         } else {
@@ -5434,16 +5437,20 @@ void setup() {
     relayMode         = prefs.getInt("relay_mode", 1);
     sharedSecret      = prefs.getString("shared_secret", sharedSecret);
     if (sharedSecret.length() == 0) {
+        uint8_t secretBytes[32];
+        for (int i = 0; i < 32; i += 4) {
+            uint32_t randomWord = esp_random();
+            memcpy(secretBytes + i, &randomWord, 4);
+        }
         String generatedSecret = "";
         char hex_char[3];
-        for (int i = 0; i < 16; i++) {
-            uint32_t r = esp_random() % 256;
-            sprintf(hex_char, "%02x", r);
+        for (int i = 0; i < 32; i++) {
+            sprintf(hex_char, "%02x", secretBytes[i]);
             generatedSecret += hex_char;
         }
         sharedSecret = generatedSecret;
         prefs.putString("shared_secret", sharedSecret);
-        Serial.printf("[Security] Generated and stored new random 16-byte shared secret: %s\n", sharedSecret.c_str());
+        Serial.println("[Security] Generated and stored a new per-box shared secret.");
     }
     p1Ip              = prefs.getString("p1", p1Ip);
     p2Ip              = prefs.getString("p2", p2Ip);

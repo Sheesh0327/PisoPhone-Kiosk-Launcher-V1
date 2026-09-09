@@ -122,7 +122,7 @@ object HardwareLockManager {
         val currentDevName = getHardwareDescription()
         val now = System.currentTimeMillis()
 
-        val sig = generateSignature(context, currentHwId, currentDevName, now)
+        val sig = generateSignature(context, currentHwId, currentDevName, now) ?: return false
 
         prefs.edit()
             .putString(KEY_BOUND_HW_ID, currentHwId)
@@ -219,7 +219,7 @@ object HardwareLockManager {
         val currentHwId = getHardwareFingerprint(context)
         val currentDevName = getHardwareDescription()
         val now = System.currentTimeMillis()
-        val sig = generateSignature(context, currentHwId, currentDevName, now)
+        val sig = generateSignature(context, currentHwId, currentDevName, now) ?: return false
 
         prefs.edit()
             .putString(KEY_BOUND_HW_ID, currentHwId)
@@ -234,10 +234,11 @@ object HardwareLockManager {
         return true
     }
 
-    private fun generateSignature(context: Context, hwId: String, devName: String, timestamp: Long): String {
-        var secret = KioskSecurity.getSharedSecret(context)
+    private fun generateSignature(context: Context, hwId: String, devName: String, timestamp: Long): String? {
+        val secret = KioskSecurity.getSharedSecret(context)
         if (secret.isBlank()) {
-            secret = "DEFAULT_HARDWARE_SEAL_SECRET_PISOPHONE"
+            Log.e(TAG, "Cannot establish hardware seal before a shared secret is provisioned.")
+            return null
         }
         val payload = "$hwId|$devName|$timestamp|$secret"
         return KioskSecurity.calculateHmac(payload, secret)

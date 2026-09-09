@@ -48,7 +48,8 @@ object HardwareFeedback {
                     android.Manifest.permission.CAMERA
                 ) == android.content.pm.PackageManager.PERMISSION_GRANTED
                 if (!hasCameraPermission) {
-                    Log.w(TAG, "CAMERA permission is NOT granted! Camera and flashlight queries might fail on some device models.")
+                    Log.w(TAG, "Cannot strobe flashlight: CAMERA permission is not granted.")
+                    return@post
                 }
 
                 val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as? CameraManager ?: return@post
@@ -60,26 +61,36 @@ object HardwareFeedback {
                     } catch (_: Exception) {
                         false
                     }
-                } ?: cameraManager.cameraIdList.firstOrNull() // Fallback to first if none report flash info available
+                }
 
-                if (cameraId != null) {
+                if (cameraId == null) {
+                    Log.w(TAG, "Cannot strobe flashlight: no flash-capable camera was found.")
+                } else {
                     val handler = Handler(Looper.getMainLooper())
                     val intervalMs = 150L
-                    val endTime = System.currentTimeMillis() + durationMs
+                    val endTime = android.os.SystemClock.elapsedRealtime() + durationMs
                     
                     val strobeRunnable = object : Runnable {
                         var state = false
+                        var failureLogged = false
                         override fun run() {
-                            if (System.currentTimeMillis() < endTime) {
+                            if (android.os.SystemClock.elapsedRealtime() < endTime) {
                                 state = !state
                                 try {
                                     cameraManager.setTorchMode(cameraId, state)
-                                } catch (_: Exception) {}
+                                } catch (e: Exception) {
+                                    if (!failureLogged) {
+                                        failureLogged = true
+                                        Log.w(TAG, "Failed to strobe flashlight: ${e.message}")
+                                    }
+                                }
                                 handler.postDelayed(this, intervalMs)
                             } else {
                                 try {
                                     cameraManager.setTorchMode(cameraId, false)
-                                } catch (_: Exception) {}
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "Failed to turn flashlight off after strobe: ${e.message}")
+                                }
                             }
                         }
                     }

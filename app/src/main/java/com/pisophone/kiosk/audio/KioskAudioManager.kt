@@ -384,12 +384,16 @@ class KioskAudioManager(
             try {
                 val am = context.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager
                 val originalMusicVol = am?.getStreamVolume(android.media.AudioManager.STREAM_MUSIC) ?: 0
+                val originalAlarmVol = am?.getStreamVolume(android.media.AudioManager.STREAM_ALARM) ?: 0
                 val maxMusicVol = am?.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC) ?: 15
                 val maxAlarmVol = am?.getStreamMaxVolume(android.media.AudioManager.STREAM_ALARM) ?: 7
 
-                // Maximize volume streams so the alarm cannot be ignored
-                am?.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, maxMusicVol, 0)
-                am?.setStreamVolume(android.media.AudioManager.STREAM_ALARM, maxAlarmVol, 0)
+                try {
+                    am?.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, maxMusicVol, 0)
+                    am?.setStreamVolume(android.media.AudioManager.STREAM_ALARM, maxAlarmVol, 0)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Unable to raise locate-alert volume: ${e.message}")
+                }
 
                 // Trigger TTS
                 speakWarning("Terminal Located! Terminal Located!")
@@ -408,10 +412,11 @@ class KioskAudioManager(
                 }
                 playPcmBuffer(buffer, sampleRate, 3000)
 
-                // Restore original music volume after 4 seconds
+                // Restore both streams after the alert.
                 Handler(Looper.getMainLooper()).postDelayed({
                     try {
                         am?.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, originalMusicVol, 0)
+                        am?.setStreamVolume(android.media.AudioManager.STREAM_ALARM, originalAlarmVol, 0)
                     } catch (_: Exception) {}
                 }, 4000)
             } catch (e: Exception) {

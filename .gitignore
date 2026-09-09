@@ -20,6 +20,10 @@ debug.keystore
 *.keystore
 *.p12
 
+# Private firmware signing keys (keep public keys only)
+esp32_firmware/pisophone_key
+esp32_firmware/*.pem
+
 # Build Outputs & APKs
 *.apk
 website/app-release.apk
