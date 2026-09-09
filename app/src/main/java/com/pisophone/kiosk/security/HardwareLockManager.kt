@@ -35,6 +35,8 @@ object HardwareLockManager {
     private const val KEY_SLOT_NUM = "slot_number"
     private const val KEY_SLOT_EXPIRY_TS = "slot_expiry_timestamp"
     private const val KEY_PAIRING_COMPLETED = "pairing_completed"
+    private const val KEY_SETUP_WINDOW_START = "setup_window_start_ts"
+    private const val SETUP_WINDOW_DURATION_MS = 30 * 60 * 1000L // 30-minute bounded setup window for fresh unprovisioned install
 
     /**
      * Computes a stable, canonical hardware fingerprint derived strictly from immutable hardware attributes.
@@ -154,6 +156,16 @@ object HardwareLockManager {
     fun setPairingCompleted(context: Context, completed: Boolean) {
         getPrefs(context).edit().putBoolean(KEY_PAIRING_COMPLETED, completed).apply()
         notifySecurityChanged()
+    }
+
+    fun isSetupModeActive(context: Context): Boolean {
+        val prefs = getPrefs(context)
+        var startTs = prefs.getLong(KEY_SETUP_WINDOW_START, 0L)
+        if (startTs == 0L) {
+            startTs = System.currentTimeMillis()
+            prefs.edit().putLong(KEY_SETUP_WINDOW_START, startTs).apply()
+        }
+        return (System.currentTimeMillis() - startTs) < SETUP_WINDOW_DURATION_MS
     }
 
     fun isAppAllowedToRun(context: Context): Boolean {

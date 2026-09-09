@@ -709,9 +709,24 @@ class KioskService : Service() {
                 try {
                     supervisor.ensureRunning()
                     val appState = stateManager.appState.value
-                    if (appState == 0 || appState == 1) {
+                    if (appState == 2 || appState == 3) {
+                        val deadline = stateManager.sessionExpiryDeadlineMs.value
+                        val now = System.currentTimeMillis()
+                        if (deadline > 0L && now >= deadline) {
+                            Log.w(TAG, "Health monitor: Session deadline expired ($deadline <= $now). Forcing lock state.")
+                            stateManager.appState.value = 0
+                            stateManager.sessionTimeRemaining.value = 0
+                            stateManager.sessionExpiryDeadlineMs.value = 0L
+                            stateManager.saveState()
+                        }
+                    }
+
+                    val currentAppState = stateManager.appState.value
+                    if (currentAppState == 0 || currentAppState == 1) {
                         if (overlay == null || overlay?.isAttached() != true) {
-                            Log.w(TAG, "Health monitor: Overlay missing while locked/armed (AppState: $appState). Rebuilding...")
+                            Log.w(TAG, "Health monitor: Overlay missing or detached while locked/armed (AppState: $currentAppState). Rebuilding...")
+                            overlay?.remove()
+                            overlay = null
                             setupOverlay()
                         }
                     }

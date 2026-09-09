@@ -151,7 +151,14 @@ class LockScreenOverlay(
             android.util.Log.w("LockScreenOverlay", "Overlay permission not granted yet, deferring window attachment")
             return false
         }
-        if (isViewAdded) return true
+        if (isViewAdded) {
+            if (overlayView.view.isAttachedToWindow) {
+                return true
+            } else {
+                android.util.Log.w("LockScreenOverlay", "Overlay view is marked added but detached from window. Disposing and re-adding.")
+                remove()
+            }
+        }
 
         val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
         if (!isFullySetup) {
@@ -278,6 +285,13 @@ class LockScreenOverlay(
         try {
             windowManager.addView(overlayView.view, layoutParams)
             isViewAdded = true
+            overlayView.view.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+                override fun onViewAttachedToWindow(v: View) {}
+                override fun onViewDetachedFromWindow(v: View) {
+                    android.util.Log.w("LockScreenOverlay", "Lock screen overlay detached from window automatically.")
+                    isViewAdded = false
+                }
+            })
             overlayView.view.systemUiVisibility = (
                 View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                 or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN

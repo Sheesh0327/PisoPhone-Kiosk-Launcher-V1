@@ -24,19 +24,30 @@ class KioskSessionSupervisor(
     }
 
     private var timerJob: Job? = null
+    @Volatile
+    private var lastTickMonotonicMs: Long = 0L
+
+    fun isStalled(maxLagMs: Long = 5000L): Boolean {
+        val last = lastTickMonotonicMs
+        if (last == 0L) return false
+        return (android.os.SystemClock.elapsedRealtime() - last) > maxLagMs
+    }
 
     fun ensureRunning() {
-        if (timerJob == null || timerJob?.isActive != true) {
+        if (timerJob == null || timerJob?.isActive != true || isStalled()) {
+            Log.w(TAG, "Timer job inactive or stalled. Restarting supervisor loop.")
             start()
         }
     }
 
     fun start() {
         timerJob?.cancel()
+        lastTickMonotonicMs = android.os.SystemClock.elapsedRealtime()
         timerJob = scope.launch {
             while (isActive) {
                 try {
                     delay(1000)
+                    lastTickMonotonicMs = android.os.SystemClock.elapsedRealtime()
                     
                     val curState = stateManager.appState.value
                     // Session arming / waiting countdown

@@ -172,11 +172,19 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
             }
 
             ACTION_SCREEN_OFF, ACTION_LOCK_NOW -> {
+                if (com.pisophone.kiosk.security.KioskSecurity.isProvisioned(context) && !isAuthorized(context, intent)) {
+                    Log.w(TAG, "Unauthorized attempt to trigger SCREEN_OFF / LOCK_NOW rejected.")
+                    return
+                }
                 Log.i(TAG, "Screen off / lock now command received.")
                 com.pisophone.kiosk.security.KioskSecurity.turnScreenOff(context)
             }
 
             ACTION_SCREEN_ON -> {
+                if (com.pisophone.kiosk.security.KioskSecurity.isProvisioned(context) && !isAuthorized(context, intent)) {
+                    Log.w(TAG, "Unauthorized attempt to trigger SCREEN_ON rejected.")
+                    return
+                }
                 Log.i(TAG, "Screen on / wake command received.")
                 com.pisophone.kiosk.security.KioskSecurity.wakeScreenUp(context)
             }
@@ -219,9 +227,10 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
             }
 
             ACTION_CONFIGURE_ESP32, "com.pisophone.kiosk.ACTION_CONFIGURE_ESP32" -> {
-                val isProvisioned = com.pisophone.kiosk.security.KioskSecurity.isProvisioned(context)
-                if (isProvisioned && !isAuthorized(context, intent)) {
-                    Log.w(TAG, "Unauthorized attempt to re-configure ESP32 on provisioned device rejected.")
+                val isPaired = com.pisophone.kiosk.security.HardwareLockManager.isPairingCompleted(context) || com.pisophone.kiosk.security.KioskSecurity.isProvisioned(context)
+                val isSetupActive = com.pisophone.kiosk.security.HardwareLockManager.isSetupModeActive(context)
+                if ((isPaired || !isSetupActive) && !isAuthorized(context, intent)) {
+                    Log.w(TAG, "Unauthorized attempt to re-configure ESP32 rejected.")
                     Toast.makeText(context, "Unauthorized: Valid Admin PIN or Secret required.", Toast.LENGTH_SHORT).show()
                     setResultCode(android.app.Activity.RESULT_CANCELED)
                     return
@@ -246,9 +255,10 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
             }
 
             ACTION_ACTIVATE -> {
-                val isProvisioned = com.pisophone.kiosk.security.KioskSecurity.isProvisioned(context)
-                if (isProvisioned && !isAuthorized(context, intent)) {
-                    Log.w(TAG, "Unauthorized attempt to re-activate already provisioned device rejected.")
+                val isPaired = com.pisophone.kiosk.security.HardwareLockManager.isPairingCompleted(context) || com.pisophone.kiosk.security.KioskSecurity.isProvisioned(context)
+                val isSetupActive = com.pisophone.kiosk.security.HardwareLockManager.isSetupModeActive(context)
+                if ((isPaired || !isSetupActive) && !isAuthorized(context, intent)) {
+                    Log.w(TAG, "Unauthorized attempt to re-activate device rejected.")
                     Toast.makeText(context, "Unauthorized: Valid Admin PIN or Secret required.", Toast.LENGTH_SHORT).show()
                     setResultCode(android.app.Activity.RESULT_CANCELED)
                     return

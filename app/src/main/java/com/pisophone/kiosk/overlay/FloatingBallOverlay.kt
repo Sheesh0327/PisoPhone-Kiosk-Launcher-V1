@@ -73,7 +73,13 @@ class FloatingBallOverlay(
             android.util.Log.d("FloatingBallOverlay", "Device not activated or fully setup. Floating ball overlay deferred.")
             return
         }
-        if (isViewAdded) return
+        if (isViewAdded) {
+            if (overlayView.view.isAttachedToWindow) {
+                return
+            } else {
+                remove()
+            }
+        }
 
         overlayView.setContent {
             val appState by appStateFlow.collectAsState()
@@ -135,6 +141,13 @@ class FloatingBallOverlay(
         try {
             windowManager.addView(overlayView.view, layoutParams)
             isViewAdded = true
+            overlayView.view.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+                override fun onViewAttachedToWindow(v: View) {}
+                override fun onViewDetachedFromWindow(v: View) {
+                    android.util.Log.w("FloatingBallOverlay", "Floating ball overlay detached from window automatically.")
+                    isViewAdded = false
+                }
+            })
             overlayView.view.viewTreeObserver.addOnWindowFocusChangeListener { hasFocus ->
                 if (hasFocus) {
                     overlayView.view.systemUiVisibility = (
