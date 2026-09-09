@@ -119,11 +119,19 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
             }
 
             ACTION_TEST_TTS -> {
+                if (com.pisophone.kiosk.security.KioskSecurity.isProvisioned(context) && !isAuthorized(context, intent)) {
+                    Log.w(TAG, "Unauthorized attempt to trigger TEST_TTS rejected.")
+                    return
+                }
                 val text = intent.getStringExtra("text") ?: "Arcade OS voice system online and functional."
                 Log.i(TAG, "Test TTS command received: $text")
                 KioskService.triggerTestTts(context, text)
             }
             ACTION_RESTART -> {
+                if (com.pisophone.kiosk.security.KioskSecurity.isProvisioned(context) && !isAuthorized(context, intent)) {
+                    Log.w(TAG, "Unauthorized attempt to trigger RESTART rejected.")
+                    return
+                }
                 Log.i(TAG, "Admin restart triggered via broadcast.")
                 try {
                     val serviceIntent = Intent(context, KioskService::class.java)
@@ -184,6 +192,10 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
             }
 
             ACTION_SET_VOLUME -> {
+                if (com.pisophone.kiosk.security.KioskSecurity.isProvisioned(context) && !isAuthorized(context, intent)) {
+                    Log.w(TAG, "Unauthorized attempt to trigger SET_VOLUME rejected.")
+                    return
+                }
                 val volume = intent.getIntExtra("volume", -1)
                 if (volume in 0..100) {
                     Log.i(TAG, "Setting media volume to $volume%")
@@ -207,7 +219,7 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
             }
 
             ACTION_CONFIGURE_ESP32, "com.pisophone.kiosk.ACTION_CONFIGURE_ESP32" -> {
-                val isProvisioned = com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context) || com.pisophone.kiosk.security.KioskSecurity.getSharedSecret(context).isNotBlank()
+                val isProvisioned = com.pisophone.kiosk.security.KioskSecurity.isProvisioned(context)
                 if (isProvisioned && !isAuthorized(context, intent)) {
                     Log.w(TAG, "Unauthorized attempt to re-configure ESP32 on provisioned device rejected.")
                     Toast.makeText(context, "Unauthorized: Valid Admin PIN or Secret required.", Toast.LENGTH_SHORT).show()
@@ -234,7 +246,7 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
             }
 
             ACTION_ACTIVATE -> {
-                val isProvisioned = com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context) || com.pisophone.kiosk.security.KioskSecurity.getSharedSecret(context).isNotBlank()
+                val isProvisioned = com.pisophone.kiosk.security.KioskSecurity.isProvisioned(context)
                 if (isProvisioned && !isAuthorized(context, intent)) {
                     Log.w(TAG, "Unauthorized attempt to re-activate already provisioned device rejected.")
                     Toast.makeText(context, "Unauthorized: Valid Admin PIN or Secret required.", Toast.LENGTH_SHORT).show()

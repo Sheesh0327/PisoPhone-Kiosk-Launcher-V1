@@ -34,6 +34,7 @@ object HardwareLockManager {
     private const val KEY_SLOT_EXPIRED_REASON = "slot_expired_reason"
     private const val KEY_SLOT_NUM = "slot_number"
     private const val KEY_SLOT_EXPIRY_TS = "slot_expiry_timestamp"
+    private const val KEY_PAIRING_COMPLETED = "pairing_completed"
 
     /**
      * Computes a stable, canonical hardware fingerprint derived strictly from immutable hardware attributes.
@@ -138,9 +139,23 @@ object HardwareLockManager {
     }
 
     /**
-     * Checks if the kiosk application is authorized to operate on this hardware.
-     * Installing the APK installs like normal and runs automatically.
+     * Checks if the kiosk application is paired and authorized to operate on this hardware.
      */
+    fun isPairingCompleted(context: Context): Boolean {
+        val prefs = getPrefs(context)
+        if (prefs.getBoolean(KEY_PAIRING_COMPLETED, false)) return true
+        if (KioskSecurity.isProvisioned(context)) {
+            setPairingCompleted(context, true)
+            return true
+        }
+        return false
+    }
+
+    fun setPairingCompleted(context: Context, completed: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_PAIRING_COMPLETED, completed).apply()
+        notifySecurityChanged()
+    }
+
     fun isAppAllowedToRun(context: Context): Boolean {
         return isHardwareAuthorized(context)
     }

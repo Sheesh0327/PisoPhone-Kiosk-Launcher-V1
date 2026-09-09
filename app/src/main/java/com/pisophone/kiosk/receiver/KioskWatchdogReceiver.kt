@@ -20,7 +20,7 @@ class KioskWatchdogReceiver : BroadcastReceiver() {
     companion object {
         private const val TAG = "KioskWatchdog"
         const val ACTION_WATCHDOG_PING = "com.pisophone.kiosk.action.WATCHDOG_PING"
-        private const val WATCHDOG_INTERVAL_MS = 300_000L // Check every 5 minutes
+        private const val WATCHDOG_INTERVAL_MS = 60_000L // Alarm backup check every 60 seconds
 
         fun scheduleWatchdog(context: Context) {
             try {

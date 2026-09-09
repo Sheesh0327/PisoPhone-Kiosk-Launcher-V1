@@ -171,6 +171,13 @@ object KioskSecurity {
         return input.trim().uppercase()
     }
 
+    fun isProvisioned(context: Context): Boolean {
+        val secret = getSharedSecret(context)
+        val mac = getConfiguredEsp32Mac(context)
+        val ip = getConfiguredEsp32Ip(context)
+        return secret.isNotBlank() && (mac.isNotBlank() || ip.isNotBlank())
+    }
+
     fun isAdbAllowed(context: Context): Boolean {
         return getPrefs(context).getBoolean(KEY_PROVISIONING_ADB_ALLOWED, true)
     }

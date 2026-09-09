@@ -144,7 +144,7 @@ class LockScreenOverlay(
         }
     }
 
-    fun isAttached(): Boolean = isViewAdded
+    fun isAttached(): Boolean = isViewAdded && overlayView.view.isAttachedToWindow
 
     fun show(): Boolean {
         if (!android.provider.Settings.canDrawOverlays(context)) {

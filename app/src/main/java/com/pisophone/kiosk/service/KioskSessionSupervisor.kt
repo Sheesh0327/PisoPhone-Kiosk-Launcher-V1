@@ -25,6 +25,12 @@ class KioskSessionSupervisor(
 
     private var timerJob: Job? = null
 
+    fun ensureRunning() {
+        if (timerJob == null || timerJob?.isActive != true) {
+            start()
+        }
+    }
+
     fun start() {
         timerJob?.cancel()
         timerJob = scope.launch {
