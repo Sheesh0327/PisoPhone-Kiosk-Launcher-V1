@@ -215,7 +215,8 @@ class Esp32ConnectionManager(
                                         val minutes = if (json.has("minutes")) json.optInt("minutes", 30) else null
                                         val encryptedPin = json.optString("admin_pin", "")
                                         val decryptedPin = if (encryptedPin.isNotBlank()) {
-                                            KioskSecurity.decrypt(encryptedPin, delegate.getSecretKey()).trim().takeIf { it.isNotBlank() }
+                                            val dec = KioskSecurity.decrypt(encryptedPin, delegate.getSecretKey()).trim()
+                                            if (dec.startsWith("PIN:")) dec.substring(4).trim().takeIf { it.isNotBlank() } else null
                                         } else null
 
                                         delegate.onOnlineStatusChanged(true, mac)

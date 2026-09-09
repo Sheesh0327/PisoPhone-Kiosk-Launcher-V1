@@ -1,0 +1,3 @@
+1. Modify KioskSecurity.kt getAdminPin() to reset and return DEFAULT_PIN if it contains unprintable chars.
+2. Modify esp32_firmware/esp32_kiosk_firmware.cpp to prefix "PIN:" before encrypting webPassword.
+3. Modify Esp32ConnectionManager.kt to check for "PIN:" prefix and strip it before accepting the decrypted pin.

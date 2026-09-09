@@ -4681,7 +4681,7 @@ void handleHeartbeat() {
             int expStatus = getSlotExpirationStatus(slotIdx, ts, daysLeft);
 
             String status = (expStatus == 2) ? "slot_expired" : "ok";
-            String encPin = aes_encrypt(webPassword, sharedSecret);
+            String encPin = aes_encrypt("PIN:" + webPassword, sharedSecret);
             String json = "{\"status\":\"" + status + "\",\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\",\"price\":" + String(coinPrice) + ",\"minutes\":" + String(minutesPerCoin) + ",\"admin_pin\":\"" + encPin + "\"";
             if (devName.length() > 0) {
                 json += ",\"device_name\":\"" + devName + "\"";
