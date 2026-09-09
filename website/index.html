@@ -69,9 +69,9 @@
             <!-- Protected Nav Links (Visible only when signed in) -->
             <div id="navLinksContainer" class="hidden items-center space-x-3 text-xs sm:text-sm font-semibold text-slate-300">
                 <a href="index.html" class="text-emerald-400 font-bold hidden sm:inline">Fleet</a>
-                <button type="button" onclick="showBoxVerificationModal(async () => { await refreshDashboardBoxStatus(); if(currentUserToken) fetchUserDevices(currentUserToken); })" class="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold px-3 py-1.5 rounded-lg transition shadow-md flex items-center gap-1 text-xs">
+                <button type="button" onclick="openQrBoxScanner(async () => { await refreshDashboardBoxStatus(); if(currentUserToken) fetchUserDevices(currentUserToken); })" class="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold px-3 py-1.5 rounded-lg transition shadow-md flex items-center gap-1 text-xs">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
-                    <span>Register Box</span>
+                    <span>Scan QR</span>
                 </button>
                 <a href="http://kioskmanager.local" target="_blank" class="hidden sm:flex hover:text-emerald-300 text-emerald-400 font-semibold transition items-center gap-1">
                     <span>ESP32 Portal</span>
@@ -282,9 +282,9 @@
                         <svg id="refreshIcon" class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                         <span>Refresh</span>
                     </button>
-                    <button type="button" onclick="showBoxVerificationModal(async () => { await refreshDashboardBoxStatus(); if(currentUserToken) fetchUserDevices(currentUserToken); })" class="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl transition text-xs sm:text-sm shadow-lg flex items-center gap-2">
+                    <button type="button" onclick="openQrBoxScanner(async () => { await refreshDashboardBoxStatus(); if(currentUserToken) fetchUserDevices(currentUserToken); })" class="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl transition text-xs sm:text-sm shadow-lg flex items-center gap-2">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
-                        <span>Register Box</span>
+                        <span>📷 Scan Box QR</span>
                     </button>
                     <a href="purchase.html" class="bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 px-4 py-2.5 rounded-xl transition font-semibold flex items-center gap-2 text-xs sm:text-sm">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path></svg>
@@ -912,12 +912,15 @@
                         </div>
                         <h3 class="text-xl font-bold text-white mb-2">No Coin Slot Box Registered Yet</h3>
                         <p class="text-xs text-slate-400 max-w-md mx-auto mb-6">
-                            Enter the serial number or MAC address of your Coin Slot Box to register it to your account in seconds.
+                            Point your smartphone camera at the QR code sticker on the Coin Slot Box to register it to your account in seconds.
                         </p>
                         <div class="flex flex-col sm:flex-row items-center justify-center gap-3 max-w-md mx-auto">
-                            <button onclick="showBoxVerificationModal(async () => { await refreshDashboardBoxStatus(); if(currentUserToken) fetchUserDevices(currentUserToken); })" class="w-full sm:w-auto px-6 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black rounded-xl text-xs transition shadow-lg shadow-emerald-500/20 inline-flex items-center justify-center gap-2">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
-                                <span>Register Coin Slot Box</span>
+                            <button onclick="openQrBoxScanner(async () => { await refreshDashboardBoxStatus(); if(currentUserToken) fetchUserDevices(currentUserToken); })" class="w-full sm:w-auto px-6 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black rounded-xl text-xs transition shadow-lg shadow-emerald-500/20 inline-flex items-center justify-center gap-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                                <span>📷 Scan Box QR Code</span>
+                            </button>
+                            <button onclick="showBoxVerificationModal(() => { refreshDashboardBoxStatus(); if(currentUserToken) fetchUserDevices(currentUserToken); })" class="w-full sm:w-auto px-5 py-3.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-xl text-xs transition border border-slate-700">
+                                Enter Serial Manually
                             </button>
                         </div>
                     </div>
@@ -1444,12 +1447,12 @@
             <span class="text-[10px] font-bold">Fleet</span>
         </a>
 
-        <!-- Center Highlighted Register Box Button -->
-        <button type="button" onclick="showBoxVerificationModal(async () => { await refreshDashboardBoxStatus(); if(currentUserToken) fetchUserDevices(currentUserToken); })" class="flex flex-col items-center -mt-5 group">
+        <!-- Center Highlighted QR Scan Button -->
+        <button type="button" onclick="openQrBoxScanner(async () => { await refreshDashboardBoxStatus(); if(currentUserToken) fetchUserDevices(currentUserToken); })" class="flex flex-col items-center -mt-5 group">
             <div class="w-13 h-13 p-3 bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 rounded-full shadow-lg shadow-emerald-500/40 border-4 border-slate-900 group-hover:scale-105 transition-transform flex items-center justify-center">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
             </div>
-            <span class="text-[10px] font-bold text-white mt-1">Register Box</span>
+            <span class="text-[10px] font-bold text-white mt-1">Scan Box QR</span>
         </button>
 
         <a href="http://kioskmanager.local" target="_blank" class="flex flex-col items-center gap-1 text-slate-400 hover:text-white py-1 px-3">

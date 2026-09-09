@@ -25,40 +25,25 @@ class HardwareLockManagerUnitTest {
     }
 
     @Test
-    fun testFreshInstallIsUnsealedAndRequiresPairing() {
-        // App installs in unsealed state: hardware not authorized and app not allowed to run until paired
-        assertFalse(
-            "Fresh install must not be authorized before pairing",
+    fun testFreshInstallSavesDeviceIdAndIsAuthorized() {
+        // App installs like normal, auto-saves device ID, and allows app to run
+        assertTrue(
+            "Fresh install must save device ID and allow app to run",
             HardwareLockManager.isHardwareAuthorized(context)
         )
-        assertFalse(
-            "isAppAllowedToRun must return false on unsealed fresh install",
+        assertTrue(
+            "isAppAllowedToRun must return true on fresh install",
             HardwareLockManager.isAppAllowedToRun(context)
         )
         assertTrue(
-            "Bound hardware ID must be empty on unsealed fresh install",
-            HardwareLockManager.getBoundHardwareId(context).isEmpty()
-        )
-        assertTrue(
-            "Canonical device ID must be derived and non-empty",
-            HardwareLockManager.getCanonicalDeviceId(context).isNotBlank()
+            "Bound hardware ID must be automatically saved and non-empty",
+            HardwareLockManager.getBoundHardwareId(context).isNotBlank()
         )
     }
 
     @Test
     fun testProvisioningSealsDeviceAndAuthorizes() {
-        // Configure box parameters and shared secret
-        val configured = KioskSecurity.applyDirectProvisioning(
-            context = context,
-            secret = "test_shared_secret",
-            mac = "AA:BB:CC:DD:EE:FF",
-            ip = "192.168.1.100",
-            slot = 1,
-            name = "PisoPhone 1"
-        )
-        assertTrue("applyDirectProvisioning should succeed", configured)
-
-        // When installer / pairing coordinator seals the device
+        // When installer / WebADB triggers sealToCurrentDevice
         val sealed = HardwareLockManager.sealToCurrentDevice(context)
         assertTrue("sealToCurrentDevice should succeed", sealed)
 
@@ -67,7 +52,7 @@ class HardwareLockManagerUnitTest {
             HardwareLockManager.isHardwareAuthorized(context)
         )
         assertTrue(
-            "isAppAllowedToRun must be true after provisioning and sealing",
+            "isAppAllowedToRun must be true after provisioning",
             HardwareLockManager.isAppAllowedToRun(context)
         )
     }

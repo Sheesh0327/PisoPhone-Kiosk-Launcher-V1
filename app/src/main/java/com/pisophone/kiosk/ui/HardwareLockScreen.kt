@@ -46,7 +46,7 @@ fun HardwareLockScreen(
     var pinInput by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    val currentHwId = remember { HardwareLockManager.getCanonicalDeviceId(context) }
+    val currentHwId = remember { HardwareLockManager.getHardwareFingerprint(context) }
     val currentDevName = remember { HardwareLockManager.getHardwareDescription() }
     val boundHwId = remember { HardwareLockManager.getBoundHardwareId(context) }
     val boundDevName = remember { HardwareLockManager.getBoundDeviceName(context) }
