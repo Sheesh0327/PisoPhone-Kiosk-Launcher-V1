@@ -3118,6 +3118,24 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
         </div>
     </div>
 
+    <!-- QR Provisioning Modal -->
+    <div id="qr_provision_modal" class="modal-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 10000; align-items: center; justify-content: center; padding: 16px;">
+        <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; max-width: 480px; width: 100%; box-shadow: var(--shadow-lg); text-align: center;">
+            <h3 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 700;">Android Enterprise QR Enrollment</h3>
+            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+                On a factory-reset device (Android 12+), tap the welcome screen 6 times to open the QR scanner, then scan this code.
+            </p>
+            <div id="qr_prov_spinner" style="margin: 32px 0;">
+                <div class="loader" style="width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto;"></div>
+                <p style="margin-top: 12px; font-size: 12px; color: var(--text-muted);" id="qr_prov_status">Downloading APK to calculate checksum...</p>
+            </div>
+            <div id="qr_prov_container" style="display: none; background: white; padding: 16px; border-radius: 8px; margin: 0 auto 16px auto; width: 232px; height: 232px;">
+                <canvas id="qr_prov_canvas" width="200" height="200"></canvas>
+            </div>
+            <button type="button" class="btn btn-outline" style="width: 100%;" onclick="closeQRProvisionModal()">Close</button>
+        </div>
+    </div>
+    
     <!-- WebUSB 1-Click Provisioning Modal -->
     <div id="provision_modal" class="modal-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 10000; align-items: center; justify-content: center; padding: 16px;">
         <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; max-width: 480px; width: 100%; box-shadow: var(--shadow-lg);">
@@ -3144,6 +3162,9 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
             <div style="display: flex; justify-content: flex-end; gap: 8px;">
                 <button type="button" class="btn btn-outline" onclick="closeProvisionModal()">Close</button>
                 <button type="button" class="btn btn-primary" onclick="launchHttpsFlasher()">⚡ Proceed to HTTPS Flasher</button>
+            </div>
+            <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">
+                <button type="button" class="btn btn-outline" style="width: 100%; justify-content: center; border-color: var(--primary); color: var(--primary);" onclick="launchQRProvisioning()">📷 Factory-reset setup — Android 12+</button>
             </div>
         </div>
     </div>
@@ -3346,9 +3367,161 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
         document.getElementById('prov_slot_num').textContent = slot;
         document.getElementById('provision_modal').style.display = 'flex';
     };
+    // Fallback SHA-256 implementation if crypto.subtle is not available
+    const sha256 = function sha256(ascii) {
+        function rightRotate(value, amount) { return (value>>>amount) | (value<<(32 - amount)); }
+        var mathPow = Math.pow;
+        var maxWord = mathPow(2, 32);
+        var lengthProperty = 'length'
+        var i, j; // Used as a counter across the whole file
+        var result = ''
+        var words = [];
+        var asciiBitLength = ascii[lengthProperty]*8;
+        var hash = sha256.h = sha256.h || [];
+        var k = sha256.k = sha256.k || [];
+        var primeCounter = k[lengthProperty];
+        var isComposite = {};
+        for (var candidate = 2; primeCounter < 64; candidate++) {
+            if (!isComposite[candidate]) {
+                for (i = 0; i < 313; i += candidate) { isComposite[i] = candidate; }
+                hash[primeCounter] = (mathPow(candidate, .5)*maxWord)|0;
+                k[primeCounter++] = (mathPow(candidate, 1/3)*maxWord)|0;
+            }
+        }
+        ascii += '\x80'
+        while (ascii[lengthProperty]%64 - 56) ascii += '\x00'
+        for (i = 0; i < ascii[lengthProperty]; i++) {
+            j = ascii.charCodeAt(i);
+            if (j>>8) return;
+            words[i>>2] |= j << ((3 - i)%4)*8;
+        }
+        words[words[lengthProperty]] = ((asciiBitLength/maxWord)|0);
+        words[words[lengthProperty]] = (asciiBitLength)
+        for (j = 0; j < words[lengthProperty];) {
+            var w = words.slice(j, j += 16); // The message is expanded into 64 words as part of the iteration
+            var oldHash = hash;
+            hash = hash.slice(0, 8);
+            for (i = 0; i < 64; i++) {
+                var w15 = w[i - 15], w2 = w[i - 2];
+                var a = hash[0], e = hash[4];
+                var temp1 = hash[7]
+                    + (rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25))
+                    + ((e&hash[5])^((~e)&hash[6]))
+                    + k[i]
+                    + (w[i] = (i < 16) ? w[i] : (
+                            w[i - 16]
+                            + (rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ (w15>>>3))
+                            + w[i - 7]
+                            + (rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ (w2>>>10))
+                        )|0
+                    );
+                var temp2 = (rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22))
+                    + ((a&hash[1])^(a&hash[2])^(hash[1]&hash[2]));
+                
+                hash = [(temp1 + temp2)|0].concat(hash);
+                hash[4] = (hash[4] + temp1)|0;
+            }
+            for (i = 0; i < 8; i++) { hash[i] = (hash[i] + oldHash[i])|0; }
+        }
+        var out = [];
+        for (i = 0; i < 8; i++) {
+            for (j = 3; j + 1; j--) {
+                var b = (hash[i]>>(j*8))&255;
+                out.push(b);
+            }
+        }
+        return new Uint8Array(out);
+    };
+
     window.closeProvisionModal = function() {
         document.getElementById('provision_modal').style.display = 'none';
     };
+    window.closeQRProvisionModal = function() {
+        document.getElementById('qr_provision_modal').style.display = 'none';
+    };
+
+    window.launchQRProvisioning = async function() {
+        closeProvisionModal();
+        document.getElementById('qr_provision_modal').style.display = 'flex';
+        document.getElementById('qr_prov_spinner').style.display = 'block';
+        document.getElementById('qr_prov_container').style.display = 'none';
+        
+        try {
+            document.getElementById('qr_prov_status').textContent = 'Fetching APK size...';
+            const apkUrl = 'https://pisophone.pages.dev/app-release.apk';
+            const res = await fetch(apkUrl);
+            if (!res.ok) throw new Error('Failed to fetch APK');
+            
+            document.getElementById('qr_prov_status').textContent = 'Downloading APK...';
+            const buffer = await res.arrayBuffer();
+            
+            document.getElementById('qr_prov_status').textContent = 'Calculating SHA-256...';
+            
+            let hashArray;
+            if (window.crypto && window.crypto.subtle) {
+                const hashBuffer = await window.crypto.subtle.digest('SHA-256', buffer);
+                hashArray = Array.from(new Uint8Array(hashBuffer));
+            } else {
+                // Convert ArrayBuffer to binary string
+                let binary = '';
+                const bytes = new Uint8Array(buffer);
+                const len = bytes.byteLength;
+                for (let i = 0; i < len; i++) {
+                    binary += String.fromCharCode(bytes[i]);
+                }
+                const fallbackHashBuffer = sha256(binary);
+                hashArray = Array.from(fallbackHashBuffer);
+            }
+            
+            const base64Str = btoa(String.fromCharCode.apply(null, hashArray));
+            const urlSafeHash = base64Str.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+            
+            const wifiSsid = ESP32_WIFI_SSID || "";
+            const wifiPass = ESP32_WIFI_PASS || "";
+            const wifiType = wifiPass ? "WPA" : "NONE";
+            
+            const slot = activeSlotNum || 1;
+            
+            const adminExtras = {
+                setup_schema_version: 1,
+                setup_secret: ESP32_SHARED_SECRET,
+                setup_mac: ESP32_MAC,
+                setup_ip: ESP32_HOST,
+                setup_slot: slot,
+                setup_name: "PisoPhone Kiosk " + slot
+            };
+            
+            const provJson = {
+                "android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME": "com.pisophone.kiosk/com.pisophone.kiosk.receiver.KioskDeviceAdminReceiver",
+                "android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION": apkUrl,
+                "android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_CHECKSUM": urlSafeHash,
+                "android.app.extra.PROVISIONING_WIFI_SSID": wifiSsid,
+                "android.app.extra.PROVISIONING_WIFI_SECURITY_TYPE": wifiType,
+                "android.app.extra.PROVISIONING_WIFI_PASSWORD": wifiPass,
+                "android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE": adminExtras
+            };
+            
+            const jsonString = JSON.stringify(provJson);
+            
+            document.getElementById('qr_prov_spinner').style.display = 'none';
+            document.getElementById('qr_prov_container').style.display = 'block';
+            
+            if (typeof QRious !== 'undefined') {
+                new QRious({
+                    element: document.getElementById('qr_prov_canvas'),
+                    value: jsonString,
+                    size: 200,
+                    level: 'M'
+                });
+            } else {
+                alert("QRious library failed to load.");
+            }
+        } catch (err) {
+            document.getElementById('qr_prov_status').textContent = 'Error: ' + err.message;
+            console.error(err);
+        }
+    };
+
     window.launchHttpsFlasher = function() {
         window.open('https://pisophone.pages.dev/installer/?mac=' + ESP32_MAC + '&ip=' + ESP32_HOST + '&slot=' + activeSlotNum, '_blank');
         closeProvisionModal();

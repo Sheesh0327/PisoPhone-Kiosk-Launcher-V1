@@ -142,6 +142,10 @@ object HardwareLockManager {
      * Installing the APK installs like normal and runs automatically.
      */
     fun isAppAllowedToRun(context: Context): Boolean {
+        if (com.pisophone.kiosk.provisioning.ProvisioningCoordinator.isPairingPending(context)) {
+            Log.w(TAG, "App is not allowed to run fully yet: Android provisioning pairing is still pending.")
+            return false
+        }
         return isHardwareAuthorized(context)
     }
 

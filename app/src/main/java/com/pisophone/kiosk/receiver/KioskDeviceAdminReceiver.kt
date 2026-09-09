@@ -9,6 +9,20 @@ import android.widget.Toast
 
 class KioskDeviceAdminReceiver : DeviceAdminReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == "android.app.action.PROFILE_PROVISIONING_COMPLETE") {
+            Log.i("KioskDeviceAdmin", "Profile provisioning complete received.")
+            
+            val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+            val componentName = android.content.ComponentName(context, KioskDeviceAdminReceiver::class.java)
+            
+            val launchIntent = Intent(context, com.pisophone.kiosk.MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                putExtra("action", "provisioning_complete")
+            }
+            context.startActivity(launchIntent)
+            return
+        }
+        
         if (intent.action == "com.pisophone.kiosk.ACTION_INSTALL_COMPLETE") {
             val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
             val msg = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)

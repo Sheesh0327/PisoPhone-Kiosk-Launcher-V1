@@ -62,9 +62,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private var isPairingPending by androidx.compose.runtime.mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         CrashReporter.init(this)
+        
+        isPairingPending = com.pisophone.kiosk.provisioning.ProvisioningCoordinator.isPairingPending(this)
 
         handleSetupIntent(intent)
         applyKioskWindowFlags()
@@ -77,19 +81,39 @@ class MainActivity : ComponentActivity() {
         setContent {
             PisoPhoneLauncherTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    LaunchedEffect(Unit) {
-                        checkDeviceOwner()
-                        checkOverlayPermission()
-                        applyKioskWindowFlags()
-                        hideSystemBars()
-                        dismissKeyguard()
-                    }
-                    LauncherScreen(
-                        apps = appsList,
-                        onAppClick = { appInfo ->
-                            AppLauncher.launchApp(this@MainActivity, appInfo.packageName)
+                    if (isPairingPending) {
+                        com.pisophone.kiosk.provisioning.ProvisioningPairingScreen(
+                            onRetry = {
+                                com.pisophone.kiosk.provisioning.ProvisioningCoordinator.initiatePairingAsync(this@MainActivity) { success ->
+                                    if (success) {
+                                        isPairingPending = false
+                                        HardwareLockManager.sealToCurrentDevice(this@MainActivity)
+                                        val serviceIntent = Intent(this@MainActivity, KioskService::class.java)
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                            startForegroundService(serviceIntent)
+                                        } else {
+                                            startService(serviceIntent)
+                                        }
+                                        tryEnableLockTaskMode()
+                                    }
+                                }
+                            }
+                        )
+                    } else {
+                        LaunchedEffect(Unit) {
+                            checkDeviceOwner()
+                            checkOverlayPermission()
+                            applyKioskWindowFlags()
+                            hideSystemBars()
+                            dismissKeyguard()
                         }
-                    )
+                        LauncherScreen(
+                            apps = appsList,
+                            onAppClick = { appInfo ->
+                                AppLauncher.launchApp(this@MainActivity, appInfo.packageName)
+                            }
+                        )
+                    }
                 }
             }
         }
