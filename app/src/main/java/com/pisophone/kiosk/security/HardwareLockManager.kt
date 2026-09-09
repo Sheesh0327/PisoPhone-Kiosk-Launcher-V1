@@ -146,6 +146,16 @@ object HardwareLockManager {
             Log.w(TAG, "App is not allowed to run fully yet: Android provisioning pairing is still pending.")
             return false
         }
+        val userSetup = try {
+            android.provider.Settings.Secure.getInt(context.contentResolver, "user_setup_complete", 1)
+        } catch (e: Exception) { 1 }
+        val deviceProvisioned = try {
+            android.provider.Settings.Global.getInt(context.contentResolver, android.provider.Settings.Global.DEVICE_PROVISIONED, 1)
+        } catch (e: Exception) { 1 }
+        if (userSetup == 0 || deviceProvisioned == 0) {
+            Log.w(TAG, "App is not allowed to run fully yet: Android System Setup Wizard is still in progress.")
+            return false
+        }
         return isHardwareAuthorized(context)
     }
 

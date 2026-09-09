@@ -30,11 +30,16 @@ class AdminPolicyComplianceActivity : Activity() {
             return
         }
 
-        ProvisioningCoordinator.extractAndSaveAdminExtras(this, intent)
+        val success = ProvisioningCoordinator.extractAndSaveAdminExtras(this, intent)
         
-        // Return OK locally. The actual pairing check will happen via the service or boot.
-        Log.i("Provisioning", "Local compliance accepted.")
-        setResult(RESULT_OK)
+        if (success) {
+            // Return OK locally. The actual pairing check will happen via the service or boot.
+            Log.i("Provisioning", "Local compliance accepted.")
+            setResult(RESULT_OK)
+        } else {
+            Log.e("Provisioning", "Local compliance failed due to invalid extras.")
+            setResult(RESULT_CANCELED)
+        }
         finish()
     }
 }

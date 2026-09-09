@@ -273,6 +273,11 @@ bool pairDeviceToSlot(int slotNum, String devId, String ip, String name) {
     ip.trim();
     name.trim();
 
+    if (licenseSlots[targetIdx].deviceId.length() > 0 && licenseSlots[targetIdx].deviceId != devId) {
+        Serial.printf("[-] Slot %d is already occupied by %s\n", slotNum, licenseSlots[targetIdx].deviceId.c_str());
+        return false;
+    }
+
     for (int i = 0; i < maxLicensedSlots; i++) {
         if (i != targetIdx && licenseSlots[i].deviceId.length() > 0 && licenseSlots[i].deviceId == devId) {
             licenseSlots[i].deviceId = "";
@@ -3129,8 +3134,8 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                 <div class="loader" style="width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto;"></div>
                 <p style="margin-top: 12px; font-size: 12px; color: var(--text-muted);" id="qr_prov_status">Downloading APK to calculate checksum...</p>
             </div>
-            <div id="qr_prov_container" style="display: none; background: white; padding: 16px; border-radius: 8px; margin: 0 auto 16px auto; width: 232px; height: 232px;">
-                <canvas id="qr_prov_canvas" width="200" height="200"></canvas>
+            <div id="qr_prov_container" style="display: none; background: white; padding: 16px; border-radius: 8px; margin: 0 auto 16px auto; width: 332px; height: 332px;">
+                <canvas id="qr_prov_canvas" width="300" height="300"></canvas>
             </div>
             <button type="button" class="btn btn-outline" style="width: 100%;" onclick="closeQRProvisionModal()">Close</button>
         </div>
@@ -3170,8 +3175,10 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
     </div>
 
     <script>
-    const ESP32_MAC = "{MAC_ADDRESS}";
-    const ESP32_SECRET = "{SHARED_SECRET}";
+    const ESP32_MAC = "{MAC_ADDRESS_JS}";
+    const ESP32_SECRET = "{SHARED_SECRET_JS}";
+    const ESP32_WIFI_SSID = "{WIFI_SSID_JS}";
+    const ESP32_WIFI_PASS = "{WIFI_PASS_JS}";
     const ESP32_HOST = window.location.hostname;
     let activeSlotNum = 1;
     let localApkBytes = null;
@@ -3190,13 +3197,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
     };
 
     window.occupySlot = function(slot) {
-        const s = slot || activeSlotNum || 1;
-        const targetUrl = 'https://pisophone.pages.dev/installer/?mac=' + encodeURIComponent(ESP32_MAC) + 
-                          '&ip=' + encodeURIComponent(ESP32_HOST) + 
-                          '&slot=' + encodeURIComponent(s) + 
-                          '&secret=' + encodeURIComponent(ESP32_SECRET) +
-                          '&name=' + encodeURIComponent('PisoPhone ' + s);
-        window.location.href = targetUrl;
+        openProvisionModal(slot || activeSlotNum || 1);
     };
 
     window.showPairingQrModal = function(slotNum) {
@@ -3437,7 +3438,19 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
         document.getElementById('provision_modal').style.display = 'none';
     };
     window.closeQRProvisionModal = function() {
-        document.getElementById('qr_provision_modal').style.display = 'none';
+        const modal = document.getElementById('qr_provision_modal');
+        if (modal) modal.style.display = 'none';
+        const canvas = document.getElementById('qr_prov_canvas');
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+        const container = document.getElementById('qr_prov_container');
+        if (container) container.style.display = 'none';
+        const spinner = document.getElementById('qr_prov_spinner');
+        if (spinner) spinner.style.display = 'none';
+        const status = document.getElementById('qr_prov_status');
+        if (status) status.textContent = '';
     };
 
     window.launchQRProvisioning = async function() {
@@ -3484,7 +3497,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
             
             const adminExtras = {
                 setup_schema_version: 1,
-                setup_secret: ESP32_SHARED_SECRET,
+                setup_secret: ESP32_SECRET,
                 setup_mac: ESP32_MAC,
                 setup_ip: ESP32_HOST,
                 setup_slot: slot,
@@ -3510,7 +3523,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                 new QRious({
                     element: document.getElementById('qr_prov_canvas'),
                     value: jsonString,
-                    size: 200,
+                    size: 300,
                     level: 'M'
                 });
             } else {
@@ -3961,6 +3974,19 @@ void handleLogout() {
 )HTML");
 }
 
+static String escapeJsString(const String& str) {
+    String out = "";
+    for (size_t i = 0; i < str.length(); i++) {
+        char c = str[i];
+        if (c == '\\') out += "\\\\";
+        else if (c == '"') out += "\\\"";
+        else if (c == '\n') out += "\\n";
+        else if (c == '\r') out += "\\r";
+        else out += c;
+    }
+    return out;
+}
+
 static bool isPlaceholderTag(const char* start, const char* end) {
     int len = end - start + 1;
     if (len < 3 || len > 32) return false;
@@ -3978,6 +4004,10 @@ static String getPlaceholderValue(const String& tag) {
     if (tag == "{WIFI_SSID}") return wifiSsid;
     if (tag == "{WIFI_PASS}") return wifiPass;
     if (tag == "{MAC_ADDRESS}") return macAddressStr;
+    if (tag == "{WIFI_SSID_JS}") return escapeJsString(wifiSsid);
+    if (tag == "{WIFI_PASS_JS}") return escapeJsString(wifiPass);
+    if (tag == "{MAC_ADDRESS_JS}") return escapeJsString(macAddressStr);
+    if (tag == "{SHARED_SECRET_JS}") return escapeJsString(sharedSecret);
     if (tag == "{COIN_PIN}") return String(coinPin);
     if (tag == "{U_COIN_PIN}") return String(universalCoinPin);
     if (tag == "{LED_PIN}") return String(ledPin);
@@ -4538,9 +4568,16 @@ void handleApiSlots() {
 }
 
 void handleApiSlotPair() {
-    if (!checkAuth()) return;
-    int slot = webServer.hasArg("slot") ? webServer.arg("slot").toInt() : 0;
-    String id = webServer.hasArg("id") ? webServer.arg("id") : "";
+    if (!webServer.hasArg("device_id") || !webServer.hasArg("ts") || !webServer.hasArg("sig") || !webServer.hasArg("slot")) {
+        webServer.send(400, "application/json", "{\"success\":false,\"error\":\"Missing parameters\"}");
+        return;
+    }
+
+    String devId = webServer.arg("device_id");
+    String tsStr = webServer.arg("ts");
+    String sig = webServer.arg("sig");
+    int slot = webServer.arg("slot").toInt();
+    String id = webServer.hasArg("id") ? webServer.arg("id") : devId;
     String ip = webServer.hasArg("ip") ? webServer.arg("ip") : "";
     String name = webServer.hasArg("name") ? webServer.arg("name") : "";
 
@@ -4549,12 +4586,37 @@ void handleApiSlotPair() {
         return;
     }
 
+    // Cryptographic signature check binding device_id, ts, slot, and ip
+    if (sharedSecret.length() > 0) {
+        String challengeWithIp = devId + ":" + tsStr + ":" + String(slot) + ":" + ip;
+        String expectedSig = calculateHMAC(challengeWithIp, sharedSecret);
+        if (!sig.equalsIgnoreCase(expectedSig)) {
+            String challengeSimple = devId + ":" + tsStr + ":" + String(slot);
+            String expectedSigSimple = calculateHMAC(challengeSimple, sharedSecret);
+            if (!sig.equalsIgnoreCase(expectedSigSimple)) {
+                Serial.printf("[-] Slot Pair Auth Failed for %s: Signature Mismatch\n", devId.c_str());
+                webServer.send(403, "application/json", "{\"success\":false,\"error\":\"Invalid signature\"}");
+                return;
+            }
+        }
+    }
+
+    // Replay Protection
+    unsigned long long ts = strtoull(tsStr.c_str(), NULL, 10);
+    if (!checkReplayProtection(devId, ts)) {
+        Serial.printf("[-] Slot Pair Auth Failed for %s: Replay Detected\n", devId.c_str());
+        webServer.send(403, "application/json", "{\"success\":false,\"error\":\"Replay Detected\"}");
+        return;
+    }
+    recordDeviceNonce(devId, ts);
+
     bool res = pairDeviceToSlot(slot, id, ip, name);
     if (res) {
         sendCloudSnapshot();
-        webServer.send(200, "application/json", "{\"success\":true,\"slot\":" + String(slot) + "}");
+        String respSig = calculateHMAC("success:" + id + ":" + String(slot) + ":" + macAddressStr, sharedSecret);
+        webServer.send(200, "application/json", "{\"success\":true,\"slot\":" + String(slot) + ",\"mac\":\"" + macAddressStr + "\",\"sig\":\"" + respSig + "\"}");
     } else {
-        webServer.send(500, "application/json", "{\"success\":false,\"error\":\"Failed to pair\"}");
+        webServer.send(409, "application/json", "{\"success\":false,\"error\":\"Failed to pair: Slot occupied by another device\"}");
     }
 }
 

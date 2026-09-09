@@ -71,12 +71,14 @@ class MainActivity : ComponentActivity() {
         isPairingPending = com.pisophone.kiosk.provisioning.ProvisioningCoordinator.isPairingPending(this)
 
         handleSetupIntent(intent)
-        applyKioskWindowFlags()
-        hideSystemBars()
-        checkOverlayPermission()
+        if (isFullySetup()) {
+            applyKioskWindowFlags()
+            hideSystemBars()
+            checkOverlayPermission()
+            checkDeviceOwner()
+        }
         loadApps()
         KioskWatchdogReceiver.scheduleWatchdog(this)
-        checkDeviceOwner()
 
         setContent {
             PisoPhoneLauncherTheme {
@@ -94,18 +96,22 @@ class MainActivity : ComponentActivity() {
                                         } else {
                                             startService(serviceIntent)
                                         }
-                                        tryEnableLockTaskMode()
+                                        if (isFullySetup()) {
+                                            tryEnableLockTaskMode()
+                                        }
                                     }
                                 }
                             }
                         )
                     } else {
                         LaunchedEffect(Unit) {
-                            checkDeviceOwner()
-                            checkOverlayPermission()
-                            applyKioskWindowFlags()
-                            hideSystemBars()
-                            dismissKeyguard()
+                            if (isFullySetup()) {
+                                checkDeviceOwner()
+                                checkOverlayPermission()
+                                applyKioskWindowFlags()
+                                hideSystemBars()
+                                dismissKeyguard()
+                            }
                         }
                         LauncherScreen(
                             apps = appsList,
@@ -121,7 +127,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) {
+        if (hasFocus && isFullySetup()) {
             applyKioskWindowFlags()
             hideSystemBars()
             dismissKeyguard()
@@ -130,13 +136,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        applyKioskWindowFlags()
-        hideSystemBars()
-        dismissKeyguard()
-        checkOverlayPermission()
+        if (isFullySetup()) {
+            applyKioskWindowFlags()
+            hideSystemBars()
+            dismissKeyguard()
+            checkOverlayPermission()
+            checkDeviceOwner()
+        }
         loadApps()
         KioskWatchdogReceiver.scheduleWatchdog(this)
-        checkDeviceOwner()
     }
 
     override fun onNewIntent(intent: Intent) {

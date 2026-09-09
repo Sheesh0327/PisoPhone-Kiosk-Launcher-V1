@@ -44,12 +44,9 @@ class KioskStateManager(private val context: Context) {
             context
         }
         val prefs = deviceContext.getSharedPreferences("kiosk_prefs", Context.MODE_PRIVATE)
-        var savedUuid = prefs.getString("device_uuid", null)
-        if (savedUuid == null) {
-            savedUuid = UUID.randomUUID().toString()
-            prefs.edit().putString("device_uuid", savedUuid).apply()
-        }
-        deviceId.value = savedUuid
+        val hwId = com.pisophone.kiosk.security.HardwareLockManager.getHardwareFingerprint(deviceContext)
+        prefs.edit().putString("device_uuid", hwId).apply()
+        deviceId.value = hwId
     }
 
     fun saveState(txSet: Set<String> = emptySet()) {
