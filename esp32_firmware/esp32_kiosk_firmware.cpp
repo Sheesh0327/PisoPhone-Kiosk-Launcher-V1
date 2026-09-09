@@ -49,6 +49,7 @@ WiFiUDP udpServer;
 
 // Forward Declarations
 uint64_t getCurrentMasterTimeMs();
+bool unpairSlot(int slotNum);
 
 // Dynamic Hardware Pin Configuration (Persisted in NVS)
 int coinPin          = DEFAULT_COIN_PIN;           // Linear beam sensor pin (Default GPIO 4, Pull-Up)
@@ -289,23 +290,6 @@ bool pairDeviceToSlot(int slotNum, String devId, String ip, String name) {
 
     saveSlotLicenses();
     Serial.printf("[+] Paired device %s (%s) to Slot #%d (requires credit allocation to arm)\n", devId.c_str(), ip.c_str(), slotNum);
-    return true;
-}
-
-bool unpairSlot(int slotNum) {
-    if (slotNum < 1 || slotNum > maxLicensedSlots) return false;
-    int idx = slotNum - 1;
-    Serial.printf("[+] Unpairing Slot #%d (was %s). Seat remains open.\n", slotNum, licenseSlots[idx].deviceId.c_str());
-    licenseSlots[idx].deviceId = "";
-    licenseSlots[idx].ip = "";
-    
-    // Only clear expiresAt if the credit is already expired
-    uint64_t currentMs = getCurrentMasterTimeMs();
-    if (licenseSlots[idx].expiresAt > 0 && currentMs >= licenseSlots[idx].expiresAt) {
-        licenseSlots[idx].expiresAt = 0;
-    }
-    
-    saveSlotLicenses();
     return true;
 }
 
@@ -1131,6 +1115,44 @@ String readWsText(WiFiClient& client) {
     return payload;
 }
 
+bool unpairSlot(int slotNum) {
+    if (slotNum < 1 || slotNum > maxLicensedSlots) return false;
+    int idx = slotNum - 1;
+    String prevDevId = licenseSlots[idx].deviceId;
+    String prevIp = licenseSlots[idx].ip;
+    Serial.printf("[+] Unpairing Slot #%d (was %s / %s). Seat remains open.\n", slotNum, prevDevId.c_str(), prevIp.c_str());
+    
+    // If this slot's device is currently armed or connected, release the hardware mutex immediately
+    if (armedIp.length() > 0 && (armedIp == prevDevId || armedIp == prevIp)) {
+        armedIp = "";
+        armedUntil = 0;
+        sessionStartTime = 0;
+        if (isWsConnected && wsClient.connected()) {
+            sendWsText(wsClient, "{\"event\":\"UNPAIRED\"}");
+            wsClient.stop();
+            isWsConnected = false;
+        }
+        Serial.println("[*] Active armed session disarmed due to unpair.");
+    }
+    if (lastArmedDeviceId == prevDevId || lastArmedIp == prevIp) {
+        lastArmedDeviceId = "";
+        lastArmedIp = "";
+        lastArmedTimeMs = 0;
+    }
+
+    licenseSlots[idx].deviceId = "";
+    licenseSlots[idx].ip = "";
+    
+    // Only clear expiresAt if the credit is already expired
+    uint64_t currentMs = getCurrentMasterTimeMs();
+    if (licenseSlots[idx].expiresAt > 0 && currentMs >= licenseSlots[idx].expiresAt) {
+        licenseSlots[idx].expiresAt = 0;
+    }
+    
+    saveSlotLicenses();
+    return true;
+}
+
 String urlEncode(const String &str) {
     String encoded = "";
     char c;
@@ -1286,28 +1308,14 @@ void updateDynamicDeviceList(String deviceId, String ip) {
         startIdx = comma + 1;
     }
     
-    if (!found) {
-        // Automatically assign incoming terminal to the first open seat slot (uncredited until activated)
+    if (found) {
+        // Update slot IP if already paired
         for (int i = 0; i < maxLicensedSlots; i++) {
-            if (licenseSlots[i].deviceId.length() == 0) {
-                licenseSlots[i].deviceId = deviceId;
-                licenseSlots[i].ip = ip;
-                if (licenseSlots[i].name.length() == 0) {
-                    licenseSlots[i].name = "PisoPhone " + String(i + 1);
+            if (licenseSlots[i].deviceId == deviceId && licenseSlots[i].deviceId.length() > 0) {
+                if (licenseSlots[i].ip != ip) {
+                    licenseSlots[i].ip = ip;
+                    changed = true;
                 }
-                licenseSlots[i].expiresAt = 0;
-                licenseSlots[i].active = true;
-                found = true;
-                changed = true;
-                Serial.printf("[+] Auto-assigned incoming terminal %s (%s) to open Seat Slot #%d (Uncredited - Requires Activation)\n", deviceId.c_str(), ip.c_str(), i + 1);
-                break;
-            }
-        }
-    } else {
-        // Update slot IP
-        for (int i = 0; i < maxLicensedSlots; i++) {
-            if (licenseSlots[i].deviceId == deviceId) {
-                licenseSlots[i].ip = ip;
                 break;
             }
         }
@@ -2496,40 +2504,6 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
             if(document.getElementById(savedTab)) switchTab(savedTab);
             updateThemeButtonText();
         });
-        window.triggerAction = function(ip, action, btn) {
-            let origText = '';
-            if (btn) {
-                origText = btn.innerHTML;
-                btn.disabled = true;
-                btn.innerHTML = '⏳ Locating...';
-            }
-            fetch('/trigger_android?ip=' + encodeURIComponent(ip) + '&action=' + encodeURIComponent(action))
-                .then(res => { 
-                    if (res.ok) {
-                        if (btn) {
-                            btn.innerHTML = '🔔 Signal Sent!';
-                            setTimeout(() => { btn.disabled = false; btn.innerHTML = origText; }, 2500);
-                        } else {
-                            alert('📍 Locate signal (Sound, Vibrate & Flash) sent to ' + ip);
-                        }
-                    } else {
-                        if (btn) {
-                            btn.innerHTML = '❌ Unreachable';
-                            setTimeout(() => { btn.disabled = false; btn.innerHTML = origText; }, 2500);
-                        } else {
-                            alert('Failed to send trigger to ' + ip);
-                        }
-                    }
-                })
-                .catch(err => {
-                    if (btn) {
-                        btn.innerHTML = '❌ Error';
-                        setTimeout(() => { btn.disabled = false; btn.innerHTML = origText; }, 2500);
-                    } else {
-                        alert('Error: ' + err);
-                    }
-                });
-        }
         window.triggerCoin = function() {
             fetch('/insert_coin', { method: 'POST', credentials: 'include' })
                 .then(res => { if(res.ok) alert('✅ Simple beam coin drop (GPIO 4) simulated successfully!'); else alert('❌ Auth failed or error!'); })
@@ -3011,9 +2985,6 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                                         '</div>' +
                                     '</div>' +
                                     '<div class="device-row-actions">' +
-                                        '<button type="button" class="btn btn-outline btn-sm" onclick="triggerAction(\'' + dev.ip + '\', \'locate\', this)">' +
-                                            '📍 Locate' +
-                                        '</button>' +
                                         '<button type="button" class="btn btn-outline btn-sm" style="border-color: var(--danger); color: var(--danger);" onclick="unpairSlot(' + dev.slotNum + ')">' +
                                             '🔓 Unpair' +
                                         '</button>' +
@@ -3322,8 +3293,19 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
     };
 
     window.unpairSlot = function(slot) {
-        if (!confirm('Unpair Slot #' + slot + '? This will redirect you to the deprovisioning utility to uninstall the APK and restore the device.')) return;
-        window.location.href = 'https://pisophone.pages.dev/deprovision.html?mac=' + encodeURIComponent(ESP32_MAC) + '&ip=' + encodeURIComponent(ESP32_HOST) + '&slot=' + slot;
+        if (!confirm('Unpair Slot #' + slot + '? This will free the seat slot on this ESP32. The coin slot will no longer accept coins for this device until paired again.')) return;
+        fetch('/api/slots/unpair?slot=' + slot, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('Failed to unpair slot: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(err => {
+                alert('Network error unpairing slot: ' + err.message);
+            });
     };
 
     window.allocateSlotCredit = function(slot, type) {
@@ -3496,31 +3478,35 @@ String getIpFromDeviceId(String id) {
 }
 
 String getPrimaryTerminalIp() {
-    // 1. If armedIp is valid
+    // 1. If armedIp is valid and belongs to an active bound slot
     if (armedIp.length() > 0) {
-        String ip = getIpFromDeviceId(armedIp);
-        if (ip.length() > 0 && ip != "127.0.0.1") return ip;
+        int slotIdx = findSlotIndexForDevice(armedIp, "");
+        if (slotIdx >= 0 && licenseSlots[slotIdx].deviceId.length() > 0) {
+            String ip = getIpFromDeviceId(armedIp);
+            if (ip.length() > 0 && ip != "127.0.0.1") return ip;
+        }
     }
-    // 2. Most recently seen tracked device from heartbeat
+    // 2. Most recently seen tracked device that is actively bound to a slot
     unsigned long bestSeen = 0;
     String bestIp = "";
-    for (int i = 0; i < trackedDeviceCount; i++) {
-        if (trackedDevices[i].lastKnownIp.length() > 0 && trackedDevices[i].lastKnownIp != "127.0.0.1") {
-            if (trackedDevices[i].lastSeenMs > bestSeen) {
-                bestSeen = trackedDevices[i].lastSeenMs;
-                bestIp = trackedDevices[i].lastKnownIp;
+    for (int i = 0; i < maxLicensedSlots; i++) {
+        if (licenseSlots[i].deviceId.length() > 0 && licenseSlots[i].ip.length() > 0 && licenseSlots[i].ip != "127.0.0.1") {
+            for (int t = 0; t < trackedDeviceCount; t++) {
+                if (trackedDevices[t].deviceId == licenseSlots[i].deviceId || trackedDevices[t].lastKnownIp == licenseSlots[i].ip) {
+                    if (trackedDevices[t].lastSeenMs > bestSeen) {
+                        bestSeen = trackedDevices[t].lastSeenMs;
+                        bestIp = licenseSlots[i].ip;
+                    }
+                }
             }
         }
     }
     if (bestIp.length() > 0 && (millis() - bestSeen < 120000)) return bestIp;
 
-    // 3. Primary configured IP in androidIps
-    if (androidIps.length() > 0) {
-        DeviceConfig cfg;
-        int comma = androidIps.indexOf(',');
-        String entry = (comma == -1) ? androidIps : androidIps.substring(0, comma);
-        if (parseDeviceEntry(entry, cfg) && cfg.ip.length() > 0) {
-            return cfg.ip;
+    // 3. First bound IP in licenseSlots
+    for (int i = 0; i < maxLicensedSlots; i++) {
+        if (licenseSlots[i].deviceId.length() > 0 && licenseSlots[i].ip.length() > 0 && licenseSlots[i].ip != "127.0.0.1") {
+            return licenseSlots[i].ip;
         }
     }
     return "";
@@ -3583,12 +3569,12 @@ void triggerCoinEvent() {
         Serial.printf("[⚡] Routing Simple Beam Coin (₱%.2f, +%d mins) to IP: %s\n", coinPrice, minutesPerCoin, targetIp.c_str());
         sendAuthenticated(targetIp, targetPort, "/add_time", "/challenge", "minutes=" + String(minutesPerCoin) + "&seconds=" + String(addedSeconds) + "&amount=" + String(coinPrice, 2) + "&tx_id=" + txId, 1000);
         armedUntil = millis() + ARM_TTL;
-    } else if (trackedDeviceCount > 0) {
-        // Fallback: Dispatch to all tracked devices if no specific primary IP is resolved
-        for (int i = 0; i < trackedDeviceCount; i++) {
-            if (trackedDevices[i].lastKnownIp.length() > 0 && trackedDevices[i].lastKnownIp != "127.0.0.1") {
-                Serial.printf("[⚡ FALLBACK] Dispatching coin to tracked device IP: %s\n", trackedDevices[i].lastKnownIp.c_str());
-                sendAuthenticated(trackedDevices[i].lastKnownIp, targetPort, "/add_time", "/challenge", "minutes=" + String(minutesPerCoin) + "&seconds=" + String(addedSeconds) + "&amount=" + String(coinPrice, 2) + "&tx_id=" + txId, 1000);
+    } else {
+        // Fallback: Dispatch only to bound slot devices if no specific primary IP is resolved
+        for (int i = 0; i < maxLicensedSlots; i++) {
+            if (licenseSlots[i].deviceId.length() > 0 && licenseSlots[i].ip.length() > 0 && licenseSlots[i].ip != "127.0.0.1") {
+                Serial.printf("[⚡ FALLBACK] Dispatching coin to paired slot device IP: %s\n", licenseSlots[i].ip.c_str());
+                sendAuthenticated(licenseSlots[i].ip, targetPort, "/add_time", "/challenge", "minutes=" + String(minutesPerCoin) + "&seconds=" + String(addedSeconds) + "&amount=" + String(coinPrice, 2) + "&tx_id=" + txId, 1000);
             }
         }
     }
@@ -3661,11 +3647,12 @@ void triggerUniversalCoinEvent(int pulses) {
         Serial.printf("[⚡] Routing universal coin to IP: %s\n", targetIp.c_str());
         sendAuthenticated(targetIp, targetPort, "/add_time", "/challenge", "minutes=" + String(addedMinutes) + "&seconds=" + String(addedSeconds) + "&amount=" + String(pulses) + "&tx_id=" + txId, 1000);
         armedUntil = millis() + ARM_TTL;
-    } else if (trackedDeviceCount > 0) {
-        for (int i = 0; i < trackedDeviceCount; i++) {
-            if (trackedDevices[i].lastKnownIp.length() > 0 && trackedDevices[i].lastKnownIp != "127.0.0.1") {
-                Serial.printf("[⚡ FALLBACK] Dispatching coin to tracked device IP: %s\n", trackedDevices[i].lastKnownIp.c_str());
-                sendAuthenticated(trackedDevices[i].lastKnownIp, targetPort, "/add_time", "/challenge", "minutes=" + String(addedMinutes) + "&seconds=" + String(addedSeconds) + "&amount=" + String(pulses) + "&tx_id=" + txId, 1000);
+    } else {
+        // Fallback: Dispatch only to bound slot devices if no specific primary IP is resolved
+        for (int i = 0; i < maxLicensedSlots; i++) {
+            if (licenseSlots[i].deviceId.length() > 0 && licenseSlots[i].ip.length() > 0 && licenseSlots[i].ip != "127.0.0.1") {
+                Serial.printf("[⚡ FALLBACK] Dispatching coin to paired slot device IP: %s\n", licenseSlots[i].ip.c_str());
+                sendAuthenticated(licenseSlots[i].ip, targetPort, "/add_time", "/challenge", "minutes=" + String(addedMinutes) + "&seconds=" + String(addedSeconds) + "&amount=" + String(pulses) + "&tx_id=" + txId, 1000);
             }
         }
     }
@@ -4753,19 +4740,6 @@ void handleGetConfig() {
     webServer.send(200, "application/json", json);
 }
 
-void handleTriggerAndroid() {
-    if (!checkAuth()) return;
-    String ip = webServer.arg("ip");
-    String action = webServer.arg("action");
-    if (ip.length() > 0 && action.length() > 0) {
-        Serial.printf("[⚡ TRIGGER] Sending %s to %s\n", action.c_str(), ip.c_str());
-        sendAuthenticated(ip, targetPort, "/trigger_action", "/challenge", "action=" + action, 800);
-        webServer.send(200, "text/plain", "Trigger sent");
-    } else {
-        webServer.send(400, "text/plain", "Missing IP or action");
-    }
-}
-
 void handleAnnounce() {
     handleHeartbeat();
 }
@@ -5046,11 +5020,18 @@ void processWebSocketServer() {
             // 1c. Verify Slot Expiration & Lockdown
             String clientIp = newClient.remoteIP().toString();
             int wsSlotIdx = findSlotIndexForDevice(reqDeviceId, clientIp);
+            if (wsSlotIdx < 0) {
+                Serial.printf("[-] WS Mutex Rejected for %s (%s): Device is not paired to any slot on this ESP32\n", 
+                    reqDeviceId.c_str(), clientIp.c_str());
+                newClient.print("HTTP/1.1 423 Locked\r\n\r\nSLOT_NOT_PAIRED");
+                newClient.stop();
+                return;
+            }
             int wsDaysLeft = -1;
             int wsExpStatus = getSlotExpirationStatus(wsSlotIdx, ts, wsDaysLeft);
             if (wsExpStatus == 2) {
                 Serial.printf("[-] WS Mutex Rejected for %s: Slot Expired / Lockdown Active (Slot #%d)\n", 
-                    reqDeviceId.c_str(), (wsSlotIdx >= 0) ? licenseSlots[wsSlotIdx].slotNum : 0);
+                    reqDeviceId.c_str(), licenseSlots[wsSlotIdx].slotNum);
                 newClient.print("HTTP/1.1 423 Locked\r\n\r\nSLOT_EXPIRED");
                 newClient.stop();
                 return;
@@ -5507,7 +5488,6 @@ void setup() {
     webServer.on("/get_config", HTTP_GET, handleGetConfig);
     webServer.on("/config", HTTP_GET, handleGetConfig);
     webServer.on("/announce", HTTP_GET, handleAnnounce);
-    webServer.on("/trigger_android", HTTP_GET, handleTriggerAndroid);
     webServer.on("/crash_report", HTTP_POST, handleCrashReport);
     webServer.on("/api/slots", HTTP_GET, handleApiSlots);
     webServer.on("/api/slots/pair", HTTP_POST, handleApiSlotPair);

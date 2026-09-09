@@ -148,16 +148,6 @@ class KioskHttpServer(
             markTxIdProcessed(txId)
         }
 
-        // Handle Locator / Identification triggers regardless of hardware lock status
-        if (uri == "/trigger_action") {
-            val actionType = decryptedParams["action"] ?: ""
-            if (actionType == "locate" || actionType == "sound" || actionType == "vibrate" || actionType == "flash") {
-                Log.i(TAG, "Processing locator action '$actionType' for device identification.")
-                delegate.onTriggerAction(actionType)
-                return newFixedLengthResponse(Response.Status.OK, "text/plain", "OK")
-            }
-        }
-
         // Protected action endpoints require active hardware license/authorization
         if (!HardwareLockManager.isHardwareAuthorized(context)) {
             Log.e(TAG, "Rejecting HTTP action: Hardware lock is active on unauthorized device.")

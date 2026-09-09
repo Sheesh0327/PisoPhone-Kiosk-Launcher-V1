@@ -379,47 +379,6 @@ class KioskAudioManager(
         }
     }
 
-    fun playLocateAlert() {
-        scope.launch(Dispatchers.IO) {
-            try {
-                val am = context.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager
-                val originalMusicVol = am?.getStreamVolume(android.media.AudioManager.STREAM_MUSIC) ?: 0
-                val maxMusicVol = am?.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC) ?: 15
-                val maxAlarmVol = am?.getStreamMaxVolume(android.media.AudioManager.STREAM_ALARM) ?: 7
-
-                // Maximize volume streams so the alarm cannot be ignored
-                am?.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, maxMusicVol, 0)
-                am?.setStreamVolume(android.media.AudioManager.STREAM_ALARM, maxAlarmVol, 0)
-
-                // Trigger TTS
-                speakWarning("Terminal Located! Terminal Located!")
-
-                // Generate a continuous, loud sweeping siren for 3 seconds
-                val sampleRate = 44100
-                val durationSec = 3.0
-                val numSamples = (sampleRate * durationSec).toInt()
-                val buffer = ShortArray(numSamples)
-                for (i in 0 until numSamples) {
-                    val t = i.toDouble() / sampleRate
-                    // Frequency sweeps back and forth between 1200Hz and 1600Hz 3 times per second
-                    val freq = 1400.0 + 200.0 * Math.sin(2.0 * Math.PI * 3.0 * t)
-                    val sample = (Math.sin(2.0 * Math.PI * freq * t) * 32767 * 0.9).toInt().coerceIn(-32768, 32767)
-                    buffer[i] = sample.toShort()
-                }
-                playPcmBuffer(buffer, sampleRate, 3000)
-
-                // Restore original music volume after 4 seconds
-                Handler(Looper.getMainLooper()).postDelayed({
-                    try {
-                        am?.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, originalMusicVol, 0)
-                    } catch (_: Exception) {}
-                }, 4000)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to execute locate alert: ${e.message}")
-            }
-        }
-    }
-
     fun shutdown() {
         stopWaitingMusic()
         try {

@@ -589,12 +589,6 @@ class KioskService : Service() {
                                 audioManager?.playHighBatteryAttentionTone()
                             }
                             "flash" -> HardwareFeedback.triggerFlashlight(this@KioskService, 2000L)
-                            "locate" -> {
-                                audioManager?.playLocateAlert()
-                                HardwareFeedback.triggerVibration(this@KioskService, longArrayOf(0, 1000, 200, 1000, 200, 1000, 200, 1000))
-                                HardwareFeedback.triggerFlashlight(this@KioskService, 3000L)
-                                Toast.makeText(this@KioskService, "📍 LOCATE SIGNAL: Terminal Identified!", Toast.LENGTH_LONG).show()
-                            }
                             "enable_adb" -> {
                                 KioskSecurity.emergencyEnableUsbDebugging(applicationContext)
                                 Toast.makeText(this@KioskService, "⚡ Remote: USB Debugging Re-Enabled!", Toast.LENGTH_LONG).show()
