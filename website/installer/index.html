@@ -106,14 +106,12 @@
 
     <script>
         // Parse incoming ESP32 context parameters
-        const queryParams = new URLSearchParams(window.location.search);
-        const fragmentParams = new URLSearchParams(window.location.hash.slice(1));
-        const getProvisionParam = name => fragmentParams.get(name) || queryParams.get(name);
-        const esp32Mac = getProvisionParam('mac') || 'FF:FF:FF:FF:FF:FF';
-        const esp32Ip = getProvisionParam('ip') || window.location.hostname || 'kioskmanager.local';
-        const esp32Secret = getProvisionParam('secret') || '';
-        const slotNum = parseInt(getProvisionParam('slot') || '1', 10);
-        const phoneName = getProvisionParam('name') || `PisoPhone Slot ${slotNum}`;
+        const urlParams = new URLSearchParams(window.location.search);
+        const esp32Mac = urlParams.get('mac') || 'FF:FF:FF:FF:FF:FF';
+        const esp32Ip = urlParams.get('ip') || window.location.hostname || 'kioskmanager.local';
+        const esp32Secret = urlParams.get('secret') || '';
+        const slotNum = parseInt(urlParams.get('slot') || '1', 10);
+        const phoneName = urlParams.get('name') || `PisoPhone Slot ${slotNum}`;
 
         // Update parameters UI
         document.getElementById('p_mac').textContent = esp32Mac;
