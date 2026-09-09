@@ -28,7 +28,7 @@ class FloatingBallOverlay(
     private val onDoneClick: () -> Unit
 ) {
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    private val overlayView = ComposeOverlayView(context)
+    private var overlayView: ComposeOverlayView? = null
     private var isViewAdded = false
     
     private val layoutParams = WindowManager.LayoutParams(
@@ -48,6 +48,7 @@ class FloatingBallOverlay(
     }
 
     fun updateFocusable(focusable: Boolean) {
+        val currentView = overlayView?.view ?: return
         val oldFlags = layoutParams.flags
         if (focusable) {
             layoutParams.flags = layoutParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
@@ -56,11 +57,16 @@ class FloatingBallOverlay(
         }
         if (oldFlags != layoutParams.flags && isViewAdded) {
             try {
-                windowManager.updateViewLayout(overlayView.view, layoutParams)
+                windowManager.updateViewLayout(currentView, layoutParams)
             } catch (e: Exception) {
                 android.util.Log.e("FloatingBallOverlay", "Failed to update focus layout: ${e.message}")
             }
         }
+    }
+
+    fun isAttached(): Boolean {
+        val view = overlayView?.view
+        return isViewAdded && view != null && view.isAttachedToWindow
     }
 
     fun show() {
@@ -73,15 +79,17 @@ class FloatingBallOverlay(
             android.util.Log.d("FloatingBallOverlay", "Device not activated or fully setup. Floating ball overlay deferred.")
             return
         }
-        if (isViewAdded) {
-            if (overlayView.view.isAttachedToWindow) {
-                return
-            } else {
-                remove()
-            }
+        val activeView = overlayView?.view
+        if (isViewAdded && activeView != null && activeView.isAttachedToWindow) {
+            return
         }
 
-        overlayView.setContent {
+        dispose()
+
+        val newOverlay = ComposeOverlayView(context)
+        overlayView = newOverlay
+
+        newOverlay.setContent {
             val appState by appStateFlow.collectAsState()
             val sessionTime by sessionTimeFlow.collectAsState()
             val paymentTimeout by paymentTimeoutFlow.collectAsState()
@@ -99,9 +107,9 @@ class FloatingBallOverlay(
             
             LaunchedEffect(isVisible) {
                 if (isVisible) {
-                    overlayView.view.visibility = View.VISIBLE
+                    newOverlay.view.visibility = View.VISIBLE
                 } else {
-                    overlayView.view.visibility = View.GONE
+                    newOverlay.view.visibility = View.GONE
                 }
             }
 
@@ -122,7 +130,7 @@ class FloatingBallOverlay(
                         layoutParams.screenBrightness = ratio
                         if (isViewAdded) {
                             try {
-                                windowManager.updateViewLayout(overlayView.view, layoutParams)
+                                windowManager.updateViewLayout(newOverlay.view, layoutParams)
                             } catch (e: Exception) {}
                         }
                     },
@@ -130,7 +138,7 @@ class FloatingBallOverlay(
                         layoutParams.x += dx.toInt()
                         layoutParams.y += dy.toInt()
                         try {
-                            windowManager.updateViewLayout(overlayView.view, layoutParams)
+                            windowManager.updateViewLayout(newOverlay.view, layoutParams)
                         } catch (e: Exception) {
                             android.util.Log.e("FloatingBallOverlay", "Failed to update layout: ${e.message}")
                         }
@@ -139,18 +147,18 @@ class FloatingBallOverlay(
             }
         }
         try {
-            windowManager.addView(overlayView.view, layoutParams)
+            windowManager.addView(newOverlay.view, layoutParams)
             isViewAdded = true
-            overlayView.view.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            newOverlay.view.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
                 override fun onViewAttachedToWindow(v: View) {}
                 override fun onViewDetachedFromWindow(v: View) {
-                    android.util.Log.w("FloatingBallOverlay", "Floating ball overlay detached from window automatically.")
-                    isViewAdded = false
+                    android.util.Log.w("FloatingBallOverlay", "Floating ball overlay view detached from window.")
+                    dispose()
                 }
             })
-            overlayView.view.viewTreeObserver.addOnWindowFocusChangeListener { hasFocus ->
+            newOverlay.view.viewTreeObserver.addOnWindowFocusChangeListener { hasFocus ->
                 if (hasFocus) {
-                    overlayView.view.systemUiVisibility = (
+                    newOverlay.view.systemUiVisibility = (
                         View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                         or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                         or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
@@ -161,45 +169,65 @@ class FloatingBallOverlay(
                 }
             }
 
-            overlayView.start()
+            newOverlay.start()
         } catch (e: Exception) {
+            isViewAdded = false
             android.util.Log.e("FloatingBallOverlay", "Failed to add floating view: ${e.message}")
+            dispose()
         }
     }
     
     fun remove() {
-        if (!isViewAdded) return
-        overlayView.stop()
-        overlayView.destroy()
-        try {
-            windowManager.removeView(overlayView.view)
-        } catch (e: Exception) {
-            android.util.Log.e("FloatingBallOverlay", "Failed to remove floating view: ${e.message}")
-        } finally {
-            isViewAdded = false
+        dispose()
+    }
+
+    @Synchronized
+    private fun dispose() {
+        val currentView = overlayView
+        overlayView = null
+        val wasAdded = isViewAdded
+        isViewAdded = false
+
+        if (currentView != null) {
+            try {
+                currentView.stop()
+                currentView.destroy()
+            } catch (e: Exception) {
+                android.util.Log.e("FloatingBallOverlay", "Error stopping floating view: ${e.message}")
+            }
+
+            if (wasAdded || currentView.view.isAttachedToWindow) {
+                try {
+                    windowManager.removeView(currentView.view)
+                } catch (e: Exception) {
+                    android.util.Log.e("FloatingBallOverlay", "Error removing floating view from WindowManager: ${e.message}")
+                }
+            }
         }
     }
 
     fun onScreenWake() {
+        val currentView = overlayView ?: return
         if (!isViewAdded) return
         try {
-            overlayView.onResume()
+            currentView.onResume()
             val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
             val appState = appStateFlow.value
             val isVisible = isFullySetup && (appState == 2 || appState == 3)
-            overlayView.view.visibility = if (isVisible) View.VISIBLE else View.GONE
-            windowManager.updateViewLayout(overlayView.view, layoutParams)
-            overlayView.view.requestLayout()
-            overlayView.view.invalidate()
+            currentView.view.visibility = if (isVisible) View.VISIBLE else View.GONE
+            windowManager.updateViewLayout(currentView.view, layoutParams)
+            currentView.view.requestLayout()
+            currentView.view.invalidate()
         } catch (e: Exception) {
             android.util.Log.e("FloatingBallOverlay", "onScreenWake error: ${e.message}")
         }
     }
 
     fun onScreenSleep() {
+        val currentView = overlayView ?: return
         if (!isViewAdded) return
         try {
-            overlayView.onPause()
+            currentView.onPause()
         } catch (e: Exception) {
             android.util.Log.e("FloatingBallOverlay", "onScreenSleep error: ${e.message}")
         }

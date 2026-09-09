@@ -414,6 +414,9 @@ class KioskService : Service() {
             esp32Manager.setEsp32Ip(stateManager.esp32Ip)
         }
 
+        if (!HardwareLockManager.isPairingCompleted(this) && !com.pisophone.kiosk.security.KioskSecurity.isProvisioned(this)) {
+            HardwareLockManager.startSetupWindow(this)
+        }
         setupOverlay()
         scope.launch {
             HardwareLockManager.securityUpdateVersion.collect {

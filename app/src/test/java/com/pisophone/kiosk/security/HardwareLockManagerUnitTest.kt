@@ -58,6 +58,22 @@ class HardwareLockManagerUnitTest {
     }
 
     @Test
+    fun testSetupModeWindowBehavior() {
+        // Before startSetupWindow, isSetupModeActive must be false (read-only check)
+        assertFalse(
+            "isSetupModeActive must be false before startSetupWindow is explicitly called",
+            HardwareLockManager.isSetupModeActive(context)
+        )
+
+        // Calling startSetupWindow initializes the setup mode window
+        HardwareLockManager.startSetupWindow(context)
+        assertTrue(
+            "isSetupModeActive must be true within the setup window duration",
+            HardwareLockManager.isSetupModeActive(context)
+        )
+    }
+
+    @Test
     fun testRebindWithAdminPin() {
         // Incorrect PIN fails
         val wrongPinSuccess = HardwareLockManager.rebindWithAdminPin(context, "9999")

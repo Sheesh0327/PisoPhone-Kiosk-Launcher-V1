@@ -158,14 +158,23 @@ object HardwareLockManager {
         notifySecurityChanged()
     }
 
+    fun startSetupWindow(context: Context) {
+        val prefs = getPrefs(context)
+        if (prefs.getLong(KEY_SETUP_WINDOW_START, 0L) == 0L) {
+            prefs.edit().putLong(KEY_SETUP_WINDOW_START, System.currentTimeMillis()).apply()
+            Log.i(TAG, "Explicit local setup window initialized.")
+        }
+    }
+
     fun isSetupModeActive(context: Context): Boolean {
         val prefs = getPrefs(context)
-        var startTs = prefs.getLong(KEY_SETUP_WINDOW_START, 0L)
-        if (startTs == 0L) {
-            startTs = System.currentTimeMillis()
-            prefs.edit().putLong(KEY_SETUP_WINDOW_START, startTs).apply()
+        val startTs = prefs.getLong(KEY_SETUP_WINDOW_START, 0L)
+        if (startTs <= 0L) return false
+        val elapsed = System.currentTimeMillis() - startTs
+        if (elapsed < 0L || elapsed >= SETUP_WINDOW_DURATION_MS) {
+            return false
         }
-        return (System.currentTimeMillis() - startTs) < SETUP_WINDOW_DURATION_MS
+        return true
     }
 
     fun isAppAllowedToRun(context: Context): Boolean {

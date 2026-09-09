@@ -93,7 +93,7 @@ class LockScreenOverlay(
     private val onActivateClick: (String) -> Unit = {}
 ) {
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    private val overlayView = ComposeOverlayView(context)
+    private var overlayView: ComposeOverlayView? = null
     private var isViewAdded = false
     
     private val layoutParams = WindowManager.LayoutParams(
@@ -114,6 +114,7 @@ class LockScreenOverlay(
     }
 
     private fun updateWindowFlagsAndDimensions(visible: Boolean) {
+        val currentView = overlayView?.view ?: return
         if (!isViewAdded) return
         val baseFlags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or 
                         WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
@@ -122,49 +123,51 @@ class LockScreenOverlay(
                         WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or 
                         WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
         
-        // CRITICAL PERFORMANCE FIX: Keep layoutParams.width and height ALWAYS MATCH_PARENT.
-        // Resizing to 0x0 forces SurfaceFlinger to deallocate/reallocate native graphic buffers
-        // when games are rendering, causing severe stutter and EGL_BAD_ALLOC / OOM crashes.
         layoutParams.width = WindowManager.LayoutParams.MATCH_PARENT
         layoutParams.height = WindowManager.LayoutParams.MATCH_PARENT
 
         if (visible) {
             layoutParams.flags = baseFlags
-            overlayView.view.alpha = 1f
+            currentView.alpha = 1f
         } else {
             layoutParams.flags = baseFlags or 
                                  WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or 
                                  WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-            overlayView.view.alpha = 0f
+            currentView.alpha = 0f
         }
         try {
-            windowManager.updateViewLayout(overlayView.view, layoutParams)
+            windowManager.updateViewLayout(currentView, layoutParams)
         } catch (e: Exception) {
             android.util.Log.e("LockScreenOverlay", "Failed to update layoutParams: ${e.message}")
         }
     }
 
-    fun isAttached(): Boolean = isViewAdded && overlayView.view.isAttachedToWindow
+    fun isAttached(): Boolean {
+        val view = overlayView?.view
+        return isViewAdded && view != null && view.isAttachedToWindow
+    }
 
     fun show(): Boolean {
         if (!android.provider.Settings.canDrawOverlays(context)) {
             android.util.Log.w("LockScreenOverlay", "Overlay permission not granted yet, deferring window attachment")
             return false
         }
-        if (isViewAdded) {
-            if (overlayView.view.isAttachedToWindow) {
-                return true
-            } else {
-                android.util.Log.w("LockScreenOverlay", "Overlay view is marked added but detached from window. Disposing and re-adding.")
-                remove()
-            }
+        val activeView = overlayView?.view
+        if (isViewAdded && activeView != null && activeView.isAttachedToWindow) {
+            return true
         }
+
+        dispose()
 
         val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
         if (!isFullySetup) {
             android.util.Log.d("LockScreenOverlay", "Device not activated or fully setup. Lock screen overlay deferred.")
             return false
         }
+
+        val newOverlay = ComposeOverlayView(context)
+        overlayView = newOverlay
+
         val initialVisible = isFullySetup && (appStateFlow.value == 0 || appStateFlow.value == 1)
         val baseFlags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or 
                         WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
@@ -177,15 +180,15 @@ class LockScreenOverlay(
         layoutParams.height = WindowManager.LayoutParams.MATCH_PARENT
         if (initialVisible) {
             layoutParams.flags = baseFlags
-            overlayView.view.alpha = 1f
+            newOverlay.view.alpha = 1f
         } else {
             layoutParams.flags = baseFlags or 
                                  WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or 
                                  WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-            overlayView.view.alpha = 0f
+            newOverlay.view.alpha = 0f
         }
 
-        overlayView.setContent {
+        newOverlay.setContent {
             val appState by appStateFlow.collectAsState()
             val paymentTimeout by paymentTimeoutFlow.collectAsState()
             val coinsInserted by coinsInsertedFlow.collectAsState()
@@ -196,7 +199,6 @@ class LockScreenOverlay(
             val minutesPerCoin by minutesPerCoinFlow.collectAsState()
             val deviceIp by deviceIpFlow.collectAsState()
             val batteryStatus by batteryStatusFlow.collectAsState()
-            val esp32MacAddress by esp32MacAddressFlow.collectAsState()
             val slotWarningDaysLeft by slotWarningDaysLeftFlow.collectAsState()
             val isSlotExpired by isSlotExpiredFlow.collectAsState()
             val slotExpiryReason by slotExpiryReasonFlow.collectAsState()
@@ -220,18 +222,13 @@ class LockScreenOverlay(
 
             LaunchedEffect(isVisible) {
                 if (isVisible) {
-                    // Instantly take over touches and inputs within 1 frame (16ms)
                     updateWindowFlagsAndDimensions(true)
                 } else {
-                    // Allow exit fade to complete before allowing touches to pass through to underlying games
                     delay(350)
                     updateWindowFlagsAndDimensions(false)
                 }
             }
 
-            // CRITICAL PERFORMANCE FIX: Keep BlockScreen permanently rendered and pre-warmed in memory.
-            // When unlockAlpha == 0f, the hardware pipeline skips drawing passes completely,
-            // consuming 0% GPU during games, but takes over instantly with zero jank when time expires.
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -283,16 +280,16 @@ class LockScreenOverlay(
             }
         }
         try {
-            windowManager.addView(overlayView.view, layoutParams)
+            windowManager.addView(newOverlay.view, layoutParams)
             isViewAdded = true
-            overlayView.view.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            newOverlay.view.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
                 override fun onViewAttachedToWindow(v: View) {}
                 override fun onViewDetachedFromWindow(v: View) {
                     android.util.Log.w("LockScreenOverlay", "Lock screen overlay detached from window automatically.")
-                    isViewAdded = false
+                    dispose()
                 }
             })
-            overlayView.view.systemUiVisibility = (
+            newOverlay.view.systemUiVisibility = (
                 View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                 or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                 or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
@@ -300,9 +297,9 @@ class LockScreenOverlay(
                 or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                 or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
             )
-            overlayView.view.viewTreeObserver.addOnWindowFocusChangeListener { hasFocus ->
+            newOverlay.view.viewTreeObserver.addOnWindowFocusChangeListener { hasFocus ->
                 if (hasFocus) {
-                    overlayView.view.systemUiVisibility = (
+                    newOverlay.view.systemUiVisibility = (
                         View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                         or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                         or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
@@ -313,45 +310,64 @@ class LockScreenOverlay(
                 }
             }
 
-            overlayView.start()
+            newOverlay.start()
         } catch (e: Exception) {
             isViewAdded = false
             android.util.Log.e("LockScreenOverlay", "Failed to add overlay view: ${e.message}")
+            dispose()
         }
         return isViewAdded
     }
     
     fun remove() {
-        if (!isViewAdded) return
-        overlayView.stop()
-        overlayView.destroy()
-        try {
-            windowManager.removeView(overlayView.view)
-        } catch (e: Exception) {
-            android.util.Log.e("LockScreenOverlay", "Failed to remove overlay view: ${e.message}")
-        } finally {
-            isViewAdded = false
+        dispose()
+    }
+
+    @Synchronized
+    private fun dispose() {
+        val currentView = overlayView
+        overlayView = null
+        val wasAdded = isViewAdded
+        isViewAdded = false
+
+        if (currentView != null) {
+            try {
+                currentView.stop()
+                currentView.destroy()
+            } catch (e: Exception) {
+                android.util.Log.e("LockScreenOverlay", "Error stopping overlay view: ${e.message}")
+            }
+
+            if (wasAdded || currentView.view.isAttachedToWindow) {
+                try {
+                    windowManager.removeView(currentView.view)
+                } catch (e: Exception) {
+                    android.util.Log.e("LockScreenOverlay", "Error removing overlay view from WindowManager: ${e.message}")
+                }
+            }
         }
     }
 
     fun onScreenWake() {
+        val currentView = overlayView ?: return
         if (!isViewAdded) return
         try {
-            overlayView.onResume()
+            currentView.onResume()
             val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
             val isVisible = isFullySetup && (appStateFlow.value == 0 || appStateFlow.value == 1)
             updateWindowFlagsAndDimensions(isVisible)
-            overlayView.view.requestLayout()
-            overlayView.view.invalidate()
+            currentView.view.requestLayout()
+            currentView.view.invalidate()
         } catch (e: Exception) {
             android.util.Log.e("LockScreenOverlay", "onScreenWake error: ${e.message}")
         }
     }
 
     fun onScreenSleep() {
+        val currentView = overlayView ?: return
         if (!isViewAdded) return
         try {
-            overlayView.onPause()
+            currentView.onPause()
         } catch (e: Exception) {
             android.util.Log.e("LockScreenOverlay", "onScreenSleep error: ${e.message}")
         }
