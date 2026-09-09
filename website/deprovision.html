@@ -135,78 +135,115 @@
         const currentUser = requireAuth();
         renderNavAuth(document.getElementById('navAuthContainer'));
 
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlMac = urlParams.get('mac');
+        const urlIp = urlParams.get('ip');
+        const urlSlot = urlParams.get('slot');
+
         const deprovisionBtn = document.getElementById('deprovisionBtn');
         const logContainer = document.getElementById('logContainer');
 
-        if (!navigator.usb) {
-            document.getElementById('browserWarning').classList.remove('hidden');
-            deprovisionBtn.disabled = true;
-            deprovisionBtn.classList.replace('bg-rose-600', 'bg-slate-600');
-            deprovisionBtn.classList.replace('hover:bg-rose-500', 'cursor-not-allowed');
-            deprovisionBtn.textContent = 'Browser Unsupported';
-        }
-
-        function logInfo(msg) {
-            logContainer.classList.remove('hidden');
-            const p = document.createElement('div');
-            p.textContent = `> ${msg}`;
-            logContainer.appendChild(p);
-            logContainer.scrollTop = logContainer.scrollHeight;
-        }
-
-        deprovisionBtn.addEventListener('click', async () => {
-            if (!confirm("Are you sure you want to deprovision and remove PisoPhone from this device?")) {
-                return;
+        if (!urlMac || !urlIp) {
+            const card = document.querySelector('.glass-card');
+            if (card) {
+                card.innerHTML = `
+        <div class="text-center space-y-2 mb-6">
+            <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20 text-2xl font-black">
+                🔒
+            </div>
+            <h1 class="text-xl font-extrabold tracking-tight text-white">
+                Access Restricted
+            </h1>
+        </div>
+        <div class="space-y-4 text-xs text-slate-300 leading-relaxed text-center">
+            <p>
+                This deprovisioning utility can only be accessed when redirected from your physical PisoPhone ESP32 Coin Slot Box local portal (e.g., <code class="bg-slate-950 px-1.5 py-0.5 rounded text-rose-300 text-xs">http://kioskmanager.local</code>).
+            </p>
+            <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-4 text-left text-xs text-slate-400 leading-relaxed">
+                <strong class="text-white block mb-1">Why am I seeing this?</strong>
+                To protect PisoPhone software integrity, installation and deprovisioning tools are strictly licensed to genuine customers who purchased the physical hardware box.
+            </div>
+            <p class="text-slate-500">
+                Connect your phone or laptop to your local PisoPhone network and open the ESP32 Local Portal to initiate deprovisioning.
+            </p>
+        </div>`;
+            }
+        } else {
+            if (!navigator.usb) {
+                document.getElementById('browserWarning').classList.remove('hidden');
+                deprovisionBtn.disabled = true;
+                deprovisionBtn.classList.replace('bg-rose-600', 'bg-slate-600');
+                deprovisionBtn.classList.replace('hover:bg-rose-500', 'cursor-not-allowed');
+                deprovisionBtn.textContent = 'Browser Unsupported';
             }
 
-            const pin = document.getElementById('adminPin').value.trim();
-            if (!pin) {
-                alert("Please enter the Admin PIN.");
-                return;
+            function logInfo(msg) {
+                logContainer.classList.remove('hidden');
+                const p = document.createElement('div');
+                p.textContent = `> ${msg}`;
+                logContainer.appendChild(p);
+                logContainer.scrollTop = logContainer.scrollHeight;
             }
 
-            deprovisionBtn.disabled = true;
-            deprovisionBtn.textContent = 'Deprovisioning...';
-            logContainer.innerHTML = '';
-            
-            try {
-                // 1. Connect ADB
-                await window.webADB.connect(logInfo);
-
-                // 2. Broadcast deprovision intent to stop services and clear device owner
-                logInfo("Sending deprovision intent to app...");
-                let deprovOut = await window.webADB.shell(`am broadcast -a com.pisophone.kiosk.DEPROVISION -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es pin "${pin}"`);
-                logInfo(deprovOut.trim());
-
-                // 3. Wait for admin policy release
-                logInfo("Waiting for admin policy release (3 seconds)...");
-                await new Promise(r => setTimeout(r, 3000));
-
-                // Optional fallback: attempt to remove active admin via shell in case the app was only a device admin and not owner
-                try {
-                    await window.webADB.shell("dpm remove-active-admin com.pisophone.kiosk/com.pisophone.kiosk.receiver.KioskDeviceAdminReceiver");
-                } catch (e) {}
-
-                // 4. Uninstall app package
-                logInfo("Uninstalling PisoPhone package (com.pisophone.kiosk)...");
-                let uninstallOut = await window.webADB.shell("pm uninstall com.pisophone.kiosk");
-                logInfo(uninstallOut.trim());
-
-                if (uninstallOut.includes("Failure")) {
-                    throw new Error(`Uninstall failed: ${uninstallOut.trim()}. The Admin PIN might be incorrect, or the device is still locked.`);
+            deprovisionBtn.addEventListener('click', async () => {
+                if (!confirm("Are you sure you want to deprovision and remove PisoPhone from this device?")) {
+                    return;
                 }
 
-                logInfo("✅ DEPROVISIONING COMPLETE! Device has been restored to standard Android.");
-                deprovisionBtn.textContent = 'Deprovisioned Successfully';
-                deprovisionBtn.classList.replace('bg-rose-600', 'bg-slate-700');
+                const pin = document.getElementById('adminPin').value.trim();
+                if (!pin) {
+                    alert("Please enter the Admin PIN.");
+                    return;
+                }
+
+                deprovisionBtn.disabled = true;
+                deprovisionBtn.textContent = 'Deprovisioning...';
+                logContainer.innerHTML = '';
                 
-                await window.webADB.disconnect();
-            } catch (err) {
-                logInfo(`❌ ERROR: ${err.message}`);
-                deprovisionBtn.disabled = false;
-                deprovisionBtn.textContent = 'Try Again';
-            }
-        });
+                try {
+                    // 1. Connect ADB
+                    await window.webADB.connect(logInfo);
+
+                    // 2. Broadcast deprovision intent to stop services and clear device owner
+                    logInfo("Sending deprovision intent to app...");
+                    let deprovOut = await window.webADB.shell(`am broadcast -a com.pisophone.kiosk.DEPROVISION -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es pin "${pin}"`);
+                    logInfo(deprovOut.trim());
+
+                    // 3. Wait for admin policy release
+                    logInfo("Waiting for admin policy release (3 seconds)...");
+                    await new Promise(r => setTimeout(r, 3000));
+
+                    // Optional fallback: attempt to remove active admin via shell in case the app was only a device admin and not owner
+                    try {
+                        await window.webADB.shell("dpm remove-active-admin com.pisophone.kiosk/com.pisophone.kiosk.receiver.KioskDeviceAdminReceiver");
+                    } catch (e) {}
+
+                    // 4. Uninstall app package
+                    logInfo("Uninstalling PisoPhone package (com.pisophone.kiosk)...");
+                    let uninstallOut = await window.webADB.shell("pm uninstall com.pisophone.kiosk");
+                    logInfo(uninstallOut.trim());
+
+                    if (uninstallOut.includes("Failure")) {
+                        throw new Error(`Uninstall failed: ${uninstallOut.trim()}. The Admin PIN might be incorrect, or the device is still locked.`);
+                    }
+
+                    logInfo("✅ DEPROVISIONING COMPLETE! Device has been restored to standard Android.");
+                    deprovisionBtn.textContent = 'Deprovisioned Successfully';
+                    deprovisionBtn.classList.replace('bg-rose-600', 'bg-slate-700');
+                    
+                    await window.webADB.disconnect();
+
+                    logInfo("\n🔄 Redirecting back to ESP32 Box Portal to finalize unpairing...");
+                    setTimeout(() => {
+                        window.location.href = `http://${urlIp}/?action=unpair&slot=${urlSlot || 1}`;
+                    }, 3000);
+                } catch (err) {
+                    logInfo(`❌ ERROR: ${err.message}`);
+                    deprovisionBtn.disabled = false;
+                    deprovisionBtn.textContent = 'Try Again';
+                }
+            });
+        }
     </script>
     <script src="js/device_checker.js"></script>
 </body>

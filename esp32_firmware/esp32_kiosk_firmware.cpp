@@ -295,7 +295,13 @@ bool unpairSlot(int slotNum) {
     Serial.printf("[+] Unpairing Slot #%d (was %s). Seat remains open.\n", slotNum, licenseSlots[idx].deviceId.c_str());
     licenseSlots[idx].deviceId = "";
     licenseSlots[idx].ip = "";
-    licenseSlots[idx].expiresAt = 0;
+    
+    // Only clear expiresAt if the credit is already expired
+    uint64_t currentMs = getCurrentMasterTimeMs();
+    if (licenseSlots[idx].expiresAt > 0 && currentMs >= licenseSlots[idx].expiresAt) {
+        licenseSlots[idx].expiresAt = 0;
+    }
+    
     saveSlotLicenses();
     return true;
 }
@@ -3308,17 +3314,8 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
     };
 
     window.unpairSlot = function(slot) {
-        if (!confirm('Unpair Slot #' + slot + '? The seat will remain valid and open for a replacement terminal.')) return;
-        fetch('/api/slots/unpair?slot=' + slot, { method: 'POST' })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    location.reload();
-                } else {
-                    alert('Error: ' + data.error);
-                }
-            })
-            .catch(err => alert('Network error: ' + err.message));
+        if (!confirm('Unpair Slot #' + slot + '? This will redirect you to the deprovisioning utility to uninstall the APK and restore the device.')) return;
+        window.location.href = 'https://pisophone.pages.dev/deprovision.html?mac=' + encodeURIComponent(ESP32_MAC) + '&ip=' + encodeURIComponent(ESP32_HOST) + '&slot=' + slot;
     };
 
     window.allocateSlotCredit = function(slot, type) {
@@ -3443,6 +3440,24 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
 
     document.addEventListener('DOMContentLoaded', function() {
         if (window.checkQuickAdjustExpired) window.checkQuickAdjustExpired();
+        
+        // Auto-handle deprovision/unpair callback
+        const urlParams = new URLSearchParams(window.location.search);
+        const action = urlParams.get('action');
+        const slot = urlParams.get('slot');
+        if (action === 'unpair' && slot) {
+            fetch('/api/slots/unpair?slot=' + slot, { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        window.history.replaceState({}, document.title, window.location.pathname);
+                        location.reload();
+                    } else {
+                        alert('Unpair auto-action failed: ' + data.error);
+                    }
+                })
+                .catch(err => alert('Unpair auto-action network error: ' + err.message));
+        }
     });
     </script>
 
