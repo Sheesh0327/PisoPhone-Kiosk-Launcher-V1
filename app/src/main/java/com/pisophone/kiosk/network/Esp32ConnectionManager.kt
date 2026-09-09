@@ -28,7 +28,7 @@ interface Esp32ConnectionDelegate {
     fun getRealTimeBatteryInfo(): Pair<Int, Boolean>
     fun onEsp32Discovered(ip: String)
     fun onOnlineStatusChanged(isOnline: Boolean, mac: String?)
-    fun onConfigSynced(price: Double?, minutes: Int?, alias: String?)
+    fun onConfigSynced(price: Double?, minutes: Int?, alias: String?, adminPin: String? = null)
     fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?)
     fun onSlotBusy()
     fun onArmSuccess()
@@ -213,9 +213,13 @@ class Esp32ConnectionManager(
                                         val alias = if (json.has("device_name")) json.optString("device_name", "").trim() else null
                                         val price = if (json.has("price")) json.optDouble("price", 5.0) else null
                                         val minutes = if (json.has("minutes")) json.optInt("minutes", 30) else null
+                                        val encryptedPin = json.optString("admin_pin", "")
+                                        val decryptedPin = if (encryptedPin.isNotBlank()) {
+                                            KioskSecurity.decrypt(encryptedPin, delegate.getSecretKey()).trim().takeIf { it.isNotBlank() }
+                                        } else null
 
                                         delegate.onOnlineStatusChanged(true, mac)
-                                        delegate.onConfigSynced(price, minutes, alias)
+                                        delegate.onConfigSynced(price, minutes, alias, decryptedPin)
                                     } catch (_: Exception) {}
                                 } else {
                                     delegate.onOnlineStatusChanged(true, null)

@@ -307,7 +307,7 @@ class KioskService : Service() {
                     if (!mac.isNullOrBlank()) stateManager.esp32MacAddress.value = mac
                 }
 
-                override fun onConfigSynced(price: Double?, minutes: Int?, alias: String?) {
+                override fun onConfigSynced(price: Double?, minutes: Int?, alias: String?, adminPin: String?) {
                     price?.let { stateManager.pricePerCoin.value = it }
                     minutes?.let { stateManager.minutesPerCoin.value = it }
                     alias?.takeIf { it.isNotBlank() }?.let {
@@ -315,6 +315,13 @@ class KioskService : Service() {
                         if (current != it) {
                             KioskSecurity.setDeviceAlias(this@KioskService, it)
                             Log.d(TAG, "[+] Synchronized device nickname from Master: $it")
+                        }
+                    }
+                    adminPin?.takeIf { it.isNotBlank() }?.let {
+                        val currentPin = KioskSecurity.getAdminPin(this@KioskService)
+                        if (currentPin != it) {
+                            KioskSecurity.setAdminPin(this@KioskService, it)
+                            Log.d(TAG, "[+] Synchronized Admin PIN from Master heartbeat: $it")
                         }
                     }
                     stateManager.saveState()
