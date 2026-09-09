@@ -212,28 +212,6 @@ object KioskSecurity {
             .putStringSet(KEY_HIDDEN_APPS, hiddenApps)
             .putBoolean(KEY_INITIALIZED_DEFAULT_HIDDEN, true)
             .apply()
-
-        try {
-            val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? android.app.admin.DevicePolicyManager
-            val admin = android.content.ComponentName(context, com.pisophone.kiosk.receiver.KioskDeviceAdminReceiver::class.java)
-            if (dpm != null && dpm.isDeviceOwnerApp(context.packageName)) {
-                val installed = context.packageManager.getInstalledApplications(0).map { it.packageName }
-                for (pkg in installed) {
-                    if (pkg == context.packageName || KioskPolicyManager.isSystemPackageWhitelisted(pkg)) continue
-                    val shouldHide = hiddenApps.contains(pkg)
-                    try {
-                        if (dpm.isApplicationHidden(admin, pkg) != shouldHide) {
-                            dpm.setApplicationHidden(admin, pkg, shouldHide)
-                            Log.i("KioskSecurity", "DevicePolicyManager setApplicationHidden($pkg, $shouldHide) applied.")
-                        }
-                    } catch (e: Exception) {
-                        Log.w("KioskSecurity", "Failed setApplicationHidden for $pkg: ${e.message}")
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.e("KioskSecurity", "Error syncing setApplicationHidden with DPM: ${e.message}")
-        }
     }
 
     fun isAppHidden(context: Context, packageName: String): Boolean {
