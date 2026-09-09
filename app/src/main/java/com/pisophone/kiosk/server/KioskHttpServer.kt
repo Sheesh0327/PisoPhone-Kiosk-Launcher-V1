@@ -126,10 +126,6 @@ class KioskHttpServer(
         }
 
         val secretKey = delegate.getSecretKey()
-        if (secretKey.isBlank()) {
-            Log.e(TAG, "Rejected request to protected endpoint because device is not yet paired (missing shared secret).")
-            return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Incomplete pairing error: Missing shared secret")
-        }
         val payload = params["payload"]
         if (payload.isNullOrBlank()) {
             Log.w(TAG, "Rejected unauthenticated request to protected endpoint: $uri")

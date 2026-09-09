@@ -43,14 +43,6 @@ object HardwareFeedback {
     fun triggerFlashlight(context: Context, durationMs: Long = 1500L) {
         Handler(Looper.getMainLooper()).post {
             try {
-                val hasCameraPermission = androidx.core.content.ContextCompat.checkSelfPermission(
-                    context, 
-                    android.Manifest.permission.CAMERA
-                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                if (!hasCameraPermission) {
-                    Log.w(TAG, "CAMERA permission is NOT granted! Camera and flashlight queries might fail on some device models.")
-                }
-
                 val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as? CameraManager ?: return@post
                 // Find a camera that actually supports FLASH
                 val cameraId = cameraManager.cameraIdList.firstOrNull { id ->

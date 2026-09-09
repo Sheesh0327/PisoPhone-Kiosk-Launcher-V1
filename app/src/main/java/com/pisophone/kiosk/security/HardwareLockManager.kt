@@ -235,10 +235,7 @@ object HardwareLockManager {
     }
 
     private fun generateSignature(context: Context, hwId: String, devName: String, timestamp: Long): String {
-        var secret = KioskSecurity.getSharedSecret(context)
-        if (secret.isBlank()) {
-            secret = "DEFAULT_HARDWARE_SEAL_SECRET_PISOPHONE"
-        }
+        val secret = KioskSecurity.getSharedSecret(context)
         val payload = "$hwId|$devName|$timestamp|$secret"
         return KioskSecurity.calculateHmac(payload, secret)
     }

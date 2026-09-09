@@ -318,9 +318,19 @@ object KioskSecurity {
         }
         
         if (secret == null) {
-            return ""
+            val randomBytes = ByteArray(32)
+            SecureRandom().nextBytes(randomBytes)
+            secret = randomBytes.joinToString("") { "%02x".format(it) }
+            
+            if (encryptedPrefs != null) {
+                try {
+                    encryptedPrefs.edit().putString(KEY_DEVICE_SECRET, secret).apply()
+                    return secret
+                } catch (e: Exception) { Log.e(TAG, "Encrypted prefs write failed: ${e.message}") }
+            }
+            setCustomKeystoreEncryptedSecret(prefs, secret!!)
         }
-        return secret
+        return secret!!
     }
 
     fun setSharedSecret(context: Context, newSecret: String) {
@@ -393,17 +403,13 @@ object KioskSecurity {
     fun encrypt(plainText: String, secret: String): String {
         try {
             val keySpec = getAesKeySpec(secret)
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            val nonce = ByteArray(12)
-            SecureRandom().nextBytes(nonce)
-            val spec = GCMParameterSpec(128, nonce)
-            cipher.init(Cipher.ENCRYPT_MODE, keySpec, spec)
+            val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+            val iv = ByteArray(16)
+            SecureRandom().nextBytes(iv)
+            val ivSpec = IvParameterSpec(iv)
+            cipher.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec)
             val encrypted = cipher.doFinal(plainText.toByteArray(Charsets.UTF_8))
-            
-            val fullPayload = ByteArray(nonce.size + encrypted.size)
-            System.arraycopy(nonce, 0, fullPayload, 0, nonce.size)
-            System.arraycopy(encrypted, 0, fullPayload, nonce.size, encrypted.size)
-            return bytesToHex(fullPayload)
+            return bytesToHex(iv) + bytesToHex(encrypted)
         } catch (e: Exception) {
             Log.e(TAG, "AES Encryption error: ${e.message}")
             return ""
@@ -411,46 +417,23 @@ object KioskSecurity {
     }
 
     fun decrypt(encryptedHex: String, secret: String): String {
-        val hex = encryptedHex.trim()
-        if (hex.isBlank()) return ""
-        
-        // 1. First, attempt AES-GCM decryption
         try {
-            if (hex.length >= 56) { // Minimum length for GCM (24 hex IV + 32 hex tag = 56)
-                val encryptedBytes = hexToBytes(hex)
-                val nonce = encryptedBytes.copyOfRange(0, 12)
-                val ciphertextAndTag = encryptedBytes.copyOfRange(12, encryptedBytes.size)
-                
-                val keySpec = getAesKeySpec(secret)
-                val spec = GCMParameterSpec(128, nonce)
-                val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-                cipher.init(Cipher.DECRYPT_MODE, keySpec, spec)
-                val decryptedBytes = cipher.doFinal(ciphertextAndTag)
-                return String(decryptedBytes, Charsets.UTF_8)
-            }
+            val hex = encryptedHex.trim()
+            if (hex.length < 32) return ""
+            val encryptedBytes = hexToBytes(hex)
+            if (encryptedBytes.size < 17) return ""
+            val iv = encryptedBytes.copyOfRange(0, 16)
+            val cipherText = encryptedBytes.copyOfRange(16, encryptedBytes.size)
+            val keySpec = getAesKeySpec(secret)
+            val ivSpec = IvParameterSpec(iv)
+            val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+            cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
+            val decryptedBytes = cipher.doFinal(cipherText)
+            return String(decryptedBytes, Charsets.UTF_8)
         } catch (e: Exception) {
-            Log.d(TAG, "AES-GCM Decryption failed (might be legacy CBC payload): ${e.message}")
+            Log.e(TAG, "AES Decryption error: ${e.message}")
+            return ""
         }
-
-        // 2. Fallback to legacy AES-CBC decryption for backward compatibility
-        try {
-            if (hex.length >= 32) {
-                val encryptedBytes = hexToBytes(hex)
-                val iv = encryptedBytes.copyOfRange(0, 16)
-                val cipherText = encryptedBytes.copyOfRange(16, encryptedBytes.size)
-                val keySpec = getAesKeySpec(secret)
-                val ivSpec = IvParameterSpec(iv)
-                val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
-                cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
-                val decryptedBytes = cipher.doFinal(cipherText)
-                Log.i(TAG, "Legacy AES-CBC Decryption succeeded (backward compatibility active)")
-                return String(decryptedBytes, Charsets.UTF_8)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "AES-CBC Decryption failed as well: ${e.message}")
-        }
-
-        return ""
     }
 
     fun constantTimeEquals(a: String, b: String): Boolean {
