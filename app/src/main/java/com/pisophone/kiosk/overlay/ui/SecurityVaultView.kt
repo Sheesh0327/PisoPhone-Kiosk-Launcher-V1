@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import com.pisophone.kiosk.model.AppInfo
 import com.pisophone.kiosk.security.KioskSecurity
+import com.pisophone.kiosk.security.KioskUpdateManager
 
 @Composable
 fun SecurityVaultView(
@@ -33,6 +34,7 @@ fun SecurityVaultView(
     var activeHelpDialog by remember { mutableStateOf<Pair<String, String>?>(null) }
     var showRecoveryHub by remember { mutableStateOf(false) }
     var hiddenSet by remember { mutableStateOf(KioskSecurity.getHiddenApps(context)) }
+    var vaultTitleTapCount by remember { mutableIntStateOf(0) }
 
     val allInstalledApps = remember(context) {
         val pm = context.packageManager
@@ -65,7 +67,23 @@ fun SecurityVaultView(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable(
+                        indication = null,
+                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                    ) {
+                        vaultTitleTapCount++
+                        if (vaultTitleTapCount >= 7) {
+                            vaultTitleTapCount = 0
+                            if (onOpenRecoveryHub != null) {
+                                onOpenRecoveryHub()
+                            } else {
+                                showRecoveryHub = true
+                            }
+                        }
+                    }
+                ) {
                     Icon(Icons.Filled.Lock, contentDescription = null, tint = Color(0xFF6366F1), modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Security Vault & Admin Console", fontWeight = FontWeight.ExtraBold, color = Color.White, fontSize = 16.sp)
@@ -98,6 +116,162 @@ fun SecurityVaultView(
                 context = context,
                 onShowHelp = { t, d -> activeHelpDialog = Pair(t, d) }
             )
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp), color = Color(0xFF334155))
+
+            // Section 2B: Direct App Update
+            val updateState by KioskUpdateManager.updateState.collectAsState()
+            var updateUrl by remember { mutableStateOf(KioskSecurity.getApkUpdateUrl(context)) }
+            val currentVersionName = remember {
+                try {
+                    val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+                    "${packageInfo.versionName} (${packageInfo.versionCode})"
+                } catch (e: Exception) {
+                    "Unknown"
+                }
+            }
+
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B).copy(alpha = 0.6f)),
+                border = BorderStroke(1.dp, Color(0xFF334155).copy(alpha = 0.6f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .background(Color(0xFF0EA5E9).copy(alpha = 0.2f), RoundedCornerShape(8.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Filled.CloudDownload,
+                                contentDescription = null,
+                                tint = Color(0xFF38BDF8),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Direct App Update", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("Current: v$currentVersionName", color = Color(0xFF94A3B8), fontSize = 10.sp)
+                        }
+                        HelpInfoButton(
+                            title = "Direct App Update",
+                            description = "Directly downloads and installs the latest application update APK from the specified web portal or hosting URL.",
+                            onShowHelp = { t, d -> activeHelpDialog = Pair(t, d) }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    OutlinedTextField(
+                        value = updateUrl,
+                        onValueChange = {
+                            updateUrl = it
+                            KioskSecurity.setApkUpdateUrl(context, it)
+                        },
+                        label = { Text("Update Hosting URL", fontSize = 10.sp) },
+                        textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 11.sp),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF6366F1),
+                            unfocusedBorderColor = Color(0xFF334155),
+                            focusedLabelColor = Color(0xFF818CF8),
+                            unfocusedLabelColor = Color(0xFF94A3B8)
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Status display
+                    when (val state = updateState) {
+                        is KioskUpdateManager.UpdateState.Idle -> {
+                            Button(
+                                onClick = {
+                                    KioskUpdateManager.startUpdate(context, updateUrl)
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth().height(36.dp)
+                            ) {
+                                Icon(Icons.Filled.SystemUpdateAlt, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Download & Install Update", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        is KioskUpdateManager.UpdateState.Downloading -> {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Downloading update...", color = Color(0xFF38BDF8), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Text("${(state.progress * 100).toInt()}%", color = Color.White, fontSize = 11.sp)
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                LinearProgressIndicator(
+                                    progress = { state.progress },
+                                    color = Color(0xFF38BDF8),
+                                    trackColor = Color(0xFF334155),
+                                    modifier = Modifier.fillMaxWidth().height(4.dp)
+                                )
+                            }
+                        }
+                        is KioskUpdateManager.UpdateState.Installing -> {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    color = Color(0xFFF59E0B),
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Installing APK update package...", color = Color(0xFFF59E0B), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        is KioskUpdateManager.UpdateState.Success -> {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Update initiated successfully!", color = Color(0xFF10B981), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        is KioskUpdateManager.UpdateState.Error -> {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Filled.Error, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Update failed: ${state.message}", color = Color(0xFFEF4444), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Button(
+                                    onClick = { KioskUpdateManager.resetState() },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155)),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth().height(32.dp)
+                                ) {
+                                    Text("Retry", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp), color = Color(0xFF334155))
 

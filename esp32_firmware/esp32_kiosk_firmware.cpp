@@ -457,6 +457,24 @@ float totalEarningsSession  = 0.0f;
 uint32_t lastSavedTotalCoins = 0;
 float lastSavedTotalEarnings = 0.0f;
 
+// Debounced Revenue NVS Persistence State (Hardware-Conservative Wear-Leveling Protection)
+bool revenueDirty = false;
+unsigned long lastCoinChangeTime = 0;
+const unsigned long REVENUE_SAVE_DELAY_MS = 5000; // 5 seconds idle debounce
+
+void processRevenuePersistence() {
+    if (revenueDirty && (millis() - lastCoinChangeTime >= REVENUE_SAVE_DELAY_MS)) {
+        prefs.begin("kiosk_cfg", false);
+        prefs.putULong("total_coins", totalCoinsLifetime);
+        prefs.putFloat("total_earnings", totalEarningsLifetime);
+        prefs.end();
+        lastSavedTotalCoins = totalCoinsLifetime;
+        lastSavedTotalEarnings = totalEarningsLifetime;
+        revenueDirty = false;
+        Serial.println("[💰 VAULT] Revenue counters flushed to NVS flash (debounced idle save).");
+    }
+}
+
 // Wireless Update Validation State
 bool otaUpdateSuccess = false;
 bool otaFirstChunkReceived = false;
@@ -2407,6 +2425,9 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                 text-align: center;
                 justify-content: center;
             }
+            input, select, textarea {
+                font-size: 16px !important;
+            }
         }
     </style>
     <script>
@@ -2525,10 +2546,6 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                     <span class="logo-piso">Piso</span><span class="logo-phone">Phone</span>
                 </h1>
                 <span class="badge-pill">Kiosk Admin</span>
-                <button type="button" class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #10B981; border: 1px solid rgba(16, 185, 129, 0.3); font-family: monospace; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-weight: 700; padding: 4px 10px; border-radius: 20px;" onclick="copyMacToClipboard('{MAC_ADDRESS}')" title="Click to copy MAC address">
-                    <span>📋 MAC: {MAC_ADDRESS}</span>
-                    <span style="font-size: 10px; background: rgba(16, 185, 129, 0.25); padding: 2px 6px; border-radius: 10px;">Copy</span>
-                </button>
                 <div id="wifi_quality_pill" class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #10B981; border: 1px solid rgba(16, 185, 129, 0.3); display: inline-flex; align-items: center; gap: 6px; font-weight: 700; padding: 4px 10px; border-radius: 20px;" title="ESP32 Real-Time Wi-Fi RSSI Signal Quality">
                     <span id="wifi_icon">📶</span>
                     <span id="wifi_signal_text">Wi-Fi: {WIFI_RSSI} dBm ({WIFI_QUALITY}%)</span>
@@ -2669,14 +2686,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                             <input type="number" name="port" value="{PORT}">
                             <div class="hint">Default is 8080.</div>
                         </div>
-                        <div class="form-group" style="background: var(--input-bg); padding: 12px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border); margin-top: 12px;">
-                            <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">ESP32 MAC Address (Box Hardware ID)</div>
-                            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 6px;">
-                                <code style="font-size: 14px; font-weight: 800; color: var(--primary); font-family: monospace;">{MAC_ADDRESS}</code>
-                                <button type="button" class="btn btn-sm" onclick="navigator.clipboard.writeText('{MAC_ADDRESS}'); alert('Copied MAC Address: {MAC_ADDRESS}');" style="padding: 4px 10px; font-size: 11px;">📋 Copy</button>
-                            </div>
-                            <div class="hint" style="margin-top: 4px;">Use this MAC address on your dashboard to register this coin slot box and license up to 12 phones.</div>
-                        </div>
+                        <!-- MAC card removed -->
                     </div>
 
                     <!-- Pricing & Rules -->
@@ -3084,10 +3094,6 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
             <div id="qr_fallback_text" style="display: none; font-family: monospace; font-size: 11px; word-break: break-all; color: var(--primary); margin-bottom: 12px;"></div>
 
             <div style="background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px; font-size: 12px; text-align: left; margin-bottom: 16px;">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                    <span style="color: var(--text-muted);">Master Box:</span>
-                    <span style="font-family: monospace; font-weight: 700; color: var(--primary);">{MAC_ADDRESS}</span>
-                </div>
                 <div style="display: flex; justify-content: space-between;">
                     <span style="color: var(--text-muted);">Cabinet IP:</span>
                     <span id="qr_modal_ip" style="font-family: monospace; font-weight: 600;">{IP_ADDRESS}</span>
@@ -3530,15 +3536,9 @@ void triggerCoinEvent() {
     totalEarningsLifetime += coinPrice;
     totalEarningsSession += coinPrice;
 
-    // Persist updated lifetime revenue counter to NVS in batches to prevent Flash wear-out
-    if ((totalCoinsLifetime - lastSavedTotalCoins >= 5) || (fabs(totalEarningsLifetime - lastSavedTotalEarnings) >= 20.0f)) {
-        prefs.begin("kiosk_cfg", false);
-        prefs.putULong("total_coins", totalCoinsLifetime);
-        prefs.putFloat("total_earnings", totalEarningsLifetime);
-        prefs.end();
-        lastSavedTotalCoins = totalCoinsLifetime;
-        lastSavedTotalEarnings = totalEarningsLifetime;
-    }
+    // Mark revenue dirty for debounced idle save to protect flash wear under high volume
+    revenueDirty = true;
+    lastCoinChangeTime = millis();
 
     triggerLedBlink();
     
@@ -3615,15 +3615,9 @@ void triggerUniversalCoinEvent(int pulses) {
     totalEarningsLifetime += (float)pulses;
     totalEarningsSession += (float)pulses;
 
-    // Persist updated lifetime revenue counter to NVS in batches
-    if ((totalCoinsLifetime - lastSavedTotalCoins >= 5) || (fabs(totalEarningsLifetime - lastSavedTotalEarnings) >= 20.0f)) {
-        prefs.begin("kiosk_cfg", false);
-        prefs.putULong("total_coins", totalCoinsLifetime);
-        prefs.putFloat("total_earnings", totalEarningsLifetime);
-        prefs.end();
-        lastSavedTotalCoins = totalCoinsLifetime;
-        lastSavedTotalEarnings = totalEarningsLifetime;
-    }
+    // Mark revenue dirty for debounced idle save to protect flash wear under high volume
+    revenueDirty = true;
+    lastCoinChangeTime = millis();
 
     triggerLedBlink(pulses > 1 ? 4 : 2);
 
@@ -3958,13 +3952,14 @@ void handlePortalRoot() {
 void handleReboot() {
     if (!checkAuth()) return;
     Serial.println("\n[🔄 HTTP API] Reboot request received from Web Portal.");
-    if (totalCoinsLifetime != lastSavedTotalCoins || totalEarningsLifetime != lastSavedTotalEarnings) {
+    if (revenueDirty || totalCoinsLifetime != lastSavedTotalCoins || totalEarningsLifetime != lastSavedTotalEarnings) {
         prefs.begin("kiosk_cfg", false);
         prefs.putULong("total_coins", totalCoinsLifetime);
         prefs.putFloat("total_earnings", totalEarningsLifetime);
         prefs.end();
         lastSavedTotalCoins = totalCoinsLifetime;
         lastSavedTotalEarnings = totalEarningsLifetime;
+        revenueDirty = false;
     }
     webServer.send(200, "text/plain", "REBOOTING");
     delay(500);
@@ -4820,13 +4815,7 @@ void handleOtaForm() {
             <h2>📲 Firmware OTA Update</h2>
             <button type="button" class="theme-btn" id="theme_toggle_btn" onclick="toggleTheme()">🌙 Dark</button>
         </div>
-        <div style="margin-bottom: 16px; padding: 10px 14px; background: var(--input-bg); border: 1px solid var(--border); border-radius: 10px; display: flex; justify-content: space-between; align-items: center;">
-            <div style="text-align: left;">
-                <div style="font-size: 10px; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">ESP32 Hardware MAC</div>
-                <code style="font-size: 14px; font-weight: 800; color: var(--primary); font-family: monospace;">{MAC_ADDRESS}</code>
-            </div>
-            <button type="button" class="theme-btn" onclick="navigator.clipboard.writeText('{MAC_ADDRESS}'); alert('Copied MAC Address: {MAC_ADDRESS}');" style="padding: 4px 10px;">📋 Copy</button>
-        </div>
+        <!-- MAC display removed -->
         <p style="font-size:13px; color:var(--text-muted); margin-bottom: 20px; line-height: 1.5;">
             Select a compiled <b>.bin</b> firmware file (from PlatformIO <code>firmware.bin</code> or Arduino IDE) to update your controller wirelessly.
         </p>
@@ -5618,6 +5607,9 @@ void setup() {
 // MAIN EVENT LOOP (100% Non-Blocking)
 // ============================================================================
 void loop() {
+    // 0. Process Debounced Hardware-Conservative NVS Revenue Persistence
+    processRevenuePersistence();
+
     // 0. Process Hardware Fallback Reset Pin (GPIO 2 -> GND for 5 seconds)
     processHardwareResetPin();
 

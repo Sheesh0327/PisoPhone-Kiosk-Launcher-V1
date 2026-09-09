@@ -75,7 +75,7 @@ fun VaultBypassSection(
             Spacer(modifier = Modifier.width(4.dp))
             HelpInfoButton(
                 title = "Admin System Bypass & Quick Tools",
-                description = "Temporarily bypasses the kiosk lock screen overlay so administrators can configure Wi-Fi credentials, pair Bluetooth, or change Android system settings. Grants 15 minutes of unlocked maintenance time.",
+                description = "Temporarily bypasses the kiosk lock screen overlay. Grants 5 minutes of unlocked maintenance time.",
                 onShowHelp = onShowHelp
             )
         }
@@ -88,54 +88,17 @@ fun VaultBypassSection(
     ) {
         Button(
             onClick = {
-                AppLauncher.launchWifiSettings(context)
-                onClose()
-            },
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7), contentColor = Color.White),
-            shape = RoundedCornerShape(10.dp),
-            modifier = Modifier.weight(1f).height(38.dp),
-            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
-        ) {
-            Icon(Icons.Filled.Wifi, contentDescription = null, modifier = Modifier.size(15.dp))
-            Spacer(modifier = Modifier.width(6.dp))
-            Text("Wi-Fi Settings", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-        }
-
-        Button(
-            onClick = {
-                AppLauncher.launchSettings(context)
-                onClose()
-            },
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF475569), contentColor = Color.White),
-            shape = RoundedCornerShape(10.dp),
-            modifier = Modifier.weight(1f).height(38.dp),
-            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
-        ) {
-            Icon(Icons.Filled.Settings, contentDescription = null, modifier = Modifier.size(15.dp))
-            Spacer(modifier = Modifier.width(6.dp))
-            Text("System Settings", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-        }
-    }
-
-    Spacer(modifier = Modifier.height(8.dp))
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Button(
-            onClick = {
-                KioskService.triggerAdminBypass(context, 900)
+                KioskService.triggerAdminBypass(context, 300)
                 onClose()
             },
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981), contentColor = Color.White),
             shape = RoundedCornerShape(10.dp),
-            modifier = Modifier.weight(1f).height(36.dp),
+            modifier = Modifier.weight(1f).height(38.dp),
             contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
         ) {
-            Icon(Icons.Filled.LockOpen, contentDescription = null, modifier = Modifier.size(14.dp))
+            Icon(Icons.Filled.LockOpen, contentDescription = null, modifier = Modifier.size(15.dp))
             Spacer(modifier = Modifier.width(6.dp))
-            Text("15m Bypass Mode", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text("5m Direct Bypass", fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
 
         Button(
@@ -145,27 +108,13 @@ fun VaultBypassSection(
             },
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626), contentColor = Color.White),
             shape = RoundedCornerShape(10.dp),
-            modifier = Modifier.weight(1f).height(36.dp),
+            modifier = Modifier.weight(1f).height(38.dp),
             contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
         ) {
-            Icon(Icons.Filled.Lock, contentDescription = null, modifier = Modifier.size(14.dp))
+            Icon(Icons.Filled.Lock, contentDescription = null, modifier = Modifier.size(15.dp))
             Spacer(modifier = Modifier.width(6.dp))
             Text("Lock Terminal", fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
-    }
-
-    Spacer(modifier = Modifier.height(8.dp))
-
-    OutlinedButton(
-        onClick = onOpenRecoveryHub,
-        modifier = Modifier.fillMaxWidth().height(38.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF5252)),
-        border = BorderStroke(1.dp, Color(0xFFFF5252).copy(alpha = 0.6f)),
-        shape = RoundedCornerShape(10.dp)
-    ) {
-        Icon(Icons.Filled.Warning, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFFFF5252))
-        Spacer(modifier = Modifier.width(8.dp))
-        Text("SYSTEM RECOVERY HUB & USB DEBUGGING (ADB)", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
     }
 }
 

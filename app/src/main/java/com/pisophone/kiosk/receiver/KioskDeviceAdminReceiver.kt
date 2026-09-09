@@ -3,10 +3,32 @@ package com.pisophone.kiosk.receiver
 import android.app.admin.DeviceAdminReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInstaller
 import android.util.Log
 import android.widget.Toast
 
 class KioskDeviceAdminReceiver : DeviceAdminReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == "com.pisophone.kiosk.ACTION_INSTALL_COMPLETE") {
+            val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
+            val msg = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
+            Log.d("KioskDeviceAdmin", "Silent installation callback. Status: $status, message: $msg")
+            if (status == PackageInstaller.STATUS_SUCCESS) {
+                Log.i("KioskDeviceAdmin", "Silent update succeeded! Launching updated kiosk application.")
+                val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+                if (launchIntent != null) {
+                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    context.startActivity(launchIntent)
+                }
+            } else {
+                Log.e("KioskDeviceAdmin", "Silent update failed. Code: $status, Info: $msg")
+                Toast.makeText(context, "Update Installation Failed: $msg", Toast.LENGTH_LONG).show()
+            }
+            return
+        }
+        super.onReceive(context, intent)
+    }
+
     override fun onEnabled(context: Context, intent: Intent) {
         super.onEnabled(context, intent)
         Log.d("KioskDeviceAdmin", "Device Administrator Enabled")

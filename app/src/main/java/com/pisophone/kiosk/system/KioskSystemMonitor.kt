@@ -26,7 +26,6 @@ import kotlinx.coroutines.launch
 interface KioskSystemMonitorDelegate {
     fun onScreenSleep()
     fun onScreenWake()
-    fun onPerformSleepClear()
     fun getAudioManager(): KioskAudioManager?
 }
 
@@ -48,10 +47,6 @@ class KioskSystemMonitor(
     private var screenOffReceiver: BroadcastReceiver? = null
     private var batteryReceiver: BroadcastReceiver? = null
 
-    private var screenOffTimeMs = 0L
-    private var sleepClearJob: Job? = null
-    @Volatile private var isCacheClearedDuringSleep = false
-
     // ========================================================================
     // SCREEN OFF / SLEEP RECEIVER
     // ========================================================================
@@ -62,48 +57,14 @@ class KioskSystemMonitor(
             override fun onReceive(ctx: Context?, intent: Intent?) {
                 when (intent?.action) {
                     Intent.ACTION_SCREEN_OFF -> {
-                        val enabled = KioskSecurity.isAutoClearOnSleepEnabled(context)
-                        val timeoutMinutes = KioskSecurity.getSleepClearTimeoutMinutes(context)
-                        Log.d(TAG, "Screen OFF detected. Auto-clear enabled=$enabled, timeout=${timeoutMinutes}m")
-
+                        Log.d(TAG, "Screen OFF detected.")
                         delegate.onScreenSleep()
-                        screenOffTimeMs = System.currentTimeMillis()
-                        isCacheClearedDuringSleep = false
-                        sleepClearJob?.cancel()
-
-                        if (enabled) {
-                            val timeoutMs = timeoutMinutes * 60 * 1000L
-                            sleepClearJob = scope.launch {
-                                delay(timeoutMs)
-                                triggerSleepClear()
-                            }
-                        }
                     }
                     Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> {
-                        val enabled = KioskSecurity.isAutoClearOnSleepEnabled(context)
-                        val timeoutMinutes = KioskSecurity.getSleepClearTimeoutMinutes(context)
-                        val elapsedMs = if (screenOffTimeMs > 0) System.currentTimeMillis() - screenOffTimeMs else 0L
-                        val timeoutMs = timeoutMinutes * 60 * 1000L
-
-                        Log.d(TAG, "Screen ON/User Present detected. Elapsed off time=${elapsedMs / 1000}s")
-
+                        Log.d(TAG, "Screen ON/User Present detected.")
                         KioskSecurity.wakeScreenUp(context)
                         KioskSecurity.dismissKeyguard(context)
                         delegate.onScreenWake()
-
-                        if (enabled && screenOffTimeMs > 0 && elapsedMs >= timeoutMs) {
-                            triggerSleepClear()
-                            Handler(Looper.getMainLooper()).post {
-                                Toast.makeText(
-                                    context,
-                                    "Sleep timeout (${timeoutMinutes}m) reached: App cache & session reset.",
-                                    Toast.LENGTH_LONG
-                                ).show()
-                            }
-                        }
-
-                        sleepClearJob?.cancel()
-                        screenOffTimeMs = 0L
                     }
                 }
             }
@@ -117,24 +78,6 @@ class KioskSystemMonitor(
         context.registerReceiver(screenOffReceiver, filter)
     }
 
-    private fun triggerSleepClear() {
-        if (isCacheClearedDuringSleep) return
-        isCacheClearedDuringSleep = true
-        Log.d(TAG, "Phone screen asleep past timeout. Executing auto cache & session reset.")
-        KioskSecurity.clearAppCacheAndData(context.applicationContext)
-        delegate.onPerformSleepClear()
-
-        try {
-            val startMain = Intent(Intent.ACTION_MAIN).apply {
-                addCategory(Intent.CATEGORY_HOME)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            }
-            context.startActivity(startMain)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to launch HOME screen after sleep clear: ${e.message}")
-        }
-    }
-
     fun unregisterScreenOffReceiver() {
         try {
             if (screenOffReceiver != null) {
@@ -144,7 +87,6 @@ class KioskSystemMonitor(
         } catch (e: Exception) {
             Log.w(TAG, "Error unregistering screen receiver: ${e.message}")
         }
-        sleepClearJob?.cancel()
     }
 
     // ========================================================================

@@ -36,8 +36,6 @@ object KioskSecurity {
     private const val KEY_DEVICE_ALIAS = "device_alias"
     private const val KEY_HIDDEN_APPS = "hidden_apps_set"
     private const val KEY_INITIALIZED_DEFAULT_HIDDEN = "initialized_default_hidden_v1"
-    private const val KEY_AUTO_CLEAR_SLEEP = "auto_clear_on_sleep_enabled"
-    private const val KEY_SLEEP_TIMEOUT_MINUTES = "sleep_clear_timeout_minutes"
     private const val KEY_BATTERY_ALERTS_ENABLED = "battery_alerts_enabled"
     private const val KEY_LOW_BATTERY_THRESHOLD = "low_battery_threshold"
     private const val KEY_HIGH_BATTERY_THRESHOLD = "high_battery_threshold"
@@ -45,6 +43,7 @@ object KioskSecurity {
     private const val KEY_CONFIGURED_ESP32_MAC = "configured_esp32_mac"
     private const val KEY_ASSIGNED_BOX_SLOT = "assigned_box_slot"
     private const val KEY_PROVISIONING_ADB_ALLOWED = "provisioning_adb_allowed"
+    private const val KEY_APK_UPDATE_URL = "apk_update_url"
     
     private const val DEFAULT_PIN = "1234"
     private const val TAG = "KioskSecurity"
@@ -102,21 +101,7 @@ object KioskSecurity {
         return getDirectBootPrefs(context, PREFS_SECURITY_OLD)
     }
 
-    fun isAutoClearOnSleepEnabled(context: Context): Boolean {
-        return getPrefs(context).getBoolean(KEY_AUTO_CLEAR_SLEEP, true)
-    }
 
-    fun setAutoClearOnSleepEnabled(context: Context, enabled: Boolean) {
-        getPrefs(context).edit().putBoolean(KEY_AUTO_CLEAR_SLEEP, enabled).apply()
-    }
-
-    fun getSleepClearTimeoutMinutes(context: Context): Int {
-        return getPrefs(context).getInt(KEY_SLEEP_TIMEOUT_MINUTES, 5)
-    }
-
-    fun setSleepClearTimeoutMinutes(context: Context, minutes: Int) {
-        getPrefs(context).edit().putInt(KEY_SLEEP_TIMEOUT_MINUTES, minutes.coerceAtLeast(1)).apply()
-    }
 
     fun isBatteryAlertsEnabled(context: Context): Boolean {
         return getPrefs(context).getBoolean(KEY_BATTERY_ALERTS_ENABLED, true)
@@ -167,6 +152,14 @@ object KioskSecurity {
         if (slot > 0) {
             getPrefs(context).edit().putInt(KEY_ASSIGNED_BOX_SLOT, slot).apply()
         }
+    }
+
+    fun getApkUpdateUrl(context: Context): String {
+        return getPrefs(context).getString(KEY_APK_UPDATE_URL, "https://pisophone.com/app-release.apk") ?: "https://pisophone.com/app-release.apk"
+    }
+
+    fun setApkUpdateUrl(context: Context, url: String) {
+        getPrefs(context).edit().putString(KEY_APK_UPDATE_URL, url.trim()).apply()
     }
 
     fun formatMacAddress(input: String?): String {

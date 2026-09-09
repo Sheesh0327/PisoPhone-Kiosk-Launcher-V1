@@ -282,12 +282,6 @@ class KioskService : Service() {
             delegate = object : KioskSystemMonitorDelegate {
                 override fun onScreenSleep() { overlay?.onScreenSleep() }
                 override fun onScreenWake() { overlay?.onScreenWake() }
-                override fun onPerformSleepClear() {
-                    stateManager.appState.value = 0
-                    stateManager.sessionTimeRemaining.value = 0
-                    stateManager.coinsInserted.value = 0
-                    stateManager.saveState()
-                }
                 override fun getAudioManager(): KioskAudioManager? = if (::audioManager.isInitialized) audioManager else null
             }
         )
