@@ -121,7 +121,6 @@ fun SecurityVaultView(
 
             // Section 2B: Direct App Update
             val updateState by KioskUpdateManager.updateState.collectAsState()
-            var updateUrl by remember { mutableStateOf(KioskSecurity.getApkUpdateUrl(context)) }
             val currentVersionName = remember {
                 try {
                     val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
@@ -162,39 +161,19 @@ fun SecurityVaultView(
                         }
                         HelpInfoButton(
                             title = "Direct App Update",
-                            description = "Directly downloads and installs the latest application update APK from the specified web portal or hosting URL.",
+                            description = "Directly downloads and installs the latest secure application update APK.",
                             onShowHelp = { t, d -> activeHelpDialog = Pair(t, d) }
                         )
                     }
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    OutlinedTextField(
-                        value = updateUrl,
-                        onValueChange = {
-                            updateUrl = it
-                            KioskSecurity.setApkUpdateUrl(context, it)
-                        },
-                        label = { Text("Update Hosting URL", fontSize = 10.sp) },
-                        textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 11.sp),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color(0xFF6366F1),
-                            unfocusedBorderColor = Color(0xFF334155),
-                            focusedLabelColor = Color(0xFF818CF8),
-                            unfocusedLabelColor = Color(0xFF94A3B8)
-                        )
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
                     // Status display
                     when (val state = updateState) {
                         is KioskUpdateManager.UpdateState.Idle -> {
                             Button(
                                 onClick = {
-                                    KioskUpdateManager.startUpdate(context, updateUrl)
+                                    KioskUpdateManager.startUpdate(context, "https://pisophone.pages.dev/app-release.apk")
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
                                 shape = RoundedCornerShape(8.dp),
