@@ -678,14 +678,8 @@
                 await this.shell(`rm -f ${DEVICE_TEMP_APK_PATH}`); 
             } catch (e) {}
 
-            logCallback("Step 6: Restarting device to verify clean boot and initialization...");
-            try {
-                await this.rebootDevice(logCallback);
-            } catch (rErr) {
-                logCallback(`Notice on reboot: ${rErr.message}`);
-            }
-
-            logCallback("🎉 PisoPhone Kiosk setup complete! Device is rebooting into secured kiosk mode.");
+            logCallback("Step 6: Setup validation complete. Skipping reboot to preserve immediate active kiosk launch.");
+            logCallback("🎉 PisoPhone Kiosk setup complete! Kiosk is active and secured.");
         }
 
         /**
