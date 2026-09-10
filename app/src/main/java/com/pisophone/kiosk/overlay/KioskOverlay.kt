@@ -42,6 +42,12 @@ class KioskOverlay(
     private val onThemeChange: () -> Unit,
     private val onActivateClick: (String) -> Unit = {}
 ) {
+    var onUserInteraction: (() -> Unit)? = null
+        set(value) {
+            field = value
+            lockScreenOverlay.onUserInteraction = value
+        }
+
     private val lockScreenOverlay = LockScreenOverlay(context, appStateFlow, paymentTimeoutFlow, coinsInsertedFlow, themeIndexFlow, isEsp32OnlineFlow, esp32MacAddressFlow, isSlotBusyFlow, pricePerCoinFlow, minutesPerCoinFlow, deviceIpFlow, slotNumberFlow, batteryStatusFlow, slotWarningDaysLeftFlow, isSlotExpiredFlow, slotExpiryReasonFlow, onInsertCoinClick, onDoneClick, onThemeChange, onActivateClick)
     private val floatingPillOverlay = FloatingPillOverlay(context, appStateFlow, sessionTimeFlow, paymentTimeoutFlow, coinsInsertedFlow, themeIndexFlow, isEsp32OnlineFlow, isSlotBusyFlow, pricePerCoinFlow, minutesPerCoinFlow, batteryStatusFlow, onInsertCoinClick, onDoneClick)
     
@@ -93,6 +99,8 @@ class LockScreenOverlay(
     private val onThemeChange: () -> Unit,
     private val onActivateClick: (String) -> Unit = {}
 ) {
+    var onUserInteraction: (() -> Unit)? = null
+    
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private var overlayView: ComposeOverlayView? = null
     private var isViewAdded = false
@@ -167,6 +175,7 @@ class LockScreenOverlay(
         }
 
         val newOverlay = ComposeOverlayView(context)
+        newOverlay.onUserInteraction = onUserInteraction
         overlayView = newOverlay
 
         val initialVisible = isFullySetup && (appStateFlow.value == 0 || appStateFlow.value == 1)

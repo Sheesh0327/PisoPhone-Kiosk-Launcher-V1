@@ -42,6 +42,7 @@ fun VaultSleepAndBatterySection(
     var batteryAlertsEnabled by remember { mutableStateOf(KioskSecurity.isBatteryAlertsEnabled(context)) }
     var lowBatteryThresh by remember { mutableIntStateOf(KioskSecurity.getLowBatteryThreshold(context)) }
     var highBatteryThresh by remember { mutableIntStateOf(KioskSecurity.getHighBatteryThreshold(context)) }
+    var screenType by remember { mutableStateOf(KioskSecurity.getScreenType(context)) }
 
     Spacer(modifier = Modifier.height(4.dp))
 
@@ -123,6 +124,58 @@ fun VaultSleepAndBatterySection(
                         .fillMaxWidth()
                         .padding(start = 12.dp, end = 12.dp, bottom = 12.dp)
                 ) {
+                    HorizontalDivider(color = Color(0xFF334155).copy(alpha = 0.7f), modifier = Modifier.padding(bottom = 10.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Screen Type (Inactivity Mode)", color = Color(0xFFE2E8F0), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            HelpInfoButton(
+                                title = "Screen Type Inactivity Mode",
+                                description = "OLED screens will turn completely off after 1 minute of inactivity to prevent burn-in. LCD screens will dim to 0% brightness.",
+                                onShowHelp = onShowHelp
+                            )
+                        }
+                        
+                        Row {
+                            Button(
+                                onClick = { 
+                                    screenType = "OLED"
+                                    KioskSecurity.setScreenType(context, "OLED")
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (screenType == "OLED") Color(0xFF6366F1) else Color(0xFF334155),
+                                    contentColor = Color.White
+                                ),
+                                shape = RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp, topEnd = 0.dp, bottomEnd = 0.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Text("OLED", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Button(
+                                onClick = { 
+                                    screenType = "LCD"
+                                    KioskSecurity.setScreenType(context, "LCD")
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (screenType == "LCD") Color(0xFF6366F1) else Color(0xFF334155),
+                                    contentColor = Color.White
+                                ),
+                                shape = RoundedCornerShape(topStart = 0.dp, bottomStart = 0.dp, topEnd = 8.dp, bottomEnd = 8.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Text("LCD", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
                     HorizontalDivider(color = Color(0xFF334155).copy(alpha = 0.7f), modifier = Modifier.padding(bottom = 10.dp))
 
                     Row(
