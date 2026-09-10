@@ -158,7 +158,7 @@ class LockScreenOverlay(
 
         dispose()
 
-        val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
+        val isFullySetup = com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(context)
         if (!isFullySetup) {
             android.util.Log.d("LockScreenOverlay", "Device not activated or fully setup. Lock screen overlay deferred.")
             return false
@@ -201,10 +201,10 @@ class LockScreenOverlay(
             val slotWarningDaysLeft by slotWarningDaysLeftFlow.collectAsState()
             val isSlotExpired by isSlotExpiredFlow.collectAsState()
             val slotExpiryReason by slotExpiryReasonFlow.collectAsState()
-            val securityUpdateVersion by com.pisophone.kiosk.security.HardwareLockManager.securityUpdateVersion.collectAsState()
+            val activationUpdateVersion by com.pisophone.kiosk.security.KioskActivationManager.activationUpdateVersion.collectAsState()
             
-            val isSetupReady = remember(securityUpdateVersion) { 
-                com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
+            val isSetupReady = remember(activationUpdateVersion) { 
+                com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(context)
             }
             
             val isVisible = isSetupReady && (appState == 0 || appState == 1)
@@ -352,7 +352,7 @@ class LockScreenOverlay(
         if (!isViewAdded) return
         try {
             currentView.onResume()
-            val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
+            val isFullySetup = com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(context)
             val isVisible = isFullySetup && (appStateFlow.value == 0 || appStateFlow.value == 1)
             updateWindowFlagsAndDimensions(isVisible)
             currentView.view.requestLayout()

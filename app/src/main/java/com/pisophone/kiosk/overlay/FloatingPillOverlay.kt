@@ -92,7 +92,7 @@ class FloatingPillOverlay(
             android.util.Log.w("FloatingPillOverlay", "Overlay permission not granted yet, deferring window attachment")
             return
         }
-        val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
+        val isFullySetup = com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(context)
         if (!isFullySetup) {
             android.util.Log.d("FloatingPillOverlay", "Device not activated or fully setup. Floating pill overlay deferred.")
             return
@@ -116,10 +116,10 @@ class FloatingPillOverlay(
             val isSlotBusy by isSlotBusyFlow.collectAsState()
             val themeIndex by themeIndexFlow.collectAsState()
             val batteryStatus by batteryStatusFlow.collectAsState()
-            val securityUpdateVersion by com.pisophone.kiosk.security.HardwareLockManager.securityUpdateVersion.collectAsState()
+            val activationUpdateVersion by com.pisophone.kiosk.security.KioskActivationManager.activationUpdateVersion.collectAsState()
             
-            val isSetupReady = remember(securityUpdateVersion) { 
-                com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
+            val isSetupReady = remember(activationUpdateVersion) { 
+                com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(context)
             }
             val isVisible = isSetupReady && (appState == 2 || appState == 3)
             
@@ -230,7 +230,7 @@ class FloatingPillOverlay(
         if (!isViewAdded) return
         try {
             currentView.onResume()
-            val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)
+            val isFullySetup = com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(context)
             val appState = appStateFlow.value
             val isVisible = isFullySetup && (appState == 2 || appState == 3)
             currentView.view.visibility = if (isVisible) View.VISIBLE else View.GONE

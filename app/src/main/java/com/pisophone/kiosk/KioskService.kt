@@ -19,7 +19,7 @@ import com.pisophone.kiosk.network.Esp32ConnectionManager
 import com.pisophone.kiosk.overlay.KioskOverlay
 import com.pisophone.kiosk.receiver.KioskWatchdogReceiver
 import com.pisophone.kiosk.security.KioskSecurity
-import com.pisophone.kiosk.security.HardwareLockManager
+import com.pisophone.kiosk.security.KioskActivationManager
 import com.pisophone.kiosk.server.KioskHttpServer
 import com.pisophone.kiosk.server.KioskServerDelegate
 import com.pisophone.kiosk.service.CoinProcessor
@@ -74,7 +74,7 @@ class KioskService : Service() {
                 slot = slot,
                 name = name
             )
-            HardwareLockManager.setPairingCompleted(context, true)
+            KioskActivationManager.setPairingCompleted(context, true)
             val cleanMac = KioskSecurity.formatMacAddress(mac)
             activeInstance?.let { service ->
                 if (cleanMac.isNotBlank()) {
@@ -197,7 +197,7 @@ class KioskService : Service() {
     }
 
     fun performAdminBypass(durationSeconds: Int = 900) {
-        if (!com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(this)) {
+        if (!com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(this)) {
             Log.w(TAG, "Admin bypass rejected: Device is not provisioned or is hardware locked.")
             Handler(Looper.getMainLooper()).post {
                 Toast.makeText(this, "⚠️ Bypass Unavailable: Device requires hardware activation.", Toast.LENGTH_LONG).show()
@@ -354,7 +354,7 @@ class KioskService : Service() {
                 }
 
                 override fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?) {
-                    if (!HardwareLockManager.isAppAllowedToRun(applicationContext)) {
+                    if (!KioskActivationManager.isAppAllowedToRun(applicationContext)) {
                         Log.e(TAG, "Hardware Lock active: Discarding coin event on unprovisioned/locked device.")
                         return
                     }
@@ -396,7 +396,7 @@ class KioskService : Service() {
                     stateManager.sessionExpiryDeadlineMs.value = 0L
                     stateManager.appState.value = 0
                     stateManager.saveState()
-                    HardwareLockManager.setSlotLockdown(applicationContext, true, reason, slotNum, expiresAt)
+                    KioskActivationManager.setSlotLockdown(applicationContext, true, reason, slotNum, expiresAt)
                 }
 
                 override fun onSlotRestored() {
@@ -404,7 +404,7 @@ class KioskService : Service() {
                         stateManager.isSlotExpired.value = false
                         stateManager.slotExpiryMessage.value = ""
                         stateManager.slotWarningDaysLeft.value = null
-                        HardwareLockManager.setSlotLockdown(applicationContext, false)
+                        KioskActivationManager.setSlotLockdown(applicationContext, false)
                         Log.i(TAG, "Slot activated on ESP32: Ready for coins.")
                     }
                 }
@@ -414,13 +414,13 @@ class KioskService : Service() {
             esp32Manager.setEsp32Ip(stateManager.esp32Ip)
         }
 
-        if (!HardwareLockManager.isPairingCompleted(this) && !com.pisophone.kiosk.security.KioskSecurity.isProvisioned(this)) {
-            HardwareLockManager.startSetupWindow(this)
+        if (!KioskActivationManager.isPairingCompleted(this) && !com.pisophone.kiosk.security.KioskSecurity.isProvisioned(this)) {
+            KioskActivationManager.startSetupWindow(this)
         }
         setupOverlay()
         scope.launch {
-            HardwareLockManager.securityUpdateVersion.collect {
-                val allowed = HardwareLockManager.isAppAllowedToRun(this@KioskService)
+            KioskActivationManager.activationUpdateVersion.collect {
+                val allowed = KioskActivationManager.isAppAllowedToRun(this@KioskService)
                 Handler(Looper.getMainLooper()).post {
                     if (!allowed) {
                         overlay?.remove()
@@ -472,8 +472,8 @@ class KioskService : Service() {
         }
 
         scope.launch {
-            com.pisophone.kiosk.security.HardwareLockManager.securityUpdateVersion.collect {
-                val isSetup = com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(this@KioskService)
+            com.pisophone.kiosk.security.KioskActivationManager.activationUpdateVersion.collect {
+                val isSetup = com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(this@KioskService)
                 if (isSetup && overlay == null) {
                     withContext(Dispatchers.Main) {
                         setupOverlay()
@@ -605,7 +605,7 @@ class KioskService : Service() {
                                 stateManager.sessionExpiryDeadlineMs.value = 0L
                                 stateManager.appState.value = 0
                                 stateManager.saveState()
-                                com.pisophone.kiosk.security.HardwareLockManager.setSlotLockdown(
+                                com.pisophone.kiosk.security.KioskActivationManager.setSlotLockdown(
                                     applicationContext,
                                     locked = true,
                                     reason = "Device activation required.",
@@ -618,7 +618,7 @@ class KioskService : Service() {
                                 stateManager.isSlotExpired.value = false
                                 stateManager.slotExpiryMessage.value = ""
                                 stateManager.slotWarningDaysLeft.value = null
-                                com.pisophone.kiosk.security.HardwareLockManager.setSlotLockdown(applicationContext, false)
+                                com.pisophone.kiosk.security.KioskActivationManager.setSlotLockdown(applicationContext, false)
                                 stateManager.saveState()
                                 Toast.makeText(this@KioskService, "Device activated.", Toast.LENGTH_SHORT).show()
                             }
@@ -741,13 +741,13 @@ class KioskService : Service() {
     }
 
     fun isOverlayHealthy(): Boolean {
-        val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(this)
+        val isFullySetup = com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(this)
         if (!isFullySetup) return true
         return overlay != null && overlay?.isAttached() == true
     }
 
     fun setupOverlay() {
-        val isFullySetup = com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(this)
+        val isFullySetup = com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(this)
         if (!isFullySetup) {
             Log.d(TAG, "Device not activated or fully setup. Lock screen overlay deferred.")
             return
@@ -777,7 +777,7 @@ class KioskService : Service() {
                         slotExpiryReasonFlow = stateManager.slotExpiryMessage,
                         onInsertCoinClick = { 
                             if (stateManager.appState.value == 4) return@KioskOverlay
-                            if (stateManager.isSlotExpired.value || com.pisophone.kiosk.security.HardwareLockManager.isSlotLockedDown(this@KioskService)) {
+                            if (stateManager.isSlotExpired.value || com.pisophone.kiosk.security.KioskActivationManager.isSlotLockedDown(this@KioskService)) {
                                 Log.w(TAG, "Coin insertion blocked: Device not activated on ESP32.")
                                 Handler(Looper.getMainLooper()).post {
                                     Toast.makeText(applicationContext, "Device not activated. Please activate this device in the ESP32 Kiosk Manager.", Toast.LENGTH_LONG).show()

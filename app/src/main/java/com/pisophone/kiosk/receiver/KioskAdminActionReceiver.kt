@@ -108,7 +108,7 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                     Toast.makeText(context, "Unauthorized: Valid Admin PIN required.", Toast.LENGTH_SHORT).show()
                     return
                 }
-                if (!com.pisophone.kiosk.security.HardwareLockManager.isAppAllowedToRun(context)) {
+                if (!com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(context)) {
                     Log.w(TAG, "ADMIN_BYPASS rejected: Device is not provisioned or is hardware locked.")
                     Toast.makeText(context, "Bypass rejected: Hardware provisioning required.", Toast.LENGTH_SHORT).show()
                     return
@@ -212,9 +212,9 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
             }
 
             ACTION_GET_DEVICE_ID -> {
-                val hwId = com.pisophone.kiosk.security.HardwareLockManager.getHardwareFingerprint(context)
-                val devName = com.pisophone.kiosk.security.HardwareLockManager.getHardwareDescription()
-                val isAuthorized = com.pisophone.kiosk.security.HardwareLockManager.isHardwareAuthorized(context)
+                val hwId = com.pisophone.kiosk.security.KioskActivationManager.getHardwareFingerprint(context)
+                val devName = com.pisophone.kiosk.security.KioskActivationManager.getHardwareDescription()
+                val isAuthorized = com.pisophone.kiosk.security.KioskActivationManager.isHardwareAuthorized(context)
                 Log.i(TAG, "GET_DEVICE_ID requested via ADB broadcast. Returning: $hwId ($devName), hardwareSealed=$isAuthorized")
                 setResultCode(android.app.Activity.RESULT_OK)
                 setResultData(hwId)
@@ -227,8 +227,8 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
             }
 
             ACTION_CONFIGURE_ESP32, "com.pisophone.kiosk.ACTION_CONFIGURE_ESP32" -> {
-                val isPaired = com.pisophone.kiosk.security.HardwareLockManager.isPairingCompleted(context) || com.pisophone.kiosk.security.KioskSecurity.isProvisioned(context)
-                val isSetupActive = com.pisophone.kiosk.security.HardwareLockManager.isSetupModeActive(context)
+                val isPaired = com.pisophone.kiosk.security.KioskActivationManager.isPairingCompleted(context) || com.pisophone.kiosk.security.KioskSecurity.isProvisioned(context)
+                val isSetupActive = com.pisophone.kiosk.security.KioskActivationManager.isSetupModeActive(context)
                 if ((isPaired || !isSetupActive) && !isAuthorized(context, intent)) {
                     Log.w(TAG, "Unauthorized attempt to re-configure ESP32 rejected.")
                     Toast.makeText(context, "Unauthorized: Valid Admin PIN or Secret required.", Toast.LENGTH_SHORT).show()
@@ -255,8 +255,8 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
             }
 
             ACTION_ACTIVATE -> {
-                val isPaired = com.pisophone.kiosk.security.HardwareLockManager.isPairingCompleted(context) || com.pisophone.kiosk.security.KioskSecurity.isProvisioned(context)
-                val isSetupActive = com.pisophone.kiosk.security.HardwareLockManager.isSetupModeActive(context)
+                val isPaired = com.pisophone.kiosk.security.KioskActivationManager.isPairingCompleted(context) || com.pisophone.kiosk.security.KioskSecurity.isProvisioned(context)
+                val isSetupActive = com.pisophone.kiosk.security.KioskActivationManager.isSetupModeActive(context)
                 if ((isPaired || !isSetupActive) && !isAuthorized(context, intent)) {
                     Log.w(TAG, "Unauthorized attempt to re-activate device rejected.")
                     Toast.makeText(context, "Unauthorized: Valid Admin PIN or Secret required.", Toast.LENGTH_SHORT).show()
@@ -277,7 +277,7 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                 }
 
                 Log.i(TAG, "Activation broadcast received with key: $key")
-                val success = com.pisophone.kiosk.security.HardwareLockManager.sealToCurrentDevice(context)
+                val success = com.pisophone.kiosk.security.KioskActivationManager.sealToCurrentDevice(context)
                 setResultCode(if (success) android.app.Activity.RESULT_OK else android.app.Activity.RESULT_CANCELED)
                 setResultData(if (success) "SUCCESS" else "FAILED")
                 if (success) {

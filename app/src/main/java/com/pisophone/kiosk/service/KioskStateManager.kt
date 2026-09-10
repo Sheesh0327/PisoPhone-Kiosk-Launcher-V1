@@ -122,8 +122,8 @@ class KioskStateManager(private val context: Context) {
             }
             
             coinsInserted.value = 0
-            val (reason, slotNum, _) = com.pisophone.kiosk.security.HardwareLockManager.getSlotLockdownDetails(context)
-            val isLocked = com.pisophone.kiosk.security.HardwareLockManager.isSlotLockedDown(context)
+            val (reason, slotNum, _) = com.pisophone.kiosk.security.KioskActivationManager.getSlotLockdownDetails(context)
+            val isLocked = com.pisophone.kiosk.security.KioskActivationManager.isSlotLockedDown(context)
             isSlotExpired.value = isLocked
             slotExpiryMessage.value = reason
             slotNumber.value = slotNum

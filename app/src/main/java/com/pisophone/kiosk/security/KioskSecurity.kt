@@ -27,7 +27,7 @@ import javax.crypto.spec.GCMParameterSpec
  * - [KioskRecoveryManager]
  * - [KioskPolicyManager]
  * - [KioskDataCleaner]
- * - [HardwareLockManager]
+ * - [KioskActivationManager]
  */
 object KioskSecurity {
     private const val PREFS_SECURITY_OLD = "kiosk_security_vault"

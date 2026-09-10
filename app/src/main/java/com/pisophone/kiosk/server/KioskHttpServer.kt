@@ -2,7 +2,7 @@ package com.pisophone.kiosk.server
 
 import android.content.Context
 import android.util.Log
-import com.pisophone.kiosk.security.HardwareLockManager
+import com.pisophone.kiosk.security.KioskActivationManager
 import com.pisophone.kiosk.security.KioskSecurity
 import fi.iki.elonen.NanoHTTPD
 import org.json.JSONObject
@@ -149,7 +149,7 @@ class KioskHttpServer(
         }
 
         // Protected action endpoints require active hardware license/authorization
-        if (!HardwareLockManager.isHardwareAuthorized(context)) {
+        if (!KioskActivationManager.isHardwareAuthorized(context)) {
             Log.e(TAG, "Rejecting HTTP action: Hardware lock is active on unauthorized device.")
             return newFixedLengthResponse(Response.Status.FORBIDDEN, "text/plain", "Hardware lock active on unauthorized device")
         }

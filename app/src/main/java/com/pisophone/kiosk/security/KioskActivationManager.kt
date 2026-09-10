@@ -9,39 +9,35 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import java.security.MessageDigest
 
 /**
- * HardwareLockManager
+ * KioskActivationManager
  *
- * Cryptographically binds and seals the kiosk application to the target device's physical hardware.
- * Provides immutable hardware fingerprinting, Direct-Boot tamper-sealed signatures (HMAC-SHA256),
- * and anti-cloning security to prevent unauthorized copying of the application to other devices.
+ * Manages device fingerprinting/IDs and tracks slot activation/expiration/warnings
+ * received from the connected ESP32 coin slot controller.
  */
-object HardwareLockManager {
-    private const val TAG = "HardwareLock"
-    private const val PREFS_NAME = "kiosk_hardware_seal_vault"
+object KioskActivationManager {
+    private const val TAG = "KioskActivation"
+    private const val PREFS_NAME = "kiosk_activation_vault"
 
-    val securityUpdateVersion = MutableStateFlow<Long>(System.currentTimeMillis())
+    val activationUpdateVersion = MutableStateFlow<Long>(System.currentTimeMillis())
 
-    fun notifySecurityChanged() {
-        securityUpdateVersion.value = System.currentTimeMillis()
+    fun notifyActivationChanged() {
+        activationUpdateVersion.value = System.currentTimeMillis()
     }
 
     private const val KEY_BOUND_HW_ID = "bound_hardware_fingerprint"
     private const val KEY_BOUND_DEVICE_NAME = "bound_device_model_name"
     private const val KEY_BOUND_TIMESTAMP = "bound_timestamp_ms"
     private const val KEY_BOUND_SIGNATURE = "bound_hardware_sig"
-    private const val KEY_HARDWARE_LOCKED = "hardware_lock_enforced"
     private const val KEY_SLOT_EXPIRED = "slot_expired_lockdown"
     private const val KEY_SLOT_EXPIRED_REASON = "slot_expired_reason"
     private const val KEY_SLOT_NUM = "slot_number"
     private const val KEY_SLOT_EXPIRY_TS = "slot_expiry_timestamp"
     private const val KEY_PAIRING_COMPLETED = "pairing_completed"
     private const val KEY_SETUP_WINDOW_START = "setup_window_start_ts"
-    private const val SETUP_WINDOW_DURATION_MS = 30 * 60 * 1000L // 30-minute bounded setup window for fresh unprovisioned install
+    private const val SETUP_WINDOW_DURATION_MS = 30 * 60 * 1000L
 
     /**
-     * Computes a stable, canonical hardware fingerprint derived strictly from immutable hardware attributes.
-     * Excludes volatile Build.FINGERPRINT and Build.BOOTLOADER to survive OTA firmware and OS updates.
-     * Synchronizes with Settings.Global ("pisophone_hw_id") so WebADB over USB reads the identical ID.
+     * Computes a stable canonical hardware fingerprint for unique Device ID display.
      */
     fun getHardwareFingerprint(context: Context): String {
         val androidId = try {
@@ -80,10 +76,7 @@ object HardwareLockManager {
         return computed
     }
 
-    /**
-     * Synchronizes hardware ID into Android Global Settings so WebADB can read it directly.
-     */
-    fun syncToGlobalSettings(context: Context, hwId: String) {
+    private fun syncToGlobalSettings(context: Context, hwId: String) {
         try {
             val current = Settings.Global.getString(context.contentResolver, "pisophone_hw_id")
             if (current != hwId) {
@@ -94,9 +87,6 @@ object HardwareLockManager {
         }
     }
 
-    /**
-     * Returns human-readable device model information without redundant manufacturer or device duplicates.
-     */
     fun getHardwareDescription(): String {
         val mfg = (Build.MANUFACTURER ?: "").trim()
         val model = (Build.MODEL ?: "").trim()
@@ -115,10 +105,6 @@ object HardwareLockManager {
         return KioskSecurity.getDirectBootPrefs(context, PREFS_NAME)
     }
 
-    /**
-     * Cryptographically binds and seals the application to the current device's hardware.
-     * Called during official WebADB/ESP32 provisioning or admin manual binding.
-     */
     fun sealToCurrentDevice(context: Context): Boolean {
         val prefs = getPrefs(context)
         val currentHwId = getHardwareFingerprint(context)
@@ -132,17 +118,13 @@ object HardwareLockManager {
             .putString(KEY_BOUND_DEVICE_NAME, currentDevName)
             .putLong(KEY_BOUND_TIMESTAMP, now)
             .putString(KEY_BOUND_SIGNATURE, sig)
-            .putBoolean(KEY_HARDWARE_LOCKED, false)
             .apply()
 
-        notifySecurityChanged()
-        Log.i(TAG, "Cryptographic hardware seal established for $currentDevName ($currentHwId).")
+        notifyActivationChanged()
+        Log.i(TAG, "Device activation parameters recorded for $currentDevName ($currentHwId).")
         return true
     }
 
-    /**
-     * Checks if the kiosk application is paired and authorized to operate on this hardware.
-     */
     fun isPairingCompleted(context: Context): Boolean {
         val prefs = getPrefs(context)
         if (prefs.getBoolean(KEY_PAIRING_COMPLETED, false)) return true
@@ -155,14 +137,14 @@ object HardwareLockManager {
 
     fun setPairingCompleted(context: Context, completed: Boolean) {
         getPrefs(context).edit().putBoolean(KEY_PAIRING_COMPLETED, completed).apply()
-        notifySecurityChanged()
+        notifyActivationChanged()
     }
 
     fun startSetupWindow(context: Context) {
         val prefs = getPrefs(context)
         if (prefs.getLong(KEY_SETUP_WINDOW_START, 0L) == 0L) {
             prefs.edit().putLong(KEY_SETUP_WINDOW_START, System.currentTimeMillis()).apply()
-            Log.i(TAG, "Explicit local setup window initialized.")
+            Log.i(TAG, "Explicit pairing/setup window initialized.")
         }
     }
 
@@ -178,20 +160,18 @@ object HardwareLockManager {
     }
 
     fun isAppAllowedToRun(context: Context): Boolean {
-        return isHardwareAuthorized(context)
+        return true
     }
 
-    /**
-     * Checks if slot lockdown / activation requirement is currently enforced.
-     */
+    fun isHardwareAuthorized(context: Context): Boolean {
+        return true
+    }
+
     fun isSlotLockedDown(context: Context): Boolean {
         val prefs = getPrefs(context)
         return prefs.getBoolean(KEY_SLOT_EXPIRED, false)
     }
 
-    /**
-     * Details regarding activation status on the ESP32.
-     */
     fun getSlotLockdownDetails(context: Context): Triple<String, Int, Long> {
         val prefs = getPrefs(context)
         val reason = prefs.getString(KEY_SLOT_EXPIRED_REASON, "Device activation required") ?: "Device activation required"
@@ -200,9 +180,6 @@ object HardwareLockManager {
         return Triple(reason, slotNum, expiryTs)
     }
 
-    /**
-     * Sets activation status details received from ESP32 memory.
-     */
     fun setSlotLockdown(context: Context, locked: Boolean, reason: String = "", slotNum: Int = 0, expiryTs: Long = 0L) {
         val prefs = getPrefs(context)
         prefs.edit()
@@ -211,22 +188,7 @@ object HardwareLockManager {
             .putInt(KEY_SLOT_NUM, slotNum)
             .putLong(KEY_SLOT_EXPIRY_TS, expiryTs)
             .apply()
-        notifySecurityChanged()
-    }
-
-    /**
-     * Auto-saves device ID on installation / first launch and validates hardware identity.
-     */
-    fun isHardwareAuthorized(context: Context): Boolean {
-        val prefs = getPrefs(context)
-        val boundHwId = prefs.getString(KEY_BOUND_HW_ID, null)
-        val currentHwId = getHardwareFingerprint(context)
-        
-        if (boundHwId.isNullOrBlank() || boundHwId != currentHwId) {
-            sealToCurrentDevice(context)
-        }
-        
-        return true
+        notifyActivationChanged()
     }
 
     fun getBoundHardwareId(context: Context): String {
@@ -244,12 +206,9 @@ object HardwareLockManager {
         return getPrefs(context).getString(KEY_BOUND_DEVICE_NAME, "Unknown Device") ?: "Unknown Device"
     }
 
-    /**
-     * Allows an authorized administrator to re-seal hardware after authorized maintenance or mainboard repair.
-     */
     fun rebindWithAdminPin(context: Context, enteredPin: String): Boolean {
         if (!KioskSecurity.verifyAdminPin(context, enteredPin)) {
-            Log.w(TAG, "Rebind failed: Incorrect Admin PIN.")
+            Log.w(TAG, "Re-registration failed: Incorrect Admin PIN.")
             return false
         }
         val prefs = getPrefs(context)
@@ -263,11 +222,10 @@ object HardwareLockManager {
             .putString(KEY_BOUND_DEVICE_NAME, currentDevName)
             .putLong(KEY_BOUND_TIMESTAMP, now)
             .putString(KEY_BOUND_SIGNATURE, sig)
-            .putBoolean(KEY_HARDWARE_LOCKED, false)
             .apply()
 
-        notifySecurityChanged()
-        Log.i(TAG, "Device hardware successfully re-sealed to current device ($currentDevName - $currentHwId).")
+        notifyActivationChanged()
+        Log.i(TAG, "Device details re-registered with Admin credentials ($currentDevName - $currentHwId).")
         return true
     }
 

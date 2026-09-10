@@ -10,7 +10,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
-class HardwareLockManagerUnitTest {
+class KioskActivationManagerUnitTest {
 
     private lateinit var context: Context
 
@@ -29,31 +29,31 @@ class HardwareLockManagerUnitTest {
         // App installs like normal, auto-saves device ID, and allows app to run
         assertTrue(
             "Fresh install must save device ID and allow app to run",
-            HardwareLockManager.isHardwareAuthorized(context)
+            KioskActivationManager.isHardwareAuthorized(context)
         )
         assertTrue(
             "isAppAllowedToRun must return true on fresh install",
-            HardwareLockManager.isAppAllowedToRun(context)
+            KioskActivationManager.isAppAllowedToRun(context)
         )
         assertTrue(
             "Bound hardware ID must be automatically saved and non-empty",
-            HardwareLockManager.getBoundHardwareId(context).isNotBlank()
+            KioskActivationManager.getBoundHardwareId(context).isNotBlank()
         )
     }
 
     @Test
     fun testProvisioningSealsDeviceAndAuthorizes() {
         // When installer / WebADB triggers sealToCurrentDevice
-        val sealed = HardwareLockManager.sealToCurrentDevice(context)
+        val sealed = KioskActivationManager.sealToCurrentDevice(context)
         assertTrue("sealToCurrentDevice should succeed", sealed)
 
         assertTrue(
             "Device must be authorized after provisioning",
-            HardwareLockManager.isHardwareAuthorized(context)
+            KioskActivationManager.isHardwareAuthorized(context)
         )
         assertTrue(
             "isAppAllowedToRun must be true after provisioning",
-            HardwareLockManager.isAppAllowedToRun(context)
+            KioskActivationManager.isAppAllowedToRun(context)
         )
     }
 
@@ -62,26 +62,26 @@ class HardwareLockManagerUnitTest {
         // Before startSetupWindow, isSetupModeActive must be false (read-only check)
         assertFalse(
             "isSetupModeActive must be false before startSetupWindow is explicitly called",
-            HardwareLockManager.isSetupModeActive(context)
+            KioskActivationManager.isSetupModeActive(context)
         )
 
         // Calling startSetupWindow initializes the setup mode window
-        HardwareLockManager.startSetupWindow(context)
+        KioskActivationManager.startSetupWindow(context)
         assertTrue(
             "isSetupModeActive must be true within the setup window duration",
-            HardwareLockManager.isSetupModeActive(context)
+            KioskActivationManager.isSetupModeActive(context)
         )
     }
 
     @Test
     fun testRebindWithAdminPin() {
         // Incorrect PIN fails
-        val wrongPinSuccess = HardwareLockManager.rebindWithAdminPin(context, "9999")
+        val wrongPinSuccess = KioskActivationManager.rebindWithAdminPin(context, "9999")
         assertFalse("Rebind with wrong PIN must fail", wrongPinSuccess)
 
         // Correct default PIN (1234) succeeds and seals device
-        val correctPinSuccess = HardwareLockManager.rebindWithAdminPin(context, "1234")
+        val correctPinSuccess = KioskActivationManager.rebindWithAdminPin(context, "1234")
         assertTrue("Rebind with correct Admin PIN must succeed", correctPinSuccess)
-        assertTrue(HardwareLockManager.isHardwareAuthorized(context))
+        assertTrue(KioskActivationManager.isHardwareAuthorized(context))
     }
 }

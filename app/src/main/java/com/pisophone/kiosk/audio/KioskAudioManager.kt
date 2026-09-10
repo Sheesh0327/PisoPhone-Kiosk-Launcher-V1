@@ -392,33 +392,28 @@ class KioskAudioManager(
         HardwareFeedback.triggerAlertFeedback(context)
         onTtsStartedImmediate()
 
-        // Delay TTS speech by 1 second (1000ms) to ensure media muting and audio focus take effect reliably
-        val runnable = Runnable {
-            if (isTtsReady && tts != null) {
-                try {
-                    val params = Bundle().apply {
-                        putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f)
-                        putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_ALARM)
-                    }
-                    val utteranceId = "kiosk_warning_${System.currentTimeMillis()}"
-                    val result = tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
-                    if (result != TextToSpeech.SUCCESS) {
-                        Log.w(TAG, "TTS speak returned non-success code $result, triggering fallback")
-                        playSynthesizedTone(880, 160)
-                        onTtsFinished()
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "TTS speak failed: ${e.message}")
+        if (isTtsReady && tts != null) {
+            try {
+                val params = Bundle().apply {
+                    putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f)
+                    putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_ALARM)
+                }
+                val utteranceId = "kiosk_warning_${System.currentTimeMillis()}"
+                val result = tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
+                if (result != TextToSpeech.SUCCESS) {
+                    Log.w(TAG, "TTS speak returned non-success code $result, triggering fallback")
                     playSynthesizedTone(880, 160)
                     onTtsFinished()
                 }
-            } else {
+            } catch (e: Exception) {
+                Log.e(TAG, "TTS speak failed: ${e.message}")
                 playSynthesizedTone(880, 160)
                 onTtsFinished()
             }
+        } else {
+            playSynthesizedTone(880, 160)
+            onTtsFinished()
         }
-        delayedTtsRunnable = runnable
-        mainHandler.postDelayed(runnable, 1000L)
     }
 
     fun playCoinSound() {

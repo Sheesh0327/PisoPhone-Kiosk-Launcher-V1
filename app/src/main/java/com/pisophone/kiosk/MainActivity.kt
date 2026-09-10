@@ -26,7 +26,7 @@ import androidx.lifecycle.lifecycleScope
 import com.pisophone.kiosk.model.AppInfo
 import com.pisophone.kiosk.receiver.KioskAdminActionReceiver
 import com.pisophone.kiosk.receiver.KioskWatchdogReceiver
-import com.pisophone.kiosk.security.HardwareLockManager
+import com.pisophone.kiosk.security.KioskActivationManager
 import com.pisophone.kiosk.security.KioskSecurity
 import com.pisophone.kiosk.ui.*
 import com.pisophone.kiosk.ui.theme.PisoPhoneLauncherTheme
@@ -43,7 +43,7 @@ class MainActivity : ComponentActivity() {
     private var strictPoliciesApplied = false
 
     private fun isFullySetup(): Boolean {
-        return HardwareLockManager.isAppAllowedToRun(this)
+        return KioskActivationManager.isAppAllowedToRun(this)
     }
 
     private fun checkDeviceOwner() {
@@ -155,7 +155,7 @@ class MainActivity : ComponentActivity() {
         }
 
         if (activate) {
-            HardwareLockManager.sealToCurrentDevice(this)
+            KioskActivationManager.sealToCurrentDevice(this)
             try {
                 val serviceIntent = Intent(this, KioskService::class.java)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
