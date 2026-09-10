@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PisoPhone Master Controller</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <div class="logo">🪙</div>
+            <h1>PisoPhone Master</h1>
+            <span class="status-badge" id="system_status">Armed</span>
+        </header>
+
+        <main class="grid-layout">
+            <!-- 1. Live Terminal Slots Grid -->
+            <section class="card terminal-section">
+                <h2>Terminal Slots</h2>
+                <div class="slots-grid" id="slots_container">
+                    <!-- Dynamic client cards load here -->
+                    <div class="loading-spinner">Loading active terminals...</div>
+                </div>
+            </section>
+
+            <!-- 2. Administrative Settings -->
+            <section class="card settings-section">
+                <h2>Settings Panel</h2>
+                <form id="config_form">
+                    <div class="form-group">
+                        <label for="price">Coin Price (₱):</label>
+                        <input type="number" step="0.5" id="price" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="minutes">Minutes per Coin:</label>
+                        <input type="number" id="minutes" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="port">Target Port:</label>
+                        <input type="number" id="port" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Admin Password:</label>
+                        <input type="password" id="password" placeholder="Verify to Save" required>
+                    </div>
+                    <button type="submit" class="primary-btn">Save Configurations</button>
+                </form>
+                <div id="form_message" class="alert hidden"></div>
+            </section>
+        </main>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

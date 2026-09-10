@@ -628,7 +628,7 @@
         async function handleUnlinkDevice(boxBuildNum, devId, event) {
             if (event) event.stopPropagation();
             const cleanId = String(devId).replace('HW-', '').toUpperCase();
-            if (!confirm(`Are you sure you want to unlink device HW-${cleanId} from Coin Slot Box #${boxBuildNum}? This will free up 1 of your 12 slots.`)) {
+            if (!confirm(`Are you sure you want to unlink device HW-${cleanId} from Coin Slot Box #${boxBuildNum}? This will free up 1 of your 10 slots.`)) {
                 return;
             }
 
@@ -644,7 +644,7 @@
                                 b.devices = b.devices.filter(d => (d.deviceId || '').replace('HW-', '').toUpperCase() !== cleanId);
                             }
                             b.devicesUsed = (b.devices || b.linkedDevices || []).length;
-                            b.slotsRemaining = Math.max(0, (b.maxDevices || 12) - b.devicesUsed);
+                            b.slotsRemaining = Math.max(0, (b.maxDevices || 10) - b.devicesUsed);
                         }
                     });
                 }
@@ -655,7 +655,7 @@
                     currentBoxData.devices = currentBoxData.devices.filter(d => (d.deviceId || '').replace('HW-', '').toUpperCase() !== cleanId);
                 }
                 currentBoxData.devicesUsed = (currentBoxData.devices || currentBoxData.linkedDevices || []).length;
-                currentBoxData.slotsRemaining = Math.max(0, (currentBoxData.maxDevices || 12) - currentBoxData.devicesUsed);
+                currentBoxData.slotsRemaining = Math.max(0, (currentBoxData.maxDevices || 10) - currentBoxData.devicesUsed);
             }
             renderBoxHierarchy();
 
@@ -700,7 +700,7 @@
                             b.devices = b.devices.filter(d => (d.deviceId || '').replace('HW-', '').toUpperCase() !== cleanId);
                         }
                         b.devicesUsed = (b.devices || b.linkedDevices || []).length;
-                        b.slotsRemaining = Math.max(0, (b.maxDevices || 12) - b.devicesUsed);
+                        b.slotsRemaining = Math.max(0, (b.maxDevices || 10) - b.devicesUsed);
                     });
                 }
                 if (Array.isArray(currentBoxData.linkedDevices)) {
@@ -710,7 +710,7 @@
                     currentBoxData.devices = currentBoxData.devices.filter(d => (d.deviceId || '').replace('HW-', '').toUpperCase() !== cleanId);
                 }
                 currentBoxData.devicesUsed = (currentBoxData.devices || currentBoxData.linkedDevices || []).length;
-                currentBoxData.slotsRemaining = Math.max(0, (currentBoxData.maxDevices || 12) - currentBoxData.devicesUsed);
+                currentBoxData.slotsRemaining = Math.max(0, (currentBoxData.maxDevices || 10) - currentBoxData.devicesUsed);
                 try {
                     localStorage.setItem('piso_verified_box', JSON.stringify(currentBoxData));
                 } catch(e) {}
@@ -896,7 +896,7 @@
                     const opt = document.createElement('option');
                     opt.value = b.buildNumber;
                     const used = b.devicesUsed !== undefined ? b.devicesUsed : (b.linkedDevices?.length || 0);
-                    const max = b.maxDevices || 12;
+                    const max = b.maxDevices || 10;
                     opt.textContent = `Box #${b.buildNumber} (${max - used} free slots)`;
                     targetBoxSelect.appendChild(opt);
                 });
@@ -941,7 +941,7 @@
             boxes.forEach((box, index) => {
                 const bNum = box.buildNumber;
                 const isExpanded = expandedBoxes.has(bNum);
-                const max = box.maxDevices || 12;
+                const max = box.maxDevices || 10;
                 
                 // Collect devices inside this box
                 let boxDevices = Array.isArray(box.devices) ? box.devices : [];
@@ -1109,7 +1109,7 @@
                                     <span>+ Link Phone to this Box</span>
                                 </button>
                             ` : `
-                                <span class="text-xs text-amber-400 font-semibold">Box is Full (12/12)</span>
+                                <span class="text-xs text-amber-400 font-semibold">Box is Full (${max}/${max})</span>
                             `}
                         </div>
                         ${devicesHtml}

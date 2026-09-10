@@ -79,7 +79,7 @@
                             <h2 class="text-base font-bold text-white">Coin Slot Box (₱5,000 Hardware)</h2>
                             <span id="activateBoxBadge" class="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">Not Verified</span>
                         </div>
-                        <p id="activateBoxQuotaText" class="text-xs text-slate-400 mt-0.5">Enter your Box Build Number to activate up to 12 kiosk devices.</p>
+                        <p id="activateBoxQuotaText" class="text-xs text-slate-400 mt-0.5">Enter your Box Build Number to activate up to 10 kiosk devices.</p>
                     </div>
                 </div>
                 <button id="activateVerifyBoxBtn" class="bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 font-bold px-4 py-2.5 rounded-xl text-xs transition whitespace-nowrap">
@@ -236,7 +236,7 @@
                 activateBoxBadge.className = "text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
                 
                 const totalUsed = verifiedBox.devicesUsed !== undefined ? verifiedBox.devicesUsed : userBoxesList.reduce((acc, b) => acc + (b.devicesUsed || (b.linkedDevices ? b.linkedDevices.length : 0)), 0);
-                const totalMax = verifiedBox.maxDevices !== undefined ? verifiedBox.maxDevices : (totalBoxes * 12);
+                const totalMax = verifiedBox.maxDevices !== undefined ? verifiedBox.maxDevices : (totalBoxes * 10);
                 const totalSlots = verifiedBox.slotsRemaining !== undefined ? verifiedBox.slotsRemaining : (totalMax - totalUsed);
 
                 activateBoxQuotaText.innerHTML = `<strong>Fleet Active:</strong> ${totalBoxes} Verified Box(es) • <span class="text-emerald-400 font-semibold">${totalUsed} / ${totalMax} Devices Used</span> (${totalSlots} total slots remaining)`;
@@ -244,7 +244,7 @@
             } else {
                 activateBoxBadge.textContent = "Verification Required";
                 activateBoxBadge.className = "text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30";
-                activateBoxQuotaText.textContent = "Please enter the ESP32 MAC Address or Build Number from your ₱5,000 Coin Slot Box to authorize device activations (Max 12 devices per box).";
+                activateBoxQuotaText.textContent = "Please enter the ESP32 MAC Address or Build Number from your ₱5,000 Coin Slot Box to authorize device activations (Max 10 devices per box).";
                 activateVerifyBoxBtn.textContent = "Verify Box";
             }
 
@@ -273,7 +273,7 @@
             if (!selectedBoxBuildNumber || !userBoxesList.some(b => b.buildNumber === selectedBoxBuildNumber)) {
                 const available = userBoxesList.find(b => {
                     const u = b.devicesUsed !== undefined ? b.devicesUsed : (b.linkedDevices ? b.linkedDevices.length : 0);
-                    return (b.maxDevices || 12) - u > 0;
+                    return (b.maxDevices || 10) - u > 0;
                 });
                 selectedBoxBuildNumber = available ? available.buildNumber : userBoxesList[0].buildNumber;
             }
@@ -281,7 +281,7 @@
             userBoxesList.forEach(box => {
                 const bNum = box.buildNumber;
                 const used = box.devicesUsed !== undefined ? box.devicesUsed : (box.linkedDevices ? box.linkedDevices.length : 0);
-                const max = box.maxDevices || 12;
+                const max = box.maxDevices || 10;
                 const remaining = Math.max(0, max - used);
                 const isSelected = selectedBoxBuildNumber === bNum;
                 const isFull = remaining <= 0;
@@ -337,7 +337,7 @@
 
             const currentBox = userBoxesList.find(b => b.buildNumber === selectedBoxBuildNumber);
             const used = currentBox ? (currentBox.devicesUsed !== undefined ? currentBox.devicesUsed : (currentBox.linkedDevices ? currentBox.linkedDevices.length : 0)) : 0;
-            const max = currentBox ? (currentBox.maxDevices || 12) : 12;
+            const max = currentBox ? (currentBox.maxDevices || 10) : 10;
             const boxSlots = Math.max(0, max - used);
 
             selectedDeviceInfo.innerHTML = `
@@ -354,7 +354,7 @@
             if (boxSlots <= 0) {
                 useCreditBtn.disabled = true;
                 useCreditBtn.classList.add('opacity-50', 'cursor-not-allowed');
-                useCreditBtn.innerHTML = `<span>Selected Box is Full (12/12 devices used)</span>`;
+                useCreditBtn.innerHTML = `<span>Selected Box is Full (${max}/${max} devices used)</span>`;
             } else if (currentCredits > 0) {
                 useCreditBtn.disabled = false;
                 useCreditBtn.classList.remove('opacity-50', 'cursor-not-allowed');

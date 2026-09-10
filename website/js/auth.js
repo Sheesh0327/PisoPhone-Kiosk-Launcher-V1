@@ -314,7 +314,7 @@ function initGoogleAuthFlow(containerId = 'googleButtonContainer') {
 }
 
 // =========================================================================
-// COIN SLOT BOX (₱5,000 HARDWARE) VERIFICATION & 12-DEVICE ENFORCEMENT
+// COIN SLOT BOX (₱5,000 HARDWARE) VERIFICATION & 10-DEVICE ENFORCEMENT
 // =========================================================================
 const PISO_BOX_STORAGE_KEY = "piso_verified_box";
 const PISO_API_BASE = 'https://pisophone-api.pisophone-support.workers.dev';
@@ -361,9 +361,9 @@ async function verifyCoinSlotBox(buildNumber) {
 
     const boxObj = {
         buildNumber: data.buildNumber,
-        maxDevices: data.maxDevices || 12,
+        maxDevices: data.maxDevices || 10,
         devicesUsed: data.devicesUsed || 0,
-        slotsRemaining: data.slotsRemaining !== undefined ? data.slotsRemaining : 12,
+        slotsRemaining: data.slotsRemaining !== undefined ? data.slotsRemaining : 10,
         verifiedAt: Date.now()
     };
     setPisoBox(boxObj);
@@ -419,7 +419,7 @@ async function unlinkDeviceFromBox(buildNumber, deviceId) {
                             b.devices = b.devices.filter(d => String(d.deviceId || '').trim().toUpperCase().replace(/^HW-/, '') !== normId);
                         }
                         b.devicesUsed = (b.devices || b.linkedDevices || []).length;
-                        b.slotsRemaining = Math.max(0, (b.maxDevices || 12) - b.devicesUsed);
+                        b.slotsRemaining = Math.max(0, (b.maxDevices || 10) - b.devicesUsed);
                     }
                 });
                 localStorage.setItem(PISO_BOX_STORAGE_KEY, JSON.stringify(box));
@@ -481,7 +481,7 @@ async function removeDeviceFromAccount(deviceId) {
                             b.devices = b.devices.filter(d => String(d.deviceId || '').trim().toUpperCase().replace(/^HW-/, '') !== normId);
                         }
                         b.devicesUsed = (b.devices || b.linkedDevices || []).length;
-                        b.slotsRemaining = Math.max(0, (b.maxDevices || 12) - b.devicesUsed);
+                        b.slotsRemaining = Math.max(0, (b.maxDevices || 10) - b.devicesUsed);
                     });
                 }
                 if (Array.isArray(box.devices)) {
@@ -491,7 +491,7 @@ async function removeDeviceFromAccount(deviceId) {
                     box.linkedDevices = box.linkedDevices.filter(id => String(id).trim().toUpperCase().replace(/^HW-/, '') !== normId);
                 }
                 box.devicesUsed = (box.devices || box.linkedDevices || []).length;
-                box.slotsRemaining = Math.max(0, (box.maxDevices || 12) - box.devicesUsed);
+                box.slotsRemaining = Math.max(0, (box.maxDevices || 10) - box.devicesUsed);
                 localStorage.setItem(PISO_BOX_STORAGE_KEY, JSON.stringify(box));
             }
         }
@@ -562,9 +562,9 @@ async function fetchUserBoxStatus() {
                 const primary = data.boxes[0];
                 const boxObj = {
                     buildNumber: primary.buildNumber,
-                    maxDevices: data.totalMaxDevices || 12,
+                    maxDevices: data.totalMaxDevices || 10,
                     devicesUsed: data.totalDevicesUsed || 0,
-                    slotsRemaining: data.totalSlotsRemaining || 12,
+                    slotsRemaining: data.totalSlotsRemaining || 10,
                     verifiedAt: Date.now(),
                     allBoxes: data.boxes
                 };
@@ -875,7 +875,7 @@ function showBoxRegisteredSuccessCard(boxData, onSuccessCallback) {
     if (existing) existing.remove();
 
     const buildNum = boxData.buildNumber;
-    const max = boxData.maxDevices || 12;
+    const max = boxData.maxDevices || 10;
 
     const modalHtml = `
         <div id="pisoBoxRegisteredModal" class="fixed inset-0 z-[1001] flex items-center justify-center bg-slate-950/90 backdrop-blur-md p-4 animate-fade-in-up">

@@ -50,11 +50,12 @@ class CrashReporter(private val context: Context) : Thread.UncaughtExceptionHand
             } catch (ex: Exception) {
                 Log.e("CrashReporter", "Failed to schedule auto-restart: ${ex.message}")
             }
+            // 3. Forcibly kill the process to avoid system crash dialog blocking the auto-restart
+            android.os.Process.killProcess(android.os.Process.myPid())
+            java.lang.System.exit(10)
         } catch (ex: Exception) {
             // Guarantee handler never crashes
         }
-        
-        defaultHandler?.uncaughtException(t, e)
     }
 
     companion object {

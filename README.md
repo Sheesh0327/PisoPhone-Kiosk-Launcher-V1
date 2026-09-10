@@ -77,12 +77,12 @@ The kiosk integrates a multi-layered security and hardware authorization archite
 
 ### 3. Hardware Lock & Activation
 - Unlicensed hardware is locked down until authorized via `HardwareLockManager`.
-- The ESP32 reports its MAC address, and an authorized activation key generated with `python esp32_firmware/keygen.py <MAC_ADDRESS> <DEVICE_SECRET>` unlocks coin processing and burns the state into NVS.
+- The ESP32 reports its MAC address, and an authorized activation key generated with `python esp32_firmware/tools/keygen.py <MAC_ADDRESS> <DEVICE_SECRET>` unlocks coin processing and burns the state into NVS.
 
-### 4. Admin CLI Key Generator (`esp32_firmware/keygen.py`)
+### 4. Admin CLI Key Generator (`esp32_firmware/tools/keygen.py`)
 To generate an activation key for any paired unit:
 ```bash
-python esp32_firmware/keygen.py <MAC_ADDRESS> <DEVICE_SECRET>
+python esp32_firmware/tools/keygen.py <MAC_ADDRESS> <DEVICE_SECRET>
 ```
 **Example:**
 ```text
@@ -221,6 +221,33 @@ To enter the operator menu, tap the hidden gear icon or enter the master PIN:
   - Battery alert percentage thresholds & TTS voice toggle.
   - UI Theme selection (Cyberpunk Neon, Emerald Green, AMOLED Dark, Crimson Red, Royal Blue).
   - Launch/Exit Kiosk LockTask mode.
+
+---
+
+## 📂 Project Directory Structure
+
+The repository is organized into distinct functional modules:
+
+```text
+.
+├── app/                  # Android Kiosk Application (Jetpack Compose, Room, NanoHTTPD)
+│   ├── src/main/java/    # Clean architecture modules (ui, overlay, security, network, db, etc.)
+│   └── src/main/res/     # Resources, drawables, strings, and device admin configurations
+├── esp32_firmware/       # ESP32-C3 Master Hardware Firmware (PlatformIO / Arduino)
+│   ├── src/              # Modular C++ implementation files (Config, DeviceManager, Security, etc.)
+│   ├── include/          # Modular C++ headers
+│   ├── envs/             # Environment configs (dev & prod for ESP32-C3 and ESP32 DevKit)
+│   ├── data/             # LittleFS captive portal web assets
+│   └── tools/            # Activation key generator CLI (keygen.py)
+├── website/              # Web Portal, Flasher & Cloudflare Worker Backend
+│   ├── js/               # WebADB driver & authentication scripts
+│   ├── worker/           # Cloudflare Worker code for licensing
+│   └── installer/        # Browser-based device installer
+└── docs/                 # Engineering and Deployment Documentation
+    ├── esp32_flash_encryption_guide.md  # Production flash encryption lockdown
+    ├── esp32_security_lockdown.md       # Hardware anti-tamper security guidelines
+    └── github_actions_setup.md          # CI/CD automated build instructions
+```
 
 ---
 

@@ -1413,7 +1413,7 @@ export default {
           boxRecord = {
             buildNumber: cleanBuildNumber,
             esp32MacAddress: formattedMac || cleanBuildNumber,
-            maxDevices: 12,
+            maxDevices: 10,
             linkedDevices: [],
             pricePhp: 5000,
             firstClaimedBy: email,
@@ -1446,11 +1446,11 @@ export default {
         return new Response(
           JSON.stringify({
             success: true,
-            message: 'Coin Slot Box verified successfully! (12 Devices Allowed)',
+            message: 'Coin Slot Box verified successfully! (10 Devices Allowed)',
             buildNumber: cleanBuildNumber,
-            maxDevices: 12,
+            maxDevices: 10,
             devicesUsed: linkedDevices.length,
-            slotsRemaining: Math.max(0, 12 - linkedDevices.length),
+            slotsRemaining: Math.max(0, 10 - linkedDevices.length),
             linkedDevices: linkedDevices,
             serverTime: now,
           }),
@@ -1538,9 +1538,9 @@ export default {
 
               boxDetails.push({
                 buildNumber: bNum,
-                maxDevices: bData.maxDevices || 12,
+                maxDevices: bData.maxDevices || 10,
                 devicesUsed: bLinked.length,
-                slotsRemaining: Math.max(0, (bData.maxDevices || 12) - bLinked.length),
+                slotsRemaining: Math.max(0, (bData.maxDevices || 10) - bLinked.length),
                 linkedDevices: bLinked,
                 devices: boxDeviceList,
               });
@@ -1548,7 +1548,7 @@ export default {
           }
         }
 
-        totalAllowed = validUserBoxes.length * 12;
+        totalAllowed = validUserBoxes.length * 10;
 
         if (env.DEVICE_STORE && validUserBoxes.length !== userBoxes.length) {
           await env.DEVICE_STORE.put(`USER_BOXES:${email}`, JSON.stringify(validUserBoxes));
@@ -1570,7 +1570,7 @@ export default {
       }
 
       // =========================================================================
-      // 8. Link Device to Box with 12-Device Maximum Limit Check
+      // 8. Link Device to Box with 10-Device Maximum Limit Check
       // POST /api/box/link-device
       // Body: { buildNumber: string, deviceId: string, ownerToken?: string, ownerEmail?: string }
       // =========================================================================
@@ -1626,7 +1626,7 @@ export default {
               if (claimedBy && claimedBy !== email) continue;
 
               const bLinked = Array.isArray(bData.linkedDevices) ? bData.linkedDevices : [];
-              if (bLinked.includes(cleanDevId) || bLinked.length < (bData.maxDevices || 12)) {
+              if (bLinked.includes(cleanDevId) || bLinked.length < (bData.maxDevices || 10)) {
                 targetBoxNumber = bNum;
                 break;
               }
@@ -1664,8 +1664,8 @@ export default {
 
         const linked = Array.isArray(boxData.linkedDevices) ? boxData.linkedDevices : [];
         if (!linked.includes(cleanDevId)) {
-          if (linked.length >= (boxData.maxDevices || 12)) {
-            return new Response(JSON.stringify({ error: 'This Coin Slot Box has reached its maximum limit of 12 devices.' }), {
+          if (linked.length >= (boxData.maxDevices || 10)) {
+            return new Response(JSON.stringify({ error: 'This Coin Slot Box has reached its maximum limit of 10 devices.' }), {
               status: 400,
               headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             });
@@ -1709,9 +1709,9 @@ export default {
             buildNumber: targetBoxNumber,
             deviceId: cleanDevId,
             devicesUsed: linked.length,
-            maxDevices: boxData.maxDevices || 12,
-            slotsRemaining: Math.max(0, (boxData.maxDevices || 12) - linked.length),
-            message: `Device linked to Coin Slot Box (${linked.length}/12 slots used).`,
+            maxDevices: boxData.maxDevices || 10,
+            slotsRemaining: Math.max(0, (boxData.maxDevices || 10) - linked.length),
+            message: `Device linked to Coin Slot Box (${linked.length}/10 slots used).`,
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
@@ -1899,7 +1899,7 @@ export default {
               { slots: 3, name: 'Standard Triple Kiosk', price: 5500, description: 'Complete Coin Slot Box + 3 Device Slots' },
               { slots: 5, name: 'Pro 5-Terminal Kiosk', price: 6500, description: 'Complete Coin Slot Box + 5 Device Slots' },
               { slots: 8, name: 'Enterprise 8-Terminal Hub', price: 8000, description: 'Complete Coin Slot Box + 8 Device Slots' },
-              { slots: 12, name: 'Mega Arcade 12-Slot Fleet', price: 10000, description: 'Complete Coin Slot Box + 12 Device Slots' },
+              { slots: 10, name: 'Mega Arcade 10-Slot Fleet', price: 9000, description: 'Complete Coin Slot Box + 10 Device Slots' },
             ],
             serverTime: now,
           }),
