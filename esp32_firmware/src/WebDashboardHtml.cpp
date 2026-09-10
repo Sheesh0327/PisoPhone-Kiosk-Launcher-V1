@@ -1466,7 +1466,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                 }
                 let html = '';
                 devices.forEach((dev, idx) => {
-                    const name = dev.name || ('PisoPhone ' + dev.slotNum);
+                    const name = (dev.name && dev.name !== dev.id && !dev.name.startsWith('Terminal') && (!dev.id || !dev.name.includes(dev.id))) ? dev.name : ('PisoPhone ' + dev.slotNum);
                     const battery = (typeof dev.battery === 'number' && dev.battery >= 0) ? dev.battery : 100;
                     const isCharging = !!dev.charging;
                     const isExp = dev.isExpiredOrInactive || (dev.expStatus === 2) || (!dev.active) || (dev.expiresAt === "0" || dev.expiresAt === 0);
@@ -1855,7 +1855,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
 
     window.confirmConnection = function(devId, devIp, slotNum, devName) {
         const slot = slotNum || activeSlotNum || 1;
-        const name = devName || ('PisoPhone Slot #' + slot);
+        const name = (devName && devName !== devId && !devName.startsWith('Terminal') && !devName.includes(devId)) ? devName : ('PisoPhone ' + slot);
         fetch('/api/slots/pair?slot=' + slot + '&id=' + encodeURIComponent(devId) + '&ip=' + encodeURIComponent(devIp) + '&name=' + encodeURIComponent(name), { method: 'POST' })
             .then(res => {
                 if (!res.ok) {

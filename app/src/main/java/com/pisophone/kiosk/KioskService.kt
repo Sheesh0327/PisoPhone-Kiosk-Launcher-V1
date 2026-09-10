@@ -333,14 +333,30 @@ class KioskService : Service() {
                     if (!mac.isNullOrBlank()) stateManager.esp32MacAddress.value = mac
                 }
 
-                override fun onConfigSynced(price: Double?, minutes: Int?, alias: String?, adminPin: String?) {
+                override fun onConfigSynced(price: Double?, minutes: Int?, alias: String?, adminPin: String?, slotNum: Int?) {
                     price?.let { stateManager.pricePerCoin.value = it }
                     minutes?.let { stateManager.minutesPerCoin.value = it }
-                    alias?.takeIf { it.isNotBlank() }?.let {
+                    val effectiveSlot = if (slotNum != null && slotNum > 0) slotNum else stateManager.slotNumber.value
+                    if (effectiveSlot > 0) {
+                        stateManager.slotNumber.value = effectiveSlot
+                        KioskSecurity.setAssignedBoxSlot(applicationContext, effectiveSlot)
+                    }
+                    val devId = stateManager.deviceId.value
+                    if (!alias.isNullOrBlank()) {
+                        val cleanAlias = if (alias == devId || (devId.isNotBlank() && alias.contains(devId)) || alias.startsWith("Terminal")) {
+                            if (effectiveSlot > 0) "PisoPhone $effectiveSlot" else "PisoPhone 1"
+                        } else {
+                            alias
+                        }
                         val current = KioskSecurity.getDeviceAlias(this@KioskService)
-                        if (current != it) {
-                            KioskSecurity.setDeviceAlias(this@KioskService, it)
-                            Log.d(TAG, "[+] Synchronized device nickname from Master: $it")
+                        if (current != cleanAlias) {
+                            KioskSecurity.setDeviceAlias(this@KioskService, cleanAlias)
+                            Log.d(TAG, "[+] Synchronized device nickname from Master: $cleanAlias (Slot #$effectiveSlot)")
+                        }
+                    } else if (effectiveSlot > 0) {
+                        val current = KioskSecurity.getDeviceAlias(this@KioskService)
+                        if (current.isBlank() || current == devId || (devId.isNotBlank() && current.contains(devId)) || current.startsWith("Terminal")) {
+                            KioskSecurity.setDeviceAlias(this@KioskService, "PisoPhone $effectiveSlot")
                         }
                     }
                     adminPin?.takeIf { it.isNotBlank() }?.let {
@@ -399,13 +415,22 @@ class KioskService : Service() {
                     KioskActivationManager.setSlotLockdown(applicationContext, true, reason, slotNum, expiresAt)
                 }
 
-                override fun onSlotRestored() {
+                override fun onSlotRestored(slotNum: Int) {
+                    if (slotNum > 0) {
+                        stateManager.slotNumber.value = slotNum
+                        KioskSecurity.setAssignedBoxSlot(applicationContext, slotNum)
+                        val devId = stateManager.deviceId.value
+                        val current = KioskSecurity.getDeviceAlias(this@KioskService)
+                        if (current.isBlank() || current == devId || (devId.isNotBlank() && current.contains(devId)) || current.startsWith("Terminal")) {
+                            KioskSecurity.setDeviceAlias(this@KioskService, "PisoPhone $slotNum")
+                        }
+                    }
                     if (stateManager.isSlotExpired.value) {
                         stateManager.isSlotExpired.value = false
                         stateManager.slotExpiryMessage.value = ""
                         stateManager.slotWarningDaysLeft.value = null
-                        KioskActivationManager.setSlotLockdown(applicationContext, false)
-                        Log.i(TAG, "Slot activated on ESP32: Ready for coins.")
+                        KioskActivationManager.setSlotLockdown(applicationContext, false, slotNum = if (slotNum > 0) slotNum else stateManager.slotNumber.value)
+                        Log.i(TAG, "Slot activated on ESP32: Ready for coins (Slot #$slotNum).")
                     }
                 }
             }
@@ -580,23 +605,48 @@ class KioskService : Service() {
                     }
                 }
 
-                override fun onConfigUpdated(price: Double?, minutes: Int?, deviceName: String?, adminPin: String?) {
+                override fun onConfigUpdated(price: Double?, minutes: Int?, deviceName: String?, adminPin: String?, slotNum: Int?) {
                     price?.let { stateManager.pricePerCoin.value = it }
                     minutes?.let { stateManager.minutesPerCoin.value = it }
-                    deviceName?.let { 
-                        val trimmed = it.trim()
-                        KioskSecurity.setDeviceAlias(applicationContext, trimmed)
+                    val effectiveSlot = if (slotNum != null && slotNum > 0) slotNum else stateManager.slotNumber.value
+                    if (effectiveSlot > 0) {
+                        stateManager.slotNumber.value = effectiveSlot
+                        KioskSecurity.setAssignedBoxSlot(applicationContext, effectiveSlot)
+                    }
+                    val devId = stateManager.deviceId.value
+                    val cleanName = if (!deviceName.isNullOrBlank()) {
+                        val trimmed = deviceName.trim()
+                        if (trimmed == devId || (devId.isNotBlank() && trimmed.contains(devId)) || trimmed.startsWith("Terminal")) {
+                            if (effectiveSlot > 0) "PisoPhone $effectiveSlot" else "PisoPhone 1"
+                        } else {
+                            trimmed
+                        }
+                    } else if (effectiveSlot > 0) {
+                        "PisoPhone $effectiveSlot"
+                    } else null
+
+                    cleanName?.let {
+                        KioskSecurity.setDeviceAlias(applicationContext, it)
                     }
                     adminPin?.let { if (it.isNotBlank()) KioskSecurity.setAdminPin(applicationContext, it) }
                     stateManager.saveState()
-                    val currentName = KioskSecurity.getDeviceAlias(applicationContext).takeIf { it.isNotBlank() } ?: "Terminal"
-                    Log.d(TAG, "Master pushed config update: Price=₱${stateManager.pricePerCoin.value}, Minutes=${stateManager.minutesPerCoin.value}m, DeviceName=$currentName, Pin=$adminPin")
+                    val currentName = KioskSecurity.getDeviceAlias(applicationContext).takeIf { it.isNotBlank() } ?: "PisoPhone ${if (effectiveSlot > 0) effectiveSlot else 1}"
+                    Log.d(TAG, "Master pushed config update: Price=₱${stateManager.pricePerCoin.value}, Minutes=${stateManager.minutesPerCoin.value}m, DeviceName=$currentName, Pin=$adminPin, Slot=$effectiveSlot")
                     Handler(Looper.getMainLooper()).post {
                         Toast.makeText(this@KioskService, "Config Synced: $currentName", Toast.LENGTH_SHORT).show()
                     }
                 }
 
-                override fun onTriggerAction(action: String) {
+                override fun onTriggerAction(action: String, slotNum: Int?) {
+                    if (slotNum != null && slotNum > 0) {
+                        stateManager.slotNumber.value = slotNum
+                        KioskSecurity.setAssignedBoxSlot(applicationContext, slotNum)
+                        val devId = stateManager.deviceId.value
+                        val current = KioskSecurity.getDeviceAlias(this@KioskService)
+                        if (current.isBlank() || current == devId || (devId.isNotBlank() && current.contains(devId)) || current.startsWith("Terminal")) {
+                            KioskSecurity.setDeviceAlias(this@KioskService, "PisoPhone $slotNum")
+                        }
+                    }
                     Handler(Looper.getMainLooper()).post {
                         when (action) {
                             "slot_lockdown" -> {
@@ -618,7 +668,11 @@ class KioskService : Service() {
                                 stateManager.isSlotExpired.value = false
                                 stateManager.slotExpiryMessage.value = ""
                                 stateManager.slotWarningDaysLeft.value = null
-                                com.pisophone.kiosk.security.KioskActivationManager.setSlotLockdown(applicationContext, false)
+                                com.pisophone.kiosk.security.KioskActivationManager.setSlotLockdown(
+                                    applicationContext,
+                                    false,
+                                    slotNum = stateManager.slotNumber.value ?: 1
+                                )
                                 stateManager.saveState()
                                 Toast.makeText(this@KioskService, "Device activated.", Toast.LENGTH_SHORT).show()
                             }
@@ -771,6 +825,7 @@ class KioskService : Service() {
                         pricePerCoinFlow = stateManager.pricePerCoin,
                         minutesPerCoinFlow = stateManager.minutesPerCoin,
                         deviceIpFlow = stateManager.deviceIp,
+                        slotNumberFlow = stateManager.slotNumber,
                         batteryStatusFlow = systemMonitor.batteryStatus,
                         slotWarningDaysLeftFlow = stateManager.slotWarningDaysLeft,
                         isSlotExpiredFlow = stateManager.isSlotExpired,

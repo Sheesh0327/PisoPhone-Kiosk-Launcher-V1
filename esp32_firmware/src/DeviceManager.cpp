@@ -23,11 +23,27 @@ bool pairDeviceToSlot(int slotNum, String devId, String ip, String name) {
 
     licenseSlots[targetIdx].deviceId = devId;
     if (ip.length() > 0) licenseSlots[targetIdx].ip = ip;
-    licenseSlots[targetIdx].name = name.length() > 0 ? name : ("PisoPhone " + String(slotNum));
+    String cleanName = name;
+    cleanName.trim();
+    if (cleanName.length() == 0 || cleanName == devId || cleanName.startsWith("Terminal") || cleanName.indexOf(devId) != -1) {
+        cleanName = "PisoPhone " + String(slotNum);
+    }
+    licenseSlots[targetIdx].name = cleanName;
     licenseSlots[targetIdx].active = true;
 
     saveSlotLicenses();
-    Serial.printf("[+] Paired device %s (%s) to Slot #%d (requires credit allocation to arm)\n", devId.c_str(), ip.c_str(), slotNum);
+    Serial.printf("[+] Paired device %s (%s) to Slot #%d -> '%s'\n", devId.c_str(), ip.c_str(), slotNum, cleanName.c_str());
+
+    // Actively push config to device on pairing
+    if (ip.length() > 0 && ip != "127.0.0.1") {
+        String pushParams = "price=" + String(coinPrice) + 
+                            "&minutes=" + String(minutesPerCoin) + 
+                            "&device_name=" + urlEncode(cleanName) + 
+                            "&slot=" + String(slotNum) + 
+                            "&slot_num=" + String(slotNum) +
+                            "&admin_pin=" + webPassword;
+        sendAuthenticated(ip, targetPort, "/config", "/challenge", pushParams, 1000);
+    }
     return true;
 }
 
@@ -78,6 +94,10 @@ bool unpairSlot(int slotNum) {
     licenseSlots[idx].deviceId = "";
     licenseSlots[idx].ip = "";
     saveSlotLicenses();
+
+    if (prevIp.length() > 0 && prevIp != "127.0.0.1") {
+        sendAuthenticated(prevIp, 8080, "/trigger_action", "{\"action\":\"slot_lockdown\",\"slot_num\":" + String(slotNum) + ",\"slot\":" + String(slotNum) + "}");
+    }
     return true;
 }
 
@@ -118,11 +138,34 @@ bool allocateCreditToSlot(int slotNum, String type, String& errorMsg) {
     licenseSlots[idx].expiresAt = baseTs + durationMs;
     licenseSlots[idx].active = true;
 
+    // Automatically replace device ID or placeholder with actual slot number (e.g. PisoPhone 1)
+    String cleanSlotName = "PisoPhone " + String(slotNum);
+    String curName = licenseSlots[idx].name;
+    curName.trim();
+    String devId = licenseSlots[idx].deviceId;
+    devId.trim();
+    if (curName.length() == 0 || curName == devId || curName.startsWith("Terminal") || (devId.length() > 0 && curName.indexOf(devId) != -1) || !curName.startsWith("PisoPhone")) {
+        licenseSlots[idx].name = cleanSlotName;
+    }
+
     saveCreditVault();
     saveSlotLicenses();
-    Serial.printf("[+] Credit Allocated: Slot #%d +%s (New Expiry: %llu). Vault: M=%d, Y=%d, T=%d\n",
-        slotNum, type.c_str(), (unsigned long long)licenseSlots[idx].expiresAt,
+    Serial.printf("[+] Credit Allocated: Slot #%d +%s (New Expiry: %llu, Name: '%s'). Vault: M=%d, Y=%d, T=%d\n",
+        slotNum, type.c_str(), (unsigned long long)licenseSlots[idx].expiresAt, licenseSlots[idx].name.c_str(),
         monthlyCredits, annualCredits, testCredits);
+
+    // Push slot number and name to the app immediately
+    String targetIp = licenseSlots[idx].ip;
+    if (targetIp.length() > 0 && targetIp != "127.0.0.1") {
+        String pushParams = "price=" + String(coinPrice) + 
+                            "&minutes=" + String(minutesPerCoin) + 
+                            "&device_name=" + urlEncode(licenseSlots[idx].name) + 
+                            "&slot=" + String(slotNum) + 
+                            "&slot_num=" + String(slotNum) +
+                            "&admin_pin=" + webPassword;
+        sendAuthenticated(targetIp, targetPort, "/config", "/challenge", pushParams, 1000);
+        sendAuthenticated(targetIp, targetPort, "/trigger_action", "/challenge", "action=slot_restore&slot=" + String(slotNum), 1000);
+    }
     return true;
 }
 
@@ -212,7 +255,12 @@ void updateDynamicDeviceList(String deviceId, String ip) {
 String getDeviceNameByIpOrId(String reqIp, String devId) {
     int slotIdx = findSlotIndexForDevice(devId, reqIp);
     if (slotIdx >= 0) {
-        return licenseSlots[slotIdx].name;
+        String sName = licenseSlots[slotIdx].name;
+        sName.trim();
+        if (sName.length() > 0 && sName != devId && !sName.startsWith("Terminal") && (devId.length() == 0 || sName.indexOf(devId) == -1)) {
+            return sName;
+        }
+        return "PisoPhone " + String(licenseSlots[slotIdx].slotNum);
     }
     int startIdx = 0;
     int devNum = 1;
@@ -225,14 +273,17 @@ String getDeviceNameByIpOrId(String reqIp, String devId) {
             DeviceConfig cfg;
             if (parseDeviceEntry(entry, cfg)) {
                 if ((devId.length() > 0 && cfg.id == devId) || (reqIp.length() > 0 && cfg.ip == reqIp)) {
-                    return cfg.name.length() > 0 ? cfg.name : ("PisoPhone " + String(devNum));
+                    if (cfg.name.length() > 0 && cfg.name != devId && cfg.name.indexOf(devId) == -1) {
+                        return cfg.name;
+                    }
+                    return "PisoPhone " + String(devNum);
                 }
             }
             devNum++;
         }
         startIdx = comma + 1;
     }
-    return devId.length() > 0 ? devId : "PisoPhone 1";
+    return "PisoPhone";
 }
 
 bool checkReplayProtection(String deviceId, unsigned long long newTs) {

@@ -784,6 +784,9 @@ void handleApiStatus() {
         String devId = licenseSlots[i].deviceId;
         String ip = licenseSlots[i].ip;
         String name = licenseSlots[i].name.length() > 0 ? licenseSlots[i].name : ("PisoPhone " + String(sNum));
+        if (name == devId || name.startsWith("Terminal") || (devId.length() > 0 && name.indexOf(devId) != -1)) {
+            name = "PisoPhone " + String(sNum);
+        }
         bool isBound = (devId.length() > 0);
         
         int daysLeft = 0;

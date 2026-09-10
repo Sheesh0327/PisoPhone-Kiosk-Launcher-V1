@@ -32,6 +32,7 @@ class KioskOverlay(
     private val pricePerCoinFlow: StateFlow<Double>,
     private val minutesPerCoinFlow: StateFlow<Int>,
     private val deviceIpFlow: StateFlow<String> = kotlinx.coroutines.flow.MutableStateFlow("127.0.0.1"),
+    private val slotNumberFlow: StateFlow<Int> = kotlinx.coroutines.flow.MutableStateFlow(1),
     private val batteryStatusFlow: StateFlow<BatteryStatus> = kotlinx.coroutines.flow.MutableStateFlow(BatteryStatus()),
     private val slotWarningDaysLeftFlow: StateFlow<Int?> = kotlinx.coroutines.flow.MutableStateFlow(null),
     private val isSlotExpiredFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
@@ -41,7 +42,7 @@ class KioskOverlay(
     private val onThemeChange: () -> Unit,
     private val onActivateClick: (String) -> Unit = {}
 ) {
-    private val lockScreenOverlay = LockScreenOverlay(context, appStateFlow, paymentTimeoutFlow, coinsInsertedFlow, themeIndexFlow, isEsp32OnlineFlow, esp32MacAddressFlow, isSlotBusyFlow, pricePerCoinFlow, minutesPerCoinFlow, deviceIpFlow, batteryStatusFlow, slotWarningDaysLeftFlow, isSlotExpiredFlow, slotExpiryReasonFlow, onInsertCoinClick, onDoneClick, onThemeChange, onActivateClick)
+    private val lockScreenOverlay = LockScreenOverlay(context, appStateFlow, paymentTimeoutFlow, coinsInsertedFlow, themeIndexFlow, isEsp32OnlineFlow, esp32MacAddressFlow, isSlotBusyFlow, pricePerCoinFlow, minutesPerCoinFlow, deviceIpFlow, slotNumberFlow, batteryStatusFlow, slotWarningDaysLeftFlow, isSlotExpiredFlow, slotExpiryReasonFlow, onInsertCoinClick, onDoneClick, onThemeChange, onActivateClick)
     private val floatingPillOverlay = FloatingPillOverlay(context, appStateFlow, sessionTimeFlow, paymentTimeoutFlow, coinsInsertedFlow, themeIndexFlow, isEsp32OnlineFlow, isSlotBusyFlow, pricePerCoinFlow, minutesPerCoinFlow, batteryStatusFlow, onInsertCoinClick, onDoneClick)
     
     fun show(): Boolean {
@@ -82,6 +83,7 @@ class LockScreenOverlay(
     private val pricePerCoinFlow: StateFlow<Double>,
     private val minutesPerCoinFlow: StateFlow<Int>,
     private val deviceIpFlow: StateFlow<String> = kotlinx.coroutines.flow.MutableStateFlow("127.0.0.1"),
+    private val slotNumberFlow: StateFlow<Int> = kotlinx.coroutines.flow.MutableStateFlow(1),
     private val batteryStatusFlow: StateFlow<BatteryStatus> = kotlinx.coroutines.flow.MutableStateFlow(BatteryStatus()),
     private val slotWarningDaysLeftFlow: StateFlow<Int?> = kotlinx.coroutines.flow.MutableStateFlow(null),
     private val isSlotExpiredFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
@@ -197,6 +199,7 @@ class LockScreenOverlay(
             val pricePerCoin by pricePerCoinFlow.collectAsState()
             val minutesPerCoin by minutesPerCoinFlow.collectAsState()
             val deviceIp by deviceIpFlow.collectAsState()
+            val slotNumber by slotNumberFlow.collectAsState()
             val batteryStatus by batteryStatusFlow.collectAsState()
             val slotWarningDaysLeft by slotWarningDaysLeftFlow.collectAsState()
             val isSlotExpired by isSlotExpiredFlow.collectAsState()
@@ -249,6 +252,7 @@ class LockScreenOverlay(
                         pricePerCoin = pricePerCoin,
                         minutesPerCoin = minutesPerCoin,
                         deviceIp = deviceIp,
+                        slotNumber = slotNumber,
                         themeIndex = themeIndex,
                         batteryStatus = batteryStatus,
                         onThemeChange = onThemeChange,
@@ -268,6 +272,7 @@ class LockScreenOverlay(
                         pricePerCoin = pricePerCoin,
                         minutesPerCoin = minutesPerCoin,
                         deviceIp = deviceIp,
+                        slotNumber = slotNumber,
                         themeIndex = themeIndex,
                         batteryStatus = batteryStatus,
                         onThemeChange = onThemeChange,

@@ -28,13 +28,13 @@ interface Esp32ConnectionDelegate {
     fun getRealTimeBatteryInfo(): Pair<Int, Boolean>
     fun onEsp32Discovered(ip: String)
     fun onOnlineStatusChanged(isOnline: Boolean, mac: String?)
-    fun onConfigSynced(price: Double?, minutes: Int?, alias: String?, adminPin: String? = null)
+    fun onConfigSynced(price: Double?, minutes: Int?, alias: String?, adminPin: String? = null, slotNum: Int? = null)
     fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?)
     fun onSlotBusy()
     fun onArmSuccess()
     fun onSlotWarning(daysLeft: Int, expiresAt: Long, slotNum: Int, message: String)
     fun onSlotLockdown(reason: String, slotNum: Int, expiresAt: Long)
-    fun onSlotRestored()
+    fun onSlotRestored(slotNum: Int = 0)
 }
 
 /**
@@ -187,7 +187,7 @@ class Esp32ConnectionManager(
                                                 json.optBoolean("lockdown", false) ||
                                                 json.optString("status", "") == "expired" ||
                                                 json.optString("slot_status", "") == "expired"
-                                        val slotNum = json.optInt("slot_num", 0)
+                                        val slotNum = json.optInt("slot_num", json.optInt("slot", 0))
                                         val expiresAt = json.optLong("expires_at", 0L)
                                         val errorMsg = if (json.has("message") && json.optString("message").isNotBlank()) {
                                             json.optString("message")
@@ -198,7 +198,7 @@ class Esp32ConnectionManager(
                                         if (isExpired) {
                                             delegate.onSlotLockdown(errorMsg, slotNum, expiresAt)
                                         } else {
-                                            delegate.onSlotRestored()
+                                            delegate.onSlotRestored(slotNum)
 
                                             val isWarning = json.optBoolean("slot_warning", false) ||
                                                     json.optString("slot_status", "") == "warning"
@@ -220,7 +220,7 @@ class Esp32ConnectionManager(
                                         } else null
 
                                         delegate.onOnlineStatusChanged(true, mac)
-                                        delegate.onConfigSynced(price, minutes, alias, decryptedPin)
+                                        delegate.onConfigSynced(price, minutes, alias, decryptedPin, slotNum)
                                     } catch (_: Exception) {}
                                 } else {
                                     delegate.onOnlineStatusChanged(true, null)

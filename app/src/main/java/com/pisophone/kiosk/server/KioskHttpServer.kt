@@ -19,8 +19,8 @@ interface KioskServerDelegate {
     fun getAuditEventsJson(): String
     fun onCoinCredited(seconds: Int, source: String, txId: String?, amount: Double): Boolean
     fun onDeductTime(seconds: Int)
-    fun onConfigUpdated(price: Double?, minutes: Int?, deviceName: String?, adminPin: String?)
-    fun onTriggerAction(action: String)
+    fun onConfigUpdated(price: Double?, minutes: Int?, deviceName: String?, adminPin: String?, slotNum: Int? = null)
+    fun onTriggerAction(action: String, slotNum: Int? = null)
     fun getCrashLog(): String?
 }
 
@@ -172,12 +172,14 @@ class KioskHttpServer(
                 val minutes = decryptedParams["minutes"]?.toIntOrNull()
                 val devName = decryptedParams["device_name"]?.trim()
                 val pin = decryptedParams["admin_pin"]
-                delegate.onConfigUpdated(price, minutes, devName, pin)
+                val slot = decryptedParams["slot"]?.toIntOrNull() ?: decryptedParams["slot_num"]?.toIntOrNull()
+                delegate.onConfigUpdated(price, minutes, devName, pin, slot)
                 newFixedLengthResponse(Response.Status.OK, "text/plain", "OK")
             }
             "/trigger_action" -> {
                 val actionType = decryptedParams["action"] ?: ""
-                delegate.onTriggerAction(actionType)
+                val slot = decryptedParams["slot"]?.toIntOrNull() ?: decryptedParams["slot_num"]?.toIntOrNull()
+                delegate.onTriggerAction(actionType, slot)
                 newFixedLengthResponse(Response.Status.OK, "text/plain", "OK")
             }
             "/emergency_adb" -> {

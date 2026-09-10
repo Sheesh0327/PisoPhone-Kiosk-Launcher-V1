@@ -49,6 +49,7 @@ fun BlockScreen(
     pricePerCoin: Double = 5.0,
     minutesPerCoin: Int = 30,
     deviceIp: String = "127.0.0.1",
+    slotNumber: Int = 1,
     themeIndex: Int = 0,
     batteryStatus: BatteryStatus = BatteryStatus(),
     onThemeChange: () -> Unit = {},
@@ -215,7 +216,7 @@ fun BlockScreen(
                         
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        DeviceTitleBadge(deviceIp, Primary, TextPrimary, TextTertiary, SurfaceVariant)
+                        DeviceTitleBadge(deviceIp, slotNumber, Primary, TextPrimary, TextTertiary, SurfaceVariant)
 
                         Text(
                             if (isWaiting) "Coins inserted: $coinsInserted" else "Insert a coin to unlock all applications for a $minutesPerCoin-minute session.",

@@ -66,6 +66,7 @@ fun BlockScreenTimeHeader(batteryStatus: BatteryStatus, themeTextPrimary: Color)
 @Composable
 fun DeviceTitleBadge(
     deviceIp: String,
+    slotNumber: Int = 1,
     themePrimary: Color,
     themeTextPrimary: Color,
     themeTextTertiary: Color,
@@ -76,24 +77,41 @@ fun DeviceTitleBadge(
     LaunchedEffect(Unit) {
         while (isActive) {
             customAlias = KioskSecurity.getDeviceAlias(ctx)
-            delay(5000)
+            delay(3000)
         }
     }
-    val deviceNumber = remember(deviceIp) {
-        try {
-            val lastOctet = deviceIp.substringAfterLast(".").toIntOrNull()
-            if (lastOctet != null && lastOctet in 100..120) {
-                (lastOctet - 99).toString()
-            } else if (lastOctet != null && lastOctet in 1..254) {
-                lastOctet.toString()
-            } else {
+    val assignedSlot = remember(slotNumber) {
+        if (slotNumber > 0) slotNumber else KioskSecurity.getAssignedBoxSlot(ctx)
+    }
+    val fallbackNumber = remember(deviceIp, assignedSlot) {
+        if (assignedSlot > 0) {
+            assignedSlot.toString()
+        } else {
+            try {
+                val lastOctet = deviceIp.substringAfterLast(".").toIntOrNull()
+                if (lastOctet != null && lastOctet in 100..120) {
+                    (lastOctet - 99).toString()
+                } else if (lastOctet != null && lastOctet in 1..254) {
+                    lastOctet.toString()
+                } else {
+                    "1"
+                }
+            } catch (e: Exception) {
                 "1"
             }
-        } catch (e: Exception) {
-            "1"
         }
     }
-    val mainTitle = if (customAlias.isNotBlank()) customAlias else "PisoPhone $deviceNumber"
+    val isRawDeviceId = customAlias.isNotBlank() && (
+        customAlias.length >= 16 ||
+        customAlias.contains("-") ||
+        customAlias.matches(Regex("^[a-fA-F0-9]{8,}$")) ||
+        customAlias.startsWith("Terminal")
+    )
+    val mainTitle = if (customAlias.isNotBlank() && !isRawDeviceId) {
+        customAlias
+    } else {
+        "PisoPhone $fallbackNumber"
+    }
 
     Text(
         mainTitle,
