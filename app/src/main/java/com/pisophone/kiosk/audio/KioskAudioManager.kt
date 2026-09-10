@@ -26,6 +26,7 @@ class KioskAudioManager(
 ) {
     companion object {
         private const val TAG = "KioskAudioManager"
+        private const val SAFETY_UNMUTE_TIMEOUT_MS = 12000L
     }
 
     private var tts: TextToSpeech? = null
@@ -35,6 +36,12 @@ class KioskAudioManager(
 
     private val systemAudioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
     private var audioFocusRequest: AudioFocusRequest? = null
+
+    private val volumeLock = Any()
+    @Volatile private var preMuteMediaVolume: Int? = null
+    @Volatile private var isMediaMutedForTts = false
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var safetyUnmuteRunnable: Runnable? = null
 
     private var coinAudioTrack: AudioTrack? = null
     private var waitingMusicTrack: AudioTrack? = null
@@ -61,7 +68,7 @@ class KioskAudioManager(
                     }
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                         val audioAttributes = AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                            .setUsage(AudioAttributes.USAGE_ALARM)
                             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                             .build()
                         tts?.setAudioAttributes(audioAttributes)
@@ -69,10 +76,9 @@ class KioskAudioManager(
                     tts?.setSpeechRate(1.02f)
                     tts?.setPitch(1.0f)
 
-                    // Track TTS utterance lifecycle to prioritize speech and duck/mute background audio
                     tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                         override fun onStart(utteranceId: String?) {
-                            onTtsStarted()
+                            isTtsActive = true
                         }
 
                         override fun onDone(utteranceId: String?) {
@@ -94,7 +100,7 @@ class KioskAudioManager(
                     })
 
                     isTtsReady = true
-                    Log.i(TAG, "TextToSpeech initialized successfully with Audio Focus prioritization.")
+                    Log.i(TAG, "TextToSpeech initialized with USAGE_ALARM stream routing and hardware ducking.")
 
                     pendingSpeechText?.let { pending ->
                         pendingSpeechText = null
@@ -109,26 +115,78 @@ class KioskAudioManager(
         }
     }
 
-    private fun onTtsStarted() {
+    private fun muteMediaStreamForTts() {
+        synchronized(volumeLock) {
+            try {
+                systemAudioManager?.let { am ->
+                    if (!isMediaMutedForTts) {
+                        val currentVol = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+                        preMuteMediaVolume = currentVol
+                        isMediaMutedForTts = true
+                        am.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0)
+                        Log.i(TAG, "Hardware STREAM_MUSIC muted for TTS (saved pre-mute volume: $currentVol)")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to mute STREAM_MUSIC for TTS: ${e.message}")
+            }
+        }
+    }
+
+    private fun restoreMediaStreamAfterTts() {
+        synchronized(volumeLock) {
+            try {
+                safetyUnmuteRunnable?.let { mainHandler.removeCallbacks(it) }
+                safetyUnmuteRunnable = null
+
+                if (isMediaMutedForTts) {
+                    val restoreVol = preMuteMediaVolume ?: 0
+                    systemAudioManager?.let { am ->
+                        am.setStreamVolume(AudioManager.STREAM_MUSIC, restoreVol, 0)
+                        Log.i(TAG, "Hardware STREAM_MUSIC restored to $restoreVol after TTS")
+                    }
+                    isMediaMutedForTts = false
+                    preMuteMediaVolume = null
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to restore STREAM_MUSIC after TTS: ${e.message}")
+            }
+        }
+    }
+
+    private fun onTtsStartedImmediate() {
         isTtsActive = true
         requestTtsAudioFocus()
+        muteMediaStreamForTts()
+
         synchronized(audioLock) {
             try {
                 waitingMusicTrack?.let { track ->
                     if (track.playState == AudioTrack.PLAYSTATE_PLAYING) {
                         track.pause()
-                        Log.d(TAG, "Muted/paused kiosk waiting music for active TTS utterance")
+                        Log.d(TAG, "Paused kiosk waiting music for active TTS speech")
                     }
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to pause waiting music on TTS start: ${e.message}")
             }
         }
+
+        // Schedule safety watchdog unmute in case TTS callback is dropped or interrupted
+        safetyUnmuteRunnable?.let { mainHandler.removeCallbacks(it) }
+        val watchdog = Runnable {
+            Log.w(TAG, "Safety watchdog triggered — restoring media volume after TTS timeout")
+            onTtsFinished()
+        }
+        safetyUnmuteRunnable = watchdog
+        mainHandler.postDelayed(watchdog, SAFETY_UNMUTE_TIMEOUT_MS)
     }
 
     private fun onTtsFinished() {
         isTtsActive = false
+        restoreMediaStreamAfterTts()
         abandonTtsAudioFocus()
+
         synchronized(audioLock) {
             if (isWaitingMusicDesired) {
                 try {
@@ -149,14 +207,14 @@ class KioskAudioManager(
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 val playbackAttributes = AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                    .setUsage(AudioAttributes.USAGE_ALARM)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                     .build()
 
-                val focusReq = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                val focusReq = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
                     .setAudioAttributes(playbackAttributes)
                     .setAcceptsDelayedFocusGain(false)
-                    .setOnAudioFocusChangeListener { /* Managed transiently */ }
+                    .setOnAudioFocusChangeListener { /* Managed synchronously */ }
                     .build()
 
                 audioFocusRequest = focusReq
@@ -165,11 +223,11 @@ class KioskAudioManager(
                 @Suppress("DEPRECATION")
                 systemAudioManager?.requestAudioFocus(
                     null,
-                    AudioManager.STREAM_NOTIFICATION,
-                    AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
+                    AudioManager.STREAM_ALARM,
+                    AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
                 )
             }
-            Log.d(TAG, "Requested transient Audio Focus for TTS prioritization")
+            Log.d(TAG, "Requested exclusive transient Audio Focus on STREAM_ALARM for TTS")
         } catch (e: Exception) {
             Log.w(TAG, "Error requesting audio focus: ${e.message}")
         }
@@ -304,18 +362,29 @@ class KioskAudioManager(
         }
 
         HardwareFeedback.triggerAlertFeedback(context)
+        onTtsStartedImmediate()
+
         if (isTtsReady && tts != null) {
             try {
                 val params = Bundle().apply {
                     putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f)
+                    putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_ALARM)
                 }
-                tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, "kiosk_warning_${System.currentTimeMillis()}")
+                val utteranceId = "kiosk_warning_${System.currentTimeMillis()}"
+                val result = tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
+                if (result != TextToSpeech.SUCCESS) {
+                    Log.w(TAG, "TTS speak returned non-success code $result, triggering fallback")
+                    playSynthesizedTone(880, 160)
+                    onTtsFinished()
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "TTS speak failed: ${e.message}")
                 playSynthesizedTone(880, 160)
+                onTtsFinished()
             }
         } else {
             playSynthesizedTone(880, 160)
+            onTtsFinished()
         }
     }
 
@@ -499,6 +568,7 @@ class KioskAudioManager(
 
     fun shutdown() {
         stopWaitingMusic()
+        restoreMediaStreamAfterTts()
         abandonTtsAudioFocus()
         try {
             tts?.stop()
