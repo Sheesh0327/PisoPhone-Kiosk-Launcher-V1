@@ -64,6 +64,24 @@ class FloatingPillOverlay(
         }
     }
 
+    fun updateFullScreen(isFullScreen: Boolean) {
+        val currentView = overlayView?.view ?: return
+        if (isFullScreen) {
+            layoutParams.width = WindowManager.LayoutParams.MATCH_PARENT
+            layoutParams.height = WindowManager.LayoutParams.MATCH_PARENT
+        } else {
+            layoutParams.width = WindowManager.LayoutParams.WRAP_CONTENT
+            layoutParams.height = WindowManager.LayoutParams.WRAP_CONTENT
+        }
+        if (isViewAdded) {
+            try {
+                windowManager.updateViewLayout(currentView, layoutParams)
+            } catch (e: Exception) {
+                android.util.Log.e("FloatingPillOverlay", "Failed to update full screen layout: ${e.message}")
+            }
+        }
+    }
+
     fun isAttached(): Boolean {
         val view = overlayView?.view
         return isViewAdded && view != null && view.isAttachedToWindow
@@ -126,6 +144,7 @@ class FloatingPillOverlay(
                     themeIndex = themeIndex,
                     batteryStatus = batteryStatus,
                     onRequestFocus = { focusable -> updateFocusable(focusable) },
+                    onRequestFullScreen = { isFullScreen -> updateFullScreen(isFullScreen) },
                     onBrightnessChange = { ratio ->
                         layoutParams.screenBrightness = ratio
                         if (isViewAdded) {

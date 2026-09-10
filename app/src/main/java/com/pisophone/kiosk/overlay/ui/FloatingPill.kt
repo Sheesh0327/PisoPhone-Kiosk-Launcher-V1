@@ -10,6 +10,7 @@ import android.os.Build
 import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -53,6 +54,7 @@ fun FloatingPill(
     themeIndex: Int = 0,
     batteryStatus: BatteryStatus = BatteryStatus(),
     onRequestFocus: (Boolean) -> Unit = {},
+    onRequestFullScreen: (Boolean) -> Unit = {},
     onBrightnessChange: (Float) -> Unit = {},
     onDrag: (Float, Float) -> Unit
 ) {
@@ -71,7 +73,9 @@ fun FloatingPill(
     var showUnlockedSecurityDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(showUnlockedPinDialog, showUnlockedSecurityDialog) {
-        onRequestFocus(showUnlockedPinDialog || showUnlockedSecurityDialog)
+        val needActive = showUnlockedPinDialog || showUnlockedSecurityDialog
+        onRequestFocus(needActive)
+        onRequestFullScreen(needActive)
     }
     
     val minutes = timeRemaining / 60
@@ -162,7 +166,58 @@ fun FloatingPill(
         }
     }
 
-    if (expanded) {
+    val isSecurityActive = showUnlockedPinDialog || showUnlockedSecurityDialog
+
+    if (isSecurityActive) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.75f))
+                .clickable(enabled = false) {},
+            contentAlignment = Alignment.Center
+        ) {
+            if (showUnlockedPinDialog) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth(0.9f)
+                        .widthIn(max = 420.dp)
+                        .padding(16.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A))
+                ) {
+                    Box(modifier = Modifier.padding(16.dp)) {
+                        FloatingPillAdminAuthCard(
+                            context = context,
+                            outlineColor = Outline,
+                            primaryColor = Primary,
+                            onPrimaryColor = OnPrimary,
+                            onDismiss = { showUnlockedPinDialog = false },
+                            onUnlockSuccess = {
+                                showUnlockedPinDialog = false
+                                showUnlockedSecurityDialog = true
+                            }
+                        )
+                    }
+                }
+            } else if (showUnlockedSecurityDialog) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth(0.95f)
+                        .fillMaxHeight(0.92f)
+                        .padding(12.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A))
+                ) {
+                    Box(modifier = Modifier.padding(12.dp)) {
+                        SecurityVaultView(
+                            context = context,
+                            onClose = { showUnlockedSecurityDialog = false }
+                        )
+                    }
+                }
+            }
+        }
+    } else if (expanded) {
         Box(
             modifier = Modifier
                 .width(if (isLandscape) 320.dp else 300.dp)
@@ -377,34 +432,6 @@ fun FloatingPill(
                             Text(activeText, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                         }
                     }
-                }
-            }
-
-            if (showUnlockedPinDialog) {
-                FloatingPillAdminAuthCard(
-                    context = context,
-                    outlineColor = Outline,
-                    primaryColor = Primary,
-                    onPrimaryColor = OnPrimary,
-                    onDismiss = { showUnlockedPinDialog = false },
-                    onUnlockSuccess = {
-                        showUnlockedPinDialog = false
-                        showUnlockedSecurityDialog = true
-                    }
-                )
-            }
-
-            if (showUnlockedSecurityDialog) {
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .background(Color(0xFF0F172A).copy(alpha = 0.98f), RoundedCornerShape(18.dp))
-                        .padding(12.dp)
-                ) {
-                    SecurityVaultView(
-                        context = context,
-                        onClose = { showUnlockedSecurityDialog = false }
-                    )
                 }
             }
         }
