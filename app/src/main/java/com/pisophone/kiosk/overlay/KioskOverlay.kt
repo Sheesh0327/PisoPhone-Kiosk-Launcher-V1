@@ -16,7 +16,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import com.pisophone.kiosk.ComposeOverlayView
 import com.pisophone.kiosk.model.BatteryStatus
 import com.pisophone.kiosk.overlay.ui.BlockScreen
-import com.pisophone.kiosk.overlay.ui.FloatingBall
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 
@@ -43,11 +42,11 @@ class KioskOverlay(
     private val onActivateClick: (String) -> Unit = {}
 ) {
     private val lockScreenOverlay = LockScreenOverlay(context, appStateFlow, paymentTimeoutFlow, coinsInsertedFlow, themeIndexFlow, isEsp32OnlineFlow, esp32MacAddressFlow, isSlotBusyFlow, pricePerCoinFlow, minutesPerCoinFlow, deviceIpFlow, batteryStatusFlow, slotWarningDaysLeftFlow, isSlotExpiredFlow, slotExpiryReasonFlow, onInsertCoinClick, onDoneClick, onThemeChange, onActivateClick)
-    private val floatingBallOverlay = FloatingBallOverlay(context, appStateFlow, sessionTimeFlow, paymentTimeoutFlow, coinsInsertedFlow, themeIndexFlow, isEsp32OnlineFlow, isSlotBusyFlow, pricePerCoinFlow, minutesPerCoinFlow, batteryStatusFlow, onInsertCoinClick, onDoneClick)
+    private val floatingPillOverlay = FloatingPillOverlay(context, appStateFlow, sessionTimeFlow, paymentTimeoutFlow, coinsInsertedFlow, themeIndexFlow, isEsp32OnlineFlow, isSlotBusyFlow, pricePerCoinFlow, minutesPerCoinFlow, batteryStatusFlow, onInsertCoinClick, onDoneClick)
     
     fun show(): Boolean {
         val lockShown = lockScreenOverlay.show()
-        floatingBallOverlay.show()
+        floatingPillOverlay.show()
         return lockShown
     }
 
@@ -57,17 +56,17 @@ class KioskOverlay(
     
     fun remove() {
         lockScreenOverlay.remove()
-        floatingBallOverlay.remove()
+        floatingPillOverlay.remove()
     }
 
     fun onScreenWake() {
         lockScreenOverlay.onScreenWake()
-        floatingBallOverlay.onScreenWake()
+        floatingPillOverlay.onScreenWake()
     }
 
     fun onScreenSleep() {
         lockScreenOverlay.onScreenSleep()
-        floatingBallOverlay.onScreenSleep()
+        floatingPillOverlay.onScreenSleep()
     }
 }
 

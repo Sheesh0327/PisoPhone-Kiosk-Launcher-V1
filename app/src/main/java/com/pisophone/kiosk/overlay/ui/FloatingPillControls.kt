@@ -25,7 +25,7 @@ import androidx.compose.ui.unit.sp
 import java.util.Locale
 
 @Composable
-fun FloatingBallStatusChips(
+fun FloatingPillStatusChips(
     batteryPct: Int,
     ramStats: Pair<Long, Long>,
     outlineColor: Color
@@ -86,7 +86,7 @@ fun FloatingBallStatusChips(
 }
 
 @Composable
-fun FloatingBallBrightnessControl(
+fun FloatingPillBrightnessControl(
     currentBrightness: Float,
     maxBrightness: Float,
     onBrightnessChange: (Float) -> Unit
@@ -132,7 +132,7 @@ fun FloatingBallBrightnessControl(
 }
 
 @Composable
-fun FloatingBallVolumeControl(
+fun FloatingPillVolumeControl(
     audioManager: AudioManager,
     maxVolume: Int,
     outlineColor: Color
@@ -202,7 +202,7 @@ fun FloatingBallVolumeControl(
 }
 
 @Composable
-fun FloatingBallRamCleaner(
+fun FloatingPillRamCleaner(
     context: Context,
     activityManager: ActivityManager,
     ramStats: Pair<Long, Long>,

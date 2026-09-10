@@ -25,7 +25,7 @@ import com.pisophone.kiosk.security.KioskSecurity
 import kotlinx.coroutines.delay
 
 @Composable
-fun FloatingBallAdminAuthCard(
+fun FloatingPillAdminAuthCard(
     context: Context,
     outlineColor: Color,
     primaryColor: Color,

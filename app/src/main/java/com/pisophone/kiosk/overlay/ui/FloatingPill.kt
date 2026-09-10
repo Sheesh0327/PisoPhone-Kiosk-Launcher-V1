@@ -41,7 +41,7 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 
 @Composable
-fun FloatingBall(
+fun FloatingPill(
     timeRemaining: Int,
     onInsertCoinClick: () -> Unit,
     coinsInserted: Int,
@@ -282,25 +282,25 @@ fun FloatingBall(
                         .weight(1f, fill = false)
                         .verticalScroll(scrollState)
                 ) {
-                    FloatingBallStatusChips(
+                    FloatingPillStatusChips(
                         batteryPct = batteryPct,
                         ramStats = ramStats,
                         outlineColor = Outline
                     )
 
-                    FloatingBallBrightnessControl(
+                    FloatingPillBrightnessControl(
                         currentBrightness = currentBrightness,
                         maxBrightness = maxBrightness,
                         onBrightnessChange = { applyBrightness(it) }
                     )
 
-                    FloatingBallVolumeControl(
+                    FloatingPillVolumeControl(
                         audioManager = audioManager,
                         maxVolume = maxVolume,
                         outlineColor = Outline
                     )
 
-                    FloatingBallRamCleaner(
+                    FloatingPillRamCleaner(
                         context = context,
                         activityManager = activityManager,
                         ramStats = ramStats,
@@ -381,7 +381,7 @@ fun FloatingBall(
             }
 
             if (showUnlockedPinDialog) {
-                FloatingBallAdminAuthCard(
+                FloatingPillAdminAuthCard(
                     context = context,
                     outlineColor = Outline,
                     primaryColor = Primary,
