@@ -287,12 +287,13 @@ class MainActivity : ComponentActivity() {
                     val pkgName = resolveInfo.activityInfo.packageName
                     if (pkgName == packageName) return@mapNotNull null
 
-                    if (hiddenApps.contains(pkgName) ||
+                    if (pkgName != "com.android.vending" && (
+                        hiddenApps.contains(pkgName) ||
                         pkgName == "com.android.settings" ||
                         pkgName.startsWith("com.android.settings.") ||
                         pkgName == "com.google.android.settings" ||
                         (pkgName.contains(".settings") && !pkgName.contains("game"))
-                    ) {
+                    )) {
                         return@mapNotNull null
                     }
 

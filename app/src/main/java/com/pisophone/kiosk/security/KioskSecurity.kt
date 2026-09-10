@@ -215,10 +215,12 @@ object KioskSecurity {
     }
 
     fun isAppHidden(context: Context, packageName: String): Boolean {
+        if (packageName == "com.android.vending") return false
         return getHiddenApps(context).contains(packageName)
     }
 
     fun toggleAppHidden(context: Context, packageName: String): Boolean {
+        if (packageName == "com.android.vending") return false
         val current = getHiddenApps(context).toMutableSet()
         val isNowHidden = if (current.contains(packageName)) {
             current.remove(packageName)
