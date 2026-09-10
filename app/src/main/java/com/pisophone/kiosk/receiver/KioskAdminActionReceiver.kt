@@ -109,8 +109,8 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                     return
                 }
                 if (!com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(context)) {
-                    Log.w(TAG, "ADMIN_BYPASS rejected: Device is not provisioned or is hardware locked.")
-                    Toast.makeText(context, "Bypass rejected: Hardware provisioning required.", Toast.LENGTH_SHORT).show()
+                    Log.w(TAG, "ADMIN_BYPASS rejected: Device is not provisioned.")
+                    Toast.makeText(context, "Bypass rejected: Device provisioning required.", Toast.LENGTH_SHORT).show()
                     return
                 }
                 val duration = intent.getIntExtra("duration", 900)
@@ -214,14 +214,14 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
             ACTION_GET_DEVICE_ID -> {
                 val hwId = com.pisophone.kiosk.security.KioskActivationManager.getHardwareFingerprint(context)
                 val devName = com.pisophone.kiosk.security.KioskActivationManager.getHardwareDescription()
-                val isAuthorized = com.pisophone.kiosk.security.KioskActivationManager.isHardwareAuthorized(context)
-                Log.i(TAG, "GET_DEVICE_ID requested via ADB broadcast. Returning: $hwId ($devName), hardwareSealed=$isAuthorized")
+                val isPaired = com.pisophone.kiosk.security.KioskActivationManager.isPairingCompleted(context)
+                Log.i(TAG, "GET_DEVICE_ID requested via ADB broadcast. Returning: $hwId ($devName), paired=$isPaired")
                 setResultCode(android.app.Activity.RESULT_OK)
                 setResultData(hwId)
                 val extras = android.os.Bundle().apply {
                     putString("hardware_id", hwId)
                     putString("device_name", devName)
-                    putBoolean("hardware_sealed", isAuthorized)
+                    putBoolean("paired", isPaired)
                 }
                 setResultExtras(extras)
             }
@@ -277,11 +277,12 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                 }
 
                 Log.i(TAG, "Activation broadcast received with key: $key")
-                val success = com.pisophone.kiosk.security.KioskActivationManager.sealToCurrentDevice(context)
+                val success = com.pisophone.kiosk.security.KioskActivationManager.recordDeviceIdentity(context)
+                com.pisophone.kiosk.security.KioskActivationManager.setPairingCompleted(context, true)
                 setResultCode(if (success) android.app.Activity.RESULT_OK else android.app.Activity.RESULT_CANCELED)
                 setResultData(if (success) "SUCCESS" else "FAILED")
                 if (success) {
-                    Toast.makeText(context, "PisoPhone Cryptographic Hardware Seal Established!", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "PisoPhone Terminal Activation Configured", Toast.LENGTH_LONG).show()
                     // Restart Kiosk Service and reload UI
                     try {
                         val serviceIntent = Intent(context, KioskService::class.java)

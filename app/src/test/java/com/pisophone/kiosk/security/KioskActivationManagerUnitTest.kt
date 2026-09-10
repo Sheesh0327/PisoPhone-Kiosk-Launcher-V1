@@ -18,19 +18,15 @@ class KioskActivationManagerUnitTest {
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
         // Clear DirectBoot and normal shared preferences for clean state
-        val directBootPrefs = KioskSecurity.getDirectBootPrefs(context, "kiosk_hardware_seal_vault")
+        val directBootPrefs = KioskSecurity.getDirectBootPrefs(context, "kiosk_activation_vault")
         directBootPrefs.edit().clear().commit()
         val securityPrefs = KioskSecurity.getDirectBootPrefs(context, "kiosk_security_vault")
         securityPrefs.edit().clear().commit()
     }
 
     @Test
-    fun testFreshInstallSavesDeviceIdAndIsAuthorized() {
+    fun testFreshInstallSavesDeviceIdAndAllowsAppToRun() {
         // App installs like normal, auto-saves device ID, and allows app to run
-        assertTrue(
-            "Fresh install must save device ID and allow app to run",
-            KioskActivationManager.isHardwareAuthorized(context)
-        )
         assertTrue(
             "isAppAllowedToRun must return true on fresh install",
             KioskActivationManager.isAppAllowedToRun(context)
@@ -42,18 +38,17 @@ class KioskActivationManagerUnitTest {
     }
 
     @Test
-    fun testProvisioningSealsDeviceAndAuthorizes() {
-        // When installer / WebADB triggers sealToCurrentDevice
-        val sealed = KioskActivationManager.sealToCurrentDevice(context)
-        assertTrue("sealToCurrentDevice should succeed", sealed)
+    fun testProvisioningRecordsDeviceIdentity() {
+        val recorded = KioskActivationManager.recordDeviceIdentity(context)
+        assertTrue("recordDeviceIdentity should succeed", recorded)
 
-        assertTrue(
-            "Device must be authorized after provisioning",
-            KioskActivationManager.isHardwareAuthorized(context)
-        )
         assertTrue(
             "isAppAllowedToRun must be true after provisioning",
             KioskActivationManager.isAppAllowedToRun(context)
+        )
+        assertTrue(
+            "Bound hardware ID must match current fingerprint",
+            KioskActivationManager.getBoundHardwareId(context) == KioskActivationManager.getHardwareFingerprint(context)
         )
     }
 
@@ -74,14 +69,28 @@ class KioskActivationManagerUnitTest {
     }
 
     @Test
-    fun testRebindWithAdminPin() {
-        // Incorrect PIN fails
-        val wrongPinSuccess = KioskActivationManager.rebindWithAdminPin(context, "9999")
-        assertFalse("Rebind with wrong PIN must fail", wrongPinSuccess)
+    fun testSlotLockdownManagement() {
+        assertFalse(
+            "Slot should not be locked down initially",
+            KioskActivationManager.isSlotLockedDown(context)
+        )
 
-        // Correct default PIN (1234) succeeds and seals device
-        val correctPinSuccess = KioskActivationManager.rebindWithAdminPin(context, "1234")
-        assertTrue("Rebind with correct Admin PIN must succeed", correctPinSuccess)
-        assertTrue(KioskActivationManager.isHardwareAuthorized(context))
+        KioskActivationManager.setSlotLockdown(
+            context = context,
+            locked = true,
+            reason = "Slot 1 Expired",
+            slotNum = 1,
+            expiryTs = 1700000000000L
+        )
+
+        assertTrue(
+            "Slot should be locked down after setting",
+            KioskActivationManager.isSlotLockedDown(context)
+        )
+
+        val (reason, slotNum, expiryTs) = KioskActivationManager.getSlotLockdownDetails(context)
+        org.junit.Assert.assertEquals("Slot 1 Expired", reason)
+        org.junit.Assert.assertEquals(1, slotNum)
+        org.junit.Assert.assertEquals(1700000000000L, expiryTs)
     }
 }

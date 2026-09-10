@@ -22,7 +22,7 @@ interface Esp32DiscoveryDelegate {
  * Industry-standard IoT Discovery Service for the ESP32 Master box:
  * 1. Fast Path: Direct probe of configured IP & canonical mDNS ("kioskmanager.local") via HTTP /identify.
  * 2. Dynamic Discovery: Standard UDP broadcast probe & beacon on port 8888.
- * 3. Hardware Lock (RULE 6): Uniform MAC address validation from discovered JSON payload.
+ * 3. Security (RULE 6): Uniform MAC address validation from discovered JSON payload.
  */
 class Esp32DiscoveryScanner(
     private val context: Context,

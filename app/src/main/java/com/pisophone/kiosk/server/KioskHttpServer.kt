@@ -148,12 +148,6 @@ class KioskHttpServer(
             markTxIdProcessed(txId)
         }
 
-        // Protected action endpoints require active hardware license/authorization
-        if (!KioskActivationManager.isHardwareAuthorized(context)) {
-            Log.e(TAG, "Rejecting HTTP action: Hardware lock is active on unauthorized device.")
-            return newFixedLengthResponse(Response.Status.FORBIDDEN, "text/plain", "Hardware lock active on unauthorized device")
-        }
-
         return when (uri) {
             "/add_time", "/coin" -> {
                 val minutes = decryptedParams["minutes"]?.toIntOrNull() ?: 0

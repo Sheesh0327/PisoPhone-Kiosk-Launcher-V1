@@ -155,7 +155,8 @@ class MainActivity : ComponentActivity() {
         }
 
         if (activate) {
-            KioskActivationManager.sealToCurrentDevice(this)
+            KioskActivationManager.recordDeviceIdentity(this)
+            KioskActivationManager.setPairingCompleted(this, true)
             try {
                 val serviceIntent = Intent(this, KioskService::class.java)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

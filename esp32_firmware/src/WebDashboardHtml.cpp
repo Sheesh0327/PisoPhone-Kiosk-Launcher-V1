@@ -1482,44 +1482,29 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                         statusLabel = 'LOW BATTERY';
                     }
 
+                    // Inactive slots are monitored under Hardware Slot Seats above
+                    if (!dev.isBound && isExp) {
+                        return;
+                    }
+
                     if (!dev.isBound) {
-                        if (isExp) {
-                            html += '<div class="device-row empty expired" style="opacity: 0.55; filter: grayscale(0.8); background: rgba(255, 255, 255, 0.02); border: 1px dashed rgba(239, 68, 68, 0.35); pointer-events: none;">' +
-                                        '<div class="device-row-identity">' +
-                                            '<span class="device-slot-badge" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);">Slot #' + dev.slotNum + ' • EXPIRED</span>' +
-                                            '<div class="device-row-info">' +
-                                                '<span class="device-row-name" style="color: var(--text-muted);">Empty Slot #' + dev.slotNum + ' (Expired/Uncredited)</span>' +
-                                                '<span class="device-row-sub" style="color: #ef4444; font-weight: 600;">Allocate credits in Vault to activate seat</span>' +
-                                            '</div>' +
+                        html += '<div class="device-row empty">' +
+                                    '<div class="device-row-identity">' +
+                                        '<span class="device-slot-badge">Slot #' + dev.slotNum + '</span>' +
+                                        '<div class="device-row-info">' +
+                                            '<span class="device-row-name">Empty Slot #' + dev.slotNum + '</span>' +
+                                            '<span class="device-row-sub">Seat open & ready for setup</span>' +
                                         '</div>' +
-                                        '<div style="color: #ef4444; font-size: 12px; font-weight: 700;">' +
-                                            '⛔ Slot Inactive' +
-                                        '</div>' +
-                                        '<div class="device-row-actions">' +
-                                            '<button type="button" class="btn btn-secondary btn-sm" disabled style="padding: 8px 16px; font-weight: 700; opacity: 0.5; cursor: not-allowed; pointer-events: none; background: rgba(255, 255, 255, 0.05); color: var(--text-muted); border: 1px solid var(--border);">' +
-                                                '⚡ Occupy slot (Disabled)' +
-                                            '</button>' +
-                                        '</div>' +
-                                    '</div>';
-                        } else {
-                            html += '<div class="device-row empty">' +
-                                        '<div class="device-row-identity">' +
-                                            '<span class="device-slot-badge">Slot #' + dev.slotNum + '</span>' +
-                                            '<div class="device-row-info">' +
-                                                '<span class="device-row-name">Empty Slot #' + dev.slotNum + '</span>' +
-                                                '<span class="device-row-sub">Seat open & ready for setup</span>' +
-                                            '</div>' +
-                                        '</div>' +
-                                        '<div style="color: var(--text-muted); font-size: 13px; font-style: italic;">' +
-                                            'No terminal bound' +
-                                        '</div>' +
-                                        '<div class="device-row-actions">' +
-                                            '<button type="button" class="btn btn-primary btn-sm" onclick="occupySlot(' + dev.slotNum + ')" style="padding: 8px 16px; font-weight: 700;">' +
-                                                '⚡ Occupy slot' +
-                                            '</button>' +
-                                        '</div>' +
-                                    '</div>';
-                        }
+                                    '</div>' +
+                                    '<div style="color: var(--text-muted); font-size: 13px; font-style: italic;">' +
+                                        'No terminal bound' +
+                                    '</div>' +
+                                    '<div class="device-row-actions">' +
+                                        '<button type="button" class="btn btn-primary btn-sm" onclick="occupySlot(' + dev.slotNum + ')" style="padding: 8px 16px; font-weight: 700;">' +
+                                            '⚡ Occupy slot' +
+                                        '</button>' +
+                                    '</div>' +
+                                '</div>';
                     } else if (dev.online) {
                         const mins = Math.floor(dev.time / 60);
                         const secs = dev.time % 60;
@@ -1624,7 +1609,11 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                     });
                 }
 
-                container.innerHTML = html;
+                if (!html) {
+                    container.innerHTML = '<div style="padding: 24px; text-align: center; color: var(--text-muted); grid-column: 1/-1;">No active terminals connected. Inactive slots can be monitored under Hardware Slot Seats above.</div>';
+                } else {
+                    container.innerHTML = html;
+                }
             })
             .catch(err => console.log('Status polling error', err));
     }

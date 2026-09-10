@@ -53,7 +53,7 @@ class CoinProcessor(
         isStartupPhase: Boolean = false
     ): Boolean {
         if (!com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(context)) {
-            Log.w(TAG, "Rejecting coin credit: Hardware lock or slot expired lockdown active.")
+            Log.w(TAG, "Rejecting coin credit: Slot lockdown active.")
             return false
         }
 

@@ -198,9 +198,9 @@ class KioskService : Service() {
 
     fun performAdminBypass(durationSeconds: Int = 900) {
         if (!com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(this)) {
-            Log.w(TAG, "Admin bypass rejected: Device is not provisioned or is hardware locked.")
+            Log.w(TAG, "Admin bypass rejected: Device is not provisioned.")
             Handler(Looper.getMainLooper()).post {
-                Toast.makeText(this, "⚠️ Bypass Unavailable: Device requires hardware activation.", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "⚠️ Bypass Unavailable: Device requires provisioning.", Toast.LENGTH_LONG).show()
             }
             return
         }
@@ -371,7 +371,7 @@ class KioskService : Service() {
 
                 override fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?) {
                     if (!KioskActivationManager.isAppAllowedToRun(applicationContext)) {
-                        Log.e(TAG, "Hardware Lock active: Discarding coin event on unprovisioned/locked device.")
+                        Log.e(TAG, "Device not provisioned: Discarding coin event.")
                         return
                     }
                     if (txId.isNullOrBlank()) {

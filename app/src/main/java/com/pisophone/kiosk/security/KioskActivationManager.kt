@@ -26,8 +26,6 @@ object KioskActivationManager {
 
     private const val KEY_BOUND_HW_ID = "bound_hardware_fingerprint"
     private const val KEY_BOUND_DEVICE_NAME = "bound_device_model_name"
-    private const val KEY_BOUND_TIMESTAMP = "bound_timestamp_ms"
-    private const val KEY_BOUND_SIGNATURE = "bound_hardware_sig"
     private const val KEY_SLOT_EXPIRED = "slot_expired_lockdown"
     private const val KEY_SLOT_EXPIRED_REASON = "slot_expired_reason"
     private const val KEY_SLOT_NUM = "slot_number"
@@ -105,25 +103,25 @@ object KioskActivationManager {
         return KioskSecurity.getDirectBootPrefs(context, PREFS_NAME)
     }
 
-    fun sealToCurrentDevice(context: Context): Boolean {
+    fun recordDeviceIdentity(context: Context): Boolean {
         val prefs = getPrefs(context)
         val currentHwId = getHardwareFingerprint(context)
         val currentDevName = getHardwareDescription()
-        val now = System.currentTimeMillis()
-
-        val sig = generateSignature(context, currentHwId, currentDevName, now)
 
         prefs.edit()
             .putString(KEY_BOUND_HW_ID, currentHwId)
             .putString(KEY_BOUND_DEVICE_NAME, currentDevName)
-            .putLong(KEY_BOUND_TIMESTAMP, now)
-            .putString(KEY_BOUND_SIGNATURE, sig)
             .apply()
 
         notifyActivationChanged()
-        Log.i(TAG, "Device activation parameters recorded for $currentDevName ($currentHwId).")
+        Log.i(TAG, "Device identity registered: $currentDevName ($currentHwId).")
         return true
     }
+
+    /**
+     * Backward-compatible alias for provisioning identity recording.
+     */
+    fun sealToCurrentDevice(context: Context): Boolean = recordDeviceIdentity(context)
 
     fun isPairingCompleted(context: Context): Boolean {
         val prefs = getPrefs(context)
@@ -163,10 +161,6 @@ object KioskActivationManager {
         return true
     }
 
-    fun isHardwareAuthorized(context: Context): Boolean {
-        return true
-    }
-
     fun isSlotLockedDown(context: Context): Boolean {
         val prefs = getPrefs(context)
         return prefs.getBoolean(KEY_SLOT_EXPIRED, false)
@@ -193,45 +187,21 @@ object KioskActivationManager {
 
     fun getBoundHardwareId(context: Context): String {
         val prefs = getPrefs(context)
-        val bound = prefs.getString(KEY_BOUND_HW_ID, null)
+        var bound = prefs.getString(KEY_BOUND_HW_ID, null)
         if (bound.isNullOrBlank()) {
-            val current = getHardwareFingerprint(context)
-            sealToCurrentDevice(context)
-            return current
+            bound = getHardwareFingerprint(context)
+            recordDeviceIdentity(context)
         }
         return bound
     }
 
     fun getBoundDeviceName(context: Context): String {
-        return getPrefs(context).getString(KEY_BOUND_DEVICE_NAME, "Unknown Device") ?: "Unknown Device"
-    }
-
-    fun rebindWithAdminPin(context: Context, enteredPin: String): Boolean {
-        if (!KioskSecurity.verifyAdminPin(context, enteredPin)) {
-            Log.w(TAG, "Re-registration failed: Incorrect Admin PIN.")
-            return false
-        }
         val prefs = getPrefs(context)
-        val currentHwId = getHardwareFingerprint(context)
-        val currentDevName = getHardwareDescription()
-        val now = System.currentTimeMillis()
-        val sig = generateSignature(context, currentHwId, currentDevName, now)
-
-        prefs.edit()
-            .putString(KEY_BOUND_HW_ID, currentHwId)
-            .putString(KEY_BOUND_DEVICE_NAME, currentDevName)
-            .putLong(KEY_BOUND_TIMESTAMP, now)
-            .putString(KEY_BOUND_SIGNATURE, sig)
-            .apply()
-
-        notifyActivationChanged()
-        Log.i(TAG, "Device details re-registered with Admin credentials ($currentDevName - $currentHwId).")
-        return true
-    }
-
-    private fun generateSignature(context: Context, hwId: String, devName: String, timestamp: Long): String {
-        val secret = KioskSecurity.getSharedSecret(context)
-        val payload = "$hwId|$devName|$timestamp|$secret"
-        return KioskSecurity.calculateHmac(payload, secret)
+        var name = prefs.getString(KEY_BOUND_DEVICE_NAME, null)
+        if (name.isNullOrBlank()) {
+            name = getHardwareDescription()
+            recordDeviceIdentity(context)
+        }
+        return name
     }
 }
