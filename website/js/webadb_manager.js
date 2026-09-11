@@ -82,8 +82,6 @@
             }
 
             const urls = Array.isArray(apkUrlOrUrls) ? apkUrlOrUrls : [apkUrlOrUrls];
-            let response = null;
-            let chosenUrl = null;
 
             logCallback("Step 1: Downloading APK to local temporary cache...");
 
@@ -91,60 +89,79 @@
                 try {
                     logCallback(`Fetching APK from: ${url}`);
                     const res = await fetch(url);
-                    if (res.ok) {
-                        response = res;
-                        chosenUrl = url;
-                        break;
-                    } else {
+                    if (!res.ok) {
                         console.warn(`Source responded HTTP ${res.status}: ${url}`);
+                        logCallback(`⚠️ ${url} returned HTTP ${res.status}. Trying next source...`);
+                        continue;
                     }
+
+                    const contentType = (res.headers.get('content-type') || '').toLowerCase();
+                    if (contentType.includes('text/html') || contentType.includes('application/json')) {
+                        console.warn(`Source returned non-binary response: ${url} (${contentType})`);
+                        logCallback(`⚠️ Source returned HTML/JSON page instead of binary APK: ${url}. Trying next source...`);
+                        continue;
+                    }
+
+                    const contentLength = +(res.headers.get('Content-Length') || 0);
+                    const reader = res.body.getReader();
+                    const chunks = [];
+                    let receivedBytes = 0;
+
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+
+                        chunks.push(value);
+                        receivedBytes += value.length;
+
+                        if (contentLength > 0) {
+                            const pct = Math.round((receivedBytes / contentLength) * 100);
+                            const mb = (receivedBytes / (1024 * 1024)).toFixed(1);
+                            const totalMb = (contentLength / (1024 * 1024)).toFixed(1);
+
+                            if (receivedBytes % LOG_INTERVAL_BYTES < value.length || receivedBytes === contentLength) {
+                                logCallback(`Downloading APK: ${pct}% (${mb} / ${totalMb} MB)`);
+                            }
+                        } else if (receivedBytes % LOG_INTERVAL_BYTES < value.length) {
+                            const mb = (receivedBytes / (1024 * 1024)).toFixed(1);
+                            logCallback(`Downloading APK: ${mb} MB received...`);
+                        }
+                    }
+
+                    // Combine chunks into a single Uint8Array
+                    const apkBytes = new Uint8Array(receivedBytes);
+                    let offset = 0;
+                    for (const chunk of chunks) {
+                        apkBytes.set(chunk, offset);
+                        offset += chunk.length;
+                    }
+
+                    // VALIDATION: APK is a Zip archive (starts with magic bytes 0x50 0x4B 0x03 0x04)
+                    const isZipHeader = (
+                        apkBytes.length >= 4 &&
+                        apkBytes[0] === 0x50 &&
+                        apkBytes[1] === 0x4B &&
+                        apkBytes[2] === 0x03 &&
+                        apkBytes[3] === 0x04
+                    );
+
+                    if (!isZipHeader || apkBytes.length < 500000) {
+                        console.warn(`URL returned invalid APK payload (${apkBytes.length} bytes, valid PK header: ${isZipHeader}): ${url}`);
+                        logCallback(`⚠️ Candidate URL returned invalid APK binary (${(apkBytes.length / 1024).toFixed(0)} KB). Trying next source...`);
+                        continue;
+                    }
+
+                    this.cachedApkBytes = apkBytes;
+                    const sizeMB = (apkBytes.length / (1024 * 1024)).toFixed(2);
+                    logCallback(`✅ Valid APK downloaded & cached locally (${sizeMB} MB).`);
+                    return apkBytes;
                 } catch (fetchErr) {
                     console.warn(`Fetch error for ${url}:`, fetchErr);
+                    logCallback(`⚠️ Network error fetching ${url}: ${fetchErr.message || fetchErr}. Trying next source...`);
                 }
             }
 
-            if (!response || !response.ok) {
-                throw new Error(`Failed to download APK from any source. Please check connection or load a local APK.`);
-            }
-
-            const contentLength = +(response.headers.get('Content-Length') || 0);
-            const reader = response.body.getReader();
-            const chunks = [];
-            let receivedBytes = 0;
-
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                
-                chunks.push(value);
-                receivedBytes += value.length;
-
-                if (contentLength > 0) {
-                    const pct = Math.round((receivedBytes / contentLength) * 100);
-                    const mb = (receivedBytes / (1024 * 1024)).toFixed(1);
-                    const totalMb = (contentLength / (1024 * 1024)).toFixed(1);
-                    
-                    if (receivedBytes % LOG_INTERVAL_BYTES < value.length || receivedBytes === contentLength) {
-                        logCallback(`Downloading APK: ${pct}% (${mb} / ${totalMb} MB)`);
-                    }
-                } else if (receivedBytes % LOG_INTERVAL_BYTES < value.length) {
-                    const mb = (receivedBytes / (1024 * 1024)).toFixed(1);
-                    logCallback(`Downloading APK: ${mb} MB received...`);
-                }
-            }
-
-            // Combine chunks into a single Uint8Array
-            const apkBytes = new Uint8Array(receivedBytes);
-            let offset = 0;
-            for (const chunk of chunks) {
-                apkBytes.set(chunk, offset);
-                offset += chunk.length;
-            }
-
-            this.cachedApkBytes = apkBytes;
-            const sizeMB = (apkBytes.length / (1024 * 1024)).toFixed(2);
-            logCallback(`✅ APK cached locally (${sizeMB} MB).`);
-            return apkBytes;
+            throw new Error(`Failed to download a valid APK binary from any source. Please verify internet connection or load a local APK file.`);
         }
 
         /**
@@ -356,6 +373,17 @@
          */
         async sideloadApk(fileBytes, originalFilename = "sideload.apk", logCallback = console.log) {
             if (!this.adb) throw new Error("Device not connected.");
+
+            // Validate PK Zip Magic Bytes
+            const isZipHeader = (
+                fileBytes && fileBytes.length >= 4 &&
+                fileBytes[0] === 0x50 && fileBytes[1] === 0x4B &&
+                fileBytes[2] === 0x03 && fileBytes[3] === 0x04
+            );
+            if (!isZipHeader || fileBytes.length < 100000) {
+                throw new Error(`The selected file '${originalFilename}' is not a valid Android APK package (Invalid PK Zip header or corrupted file).`);
+            }
+
             const destPath = `/data/local/tmp/sideload_temp.apk`;
 
             logCallback(`Step 1: Transferring ${originalFilename} to device...`);
