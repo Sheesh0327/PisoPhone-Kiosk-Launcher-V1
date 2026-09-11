@@ -27,22 +27,10 @@ class ComposeOverlayView(private val context: Context) : LifecycleOwner, ViewMod
     private val store = ViewModelStore()
     private val savedStateRegistryController = SavedStateRegistryController.create(this)
     
-    var onUserInteraction: (() -> Unit)? = null
-
-    private val composeView = ComposeView(context).apply {
+    val view = ComposeView(context).apply {
         setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindowOrReleasedFromPool)
         isFocusable = true
         isFocusableInTouchMode = true
-    }
-
-    val view = object : android.widget.FrameLayout(context) {
-        init {
-            addView(composeView)
-        }
-        override fun dispatchTouchEvent(ev: android.view.MotionEvent?): Boolean {
-            onUserInteraction?.invoke()
-            return super.dispatchTouchEvent(ev)
-        }
     }
     
     init {
@@ -59,7 +47,7 @@ class ComposeOverlayView(private val context: Context) : LifecycleOwner, ViewMod
     override val savedStateRegistry: SavedStateRegistry get() = savedStateRegistryController.savedStateRegistry
     
     fun setContent(content: @Composable () -> Unit) {
-        composeView.setContent(content)
+        view.setContent(content)
     }
     
     fun start() {

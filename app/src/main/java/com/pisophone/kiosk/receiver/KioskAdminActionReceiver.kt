@@ -32,7 +32,6 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
         const val ACTION_OPEN_SETTINGS = "com.pisophone.kiosk.OPEN_SETTINGS"
         const val ACTION_STATUS_REFRESH = "com.pisophone.kiosk.STATUS_REFRESH"
         const val ACTION_RESTART = "com.pisophone.kiosk.RESTART"
-        const val ACTION_REBOOT = "com.pisophone.kiosk.REBOOT"
         const val ACTION_FACTORY_RESET = "com.pisophone.kiosk.FACTORY_RESET"
         const val ACTION_SCREEN_OFF = "com.pisophone.kiosk.SCREEN_OFF"
         const val ACTION_SCREEN_ON = "com.pisophone.kiosk.SCREEN_ON"
@@ -151,17 +150,6 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                 }
             }
 
-            ACTION_REBOOT -> {
-                if (!isAuthorized(context, intent)) {
-                    Log.w(TAG, "Unauthorized attempt to trigger REBOOT rejected.")
-                    return
-                }
-                Log.i(TAG, "Device reboot command received.")
-                val success = com.pisophone.kiosk.security.KioskSecurity.rebootDevice(context)
-                if (!success) {
-                    Toast.makeText(context, "Device not Activated. Contact admin for support.", Toast.LENGTH_SHORT).show()
-                }
-            }
             ACTION_FACTORY_RESET -> {
                 if (!isAuthorized(context, intent)) {
                     Log.w(TAG, "Unauthorized attempt to trigger FACTORY_RESET rejected.")

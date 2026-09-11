@@ -159,26 +159,6 @@ object KioskRecoveryManager {
     }
 
     /**
-     * Safe software reboot via DevicePolicyManager.
-     */
-    fun rebootDevice(context: Context): Boolean {
-        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-        val componentName = ComponentName(context, KioskDeviceAdminReceiver::class.java)
-
-        return if (dpm.isDeviceOwnerApp(context.packageName)) {
-            try {
-                dpm.reboot(componentName)
-                true
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to reboot device: ${e.message}")
-                false
-            }
-        } else {
-            false
-        }
-    }
-
-    /**
      * Factory reset device if authorized.
      */
     fun factoryResetDevice(context: Context): Boolean {

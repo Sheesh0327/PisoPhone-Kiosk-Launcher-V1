@@ -176,10 +176,6 @@ class KioskService : Service() {
     private var serviceStartTimeMs = 0L
     private var multicastLock: android.net.wifi.WifiManager.MulticastLock? = null
     private var wakeLock: android.os.PowerManager.WakeLock? = null
-    
-    private var lockscreenInactivityJob: Job? = null
-    private var isScreenDimmedOrOff = false
-    private var originalBrightness = -1
 
     private fun getRealTimeBatteryInfo(): Pair<Int, Boolean> {
         return if (::systemMonitor.isInitialized) {
@@ -374,7 +370,6 @@ class KioskService : Service() {
                 }
 
                 override fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?) {
-                    resetInactivityTimer()
                     if (!KioskActivationManager.isAppAllowedToRun(applicationContext)) {
                         Log.e(TAG, "Device not provisioned: Discarding coin event.")
                         return
@@ -493,7 +488,6 @@ class KioskService : Service() {
 
         scope.launch {
             stateManager.appState.collect { state ->
-                resetInactivityTimer()
                 if (state == 1 || state == 3) {
                     startWaitingMusic()
                 } else {
@@ -837,7 +831,6 @@ class KioskService : Service() {
                         isSlotExpiredFlow = stateManager.isSlotExpired,
                         slotExpiryReasonFlow = stateManager.slotExpiryMessage,
                         onInsertCoinClick = { 
-                            resetInactivityTimer()
                             if (stateManager.appState.value == 4) return@KioskOverlay
                             if (stateManager.isSlotExpired.value || com.pisophone.kiosk.security.KioskActivationManager.isSlotLockedDown(this@KioskService)) {
                                 Log.w(TAG, "Coin insertion blocked: Device not activated on ESP32.")
@@ -857,9 +850,7 @@ class KioskService : Service() {
                         },
                         onDoneClick = { finishPayment() },
                         onThemeChange = { stateManager.themeIndex.value = (stateManager.themeIndex.value + 1) % 3 }
-                    ).apply {
-                        onUserInteraction = { resetInactivityTimer() }
-                    }
+                    )
                 } catch (e: Exception) {
                     Log.e(TAG, "Error constructing KioskOverlay: ${e.message}", e)
                     overlay = null
@@ -915,68 +906,6 @@ class KioskService : Service() {
         }
     }
     
-    private fun resetInactivityTimer() {
-        if (stateManager.appState.value != 0) {
-            wakeScreenIfNecessary()
-            lockscreenInactivityJob?.cancel()
-            return
-        }
-        
-        wakeScreenIfNecessary()
-        
-        lockscreenInactivityJob?.cancel()
-        lockscreenInactivityJob = scope.launch(Dispatchers.Main) {
-            delay(60_000)
-            if (stateManager.appState.value == 0) {
-                applyInactivityMode()
-            }
-        }
-    }
-
-    private fun applyInactivityMode() {
-        isScreenDimmedOrOff = true
-        val screenType = KioskSecurity.getScreenType(this)
-        if (screenType == "OLED") {
-            com.pisophone.kiosk.security.KioskPolicyManager.turnScreenOff(this)
-        } else {
-            if (Settings.System.canWrite(this)) {
-                try {
-                    originalBrightness = Settings.System.getInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS)
-                    Settings.System.putInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS, 0)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to dim screen: ${e.message}")
-                }
-            }
-        }
-    }
-
-    @Suppress("DEPRECATION")
-    private fun wakeScreenIfNecessary() {
-        if (!isScreenDimmedOrOff) return
-        isScreenDimmedOrOff = false
-        
-        val screenType = KioskSecurity.getScreenType(this)
-        if (screenType == "OLED") {
-            val powerManager = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
-            val wakeLockTemp = powerManager?.newWakeLock(
-                android.os.PowerManager.FULL_WAKE_LOCK or 
-                android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP or 
-                android.os.PowerManager.ON_AFTER_RELEASE,
-                "pisophone:inactivity_wakeup"
-            )
-            wakeLockTemp?.acquire(3000)
-        } else {
-            if (originalBrightness >= 0 && Settings.System.canWrite(this)) {
-                try {
-                    Settings.System.putInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS, originalBrightness)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to restore brightness: ${e.message}")
-                }
-                originalBrightness = -1
-            }
-        }
-    }
-
     override fun onDestroy() {
         super.onDestroy()
         isServiceRunning = false

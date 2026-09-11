@@ -311,28 +311,9 @@ fun EmergencyRecoveryDialog(
                         }
                     )
 
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Action 4: Reboot Device
-                    RecoveryActionButton(
-                        icon = Icons.Filled.RestartAlt,
-                        iconTint = Color(0xFF34D399),
-                        title = "Safe Reboot Device",
-                        subtitle = "Performs clean system reboot via Device Owner",
-                        containerColor = Color(0xFF1E293B),
-                        contentColor = Color(0xFFE2E8F0),
-                        borderColor = Color(0xFF334155),
-                        onClick = {
-                            val success = KioskSecurity.rebootDevice(context)
-                            if (!success) {
-                                Toast.makeText(context, "Reboot requires Device Owner status", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    )
-
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // Action 5: De-provision Device Owner
+                    // Action 4: De-provision Device Owner
                     if (!showConfirmDeprovision) {
                         RecoveryActionButton(
                             icon = Icons.Filled.DeleteForever,

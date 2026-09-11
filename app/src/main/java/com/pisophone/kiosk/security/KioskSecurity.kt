@@ -39,7 +39,6 @@ object KioskSecurity {
     private const val KEY_BATTERY_ALERTS_ENABLED = "battery_alerts_enabled"
     private const val KEY_LOW_BATTERY_THRESHOLD = "low_battery_threshold"
     private const val KEY_HIGH_BATTERY_THRESHOLD = "high_battery_threshold"
-    private const val KEY_SCREEN_TYPE = "screen_type"
     private const val KEY_CONFIGURED_ESP32_IP = "configured_esp32_ip"
     private const val KEY_CONFIGURED_ESP32_MAC = "configured_esp32_mac"
     private const val KEY_ASSIGNED_BOX_SLOT = "assigned_box_slot"
@@ -126,14 +125,6 @@ object KioskSecurity {
 
     fun setHighBatteryThreshold(context: Context, threshold: Int) {
         getPrefs(context).edit().putInt(KEY_HIGH_BATTERY_THRESHOLD, threshold.coerceIn(50, 100)).apply()
-    }
-
-    fun getScreenType(context: Context): String {
-        return getPrefs(context).getString(KEY_SCREEN_TYPE, "LCD") ?: "LCD"
-    }
-
-    fun setScreenType(context: Context, type: String) {
-        getPrefs(context).edit().putString(KEY_SCREEN_TYPE, type).apply()
     }
 
     fun getConfiguredEsp32Ip(context: Context): String {
@@ -565,9 +556,6 @@ object KioskSecurity {
 
     fun emergencyClearDeviceOwner(context: Context): Boolean =
         KioskRecoveryManager.emergencyClearDeviceOwner(context)
-
-    fun rebootDevice(context: Context): Boolean =
-        KioskRecoveryManager.rebootDevice(context)
 
     fun factoryResetDevice(context: Context): Boolean =
         KioskRecoveryManager.factoryResetDevice(context)
