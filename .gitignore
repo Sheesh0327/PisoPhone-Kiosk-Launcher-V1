@@ -23,4 +23,4 @@ debug.keystore
 # Build Outputs & APKs
 app/build/
 *.apk
-!website/update/
+!website/app-release.apk

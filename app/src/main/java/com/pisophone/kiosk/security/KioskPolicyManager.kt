@@ -305,16 +305,12 @@ object KioskPolicyManager {
      * Collapses notification shade and status bar panels as a secondary safeguard.
      */
     fun collapseStatusBar(context: Context) {
-        // Enforce status bar disable policy if Device Owner
-        setStatusBarDisabled(context, true)
-
-        // Close system dialogs/shade safely without hidden API reflection
         try {
-            @Suppress("DEPRECATION")
-            val closeDialogsIntent = android.content.Intent(android.content.Intent.ACTION_CLOSE_SYSTEM_DIALOGS)
-            context.sendBroadcast(closeDialogsIntent)
-        } catch (e: Exception) {
-            Log.w(TAG, "ACTION_CLOSE_SYSTEM_DIALOGS broadcast exception: ${e.message}")
-        }
+            @Suppress("WrongConstant")
+            val statusBarService = context.getSystemService("statusbar")
+            val statusBarManager = Class.forName("android.app.StatusBarManager")
+            val collapseMethod = statusBarManager.getMethod("collapsePanels")
+            collapseMethod.invoke(statusBarService)
+        } catch (_: Exception) {}
     }
 }

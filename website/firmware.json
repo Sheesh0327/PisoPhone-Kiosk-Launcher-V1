@@ -2,6 +2,6 @@
   "version": "3.0.0",
   "build": 300,
   "releaseDate": "2026-09-11",
-  "url": "https://pisophone.pages.dev/update/firmware.bin",
+  "url": "https://pisophone.pages.dev/firmware.bin",
   "changelog": "Official Master Box ESP32 Firmware with 5-Slot Capacity & One-Click Cloud OTA"
 }
