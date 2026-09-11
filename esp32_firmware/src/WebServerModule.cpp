@@ -1109,7 +1109,7 @@ void handleOtaForm() {
         </div>
         <!-- MAC display removed -->
         <p style="font-size:13px; color:var(--text-muted); margin-bottom: 16px; line-height: 1.5;">
-            Update your Kiosk controller wirelessly directly from the official website server or upload a local compiled binary.
+            Update your Kiosk controller wirelessly directly from the official Cloud server to ensure firmware integrity.
         </p>
 
         <!-- Cloud Server One-Click OTA Upgrade Card -->
@@ -1119,26 +1119,19 @@ void handleOtaForm() {
                 <span id="cloud_ver_badge" style="font-size: 11px; font-weight: 700; background: rgba(59,130,246,0.15); color: #3b82f6; padding: 3px 8px; border-radius: 12px;">Checking server...</span>
             </div>
             <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 12px 0;">
-                Directly download and flash <code>firmware.bin</code> from the same web directory hosting the APK (<code>https://pisophone.pages.dev/update/firmware.bin</code>).
+                Directly download and flash official <code>firmware.bin</code> from server (<code>https://pisophone.pages.dev/update/firmware.bin</code>).
             </p>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                 <button type="button" class="theme-btn" style="width:100%; border-color: var(--primary); color: var(--primary);" onclick="checkCloudUpdate()">🔍 Check Version</button>
                 <button type="button" id="cloud_update_btn" style="background: #10b981;" onclick="installCloudFirmware()">⚡ Install Cloud Update</button>
             </div>
         </div>
-
-        <p style="font-size:12px; color:var(--text-muted); margin-bottom: 8px; font-weight:600;">
-            Or manually select a local .bin firmware file:
-        </p>
-        <input type="file" id="file_input" accept=".bin">
         
         <div class="progress-container" id="progress_wrapper">
             <div class="progress-bar" id="progress_bar"></div>
         </div>
         
         <div class="status-box" id="status_message"></div>
-        
-        <button type="button" id="upload_button" onclick="startUpdate()">Upload & Flash Firmware</button>
         <br>
         <a href="/">&larr; Back to Kiosk Dashboard</a>
     </div>
@@ -1166,75 +1159,6 @@ void handleOtaForm() {
     }
     document.addEventListener('DOMContentLoaded', updateThemeButton);
 
-    window.startUpdate = function() {
-        const fileInput = document.getElementById('file_input');
-        const uploadBtn = document.getElementById('upload_button');
-        const progressWrapper = document.getElementById('progress_wrapper');
-        const progressBar = document.getElementById('progress_bar');
-        const statusBox = document.getElementById('status_message');
-        
-        if (!fileInput.files || fileInput.files.length === 0) {
-            showStatus('Please choose a .bin file to upload.', 'error');
-            return;
-        }
-        
-        const file = fileInput.files[0];
-        
-        // Prepare form data
-        const formData = new FormData();
-        formData.append('update', file, file.name);
-        
-        // Disable UI during flashing
-        fileInput.disabled = true;
-        uploadBtn.disabled = true;
-        progressWrapper.style.display = 'block';
-        progressBar.style.width = '0%';
-        progressBar.style.background = '#10b981';
-        
-        showStatus('Uploading firmware binary (' + (file.size/1024).toFixed(1) + ' KB)...', 'info');
-        
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', '/update', true);
-        
-        // Track Upload Progress
-        xhr.upload.addEventListener('progress', function(e) {
-            if (e.lengthComputable) {
-                const percent = (e.loaded / e.total) * 100;
-                progressBar.style.width = percent + '%';
-                showStatus('Uploading: ' + Math.round(percent) + '% (' + (e.loaded/1024).toFixed(0) + ' KB / ' + (e.total/1024).toFixed(0) + ' KB)...', 'info');
-                if (percent >= 99) {
-                    showStatus('Flashing binary to HARDWARE partition... Please do not power off.', 'info');
-                }
-            }
-        });
-        
-        // Handle response
-        xhr.onload = function() {
-            if (xhr.status === 200) {
-                progressBar.style.width = '100%';
-                progressBar.style.background = '#10b981';
-                showStatus('<b>✅ SUCCESS: Firmware Updated!</b><br>Rebooting HARDWARE Controller now... returning to dashboard in 5 seconds.', 'success');
-                setTimeout(function() {
-                    window.location.href = '/';
-                }, 5000);
-            } else {
-                progressBar.style.background = '#ef4444';
-                showStatus('<b>❌ FAILED:</b> ' + (xhr.responseText || 'Flash error occurred'), 'error');
-                fileInput.disabled = false;
-                uploadBtn.disabled = false;
-            }
-        };
-        
-        xhr.onerror = function() {
-            progressBar.style.background = '#ef4444';
-            showStatus('<b>❌ Connection Error:</b> Network disconnected or connection was lost during upload.', 'error');
-            fileInput.disabled = false;
-            uploadBtn.disabled = false;
-        };
-        
-        xhr.send(formData);
-    }
-    
     window.showStatus = function(text, type) {
         const box = document.getElementById('status_message');
         box.style.display = 'block';
@@ -1262,7 +1186,6 @@ void handleOtaForm() {
     };
 
     window.installCloudFirmware = async function() {
-        const uploadBtn = document.getElementById('upload_button');
         const cloudBtn = document.getElementById('cloud_update_btn');
         const progressWrapper = document.getElementById('progress_wrapper');
         const progressBar = document.getElementById('progress_bar');
@@ -1270,7 +1193,6 @@ void handleOtaForm() {
         if (!confirm('Download and flash the latest ESP32 firmware directly from https://pisophone.pages.dev/update/firmware.bin?')) return;
         
         if (cloudBtn) cloudBtn.disabled = true;
-        if (uploadBtn) uploadBtn.disabled = true;
         
         progressWrapper.style.display = 'block';
         progressBar.style.width = '0%';
@@ -1314,7 +1236,6 @@ void handleOtaForm() {
                     progressBar.style.background = '#ef4444';
                     showStatus('<b>❌ Flash Error:</b> ' + (xhr.responseText || 'Error flashing downloaded binary'), 'error');
                     if (cloudBtn) cloudBtn.disabled = false;
-                    if (uploadBtn) uploadBtn.disabled = false;
                 }
             };
             
@@ -1322,7 +1243,6 @@ void handleOtaForm() {
                 progressBar.style.background = '#ef4444';
                 showStatus('<b>❌ Connection Error during upload to ESP32 controller.</b>', 'error');
                 if (cloudBtn) cloudBtn.disabled = false;
-                if (uploadBtn) uploadBtn.disabled = false;
             };
             
             xhr.send(formData);
@@ -1330,7 +1250,6 @@ void handleOtaForm() {
             progressBar.style.background = '#ef4444';
             showStatus('<b>❌ Server Fetch Failed:</b> ' + err.message, 'error');
             if (cloudBtn) cloudBtn.disabled = false;
-            if (uploadBtn) uploadBtn.disabled = false;
         }
     };
     document.addEventListener('DOMContentLoaded', function() { checkCloudUpdate(); });

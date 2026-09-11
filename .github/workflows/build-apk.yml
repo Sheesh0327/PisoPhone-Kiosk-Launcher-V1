@@ -70,6 +70,9 @@ jobs:
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add -f website/update/
           # Only commit if there are changes to avoid failing the workflow
-          git diff --staged --quiet || git commit -m "chore: auto-update APK and firmware binaries in website/update directory [skip ci]"
-          git push
+          if ! git diff --staged --quiet; then
+            git commit -m "chore: auto-update APK and firmware binaries in website/update directory [skip ci]"
+            git pull --rebase origin main || git pull --rebase origin ${GITHUB_REF_NAME:-main}
+            git push
+          fi
 
