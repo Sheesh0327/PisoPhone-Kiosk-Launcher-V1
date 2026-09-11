@@ -1,5 +1,6 @@
 #include "Security.h"
 #include "Config.h"
+#include "esp_mac.h"
 #include "mbedtls/md.h"
 #include "mbedtls/sha1.h"
 #include "mbedtls/base64.h"
@@ -27,56 +28,75 @@ String calculateHMAC(String challenge, String secret) {
 
 bool applySlotToken(String token) {
     token.trim();
-    if (!token.startsWith("PISOSLOT.")) return false;
+    token.toUpperCase();
+    if (token.length() == 0) return false;
 
-    int dot1 = token.indexOf('.');
-    int dot2 = token.indexOf('.', dot1 + 1);
-    int dot3 = token.indexOf('.', dot2 + 1);
-
-    if (dot1 == -1 || dot2 == -1 || dot3 == -1) return false;
-
-    String tokenMac = token.substring(dot1 + 1, dot2);
-    String slotsStr = token.substring(dot2 + 1, dot3);
-    String sig      = token.substring(dot3 + 1);
-
-    tokenMac.trim(); tokenMac.toUpperCase();
-    slotsStr.trim();
-    sig.trim();
+    if (macAddressStr.length() == 0) {
+        uint8_t mac[6];
+        esp_read_mac(mac, ESP_MAC_WIFI_STA);
+        char macBuf[18];
+        snprintf(macBuf, sizeof(macBuf), "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        macAddressStr = String(macBuf);
+    }
 
     String myMac = macAddressStr;
     myMac.trim(); myMac.toUpperCase();
-    if (!tokenMac.equalsIgnoreCase(myMac)) {
-        Serial.printf("[-] Slot token MAC mismatch: Token has %s, Box is %s\n", tokenMac.c_str(), myMac.c_str());
-        return false;
+
+    // Canonical Clean MAC (12 hex chars)
+    String cleanMac = "";
+    for (size_t i = 0; i < myMac.length(); i++) {
+        if (myMac[i] != ':') cleanMac += myMac[i];
+    }
+    if (cleanMac.length() == 0) return false;
+
+    String secKey = (sharedSecret.length() > 0) ? sharedSecret : String(MASTER_CRYPTO_SECRET);
+
+    // Canonical Single Verification Path: Match target slot count (2..MAX_SUPPORTED_SLOTS)
+    for (int s = 2; s <= MAX_SUPPORTED_SLOTS; s++) {
+        String payload = "PISOSLOT:" + cleanMac + ":" + String(s);
+        String expectedSig = calculateHMAC(payload, secKey);
+        expectedSig.toUpperCase();
+
+        String shortSig = expectedSig.substring(0, 8);
+        String fullToken = "PISOSLOT." + cleanMac + "." + String(s) + "." + shortSig;
+
+        if (token.equalsIgnoreCase(shortSig) || token.equalsIgnoreCase(fullToken) || token.equalsIgnoreCase(expectedSig)) {
+            maxLicensedSlots = min(max(maxLicensedSlots, s), MAX_SUPPORTED_SLOTS);
+            for (int i = 0; i < maxLicensedSlots; i++) {
+                licenseSlots[i].active = true;
+            }
+
+            is_licensed = true;
+            saveSlotLicenses();
+            Serial.printf("[+] Successfully applied Slot License Token: Capacity expanded to %d slots!\n", maxLicensedSlots);
+            return true;
+        }
     }
 
-    String payload = "PISOSLOT:" + tokenMac + ":" + slotsStr;
-    String expectedSig = calculateHMAC(payload, sharedSecret);
-    if (!sig.equalsIgnoreCase(expectedSig)) {
-        Serial.println("[-] Invalid slot token HMAC signature!");
-        return false;
-    }
-
-    int newSlots = slotsStr.toInt();
-    if (newSlots < 1) newSlots = DEFAULT_MAX_SLOTS;
-    if (newSlots > MAX_SUPPORTED_SLOTS) newSlots = MAX_SUPPORTED_SLOTS;
-
-    maxLicensedSlots = min(max(maxLicensedSlots, newSlots), MAX_SUPPORTED_SLOTS);
-    for (int i = 0; i < maxLicensedSlots; i++) {
-        licenseSlots[i].active = true;
-    }
-
-    is_licensed = true;
-    saveSlotLicenses();
-    Serial.printf("[+] Successfully applied Slot License Token: Capacity expanded to %d slots!\n", maxLicensedSlots);
-    return true;
+    Serial.println("[-] Invalid slot token signature mismatch!");
+    return false;
 }
 
-String generateActivationCode(String mac) {
-    String expectedSig = calculateHMAC(mac, sharedSecret.c_str());
-    String code = expectedSig.substring(0, 12);
-    code.toUpperCase();
-    return code;
+String getBoxMachineCode() {
+    if (macAddressStr.length() == 0) {
+        uint8_t mac[6];
+        esp_read_mac(mac, ESP_MAC_WIFI_STA);
+        char macBuf[18];
+        snprintf(macBuf, sizeof(macBuf), "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        macAddressStr = String(macBuf);
+    }
+    String myMac = macAddressStr;
+    myMac.trim(); myMac.toUpperCase();
+    String cleanMac = "";
+    for (size_t i = 0; i < myMac.length(); i++) {
+        if (myMac[i] != ':') cleanMac += myMac[i];
+    }
+    if (cleanMac.length() == 0) cleanMac = "000000000000";
+    String secKey = (sharedSecret.length() > 0) ? sharedSecret : String(MASTER_CRYPTO_SECRET);
+    String payload = "BOXREQ:" + cleanMac + ":" + String(maxLicensedSlots) + ":" + String(MAX_SUPPORTED_SLOTS);
+    String sig = calculateHMAC(payload, secKey).substring(0, 4);
+    sig.toUpperCase();
+    return "PISO-" + cleanMac + "-" + String(maxLicensedSlots) + "-" + String(MAX_SUPPORTED_SLOTS) + "-" + sig;
 }
 
 String aes_encrypt(String plaintext, String secret) {

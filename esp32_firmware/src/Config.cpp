@@ -7,7 +7,7 @@
 const char* DEFAULT_SSID        = "AdminSetup";
 const char* DEFAULT_PASS        = "Admin@123";
 const char* DEFAULT_ADMIN_PW    = "admin";
-const char* MASTER_CRYPTO_SECRET = "";
+const char* MASTER_CRYPTO_SECRET = "PISOPHONE_HMAC_MASTER_KEY";
 
 const int   DEFAULT_COIN_PIN           = 4;
 const int   DEFAULT_UNIVERSAL_COIN_PIN = 3;
@@ -214,7 +214,7 @@ void loadSlotLicenses() {
         licenseSlots[i].deviceId = "";
         licenseSlots[i].ip = "";
         licenseSlots[i].name = "PisoPhone " + String(i + 1);
-        licenseSlots[i].active = true;
+        licenseSlots[i].active = (i < maxLicensedSlots);
     }
 
     String raw = prefs.getString("slots_data", "");
@@ -242,12 +242,8 @@ void loadSlotLicenses() {
                         licenseSlots[idx].ip = item.substring(p2 + 1, p3);
                         licenseSlots[idx].name = item.substring(p3 + 1, (p4 != -1) ? p4 : item.length());
                         
-                        if (p5 != -1) {
-                            // Old format with expiresAt in p4, active in p5
-                            licenseSlots[idx].active = (item.substring(p5 + 1) == "1");
-                        } else if (p4 != -1) {
-                            // New format with active in p4
-                            licenseSlots[idx].active = (item.substring(p4 + 1) == "1");
+                        if (p4 != -1) {
+                            licenseSlots[idx].active = (idx < maxLicensedSlots) && (item.substring(p4 + 1) == "1");
                         } else {
                             licenseSlots[idx].active = (idx < maxLicensedSlots);
                         }
@@ -256,23 +252,6 @@ void loadSlotLicenses() {
             }
             startIdx = semi + 1;
             slotIdx++;
-        }
-    } else {
-        int startIdx = 0;
-        int slotIdx = 0;
-        while (startIdx < androidIps.length() && slotIdx < maxLicensedSlots) {
-            int comma = androidIps.indexOf(',', startIdx);
-            if (comma == -1) comma = androidIps.length();
-            String entry = androidIps.substring(startIdx, comma);
-            DeviceConfig cfg;
-            if (parseDeviceEntry(entry, cfg)) {
-                licenseSlots[slotIdx].deviceId = cfg.id;
-                licenseSlots[slotIdx].ip = cfg.ip;
-                licenseSlots[slotIdx].name = cfg.name.length() > 0 ? cfg.name : ("PisoPhone " + String(slotIdx + 1));
-                licenseSlots[slotIdx].active = true;
-                slotIdx++;
-            }
-            startIdx = comma + 1;
         }
     }
     prefs.end();
@@ -318,6 +297,16 @@ void factoryResetDefaults() {
     p1Ip = "";
     p2Ip = "";
     matchMinutes = 15;
+    maxLicensedSlots = DEFAULT_MAX_SLOTS;
+    for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
+        licenseSlots[i].slotNum = i + 1;
+        licenseSlots[i].deviceId = "";
+        licenseSlots[i].ip = "";
+        licenseSlots[i].name = "PisoPhone " + String(i + 1);
+        licenseSlots[i].active = (i < DEFAULT_MAX_SLOTS);
+    }
+    saveSlotLicenses();
+
     totalCoinsLifetime = 0;
     totalCoinsSession = 0;
     totalEarningsLifetime = 0.0f;

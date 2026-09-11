@@ -118,11 +118,6 @@ object KioskActivationManager {
         return true
     }
 
-    /**
-     * Backward-compatible alias for provisioning identity recording.
-     */
-    fun sealToCurrentDevice(context: Context): Boolean = recordDeviceIdentity(context)
-
     fun isPairingCompleted(context: Context): Boolean {
         val prefs = getPrefs(context)
         if (prefs.getBoolean(KEY_PAIRING_COMPLETED, false)) return true

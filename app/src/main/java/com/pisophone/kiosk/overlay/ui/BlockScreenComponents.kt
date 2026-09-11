@@ -73,44 +73,29 @@ fun DeviceTitleBadge(
     themeSurfaceVariant: Color
 ) {
     val ctx = LocalContext.current
-    var customAlias by remember { mutableStateOf(KioskSecurity.getDeviceAlias(ctx)) }
-    LaunchedEffect(Unit) {
-        while (isActive) {
-            customAlias = KioskSecurity.getDeviceAlias(ctx)
-            delay(3000)
-        }
-    }
-    val assignedSlot = remember(slotNumber) {
-        if (slotNumber > 0) slotNumber else KioskSecurity.getAssignedBoxSlot(ctx)
-    }
-    val fallbackNumber = remember(deviceIp, assignedSlot) {
-        if (assignedSlot > 0) {
-            assignedSlot.toString()
-        } else {
-            try {
-                val lastOctet = deviceIp.substringAfterLast(".").toIntOrNull()
-                if (lastOctet != null && lastOctet in 100..120) {
-                    (lastOctet - 99).toString()
-                } else if (lastOctet != null && lastOctet in 1..254) {
-                    lastOctet.toString()
-                } else {
-                    "1"
-                }
-            } catch (e: Exception) {
-                "1"
-            }
-        }
-    }
-    val isRawDeviceId = customAlias.isNotBlank() && (
-        customAlias.length >= 16 ||
-        customAlias.contains("-") ||
-        customAlias.matches(Regex("^[a-fA-F0-9]{8,}$")) ||
-        customAlias.startsWith("Terminal")
-    )
-    val mainTitle = if (customAlias.isNotBlank() && !isRawDeviceId) {
-        customAlias
+    val assignedSlot = if (slotNumber > 0) slotNumber else KioskSecurity.getAssignedBoxSlot(ctx)
+    val effectiveSlotNumber = if (assignedSlot > 0) {
+        assignedSlot
     } else {
-        "PisoPhone $fallbackNumber"
+        try {
+            val lastOctet = deviceIp.substringAfterLast(".").toIntOrNull()
+            if (lastOctet != null && lastOctet in 100..120) {
+                lastOctet - 99
+            } else if (lastOctet != null && lastOctet in 1..254) {
+                lastOctet
+            } else {
+                1
+            }
+        } catch (e: Exception) {
+            1
+        }
+    }
+
+    val mainTitle = "PisoPhone $effectiveSlotNumber"
+
+    LaunchedEffect(effectiveSlotNumber) {
+        KioskSecurity.setAssignedBoxSlot(ctx, effectiveSlotNumber)
+        KioskSecurity.setDeviceAlias(ctx, mainTitle)
     }
 
     Text(
@@ -138,7 +123,7 @@ fun DeviceTitleBadge(
             )
             Spacer(modifier = Modifier.width(6.dp))
             Text(
-                if (customAlias.isNotBlank()) "$mainTitle • IP: $deviceIp" else "IP: $deviceIp",
+                "$mainTitle • IP: $deviceIp",
                 color = themeTextTertiary,
                 fontSize = 12.sp,
                 fontFamily = FontFamily.Monospace,

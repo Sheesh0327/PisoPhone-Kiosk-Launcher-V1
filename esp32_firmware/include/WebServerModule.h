@@ -7,6 +7,11 @@
 #include <WiFiServer.h>
 #include <WiFiClient.h>
 #include "Config.h"
+#include "WebServerAuth.h"
+#include "WebServerConfig.h"
+#include "WebServerApi.h"
+#include "WebServerTelemetry.h"
+#include "WebSocketsUdp.h"
 
 extern WebServer webServer;
 extern WiFiServer wsServer;
@@ -15,17 +20,6 @@ extern bool isWsConnected;
 extern WiFiUDP udpServer;
 extern QueueHandle_t authQueue;
 
-// Background Auth Worker & Queue
-void authWorkerTask(void *pvParameters);
-
-// Initialization and Event Loops
 void setupWebServer();
-void processWebSocketServer();
-void sendWsText(WiFiClient& client, String text);
-String readWsText(WiFiClient& client);
-
-void processUdpDiscovery();
-void sendUdpDiscoveryResponse(IPAddress targetIp, uint16_t targetPort);
-void processSerialCli();
 
 #endif // WEB_SERVER_MODULE_H

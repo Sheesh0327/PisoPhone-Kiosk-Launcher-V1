@@ -111,21 +111,9 @@ class KioskServerCoordinator(
         if (effectiveSlot > 0) {
             stateManager.slotNumber.value = effectiveSlot
             KioskSecurity.setAssignedBoxSlot(context, effectiveSlot)
-        }
-        val devId = stateManager.deviceId.value
-        val cleanName = if (!deviceName.isNullOrBlank()) {
-            val trimmed = deviceName.trim()
-            if (trimmed == devId || (devId.isNotBlank() && trimmed.contains(devId)) || trimmed.startsWith("Terminal")) {
-                if (effectiveSlot > 0) "PisoPhone $effectiveSlot" else "PisoPhone 1"
-            } else {
-                trimmed
-            }
-        } else if (effectiveSlot > 0) {
-            "PisoPhone $effectiveSlot"
-        } else null
-
-        cleanName?.let {
-            KioskSecurity.setDeviceAlias(context, it)
+            val autoName = "PisoPhone $effectiveSlot"
+            KioskSecurity.setDeviceAlias(context, autoName)
+            Log.d(TAG, "[+] Device Name automatically linked to Slot #$effectiveSlot -> $autoName")
         }
         adminPin?.let { if (it.isNotBlank()) KioskSecurity.setAdminPin(context, it) }
         stateManager.saveState()
@@ -140,11 +128,7 @@ class KioskServerCoordinator(
         if (slotNum != null && slotNum > 0) {
             stateManager.slotNumber.value = slotNum
             KioskSecurity.setAssignedBoxSlot(context, slotNum)
-            val devId = stateManager.deviceId.value
-            val current = KioskSecurity.getDeviceAlias(context)
-            if (current.isBlank() || current == devId || (devId.isNotBlank() && current.contains(devId)) || current.startsWith("Terminal")) {
-                KioskSecurity.setDeviceAlias(context, "PisoPhone $slotNum")
-            }
+            KioskSecurity.setDeviceAlias(context, "PisoPhone $slotNum")
         }
         Handler(Looper.getMainLooper()).post {
             when (action) {

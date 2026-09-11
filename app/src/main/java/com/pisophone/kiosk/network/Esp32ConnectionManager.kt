@@ -389,23 +389,6 @@ class Esp32ConnectionManager(
         })
     }
 
-    fun sendActivationCode(code: String) {
-        scope.launch(Dispatchers.IO) {
-            try {
-                val targetIp = esp32Ip ?: KioskSecurity.getConfiguredEsp32Ip(context).takeIf { it.isNotBlank() }
-                if (!targetIp.isNullOrBlank()) {
-                    val (host, esp32Port) = discoveryScanner.getEsp32HostAndPort(targetIp)
-                    val bodyReq = okhttp3.FormBody.Builder().add("code", code).build()
-                    val req = Request.Builder()
-                        .url("http://$host:${esp32Port}/activate")
-                        .post(bodyReq)
-                        .build()
-                    httpClient.newCall(req).execute().close()
-                }
-            } catch (_: Exception) {}
-        }
-    }
-
     fun shutdown() {
         heartbeatJob?.cancel()
         closeSession(sendUnarmToEsp = false)

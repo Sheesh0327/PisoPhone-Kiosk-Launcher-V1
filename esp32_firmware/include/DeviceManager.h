@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include "Config.h"
+#include "DeviceNetwork.h"
 
 bool pairDeviceToSlot(int slotNum, String devId, String ip, String name);
 bool unpairSlot(int slotNum);
@@ -25,15 +26,5 @@ bool getTrackedChargingState(String ip, String devId = "");
 String getFirstKnownIp();
 String getIpFromDeviceId(String id);
 String getPrimaryTerminalIp();
-
-void sendAddTime(int minutes, String targetIp, String txId = "");
-void triggerCoinEvent();
-void triggerUniversalCoinEvent(int pulses);
-int getDeviceTimeRemainingSeconds(String targetIp, String *errOut = nullptr);
-
-void sendCloudSnapshot();
-void sendAuthenticated(String ip, int port, String actionPath, String challengePath = "/challenge", String params = "", int timeoutMs = 1500);
-
-String urlEncode(const String &str);
 
 #endif // DEVICE_MANAGER_H

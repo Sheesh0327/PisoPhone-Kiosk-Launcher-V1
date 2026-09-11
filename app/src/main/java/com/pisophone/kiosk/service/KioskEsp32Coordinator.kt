@@ -48,24 +48,9 @@ class KioskEsp32Coordinator(
         if (effectiveSlot > 0) {
             stateManager.slotNumber.value = effectiveSlot
             KioskSecurity.setAssignedBoxSlot(context, effectiveSlot)
-        }
-        val devId = stateManager.deviceId.value
-        if (!alias.isNullOrBlank()) {
-            val cleanAlias = if (alias == devId || (devId.isNotBlank() && alias.contains(devId)) || alias.startsWith("Terminal")) {
-                if (effectiveSlot > 0) "PisoPhone $effectiveSlot" else "PisoPhone 1"
-            } else {
-                alias
-            }
-            val current = KioskSecurity.getDeviceAlias(context)
-            if (current != cleanAlias) {
-                KioskSecurity.setDeviceAlias(context, cleanAlias)
-                Log.d(TAG, "[+] Synchronized device nickname from Master: $cleanAlias (Slot #$effectiveSlot)")
-            }
-        } else if (effectiveSlot > 0) {
-            val current = KioskSecurity.getDeviceAlias(context)
-            if (current.isBlank() || current == devId || (devId.isNotBlank() && current.contains(devId)) || current.startsWith("Terminal")) {
-                KioskSecurity.setDeviceAlias(context, "PisoPhone $effectiveSlot")
-            }
+            val autoName = "PisoPhone $effectiveSlot"
+            KioskSecurity.setDeviceAlias(context, autoName)
+            Log.d(TAG, "[+] Device Name automatically linked to Slot #$effectiveSlot -> $autoName")
         }
         adminPin?.takeIf { it.isNotBlank() }?.let {
             val currentPin = KioskSecurity.getAdminPin(context)
@@ -127,11 +112,7 @@ class KioskEsp32Coordinator(
         if (slotNum > 0) {
             stateManager.slotNumber.value = slotNum
             KioskSecurity.setAssignedBoxSlot(context, slotNum)
-            val devId = stateManager.deviceId.value
-            val current = KioskSecurity.getDeviceAlias(context)
-            if (current.isBlank() || current == devId || (devId.isNotBlank() && current.contains(devId)) || current.startsWith("Terminal")) {
-                KioskSecurity.setDeviceAlias(context, "PisoPhone $slotNum")
-            }
+            KioskSecurity.setDeviceAlias(context, "PisoPhone $slotNum")
         }
         if (stateManager.isSlotExpired.value) {
             stateManager.isSlotExpired.value = false
