@@ -101,97 +101,12 @@ bool unpairSlot(int slotNum) {
     return true;
 }
 
-bool allocateCreditToSlot(int slotNum, String type, String& errorMsg) {
-    if (slotNum < 1 || slotNum > maxLicensedSlots) {
-        errorMsg = "Invalid slot number";
-        return false;
-    }
-    int idx = slotNum - 1;
-    type.toLowerCase();
-    type.trim();
 
-    uint64_t durationMs = 0;
-    if (type == "month") {
-        if (monthlyCredits < 1) {
-            errorMsg = "No monthly credits available in vault. Please purchase credits on website.";
-            return false;
-        }
-        monthlyCredits--;
-        durationMs = 30ULL * 86400000ULL;
-    } else if (type == "year") {
-        if (annualCredits < 1) {
-            errorMsg = "No annual credits available in vault. Please purchase credits on website.";
-            return false;
-        }
-        annualCredits--;
-        durationMs = 365ULL * 86400000ULL;
-    } else if (type == "test") {
-        if (testCredits > 0) testCredits--;
-        durationMs = 120000ULL;
-    } else {
-        errorMsg = "Unknown credit type. Must be 'month', 'year', or 'test'";
-        return false;
-    }
-
-    uint64_t currentMs = getCurrentMasterTimeMs();
-    uint64_t baseTs = (licenseSlots[idx].expiresAt > currentMs) ? licenseSlots[idx].expiresAt : currentMs;
-    licenseSlots[idx].expiresAt = baseTs + durationMs;
-    licenseSlots[idx].active = true;
-
-    // Automatically replace device ID or placeholder with actual slot number (e.g. PisoPhone 1)
-    String cleanSlotName = "PisoPhone " + String(slotNum);
-    String curName = licenseSlots[idx].name;
-    curName.trim();
-    String devId = licenseSlots[idx].deviceId;
-    devId.trim();
-    if (curName.length() == 0 || curName == devId || curName.startsWith("Terminal") || (devId.length() > 0 && curName.indexOf(devId) != -1) || !curName.startsWith("PisoPhone")) {
-        licenseSlots[idx].name = cleanSlotName;
-    }
-
-    saveCreditVault();
-    saveSlotLicenses();
-    Serial.printf("[+] Credit Allocated: Slot #%d +%s (New Expiry: %llu, Name: '%s'). Vault: M=%d, Y=%d, T=%d\n",
-        slotNum, type.c_str(), (unsigned long long)licenseSlots[idx].expiresAt, licenseSlots[idx].name.c_str(),
-        monthlyCredits, annualCredits, testCredits);
-
-    // Push slot number and name to the app immediately
-    String targetIp = licenseSlots[idx].ip;
-    if (targetIp.length() > 0 && targetIp != "127.0.0.1") {
-        String pushParams = "price=" + String(coinPrice) + 
-                            "&minutes=" + String(minutesPerCoin) + 
-                            "&device_name=" + urlEncode(licenseSlots[idx].name) + 
-                            "&slot=" + String(slotNum) + 
-                            "&slot_num=" + String(slotNum) +
-                            "&admin_pin=" + webPassword;
-        sendAuthenticated(targetIp, targetPort, "/config", "/challenge", pushParams, 1000);
-        sendAuthenticated(targetIp, targetPort, "/trigger_action", "/challenge", "action=slot_restore&slot=" + String(slotNum), 1000);
-    }
-    return true;
-}
-
-int getSlotExpirationStatus(int slotIdx, uint64_t currentMs, int& outDaysLeft) {
-    outDaysLeft = -1;
+bool isSlotActive(int slotIdx) {
     if (slotIdx < 0 || slotIdx >= maxLicensedSlots) {
-        return 2;
+        return false;
     }
-    if (!licenseSlots[slotIdx].active) {
-        return 2;
-    }
-    if (licenseSlots[slotIdx].expiresAt == 0) {
-        outDaysLeft = 0;
-        return 2;
-    }
-    if (currentMs >= licenseSlots[slotIdx].expiresAt) {
-        outDaysLeft = 0;
-        return 2;
-    }
-    uint64_t diff = licenseSlots[slotIdx].expiresAt - currentMs;
-    uint64_t oneDayMs = 86400000ULL;
-    outDaysLeft = (int)(diff / oneDayMs);
-    if (diff <= (7ULL * oneDayMs) || (diff <= 60000ULL)) {
-        return 1;
-    }
-    return 0;
+    return licenseSlots[slotIdx].active;
 }
 
 void updateDynamicDeviceList(String deviceId, String ip) {
@@ -490,8 +405,8 @@ void sendAddTime(int minutes, String targetIp, String txId) {
                 if (targetIp == "ALL" || targetIp == cfg.ip) {
                     int slotIdx = findSlotIndexForDevice(cfg.id, cfg.ip);
                     int daysLeft = -1;
-                    int expStatus = getSlotExpirationStatus(slotIdx, currentMs, daysLeft);
-                    if (expStatus == 2) {
+                    bool isActive = isSlotActive(slotIdx);
+                    if (!isActive) {
                         Serial.printf("[-] sendAddTime skipped for %s (Slot #%d): Device Expired / Uncredited\n",
                             cfg.ip.c_str(), (slotIdx >= 0) ? licenseSlots[slotIdx].slotNum : 0);
                     } else {
@@ -672,14 +587,11 @@ void sendCloudSnapshot() {
     json += "\"slots\":[";
     for (int i = 0; i < maxLicensedSlots; i++) {
         if (i > 0) json += ",";
-        char expBuf[24];
-        snprintf(expBuf, sizeof(expBuf), "%llu", (unsigned long long)licenseSlots[i].expiresAt);
         json += "{";
         json += "\"slotNum\":" + String(licenseSlots[i].slotNum) + ",";
         json += "\"deviceId\":\"" + licenseSlots[i].deviceId + "\",";
         json += "\"ip\":\"" + licenseSlots[i].ip + "\",";
         json += "\"name\":\"" + licenseSlots[i].name + "\",";
-        json += "\"expiresAt\":" + String(expBuf);
         json += "}";
     }
     json += "]}";

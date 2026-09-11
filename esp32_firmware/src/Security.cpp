@@ -32,18 +32,15 @@ bool applySlotToken(String token) {
     int dot1 = token.indexOf('.');
     int dot2 = token.indexOf('.', dot1 + 1);
     int dot3 = token.indexOf('.', dot2 + 1);
-    int dot4 = token.indexOf('.', dot3 + 1);
 
-    if (dot1 == -1 || dot2 == -1 || dot3 == -1 || dot4 == -1) return false;
+    if (dot1 == -1 || dot2 == -1 || dot3 == -1) return false;
 
     String tokenMac = token.substring(dot1 + 1, dot2);
     String slotsStr = token.substring(dot2 + 1, dot3);
-    String expStr   = token.substring(dot3 + 1, dot4);
-    String sig      = token.substring(dot4 + 1);
+    String sig      = token.substring(dot3 + 1);
 
     tokenMac.trim(); tokenMac.toUpperCase();
     slotsStr.trim();
-    expStr.trim();
     sig.trim();
 
     String myMac = macAddressStr;
@@ -53,7 +50,7 @@ bool applySlotToken(String token) {
         return false;
     }
 
-    String payload = "PISOSLOT:" + tokenMac + ":" + slotsStr + ":" + expStr;
+    String payload = "PISOSLOT:" + tokenMac + ":" + slotsStr;
     String expectedSig = calculateHMAC(payload, sharedSecret);
     if (!sig.equalsIgnoreCase(expectedSig)) {
         Serial.println("[-] Invalid slot token HMAC signature!");
@@ -64,14 +61,9 @@ bool applySlotToken(String token) {
     if (newSlots < 1) newSlots = DEFAULT_MAX_SLOTS;
     if (newSlots > MAX_SUPPORTED_SLOTS) newSlots = MAX_SUPPORTED_SLOTS;
 
-    uint64_t newExp = strtoull(expStr.c_str(), NULL, 10);
-
     maxLicensedSlots = min(max(maxLicensedSlots, newSlots), MAX_SUPPORTED_SLOTS);
     for (int i = 0; i < maxLicensedSlots; i++) {
         licenseSlots[i].active = true;
-        if (licenseSlots[i].expiresAt < newExp) {
-            licenseSlots[i].expiresAt = newExp;
-        }
     }
 
     is_licensed = true;

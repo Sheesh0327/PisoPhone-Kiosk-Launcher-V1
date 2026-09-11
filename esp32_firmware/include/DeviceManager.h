@@ -8,8 +8,7 @@ bool pairDeviceToSlot(int slotNum, String devId, String ip, String name);
 bool unpairSlot(int slotNum);
 int findSlotIndexForDevice(String devId, String ip);
 
-bool allocateCreditToSlot(int slotNum, String type, String &errorMsg);
-int getSlotExpirationStatus(int slotIdx, uint64_t currentMs, int &outDaysLeft);
+bool isSlotActive(int slotIdx);
 
 void updateDynamicDeviceList(String deviceId, String ip);
 String getDeviceNameByIpOrId(String reqIp, String devId = "");

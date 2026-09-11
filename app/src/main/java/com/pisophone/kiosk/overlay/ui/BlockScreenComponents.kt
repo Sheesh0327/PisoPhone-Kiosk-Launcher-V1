@@ -279,7 +279,7 @@ fun BlockScreenRateTableCard(
 
 @Composable
 fun SlotExpiredBanner(
-    reason: String = "Please add credits to pair device to ESP32.",
+    reason: String = "Please activate device slot on ESP32 Portal.",
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -311,7 +311,7 @@ fun SlotExpiredBanner(
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = if (reason.isNotBlank()) reason else "Please add credits to pair device to ESP32.",
+                    text = if (reason.isNotBlank()) reason else "Please activate device slot on ESP32 Portal.",
                     fontSize = 11.sp,
                     color = Color(0xFFFEE2E2),
                     lineHeight = 15.sp
@@ -357,7 +357,7 @@ fun SlotExpirationWarningBanner(
                     letterSpacing = 0.5.sp
                 )
                 Text(
-                    text = "Renew slot credits in the ESP32 Kiosk Manager.",
+                    text = "Activate device slot in the ESP32 Kiosk Manager.",
                     fontSize = 11.sp,
                     color = Color(0xFFFEF3C7)
                 )

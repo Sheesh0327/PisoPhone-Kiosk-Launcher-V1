@@ -71,10 +71,6 @@ String matchStatusMsg = "";
 String quickTimeStatusMsg = "";
 
 // Credit Vault
-int monthlyCredits = 0;
-int annualCredits  = 0;
-int testCredits    = 0;
-
 // Revenue & Audit
 uint32_t totalCoinsLifetime = 0;
 uint32_t totalCoinsSession  = 0;
@@ -195,13 +191,10 @@ void saveSlotLicenses() {
     String raw = "";
     for (int i = 0; i < maxLicensedSlots; i++) {
         if (i > 0) raw += ";";
-        char expBuf[24];
-        snprintf(expBuf, sizeof(expBuf), "%llu", (unsigned long long)licenseSlots[i].expiresAt);
         raw += String(licenseSlots[i].slotNum) + "|" +
                licenseSlots[i].deviceId + "|" +
                licenseSlots[i].ip + "|" +
                licenseSlots[i].name + "|" +
-               String(expBuf) + "|" +
                (licenseSlots[i].active ? "1" : "0");
     }
     prefs.putString("slots_data", raw);
@@ -221,7 +214,6 @@ void loadSlotLicenses() {
         licenseSlots[i].deviceId = "";
         licenseSlots[i].ip = "";
         licenseSlots[i].name = "PisoPhone " + String(i + 1);
-        licenseSlots[i].expiresAt = 0;
         licenseSlots[i].active = true;
     }
 
@@ -241,18 +233,21 @@ void loadSlotLicenses() {
                 int p4 = (p3 != -1) ? item.indexOf('|', p3 + 1) : -1;
                 int p5 = (p4 != -1) ? item.indexOf('|', p4 + 1) : -1;
 
-                if (p1 != -1 && p2 != -1 && p3 != -1 && p4 != -1) {
+                if (p1 != -1 && p2 != -1 && p3 != -1) {
                     int sNum = item.substring(0, p1).toInt();
                     if (sNum >= 1 && sNum <= MAX_SUPPORTED_SLOTS) {
                         int idx = sNum - 1;
                         licenseSlots[idx].slotNum = sNum;
                         licenseSlots[idx].deviceId = item.substring(p1 + 1, p2);
                         licenseSlots[idx].ip = item.substring(p2 + 1, p3);
-                        licenseSlots[idx].name = item.substring(p3 + 1, p4);
-                        String expStr = (p5 != -1) ? item.substring(p4 + 1, p5) : item.substring(p4 + 1);
-                        licenseSlots[idx].expiresAt = strtoull(expStr.c_str(), NULL, 10);
+                        licenseSlots[idx].name = item.substring(p3 + 1, (p4 != -1) ? p4 : item.length());
+                        
                         if (p5 != -1) {
+                            // Old format with expiresAt in p4, active in p5
                             licenseSlots[idx].active = (item.substring(p5 + 1) == "1");
+                        } else if (p4 != -1) {
+                            // New format with active in p4
+                            licenseSlots[idx].active = (item.substring(p4 + 1) == "1");
                         } else {
                             licenseSlots[idx].active = (idx < maxLicensedSlots);
                         }
@@ -282,22 +277,6 @@ void loadSlotLicenses() {
     }
     prefs.end();
     syncAndroidIpsFromSlots();
-}
-
-void saveCreditVault() {
-    prefs.begin("kiosk_cfg", false);
-    prefs.putInt("cr_monthly", monthlyCredits);
-    prefs.putInt("cr_annual", annualCredits);
-    prefs.putInt("cr_test", testCredits);
-    prefs.end();
-}
-
-void loadCreditVault() {
-    prefs.begin("kiosk_cfg", false);
-    monthlyCredits = prefs.getInt("cr_monthly", 0);
-    annualCredits  = prefs.getInt("cr_annual", 0);
-    testCredits    = prefs.getInt("cr_test", 0);
-    prefs.end();
 }
 
 void processRevenuePersistence() {

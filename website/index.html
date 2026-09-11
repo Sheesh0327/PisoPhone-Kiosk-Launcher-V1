@@ -3,1467 +3,454 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PisoPhone - Kiosk Management Dashboard</title>
+    <title>PisoPhone - Hardware Provisioning Utility</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Universal Auth Guard & Google Identity Services SDK -->
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <script src="js/auth.js"></script>
     <style>
-        @keyframes gradientShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
-        @keyframes fadeInUp { from { opacity: 0; transform: translateY(30px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
-        @keyframes float { 0% { transform: translateY(0px); } 50% { transform: translateY(-10px); } 100% { transform: translateY(0px); } }
-        @keyframes pulseGlow { 0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); } 70% { box-shadow: 0 0 0 15px rgba(16, 185, 129, 0); } 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
-        
-        body { 
-            background: linear-gradient(-45deg, #020617, #0B1120, #0f172a, #064e3b); 
-            background-size: 400% 400%; 
-            animation: gradientShift 15s ease infinite; 
-            color: #F8FAFC; 
-            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+        body {
+            background: linear-gradient(-45deg, #090d16, #0e1726, #052e16);
+            background-size: 400% 400%;
+            animation: gradientShift 14s ease infinite;
+            color: #f1f5f9;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
-        
-        .glass-card { 
-            background: rgba(15, 23, 42, 0.6); 
-            backdrop-filter: blur(16px); 
-            -webkit-backdrop-filter: blur(16px);
-            border: 1px solid rgba(255, 255, 255, 0.1); 
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
-            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
         }
-        .glass-card:hover { 
-            border-color: rgba(52, 211, 153, 0.5); 
-            transform: translateY(-8px);
-            box-shadow: 0 20px 40px -10px rgba(16, 185, 129, 0.3);
+        .glass-card {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.7);
         }
-        
-        /* Modern Utilities */
-        .animate-fade-in-up { animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards; opacity: 0; }
-        .delay-100 { animation-delay: 100ms; }
-        .delay-200 { animation-delay: 200ms; }
-        .delay-300 { animation-delay: 300ms; }
-        .delay-400 { animation-delay: 400ms; }
-        .float-anim { animation: float 6s ease-in-out infinite; }
-        .pulse-btn { animation: pulseGlow 2s infinite; }
-        .step-icon { width: 40px; height: 40px; border-radius: 50%; background: rgba(30, 41, 59, 0.8); border: 2px solid rgba(51, 65, 85, 0.8); display: flex; align-items: center; justify-content: center; font-weight: bold; color: #94A3B8; transition: all 0.3s ease; }
-        .glass-card:hover .step-icon { border-color: rgba(52, 211, 153, 0.8); color: #34d399; transform: scale(1.1) rotate(5deg); box-shadow: 0 0 15px rgba(52, 211, 153, 0.4); }
-        .glass-card:hover .step-icon.bg-emerald-500 { background: #10b981; color: #022c22; }
-        
-        /* Custom scrollbar for modern look */
-        ::-webkit-scrollbar { width: 8px; }
+        .btn-glow-emerald {
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.3), 0 8px 25px -4px rgba(16, 185, 129, 0.25);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .btn-glow-emerald:hover {
+            box-shadow: 0 0 28px rgba(52, 211, 153, 0.55), 0 10px 30px -4px rgba(16, 185, 129, 0.4);
+            transform: translateY(-1px);
+        }
+        .btn-glow-rose {
+            box-shadow: 0 0 20px rgba(225, 29, 72, 0.3), 0 8px 25px -4px rgba(225, 29, 72, 0.25);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .btn-glow-rose:hover {
+            box-shadow: 0 0 28px rgba(244, 63, 94, 0.55), 0 10px 30px -4px rgba(225, 29, 72, 0.4);
+            transform: translateY(-1px);
+        }
+        ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.5); }
-        ::-webkit-scrollbar-thumb { background: rgba(52, 211, 153, 0.3); border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: rgba(52, 211, 153, 0.6); }
+        ::-webkit-scrollbar-thumb { background: rgba(52, 211, 153, 0.3); border-radius: 3px; }
     </style>
 </head>
-<body class="min-h-screen flex flex-col">
-    <!-- Navigation Bar -->
-    <nav class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50 px-6 py-4 flex items-center justify-between">
-        <div class="flex items-center space-x-3">
-            <svg class="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
-            </svg>
-            <a href="index.html" class="text-xl font-black tracking-wider">PISO<span class="text-emerald-400">PHONE</span></a>
+<body class="min-h-screen flex flex-col items-center justify-center p-4">
+
+    <!-- Restricted Access View (Shown when not accessed through ESP32) -->
+    <div id="restrictedView" class="hidden glass-card max-w-md w-full rounded-2xl p-8 space-y-6 text-center border-rose-500/20">
+        <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-rose-500/10 text-rose-400 border border-rose-500/20 text-3xl font-black mx-auto">
+            🔒
         </div>
-        <!-- Nav Links & Auth -->
-        <div class="flex items-center space-x-2 sm:space-x-4">
-            <!-- Protected Nav Links (Visible only when signed in) -->
-            <div id="navLinksContainer" class="hidden items-center space-x-3 text-xs sm:text-sm font-semibold text-slate-300">
-                <a href="index.html" class="text-emerald-400 font-bold hidden sm:inline">Fleet</a>
-                <button type="button" onclick="openQrBoxScanner(async () => { await refreshDashboardBoxStatus(); if(currentUserToken) fetchUserDevices(currentUserToken); })" class="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold px-3 py-1.5 rounded-lg transition shadow-md flex items-center gap-1 text-xs">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
-                    <span>Scan QR</span>
-                </button>
-                <a href="http://kioskmanager.local" target="_blank" class="hidden sm:flex hover:text-emerald-300 text-emerald-400 font-semibold transition items-center gap-1">
-                    <span>ESP32 Portal</span>
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
-                </a>
-            </div>
-            <!-- Always Visible Deprovision Tool Link -->
-            <a href="deprovision.html" title="Emergency Deprovision &amp; Unlock Kiosk" class="text-rose-400 hover:text-rose-300 font-bold transition flex items-center gap-1 bg-rose-500/10 hover:bg-rose-500/20 px-2 py-1.5 rounded-lg border border-rose-500/20 text-xs whitespace-nowrap">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                <span class="hidden sm:inline">Deprovision</span>
-            </a>
-            <div id="navAuthContainer"></div>
-        </div>
-    </nav>
-
-    <!-- Link Device Modal -->
-    <div id="linkDeviceModal" class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm hidden animate-fade-in-up">
-        <div class="bg-slate-900 border border-emerald-500/30 rounded-3xl w-full max-w-md p-7 shadow-2xl transform transition-all text-slate-100 relative">
-            <button id="closeLinkModalBtn" class="absolute top-4 right-4 text-slate-400 hover:text-white transition p-2">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-            </button>
-            <div class="text-center mb-6">
-                <div class="w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
-                </div>
-                <h3 class="text-xl font-bold text-white">Link Kiosk Device</h3>
-                <p class="text-xs text-slate-400 mt-1">Bind your phone to a verified Coin Slot Box quota</p>
-            </div>
-            <form id="linkDeviceForm" class="space-y-4">
-                <div>
-                    <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Target Coin Slot Box</label>
-                    <select id="targetBoxSelect" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500 transition">
-                        <option value="">Auto-Assign to Available Box</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Device Hardware ID</label>
-                    <input type="text" id="manualDeviceIdInput" placeholder="e.g. 9774d56d682e549c or HW-..." required class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white font-mono uppercase focus:outline-none focus:border-emerald-500 transition">
-                </div>
-                <div id="linkStatusText" class="text-xs text-center min-h-[16px] text-slate-400"></div>
-                <button type="submit" id="submitLinkBtn" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-3 rounded-xl transition text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20">
-                    Link Device to Box
-                </button>
-            </form>
-        </div>
-    </div>
-
-    <!-- Transfer License Modal (Strict 1-Device Enforcement) -->
-    <div id="transferLicenseModal" class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm hidden animate-fade-in-up">
-        <div class="bg-slate-900 border border-cyan-500/30 rounded-3xl w-full max-w-lg p-7 shadow-2xl transform transition-all text-slate-100 relative">
-            <button id="closeTransferModalBtn" type="button" class="absolute top-4 right-4 text-slate-400 hover:text-white transition p-2">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-            </button>
-            <div class="text-center mb-5">
-                <div class="w-12 h-12 bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg shadow-cyan-500/10">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
-                </div>
-                <h3 class="text-xl font-bold text-white">Transfer Commercial License</h3>
-                <p class="text-xs text-slate-400 mt-1">Move remaining license time to a replacement phone (1 Device Only)</p>
-            </div>
-
-            <!-- Source Device Box -->
-            <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 mb-4">
-                <div class="text-[10px] uppercase tracking-wider font-semibold text-slate-400 mb-1">Source Device (Losing License)</div>
-                <div class="flex items-center justify-between">
-                    <div>
-                        <div id="transferSourceModel" class="font-bold text-sm text-slate-200">Kiosk Phone</div>
-                        <div id="transferSourceId" class="text-xs font-mono text-cyan-400 mt-0.5">HW-...</div>
-                    </div>
-                    <div class="text-right">
-                        <span id="transferSourceDays" class="text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 rounded-full">0 days left</span>
-                    </div>
-                </div>
-            </div>
-
-            <form id="transferLicenseForm" class="space-y-4">
-                <input type="hidden" id="transferSourceIdInput">
-                <input type="hidden" id="transferSourceBoxInput">
-
-                <div>
-                    <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Destination Device</label>
-                    <select id="transferTargetSelect" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-cyan-500 transition mb-2">
-                        <option value="">Select an unactivated device...</option>
-                    </select>
-                    <div class="text-[11px] text-slate-400 mb-1.5">Or enter replacement device Hardware ID manually:</div>
-                    <input type="text" id="transferTargetInput" placeholder="e.g. 9774d56d682e549c or HW-..." class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white font-mono uppercase focus:outline-none focus:border-cyan-500 transition">
-                </div>
-
-                <div id="transferBoxOptionContainer" class="p-3 bg-slate-950/60 border border-slate-800 rounded-xl flex items-start gap-2.5">
-                    <input type="checkbox" id="transferBoxCheckbox" checked class="mt-0.5 rounded bg-slate-900 border-slate-700 text-cyan-500 focus:ring-0">
-                    <label for="transferBoxCheckbox" class="text-xs text-slate-300 cursor-pointer">
-                        Also reassign Coin Slot Box slot (<span id="transferBoxLabel" class="font-mono text-cyan-400 font-semibold">Box #---</span>) to the new replacement device
-                    </label>
-                </div>
-
-                <!-- Strict Policy Notice -->
-                <div class="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-start gap-2.5 text-xs text-rose-300">
-                    <svg class="w-4 h-4 flex-shrink-0 mt-0.5 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-                    <div>
-                        <span class="font-bold">Strict 1-Device Policy:</span> The source device's license will be immediately revoked. Once transferred, the old phone will no longer operate as an unlocked kiosk.
-                    </div>
-                </div>
-
-                <div id="transferStatusText" class="text-xs text-center min-h-[16px] text-slate-400"></div>
-
-                <div class="flex items-center gap-3 pt-1">
-                    <button type="button" id="cancelTransferBtn" class="w-1/3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-3 rounded-xl transition text-sm">
-                        Cancel
-                    </button>
-                    <button type="submit" id="submitTransferBtn" class="w-2/3 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold py-3 rounded-xl transition text-sm flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20">
-                        Confirm Transfer
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Main Content -->
-    <main class="flex-grow container mx-auto px-4 py-12 flex flex-col items-center justify-center text-center max-w-5xl transition-all" id="mainContainer">
-        
-        <!-- Auth Gate View (Visible ONLY when unauthenticated) -->
-        <div id="authGateView" class="w-full max-w-md mx-auto flex flex-col items-center justify-center py-6 animate-fade-in-up">
-            <div class="glass-card rounded-3xl p-8 border border-emerald-500/30 w-full shadow-2xl text-center relative overflow-hidden">
-                <div class="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto mb-5 shadow-lg shadow-emerald-500/10">
-                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
-                    </svg>
-                </div>
-                <h1 class="text-2xl sm:text-3xl font-black text-white mb-2 tracking-tight">PisoPhone Portal</h1>
-                <p class="text-slate-400 text-sm mb-6">Sign in with your Google account to access the kiosk fleet management console, installer, and device tools.</p>
-                
-                <div id="redirectAlert" class="hidden mb-6 p-3 bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs rounded-xl text-left flex items-center gap-2.5">
-                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                    <span id="redirectAlertText">Authentication required to access the requested page.</span>
-                </div>
-
-                <div id="googleButtonContainer" class="flex justify-center my-3 min-h-[44px]">
-                    <div class="text-xs text-slate-500 animate-pulse py-2">Loading Google Sign-In...</div>
-                </div>
-
-                <div class="flex items-center my-4 w-full">
-                    <div class="flex-grow border-t border-slate-800"></div>
-                    <span class="px-3 text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Or use Operator Email</span>
-                    <div class="flex-grow border-t border-slate-800"></div>
-                </div>
-
-                <form id="directEmailForm" class="w-full space-y-2">
-                    <div class="flex gap-2">
-                        <input type="email" id="directEmailInput" placeholder="operator@email.com" value="gelboy408@gmail.com" required class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition">
-                        <button type="submit" id="directEmailBtn" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl text-xs whitespace-nowrap transition flex items-center gap-1.5 shadow-md shadow-emerald-500/10">
-                            <span>Sign In</span>
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
-                        </button>
-                    </div>
-                </form>
-
-                <div class="mt-6 pt-5 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-500">
-                    <span>🔒 Secured by Google Identity &amp; ECDSA</span>
-                    <a href="deprovision.html" class="text-rose-400 hover:text-rose-300 font-semibold underline">Deprovision Locked Phone</a>
-                </div>
-            </div>
-        </div>
-
-        <!-- Hero Landing Section (Visible when unauthenticated) -->
-        <div id="heroLandingSection" class="w-full flex flex-col items-center">
-            <!-- Hero Tagline -->
-            <div class="inline-flex items-center space-x-2 bg-emerald-500/10 border border-emerald-500/30 px-4 py-1.5 rounded-full text-emerald-400 text-xs font-semibold uppercase tracking-wider mb-6">
-                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span>Mobile Fleet Management • Instant QR Box Claim</span>
-            </div>
-
-            <h1 class="text-4xl sm:text-6xl md:text-7xl font-black tracking-tight mb-6 animate-fade-in-up">
-                Turn Any Android into a <br/>
-                <span class="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-500">Commercial Arcade Kiosk</span>
+        <div class="space-y-2">
+            <h1 class="text-xl font-extrabold tracking-tight text-white">
+                Hardware Access Restricted
             </h1>
-            <p class="text-slate-400 text-base sm:text-lg md:text-xl mb-8 max-w-2xl animate-fade-in-up delay-100">
-                Manage your coin-op kiosk fleet on the go. Scan the QR code printed on your coin slot box with your phone to instantly claim hardware and manage licensed Android terminals.
+            <p class="text-xs text-slate-400 leading-relaxed">
+                This utility can only be accessed when redirected directly from your physical PisoPhone ESP32 Coin Slot Box portal.
             </p>
-
-            <!-- Quick Action Buttons for Unauthenticated Mobile Users -->
-            <div class="flex flex-col sm:flex-row items-center gap-3 w-full max-w-md mb-8">
-                <button onclick="directEmailInput.focus()" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3.5 px-6 rounded-2xl text-sm transition shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path></svg>
-                    <span>Sign In to Claim Box via QR</span>
-                </button>
-            </div>
-
-            <!-- Emergency Deprovision Action for Kiosk Operators -->
-            <div class="flex items-center gap-3 bg-slate-900/90 border border-slate-800 hover:border-rose-500/40 p-3 px-5 rounded-2xl text-xs text-slate-300 transition shadow-lg mb-12 animate-fade-in-up delay-200">
-                <span class="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span>
-                <span>Need to unlock a locked kiosk phone or restore stock Android?</span>
-                <a href="deprovision.html" class="text-rose-400 hover:text-rose-300 font-bold underline flex items-center gap-1">
-                    <span>Open Deprovision Tool</span>
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
-                </a>
-            </div>
         </div>
+        <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-4 text-left text-xs text-slate-400 space-y-2">
+            <strong class="text-slate-200 block text-xs">How to connect:</strong>
+            <ol class="list-decimal pl-4 space-y-1 text-[11px] text-slate-400">
+                <li>Connect your computer or phone to the PisoPhone Wi-Fi hotspot.</li>
+                <li>Open the local dashboard (e.g. <code class="text-emerald-400">http://192.168.4.1</code>).</li>
+                <li>Click <b>Install Terminal</b> or <b>Deprovision</b> to launch this tool with authorized credentials.</li>
+            </ol>
+        </div>
+        <div class="text-[11px] text-slate-500">
+            PisoPhone Kiosk Hardware Utility • Private Terminal
+        </div>
+    </div>
 
-        <!-- Dashboard View (Visible ONLY when signed in) -->
-        <div id="dashboardView" class="w-full flex-col items-start text-left hidden">
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between w-full mb-8 gap-4">
+    <!-- Main Authenticated Tool View -->
+    <div id="mainView" class="hidden glass-card max-w-lg w-full rounded-2xl p-6 md:p-8 space-y-5">
+        
+        <!-- Header -->
+        <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+            <div class="flex items-center space-x-3">
+                <div class="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xl font-black">
+                    ₱
+                </div>
                 <div>
-                    <h2 class="text-2xl sm:text-3xl font-black text-white tracking-tight">Fleet Dashboard</h2>
-                    <p class="text-xs sm:text-sm text-slate-400 mt-1">Manage boxes, scan hardware QR codes, and monitor kiosk terminals.</p>
-                </div>
-                <div class="flex items-center gap-2 sm:gap-3 flex-wrap">
-                    <button id="refreshDevicesBtn" title="Refresh device list" class="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-3.5 py-2.5 rounded-xl transition text-xs sm:text-sm font-semibold border border-slate-700 flex items-center gap-2 shadow-sm">
-                        <svg id="refreshIcon" class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                        <span>Refresh</span>
-                    </button>
-                    <button type="button" onclick="openQrBoxScanner(async () => { await refreshDashboardBoxStatus(); if(currentUserToken) fetchUserDevices(currentUserToken); })" class="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl transition text-xs sm:text-sm shadow-lg flex items-center gap-2">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
-                        <span>📷 Scan Box QR</span>
-                    </button>
-                    <a href="purchase.html" class="bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 px-4 py-2.5 rounded-xl transition font-semibold flex items-center gap-2 text-xs sm:text-sm">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path></svg>
-                        <span>Order Units</span>
-                    </a>
+                    <h1 class="text-lg font-extrabold tracking-tight text-white leading-tight">
+                        PisoPhone Utility
+                    </h1>
+                    <p class="text-[11px] text-slate-400">Hardware WebUSB Provisioner</p>
                 </div>
             </div>
-
-            <!-- Coin Slot Box Quota Overview Card -->
-            <div id="dashBoxStatusCard" class="glass-card rounded-3xl p-6 border border-emerald-500/30 w-full mb-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl relative overflow-hidden">
-                <div class="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-500"></div>
-                <div class="flex items-center gap-4">
-                    <div class="w-14 h-14 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center flex-shrink-0 shadow-lg shadow-emerald-500/10">
-                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
-                    </div>
-                    <div>
-                        <div class="flex items-center gap-2">
-                            <h3 class="text-lg font-black text-white">Coin Slot Box Hardware Fleet</h3>
-                            <span id="dashBoxBadge" class="text-xs font-bold px-2.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30">Verification Required</span>
-                        </div>
-                        <p id="dashBoxSubtext" class="text-xs text-slate-400 mt-1">Scan the QR code printed on your Coin Slot Box to register it to your account (12 terminal capacity per box).</p>
-                    </div>
-                </div>
-                <div class="flex items-center gap-3 w-full md:w-auto">
-                    <button id="dashVerifyBoxBtn" class="w-full md:w-auto bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold px-5 py-3 rounded-xl text-xs transition shadow-lg shadow-emerald-500/20 whitespace-nowrap flex items-center justify-center gap-2">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
-                        <span>📷 Scan / Register Box</span>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Step-by-Step Kiosk Setup Workflow Banner -->
-            <div class="glass-card rounded-3xl p-6 border border-emerald-500/30 w-full mb-8 shadow-xl bg-slate-900/90 relative overflow-hidden">
-                <div class="flex items-center justify-between mb-4">
-                    <div>
-                        <span class="text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-md border border-emerald-500/20">ESP32-Centric Architecture</span>
-                        <h3 class="text-xl font-black text-white mt-1">4 Steps to Deploy Your Kiosk Arcade</h3>
-                    </div>
-                    <span id="workflowUserEmailBadge" class="text-xs font-mono text-slate-400 bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800"></span>
-                </div>
-
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <!-- Step 1 -->
-                    <a href="purchase.html" class="bg-slate-950/80 border border-slate-800 hover:border-emerald-500/60 p-4 rounded-2xl cursor-pointer transition flex flex-col justify-between group">
-                        <div>
-                            <div class="flex items-center justify-between mb-2">
-                                <span class="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-bold text-xs flex items-center justify-center">1</span>
-                                <span class="text-[10px] text-emerald-400 font-semibold group-hover:underline">Order Hardware →</span>
-                            </div>
-                            <div class="font-bold text-sm text-white mb-1">1. Order Box</div>
-                            <p class="text-xs text-slate-400">Order Coin Slot Box with flexible terminal seats (2, 3, 5, or custom).</p>
-                        </div>
-                        <div class="mt-3 text-[10px] font-bold px-2 py-0.5 rounded text-emerald-300 bg-emerald-500/20 w-fit">Flexible Seats</div>
-                    </a>
-
-                    <!-- Step 2 -->
-                    <div onclick="dashVerifyBoxBtn.click()" class="bg-slate-950/80 border border-slate-800 hover:border-emerald-500/60 p-4 rounded-2xl cursor-pointer transition flex flex-col justify-between group">
-                        <div>
-                            <div class="flex items-center justify-between mb-2">
-                                <span class="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-bold text-xs flex items-center justify-center">2</span>
-                                <span class="text-[10px] text-emerald-400 font-semibold group-hover:underline">Register MAC →</span>
-                            </div>
-                            <div class="font-bold text-sm text-white mb-1">2. Register Box</div>
-                            <p class="text-xs text-slate-400">Enter your ESP32 MAC address to link this box to your account.</p>
-                        </div>
-                        <div id="step1StatusBadge" class="mt-3 text-[10px] font-bold px-2 py-0.5 rounded text-amber-300 bg-amber-500/20 w-fit">Not Registered</div>
-                    </div>
-
-                    <!-- Step 3 -->
-                    <a href="http://kioskmanager.local" target="_blank" class="bg-slate-950/80 border border-slate-800 hover:border-emerald-500/60 p-4 rounded-2xl cursor-pointer transition flex flex-col justify-between group">
-                        <div>
-                            <div class="flex items-center justify-between mb-2">
-                                <span class="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-bold text-xs flex items-center justify-center">3</span>
-                                <span class="text-[10px] text-emerald-400 font-semibold group-hover:underline">Open Portal →</span>
-                            </div>
-                            <div class="font-bold text-sm text-white mb-1">3. Connect to ESP32</div>
-                            <p class="text-xs text-slate-400">Open http://kioskmanager.local in browser on your local network.</p>
-                        </div>
-                        <div class="mt-3 text-[10px] font-bold px-2 py-0.5 rounded text-teal-300 bg-teal-500/20 w-fit font-mono">kioskmanager.local</div>
-                    </a>
-
-                    <!-- Step 4 -->
-                    <div class="bg-slate-950/80 border border-slate-800 p-4 rounded-2xl transition flex flex-col justify-between">
-                        <div>
-                            <div class="flex items-center justify-between mb-2">
-                                <span class="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-bold text-xs flex items-center justify-center">4</span>
-                                <span class="text-[10px] text-cyan-400 font-semibold">1-Click Motion</span>
-                            </div>
-                            <div class="font-bold text-sm text-white mb-1">4. Install &amp; Activate</div>
-                            <p class="text-xs text-slate-400">Plug phone into browser via USB on ESP32 portal to install and pair seat.</p>
-                        </div>
-                        <div id="step4StatusBadge" class="mt-3 text-[10px] font-bold px-2 py-0.5 rounded text-emerald-300 bg-emerald-500/20 w-fit">Offline Capable</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Quick Access Tool Grid for Authenticated Operator -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 w-full mb-8">
-                <a href="purchase.html" class="glass-card rounded-2xl p-4 border border-emerald-500/20 hover:border-emerald-500/50 flex items-center gap-3 transition shadow-md">
-                    <div class="bg-emerald-500/20 text-emerald-400 p-2.5 rounded-xl">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path></svg>
-                    </div>
-                    <div>
-                        <div class="text-white font-bold text-sm">Order Boxes</div>
-                        <div class="text-slate-400 text-xs mt-0.5">Flexible Seats</div>
-                    </div>
-                </a>
-                <a href="http://kioskmanager.local" target="_blank" class="glass-card rounded-2xl p-4 border border-cyan-500/20 hover:border-cyan-500/50 flex items-center gap-3 transition shadow-md">
-                    <div class="bg-cyan-500/20 text-cyan-400 p-2.5 rounded-xl">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
-                    </div>
-                    <div>
-                        <div class="text-white font-bold text-sm">ESP32 Manager</div>
-                        <div class="text-slate-400 text-xs mt-0.5">1-Click Install</div>
-                    </div>
-                </a>
-                <a href="purchase.html" class="glass-card rounded-2xl p-4 border border-teal-500/20 hover:border-teal-500/50 flex items-center gap-3 transition shadow-md">
-                    <div class="bg-teal-500/20 text-teal-300 p-2.5 rounded-xl">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
-                    </div>
-                    <div>
-                        <div class="text-white font-bold text-sm">Upgrade Seats</div>
-                        <div class="text-slate-400 text-xs mt-0.5">Issue Slot Token</div>
-                    </div>
-                </a>
-                <a href="debloater.html" class="glass-card rounded-2xl p-4 border border-purple-500/20 hover:border-purple-500/50 flex items-center gap-3 transition shadow-md">
-                    <div class="bg-purple-500/20 text-purple-400 p-2.5 rounded-xl">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                    </div>
-                    <div>
-                        <div class="text-white font-bold text-sm">Debloater</div>
-                        <div class="text-slate-400 text-xs mt-0.5">Remove Bloat</div>
-                    </div>
-                </a>
-                <a href="deprovision.html" class="glass-card rounded-2xl p-4 border border-rose-500/30 hover:border-rose-500/60 bg-rose-500/5 flex items-center gap-3 transition shadow-md">
-                    <div class="bg-rose-500/20 text-rose-400 p-2.5 rounded-xl">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                    </div>
-                    <div>
-                        <div class="text-white font-bold text-sm">Deprovision</div>
-                        <div class="text-rose-300 text-xs mt-0.5">Emergency Unlock</div>
-                    </div>
-                </a>
-            </div>
-
-            <!-- Section Heading: Coin Slot Boxes & Fleet Structure -->
-            <div class="flex items-center justify-between w-full mb-4">
-                <div class="flex items-center gap-2">
-                    <h3 class="text-xl font-bold text-white tracking-tight">Coin Slot Boxes &amp; Linked Devices</h3>
-                    <span id="boxCountBadge" class="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">0 Boxes</span>
-                </div>
-                <div class="text-xs text-slate-400">Click any box to view or manage its 12 linked phones</div>
-            </div>
-            
-            <div id="deviceListContainer" class="space-y-4 w-full">
-                <div class="text-center text-slate-500 py-8 text-sm bg-slate-900 border border-slate-800 rounded-2xl p-6">
-                    <div class="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-                    Loading your Coin Slot Boxes &amp; licensed devices...
-                </div>
-            </div>
-
-            <!-- Footer / Deprovision Link -->
-            <div class="mt-16 pt-8 border-t border-slate-800/80 w-full flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500">
-                <p>© 2026 PisoPhone. Fast, Secure, Zero-Runtime-Driver Kiosk Management.</p>
-                <div class="flex space-x-4 mt-3 sm:mt-0">
-                    <a href="deprovision.html" class="hover:text-rose-400 transition">Emergency Deprovision &amp; Uninstall</a>
-                </div>
+            <div id="connectionPill" class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>ESP32 Connected</span>
             </div>
         </div>
-    </main>
-    <script src="js/device_checker.js"></script>
+
+        <!-- Hardware Parameters Badge -->
+        <div class="bg-slate-900/80 rounded-xl p-3.5 border border-slate-800 grid grid-cols-3 gap-2 text-center text-xs">
+            <div class="border-r border-slate-800 pr-2">
+                <span class="text-slate-500 text-[10px] block uppercase tracking-wider font-semibold">Box MAC</span>
+                <span id="displayMac" class="font-mono text-emerald-400 font-bold text-[11px] truncate block">Scanning...</span>
+            </div>
+            <div class="border-r border-slate-800 px-2">
+                <span class="text-slate-500 text-[10px] block uppercase tracking-wider font-semibold">Target Slot</span>
+                <span id="displaySlot" class="font-mono text-cyan-300 font-bold text-[11px] block">Slot #--</span>
+            </div>
+            <div class="pl-2">
+                <span class="text-slate-500 text-[10px] block uppercase tracking-wider font-semibold">Box IP</span>
+                <span id="displayIp" class="font-mono text-slate-300 font-bold text-[11px] truncate block">--</span>
+            </div>
+        </div>
+
+        <!-- Tab Selector: Install vs Deprovision -->
+        <div class="flex bg-slate-950/80 p-1 rounded-xl border border-slate-800">
+            <button id="tabInstall" onclick="switchMode('install')" class="flex-1 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 bg-emerald-500 text-slate-950 shadow-sm">
+                <span>🚀 Install &amp; Pair</span>
+            </button>
+            <button id="tabDeprovision" onclick="switchMode('deprovision')" class="flex-1 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 text-slate-400 hover:text-slate-200">
+                <span>🗑️ Deprovision &amp; Reset</span>
+            </button>
+        </div>
+
+        <!-- Browser Warning -->
+        <div id="browserWarning" class="hidden bg-amber-500/15 border border-amber-500/40 text-amber-300 p-3 rounded-xl text-xs flex items-center gap-2.5">
+            <span>⚠️</span>
+            <span>WebUSB requires Google Chrome, Edge, or Brave. Other browsers cannot flash devices.</span>
+        </div>
+
+        <!-- Mode 1: INSTALL -->
+        <div id="installPanel" class="space-y-4">
+            <div class="bg-emerald-950/20 p-3.5 border border-emerald-500/15 rounded-xl text-xs text-slate-400 space-y-1.5 leading-relaxed">
+                <div class="font-bold text-emerald-400 text-[11px] flex items-center gap-1.5">
+                    <span>⚡ Quick Checklist:</span>
+                </div>
+                <ul class="list-disc pl-4 space-y-1 text-[11px]">
+                    <li>Connect Android phone to computer using a USB DATA cable.</li>
+                    <li>Enable <b>USB Debugging</b> in Developer Options.</li>
+                    <li>Unlock phone screen &amp; accept the USB Debugging prompt.</li>
+                </ul>
+            </div>
+
+            <button id="installAppBtn" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3.5 px-6 rounded-xl transition shadow-lg text-sm flex items-center justify-center gap-2.5 btn-glow-emerald cursor-pointer">
+                🚀 1-Click Flash &amp; Pair Slot
+            </button>
+
+            <div class="flex items-center justify-between text-[11px] text-slate-400 px-1">
+                <span>Optional custom file:</span>
+                <label for="localApkInput" class="text-emerald-400 hover:text-emerald-300 cursor-pointer font-bold underline flex items-center gap-1">
+                    📁 Select Local .APK
+                </label>
+                <input type="file" id="localApkInput" accept=".apk" class="hidden">
+            </div>
+            <div id="localApkStatus" class="hidden text-[11px] text-emerald-300 font-semibold bg-emerald-950/60 border border-emerald-500/30 px-3 py-1.5 rounded-lg text-center">
+                ✅ Custom APK loaded
+            </div>
+        </div>
+
+        <!-- Mode 2: DEPROVISION -->
+        <div id="deprovisionPanel" class="hidden space-y-4">
+            <div class="bg-rose-950/20 p-3.5 border border-rose-500/20 rounded-xl text-xs text-slate-400 space-y-1.5 leading-relaxed">
+                <div class="font-bold text-rose-400 text-[11px] flex items-center gap-1.5">
+                    <span>⚠️ Deprovision Warning:</span>
+                </div>
+                <p class="text-[11px] text-rose-300/90">
+                    Releases Device Owner lockdown, uninstalls the PisoPhone kiosk package, and restores the Android phone to standard factory mode.
+                </p>
+            </div>
+
+            <div>
+                <label for="adminPin" class="block text-xs font-semibold text-slate-300 mb-1.5">Admin Security PIN</label>
+                <input type="text" id="adminPin" value="1234" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-white text-xs placeholder-slate-500 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 font-mono" placeholder="Enter Admin PIN (Default 1234)">
+            </div>
+
+            <button id="deprovisionBtn" class="w-full bg-rose-600 hover:bg-rose-500 text-white font-black py-3.5 px-6 rounded-xl transition shadow-lg text-sm flex items-center justify-center gap-2.5 btn-glow-rose cursor-pointer">
+                🗑️ Connect Device &amp; Deprovision
+            </button>
+        </div>
+
+        <!-- Live Terminal Log -->
+        <div id="logContainer" class="hidden space-y-1.5 pt-2 border-t border-slate-800">
+            <div class="flex justify-between items-center text-[10px]">
+                <span class="text-slate-400 font-semibold uppercase tracking-wider">Flashing Console</span>
+                <span id="logStatusBadge" class="text-emerald-400 font-mono animate-pulse">Running</span>
+            </div>
+            <div id="terminalLog" class="bg-slate-950 rounded-xl p-3.5 font-mono text-[11px] text-slate-300 leading-relaxed border border-slate-800/90 h-44 overflow-y-auto whitespace-pre-wrap">
+                Ready to initialize...
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="text-center pt-2">
+            <a id="returnToEsp32Link" href="#" class="text-[11px] text-slate-500 hover:text-emerald-400 transition">
+                ← Return to ESP32 Coin Slot Dashboard
+            </a>
+        </div>
+
+    </div>
+
+    <!-- WebADB CDN Script Loader -->
+    <script src="js/webadb_manager.js"></script>
+
     <script>
-        const GOOGLE_CLIENT_ID = "638200783130-j0deds9pgp06aqha2sk0j0re6iodsnbq.apps.googleusercontent.com";
+        // Parse incoming ESP32 parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlMac = urlParams.get('mac');
+        const urlIp = urlParams.get('ip');
+        const urlSlot = parseInt(urlParams.get('slot') || '1', 10);
+        const urlSecret = urlParams.get('secret') || '';
+        const urlName = urlParams.get('name') || `PisoPhone Slot ${urlSlot}`;
+        const initialMode = (urlParams.get('mode') === 'deprovision' || urlParams.get('action') === 'deprovision') ? 'deprovision' : 'install';
 
-        const authGateView = document.getElementById('authGateView');
-        const dashboardView = document.getElementById('dashboardView');
-        const navLinksContainer = document.getElementById('navLinksContainer');
-        const navAuthContainer = document.getElementById('navAuthContainer');
-        const redirectAlert = document.getElementById('redirectAlert');
-        const redirectAlertText = document.getElementById('redirectAlertText');
-        const mainContainer = document.getElementById('mainContainer');
+        const restrictedView = document.getElementById('restrictedView');
+        const mainView = document.getElementById('mainView');
 
-        let currentUserToken = null;
-        let isFetchingDevices = false;
+        // Security Gate: Strict access verification
+        if (!urlMac || !urlIp) {
+            restrictedView.classList.remove('hidden');
+        } else {
+            mainView.classList.remove('hidden');
 
-        const openLinkModalBtn = document.getElementById('openLinkModalBtn');
-        const linkDeviceModal = document.getElementById('linkDeviceModal');
-        const closeLinkModalBtn = document.getElementById('closeLinkModalBtn');
-        const linkDeviceForm = document.getElementById('linkDeviceForm');
-        const manualDeviceIdInput = document.getElementById('manualDeviceIdInput');
-        const linkStatusText = document.getElementById('linkStatusText');
-        const submitLinkBtn = document.getElementById('submitLinkBtn');
-        const refreshDevicesBtn = document.getElementById('refreshDevicesBtn');
+            // Populate Hardware Information
+            document.getElementById('displayMac').textContent = urlMac;
+            document.getElementById('displaySlot').textContent = `Slot #${urlSlot}`;
+            document.getElementById('displayIp').textContent = urlIp;
+            document.getElementById('returnToEsp32Link').href = `http://${urlIp}/`;
 
-        function promptGoogleSignIn() {
-            pisoSignOut();
-        }
-
-        function checkAuthState() {
-            const user = getPisoUser();
-            const urlParams = new URLSearchParams(window.location.search);
-            const redirectPath = urlParams.get('redirect');
-
-            if (user) {
-                // If redirect parameter exists and user is signed in, redirect there
-                if (redirectPath && redirectPath !== 'index.html' && !redirectPath.startsWith('http') && !redirectPath.startsWith('//')) {
-                    window.location.replace(redirectPath);
-                    return;
-                }
-
-                currentUserToken = user.token;
-
-                if (authGateView) authGateView.classList.add('hidden');
-                const heroLandingSection = document.getElementById('heroLandingSection');
-                if (heroLandingSection) heroLandingSection.classList.add('hidden');
-                if (dashboardView) {
-                    dashboardView.classList.remove('hidden');
-                    dashboardView.classList.add('flex');
-                }
-                if (navLinksContainer) {
-                    navLinksContainer.classList.remove('hidden');
-                    navLinksContainer.classList.add('flex');
-                }
-                if (navAuthContainer) {
-                    renderNavAuth(navAuthContainer);
-                }
-                if (mainContainer) {
-                    mainContainer.classList.remove('items-center', 'justify-center', 'text-center');
-                    mainContainer.classList.add('items-start', 'text-left');
-                }
-
-                // Render cached boxes & devices immediately
-                const cachedBox = getPisoBox();
-                if (cachedBox) {
-                    currentBoxData = cachedBox;
-                }
-                const cachedStr = localStorage.getItem('piso_cached_devices');
-                if (cachedStr) {
-                    try {
-                        const cached = JSON.parse(cachedStr);
-                        if (Array.isArray(cached) && cached.length > 0) {
-                            currentUserDevices = cached;
-                        }
-                    } catch(e) {}
-                }
-                renderBoxHierarchy();
-
-                if (user.token) {
-                    fetchUserDevices(user.token);
-                }
-                refreshDashboardBoxStatus();
-            } else {
-                currentUserToken = null;
-
-                if (authGateView) authGateView.classList.remove('hidden');
-                const heroLandingSection = document.getElementById('heroLandingSection');
-                if (heroLandingSection) heroLandingSection.classList.remove('hidden');
-                if (dashboardView) {
-                    dashboardView.classList.add('hidden');
-                    dashboardView.classList.remove('flex');
-                }
-                if (navLinksContainer) {
-                    navLinksContainer.classList.add('hidden');
-                    navLinksContainer.classList.remove('flex');
-                }
-                if (mainContainer) {
-                    mainContainer.classList.add('items-center', 'justify-center', 'text-center');
-                    mainContainer.classList.remove('items-start', 'text-left');
-                }
-
-                if (redirectPath) {
-                    if (redirectAlert) redirectAlert.classList.remove('hidden');
-                    if (redirectAlertText) {
-                        const cleanName = redirectPath.replace('.html', '').toUpperCase();
-                        redirectAlertText.textContent = `Sign in to access ${cleanName} and kiosk tools.`;
-                    }
-                }
-
-                initGoogleAuthFlow('googleButtonContainer');
-            }
-        }
-
-        let currentBoxData = null;
-        let currentUserDevices = [];
-        let expandedBoxes = new Set(); // Tracks which boxes are expanded
-
-        function copyBoxBuildNumber(bNum, event) {
-            if (event) event.stopPropagation();
-            navigator.clipboard.writeText(bNum).then(() => {
-                const toast = document.createElement('div');
-                toast.className = 'fixed bottom-6 right-6 z-[999] bg-emerald-500 text-slate-950 font-bold px-4 py-2.5 rounded-xl shadow-2xl text-xs flex items-center gap-2 animate-fade-in-up';
-                toast.innerHTML = `
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                    <span>Build Number <strong>${bNum}</strong> copied!</span>
-                `;
-                document.body.appendChild(toast);
-                setTimeout(() => toast.remove(), 2500);
-            }).catch(() => {
-                alert(`Build Number: ${bNum}`);
-            });
-        }
-
-        function toggleBoxExpansion(boxId, event) {
-            if (event) event.stopPropagation();
-            if (expandedBoxes.has(boxId)) {
-                expandedBoxes.delete(boxId);
-            } else {
-                expandedBoxes.add(boxId);
-            }
-            renderBoxHierarchy();
-        }
-
-        function openLinkModalForBox(boxBuildNum) {
-            if (!linkDeviceModal) return;
-            linkDeviceModal.classList.remove('hidden');
-            if (targetBoxSelect && boxBuildNum) {
-                targetBoxSelect.value = boxBuildNum;
-            }
-            if (linkStatusText) linkStatusText.textContent = '';
-            if (manualDeviceIdInput) {
-                manualDeviceIdInput.value = '';
-                manualDeviceIdInput.focus();
-            }
-        }
-
-        function showDashboardToast(msg, isError = false) {
-            const toast = document.createElement('div');
-            toast.className = `fixed bottom-6 right-6 z-[999] ${isError ? 'bg-rose-500 text-white' : 'bg-emerald-500 text-slate-950'} font-bold px-4 py-2.5 rounded-xl shadow-2xl text-xs flex items-center gap-2 animate-fade-in-up`;
-            toast.innerHTML = `
-                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    ${isError 
-                        ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>' 
-                        : '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>'}
-                </svg>
-                <span>${msg}</span>
-            `;
-            document.body.appendChild(toast);
-            setTimeout(() => toast.remove(), 3000);
-        }
-
-        async function handleUnlinkDevice(boxBuildNum, devId, event) {
-            if (event) event.stopPropagation();
-            const cleanId = String(devId).replace('HW-', '').toUpperCase();
-            if (!confirm(`Are you sure you want to unlink device HW-${cleanId} from Coin Slot Box #${boxBuildNum}? This will free up 1 of your 10 slots.`)) {
-                return;
+            if (!navigator.usb) {
+                document.getElementById('browserWarning').classList.remove('hidden');
             }
 
-            // Optimistically update currentBoxData
-            if (currentBoxData) {
-                if (Array.isArray(currentBoxData.allBoxes)) {
-                    currentBoxData.allBoxes.forEach(b => {
-                        if (b.buildNumber === boxBuildNum) {
-                            if (Array.isArray(b.linkedDevices)) {
-                                b.linkedDevices = b.linkedDevices.filter(id => String(id).replace('HW-', '').toUpperCase() !== cleanId);
-                            }
-                            if (Array.isArray(b.devices)) {
-                                b.devices = b.devices.filter(d => (d.deviceId || '').replace('HW-', '').toUpperCase() !== cleanId);
-                            }
-                            b.devicesUsed = (b.devices || b.linkedDevices || []).length;
-                            b.slotsRemaining = Math.max(0, (b.maxDevices || 10) - b.devicesUsed);
-                        }
-                    });
-                }
-                if (Array.isArray(currentBoxData.linkedDevices)) {
-                    currentBoxData.linkedDevices = currentBoxData.linkedDevices.filter(id => String(id).replace('HW-', '').toUpperCase() !== cleanId);
-                }
-                if (Array.isArray(currentBoxData.devices)) {
-                    currentBoxData.devices = currentBoxData.devices.filter(d => (d.deviceId || '').replace('HW-', '').toUpperCase() !== cleanId);
-                }
-                currentBoxData.devicesUsed = (currentBoxData.devices || currentBoxData.linkedDevices || []).length;
-                currentBoxData.slotsRemaining = Math.max(0, (currentBoxData.maxDevices || 10) - currentBoxData.devicesUsed);
-            }
-            renderBoxHierarchy();
+            // Mode Switching
+            window.switchMode = function(mode) {
+                const tabInstall = document.getElementById('tabInstall');
+                const tabDeprovision = document.getElementById('tabDeprovision');
+                const installPanel = document.getElementById('installPanel');
+                const deprovisionPanel = document.getElementById('deprovisionPanel');
 
-            try {
-                const res = await unlinkDeviceFromBox(boxBuildNum, devId);
-                if (res && res.success) {
-                    showDashboardToast(`Device HW-${cleanId} unlinked from Box #${boxBuildNum}`);
-                    await refreshDashboardBoxStatus();
-                    if (currentUserToken) await fetchUserDevices(currentUserToken);
+                if (mode === 'install') {
+                    tabInstall.className = 'flex-1 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 bg-emerald-500 text-slate-950 shadow-sm';
+                    tabDeprovision.className = 'flex-1 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 text-slate-400 hover:text-slate-200';
+                    installPanel.classList.remove('hidden');
+                    deprovisionPanel.classList.add('hidden');
                 } else {
-                    showDashboardToast(res?.error || 'Failed to unlink device', true);
-                    await refreshDashboardBoxStatus();
-                    if (currentUserToken) await fetchUserDevices(currentUserToken);
-                }
-            } catch(e) {
-                showDashboardToast(e.message || 'Error unlinking device', true);
-                await refreshDashboardBoxStatus();
-                if (currentUserToken) await fetchUserDevices(currentUserToken);
-            }
-        }
-
-        async function handleRemoveDevice(devId, event) {
-            if (event) event.stopPropagation();
-            const cleanId = String(devId).replace('HW-', '').toUpperCase();
-            if (!confirm(`Are you sure you want to completely remove device HW-${cleanId} from your dashboard? This will remove it from your account and free up any linked box slot.`)) {
-                return;
-            }
-
-            // 1. Optimistic removal from in-memory state and local storage immediately
-            currentUserDevices = currentUserDevices.filter(d => (d.deviceId || '').replace('HW-', '').toUpperCase() !== cleanId);
-            try {
-                localStorage.setItem('piso_cached_devices', JSON.stringify(currentUserDevices));
-            } catch(e) {}
-
-            if (currentBoxData) {
-                if (Array.isArray(currentBoxData.allBoxes)) {
-                    currentBoxData.allBoxes.forEach(b => {
-                        if (Array.isArray(b.linkedDevices)) {
-                            b.linkedDevices = b.linkedDevices.filter(id => String(id).replace('HW-', '').toUpperCase() !== cleanId);
-                        }
-                        if (Array.isArray(b.devices)) {
-                            b.devices = b.devices.filter(d => (d.deviceId || '').replace('HW-', '').toUpperCase() !== cleanId);
-                        }
-                        b.devicesUsed = (b.devices || b.linkedDevices || []).length;
-                        b.slotsRemaining = Math.max(0, (b.maxDevices || 10) - b.devicesUsed);
-                    });
-                }
-                if (Array.isArray(currentBoxData.linkedDevices)) {
-                    currentBoxData.linkedDevices = currentBoxData.linkedDevices.filter(id => String(id).replace('HW-', '').toUpperCase() !== cleanId);
-                }
-                if (Array.isArray(currentBoxData.devices)) {
-                    currentBoxData.devices = currentBoxData.devices.filter(d => (d.deviceId || '').replace('HW-', '').toUpperCase() !== cleanId);
-                }
-                currentBoxData.devicesUsed = (currentBoxData.devices || currentBoxData.linkedDevices || []).length;
-                currentBoxData.slotsRemaining = Math.max(0, (currentBoxData.maxDevices || 10) - currentBoxData.devicesUsed);
-                try {
-                    localStorage.setItem('piso_verified_box', JSON.stringify(currentBoxData));
-                } catch(e) {}
-            }
-            renderBoxHierarchy();
-
-            try {
-                const res = await removeDeviceFromAccount(devId);
-                if (res && res.success) {
-                    showDashboardToast(`Device HW-${cleanId} removed from dashboard`);
-                    await refreshDashboardBoxStatus();
-                    if (currentUserToken) await fetchUserDevices(currentUserToken);
-                } else {
-                    showDashboardToast(res?.error || 'Failed to remove device', true);
-                    await refreshDashboardBoxStatus();
-                    if (currentUserToken) await fetchUserDevices(currentUserToken);
-                }
-            } catch(e) {
-                showDashboardToast(e.message || 'Error removing device', true);
-                await refreshDashboardBoxStatus();
-                if (currentUserToken) await fetchUserDevices(currentUserToken);
-            }
-        }
-
-        // ==========================================
-        // Transfer License Logic (1-Device Policy)
-        // ==========================================
-        const transferLicenseModal = document.getElementById('transferLicenseModal');
-        const closeTransferModalBtn = document.getElementById('closeTransferModalBtn');
-        const cancelTransferBtn = document.getElementById('cancelTransferBtn');
-        const transferLicenseForm = document.getElementById('transferLicenseForm');
-        const transferSourceIdInput = document.getElementById('transferSourceIdInput');
-        const transferSourceBoxInput = document.getElementById('transferSourceBoxInput');
-        const transferSourceModel = document.getElementById('transferSourceModel');
-        const transferSourceId = document.getElementById('transferSourceId');
-        const transferSourceDays = document.getElementById('transferSourceDays');
-        const transferTargetSelect = document.getElementById('transferTargetSelect');
-        const transferTargetInput = document.getElementById('transferTargetInput');
-        const transferBoxOptionContainer = document.getElementById('transferBoxOptionContainer');
-        const transferBoxCheckbox = document.getElementById('transferBoxCheckbox');
-        const transferBoxLabel = document.getElementById('transferBoxLabel');
-        const transferStatusText = document.getElementById('transferStatusText');
-        const submitTransferBtn = document.getElementById('submitTransferBtn');
-
-        function openTransferLicenseModal(sourceDeviceId, deviceModel, daysRemaining, boxNum) {
-            if (!transferLicenseModal) return;
-            transferLicenseModal.classList.remove('hidden');
-
-            const cleanSource = String(sourceDeviceId).replace(/^HW-/, '').toUpperCase();
-            transferSourceIdInput.value = 'HW-' + cleanSource;
-            transferSourceModel.textContent = deviceModel || 'Kiosk Phone';
-            transferSourceId.textContent = 'ID: HW-' + cleanSource;
-            transferSourceDays.textContent = `${daysRemaining} days remaining`;
-            transferSourceBoxInput.value = boxNum || '';
-
-            if (boxNum) {
-                transferBoxOptionContainer.classList.remove('hidden');
-                transferBoxCheckbox.checked = true;
-                transferBoxLabel.textContent = `Box #${boxNum}`;
-            } else {
-                transferBoxOptionContainer.classList.add('hidden');
-                transferBoxCheckbox.checked = false;
-            }
-
-            if (transferStatusText) transferStatusText.textContent = '';
-            if (transferTargetInput) transferTargetInput.value = '';
-
-            // Populate destination dropdown with unactivated or replacement devices
-            if (transferTargetSelect) {
-                transferTargetSelect.innerHTML = `<option value="">Select an unactivated device...</option>`;
-                const candidates = currentUserDevices.filter(d => {
-                    const did = String(d.deviceId).replace(/^HW-/, '').toUpperCase();
-                    return did !== cleanSource && d.status !== 'PAID';
-                });
-
-                candidates.forEach(d => {
-                    const opt = document.createElement('option');
-                    const did = String(d.deviceId).replace(/^HW-/, '').toUpperCase();
-                    opt.value = 'HW-' + did;
-                    opt.textContent = `${d.deviceModel || 'Kiosk Device'} (HW-${did})`;
-                    transferTargetSelect.appendChild(opt);
-                });
-
-                transferTargetSelect.onchange = () => {
-                    if (transferTargetSelect.value) {
-                        transferTargetInput.value = transferTargetSelect.value;
-                    }
-                };
-            }
-        }
-
-        function closeTransferLicenseModal() {
-            if (transferLicenseModal) {
-                transferLicenseModal.classList.add('hidden');
-            }
-        }
-
-        if (closeTransferModalBtn) closeTransferModalBtn.onclick = closeTransferLicenseModal;
-        if (cancelTransferBtn) cancelTransferBtn.onclick = closeTransferLicenseModal;
-
-        if (transferLicenseForm) {
-            transferLicenseForm.onsubmit = async (e) => {
-                e.preventDefault();
-                const sourceDeviceId = transferSourceIdInput.value.trim();
-                let targetDeviceId = transferTargetInput.value.trim();
-                if (!targetDeviceId && transferTargetSelect.value) {
-                    targetDeviceId = transferTargetSelect.value;
-                }
-
-                if (!sourceDeviceId) {
-                    alert('Source device is missing.');
-                    return;
-                }
-                if (!targetDeviceId) {
-                    transferStatusText.className = 'text-xs text-center text-rose-400 font-semibold';
-                    transferStatusText.textContent = 'Please select or enter a destination device Hardware ID.';
-                    return;
-                }
-
-                const cleanSource = sourceDeviceId.replace(/^HW-/, '').toUpperCase();
-                const cleanTarget = targetDeviceId.replace(/^HW-/, '').toUpperCase();
-
-                if (cleanSource === cleanTarget) {
-                    transferStatusText.className = 'text-xs text-center text-rose-400 font-semibold';
-                    transferStatusText.textContent = 'Source and destination cannot be the same device.';
-                    return;
-                }
-
-                const confirmed = confirm(`⚠️ Are you sure you want to transfer this license?\n\nSource: HW-${cleanSource} (will be DEACTIVATED)\nDestination: HW-${cleanTarget} (will receive remaining license)\n\nA license can only be active on 1 device at a time.`);
-                if (!confirmed) return;
-
-                submitTransferBtn.disabled = true;
-                const origText = submitTransferBtn.innerHTML;
-                submitTransferBtn.innerHTML = `
-                    <svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                    <span>Transferring License...</span>
-                `;
-                transferStatusText.className = 'text-xs text-center text-cyan-400';
-                transferStatusText.textContent = 'Minting cryptographic token and revoking source device...';
-
-                try {
-                    const doTransferBox = transferBoxCheckbox.checked && Boolean(transferSourceBoxInput.value);
-                    const res = await transferLicenseBetweenDevices('HW-' + cleanSource, 'HW-' + cleanTarget, doTransferBox);
-                    
-                    transferStatusText.className = 'text-xs text-center text-emerald-400 font-bold';
-                    transferStatusText.textContent = `Success! ${res.daysRemaining} days transferred to HW-${cleanTarget}.`;
-
-                    setTimeout(async () => {
-                        closeTransferLicenseModal();
-                        await refreshDashboardBoxStatus();
-                        if (currentUserToken) await fetchUserDevices(currentUserToken);
-                        
-                        // Offer to view new QR key
-                        if (confirm(`License successfully transferred to HW-${cleanTarget}!\n\nWould you like to open the Activation QR code page for the new device now?`)) {
-                            window.location.href = `activate.html?deviceId=${encodeURIComponent(cleanTarget)}`;
-                        }
-                    }, 1200);
-                } catch(err) {
-                    transferStatusText.className = 'text-xs text-center text-rose-400 font-semibold';
-                    transferStatusText.textContent = err.message || 'Failed to transfer license.';
-                } finally {
-                    submitTransferBtn.disabled = false;
-                    submitTransferBtn.innerHTML = origText;
+                    tabDeprovision.className = 'flex-1 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 bg-rose-600 text-white shadow-sm';
+                    tabInstall.className = 'flex-1 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 text-slate-400 hover:text-slate-200';
+                    deprovisionPanel.classList.remove('hidden');
+                    installPanel.classList.add('hidden');
                 }
             };
-        }
 
-        function renderBoxHierarchy() {
-            const container = document.getElementById('deviceListContainer');
-            const boxCountBadge = document.getElementById('boxCountBadge');
-            if (!container) return;
+            // Switch to initial mode
+            switchMode(initialMode);
 
-            const boxes = currentBoxData?.allBoxes || currentBoxData?.boxes || [];
-            if (boxCountBadge) {
-                boxCountBadge.textContent = `${boxes.length} ${boxes.length === 1 ? 'Box' : 'Boxes'} Verified`;
+            // Logging helper
+            const logContainer = document.getElementById('logContainer');
+            const terminalLog = document.getElementById('terminalLog');
+            const logStatusBadge = document.getElementById('logStatusBadge');
+
+            function logMessage(msg) {
+                logContainer.classList.remove('hidden');
+                const div = document.createElement('div');
+                div.textContent = `> ${msg}`;
+                terminalLog.appendChild(div);
+                terminalLog.scrollTop = terminalLog.scrollHeight;
             }
 
-            // Populate modal box dropdown
-            if (targetBoxSelect) {
-                const currentVal = targetBoxSelect.value;
-                targetBoxSelect.innerHTML = `<option value="">Auto-Assign to Available Box</option>`;
-                boxes.forEach(b => {
-                    const opt = document.createElement('option');
-                    opt.value = b.buildNumber;
-                    const used = b.devicesUsed !== undefined ? b.devicesUsed : (b.linkedDevices?.length || 0);
-                    const max = b.maxDevices || 10;
-                    opt.textContent = `Box #${b.buildNumber} (${max - used} free slots)`;
-                    targetBoxSelect.appendChild(opt);
+            // Candidate APK fallback URLs
+            const candidateApkUrls = [
+                './update/app-release.apk',
+                './app-release.apk',
+                '../update/app-release.apk',
+                '../app-release.apk',
+                window.location.origin + '/update/app-release.apk',
+                window.location.origin + '/app-release.apk',
+                'https://pisophone.pages.dev/update/app-release.apk',
+                'https://pisophone.pages.dev/app-release.apk'
+            ];
+
+            // Local APK File Upload Option
+            const localApkInput = document.getElementById('localApkInput');
+            const localApkStatus = document.getElementById('localApkStatus');
+            if (localApkInput) {
+                localApkInput.addEventListener('change', async (e) => {
+                    const file = e.target.files && e.target.files[0];
+                    if (!file) return;
+                    try {
+                        const buffer = await file.arrayBuffer();
+                        const bytes = new Uint8Array(buffer);
+                        if (bytes.length < 100000 || bytes[0] !== 0x50 || bytes[1] !== 0x4B || bytes[2] !== 0x03 || bytes[3] !== 0x04) {
+                            alert("Selected file is not a valid Android APK binary.");
+                            return;
+                        }
+                        if (window.webADB) {
+                            window.webADB.setCachedApkBytes(bytes);
+                            if (localApkStatus) {
+                                localApkStatus.textContent = `✅ Custom APK loaded: ${file.name} (${(bytes.length / (1024 * 1024)).toFixed(2)} MB)`;
+                                localApkStatus.classList.remove('hidden');
+                            }
+                        }
+                    } catch (err) {
+                        alert("Failed to load local APK file: " + err.message);
+                    }
                 });
-                if (currentVal) targetBoxSelect.value = currentVal;
             }
 
-            // Case 1: No boxes verified yet
-            if (boxes.length === 0) {
-                container.innerHTML = `
-                    <div class="glass-card bg-slate-900 border border-emerald-500/30 rounded-3xl p-8 text-center shadow-xl">
-                        <div class="w-16 h-16 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-500/10">
-                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
-                        </div>
-                        <h3 class="text-xl font-bold text-white mb-2">No Coin Slot Box Registered Yet</h3>
-                        <p class="text-xs text-slate-400 max-w-md mx-auto mb-6">
-                            Point your smartphone camera at the QR code sticker on the Coin Slot Box to register it to your account in seconds.
-                        </p>
-                        <div class="flex flex-col sm:flex-row items-center justify-center gap-3 max-w-md mx-auto">
-                            <button onclick="openQrBoxScanner(async () => { await refreshDashboardBoxStatus(); if(currentUserToken) fetchUserDevices(currentUserToken); })" class="w-full sm:w-auto px-6 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black rounded-xl text-xs transition shadow-lg shadow-emerald-500/20 inline-flex items-center justify-center gap-2">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                                <span>📷 Scan Box QR Code</span>
-                            </button>
-                            <button onclick="showBoxVerificationModal(() => { refreshDashboardBoxStatus(); if(currentUserToken) fetchUserDevices(currentUserToken); })" class="w-full sm:w-auto px-5 py-3.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-xl text-xs transition border border-slate-700">
-                                Enter Serial Manually
-                            </button>
-                        </div>
-                    </div>
-                `;
-                return;
-            }
-
-            container.innerHTML = '';
-
-            // Default first box to expanded if none expanded
-            if (expandedBoxes.size === 0 && boxes.length > 0) {
-                expandedBoxes.add(boxes[0].buildNumber);
-            }
-
-            // Track which devices are in boxes to identify unassigned devices
-            const boxDeviceIds = new Set();
-
-            boxes.forEach((box, index) => {
-                const bNum = box.buildNumber;
-                const isExpanded = expandedBoxes.has(bNum);
-                const max = box.maxDevices || 10;
-                
-                // Collect devices inside this box
-                let boxDevices = Array.isArray(box.devices) ? box.devices : [];
-                if (boxDevices.length === 0 && Array.isArray(box.linkedDevices)) {
-                    // Match from currentUserDevices
-                    boxDevices = currentUserDevices.filter(d => {
-                        const cleanDId = d.deviceId.replace('HW-', '').toUpperCase();
-                        return box.linkedDevices.some(ld => ld.replace('HW-', '').toUpperCase() === cleanDId);
-                    });
+            // Action: Install & Pair
+            const installBtn = document.getElementById('installAppBtn');
+            installBtn.addEventListener('click', async () => {
+                if (!navigator.usb) {
+                    return alert("WebUSB is not supported in this browser. Please use Google Chrome, Edge, or Brave.");
                 }
-                boxDevices.forEach(d => boxDeviceIds.add(d.deviceId.replace('HW-', '').toUpperCase()));
 
-                const usedCount = Math.max(boxDevices.length, box.devicesUsed || 0);
-                const slotsRemaining = Math.max(0, max - usedCount);
-                const percentUsed = Math.min(100, Math.round((usedCount / max) * 100));
+                installBtn.disabled = true;
+                installBtn.className = "w-full bg-slate-800 text-slate-400 font-bold py-3.5 rounded-xl text-sm flex items-center justify-center cursor-not-allowed";
+                installBtn.innerHTML = '<span>⏳ Keep USB Connected... Flashing PisoPhone</span>';
+                terminalLog.innerHTML = '';
+                logStatusBadge.textContent = 'Running';
+                logStatusBadge.className = 'text-emerald-400 font-mono animate-pulse';
 
-                const boxCard = document.createElement('div');
-                boxCard.className = `glass-card bg-slate-900/90 border rounded-3xl overflow-hidden transition-all duration-300 shadow-xl ${isExpanded ? 'border-emerald-500/50 ring-1 ring-emerald-500/30' : 'border-slate-800 hover:border-slate-700'}`;
+                try {
+                    // Step 1: Connect
+                    logMessage("Step 1: Connecting via WebUSB... Select your device in the browser prompt.");
+                    await window.webADB.connect(logMessage);
 
-                // Box Header (Clickable Accordion)
-                const header = document.createElement('div');
-                header.className = "p-5 sm:p-6 cursor-pointer select-none flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-slate-900/95 to-slate-900/80 hover:bg-slate-800/60 transition";
-                header.onclick = (e) => toggleBoxExpansion(bNum, e);
+                    // Step 2: Download/Prep APK
+                    logMessage("Step 2: Preparing PisoPhone Kiosk APK binary...");
+                    await window.webADB.downloadToLocalTemp(candidateApkUrls, logMessage);
 
-                header.innerHTML = `
-                    <div class="flex items-center gap-4">
-                        <div class="w-13 h-13 rounded-2xl ${usedCount >= max ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'} flex items-center justify-center p-3 flex-shrink-0 shadow-lg">
-                            <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
-                        </div>
-                        <div>
-                            <div class="flex items-center gap-2.5 flex-wrap">
-                                <h4 class="text-base sm:text-lg font-black text-white flex items-center gap-2">
-                                    Coin Slot Box #${index + 1}
-                                </h4>
-                                <span class="bg-slate-950 border border-slate-700 text-emerald-400 font-mono font-bold text-xs px-2.5 py-1 rounded-lg flex items-center gap-1.5 shadow-inner">
-                                    <span>${bNum}</span>
-                                    <button type="button" onclick="copyBoxBuildNumber('${bNum}', event)" title="Copy Build Number / MAC" class="text-slate-400 hover:text-white transition p-0.5">
-                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-                                    </button>
-                                </span>
-                                <span class="text-[11px] font-bold px-2 py-0.5 rounded-full ${usedCount >= max ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'}">
-                                    ${usedCount} / ${max} Seats Licensed
-                                </span>
-                            </div>
-                            <div class="text-xs text-slate-400 mt-1 flex items-center gap-2 flex-wrap">
-                                <span>Local Seat Manager</span>
-                                <span>•</span>
-                                <span class="${slotsRemaining > 0 ? 'text-emerald-400 font-semibold' : 'text-slate-500'}">${slotsRemaining} slots remaining</span>
-                                <span>•</span>
-                                <a href="http://kioskmanager.local" target="_blank" onclick="event.stopPropagation()" class="text-teal-400 hover:text-teal-300 font-bold underline inline-flex items-center gap-1">
-                                    <span>Open ESP32 Portal</span>
-                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
-                                </a>
-                            </div>
-                        </div>
-                    </div>
+                    // Step 3: Flash & Device Owner
+                    logMessage("Step 3: Flashing package onto device & configuring Device Owner lockdown...");
+                    await window.webADB.installKioskApp(candidateApkUrls, logMessage);
 
-                    <div class="flex items-center gap-3 self-end md:self-center">
-                        <div class="hidden sm:block text-right min-w-[130px]">
-                            <div class="w-full bg-slate-950 rounded-full h-2 border border-slate-800 overflow-hidden mb-1">
-                                <div class="h-full ${usedCount >= max ? 'bg-amber-500' : 'bg-emerald-500'} transition-all duration-500" style="width: ${percentUsed}%"></div>
-                            </div>
-                            <div class="text-[10px] text-slate-400 font-mono text-right">${percentUsed}% Capacity</div>
-                        </div>
-                        <button type="button" class="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition border border-slate-700">
-                            <svg class="w-4 h-4 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                        </button>
-                    </div>
-                `;
-                boxCard.appendChild(header);
-
-                // Box Body (Linked Devices List)
-                if (isExpanded) {
-                    const body = document.createElement('div');
-                    body.className = "p-5 sm:p-6 border-t border-slate-800 bg-slate-950/60 animate-fade-in-up";
-
-                    let devicesHtml = '';
-                    if (boxDevices.length === 0) {
-                        devicesHtml = `
-                            <div class="text-center py-8 px-4 bg-slate-900/60 border border-dashed border-slate-800 rounded-2xl">
-                                <svg class="w-10 h-10 mx-auto mb-2 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
-                                <div class="text-white font-bold text-sm mb-1">No Phones Paired to this Box Yet</div>
-                                <p class="text-slate-400 text-xs mb-4 max-w-md mx-auto">
-                                    This Coin Slot Box has ${max} licensed seats managed directly by the ESP32. Connect your phone or laptop to your local network and open the ESP32 Local Portal at <strong class="text-teal-400 font-mono">http://kioskmanager.local</strong> to install the APK and activate in 1 fluid motion.
-                                </p>
-                                <div class="flex items-center justify-center gap-3">
-                                    <a href="http://kioskmanager.local" target="_blank" class="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-xs transition shadow-md shadow-emerald-500/20 inline-flex items-center gap-1.5">
-                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
-                                        <span>Open ESP32 Local Portal</span>
-                                    </a>
-                                    <button onclick="openLinkModalForBox('${bNum}')" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs transition border border-slate-700 inline-flex items-center gap-1.5">
-                                        <span>Manual Cloud Record</span>
-                                    </button>
-                                </div>
-                            </div>
-                        `;
-                    } else {
-                        devicesHtml = `
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-                                ${boxDevices.map(dev => {
-                                    const isPaid = dev.status === 'PAID';
-                                    const cleanId = dev.deviceId.replace('HW-', '').toUpperCase();
-                                    const days = dev.daysRemaining !== undefined ? dev.daysRemaining : 365;
-                                    return `
-                                        <div class="bg-slate-900 border border-slate-800/90 hover:border-slate-700 p-4 rounded-2xl flex flex-col justify-between gap-3 shadow-md">
-                                            <div class="flex items-start justify-between gap-3">
-                                                <div class="flex items-center gap-3">
-                                                    <div class="w-10 h-10 rounded-xl ${isPaid ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/15 text-amber-400 border border-amber-500/20'} flex items-center justify-center flex-shrink-0">
-                                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
-                                                    </div>
-                                                    <div>
-                                                        <div class="text-white font-bold text-sm flex items-center gap-2">
-                                                            <span>${dev.deviceModel || 'Kiosk Phone'}</span>
-                                                            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${isPaid ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}">${isPaid ? 'Active' : 'Pending'}</span>
-                                                        </div>
-                                                        <div class="text-xs text-slate-400 font-mono mt-0.5">ID: HW-${cleanId}</div>
-                                                    </div>
-                                                </div>
-                                                 <div class="flex items-center gap-1.5">
-                                                    <button type="button" onclick="handleUnlinkDevice('${bNum}', '${dev.deviceId}', event)" title="Unlink phone from Box #${bNum}" class="text-xs text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 px-2 py-1 rounded-lg border border-amber-500/20 transition flex items-center gap-1 font-semibold">
-                                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
-                                                        <span>Unlink</span>
-                                                    </button>
-                                                    <button type="button" onclick="handleRemoveDevice('${dev.deviceId}', event)" title="Remove device completely from dashboard" class="text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-500/15 px-2 py-1 rounded-lg border border-rose-500/30 transition flex items-center gap-1 font-semibold" aria-label="Remove device">
-                                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                                                        <span>Remove</span>
-                                                    </button>
-                                                </div>
-                                            </div>
-
-                                             <div class="flex items-center justify-between pt-2 border-t border-slate-800/80 text-xs">
-                                                <div class="text-[11px] text-slate-400 font-medium">
-                                                    <span class="${days < 30 ? 'text-rose-400' : 'text-emerald-400'} font-bold">${days} days</span> license remaining
-                                                </div>
-                                                <div class="flex items-center gap-2">
-                                                    ${isPaid ? `
-                                                        <button type="button" onclick="openTransferLicenseModal('${dev.deviceId}', '${(dev.deviceModel || 'Kiosk Phone').replace(/'/g, "\\'")}', ${days}, '${bNum || ''}')" title="Transfer remaining license to replacement phone" class="px-2.5 py-1 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 font-semibold rounded-lg text-[11px] border border-cyan-500/30 transition flex items-center gap-1">
-                                                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
-                                                            <span>Transfer</span>
-                                                        </button>
-                                                    ` : ''}
-                                                    <a href="install.html?deviceId=${encodeURIComponent(cleanId)}" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-lg text-[11px] border border-slate-700 transition">
-                                                        Flash APK
-                                                    </a>
-                                                    <a href="activate.html?deviceId=${encodeURIComponent(cleanId)}" class="px-2.5 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 font-semibold rounded-lg text-[11px] border border-emerald-500/30 transition">
-                                                        Key
-                                                    </a>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    `;
-                                }).join('')}
-                            </div>
-                        `;
+                    // Step 4: Inject parameters into Android app
+                    logMessage("Step 4: Infusing hardware configuration parameters into Android...");
+                    try {
+                        let bCastCmd = `am broadcast -a com.pisophone.kiosk.CONFIGURE_ESP32 -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es esp32_mac "${urlMac}" --es esp32_ip "${urlIp}" --ei slot ${urlSlot}`;
+                        if (urlSecret) bCastCmd += ` --es secret "${urlSecret}"`;
+                        if (urlName) bCastCmd += ` --es name "${urlName}"`;
+                        await window.webADB.runShell(bCastCmd);
+                        await window.webADB.runShell(`am broadcast -a com.pisophone.kiosk.ACTIVATE -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es key "PISOPHONE-BOX-ACTIVATED" --es esp32_mac "${urlMac}" --es esp32_ip "${urlIp}" --ei slot ${urlSlot}${urlSecret ? ' --es secret "' + urlSecret + '"' : ''}`);
+                    } catch (bErr) {
+                        logMessage(`[!] Config broadcast notice: ${bErr.message}`);
                     }
 
-                    body.innerHTML = `
-                        <div class="flex items-center justify-between mb-4">
-                            <div class="text-xs font-bold uppercase tracking-wider text-slate-400">
-                                Devices Assigned to Box #${bNum} (${boxDevices.length} / ${max})
-                            </div>
-                            ${slotsRemaining > 0 ? `
-                                <button onclick="openLinkModalForBox('${bNum}')" class="text-xs text-emerald-400 hover:text-emerald-300 font-bold transition flex items-center gap-1">
-                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-                                    <span>+ Link Phone to this Box</span>
-                                </button>
-                            ` : `
-                                <span class="text-xs text-amber-400 font-semibold">Box is Full (${max}/${max})</span>
-                            `}
-                        </div>
-                        ${devicesHtml}
-                    `;
-                    boxCard.appendChild(body);
-                }
+                    // Step 5: Read Hardware ID
+                    let serial = window.webADB.serial || `HW-${Date.now()}`;
+                    try {
+                        const hwInfo = await window.webADB.getHardwareInfo(logMessage);
+                        if (hwInfo && hwInfo.deviceId) serial = hwInfo.deviceId;
+                    } catch (_) {}
 
-                container.appendChild(boxCard);
+                    // Launch App
+                    try {
+                        await window.webADB.launchApp(logMessage);
+                    } catch (_) {}
+
+                    logMessage("\n🎉 INSTALLATION & LOCKDOWN COMPLETE! Terminal is active.");
+                    logMessage("\n🔄 Redirecting back to your local ESP32 Cabinet to finalize pairing...");
+                    
+                    logStatusBadge.textContent = 'Complete';
+                    logStatusBadge.className = 'text-emerald-400 font-mono font-bold';
+                    installBtn.innerHTML = '<span>🎉 Sideload Success! Redirecting...</span>';
+                    installBtn.className = "w-full bg-emerald-600 text-white font-black py-3.5 rounded-xl text-sm flex items-center justify-center";
+
+                    await window.webADB.disconnect();
+
+                    // Redirect back to ESP32 local portal
+                    setTimeout(() => {
+                        window.location.href = `http://${urlIp}/?action=pair&slot=${urlSlot}&id=${encodeURIComponent(serial)}&name=PisoPhone+Slot+${urlSlot}`;
+                    }, 2500);
+
+                } catch (err) {
+                    logMessage(`❌ ERROR: ${err.message || err}`);
+                    logMessage(`💡 TIP: Ensure phone is plugged in with a USB DATA cable and tap "Always Allow" for USB Debugging.`);
+                    logStatusBadge.textContent = 'Failed';
+                    logStatusBadge.className = 'text-rose-400 font-mono font-bold';
+                    installBtn.disabled = false;
+                    installBtn.className = "w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3.5 px-6 rounded-xl transition shadow-lg text-sm flex items-center justify-center gap-2.5 btn-glow-emerald cursor-pointer";
+                    installBtn.innerHTML = '<span>Retry Flashing &amp; Pairing</span>';
+                }
             });
 
-            // Check for unassigned devices (devices on user account not mapped to any box)
-            const unassigned = currentUserDevices.filter(d => !boxDeviceIds.has(d.deviceId.replace('HW-', '').toUpperCase()));
-            if (unassigned.length > 0) {
-                const unassignedCard = document.createElement('div');
-                unassignedCard.className = 'glass-card bg-slate-900/60 border border-slate-800 rounded-3xl p-6 shadow-lg';
-                unassignedCard.innerHTML = `
-                    <div class="flex items-center justify-between mb-4">
-                        <div class="flex items-center gap-2">
-                            <h4 class="text-base font-bold text-white">Unassigned Devices (${unassigned.length})</h4>
-                            <span class="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded-md">Pending Box Assignment</span>
-                        </div>
-                    </div>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        ${unassigned.map(dev => `
-                            <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex items-center justify-between">
-                                <div>
-                                    <div class="text-white font-bold text-sm">${dev.deviceModel || 'Kiosk Device'}</div>
-                                    <div class="text-xs text-slate-400 font-mono mt-0.5">ID: HW-${dev.deviceId.replace('HW-', '').toUpperCase()}</div>
-                                </div>
-                                 <div class="flex items-center gap-2">
-                                    ${(dev.status === 'PAID' || (dev.daysRemaining && dev.daysRemaining > 0)) ? `
-                                        <button type="button" onclick="openTransferLicenseModal('${dev.deviceId}', '${(dev.deviceModel || 'Kiosk Device').replace(/'/g, "\\'")}', ${dev.daysRemaining || 0}, '')" title="Transfer remaining license to replacement phone" class="px-2.5 py-1.5 bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 text-xs font-bold rounded-xl border border-cyan-500/30 transition flex items-center gap-1">
-                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
-                                            <span>Transfer</span>
-                                        </button>
-                                    ` : ''}
-                                    <button onclick="openLinkModalForBox()" class="px-3 py-1.5 bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 text-xs font-bold rounded-xl border border-emerald-500/30 transition">
-                                        Assign to Box
-                                    </button>
-                                    <button type="button" onclick="handleRemoveDevice('${dev.deviceId}', event)" title="Remove device completely from dashboard" class="text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-500/15 px-2.5 py-1.5 rounded-xl border border-rose-500/30 transition flex items-center gap-1 font-semibold" aria-label="Remove device">
-                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                                        <span>Remove</span>
-                                    </button>
-                                </div>
-                            </div>
-                        `).join('')}
-                    </div>
-                `;
-                container.appendChild(unassignedCard);
-            }
-        }
-
-        const API_BASE = 'https://pisophone-api.pisophone-support.workers.dev';
-
-        async function fetchUserDevices(token) {
-            if (isFetchingDevices) return;
-            isFetchingDevices = true;
-
-            const refreshIcon = document.getElementById('refreshIcon');
-            if (refreshIcon) refreshIcon.classList.add('animate-spin');
-
-            const cachedStr = localStorage.getItem('piso_cached_devices');
-            if (cachedStr) {
-                try {
-                    const cached = JSON.parse(cachedStr);
-                    if (Array.isArray(cached)) {
-                        currentUserDevices = cached;
-                    }
-                } catch(e) {}
-            }
-
-            try {
-                const res = await fetch(`${API_BASE}/api/user/devices`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ownerToken: token })
-                });
-
-                if (res.status === 401) {
-                    if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
-                        google.accounts.id.prompt();
-                    }
-                    renderBoxHierarchy();
+            // Action: Deprovision & Reset
+            const deprovisionBtn = document.getElementById('deprovisionBtn');
+            deprovisionBtn.addEventListener('click', async () => {
+                if (!confirm("Are you sure you want to deprovision and unlock this Android phone?")) {
                     return;
                 }
 
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data.devices) {
-                        currentUserDevices = data.devices;
-                        localStorage.setItem('piso_cached_devices', JSON.stringify(data.devices));
-                    }
+                const pin = document.getElementById('adminPin').value.trim();
+                if (!pin) {
+                    alert("Please enter the Admin PIN.");
+                    return;
                 }
-            } catch (e) {
-                console.error("Error fetching devices:", e);
-            } finally {
-                isFetchingDevices = false;
-                if (refreshIcon) refreshIcon.classList.remove('animate-spin');
-                renderBoxHierarchy();
-            }
-        }
 
-        // Event Listeners
-        const directEmailForm = document.getElementById('directEmailForm');
-        const directEmailInput = document.getElementById('directEmailInput');
-        if (directEmailForm) {
-            directEmailForm.addEventListener('submit', (e) => {
-                e.preventDefault();
-                if (directEmailInput && directEmailInput.value) {
-                    signInWithEmail(directEmailInput.value);
-                }
-            });
-        }
-
-        if (openLinkModalBtn) {
-            openLinkModalBtn.addEventListener('click', () => {
-                openLinkModalForBox();
-            });
-        }
-
-        if (closeLinkModalBtn) {
-            closeLinkModalBtn.addEventListener('click', () => {
-                if (linkDeviceModal) linkDeviceModal.classList.add('hidden');
-            });
-        }
-
-        if (linkDeviceModal) {
-            linkDeviceModal.addEventListener('click', (e) => {
-                if (e.target === linkDeviceModal) {
-                    linkDeviceModal.classList.add('hidden');
-                }
-            });
-        }
-
-        if (linkDeviceForm) {
-            linkDeviceForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const devId = manualDeviceIdInput.value.trim();
-                if (!devId) return;
-
-                const chosenBox = targetBoxSelect ? targetBoxSelect.value : '';
-
-                submitLinkBtn.disabled = true;
-                submitLinkBtn.textContent = 'Linking...';
-                if (linkStatusText) {
-                    linkStatusText.className = 'text-xs text-center min-h-[16px] text-slate-400';
-                    linkStatusText.textContent = 'Contacting server...';
-                }
+                deprovisionBtn.disabled = true;
+                deprovisionBtn.className = "w-full bg-slate-800 text-slate-400 font-bold py-3.5 rounded-xl text-sm flex items-center justify-center cursor-not-allowed";
+                deprovisionBtn.innerHTML = '<span>⏳ Deprovisioning Android device...</span>';
+                terminalLog.innerHTML = '';
+                logStatusBadge.textContent = 'Running';
+                logStatusBadge.className = 'text-rose-400 font-mono animate-pulse';
 
                 try {
-                    let res;
-                    if (chosenBox) {
-                        res = await fetch(`${API_BASE}/api/box/link-device`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                ownerToken: currentUserToken,
-                                buildNumber: chosenBox,
-                                deviceId: devId
-                            })
-                        });
-                    } else {
-                        res = await fetch(`${API_BASE}/api/box/link-device`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                ownerToken: currentUserToken,
-                                deviceId: devId
-                            })
-                        });
+                    // Step 1: Connect
+                    logMessage("Step 1: Connecting WebUSB... Select device in browser prompt.");
+                    await window.webADB.connect(logMessage);
+
+                    // Step 2: Send Deprovision Intent
+                    logMessage("Step 2: Sending deprovision broadcast intent with PIN...");
+                    let deprovOut = await window.webADB.shell(`am broadcast -a com.pisophone.kiosk.DEPROVISION -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es pin "${pin}"`);
+                    logMessage(deprovOut.trim());
+
+                    logMessage("Step 3: Waiting for admin policy release (3 seconds)...");
+                    await new Promise(r => setTimeout(r, 3000));
+
+                    // Step 4: Remove active admin & uninstall
+                    try {
+                        await window.webADB.shell("dpm remove-active-admin com.pisophone.kiosk/com.pisophone.kiosk.receiver.KioskDeviceAdminReceiver");
+                    } catch (_) {}
+
+                    logMessage("Step 4: Uninstalling PisoPhone package (com.pisophone.kiosk)...");
+                    let uninstallOut = await window.webADB.shell("pm uninstall com.pisophone.kiosk");
+                    logMessage(uninstallOut.trim());
+
+                    if (uninstallOut.includes("Failure")) {
+                        throw new Error(`Uninstall failed: ${uninstallOut.trim()}. Admin PIN may be incorrect or screen is locked.`);
                     }
 
-                    const data = await res.json();
-                    if (res.ok && data.success) {
-                        if (linkStatusText) {
-                            linkStatusText.className = 'text-xs text-center min-h-[16px] text-emerald-400 font-semibold';
-                            linkStatusText.textContent = data.message || 'Device linked successfully to Coin Slot Box!';
-                        }
-                        setTimeout(async () => {
-                            if (linkDeviceModal) linkDeviceModal.classList.add('hidden');
-                            await refreshDashboardBoxStatus();
-                            if (currentUserToken) fetchUserDevices(currentUserToken);
-                        }, 900);
-                    } else {
-                        if (linkStatusText) {
-                            linkStatusText.className = 'text-xs text-center min-h-[16px] text-rose-400';
-                            linkStatusText.textContent = data.error || 'Failed to link device.';
-                        }
-                    }
+                    logMessage("\n✅ DEPROVISIONING COMPLETE! Device has been restored to stock Android.");
+                    logMessage("\n🔄 Redirecting back to ESP32 Box to finalize unpairing...");
+                    
+                    logStatusBadge.textContent = 'Complete';
+                    logStatusBadge.className = 'text-emerald-400 font-mono font-bold';
+                    deprovisionBtn.innerHTML = '<span>✅ Deprovisioned! Redirecting...</span>';
+                    deprovisionBtn.className = "w-full bg-emerald-600 text-white font-black py-3.5 rounded-xl text-sm flex items-center justify-center";
+
+                    await window.webADB.disconnect();
+
+                    setTimeout(() => {
+                        window.location.href = `http://${urlIp}/?action=unpair&slot=${urlSlot}`;
+                    }, 2500);
+
                 } catch (err) {
-                    if (linkStatusText) {
-                        linkStatusText.className = 'text-xs text-center min-h-[16px] text-rose-400';
-                        linkStatusText.textContent = 'Network error. Please try again.';
-                    }
-                } finally {
-                    submitLinkBtn.disabled = false;
-                    submitLinkBtn.textContent = 'Link Device to Box';
+                    logMessage(`❌ ERROR: ${err.message || err}`);
+                    logStatusBadge.textContent = 'Failed';
+                    logStatusBadge.className = 'text-rose-400 font-mono font-bold';
+                    deprovisionBtn.disabled = false;
+                    deprovisionBtn.className = "w-full bg-rose-600 hover:bg-rose-500 text-white font-black py-3.5 px-6 rounded-xl transition shadow-lg text-sm flex items-center justify-center gap-2.5 btn-glow-rose cursor-pointer";
+                    deprovisionBtn.innerHTML = '<span>Retry Deprovisioning</span>';
                 }
             });
         }
-
-        // Coin Slot Box Dashboard Management
-        const dashBoxBadge = document.getElementById('dashBoxBadge');
-        const dashBoxSubtext = document.getElementById('dashBoxSubtext');
-        const dashVerifyBoxBtn = document.getElementById('dashVerifyBoxBtn');
-
-        function openBoxVerificationModalFromNav() {
-            showBoxVerificationModal(async () => {
-                await refreshDashboardBoxStatus();
-                if (currentUserToken) fetchUserDevices(currentUserToken);
-            });
-        }
-
-        async function refreshDashboardBoxStatus() {
-            const user = getPisoUser();
-            const workflowUserEmailBadge = document.getElementById('workflowUserEmailBadge');
-            if (workflowUserEmailBadge && user) {
-                workflowUserEmailBadge.textContent = user.email;
-            }
-
-            const box = await fetchUserBoxStatus();
-            currentBoxData = box;
-
-            const boxes = box?.allBoxes || box?.boxes || [];
-            const totalBoxes = boxes.length;
-            const totalUsed = box?.devicesUsed || 0;
-            const totalMax = box?.maxDevices || (totalBoxes * 12);
-            const totalSlotsRemaining = box?.slotsRemaining !== undefined ? box.slotsRemaining : (totalMax - totalUsed);
-
-            const step1StatusBadge = document.getElementById('step1StatusBadge');
-            const step2StatusBadge = document.getElementById('step2StatusBadge');
-            const step4StatusBadge = document.getElementById('step4StatusBadge');
-
-            if (box && (box.buildNumber || totalBoxes > 0)) {
-                if (dashBoxBadge) {
-                    dashBoxBadge.textContent = `${totalBoxes} ${totalBoxes === 1 ? 'Box' : 'Boxes'} Active`;
-                    dashBoxBadge.className = "text-xs font-bold px-2.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
-                }
-                if (dashBoxSubtext) {
-                    dashBoxSubtext.innerHTML = `<strong>Fleet Capacity:</strong> ${totalBoxes} Verified Box${totalBoxes > 1 ? 'es' : ''} • <span class="text-emerald-400 font-semibold">${totalUsed} / ${totalMax} Devices Used</span> (${totalSlotsRemaining} slots remaining across all units)`;
-                }
-                if (dashVerifyBoxBtn) {
-                    dashVerifyBoxBtn.innerHTML = `
-                        <svg class="w-4 h-4 text-slate-950" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-                        <span>Verify Another Box</span>
-                    `;
-                }
-
-                if (step1StatusBadge) {
-                    step1StatusBadge.textContent = `${totalBoxes} Box${totalBoxes > 1 ? 'es' : ''} Active`;
-                    step1StatusBadge.className = "mt-3 text-[10px] font-bold px-2 py-0.5 rounded text-emerald-300 bg-emerald-500/20 w-fit";
-                }
-            } else {
-                if (dashBoxBadge) {
-                    dashBoxBadge.textContent = "Verification Required";
-                    dashBoxBadge.className = "text-xs font-bold px-2.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30";
-                }
-                if (dashBoxSubtext) {
-                    dashBoxSubtext.textContent = "Each ₱5,000 Coin Slot Box unit provides a hardware build number licensing up to 12 phones.";
-                }
-                if (dashVerifyBoxBtn) {
-                    dashVerifyBoxBtn.innerHTML = `
-                        <svg class="w-4 h-4 text-slate-950" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                        <span>Verify Box Build Number</span>
-                    `;
-                }
-
-                if (step1StatusBadge) {
-                    step1StatusBadge.textContent = "Not Registered";
-                    step1StatusBadge.className = "mt-3 text-[10px] font-bold px-2 py-0.5 rounded text-amber-300 bg-amber-500/20 w-fit";
-                }
-            }
-
-            if (step4StatusBadge) {
-                step4StatusBadge.textContent = `${totalUsed} Active Device${totalUsed === 1 ? '' : 's'}`;
-                step4StatusBadge.className = totalUsed > 0 
-                    ? "mt-3 text-[10px] font-bold px-2 py-0.5 rounded text-emerald-300 bg-emerald-500/20 w-fit" 
-                    : "mt-3 text-[10px] font-bold px-2 py-0.5 rounded text-slate-300 bg-slate-800 w-fit";
-            }
-
-            // Fetch user credits for step 2
-            if (user && user.token) {
-                try {
-                    const cRes = await fetch(`${API_BASE}/api/user/credits`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ ownerToken: user.token })
-                    });
-                    if (cRes.ok) {
-                        const cData = await cRes.json();
-                        const credits = cData.credits || 0;
-                        if (step2StatusBadge) {
-                            step2StatusBadge.textContent = `${credits} Credit${credits === 1 ? '' : 's'} Available`;
-                            step2StatusBadge.className = credits > 0 
-                                ? "mt-3 text-[10px] font-bold px-2 py-0.5 rounded text-emerald-300 bg-emerald-500/20 w-fit" 
-                                : "mt-3 text-[10px] font-bold px-2 py-0.5 rounded text-amber-300 bg-amber-500/20 w-fit";
-                        }
-                    }
-                } catch(e) {}
-            }
-
-            renderBoxHierarchy();
-        }
-
-        if (dashVerifyBoxBtn) {
-            dashVerifyBoxBtn.addEventListener('click', () => {
-                showBoxVerificationModal(async () => {
-                    await refreshDashboardBoxStatus();
-                    if (currentUserToken) fetchUserDevices(currentUserToken);
-                });
-            });
-        }
-
-        if (refreshDevicesBtn) {
-            refreshDevicesBtn.addEventListener('click', () => {
-                if (currentUserToken) {
-                    fetchUserDevices(currentUserToken);
-                } else {
-                    checkAuthState();
-                }
-                refreshDashboardBoxStatus();
-            });
-        }
-
-        window.addEventListener('load', () => {
-            checkAuthState();
-        });
-        checkAuthState();
     </script>
-
-    <!-- Mobile Fixed Bottom Navigation Bar -->
-    <div id="mobileBottomNav" class="fixed bottom-0 inset-x-0 bg-slate-900/95 backdrop-blur-lg border-t border-slate-800 flex items-center justify-around px-2 py-2 sm:hidden z-40 shadow-2xl">
-        <a href="index.html" class="flex flex-col items-center gap-1 text-emerald-400 py-1 px-3">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
-            <span class="text-[10px] font-bold">Fleet</span>
-        </a>
-
-        <!-- Center Highlighted QR Scan Button -->
-        <button type="button" onclick="openQrBoxScanner(async () => { await refreshDashboardBoxStatus(); if(currentUserToken) fetchUserDevices(currentUserToken); })" class="flex flex-col items-center -mt-5 group">
-            <div class="w-13 h-13 p-3 bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 rounded-full shadow-lg shadow-emerald-500/40 border-4 border-slate-900 group-hover:scale-105 transition-transform flex items-center justify-center">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
-            </div>
-            <span class="text-[10px] font-bold text-white mt-1">Scan Box QR</span>
-        </button>
-
-        <a href="http://kioskmanager.local" target="_blank" class="flex flex-col items-center gap-1 text-slate-400 hover:text-white py-1 px-3">
-            <svg class="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
-            <span class="text-[10px] font-semibold">ESP32 Portal</span>
-        </a>
-
-        <a href="purchase.html" class="flex flex-col items-center gap-1 text-slate-400 hover:text-white py-1 px-3">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path></svg>
-            <span class="text-[10px] font-semibold">Store</span>
-        </a>
-    </div>
 </body>
 </html>

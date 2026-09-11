@@ -52,7 +52,6 @@ void setup() {
     androidIps = bootCleanIps;
 
     loadSlotLicenses();
-    loadCreditVault();
 
     targetPort        = prefs.getInt("port", targetPort);
     if (targetPort <= 0) targetPort = 8080;

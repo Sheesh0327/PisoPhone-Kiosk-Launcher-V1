@@ -47,7 +47,6 @@ void authWorkerTask(void *pvParameters) {
             String finalParams = String(req.params);
             if (finalParams.length() > 0) {
                 finalParams += "&ts=" + String(millis());
-            } else {
                 finalParams = "ts=" + String(millis());
             }
             
@@ -57,7 +56,8 @@ void authWorkerTask(void *pvParameters) {
             }
 
             String encryptedPayload = aes_encrypt(finalParams, sharedSecret);
-            actionUrl += "?payload=" + encryptedPayload;
+            String hmacSig = calculateHMAC(encryptedPayload, sharedSecret);
+            actionUrl += "?payload=" + encryptedPayload + "&hmac=" + hmacSig;
 
             if (http.begin(client, actionUrl)) {
                 int code = http.GET();
@@ -275,7 +275,6 @@ void handleResetVault() {
             prefs.putFloat("total_earnings", 0.0f);
             prefs.end();
             Serial.println("[💰 VAULT] Lifetime revenue counter reset to 0 by Admin.");
-        } else {
             Serial.println("[⚠️ VAULT] Reset attempted with incorrect password.");
         }
     }
@@ -320,7 +319,6 @@ void handleSave() {
         // Prune or clear in-memory telemetry tracking
         if (androidIps.length() == 0) {
             trackedDeviceCount = 0;
-        } else {
             int newCount = 0;
             for (int i = 0; i < trackedDeviceCount; i++) {
                 bool keep = false;
@@ -438,8 +436,8 @@ void handleAddTime() {
 
         int slotIdx = findSlotIndexForDevice(targetCfg.id, targetCfg.ip);
         int daysLeft = -1;
-        int expStatus = getSlotExpirationStatus(slotIdx, currentMs, daysLeft);
-        if (expStatus == 2) {
+        bool isActive = isSlotActive(slotIdx);
+        if (!isActive) {
             Serial.printf("[-] handleAddTime blocked: Target device %s (Slot #%d) is EXPIRED!\n",
                 targetIp.c_str(), (slotIdx >= 0) ? licenseSlots[slotIdx].slotNum : 0);
             quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Adjustment Blocked: Target device " + targetIp + " is EXPIRED! Add credits in the Master Credit Vault to pair device.</div>";
@@ -579,18 +577,15 @@ void handleApiSlots() {
     String json = "{\"maxSlots\":" + String(maxLicensedSlots) + ",\"mac\":\"" + macAddressStr + "\",\"slots\":[";
     for (int i = 0; i < maxLicensedSlots; i++) {
         if (i > 0) json += ",";
-        char expBuf[24];
-        snprintf(expBuf, sizeof(expBuf), "%llu", (unsigned long long)licenseSlots[i].expiresAt);
-        int daysLeft = 0;
-        int expStatus = getSlotExpirationStatus(i, currentMs, daysLeft);
-        bool isExpiredOrInactive = (expStatus == 2);
+        bool isActive = isSlotActive(i);
+        bool isExpiredOrInactive = (!isActive);
+        int expStatus = isActive ? 0 : 2;
 
         json += "{";
         json += "\"slotNum\":" + String(licenseSlots[i].slotNum) + ",";
         json += "\"deviceId\":\"" + licenseSlots[i].deviceId + "\",";
         json += "\"ip\":\"" + licenseSlots[i].ip + "\",";
         json += "\"name\":\"" + licenseSlots[i].name + "\",";
-        json += "\"expiresAt\":" + String(expBuf) + ",";
         json += "\"active\":" + String(licenseSlots[i].active ? "true" : "false") + ",";
         json += "\"isBound\":" + String(licenseSlots[i].deviceId.length() > 0 ? "true" : "false") + ",";
         json += "\"expStatus\":" + String(expStatus) + ",";
@@ -617,7 +612,6 @@ void handleApiSlotPair() {
     if (res) {
         sendCloudSnapshot();
         webServer.send(200, "application/json", "{\"success\":true,\"slot\":" + String(slot) + "}");
-    } else {
         webServer.send(500, "application/json", "{\"success\":false,\"error\":\"Failed to pair\"}");
     }
 }
@@ -634,7 +628,6 @@ void handleApiSlotUnpair() {
     if (res) {
         sendCloudSnapshot();
         webServer.send(200, "application/json", "{\"success\":true,\"slot\":" + String(slot) + "}");
-    } else {
         webServer.send(500, "application/json", "{\"success\":false,\"error\":\"Failed to unpair\"}");
     }
 }
@@ -651,7 +644,6 @@ void handleApiSlotApplyToken() {
     if (ok) {
         sendCloudSnapshot();
         webServer.send(200, "application/json", "{\"success\":true,\"maxSlots\":" + String(maxLicensedSlots) + "}");
-    } else {
         webServer.send(403, "application/json", "{\"success\":false,\"error\":\"Invalid slot token or cryptographic signature mismatch\"}");
     }
 }
@@ -663,86 +655,6 @@ void handleApiSlotCloudSync() {
 }
 
 // Emulate Payment API: Allows browser/website emulator to credit the ESP32 vault
-void handleApiCreditsEmulatePayment() {
-    webServer.sendHeader("Access-Control-Allow-Origin", "*");
-    webServer.sendHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
-    webServer.sendHeader("Access-Control-Allow-Headers", "Content-Type");
-    if (webServer.method() == HTTP_OPTIONS) {
-        webServer.send(204);
-        return;
-    }
-
-    String type = webServer.hasArg("type") ? webServer.arg("type") : "month";
-    int count = webServer.hasArg("count") ? webServer.arg("count").toInt() : 1;
-    if (count < 1) count = 1;
-    if (count > 100) count = 100;
-
-    type.toLowerCase();
-    type.trim();
-
-    if (type == "month") {
-        monthlyCredits += count;
-    } else if (type == "year") {
-        annualCredits += count;
-    } else if (type == "test") {
-        testCredits += count;
-    } else {
-        webServer.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid type. Must be 'month', 'year', or 'test'\"}");
-        return;
-    }
-
-    saveCreditVault();
-    Serial.printf("[+] Emulate Payment: Added %d x %s credit(s). Vault: M=%d, Y=%d, T=%d\n",
-        count, type.c_str(), monthlyCredits, annualCredits, testCredits);
-
-    String json = "{\"success\":true,\"type\":\"" + type + "\",\"added\":" + String(count) + 
-        ",\"monthly\":" + String(monthlyCredits) + 
-        ",\"annual\":" + String(annualCredits) + 
-        ",\"test\":" + String(testCredits) + 
-        ",\"message\":\"Successfully credited " + String(count) + " " + type + " credit(s) to ESP32 vault.\"}";
-    webServer.send(200, "application/json", json);
-}
-
-// Allocate Credit API: Consumes 1 credit from vault and updates slot expiration
-void handleApiCreditsAllocate() {
-    webServer.sendHeader("Access-Control-Allow-Origin", "*");
-    webServer.sendHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
-    webServer.sendHeader("Access-Control-Allow-Headers", "Content-Type");
-    if (webServer.method() == HTTP_OPTIONS) {
-        webServer.send(204);
-        return;
-    }
-
-    int slot = webServer.hasArg("slot") ? webServer.arg("slot").toInt() : 0;
-    String type = webServer.hasArg("type") ? webServer.arg("type") : "month";
-    String err = "";
-
-    if (allocateCreditToSlot(slot, type, err)) {
-        int idx = slot - 1;
-        char expBuf[24];
-        snprintf(expBuf, sizeof(expBuf), "%llu", (unsigned long long)licenseSlots[idx].expiresAt);
-        String json = "{\"success\":true,\"slot\":" + String(slot) + 
-            ",\"type\":\"" + type + "\"" + 
-            ",\"expiresAt\":" + String(expBuf) + 
-            ",\"monthly\":" + String(monthlyCredits) + 
-            ",\"annual\":" + String(annualCredits) + 
-            ",\"test\":" + String(testCredits) + "}";
-        webServer.send(200, "application/json", json);
-    } else {
-        webServer.send(400, "application/json", "{\"success\":false,\"error\":\"" + err + "\"}");
-    }
-}
-
-// Status API: Inspect credit vault counts
-void handleApiCreditsStatus() {
-    webServer.sendHeader("Access-Control-Allow-Origin", "*");
-    String json = "{\"monthly\":" + String(monthlyCredits) + 
-        ",\"annual\":" + String(annualCredits) + 
-        ",\"test\":" + String(testCredits) + 
-        ",\"maxSlots\":" + String(maxLicensedSlots) + "}";
-    webServer.send(200, "application/json", json);
-}
-
 void handleApiStatus() {
     if (!checkAuth()) return;
 
@@ -790,11 +702,9 @@ void handleApiStatus() {
         bool isBound = (devId.length() > 0);
         
         int daysLeft = 0;
-        int expStatus = getSlotExpirationStatus(i, currentMs, daysLeft);
-        bool isExpiredOrInactive = (expStatus == 2);
+        bool isActive = isSlotActive(i);
+        bool isExpiredOrInactive = (!isActive);
 
-        char expBuf[24];
-        snprintf(expBuf, sizeof(expBuf), "%llu", (unsigned long long)licenseSlots[i].expiresAt);
 
         int rem = -1;
         int bat = 100;
@@ -819,9 +729,8 @@ void handleApiStatus() {
         json += "\"battery\":" + String(bat) + ",";
         json += "\"charging\":" + String(chg ? "true" : "false") + ",";
         json += "\"active\":" + String(licenseSlots[i].active ? "true" : "false") + ",";
-        json += "\"expiresAt\":" + String(expBuf) + ",";
-        json += "\"expStatus\":" + String(expStatus) + ",";
-        json += "\"isExpiredOrInactive\":" + String(isExpiredOrInactive ? "true" : "false");
+        json += "\"expStatus\":" + String(licenseSlots[i].active ? 0 : 2) + ",";
+        json += "\"isExpiredOrInactive\":" + String(!licenseSlots[i].active ? "true" : "false");
         json += "}";
     }
     json += "],\"unassigned_devices\":[";
@@ -898,12 +807,10 @@ void handleCheckQualification() {
         snprintf(msgBuf, sizeof(msgBuf), "Both devices meet the %dm stake requirement.", mins);
     } else if (p1Sec < 0 || p2Sec < 0) {
         strncpy(msgBuf, "One or both devices cannot be reached.", sizeof(msgBuf));
-    } else {
         if (!p1Ok && !p2Ok) {
             snprintf(msgBuf, sizeof(msgBuf), "Both players need to add more time to meet the %dm stake.", mins);
         } else if (!p1Ok) {
             snprintf(msgBuf, sizeof(msgBuf), "Player 1 needs at least %dm more active time.", mins - p1M);
-        } else {
             snprintf(msgBuf, sizeof(msgBuf), "Player 2 needs at least %dm more active time.", mins - p2M);
         }
     }
@@ -959,9 +866,9 @@ void handleHeartbeat() {
 
             int slotIdx = findSlotIndexForDevice(deviceId, reqIp);
             int daysLeft = -1;
-            int expStatus = getSlotExpirationStatus(slotIdx, ts, daysLeft);
+            bool isActive = isSlotActive(slotIdx);
 
-            String status = (expStatus == 2) ? "slot_expired" : "ok";
+            String status = (!isActive) ? "slot_expired" : "ok";
             String json = "{\"status\":\"" + status + "\",\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\"";
             if (slotIdx >= 0) {
                 String encPin = aes_encrypt("PIN:" + webPassword, sharedSecret);
@@ -972,34 +879,21 @@ void handleHeartbeat() {
             }
             if (slotIdx >= 0) {
                 json += ",\"slot_num\":" + String(licenseSlots[slotIdx].slotNum);
-                char expBuf[24];
-                snprintf(expBuf, sizeof(expBuf), "%llu", (unsigned long long)licenseSlots[slotIdx].expiresAt);
-                json += ",\"expires_at\":" + String(expBuf);
             }
             if (slotIdx < 0) {
                 // UNASSIGNED DEVICE: Connected to ESP32, awaiting operator confirmation/slot assignment
                 json += ",\"slot_num\":0,\"is_paired\":false,\"slot_expired\":true,\"slot_status\":\"unassigned\",\"slot_warning\":false";
                 json += ",\"message\":\"Connected to ESP32: Awaiting Slot Assignment in Admin Portal.\"";
-            } else if (expStatus == 2) {
+            } else if (!isActive) {
                 // HARD LOCKDOWN: Slot is expired or uncredited on ESP32
                 json += ",\"is_paired\":true,\"slot_expired\":true,\"slot_status\":\"expired\",\"slot_warning\":false";
-                json += ",\"message\":\"Device Expired: Please add credits to pair device to ESP32.\"";
-            } else if (expStatus == 1) {
-                // WARNING: Slot nearing expiration
-                json += ",\"is_paired\":true,\"slot_expired\":false,\"slot_status\":\"warning\",\"slot_warning\":true";
-                json += ",\"slot_warning_days_left\":" + String(daysLeft);
-                if (daysLeft == 0) {
-                    json += ",\"warning_message\":\"Device slot expiring soon (< 24 hours). Add credits to extend.\"";
-                } else {
-                    json += ",\"warning_message\":\"Device slot expires in " + String(daysLeft) + " day(s). Add credits to extend.\"";
-                }
+                json += ",\"message\":\"Device Inactive: Please activate device slot on ESP32 Portal.\"";
             } else {
                 json += ",\"is_paired\":true,\"slot_expired\":false,\"slot_status\":\"active\",\"slot_warning\":false";
             }
             json += "}";
             webServer.send(200, "application/json", json);
             return;
-        } else {
             webServer.send(403, "application/json", "{\"error\":\"Forbidden\"}");
             return;
         }
@@ -1175,7 +1069,6 @@ void handleOtaForm() {
                 const data = await res.json();
                 if (badge) badge.textContent = 'Server v' + (data.version || '3.0.0');
                 showStatus('<b>🎉 Server Firmware Available:</b> v' + (data.version || '3.0.0') + '<br>' + (data.changelog || 'Latest build ready to install.'), 'info');
-            } else {
                 if (badge) badge.textContent = 'Server Ready';
                 showStatus('<b>Server Connected:</b> Firmware endpoint ready at https://pisophone.pages.dev/update/firmware.bin', 'info');
             }
@@ -1232,7 +1125,6 @@ void handleOtaForm() {
                     progressBar.style.background = '#10b981';
                     showStatus('<b>✅ SUCCESS: Firmware Updated via Server!</b><br>Rebooting HARDWARE Controller now... returning to dashboard in 5 seconds.', 'success');
                     setTimeout(function() { window.location.href = '/'; }, 5000);
-                } else {
                     progressBar.style.background = '#ef4444';
                     showStatus('<b>❌ Flash Error:</b> ' + (xhr.responseText || 'Error flashing downloaded binary'), 'error');
                     if (cloudBtn) cloudBtn.disabled = false;
@@ -1302,7 +1194,6 @@ void sendWsText(WiFiClient& client, String text) {
         header[2] = (uint8_t)((len >> 8) & 0xFF);
         header[3] = (uint8_t)(len & 0xFF);
         headerLen = 4;
-    } else {
         header[1] = 127;
         for (int i = 0; i < 8; i++) {
             header[2 + i] = (uint8_t)((len >> ((7 - i) * 8)) & 0xFF);
@@ -1433,8 +1324,8 @@ void processWebSocketServer() {
                 return;
             }
             int wsDaysLeft = -1;
-            int wsExpStatus = getSlotExpirationStatus(wsSlotIdx, ts, wsDaysLeft);
-            if (wsExpStatus == 2) {
+            bool wsIsActive = isSlotActive(wsSlotIdx);
+            if (!wsIsActive) {
                 Serial.printf("[-] WS Mutex Rejected for %s: Slot Expired / Lockdown Active (Slot #%d)\n", 
                     reqDeviceId.c_str(), licenseSlots[wsSlotIdx].slotNum);
                 newClient.print("HTTP/1.1 423 Locked\r\n\r\nSLOT_EXPIRED");
@@ -1516,7 +1407,6 @@ void processWebSocketServer() {
                     pendingWsGracefulClose = true;
                     pendingWsGracefulCloseUntil = millis() + 2000;
                     armedUntil = millis() + 3000; // Extend temporary guard so pulse train completes safely
-                } else {
                     wsClient.stop();
                     isWsConnected = false;
                     if (armedIp.length() > 0) {
@@ -1665,7 +1555,6 @@ void setupWebServer() {
         MDNS.addService("kioskmanager", "tcp", 80);
         MDNS.addService("http", "tcp", 80);
         Serial.println("[+] mDNS service active at http://kioskmanager.local");
-    } else {
         Serial.println("[-] Error setting up mDNS responder!");
     }
 
@@ -1701,9 +1590,6 @@ void setupWebServer() {
     webServer.on("/api/slots/unpair", HTTP_ANY, handleApiSlotUnpair);
     webServer.on("/api/slots/apply_token", HTTP_POST, handleApiSlotApplyToken);
     webServer.on("/api/slots/cloud_sync", HTTP_POST, handleApiSlotCloudSync);
-    webServer.on("/api/credits/emulate_payment", HTTP_ANY, handleApiCreditsEmulatePayment);
-    webServer.on("/api/credits/allocate", HTTP_ANY, handleApiCreditsAllocate);
-    webServer.on("/api/credits/status", HTTP_GET, handleApiCreditsStatus);
     webServer.on("/api/relay", HTTP_ANY, []() {
         if (webServer.hasArg("invert")) {
             relayActiveLow = (webServer.arg("invert") == "1" || webServer.arg("invert") == "true");
@@ -1734,7 +1620,6 @@ void setupWebServer() {
         if (!otaIsValidBinary || Update.hasError() || !otaUpdateSuccess) {
             String errStr = otaErrorMsg.length() > 0 ? otaErrorMsg : ("Flash write failed (Error Code " + String(Update.getError()) + ")");
             webServer.send(400, "text/plain", errStr);
-        } else {
             webServer.send(200, "text/plain", "SUCCESS");
             delay(1000);
             ESP.restart();
@@ -1765,7 +1650,6 @@ void setupWebServer() {
                     otaIsValidBinary = false;
                     otaErrorMsg = "Flash write failed at offset " + String(Update.progress()) + " (Error: " + String(Update.getError()) + ")";
                     Serial.printf("[OTA] Error: %s\n", otaErrorMsg.c_str());
-                } else {
                     Serial.print(".");
                 }
             }
@@ -1775,12 +1659,10 @@ void setupWebServer() {
                 if (Update.end(true)) {
                     Serial.printf("[OTA] Firmware flashing verified & completed successfully: %u bytes\n", upload.totalSize);
                     otaUpdateSuccess = true;
-                } else {
                     otaIsValidBinary = false;
                     otaErrorMsg = "Firmware verification failed after write (Error: " + String(Update.getError()) + ")";
                     Serial.printf("[OTA] Error: %s\n", otaErrorMsg.c_str());
                 }
-            } else {
                 Update.abort();
             }
         } else if (upload.status == UPLOAD_FILE_ABORTED) {
@@ -1803,7 +1685,6 @@ void setupWebServer() {
         Serial.printf("[!] Port 80: Management at http://%s:80\n", WiFi.localIP().toString().c_str());
         Serial.printf("[!] Port 81: WebSocket at ws://%s:81/ws\n\n", WiFi.localIP().toString().c_str());
         sendUdpDiscoveryResponse(IPAddress(255, 255, 255, 255), UDP_DISCOVERY_PORT);
-    } else {
         Serial.printf("[!] Wi-Fi disconnected. Waiting for hotspot '%s' to become available...\n", wifiSsid.c_str());
     }
 }

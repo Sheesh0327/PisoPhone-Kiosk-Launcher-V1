@@ -2048,13 +2048,11 @@ export default {
         const cleanMac = formattedMac || rawMac;
 
         const targetSlots = Math.max(1, Math.min(32, parseInt(slotsCount) || 2));
-        const days = Math.max(1, parseInt(durationDays) || 365);
-        const expiresAt = now + (days * 86400000);
 
         const secret = signingSecret || env.LICENSE_SIGNING_SECRET || env.ADMIN_SECRET || 'PISOPHONE_HMAC_MASTER_KEY';
-        const sigPayload = `PISOSLOT:${cleanMac}:${targetSlots}:${expiresAt}`;
+        const sigPayload = `PISOSLOT:${cleanMac}:${targetSlots}`;
         const signature = await calculateHmacSha256Hex(sigPayload, secret);
-        const slotToken = `PISOSLOT.${cleanMac}.${targetSlots}.${expiresAt}.${signature}`;
+        const slotToken = `PISOSLOT.${cleanMac}.${targetSlots}.${signature}`;
 
         // Save/Update box capacity in KV
         let boxData = null;
@@ -2081,7 +2079,6 @@ export default {
             success: true,
             boxMac: cleanMac,
             slotsCount: targetSlots,
-            expiresAt: expiresAt,
             token: slotToken,
             message: `Slot token for ${targetSlots} seats issued successfully.`,
             serverTime: now,

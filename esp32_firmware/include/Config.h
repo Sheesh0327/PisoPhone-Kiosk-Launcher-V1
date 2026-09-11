@@ -42,7 +42,6 @@ struct LicenseSlot {
     String deviceId;    // Canonical hardware ID (e.g., "HW-A1B2C3D4")
     String ip;          // Terminal local IP (e.g., "192.168.4.2")
     String name;        // Display label (e.g., "PisoPhone 1")
-    uint64_t expiresAt; // Expiration timestamp in ms
     bool active;        // Whether slot is valid/licensed
 };
 
@@ -115,11 +114,6 @@ extern int matchMinutes;
 extern String matchStatusMsg;
 extern String quickTimeStatusMsg;
 
-// Credit Vault
-extern int monthlyCredits;
-extern int annualCredits;
-extern int testCredits;
-
 // Revenue & Audit
 extern uint32_t totalCoinsLifetime;
 extern uint32_t totalCoinsSession;
@@ -136,6 +130,9 @@ extern LicenseSlot licenseSlots[MAX_SUPPORTED_SLOTS];
 extern DeviceTelemetry trackedDevices[MAX_TRACKED_DEVICES];
 extern int trackedDeviceCount;
 
+bool isSlotActive(int slotIdx);
+int findSlotIndexForDevice(String devId, String ip);
+
 // ============================================================================
 // CONFIGURATION & TIME FUNCTIONS
 // ============================================================================
@@ -143,8 +140,6 @@ void loadSlotLicenses();
 void saveSlotLicenses();
 void syncAndroidIpsFromSlots();
 
-void loadCreditVault();
-void saveCreditVault();
 void processRevenuePersistence();
 
 void factoryResetDefaults();

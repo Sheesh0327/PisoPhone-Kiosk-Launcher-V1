@@ -21,11 +21,10 @@ String renderDeviceOptions(String selectedIp) {
                 String name = cfg.name.length() > 0 ? cfg.name : ("PisoPhone " + String(devNum));
                 String sel = (cfg.ip == selectedIp) ? " selected" : "";
                 int slotIdx = findSlotIndexForDevice(cfg.id, cfg.ip);
-                int daysLeft = -1;
-                int expStatus = getSlotExpirationStatus(slotIdx, currentMs, daysLeft);
-                bool isExpired = (expStatus == 2);
-                String expAttr = isExpired ? " data-expired=\"true\"" : " data-expired=\"false\"";
-                String badge = isExpired ? " [🔴 EXPIRED]" : "";
+                bool isActive = isSlotActive(slotIdx);
+                bool isInactive = !isActive;
+                String expAttr = isInactive ? " data-inactive=\"true\"" : " data-inactive=\"false\"";
+                String badge = isInactive ? " [🔴 INACTIVE]" : "";
                 opts += "<option value=\"" + cfg.ip + "\"" + sel + expAttr + ">" + name + " (" + cfg.ip + ")" + badge + "</option>";
                 devNum++;
             }
@@ -128,49 +127,49 @@ String renderLicenseSlotsHtml() {
 
     String html = "<div class=\"master-vault-card\" style=\"background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px 24px; box-shadow: var(--card-shadow); margin-bottom: 16px;\">";
     
-    // Top Row: Title, Subtitle & Professional Buy Button
+    // Top Row: Title, Subtitle & Action Buttons
     html += "<div style=\"display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;\">";
     html += "<div style=\"display: flex; align-items: center; gap: 12px;\">";
     html += "<div style=\"background: rgba(16, 185, 129, 0.12); color: var(--primary); width: 42px; height: 42px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px;\">💳</div>";
     html += "<div>";
-    html += "<div style=\"font-size: 15px; font-weight: 800; color: var(--text-main); letter-spacing: 0.3px; text-transform: uppercase;\">Master Credit Vault</div>";
-    html += "<div style=\"font-size: 11px; color: var(--text-muted); margin-top: 2px;\">1 Credit = 1 Paired Terminal Seat • Manual Operator Allocation</div>";
+    html += "<div style=\"font-size: 15px; font-weight: 800; color: var(--text-main); letter-spacing: 0.3px; text-transform: uppercase;\">Hardware Slot License Manager</div>";
+    html += "<div style=\"font-size: 11px; color: var(--text-muted); margin-top: 2px;\">Permanent Seat Activations • ₱500 per Permanent Terminal Seat</div>";
     html += "</div>";
     html += "</div>";
 
     html += "<div style=\"display: flex; align-items: center; gap: 10px; flex-wrap: wrap;\">";
-    html += "<a href=\"https://pisophone.pages.dev/installer/?mac=" + macAddressStr + "&ip=" + myIp + "&secret=" + sharedSecret + "\" target=\"_blank\" style=\"font-size: 12px; font-weight: 700; padding: 8px 16px; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: #ffffff; border-radius: 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25); transition: transform 0.15s ease;\">";
-    html += "<span style=\"font-size: 14px;\">📥</span> Install</a>";
-    html += "<a href=\"https://pisophone.pages.dev/purchase.html?esp32_ip=" + myIp + "\" target=\"_blank\" style=\"font-size: 12px; font-weight: 700; padding: 8px 16px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #ffffff; border-radius: 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25); transition: transform 0.15s ease;\">";
-    html += "<span style=\"font-size: 14px;\">➕</span> Buy Terminal Credits</a>";
+    html += "<a href=\"https://pisophone.pages.dev/?mac=" + macAddressStr + "&ip=" + myIp + "&secret=" + sharedSecret + "\" target=\"_blank\" style=\"font-size: 12px; font-weight: 700; padding: 8px 16px; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: #ffffff; border-radius: 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25); transition: transform 0.15s ease;\">";
+    html += "<span style=\"font-size: 14px;\">📥</span> Install & Provision</a>";
+    html += "<a href=\"https://pisophone.pages.dev/?mac=" + macAddressStr + "&ip=" + myIp + "&mode=deprovision\" target=\"_blank\" style=\"font-size: 12px; font-weight: 700; padding: 8px 16px; background: linear-gradient(135deg, #e11d48 0%, #be123c 100%); color: #ffffff; border-radius: 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(225, 29, 72, 0.25); transition: transform 0.15s ease;\">";
+    html += "<span style=\"font-size: 14px;\">🗑️</span> Deprovision</a>";
     html += "</div>";
     html += "</div>";
 
-    // Middle Row: Clearly Visible Displays of Total Credit Types
+    // Middle Row: Capacity and Active Seats Summary
     html += "<div style=\"display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border);\">";
     
     html += "<div style=\"background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 14px;\">";
-    html += "<div style=\"font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;\">📅 1-Month (₱50)</div>";
-    html += "<div style=\"font-size: 18px; font-weight: 800; color: var(--primary); margin-top: 2px;\">" + String(monthlyCredits) + " <span style=\"font-size: 11px; font-weight: 600; color: var(--text-muted);\">Credits</span></div>";
+    html += "<div style=\"font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;\">🗄️ Total Capacity</div>";
+    html += "<div style=\"font-size: 18px; font-weight: 800; color: var(--primary); margin-top: 2px;\">" + String(maxLicensedSlots) + " <span style=\"font-size: 11px; font-weight: 600; color: var(--text-muted);\">Seats</span></div>";
     html += "</div>";
 
     html += "<div style=\"background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 14px;\">";
-    html += "<div style=\"font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;\">👑 1-Year (₱500)</div>";
-    html += "<div style=\"font-size: 18px; font-weight: 800; color: #3b82f6; margin-top: 2px;\">" + String(annualCredits) + " <span style=\"font-size: 11px; font-weight: 600; color: var(--text-muted);\">Credits</span></div>";
+    html += "<div style=\"font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;\">📱 Paired Terminals</div>";
+    html += "<div style=\"font-size: 18px; font-weight: 800; color: #3b82f6; margin-top: 2px;\">" + String(installedCount) + " / " + String(maxLicensedSlots) + " <span style=\"font-size: 11px; font-weight: 600; color: var(--text-muted);\">Active</span></div>";
     html += "</div>";
 
     html += "<div style=\"background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 14px;\">";
-    html += "<div style=\"font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;\">⚡ 2-Min Test</div>";
-    html += "<div style=\"font-size: 18px; font-weight: 800; color: #f59e0b; margin-top: 2px;\">" + String(testCredits) + " <span style=\"font-size: 11px; font-weight: 600; color: var(--text-muted);\">Credits</span></div>";
+    html += "<div style=\"font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;\">🛡️ License Validity</div>";
+    html += "<div style=\"font-size: 18px; font-weight: 800; color: #10b981; margin-top: 2px;\">Permanent <span style=\"font-size: 11px; font-weight: 600; color: var(--text-muted);\">No Expiry</span></div>";
     html += "</div>";
 
     html += "</div>";
 
-    // Dropdown Trigger for Hardware Terminal Slots & Credit Allocation
+    // Dropdown Trigger for Hardware Terminal Slots
     html += "<div style=\"margin-top: 16px;\">";
     html += "<button type=\"button\" onclick=\"toggleInstalledDevicesDropdown()\" style=\"width: 100%; background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; color: var(--text-main); font-family: inherit; font-size: 13px; font-weight: 700; transition: background 0.15s ease;\">";
     html += "<div style=\"display: flex; align-items: center; gap: 8px;\">";
-    html += "<span>🗄️ Hardware Slot Seats & Credit Allocator</span>";
+    html += "<span>🗄️ Hardware Slot Seats & Assigned Terminals</span>";
     html += "<span style=\"font-size: 11px; font-weight: 800; background: rgba(16, 185, 129, 0.15); color: var(--primary); padding: 2px 8px; border-radius: 12px;\">" + String(maxLicensedSlots) + " Slots</span>";
     if (unassignedCount > 0) {
         html += "<span style=\"font-size: 11px; font-weight: 800; background: rgba(245, 158, 11, 0.2); color: #f59e0b; padding: 2px 8px; border-radius: 12px; border: 1px solid rgba(245, 158, 11, 0.4);\">🟡 " + String(unassignedCount) + " Connection Request(s)</span>";
@@ -190,8 +189,7 @@ String renderLicenseSlotsHtml() {
         String fullSlotName = isBound ? (licenseSlots[i].name.length() > 0 ? licenseSlots[i].name : ("PisoPhone Slot #" + String(sNum))) : ("Slot #" + String(sNum));
         String shortName = isBound ? (licenseSlots[i].name.length() > 0 ? licenseSlots[i].name : ("PisoPhone #" + String(sNum))) : ("Empty #" + String(sNum));
         
-        int daysLeft = -1;
-        int expStatus = getSlotExpirationStatus(i, currentMs, daysLeft);
+        bool isActive = isSlotActive(i);
 
         String borderCol = "rgba(16, 185, 129, 0.35)";
         String dotCol = "#10b981";
@@ -200,44 +198,24 @@ String renderLicenseSlotsHtml() {
         String plusCol = "var(--primary)";
         String plusShadow = "rgba(16, 185, 129, 0.15)";
         String statusText = "Active Seat";
+        String expInfo = "Permanent";
 
-        if (expStatus == 2) {
+        if (!isActive) {
             borderCol = "rgba(239, 68, 68, 0.4)";
             dotCol = "#ef4444";
             expCol = "var(--danger)";
             plusBg = "rgba(239, 68, 68, 0.12)";
             plusCol = "#ef4444";
             plusShadow = "rgba(239, 68, 68, 0.15)";
-            statusText = "Expired / Uncredited";
-        } else if (expStatus == 1) {
-            borderCol = "rgba(245, 158, 11, 0.4)";
-            dotCol = "#f59e0b";
-            expCol = "#f59e0b";
-            plusBg = "rgba(245, 158, 11, 0.12)";
-            plusCol = "#f59e0b";
-            plusShadow = "rgba(245, 158, 11, 0.15)";
-            statusText = "Expiring Soon";
-        }
-
-        String expInfo = "No Credit";
-        if (licenseSlots[i].expiresAt > 0) {
-            if (licenseSlots[i].expiresAt <= currentMs) {
-                expInfo = "Expired";
-            } else {
-                uint64_t diffMs = licenseSlots[i].expiresAt - currentMs;
-                if (diffMs > 86400000ULL) {
-                    expInfo = String((int)(diffMs / 86400000ULL)) + "d left";
-                } else {
-                    expInfo = String((int)(diffMs / 60000ULL)) + "m left";
-                }
-            }
+            statusText = "Inactive";
+            expInfo = "No License";
         }
 
         String escapedName = fullSlotName;
         escapedName.replace("'", "\\'");
         escapedName.replace("\"", "&quot;");
 
-        html += "<div class=\"slot-square-card\" onclick=\"openSlotCreditModal(" + String(sNum) + ", '" + escapedName + "', '" + ip + "', '" + devId + "', '" + expInfo + "', " + String(expStatus) + ", " + (isBound ? "true" : "false") + ")\" style=\"background: var(--input-bg); border: 1px solid " + borderCol + "; border-radius: 14px; padding: 16px 12px; min-height: 140px; display: flex; flex-direction: column; align-items: center; justify-content: space-between; cursor: pointer; position: relative; transition: all 0.2s ease; box-shadow: 0 2px 8px rgba(0,0,0,0.04); text-align: center; user-select: none;\">";
+        html += "<div class=\"slot-square-card\" onclick=\"openSlotActivationModal(" + String(sNum) + ", '" + escapedName + "', '" + ip + "', '" + devId + "', '" + expInfo + "', " + String(isActive ? 0 : 2) + ", " + (isBound ? "true" : "false") + ")\" style=\"background: var(--input-bg); border: 1px solid " + borderCol + "; border-radius: 14px; padding: 16px 12px; min-height: 140px; display: flex; flex-direction: column; align-items: center; justify-content: space-between; cursor: pointer; position: relative; transition: all 0.2s ease; box-shadow: 0 2px 8px rgba(0,0,0,0.04); text-align: center; user-select: none;\">";
         
         // Top Row: Slot # & Status Dot
         html += "<div style=\"display: flex; align-items: center; justify-content: space-between; width: 100%;\">";
@@ -1069,7 +1047,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
         <!-- TAB 1: DASHBOARD -->
         <div id="tab-dashboard" class="tab-content active">
             <div class="grid">
-                <!-- Master Credit Vault & Seat Slots Manager -->
+                <!-- Master Activation Vault & Seat Slots Manager -->
                 <div class="grid-full">
                     {DEVICE_SLOTS_MANAGER}
                 </div>
@@ -1124,12 +1102,12 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                     {QUICK_TIME_ALERT}
                     <div class="form-group">
                         <label>Target Device</label>
-                        <select id="quick_adjust_target" name="target_ip" onchange="checkQuickAdjustExpired()">
+                        <select id="quick_adjust_target" name="target_ip" onchange="checkQuickAdjustInactive()">
                             <option value="ALL">All Devices (Broadcast)</option>
                             {DEVICE_OPTIONS}
                         </select>
                         <div id="quick_adjust_warn" style="display: none; margin-top: 6px; padding: 6px 10px; background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; font-size: 11px; font-weight: 700;">
-                            🚫 Selected device is EXPIRED. Manual time adjustment is blocked until credits are allocated.
+                            🚫 Selected device is INACTIVE. Manual time adjustment is blocked until activation are allocated.
                         </div>
                     </div>
                     <div class="form-group">
@@ -1439,7 +1417,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                 let totalActiveSlotsCount = 0;
 
                 devices.forEach(dev => {
-                    const isExp = dev.isExpiredOrInactive || (dev.expStatus === 2) || (!dev.active) || (dev.expiresAt === "0" || dev.expiresAt === 0);
+                    const isExp = (!dev.active) ;
                     if (!isExp) {
                         totalActiveSlotsCount++;
                         if (!dev.isBound) {
@@ -1469,7 +1447,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                     const name = (dev.name && dev.name !== dev.id && !dev.name.startsWith('Terminal') && (!dev.id || !dev.name.includes(dev.id))) ? dev.name : ('PisoPhone ' + dev.slotNum);
                     const battery = (typeof dev.battery === 'number' && dev.battery >= 0) ? dev.battery : 100;
                     const isCharging = !!dev.charging;
-                    const isExp = dev.isExpiredOrInactive || (dev.expStatus === 2) || (!dev.active) || (dev.expiresAt === "0" || dev.expiresAt === 0);
+                    const isExp = (!dev.active) ;
                     
                     let batteryStatusClass = 'status-good';
                     let statusLabel = 'GOOD CHARGE';
@@ -1516,7 +1494,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                             : '<span class="device-badge standby">STANDBY</span>';
 
                         if (isExp) {
-                            badgeHtml += ' <span class="device-badge expired" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);">EXPIRED SLOT</span>';
+                            badgeHtml += ' <span class="device-badge inactive" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);">INACTIVE SLOT</span>';
                         }
                             
                         const batteryIcon = isCharging ? '⚡' : '🔋';
@@ -1559,7 +1537,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                                     '</div>' +
                                     '<div class="device-row-metrics">' +
                                         '<span class="device-badge offline">OFFLINE / DISCONNECTED</span>' +
-                                        (isExp ? ' <span class="device-badge expired" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);">EXPIRED</span>' : '') +
+                                        (isExp ? ' <span class="device-badge inactive" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);">INACTIVE</span>' : '') +
                                     '</div>' +
                                     '<div class="device-row-actions">' +
                                         '<button type="button" class="btn btn-outline btn-sm" style="border-color: var(--danger); color: var(--danger);" onclick="unpairSlot(' + dev.slotNum + ')">' +
@@ -1644,72 +1622,42 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
     }
     </script>
 
-    <!-- Slot Credit Allocation Modal -->
-    <div id="slot_credit_modal" class="modal-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); backdrop-filter: blur(4px); z-index: 10000; align-items: center; justify-content: center; padding: 16px;">
+    <!-- Slot Management Modal -->
+    <div id="slot_activation_modal" class="modal-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); backdrop-filter: blur(4px); z-index: 10000; align-items: center; justify-content: center; padding: 16px;">
         <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: 20px; padding: 24px; max-width: 420px; width: 100%; box-shadow: 0 20px 40px rgba(0,0,0,0.3);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 14px;">
                 <div style="display: flex; align-items: center; gap: 10px;">
-                    <div style="width: 38px; height: 38px; border-radius: 10px; background: rgba(16, 185, 129, 0.15); color: var(--primary); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800;">💳</div>
+                    <div style="width: 38px; height: 38px; border-radius: 10px; background: rgba(16, 185, 129, 0.15); color: var(--primary); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800;">🗄️</div>
                     <div>
-                        <h3 id="modal_slot_title" style="margin: 0; font-size: 16px; font-weight: 800; color: var(--text-main);">Slot #1 Allocation</h3>
-                        <div id="modal_slot_sub" style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Manage seat subscription & credit</div>
+                        <h3 id="modal_slot_title" style="margin: 0; font-size: 16px; font-weight: 800; color: var(--text-main);">Slot #1 Seat</h3>
+                        <div id="modal_slot_sub" style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Permanent Seat Management</div>
                     </div>
                 </div>
-                <button type="button" onclick="closeSlotCreditModal()" style="background: none; border: none; font-size: 22px; cursor: pointer; color: var(--text-muted); padding: 4px; line-height: 1;">&times;</button>
+                <button type="button" onclick="closeSlotActivationModal()" style="background: none; border: none; font-size: 22px; cursor: pointer; color: var(--text-muted); padding: 4px; line-height: 1;">&times;</button>
             </div>
 
-            <!-- Current Expiry & Binding Info Box -->
+            <!-- License & Status Info Box -->
             <div style="background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center;">
                 <div>
-                    <div style="font-size: 11px; color: var(--text-muted); font-weight: 600;">Current Expiry</div>
-                    <div id="modal_slot_expiry_text" style="font-size: 14px; font-weight: 800; color: var(--text-main); margin-top: 2px;">30 day(s) left</div>
+                    <div style="font-size: 11px; color: var(--text-muted); font-weight: 600;">License Status</div>
+                    <div id="modal_slot_expiry_text" style="font-size: 14px; font-weight: 800; color: var(--text-main); margin-top: 2px;">Permanent (₱500 Seat)</div>
                 </div>
                 <div id="modal_slot_status_badge">
                     <span style="font-size: 10px; font-weight: 800; background: rgba(16, 185, 129, 0.15); color: var(--primary); padding: 3px 8px; border-radius: 6px;">🟢 ACTIVE</span>
                 </div>
             </div>
 
-            <!-- Choose Credit Option Header -->
-            <div style="font-size: 11px; font-weight: 800; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;">
-                Select Credit Type To Apply
-            </div>
-
-            <!-- Credit Options Buttons -->
-            <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px;">
-                <!-- Monthly Credit Option -->
-                <button type="button" onclick="submitModalCredit('month')" style="background: var(--input-bg); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 12px; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.15s ease; text-align: left;" onmouseover="this.style.background='rgba(16, 185, 129, 0.08)';" onmouseout="this.style.background='var(--input-bg)';">
+            <!-- Action Buttons -->
+            <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px;">
+                <button type="button" onclick="submitModalFlash()" style="background: var(--input-bg); border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 12px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.15s ease; text-align: left;" onmouseover="this.style.background='rgba(59, 130, 246, 0.08)';" onmouseout="this.style.background='var(--input-bg)';">
                     <div style="display: flex; align-items: center; gap: 12px;">
-                        <span style="font-size: 22px;">📅</span>
+                        <span style="font-size: 20px;">📥</span>
                         <div>
-                            <div style="font-size: 14px; font-weight: 800; color: var(--primary);">+30 Days (1 Monthly Credit)</div>
-                            <div style="font-size: 11px; color: var(--text-muted); margin-top: 1px;">Standard 30-day seat extension</div>
+                            <div style="font-size: 13px; font-weight: 800; color: #3b82f6;">Flash / Provision Terminal</div>
+                            <div style="font-size: 11px; color: var(--text-muted); margin-top: 1px;">Launch WebUSB installer for this slot</div>
                         </div>
                     </div>
-                    <span style="font-size: 12px; font-weight: 800; background: rgba(16, 185, 129, 0.15); color: var(--primary); padding: 4px 10px; border-radius: 8px;">Apply</span>
-                </button>
-
-                <!-- Annual Credit Option -->
-                <button type="button" onclick="submitModalCredit('year')" style="background: var(--input-bg); border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 12px; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.15s ease; text-align: left;" onmouseover="this.style.background='rgba(59, 130, 246, 0.08)';" onmouseout="this.style.background='var(--input-bg)';">
-                    <div style="display: flex; align-items: center; gap: 12px;">
-                        <span style="font-size: 22px;">👑</span>
-                        <div>
-                            <div style="font-size: 14px; font-weight: 800; color: #3b82f6;">+1 Year (1 Annual Credit)</div>
-                            <div style="font-size: 11px; color: var(--text-muted); margin-top: 1px;">Full 365-day seat license</div>
-                        </div>
-                    </div>
-                    <span style="font-size: 12px; font-weight: 800; background: rgba(59, 130, 246, 0.15); color: #3b82f6; padding: 4px 10px; border-radius: 8px;">Apply</span>
-                </button>
-
-                <!-- Test Credit Option -->
-                <button type="button" onclick="submitModalCredit('test')" style="background: var(--input-bg); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 12px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.15s ease; text-align: left;" onmouseover="this.style.background='rgba(245, 158, 11, 0.08)';" onmouseout="this.style.background='var(--input-bg)';">
-                    <div style="display: flex; align-items: center; gap: 12px;">
-                        <span style="font-size: 20px;">⚡</span>
-                        <div>
-                            <div style="font-size: 13px; font-weight: 700; color: #f59e0b;">+2 Minutes (Test Credit)</div>
-                            <div style="font-size: 10px; color: var(--text-muted);">Short diagnostic run</div>
-                        </div>
-                    </div>
-                    <span style="font-size: 11px; font-weight: 700; background: rgba(245, 158, 11, 0.15); color: #f59e0b; padding: 3px 8px; border-radius: 6px;">Test</span>
+                    <span style="font-size: 12px; font-weight: 800; background: rgba(59, 130, 246, 0.15); color: #3b82f6; padding: 4px 10px; border-radius: 8px;">Install</span>
                 </button>
             </div>
 
@@ -1794,7 +1742,33 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
 
             <div style="display: flex; justify-content: flex-end; gap: 8px;">
                 <button type="button" class="btn btn-outline" onclick="closeProvisionModal()">Close</button>
-                <button type="button" class="btn btn-primary" onclick="launchHttpsFlasher()">⚡ Proceed to HTTPS Flasher</button>
+                <button type="button" class="btn btn-primary" onclick="launchHttpsFlasher()">⚡ Proceed to Web Flasher</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- WebUSB Deprovisioning Modal -->
+    <div id="deprovision_modal" class="modal-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 10000; align-items: center; justify-content: center; padding: 16px;">
+        <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; max-width: 480px; width: 100%; box-shadow: var(--shadow-lg);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: var(--danger);">🗑️ Deprovision Slot #<span id="deprov_slot_num">1</span></h3>
+                <button type="button" onclick="closeDeprovisionModal()" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-muted);">&times;</button>
+            </div>
+            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.5;">
+                Deprovisioning will remove Device Owner kiosk lockdown, uninstall PisoPhone, and free up this seat slot.
+            </p>
+            
+            <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px;">
+                <label style="font-size: 12px; font-weight: 600; color: var(--text-main);">Admin PIN</label>
+                <input type="text" id="deprov_pin_input" value="1234" class="form-control" style="font-family: monospace; font-size: 13px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text-main);">
+            </div>
+
+            <div id="deprov_log" style="display: block; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px; font-family: monospace; font-size: 11px; color: var(--text-muted); height: 80px; overflow-y: auto; margin-bottom: 16px; white-space: pre-wrap;">Connect phone via USB and click Launch Utility or Execute.</div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap;">
+                <button type="button" class="btn btn-outline" onclick="closeDeprovisionModal()">Close</button>
+                <button type="button" class="btn btn-outline" style="border-color: rgba(225, 29, 72, 0.4); color: var(--danger);" onclick="window.open('https://pisophone.pages.dev/?mac=' + ESP32_MAC + '&ip=' + ESP32_HOST + '&slot=' + activeSlotNum + '&mode=deprovision', '_blank')">🌐 Web Deprovisioner</button>
+                <button type="button" id="start_deprov_btn" class="btn btn-primary" style="background: linear-gradient(135deg, #e11d48 0%, #be123c 100%); border: none;" onclick="executeDeprovisionFlow()">⚡ Deprovision USB</button>
             </div>
         </div>
     </div>
@@ -1833,7 +1807,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
 
     window.openInstallerForActiveSlot = function() {
         const s = activeSlotNum || 1;
-        const targetUrl = 'https://pisophone.pages.dev/installer/?mac=' + encodeURIComponent(ESP32_MAC) + 
+        const targetUrl = 'https://pisophone.pages.dev/?mac=' + encodeURIComponent(ESP32_MAC) + 
                           '&ip=' + encodeURIComponent(ESP32_HOST) + 
                           '&slot=' + encodeURIComponent(s) + 
                           '&secret=' + encodeURIComponent(ESP32_SECRET) +
@@ -1884,7 +1858,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
         for (let s = 1; s <= maxS; s++) {
             const slotInfo = devicesList.find(d => d.slotNum === s);
             const isBound = slotInfo ? slotInfo.isBound : false;
-            const isExp = slotInfo ? (slotInfo.isExpiredOrInactive || slotInfo.expStatus === 2 || !slotInfo.active || slotInfo.expiresAt === "0" || slotInfo.expiresAt === 0) : false;
+            const isExp = slotInfo ? (!slotInfo.active ) : false;
 
             if (isBound) {
                 html += '<button disabled class="btn btn-outline" style="padding: 10px; font-size: 13px; font-weight: 700; opacity: 0.4; cursor: not-allowed; background: rgba(255,255,255,0.03); border-color: var(--border); color: var(--text-muted); pointer-events: none;">' +
@@ -1892,7 +1866,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                         '</button>';
             } else if (isExp) {
                 html += '<button disabled class="btn btn-outline" style="padding: 10px; font-size: 13px; font-weight: 700; opacity: 0.45; cursor: not-allowed; background: rgba(239, 68, 68, 0.05); border-color: rgba(239, 68, 68, 0.2); color: #ef4444; pointer-events: none;">' +
-                        'Slot #' + s + '<span style="font-size: 10px; font-weight: 400; display: block; color: #ef4444;">(Expired)</span>' +
+                        'Slot #' + s + '<span style="font-size: 10px; font-weight: 400; display: block; color: #ef4444;">(Inactive)</span>' +
                         '</button>';
             } else {
                 html += '<button type="button" class="btn btn-primary" style="padding: 10px; font-size: 13px; font-weight: 700; background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%); border: none; color: #ffffff;" onclick="confirmConnection(\'' + devId + '\', \'' + devIp + '\', ' + s + ', \'' + (devName || '').replace(/'/g, "\\'") + '\')">' +
@@ -1920,7 +1894,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
     };
 
     window.openInstaller = function() {
-        const targetUrl = 'https://pisophone.pages.dev/installer/?mac=' + encodeURIComponent(ESP32_MAC) + 
+        const targetUrl = 'https://pisophone.pages.dev/?mac=' + encodeURIComponent(ESP32_MAC) + 
                           '&ip=' + encodeURIComponent(ESP32_HOST) + 
                           '&secret=' + encodeURIComponent(ESP32_SECRET);
         window.open(targetUrl, '_blank');
@@ -1930,8 +1904,8 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
         activeSlotNum = slot || 1;
         const devicesList = window.latestDevicesList || [];
         const slotInfo = devicesList.find(d => d.slotNum === activeSlotNum);
-        if (slotInfo && (slotInfo.isExpiredOrInactive || slotInfo.expStatus === 2 || !slotInfo.active || slotInfo.expiresAt === "0" || slotInfo.expiresAt === 0)) {
-            alert('⛔ Cannot occupy Slot #' + activeSlotNum + ': This slot seat is expired or uncredited.\n\nPlease allocate credits in the Master Credit Vault to activate this slot.');
+        if (slotInfo && (!slotInfo.active )) {
+            alert('⛔ Cannot occupy Slot #' + activeSlotNum + ': This slot seat is not licensed.\n\nPlease upgrade slot capacity to activate additional slots.');
             return;
         }
 
@@ -2137,9 +2111,9 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
 
     let targetModalSlot = 1;
 
-    window.openSlotCreditModal = function(sNum, name, ip, devId, expInfo, expStatus, isBound) {
+    window.openSlotActivationModal = function(sNum, name, ip, devId, expInfo, expStatus, isBound) {
         targetModalSlot = sNum;
-        const modal = document.getElementById('slot_credit_modal');
+        const modal = document.getElementById('slot_activation_modal');
         if (!modal) return;
 
         const titleEl = document.getElementById('modal_slot_title');
@@ -2148,17 +2122,15 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
         const badgeEl = document.getElementById('modal_slot_status_badge');
         const unpairCont = document.getElementById('modal_unpair_container');
 
-        if (titleEl) titleEl.textContent = 'Slot #' + sNum + ' Credit Allocation';
-        if (subEl) subEl.textContent = name || ('PisoPhone Slot #' + sNum);
-        if (expTextEl) expTextEl.textContent = expInfo || 'No Credit';
+        if (titleEl) titleEl.textContent = 'Slot #' + sNum + ' Seat';
+        if (subEl) subEl.textContent = name || (isBound ? ('PisoPhone Slot #' + sNum) : 'Unassigned Slot Seat');
+        if (expTextEl) expTextEl.textContent = isBound ? (ip ? ('IP: ' + ip) : 'Permanent (Active)') : 'Available Seat (Permanent)';
 
         if (badgeEl) {
-            if (expStatus === 2) {
-                badgeEl.innerHTML = '<span style="font-size: 10px; font-weight: 800; background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.3); padding: 3px 8px; border-radius: 6px;">🔴 UNCREDITED / EXPIRED</span>';
-            } else if (expStatus === 1) {
-                badgeEl.innerHTML = '<span style="font-size: 10px; font-weight: 800; background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); padding: 3px 8px; border-radius: 6px;">⚠️ EXPIRING SOON</span>';
+            if (isBound) {
+                badgeEl.innerHTML = '<span style="font-size: 10px; font-weight: 800; background: rgba(16, 185, 129, 0.15); color: var(--primary); border: 1px solid rgba(16, 185, 129, 0.3); padding: 3px 8px; border-radius: 6px;">🟢 PAIRED & ACTIVE</span>';
             } else {
-                badgeEl.innerHTML = '<span style="font-size: 10px; font-weight: 800; background: rgba(16, 185, 129, 0.15); color: var(--primary); border: 1px solid rgba(16, 185, 129, 0.3); padding: 3px 8px; border-radius: 6px;">🟢 ACTIVE</span>';
+                badgeEl.innerHTML = '<span style="font-size: 10px; font-weight: 800; background: rgba(59, 130, 246, 0.15); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.3); padding: 3px 8px; border-radius: 6px;">🔵 VACANT</span>';
             }
         }
 
@@ -2169,34 +2141,19 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
         modal.style.display = 'flex';
     };
 
-    window.closeSlotCreditModal = function() {
-        const modal = document.getElementById('slot_credit_modal');
+    window.closeSlotActivationModal = function() {
+        const modal = document.getElementById('slot_activation_modal');
         if (modal) modal.style.display = 'none';
     };
 
-    window.submitModalCredit = function(type) {
-        closeSlotCreditModal();
-        allocateSlotCredit(targetModalSlot, type);
+    window.submitModalFlash = function() {
+        closeSlotActivationModal();
+        window.open('https://pisophone.pages.dev/?mac=' + ESP32_MAC + '&ip=' + ESP32_HOST + '&slot=' + targetModalSlot, '_blank');
     };
 
     window.submitModalUnpair = function() {
-        closeSlotCreditModal();
+        closeSlotActivationModal();
         unpairSlot(targetModalSlot);
-    };
-
-    window.allocateSlotCredit = function(slot, type) {
-        const desc = type === 'month' ? '30 Days (1 Month Credit)' : (type === 'year' ? '1 Year (1 Annual Credit)' : '2 Minutes (Test Credit)');
-        if (!confirm('Allocate ' + desc + ' to Slot #' + slot + '?')) return;
-        fetch('/api/credits/allocate?slot=' + slot + '&type=' + type, { method: 'POST' })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    location.reload();
-                } else {
-                    alert('Credit Allocation Failed: ' + (data.error || 'Check vault credits balance'));
-                }
-            })
-            .catch(err => alert('Network error: ' + err.message));
     };
 
     window.openProvisionModal = function(slot) {
@@ -2208,13 +2165,13 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
         document.getElementById('provision_modal').style.display = 'none';
     };
     window.launchHttpsFlasher = function() {
-        window.open('https://pisophone.pages.dev/installer/?mac=' + ESP32_MAC + '&ip=' + ESP32_HOST + '&slot=' + activeSlotNum, '_blank');
+        window.open('https://pisophone.pages.dev/?mac=' + ESP32_MAC + '&ip=' + ESP32_HOST + '&slot=' + activeSlotNum, '_blank');
         closeProvisionModal();
     };
     window.launchHttpsFlasherMain = function() {
         const slotSelect = document.getElementById('main_prov_slot_select');
         const slot = slotSelect ? parseInt(slotSelect.value) : (activeSlotNum || 1);
-        window.open('https://pisophone.pages.dev/installer/?mac=' + ESP32_MAC + '&ip=' + ESP32_HOST + '&slot=' + slot, '_blank');
+        window.open('https://pisophone.pages.dev/?mac=' + ESP32_MAC + '&ip=' + ESP32_HOST + '&slot=' + slot, '_blank');
     };
 
     window.openDeprovisionModal = function(slot, devId) {
@@ -2259,36 +2216,36 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
         }
     };
 
-    window.checkQuickAdjustExpired = function() {
+    window.checkQuickAdjustInactive = function() {
         const sel = document.getElementById('quick_adjust_target');
         const warn = document.getElementById('quick_adjust_warn');
         if (!sel || !warn) return false;
-        let hasExpired = false;
+        let hasInactive = false;
         if (sel.value === 'ALL') {
-            const expiredOpts = sel.querySelectorAll('option[data-expired="true"]');
-            hasExpired = (expiredOpts.length > 0);
-            if (hasExpired) {
-                warn.innerHTML = '🚫 <b>Broadcast Notice:</b> ' + expiredOpts.length + ' registered device(s) are EXPIRED. Adjusting time is blocked until credits are allocated.';
+            const inactiveOpts = sel.querySelectorAll('option[data-inactive="true"]');
+            hasInactive = (inactiveOpts.length > 0);
+            if (hasInactive) {
+                warn.innerHTML = '🚫 <b>Broadcast Notice:</b> ' + inactiveOpts.length + ' registered device(s) are INACTIVE. Adjusting time is blocked until activation are allocated.';
                 warn.style.display = 'block';
             } else {
                 warn.style.display = 'none';
             }
         } else {
             const opt = sel.options[sel.selectedIndex];
-            hasExpired = (opt && opt.getAttribute('data-expired') === 'true');
-            if (hasExpired) {
+            hasInactive = (opt && opt.getAttribute('data-inactive') === 'true');
+            if (hasInactive) {
                 const label = opt ? opt.text : 'Selected Device';
-                warn.innerHTML = '🚫 <b>Device Expired:</b> ' + label + ' is EXPIRED. Manual time adjustment is blocked until credits are allocated.';
+                warn.innerHTML = '🚫 <b>Device Inactive:</b> ' + label + ' is INACTIVE. Manual time adjustment is blocked until activation are allocated.';
                 warn.style.display = 'block';
             } else {
                 warn.style.display = 'none';
             }
         }
-        return hasExpired;
+        return hasInactive;
     };
 
     window.validateQuickAdjust = function(e, action) {
-        if (window.checkQuickAdjustExpired()) {
+        if (window.checkQuickAdjustInactive()) {
             if (e) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -2296,8 +2253,8 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
             const sel = document.getElementById('quick_adjust_target');
             const isAll = (sel && sel.value === 'ALL');
             const msg = isAll 
-                ? "❌ Action Blocked: One or more devices in broadcast are EXPIRED!\n\nPlease allocate credits in the Master Credit Vault to pair and reactivate all devices before adjusting time."
-                : "❌ Action Blocked: The selected device is EXPIRED!\n\nPlease allocate credits in the Master Credit Vault to pair and reactivate the device before adjusting time.";
+                ? "❌ Action Blocked: One or more devices in broadcast are INACTIVE or UNLICENSED!\n\nPlease upgrade slot capacity and pair devices before adjusting time."
+                : "❌ Action Blocked: The selected device is INACTIVE or UNLICENSED!\n\nPlease pair an active licensed slot before adjusting time.";
             alert(msg);
             return false;
         }
@@ -2305,7 +2262,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
     };
 
     document.addEventListener('DOMContentLoaded', function() {
-        if (window.checkQuickAdjustExpired) window.checkQuickAdjustExpired();
+        if (window.checkQuickAdjustInactive) window.checkQuickAdjustInactive();
         
         // Auto-handle deprovision/unpair callback
         const urlParams = new URLSearchParams(window.location.search);

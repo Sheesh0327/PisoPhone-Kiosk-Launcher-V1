@@ -131,6 +131,19 @@ class KioskHttpServer(
             Log.w(TAG, "Rejected unauthenticated request to protected endpoint: $uri")
             return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Encrypted payload required")
         }
+
+        val hmac = params["hmac"]
+        if (hmac.isNullOrBlank()) {
+            Log.w(TAG, "Rejected request without HMAC signature: $uri")
+            return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "HMAC signature required for integrity")
+        }
+
+        val expectedHmac = KioskSecurity.calculateHmac(payload, secretKey)
+        if (!KioskSecurity.constantTimeEquals(hmac.trim().lowercase(), expectedHmac.trim().lowercase())) {
+            Log.w(TAG, "Rejected payload with invalid HMAC signature: $uri")
+            return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "HMAC verification failed")
+        }
+
         val decryptedStr = KioskSecurity.decrypt(payload, secretKey)
         if (decryptedStr.isBlank()) {
             Log.w(TAG, "Rejected payload with invalid AES key or corrupted signature: $uri")

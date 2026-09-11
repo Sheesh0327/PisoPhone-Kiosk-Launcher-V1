@@ -192,7 +192,7 @@ class Esp32ConnectionManager(
                                         val errorMsg = if (json.has("message") && json.optString("message").isNotBlank()) {
                                             json.optString("message")
                                         } else {
-                                            json.optString("error", "Please add credits to pair device to ESP32.")
+                                            json.optString("error", "Please activate device slot on ESP32 Portal.")
                                         }
 
                                         if (isExpired) {
@@ -375,7 +375,7 @@ class Esp32ConnectionManager(
                     }
                 } else if (code == 403 || code == 423 || msg.contains("SLOT_EXPIRED", ignoreCase = true) || msg.contains("423", ignoreCase = true)) {
                     Log.e(TAG, "Slot is EXPIRED on ESP32 (HTTP $code). Enforcing lockdown.")
-                    delegate.onSlotLockdown("Please add credits to pair device to ESP32.", 0, 0L)
+                    delegate.onSlotLockdown("Please activate device slot on ESP32 Portal.", 0, 0L)
                 } else {
                     Log.w(TAG, "WebSocket arming failed (HTTP $code) - letting heartbeat loop manage connectivity")
                 }
