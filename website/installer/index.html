@@ -81,11 +81,21 @@
             </ul>
         </div>
 
-        <!-- Primary Action Button -->
-        <div class="space-y-3">
+        <!-- Primary Action & Fallback Buttons -->
+        <div class="space-y-2.5">
             <button id="installAppBtn" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-4 px-6 rounded-xl transition-all duration-300 shadow-lg text-sm flex items-center justify-center gap-2.5 pulse-btn btn-glow cursor-pointer">
                 🚀 Start 1-Click Install & Pair
             </button>
+            <div class="flex items-center justify-between text-[11px] text-slate-400 px-1 pt-1">
+                <span>Or select custom file:</span>
+                <label for="localApkInput" class="text-emerald-400 hover:text-emerald-300 cursor-pointer font-bold underline flex items-center gap-1">
+                    📁 Select Local .APK File
+                </label>
+                <input type="file" id="localApkInput" accept=".apk" class="hidden">
+            </div>
+            <div id="localApkStatus" class="hidden text-[11px] text-emerald-300 font-semibold bg-emerald-950/60 border border-emerald-500/30 px-3 py-1.5 rounded-lg text-center">
+                ✅ Custom APK loaded
+            </div>
         </div>
 
         <!-- Installation Progress Logs -->
@@ -149,14 +159,46 @@
 
             const candidateApkUrls = [
                 '../update/app-release.apk',
+                '../app-release.apk',
+                'update/app-release.apk',
+                'app-release.apk',
                 window.location.origin + '/update/app-release.apk',
+                window.location.origin + '/app-release.apk',
                 'https://pisophone.pages.dev/update/app-release.apk',
-                'https://raw.githubusercontent.com/Sheesh0327/PisoPhone-Kiosk-Launcher-V1/main/website/update/app-release.apk'
+                'https://pisophone.pages.dev/app-release.apk',
+                'https://raw.githubusercontent.com/Sheesh0327/PisoPhone-Kiosk-Launcher-V1/main/website/update/app-release.apk',
+                'https://raw.githubusercontent.com/Sheesh0327/PisoPhone-Kiosk-Launcher-V1/main/website/app-release.apk'
             ];
 
             const installBtn = document.getElementById('installAppBtn');
             const installLogContainer = document.getElementById('installLogContainer');
             const installLog = document.getElementById('installLog');
+            const localApkInput = document.getElementById('localApkInput');
+            const localApkStatus = document.getElementById('localApkStatus');
+
+            if (localApkInput) {
+                localApkInput.addEventListener('change', async (e) => {
+                    const file = e.target.files && e.target.files[0];
+                    if (!file) return;
+                    try {
+                        const buffer = await file.arrayBuffer();
+                        const bytes = new Uint8Array(buffer);
+                        if (bytes.length < 100000 || bytes[0] !== 0x50 || bytes[1] !== 0x4B || bytes[2] !== 0x03 || bytes[3] !== 0x04) {
+                            alert("Selected file is not a valid Android APK package.");
+                            return;
+                        }
+                        if (window.webADB) {
+                            window.webADB.setCachedApkBytes(bytes);
+                            if (localApkStatus) {
+                                localApkStatus.textContent = `✅ Custom APK loaded: ${file.name} (${(bytes.length / (1024 * 1024)).toFixed(2)} MB)`;
+                                localApkStatus.classList.remove('hidden');
+                            }
+                        }
+                    } catch (err) {
+                        alert("Failed to load local APK file: " + err.message);
+                    }
+                });
+            }
 
             function logInstall(msg) {
                 installLogContainer.classList.remove('hidden');
