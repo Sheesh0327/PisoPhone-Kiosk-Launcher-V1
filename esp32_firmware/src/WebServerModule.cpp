@@ -81,25 +81,6 @@ void setupWebServer() {
         webServer.send(200, "application/json", "{\"status\":\"ok\",\"relay_pin\":" + String(relayPin) + ",\"active_low\":" + String(relayActiveLow ? 1 : 0) + ",\"mode\":" + String(relayMode) + "}");
     });
     
-    webServer.on("/api/disarm", HTTP_ANY, []() {
-        String reqDevId = webServer.hasArg("device_id") ? webServer.arg("device_id") : "";
-        Serial.printf("[⚡ HTTP] Explicit disarm requested (device_id='%s', currently armed='%s')\n", reqDevId.c_str(), armedIp.c_str());
-        if (isWsConnected) {
-            wsClient.stop();
-            isWsConnected = false;
-        }
-        if (armedIp.length() > 0) {
-            lastArmedDeviceId = armedIp;
-            lastArmedIp = getIpFromDeviceId(armedIp);
-            lastArmedTimeMs = millis();
-        }
-        armedIp = "";
-        armedUntil = 0;
-        sessionStartTime = 0;
-        processRelayState();
-        webServer.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"disarmed\"}");
-    });
-    
     // Port 80: Web OTA Firmware Update Endpoints
     webServer.on("/update", HTTP_GET, handleOtaForm);
     webServer.on("/update", HTTP_POST, []() {

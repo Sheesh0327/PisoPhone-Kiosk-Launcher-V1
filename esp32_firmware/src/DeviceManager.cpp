@@ -179,8 +179,9 @@ String getDeviceNameByIpOrId(String reqIp, String devId) {
             DeviceConfig cfg;
             if (parseDeviceEntry(entry, cfg)) {
                 if ((devId.length() > 0 && cfg.id == devId) || (reqIp.length() > 0 && cfg.ip == reqIp)) {
-                    int sIdx = findSlotIndexForDevice(cfg.id, cfg.ip);
-                    if (sIdx >= 0) return "PisoPhone " + String(licenseSlots[sIdx].slotNum);
+                    if (cfg.name.length() > 0 && cfg.name != devId && cfg.name.indexOf(devId) == -1) {
+                        return cfg.name;
+                    }
                     return "PisoPhone " + String(devNum);
                 }
             }

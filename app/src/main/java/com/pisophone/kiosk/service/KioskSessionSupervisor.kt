@@ -55,7 +55,7 @@ class KioskSessionSupervisor(
                         if (stateManager.paymentTimeout.value > 0) {
                             stateManager.paymentTimeout.value -= 1
                         }
-                        if (stateManager.paymentTimeout.value <= 0) {
+                        if (stateManager.paymentTimeout.value == 0) {
                             if (stateManager.coinsInserted.value > 0) {
                                 onFinishPayment()
                             } else {

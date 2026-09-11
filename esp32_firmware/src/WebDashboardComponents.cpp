@@ -196,8 +196,8 @@ String renderLicenseSlotsHtml() {
             String devId = licenseSlots[i].deviceId;
             String ip = licenseSlots[i].ip;
             bool isBound = (devId.length() > 0);
-            String fullSlotName = isBound ? ("PisoPhone " + String(sNum)) : ("Slot #" + String(sNum));
-            String shortName = isBound ? ("PisoPhone " + String(sNum)) : ("Empty #" + String(sNum));
+            String fullSlotName = isBound ? (licenseSlots[i].name.length() > 0 ? licenseSlots[i].name : ("PisoPhone Slot #" + String(sNum))) : ("Slot #" + String(sNum));
+            String shortName = isBound ? (licenseSlots[i].name.length() > 0 ? licenseSlots[i].name : ("PisoPhone #" + String(sNum))) : ("Empty #" + String(sNum));
             
             bool isActive = isSlotActive(i);
 

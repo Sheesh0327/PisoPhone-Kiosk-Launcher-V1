@@ -265,31 +265,22 @@ class Esp32ConnectionManager(
     fun closeSession(sendUnarmToEsp: Boolean = false) {
         val ws = activeWebSocket
         activeWebSocket = null
-        val ip = esp32Ip ?: KioskSecurity.getConfiguredEsp32Ip(context).takeIf { it.isNotBlank() } ?: delegate.getDeviceId()
-        val devId = delegate.getDeviceId()
-
         if (ws != null) {
             if (sendUnarmToEsp) {
                 try {
-                    ws.send("DISARM")
                     ws.send("DONE")
                 } catch (_: Exception) {}
-            }
-            try {
-                ws.close(1000, "Session closed")
-            } catch (_: Exception) {}
-        }
-
-        if (sendUnarmToEsp && !ip.isNullOrBlank()) {
-            scope.launch(Dispatchers.IO) {
-                try {
-                    val disarmUrl = "http://$ip:80/api/disarm?device_id=$devId"
-                    val req = Request.Builder().url(disarmUrl).get().build()
-                    okHttpClient.newCall(req).execute().close()
-                    Log.i(TAG, "[⚡ DISARM] Disarm signal sent to ESP32: $disarmUrl")
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to send HTTP disarm to ESP32: ${e.message}")
+                // Give a brief 500ms window for the ESP32 to drain any active pulse train responses
+                scope.launch(Dispatchers.IO) {
+                    try {
+                        kotlinx.coroutines.delay(500)
+                        ws.close(1000, "Session closed")
+                    } catch (_: Exception) {}
                 }
+            } else {
+                try {
+                    ws.close(1000, "Session closed")
+                } catch (_: Exception) {}
             }
         }
     }

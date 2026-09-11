@@ -31,7 +31,7 @@ void handlePortalRoot() {
         int slot = webServer.hasArg("slot") ? webServer.arg("slot").toInt() : 0;
         String id = webServer.hasArg("id") ? webServer.arg("id") : "";
         String ip = webServer.hasArg("ip") ? webServer.arg("ip") : "";
-        String name = "PisoPhone " + String(slot);
+        String name = webServer.hasArg("name") ? webServer.arg("name") : ("PisoPhone " + String(slot));
 
         if (slot >= 1 && slot <= maxLicensedSlots && id.length() > 0) {
             bool res = pairDeviceToSlot(slot, id, ip, name);
@@ -244,14 +244,10 @@ void handleSave() {
             if (parseDeviceEntry(entry, cfg)) {
                 int slotIdx = findSlotIndexForDevice(cfg.id, cfg.ip);
                 if (slotIdx >= 0 && cfg.ip.length() > 0 && cfg.ip != "127.0.0.1") {
-                    int sNum = licenseSlots[slotIdx].slotNum;
-                    String sName = "PisoPhone " + String(sNum);
-                    String configParams = "price=" + String(coinPrice) + 
-                                          "&minutes=" + String(minutesPerCoin) + 
-                                          "&admin_pin=" + webPassword + 
-                                          "&slot=" + String(sNum) + 
-                                          "&slot_num=" + String(sNum) + 
-                                          "&device_name=" + urlEncode(sName);
+                    String configParams = "price=" + String(coinPrice) + "&minutes=" + String(minutesPerCoin) + "&admin_pin=" + webPassword;
+                    if (cfg.name.length() > 0) {
+                        configParams += "&device_name=" + urlEncode(cfg.name);
+                    }
                     sendAuthenticated(cfg.ip, targetPort, "/config", "/challenge", configParams, 1000);
                 }
             }

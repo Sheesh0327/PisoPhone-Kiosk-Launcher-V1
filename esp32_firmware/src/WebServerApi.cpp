@@ -135,7 +135,7 @@ void handleApiSlotPair() {
     int slot = webServer.hasArg("slot") ? webServer.arg("slot").toInt() : 0;
     String id = webServer.hasArg("id") ? webServer.arg("id") : "";
     String ip = webServer.hasArg("ip") ? webServer.arg("ip") : "";
-    String name = "PisoPhone " + String(slot);
+    String name = webServer.hasArg("name") ? webServer.arg("name") : "";
 
     if (slot < 1 || slot > maxLicensedSlots || id.length() == 0) {
         webServer.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid slot or device ID\"}");
@@ -230,7 +230,10 @@ void handleApiStatus() {
         int sNum = licenseSlots[i].slotNum;
         String devId = licenseSlots[i].deviceId;
         String ip = licenseSlots[i].ip;
-        String name = "PisoPhone " + String(sNum);
+        String name = licenseSlots[i].name.length() > 0 ? licenseSlots[i].name : ("PisoPhone " + String(sNum));
+        if (name == devId || name.startsWith("Terminal") || (devId.length() > 0 && name.indexOf(devId) != -1)) {
+            name = "PisoPhone " + String(sNum);
+        }
         bool isBound = (devId.length() > 0);
         
         int rem = -1;

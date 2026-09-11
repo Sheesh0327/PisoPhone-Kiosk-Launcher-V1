@@ -177,7 +177,6 @@ bool parseDeviceEntry(String entry, DeviceConfig& out) {
 void syncAndroidIpsFromSlots() {
     String newIps = "";
     for (int i = 0; i < maxLicensedSlots; i++) {
-        licenseSlots[i].name = "PisoPhone " + String(licenseSlots[i].slotNum);
         if (licenseSlots[i].deviceId.length() > 0 && licenseSlots[i].ip.length() > 0) {
             if (newIps.length() > 0) newIps += ",";
             newIps += licenseSlots[i].deviceId + "|" + licenseSlots[i].ip + "|" + licenseSlots[i].name;
@@ -192,7 +191,6 @@ void saveSlotLicenses() {
     prefs.putBool("licensed", is_licensed);
     String raw = "";
     for (int i = 0; i < maxLicensedSlots; i++) {
-        licenseSlots[i].name = "PisoPhone " + String(licenseSlots[i].slotNum);
         if (i > 0) raw += ";";
         raw += String(licenseSlots[i].slotNum) + "|" +
                licenseSlots[i].deviceId + "|" +
@@ -242,7 +240,7 @@ void loadSlotLicenses() {
                         licenseSlots[idx].slotNum = sNum;
                         licenseSlots[idx].deviceId = item.substring(p1 + 1, p2);
                         licenseSlots[idx].ip = item.substring(p2 + 1, p3);
-                        licenseSlots[idx].name = "PisoPhone " + String(sNum);
+                        licenseSlots[idx].name = item.substring(p3 + 1, (p4 != -1) ? p4 : item.length());
                         
                         if (p4 != -1) {
                             licenseSlots[idx].active = (idx < maxLicensedSlots) && (item.substring(p4 + 1) == "1");
@@ -271,7 +269,7 @@ void loadSlotLicenses() {
                     if (parseDeviceEntry(entry, cfg)) {
                         licenseSlots[sIdx].deviceId = cfg.id;
                         licenseSlots[sIdx].ip = cfg.ip;
-                        licenseSlots[sIdx].name = "PisoPhone " + String(sIdx + 1);
+                        licenseSlots[sIdx].name = cfg.name;
                         licenseSlots[sIdx].active = true;
                         sIdx++;
                     }
