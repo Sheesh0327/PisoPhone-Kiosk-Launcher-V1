@@ -1,4 +1,4 @@
-name: Build and Release APK
+name: Build and Deploy APK to Website
 
 on:
   push:
@@ -9,11 +9,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write # Required to create a GitHub Release
+  contents: write # Required to push the APK to the website directory
 
 jobs:
-  build-and-release:
-    name: Build and Release APK
+  build-and-deploy:
+    name: Build APK and Push to Website
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -52,7 +52,7 @@ jobs:
         if: always()
         run: rm -f /tmp/release-keystore.jks
 
-      - name: Copy APK to website directory and commit
+      - name: Push APK directly to website directory
         run: |
           if [ -f "app/build/outputs/apk/release/app-release.apk" ]; then
             cp app/build/outputs/apk/release/app-release.apk website/app-release.apk
@@ -69,23 +69,6 @@ jobs:
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add -f website/app-release.apk
           # Only commit if there are changes to avoid failing the workflow
-          git diff --staged --quiet || git commit -m "chore: auto-update APK in website directory"
+          git diff --staged --quiet || git commit -m "chore: auto-update APK in website directory [skip ci]"
           git push
 
-      - name: Publish Versioned and Rolling Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION_TAG="v1.0.${{ github.run_number }}"
-          
-          # Create a versioned release (so we have rollback points)
-          gh release create "$VERSION_TAG" website/app-release.apk \
-            --title "Release $VERSION_TAG" \
-            --notes "Automated versioned release from the main branch."
-            
-          # Update the 'latest' rolling release
-          gh release delete latest --cleanup-tag -y || true
-          
-          gh release create latest website/app-release.apk \
-            --title "Latest Android Build" \
-            --notes "Automated rolling release. See $VERSION_TAG for the specific version."
