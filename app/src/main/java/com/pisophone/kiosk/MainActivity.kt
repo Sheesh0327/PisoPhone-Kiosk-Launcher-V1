@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Log
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -36,6 +37,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
+    companion object {
+        private const val TAG = "MainActivity"
+    }
+
     private var appsList by mutableStateOf<List<AppInfo>>(emptyList())
     private var hasOverlayPermission by mutableStateOf(false)
     private var isLockTaskActive by mutableStateOf(false)
@@ -48,14 +53,24 @@ class MainActivity : ComponentActivity() {
 
     private fun checkDeviceOwner() {
         val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as? android.app.admin.DevicePolicyManager
-        isDeviceOwner = dpm?.isDeviceOwnerApp(packageName) == true
+        val isOwner = dpm?.isDeviceOwnerApp(packageName) == true
+        isDeviceOwner = isOwner
         val fullySetup = isFullySetup()
-        if (isDeviceOwner && fullySetup) {
-            if (!strictPoliciesApplied) {
-                KioskSecurity.applyStrictKioskPolicies(this)
-                strictPoliciesApplied = true
+
+        if (isOwner && fullySetup) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                if (!strictPoliciesApplied) {
+                    strictPoliciesApplied = true
+                    try {
+                        KioskSecurity.applyStrictKioskPolicies(applicationContext)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error applying kiosk policies in background: ${e.message}")
+                    }
+                }
+                withContext(Dispatchers.Main) {
+                    tryEnableLockTaskMode()
+                }
             }
-            tryEnableLockTaskMode()
         }
         if (fullySetup) {
             checkOverlayPermission()

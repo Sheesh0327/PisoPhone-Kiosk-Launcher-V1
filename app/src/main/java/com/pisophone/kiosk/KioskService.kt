@@ -14,15 +14,15 @@ import android.util.Log
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.pisophone.kiosk.audio.KioskAudioManager
-import com.pisophone.kiosk.network.Esp32ConnectionDelegate
 import com.pisophone.kiosk.network.Esp32ConnectionManager
 import com.pisophone.kiosk.overlay.KioskOverlay
 import com.pisophone.kiosk.receiver.KioskWatchdogReceiver
-import com.pisophone.kiosk.security.KioskSecurity
 import com.pisophone.kiosk.security.KioskActivationManager
+import com.pisophone.kiosk.security.KioskSecurity
 import com.pisophone.kiosk.server.KioskHttpServer
-import com.pisophone.kiosk.server.KioskServerDelegate
 import com.pisophone.kiosk.service.CoinProcessor
+import com.pisophone.kiosk.service.KioskEsp32Coordinator
+import com.pisophone.kiosk.service.KioskServerCoordinator
 import com.pisophone.kiosk.service.KioskSessionSupervisor
 import com.pisophone.kiosk.service.KioskStateManager
 import com.pisophone.kiosk.system.KioskSystemMonitor
@@ -37,8 +37,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
-import java.io.File
 
 class KioskService : Service() {
     companion object {
@@ -197,7 +195,7 @@ class KioskService : Service() {
     }
 
     fun performAdminBypass(durationSeconds: Int = 900) {
-        if (!com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(this)) {
+        if (!KioskActivationManager.isAppAllowedToRun(this)) {
             Log.w(TAG, "Admin bypass rejected: Device is not provisioned.")
             Handler(Looper.getMainLooper()).post {
                 Toast.makeText(this, "⚠️ Bypass Unavailable: Device requires provisioning.", Toast.LENGTH_LONG).show()
@@ -235,7 +233,7 @@ class KioskService : Service() {
             .setContentText("Monitoring coin slot on port 8080")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .build()
-            
+
         if (android.os.Build.VERSION.SDK_INT >= 34) {
             startForeground(1, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
@@ -312,134 +310,28 @@ class KioskService : Service() {
             }
         )
 
+        val esp32Coordinator = KioskEsp32Coordinator(
+            context = this,
+            stateManager = stateManager,
+            armingTimeoutSeconds = ARMING_TIMEOUT_SECONDS,
+            getSecretKey = { getSecretKey() },
+            getRealTimeBatteryInfo = { getRealTimeBatteryInfo() },
+            onAddCoinTime = { seconds, source, txId, amount ->
+                addTimeFromMaster(seconds, source, txId, amount)
+            },
+            onSlotBusyTriggered = { triggerSlotBusy() }
+        )
+
         esp32Manager = Esp32ConnectionManager(
             context = this,
             scope = scope,
-            delegate = object : Esp32ConnectionDelegate {
-                override fun getDeviceId(): String = stateManager.deviceId.value
-                override fun getSecretKey(): String = this@KioskService.getSecretKey()
-                override fun getAppState(): Int = stateManager.appState.value
-                override fun getSessionTimeRemaining(): Int = stateManager.sessionTimeRemaining.value
-                override fun getRealTimeBatteryInfo(): Pair<Int, Boolean> = this@KioskService.getRealTimeBatteryInfo()
-                
-                override fun onEsp32Discovered(ip: String) {
-                    stateManager.esp32Ip = ip
-                    stateManager.isEsp32Online.value = true
-                    stateManager.saveState()
-                }
-
-                override fun onOnlineStatusChanged(isOnline: Boolean, mac: String?) {
-                    stateManager.isEsp32Online.value = isOnline
-                    if (!mac.isNullOrBlank()) stateManager.esp32MacAddress.value = mac
-                }
-
-                override fun onConfigSynced(price: Double?, minutes: Int?, alias: String?, adminPin: String?, slotNum: Int?) {
-                    price?.let { stateManager.pricePerCoin.value = it }
-                    minutes?.let { stateManager.minutesPerCoin.value = it }
-                    val effectiveSlot = if (slotNum != null && slotNum > 0) slotNum else stateManager.slotNumber.value
-                    if (effectiveSlot > 0) {
-                        stateManager.slotNumber.value = effectiveSlot
-                        KioskSecurity.setAssignedBoxSlot(applicationContext, effectiveSlot)
-                    }
-                    val devId = stateManager.deviceId.value
-                    if (!alias.isNullOrBlank()) {
-                        val cleanAlias = if (alias == devId || (devId.isNotBlank() && alias.contains(devId)) || alias.startsWith("Terminal")) {
-                            if (effectiveSlot > 0) "PisoPhone $effectiveSlot" else "PisoPhone 1"
-                        } else {
-                            alias
-                        }
-                        val current = KioskSecurity.getDeviceAlias(this@KioskService)
-                        if (current != cleanAlias) {
-                            KioskSecurity.setDeviceAlias(this@KioskService, cleanAlias)
-                            Log.d(TAG, "[+] Synchronized device nickname from Master: $cleanAlias (Slot #$effectiveSlot)")
-                        }
-                    } else if (effectiveSlot > 0) {
-                        val current = KioskSecurity.getDeviceAlias(this@KioskService)
-                        if (current.isBlank() || current == devId || (devId.isNotBlank() && current.contains(devId)) || current.startsWith("Terminal")) {
-                            KioskSecurity.setDeviceAlias(this@KioskService, "PisoPhone $effectiveSlot")
-                        }
-                    }
-                    adminPin?.takeIf { it.isNotBlank() }?.let {
-                        val currentPin = KioskSecurity.getAdminPin(this@KioskService)
-                        if (currentPin != it) {
-                            KioskSecurity.setAdminPin(this@KioskService, it)
-                            Log.d(TAG, "[+] Synchronized Admin PIN from Master heartbeat: $it")
-                        }
-                    }
-                    stateManager.saveState()
-                }
-
-                override fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?) {
-                    if (!KioskActivationManager.isAppAllowedToRun(applicationContext)) {
-                        Log.e(TAG, "Device not provisioned: Discarding coin event.")
-                        return
-                    }
-                    if (txId.isNullOrBlank()) {
-                        Log.e(TAG, "Invalid coin message over WebSocket: missing transaction ID")
-                        return
-                    }
-
-                    Log.d(TAG, "Received validated coin via WebSocket: seconds=$seconds, amount=₱$amount, tx_id=$txId")
-                    addTimeFromMaster(seconds, "WebSocket Port 81", txId, amount)
-                    stateManager.paymentTimeout.value = ARMING_TIMEOUT_SECONDS
-                }
-
-                override fun onSlotBusy() {
-                    triggerSlotBusy()
-                    if (stateManager.appState.value == 3) {
-                        stateManager.appState.value = 2
-                    } else {
-                        stateManager.appState.value = 0
-                    }
-                }
-
-                override fun onArmSuccess() {
-                    stateManager.isEsp32Online.value = true
-                }
-
-                override fun onSlotWarning(daysLeft: Int, expiresAt: Long, slotNum: Int, message: String) {
-                    stateManager.slotWarningDaysLeft.value = daysLeft
-                    stateManager.slotExpiryMessage.value = message
-                    stateManager.slotNumber.value = slotNum
-                }
-
-                override fun onSlotLockdown(reason: String, slotNum: Int, expiresAt: Long) {
-                    stateManager.isSlotExpired.value = true
-                    stateManager.slotExpiryMessage.value = if (reason.isNotBlank()) reason else "Device activation required."
-                    stateManager.slotNumber.value = slotNum
-                    stateManager.slotWarningDaysLeft.value = 0
-                    stateManager.sessionTimeRemaining.value = 0
-                    stateManager.sessionExpiryDeadlineMs.value = 0L
-                    stateManager.appState.value = 0
-                    stateManager.saveState()
-                    KioskActivationManager.setSlotLockdown(applicationContext, true, reason, slotNum, expiresAt)
-                }
-
-                override fun onSlotRestored(slotNum: Int) {
-                    if (slotNum > 0) {
-                        stateManager.slotNumber.value = slotNum
-                        KioskSecurity.setAssignedBoxSlot(applicationContext, slotNum)
-                        val devId = stateManager.deviceId.value
-                        val current = KioskSecurity.getDeviceAlias(this@KioskService)
-                        if (current.isBlank() || current == devId || (devId.isNotBlank() && current.contains(devId)) || current.startsWith("Terminal")) {
-                            KioskSecurity.setDeviceAlias(this@KioskService, "PisoPhone $slotNum")
-                        }
-                    }
-                    if (stateManager.isSlotExpired.value) {
-                        stateManager.isSlotExpired.value = false
-                        stateManager.slotExpiryMessage.value = ""
-                        stateManager.slotWarningDaysLeft.value = null
-                        KioskActivationManager.setSlotLockdown(applicationContext, false, slotNum = if (slotNum > 0) slotNum else stateManager.slotNumber.value)
-                        Log.i(TAG, "Slot activated on ESP32: Ready for coins (Slot #$slotNum).")
-                    }
-                }
-            }
+            delegate = esp32Coordinator
         )
         if (!stateManager.esp32Ip.isNullOrBlank()) {
             esp32Manager.setEsp32Ip(stateManager.esp32Ip)
         }
 
-        if (!KioskActivationManager.isPairingCompleted(this) && !com.pisophone.kiosk.security.KioskSecurity.isProvisioned(this)) {
+        if (!KioskActivationManager.isPairingCompleted(this) && !KioskSecurity.isProvisioned(this)) {
             KioskActivationManager.startSetupWindow(this)
         }
         setupOverlay()
@@ -456,10 +348,30 @@ class KioskService : Service() {
                 }
             }
         }
-        startServer()
+
+        val serverCoordinator = KioskServerCoordinator(
+            context = this,
+            stateManager = stateManager,
+            coinEventRepo = coinEventRepo,
+            getSecretKey = { getSecretKey() },
+            getRealTimeBatteryInfo = { getRealTimeBatteryInfo() },
+            getAudioManager = { if (::audioManager.isInitialized) audioManager else null },
+            onAddCoinTime = { seconds, source, txId, amount ->
+                addTimeFromMaster(seconds, source, txId, amount)
+            }
+        )
+
+        try {
+            nanoServer = KioskHttpServer(this, SERVER_PORT, serverCoordinator)
+            nanoServer?.start(fi.iki.elonen.NanoHTTPD.SOCKET_READ_TIMEOUT, false)
+            Log.d(TAG, "NanoHTTPD Server listening on port $SERVER_PORT")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start NanoHTTPD server: ${e.message}")
+        }
+
         esp32Manager.triggerCandidateDiscovery(stateManager.deviceIp.value)
         esp32Manager.startHeartbeatLoop { stateManager.deviceIp.value }
-        
+
         supervisor = KioskSessionSupervisor(
             context = this,
             scope = scope,
@@ -497,8 +409,8 @@ class KioskService : Service() {
         }
 
         scope.launch {
-            com.pisophone.kiosk.security.KioskActivationManager.activationUpdateVersion.collect {
-                val isSetup = com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(this@KioskService)
+            KioskActivationManager.activationUpdateVersion.collect {
+                val isSetup = KioskActivationManager.isAppAllowedToRun(this@KioskService)
                 if (isSetup && overlay == null) {
                     withContext(Dispatchers.Main) {
                         setupOverlay()
@@ -529,198 +441,6 @@ class KioskService : Service() {
 
     fun probeEsp32Connection(ip: String): Boolean {
         return if (::esp32Manager.isInitialized) esp32Manager.probeEsp32Connection(ip) else false
-    }
-
-    private fun startServer() {
-        try {
-            val delegate = object : KioskServerDelegate {
-                override fun getSecretKey(): String = this@KioskService.getSecretKey()
-
-                override fun onHeartbeat(clientIp: String?) {
-                    stateManager.isEsp32Online.value = true
-                    if (!clientIp.isNullOrEmpty() && clientIp != "127.0.0.1") {
-                        if (stateManager.esp32Ip != clientIp) {
-                            stateManager.esp32Ip = clientIp
-                            stateManager.saveState()
-                        }
-                    }
-                }
-
-                override fun getStatusJson(): JSONObject {
-                    val (curBat, isChg) = getRealTimeBatteryInfo()
-                    return JSONObject().apply {
-                        put("device_id", stateManager.deviceId.value)
-                        put("alias", KioskSecurity.getDeviceAlias(applicationContext))
-                        put("state", stateManager.appState.value)
-                        put("time_remaining", stateManager.sessionTimeRemaining.value)
-                        put("battery", curBat)
-                        put("charging", isChg)
-                        put("online", true)
-                    }
-                }
-
-                override fun getSessionTimeRemaining(): Int = stateManager.sessionTimeRemaining.value
-                override fun getAppState(): Int = stateManager.appState.value
-
-                override fun getAuditEventsJson(): String {
-                    return kotlinx.coroutines.runBlocking {
-                        val events = coinEventRepo.getLatestEvents(100)
-                        val jsonArray = org.json.JSONArray()
-                        for (event in events) {
-                            val obj = org.json.JSONObject()
-                            obj.put("id", event.id)
-                            obj.put("txId", event.txId)
-                            obj.put("secondsAdded", event.secondsAdded)
-                            obj.put("source", event.source)
-                            obj.put("timestamp", event.timestamp)
-                            jsonArray.put(obj)
-                        }
-                        jsonArray.toString()
-                    }
-                }
-
-                override fun onCoinCredited(seconds: Int, source: String, txId: String?, amount: Double): Boolean {
-                    return addTimeFromMaster(seconds, source, txId, amount)
-                }
-
-                override fun onDeductTime(seconds: Int) {
-                    val now = System.currentTimeMillis()
-                    val curDeadline = stateManager.sessionExpiryDeadlineMs.value
-                    val newDeadline = if (curDeadline > now) {
-                        maxOf(0L, curDeadline + (seconds * 1000L))
-                    } else {
-                        0L
-                    }
-                    stateManager.sessionExpiryDeadlineMs.value = newDeadline
-                    val remaining = if (newDeadline > now) ((newDeadline - now) / 1000L).toInt() else 0
-                    stateManager.sessionTimeRemaining.value = remaining
-                    if (remaining <= 0) {
-                        stateManager.sessionTimeRemaining.value = 0
-                        stateManager.sessionExpiryDeadlineMs.value = 0L
-                        stateManager.appState.value = 0
-                    }
-                    stateManager.saveState()
-                    Handler(Looper.getMainLooper()).post {
-                        Toast.makeText(this@KioskService, "${-seconds / 60} minutes deducted!", Toast.LENGTH_SHORT).show()
-                    }
-                }
-
-                override fun onConfigUpdated(price: Double?, minutes: Int?, deviceName: String?, adminPin: String?, slotNum: Int?) {
-                    price?.let { stateManager.pricePerCoin.value = it }
-                    minutes?.let { stateManager.minutesPerCoin.value = it }
-                    val effectiveSlot = if (slotNum != null && slotNum > 0) slotNum else stateManager.slotNumber.value
-                    if (effectiveSlot > 0) {
-                        stateManager.slotNumber.value = effectiveSlot
-                        KioskSecurity.setAssignedBoxSlot(applicationContext, effectiveSlot)
-                    }
-                    val devId = stateManager.deviceId.value
-                    val cleanName = if (!deviceName.isNullOrBlank()) {
-                        val trimmed = deviceName.trim()
-                        if (trimmed == devId || (devId.isNotBlank() && trimmed.contains(devId)) || trimmed.startsWith("Terminal")) {
-                            if (effectiveSlot > 0) "PisoPhone $effectiveSlot" else "PisoPhone 1"
-                        } else {
-                            trimmed
-                        }
-                    } else if (effectiveSlot > 0) {
-                        "PisoPhone $effectiveSlot"
-                    } else null
-
-                    cleanName?.let {
-                        KioskSecurity.setDeviceAlias(applicationContext, it)
-                    }
-                    adminPin?.let { if (it.isNotBlank()) KioskSecurity.setAdminPin(applicationContext, it) }
-                    stateManager.saveState()
-                    val currentName = KioskSecurity.getDeviceAlias(applicationContext).takeIf { it.isNotBlank() } ?: "PisoPhone ${if (effectiveSlot > 0) effectiveSlot else 1}"
-                    Log.d(TAG, "Master pushed config update: Price=₱${stateManager.pricePerCoin.value}, Minutes=${stateManager.minutesPerCoin.value}m, DeviceName=$currentName, Pin=$adminPin, Slot=$effectiveSlot")
-                    Handler(Looper.getMainLooper()).post {
-                        Toast.makeText(this@KioskService, "Config Synced: $currentName", Toast.LENGTH_SHORT).show()
-                    }
-                }
-
-                override fun onTriggerAction(action: String, slotNum: Int?) {
-                    if (slotNum != null && slotNum > 0) {
-                        stateManager.slotNumber.value = slotNum
-                        KioskSecurity.setAssignedBoxSlot(applicationContext, slotNum)
-                        val devId = stateManager.deviceId.value
-                        val current = KioskSecurity.getDeviceAlias(this@KioskService)
-                        if (current.isBlank() || current == devId || (devId.isNotBlank() && current.contains(devId)) || current.startsWith("Terminal")) {
-                            KioskSecurity.setDeviceAlias(this@KioskService, "PisoPhone $slotNum")
-                        }
-                    }
-                    Handler(Looper.getMainLooper()).post {
-                        when (action) {
-                            "slot_lockdown" -> {
-                                stateManager.isSlotExpired.value = true
-                                stateManager.sessionTimeRemaining.value = 0
-                                stateManager.sessionExpiryDeadlineMs.value = 0L
-                                stateManager.appState.value = 0
-                                stateManager.saveState()
-                                com.pisophone.kiosk.security.KioskActivationManager.setSlotLockdown(
-                                    applicationContext,
-                                    locked = true,
-                                    reason = "Device activation required.",
-                                    slotNum = stateManager.slotNumber.value ?: 1,
-                                    expiryTs = 0L
-                                )
-                                Toast.makeText(this@KioskService, "Device activation required.", Toast.LENGTH_LONG).show()
-                            }
-                            "slot_restore", "slot_renew" -> {
-                                stateManager.isSlotExpired.value = false
-                                stateManager.slotExpiryMessage.value = ""
-                                stateManager.slotWarningDaysLeft.value = null
-                                com.pisophone.kiosk.security.KioskActivationManager.setSlotLockdown(
-                                    applicationContext,
-                                    false,
-                                    slotNum = stateManager.slotNumber.value ?: 1
-                                )
-                                stateManager.saveState()
-                                Toast.makeText(this@KioskService, "Device activated.", Toast.LENGTH_SHORT).show()
-                            }
-                            "vibrate" -> HardwareFeedback.triggerVibration(this@KioskService, longArrayOf(0, 1500))
-                            "sound" -> {
-                                audioManager?.playHighBatteryAttentionTone()
-                            }
-                            "flash" -> HardwareFeedback.triggerFlashlight(this@KioskService, 2000L)
-                            "enable_adb" -> {
-                                KioskSecurity.emergencyEnableUsbDebugging(applicationContext)
-                                Toast.makeText(this@KioskService, "⚡ Remote: USB Debugging Re-Enabled!", Toast.LENGTH_LONG).show()
-                            }
-                            "recovery", "emergency_recovery" -> {
-                                KioskSecurity.emergencyEnableUsbDebugging(applicationContext)
-                                KioskSecurity.emergencyExitKiosk(applicationContext)
-                                Toast.makeText(this@KioskService, "⚠️ Remote: Emergency Recovery & ADB Enabled!", Toast.LENGTH_LONG).show()
-                            }
-                            "exit_kiosk" -> {
-                                KioskSecurity.emergencyExitKiosk(applicationContext)
-                            }
-                            "deprovision" -> {
-                                KioskSecurity.emergencyClearDeviceOwner(applicationContext)
-                            }
-                            "factory_reset" -> {
-                                KioskSecurity.factoryResetDevice(applicationContext)
-                            }
-                        }
-                        Toast.makeText(this@KioskService, "Device Identified: ${KioskSecurity.getDeviceAlias(applicationContext)}", Toast.LENGTH_LONG).show()
-                    }
-                }
-
-                override fun getCrashLog(): String? {
-                    return try {
-                        val logDir = this@KioskService.getExternalFilesDir(null) ?: this@KioskService.filesDir
-                        val file = File(logDir, "crash.log")
-                        if (file.exists()) file.readText() else null
-                    } catch (_: Exception) {
-                        null
-                    }
-                }
-            }
-
-            nanoServer = KioskHttpServer(this, SERVER_PORT, delegate)
-            nanoServer?.start(fi.iki.elonen.NanoHTTPD.SOCKET_READ_TIMEOUT, false)
-            Log.d(TAG, "NanoHTTPD Server listening on port $SERVER_PORT")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start NanoHTTPD server: ${e.message}")
-        }
     }
 
     private fun closeSession(sendUnarmToEsp: Boolean = false) {
@@ -758,7 +478,7 @@ class KioskService : Service() {
         stateManager.coinsInserted.value = 0
         stateManager.saveState()
     }
-    
+
     private fun startHealthMonitor() {
         scope.launch(Dispatchers.Main) {
             while (isActive) {
@@ -795,13 +515,13 @@ class KioskService : Service() {
     }
 
     fun isOverlayHealthy(): Boolean {
-        val isFullySetup = com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(this)
+        val isFullySetup = KioskActivationManager.isAppAllowedToRun(this)
         if (!isFullySetup) return true
         return overlay != null && overlay?.isAttached() == true
     }
 
     fun setupOverlay() {
-        val isFullySetup = com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(this)
+        val isFullySetup = KioskActivationManager.isAppAllowedToRun(this)
         if (!isFullySetup) {
             Log.d(TAG, "Device not activated or fully setup. Lock screen overlay deferred.")
             return
@@ -830,9 +550,9 @@ class KioskService : Service() {
                         slotWarningDaysLeftFlow = stateManager.slotWarningDaysLeft,
                         isSlotExpiredFlow = stateManager.isSlotExpired,
                         slotExpiryReasonFlow = stateManager.slotExpiryMessage,
-                        onInsertCoinClick = { 
+                        onInsertCoinClick = {
                             if (stateManager.appState.value == 4) return@KioskOverlay
-                            if (stateManager.isSlotExpired.value || com.pisophone.kiosk.security.KioskActivationManager.isSlotLockedDown(this@KioskService)) {
+                            if (stateManager.isSlotExpired.value || KioskActivationManager.isSlotLockedDown(this@KioskService)) {
                                 Log.w(TAG, "Coin insertion blocked: Device not activated on ESP32.")
                                 Handler(Looper.getMainLooper()).post {
                                     Toast.makeText(applicationContext, "Device not activated. Please activate this device in the ESP32 Kiosk Manager.", Toast.LENGTH_LONG).show()
@@ -866,7 +586,7 @@ class KioskService : Service() {
             }
         }
     }
-    
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         KioskWatchdogReceiver.scheduleWatchdog(this)
 
@@ -891,11 +611,11 @@ class KioskService : Service() {
         }
         return START_STICKY
     }
-    
+
     override fun onBind(intent: Intent?): IBinder? = null
-    
+
     private fun createNotificationChannel() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 "kiosk_channel",
                 "Kiosk Service",
@@ -905,7 +625,7 @@ class KioskService : Service() {
             manager?.createNotificationChannel(channel)
         }
     }
-    
+
     override fun onDestroy() {
         super.onDestroy()
         isServiceRunning = false
