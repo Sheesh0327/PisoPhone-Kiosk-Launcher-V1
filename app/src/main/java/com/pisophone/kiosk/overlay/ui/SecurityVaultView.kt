@@ -173,7 +173,7 @@ fun SecurityVaultView(
                         is KioskUpdateManager.UpdateState.Idle -> {
                             Button(
                                 onClick = {
-                                    KioskUpdateManager.startUpdate(context, "https://pisophone.pages.dev/app-release.apk")
+                                    KioskUpdateManager.startUpdate(context, "https://pisophone.pages.dev/update/app-release.apk")
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
                                 shape = RoundedCornerShape(8.dp),

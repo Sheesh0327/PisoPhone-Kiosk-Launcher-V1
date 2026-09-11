@@ -179,8 +179,8 @@ String renderLicenseSlotsHtml() {
     html += "<span id=\"vault-dropdown-arrow\" style=\"font-size: 12px; color: var(--text-muted); transition: transform 0.2s ease;\">▼</span>";
     html += "</button>";
 
-    // Dropdown Content (Contains ALL Hardware Slots in a Square Grid Layout)
-    html += "<div id=\"installed-devices-dropdown-content\" style=\"display: none; margin-top: 14px; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px;\">";
+    // Dropdown Content (Contains ALL Hardware Slots in a Responsive Expanded Grid Layout)
+    html += "<div id=\"installed-devices-dropdown-content\" style=\"display: none; margin-top: 14px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px;\">";
 
     for (int i = 0; i < maxLicensedSlots; i++) {
         int sNum = licenseSlots[i].slotNum;
@@ -237,7 +237,7 @@ String renderLicenseSlotsHtml() {
         escapedName.replace("'", "\\'");
         escapedName.replace("\"", "&quot;");
 
-        html += "<div class=\"slot-square-card\" onclick=\"openSlotCreditModal(" + String(sNum) + ", '" + escapedName + "', '" + ip + "', '" + devId + "', '" + expInfo + "', " + String(expStatus) + ", " + (isBound ? "true" : "false") + ")\" style=\"aspect-ratio: 1 / 1; background: var(--input-bg); border: 1px solid " + borderCol + "; border-radius: 14px; padding: 12px; display: flex; flex-direction: column; align-items: center; justify-content: space-between; cursor: pointer; position: relative; transition: all 0.2s ease; box-shadow: 0 2px 8px rgba(0,0,0,0.04); text-align: center; user-select: none;\">";
+        html += "<div class=\"slot-square-card\" onclick=\"openSlotCreditModal(" + String(sNum) + ", '" + escapedName + "', '" + ip + "', '" + devId + "', '" + expInfo + "', " + String(expStatus) + ", " + (isBound ? "true" : "false") + ")\" style=\"background: var(--input-bg); border: 1px solid " + borderCol + "; border-radius: 14px; padding: 16px 12px; min-height: 140px; display: flex; flex-direction: column; align-items: center; justify-content: space-between; cursor: pointer; position: relative; transition: all 0.2s ease; box-shadow: 0 2px 8px rgba(0,0,0,0.04); text-align: center; user-select: none;\">";
         
         // Top Row: Slot # & Status Dot
         html += "<div style=\"display: flex; align-items: center; justify-content: space-between; width: 100%;\">";
@@ -1319,8 +1319,8 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                     <div class="card-header">
                         <h3 class="card-title">🚀 Firmware Upgrade</h3>
                     </div>
-                    <p style="font-size: 13px; color: var(--text-muted);">Upload a compiled binary to upgrade your Kiosk controller wirelessly without USB cables.</p>
-                    <a href="/update" class="btn btn-outline" style="width: 100%;">Upload Firmware (OTA) &rarr;</a>
+                    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">Upgrade your Kiosk controller wirelessly directly from <code>https://pisophone.pages.dev/update/firmware.bin</code> or upload a local .bin file.</p>
+                    <a href="/update" class="btn" style="width: 100%; text-align: center; justify-content: center; background: #10b981; color: #ffffff; font-weight: 700; border: none;">⚡ One-Click Cloud Firmware Update &rarr;</a>
                 </div>
 
                 <!-- System Recovery -->

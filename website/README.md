@@ -21,7 +21,10 @@ website/
 ├── sideload.html           # Direct Manual APK Sideload Utility
 ├── redirect.html           # Legacy payment route redirector
 │
-├── app-release.apk         # Latest pre-built Android APK binary for direct downloads
+├── update/                  # Update directory for compiled APK & Firmware binaries
+│   ├── app-release.apk     # Latest pre-built Android APK binary
+│   ├── firmware.bin        # Latest compiled ESP32 firmware binary
+│   └── firmware.json       # Version metadata for ESP32 Cloud OTA
 │
 ├── js/                     # Client-side JavaScript Modules & Vendor Bundles
 │   ├── auth.js             # Universal Google Auth & Operator Session Guard

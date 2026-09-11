@@ -52,23 +52,24 @@ jobs:
         if: always()
         run: rm -f /tmp/release-keystore.jks
 
-      - name: Push APK directly to website directory
+      - name: Push APK directly to website/update directory
         run: |
+          mkdir -p website/update
           if [ -f "app/build/outputs/apk/release/app-release.apk" ]; then
-            cp app/build/outputs/apk/release/app-release.apk website/app-release.apk
+            cp app/build/outputs/apk/release/app-release.apk website/update/app-release.apk
           else
             echo "Error: No release APK found in app/build/outputs/apk/release/"
             exit 1
           fi
           
           # Calculate file SHA-256 checksum for audit & logs
-          FILE_SHA256_HEX=$(sha256sum website/app-release.apk | awk '{print $1}')
+          FILE_SHA256_HEX=$(sha256sum website/update/app-release.apk | awk '{print $1}')
           echo "Generated APK SHA-256 (Hex): $FILE_SHA256_HEX"
           
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add -f website/app-release.apk
+          git add -f website/update/
           # Only commit if there are changes to avoid failing the workflow
-          git diff --staged --quiet || git commit -m "chore: auto-update APK in website directory [skip ci]"
+          git diff --staged --quiet || git commit -m "chore: auto-update APK and firmware binaries in website/update directory [skip ci]"
           git push
 

@@ -29,8 +29,8 @@ function renderSlotsGrid() {
     const container = document.getElementById('slots_container');
     container.innerHTML = ''; // clear loading state
 
-    // 12 dynamic slots matching licenseSlots definition
-    for (let i = 1; i <= 12; i++) {
+    // 5 dynamic slots matching licenseSlots definition
+    for (let i = 1; i <= 5; i++) {
         const div = document.createElement('div');
         div.className = 'slot-card';
         div.innerHTML = `

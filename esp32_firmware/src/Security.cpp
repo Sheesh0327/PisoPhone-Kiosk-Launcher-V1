@@ -66,7 +66,7 @@ bool applySlotToken(String token) {
 
     uint64_t newExp = strtoull(expStr.c_str(), NULL, 10);
 
-    maxLicensedSlots = max(maxLicensedSlots, newSlots);
+    maxLicensedSlots = min(max(maxLicensedSlots, newSlots), MAX_SUPPORTED_SLOTS);
     for (int i = 0; i < maxLicensedSlots; i++) {
         licenseSlots[i].active = true;
         if (licenseSlots[i].expiresAt < newExp) {

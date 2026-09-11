@@ -24,8 +24,8 @@ extern const int DEFAULT_DEBOUNCE;
 extern const int HARDWARE_RESET_PIN;
 extern const int UDP_DISCOVERY_PORT;
 
-#define MAX_SUPPORTED_SLOTS 10
-#define DEFAULT_MAX_SLOTS 10
+#define MAX_SUPPORTED_SLOTS 5
+#define DEFAULT_MAX_SLOTS 5
 #define MAX_TRACKED_DEVICES 16
 
 // ============================================================================

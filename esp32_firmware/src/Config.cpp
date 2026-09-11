@@ -212,7 +212,9 @@ void saveSlotLicenses() {
 
 void loadSlotLicenses() {
     prefs.begin("kiosk_cfg", false);
-    maxLicensedSlots = DEFAULT_MAX_SLOTS;
+    maxLicensedSlots = prefs.getInt("max_slots", DEFAULT_MAX_SLOTS);
+    if (maxLicensedSlots < 1) maxLicensedSlots = DEFAULT_MAX_SLOTS;
+    if (maxLicensedSlots > MAX_SUPPORTED_SLOTS) maxLicensedSlots = MAX_SUPPORTED_SLOTS;
 
     for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
         licenseSlots[i].slotNum = i + 1;
