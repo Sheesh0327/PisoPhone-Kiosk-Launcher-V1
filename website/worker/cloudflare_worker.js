@@ -272,13 +272,13 @@ export default {
 
     // Fast-path: APK & Firmware download redirects
     if (url.pathname === '/apk/latest.apk' || url.pathname === '/app-release.apk') {
-      return Response.redirect('https://pisophone.pages.dev/app-release.apk', 302);
+      return Response.redirect('https://pisophone.pages.dev/update/app-release.apk', 302);
     }
     if (url.pathname === '/firmware.bin' || url.pathname === '/esp32/firmware.bin') {
-      return Response.redirect('https://pisophone.pages.dev/firmware.bin', 302);
+      return Response.redirect('https://pisophone.pages.dev/update/firmware.bin', 302);
     }
     if (url.pathname === '/firmware.json' || url.pathname === '/esp32/firmware.json') {
-      return Response.redirect('https://pisophone.pages.dev/firmware.json', 302);
+      return Response.redirect('https://pisophone.pages.dev/update/firmware.json', 302);
     }
 
     // Early route filter: Drop bot probes/scanners instantly without touching KV or executing heavy logic
@@ -308,6 +308,9 @@ export default {
       '/firmware.json',
       '/esp32/firmware.bin',
       '/esp32/firmware.json',
+      '/update/app-release.apk',
+      '/update/firmware.bin',
+      '/update/firmware.json',
     ];
 
     if (!KNOWN_PATHS.includes(url.pathname)) {

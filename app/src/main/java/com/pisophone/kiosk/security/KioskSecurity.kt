@@ -155,7 +155,7 @@ object KioskSecurity {
     }
 
     fun getApkUpdateUrl(context: Context): String {
-        return "https://pisophone.pages.dev/app-release.apk"
+        return "https://pisophone.pages.dev/update/app-release.apk"
     }
 
     fun setApkUpdateUrl(context: Context, url: String) {

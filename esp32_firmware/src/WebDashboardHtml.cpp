@@ -1319,7 +1319,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                     <div class="card-header">
                         <h3 class="card-title">🚀 Firmware Upgrade</h3>
                     </div>
-                    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">Upgrade your Kiosk controller wirelessly directly from <code>https://pisophone.pages.dev/firmware.bin</code> or upload a local .bin file.</p>
+                    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">Upgrade your Kiosk controller wirelessly directly from the official Cloud update server (<code>https://pisophone.pages.dev/update/firmware.bin</code>).</p>
                     <a href="/update" class="btn" style="width: 100%; text-align: center; justify-content: center; background: #10b981; color: #ffffff; font-weight: 700; border: none;">⚡ One-Click Cloud Firmware Update &rarr;</a>
                 </div>
 
