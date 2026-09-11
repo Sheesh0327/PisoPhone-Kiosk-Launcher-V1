@@ -116,6 +116,8 @@ class MainActivity : ComponentActivity() {
             applyKioskWindowFlags()
             hideSystemBars()
             dismissKeyguard()
+        } else if (isFullySetup()) {
+            KioskSecurity.collapseStatusBar(this)
         }
     }
 
@@ -124,6 +126,9 @@ class MainActivity : ComponentActivity() {
         applyKioskWindowFlags()
         hideSystemBars()
         dismissKeyguard()
+        if (isFullySetup()) {
+            KioskSecurity.collapseStatusBar(this)
+        }
         checkOverlayPermission()
         loadApps()
         KioskWatchdogReceiver.scheduleWatchdog(this)

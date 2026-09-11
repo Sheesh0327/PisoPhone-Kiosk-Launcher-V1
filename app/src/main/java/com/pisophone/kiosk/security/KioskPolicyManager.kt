@@ -203,17 +203,14 @@ object KioskPolicyManager {
                 // 8. Auto-grant runtime permissions silently
                 autoGrantAllPermissions(context)
 
-                // 9. Force this app as the default persistent home launcher
-                try {
-                    val filter = IntentFilter(Intent.ACTION_MAIN).apply {
-                        addCategory(Intent.CATEGORY_HOME)
-                        addCategory(Intent.CATEGORY_DEFAULT)
+                // 9. Disable Notification Shade and Status Bar Expansion
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    try {
+                        val disabled = dpm.setStatusBarDisabled(componentName, true)
+                        Log.i(TAG, "DevicePolicyManager.setStatusBarDisabled(true) executed: $disabled")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to disable status bar via DPM: ${e.message}")
                     }
-                    val activity = ComponentName(context, MainActivity::class.java)
-                    dpm.addPersistentPreferredActivity(componentName, filter, activity)
-                    Log.i(TAG, "Successfully set as default persistent home launcher.")
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to set persistent preferred activity: ${e.message}")
                 }
 
                 Log.i(TAG, "Strict Kiosk device policies successfully applied.")
@@ -283,5 +280,37 @@ object KioskPolicyManager {
             Log.e(TAG, "Failed to turn screen off: ${e.message}")
             false
         }
+    }
+
+    /**
+     * Programmatically enable or disable the Android notification shade / status bar pull-down.
+     */
+    fun setStatusBarDisabled(context: Context, disabled: Boolean): Boolean {
+        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager ?: return false
+        val componentName = ComponentName(context, KioskDeviceAdminReceiver::class.java)
+        if (dpm.isDeviceOwnerApp(context.packageName) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            return try {
+                val res = dpm.setStatusBarDisabled(componentName, disabled)
+                Log.i(TAG, "setStatusBarDisabled($disabled) executed: $res")
+                res
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to setStatusBarDisabled($disabled): ${e.message}")
+                false
+            }
+        }
+        return false
+    }
+
+    /**
+     * Collapses notification shade and status bar panels as a secondary safeguard.
+     */
+    fun collapseStatusBar(context: Context) {
+        try {
+            @Suppress("WrongConstant")
+            val statusBarService = context.getSystemService("statusbar")
+            val statusBarManager = Class.forName("android.app.StatusBarManager")
+            val collapseMethod = statusBarManager.getMethod("collapsePanels")
+            collapseMethod.invoke(statusBarService)
+        } catch (_: Exception) {}
     }
 }

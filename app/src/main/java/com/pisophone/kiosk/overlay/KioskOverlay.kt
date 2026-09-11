@@ -311,6 +311,8 @@ class LockScreenOverlay(
                         or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                         or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                     )
+                } else {
+                    com.pisophone.kiosk.security.KioskSecurity.collapseStatusBar(context)
                 }
             }
 

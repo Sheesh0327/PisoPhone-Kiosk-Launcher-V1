@@ -543,6 +543,12 @@ object KioskSecurity {
     fun turnScreenOff(context: Context): Boolean =
         KioskPolicyManager.turnScreenOff(context)
 
+    fun setStatusBarDisabled(context: Context, disabled: Boolean): Boolean =
+        KioskPolicyManager.setStatusBarDisabled(context, disabled)
+
+    fun collapseStatusBar(context: Context) =
+        KioskPolicyManager.collapseStatusBar(context)
+
     // --- Delegated Recovery Methods ---
 
     fun isUsbDebuggingEnabled(context: Context): Boolean =
