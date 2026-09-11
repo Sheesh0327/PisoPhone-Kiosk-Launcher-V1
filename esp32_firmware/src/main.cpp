@@ -20,63 +20,9 @@ void setup() {
 
     Serial.println("\n--- HARDWARE-C3 Master Kiosk Controller ---");
 
-    // Load NVS Configuration
-    prefs.begin("kiosk_cfg", false);
-    is_licensed       = prefs.getBool("licensed", false);
-    wifiSsid          = prefs.getString("wifi_ssid", wifiSsid);
-    wifiPass          = prefs.getString("wifi_pass", wifiPass);
-    coinPin           = prefs.getInt("coin_pin", coinPin);
-    universalCoinPin  = prefs.getInt("u_coin_pin", universalCoinPin);
-    ledPin            = prefs.getInt("led_pin", ledPin);
-    ledActiveLow      = prefs.getBool("led_active_low", DEFAULT_LED_ACTIVE_LOW);
-    relayPin          = prefs.getInt("relay_pin", relayPin);
-    androidIps        = prefs.getString("ips", androidIps);
-
-    // Sanitize and purge any corrupted legacy entries on boot
-    String bootCleanIps = "";
-    int bootIdx = 0;
-    while (bootIdx < androidIps.length()) {
-        int comma = androidIps.indexOf(',', bootIdx);
-        if (comma == -1) comma = androidIps.length();
-        String entry = androidIps.substring(bootIdx, comma);
-        entry.trim();
-        if (entry.length() > 0) {
-            DeviceConfig cfg;
-            if (parseDeviceEntry(entry, cfg)) {
-                if (bootCleanIps.length() > 0) bootCleanIps += ",";
-                bootCleanIps += cfg.id + "|" + cfg.ip + "|" + cfg.name;
-            }
-        }
-        bootIdx = comma + 1;
-    }
-    androidIps = bootCleanIps;
-
-    loadSlotLicenses();
-
-    targetPort        = prefs.getInt("port", targetPort);
-    if (targetPort <= 0) targetPort = 8080;
+    // Load NVS Configuration & Lifetime Vault Revenue safely
+    loadAllConfig();
     lastWifiCheckTime = millis();
-    webPassword       = prefs.getString("admin_pw", webPassword);
-    coinPrice         = prefs.getFloat("price", coinPrice);
-    minutesPerCoin    = prefs.getInt("minutes", minutesPerCoin);
-    lockoutDebounceMs = prefs.getInt("debounce", lockoutDebounceMs);
-    relayActiveLow    = prefs.getBool("relay_active_low", false);
-    relayMode         = prefs.getInt("relay_mode", 1);
-    sharedSecret      = prefs.getString("shared_secret", sharedSecret);
-    p1Ip              = prefs.getString("p1", p1Ip);
-    p2Ip              = prefs.getString("p2", p2Ip);
-    matchMinutes      = prefs.getInt("match", matchMinutes);
-    totalCoinsLifetime = prefs.getULong("total_coins", 0);
-    if (prefs.isKey("total_earnings")) {
-        totalEarningsLifetime = prefs.getFloat("total_earnings", 0.0f);
-    } else {
-        totalEarningsLifetime = (float)totalCoinsLifetime * coinPrice;
-    }
-    lastSavedTotalCoins = totalCoinsLifetime;
-    lastSavedTotalEarnings = totalEarningsLifetime;
-    totalCoinsSession = 0;
-    totalEarningsSession = 0.0f;
-    prefs.end();
 
     // Initialize Dynamic Hardware Pins & Hardware Reset Pin (GPIO 2)
     pinMode(coinPin, INPUT_PULLUP);

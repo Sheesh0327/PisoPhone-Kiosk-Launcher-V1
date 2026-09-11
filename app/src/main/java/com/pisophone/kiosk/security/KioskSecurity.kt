@@ -592,8 +592,8 @@ object KioskSecurity {
         }
         if (slot > 0) {
             setAssignedBoxSlot(context, slot)
-        }
-        if (!name.isNullOrBlank()) {
+            setDeviceAlias(context, "PisoPhone $slot")
+        } else if (!name.isNullOrBlank()) {
             setDeviceAlias(context, name.trim())
         }
         Log.i(TAG, "[+] Successfully applied Direct Provisioning setup: MAC=$mac, IP=$ip, Slot=$slot, SecretConfigured=${!secret.isNullOrBlank()}")

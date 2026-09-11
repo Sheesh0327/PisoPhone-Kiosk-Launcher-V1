@@ -31,7 +31,7 @@ void handlePortalRoot() {
         int slot = webServer.hasArg("slot") ? webServer.arg("slot").toInt() : 0;
         String id = webServer.hasArg("id") ? webServer.arg("id") : "";
         String ip = webServer.hasArg("ip") ? webServer.arg("ip") : "";
-        String name = webServer.hasArg("name") ? webServer.arg("name") : ("PisoPhone " + String(slot));
+        String name = "PisoPhone " + String(slot);
 
         if (slot >= 1 && slot <= maxLicensedSlots && id.length() > 0) {
             bool res = pairDeviceToSlot(slot, id, ip, name);
@@ -126,6 +126,19 @@ void handleResetVault() {
 
 void handleSave() {
     if (!checkAuth()) return;
+
+    // Immediately flush any dirty revenue to NVS flash on manual save
+    if (revenueDirty || totalCoinsLifetime != lastSavedTotalCoins || totalEarningsLifetime != lastSavedTotalEarnings) {
+        prefs.begin("kiosk_cfg", false);
+        prefs.putULong("total_coins", totalCoinsLifetime);
+        prefs.putFloat("total_earnings", totalEarningsLifetime);
+        prefs.end();
+        lastSavedTotalCoins = totalCoinsLifetime;
+        lastSavedTotalEarnings = totalEarningsLifetime;
+        revenueDirty = false;
+        Serial.println("[💰 VAULT] Revenue counters flushed to NVS flash on config save.");
+    }
+
     prefs.begin("kiosk_cfg", false);
     if (webServer.hasArg("wifi_ssid")) { wifiSsid = webServer.arg("wifi_ssid"); prefs.putString("wifi_ssid", wifiSsid); }
     if (webServer.hasArg("wifi_pass")) { wifiPass = webServer.arg("wifi_pass"); prefs.putString("wifi_pass", wifiPass); }
@@ -231,10 +244,14 @@ void handleSave() {
             if (parseDeviceEntry(entry, cfg)) {
                 int slotIdx = findSlotIndexForDevice(cfg.id, cfg.ip);
                 if (slotIdx >= 0 && cfg.ip.length() > 0 && cfg.ip != "127.0.0.1") {
-                    String configParams = "price=" + String(coinPrice) + "&minutes=" + String(minutesPerCoin) + "&admin_pin=" + webPassword;
-                    if (cfg.name.length() > 0) {
-                        configParams += "&device_name=" + urlEncode(cfg.name);
-                    }
+                    int sNum = licenseSlots[slotIdx].slotNum;
+                    String sName = "PisoPhone " + String(sNum);
+                    String configParams = "price=" + String(coinPrice) + 
+                                          "&minutes=" + String(minutesPerCoin) + 
+                                          "&admin_pin=" + webPassword + 
+                                          "&slot=" + String(sNum) + 
+                                          "&slot_num=" + String(sNum) + 
+                                          "&device_name=" + urlEncode(sName);
                     sendAuthenticated(cfg.ip, targetPort, "/config", "/challenge", configParams, 1000);
                 }
             }

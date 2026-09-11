@@ -54,16 +54,19 @@ class KioskSessionSupervisor(
                     if (curState == 1 || curState == 3) {
                         if (stateManager.paymentTimeout.value > 0) {
                             stateManager.paymentTimeout.value -= 1
-                        } else if (stateManager.paymentTimeout.value == 0 && stateManager.coinsInserted.value > 0) {
-                            onFinishPayment()
-                        } else if (stateManager.paymentTimeout.value == 0 && stateManager.coinsInserted.value == 0) {
-                            onCloseSession(true)
-                            if (curState == 3) {
-                                stateManager.appState.value = 2
+                        }
+                        if (stateManager.paymentTimeout.value <= 0) {
+                            if (stateManager.coinsInserted.value > 0) {
+                                onFinishPayment()
                             } else {
-                                stateManager.appState.value = 0
+                                onCloseSession(true)
+                                if (curState == 3) {
+                                    stateManager.appState.value = 2
+                                } else {
+                                    stateManager.appState.value = 0
+                                }
+                                stateManager.saveState()
                             }
-                            stateManager.saveState()
                         }
                     }
                     

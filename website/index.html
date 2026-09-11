@@ -207,7 +207,7 @@
         const urlIp = urlParams.get('ip');
         const urlSlot = parseInt(urlParams.get('slot') || '1', 10);
         const urlSecret = urlParams.get('secret') || '';
-        const urlName = urlParams.get('name') || `PisoPhone Slot ${urlSlot}`;
+        const urlName = urlParams.get('name') || `PisoPhone ${urlSlot}`;
         const initialMode = (urlParams.get('mode') === 'deprovision' || urlParams.get('action') === 'deprovision') ? 'deprovision' : 'install';
 
         const restrictedView = document.getElementById('restrictedView');
@@ -367,7 +367,7 @@
 
                     // Redirect back to ESP32 local portal
                     setTimeout(() => {
-                        window.location.href = `http://${urlIp}/?action=pair&slot=${urlSlot}&id=${encodeURIComponent(serial)}&name=PisoPhone+Slot+${urlSlot}`;
+                        window.location.href = `http://${urlIp}/?action=pair&slot=${urlSlot}&id=${encodeURIComponent(serial)}&name=PisoPhone+${urlSlot}`;
                     }, 2500);
 
                 } catch (err) {

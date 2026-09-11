@@ -279,6 +279,7 @@ void processWebSocketServer() {
             armedIp = "";
             armedUntil = 0;
             sessionStartTime = 0;
+            processRelayState();
             return;
         }
         
@@ -286,11 +287,7 @@ void processWebSocketServer() {
 
         if (wsClient.available()) {
             String frameText = readWsText(wsClient);
-            if (frameText.length() > 0) {
-                // Any active frame or ping/pong keeps arming TTL refreshed
-                armedUntil = now + ARM_TTL;
-            }
-            if (frameText == "DONE" || frameText == "CLOSE") {
+            if (frameText == "DONE" || frameText == "CLOSE" || frameText == "DISARM") {
                 noInterrupts();
                 int currentPulses = isrUniversalPulseCount;
                 unsigned long lastPulse = isrLastPulseTimeMs;
@@ -298,10 +295,15 @@ void processWebSocketServer() {
 
                 // If coin pulses are actively in progress or arrived in the last 600ms, hold graceful close to deliver credit!
                 if (currentPulses > 0 || (now - lastPulse < 600 && lastPulse > 0)) {
-                    Serial.printf("[⚡ WS Port 81] 'DONE' received while coin pulses are active (%d pulses). Holding graceful close to finalize credit...\n", currentPulses);
+                    Serial.printf("[⚡ WS Port 81] '%s' received while coin pulses are active (%d pulses). Holding graceful close to finalize credit...\n", frameText.c_str(), currentPulses);
                     pendingWsGracefulClose = true;
                     pendingWsGracefulCloseUntil = now + 2000;
                     armedUntil = now + 3000; // Extend temporary guard so pulse train completes safely
+                    wsClient.stop();
+                    isWsConnected = false;
+                    return;
+                } else {
+                    Serial.printf("[⚡ WS Port 81] '%s' received. Disarming coinslot relay immediately.\n", frameText.c_str());
                     wsClient.stop();
                     isWsConnected = false;
                     if (armedIp.length() > 0) {
@@ -312,8 +314,12 @@ void processWebSocketServer() {
                     armedIp = "";
                     armedUntil = 0;
                     sessionStartTime = 0;
+                    processRelayState();
                     return;
                 }
+            } else if (frameText.length() > 0) {
+                // Any regular active frame or ping/pong keeps arming TTL refreshed
+                armedUntil = now + ARM_TTL;
             }
         } else {
             // Keep slot armed continuously while WebSocket client remains connected and session duration is valid

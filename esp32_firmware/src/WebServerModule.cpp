@@ -58,16 +58,18 @@ void setupWebServer() {
     webServer.on("/api/slots/cloud_sync", HTTP_POST, handleApiSlotCloudSync);
     
     webServer.on("/api/relay", HTTP_ANY, []() {
-        if (webServer.hasArg("invert")) {
-            relayActiveLow = (webServer.arg("invert") == "1" || webServer.arg("invert") == "true");
+        bool hasInvert = webServer.hasArg("invert");
+        bool hasMode = webServer.hasArg("mode");
+        if (hasInvert || hasMode) {
             prefs.begin("kiosk_cfg", false);
-            prefs.putBool("relay_active_low", relayActiveLow);
-            prefs.end();
-        }
-        if (webServer.hasArg("mode")) {
-            relayMode = webServer.arg("mode").toInt();
-            prefs.begin("kiosk_cfg", false);
-            prefs.putInt("relay_mode", relayMode);
+            if (hasInvert) {
+                relayActiveLow = (webServer.arg("invert") == "1" || webServer.arg("invert") == "true");
+                prefs.putBool("relay_active_low", relayActiveLow);
+            }
+            if (hasMode) {
+                relayMode = webServer.arg("mode").toInt();
+                prefs.putInt("relay_mode", relayMode);
+            }
             prefs.end();
         }
         if (webServer.hasArg("state")) {
@@ -77,6 +79,25 @@ void setupWebServer() {
             return;
         }
         webServer.send(200, "application/json", "{\"status\":\"ok\",\"relay_pin\":" + String(relayPin) + ",\"active_low\":" + String(relayActiveLow ? 1 : 0) + ",\"mode\":" + String(relayMode) + "}");
+    });
+    
+    webServer.on("/api/disarm", HTTP_ANY, []() {
+        String reqDevId = webServer.hasArg("device_id") ? webServer.arg("device_id") : "";
+        Serial.printf("[⚡ HTTP] Explicit disarm requested (device_id='%s', currently armed='%s')\n", reqDevId.c_str(), armedIp.c_str());
+        if (isWsConnected) {
+            wsClient.stop();
+            isWsConnected = false;
+        }
+        if (armedIp.length() > 0) {
+            lastArmedDeviceId = armedIp;
+            lastArmedIp = getIpFromDeviceId(armedIp);
+            lastArmedTimeMs = millis();
+        }
+        armedIp = "";
+        armedUntil = 0;
+        sessionStartTime = 0;
+        processRelayState();
+        webServer.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"disarmed\"}");
     });
     
     // Port 80: Web OTA Firmware Update Endpoints

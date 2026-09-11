@@ -136,6 +136,7 @@ int findSlotIndexForDevice(String devId, String ip);
 // ============================================================================
 // CONFIGURATION & TIME FUNCTIONS
 // ============================================================================
+void loadAllConfig();
 void loadSlotLicenses();
 void saveSlotLicenses();
 void syncAndroidIpsFromSlots();

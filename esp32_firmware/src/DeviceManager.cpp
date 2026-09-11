@@ -23,11 +23,7 @@ bool pairDeviceToSlot(int slotNum, String devId, String ip, String name) {
 
     licenseSlots[targetIdx].deviceId = devId;
     if (ip.length() > 0) licenseSlots[targetIdx].ip = ip;
-    String cleanName = name;
-    cleanName.trim();
-    if (cleanName.length() == 0 || cleanName == devId || cleanName.startsWith("Terminal") || cleanName.indexOf(devId) != -1) {
-        cleanName = "PisoPhone " + String(slotNum);
-    }
+    String cleanName = "PisoPhone " + String(slotNum);
     licenseSlots[targetIdx].name = cleanName;
     licenseSlots[targetIdx].active = true;
 
@@ -170,11 +166,6 @@ void updateDynamicDeviceList(String deviceId, String ip) {
 String getDeviceNameByIpOrId(String reqIp, String devId) {
     int slotIdx = findSlotIndexForDevice(devId, reqIp);
     if (slotIdx >= 0) {
-        String sName = licenseSlots[slotIdx].name;
-        sName.trim();
-        if (sName.length() > 0 && sName != devId && !sName.startsWith("Terminal") && (devId.length() == 0 || sName.indexOf(devId) == -1)) {
-            return sName;
-        }
         return "PisoPhone " + String(licenseSlots[slotIdx].slotNum);
     }
     int startIdx = 0;
@@ -188,9 +179,8 @@ String getDeviceNameByIpOrId(String reqIp, String devId) {
             DeviceConfig cfg;
             if (parseDeviceEntry(entry, cfg)) {
                 if ((devId.length() > 0 && cfg.id == devId) || (reqIp.length() > 0 && cfg.ip == reqIp)) {
-                    if (cfg.name.length() > 0 && cfg.name != devId && cfg.name.indexOf(devId) == -1) {
-                        return cfg.name;
-                    }
+                    int sIdx = findSlotIndexForDevice(cfg.id, cfg.ip);
+                    if (sIdx >= 0) return "PisoPhone " + String(licenseSlots[sIdx].slotNum);
                     return "PisoPhone " + String(devNum);
                 }
             }

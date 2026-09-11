@@ -177,6 +177,7 @@ bool parseDeviceEntry(String entry, DeviceConfig& out) {
 void syncAndroidIpsFromSlots() {
     String newIps = "";
     for (int i = 0; i < maxLicensedSlots; i++) {
+        licenseSlots[i].name = "PisoPhone " + String(licenseSlots[i].slotNum);
         if (licenseSlots[i].deviceId.length() > 0 && licenseSlots[i].ip.length() > 0) {
             if (newIps.length() > 0) newIps += ",";
             newIps += licenseSlots[i].deviceId + "|" + licenseSlots[i].ip + "|" + licenseSlots[i].name;
@@ -188,8 +189,10 @@ void syncAndroidIpsFromSlots() {
 void saveSlotLicenses() {
     prefs.begin("kiosk_cfg", false);
     prefs.putInt("max_slots", maxLicensedSlots);
+    prefs.putBool("licensed", is_licensed);
     String raw = "";
     for (int i = 0; i < maxLicensedSlots; i++) {
+        licenseSlots[i].name = "PisoPhone " + String(licenseSlots[i].slotNum);
         if (i > 0) raw += ";";
         raw += String(licenseSlots[i].slotNum) + "|" +
                licenseSlots[i].deviceId + "|" +
@@ -231,7 +234,6 @@ void loadSlotLicenses() {
                 int p2 = (p1 != -1) ? item.indexOf('|', p1 + 1) : -1;
                 int p3 = (p2 != -1) ? item.indexOf('|', p2 + 1) : -1;
                 int p4 = (p3 != -1) ? item.indexOf('|', p3 + 1) : -1;
-                int p5 = (p4 != -1) ? item.indexOf('|', p4 + 1) : -1;
 
                 if (p1 != -1 && p2 != -1 && p3 != -1) {
                     int sNum = item.substring(0, p1).toInt();
@@ -240,7 +242,7 @@ void loadSlotLicenses() {
                         licenseSlots[idx].slotNum = sNum;
                         licenseSlots[idx].deviceId = item.substring(p1 + 1, p2);
                         licenseSlots[idx].ip = item.substring(p2 + 1, p3);
-                        licenseSlots[idx].name = item.substring(p3 + 1, (p4 != -1) ? p4 : item.length());
+                        licenseSlots[idx].name = "PisoPhone " + String(sNum);
                         
                         if (p4 != -1) {
                             licenseSlots[idx].active = (idx < maxLicensedSlots) && (item.substring(p4 + 1) == "1");
@@ -253,9 +255,101 @@ void loadSlotLicenses() {
             startIdx = semi + 1;
             slotIdx++;
         }
+    } else {
+        // Fallback: If slots_data is empty, check legacy "ips" key so existing devices aren't lost
+        String legacyIps = prefs.getString("ips", "");
+        if (legacyIps.length() > 0) {
+            int startIdx = 0;
+            int sIdx = 0;
+            while (startIdx < legacyIps.length() && sIdx < maxLicensedSlots) {
+                int comma = legacyIps.indexOf(',', startIdx);
+                if (comma == -1) comma = legacyIps.length();
+                String entry = legacyIps.substring(startIdx, comma);
+                entry.trim();
+                if (entry.length() > 0) {
+                    DeviceConfig cfg;
+                    if (parseDeviceEntry(entry, cfg)) {
+                        licenseSlots[sIdx].deviceId = cfg.id;
+                        licenseSlots[sIdx].ip = cfg.ip;
+                        licenseSlots[sIdx].name = "PisoPhone " + String(sIdx + 1);
+                        licenseSlots[sIdx].active = true;
+                        sIdx++;
+                    }
+                }
+                startIdx = comma + 1;
+            }
+        }
     }
     prefs.end();
     syncAndroidIpsFromSlots();
+}
+
+void loadAllConfig() {
+    // 1. Load slot licenses and terminal allocations safely
+    loadSlotLicenses();
+
+    // 2. Open NVS for all kiosk configuration & lifetime vault revenue counters
+    prefs.begin("kiosk_cfg", false);
+    is_licensed       = prefs.getBool("licensed", (maxLicensedSlots > 1));
+    wifiSsid          = prefs.getString("wifi_ssid", wifiSsid);
+    wifiPass          = prefs.getString("wifi_pass", wifiPass);
+    coinPin           = prefs.getInt("coin_pin", coinPin);
+    universalCoinPin  = prefs.getInt("u_coin_pin", universalCoinPin);
+    ledPin            = prefs.getInt("led_pin", ledPin);
+    ledActiveLow      = prefs.getBool("led_active_low", DEFAULT_LED_ACTIVE_LOW);
+    relayPin          = prefs.getInt("relay_pin", relayPin);
+    
+    targetPort        = prefs.getInt("port", targetPort);
+    if (targetPort <= 0) targetPort = 8080;
+    
+    webPassword       = prefs.getString("admin_pw", webPassword);
+    coinPrice         = prefs.getFloat("price", coinPrice);
+    minutesPerCoin    = prefs.getInt("minutes", minutesPerCoin);
+    lockoutDebounceMs = prefs.getInt("debounce", lockoutDebounceMs);
+    relayActiveLow    = prefs.getBool("relay_active_low", false);
+    relayMode         = prefs.getInt("relay_mode", 1);
+    sharedSecret      = prefs.getString("shared_secret", sharedSecret);
+    p1Ip              = prefs.getString("p1", p1Ip);
+    p2Ip              = prefs.getString("p2", p2Ip);
+    matchMinutes      = prefs.getInt("match", matchMinutes);
+
+    // Lifetime vault revenue counters
+    totalCoinsLifetime = prefs.getULong("total_coins", 0);
+    if (prefs.isKey("total_earnings")) {
+        totalEarningsLifetime = prefs.getFloat("total_earnings", 0.0f);
+    } else {
+        totalEarningsLifetime = (float)totalCoinsLifetime * coinPrice;
+    }
+
+    lastSavedTotalCoins = totalCoinsLifetime;
+    lastSavedTotalEarnings = totalEarningsLifetime;
+    totalCoinsSession = 0;
+    totalEarningsSession = 0.0f;
+    revenueDirty = false;
+
+    prefs.end();
+
+    // Sanitize and purge any corrupted legacy entries
+    String bootCleanIps = "";
+    int bootIdx = 0;
+    while (bootIdx < androidIps.length()) {
+        int comma = androidIps.indexOf(',', bootIdx);
+        if (comma == -1) comma = androidIps.length();
+        String entry = androidIps.substring(bootIdx, comma);
+        entry.trim();
+        if (entry.length() > 0) {
+            DeviceConfig cfg;
+            if (parseDeviceEntry(entry, cfg)) {
+                if (bootCleanIps.length() > 0) bootCleanIps += ",";
+                bootCleanIps += cfg.id + "|" + cfg.ip + "|" + cfg.name;
+            }
+        }
+        bootIdx = comma + 1;
+    }
+    androidIps = bootCleanIps;
+
+    Serial.printf("[💾 CONFIG] Loaded NVS Config: SSID='%s', Port=%d, AdminPW='%s', Price=₱%.2f, Mins=%d, RelayPin=%d (Mode=%d), TotalCoins=%u, TotalEarnings=₱%.2f\n",
+        wifiSsid.c_str(), targetPort, webPassword.c_str(), coinPrice, minutesPerCoin, relayPin, relayMode, totalCoinsLifetime, totalEarningsLifetime);
 }
 
 void processRevenuePersistence() {
