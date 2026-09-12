@@ -28,10 +28,10 @@ void setup() {
     applyCoinSlotHardwareConfig();
     pinMode(HARDWARE_RESET_PIN, INPUT_PULLUP);
     setLedHardware(false);
-    // Initialize relay hardware (Powered ON if Mode 0, Standby if Mode 1)
-    setRelayHardware(relayMode == 0);
-    Serial.printf("[+] Hardware Pins bound: Beam Coin Pin = GPIO %d, Universal Multi-Coin Pin = GPIO %d, LED Pin = GPIO %d, Relay Pin = GPIO %d (ActiveLow=%s, Mode=%d), Reset Pin = GPIO %d\n",
-        coinPin, universalCoinPin, ledPin, relayPin, relayActiveLow ? "true" : "false", relayMode, HARDWARE_RESET_PIN);
+    // Initialize relay hardware (STANDBY - energized only during active Insert Coin session)
+    setRelayHardware(false);
+    Serial.printf("[+] Hardware Pins bound: Universal Multi-Coin Pin = GPIO %d, LED Pin = GPIO %d, Relay Pin = GPIO %d (ActiveLow=%s), Reset Pin = GPIO %d\n",
+        universalCoinPin, ledPin, relayPin, relayActiveLow ? "true" : "false", HARDWARE_RESET_PIN);
 
     // Immediately read hardware factory MAC address from eFuse
     uint8_t macInit[6];
@@ -87,8 +87,7 @@ void loop() {
     // 0. Process Hardware Fallback Reset Pin (GPIO 2 -> GND for 5 seconds)
     processHardwareResetPin();
 
-    // 1. Process Hardware Coin Detectors (GPIO 4 Beam Sensor + GPIO 3 Universal Pulse Sensor)
-    processCoinDetector();
+    // 1. Process Hardware Coin Detector (Universal Multi-Coin Pulse Sensor on GPIO 3)
     processUniversalCoinDetector();
 
     // 2. Process Coin Slot Power/Enable Relay (Synchronized with Arming / Insert Coin)

@@ -4,7 +4,6 @@
 #include <Arduino.h>
 
 void handleAddTime();
-void handleInsertCoin();
 void handleInsertUniversalCoin();
 void handleQueryTime();
 

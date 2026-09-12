@@ -35,71 +35,12 @@ void sendAddTime(int minutes, String targetIp, String txId) {
     }
 }
 
-void triggerCoinEvent() {
-    Serial.printf("[+] Physical coin pulse detected on GPIO %d (Simple Beam Sensor)!\n", coinPin);
-    
-    if (relayMode == 1 && !isSlotArmed()) {
-        Serial.printf("[-] Dropped coin rejected: Slot is in Armed-Only mode and is NOT armed!\n");
-        return;
-    }
-
-    String targetIp = "";
-    if (armedIp.length() > 0) {
-        targetIp = getIpFromDeviceId(armedIp);
-    } else if (lastArmedIp.length() > 0 && (millis() - lastArmedTimeMs < 30000)) {
-        targetIp = lastArmedIp;
-    }
-    if (targetIp.length() == 0) {
-        targetIp = getPrimaryTerminalIp();
-        if (targetIp.length() > 0) {
-            Serial.printf("[⚡ AUTO-ROUTED COIN] Auto-routing coin credit to primary terminal: %s\n", targetIp.c_str());
-        }
-    }
-
-    uint32_t beamCreditPhp = (coinPrice > 0.0f) ? (uint32_t)round(coinPrice) : 1;
-    totalCoinsLifetime += beamCreditPhp;
-    totalCoinsSession += beamCreditPhp;
-    totalEarningsLifetime += coinPrice;
-    totalEarningsSession += coinPrice;
-
-    revenueDirty = true;
-    lastCoinChangeTime = millis();
-
-    triggerLedBlink();
-
-    unsigned long long ts = (unsigned long long)millis();
-    String txId = String(millis()) + "-" + String(random(1000, 9999));
-    int addedSeconds = minutesPerCoin * 60;
-
-    if (isWsConnected && wsClient.connected()) {
-        Serial.printf("[⚡] Pushing Simple Beam Coin (₱%.2f PHP credit, +%d mins) instantly over WebSocket!\n", coinPrice, minutesPerCoin);
-        String innerJson = "{\"seconds\":" + String(addedSeconds) + ",\"minutes\":" + String(minutesPerCoin) + ",\"amount\":" + String(coinPrice, 2) + ",\"tx_id\":\"" + txId + "\",\"ts\":\"" + String(ts) + "\"}";
-        String payload = aes_encrypt(innerJson, sharedSecret);
-        String json = "{\"event\":\"COIN_DETECTED\",\"payload\":\"" + payload + "\",\"seconds\":" + String(addedSeconds) + ",\"amount\":" + String(coinPrice, 2) + ",\"tx_id\":\"" + txId + "\"}";
-        sendWsText(wsClient, json);
-        armedUntil = millis() + ARM_TTL;
-    }
-
-    if (targetIp.length() > 0) {
-        Serial.printf("[⚡] Routing Simple Beam Coin (₱%.2f, +%d mins) to IP: %s\n", coinPrice, minutesPerCoin, targetIp.c_str());
-        sendAuthenticated(targetIp, targetPort, "/add_time", "/challenge", "minutes=" + String(minutesPerCoin) + "&seconds=" + String(addedSeconds) + "&amount=" + String(coinPrice, 2) + "&tx_id=" + txId, 1000);
-        armedUntil = millis() + ARM_TTL;
-    } else {
-        for (int i = 0; i < maxLicensedSlots; i++) {
-            if (licenseSlots[i].deviceId.length() > 0 && licenseSlots[i].ip.length() > 0 && licenseSlots[i].ip != "127.0.0.1") {
-                Serial.printf("[⚡ FALLBACK] Dispatching coin to paired slot device IP: %s\n", licenseSlots[i].ip.c_str());
-                sendAuthenticated(licenseSlots[i].ip, targetPort, "/add_time", "/challenge", "minutes=" + String(minutesPerCoin) + "&seconds=" + String(addedSeconds) + "&amount=" + String(coinPrice, 2) + "&tx_id=" + txId, 1000);
-            }
-        }
-    }
-}
-
 void triggerUniversalCoinEvent(int pulses) {
     if (pulses <= 0) return;
     Serial.printf("[⚡ UNIVERSAL COIN] %d total pulses accumulated on GPIO %d (₱%d PHP)\n", pulses, universalCoinPin, pulses);
 
-    if (relayMode == 1 && !isSlotArmed()) {
-        Serial.printf("[-] Universal coin pulses rejected: Slot is in Armed-Only mode and is NOT armed!\n");
+    if (!isSlotArmed()) {
+        Serial.printf("[-] Universal coin pulses rejected: Slot is NOT armed!\n");
         return;
     }
 

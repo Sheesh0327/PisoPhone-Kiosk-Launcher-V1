@@ -436,7 +436,7 @@ void processSerialCli() {
     if (line.length() == 0) return;
 
     if (line.equalsIgnoreCase("coin")) {
-        triggerCoinEvent();
+        triggerUniversalCoinEvent(1);
     } else if (line.startsWith("ucoin ") || line.startsWith("ucoin")) {
         int firstSpace = line.indexOf(' ');
         int pulses = (firstSpace != -1) ? line.substring(firstSpace + 1).toInt() : 1;
@@ -449,6 +449,6 @@ void processSerialCli() {
             sendAddTime(minutes, "ALL");
         }
     } else if (line.equalsIgnoreCase("help")) {
-        Serial.println("\nCommands: coin | ucoin <1|5|10|20> | add <minutes> | help");
+        Serial.println("\nCommands: coin [or ucoin <1|5|10|20>] | add <minutes> | help");
     }
 }

@@ -56,12 +56,6 @@ void handleAddTime() {
     redirectHome();
 }
 
-void handleInsertCoin() {
-    if (!checkAuth()) return;
-    triggerCoinEvent();
-    webServer.send(200, "text/plain", "OK");
-}
-
 void handleInsertUniversalCoin() {
     if (!checkAuth()) return;
     int pulses = webServer.hasArg("pulses") ? webServer.arg("pulses").toInt() : 1;

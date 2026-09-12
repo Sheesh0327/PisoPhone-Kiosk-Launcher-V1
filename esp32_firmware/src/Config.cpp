@@ -9,7 +9,6 @@ const char* DEFAULT_PASS        = "Admin@123";
 const char* DEFAULT_ADMIN_PW    = "admin";
 const char* MASTER_CRYPTO_SECRET = "PISOPHONE_HMAC_MASTER_KEY";
 
-const int   DEFAULT_COIN_PIN           = 4;
 const int   DEFAULT_UNIVERSAL_COIN_PIN = 3;
 const int   DEFAULT_LED_PIN            = 8;
 const bool  DEFAULT_LED_ACTIVE_LOW     = true;
@@ -26,14 +25,11 @@ const int   UDP_DISCOVERY_PORT         = 8888;
 // ============================================================================
 Preferences prefs;
 
-int coinPin          = DEFAULT_COIN_PIN;
 int universalCoinPin = DEFAULT_UNIVERSAL_COIN_PIN;
-int coinSlotType     = 0; // 0 = Universal Multi-Coin, 1 = Simple Beam, 2 = Disabled
 int ledPin           = DEFAULT_LED_PIN;
 bool ledActiveLow    = DEFAULT_LED_ACTIVE_LOW;
 int relayPin         = DEFAULT_RELAY_PIN;
 bool relayActiveLow  = false;
-int relayMode        = 1;
 
 String wifiSsid      = DEFAULT_SSID;
 String wifiPass      = DEFAULT_PASS;
@@ -292,9 +288,7 @@ void loadAllConfig() {
     is_licensed       = prefs.getBool("licensed", (maxLicensedSlots > 1));
     wifiSsid          = prefs.getString("wifi_ssid", wifiSsid);
     wifiPass          = prefs.getString("wifi_pass", wifiPass);
-    coinPin           = prefs.getInt("coin_pin", coinPin);
     universalCoinPin  = prefs.getInt("u_coin_pin", universalCoinPin);
-    coinSlotType      = prefs.getInt("coin_type", 0);
     ledPin            = prefs.getInt("led_pin", ledPin);
     ledActiveLow      = prefs.getBool("led_active_low", DEFAULT_LED_ACTIVE_LOW);
     relayPin          = prefs.getInt("relay_pin", relayPin);
@@ -307,7 +301,6 @@ void loadAllConfig() {
     minutesPerCoin    = prefs.getInt("minutes", minutesPerCoin);
     lockoutDebounceMs = prefs.getInt("debounce", lockoutDebounceMs);
     relayActiveLow    = prefs.getBool("relay_active_low", false);
-    relayMode         = prefs.getInt("relay_mode", 1);
     sharedSecret      = prefs.getString("shared_secret", sharedSecret);
     p1Ip              = prefs.getString("p1", p1Ip);
     p2Ip              = prefs.getString("p2", p2Ip);
@@ -348,8 +341,8 @@ void loadAllConfig() {
     }
     androidIps = bootCleanIps;
 
-    Serial.printf("[💾 CONFIG] Loaded NVS Config: SSID='%s', Port=%d, AdminPW='%s', Price=₱%.2f, Mins=%d, RelayPin=%d (Mode=%d), TotalCoins=%u, TotalEarnings=₱%.2f\n",
-        wifiSsid.c_str(), targetPort, webPassword.c_str(), coinPrice, minutesPerCoin, relayPin, relayMode, totalCoinsLifetime, totalEarningsLifetime);
+    Serial.printf("[💾 CONFIG] Loaded NVS Config: SSID='%s', Port=%d, AdminPW='%s', Price=₱%.2f, Mins=%d, RelayPin=%d (Armed-Only), TotalCoins=%u, TotalEarnings=₱%.2f\n",
+        wifiSsid.c_str(), targetPort, webPassword.c_str(), coinPrice, minutesPerCoin, relayPin, totalCoinsLifetime, totalEarningsLifetime);
 }
 
 void processRevenuePersistence() {
@@ -376,9 +369,7 @@ void factoryResetDefaults() {
 
     wifiSsid = DEFAULT_SSID;
     wifiPass = DEFAULT_PASS;
-    coinPin = DEFAULT_COIN_PIN;
     universalCoinPin = DEFAULT_UNIVERSAL_COIN_PIN;
-    coinSlotType = 0;
     ledPin = DEFAULT_LED_PIN;
     ledActiveLow = DEFAULT_LED_ACTIVE_LOW;
     relayPin = DEFAULT_RELAY_PIN;
