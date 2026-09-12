@@ -22,9 +22,10 @@ void processRelayState();
 void processCoinDetector();
 void IRAM_ATTR universalCoinIsr();
 void processUniversalCoinDetector();
+void resetCoinDetectorStates();
+void applyCoinSlotHardwareConfig();
 extern volatile int isrUniversalPulseCount;
 extern volatile unsigned long isrLastPulseTimeMs;
-extern volatile bool coinSlotWarmupActive;
 
 void processHardwareResetPin();
 

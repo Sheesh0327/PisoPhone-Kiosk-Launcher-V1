@@ -28,6 +28,7 @@ Preferences prefs;
 
 int coinPin          = DEFAULT_COIN_PIN;
 int universalCoinPin = DEFAULT_UNIVERSAL_COIN_PIN;
+int coinSlotType     = 0; // 0 = Universal Multi-Coin, 1 = Simple Beam, 2 = Disabled
 int ledPin           = DEFAULT_LED_PIN;
 bool ledActiveLow    = DEFAULT_LED_ACTIVE_LOW;
 int relayPin         = DEFAULT_RELAY_PIN;
@@ -293,6 +294,7 @@ void loadAllConfig() {
     wifiPass          = prefs.getString("wifi_pass", wifiPass);
     coinPin           = prefs.getInt("coin_pin", coinPin);
     universalCoinPin  = prefs.getInt("u_coin_pin", universalCoinPin);
+    coinSlotType      = prefs.getInt("coin_type", 0);
     ledPin            = prefs.getInt("led_pin", ledPin);
     ledActiveLow      = prefs.getBool("led_active_low", DEFAULT_LED_ACTIVE_LOW);
     relayPin          = prefs.getInt("relay_pin", relayPin);
@@ -376,6 +378,7 @@ void factoryResetDefaults() {
     wifiPass = DEFAULT_PASS;
     coinPin = DEFAULT_COIN_PIN;
     universalCoinPin = DEFAULT_UNIVERSAL_COIN_PIN;
+    coinSlotType = 0;
     ledPin = DEFAULT_LED_PIN;
     ledActiveLow = DEFAULT_LED_ACTIVE_LOW;
     relayPin = DEFAULT_RELAY_PIN;

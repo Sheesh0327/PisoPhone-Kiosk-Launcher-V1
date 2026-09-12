@@ -260,6 +260,7 @@ void processWebSocketServer() {
             lastArmedTimeMs = now;
             armedUntil = now + ARM_TTL;
             pendingWsGracefulClose = false;
+            resetCoinDetectorStates();
             
             Serial.printf("[⚡ WS Port 81] WebSocket ARMED securely for %s (TTL: %lu s)\n", reqDeviceId.c_str(), ARM_TTL / 1000);
             sendWsText(wsClient, "{\"event\":\"ARMED\"}");

@@ -144,6 +144,7 @@ void handleSave() {
     if (webServer.hasArg("wifi_pass")) { wifiPass = webServer.arg("wifi_pass"); prefs.putString("wifi_pass", wifiPass); }
     if (webServer.hasArg("coin_pin"))   { coinPin = webServer.arg("coin_pin").toInt(); prefs.putInt("coin_pin", coinPin); }
     if (webServer.hasArg("u_coin_pin")) { universalCoinPin = webServer.arg("u_coin_pin").toInt(); prefs.putInt("u_coin_pin", universalCoinPin); }
+    if (webServer.hasArg("coin_type"))  { coinSlotType = webServer.arg("coin_type").toInt(); prefs.putInt("coin_type", coinSlotType); }
     if (webServer.hasArg("led_pin"))    { ledPin  = webServer.arg("led_pin").toInt();  prefs.putInt("led_pin", ledPin); }
     if (webServer.hasArg("led_active_low")) {
         ledActiveLow = (webServer.arg("led_active_low") == "1");
@@ -222,11 +223,8 @@ void handleSave() {
     }
     prefs.end();
 
-    // Dynamic GPIO Pin re-binding & ISR attachment
-    pinMode(coinPin, INPUT_PULLUP);
-    detachInterrupt(digitalPinToInterrupt(universalCoinPin));
-    pinMode(universalCoinPin, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(universalCoinPin), universalCoinIsr, FALLING);
+    // Dynamic Hardware Pin and Coin Slot reconfiguration
+    applyCoinSlotHardwareConfig();
     setLedHardware(currentLedState == LED_STATE_CONNECTED);
     processRelayState();
 

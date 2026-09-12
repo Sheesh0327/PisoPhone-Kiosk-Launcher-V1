@@ -25,14 +25,12 @@ void setup() {
     lastWifiCheckTime = millis();
 
     // Initialize Dynamic Hardware Pins & Hardware Reset Pin (GPIO 2)
-    pinMode(coinPin, INPUT_PULLUP);
-    pinMode(universalCoinPin, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(universalCoinPin), universalCoinIsr, FALLING);
+    applyCoinSlotHardwareConfig();
     pinMode(HARDWARE_RESET_PIN, INPUT_PULLUP);
     setLedHardware(false);
     // Initialize relay hardware (Powered ON if Mode 0, Standby if Mode 1)
     setRelayHardware(relayMode == 0);
-    Serial.printf("[+] Hardware Pins bound: Beam Coin Pin = GPIO %d, Universal Multi-Coin Pin = GPIO %d (ISR active), LED Pin = GPIO %d, Relay Pin = GPIO %d (ActiveLow=%s, Mode=%d), Reset Pin = GPIO %d\n",
+    Serial.printf("[+] Hardware Pins bound: Beam Coin Pin = GPIO %d, Universal Multi-Coin Pin = GPIO %d, LED Pin = GPIO %d, Relay Pin = GPIO %d (ActiveLow=%s, Mode=%d), Reset Pin = GPIO %d\n",
         coinPin, universalCoinPin, ledPin, relayPin, relayActiveLow ? "true" : "false", relayMode, HARDWARE_RESET_PIN);
 
     // Immediately read hardware factory MAC address from eFuse

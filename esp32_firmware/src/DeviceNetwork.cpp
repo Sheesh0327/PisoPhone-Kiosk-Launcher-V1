@@ -38,8 +38,7 @@ void sendAddTime(int minutes, String targetIp, String txId) {
 void triggerCoinEvent() {
     Serial.printf("[+] Physical coin pulse detected on GPIO %d (Simple Beam Sensor)!\n", coinPin);
     
-    bool wasArmed = isSlotArmed() || (millis() - lastArmedTimeMs < 10000);
-    if (relayMode == 1 && !wasArmed) {
+    if (relayMode == 1 && !isSlotArmed()) {
         Serial.printf("[-] Dropped coin rejected: Slot is in Armed-Only mode and is NOT armed!\n");
         return;
     }
@@ -99,8 +98,7 @@ void triggerUniversalCoinEvent(int pulses) {
     if (pulses <= 0) return;
     Serial.printf("[⚡ UNIVERSAL COIN] %d total pulses accumulated on GPIO %d (₱%d PHP)\n", pulses, universalCoinPin, pulses);
 
-    bool wasArmed = isSlotArmed() || pulseTrainWasArmed || (millis() - lastArmedTimeMs < 10000);
-    if (relayMode == 1 && !wasArmed) {
+    if (relayMode == 1 && !isSlotArmed()) {
         Serial.printf("[-] Universal coin pulses rejected: Slot is in Armed-Only mode and is NOT armed!\n");
         return;
     }

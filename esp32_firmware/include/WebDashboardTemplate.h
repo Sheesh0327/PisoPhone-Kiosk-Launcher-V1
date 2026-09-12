@@ -214,14 +214,23 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                     <div class="card">
                         <h3 class="card-title">🔌 Hardware GPIO Pins</h3>
                         <div class="form-group">
-                            <label>Simple Beam Sensor GPIO</label>
-                            <input type="number" name="coin_pin" value="{COIN_PIN}">
-                            <div class="hint">GPIO 4 is typical.</div>
+                            <label>Coin Acceptor Mode</label>
+                            <select name="coin_type">
+                                <option value="0" {COIN_TYPE_MULTI_SELECTED}>Universal Multi-Coin Pulse Slot (Allan 124A/616A)</option>
+                                <option value="1" {COIN_TYPE_BEAM_SELECTED}>Simple Beam Sensor / Single Pulse</option>
+                                <option value="2" {COIN_TYPE_DISABLED_SELECTED}>Disabled</option>
+                            </select>
+                            <div class="hint">Selecting your active sensor deactivates unused pins, preventing floating noise.</div>
                         </div>
                         <div class="form-group">
                             <label>Multi-Coin Slot GPIO</label>
                             <input type="number" name="u_coin_pin" value="{U_COIN_PIN}">
-                            <div class="hint">Pulse slot on GPIO 3.</div>
+                            <div class="hint">Pulse slot signal wire (Default: GPIO 3).</div>
+                        </div>
+                        <div class="form-group">
+                            <label>Simple Beam Sensor GPIO</label>
+                            <input type="number" name="coin_pin" value="{COIN_PIN}">
+                            <div class="hint">Single coin optical / switch pin (Default: GPIO 4).</div>
                         </div>
                         <div class="form-group">
                             <label>Indicator LED GPIO</label>

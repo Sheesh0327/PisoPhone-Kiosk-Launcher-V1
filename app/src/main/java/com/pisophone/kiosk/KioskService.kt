@@ -426,11 +426,6 @@ class KioskService : Service() {
         if (!::coinProcessor.isInitialized) return false
         val now = System.currentTimeMillis()
         val isStartup = (now - serviceStartTimeMs < 3000 && stateManager.appState.value == 0)
-        val timeSinceArm = now - lastArmClickTimeMs
-        if (lastArmClickTimeMs > 0L && timeSinceArm < 1200L) {
-            Log.w(TAG, "Discarded rapid coin credit received ${timeSinceArm}ms after Insert Coin tap (startup transient noise from $source)")
-            return false
-        }
         return coinProcessor.processCoinCredit(
             seconds = seconds,
             source = source,

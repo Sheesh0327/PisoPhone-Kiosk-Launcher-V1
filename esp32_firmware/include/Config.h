@@ -72,6 +72,7 @@ extern Preferences prefs;
 
 extern int coinPin;
 extern int universalCoinPin;
+extern int coinSlotType; // 0 = Universal Multi-Coin, 1 = Simple Beam, 2 = Disabled
 extern int ledPin;
 extern bool ledActiveLow;
 extern int relayPin;
