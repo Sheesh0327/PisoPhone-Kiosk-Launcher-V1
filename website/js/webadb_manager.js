@@ -7,6 +7,7 @@
     const LOG_INTERVAL_BYTES = 1024 * 1024 * 2; // 2 MB
     const DEVICE_TEMP_APK_PATH = "/data/local/tmp/app.apk";
     const PACKAGE_NAME = "com.pisophone.kiosk";
+    const INSTALL_TIMEOUT_MS = 90000; // 90 seconds - Package Manager extraction, dex2oat ART compilation & verification require 30-60s on budget hardware
 
     // Candidate bundle URLs for robust universal loading across Cloudflare, Local ESP32, or Localhost
     const BUNDLE_CANDIDATE_URLS = [
@@ -435,13 +436,13 @@
             const checkStat = await this.shell(`ls -l ${destPath}`);
             logCallback(`Device storage verified: ${checkStat.trim()}`);
 
-            logCallback(`Step 2: Running Package Manager to install ${originalFilename}...`);
+            logCallback(`Step 2: Running Package Manager to install ${originalFilename} (this may take 30–60s for dex optimization)...`);
             await this.shell(`chmod 777 ${destPath}`);
             
             let installRes = "";
             let useFallback = false;
             try {
-                installRes = await this.shell(`pm install -r -d -g ${destPath}`, 15000);
+                installRes = await this.shell(`pm install -r -d -g ${destPath}`, INSTALL_TIMEOUT_MS);
             } catch (err) {
                 logCallback(`⚠️ Initial pm install flags failed: ${err.message || err}. Attempting standard compatibility installation...`);
                 useFallback = true;
@@ -450,7 +451,7 @@
             if (useFallback || installRes.includes("Failure") || installRes.includes("Error") || installRes.includes("Exception") || installRes.includes("Unknown option")) {
                 logCallback("⚠️ Premium installation flags rejected. Attempting standard installation fallback...");
                 try {
-                    installRes = await this.shell(`pm install -r ${destPath}`, 15000);
+                    installRes = await this.shell(`pm install -r ${destPath}`, INSTALL_TIMEOUT_MS);
                 } catch (fallbackErr) {
                     throw new Error(`Installation failed: ${fallbackErr.message || fallbackErr}`);
                 }
@@ -648,24 +649,43 @@
             const checkStat = await this.shell(`ls -l ${DEVICE_TEMP_APK_PATH}`);
             logCallback(`Device storage verified: ${checkStat.trim()}`);
 
-            logCallback("Step 3: Running Package Manager to install the application...");
+            logCallback("Step 3: Running Package Manager to install the application (this can take 30–60s for dex optimization)...");
             await this.shell(`chmod 777 ${DEVICE_TEMP_APK_PATH}`);
             
             let installRes = "";
             let useFallback = false;
             try {
-                installRes = await this.shell(`pm install -r -d -g ${DEVICE_TEMP_APK_PATH}`, 15000);
+                installRes = await this.shell(`pm install -r -d -g ${DEVICE_TEMP_APK_PATH}`, INSTALL_TIMEOUT_MS);
             } catch (err) {
-                logCallback(`⚠️ Initial pm install flags failed: ${err.message || err}. Attempting standard compatibility installation...`);
-                useFallback = true;
+                // If timed out or errored, verify if the package actually succeeded in installing
+                const earlyCheck = await this.shell(`pm list packages ${PACKAGE_NAME}`, 4000).catch(() => "");
+                if (earlyCheck.includes(PACKAGE_NAME)) {
+                    logCallback("✅ Package Manager confirmed application is installed.");
+                    installRes = "Success";
+                } else {
+                    logCallback(`⚠️ Initial pm install flags failed: ${err.message || err}. Attempting standard compatibility installation...`);
+                    useFallback = true;
+                }
             }
 
             if (useFallback || installRes.includes("Failure") || installRes.includes("Error") || installRes.includes("Exception") || installRes.includes("Unknown option")) {
-                logCallback("⚠️ Premium installation flags rejected. Attempting standard installation fallback...");
-                try {
-                    installRes = await this.shell(`pm install -r ${DEVICE_TEMP_APK_PATH}`, 15000);
-                } catch (fallbackErr) {
-                    throw new Error(`Installation failed: ${fallbackErr.message || fallbackErr}`);
+                // Double-check if package was actually installed before attempting fallback
+                const fallbackCheck = await this.shell(`pm list packages ${PACKAGE_NAME}`, 4000).catch(() => "");
+                if (fallbackCheck.includes(PACKAGE_NAME)) {
+                    logCallback("✅ Application is confirmed installed on device.");
+                    installRes = "Success";
+                } else {
+                    logCallback("⚠️ Premium installation flags rejected. Attempting standard installation fallback...");
+                    try {
+                        installRes = await this.shell(`pm install -r ${DEVICE_TEMP_APK_PATH}`, INSTALL_TIMEOUT_MS);
+                    } catch (fallbackErr) {
+                        // Final check if it succeeded despite shell timeout
+                        const finalVerify = await this.shell(`pm list packages ${PACKAGE_NAME}`, 4000).catch(() => "");
+                        if (!finalVerify.includes(PACKAGE_NAME)) {
+                            throw new Error(`Installation failed: ${fallbackErr.message || fallbackErr}`);
+                        }
+                        installRes = "Success";
+                    }
                 }
             }
             logCallback(`Install output: ${installRes.trim()}`);
@@ -817,18 +837,33 @@
             let res = "";
             let useFallback = false;
             try {
-                res = await this.shell(`pm install -r -d -g ${destPath}`, 15000);
+                res = await this.shell(`pm install -r -d -g ${destPath}`, INSTALL_TIMEOUT_MS);
             } catch (err) {
-                logCallback(`⚠️ Initial pm install flags failed: ${err.message || err}. Attempting standard compatibility installation...`);
-                useFallback = true;
+                // If timed out or errored, check if package was installed
+                const earlyCheck = await this.shell(`pm list packages ${PACKAGE_NAME}`, 4000).catch(() => "");
+                if (earlyCheck.includes(PACKAGE_NAME)) {
+                    res = "Success";
+                } else {
+                    logCallback(`⚠️ Initial pm install flags failed: ${err.message || err}. Attempting standard compatibility installation...`);
+                    useFallback = true;
+                }
             }
 
             if (useFallback || res.includes("Failure") || res.includes("Error") || res.includes("Exception") || res.includes("Unknown option")) {
-                logCallback("⚠️ Premium installation flags rejected. Attempting standard installation fallback...");
-                try {
-                    res = await this.shell(`pm install -r ${destPath}`, 15000);
-                } catch (fallbackErr) {
-                    throw new Error(`Installation failed: ${fallbackErr.message || fallbackErr}`);
+                const fallbackCheck = await this.shell(`pm list packages ${PACKAGE_NAME}`, 4000).catch(() => "");
+                if (fallbackCheck.includes(PACKAGE_NAME)) {
+                    res = "Success";
+                } else {
+                    logCallback("⚠️ Premium installation flags rejected. Attempting standard installation fallback...");
+                    try {
+                        res = await this.shell(`pm install -r ${destPath}`, INSTALL_TIMEOUT_MS);
+                    } catch (fallbackErr) {
+                        const finalVerify = await this.shell(`pm list packages ${PACKAGE_NAME}`, 4000).catch(() => "");
+                        if (!finalVerify.includes(PACKAGE_NAME)) {
+                            throw new Error(`Installation failed: ${fallbackErr.message || fallbackErr}`);
+                        }
+                        res = "Success";
+                    }
                 }
             }
             logCallback(`Install output: ${res.trim()}`);
