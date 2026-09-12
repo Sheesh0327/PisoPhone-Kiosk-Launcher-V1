@@ -22,7 +22,10 @@ class KioskEsp32Coordinator(
 
     companion object {
         private const val TAG = "KioskEsp32Coordinator"
+        private const val ARM_WARMUP_SUPPRESSION_MS = 1200L
     }
+
+    private var lastArmTimestampMs: Long = 0L
 
     override fun getDeviceId(): String = stateManager.deviceId.value
     override fun getSecretKey(): String = getSecretKey.invoke()
@@ -72,6 +75,13 @@ class KioskEsp32Coordinator(
             return
         }
 
+        val now = System.currentTimeMillis()
+        val timeSinceArm = now - lastArmTimestampMs
+        if (lastArmTimestampMs > 0 && timeSinceArm < ARM_WARMUP_SUPPRESSION_MS) {
+            Log.w(TAG, "Discarded rapid coin message received ${timeSinceArm}ms after arming (startup transient noise)")
+            return
+        }
+
         Log.d(TAG, "Received validated coin via WebSocket: seconds=$seconds, amount=₱$amount, tx_id=$txId")
         onAddCoinTime(seconds, "WebSocket Port 81", txId, amount)
         stateManager.paymentTimeout.value = armingTimeoutSeconds
@@ -87,6 +97,7 @@ class KioskEsp32Coordinator(
     }
 
     override fun onArmSuccess() {
+        lastArmTimestampMs = System.currentTimeMillis()
         stateManager.isEsp32Online.value = true
     }
 

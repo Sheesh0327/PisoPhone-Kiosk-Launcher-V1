@@ -79,16 +79,45 @@ void processLedBlink() {
 }
 
 // ============================================================================
-// RELAY POWER CONTROLLER
+// RELAY POWER CONTROLLER & POWER-ON BLANKING / STABILIZATION
 // ============================================================================
+volatile bool coinSlotWarmupActive = true;
+static unsigned long relayPowerOnTimeMs = 0;
+static unsigned long lineSteadyHighSinceMs = 0;
+static unsigned long lastTransientDetectedMs = 0;
+static const unsigned long COIN_SLOT_WARMUP_MS = 2500;       // 2500ms power stabilization window for coin acceptor MCU boot
+static const unsigned long COIN_SLOT_STEADY_IDLE_MS = 300;   // 300ms steady HIGH confirmation with zero transients
+static bool isRelayCurrentlyActive = false;
+
+// Forward declaration of coin detector reset helper
+static void resetCoinDetectorStates();
+
 void setRelayHardware(bool active) {
     if (active) {
+        if (!isRelayCurrentlyActive) {
+            isRelayCurrentlyActive = true;
+            coinSlotWarmupActive = true;
+            relayPowerOnTimeMs = millis();
+            lineSteadyHighSinceMs = 0;
+            lastTransientDetectedMs = 0;
+            resetCoinDetectorStates();
+            Serial.printf("[⚡ RELAY] Power applied to coin slot. Suppressing boot transient pulses for %lums...\n", COIN_SLOT_WARMUP_MS);
+        }
         pinMode(relayPin, OUTPUT);
         bool pinLevel = relayActiveLow ? LOW : HIGH;
         digitalWrite(relayPin, pinLevel);
     } else {
         // High Impedance / floating so neither +V nor GND activates it when idle
         pinMode(relayPin, INPUT);
+        if (isRelayCurrentlyActive) {
+            isRelayCurrentlyActive = false;
+            coinSlotWarmupActive = true;
+            relayPowerOnTimeMs = 0;
+            lineSteadyHighSinceMs = 0;
+            lastTransientDetectedMs = 0;
+            resetCoinDetectorStates();
+            Serial.println("[⚡ RELAY] Coin slot powered down into standby mode.");
+        }
     }
 }
 
@@ -123,7 +152,80 @@ static unsigned long pulseStartMs = 0;
 static unsigned long lockoutStartMs = 0;
 static const unsigned long MIN_PULSE_WIDTH_MS = 20;
 
+// Internal helper to reset states and flush pulse counters
+static void resetCoinDetectorStates() {
+    noInterrupts();
+    isrUniversalPulseCount = 0;
+    isrLastPulseTimeMs = 0;
+    interrupts();
+    pulseTrainStartTime = 0;
+    currentCoinState = COIN_IDLE;
+    pulseStartMs = 0;
+    lockoutStartMs = 0;
+}
+
+// State machine to supervise warmup stabilization after relay energizes
+static void processCoinSlotWarmup() {
+    if (!isRelayCurrentlyActive) {
+        coinSlotWarmupActive = true;
+        lineSteadyHighSinceMs = 0;
+        lastTransientDetectedMs = 0;
+        return;
+    }
+
+    if (!coinSlotWarmupActive) {
+        return; // Already stabilized and ready
+    }
+
+    unsigned long now = millis();
+
+    // Check if any line is actively LOW or if an ISR pulse arrived
+    bool universalActive = (digitalRead(universalCoinPin) == LOW);
+    bool beamActive = (digitalRead(coinPin) == LOW);
+
+    if (universalActive || beamActive || isrUniversalPulseCount > 0) {
+        // Boot pulse or contact chatter detected during warmup - flush and record transient time
+        noInterrupts();
+        isrUniversalPulseCount = 0;
+        isrLastPulseTimeMs = 0;
+        interrupts();
+        pulseTrainStartTime = 0;
+        currentCoinState = COIN_IDLE;
+        lineSteadyHighSinceMs = 0;
+        lastTransientDetectedMs = now;
+        return;
+    }
+
+    // If still within baseline warmup blanking window, stay in warmup mode
+    if (now - relayPowerOnTimeMs < COIN_SLOT_WARMUP_MS) {
+        lineSteadyHighSinceMs = 0;
+        return;
+    }
+
+    // Baseline warmup elapsed: verify both lines remain steady HIGH for COIN_SLOT_STEADY_IDLE_MS
+    // and that at least COIN_SLOT_STEADY_IDLE_MS has passed since any transient was observed.
+    if (!universalActive && !beamActive) {
+        if (lineSteadyHighSinceMs == 0) {
+            lineSteadyHighSinceMs = now;
+        } else if (now - lineSteadyHighSinceMs >= COIN_SLOT_STEADY_IDLE_MS &&
+                   (lastTransientDetectedMs == 0 || now - lastTransientDetectedMs >= COIN_SLOT_STEADY_IDLE_MS)) {
+            // Signal lines are genuinely stabilized and quiet!
+            resetCoinDetectorStates();
+            coinSlotWarmupActive = false;
+            Serial.println("[⚡ COIN] Coinslot power stabilized & idle lines verified HIGH. Armed for genuine coins.");
+        }
+    } else {
+        lineSteadyHighSinceMs = 0;
+    }
+}
+
 void processCoinDetector() {
+    processCoinSlotWarmup();
+    if (coinSlotWarmupActive) {
+        currentCoinState = COIN_IDLE;
+        return;
+    }
+
     unsigned long now = millis();
     if (now < 3000) {
         currentCoinState = COIN_IDLE;
@@ -174,6 +276,9 @@ static const unsigned long U_MIN_PULSE_DEBOUNCE_MS = 8;
 static const unsigned long U_INTER_PULSE_TIMEOUT_MS = 280;
 
 void IRAM_ATTR universalCoinIsr() {
+    if (coinSlotWarmupActive) {
+        return; // Suppress interrupt pulses during coinslot power-on blanking
+    }
     unsigned long now = millis();
     if (now - isrLastPulseTimeMs >= U_MIN_PULSE_DEBOUNCE_MS) {
         isrUniversalPulseCount++;
@@ -182,6 +287,16 @@ void IRAM_ATTR universalCoinIsr() {
 }
 
 void processUniversalCoinDetector() {
+    processCoinSlotWarmup();
+    if (coinSlotWarmupActive) {
+        if (isrUniversalPulseCount > 0) {
+            noInterrupts();
+            isrUniversalPulseCount = 0;
+            interrupts();
+        }
+        return;
+    }
+
     unsigned long now = millis();
     if (now < 3000) {
         if (isrUniversalPulseCount > 0) {

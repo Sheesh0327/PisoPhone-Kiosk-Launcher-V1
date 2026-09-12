@@ -172,6 +172,7 @@ class KioskService : Service() {
     private var slotBusyJob: Job? = null
     private var overlay: KioskOverlay? = null
     private var serviceStartTimeMs = 0L
+    private var lastArmClickTimeMs = 0L
     private var multicastLock: android.net.wifi.WifiManager.MulticastLock? = null
     private var wakeLock: android.os.PowerManager.WakeLock? = null
 
@@ -423,7 +424,13 @@ class KioskService : Service() {
     @Synchronized
     private fun addTimeFromMaster(seconds: Int, source: String, txId: String? = null, amount: Double = 1.0): Boolean {
         if (!::coinProcessor.isInitialized) return false
-        val isStartup = (System.currentTimeMillis() - serviceStartTimeMs < 3000 && stateManager.appState.value == 0)
+        val now = System.currentTimeMillis()
+        val isStartup = (now - serviceStartTimeMs < 3000 && stateManager.appState.value == 0)
+        val timeSinceArm = now - lastArmClickTimeMs
+        if (lastArmClickTimeMs > 0L && timeSinceArm < 1200L) {
+            Log.w(TAG, "Discarded rapid coin credit received ${timeSinceArm}ms after Insert Coin tap (startup transient noise from $source)")
+            return false
+        }
         return coinProcessor.processCoinCredit(
             seconds = seconds,
             source = source,
@@ -566,6 +573,7 @@ class KioskService : Service() {
                             }
                             stateManager.coinsInserted.value = 0
                             stateManager.paymentTimeout.value = ARMING_TIMEOUT_SECONDS
+                            lastArmClickTimeMs = System.currentTimeMillis()
                             armSlot()
                         },
                         onDoneClick = { finishPayment() },
