@@ -174,49 +174,7 @@ int getDeviceTimeRemainingSeconds(String targetIp, String* errOut) {
 }
 
 void sendCloudSnapshot() {
-    if (WiFi.status() != WL_CONNECTED) return;
-    if (ESP.getFreeHeap() < 35000) {
-        Serial.printf("[☁️ CLOUD] Skipping snapshot report, free heap low (%u bytes)\n", ESP.getFreeHeap());
-        return;
-    }
-    
-    WiFiClientSecure client;
-    client.setInsecure();
-    client.setTimeout(4);
-
-    HTTPClient http;
-    http.setTimeout(4000);
-    if (!http.begin(client, "https://pisophone-api.pisophone-support.workers.dev/api/box/report-snapshot")) {
-        return;
-    }
-    http.addHeader("Content-Type", "application/json");
-
-    String json = "{";
-    json += "\"mac\":\"" + macAddressStr + "\",";
-    json += "\"tier\":" + String(maxLicensedSlots) + ",";
-    json += "\"lifetimeCoins\":" + String(totalCoinsLifetime) + ",";
-    json += "\"lifetimeEarnings\":" + String(totalEarningsLifetime, 2) + ",";
-    json += "\"wifiSsid\":\"" + wifiSsid + "\",";
-    json += "\"firmwareVersion\":\"2.4.0-SLOT-MANAGER\",";
-    json += "\"slots\":[";
-    for (int i = 0; i < maxLicensedSlots; i++) {
-        if (i > 0) json += ",";
-        json += "{";
-        json += "\"slotNum\":" + String(licenseSlots[i].slotNum) + ",";
-        json += "\"deviceId\":\"" + licenseSlots[i].deviceId + "\",";
-        json += "\"ip\":\"" + licenseSlots[i].ip + "\",";
-        json += "\"name\":\"" + licenseSlots[i].name + "\"";
-        json += "}";
-    }
-    json += "]}";
-
-    int code = http.POST(json);
-    if (code > 0) {
-        Serial.printf("[☁️ CLOUD] Snapshot reported successfully (HTTP %d)\n", code);
-    } else {
-        Serial.printf("[☁️ CLOUD] Snapshot report failed: %s\n", http.errorToString(code).c_str());
-    }
-    http.end();
+    // Retiring outbound telemetry to Cloudflare Worker. Strictly Pages-only now.
 }
 
 void sendAuthenticated(String ip, int port, String actionPath, String challengePath, String params, int timeoutMs) {

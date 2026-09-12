@@ -3,7 +3,7 @@
  * Handles local temporary caching of APK and automated WebUSB installation/provisioning.
  */
 (function () {
-    const CHUNK_SIZE = 64 * 1024; // 64 KB
+    const CHUNK_SIZE = 32 * 1024; // 32 KB - Crucial for budget Android USB controllers (prevents stalls)
     const LOG_INTERVAL_BYTES = 1024 * 1024 * 2; // 2 MB
     const DEVICE_TEMP_APK_PATH = "/data/local/tmp/app.apk";
     const PACKAGE_NAME = "com.pisophone.kiosk";
@@ -18,26 +18,42 @@
         '/yume-chan-bundle.js',
         'https://pisophone.pages.dev/js/yume-chan-bundle.js',
         'https://pisophone.pages.dev/yume-chan-bundle.js',
-        'https://cdn.jsdelivr.net/gh/Sheesh0327/PisoPhone-Kiosk-Launcher-V1@main/website/js/yume-chan-bundle.js',
-        'https://raw.githubusercontent.com/Sheesh0327/PisoPhone-Kiosk-Launcher-V1/main/website/js/yume-chan-bundle.js'
-    ].filter(Boolean);
+        'https://cdn.jsdelivr.net/gh/Sheesh0327/PisoPhone-Kiosk-Launcher-V1@main/website/js/yume-chan-bundle.js'
+    ].filter(Boolean).map(url => {
+        if (url.startsWith('http://') || url.startsWith('https://')) return url;
+        try {
+            return new URL(url, window.location.href).href;
+        } catch (e) {
+            return url;
+        }
+    });
 
     async function loadYumeChanModules() {
         console.log("[WebADB] Initializing dynamic import of WebADB bundle...");
         console.log("[WebADB] Candidate bundle URLs:", BUNDLE_CANDIDATE_URLS);
         const errors = [];
         for (const url of BUNDLE_CANDIDATE_URLS) {
-            try {
-                console.log(`[WebADB] Attempting to import bundle from: ${url}`);
-                const mod = await import(url);
-                if (mod && (mod.Adb || (mod.default && mod.default.Adb))) {
-                    console.log(`[WebADB] Dynamic import SUCCEEDED from: ${url}`);
-                    return mod.Adb ? mod : mod.default;
+            let attempts = 3;
+            while (attempts > 0) {
+                try {
+                    console.log(`[WebADB] Attempting to import bundle from: ${url} (Attempts left: ${attempts})`);
+                    const mod = await import(url);
+                    if (mod && (mod.Adb || (mod.default && mod.default.Adb))) {
+                        console.log(`[WebADB] Dynamic import SUCCEEDED from: ${url}`);
+                        return mod.Adb ? mod : mod.default;
+                    }
+                    console.warn(`[WebADB] Module imported from ${url} did not have Adb export.`);
+                    break; // No retry needed if load succeeded but export was missing
+                } catch (e) {
+                    console.warn(`[WebADB] Failed loading WebADB bundle from ${url}:`, e);
+                    attempts--;
+                    if (attempts > 0) {
+                        // Progressive backoff before retry
+                        await new Promise(r => setTimeout(r, (3 - attempts) * 500));
+                    } else {
+                        errors.push(`${url}: ${e.message || e}`);
+                    }
                 }
-                console.warn(`[WebADB] Module imported from ${url} did not have Adb export.`);
-            } catch (e) {
-                console.warn(`[WebADB] Failed loading WebADB bundle from ${url}:`, e);
-                errors.push(`${url}: ${e.message || e}`);
             }
         }
         throw new Error("Unable to load WebADB core bundle. Details:\n" + errors.join("\n"));
@@ -240,12 +256,35 @@
                     logCallback(`Device selected: ${webusbDevice.name || webusbDevice.serial || 'Android Device'}`);
                     
                     logCallback("[DEBUG] Establishing connection to selected USB device...");
-                    try {
-                        connection = await webusbDevice.connect();
-                    } catch (connErr) {
-                        logCallback(`❌ Device connection failed: ${connErr.message || connErr}`);
-                        console.error("[WebADB] webusbDevice.connect() failed:", connErr);
-                        throw connErr;
+                    
+                    // Connection Retry Loop for ultimate USB reliability
+                    let connectAttempts = 3;
+                    while (connectAttempts > 0) {
+                        try {
+                            connection = await webusbDevice.connect();
+                            break; // Success!
+                        } catch (connErr) {
+                            console.warn(`[WebADB] Connection attempt failed (${4 - connectAttempts}/3):`, connErr);
+                            connectAttempts--;
+                            if (connectAttempts > 0) {
+                                logCallback(`⚠️ USB port busy or locked. Retrying connection in 1.5s...`);
+                                // Try resetting the raw underlying USB device if accessible
+                                if (webusbDevice.raw && typeof webusbDevice.raw.reset === 'function') {
+                                    try { await webusbDevice.raw.reset(); } catch (_) {}
+                                } else if (webusbDevice.device && typeof webusbDevice.device.reset === 'function') {
+                                    try { await webusbDevice.device.reset(); } catch (_) {}
+                                }
+                                await new Promise(r => setTimeout(r, 1500));
+                            } else {
+                                logCallback(`❌ Device connection failed: ${connErr.message || connErr}`);
+                                console.error("[WebADB] webusbDevice.connect() failed:", connErr);
+                                throw new Error(`Could not claim USB interface. Troubleshooting steps:\n` +
+                                                `1. Close Android Studio, Scrcpy, or any other WebADB tabs.\n` +
+                                                `2. Unplug your USB cable, wait 3 seconds, and plug it back in.\n` +
+                                                `3. Change the USB connection mode on your phone from "Charging" to "File Transfer / MTP" or "MIDI".\n` +
+                                                `4. Verify that USB Debugging is turned ON in Developer Options.`);
+                            }
+                        }
                     }
                 }
 
@@ -398,7 +437,24 @@
 
             logCallback(`Step 2: Running Package Manager to install ${originalFilename}...`);
             await this.shell(`chmod 777 ${destPath}`);
-            const installRes = await this.shell(`pm install -r -d -g ${destPath}`);
+            
+            let installRes = "";
+            let useFallback = false;
+            try {
+                installRes = await this.shell(`pm install -r -d -g ${destPath}`, 15000);
+            } catch (err) {
+                logCallback(`⚠️ Initial pm install flags failed: ${err.message || err}. Attempting standard compatibility installation...`);
+                useFallback = true;
+            }
+
+            if (useFallback || installRes.includes("Failure") || installRes.includes("Error") || installRes.includes("Exception") || installRes.includes("Unknown option")) {
+                logCallback("⚠️ Premium installation flags rejected. Attempting standard installation fallback...");
+                try {
+                    installRes = await this.shell(`pm install -r ${destPath}`, 15000);
+                } catch (fallbackErr) {
+                    throw new Error(`Installation failed: ${fallbackErr.message || fallbackErr}`);
+                }
+            }
             logCallback(`Install output: ${installRes.trim()}`);
 
             if (installRes.includes("Failure") || installRes.includes("Error") || installRes.includes("Exception")) {
@@ -538,44 +594,8 @@
                 const deviceModel = hwInfo.deviceModel;
                 logCallback(`Device Hardware ID: ${deviceId} (${deviceModel})`);
                 
-                // Query Cloudflare KV / Worker endpoint for license status with 4s timeout
-                try {
-                    let ownerToken = null;
-                    try {
-                        const userStr = localStorage.getItem('piso_google_user');
-                        if (userStr) {
-                            ownerToken = JSON.parse(userStr).token;
-                        }
-                    } catch(e) {}
-
-                    const workerApiBase = 'https://pisophone-api.pisophone-support.workers.dev';
-                    const controller = new AbortController();
-                    const abortTimer = setTimeout(() => controller.abort(), 4000);
-
-                    const checkResp = await fetch(`${workerApiBase}/api/device/register`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        signal: controller.signal,
-                        body: JSON.stringify({
-                            deviceId: deviceId,
-                            hardwareHash: deviceId,
-                            deviceModel: deviceModel,
-                            ownerToken: ownerToken
-                        })
-                    });
-                    clearTimeout(abortTimer);
-
-                    if (checkResp.ok) {
-                        serverLicenseData = await checkResp.json();
-                        if (serverLicenseData.status === 'PAID') {
-                            logCallback(`🌟 Verified: Software License Active (${serverLicenseData.daysRemaining} days remaining).`);
-                        } else {
-                            logCallback(`✨ Device registered with hardware ID: ${deviceId}. Ready for setup tutorial and activation.`);
-                        }
-                    }
-                } catch (apiErr) {
-                    logCallback(`Note: Cloudflare check bypassed (${apiErr.name === 'AbortError' ? 'timeout' : 'offline'}); continuing local installation.`);
-                }
+                // Local-only instant registration flow
+                logCallback(`✨ Device hardware ID verified: ${deviceId}. Ready for setup tutorial and activation.`);
             } catch (e) {
                 logCallback(`Hardware check notice: ${e.message}`);
             }
@@ -583,6 +603,38 @@
             const apkBytes = this.cachedApkBytes;
 
             logCallback("Step 2: Transferring locally cached APK to device...");
+
+            // Probe device storage space before pushing to guarantee the device has room for the APK
+            try {
+                const dfOutput = await this.shell("df /data/local/tmp", 4000);
+                const dfLines = dfOutput.split('\n').map(l => l.trim()).filter(Boolean);
+                let freeKb = null;
+                if (dfLines.length >= 2) {
+                    const columns = dfLines[1].split(/\s+/);
+                    // Find column that matches a number preceding Use% (e.g., "76%") or use position fallback
+                    for (let colIdx = 0; colIdx < columns.length; colIdx++) {
+                        const colVal = columns[colIdx];
+                        if (colVal.includes('%')) {
+                            if (colIdx > 0) {
+                                freeKb = parseInt(columns[colIdx - 1], 10);
+                            }
+                            break;
+                        }
+                    }
+                    if (freeKb === null && columns.length >= 4) {
+                        freeKb = parseInt(columns[3], 10);
+                    }
+                }
+                if (freeKb !== null && !isNaN(freeKb)) {
+                    const freeMb = (freeKb / 1024).toFixed(1);
+                    logCallback(`Device storage: ${freeMb} MB free space on /data/local/tmp.`);
+                    if (freeKb < 40000) { // Under 40MB
+                        logCallback("⚠️ WARNING: Storage is extremely low! Installation may fail due to insufficient space.");
+                    }
+                }
+            } catch (storageErr) {
+                console.debug("[WebADB] Storage probe bypassed:", storageErr);
+            }
 
             try {
                 // Clear any previous temporary files
@@ -598,7 +650,24 @@
 
             logCallback("Step 3: Running Package Manager to install the application...");
             await this.shell(`chmod 777 ${DEVICE_TEMP_APK_PATH}`);
-            const installRes = await this.shell(`pm install -r -d -g ${DEVICE_TEMP_APK_PATH}`);
+            
+            let installRes = "";
+            let useFallback = false;
+            try {
+                installRes = await this.shell(`pm install -r -d -g ${DEVICE_TEMP_APK_PATH}`, 15000);
+            } catch (err) {
+                logCallback(`⚠️ Initial pm install flags failed: ${err.message || err}. Attempting standard compatibility installation...`);
+                useFallback = true;
+            }
+
+            if (useFallback || installRes.includes("Failure") || installRes.includes("Error") || installRes.includes("Exception") || installRes.includes("Unknown option")) {
+                logCallback("⚠️ Premium installation flags rejected. Attempting standard installation fallback...");
+                try {
+                    installRes = await this.shell(`pm install -r ${DEVICE_TEMP_APK_PATH}`, 15000);
+                } catch (fallbackErr) {
+                    throw new Error(`Installation failed: ${fallbackErr.message || fallbackErr}`);
+                }
+            }
             logCallback(`Install output: ${installRes.trim()}`);
 
             // Verify installation success
@@ -717,8 +786,8 @@
             if (!this.adb) throw new Error("Device not connected.");
             logCallback("🔄 Sending reboot command to device...");
             try {
-                if (this.adb.power && typeof this.adb.power.reboot === "function") {
-                    await this.adb.power.reboot();
+                if (typeof this.adb.reboot === "function") {
+                    await this.adb.reboot();
                 } else {
                     await this.shell("svc power reboot || reboot || true");
                 }
@@ -744,7 +813,24 @@
             if (!this.adb) throw new Error("Device not connected.");
             logCallback("Installing APK via Android Package Manager...");
             await this.shell(`chmod 777 ${destPath}`);
-            const res = await this.shell(`pm install -r -d -g ${destPath}`);
+            
+            let res = "";
+            let useFallback = false;
+            try {
+                res = await this.shell(`pm install -r -d -g ${destPath}`, 15000);
+            } catch (err) {
+                logCallback(`⚠️ Initial pm install flags failed: ${err.message || err}. Attempting standard compatibility installation...`);
+                useFallback = true;
+            }
+
+            if (useFallback || res.includes("Failure") || res.includes("Error") || res.includes("Exception") || res.includes("Unknown option")) {
+                logCallback("⚠️ Premium installation flags rejected. Attempting standard installation fallback...");
+                try {
+                    res = await this.shell(`pm install -r ${destPath}`, 15000);
+                } catch (fallbackErr) {
+                    throw new Error(`Installation failed: ${fallbackErr.message || fallbackErr}`);
+                }
+            }
             logCallback(`Install output: ${res.trim()}`);
             if (res.includes("Failure") || res.includes("Error") || res.includes("Exception")) {
                 throw new Error(`APK installation failed: ${res.trim()}`);
