@@ -90,8 +90,8 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                     <div style="font-size: 13px; text-align: center; color: var(--text-muted); background: var(--bg); padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border); font-weight: 500;">
                         Session Coins: <b style="color: var(--text-main); font-weight: 700;">₱{SESSION_COINS}</b>
                     </div>
-                    <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 8px;">
-                        <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;">Simulate Coin Drops (PHP)</div>
+                    <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 10px;">
+                        <button type="button" class="btn" onclick="triggerCoin()">🪙 Simulate Simple Beam Coin (₱{PRICE})</button>
                         <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;">
                             <button type="button" class="btn btn-outline btn-sm" onclick="triggerUniversalCoin(1)">₱1</button>
                             <button type="button" class="btn btn-outline btn-sm" onclick="triggerUniversalCoin(5)">₱5</button>
@@ -214,9 +214,23 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                     <div class="card">
                         <h3 class="card-title">🔌 Hardware GPIO Pins</h3>
                         <div class="form-group">
-                            <label>Coin Acceptor Signal GPIO</label>
+                            <label>Coin Acceptor Mode</label>
+                            <select name="coin_type">
+                                <option value="0" {COIN_TYPE_MULTI_SELECTED}>Universal Multi-Coin Pulse Slot (Allan 124A/616A)</option>
+                                <option value="1" {COIN_TYPE_BEAM_SELECTED}>Simple Beam Sensor / Single Pulse</option>
+                                <option value="2" {COIN_TYPE_DISABLED_SELECTED}>Disabled</option>
+                            </select>
+                            <div class="hint">Selecting your active sensor deactivates unused pins, preventing floating noise.</div>
+                        </div>
+                        <div class="form-group">
+                            <label>Multi-Coin Slot GPIO</label>
                             <input type="number" name="u_coin_pin" value="{U_COIN_PIN}">
-                            <div class="hint">Signal line from universal multi-coin pulse acceptor (Allan 124A/616A, default: GPIO 3).</div>
+                            <div class="hint">Pulse slot signal wire (Default: GPIO 3).</div>
+                        </div>
+                        <div class="form-group">
+                            <label>Simple Beam Sensor GPIO</label>
+                            <input type="number" name="coin_pin" value="{COIN_PIN}">
+                            <div class="hint">Single coin optical / switch pin (Default: GPIO 4).</div>
                         </div>
                         <div class="form-group">
                             <label>Indicator LED GPIO</label>
@@ -232,7 +246,15 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                         <div class="form-group">
                             <label>Relay Power GPIO</label>
                             <input type="number" name="relay_pin" value="{RELAY_PIN}">
-                            <div class="hint">Coin slot enable / power relay (energized only during Insert Coin, default: GPIO 5).</div>
+                            <div class="hint">Coin slot enable / power relay (GPIO 5).</div>
+                        </div>
+                        <div class="form-group">
+                            <label>Relay Power Mode</label>
+                            <select name="relay_mode">
+                                <option value="0" {RELAY_MODE_ALWAYS_SELECTED}>Always Powered ON (Recommended)</option>
+                                <option value="1" {RELAY_MODE_ARMED_SELECTED}>Armed-Only (Powered during Insert Coin)</option>
+                            </select>
+                            <div class="hint">Always Powered keeps coin acceptor energized 24/7.</div>
                         </div>
                         <div class="form-group">
                             <label>Relay Polarity</label>

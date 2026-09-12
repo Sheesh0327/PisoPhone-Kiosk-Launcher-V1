@@ -21,6 +21,7 @@ static String getPlaceholderValue(const String& tag) {
     if (tag == "WIFI_SSID") return wifiSsid;
     if (tag == "WIFI_PASS") return wifiPass;
     if (tag == "PORT") return String(targetPort);
+    if (tag == "COIN_PIN") return String(coinPin);
     if (tag == "U_COIN_PIN") return String(universalCoinPin);
     if (tag == "LED_PIN") return String(ledPin);
     if (tag == "RELAY_PIN") return String(relayPin);
@@ -37,6 +38,11 @@ static String getPlaceholderValue(const String& tag) {
     if (tag == "LED_ACTIVE_HIGH_SELECTED") return !ledActiveLow ? "selected" : "";
     if (tag == "RELAY_HIGH_SELECTED") return !relayActiveLow ? "selected" : "";
     if (tag == "RELAY_LOW_SELECTED") return relayActiveLow ? "selected" : "";
+    if (tag == "RELAY_MODE_ALWAYS_SELECTED") return (relayMode == 0) ? "selected" : "";
+    if (tag == "RELAY_MODE_ARMED_SELECTED") return (relayMode == 1) ? "selected" : "";
+    if (tag == "COIN_TYPE_MULTI_SELECTED") return (coinSlotType == 0) ? "selected" : "";
+    if (tag == "COIN_TYPE_BEAM_SELECTED") return (coinSlotType == 1) ? "selected" : "";
+    if (tag == "COIN_TYPE_DISABLED_SELECTED") return (coinSlotType == 2) ? "selected" : "";
     if (tag == "P1_OPTIONS") return renderDeviceOptions(p1Ip);
     if (tag == "P2_OPTIONS") return renderDeviceOptions(p2Ip);
     

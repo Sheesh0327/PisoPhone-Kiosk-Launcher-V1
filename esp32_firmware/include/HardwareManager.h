@@ -19,6 +19,7 @@ void setRelayHardware(bool active);
 bool isSlotArmed();
 void processRelayState();
 
+void processCoinDetector();
 void IRAM_ATTR universalCoinIsr();
 void processUniversalCoinDetector();
 void resetCoinDetectorStates();

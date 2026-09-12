@@ -142,7 +142,9 @@ void handleSave() {
     prefs.begin("kiosk_cfg", false);
     if (webServer.hasArg("wifi_ssid")) { wifiSsid = webServer.arg("wifi_ssid"); prefs.putString("wifi_ssid", wifiSsid); }
     if (webServer.hasArg("wifi_pass")) { wifiPass = webServer.arg("wifi_pass"); prefs.putString("wifi_pass", wifiPass); }
+    if (webServer.hasArg("coin_pin"))   { coinPin = webServer.arg("coin_pin").toInt(); prefs.putInt("coin_pin", coinPin); }
     if (webServer.hasArg("u_coin_pin")) { universalCoinPin = webServer.arg("u_coin_pin").toInt(); prefs.putInt("u_coin_pin", universalCoinPin); }
+    if (webServer.hasArg("coin_type"))  { coinSlotType = webServer.arg("coin_type").toInt(); prefs.putInt("coin_type", coinSlotType); }
     if (webServer.hasArg("led_pin"))    { ledPin  = webServer.arg("led_pin").toInt();  prefs.putInt("led_pin", ledPin); }
     if (webServer.hasArg("led_active_low")) {
         ledActiveLow = (webServer.arg("led_active_low") == "1");
@@ -210,6 +212,10 @@ void handleSave() {
     if (webServer.hasArg("relay_active_low")) {
         relayActiveLow = (webServer.arg("relay_active_low") == "1" || webServer.arg("relay_active_low") == "true");
         prefs.putBool("relay_active_low", relayActiveLow);
+    }
+    if (webServer.hasArg("relay_mode")) {
+        relayMode = webServer.arg("relay_mode").toInt();
+        prefs.putInt("relay_mode", relayMode);
     }
     if (webServer.hasArg("shared_secret")) {
         sharedSecret = webServer.arg("shared_secret");

@@ -41,6 +41,7 @@ void setupWebServer() {
     webServer.on("/factory_reset", HTTP_POST, handleFactoryReset);
     webServer.on("/add_time", HTTP_POST, handleAddTime);
     webServer.on("/one_vs_one", HTTP_POST, handleOneVsOne);
+    webServer.on("/insert_coin", HTTP_POST, handleInsertCoin);
     webServer.on("/insert_ucoin", HTTP_POST, handleInsertUniversalCoin);
     webServer.on("/reset_vault", HTTP_POST, handleResetVault);
     webServer.on("/api/status", HTTP_GET, handleApiStatus);
@@ -58,19 +59,26 @@ void setupWebServer() {
     
     webServer.on("/api/relay", HTTP_ANY, []() {
         bool hasInvert = webServer.hasArg("invert");
-        if (hasInvert) {
+        bool hasMode = webServer.hasArg("mode");
+        if (hasInvert || hasMode) {
             prefs.begin("kiosk_cfg", false);
-            relayActiveLow = (webServer.arg("invert") == "1" || webServer.arg("invert") == "true");
-            prefs.putBool("relay_active_low", relayActiveLow);
+            if (hasInvert) {
+                relayActiveLow = (webServer.arg("invert") == "1" || webServer.arg("invert") == "true");
+                prefs.putBool("relay_active_low", relayActiveLow);
+            }
+            if (hasMode) {
+                relayMode = webServer.arg("mode").toInt();
+                prefs.putInt("relay_mode", relayMode);
+            }
             prefs.end();
         }
         if (webServer.hasArg("state")) {
             bool state = (webServer.arg("state") == "1" || webServer.arg("state") == "true");
             setRelayHardware(state);
-            webServer.send(200, "application/json", "{\"status\":\"ok\",\"relay_pin\":" + String(relayPin) + ",\"state\":" + String(state ? 1 : 0) + ",\"active_low\":" + String(relayActiveLow ? 1 : 0) + "}");
+            webServer.send(200, "application/json", "{\"status\":\"ok\",\"relay_pin\":" + String(relayPin) + ",\"state\":" + String(state ? 1 : 0) + ",\"active_low\":" + String(relayActiveLow ? 1 : 0) + ",\"mode\":" + String(relayMode) + "}");
             return;
         }
-        webServer.send(200, "application/json", "{\"status\":\"ok\",\"relay_pin\":" + String(relayPin) + ",\"active_low\":" + String(relayActiveLow ? 1 : 0) + "}");
+        webServer.send(200, "application/json", "{\"status\":\"ok\",\"relay_pin\":" + String(relayPin) + ",\"active_low\":" + String(relayActiveLow ? 1 : 0) + ",\"mode\":" + String(relayMode) + "}");
     });
     
     // Port 80: Web OTA Firmware Update Endpoints

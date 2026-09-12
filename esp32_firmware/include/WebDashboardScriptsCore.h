@@ -92,6 +92,12 @@ document.addEventListener('DOMContentLoaded', () => {
     updateThemeButtonText();
 });
 
+window.triggerCoin = function() {
+    fetch('/insert_coin', { method: 'POST', credentials: 'include' })
+        .then(res => { if (res.ok) alert('✅ Simple beam coin drop (GPIO 4) simulated successfully!'); else alert('❌ Auth failed or error!'); })
+        .catch(err => alert('Error: ' + err));
+};
+
 window.triggerUniversalCoin = function(pulses) {
     fetch('/insert_ucoin?pulses=' + pulses, { method: 'POST', credentials: 'include' })
         .then(res => { if (res.ok) alert('✅ Universal ' + pulses + ' PHP coin drop (' + pulses + ' pulses) simulated successfully!'); else alert('❌ Auth failed or error!'); })
