@@ -203,7 +203,7 @@
     <script>
         // Parse incoming ESP32 parameters
         const urlParams = new URLSearchParams(window.location.search);
-        const urlMac = urlParams.get('mac');
+        const urlMac = urlParams.get('mac') || '00:00:00:00:00:00';
         const urlIp = urlParams.get('ip');
         const urlSlot = parseInt(urlParams.get('slot') || '1', 10);
         const urlSecret = urlParams.get('secret') || '';
@@ -213,8 +213,8 @@
         const restrictedView = document.getElementById('restrictedView');
         const mainView = document.getElementById('mainView');
 
-        // Security Gate: Strict access verification
-        if (!urlMac || !urlIp) {
+        // Security Gate: Strict access verification (IP is required to redirect back to the cabinet)
+        if (!urlIp) {
             restrictedView.classList.remove('hidden');
         } else {
             mainView.classList.remove('hidden');
