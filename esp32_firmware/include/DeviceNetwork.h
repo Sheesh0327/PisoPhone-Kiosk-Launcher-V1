@@ -5,7 +5,6 @@
 #include "Config.h"
 
 void sendAddTime(int minutes, String targetIp, String txId = "");
-void triggerCoinEvent();
 void triggerUniversalCoinEvent(int pulses);
 int getDeviceTimeRemainingSeconds(String targetIp, String *errOut = nullptr);
 

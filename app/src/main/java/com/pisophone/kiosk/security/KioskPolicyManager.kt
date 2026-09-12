@@ -317,4 +317,17 @@ object KioskPolicyManager {
             Log.w(TAG, "ACTION_CLOSE_SYSTEM_DIALOGS broadcast exception: ${e.message}")
         }
     }
+
+    /**
+     * Checks if this application is currently active as the Android Device Owner.
+     */
+    fun isDeviceOwner(context: Context): Boolean {
+        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager ?: return false
+        return try {
+            dpm.isDeviceOwnerApp(context.packageName)
+        } catch (e: Exception) {
+            Log.w(TAG, "Error checking Device Owner state: ${e.message}")
+            false
+        }
+    }
 }

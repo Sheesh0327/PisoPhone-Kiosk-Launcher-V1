@@ -83,6 +83,18 @@ static const char OTA_FORM_HTML[] PROGMEM = R"HTML(
             </div>
         </div>
         
+        <!-- Local Firmware Upload Card -->
+        <div style="background: var(--input-bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 20px; text-align: left;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                <h3 style="font-size: 15px; margin: 0;">📁 Manual Local File Upload</h3>
+            </div>
+            <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 12px 0;">
+                Select a local <b>firmware.bin</b> compiled binary from your machine to flash manually.
+            </p>
+            <input type="file" id="local_file_input" accept=".bin" style="margin: 0 0 12px 0;">
+            <button type="button" id="local_upload_btn" style="background: var(--primary);" onclick="uploadLocalFirmware()">📤 Upload and Flash</button>
+        </div>
+
         <div class="progress-container" id="progress_wrapper">
             <div class="progress-bar" id="progress_bar"></div>
         </div>
@@ -208,6 +220,68 @@ static const char OTA_FORM_HTML[] PROGMEM = R"HTML(
             if (cloudBtn) cloudBtn.disabled = false;
         }
     };
+
+    window.uploadLocalFirmware = function() {
+        const fileInput = document.getElementById('local_file_input');
+        const uploadBtn = document.getElementById('local_upload_btn');
+        const progressWrapper = document.getElementById('progress_wrapper');
+        const progressBar = document.getElementById('progress_bar');
+
+        if (!fileInput.files || fileInput.files.length === 0) {
+            alert('Please select a firmware.bin file first.');
+            return;
+        }
+
+        const file = fileInput.files[0];
+        if (!confirm('Flash the local firmware file "' + file.name + '"?')) return;
+
+        if (uploadBtn) uploadBtn.disabled = true;
+
+        progressWrapper.style.display = 'block';
+        progressBar.style.width = '0%';
+        progressBar.style.background = '#4f46e5';
+
+        showStatus('⚡ Preparing to flash local HARDWARE partition...', 'info');
+
+        const formData = new FormData();
+        formData.append('update', file, 'firmware.bin');
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/update', true);
+
+        xhr.upload.addEventListener('progress', function(e) {
+            if (e.lengthComputable) {
+                const percent = (e.loaded / e.total) * 100;
+                progressBar.style.width = percent + '%';
+                showStatus('Flashing local file: ' + Math.round(percent) + '% (' + (e.loaded/1024).toFixed(0) + ' KB / ' + (e.total/1024).toFixed(0) + ' KB)...', 'info');
+                if (percent >= 99) {
+                    showStatus('Flashing binary to HARDWARE partition... Please do not power off.', 'info');
+                }
+            }
+        });
+
+        xhr.onload = function() {
+            if (xhr.status === 200) {
+                progressBar.style.width = '100%';
+                progressBar.style.background = '#10b981';
+                showStatus('<b>✅ SUCCESS: Firmware Updated successfully!</b><br>Rebooting HARDWARE Controller now... returning to dashboard in 5 seconds.', 'success');
+                setTimeout(function() { window.location.href = '/'; }, 5000);
+            } else {
+                progressBar.style.background = '#ef4444';
+                showStatus('<b>❌ Flash Error:</b> ' + (xhr.responseText || 'Error flashing local binary'), 'error');
+                if (uploadBtn) uploadBtn.disabled = false;
+            }
+        };
+
+        xhr.onerror = function() {
+            progressBar.style.background = '#ef4444';
+            showStatus('<b>❌ Connection Error during upload to ESP32 controller.</b>', 'error');
+            if (uploadBtn) uploadBtn.disabled = false;
+        };
+
+        xhr.send(formData);
+    };
+
     document.addEventListener('DOMContentLoaded', function() { checkCloudUpdate(); });
     </script>
 </body>

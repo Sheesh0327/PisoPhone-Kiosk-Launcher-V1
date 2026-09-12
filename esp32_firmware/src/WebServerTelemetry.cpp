@@ -52,7 +52,7 @@ void handleHeartbeat() {
     String json = "{\"status\":\"" + status + "\",\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\"";
     if (slotIdx >= 0) {
         String encPin = aes_encrypt("PIN:" + webPassword, sharedSecret);
-        json += ",\"price\":" + String(coinPrice) + ",\"minutes\":" + String(minutesPerCoin) + ",\"admin_pin\":\"" + encPin + "\"";
+        json += ",\"admin_pin\":\"" + encPin + "\"";
     }
     if (devName.length() > 0) {
         json += ",\"device_name\":\"" + devName + "\"";
@@ -71,7 +71,7 @@ void handleHeartbeat() {
 }
 
 void handleGetConfig() {
-    String json = "{\"device\":\"HARDWARE_kiosk\",\"price\":" + String(coinPrice) + ",\"minutes\":" + String(minutesPerCoin) + ",\"relay_pin\":" + String(relayPin) + "}";
+    String json = "{\"device\":\"HARDWARE_kiosk\",\"relay_pin\":" + String(relayPin) + "}";
     webServer.send(200, "application/json", json);
 }
 

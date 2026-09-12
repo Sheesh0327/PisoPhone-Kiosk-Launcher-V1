@@ -1,13 +1,9 @@
 package com.pisophone.kiosk.overlay.ui
 
-import android.app.ActivityManager
 import android.content.Context
 import android.content.res.Configuration
-import android.media.AudioManager
 import android.net.Uri
-import android.os.BatteryManager
 import android.os.Build
-import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -35,6 +31,8 @@ import androidx.compose.ui.unit.sp
 import com.pisophone.kiosk.model.BatteryAlertState
 import com.pisophone.kiosk.model.BatteryStatus
 import com.pisophone.kiosk.security.KioskSecurity
+import com.pisophone.kiosk.system.AndroidKioskSystemController
+import com.pisophone.kiosk.system.KioskSystemController
 import com.pisophone.kiosk.util.AppLauncher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -53,12 +51,14 @@ fun FloatingPill(
     isWaiting: Boolean,
     themeIndex: Int = 0,
     batteryStatus: BatteryStatus = BatteryStatus(),
+    systemController: KioskSystemController? = null,
     onRequestFocus: (Boolean) -> Unit = {},
     onRequestFullScreen: (Boolean) -> Unit = {},
     onBrightnessChange: (Float) -> Unit = {},
     onDrag: (Float, Float) -> Unit
 ) {
     val context = LocalContext.current
+    val controller = systemController ?: remember(context) { AndroidKioskSystemController(context) }
     var expanded by remember { mutableStateOf(false) }
     
     LaunchedEffect(isWaiting) {
@@ -107,50 +107,30 @@ fun FloatingPill(
     val SurfaceVariant = Surface.copy(alpha = 0.8f)
     val TextTertiary = Color(0xFFA6ADC8)
 
-    val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
-    val maxVolume = remember { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }
+    var currentVolume by remember { mutableIntStateOf(controller.getStreamVolume()) }
+    val maxVolume = remember { controller.getStreamMaxVolume() }
 
-    val activityManager = remember { context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager }
-    var ramStats by remember { mutableStateOf(Pair(0L, 0L)) }
-
+    var ramStats by remember { mutableStateOf(controller.getMemoryStats()) }
     fun refreshRam() {
-        try {
-            val memoryInfo = ActivityManager.MemoryInfo()
-            activityManager.getMemoryInfo(memoryInfo)
-            val totalMb = memoryInfo.totalMem / (1024 * 1024)
-            val availMb = memoryInfo.availMem / (1024 * 1024)
-            val usedMb = totalMb - availMb
-            ramStats = Pair(usedMb, totalMb)
-        } catch (_: Exception) {}
+        ramStats = controller.getMemoryStats()
     }
 
-    val maxBrightness = 255f
+    val maxBrightness = AndroidKioskSystemController.MAX_BRIGHTNESS
     var currentBrightness by remember {
-        val sysVal = try {
-            Settings.System.getInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS).toFloat()
-        } catch (_: Exception) { 150f }
-        mutableFloatStateOf(sysVal)
+        mutableFloatStateOf(controller.getScreenBrightness())
     }
 
     fun applyBrightness(value: Float) {
         currentBrightness = value
         onBrightnessChange(value / maxBrightness)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.System.canWrite(context)) {
-            try {
-                Settings.System.putInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS, value.toInt())
-            } catch (_: Exception) {}
-        }
+        controller.setScreenBrightness(value)
     }
 
-    val batteryManager = remember { context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager }
-    var batteryPct by remember { mutableIntStateOf(88) }
+    val batteryPct = batteryStatus.level
 
     LaunchedEffect(Unit) {
         while (isActive) {
-            delay(3000)
-            try {
-                batteryPct = batteryManager?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: 88
-            } catch (_: Exception) {}
+            delay(5000)
             refreshRam()
         }
     }
@@ -285,12 +265,7 @@ fun FloatingPill(
                                                     val elapsed = System.currentTimeMillis() - startTime
                                                     if (elapsed >= 5000L) {
                                                         showUnlockedPinDialog = true
-                                                        try {
-                                                            val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator
-                                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                                                vibrator?.vibrate(android.os.VibrationEffect.createOneShot(150, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
-                                                            }
-                                                        } catch (_: Exception) {}
+                                                        controller.triggerHapticFeedback()
                                                         break
                                                     }
                                                     delay(50L)
@@ -350,16 +325,22 @@ fun FloatingPill(
                     )
 
                     FloatingPillVolumeControl(
-                        audioManager = audioManager,
+                        currentVolume = currentVolume,
                         maxVolume = maxVolume,
-                        outlineColor = Outline
+                        outlineColor = Outline,
+                        onVolumeChange = {
+                            currentVolume = it
+                            controller.setStreamVolume(it)
+                        }
                     )
 
                     FloatingPillRamCleaner(
-                        context = context,
-                        activityManager = activityManager,
                         ramStats = ramStats,
-                        onRefreshRam = { refreshRam() }
+                        onBoostClick = {
+                            val freed = controller.optimizeMemory()
+                            refreshRam()
+                            android.widget.Toast.makeText(context, "⚡ Turbo Boost: Freed ${freed}MB RAM", android.widget.Toast.LENGTH_SHORT).show()
+                        }
                     )
 
                     Button(
@@ -463,12 +444,7 @@ fun FloatingPill(
                                     if (elapsed >= 5000L) {
                                         expanded = true
                                         showUnlockedPinDialog = true
-                                        try {
-                                            val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator
-                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                                vibrator?.vibrate(android.os.VibrationEffect.createOneShot(150, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
-                                            }
-                                        } catch (_: Exception) {}
+                                        controller.triggerHapticFeedback()
                                         break
                                     }
                                     delay(50L)

@@ -91,7 +91,6 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                         Session Coins: <b style="color: var(--text-main); font-weight: 700;">₱{SESSION_COINS}</b>
                     </div>
                     <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 10px;">
-                        <button type="button" class="btn" onclick="triggerCoin()">🪙 Simulate Simple Beam Coin (₱{PRICE})</button>
                         <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;">
                             <button type="button" class="btn btn-outline btn-sm" onclick="triggerUniversalCoin(1)">₱1</button>
                             <button type="button" class="btn btn-outline btn-sm" onclick="triggerUniversalCoin(5)">₱5</button>
@@ -174,29 +173,6 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                         </div>
                     </div>
 
-                    <!-- Pricing & Rules -->
-                    <div class="card">
-                        <div class="card-header" style="margin-bottom: 0;">
-                            <h3 class="card-title">🪙 Simple Beam Pricing</h3>
-                            <span class="status-badge" style="background: var(--status-warning-bg); color: var(--status-warning); border-color: var(--status-warning-border);">GPIO 4</span>
-                        </div>
-                        <div class="hint" style="background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px; font-size: 12px; line-height: 1.4;">
-                            ⚠️ These pricing settings apply <b>exclusively to the Simple optical sensor</b> (GPIO 4). The multi-coin acceptor dynamically calculates rate from coin pulses.
-                        </div>
-                        <div class="form-group">
-                            <label>Coin Price (PHP)</label>
-                            <input type="number" step="0.01" name="price" value="{PRICE}">
-                        </div>
-                        <div class="form-group">
-                            <label>Minutes granted per Coin Drop</label>
-                            <input type="number" name="minutes" value="{MINUTES}">
-                        </div>
-                        <div class="form-group">
-                            <label>Debounce lock (ms)</label>
-                            <input type="number" name="debounce" value="{DEBOUNCE}">
-                        </div>
-                    </div>
-
                     <!-- Advanced Security & Pins -->
                     <div class="card">
                         <h3 class="card-title">🔒 Security Vault & Admin Console Password</h3>
@@ -214,23 +190,9 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                     <div class="card">
                         <h3 class="card-title">🔌 Hardware GPIO Pins</h3>
                         <div class="form-group">
-                            <label>Coin Acceptor Mode</label>
-                            <select name="coin_type">
-                                <option value="0" {COIN_TYPE_MULTI_SELECTED}>Universal Multi-Coin Pulse Slot (Allan 124A/616A)</option>
-                                <option value="1" {COIN_TYPE_BEAM_SELECTED}>Simple Beam Sensor / Single Pulse</option>
-                                <option value="2" {COIN_TYPE_DISABLED_SELECTED}>Disabled</option>
-                            </select>
-                            <div class="hint">Selecting your active sensor deactivates unused pins, preventing floating noise.</div>
-                        </div>
-                        <div class="form-group">
                             <label>Multi-Coin Slot GPIO</label>
                             <input type="number" name="u_coin_pin" value="{U_COIN_PIN}">
                             <div class="hint">Pulse slot signal wire (Default: GPIO 3).</div>
-                        </div>
-                        <div class="form-group">
-                            <label>Simple Beam Sensor GPIO</label>
-                            <input type="number" name="coin_pin" value="{COIN_PIN}">
-                            <div class="hint">Single coin optical / switch pin (Default: GPIO 4).</div>
                         </div>
                         <div class="form-group">
                             <label>Indicator LED GPIO</label>
@@ -247,14 +209,6 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                             <label>Relay Power GPIO</label>
                             <input type="number" name="relay_pin" value="{RELAY_PIN}">
                             <div class="hint">Coin slot enable / power relay (GPIO 5).</div>
-                        </div>
-                        <div class="form-group">
-                            <label>Relay Power Mode</label>
-                            <select name="relay_mode">
-                                <option value="0" {RELAY_MODE_ALWAYS_SELECTED}>Always Powered ON (Recommended)</option>
-                                <option value="1" {RELAY_MODE_ARMED_SELECTED}>Armed-Only (Powered during Insert Coin)</option>
-                            </select>
-                            <div class="hint">Always Powered keeps coin acceptor energized 24/7.</div>
                         </div>
                         <div class="form-group">
                             <label>Relay Polarity</label>

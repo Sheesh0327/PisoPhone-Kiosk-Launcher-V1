@@ -1,9 +1,5 @@
 package com.pisophone.kiosk.overlay.ui
 
-import android.app.ActivityManager
-import android.content.Context
-import android.media.AudioManager
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -133,15 +129,13 @@ fun FloatingPillBrightnessControl(
 
 @Composable
 fun FloatingPillVolumeControl(
-    audioManager: AudioManager,
+    currentVolume: Int,
     maxVolume: Int,
-    outlineColor: Color
+    outlineColor: Color,
+    onVolumeChange: (Int) -> Unit
 ) {
-    var currentVolume by remember { 
-        mutableFloatStateOf(audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat()) 
-    }
-    var isMuted by remember { mutableStateOf(currentVolume == 0f) }
-    var preMuteVolume by remember { mutableFloatStateOf(currentVolume) }
+    var isMuted by remember { mutableStateOf(currentVolume == 0) }
+    var preMuteVolume by remember { mutableIntStateOf(if (currentVolume > 0) currentVolume else (maxVolume / 2)) }
 
     Row(
         modifier = Modifier
@@ -151,9 +145,10 @@ fun FloatingPillVolumeControl(
             .padding(horizontal = 10.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        val volumePct = ((currentVolume / maxVolume) * 100).toInt()
+        val safeMax = if (maxVolume > 0) maxVolume else 1
+        val volumePct = ((currentVolume.toFloat() / safeMax) * 100).toInt().coerceIn(0, 100)
         Icon(
-            if (currentVolume == 0f) Icons.AutoMirrored.Filled.VolumeMute else Icons.AutoMirrored.Filled.VolumeUp,
+            if (currentVolume == 0) Icons.AutoMirrored.Filled.VolumeMute else Icons.AutoMirrored.Filled.VolumeUp,
             contentDescription = "Volume Icon",
             tint = outlineColor,
             modifier = Modifier
@@ -161,26 +156,24 @@ fun FloatingPillVolumeControl(
                 .clickable {
                     if (currentVolume > 0) {
                         preMuteVolume = currentVolume
-                        currentVolume = 0f
-                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0)
+                        onVolumeChange(0)
                         isMuted = true
                     } else {
-                        val restored = if (preMuteVolume > 0) preMuteVolume else (maxVolume * 0.5f)
-                        currentVolume = restored
-                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, restored.toInt(), 0)
+                        val restored = if (preMuteVolume > 0) preMuteVolume else (safeMax / 2)
+                        onVolumeChange(restored)
                         isMuted = false
                     }
                 }
         )
         Spacer(modifier = Modifier.width(6.dp))
         Slider(
-            value = currentVolume,
+            value = currentVolume.toFloat(),
             onValueChange = {
-                currentVolume = it
-                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, it.toInt(), 0)
-                isMuted = it == 0f
+                val newVol = it.toInt().coerceIn(0, safeMax)
+                onVolumeChange(newVol)
+                isMuted = newVol == 0
             },
-            valueRange = 0f..maxVolume.toFloat(),
+            valueRange = 0f..safeMax.toFloat(),
             colors = SliderDefaults.colors(
                 thumbColor = outlineColor,
                 activeTrackColor = outlineColor,
@@ -203,13 +196,9 @@ fun FloatingPillVolumeControl(
 
 @Composable
 fun FloatingPillRamCleaner(
-    context: Context,
-    activityManager: ActivityManager,
     ramStats: Pair<Long, Long>,
-    onRefreshRam: () -> Unit
+    onBoostClick: () -> Unit
 ) {
-    var isBoosting by remember { mutableStateOf(false) }
-
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -233,26 +222,7 @@ fun FloatingPillRamCleaner(
         }
 
         Button(
-            onClick = {
-                isBoosting = true
-                try {
-                    val beforeUsed = ramStats.first
-                    val runningApps = activityManager.runningAppProcesses ?: emptyList()
-                    for (proc in runningApps) {
-                        if (proc.processName != context.packageName) {
-                            activityManager.killBackgroundProcesses(proc.processName)
-                        }
-                    }
-                    System.gc()
-                    Runtime.getRuntime().gc()
-                    onRefreshRam()
-                    val freed = (beforeUsed - ramStats.first).coerceAtLeast(160L)
-                    Toast.makeText(context, "⚡ Turbo Boost: Freed ${freed}MB RAM", Toast.LENGTH_SHORT).show()
-                } catch (e: Exception) {
-                    Toast.makeText(context, "⚡ RAM Cleaned & Boosted for Gaming", Toast.LENGTH_SHORT).show()
-                }
-                isBoosting = false
-            },
+            onClick = onBoostClick,
             modifier = Modifier.height(26.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = Color(0xFF00FF88),

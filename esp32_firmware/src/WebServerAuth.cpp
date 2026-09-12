@@ -27,14 +27,17 @@ void authWorkerTask(void *pvParameters) {
             String actionUrl = "http://" + ip + ":" + String(req.port) + String(req.actionPath);
             
             String finalParams = String(req.params);
-            if (finalParams.length() > 0) {
-                finalParams += "&ts=" + String(millis());
-            } else {
-                finalParams = "ts=" + String(millis());
+            uint64_t currentMasterMs = getCurrentMasterTimeMs();
+            if (finalParams.indexOf("ts=") == -1) {
+                if (finalParams.length() > 0) {
+                    finalParams += "&ts=" + String(currentMasterMs);
+                } else {
+                    finalParams = "ts=" + String(currentMasterMs);
+                }
             }
             
             if (finalParams.indexOf("tx_id=") == -1 && finalParams.indexOf("nonce=") == -1) {
-                String txId = String(millis()) + "-" + String(random(1000, 9999));
+                String txId = "tx-" + String(currentMasterMs) + "-" + String(random(10000, 99999));
                 finalParams += "&tx_id=" + txId;
             }
 

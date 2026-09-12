@@ -210,4 +210,25 @@ object AppLauncher {
             Toast.makeText(context, "Failed to go Home", Toast.LENGTH_SHORT).show()
         }
     }
+
+    /**
+     * Launches Android Developer Options or falls back to system settings.
+     */
+    fun launchDeveloperSettings(context: Context) {
+        try {
+            val devIntent = Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(devIntent)
+        } catch (e: Exception) {
+            try {
+                val sIntent = Intent(Settings.ACTION_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(sIntent)
+            } catch (fallbackError: Exception) {
+                Log.w(TAG, "Failed to launch developer or system settings: ${fallbackError.message}")
+            }
+        }
+    }
 }

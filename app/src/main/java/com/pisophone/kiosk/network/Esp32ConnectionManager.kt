@@ -52,6 +52,7 @@ class Esp32ConnectionManager(
         private const val TAG = "Esp32ConnectionManager"
         private const val ESP32_WS_PORT = 81
         private const val HEARTBEAT_TIMEOUT_MS = 20000L
+        private const val MAX_TIMESTAMP_SKEW_MS = 60000L
     }
 
     private val okHttpClient = OkHttpClient.Builder()
@@ -321,38 +322,51 @@ class Esp32ConnectionManager(
 
                     if (event == "COIN_DETECTED") {
                         val payload = json.optString("payload", "")
-                        var seconds = json.optInt("seconds", 0)
-                        var amount = json.optDouble("amount", 0.0)
-                        var txId = json.optString("tx_id", "")
-
-                        if (payload.isNotBlank()) {
-                            val secretKey = delegate.getSecretKey()
-                            val decryptedStr = if (secretKey.isNotBlank()) {
-                                KioskSecurity.decrypt(payload, secretKey)
-                            } else {
-                                KioskSecurity.decrypt(payload, "")
-                            }
-
-                            if (decryptedStr.isNotBlank()) {
-                                try {
-                                    val decryptedJson = JSONObject(decryptedStr)
-                                    seconds = decryptedJson.optInt("seconds", if (seconds > 0) seconds else 1800)
-                                    amount = decryptedJson.optDouble("amount", if (amount > 0) amount else 5.0)
-                                    val decTxId = decryptedJson.optString("tx_id", "")
-                                    if (decTxId.isNotBlank()) txId = decTxId
-                                } catch (e: Exception) {
-                                    Log.e(TAG, "Failed to parse decrypted JSON: ${e.message}")
-                                }
-                            } else {
-                                Log.w(TAG, "WebSocket coin payload decryption failed with configured secret key")
-                            }
+                        if (payload.isBlank()) {
+                            Log.w(TAG, "Rejected WebSocket coin event: Missing encrypted payload")
+                            return
                         }
 
-                        if (seconds <= 0) seconds = 300 // Default fallback 5 minutes if missing
-                        if (amount <= 0.0) amount = 1.0
-                        if (txId.isBlank()) txId = "ws-${System.currentTimeMillis()}-${(1000..9999).random()}"
+                        val secretKey = delegate.getSecretKey()
+                        val decryptedStr = KioskSecurity.decrypt(payload, secretKey)
+                        if (decryptedStr.isBlank()) {
+                            Log.w(TAG, "Rejected WebSocket coin event: Decryption failed or invalid secret key")
+                            return
+                        }
 
-                        Log.i(TAG, "⚡ WebSocket Coin Processed: +${seconds}s, amount=$amount, txId=$txId")
+                        val decryptedJson = try {
+                            JSONObject(decryptedStr)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Rejected WebSocket coin event: Malformed decrypted JSON: ${e.message}")
+                            return
+                        }
+
+                        val txId = decryptedJson.optString("tx_id", "").trim()
+                        if (txId.isBlank()) {
+                            Log.w(TAG, "Rejected WebSocket coin event: Missing tx_id in encrypted payload")
+                            return
+                        }
+
+                        val tsStr = decryptedJson.optString("ts", "").trim()
+                        val ts = tsStr.toLongOrNull() ?: 0L
+                        val now = System.currentTimeMillis()
+                        val skew = Math.abs(now - ts)
+                        if (ts <= 0L || skew > MAX_TIMESTAMP_SKEW_MS) {
+                            Log.w(TAG, "Rejected WebSocket coin event: Stale/invalid timestamp ($ts, now=$now, skew=${skew}ms, max=${MAX_TIMESTAMP_SKEW_MS}ms)")
+                            return
+                        }
+
+                        val minutes = decryptedJson.optInt("minutes", 0)
+                        val secondsOpt = decryptedJson.optInt("seconds", 0)
+                        val seconds = if (secondsOpt > 0) secondsOpt else (minutes * 60)
+                        val amount = decryptedJson.optDouble("amount", 0.0)
+
+                        if (seconds <= 0 || amount <= 0.0) {
+                            Log.w(TAG, "Rejected WebSocket coin event: Invalid seconds ($seconds) or amount ($amount)")
+                            return
+                        }
+
+                        Log.i(TAG, "⚡ Validated WebSocket Coin Processed: +${seconds}s, amount=₱$amount, txId=$txId")
                         delegate.onCoinMessageReceived(seconds, amount, txId)
                     } else if (event == "TIMEOUT" || event == "CLOSED") {
                         Log.d(TAG, "Received $event event from ESP32 WebSocket")

@@ -32,9 +32,7 @@ bool pairDeviceToSlot(int slotNum, String devId, String ip, String name) {
 
     // Actively push config to device on pairing
     if (ip.length() > 0 && ip != "127.0.0.1") {
-        String pushParams = "price=" + String(coinPrice) + 
-                            "&minutes=" + String(minutesPerCoin) + 
-                            "&device_name=" + urlEncode(cleanName) + 
+        String pushParams = "device_name=" + urlEncode(cleanName) + 
                             "&slot=" + String(slotNum) + 
                             "&slot_num=" + String(slotNum) +
                             "&admin_pin=" + webPassword;

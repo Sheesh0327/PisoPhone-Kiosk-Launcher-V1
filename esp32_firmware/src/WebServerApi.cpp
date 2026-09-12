@@ -56,12 +56,6 @@ void handleAddTime() {
     redirectHome();
 }
 
-void handleInsertCoin() {
-    if (!checkAuth()) return;
-    triggerCoinEvent();
-    webServer.send(200, "text/plain", "OK");
-}
-
 void handleInsertUniversalCoin() {
     if (!checkAuth()) return;
     int pulses = webServer.hasArg("pulses") ? webServer.arg("pulses").toInt() : 1;
@@ -306,9 +300,6 @@ void handleIdentify() {
     String devName = getDeviceNameByIpOrId(reqIp, devId);
     int slotIdx = findSlotIndexForDevice(devId, reqIp);
     String json = "{\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\",\"version\":\"3.0\"";
-    if (slotIdx >= 0) {
-        json += ",\"price\":" + String(coinPrice) + ",\"minutes\":" + String(minutesPerCoin);
-    }
     if (devName.length() > 0) {
         json += ",\"device_name\":\"" + devName + "\"";
     }

@@ -48,7 +48,7 @@ class CoinProcessor(
     fun processCoinCredit(
         seconds: Int,
         source: String,
-        txId: String? = null,
+        txId: String?,
         amount: Double = 1.0,
         isStartupPhase: Boolean = false
     ): Boolean {
@@ -57,13 +57,12 @@ class CoinProcessor(
             return false
         }
 
-        val now = System.currentTimeMillis()
-
-        // Boot startup noise guard
-        if (isStartupPhase && txId.isNullOrBlank()) {
-            Log.d(TAG, "Discarded boot pulse noise from $source during startup phase.")
+        if (txId.isNullOrBlank()) {
+            Log.w(TAG, "Rejecting unauthenticated coin credit from $source: Missing mandatory transaction ID.")
             return false
         }
+
+        val now = System.currentTimeMillis()
 
         // Clean up expired transaction IDs older than 2 minutes
         val txIterator = processedCoinTxIds.entries.iterator()
@@ -74,35 +73,26 @@ class CoinProcessor(
             }
         }
 
-        // 1. Transaction ID Deduplication
-        if (!txId.isNullOrBlank()) {
-            if (processedCoinTxIds.containsKey(txId)) {
-                Log.d(TAG, "Coin transaction $txId already credited, ignoring duplicate.")
-                return true
-            }
-            processedCoinTxIds[txId] = now
-        } else {
-            // 2. Hardware / Network Jitter Debounce Lockout (250ms) ONLY if no txId
-            if (now - lastCoinCreditedTime < JITTER_DEBOUNCE_MS) {
-                Log.d(TAG, "Duplicate coin burst (<250ms) from $source discarded.")
-                return false
-            }
+        // Transaction ID Deduplication
+        if (processedCoinTxIds.containsKey(txId)) {
+            Log.d(TAG, "Coin transaction $txId already credited, ignoring duplicate.")
+            return true
         }
+        processedCoinTxIds[txId] = now
 
         lastCoinCreditedTime = now
         val pesoVal = if (amount >= 1.0) amount.toInt() else 1
-        Log.d(TAG, "Coin credited: +$seconds seconds (₱$pesoVal) via $source (txId=${txId ?: "none"})")
+        Log.d(TAG, "Coin credited: +$seconds seconds (₱$pesoVal) via $source (txId=$txId)")
 
         // Notify Service to apply state and timer updates
         onCreditsApplied(seconds, pesoVal)
 
         // Persist audit record in SQLite Room DB
-        val eventTxId = txId ?: UUID.randomUUID().toString()
         scope.launch(Dispatchers.IO) {
             try {
                 coinEventRepo.insertEvent(
                     CoinEvent(
-                        txId = eventTxId,
+                        txId = txId,
                         secondsAdded = seconds,
                         source = "$source (₱$pesoVal)"
                     )

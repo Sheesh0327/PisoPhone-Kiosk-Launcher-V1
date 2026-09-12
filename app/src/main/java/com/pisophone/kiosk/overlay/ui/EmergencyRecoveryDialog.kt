@@ -1,9 +1,6 @@
 package com.pisophone.kiosk.overlay.ui
 
-import android.app.admin.DevicePolicyManager
 import android.content.Context
-import android.content.Intent
-import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -29,20 +26,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.pisophone.kiosk.security.KioskPolicyManager
 import com.pisophone.kiosk.security.KioskSecurity
+import com.pisophone.kiosk.util.AppLauncher
 
 @Composable
 fun EmergencyRecoveryDialog(
     context: Context = LocalContext.current,
     onClose: () -> Unit
 ) {
-    val dpm = remember { context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager }
-    var isDeviceOwner by remember { mutableStateOf(dpm.isDeviceOwnerApp(context.packageName)) }
+    var isDeviceOwner by remember { mutableStateOf(KioskPolicyManager.isDeviceOwner(context)) }
     var isAdbEnabled by remember { mutableStateOf(KioskSecurity.isUsbDebuggingEnabled(context)) }
     var showConfirmDeprovision by remember { mutableStateOf(false) }
 
     val refreshStatus = {
-        isDeviceOwner = dpm.isDeviceOwnerApp(context.packageName)
+        isDeviceOwner = KioskPolicyManager.isDeviceOwner(context)
         isAdbEnabled = KioskSecurity.isUsbDebuggingEnabled(context)
     }
 
@@ -295,19 +293,7 @@ fun EmergencyRecoveryDialog(
                         contentColor = Color(0xFFE2E8F0),
                         borderColor = Color(0xFF334155),
                         onClick = {
-                            try {
-                                val devIntent = Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS).apply {
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                context.startActivity(devIntent)
-                            } catch (e: Exception) {
-                                try {
-                                    val sIntent = Intent(Settings.ACTION_SETTINGS).apply {
-                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    }
-                                    context.startActivity(sIntent)
-                                } catch (_: Exception) {}
-                            }
+                            AppLauncher.launchDeveloperSettings(context)
                         }
                     )
 

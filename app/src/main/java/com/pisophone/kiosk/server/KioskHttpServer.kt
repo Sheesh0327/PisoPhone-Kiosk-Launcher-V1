@@ -35,6 +35,7 @@ class KioskHttpServer(
         private const val RATE_LIMIT_WINDOW_MS = 60000L
         private const val MAX_REQUESTS_PER_WINDOW = 60
         private const val MAX_TRACKED_TX = 200
+        private const val MAX_TIMESTAMP_SKEW_MS = 60000L
     }
 
     private val rateLimits = ConcurrentHashMap<String, MutableList<Long>>()
@@ -151,11 +152,30 @@ class KioskHttpServer(
         }
         val decryptedParams = parseQueryString(decryptedStr)
 
-        // Replay Protection check: verify unique tx_id
-        val txId = decryptedParams["tx_id"] ?: decryptedParams["nonce"]
-        if (!txId.isNullOrBlank()) {
+        // Validate timestamp freshness (Replay protection Layer 1)
+        val ts = decryptedParams["ts"]?.trim()?.toLongOrNull() ?: 0L
+        val now = System.currentTimeMillis()
+        val skew = Math.abs(now - ts)
+        if (ts <= 0L || skew > MAX_TIMESTAMP_SKEW_MS) {
+            Log.w(TAG, "Rejecting $uri request: Stale or invalid timestamp ($ts, now=$now, skew=${skew}ms)")
+            return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "STALE_TIMESTAMP")
+        }
+
+        // Replay Protection check: verify unique tx_id (Layer 2)
+        val txId = (decryptedParams["tx_id"] ?: decryptedParams["nonce"])?.trim()
+        if (uri == "/add_time" || uri == "/coin") {
+            if (txId.isNullOrBlank()) {
+                Log.w(TAG, "Rejecting coin credit: Missing tx_id in payload")
+                return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "MISSING_TX_ID")
+            }
             if (isTxIdProcessed(txId)) {
                 Log.w(TAG, "Rejecting replayed or duplicate transaction: $txId")
+                return newFixedLengthResponse(Response.Status.OK, "text/plain", "ALREADY_PROCESSED")
+            }
+            markTxIdProcessed(txId)
+        } else if (!txId.isNullOrBlank()) {
+            if (isTxIdProcessed(txId)) {
+                Log.w(TAG, "Rejecting duplicate request: $txId")
                 return newFixedLengthResponse(Response.Status.OK, "text/plain", "ALREADY_PROCESSED")
             }
             markTxIdProcessed(txId)
@@ -168,7 +188,7 @@ class KioskHttpServer(
                 val seconds = secondsParam ?: (minutes * 60)
                 val amount = decryptedParams["amount"]?.toDoubleOrNull() ?: 1.0
                 if (seconds > 0) {
-                    delegate.onCoinCredited(seconds, "HTTP /add_time", if (!txId.isNullOrBlank()) txId else null, amount)
+                    delegate.onCoinCredited(seconds, "HTTP /add_time", txId, amount)
                 } else if (seconds < 0) {
                     delegate.onDeductTime(seconds)
                 }

@@ -231,8 +231,9 @@ void processWebSocketServer() {
                 return;
             }
             
-            // Mutex passed, slot acquired. Save the nonce.
+            // Mutex passed, slot acquired. Save the nonce and synchronize master clock.
             recordDeviceNonce(reqDeviceId, ts);
+            if (ts > 0) updateMasterTime(ts);
             
             // 3. Complete RFC6455 Handshake
             String acceptKey = computeSecWebSocketAccept(secKey);
@@ -380,8 +381,6 @@ void sendUdpDiscoveryResponse(IPAddress targetIp, uint16_t targetPort) {
                   "\"port\":80,"
                   "\"ws_port\":81,"
                   "\"device_name\":\"PisoPhone Master\","
-                  "\"price\":" + String(coinPrice, 2) + ","
-                  "\"minutes\":" + String(minutesPerCoin) + ","
                   "\"slots\":" + String(maxLicensedSlots) + ","
                   "\"uptime\":" + String(millis() / 1000) + "}";
 
@@ -435,9 +434,7 @@ void processSerialCli() {
     line.trim();
     if (line.length() == 0) return;
 
-    if (line.equalsIgnoreCase("coin")) {
-        triggerCoinEvent();
-    } else if (line.startsWith("ucoin ") || line.startsWith("ucoin")) {
+    if (line.startsWith("ucoin ") || line.startsWith("ucoin")) {
         int firstSpace = line.indexOf(' ');
         int pulses = (firstSpace != -1) ? line.substring(firstSpace + 1).toInt() : 1;
         if (pulses <= 0) pulses = 1;
@@ -449,6 +446,6 @@ void processSerialCli() {
             sendAddTime(minutes, "ALL");
         }
     } else if (line.equalsIgnoreCase("help")) {
-        Serial.println("\nCommands: coin | ucoin <1|5|10|20> | add <minutes> | help");
+        Serial.println("\nCommands: ucoin <1|5|10|20> | add <minutes> | help");
     }
 }

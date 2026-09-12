@@ -14,8 +14,6 @@ async function fetchStatus() {
         document.getElementById('system_status').style.color = data.system_armed ? "var(--success)" : "var(--text-secondary)";
 
         // Populate fields in settings form
-        document.getElementById('price').value = data.coin_price;
-        document.getElementById('minutes').value = data.min_per_coin;
         document.getElementById('port').value = data.target_port;
 
         // Render dynamic slots grid (mocking structure if endpoints are not populated yet)
@@ -51,8 +49,6 @@ function setupForm() {
         msg.classList.add('hidden');
 
         const formData = new FormData();
-        formData.append('price', document.getElementById('price').value);
-        formData.append('min_per_coin', document.getElementById('minutes').value);
         formData.append('port', document.getElementById('port').value);
         formData.append('password', document.getElementById('password').value);
 

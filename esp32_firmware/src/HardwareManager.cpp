@@ -90,27 +90,24 @@ void resetCoinDetectorStates() {
     interrupts();
     pulseTrainStartTime = 0;
     pulseTrainWasArmed = false;
-    currentCoinState = COIN_IDLE;
-    pulseStartMs = 0;
-    lockoutStartMs = 0;
 }
 
 void setRelayHardware(bool active) {
-    pinMode(relayPin, OUTPUT);
     if (active) {
+        pinMode(relayPin, OUTPUT);
+        digitalWrite(relayPin, relayActiveLow ? LOW : HIGH);
         if (!isRelayCurrentlyActive) {
             isRelayCurrentlyActive = true;
             resetCoinDetectorStates();
-            Serial.printf("[⚡ RELAY] Coin slot powered ON (Pin %d, ActiveLow=%s).\n", relayPin, relayActiveLow ? "true" : "false");
+            Serial.printf("[⚡ RELAY] Coin slot powered ON (Pin %d, Mode=OUTPUT, ActiveLow=%s).\n", relayPin, relayActiveLow ? "true" : "false");
         }
-        digitalWrite(relayPin, relayActiveLow ? LOW : HIGH);
     } else {
+        pinMode(relayPin, INPUT);
         if (isRelayCurrentlyActive) {
             isRelayCurrentlyActive = false;
             resetCoinDetectorStates();
-            Serial.println("[⚡ RELAY] Coin slot powered down into standby mode.");
+            Serial.printf("[⚡ RELAY] Coin slot powered down into hi-Z standby (Pin %d, Mode=INPUT).\n", relayPin);
         }
-        digitalWrite(relayPin, relayActiveLow ? HIGH : LOW);
     }
 }
 
@@ -119,73 +116,15 @@ bool isSlotArmed() {
 }
 
 void processRelayState() {
-    bool shouldBeOn = (relayMode == 0) ? (WiFi.status() == WL_CONNECTED || millis() > 4000) : isSlotArmed();
+    bool shouldBeOn = isSlotArmed();
     static int lastAppliedRelayState = -1;
     int cur = shouldBeOn ? 1 : 0;
     if (cur != lastAppliedRelayState) {
         lastAppliedRelayState = cur;
         setRelayHardware(shouldBeOn);
-        Serial.printf("[⚡ RELAY] Pin %d set to %s (ActiveLow=%s, Mode=%d, SlotArmed=%s)\n",
+        Serial.printf("[⚡ RELAY] Pin %d set to %s (ActiveLow=%s, SlotArmed=%s)\n",
             relayPin, shouldBeOn ? "ON (POWERED)" : "OFF (STANDBY)",
-            relayActiveLow ? "true" : "false", relayMode, isSlotArmed() ? "true" : "false");
-    }
-}
-
-// ============================================================================
-// HARDWARE DEBOUNCER STATE MACHINE - LINEAR BEAM SENSOR (GPIO 4)
-// ============================================================================
-enum CoinState {
-    COIN_IDLE,
-    COIN_DETECTING,
-    COIN_LOCKOUT
-};
-
-static CoinState currentCoinState = COIN_IDLE;
-static unsigned long pulseStartMs = 0;
-static unsigned long lockoutStartMs = 0;
-static const unsigned long MIN_PULSE_WIDTH_MS = 20;
-
-void processCoinDetector() {
-    if (coinSlotType != 1) return; // Only process when Beam Sensor mode is selected
-
-    unsigned long now = millis();
-    if (now < 3000) {
-        currentCoinState = COIN_IDLE;
-        return;
-    }
-
-    int pinVal = digitalRead(coinPin);
-
-    switch (currentCoinState) {
-        case COIN_IDLE:
-            if (pinVal == LOW) {
-                pulseStartMs = now;
-                currentCoinState = COIN_DETECTING;
-            }
-            break;
-
-        case COIN_DETECTING:
-            if (pinVal == LOW) {
-                if (now - pulseStartMs >= MIN_PULSE_WIDTH_MS) {
-                    Serial.printf("[⚡ COIN BEAM] Pin %d pulse verified (%lu ms LOW)! Triggering coin event...\n", coinPin, now - pulseStartMs);
-                    triggerCoinEvent();
-                    lockoutStartMs = now;
-                    currentCoinState = COIN_LOCKOUT;
-                }
-            } else {
-                currentCoinState = COIN_IDLE;
-            }
-            break;
-
-        case COIN_LOCKOUT:
-            if (pinVal == HIGH) {
-                if (now - lockoutStartMs >= (unsigned long)lockoutDebounceMs) {
-                    currentCoinState = COIN_IDLE;
-                }
-            } else {
-                lockoutStartMs = now;
-            }
-            break;
+            relayActiveLow ? "true" : "false", isSlotArmed() ? "true" : "false");
     }
 }
 
@@ -207,29 +146,16 @@ void IRAM_ATTR universalCoinIsr() {
 
 void applyCoinSlotHardwareConfig() {
     detachInterrupt(digitalPinToInterrupt(universalCoinPin));
-    if (coinSlotType == 0) {
-        // Universal Multi-Coin Pulse Slot (Allan 124A/616A)
-        pinMode(universalCoinPin, INPUT_PULLUP);
-        attachInterrupt(digitalPinToInterrupt(universalCoinPin), universalCoinIsr, FALLING);
-        pinMode(coinPin, INPUT_PULLUP);
-        Serial.printf("[+] Active Coin Mode: UNIVERSAL MULTI-COIN (GPIO %d, Interrupt Active). GPIO %d Beam Sensor deactivated.\n", universalCoinPin, coinPin);
-    } else if (coinSlotType == 1) {
-        // Simple Beam / Optical / Single Drop
-        pinMode(coinPin, INPUT_PULLUP);
-        pinMode(universalCoinPin, INPUT_PULLUP);
-        Serial.printf("[+] Active Coin Mode: SIMPLE BEAM / SINGLE DROP (GPIO %d Polled). GPIO %d Multi-coin ISR deactivated.\n", coinPin, universalCoinPin);
-    } else {
-        // Disabled
-        pinMode(coinPin, INPUT_PULLUP);
-        pinMode(universalCoinPin, INPUT_PULLUP);
-        Serial.println("[+] Active Coin Mode: DISABLED. All coin detectors inactive.");
-    }
+    
+    // Universal Multi-Coin Pulse Slot (Allan 124A/616A)
+    pinMode(universalCoinPin, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(universalCoinPin), universalCoinIsr, FALLING);
+    Serial.printf("[+] Active Coin Mode: UNIVERSAL MULTI-COIN (GPIO %d, Interrupt Active).\n", universalCoinPin);
+
     resetCoinDetectorStates();
 }
 
 void processUniversalCoinDetector() {
-    if (coinSlotType != 0) return; // Only process when Universal Multi-Coin mode is selected
-
     unsigned long now = millis();
     if (now < 3000) {
         if (isrUniversalPulseCount > 0) {

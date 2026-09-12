@@ -12,15 +12,11 @@ extern const char* DEFAULT_PASS;
 extern const char* DEFAULT_ADMIN_PW;
 extern const char* MASTER_CRYPTO_SECRET;
 
-extern const int DEFAULT_COIN_PIN;
 extern const int DEFAULT_UNIVERSAL_COIN_PIN;
 extern const int DEFAULT_LED_PIN;
 extern const bool DEFAULT_LED_ACTIVE_LOW;
 extern const int DEFAULT_RELAY_PIN;
 extern const int DEFAULT_PORT;
-extern const float DEFAULT_PRICE;
-extern const int DEFAULT_MINUTES;
-extern const int DEFAULT_DEBOUNCE;
 extern const int HARDWARE_RESET_PIN;
 extern const int UDP_DISCOVERY_PORT;
 
@@ -70,14 +66,11 @@ struct AuthRequest {
 // ============================================================================
 extern Preferences prefs;
 
-extern int coinPin;
 extern int universalCoinPin;
-extern int coinSlotType; // 0 = Universal Multi-Coin, 1 = Simple Beam, 2 = Disabled
 extern int ledPin;
 extern bool ledActiveLow;
 extern int relayPin;
 extern bool relayActiveLow;
-extern int relayMode;
 
 extern String wifiSsid;
 extern String wifiPass;
@@ -89,9 +82,6 @@ extern bool is_licensed;
 extern int maxLicensedSlots;
 
 extern int targetPort;
-extern float coinPrice;
-extern int minutesPerCoin;
-extern int lockoutDebounceMs;
 
 extern String armedIp;
 extern unsigned long armedUntil;
