@@ -14,4 +14,8 @@ class CoinEventRepository(private val coinEventDao: CoinEventDao) {
     suspend fun insertEvent(event: CoinEvent) {
         coinEventDao.insertEvent(event)
     }
+
+    suspend fun deleteOldEvents(keepLimit: Int = 500) {
+        coinEventDao.deleteOldEvents(keepLimit)
+    }
 }

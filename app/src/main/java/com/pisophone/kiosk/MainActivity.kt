@@ -275,11 +275,15 @@ class MainActivity : ComponentActivity() {
     private fun checkOverlayPermission() {
         hasOverlayPermission = Settings.canDrawOverlays(this)
         if (hasOverlayPermission && isFullySetup()) {
-            val intent = Intent(this, KioskService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(intent)
-            } else {
-                startService(intent)
+            try {
+                val intent = Intent(this, KioskService::class.java)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(intent)
+                } else {
+                    startService(intent)
+                }
+            } catch (e: Throwable) {
+                Log.w(TAG, "Failed to start KioskService from checkOverlayPermission: ${e.message}")
             }
         }
     }

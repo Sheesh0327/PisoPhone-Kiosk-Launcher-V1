@@ -31,6 +31,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "kiosk_audit_database"
                 )
                 .addMigrations(MIGRATION_1_2)
+                .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance
                 instance

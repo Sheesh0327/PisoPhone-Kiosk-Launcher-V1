@@ -253,16 +253,14 @@ class Esp32DiscoveryScanner(
             val req = Request.Builder()
                 .url("http://$host:$port/identify")
                 .build()
-            val resp = httpClient.newCall(req).execute()
-            if (resp.isSuccessful) {
-                val rawBody = resp.body?.string() ?: ""
-                resp.close()
-                if (isEsp32MacMatching(rawBody)) {
-                    delegate.onEsp32Discovered(host, rawBody)
-                    return true
+            httpClient.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    val rawBody = resp.body?.string() ?: ""
+                    if (isEsp32MacMatching(rawBody)) {
+                        delegate.onEsp32Discovered(host, rawBody)
+                        return true
+                    }
                 }
-            } else {
-                resp.close()
             }
         } catch (_: Exception) {}
 

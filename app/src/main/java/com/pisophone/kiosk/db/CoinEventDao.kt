@@ -16,4 +16,7 @@ interface CoinEventDao {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertEvent(event: CoinEvent)
+
+    @Query("DELETE FROM coin_events WHERE id NOT IN (SELECT id FROM coin_events ORDER BY timestamp DESC LIMIT :keepLimit)")
+    suspend fun deleteOldEvents(keepLimit: Int = 500)
 }

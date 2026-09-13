@@ -97,6 +97,7 @@ class CoinProcessor(
                         source = "$source (₱$pesoVal)"
                     )
                 )
+                coinEventRepo.deleteOldEvents(500)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to log coin event to audit ledger: ${e.message}")
             }

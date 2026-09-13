@@ -130,10 +130,14 @@ class KioskService : Service() {
         }
 
         private fun startServiceCompat(context: Context, intent: Intent) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            } catch (e: Throwable) {
+                Log.e(TAG, "Failed startServiceCompat: ${e.message}")
             }
         }
     }
@@ -231,7 +235,7 @@ class KioskService : Service() {
             }
             val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
             wakeLock = powerManager?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "pisophone:kiosk_service_wakelock")?.apply {
-                acquire(10 * 60 * 1000L)
+                acquire()
             }
             Log.d(TAG, "[+] Acquired MulticastLock and Partial WakeLock for reliable ESP32 networking.")
         } catch (e: Exception) {

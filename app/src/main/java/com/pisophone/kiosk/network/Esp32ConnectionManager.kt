@@ -141,16 +141,16 @@ class Esp32ConnectionManager(
             val req = Request.Builder()
                 .url("http://$ipHost:${esp32Port}/identify")
                 .build()
-            val resp = httpClient.newCall(req).execute()
-            if (resp.isSuccessful) {
-                val body = resp.body?.string() ?: ""
-                val json = JSONObject(body)
-                val price = if (json.has("price")) json.optDouble("price", 5.0) else null
-                val minutes = if (json.has("minutes")) json.optInt("minutes", 30) else null
-                val alias = if (json.has("device_name")) json.optString("device_name", "").trim() else null
-                delegate.onConfigSynced(price, minutes, alias)
+            httpClient.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    val body = resp.body?.string() ?: ""
+                    val json = JSONObject(body)
+                    val price = if (json.has("price")) json.optDouble("price", 5.0) else null
+                    val minutes = if (json.has("minutes")) json.optInt("minutes", 30) else null
+                    val alias = if (json.has("device_name")) json.optString("device_name", "").trim() else null
+                    delegate.onConfigSynced(price, minutes, alias)
+                }
             }
-            resp.close()
         } catch (_: Exception) {}
     }
 
@@ -177,11 +177,11 @@ class Esp32ConnectionManager(
                             .url("http://$host:${esp32Port}/heartbeat?device_id=$deviceId&ip=${if (currentIp == "127.0.0.1") "" else currentIp}&time=${delegate.getSessionTimeRemaining()}&state=${delegate.getAppState()}&battery=$curBat&charging=${if (isChg) 1 else 0}&ts=$ts&sig=$sig")
                             .build()
                         try {
-                            val response = httpClient.newCall(req).execute()
-                            val code = response.code
-                            val body = response.body?.string() ?: ""
+                            httpClient.newCall(req).execute().use { response ->
+                                val code = response.code
+                                val body = response.body?.string() ?: ""
 
-                            if (response.isSuccessful || code == 403 || code == 423) {
+                                if (response.isSuccessful || code == 403 || code == 423) {
                                 consecutiveHeartbeatFailures = 0
                                 lastHeartbeatTime = System.currentTimeMillis()
                                 if (body.isNotBlank()) {
@@ -233,7 +233,7 @@ class Esp32ConnectionManager(
                                 consecutiveHeartbeatFailures++
                                 checkOfflineThreshold(currentIp)
                             }
-                            response.close()
+                        }
                         } catch (_: Exception) {
                             consecutiveHeartbeatFailures++
                             checkOfflineThreshold(currentIp)

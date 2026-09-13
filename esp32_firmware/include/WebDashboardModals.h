@@ -160,7 +160,7 @@ const char PORTAL_MODALS_HTML[] PROGMEM = R"HTML(
 
         <div style="display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap;">
             <button type="button" class="btn btn-outline" onclick="closeDeprovisionModal()">Close</button>
-            <button type="button" class="btn btn-outline" style="border-color: rgba(225, 29, 72, 0.4); color: var(--danger);" onclick="window.open('https://pisophone.pages.dev/?mac=' + ESP32_MAC + '&ip=' + ESP32_HOST + '&slot=' + activeSlotNum + '&mode=deprovision', '_blank')">🌐 Web Deprovisioner</button>
+            <button type="button" class="btn btn-outline" style="border-color: rgba(225, 29, 72, 0.4); color: var(--danger);" onclick="window.open('https://pisophone.pages.dev/?mac=' + ESP32_MAC + '&ip=' + ESP32_HOST + '&slot=' + activeSlotNum + '&mode=deprovision', '_self')">🌐 Web Deprovisioner</button>
             <button type="button" id="start_deprov_btn" class="btn btn-primary" style="background: linear-gradient(135deg, #e11d48 0%, #be123c 100%); border: none;" onclick="executeDeprovisionFlow()">⚡ Deprovision USB</button>
         </div>
     </div>
