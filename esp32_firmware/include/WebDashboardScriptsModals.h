@@ -168,7 +168,7 @@ window.showPairingQrModal = function(slotNum) {
     const slotTitle = document.getElementById('qr_slot_title');
     if (slotTitle) slotTitle.textContent = activeSlotNum;
     const ipElem = document.getElementById('qr_modal_ip');
-    const hostIp = window.location.hostname || "192.168.4.1";
+    const hostIp = window.location.hostname || "kioskmanager.local";
     if (ipElem) ipElem.textContent = hostIp;
 
     const payloadObj = {

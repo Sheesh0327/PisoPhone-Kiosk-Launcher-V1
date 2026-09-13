@@ -102,7 +102,7 @@ String renderDeviceIpInputs() {
 
 String renderLicenseSlotsHtml() {
     String myIp = WiFi.localIP().toString();
-    if (myIp == "0.0.0.0" || myIp.length() == 0) myIp = "192.168.4.1";
+    if (myIp == "0.0.0.0" || myIp.length() == 0) myIp = "kioskmanager.local";
 
     int installedCount = 0;
     for (int i = 0; i < maxLicensedSlots; i++) {

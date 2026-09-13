@@ -41,7 +41,7 @@ static String getPlaceholderValue(const String& tag) {
     
     if (tag == "IP_ADDRESS") {
         String ip = WiFi.localIP().toString();
-        if (ip == "0.0.0.0" || ip.length() == 0) ip = "192.168.4.1";
+        if (ip == "0.0.0.0" || ip.length() == 0) ip = "kioskmanager.local";
         return ip;
     }
     

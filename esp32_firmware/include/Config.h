@@ -37,7 +37,7 @@ struct DeviceConfig {
 struct LicenseSlot {
     int slotNum;        // 1 to 12
     String deviceId;    // Canonical hardware ID (e.g., "HW-A1B2C3D4")
-    String ip;          // Terminal local IP (e.g., "192.168.4.2")
+    String ip;          // Terminal local DHCP IP (e.g., "192.168.1.50")
     String name;        // Display label (e.g., "PisoPhone 1")
     bool active;        // Whether slot is valid/licensed
 };

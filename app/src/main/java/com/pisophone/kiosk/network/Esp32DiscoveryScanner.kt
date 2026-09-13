@@ -63,8 +63,12 @@ class Esp32DiscoveryScanner(
         scope.launch(Dispatchers.IO) {
             // 1. Send standard UDP discovery broadcast
             sendUdpDiscoveryBroadcast(localIp)
-            // 2. Direct probe of configured IP or canonical mDNS hostname
+            // 2. Direct probe of configured IP, canonical mDNS hostname, and DHCP gateway
             probeDirectCandidates()
+            // 3. Dynamic LAN subnet scan for DHCP client ESP32
+            if (!isAlreadyBound()) {
+                scanSubnetIfUnbound(localIp)
+            }
         }
     }
 
@@ -168,11 +172,6 @@ class Esp32DiscoveryScanner(
             }
         } catch (_: Exception) {}
 
-        // Standard ESP32 SoftAP Gateway IP
-        if (!candidates.contains("192.168.4.1")) {
-            candidates.add("192.168.4.1")
-        }
-
         // WiFi DHCP Gateway IP if connected to AP or router
         try {
             val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
@@ -196,6 +195,34 @@ class Esp32DiscoveryScanner(
             if (probeEsp32Connection(target)) {
                 Log.i(TAG, "Direct probe succeeded for ESP32 at $target")
                 return
+            }
+        }
+    }
+
+    /**
+     * Concurrent local subnet scanner for dynamically assigned DHCP client ESP32 devices.
+     */
+    fun scanSubnetIfUnbound(localIp: String) {
+        if (isAlreadyBound()) return
+        val activeIp = if (localIp.isNotBlank()) localIp else getLocalIpAddress()
+        if (activeIp.isBlank() || !activeIp.contains(".")) return
+        val prefix = activeIp.substringBeforeLast(".")
+        val selfLastOctet = activeIp.substringAfterLast(".").toIntOrNull() ?: -1
+
+        val ipList = (1..254).filter { it != selfLastOctet }.map { "$prefix.$it" }
+        for (batch in ipList.chunked(24)) {
+            if (isAlreadyBound() || !scope.isActive) break
+            val jobs = batch.map { targetIp ->
+                scope.async(Dispatchers.IO) {
+                    if (!isAlreadyBound() && scope.isActive) {
+                        probeEsp32Connection(targetIp)
+                    } else false
+                }
+            }
+            // Run batch asynchronously and break early if discovered
+            runBlocking {
+                val results = jobs.awaitAll()
+                if (results.any { it }) return@runBlocking
             }
         }
     }
