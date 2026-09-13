@@ -79,7 +79,10 @@ class Esp32ConnectionManager(
                 handleEsp32Discovered(ip, rawResponseBody)
             }
         },
-        isAlreadyBound = { esp32Ip != null }
+        isAlreadyBound = {
+            val isOnline = (System.currentTimeMillis() - lastHeartbeatTime < HEARTBEAT_TIMEOUT_MS) && consecutiveHeartbeatFailures == 0
+            isOnline && !esp32Ip.isNullOrBlank()
+        }
     )
 
     fun getEsp32Ip(): String? = esp32Ip
@@ -247,14 +250,13 @@ class Esp32ConnectionManager(
 
     private fun checkOfflineThreshold(currentIp: String) {
         val offlineDuration = System.currentTimeMillis() - lastHeartbeatTime
-        if (consecutiveHeartbeatFailures >= 3 && offlineDuration > HEARTBEAT_TIMEOUT_MS) {
+        if (consecutiveHeartbeatFailures >= 2 || offlineDuration > HEARTBEAT_TIMEOUT_MS) {
             delegate.onOnlineStatusChanged(false, null)
-            // Broadcast discovery probe while offline to quickly rediscover if ESP32 changed IP
-            discoveryScanner.sendUdpDiscoveryBroadcast(currentIp)
-            if (offlineDuration > 30000L && KioskSecurity.getConfiguredEsp32Ip(context).isBlank()) {
-                Log.w(TAG, "ESP32 disconnected for >30s, resetting cached IP for auto-rediscovery")
+            // Immediately trigger discovery to locate ESP32 if assigned a new DHCP IP
+            discoveryScanner.triggerDiscovery(currentIp)
+            if (offlineDuration > 15000L && KioskSecurity.getConfiguredEsp32Ip(context).isBlank()) {
+                Log.w(TAG, "ESP32 disconnected for >15s, clearing stale cached IP for auto-rediscovery")
                 esp32Ip = null
-                discoveryScanner.triggerDiscovery(currentIp)
             }
         }
     }

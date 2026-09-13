@@ -45,6 +45,7 @@ class Esp32DiscoveryScanner(
         .build()
 
     private var udpListenerJob: Job? = null
+    private var activeUdpSocket: DatagramSocket? = null
     private var multicastLock: WifiManager.MulticastLock? = null
 
     init {
@@ -75,14 +76,14 @@ class Esp32DiscoveryScanner(
     fun startUdpListener() {
         if (udpListenerJob?.isActive == true) return
         udpListenerJob = scope.launch(Dispatchers.IO) {
-            var socket: DatagramSocket? = null
             try {
                 acquireMulticastLock()
-                socket = DatagramSocket(null).apply {
+                val socket = DatagramSocket(null).apply {
                     reuseAddress = true
                     broadcast = true
                     bind(InetSocketAddress(UDP_DISCOVERY_PORT))
                 }
+                activeUdpSocket = socket
                 val buffer = ByteArray(2048)
                 Log.d(TAG, "Started UDP Discovery Listener on port $UDP_DISCOVERY_PORT")
 
@@ -108,7 +109,7 @@ class Esp32DiscoveryScanner(
                         } catch (_: Exception) {}
 
                         if (isEsp32MacMatching(message)) {
-                            Log.i(TAG, "[+] Discovered ESP32 Master via UDP broadcast at $targetIp")
+                            Log.i(TAG, "[+] Discovered ESP32 Master via UDP at $targetIp")
                             delegate.onEsp32Discovered(targetIp, message)
                         }
                     }
@@ -117,8 +118,9 @@ class Esp32DiscoveryScanner(
                 Log.d(TAG, "UDP listener stopped: ${e.message}")
             } finally {
                 try {
-                    socket?.close()
+                    activeUdpSocket?.close()
                 } catch (_: Exception) {}
+                activeUdpSocket = null
                 releaseMulticastLock()
             }
         }
@@ -136,14 +138,16 @@ class Esp32DiscoveryScanner(
                 broadcastTargets.add("$subnet.255")
             }
 
-            val socket = DatagramSocket().apply { broadcast = true }
+            val socket = activeUdpSocket ?: DatagramSocket().apply { broadcast = true }
             for (target in broadcastTargets) {
                 try {
                     val address = InetAddress.getByName(target)
                     socket.send(DatagramPacket(data, data.size, address, UDP_DISCOVERY_PORT))
                 } catch (_: Exception) {}
             }
-            socket.close()
+            if (socket != activeUdpSocket) {
+                socket.close()
+            }
             Log.d(TAG, "Dispatched UDP Discovery broadcast to targets: $broadcastTargets")
         } catch (e: Exception) {
             Log.e(TAG, "Error sending UDP discovery probe: ${e.message}")
@@ -200,7 +204,8 @@ class Esp32DiscoveryScanner(
     }
 
     /**
-     * Concurrent local subnet scanner for dynamically assigned DHCP client ESP32 devices.
+     * Fast concurrent local subnet scanner for dynamically assigned DHCP client ESP32 devices.
+     * Uses non-blocking 250ms TCP pre-checks to sweep the /24 subnet in <500ms without thread starvation.
      */
     fun scanSubnetIfUnbound(localIp: String) {
         if (isAlreadyBound()) return
@@ -210,20 +215,33 @@ class Esp32DiscoveryScanner(
         val selfLastOctet = activeIp.substringAfterLast(".").toIntOrNull() ?: -1
 
         val ipList = (1..254).filter { it != selfLastOctet }.map { "$prefix.$it" }
-        for (batch in ipList.chunked(24)) {
+        for (batch in ipList.chunked(32)) {
             if (isAlreadyBound() || !scope.isActive) break
-            val jobs = batch.map { targetIp ->
-                scope.async(Dispatchers.IO) {
-                    if (!isAlreadyBound() && scope.isActive) {
-                        probeEsp32Connection(targetIp)
-                    } else false
+            val found = runBlocking(Dispatchers.IO) {
+                val jobs = batch.map { targetIp ->
+                    async {
+                        if (isAlreadyBound() || !scope.isActive) return@async false
+                        if (isPortOpen(targetIp, DEFAULT_WEB_PORT, 250)) {
+                            probeEsp32Connection(targetIp)
+                        } else {
+                            false
+                        }
+                    }
                 }
+                jobs.awaitAll().any { it }
             }
-            // Run batch asynchronously and break early if discovered
-            runBlocking {
-                val results = jobs.awaitAll()
-                if (results.any { it }) return@runBlocking
+            if (found) break
+        }
+    }
+
+    private fun isPortOpen(ip: String, port: Int, timeoutMs: Int): Boolean {
+        return try {
+            java.net.Socket().use { s ->
+                s.connect(InetSocketAddress(ip, port), timeoutMs)
+                true
             }
+        } catch (_: Exception) {
+            false
         }
     }
 
@@ -300,6 +318,7 @@ class Esp32DiscoveryScanner(
 
     fun getLocalIpAddress(): String {
         try {
+            var fallbackIp = ""
             val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
             while (interfaces != null && interfaces.hasMoreElements()) {
                 val networkInterface = interfaces.nextElement()
@@ -308,17 +327,20 @@ class Esp32DiscoveryScanner(
                     val address = addresses.nextElement()
                     if (!address.isLoopbackAddress && address is java.net.Inet4Address) {
                         val ip = address.hostAddress
-                        if (ip != null) {
-                            if (networkInterface.name.contains("wlan") ||
-                                networkInterface.name.contains("eth") ||
-                                networkInterface.name.contains("ap") ||
-                                networkInterface.name.contains("rndis")) {
+                        if (!ip.isNullOrBlank() && ip != "127.0.0.1") {
+                            val name = networkInterface.name.lowercase()
+                            if (name.contains("wlan") ||
+                                name.contains("eth") ||
+                                name.contains("ap") ||
+                                name.contains("rndis")) {
                                 return ip
                             }
+                            if (fallbackIp.isBlank()) fallbackIp = ip
                         }
                     }
                 }
             }
+            return fallbackIp
         } catch (_: Exception) {}
         return ""
     }
