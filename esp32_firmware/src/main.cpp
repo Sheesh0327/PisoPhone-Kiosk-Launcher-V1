@@ -6,8 +6,11 @@
 #include "Config.h"
 #include "Security.h"
 #include "HardwareManager.h"
+#include "CoinSlotManager.h"
 #include "DeviceManager.h"
+#include "DeviceNetwork.h"
 #include "WebServerModule.h"
+#include "SuperAdminManager.h"
 
 static unsigned long lastWifiCheckTime = 0;
 static unsigned long lastCloudSnapshotMs = 0;
@@ -26,6 +29,10 @@ void setup() {
 
     // Initialize Dynamic Hardware Pins & Hardware Reset Pin (GPIO 2)
     applyCoinSlotHardwareConfig();
+    initCoinSlotManager();
+    setGlobalCoinPaymentCallback([](const String& sessionId, int pulses) {
+        triggerUniversalCoinEvent(pulses, sessionId);
+    });
     pinMode(HARDWARE_RESET_PIN, INPUT_PULLUP);
     setLedHardware(false);
     // Initialize relay hardware (OFF by default - Armed-Only mode)
@@ -83,6 +90,9 @@ void setup() {
 void loop() {
     // 0. Process Debounced Hardware-Conservative NVS Revenue Persistence
     processRevenuePersistence();
+
+    // 0. Process Super Admin 5-minute auto-reset retrieval window
+    processSuperAdminLoop();
 
     // 0. Process Hardware Fallback Reset Pin (GPIO 2 -> GND for 5 seconds)
     processHardwareResetPin();

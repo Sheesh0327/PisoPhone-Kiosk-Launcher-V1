@@ -17,6 +17,7 @@ extern WebServer webServer;
 extern WiFiServer wsServer;
 extern WiFiClient wsClient;
 extern bool isWsConnected;
+extern String wsSessionDeviceId;
 extern WiFiUDP udpServer;
 extern QueueHandle_t authQueue;
 

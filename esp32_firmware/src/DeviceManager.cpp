@@ -1,4 +1,5 @@
 #include "DeviceManager.h"
+#include "CoinSlotManager.h"
 #include "HardwareManager.h"
 #include "Security.h"
 #include "WebServerModule.h"
@@ -68,21 +69,15 @@ bool unpairSlot(int slotNum) {
     String prevIp = licenseSlots[idx].ip;
     Serial.printf("[+] Unpairing Slot #%d (was %s / %s). Seat remains open.\n", slotNum, prevDevId.c_str(), prevIp.c_str());
     
-    if (armedIp.length() > 0 && (armedIp == prevDevId || armedIp == prevIp)) {
-        armedIp = "";
-        armedUntil = 0;
-        sessionStartTime = 0;
+    String activeDev = getActiveCoinSessionId();
+    if (activeDev.length() > 0 && (activeDev == prevDevId || activeDev == prevIp)) {
         if (isWsConnected && wsClient.connected()) {
             sendWsText(wsClient, "{\"event\":\"UNPAIRED\"}");
             wsClient.stop();
             isWsConnected = false;
         }
+        releaseCoinSlot(activeDev, true);
         Serial.println("[*] Active armed session disarmed due to unpair.");
-    }
-    if (lastArmedDeviceId == prevDevId || lastArmedIp == prevIp) {
-        lastArmedDeviceId = "";
-        lastArmedIp = "";
-        lastArmedTimeMs = 0;
     }
 
     licenseSlots[idx].deviceId = "";
@@ -191,12 +186,23 @@ String getDeviceNameByIpOrId(String reqIp, String devId) {
 }
 
 bool checkReplayProtection(String deviceId, unsigned long long newTs) {
+    if (deviceId.length() == 0 || newTs == 0) return false;
+    
+    // Master clock window check: Only enforce once master clock is synchronized (> 0).
+    // Rejects packets older than 5 minutes or more than 5 minutes in the future.
+    unsigned long long currentMasterTs = getCurrentMasterTimeMs();
+    if (currentMasterTs > 300000ULL) {
+        if (newTs < (currentMasterTs - 300000ULL) || newTs > (currentMasterTs + 300000ULL)) {
+            return false;
+        }
+    }
+
     for (int i = 0; i < trackedDeviceCount; i++) {
         if (trackedDevices[i].deviceId == deviceId) {
-            if (trackedDevices[i].lastNonceTs > 0 && newTs + 300000ULL < trackedDevices[i].lastNonceTs) {
-                if (millis() - trackedDevices[i].lastSeenMs < 30000) {
-                    return false;
-                }
+            // Allow up to 30 seconds (30000 ms) of async network jitter / concurrent requests.
+            // Reject any request older than (lastNonceTs - 30000 ms).
+            if (trackedDevices[i].lastNonceTs > 30000ULL && newTs + 30000ULL < trackedDevices[i].lastNonceTs) {
+                return false;
             }
             return true;
         }
@@ -206,10 +212,8 @@ bool checkReplayProtection(String deviceId, unsigned long long newTs) {
 
 bool verifyTelemetryAuth(String deviceId, String tsStr, String sig) {
     if (deviceId.length() == 0) return false;
-    if (sharedSecret.length() == 0) {
-        return true;
-    }
-    String expectedSig = calculateHMAC(deviceId + ":" + tsStr, sharedSecret);
+    String secKey = (sharedSecret.length() > 0) ? sharedSecret : String(MASTER_CRYPTO_SECRET);
+    String expectedSig = calculateHMAC(deviceId + ":" + tsStr, secKey);
     if (!sig.equalsIgnoreCase(expectedSig)) {
         return false;
     }
@@ -221,7 +225,9 @@ void recordDeviceNonce(String deviceId, unsigned long long ts) {
     if (deviceId.length() == 0 || ts == 0) return;
     for (int i = 0; i < trackedDeviceCount; i++) {
         if (trackedDevices[i].deviceId == deviceId) {
-            trackedDevices[i].lastNonceTs = ts;
+            if (ts > trackedDevices[i].lastNonceTs) {
+                trackedDevices[i].lastNonceTs = ts;
+            }
             return;
         }
     }
@@ -265,7 +271,7 @@ void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int st
             }
             trackedDevices[i].isCharging = charging;
             trackedDevices[i].lastSeenMs = millis();
-            if (ts > 0) trackedDevices[i].lastNonceTs = ts;
+            if (ts > trackedDevices[i].lastNonceTs) trackedDevices[i].lastNonceTs = ts;
             return;
         }
     }
@@ -348,10 +354,11 @@ String getIpFromDeviceId(String id) {
 }
 
 String getPrimaryTerminalIp() {
-    if (armedIp.length() > 0) {
-        int slotIdx = findSlotIndexForDevice(armedIp, "");
+    String currentSession = getActiveCoinSessionId();
+    if (currentSession.length() > 0) {
+        int slotIdx = findSlotIndexForDevice(currentSession, "");
         if (slotIdx >= 0 && licenseSlots[slotIdx].deviceId.length() > 0) {
-            String ip = getIpFromDeviceId(armedIp);
+            String ip = getIpFromDeviceId(currentSession);
             if (ip.length() > 0 && ip != "127.0.0.1") return ip;
         }
     }

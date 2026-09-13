@@ -1,4 +1,5 @@
 #include "HardwareManager.h"
+#include "CoinSlotManager.h"
 #include "Config.h"
 #include "DeviceManager.h"
 #include <WiFi.h>
@@ -88,8 +89,6 @@ void resetCoinDetectorStates() {
     isrUniversalPulseCount = 0;
     isrLastPulseTimeMs = 0;
     interrupts();
-    pulseTrainStartTime = 0;
-    pulseTrainWasArmed = false;
 }
 
 void setRelayHardware(bool active) {
@@ -98,25 +97,23 @@ void setRelayHardware(bool active) {
         digitalWrite(relayPin, relayActiveLow ? LOW : HIGH);
         if (!isRelayCurrentlyActive) {
             isRelayCurrentlyActive = true;
-            resetCoinDetectorStates();
             Serial.printf("[⚡ RELAY] Coin slot powered ON (Pin %d, Mode=OUTPUT, ActiveLow=%s).\n", relayPin, relayActiveLow ? "true" : "false");
         }
     } else {
         pinMode(relayPin, INPUT);
         if (isRelayCurrentlyActive) {
             isRelayCurrentlyActive = false;
-            resetCoinDetectorStates();
             Serial.printf("[⚡ RELAY] Coin slot powered down into hi-Z standby (Pin %d, Mode=INPUT).\n", relayPin);
         }
     }
 }
 
 bool isSlotArmed() {
-    return (armedIp.length() > 0 && millis() < armedUntil);
+    return isCoinSlotArmed();
 }
 
 void processRelayState() {
-    bool shouldBeOn = isSlotArmed();
+    bool shouldBeOn = isCoinSlotArmed();
     static int lastAppliedRelayState = -1;
     int cur = shouldBeOn ? 1 : 0;
     if (cur != lastAppliedRelayState) {
@@ -124,7 +121,7 @@ void processRelayState() {
         setRelayHardware(shouldBeOn);
         Serial.printf("[⚡ RELAY] Pin %d set to %s (ActiveLow=%s, SlotArmed=%s)\n",
             relayPin, shouldBeOn ? "ON (POWERED)" : "OFF (STANDBY)",
-            relayActiveLow ? "true" : "false", isSlotArmed() ? "true" : "false");
+            relayActiveLow ? "true" : "false", shouldBeOn ? "true" : "false");
     }
 }
 
@@ -134,7 +131,6 @@ void processRelayState() {
 volatile int isrUniversalPulseCount = 0;
 volatile unsigned long isrLastPulseTimeMs = 0;
 static const unsigned long U_MIN_PULSE_DEBOUNCE_MS = 30; // Reject spikes shorter than 30ms
-static const unsigned long U_INTER_PULSE_TIMEOUT_MS = 280;
 
 void IRAM_ATTR universalCoinIsr() {
     unsigned long now = millis();
@@ -156,52 +152,7 @@ void applyCoinSlotHardwareConfig() {
 }
 
 void processUniversalCoinDetector() {
-    unsigned long now = millis();
-    if (now < 3000) {
-        if (isrUniversalPulseCount > 0) {
-            noInterrupts();
-            isrUniversalPulseCount = 0;
-            interrupts();
-        }
-        return;
-    }
-
-    noInterrupts();
-    int count = isrUniversalPulseCount;
-    unsigned long lastPulseTime = isrLastPulseTimeMs;
-    interrupts();
-
-    if (count > 0 && pulseTrainStartTime == 0) {
-        pulseTrainStartTime = lastPulseTime;
-        pulseTrainDeviceId = (armedIp.length() > 0) ? armedIp : lastArmedDeviceId;
-        pulseTrainDeviceIp = (armedIp.length() > 0) ? getIpFromDeviceId(armedIp) : lastArmedIp;
-    }
-
-    if (count > 0 && (now - lastPulseTime >= U_INTER_PULSE_TIMEOUT_MS)) {
-        noInterrupts();
-        int finalPulses = isrUniversalPulseCount;
-        isrUniversalPulseCount = 0;
-        interrupts();
-
-        pulseTrainStartTime = 0;
-
-        if (finalPulses > 0) {
-            Serial.printf("[⚡ UNIVERSAL COIN] Detected %d pulse(s) on GPIO %d! Triggering coin event...\n", finalPulses, universalCoinPin);
-            triggerUniversalCoinEvent(finalPulses);
-        }
-
-        if (pendingWsGracefulClose) {
-            pendingWsGracefulClose = false;
-            if (isWsConnected && wsClient.connected()) {
-                wsClient.stop();
-            }
-            isWsConnected = false;
-            armedIp = "";
-            armedUntil = 0;
-            sessionStartTime = 0;
-            Serial.println("[*] Graceful WS session close completed after delivering final coin pulses.");
-        }
-    }
+    processCoinSlotSession();
 }
 
 // ============================================================================

@@ -1,5 +1,6 @@
 #include "Config.h"
 #include "HardwareManager.h"
+#include "SuperAdminManager.h"
 
 // ============================================================================
 // HARDWARE CONSTANTS & PIN DEFAULTS DEFINITION
@@ -9,13 +10,14 @@ const char* DEFAULT_PASS        = "Admin@123";
 const char* DEFAULT_ADMIN_PW    = "admin";
 const char* MASTER_CRYPTO_SECRET = "PISOPHONE_HMAC_MASTER_KEY";
 
-const int   DEFAULT_UNIVERSAL_COIN_PIN = 4;
+const int   DEFAULT_UNIVERSAL_COIN_PIN = 3;
 const int   DEFAULT_LED_PIN            = 8;
-const bool  DEFAULT_LED_ACTIVE_LOW     = true;
-const int   DEFAULT_RELAY_PIN          = 3;
+const bool  DEFAULT_LED_ACTIVE_LOW     = false;
+const int   DEFAULT_RELAY_PIN          = 4;
 const int   DEFAULT_PORT               = 8080;
 const int   HARDWARE_RESET_PIN         = 2;
 const int   UDP_DISCOVERY_PORT         = 8888;
+const int   DEFAULT_MINUTES_PER_COIN   = 10;
 
 // ============================================================================
 // GLOBAL VARIABLES DEFINITION
@@ -38,22 +40,10 @@ bool is_licensed     = false;
 int maxLicensedSlots = DEFAULT_MAX_SLOTS;
 
 int targetPort        = DEFAULT_PORT;
+int minutesPerCoin    = DEFAULT_MINUTES_PER_COIN;
 
 const unsigned long ARM_TTL = 15000;
 const unsigned long MAX_SESSION_DURATION = 120000;
-String armedIp = "";
-unsigned long armedUntil = 0;
-unsigned long sessionStartTime = 0;
-
-String lastArmedDeviceId = "";
-String lastArmedIp = "";
-unsigned long lastArmedTimeMs = 0;
-String pulseTrainDeviceId = "";
-String pulseTrainDeviceIp = "";
-bool pulseTrainWasArmed = false;
-unsigned long pulseTrainStartTime = 0;
-bool pendingWsGracefulClose = false;
-unsigned long pendingWsGracefulCloseUntil = 0;
 
 String p1Ip = "";
 String p2Ip = "";
@@ -86,7 +76,7 @@ uint64_t getCurrentMasterTimeMs() {
     if (lastMasterTimestamp > 0) {
         return lastMasterTimestamp + (uint64_t)(millis() - lastMasterMillis);
     }
-    return 1772950000000ULL + (uint64_t)millis();
+    return 0;
 }
 
 void updateMasterTime(uint64_t ts) {
@@ -276,6 +266,7 @@ void loadSlotLicenses() {
 void loadAllConfig() {
     // 1. Load slot licenses and terminal allocations safely
     loadSlotLicenses();
+    loadSuperAdminConfig();
 
     // 2. Open NVS for all kiosk configuration & lifetime vault revenue counters
     prefs.begin("kiosk_cfg", false);
@@ -289,6 +280,8 @@ void loadAllConfig() {
     
     targetPort        = prefs.getInt("port", targetPort);
     if (targetPort <= 0) targetPort = 8080;
+    minutesPerCoin    = prefs.getInt("mins_per_coin", DEFAULT_MINUTES_PER_COIN);
+    if (minutesPerCoin < 1) minutesPerCoin = 1;
     
     webPassword       = prefs.getString("admin_pw", webPassword);
     relayActiveLow    = prefs.getBool("relay_active_low", false);
@@ -362,6 +355,7 @@ void factoryResetDefaults() {
     relayPin = DEFAULT_RELAY_PIN;
     androidIps = "";
     targetPort = DEFAULT_PORT;
+    minutesPerCoin = DEFAULT_MINUTES_PER_COIN;
     webPassword = DEFAULT_ADMIN_PW;
     sharedSecret = MASTER_CRYPTO_SECRET;
     p1Ip = "";

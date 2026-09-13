@@ -49,16 +49,12 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
             <div class="tab active" onclick="switchTab('tab-dashboard')">📊 Dashboard</div>
             <div class="tab" onclick="switchTab('tab-settings')">🛠️ Settings</div>
             <div class="tab" onclick="switchTab('tab-tools')">⚡ Advanced Tools</div>
+            <div class="tab" onclick="switchTab('tab-superadmin')" style="color: #f59e0b; font-weight: 700;">👑 Vendor Super Admin</div>
         </div>
 
         <!-- TAB 1: DASHBOARD -->
         <div id="tab-dashboard" class="tab-content active">
             <div class="grid">
-                <!-- Master Activation Vault & Seat Slots Manager -->
-                <div class="grid-full">
-                    {DEVICE_SLOTS_MANAGER}
-                </div>
-
                 <!-- Live Devices List (Horizontal) -->
                 <div class="card grid-full">
                     <div class="card-header">
@@ -187,6 +183,20 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                         </div>
                     </div>
 
+                    <!-- Coin Pricing & Rates -->
+                    <div class="card">
+                        <h3 class="card-title">🪙 Coin Pricing & Rate</h3>
+                        <div class="form-group">
+                            <label>Minutes per ₱1 (1 Pulse)</label>
+                            <input type="number" name="minutes_per_coin" value="{MINUTES_PER_COIN}" min="1" max="1440">
+                            <div class="hint" style="margin-top: 8px; color: var(--text-muted); line-height: 1.4;">
+                                Sets the session duration granted per ₱1 PHP (1 coin pulse).<br>
+                                Automatically multiplies for higher coin denominations (₱5 = 5x, ₱10 = 10x, ₱20 = 20x).<br>
+                                Changes are saved to flash and pushed live to all paired Android kiosk terminals.
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="card">
                         <h3 class="card-title">🔌 Hardware GPIO Pins</h3>
                         <div class="form-group">
@@ -230,6 +240,11 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
         <!-- TAB 3: TOOLS -->
         <div id="tab-tools" class="tab-content">
             <div class="grid">
+                <!-- Master Activation Vault & Seat Slots Manager -->
+                <div class="grid-full">
+                    {DEVICE_SLOTS_MANAGER}
+                </div>
+
                 <!-- 1v1 Match -->
                 <div class="card grid-full">
                     <div class="card-header">
@@ -276,10 +291,10 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                         <h3 class="card-title">⚠️ System Recovery</h3>
                     </div>
                     
-                    <form action="/reset_vault" method="POST" onsubmit="return confirm('Reset lifetime coin counts?');" style="margin-bottom: 12px;">
-                        <label>Reset Vault Counters</label>
+                    <form action="/reset_vault" method="POST" onsubmit="return confirm('⚠️ Reset lifetime coin counts? (Super Admin password required)');" style="margin-bottom: 12px;">
+                        <label>Reset Vault Counters (Super Admin Only)</label>
                         <div style="display: flex; gap: 8px; margin-top: 6px;">
-                            <input type="password" name="reset_pw" placeholder="Admin password">
+                            <input type="password" name="reset_pw" placeholder="Super Admin password">
                             <button type="submit" class="btn btn-danger btn-sm" style="min-height:48px;">Reset</button>
                         </div>
                     </form>
@@ -301,12 +316,15 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                 </div>
             </div>
         </div>
+
+{SUPER_ADMIN_TAB}
     </div>
 
 {PORTAL_MODALS}
 
     <script>
 {PORTAL_SCRIPTS_MODALS}
+{SUPER_ADMIN_SCRIPTS}
     </script>
 </body>
 </html>

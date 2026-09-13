@@ -3,6 +3,7 @@
 #include "WebDashboardScripts.h"
 #include "WebDashboardModals.h"
 #include "WebDashboardTemplate.h"
+#include "SuperAdminManager.h"
 #include "Config.h"
 #include "DeviceManager.h"
 #include "Security.h"
@@ -24,6 +25,7 @@ static String getPlaceholderValue(const String& tag) {
     if (tag == "U_COIN_PIN") return String(universalCoinPin);
     if (tag == "LED_PIN") return String(ledPin);
     if (tag == "RELAY_PIN") return String(relayPin);
+    if (tag == "MINUTES_PER_COIN") return String(minutesPerCoin);
     if (tag == "ADMIN_PASSWORD") return webPassword;
     if (tag == "MATCH_MINUTES") return String(matchMinutes);
     if (tag == "TOTAL_COINS") return String(totalCoinsLifetime);
@@ -50,6 +52,8 @@ static String getPlaceholderValue(const String& tag) {
     if (tag == "MAX_SLOTS") return String(maxLicensedSlots);
     if (tag == "MAX_SUPPORTED_SLOTS") return String(MAX_SUPPORTED_SLOTS);
     if (tag == "SLOT_OPTIONS") return renderSlotOptions();
+    if (tag == "SUPER_ADMIN_TAB") return renderSuperAdminTabHtml();
+    if (tag == "SUPER_ADMIN_SCRIPTS") return renderSuperAdminScripts();
     
     if (tag == "WIFI_RSSI") {
         if (WiFi.status() == WL_CONNECTED) {

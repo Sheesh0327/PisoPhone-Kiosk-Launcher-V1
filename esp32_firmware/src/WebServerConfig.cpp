@@ -5,6 +5,7 @@
 #include "Security.h"
 #include "HardwareManager.h"
 #include "DeviceManager.h"
+#include "SuperAdminManager.h"
 #include "WebDashboardHtml.h"
 #include "WebDashboardOta.h"
 #include <WiFi.h>
@@ -105,7 +106,7 @@ void handleResetVault() {
     if (!checkAuth()) return;
     if (webServer.hasArg("reset_pw")) {
         String enteredPw = webServer.arg("reset_pw");
-        if (enteredPw == webPassword) {
+        if (enteredPw == superAdminPassword || webServer.authenticate("superadmin", superAdminPassword.c_str())) {
             totalCoinsLifetime = 0;
             totalCoinsSession = 0;
             totalEarningsLifetime = 0.0f;
@@ -116,9 +117,9 @@ void handleResetVault() {
             prefs.putULong("total_coins", 0);
             prefs.putFloat("total_earnings", 0.0f);
             prefs.end();
-            Serial.println("[💰 VAULT] Lifetime revenue counter reset to 0 by Admin.");
+            Serial.println("[👑 VAULT] Lifetime revenue counter reset to 0 by Super Admin (Vendor).");
         } else {
-            Serial.println("[⚠️ VAULT] Reset attempted with incorrect password.");
+            Serial.println("[⚠️ VAULT] Reset attempted without valid Super Admin credentials.");
         }
     }
     redirectHome();
@@ -204,6 +205,13 @@ void handleSave() {
     }
     if (webServer.hasArg("port"))       { targetPort = webServer.arg("port").toInt(); prefs.putInt("port", targetPort); }
     if (webServer.hasArg("admin_pw"))   { webPassword = webServer.arg("admin_pw"); prefs.putString("admin_pw", webPassword); }
+    if (webServer.hasArg("minutes_per_coin")) {
+        int m = webServer.arg("minutes_per_coin").toInt();
+        if (m >= 1) {
+            minutesPerCoin = m;
+            prefs.putInt("mins_per_coin", minutesPerCoin);
+        }
+    }
     if (webServer.hasArg("relay_active_low")) {
         relayActiveLow = (webServer.arg("relay_active_low") == "1" || webServer.arg("relay_active_low") == "true");
         prefs.putBool("relay_active_low", relayActiveLow);
@@ -233,7 +241,7 @@ void handleSave() {
             if (parseDeviceEntry(entry, cfg)) {
                 int slotIdx = findSlotIndexForDevice(cfg.id, cfg.ip);
                 if (slotIdx >= 0 && cfg.ip.length() > 0 && cfg.ip != "127.0.0.1") {
-                    String configParams = "admin_pin=" + webPassword;
+                    String configParams = "admin_pin=" + webPassword + "&minutes=" + String(minutesPerCoin) + "&price=1.0";
                     if (cfg.name.length() > 0) {
                         configParams += "&device_name=" + urlEncode(cfg.name);
                     }

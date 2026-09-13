@@ -1,4 +1,5 @@
 #include "DeviceNetwork.h"
+#include "CoinSlotManager.h"
 #include "DeviceManager.h"
 #include "HardwareManager.h"
 #include "Security.h"
@@ -35,22 +36,18 @@ void sendAddTime(int minutes, String targetIp, String txId) {
     }
 }
 
-void triggerUniversalCoinEvent(int pulses) {
+void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId) {
     if (pulses <= 0) return;
     Serial.printf("[⚡ UNIVERSAL COIN] %d total pulses accumulated on GPIO %d (₱%d PHP)\n", pulses, universalCoinPin, pulses);
 
-    if (!isSlotArmed()) {
-        Serial.printf("[-] Universal coin pulses rejected: Slot is NOT armed!\n");
-        return;
+    String targetDev = targetDeviceId;
+    if (targetDev.length() == 0) {
+        targetDev = getActiveCoinSessionId();
     }
 
     String targetIp = "";
-    if (armedIp.length() > 0) {
-        targetIp = getIpFromDeviceId(armedIp);
-    } else if (pulseTrainDeviceIp.length() > 0) {
-        targetIp = pulseTrainDeviceIp;
-    } else if (lastArmedIp.length() > 0 && (millis() - lastArmedTimeMs < 30000)) {
-        targetIp = lastArmedIp;
+    if (targetDev.length() > 0) {
+        targetIp = getIpFromDeviceId(targetDev);
     }
     if (targetIp.length() == 0) {
         targetIp = getPrimaryTerminalIp();
@@ -59,8 +56,9 @@ void triggerUniversalCoinEvent(int pulses) {
         }
     }
 
-    int addedMinutes = pulses;
-    int addedSeconds = pulses * 60;
+    int rate = (minutesPerCoin > 0) ? minutesPerCoin : 1;
+    int addedMinutes = pulses * rate;
+    int addedSeconds = addedMinutes * 60;
 
     totalCoinsLifetime += pulses;
     totalCoinsSession += pulses;
@@ -75,19 +73,20 @@ void triggerUniversalCoinEvent(int pulses) {
     unsigned long long ts = (unsigned long long)getCurrentMasterTimeMs();
     String txId = "tx-" + String(ts) + "-" + String(random(10000, 99999));
 
-    if (isWsConnected && wsClient.connected()) {
-        Serial.printf("[⚡] Pushing ₱%d (+%d mins / %d secs) over WebSocket!\n", pulses, addedMinutes, addedSeconds);
+    // If WebSocket is connected and belongs to this device, send event frame
+    if (isWsConnected && wsClient.connected() && (targetDev.length() == 0 || wsSessionDeviceId == targetDev)) {
+        Serial.printf("[⚡] Pushing ₱%d (+%d mins / %d secs) over WebSocket to %s!\n", pulses, addedMinutes, addedSeconds, targetDev.c_str());
         String innerJson = "{\"seconds\":" + String(addedSeconds) + ",\"minutes\":" + String(addedMinutes) + ",\"amount\":" + String(pulses) + ",\"tx_id\":\"" + txId + "\",\"ts\":\"" + String(ts) + "\"}";
         String payload = aes_encrypt(innerJson, sharedSecret);
         String json = "{\"event\":\"COIN_DETECTED\",\"payload\":\"" + payload + "\",\"seconds\":" + String(addedSeconds) + ",\"amount\":" + String(pulses) + ",\"tx_id\":\"" + txId + "\"}";
         sendWsText(wsClient, json);
-        armedUntil = millis() + ARM_TTL;
+        if (targetDev.length() > 0) refreshCoinSlotTtl(targetDev, ARM_TTL);
     }
 
     if (targetIp.length() > 0) {
-        Serial.printf("[⚡] Routing universal coin to IP: %s\n", targetIp.c_str());
+        Serial.printf("[⚡] Routing universal coin to IP: %s (Device: %s)\n", targetIp.c_str(), targetDev.c_str());
         sendAuthenticated(targetIp, targetPort, "/add_time", "/challenge", "minutes=" + String(addedMinutes) + "&seconds=" + String(addedSeconds) + "&amount=" + String(pulses) + "&tx_id=" + txId, 1000);
-        armedUntil = millis() + ARM_TTL;
+        if (targetDev.length() > 0) refreshCoinSlotTtl(targetDev, ARM_TTL);
     } else {
         for (int i = 0; i < maxLicensedSlots; i++) {
             if (licenseSlots[i].deviceId.length() > 0 && licenseSlots[i].ip.length() > 0 && licenseSlots[i].ip != "127.0.0.1") {

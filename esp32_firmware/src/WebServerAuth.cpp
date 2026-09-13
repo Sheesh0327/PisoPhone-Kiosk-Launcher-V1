@@ -3,6 +3,7 @@
 #include "Config.h"
 #include "Security.h"
 #include "DeviceManager.h"
+#include "SuperAdminManager.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
 
@@ -71,11 +72,14 @@ bool checkAuth() {
             return true;
         }
     }
-    if (!webServer.authenticate("admin", webPassword.c_str())) {
-        webServer.requestAuthentication(BASIC_AUTH, "HARDWARE Admin Login", "Unauthorized: Please enter admin credentials.");
-        return false;
+    if (webServer.authenticate("superadmin", superAdminPassword.c_str())) {
+        return true;
     }
-    return true;
+    if (webServer.authenticate("admin", webPassword.c_str())) {
+        return true;
+    }
+    webServer.requestAuthentication(BASIC_AUTH, "HARDWARE Admin Login", "Unauthorized: Please enter admin credentials.");
+    return false;
 }
 
 void redirectHome() {
@@ -84,6 +88,21 @@ void redirectHome() {
 }
 
 void handleLogout() {
+    if (isVaultUnmasked) {
+        totalCoinsLifetime = 0;
+        totalCoinsSession = 0;
+        totalEarningsLifetime = 0.0f;
+        totalEarningsSession = 0.0f;
+        lastSavedTotalCoins = 0;
+        lastSavedTotalEarnings = 0.0f;
+        prefs.begin("kiosk_cfg", false);
+        prefs.putULong("total_coins", 0);
+        prefs.putFloat("total_earnings", 0.0f);
+        prefs.end();
+        isVaultUnmasked = false;
+        unmaskExpiryTimestamp = 0;
+        Serial.println("[👑 SUPER ADMIN] Vault reset triggered by Super Admin logout.");
+    }
     webServer.requestAuthentication(BASIC_AUTH, "HARDWARE Admin Login", "Logged out");
     webServer.send(401, "text/html; charset=utf-8", R"HTML(
 <!DOCTYPE html>

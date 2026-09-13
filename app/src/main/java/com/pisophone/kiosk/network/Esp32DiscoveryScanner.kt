@@ -168,6 +168,30 @@ class Esp32DiscoveryScanner(
             }
         } catch (_: Exception) {}
 
+        // Standard ESP32 SoftAP Gateway IP
+        if (!candidates.contains("192.168.4.1")) {
+            candidates.add("192.168.4.1")
+        }
+
+        // WiFi DHCP Gateway IP if connected to AP or router
+        try {
+            val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            val dhcpInfo = wifi?.dhcpInfo
+            if (dhcpInfo != null && dhcpInfo.gateway != 0) {
+                val gw = String.format(
+                    java.util.Locale.US,
+                    "%d.%d.%d.%d",
+                    dhcpInfo.gateway and 0xff,
+                    dhcpInfo.gateway shr 8 and 0xff,
+                    dhcpInfo.gateway shr 16 and 0xff,
+                    dhcpInfo.gateway shr 24 and 0xff
+                )
+                if (gw != "0.0.0.0" && !candidates.contains(gw)) {
+                    candidates.add(gw)
+                }
+            }
+        } catch (_: Exception) {}
+
         for (target in candidates) {
             if (probeEsp32Connection(target)) {
                 Log.i(TAG, "Direct probe succeeded for ESP32 at $target")

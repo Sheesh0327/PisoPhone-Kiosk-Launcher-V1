@@ -19,6 +19,7 @@ extern const int DEFAULT_RELAY_PIN;
 extern const int DEFAULT_PORT;
 extern const int HARDWARE_RESET_PIN;
 extern const int UDP_DISCOVERY_PORT;
+extern const int DEFAULT_MINUTES_PER_COIN;
 
 #define MAX_SUPPORTED_SLOTS 6
 #define DEFAULT_MAX_SLOTS 1
@@ -82,22 +83,10 @@ extern bool is_licensed;
 extern int maxLicensedSlots;
 
 extern int targetPort;
+extern int minutesPerCoin;
 
-extern String armedIp;
-extern unsigned long armedUntil;
-extern unsigned long sessionStartTime;
 extern const unsigned long ARM_TTL;
 extern const unsigned long MAX_SESSION_DURATION;
-
-extern String lastArmedDeviceId;
-extern String lastArmedIp;
-extern unsigned long lastArmedTimeMs;
-extern String pulseTrainDeviceId;
-extern String pulseTrainDeviceIp;
-extern bool pulseTrainWasArmed;
-extern unsigned long pulseTrainStartTime;
-extern bool pendingWsGracefulClose;
-extern unsigned long pendingWsGracefulCloseUntil;
 
 extern String p1Ip;
 extern String p2Ip;

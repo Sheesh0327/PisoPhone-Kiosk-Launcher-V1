@@ -3,6 +3,7 @@
 #include "Security.h"
 #include "HardwareManager.h"
 #include "DeviceManager.h"
+#include "SuperAdminManager.h"
 #include "WebDashboardHtml.h"
 #include <WiFi.h>
 #include <WebServer.h>
@@ -16,6 +17,7 @@ WebServer webServer(80);
 WiFiServer wsServer(81);
 WiFiClient wsClient;
 bool isWsConnected = false;
+String wsSessionDeviceId = "";
 WiFiUDP udpServer;
 QueueHandle_t authQueue = NULL;
 
@@ -43,6 +45,11 @@ void setupWebServer() {
     webServer.on("/one_vs_one", HTTP_POST, handleOneVsOne);
     webServer.on("/insert_ucoin", HTTP_POST, handleInsertUniversalCoin);
     webServer.on("/reset_vault", HTTP_POST, handleResetVault);
+    webServer.on("/api/superadmin/auth", HTTP_POST, handleSuperAdminAuth);
+    webServer.on("/api/superadmin/unmask", HTTP_POST, handleSuperAdminUnmask);
+    webServer.on("/api/superadmin/reset_vault", HTTP_POST, handleSuperAdminResetVault);
+    webServer.on("/api/superadmin/save_split", HTTP_POST, handleSuperAdminSaveSplit);
+    webServer.on("/api/superadmin/change_pw", HTTP_POST, handleSuperAdminChangePassword);
     webServer.on("/api/status", HTTP_GET, handleApiStatus);
     webServer.on("/check_qualification", HTTP_GET, handleCheckQualification);
     webServer.on("/identify", HTTP_GET, handleIdentify);

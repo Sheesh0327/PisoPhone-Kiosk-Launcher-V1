@@ -1,4 +1,6 @@
 #include "WebSocketsUdp.h"
+#include "CoinSlotManager.h"
+#include "ControllerWebSocket.h"
 #include "WebServerModule.h"
 #include "Config.h"
 #include "HardwareManager.h"
@@ -169,6 +171,11 @@ void processWebSocketServer() {
                 }
             }
             
+            if (request.indexOf("session_id=") != -1 || request.indexOf("/coinslot") != -1 || request.indexOf("/ws/coinslot") != -1) {
+                handleControllerWebSocketHandshake(newClient, request, secKey);
+                return;
+            }
+
             String reqDeviceId = extractUrlParam(request, "device_id=");
             String tsStr = extractUrlParam(request, "ts=");
             String sig = extractUrlParam(request, "sig=");
@@ -223,9 +230,8 @@ void processWebSocketServer() {
             }
             
             // 2. Hardware Mutex Check (Single-Client Lock)
-            unsigned long now = millis();
-            if (armedIp.length() > 0 && armedIp != reqDeviceId && now < armedUntil && (sessionStartTime == 0 || (now - sessionStartTime < MAX_SESSION_DURATION))) {
-                Serial.printf("[-] WS Mutex Rejected for %s: Slot BUSY with %s\n", reqDeviceId.c_str(), armedIp.c_str());
+            if (isCoinSlotBusy(reqDeviceId)) {
+                Serial.printf("[-] WS Mutex Rejected for %s: Slot BUSY with %s\n", reqDeviceId.c_str(), getActiveCoinSessionId().c_str());
                 newClient.print("HTTP/1.1 409 Conflict\r\n\r\nSLOT_BUSY");
                 newClient.stop();
                 return;
@@ -251,17 +257,23 @@ void processWebSocketServer() {
             }
             wsClient = newClient;
             isWsConnected = true;
+            wsSessionDeviceId = reqDeviceId;
             
-            if (armedIp != reqDeviceId || sessionStartTime == 0) {
-                sessionStartTime = now;
-            }
-            armedIp = reqDeviceId;
-            lastArmedDeviceId = reqDeviceId;
-            lastArmedIp = getIpFromDeviceId(reqDeviceId);
-            lastArmedTimeMs = now;
-            armedUntil = now + ARM_TTL;
-            pendingWsGracefulClose = false;
-            resetCoinDetectorStates();
+            reserveCoinSlot(reqDeviceId, ARM_TTL,
+                [](const String& devId, int pulses) {
+                    triggerUniversalCoinEvent(pulses, devId);
+                },
+                [](const String& devId, const char* reason) {
+                    if (isWsConnected && wsClient.connected()) {
+                        if (strcmp(reason, "TTL_EXPIRED") == 0 || strcmp(reason, "MAX_DURATION") == 0) {
+                            sendWsText(wsClient, "{\"event\":\"TIMEOUT\"}");
+                        }
+                        wsClient.stop();
+                    }
+                    isWsConnected = false;
+                    wsSessionDeviceId = "";
+                }
+            );
             
             Serial.printf("[⚡ WS Port 81] WebSocket ARMED securely for %s (TTL: %lu s)\n", reqDeviceId.c_str(), ARM_TTL / 1000);
             sendWsText(wsClient, "{\"event\":\"ARMED\"}");
@@ -270,105 +282,36 @@ void processWebSocketServer() {
     
     // Process active WebSocket client frames or disconnection
     if (isWsConnected) {
+        String boundDevId = wsSessionDeviceId;
         if (!wsClient.connected()) {
-            Serial.printf("[*] WS Client %s disconnected. Slot released.\n", armedIp.c_str());
+            Serial.printf("[*] WS Client %s disconnected. Releasing slot.\n", boundDevId.c_str());
             isWsConnected = false;
-            if (armedIp.length() > 0) {
-                lastArmedDeviceId = armedIp;
-                lastArmedIp = getIpFromDeviceId(armedIp);
-                lastArmedTimeMs = millis();
-            }
-            armedIp = "";
-            armedUntil = 0;
-            sessionStartTime = 0;
+            wsSessionDeviceId = "";
+            releaseCoinSlot(boundDevId, false);
             return;
         }
         
-        unsigned long now = millis();
-
         if (wsClient.available()) {
             String frameText = readWsText(wsClient);
             if (frameText.length() > 0) {
-                // Any active frame or ping/pong keeps arming TTL refreshed
-                armedUntil = now + ARM_TTL;
+                refreshCoinSlotTtl(boundDevId, ARM_TTL);
             }
             if (frameText == "DONE" || frameText == "CLOSE") {
-                noInterrupts();
-                int currentPulses = isrUniversalPulseCount;
-                unsigned long lastPulse = isrLastPulseTimeMs;
-                interrupts();
-
-                // If coin pulses are actively in progress or arrived in the last 600ms, hold graceful close to deliver credit!
-                if (currentPulses > 0 || (now - lastPulse < 600 && lastPulse > 0)) {
-                    Serial.printf("[⚡ WS Port 81] 'DONE' received while coin pulses are active (%d pulses). Holding graceful close to finalize credit...\n", currentPulses);
-                    pendingWsGracefulClose = true;
-                    pendingWsGracefulCloseUntil = now + 2000;
-                    armedUntil = now + 3000; // Extend temporary guard so pulse train completes safely
-                    wsClient.stop();
-                    isWsConnected = false;
-                    if (armedIp.length() > 0) {
-                        lastArmedDeviceId = armedIp;
-                        lastArmedIp = getIpFromDeviceId(armedIp);
-                        lastArmedTimeMs = now;
-                    }
-                    armedIp = "";
-                    armedUntil = 0;
-                    sessionStartTime = 0;
-                    return;
-                } else {
-                    Serial.println("[⚡ WS Port 81] 'DONE' received with no active pulses. Disarming slot immediately.");
-                    wsClient.stop();
-                    isWsConnected = false;
-                    if (armedIp.length() > 0) {
-                        lastArmedDeviceId = armedIp;
-                        lastArmedIp = getIpFromDeviceId(armedIp);
-                        lastArmedTimeMs = now;
-                    }
-                    armedIp = "";
-                    armedUntil = 0;
-                    sessionStartTime = 0;
-                    return;
-                }
+                Serial.printf("[⚡ WS Port 81] 'DONE' received for %s. Requesting slot release.\n", boundDevId.c_str());
+                wsClient.stop();
+                isWsConnected = false;
+                wsSessionDeviceId = "";
+                releaseCoinSlot(boundDevId, false);
+                return;
             }
         } else {
-            // Keep slot armed continuously while WebSocket client remains connected and session duration is valid
-            if (sessionStartTime > 0 && (now - sessionStartTime < MAX_SESSION_DURATION)) {
-                armedUntil = now + ARM_TTL;
-            }
-        }
-        
-        // Check session TTL expiration or pending graceful close timeout
-        if (pendingWsGracefulClose && now >= pendingWsGracefulCloseUntil) {
-            Serial.println("[*] Pending graceful close timed out after coin train window. Slot released.");
-            pendingWsGracefulClose = false;
-            wsClient.stop();
-            isWsConnected = false;
-            if (armedIp.length() > 0) {
-                lastArmedDeviceId = armedIp;
-                lastArmedIp = getIpFromDeviceId(armedIp);
-                lastArmedTimeMs = now;
-            }
-            armedIp = "";
-            armedUntil = 0;
-            sessionStartTime = 0;
-            return;
-        }
-
-        if (sessionStartTime > 0 && (now - sessionStartTime >= MAX_SESSION_DURATION)) {
-            Serial.printf("[*] WS Session TTL expired for %s. Slot released.\n", armedIp.c_str());
-            sendWsText(wsClient, "{\"event\":\"TIMEOUT\"}");
-            wsClient.stop();
-            isWsConnected = false;
-            if (armedIp.length() > 0) {
-                lastArmedDeviceId = armedIp;
-                lastArmedIp = getIpFromDeviceId(armedIp);
-                lastArmedTimeMs = now;
-            }
-            armedIp = "";
-            armedUntil = 0;
-            sessionStartTime = 0;
+            // Keep slot armed continuously while WebSocket client remains connected
+            refreshCoinSlotTtl(boundDevId, ARM_TTL);
         }
     }
+
+    // Process active Controller WebSocket connection
+    processControllerWebSocket();
 }
 
 void sendUdpDiscoveryResponse(IPAddress targetIp, uint16_t targetPort) {
@@ -382,6 +325,8 @@ void sendUdpDiscoveryResponse(IPAddress targetIp, uint16_t targetPort) {
                   "\"ws_port\":81,"
                   "\"device_name\":\"PisoPhone Master\","
                   "\"slots\":" + String(maxLicensedSlots) + ","
+                  "\"minutes\":" + String(minutesPerCoin) + ","
+                  "\"price\":1.0,"
                   "\"uptime\":" + String(millis() / 1000) + "}";
 
     // 1. Direct unicast response to client

@@ -5,7 +5,7 @@
 #include "Config.h"
 
 void sendAddTime(int minutes, String targetIp, String txId = "");
-void triggerUniversalCoinEvent(int pulses);
+void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId = "");
 int getDeviceTimeRemainingSeconds(String targetIp, String *errOut = nullptr);
 
 void sendCloudSnapshot();

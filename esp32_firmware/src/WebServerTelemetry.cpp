@@ -25,12 +25,13 @@ void handleHeartbeat() {
         deviceId = "DEV_" + reqIp;
     }
 
-    if (deviceId.length() > 0 || reqIp.length() > 0) {
-        updateDeviceTelemetry(deviceId, reqIp, timeRem, state, battery, charging, ts);
-    }
-
     bool isAuth = verifyTelemetryAuth(deviceId, tsStr, sig);
     int slotIdx = findSlotIndexForDevice(deviceId, reqIp);
+
+    if (!isAuth && slotIdx >= 0) {
+        webServer.send(403, "application/json", "{\"error\":\"AUTH_FAILED_OR_REPLAY\"}");
+        return;
+    }
 
     if (slotIdx < 0 || !isAuth) {
         String devName = getDeviceNameByIpOrId(reqIp, deviceId);
@@ -42,6 +43,10 @@ void handleHeartbeat() {
         json += ",\"device_name\":\"" + devName + "\"}";
         webServer.send(200, "application/json", json);
         return;
+    }
+
+    if (deviceId.length() > 0 || reqIp.length() > 0) {
+        updateDeviceTelemetry(deviceId, reqIp, timeRem, state, battery, charging, ts);
     }
 
     if (ts > 0) updateMasterTime(ts);
