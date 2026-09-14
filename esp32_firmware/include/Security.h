@@ -4,10 +4,10 @@
 #include <Arduino.h>
 
 String calculateHMAC(String challenge, String secret);
-bool applySlotToken(String token);
-String getBoxMachineCode();
 String aes_encrypt(String plaintext, String secret);
 String aes_decrypt(String encryptedHex, String secret);
 String computeSecWebSocketAccept(String key);
+bool applySlotToken(String token);
+String getBoxMachineCode();
 
 #endif // SECURITY_H

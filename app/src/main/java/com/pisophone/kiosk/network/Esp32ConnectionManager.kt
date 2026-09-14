@@ -53,6 +53,7 @@ class Esp32ConnectionManager(
         private const val ESP32_WS_PORT = 81
         private const val HEARTBEAT_TIMEOUT_MS = 20000L
         private const val MAX_TIMESTAMP_SKEW_MS = 60000L
+        private const val DRAIN_SAFETY_TIMEOUT_MS = 15000L
     }
 
     private val okHttpClient = OkHttpClient.Builder()
@@ -69,6 +70,8 @@ class Esp32ConnectionManager(
     private var lastHeartbeatTime: Long = System.currentTimeMillis()
     private var consecutiveHeartbeatFailures: Int = 0
     private var activeWebSocket: WebSocket? = null
+    private var isDraining: Boolean = false
+    private var drainJob: Job? = null
     private var heartbeatJob: Job? = null
 
     private val discoveryScanner = Esp32DiscoveryScanner(
@@ -252,10 +255,12 @@ class Esp32ConnectionManager(
         val offlineDuration = System.currentTimeMillis() - lastHeartbeatTime
         if (consecutiveHeartbeatFailures >= 2 || offlineDuration > HEARTBEAT_TIMEOUT_MS) {
             delegate.onOnlineStatusChanged(false, null)
-            // Immediately clear stale cached IP so we don't keep pinging dead IP
-            esp32Ip = null
             // Immediately trigger discovery to locate ESP32 if assigned a new DHCP IP
             discoveryScanner.triggerDiscovery(currentIp)
+            if (offlineDuration > 15000L && KioskSecurity.getConfiguredEsp32Ip(context).isBlank()) {
+                Log.w(TAG, "ESP32 disconnected for >15s, clearing stale cached IP for auto-rediscovery")
+                esp32Ip = null
+            }
         }
     }
 
@@ -265,29 +270,61 @@ class Esp32ConnectionManager(
 
     fun closeSession(sendUnarmToEsp: Boolean = false) {
         val ws = activeWebSocket
-        activeWebSocket = null
-        if (ws != null) {
-            if (sendUnarmToEsp) {
+        if (ws == null) {
+            isDraining = false
+            drainJob?.cancel()
+            drainJob = null
+            return
+        }
+
+        if (sendUnarmToEsp) {
+            if (isDraining) {
+                Log.d(TAG, "closeSession(sendUnarmToEsp=true) invoked while already draining; skipping duplicate send.")
+                return
+            }
+            isDraining = true
+            try {
+                ws.send("DONE")
+                Log.d(TAG, "Sent 'DONE' to ESP32 WebSocket. Entering draining state (safety timeout: ${DRAIN_SAFETY_TIMEOUT_MS}ms).")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to send DONE to ESP32: ${e.message}")
+            }
+            drainJob?.cancel()
+            drainJob = scope.launch(Dispatchers.IO) {
                 try {
-                    ws.send("DONE")
-                } catch (_: Exception) {}
-                // Give a brief 500ms window for the ESP32 to drain any active pulse train responses
-                scope.launch(Dispatchers.IO) {
-                    try {
-                        kotlinx.coroutines.delay(500)
-                        ws.close(1000, "Session closed")
-                    } catch (_: Exception) {}
+                    delay(DRAIN_SAFETY_TIMEOUT_MS)
+                    Log.w(TAG, "Drain safety timeout reached (${DRAIN_SAFETY_TIMEOUT_MS}ms) without ESP32 closure; closing WebSocket.")
+                    forceCloseWebSocket(ws, "Drain safety timeout")
+                } catch (_: kotlinx.coroutines.CancellationException) {
+                    // Normal cancellation if ESP32 closed first or armSlot called
                 }
-            } else {
+            }
+        } else {
+            forceCloseWebSocket(ws, "Session aborted")
+        }
+    }
+
+    private fun forceCloseWebSocket(ws: WebSocket?, reason: String) {
+        drainJob?.cancel()
+        drainJob = null
+        isDraining = false
+        val targetWs = ws ?: activeWebSocket
+        if (targetWs != null) {
+            if (targetWs === activeWebSocket) {
+                activeWebSocket = null
+            }
+            try {
+                targetWs.close(1000, reason)
+            } catch (_: Exception) {
                 try {
-                    ws.close(1000, "Session closed")
+                    targetWs.cancel()
                 } catch (_: Exception) {}
             }
         }
     }
 
     fun armSlot(armingTimeoutSeconds: Int) {
-        closeSession(sendUnarmToEsp = false)
+        forceCloseWebSocket(activeWebSocket, "Re-arming slot")
         val ip = esp32Ip ?: KioskSecurity.getConfiguredEsp32Ip(context).takeIf { it.isNotBlank() }
         if (ip.isNullOrBlank()) {
             Log.e(TAG, "Cannot arm slot: No active or configured ESP32 IP available")
@@ -368,9 +405,22 @@ class Esp32ConnectionManager(
 
                         Log.i(TAG, "⚡ Validated WebSocket Coin Processed: +${seconds}s, amount=₱$amount, txId=$txId")
                         delegate.onCoinMessageReceived(seconds, amount, txId)
-                    } else if (event == "TIMEOUT" || event == "CLOSED") {
-                        Log.d(TAG, "Received $event event from ESP32 WebSocket")
-                        closeSession(sendUnarmToEsp = false)
+
+                        // If coin arrives during drain window, reset drain timeout to allow subsequent pulses
+                        if (isDraining) {
+                            Log.d(TAG, "Coin received during active drain window; extending drain safety guard.")
+                            drainJob?.cancel()
+                            drainJob = scope.launch(Dispatchers.IO) {
+                                try {
+                                    delay(DRAIN_SAFETY_TIMEOUT_MS)
+                                    Log.w(TAG, "Extended drain safety timeout reached; closing WebSocket.")
+                                    forceCloseWebSocket(webSocket, "Drain safety timeout after coin")
+                                } catch (_: kotlinx.coroutines.CancellationException) {}
+                            }
+                        }
+                    } else if (event == "TIMEOUT" || event == "CLOSED" || event == "SESSION_ENDED") {
+                        Log.d(TAG, "Received $event event from ESP32 WebSocket (isDraining=$isDraining)")
+                        forceCloseWebSocket(webSocket, "ESP32 event: $event")
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error parsing WebSocket message: ${e.message}")
@@ -393,19 +443,24 @@ class Esp32ConnectionManager(
                 } else {
                     Log.w(TAG, "WebSocket arming failed (HTTP $code) - letting heartbeat loop manage connectivity")
                 }
-                closeSession(sendUnarmToEsp = false)
+                forceCloseWebSocket(webSocket, "WebSocket failure: $msg")
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 Log.d(TAG, "WebSocket closed (code=$code, reason=$reason)")
-                activeWebSocket = null
+                if (webSocket === activeWebSocket) {
+                    drainJob?.cancel()
+                    drainJob = null
+                    isDraining = false
+                    activeWebSocket = null
+                }
             }
         })
     }
 
     fun shutdown() {
         heartbeatJob?.cancel()
-        closeSession(sendUnarmToEsp = false)
+        forceCloseWebSocket(activeWebSocket, "Shutdown")
         discoveryScanner.shutdown()
     }
 }

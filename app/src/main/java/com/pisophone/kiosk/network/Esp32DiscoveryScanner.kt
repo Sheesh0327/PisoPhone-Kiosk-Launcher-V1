@@ -87,11 +87,11 @@ class Esp32DiscoveryScanner(
                 val buffer = ByteArray(2048)
                 Log.d(TAG, "Started UDP Discovery Listener on port $UDP_DISCOVERY_PORT")
 
+                val localIp = getLocalIpAddress()
                 while (isActive) {
                     val packet = DatagramPacket(buffer, buffer.size)
                     socket.receive(packet)
                     val senderIp = packet.address?.hostAddress ?: continue
-                    val localIp = getLocalIpAddress()
                     if (senderIp == "127.0.0.1" || senderIp == localIp) continue
 
                     val message = String(packet.data, 0, packet.length, Charsets.UTF_8).trim()
@@ -207,7 +207,7 @@ class Esp32DiscoveryScanner(
      * Fast concurrent local subnet scanner for dynamically assigned DHCP client ESP32 devices.
      * Uses non-blocking 250ms TCP pre-checks to sweep the /24 subnet in <500ms without thread starvation.
      */
-    suspend fun scanSubnetIfUnbound(localIp: String) {
+    fun scanSubnetIfUnbound(localIp: String) {
         if (isAlreadyBound()) return
         val activeIp = if (localIp.isNotBlank()) localIp else getLocalIpAddress()
         if (activeIp.isBlank() || !activeIp.contains(".")) return
@@ -217,7 +217,7 @@ class Esp32DiscoveryScanner(
         val ipList = (1..254).filter { it != selfLastOctet }.map { "$prefix.$it" }
         for (batch in ipList.chunked(32)) {
             if (isAlreadyBound() || !scope.isActive) break
-            val found = coroutineScope {
+            val found = runBlocking(Dispatchers.IO) {
                 val jobs = batch.map { targetIp ->
                     async {
                         if (isAlreadyBound() || !scope.isActive) return@async false

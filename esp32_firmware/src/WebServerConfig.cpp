@@ -18,7 +18,7 @@ bool otaIsValidBinary = true;
 String otaErrorMsg = "";
 
 void handlePortalRoot() {
-    if (!checkAdminAuth()) return;
+    if (!checkAuth()) return;
     if (macAddressStr.length() == 0) {
         uint8_t mac[6];
         esp_read_mac(mac, ESP_MAC_WIFI_STA);
@@ -77,7 +77,7 @@ void handlePortalRoot() {
 }
 
 void handleReboot() {
-    if (!checkAdminAuth()) return;
+    if (!checkAuth()) return;
     Serial.println("\n[🔄 HTTP API] Reboot request received from Web Portal.");
     if (revenueDirty || totalCoinsLifetime != lastSavedTotalCoins || totalEarningsLifetime != lastSavedTotalEarnings) {
         prefs.begin("kiosk_cfg", false);
@@ -94,7 +94,7 @@ void handleReboot() {
 }
 
 void handleFactoryReset() {
-    if (!checkAdminAuth()) return;
+    if (!checkAuth()) return;
     Serial.println("\n[⚠️ HTTP API] Factory reset request received from Web Portal.");
     factoryResetDefaults();
     webServer.send(200, "text/plain", "OK");
@@ -103,7 +103,7 @@ void handleFactoryReset() {
 }
 
 void handleResetVault() {
-    if (!checkAdminAuth()) return;
+    if (!checkAuth()) return;
     if (webServer.hasArg("reset_pw")) {
         String enteredPw = webServer.arg("reset_pw");
         if (enteredPw == superAdminPassword || webServer.authenticate("superadmin", superAdminPassword.c_str())) {
@@ -126,7 +126,7 @@ void handleResetVault() {
 }
 
 void handleSave() {
-    if (!checkAdminAuth()) return;
+    if (!checkAuth()) return;
 
     // Immediately flush any dirty revenue to NVS flash on manual save
     if (revenueDirty || totalCoinsLifetime != lastSavedTotalCoins || totalEarningsLifetime != lastSavedTotalEarnings) {
@@ -256,7 +256,7 @@ void handleSave() {
 }
 
 void handleOtaForm() {
-    if (!checkAdminAuth()) return;
+    if (!checkAuth()) return;
     String html = FPSTR(OTA_FORM_HTML);
     if (macAddressStr.length() == 0) {
         uint8_t mac[6];

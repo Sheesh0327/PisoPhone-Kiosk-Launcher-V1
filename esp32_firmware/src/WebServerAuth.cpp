@@ -1,5 +1,4 @@
 #include "WebServerAuth.h"
-#include "PaymentQueueManager.h"
 #include "WebServerModule.h"
 #include "Config.h"
 #include "Security.h"
@@ -12,9 +11,22 @@ void authWorkerTask(void *pvParameters) {
     AuthRequest req;
     while (true) {
         if (xQueueReceive(authQueue, &req, portMAX_DELAY) == pdTRUE) {
+            if (WiFi.status() != WL_CONNECTED) {
+                vTaskDelay(pdMS_TO_TICKS(100));
+                continue;
+            }
+
+            WiFiClient client;
+            HTTPClient http;
+            http.setConnectTimeout(req.timeoutMs);
+            http.setTimeout(req.timeoutMs);
+            http.setReuse(false);
+
             String ip = String(req.ip);
             if (ip.length() == 0) continue;
 
+            String actionUrl = "http://" + ip + ":" + String(req.port) + String(req.actionPath);
+            
             String finalParams = String(req.params);
             uint64_t currentMasterMs = getCurrentMasterTimeMs();
             if (finalParams.indexOf("ts=") == -1) {
@@ -25,90 +37,26 @@ void authWorkerTask(void *pvParameters) {
                 }
             }
             
-            String currentTxId = "";
-            int txPos = finalParams.indexOf("tx_id=");
-            if (txPos != -1) {
-                int endPos = finalParams.indexOf('&', txPos);
-                if (endPos == -1) endPos = finalParams.length();
-                currentTxId = finalParams.substring(txPos + 6, endPos);
-            } else if (finalParams.indexOf("nonce=") == -1) {
-                currentTxId = "tx-" + String(currentMasterMs) + "-" + String(random(10000, 99999));
-                finalParams += "&tx_id=" + currentTxId;
+            if (finalParams.indexOf("tx_id=") == -1 && finalParams.indexOf("nonce=") == -1) {
+                String txId = "tx-" + String(currentMasterMs) + "-" + String(random(10000, 99999));
+                finalParams += "&tx_id=" + txId;
             }
 
-            int retries = 0;
-            const int maxAttempts = 3;
-            bool delivered = false;
+            String encryptedPayload = aes_encrypt(finalParams, sharedSecret);
+            String hmacSig = calculateHMAC(encryptedPayload, sharedSecret);
+            actionUrl += "?payload=" + encryptedPayload + "&hmac=" + hmacSig;
 
-            while (!delivered && retries < maxAttempts) {
-                if (WiFi.status() != WL_CONNECTED) {
-                    vTaskDelay(pdMS_TO_TICKS(1000));
-                    retries++;
-                    continue;
-                }
-
-                WiFiClient client;
-                HTTPClient http;
-                http.setConnectTimeout(req.timeoutMs);
-                http.setTimeout(req.timeoutMs);
-                http.setReuse(false);
-
-                String actionUrl = "http://" + ip + ":" + String(req.port) + String(req.actionPath);
-                String encryptedPayload = aes_encrypt(finalParams, sharedSecret);
-                String hmacSig = calculateHMAC(encryptedPayload, sharedSecret);
-                actionUrl += "?payload=" + encryptedPayload + "&hmac=" + hmacSig;
-
-                if (http.begin(client, actionUrl)) {
-                    int code = http.GET();
-                    Serial.printf("[AUTH WORKER] %s -> HTTP %d (attempt %d/%d)\n",
-                                  req.actionPath, code, retries + 1, maxAttempts);
-                    http.end();
-                    if (code >= 200 && code < 300) {
-                        delivered = true;
-                        if (currentTxId.length() > 0) {
-                            acknowledgePayment(currentTxId);
-                        }
-                    }
-                }
-
-                if (!delivered) {
-                    retries++;
-                    if (retries < maxAttempts) {
-                        vTaskDelay(pdMS_TO_TICKS(1000UL * retries));
-                    }
-                }
+            if (http.begin(client, actionUrl)) {
+                int code = http.GET();
+                Serial.printf("[⚡ AUTH WORKER] GET %s -> Response %d\n", actionUrl.c_str(), code);
+                http.end();
             }
-
-            if (!delivered) {
-                Serial.printf("[AUTH WORKER] Delivery deferred after %d failed attempts: %s -> %s.\n",
-                              maxAttempts, req.actionPath, ip.c_str());
-            }
-
             vTaskDelay(pdMS_TO_TICKS(40)); // Prevent socket/radio contention
         }
     }
 }
 
-bool checkAdminAuth() {
-    // Strictly require administrator credentials.
-    // Phone or controller telemetry signatures MUST NOT grant administrative access.
-    if (webServer.authenticate("superadmin", superAdminPassword.c_str())) {
-        return true;
-    }
-    if (webServer.authenticate("admin", webPassword.c_str())) {
-        return true;
-    }
-    webServer.requestAuthentication(BASIC_AUTH, "HARDWARE Admin Login", "Unauthorized: Admin credentials required.");
-    return false;
-}
-
 bool checkAuth() {
-    // Check admin credentials first
-    if (webServer.authenticate("superadmin", superAdminPassword.c_str()) ||
-        webServer.authenticate("admin", webPassword.c_str())) {
-        return true;
-    }
-    // Device telemetry signatures are ONLY accepted for telemetry / device status checks
     if (webServer.hasArg("device_id") && webServer.hasArg("ts") && webServer.hasArg("sig")) {
         String devId = webServer.arg("device_id");
         String tsStr = webServer.arg("ts");
@@ -117,7 +65,20 @@ bool checkAuth() {
             return true;
         }
     }
-    webServer.requestAuthentication(BASIC_AUTH, "HARDWARE Admin Login", "Unauthorized: Access denied.");
+    if (webServer.hasArg("challenge") && webServer.hasArg("sig")) {
+        String challenge = webServer.arg("challenge");
+        String sig = webServer.arg("sig");
+        if (sig.equals(calculateHMAC(challenge, sharedSecret))) {
+            return true;
+        }
+    }
+    if (webServer.authenticate("superadmin", superAdminPassword.c_str())) {
+        return true;
+    }
+    if (webServer.authenticate("admin", webPassword.c_str())) {
+        return true;
+    }
+    webServer.requestAuthentication(BASIC_AUTH, "HARDWARE Admin Login", "Unauthorized: Please enter admin credentials.");
     return false;
 }
 

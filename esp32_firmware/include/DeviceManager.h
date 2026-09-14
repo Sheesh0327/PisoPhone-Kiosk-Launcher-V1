@@ -3,23 +3,28 @@
 
 #include <Arduino.h>
 #include "Config.h"
+#include "DeviceNetwork.h"
 
-struct DeviceConfig {
-    String id;
-    String ip;
-    String name;
-};
-
-bool parseDeviceEntry(const String& entry, DeviceConfig& cfg);
-int findSlotIndexForDevice(const String& deviceId, const String& ip);
-bool isSlotActive(int slotIndex);
-bool pairDeviceToSlot(int slotNum, const String& deviceId, const String& ip, const String& name);
+bool pairDeviceToSlot(int slotNum, String devId, String ip, String name);
 bool unpairSlot(int slotNum);
-String getDeviceNameByIpOrId(const String& ip, const String& deviceId);
+int findSlotIndexForDevice(String devId, String ip);
 
-void updateDeviceTelemetry(const String& deviceId, const String& ip, int timeRem, int state, int battery, bool charging, unsigned long long timestamp);
-int getTrackedTimeRemaining(const String& ip, unsigned long maxAgeMs = 15000, const String& deviceId = "");
-int getTrackedBatteryLevel(const String& ip, const String& deviceId = "");
-bool getTrackedChargingState(const String& ip, const String& deviceId = "");
+bool isSlotActive(int slotIdx);
+
+void updateDynamicDeviceList(String deviceId, String ip);
+String getDeviceNameByIpOrId(String reqIp, String devId = "");
+
+bool checkReplayProtection(String deviceId, unsigned long long newTs);
+bool verifyTelemetryAuth(String deviceId, String tsStr, String sig);
+void recordDeviceNonce(String deviceId, unsigned long long ts);
+void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int state, int battery = 100, bool charging = false, unsigned long long ts = 0);
+
+int getTrackedTimeRemaining(String ip, unsigned long maxAgeMs = 15000, String devId = "");
+int getTrackedBatteryLevel(String ip, String devId = "");
+bool getTrackedChargingState(String ip, String devId = "");
+
+String getFirstKnownIp();
+String getIpFromDeviceId(String id);
+String getPrimaryTerminalIp();
 
 #endif // DEVICE_MANAGER_H

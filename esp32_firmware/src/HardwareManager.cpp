@@ -4,7 +4,7 @@
 #include "DeviceManager.h"
 #include <WiFi.h>
 
-// Forward declarations of WebSocket client from WebServerModule
+// Forward declarations of WebSocket client from WebServer
 extern WiFiClient wsClient;
 extern bool isWsConnected;
 
@@ -21,7 +21,6 @@ static int ledBlinksRemaining = 0;
 static bool ledState = false;
 
 void setLedHardware(bool on) {
-    pinMode(ledPin, OUTPUT);
     digitalWrite(ledPin, (on ^ ledActiveLow) ? HIGH : LOW);
 }
 
@@ -141,6 +140,7 @@ void IRAM_ATTR universalCoinIsr() {
 }
 
 void applyCoinSlotHardwareConfig() {
+    pinMode(ledPin, OUTPUT);
     detachInterrupt(digitalPinToInterrupt(universalCoinPin));
     
     // Universal Multi-Coin Pulse Slot (Allan 124A/616A)

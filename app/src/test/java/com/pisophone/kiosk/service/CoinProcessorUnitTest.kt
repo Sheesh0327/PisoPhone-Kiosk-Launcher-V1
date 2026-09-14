@@ -31,6 +31,12 @@ class CoinProcessorUnitTest {
         override suspend fun insertEvent(event: CoinEvent) {
             insertedEvents.add(event)
         }
+        override suspend fun deleteOldEvents(keepLimit: Int) {
+            if (insertedEvents.size > keepLimit) {
+                val excess = insertedEvents.size - keepLimit
+                repeat(excess) { insertedEvents.removeAt(0) }
+            }
+        }
     }
 
     private lateinit var repository: CoinEventRepository

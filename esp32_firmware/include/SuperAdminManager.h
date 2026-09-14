@@ -3,25 +3,33 @@
 
 #include <Arduino.h>
 
-#define DEFAULT_SUPER_ADMIN_PW "10203040"
-#define DEFAULT_VENDOR_SPLIT_PERCENT 30
-#define VAULT_UNMASK_TIMEOUT_SECONDS 300 // 5-Minute Auto-Reset Protection
+// ============================================================================
+// VENDOR SUPER ADMIN CONSTANTS & GLOBALS
+// ============================================================================
+#define DEFAULT_SUPER_ADMIN_PW "superadmin123"
+#define DEFAULT_VENDOR_SPLIT_PERCENT 50
+#define VAULT_UNMASK_TIMEOUT_SECONDS 300UL
 
 extern String superAdminPassword;
 extern int vendorRevenueSplitPercent;
 extern bool isVaultUnmasked;
 extern unsigned long unmaskExpiryTimestamp;
 
+// ============================================================================
+// CORE SUPER ADMIN FUNCTIONS
+// ============================================================================
 void loadSuperAdminConfig();
-bool authenticateSuperAdmin();
 void processSuperAdminLoop();
-
+bool authenticateSuperAdmin();
 void handleSuperAdminAuth();
 void handleSuperAdminUnmask();
 void handleSuperAdminResetVault();
 void handleSuperAdminSaveSplit();
 void handleSuperAdminChangePassword();
 
+// ============================================================================
+// UI RENDERING HELPERS
+// ============================================================================
 String renderSuperAdminTabHtml();
 String renderSuperAdminScripts();
 

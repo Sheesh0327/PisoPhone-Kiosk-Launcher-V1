@@ -10,7 +10,7 @@
 #include <WebServer.h>
 
 void handleAddTime() {
-    if (!checkAdminAuth()) return;
+    if (!checkAuth()) return;
     int minutes = 60;
     if (webServer.hasArg("add_minutes")) {
         minutes = webServer.arg("add_minutes").toInt();
@@ -57,7 +57,7 @@ void handleAddTime() {
 }
 
 void handleInsertUniversalCoin() {
-    if (!checkAdminAuth()) return;
+    if (!checkAuth()) return;
     int pulses = webServer.hasArg("pulses") ? webServer.arg("pulses").toInt() : 1;
     if (pulses <= 0) pulses = 1;
     triggerUniversalCoinEvent(pulses);
@@ -101,7 +101,7 @@ void handleQueryTime() {
 }
 
 void handleApiSlots() {
-    if (!checkAdminAuth()) return;
+    if (!checkAuth()) return;
     String json = "{\"maxSlots\":" + String(maxLicensedSlots) + ",\"mac\":\"" + macAddressStr + "\",\"slots\":[";
     for (int i = 0; i < maxLicensedSlots; i++) {
         if (i > 0) json += ",";
@@ -125,7 +125,7 @@ void handleApiSlots() {
 }
 
 void handleApiSlotPair() {
-    if (!checkAdminAuth()) return;
+    if (!checkAuth()) return;
     int slot = webServer.hasArg("slot") ? webServer.arg("slot").toInt() : 0;
     String id = webServer.hasArg("id") ? webServer.arg("id") : "";
     String ip = webServer.hasArg("ip") ? webServer.arg("ip") : "";
@@ -146,7 +146,7 @@ void handleApiSlotPair() {
 }
 
 void handleApiSlotUnpair() {
-    if (!checkAdminAuth()) return;
+    if (!checkAuth()) return;
     int slot = webServer.hasArg("slot") ? webServer.arg("slot").toInt() : 0;
     if (slot < 1 || slot > maxLicensedSlots) {
         webServer.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid slot number\"}");
@@ -163,7 +163,7 @@ void handleApiSlotUnpair() {
 }
 
 void handleApiSlotApplyToken() {
-    if (!checkAdminAuth()) return;
+    if (!checkAuth()) return;
     String token = webServer.hasArg("token") ? webServer.arg("token") : "";
     if (token.length() == 0) {
         webServer.send(400, "application/json", "{\"success\":false,\"error\":\"Missing token\"}");
@@ -180,7 +180,7 @@ void handleApiSlotApplyToken() {
 }
 
 void handleApiSlotCloudSync() {
-    if (!checkAdminAuth()) return;
+    if (!checkAuth()) return;
     sendCloudSnapshot();
     webServer.send(200, "application/json", "{\"success\":true,\"message\":\"Cloud snapshot sent\"}");
 }

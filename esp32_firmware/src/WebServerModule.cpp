@@ -1,5 +1,4 @@
 #include "WebServerModule.h"
-#include "CoinSlotManager.h"
 #include "Config.h"
 #include "Security.h"
 #include "HardwareManager.h"
@@ -65,14 +64,6 @@ void setupWebServer() {
     webServer.on("/api/slots/cloud_sync", HTTP_POST, handleApiSlotCloudSync);
     
     webServer.on("/api/relay", HTTP_ANY, []() {
-        if (!checkAdminAuth()) return;
-
-        // Reject manual relay or polarity changes during an active or draining payment session
-        if (isCoinSlotBusy("")) {
-            webServer.send(409, "application/json", "{\"status\":\"error\",\"message\":\"Coin slot is currently active or draining. Manual relay override rejected.\"}");
-            return;
-        }
-
         bool hasInvert = webServer.hasArg("invert");
         if (hasInvert) {
             prefs.begin("kiosk_cfg", false);
@@ -92,7 +83,7 @@ void setupWebServer() {
     // Port 80: Web OTA Firmware Update Endpoints
     webServer.on("/update", HTTP_GET, handleOtaForm);
     webServer.on("/update", HTTP_POST, []() {
-        if (!checkAdminAuth()) return;
+        if (!checkAuth()) return;
         webServer.sendHeader("Connection", "close");
         if (!otaIsValidBinary || Update.hasError() || !otaUpdateSuccess) {
             String errStr = otaErrorMsg.length() > 0 ? otaErrorMsg : ("Flash write failed (Error Code " + String(Update.getError()) + ")");
@@ -103,7 +94,7 @@ void setupWebServer() {
             ESP.restart();
         }
     }, []() {
-        if (!checkAdminAuth()) return;
+        if (!checkAuth()) return;
         HTTPUpload& upload = webServer.upload();
         
         if (upload.status == UPLOAD_FILE_START) {
