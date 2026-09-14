@@ -35,6 +35,7 @@ class KioskEsp32Coordinator(
     override fun onEsp32Discovered(ip: String) {
         stateManager.esp32Ip = ip
         stateManager.isEsp32Online.value = true
+        KioskSecurity.setConfiguredEsp32Ip(context, ip)
         stateManager.saveState()
     }
 

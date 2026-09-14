@@ -154,7 +154,7 @@ void handleCheckQualification() {
 }
 
 void handleOneVsOne() {
-    if (!checkAuth()) return;
+    if (!checkAdminAuth()) return;
     p1Ip = webServer.hasArg("p1_ip") ? webServer.arg("p1_ip") : "";
     p2Ip = webServer.hasArg("p2_ip") ? webServer.arg("p2_ip") : "";
     if (webServer.hasArg("match_minutes")) {

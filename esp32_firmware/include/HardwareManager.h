@@ -3,29 +3,22 @@
 
 #include <Arduino.h>
 
-enum LedSystemState {
-    LED_STATE_CONNECTING,
-    LED_STATE_FAILED,
-    LED_STATE_CONNECTED
+enum LedState {
+    LED_STATE_OFF,
+    LED_STATE_CONNECTED,
+    LED_STATE_BLINK_FAST,
+    LED_STATE_BLINK_SLOW
 };
 
-extern LedSystemState currentLedState;
+extern LedState currentLedState;
+extern unsigned long lastLedBlinkMs;
+extern bool ledBlinkPhase;
 
+void initHardwarePins();
 void setLedHardware(bool on);
-void triggerLedBlink(int blinkCount = 2);
-void processLedBlink();
-
+void setLedState(LedState state);
 void setRelayHardware(bool active);
-bool isSlotArmed();
 void processRelayState();
-
-void IRAM_ATTR universalCoinIsr();
-void processUniversalCoinDetector();
-void resetCoinDetectorStates();
-void applyCoinSlotHardwareConfig();
-extern volatile int isrUniversalPulseCount;
-extern volatile unsigned long isrLastPulseTimeMs;
-
-void processHardwareResetPin();
+void processLedBlinkLoop();
 
 #endif // HARDWARE_MANAGER_H

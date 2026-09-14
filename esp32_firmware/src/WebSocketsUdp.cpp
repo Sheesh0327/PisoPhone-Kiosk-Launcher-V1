@@ -230,7 +230,7 @@ void processWebSocketServer() {
             }
             
             // 2. Hardware Mutex Check (Single-Client Lock)
-            if (isCoinSlotBusy(reqDeviceId)) {
+            if (isCoinSlotBusy(reqDeviceId, CoinSlotOwnerType::PHONE)) {
                 Serial.printf("[-] WS Mutex Rejected for %s: Slot BUSY with %s\n", reqDeviceId.c_str(), getActiveCoinSessionId().c_str());
                 newClient.print("HTTP/1.1 409 Conflict\r\n\r\nSLOT_BUSY");
                 newClient.stop();
@@ -259,7 +259,7 @@ void processWebSocketServer() {
             isWsConnected = true;
             wsSessionDeviceId = reqDeviceId;
             
-            reserveCoinSlot(reqDeviceId, ARM_TTL,
+            bool reserved = reserveCoinSlot(reqDeviceId, CoinSlotOwnerType::PHONE, ARM_TTL,
                 [](const String& devId, int pulses) {
                     triggerUniversalCoinEvent(pulses, devId);
                 },
@@ -274,6 +274,15 @@ void processWebSocketServer() {
                     wsSessionDeviceId = "";
                 }
             );
+
+            if (!reserved) {
+                sendWsText(wsClient, "{\"event\":\"ERROR\",\"reason\":\"SLOT_UNAVAILABLE\"}");
+                wsClient.stop();
+                isWsConnected = false;
+                wsSessionDeviceId = "";
+                Serial.printf("[-] WS reservation failed for %s after handshake.\n", reqDeviceId.c_str());
+                return;
+            }
             
             Serial.printf("[⚡ WS Port 81] WebSocket ARMED securely for %s (TTL: %lu s)\n", reqDeviceId.c_str(), ARM_TTL / 1000);
             sendWsText(wsClient, "{\"event\":\"ARMED\"}");
@@ -287,25 +296,23 @@ void processWebSocketServer() {
             Serial.printf("[*] WS Client %s disconnected. Releasing slot.\n", boundDevId.c_str());
             isWsConnected = false;
             wsSessionDeviceId = "";
-            releaseCoinSlot(boundDevId, false);
+            releaseCoinSlot(boundDevId, CoinSlotOwnerType::PHONE, false);
             return;
         }
         
         if (wsClient.available()) {
             String frameText = readWsText(wsClient);
             if (frameText.length() > 0) {
-                refreshCoinSlotTtl(boundDevId, ARM_TTL);
+                refreshCoinSlotTtl(boundDevId, CoinSlotOwnerType::PHONE, ARM_TTL);
             }
             if (frameText == "DONE" || frameText == "CLOSE") {
                 Serial.printf("[⚡ WS Port 81] 'DONE' received for %s. Requesting slot release.\n", boundDevId.c_str());
-                // Release slot through CoinSlotManager. If pulses are draining, socket stays open
-                // until all pulses are credited and onSessionEnd fires SESSION_ENDED.
-                releaseCoinSlot(boundDevId, false);
+                releaseCoinSlot(boundDevId, CoinSlotOwnerType::PHONE, false);
                 return;
             }
         } else {
             // Keep slot armed continuously while WebSocket client remains connected
-            refreshCoinSlotTtl(boundDevId, ARM_TTL);
+            refreshCoinSlotTtl(boundDevId, CoinSlotOwnerType::PHONE, ARM_TTL);
         }
     }
 

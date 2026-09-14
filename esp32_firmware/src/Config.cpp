@@ -17,7 +17,7 @@ const int   DEFAULT_RELAY_PIN          = 4;
 const int   DEFAULT_PORT               = 8080;
 const int   HARDWARE_RESET_PIN         = 2;
 const int   UDP_DISCOVERY_PORT         = 8888;
-const int   DEFAULT_MINUTES_PER_COIN   = 6;
+const int   DEFAULT_MINUTES_PER_COIN   = 10;
 
 // ============================================================================
 // GLOBAL VARIABLES DEFINITION
