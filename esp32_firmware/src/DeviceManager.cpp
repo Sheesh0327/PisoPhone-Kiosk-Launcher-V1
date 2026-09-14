@@ -2,7 +2,7 @@
 #include "CoinSlotManager.h"
 #include "HardwareManager.h"
 #include "Security.h"
-#include "WebServerModule.h"
+#include "WebServer.h"
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>

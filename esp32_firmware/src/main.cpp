@@ -9,7 +9,7 @@
 #include "CoinSlotManager.h"
 #include "DeviceManager.h"
 #include "DeviceNetwork.h"
-#include "WebServerModule.h"
+#include "WebServer.h"
 #include "SuperAdminManager.h"
 
 static unsigned long lastWifiCheckTime = 0;

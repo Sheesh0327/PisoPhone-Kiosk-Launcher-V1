@@ -5,9 +5,9 @@
 // ============================================================================
 // TIMING CONSTANTS
 // ============================================================================
-static const unsigned long INTER_PULSE_TIMEOUT_MS = 300;  // 300ms gap to finish accumulating pulses
-static const unsigned long DRAIN_TIMEOUT_GUARD_MS   = 10000; // Max time to wait for final in-flight pulse delivery (10s)
-static const unsigned long IDLE_DRAIN_GRACE_MS      = 1500;  // 1.5 seconds window to wait for a potential coin to register its first pulse
+static const unsigned long INTER_PULSE_TIMEOUT_MS = 280;  // Allan 124A/616A standard inter-pulse window
+static const unsigned long IN_FLIGHT_PULSE_GRACE_MS = 600; // Window to consider pulses still in flight
+static const unsigned long DRAIN_TIMEOUT_GUARD_MS   = 2000; // Max time to wait for final in-flight pulse delivery
 
 // ============================================================================
 // INTERNAL STATE
@@ -22,16 +22,6 @@ static String pendingEndReason = "";
 static CoinPaymentCallback currentPaymentCallback = nullptr;
 static CoinSessionEndCallback currentEndCallback = nullptr;
 static CoinPaymentCallback globalPaymentCallback = nullptr;
-
-// Internal helper to safely dispatch payment to current or global callback
-static void dispatchPaymentCallback(const String& sessionId, int pulses) {
-    if (pulses <= 0) return;
-    if (currentPaymentCallback) {
-        currentPaymentCallback(sessionId, pulses);
-    } else if (globalPaymentCallback) {
-        globalPaymentCallback(sessionId, pulses);
-    }
-}
 
 // Internal helper to complete release and invoke the end callback exactly once
 static void finalizeSessionRelease(const char* reason) {
@@ -65,39 +55,6 @@ static void finalizeSessionRelease(const char* reason) {
     if (endCb) {
         endCb(endingSession, reason);
     }
-}
-
-// Internal helper to safely start session release. Disarms if idle, otherwise enters DRAINING state
-static void initiateSessionRelease(const char* reason, bool force) {
-    if (activeSessionId.length() == 0 || currentState == CoinSlotState::IDLE) return;
-        
-    unsigned long now = millis();
-    const char* terminalReason = (reason != nullptr && strlen(reason) > 0) ? reason : "RELEASED";
-    
-    if (!force) {
-        noInterrupts();
-        int currentPulses = isrUniversalPulseCount;
-        interrupts();
-
-        currentState = CoinSlotState::DRAINING;
-        pendingEndReason = terminalReason;
-
-        // If coin pulses are actively in flight, set full timeout, otherwise set short idle grace window
-        if (currentPulses > 0) {
-            Serial.printf("[🪙 COIN SLOT] Release requested for '%s' while pulses in flight (%d pulses). Entering full DRAINING state...\n",
-                           activeSessionId.c_str(), currentPulses);
-            drainDeadlineMs = now + DRAIN_TIMEOUT_GUARD_MS;
-        } else {
-            Serial.printf("[🪙 COIN SLOT] Release requested for '%s' while idle. Entering DRAINING state with %lu ms idle grace...\n",
-                           activeSessionId.c_str(), IDLE_DRAIN_GRACE_MS);
-            drainDeadlineMs = now + IDLE_DRAIN_GRACE_MS;
-        }
-        // Keep hardware relay powered ON to finish reading potential incoming pulses.
-        return;
-    }
-        
-    // Immediate finalize release (this disarms the hardware relay)
-    finalizeSessionRelease(terminalReason);
 }
 
 void initCoinSlotManager() {
@@ -205,11 +162,41 @@ bool refreshCoinSlotTtl(const String& sessionId, unsigned long ttlMs) {
     return false;
 }
 
+bool enterDrainingIfPulsesInFlight(const char* reason) {
+    unsigned long now = millis();
+    noInterrupts();
+    int currentPulses = isrUniversalPulseCount;
+    unsigned long lastPulse = isrLastPulseTimeMs;
+    interrupts();
+
+    if (currentPulses > 0 || (lastPulse > 0 && (now - lastPulse < IN_FLIGHT_PULSE_GRACE_MS))) {
+        Serial.printf("[🪙 COIN SLOT] Pulses in flight (%d pulses). Entering DRAINING state (reason: %s)...\n", currentPulses, reason);
+        currentState = CoinSlotState::DRAINING;
+        pendingEndReason = reason;
+        drainDeadlineMs = now + DRAIN_TIMEOUT_GUARD_MS;
+        return true;
+    }
+    return false;
+}
+
 void releaseCoinSlot(const String& sessionId, bool force, const char* reason) {
     if (activeSessionId.length() == 0 || currentState == CoinSlotState::IDLE) return;
     if (activeSessionId != sessionId && !force) return;
-    
-    initiateSessionRelease(reason, force);
+
+    unsigned long now = millis();
+    const char* terminalReason = (reason != nullptr && strlen(reason) > 0) ? reason : "RELEASED";
+
+    // Disarm hardware relay immediately so no further coins enter
+    setRelayHardware(false);
+
+    if (!force) {
+        if (enterDrainingIfPulsesInFlight(terminalReason)) {
+            return;
+        }
+    }
+
+    // Immediate finalize release
+    finalizeSessionRelease(terminalReason);
 }
 
 void processCoinSlotSession() {
@@ -242,15 +229,6 @@ void processCoinSlotSession() {
         return;
     }
 
-    // 3b. Upgrade idle grace deadline to full timeout if a pulse is detected during DRAINING
-    if (currentState == CoinSlotState::DRAINING && pulseCount > 0) {
-        unsigned long currentRemaining = (drainDeadlineMs > now) ? (drainDeadlineMs - now) : 0;
-        if (currentRemaining <= IDLE_DRAIN_GRACE_MS) {
-            drainDeadlineMs = now + DRAIN_TIMEOUT_GUARD_MS;
-            Serial.printf("[🪙 COIN SLOT] Pulse detected during DRAINING idle grace. Extending timeout to %lu ms.\n", DRAIN_TIMEOUT_GUARD_MS);
-        }
-    }
-
     // 4. Process completed pulse train after inter-pulse timeout
     if (pulseCount > 0 && (now - lastPulseTime >= INTER_PULSE_TIMEOUT_MS)) {
         noInterrupts();
@@ -263,7 +241,11 @@ void processCoinSlotSession() {
             Serial.printf("[🪙 COIN SLOT] Detected %d pulse(s) for session '%s'. Delivering payment...\n", 
                           finalPulses, deliveringSession.c_str());
 
-            dispatchPaymentCallback(deliveringSession, finalPulses);
+            if (currentPaymentCallback) {
+                currentPaymentCallback(deliveringSession, finalPulses);
+            } else if (globalPaymentCallback) {
+                globalPaymentCallback(deliveringSession, finalPulses);
+            }
         }
 
         // If in DRAINING state, in-flight pulses are now delivered. Finalize session release.
@@ -278,16 +260,7 @@ void processCoinSlotSession() {
     // 5. Check DRAINING timeout guard
     if (currentState == CoinSlotState::DRAINING) {
         if (now >= drainDeadlineMs) {
-            Serial.println("[🪙 COIN SLOT] Drain guard timeout reached. Delivering remaining pulses and finalizing release.");
-            
-            // Salvage any pulses that accumulated before the guard tripped
-            noInterrupts();
-            int remainingPulses = isrUniversalPulseCount;
-            isrUniversalPulseCount = 0;
-            interrupts();
-            
-            dispatchPaymentCallback(activeSessionId, remainingPulses);
-
+            Serial.println("[🪙 COIN SLOT] Drain guard timeout reached. Finalizing release.");
             String reason = pendingEndReason.length() > 0 ? pendingEndReason : "DRAIN_TIMEOUT";
             finalizeSessionRelease(reason.c_str());
         }
@@ -301,10 +274,16 @@ void processCoinSlotSession() {
 
         if (ttlExpired || maxDurationExpired) {
             const char* reason = ttlExpired ? "TTL_EXPIRED" : "MAX_DURATION";
-            Serial.printf("[🪙 COIN SLOT] Session %s for '%s'. Checking in-flight pulses...\n",
-                           reason, activeSessionId.c_str());
+            Serial.printf("[🪙 COIN SLOT] Session %s for '%s'. Disarming relay and checking in-flight pulses...\n", 
+                          reason, activeSessionId.c_str());
 
-            initiateSessionRelease(reason, false);
+            // De-energize relay immediately
+            setRelayHardware(false);
+
+            // Check if pulses are in flight or arrived recently
+            if (!enterDrainingIfPulsesInFlight(reason)) {
+                finalizeSessionRelease(reason);
+            }
         }
     }
 }

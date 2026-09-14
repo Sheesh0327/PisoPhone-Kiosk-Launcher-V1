@@ -28,6 +28,7 @@ class CoinProcessorUnitTest {
         val insertedEvents = mutableListOf<CoinEvent>()
         override fun getAllEvents(): Flow<List<CoinEvent>> = flowOf(insertedEvents)
         override suspend fun getLatestEvents(limit: Int): List<CoinEvent> = insertedEvents.takeLast(limit)
+        override suspend fun deleteOldEvents(keepLimit: Int) {}
         override suspend fun insertEvent(event: CoinEvent) {
             insertedEvents.add(event)
         }
