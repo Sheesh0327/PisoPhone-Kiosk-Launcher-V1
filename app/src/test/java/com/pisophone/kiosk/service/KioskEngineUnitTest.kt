@@ -29,7 +29,7 @@ class KioskEngineUnitTest {
     fun testLockSessionTransitionsState() {
         stateManager.appState.value = 2
         stateManager.sessionTimeRemaining.value = 600
-        stateManager.sessionExpiryDeadlineMs.value = System.currentTimeMillis() + 600_000L
+        stateManager.sessionExpiryDeadlineMs.value = android.os.SystemClock.elapsedRealtime() + 600_000L
 
         engine.performLockSession()
 

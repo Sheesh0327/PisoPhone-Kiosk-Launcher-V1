@@ -52,15 +52,15 @@ class KioskEngine(
         scope = scope,
         coinEventRepo = coinEventRepo,
         onCreditsApplied = { seconds, pesoAmount ->
-            val now = System.currentTimeMillis()
+            val nowMonotonic = android.os.SystemClock.elapsedRealtime()
             val currentDeadline = stateManager.sessionExpiryDeadlineMs.value
-            val newDeadline = if (currentDeadline > now) {
+            val newDeadline = if (currentDeadline > nowMonotonic) {
                 currentDeadline + (seconds * 1000L)
             } else {
-                now + (seconds * 1000L)
+                nowMonotonic + (seconds * 1000L)
             }
             stateManager.sessionExpiryDeadlineMs.value = newDeadline
-            stateManager.sessionTimeRemaining.value = ((newDeadline - now) / 1000L).toInt()
+            stateManager.sessionTimeRemaining.value = ((newDeadline - nowMonotonic) / 1000L).toInt()
             stateManager.paymentTimeout.value = ARMING_TIMEOUT_SECONDS
             if (stateManager.appState.value == 0) {
                 stateManager.coinsInserted.value += pesoAmount
@@ -262,9 +262,9 @@ class KioskEngine(
             return
         }
         Log.i(TAG, "Admin bypass granted for $durationSeconds seconds.")
-        val now = System.currentTimeMillis()
+        val nowMonotonic = android.os.SystemClock.elapsedRealtime()
         stateManager.appState.value = 2
-        stateManager.sessionExpiryDeadlineMs.value = now + (durationSeconds * 1000L)
+        stateManager.sessionExpiryDeadlineMs.value = nowMonotonic + (durationSeconds * 1000L)
         stateManager.sessionTimeRemaining.value = durationSeconds
         stateManager.saveState()
         Handler(Looper.getMainLooper()).post {
@@ -289,9 +289,9 @@ class KioskEngine(
                     val appState = stateManager.appState.value
                     if (appState == 2 || appState == 3) {
                         val deadline = stateManager.sessionExpiryDeadlineMs.value
-                        val now = System.currentTimeMillis()
-                        if (deadline > 0L && now >= deadline) {
-                            Log.w(TAG, "Health monitor: Session deadline expired ($deadline <= $now). Forcing lock state.")
+                        val nowMonotonic = android.os.SystemClock.elapsedRealtime()
+                        if (deadline > 0L && nowMonotonic >= deadline) {
+                            Log.w(TAG, "Health monitor: Session deadline expired ($deadline <= $nowMonotonic). Forcing lock state.")
                             stateManager.appState.value = 0
                             stateManager.sessionTimeRemaining.value = 0
                             stateManager.sessionExpiryDeadlineMs.value = 0L

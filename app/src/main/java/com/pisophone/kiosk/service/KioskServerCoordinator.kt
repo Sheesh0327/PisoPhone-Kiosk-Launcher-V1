@@ -83,15 +83,15 @@ class KioskServerCoordinator(
     }
 
     override fun onDeductTime(seconds: Int) {
-        val now = System.currentTimeMillis()
+        val nowMonotonic = android.os.SystemClock.elapsedRealtime()
         val curDeadline = stateManager.sessionExpiryDeadlineMs.value
-        val newDeadline = if (curDeadline > now) {
+        val newDeadline = if (curDeadline > nowMonotonic) {
             maxOf(0L, curDeadline + (seconds * 1000L))
         } else {
             0L
         }
         stateManager.sessionExpiryDeadlineMs.value = newDeadline
-        val remaining = if (newDeadline > now) ((newDeadline - now) / 1000L).toInt() else 0
+        val remaining = if (newDeadline > nowMonotonic) ((newDeadline - nowMonotonic) / 1000L).toInt() else 0
         stateManager.sessionTimeRemaining.value = remaining
         if (remaining <= 0) {
             stateManager.sessionTimeRemaining.value = 0

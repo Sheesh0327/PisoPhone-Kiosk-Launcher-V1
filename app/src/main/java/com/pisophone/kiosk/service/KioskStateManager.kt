@@ -65,6 +65,7 @@ class KioskStateManager(private val context: Context) {
                 .putInt("app_state", appState.value)
                 .putInt("session_time_remaining", sessionTimeRemaining.value)
                 .putLong("session_expiry_deadline_ms", sessionExpiryDeadlineMs.value)
+                .putLong("last_saved_elapsed_realtime", android.os.SystemClock.elapsedRealtime())
                 .putInt("coins_inserted", coinsInserted.value)
                 .putFloat("price_per_coin", pricePerCoin.value.toFloat())
                 .putInt("minutes_per_coin", minutesPerCoin.value)
@@ -99,22 +100,29 @@ class KioskStateManager(private val context: Context) {
             }
 
             val savedTxSet = prefs.getStringSet("processed_tx_ids", emptySet()) ?: emptySet()
-            val now = System.currentTimeMillis()
+            val nowMonotonic = android.os.SystemClock.elapsedRealtime()
+            val lastSavedElapsed = prefs.getLong("last_saved_elapsed_realtime", 0L)
 
-            val effectiveRemainingSec = if (savedDeadline > now) {
-                ((savedDeadline - now) / 1000L).toInt()
+            // Calculate remaining seconds safely:
+            // 1. If device rebooted since last save, nowMonotonic < lastSavedElapsed. In that case, use savedTime.
+            // 2. If same boot cycle and savedDeadline > nowMonotonic, compute exact remaining seconds from deadline.
+            // 3. If deadline passed within this boot cycle, session is expired (0s).
+            val effectiveRemainingSec = if (lastSavedElapsed > 0L && nowMonotonic < lastSavedElapsed) {
+                // Device was rebooted; restore saved countdown seconds cleanly
+                savedTime
+            } else if (savedDeadline > nowMonotonic) {
+                ((savedDeadline - nowMonotonic) / 1000L).toInt()
             } else if (savedDeadline > 0L) {
-                0 // Deadline already elapsed while app/process was killed
+                0 // Deadline already elapsed while app/service was not running
             } else {
-                // Legacy fallback if no deadline was persisted
                 savedTime
             }
 
             if (effectiveRemainingSec > 0) {
                 sessionTimeRemaining.value = effectiveRemainingSec
-                sessionExpiryDeadlineMs.value = if (savedDeadline > now) savedDeadline else (now + (effectiveRemainingSec * 1000L))
+                sessionExpiryDeadlineMs.value = nowMonotonic + (effectiveRemainingSec * 1000L)
                 appState.value = if (savedState == 1 || savedState == 3) 3 else 2
-                Log.d(TAG, "Restored active session: ${effectiveRemainingSec}s remaining (Deadline: ${sessionExpiryDeadlineMs.value})")
+                Log.d(TAG, "Restored active session: ${effectiveRemainingSec}s remaining (Monotonic deadline: ${sessionExpiryDeadlineMs.value})")
             } else {
                 appState.value = 0
                 sessionTimeRemaining.value = 0

@@ -73,9 +73,9 @@ class KioskSessionSupervisor(
                     // Active session countdown
                     if (curState == 2 || curState == 3) {
                         val deadline = stateManager.sessionExpiryDeadlineMs.value
-                        val now = System.currentTimeMillis()
+                        val nowMonotonic = android.os.SystemClock.elapsedRealtime()
                         val remainingSec = if (deadline > 0L) {
-                            maxOf(0, ((deadline - now) / 1000L).toInt())
+                            maxOf(0, ((deadline - nowMonotonic) / 1000L).toInt())
                         } else {
                             maxOf(0, stateManager.sessionTimeRemaining.value - 1)
                         }
