@@ -1,7 +1,7 @@
 #include "WebSocketsUdp.h"
 #include "CoinSlotManager.h"
 #include "ControllerWebSocket.h"
-#include "WebServerModule.h"
+#include "WebServer.h"
 #include "Config.h"
 #include "HardwareManager.h"
 #include "Security.h"

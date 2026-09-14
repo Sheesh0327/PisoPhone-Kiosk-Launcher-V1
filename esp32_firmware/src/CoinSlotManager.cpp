@@ -162,6 +162,23 @@ bool refreshCoinSlotTtl(const String& sessionId, unsigned long ttlMs) {
     return false;
 }
 
+bool enterDrainingIfPulsesInFlight(const char* reason) {
+    unsigned long now = millis();
+    noInterrupts();
+    int currentPulses = isrUniversalPulseCount;
+    unsigned long lastPulse = isrLastPulseTimeMs;
+    interrupts();
+
+    if (currentPulses > 0 || (lastPulse > 0 && (now - lastPulse < IN_FLIGHT_PULSE_GRACE_MS))) {
+        Serial.printf("[🪙 COIN SLOT] Pulses in flight (%d pulses). Entering DRAINING state (reason: %s)...\n", currentPulses, reason);
+        currentState = CoinSlotState::DRAINING;
+        pendingEndReason = reason;
+        drainDeadlineMs = now + DRAIN_TIMEOUT_GUARD_MS;
+        return true;
+    }
+    return false;
+}
+
 void releaseCoinSlot(const String& sessionId, bool force, const char* reason) {
     if (activeSessionId.length() == 0 || currentState == CoinSlotState::IDLE) return;
     if (activeSessionId != sessionId && !force) return;
@@ -173,18 +190,7 @@ void releaseCoinSlot(const String& sessionId, bool force, const char* reason) {
     setRelayHardware(false);
 
     if (!force) {
-        noInterrupts();
-        int currentPulses = isrUniversalPulseCount;
-        unsigned long lastPulse = isrLastPulseTimeMs;
-        interrupts();
-
-        // If coin pulses are in flight or arrived recently, enter DRAINING state
-        if (currentPulses > 0 || (lastPulse > 0 && (now - lastPulse < IN_FLIGHT_PULSE_GRACE_MS))) {
-            Serial.printf("[🪙 COIN SLOT] Release requested for '%s' while pulses in flight (%d pulses). Entering DRAINING state...\n", 
-                          activeSessionId.c_str(), currentPulses);
-            currentState = CoinSlotState::DRAINING;
-            pendingEndReason = terminalReason;
-            drainDeadlineMs = now + DRAIN_TIMEOUT_GUARD_MS;
+        if (enterDrainingIfPulsesInFlight(terminalReason)) {
             return;
         }
     }
@@ -275,17 +281,7 @@ void processCoinSlotSession() {
             setRelayHardware(false);
 
             // Check if pulses are in flight or arrived recently
-            noInterrupts();
-            int currentPulses = isrUniversalPulseCount;
-            unsigned long lastPulse = isrLastPulseTimeMs;
-            interrupts();
-
-            if (currentPulses > 0 || (lastPulse > 0 && (now - lastPulse < IN_FLIGHT_PULSE_GRACE_MS))) {
-                Serial.printf("[🪙 COIN SLOT] Pulses in flight (%d pulses) during timeout. Entering DRAINING state...\n", currentPulses);
-                currentState = CoinSlotState::DRAINING;
-                pendingEndReason = reason;
-                drainDeadlineMs = now + DRAIN_TIMEOUT_GUARD_MS;
-            } else {
+            if (!enterDrainingIfPulsesInFlight(reason)) {
                 finalizeSessionRelease(reason);
             }
         }
