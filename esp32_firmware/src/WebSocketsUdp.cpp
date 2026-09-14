@@ -1,7 +1,7 @@
 #include "WebSocketsUdp.h"
 #include "CoinSlotManager.h"
 #include "ControllerWebSocket.h"
-#include "WebServer.h"
+#include "WebServerModule.h"
 #include "Config.h"
 #include "HardwareManager.h"
 #include "Security.h"
@@ -298,9 +298,8 @@ void processWebSocketServer() {
             }
             if (frameText == "DONE" || frameText == "CLOSE") {
                 Serial.printf("[⚡ WS Port 81] 'DONE' received for %s. Requesting slot release.\n", boundDevId.c_str());
-                wsClient.stop();
-                isWsConnected = false;
-                wsSessionDeviceId = "";
+                // Release slot through CoinSlotManager. If pulses are draining, socket stays open
+                // until all pulses are credited and onSessionEnd fires SESSION_ENDED.
                 releaseCoinSlot(boundDevId, false);
                 return;
             }

@@ -13,7 +13,7 @@ typedef std::function<void(const String& sessionId, const char* reason)> CoinSes
 enum class CoinSlotState {
     IDLE,       // No session, relay OFF, acceptor disabled
     ARMED,      // Active session running, relay ON, accepting coins
-    DRAINING    // Session closing/timed-out, relay OFF, draining in-flight pulses
+    DRAINING    // Session closing/timed-out, relay ON, waiting for in-flight pulses to finish
 };
 
 // ============================================================================

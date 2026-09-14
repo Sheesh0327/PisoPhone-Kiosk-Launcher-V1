@@ -1,8 +1,8 @@
 #include "SuperAdminManager.h"
 #include "SuperAdminTemplate.h"
 #include "Config.h"
-#include "WebServer.h"
-#include "WebServer.h"
+#include "WebServerModule.h"
+#include "WebServerAuth.h"
 #include <WebServer.h>
 #include <Preferences.h>
 

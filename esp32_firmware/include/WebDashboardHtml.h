@@ -1,5 +1,5 @@
-#ifndef WEB_DASHBOARD_H
-#define WEB_DASHBOARD_H
+#ifndef WEB_DASHBOARD_HTML_H
+#define WEB_DASHBOARD_HTML_H
 
 #include <Arduino.h>
 
@@ -9,4 +9,4 @@ String renderDeviceIpInputs();
 String renderLicenseSlotsHtml();
 String renderSlotOptions();
 
-#endif // WEB_DASHBOARD_H
+#endif // WEB_DASHBOARD_HTML_H
