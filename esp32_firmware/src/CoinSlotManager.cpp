@@ -6,7 +6,6 @@
 // TIMING CONSTANTS
 // ============================================================================
 static const unsigned long INTER_PULSE_TIMEOUT_MS = 300;  // 300ms gap to finish accumulating pulses
-static const unsigned long IN_FLIGHT_PULSE_GRACE_MS = 600; // Window to consider pulses still in flight
 static const unsigned long DRAIN_TIMEOUT_GUARD_MS   = 10000; // Max time to wait for final in-flight pulse delivery (10s)
 static const unsigned long IDLE_DRAIN_GRACE_MS      = 1500;  // 1.5 seconds window to wait for a potential coin to register its first pulse
 
@@ -23,6 +22,16 @@ static String pendingEndReason = "";
 static CoinPaymentCallback currentPaymentCallback = nullptr;
 static CoinSessionEndCallback currentEndCallback = nullptr;
 static CoinPaymentCallback globalPaymentCallback = nullptr;
+
+// Internal helper to safely dispatch payment to current or global callback
+static void dispatchPaymentCallback(const String& sessionId, int pulses) {
+    if (pulses <= 0) return;
+    if (currentPaymentCallback) {
+        currentPaymentCallback(sessionId, pulses);
+    } else if (globalPaymentCallback) {
+        globalPaymentCallback(sessionId, pulses);
+    }
+}
 
 // Internal helper to complete release and invoke the end callback exactly once
 static void finalizeSessionRelease(const char* reason) {
@@ -68,14 +77,13 @@ static void initiateSessionRelease(const char* reason, bool force) {
     if (!force) {
         noInterrupts();
         int currentPulses = isrUniversalPulseCount;
-        unsigned long lastPulse = isrLastPulseTimeMs;
         interrupts();
 
         currentState = CoinSlotState::DRAINING;
         pendingEndReason = terminalReason;
 
-        // If coin pulses are in flight or arrived recently, set full timeout, otherwise set a short idle grace window
-        if (currentPulses > 0 || (lastPulse > 0 && (now - lastPulse < IN_FLIGHT_PULSE_GRACE_MS))) {
+        // If coin pulses are actively in flight, set full timeout, otherwise set short idle grace window
+        if (currentPulses > 0) {
             Serial.printf("[🪙 COIN SLOT] Release requested for '%s' while pulses in flight (%d pulses). Entering full DRAINING state...\n",
                            activeSessionId.c_str(), currentPulses);
             drainDeadlineMs = now + DRAIN_TIMEOUT_GUARD_MS;
@@ -255,11 +263,7 @@ void processCoinSlotSession() {
             Serial.printf("[🪙 COIN SLOT] Detected %d pulse(s) for session '%s'. Delivering payment...\n", 
                           finalPulses, deliveringSession.c_str());
 
-            if (currentPaymentCallback) {
-                currentPaymentCallback(deliveringSession, finalPulses);
-            } else if (globalPaymentCallback) {
-                globalPaymentCallback(deliveringSession, finalPulses);
-            }
+            dispatchPaymentCallback(deliveringSession, finalPulses);
         }
 
         // If in DRAINING state, in-flight pulses are now delivered. Finalize session release.
@@ -282,13 +286,7 @@ void processCoinSlotSession() {
             isrUniversalPulseCount = 0;
             interrupts();
             
-            if (remainingPulses > 0) {
-                if (currentPaymentCallback) {
-                    currentPaymentCallback(activeSessionId, remainingPulses);
-                } else if (globalPaymentCallback) {
-                    globalPaymentCallback(activeSessionId, remainingPulses);
-                }
-            }
+            dispatchPaymentCallback(activeSessionId, remainingPulses);
 
             String reason = pendingEndReason.length() > 0 ? pendingEndReason : "DRAIN_TIMEOUT";
             finalizeSessionRelease(reason.c_str());
