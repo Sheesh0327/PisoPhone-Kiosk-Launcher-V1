@@ -25,4 +25,10 @@ interface PaymentDao {
     
     @Query("SELECT * FROM paid_session_state WHERE id = 1")
     fun getSessionState(): PaidSessionState?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun setMetadata(metadata: AppMetadata)
+
+    @Query("SELECT value FROM app_metadata WHERE `key` = :key LIMIT 1")
+    fun getMetadata(key: String): String?
 }

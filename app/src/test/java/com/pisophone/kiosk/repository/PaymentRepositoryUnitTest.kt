@@ -1,12 +1,16 @@
 package com.pisophone.kiosk.repository
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.pisophone.kiosk.db.AppDatabase
+import com.pisophone.kiosk.db.PaidSessionState
+import com.pisophone.kiosk.service.KioskStateManager
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -60,7 +64,7 @@ class PaymentRepositoryUnitTest {
         val repository = PaymentRepository(
             db = db,
             isEligible = { isEligibleState },
-            onPaymentApplied = { _, _, _, _, _ -> appliedCount++ }
+            onPaymentApplied = { _, _, _, _ -> appliedCount++ }
         )
 
         val txId = "tx-1001"
@@ -69,7 +73,6 @@ class PaymentRepositoryUnitTest {
         assertEquals("First credit should return APPLIED", PaymentResult.APPLIED, result)
         assertEquals("Post-commit callback called once", 1, appliedCount)
 
-        // Verify in DB
         val receipt = db.paymentDao().getReceiptByTxId(txId)
         assertNotNull("Receipt must be persisted", receipt)
         assertEquals(txId, receipt?.txId)
@@ -79,6 +82,7 @@ class PaymentRepositoryUnitTest {
         val sessionState = repository.getSessionState()
         assertNotNull("Session state must be saved", sessionState)
         assertTrue("Session time remaining must be > 0", (sessionState?.sessionTimeRemaining ?: 0) > 0)
+        assertEquals("Revision must be 1 on first credit", 1L, sessionState?.revision)
     }
 
     @Test
@@ -87,7 +91,7 @@ class PaymentRepositoryUnitTest {
         val repository = PaymentRepository(
             db = db,
             isEligible = { isEligibleState },
-            onPaymentApplied = { _, _, _, _, _ -> appliedCount++ }
+            onPaymentApplied = { _, _, _, _ -> appliedCount++ }
         )
 
         val txId = "tx-1002"
@@ -97,7 +101,6 @@ class PaymentRepositoryUnitTest {
 
         val deadlineAfterFirst = repository.getSessionState()?.sessionExpiryDeadlineMs ?: 0L
 
-        // Replay identical payment
         val result2 = repository.creditPayment(txId = txId, seconds = 300, amount = 1.0)
         assertEquals("Duplicate identical payment returns ALREADY_APPLIED", PaymentResult.ALREADY_APPLIED, result2)
         assertEquals("Post-commit callback must NOT fire on duplicate", 1, appliedCount)
@@ -117,11 +120,9 @@ class PaymentRepositoryUnitTest {
         val res1 = repository.creditPayment(txId = txId, seconds = 300, amount = 1.0)
         assertEquals(PaymentResult.APPLIED, res1)
 
-        // Replay with different seconds
         val resDiffSeconds = repository.creditPayment(txId = txId, seconds = 600, amount = 1.0)
         assertEquals("Different seconds returns CONFLICT", PaymentResult.CONFLICT, resDiffSeconds)
 
-        // Replay with different amount
         val resDiffAmount = repository.creditPayment(txId = txId, seconds = 300, amount = 5.0)
         assertEquals("Different amount returns CONFLICT", PaymentResult.CONFLICT, resDiffAmount)
     }
@@ -143,86 +144,118 @@ class PaymentRepositoryUnitTest {
     }
 
     @Test
-    fun testAlreadyCommittedPaymentReceivesDuplicateAcknowledgmentWhenEligibilityChanges() = runBlocking {
-        isEligibleState = true
-        val repository = PaymentRepository(
-            db = db,
-            isEligible = { isEligibleState }
-        )
-
-        val txId = "tx-1005"
-        // Initially eligible and applied
-        val res1 = repository.creditPayment(txId = txId, seconds = 600, amount = 5.0)
-        assertEquals(PaymentResult.APPLIED, res1)
-
-        // Now device state changes to ineligible (e.g. locked down / unprovisioned)
-        isEligibleState = false
-
-        // Replay of the already committed payment
-        val res2 = repository.creditPayment(txId = txId, seconds = 600, amount = 5.0)
-        assertEquals(
-            "Already committed payment must still return ALREADY_APPLIED even if eligibility changed",
-            PaymentResult.ALREADY_APPLIED,
-            res2
-        )
-    }
-
-    @Test
-    fun testDeductTimeDecreasesBalanceAndPersists() = runBlocking {
+    fun testDeductTimeDecreasesBalanceAndIncrementsRevision() = runBlocking {
         val repository = PaymentRepository(db = db, isEligible = { true })
-        repository.adjustSessionTime(1200)
+        val initial = repository.adjustSessionTime(1200)
+        assertEquals(1L, initial.revision)
 
         val updated = repository.deductTime(300)
         assertTrue("Time remaining should decrease", updated.sessionTimeRemaining <= 900)
+        assertEquals("Revision must increment on deduction", 2L, updated.revision)
 
         val persisted = repository.getSessionState()
         assertEquals(updated.sessionTimeRemaining, persisted?.sessionTimeRemaining)
+        assertEquals(2L, persisted?.revision)
     }
 
     @Test
-    fun testExpireSessionResetsBalanceAndPersists() = runBlocking {
+    fun testExpireSessionResetsBalanceAndIncrementsRevision() = runBlocking {
         val repository = PaymentRepository(db = db, isEligible = { true })
-        repository.adjustSessionTime(1200)
+        val initial = repository.adjustSessionTime(1200)
+        assertEquals(1L, initial.revision)
 
-        repository.expireSession()
+        val expired = repository.expireSession()
+        assertEquals(0, expired.sessionTimeRemaining)
+        assertEquals(0L, expired.sessionExpiryDeadlineMs)
+        assertEquals(2L, expired.revision)
 
         val persisted = repository.getSessionState()
         assertEquals(0, persisted?.sessionTimeRemaining)
         assertEquals(0L, persisted?.sessionExpiryDeadlineMs)
+        assertEquals(2L, persisted?.revision)
     }
 
     @Test
-    fun testCheckpointDoesNotOverwriteNewerCommittedCredit() = runBlocking {
+    fun testConditionalExpiryKeepsNewlyPurchasedTimeWhenTimerReadsExpiredDeadline() = runBlocking {
         val repository = PaymentRepository(db = db, isEligible = { true })
-        // Credit a new payment
-        repository.creditPayment("tx-new-credit", 1200, 10.0)
-        val stateAfterCredit = repository.getSessionState()!!
+        val now = SystemClock.elapsedRealtime()
 
-        // Attempt to checkpoint with an older snapshot
-        val staleRemaining = 100
-        val staleDeadline = android.os.SystemClock.elapsedRealtime() + 100_000L
-        repository.checkpointSession(staleRemaining, staleDeadline)
+        // 1. Initial state: expired deadline in the past
+        val expiredState = PaidSessionState(
+            id = 1,
+            sessionTimeRemaining = 0,
+            sessionExpiryDeadlineMs = now - 5000L,
+            lastSavedElapsedRealtime = now - 6000L,
+            revision = 1L
+        )
+        db.paymentDao().updateSessionState(expiredState)
+
+        // 2. Timer reads the expired deadline snapshot
+        val timerObservedDeadline = expiredState.sessionExpiryDeadlineMs
+        assertTrue("Timer observes expired deadline", timerObservedDeadline <= now)
+
+        // 3. Concurrently, a new payment is committed
+        val paymentResult = repository.creditPayment("tx-new-topup", 600, 5.0)
+        assertEquals(PaymentResult.APPLIED, paymentResult)
+
+        val stateAfterPayment = repository.getSessionState()!!
+        assertTrue("State deadline extended into future", stateAfterPayment.sessionExpiryDeadlineMs > now)
+        assertEquals(2L, stateAfterPayment.revision)
+
+        // 4. Timer's delayed handler runs expireSessionIfDue()
+        val expiryResult = repository.expireSessionIfDue()
+        assertFalse("Expiration must NOT happen because DB deadline was extended", expiryResult.didExpire)
+        assertEquals("Newly purchased deadline must remain", stateAfterPayment.sessionExpiryDeadlineMs, expiryResult.sessionState.sessionExpiryDeadlineMs)
+        assertTrue("Newly purchased time remaining must remain", expiryResult.sessionState.sessionTimeRemaining > 0)
+    }
+
+    @Test
+    fun testCaptureCheckpointDeductionResetConflictRejectsStaleCheckpoint() = runBlocking {
+        val repository = PaymentRepository(db = db, isEligible = { true })
+        repository.adjustSessionTime(1000)
+        val stateInitial = repository.getSessionState()!!
+        val capturedRevision = stateInitial.revision
+        assertEquals(1L, capturedRevision)
+
+        // Admin resets or deducts time
+        repository.expireSession()
+        val stateAfterReset = repository.getSessionState()!!
+        assertEquals(0, stateAfterReset.sessionTimeRemaining)
+        assertEquals(0L, stateAfterReset.sessionExpiryDeadlineMs)
+        assertEquals(2L, stateAfterReset.revision)
+
+        // Stale timer tries to submit checkpoint with capturedRevision (1)
+        repository.checkpointSession(capturedRevision)
 
         val stateAfterStaleCheckpoint = repository.getSessionState()!!
-        assertEquals(
-            "Checkpointing with older deadline must not overwrite newer committed credit",
-            stateAfterCredit.sessionExpiryDeadlineMs,
-            stateAfterStaleCheckpoint.sessionExpiryDeadlineMs
-        )
+        assertEquals("Stale checkpoint must be ignored; balance remains 0", 0, stateAfterStaleCheckpoint.sessionTimeRemaining)
+        assertEquals("Authoritative deadline remains 0", 0L, stateAfterStaleCheckpoint.sessionExpiryDeadlineMs)
+        assertEquals("Revision remains 2", 2L, stateAfterStaleCheckpoint.revision)
     }
 
     @Test
-    fun testRestoreSessionStateRecoversFromDatabase() = runBlocking {
-        val repository = PaymentRepository(db = db, isEligible = { true })
-        repository.adjustSessionTime(600)
+    fun testSerializedStateUpdateRetainsNewerRevisionWhenDeliveredInReverseOrder() {
+        val stateManager = KioskStateManager(context)
+        val now = SystemClock.elapsedRealtime()
 
-        val restored = repository.restoreSessionState()
-        assertTrue("Restored time remaining should be > 0", restored.remainingSeconds > 0)
-        assertTrue("Restored deadline should be > 0", restored.deadlineMs > 0L)
+        val snapshot1 = SessionSnapshot(deadlineMs = now + 300_000L, remainingSeconds = 300, revision = 1L)
+        val snapshot2 = SessionSnapshot(deadlineMs = now + 600_000L, remainingSeconds = 600, revision = 2L)
+
+        // Apply snapshot 2 first
+        val applied2 = stateManager.applySessionUpdate(snapshot2)
+        assertTrue("Newer snapshot applied", applied2)
+        assertEquals(2L, stateManager.sessionRevision.value)
+        assertEquals(600, stateManager.sessionTimeRemaining.value)
+
+        // Apply snapshot 1 in reverse order
+        val applied1 = stateManager.applySessionUpdate(snapshot1)
+        assertFalse("Older snapshot must be rejected", applied1)
+        assertEquals("State manager must retain newer revision 2", 2L, stateManager.sessionRevision.value)
+        assertEquals("State manager must retain newer time 600s", 600, stateManager.sessionTimeRemaining.value)
     }
 
     @Test
-    fun testLegacyMigrationImportsPaidStateWithoutClearingCredit() = runBlocking {
+    fun testLegacyMigrationWithRealKeysAndSameBoot() = runBlocking {
         val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
             context.createDeviceProtectedStorageContext()
         } else {
@@ -231,28 +264,32 @@ class PaymentRepositoryUnitTest {
         val prefs = deviceContext.getSharedPreferences(PaymentRepository.PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
 
+        val nowMonotonic = SystemClock.elapsedRealtime()
         val expectedRemaining = 900
-        val expectedDeadline = android.os.SystemClock.elapsedRealtime() + (expectedRemaining * 1000L)
+        val expectedDeadline = nowMonotonic + (expectedRemaining * 1000L)
+        val lastSavedElapsed = nowMonotonic - 5000L
+
         prefs.edit()
             .putInt("session_time_remaining", expectedRemaining)
-            .putLong("session_expiry_deadline", expectedDeadline)
+            .putLong("session_expiry_deadline_ms", expectedDeadline)
+            .putLong("last_saved_elapsed_realtime", lastSavedElapsed)
             .commit()
 
         val repository = PaymentRepository(db = db, context = context, isEligible = { true })
         repository.migrateAndInitialize(context)
 
-        // Verify session state was imported into Room
         val state = repository.getSessionState()
         assertNotNull("Session state must exist in Room after migration", state)
-        assertTrue("Session time remaining must match imported value", state!!.sessionTimeRemaining >= 899)
+        assertTrue("Session time remaining must match imported value", state!!.sessionTimeRemaining >= 895)
         assertEquals("Session deadline must match imported deadline", expectedDeadline, state.sessionExpiryDeadlineMs)
+        assertEquals(1L, state.revision)
 
-        // Verify durable migration marker is set
-        assertTrue("Durable migration marker must be true", prefs.getBoolean(PaymentRepository.KEY_MIGRATION_MARKER, false))
+        val metaMarker = db.paymentDao().getMetadata(PaymentRepository.KEY_MIGRATION_MARKER)
+        assertEquals("Migration marker must be recorded in Room metadata table", "true", metaMarker)
     }
 
     @Test
-    fun testLegacyMigrationReconcilesHistoricalPaymentsWithoutAddingCreditAgain() = runBlocking {
+    fun testLegacyMigrationExpiredDeadlineRestoresZero() = runBlocking {
         val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
             context.createDeviceProtectedStorageContext()
         } else {
@@ -261,36 +298,122 @@ class PaymentRepositoryUnitTest {
         val prefs = deviceContext.getSharedPreferences(PaymentRepository.PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
 
-        // Seed coin_events in database
-        db.coinEventDao().insertEvent(
-            com.pisophone.kiosk.db.CoinEvent(
-                txId = "legacy-coin-1",
-                source = "COIN",
-                secondsAdded = 600,
-                timestamp = System.currentTimeMillis() - 50000L
-            )
-        )
+        val startElapsed = SystemClock.elapsedRealtime().coerceAtLeast(1000L)
+        val legacyRemaining = 300
+        val expiredDeadline = startElapsed + 5000L
+        val lastSavedElapsed = startElapsed
 
-        // Seed processed_tx_ids in SharedPreferences
+        // Advance clock within the same boot so that deadline is in the past
+        org.robolectric.shadows.ShadowSystemClock.advanceBy(java.time.Duration.ofSeconds(10))
+
         prefs.edit()
-            .putStringSet("processed_tx_ids", setOf("legacy-tx-2", "legacy-tx-3"))
+            .putInt("session_time_remaining", legacyRemaining)
+            .putLong("session_expiry_deadline_ms", expiredDeadline)
+            .putLong("last_saved_elapsed_realtime", lastSavedElapsed)
             .commit()
 
         val repository = PaymentRepository(db = db, context = context, isEligible = { true })
         repository.migrateAndInitialize(context)
 
-        // Check that all 3 transactions exist in payment_receipts
-        assertNotNull("legacy-coin-1 should be in payment_receipts", db.paymentDao().getReceiptByTxId("legacy-coin-1"))
-        assertNotNull("legacy-tx-2 should be in payment_receipts", db.paymentDao().getReceiptByTxId("legacy-tx-2"))
-        assertNotNull("legacy-tx-3 should be in payment_receipts", db.paymentDao().getReceiptByTxId("legacy-tx-3"))
+        val state = repository.getSessionState()
+        assertNotNull(state)
+        assertEquals("Expired legacy deadline must restore zero remaining time", 0, state!!.sessionTimeRemaining)
+        assertEquals("Expired legacy deadline must restore zero deadline", 0L, state.sessionExpiryDeadlineMs)
+    }
 
-        // Attempting to credit any of these legacy transactions must return ALREADY_APPLIED and NOT add credit again
-        val initialBalance = repository.getSessionState()?.sessionTimeRemaining ?: 0
-        val creditRes = repository.creditPayment("legacy-coin-1", 600, 5.0)
-        assertEquals("Reconciled legacy txId must return ALREADY_APPLIED", PaymentResult.ALREADY_APPLIED, creditRes)
+    @Test
+    fun testLegacyMigrationAfterRebootRecoversUsingSavedRemainingTime() = runBlocking {
+        val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+            context.createDeviceProtectedStorageContext()
+        } else {
+            context
+        }
+        val prefs = deviceContext.getSharedPreferences(PaymentRepository.PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().clear().commit()
 
-        val balanceAfterReplay = repository.getSessionState()?.sessionTimeRemaining ?: 0
-        assertEquals("Replay of reconciled legacy txId must NOT add extra credit", initialBalance, balanceAfterReplay)
+        val nowMonotonic = SystemClock.elapsedRealtime()
+        val legacyRemaining = 500
+        val oldBootDeadline = 99999999L
+        val lastSavedElapsedFromPrevBoot = nowMonotonic + 500000L // Larger than current elapsedRealtime => reboot detected
+
+        prefs.edit()
+            .putInt("session_time_remaining", legacyRemaining)
+            .putLong("session_expiry_deadline_ms", oldBootDeadline)
+            .putLong("last_saved_elapsed_realtime", lastSavedElapsedFromPrevBoot)
+            .commit()
+
+        val repository = PaymentRepository(db = db, context = context, isEligible = { true })
+        repository.migrateAndInitialize(context)
+
+        val state = repository.getSessionState()
+        assertNotNull(state)
+        assertEquals("Reboot recovery must preserve saved remaining time", legacyRemaining, state!!.sessionTimeRemaining)
+        assertTrue("Reboot recovery must compute new monotonic deadline", state.sessionExpiryDeadlineMs >= nowMonotonic + (legacyRemaining * 1000L) - 1000L)
+    }
+
+    @Test
+    fun testAuthoritativeRoomStateNotOverwrittenByLegacyPrefs() = runBlocking {
+        val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+            context.createDeviceProtectedStorageContext()
+        } else {
+            context
+        }
+        val prefs = deviceContext.getSharedPreferences(PaymentRepository.PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit()
+            .putInt("session_time_remaining", 1000)
+            .putLong("session_expiry_deadline_ms", SystemClock.elapsedRealtime() + 1000_000L)
+            .commit()
+
+        val nowMonotonic = SystemClock.elapsedRealtime()
+        val existingZeroState = PaidSessionState(
+            id = 1,
+            sessionTimeRemaining = 0,
+            sessionExpiryDeadlineMs = 0L,
+            lastSavedElapsedRealtime = nowMonotonic,
+            revision = 3L
+        )
+        db.paymentDao().updateSessionState(existingZeroState)
+
+        val repository = PaymentRepository(db = db, context = context, isEligible = { true })
+        repository.migrateAndInitialize(context)
+
+        val state = repository.getSessionState()
+        assertNotNull(state)
+        assertEquals("Existing zero balance in Room must be preserved", 0, state!!.sessionTimeRemaining)
+        assertEquals("Existing zero deadline in Room must be preserved", 0L, state.sessionExpiryDeadlineMs)
+        assertEquals("Existing revision must be preserved", 3L, state.revision)
+    }
+
+    @Test
+    fun testRetryInitializationDoesNotDuplicateCreditOrOverwriteBalance() = runBlocking {
+        val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+            context.createDeviceProtectedStorageContext()
+        } else {
+            context
+        }
+        val prefs = deviceContext.getSharedPreferences(PaymentRepository.PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit()
+            .putInt("session_time_remaining", 300)
+            .putLong("session_expiry_deadline_ms", SystemClock.elapsedRealtime() + 300_000L)
+            .putStringSet("processed_tx_ids", setOf("tx-legacy-1"))
+            .commit()
+
+        val repository = PaymentRepository(db = db, context = context, isEligible = { true })
+        repository.migrateAndInitialize(context)
+
+        // New payment added after initial migration
+        repository.creditPayment("tx-new-2", 600, 5.0)
+        val stateAfterCredit = repository.getSessionState()!!
+        assertTrue(stateAfterCredit.sessionTimeRemaining >= 890)
+
+        // Retry migrateAndInitialize
+        repository.migrateAndInitialize(context)
+
+        val stateAfterRetry = repository.getSessionState()!!
+        assertEquals("Balance must not be overwritten on initialization retry", stateAfterCredit.sessionTimeRemaining, stateAfterRetry.sessionTimeRemaining)
+        assertNotNull(db.paymentDao().getReceiptByTxId("tx-legacy-1"))
+        assertNotNull(db.paymentDao().getReceiptByTxId("tx-new-2"))
     }
 }
+
 

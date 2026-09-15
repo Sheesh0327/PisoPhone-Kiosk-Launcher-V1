@@ -50,11 +50,10 @@ class KioskEngine(
     val paymentRepo: PaymentRepository = PaymentRepository(
         db = AppDatabase.getDatabase(context),
         context = context,
-        onPaymentApplied = { txId, seconds, amount, newDeadline, newRemaining ->
+        onPaymentApplied = { txId, seconds, amount, snapshot ->
             val pesoAmount = if (amount >= 1.0) amount.toInt() else 1
-            // 1. Commit is finalized. Publish committed session state:
-            stateManager.sessionExpiryDeadlineMs.value = newDeadline
-            stateManager.sessionTimeRemaining.value = newRemaining
+            // 1. Commit is finalized. Publish committed session state through serialized handler:
+            stateManager.applySessionUpdate(snapshot)
             stateManager.paymentTimeout.value = ARMING_TIMEOUT_SECONDS
 
             if (stateManager.appState.value == 0) {
@@ -82,7 +81,7 @@ class KioskEngine(
                 }
             }
 
-            // 2. Play sound / update UI feedback ONLY for newly applied payment
+            // 2. Play sound / update UI feedback ONLY for newly applied payment (separate from state publication)
             audioManager.playCoinSound()
             HardwareFeedback.triggerFlashlight(context, 150L)
             Handler(Looper.getMainLooper()).post {
@@ -90,9 +89,8 @@ class KioskEngine(
                 Toast.makeText(context, "₱$pesoAmount coin accepted! (+${addedMins}m)", Toast.LENGTH_SHORT).show()
             }
         },
-        onSessionStateChanged = { deadline, remaining ->
-            stateManager.sessionExpiryDeadlineMs.value = deadline
-            stateManager.sessionTimeRemaining.value = remaining
+        onSessionStateChanged = { snapshot ->
+            stateManager.applySessionUpdate(snapshot)
         }
     )
 
@@ -289,8 +287,7 @@ class KioskEngine(
         Log.i(TAG, "Admin bypass granted for $durationSeconds seconds.")
         val updated = paymentRepo.adjustSessionTimeBlocking(durationSeconds)
         stateManager.appState.value = 2
-        stateManager.sessionExpiryDeadlineMs.value = updated.sessionExpiryDeadlineMs
-        stateManager.sessionTimeRemaining.value = updated.sessionTimeRemaining
+        stateManager.applySessionUpdate(updated.sessionExpiryDeadlineMs, updated.sessionTimeRemaining, updated.revision)
         stateManager.saveState()
         Handler(Looper.getMainLooper()).post {
             Toast.makeText(context, "Admin Bypass Active (${durationSeconds / 60}m Maintenance)", Toast.LENGTH_SHORT).show()
@@ -299,10 +296,9 @@ class KioskEngine(
 
     fun performLockSession() {
         Log.i(TAG, "Lock session requested by admin.")
-        paymentRepo.resetSessionBlocking()
+        val resetState = paymentRepo.resetSessionBlocking()
         stateManager.appState.value = 0
-        stateManager.sessionTimeRemaining.value = 0
-        stateManager.sessionExpiryDeadlineMs.value = 0L
+        stateManager.applySessionUpdate(resetState.sessionExpiryDeadlineMs, resetState.sessionTimeRemaining, resetState.revision)
         stateManager.saveState()
     }
 
@@ -317,12 +313,21 @@ class KioskEngine(
                         val deadline = stateManager.sessionExpiryDeadlineMs.value
                         val nowMonotonic = android.os.SystemClock.elapsedRealtime()
                         if (deadline > 0L && nowMonotonic >= deadline) {
-                            Log.w(TAG, "Health monitor: Session deadline expired ($deadline <= $nowMonotonic). Forcing lock state.")
-                            paymentRepo.expireSessionBlocking()
-                            stateManager.appState.value = 0
-                            stateManager.sessionTimeRemaining.value = 0
-                            stateManager.sessionExpiryDeadlineMs.value = 0L
-                            stateManager.saveState()
+                            val expiryResult = paymentRepo.expireSessionIfDueBlocking()
+                            if (expiryResult.didExpire) {
+                                Log.w(TAG, "Health monitor: Session deadline expired ($deadline <= $nowMonotonic). Forcing lock state.")
+                                stateManager.appState.value = 0
+                                stateManager.sessionTimeRemaining.value = 0
+                                stateManager.sessionExpiryDeadlineMs.value = 0L
+                                stateManager.sessionRevision.value = expiryResult.sessionState.revision
+                                stateManager.saveState()
+                            } else {
+                                stateManager.applySessionUpdate(
+                                    expiryResult.sessionState.sessionExpiryDeadlineMs,
+                                    expiryResult.sessionState.sessionTimeRemaining,
+                                    expiryResult.sessionState.revision
+                                )
+                            }
                         }
                     }
 

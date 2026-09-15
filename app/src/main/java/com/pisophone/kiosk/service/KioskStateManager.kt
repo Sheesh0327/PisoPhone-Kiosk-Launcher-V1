@@ -16,6 +16,7 @@ class KioskStateManager(private val context: Context) {
     val appState = MutableStateFlow(0) // 0: block, 1: wait, 2: unlocked, 3: unlocked+wait, 4: unlicensed
     val sessionTimeRemaining = MutableStateFlow(0)
     val sessionExpiryDeadlineMs = MutableStateFlow(0L)
+    val sessionRevision = MutableStateFlow(0L)
     val paymentTimeout = MutableStateFlow(0)
     val coinsInserted = MutableStateFlow(0)
     val themeIndex = MutableStateFlow(0)
@@ -51,6 +52,23 @@ class KioskStateManager(private val context: Context) {
             prefs.edit().putString("device_uuid", savedUuid).apply()
         }
         deviceId.value = savedUuid
+    }
+
+    @Synchronized
+    fun applySessionUpdate(snapshot: com.pisophone.kiosk.repository.SessionSnapshot): Boolean {
+        if (snapshot.revision < sessionRevision.value) {
+            Log.d(TAG, "Ignoring stale session update: incoming rev ${snapshot.revision} < current rev ${sessionRevision.value}")
+            return false
+        }
+        sessionRevision.value = snapshot.revision
+        sessionExpiryDeadlineMs.value = snapshot.deadlineMs
+        sessionTimeRemaining.value = snapshot.remainingSeconds
+        return true
+    }
+
+    @Synchronized
+    fun applySessionUpdate(deadlineMs: Long, remainingSeconds: Int, revision: Long): Boolean {
+        return applySessionUpdate(com.pisophone.kiosk.repository.SessionSnapshot(deadlineMs, remainingSeconds, revision))
     }
 
     fun saveState(txSet: Set<String> = emptySet()) {
@@ -106,12 +124,13 @@ class KioskStateManager(private val context: Context) {
 
             val effectiveRemainingSec = restored.remainingSeconds
             val effectiveDeadline = restored.deadlineMs
+            sessionRevision.value = restored.revision
 
             if (effectiveRemainingSec > 0) {
                 sessionTimeRemaining.value = effectiveRemainingSec
                 sessionExpiryDeadlineMs.value = effectiveDeadline
                 appState.value = if (savedState == 1 || savedState == 3) 3 else 2
-                Log.d(TAG, "Restored active session: ${effectiveRemainingSec}s remaining (Monotonic deadline: $effectiveDeadline, isReboot=${restored.isReboot})")
+                Log.d(TAG, "Restored active session: ${effectiveRemainingSec}s remaining (Monotonic deadline: $effectiveDeadline, isReboot=${restored.isReboot}, rev=${restored.revision})")
             } else {
                 appState.value = 0
                 sessionTimeRemaining.value = 0

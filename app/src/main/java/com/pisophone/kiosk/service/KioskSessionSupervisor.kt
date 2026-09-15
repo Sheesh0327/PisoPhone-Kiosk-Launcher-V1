@@ -85,27 +85,36 @@ class KioskSessionSupervisor(
                         stateManager.sessionTimeRemaining.value = remainingSec
 
                         if (remainingSec <= 0) {
-                            paymentRepo.expireSessionBlocking()
-                            stateManager.appState.value = 0 // Lock screen
-                            stateManager.sessionExpiryDeadlineMs.value = 0L
-                            stateManager.sessionTimeRemaining.value = 0
-                            onSpeakWarning("Time expired")
-                            stateManager.saveState()
-                            
-                            val startMain = Intent(Intent.ACTION_MAIN).apply {
-                                addCategory(Intent.CATEGORY_HOME)
-                                flags = Intent.FLAG_ACTIVITY_NEW_TASK or 
-                                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or 
-                                        Intent.FLAG_ACTIVITY_CLEAR_TOP
-                            }
-                            try {
-                                context.startActivity(startMain)
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Failed to start HOME activity: ${e.message}")
+                            val expiryResult = paymentRepo.expireSessionIfDueBlocking()
+                            if (expiryResult.didExpire) {
+                                stateManager.appState.value = 0 // Lock screen
+                                stateManager.sessionExpiryDeadlineMs.value = 0L
+                                stateManager.sessionTimeRemaining.value = 0
+                                stateManager.sessionRevision.value = expiryResult.sessionState.revision
+                                onSpeakWarning("Time expired")
+                                stateManager.saveState()
+                                
+                                val startMain = Intent(Intent.ACTION_MAIN).apply {
+                                    addCategory(Intent.CATEGORY_HOME)
+                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or 
+                                            Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or 
+                                            Intent.FLAG_ACTIVITY_CLEAR_TOP
+                                }
+                                try {
+                                    context.startActivity(startMain)
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Failed to start HOME activity: ${e.message}")
+                                }
+                            } else {
+                                stateManager.applySessionUpdate(
+                                    expiryResult.sessionState.sessionExpiryDeadlineMs,
+                                    expiryResult.sessionState.sessionTimeRemaining,
+                                    expiryResult.sessionState.revision
+                                )
                             }
                         } else {
                             if (remainingSec % 15 == 0) {
-                                paymentRepo.checkpointSessionBlocking(remainingSec, deadline)
+                                paymentRepo.checkpointSessionBlocking(stateManager.sessionRevision.value)
                                 stateManager.saveState()
                             }
 

@@ -8,5 +8,6 @@ data class PaidSessionState(
     @PrimaryKey val id: Int = 1, // Only one record
     val sessionTimeRemaining: Int,
     val sessionExpiryDeadlineMs: Long,
-    val lastSavedElapsedRealtime: Long
+    val lastSavedElapsedRealtime: Long,
+    val revision: Long = 0L
 )
