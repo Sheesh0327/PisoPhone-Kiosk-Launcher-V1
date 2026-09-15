@@ -90,12 +90,16 @@ class KioskServerCoordinator(
 
     override fun onDeductTime(seconds: Int) {
         val updated = paymentRepo.deductTimeBlocking(seconds)
-        stateManager.sessionExpiryDeadlineMs.value = updated.sessionExpiryDeadlineMs
-        stateManager.sessionTimeRemaining.value = updated.sessionTimeRemaining
-        if (updated.sessionTimeRemaining <= 0) {
-            stateManager.appState.value = 0
+        val targetState = if (updated.sessionTimeRemaining <= 0) 0 else null
+        val applied = stateManager.applySessionUpdate(
+            deadlineMs = updated.sessionExpiryDeadlineMs,
+            remainingSeconds = updated.sessionTimeRemaining,
+            revision = updated.revision,
+            targetAppState = targetState
+        )
+        if (applied) {
+            stateManager.saveState()
         }
-        stateManager.saveState()
         Handler(Looper.getMainLooper()).post {
             Toast.makeText(context, "${-seconds / 60} minutes deducted!", Toast.LENGTH_SHORT).show()
         }
@@ -131,10 +135,13 @@ class KioskServerCoordinator(
             when (action) {
                 "slot_lockdown" -> {
                     stateManager.isSlotExpired.value = true
-                    paymentRepo.expireSessionBlocking()
-                    stateManager.sessionTimeRemaining.value = 0
-                    stateManager.sessionExpiryDeadlineMs.value = 0L
-                    stateManager.appState.value = 0
+                    val expiredState = paymentRepo.expireSessionBlocking()
+                    stateManager.applySessionUpdate(
+                        deadlineMs = expiredState.sessionExpiryDeadlineMs,
+                        remainingSeconds = expiredState.sessionTimeRemaining,
+                        revision = expiredState.revision,
+                        targetAppState = 0
+                    )
                     stateManager.saveState()
                     KioskActivationManager.setSlotLockdown(
                         context,
@@ -146,10 +153,13 @@ class KioskServerCoordinator(
                     Toast.makeText(context, "Device activation required.", Toast.LENGTH_LONG).show()
                 }
                 "reset_time" -> {
-                    paymentRepo.resetSessionBlocking()
-                    stateManager.sessionTimeRemaining.value = 0
-                    stateManager.sessionExpiryDeadlineMs.value = 0L
-                    stateManager.appState.value = 0
+                    val resetState = paymentRepo.resetSessionBlocking()
+                    stateManager.applySessionUpdate(
+                        deadlineMs = resetState.sessionExpiryDeadlineMs,
+                        remainingSeconds = resetState.sessionTimeRemaining,
+                        revision = resetState.revision,
+                        targetAppState = 0
+                    )
                     stateManager.coinsInserted.value = 0
                     stateManager.saveState()
                     Toast.makeText(context, "Session time reset.", Toast.LENGTH_SHORT).show()

@@ -87,23 +87,29 @@ class KioskSessionSupervisor(
                         if (remainingSec <= 0) {
                             val expiryResult = paymentRepo.expireSessionIfDueBlocking()
                             if (expiryResult.didExpire) {
-                                stateManager.appState.value = 0 // Lock screen
-                                stateManager.sessionExpiryDeadlineMs.value = 0L
-                                stateManager.sessionTimeRemaining.value = 0
-                                stateManager.sessionRevision.value = expiryResult.sessionState.revision
-                                onSpeakWarning("Time expired")
-                                stateManager.saveState()
-                                
-                                val startMain = Intent(Intent.ACTION_MAIN).apply {
-                                    addCategory(Intent.CATEGORY_HOME)
-                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or 
-                                            Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or 
-                                            Intent.FLAG_ACTIVITY_CLEAR_TOP
-                                }
-                                try {
-                                    context.startActivity(startMain)
-                                } catch (e: Exception) {
-                                    Log.e(TAG, "Failed to start HOME activity: ${e.message}")
+                                val applied = stateManager.applySessionUpdate(
+                                    deadlineMs = expiryResult.sessionState.sessionExpiryDeadlineMs,
+                                    remainingSeconds = expiryResult.sessionState.sessionTimeRemaining,
+                                    revision = expiryResult.sessionState.revision,
+                                    targetAppState = 0
+                                )
+                                if (applied) {
+                                    onSpeakWarning("Time expired")
+                                    stateManager.saveState()
+                                    
+                                    val startMain = Intent(Intent.ACTION_MAIN).apply {
+                                        addCategory(Intent.CATEGORY_HOME)
+                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or 
+                                                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or 
+                                                Intent.FLAG_ACTIVITY_CLEAR_TOP
+                                    }
+                                    try {
+                                        context.startActivity(startMain)
+                                    } catch (e: Exception) {
+                                        Log.e(TAG, "Failed to start HOME activity: ${e.message}")
+                                    }
+                                } else {
+                                    Log.d(TAG, "Skipping stale expiration lock and announcement because newer revision is active")
                                 }
                             } else {
                                 stateManager.applySessionUpdate(

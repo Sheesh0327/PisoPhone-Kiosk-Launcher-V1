@@ -414,6 +414,75 @@ class PaymentRepositoryUnitTest {
         assertNotNull(db.paymentDao().getReceiptByTxId("tx-legacy-1"))
         assertNotNull(db.paymentDao().getReceiptByTxId("tx-new-2"))
     }
+
+    @Test
+    fun testCreditPublishedAfterExpirationCommitBeforeUiHandlerKeepsUnlockedStateAndNewCredit() = runBlocking {
+        val stateManager = KioskStateManager(context)
+        val repository = PaymentRepository(db = db, isEligible = { true })
+
+        // 1. Start an initial session that expires
+        repository.adjustSessionTime(10)
+        val initialSession = repository.getSessionState()!!
+        assertEquals(1L, initialSession.revision)
+        stateManager.applySessionUpdate(
+            deadlineMs = initialSession.sessionExpiryDeadlineMs,
+            remainingSeconds = initialSession.sessionTimeRemaining,
+            revision = initialSession.revision,
+            targetAppState = 2 // Unlocked
+        )
+        assertEquals(2, stateManager.appState.value)
+
+        // Advance monotonic clock so deadline is expired
+        org.robolectric.shadows.ShadowSystemClock.advanceBy(java.time.Duration.ofSeconds(15))
+
+        // 2. Expiration commits revision 2 in Room
+        val expiryResult = repository.expireSessionIfDue()
+        assertTrue("Expiration should commit", expiryResult.didExpire)
+        assertEquals(2L, expiryResult.sessionState.revision)
+        assertEquals(0, expiryResult.sessionState.sessionTimeRemaining)
+        val delayedExpiryState = expiryResult.sessionState
+
+        // 3. Before the UI handler for expiration runs, a new payment commits in Room and publishes revision 3
+        val paymentResult = repository.creditPayment("tx-race-1", 600, 5.0)
+        assertEquals(PaymentResult.APPLIED, paymentResult)
+        val paymentState = repository.getSessionState()!!
+        assertEquals(3L, paymentState.revision)
+        assertTrue(paymentState.sessionTimeRemaining >= 595)
+
+        // Payment handler publishes state update with targetAppState = 2 (unlocked)
+        val appliedPayment = stateManager.applySessionUpdate(
+            deadlineMs = paymentState.sessionExpiryDeadlineMs,
+            remainingSeconds = paymentState.sessionTimeRemaining,
+            revision = paymentState.revision,
+            targetAppState = 2
+        )
+        assertTrue("Payment update must be applied", appliedPayment)
+        assertEquals(3L, stateManager.sessionRevision.value)
+        assertEquals(paymentState.sessionTimeRemaining, stateManager.sessionTimeRemaining.value)
+        assertEquals(2, stateManager.appState.value)
+
+        // 4. Delayed expiration UI handler now runs with delayedExpiryState (rev 2, targetAppState = 0)
+        var announcedWarning = false
+        var lockedScreen = false
+        val appliedExpiry = stateManager.applySessionUpdate(
+            deadlineMs = delayedExpiryState.sessionExpiryDeadlineMs,
+            remainingSeconds = delayedExpiryState.sessionTimeRemaining,
+            revision = delayedExpiryState.revision,
+            targetAppState = 0
+        )
+        if (appliedExpiry) {
+            announcedWarning = true
+            lockedScreen = true
+        }
+
+        // 5. Verify the stale expiration was rejected and phone remains unlocked with new balance
+        assertFalse("Stale expiration update must be rejected", appliedExpiry)
+        assertFalse("Time expired announcement must NOT be triggered", announcedWarning)
+        assertFalse("Screen must NOT be locked", lockedScreen)
+        assertEquals("Session revision remains 3L", 3L, stateManager.sessionRevision.value)
+        assertEquals("Session time remaining remains the purchased time", paymentState.sessionTimeRemaining, stateManager.sessionTimeRemaining.value)
+        assertEquals("App state remains unlocked (2)", 2, stateManager.appState.value)
+    }
 }
 
 

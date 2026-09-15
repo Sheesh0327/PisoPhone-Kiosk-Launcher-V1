@@ -55,7 +55,10 @@ class KioskStateManager(private val context: Context) {
     }
 
     @Synchronized
-    fun applySessionUpdate(snapshot: com.pisophone.kiosk.repository.SessionSnapshot): Boolean {
+    fun applySessionUpdate(
+        snapshot: com.pisophone.kiosk.repository.SessionSnapshot,
+        targetAppState: Int? = null
+    ): Boolean {
         if (snapshot.revision < sessionRevision.value) {
             Log.d(TAG, "Ignoring stale session update: incoming rev ${snapshot.revision} < current rev ${sessionRevision.value}")
             return false
@@ -63,12 +66,23 @@ class KioskStateManager(private val context: Context) {
         sessionRevision.value = snapshot.revision
         sessionExpiryDeadlineMs.value = snapshot.deadlineMs
         sessionTimeRemaining.value = snapshot.remainingSeconds
+        if (targetAppState != null) {
+            appState.value = targetAppState
+        }
         return true
     }
 
     @Synchronized
-    fun applySessionUpdate(deadlineMs: Long, remainingSeconds: Int, revision: Long): Boolean {
-        return applySessionUpdate(com.pisophone.kiosk.repository.SessionSnapshot(deadlineMs, remainingSeconds, revision))
+    fun applySessionUpdate(
+        deadlineMs: Long,
+        remainingSeconds: Int,
+        revision: Long,
+        targetAppState: Int? = null
+    ): Boolean {
+        return applySessionUpdate(
+            com.pisophone.kiosk.repository.SessionSnapshot(deadlineMs, remainingSeconds, revision),
+            targetAppState
+        )
     }
 
     fun saveState(txSet: Set<String> = emptySet()) {
