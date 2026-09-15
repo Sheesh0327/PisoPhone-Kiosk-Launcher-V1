@@ -1,0 +1,8 @@
+# ESP32 Partition Table for Encrypted Production Builds
+# Name,   Type, SubType, Offset,  Size, Flags
+nvs,      data, nvs,     0x9000,  0x6000,  encrypted
+otadata,  data, ota,     0xf000,  0x2000,  encrypted
+phy_init, data, phy,     0x11000, 0x1000,  encrypted
+factory,  app,  factory, 0x20000, 0x180000, encrypted
+ota_0,    app,  ota_0,   0x1a0000,0x100000, encrypted
+spiffs,   data, spiffs,  0x2a0000,0x150000, encrypted

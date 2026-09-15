@@ -1,4 +1,5 @@
 #include "DeviceNetwork.h"
+#include "PaymentQueueManager.h"
 #include "CoinSlotManager.h"
 #include "DeviceManager.h"
 #include "HardwareManager.h"
@@ -73,6 +74,13 @@ void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId) {
     unsigned long long ts = (unsigned long long)getCurrentMasterTimeMs();
     String txId = "tx-" + String(ts) + "-" + String(random(10000, 99999));
 
+    bool retained = enqueuePendingPayment(
+        txId, targetDev, pulses, CoinSlotOwnerType::PHONE, addedSeconds);
+    if (!retained) {
+        Serial.printf("[UNIVERSAL COIN] CRITICAL: Could not retain tx_id='%s'.\n",
+                      txId.c_str());
+    }
+
     // If WebSocket is connected and belongs to this device, send event frame
     if (isWsConnected && wsClient.connected() && (targetDev.length() == 0 || wsSessionDeviceId == targetDev)) {
         Serial.printf("[⚡] Pushing ₱%d (+%d mins / %d secs) over WebSocket to %s!\n", pulses, addedMinutes, addedSeconds, targetDev.c_str());
@@ -80,13 +88,13 @@ void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId) {
         String payload = aes_encrypt(innerJson, sharedSecret);
         String json = "{\"event\":\"COIN_DETECTED\",\"payload\":\"" + payload + "\",\"seconds\":" + String(addedSeconds) + ",\"amount\":" + String(pulses) + ",\"tx_id\":\"" + txId + "\"}";
         sendWsText(wsClient, json);
-        if (targetDev.length() > 0) refreshCoinSlotTtl(targetDev, ARM_TTL);
+        if (targetDev.length() > 0) refreshCoinSlotTtl(targetDev, CoinSlotOwnerType::PHONE, ARM_TTL);
     }
 
     if (targetIp.length() > 0) {
         Serial.printf("[⚡] Routing universal coin to IP: %s (Device: %s)\n", targetIp.c_str(), targetDev.c_str());
         sendAuthenticated(targetIp, targetPort, "/add_time", "/challenge", "minutes=" + String(addedMinutes) + "&seconds=" + String(addedSeconds) + "&amount=" + String(pulses) + "&tx_id=" + txId, 1000);
-        if (targetDev.length() > 0) refreshCoinSlotTtl(targetDev, ARM_TTL);
+        if (targetDev.length() > 0) refreshCoinSlotTtl(targetDev, CoinSlotOwnerType::PHONE, ARM_TTL);
     } else {
         for (int i = 0; i < maxLicensedSlots; i++) {
             if (licenseSlots[i].deviceId.length() > 0 && licenseSlots[i].ip.length() > 0 && licenseSlots[i].ip != "127.0.0.1") {
@@ -110,8 +118,27 @@ void sendCloudSnapshot() {
     // Retiring outbound telemetry to Cloudflare Worker. Strictly Pages-only now.
 }
 
-void sendAuthenticated(String ip, int port, String actionPath, String challengePath, String params, int timeoutMs) {
-    if (WiFi.status() != WL_CONNECTED || authQueue == NULL) return;
+bool retryPhonePayment(const String& targetDeviceId, int pulses, int creditSeconds,
+                       const String& txId) {
+    int slotIndex = findSlotIndexForDevice(targetDeviceId, "");
+    if (slotIndex < 0 || !isSlotActive(slotIndex)) return false;
+
+    String targetIp = licenseSlots[slotIndex].ip;
+    if (targetIp.length() == 0 || targetIp == "127.0.0.1") return false;
+
+    int safeSeconds = creditSeconds > 0
+        ? creditSeconds
+        : pulses * max(minutesPerCoin, 1) * 60;
+    String params = "minutes=" + String(safeSeconds / 60) +
+                    "&seconds=" + String(safeSeconds) +
+                    "&amount=" + String(pulses) +
+                    "&tx_id=" + txId;
+    return sendAuthenticated(targetIp, targetPort, "/add_time", "/challenge",
+                             params, 1000);
+}
+
+bool sendAuthenticated(String ip, int port, String actionPath, String challengePath, String params, int timeoutMs) {
+    if (WiFi.status() != WL_CONNECTED || authQueue == NULL || ip.length() == 0) return false;
     
     AuthRequest req;
     memset(&req, 0, sizeof(AuthRequest));
@@ -122,7 +149,12 @@ void sendAuthenticated(String ip, int port, String actionPath, String challengeP
     strncpy(req.params, params.c_str(), sizeof(req.params) - 1);
     req.timeoutMs = timeoutMs;
     
-    xQueueSend(authQueue, &req, 0);
+    if (xQueueSend(authQueue, &req, 0) != pdTRUE) {
+        Serial.printf("[AUTH QUEUE] Queue full; could not schedule %s for %s.\n",
+                      actionPath.c_str(), ip.c_str());
+        return false;
+    }
+    return true;
 }
 
 String urlEncode(const String &str) {

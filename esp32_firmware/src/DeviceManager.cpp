@@ -70,13 +70,14 @@ bool unpairSlot(int slotNum) {
     Serial.printf("[+] Unpairing Slot #%d (was %s / %s). Seat remains open.\n", slotNum, prevDevId.c_str(), prevIp.c_str());
     
     String activeDev = getActiveCoinSessionId();
-    if (activeDev.length() > 0 && (activeDev == prevDevId || activeDev == prevIp)) {
+    if (getActiveCoinOwnerType() == CoinSlotOwnerType::PHONE &&
+        activeDev.length() > 0 && (activeDev == prevDevId || activeDev == prevIp)) {
         if (isWsConnected && wsClient.connected()) {
             sendWsText(wsClient, "{\"event\":\"UNPAIRED\"}");
             wsClient.stop();
             isWsConnected = false;
         }
-        releaseCoinSlot(activeDev, true);
+        releaseCoinSlot(activeDev, CoinSlotOwnerType::PHONE, true, "UNPAIRED");
         Serial.println("[*] Active armed session disarmed due to unpair.");
     }
 
@@ -385,4 +386,3 @@ String getPrimaryTerminalIp() {
     }
     return "";
 }
-
