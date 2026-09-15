@@ -36,7 +36,6 @@ class KioskStateManager(private val context: Context) {
     init {
         deviceIp.value = getLocalIpAddress()
         initDeviceId()
-        restoreState()
     }
 
     private fun initDeviceId() {

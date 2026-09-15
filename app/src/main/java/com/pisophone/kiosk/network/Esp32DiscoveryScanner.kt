@@ -44,6 +44,9 @@ class Esp32DiscoveryScanner(
         .writeTimeout(1500, TimeUnit.MILLISECONDS)
         .build()
 
+    private val lock = Any()
+    private var isStopped = false
+    private var discoveryJob: Job? = null
     private var udpListenerJob: Job? = null
     private var activeUdpSocket: DatagramSocket? = null
     private var multicastLock: WifiManager.MulticastLock? = null
@@ -60,68 +63,111 @@ class Esp32DiscoveryScanner(
     }
 
     fun triggerDiscovery(localIp: String) {
-        startUdpListener()
-        scope.launch(Dispatchers.IO) {
-            // 1. Send standard UDP discovery broadcast
-            sendUdpDiscoveryBroadcast(localIp)
-            // 2. Direct probe of configured IP, canonical mDNS hostname, and DHCP gateway
-            probeDirectCandidates()
-            // 3. Dynamic LAN subnet scan for DHCP client ESP32
-            if (!isAlreadyBound()) {
-                scanSubnetIfUnbound(localIp)
+        synchronized(lock) {
+            if (isStopped) return
+            startUdpListenerLocked()
+            if (discoveryJob?.isActive == true) {
+                Log.d(TAG, "Discovery already in progress; coalescing trigger")
+                return
+            }
+            discoveryJob = scope.launch(Dispatchers.IO) {
+                try {
+                    // 1. Send standard UDP discovery broadcast
+                    sendUdpDiscoveryBroadcast(localIp)
+                    // 2. Direct probe of configured IP, canonical mDNS hostname, and DHCP gateway
+                    probeDirectCandidates()
+                    // 3. Dynamic LAN subnet scan for DHCP client ESP32
+                    if (!isAlreadyBound() && isActive) {
+                        scanSubnetIfUnbound(localIp)
+                    }
+                } finally {
+                    synchronized(lock) {
+                        if (discoveryJob == coroutineContext[Job]) {
+                            discoveryJob = null
+                        }
+                    }
+                }
             }
         }
     }
 
     fun startUdpListener() {
+        synchronized(lock) {
+            if (!isStopped) {
+                startUdpListenerLocked()
+            }
+        }
+    }
+
+    private fun startUdpListenerLocked() {
         if (udpListenerJob?.isActive == true) return
         udpListenerJob = scope.launch(Dispatchers.IO) {
+            var socket: DatagramSocket? = null
             try {
                 acquireMulticastLock()
-                val socket = DatagramSocket(null).apply {
+                val newSocket = DatagramSocket(null).apply {
                     reuseAddress = true
                     broadcast = true
+                    soTimeout = 1000 // 1 sec timeout for clean cancellation checking
                     bind(InetSocketAddress(UDP_DISCOVERY_PORT))
                 }
-                activeUdpSocket = socket
+                synchronized(lock) {
+                    if (isStopped || !isActive) {
+                        newSocket.close()
+                        return@launch
+                    }
+                    socket = newSocket
+                    activeUdpSocket = newSocket
+                }
                 val buffer = ByteArray(2048)
                 Log.d(TAG, "Started UDP Discovery Listener on port $UDP_DISCOVERY_PORT")
 
                 val localIp = getLocalIpAddress()
                 while (isActive) {
-                    val packet = DatagramPacket(buffer, buffer.size)
-                    socket.receive(packet)
-                    val senderIp = packet.address?.hostAddress ?: continue
-                    if (senderIp == "127.0.0.1" || senderIp == localIp) continue
+                    try {
+                        val packet = DatagramPacket(buffer, buffer.size)
+                        newSocket.receive(packet)
+                        val senderIp = packet.address?.hostAddress ?: continue
+                        if (senderIp == "127.0.0.1" || senderIp == localIp) continue
 
-                    val message = String(packet.data, 0, packet.length, Charsets.UTF_8).trim()
-                    if (message.isBlank()) continue
+                        val message = String(packet.data, 0, packet.length, Charsets.UTF_8).trim()
+                        if (message.isBlank()) continue
 
-                    // Validate canonical ESP32 response contract
-                    if (message.contains("PISOPHONE_ESP32_RESPONSE")) {
-                        var targetIp = senderIp
-                        try {
-                            val json = JSONObject(message)
-                            val ipInJson = json.optString("ip", "")
-                            if (ipInJson.isNotBlank() && ipInJson != "0.0.0.0" && ipInJson != "127.0.0.1") {
-                                targetIp = ipInJson
+                        // Validate canonical ESP32 response contract
+                        if (message.contains("PISOPHONE_ESP32_RESPONSE")) {
+                            var targetIp = senderIp
+                            try {
+                                val json = JSONObject(message)
+                                val ipInJson = json.optString("ip", "")
+                                if (ipInJson.isNotBlank() && ipInJson != "0.0.0.0" && ipInJson != "127.0.0.1") {
+                                    targetIp = ipInJson
+                                }
+                            } catch (_: Exception) {}
+
+                            if (isEsp32MacMatching(message)) {
+                                Log.i(TAG, "[+] Discovered ESP32 Master via UDP at $targetIp")
+                                delegate.onEsp32Discovered(targetIp, message)
                             }
-                        } catch (_: Exception) {}
-
-                        if (isEsp32MacMatching(message)) {
-                            Log.i(TAG, "[+] Discovered ESP32 Master via UDP at $targetIp")
-                            delegate.onEsp32Discovered(targetIp, message)
                         }
+                    } catch (_: java.net.SocketTimeoutException) {
+                        // Normal receive timeout; loop to check coroutine isActive status
                     }
                 }
             } catch (e: Exception) {
                 Log.d(TAG, "UDP listener stopped: ${e.message}")
             } finally {
-                try {
-                    activeUdpSocket?.close()
-                } catch (_: Exception) {}
-                activeUdpSocket = null
-                releaseMulticastLock()
+                synchronized(lock) {
+                    try {
+                        socket?.close()
+                    } catch (_: Exception) {}
+                    if (activeUdpSocket === socket) {
+                        activeUdpSocket = null
+                    }
+                    if (udpListenerJob == coroutineContext[Job]) {
+                        udpListenerJob = null
+                        releaseMulticastLockLocked()
+                    }
+                }
             }
         }
     }
@@ -138,15 +184,29 @@ class Esp32DiscoveryScanner(
                 broadcastTargets.add("$subnet.255")
             }
 
-            val socket = activeUdpSocket ?: DatagramSocket().apply { broadcast = true }
-            for (target in broadcastTargets) {
-                try {
-                    val address = InetAddress.getByName(target)
-                    socket.send(DatagramPacket(data, data.size, address, UDP_DISCOVERY_PORT))
-                } catch (_: Exception) {}
+            val socketToUse: DatagramSocket
+            val isSharedSocket: Boolean
+            synchronized(lock) {
+                if (activeUdpSocket != null && !activeUdpSocket!!.isClosed) {
+                    socketToUse = activeUdpSocket!!
+                    isSharedSocket = true
+                } else {
+                    socketToUse = DatagramSocket().apply { broadcast = true }
+                    isSharedSocket = false
+                }
             }
-            if (socket != activeUdpSocket) {
-                socket.close()
+
+            try {
+                for (target in broadcastTargets) {
+                    try {
+                        val address = InetAddress.getByName(target)
+                        socketToUse.send(DatagramPacket(data, data.size, address, UDP_DISCOVERY_PORT))
+                    } catch (_: Exception) {}
+                }
+            } finally {
+                if (!isSharedSocket) {
+                    try { socketToUse.close() } catch (_: Exception) {}
+                }
             }
             Log.d(TAG, "Dispatched UDP Discovery broadcast to targets: $broadcastTargets")
         } catch (e: Exception) {
@@ -207,29 +267,27 @@ class Esp32DiscoveryScanner(
      * Fast concurrent local subnet scanner for dynamically assigned DHCP client ESP32 devices.
      * Uses non-blocking 250ms TCP pre-checks to sweep the /24 subnet in <500ms without thread starvation.
      */
-    fun scanSubnetIfUnbound(localIp: String) {
-        if (isAlreadyBound()) return
+    suspend fun scanSubnetIfUnbound(localIp: String) = coroutineScope {
+        if (isAlreadyBound()) return@coroutineScope
         val activeIp = if (localIp.isNotBlank()) localIp else getLocalIpAddress()
-        if (activeIp.isBlank() || !activeIp.contains(".")) return
+        if (activeIp.isBlank() || !activeIp.contains(".")) return@coroutineScope
         val prefix = activeIp.substringBeforeLast(".")
         val selfLastOctet = activeIp.substringAfterLast(".").toIntOrNull() ?: -1
 
         val ipList = (1..254).filter { it != selfLastOctet }.map { "$prefix.$it" }
         for (batch in ipList.chunked(32)) {
             if (isAlreadyBound() || !scope.isActive) break
-            val found = runBlocking(Dispatchers.IO) {
-                val jobs = batch.map { targetIp ->
-                    async {
-                        if (isAlreadyBound() || !scope.isActive) return@async false
-                        if (isPortOpen(targetIp, DEFAULT_WEB_PORT, 250)) {
-                            probeEsp32Connection(targetIp)
-                        } else {
-                            false
-                        }
+            val jobs = batch.map { targetIp ->
+                async(Dispatchers.IO) {
+                    if (isAlreadyBound() || !scope.isActive) return@async false
+                    if (isPortOpen(targetIp, DEFAULT_WEB_PORT, 250)) {
+                        probeEsp32Connection(targetIp)
+                    } else {
+                        false
                     }
                 }
-                jobs.awaitAll().any { it }
             }
+            val found = jobs.awaitAll().any { it }
             if (found) break
         }
     }
@@ -306,12 +364,18 @@ class Esp32DiscoveryScanner(
         } catch (_: Exception) {}
     }
 
-    private fun releaseMulticastLock() {
+    private fun releaseMulticastLockLocked() {
         try {
-            if (multicastLock?.isHeld == true) {
+            if (multicastLock?.isHeld == true && udpListenerJob == null) {
                 multicastLock?.release()
             }
         } catch (_: Exception) {}
+    }
+
+    private fun releaseMulticastLock() {
+        synchronized(lock) {
+            releaseMulticastLockLocked()
+        }
     }
 
     fun getLocalIpAddress(): String {
@@ -352,7 +416,27 @@ class Esp32DiscoveryScanner(
     }
 
     fun shutdown() {
-        udpListenerJob?.cancel()
-        releaseMulticastLock()
+        val socketToClose: DatagramSocket?
+        val listenerJobToCancel: Job?
+        val discoveryJobToCancel: Job?
+        synchronized(lock) {
+            isStopped = true
+            listenerJobToCancel = udpListenerJob
+            discoveryJobToCancel = discoveryJob
+            socketToClose = activeUdpSocket
+            activeUdpSocket = null
+            udpListenerJob = null
+            discoveryJob = null
+            try {
+                if (multicastLock?.isHeld == true) {
+                    multicastLock?.release()
+                }
+            } catch (_: Exception) {}
+        }
+        listenerJobToCancel?.cancel()
+        discoveryJobToCancel?.cancel()
+        try {
+            socketToClose?.close()
+        } catch (_: Exception) {}
     }
 }

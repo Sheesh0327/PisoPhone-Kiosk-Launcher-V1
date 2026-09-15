@@ -177,39 +177,42 @@ class KioskEngine(
     fun start() {
         engineStartTimeMs = System.currentTimeMillis()
 
-        // 1. Migrate legacy installations without clearing credit and reconcile historical payments
-        paymentRepo.migrateAndInitialize(context)
-        isInitialized.set(true)
-        Log.i(TAG, "Initialization complete. Payment endpoints are now available.")
+        scope.launch(Dispatchers.IO) {
+            try {
+                // 1. Restore state and initialize payment database
+                stateManager.restoreState()
+                paymentRepo.migrateAndInitialize(context)
+                isInitialized.set(true)
+                Log.i(TAG, "Initialization complete. Payment endpoints are now available.")
 
-        audioManager.initAudioEngine()
+                audioManager.initAudioEngine()
 
-        if (!stateManager.esp32Ip.isNullOrBlank()) {
-            esp32Manager.setEsp32Ip(stateManager.esp32Ip)
+                if (!stateManager.esp32Ip.isNullOrBlank()) {
+                    esp32Manager.setEsp32Ip(stateManager.esp32Ip)
+                }
+
+                if (!KioskActivationManager.isPairingCompleted(context) && !KioskSecurity.isProvisioned(context)) {
+                    KioskActivationManager.startSetupWindow(context)
+                }
+
+                Handler(Looper.getMainLooper()).post {
+                    overlayCoordinator.setupOverlay()
+                }
+
+                ensureHttpServerRunning()
+
+                esp32Manager.triggerCandidateDiscovery(stateManager.deviceIp.value)
+                esp32Manager.startHeartbeatLoop { stateManager.deviceIp.value }
+
+                supervisor.start()
+                startHealthMonitor()
+
+                systemMonitor.registerScreenOffReceiver()
+                systemMonitor.registerBatteryMonitor()
+            } catch (e: Exception) {
+                Log.e(TAG, "Engine start initialization failed: ${e.message}", e)
+            }
         }
-
-        if (!KioskActivationManager.isPairingCompleted(context) && !KioskSecurity.isProvisioned(context)) {
-            KioskActivationManager.startSetupWindow(context)
-        }
-
-        overlayCoordinator.setupOverlay()
-
-        try {
-            nanoServer = KioskHttpServer(context, SERVER_PORT, serverCoordinator)
-            nanoServer?.start(fi.iki.elonen.NanoHTTPD.SOCKET_READ_TIMEOUT, false)
-            Log.d(TAG, "NanoHTTPD Server listening on port $SERVER_PORT")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start NanoHTTPD server: ${e.message}")
-        }
-
-        esp32Manager.triggerCandidateDiscovery(stateManager.deviceIp.value)
-        esp32Manager.startHeartbeatLoop { stateManager.deviceIp.value }
-
-        supervisor.start()
-        startHealthMonitor()
-
-        systemMonitor.registerScreenOffReceiver()
-        systemMonitor.registerBatteryMonitor()
 
         scope.launch {
             stateManager.appState.collect { state ->
@@ -219,6 +222,45 @@ class KioskEngine(
                     audioManager.stopWaitingMusic()
                 }
             }
+        }
+    }
+
+    @Synchronized
+    fun ensureHttpServerRunning(): Boolean {
+        if (nanoServer?.isAlive == true) {
+            val healthy = checkHttpLoopbackHealth()
+            if (healthy) return true
+            Log.w(TAG, "NanoHTTPD is alive but loopback health probe failed. Rebuilding listener...")
+        }
+        try {
+            nanoServer?.stop()
+        } catch (_: Exception) {}
+        return try {
+            val server = KioskHttpServer(context, SERVER_PORT, serverCoordinator)
+            server.start(fi.iki.elonen.NanoHTTPD.SOCKET_READ_TIMEOUT, false)
+            nanoServer = server
+            Log.i(TAG, "NanoHTTPD HTTP server successfully started/repaired on port $SERVER_PORT")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start/repair NanoHTTPD server: ${e.message}")
+            false
+        }
+    }
+
+    private fun checkHttpLoopbackHealth(): Boolean {
+        return try {
+            val url = java.net.URL("http://127.0.0.1:$SERVER_PORT/ping")
+            val connection = url.openConnection() as java.net.HttpURLConnection
+            connection.connectTimeout = 1500
+            connection.readTimeout = 1500
+            connection.requestMethod = "GET"
+            try {
+                connection.responseCode == 200
+            } finally {
+                connection.disconnect()
+            }
+        } catch (_: Exception) {
+            false
         }
     }
 
@@ -237,6 +279,12 @@ class KioskEngine(
     }
 
     fun probeEsp32Connection(ip: String): Boolean {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            scope.launch(Dispatchers.IO) {
+                esp32Manager.probeEsp32Connection(ip)
+            }
+            return false
+        }
         return esp32Manager.probeEsp32Connection(ip)
     }
 

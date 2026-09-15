@@ -20,7 +20,7 @@ interface KioskServerDelegate {
     fun getAppState(): Int
     fun getAuditEventsJson(): String
     fun creditPayment(txId: String, seconds: Int, amount: Double): PaymentResult
-    fun onDeductTime(seconds: Int)
+    fun onDeductTime(seconds: Int, txId: String? = null)
     fun onConfigUpdated(price: Double?, minutes: Int?, deviceName: String?, adminPin: String?, slotNum: Int? = null)
     fun onTriggerAction(action: String, slotNum: Int? = null)
     fun getCrashLog(): String?
@@ -161,17 +161,17 @@ class KioskHttpServer(
             "/add_time", "/coin" -> {
                 val hasMinutes = decryptedParams.containsKey("minutes")
                 val hasSeconds = decryptedParams.containsKey("seconds")
-                val minutes = decryptedParams["minutes"]?.toIntOrNull()
-                val secondsParam = decryptedParams["seconds"]?.toIntOrNull()
-                if ((hasMinutes && minutes == null) || (hasSeconds && secondsParam == null) || (!hasMinutes && !hasSeconds)) {
+                val minutesLong = decryptedParams["minutes"]?.toLongOrNull()
+                val secondsParamLong = decryptedParams["seconds"]?.toLongOrNull()
+                if ((hasMinutes && minutesLong == null) || (hasSeconds && secondsParamLong == null) || (!hasMinutes && !hasSeconds)) {
                     Log.w(TAG, "Rejecting coin credit: Invalid time parameters")
                     return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "INVALID_PAYMENT")
                 }
-                val seconds = secondsParam ?: (minutes!! * 60)
+                val rawSecondsLong = secondsParamLong ?: ((minutesLong ?: 0L) * 60L)
 
                 val hasAmount = decryptedParams.containsKey("amount")
                 val amountParam = decryptedParams["amount"]?.toDoubleOrNull()
-                if (hasAmount && amountParam == null) {
+                if (hasAmount && (amountParam == null || amountParam.isNaN() || amountParam.isInfinite())) {
                     Log.w(TAG, "Rejecting coin credit: Invalid amount parameter")
                     return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "INVALID_AMOUNT")
                 }
@@ -181,7 +181,12 @@ class KioskHttpServer(
                     return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "INVALID_AMOUNT")
                 }
 
-                if (seconds > 0) {
+                if (rawSecondsLong > 0) {
+                    if (rawSecondsLong > Int.MAX_VALUE.toLong()) {
+                        Log.w(TAG, "Rejecting coin credit: seconds parameter exceeds Int.MAX_VALUE ($rawSecondsLong)")
+                        return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "INVALID_SECONDS")
+                    }
+                    val seconds = rawSecondsLong.toInt()
                     val result = try {
                         delegate.creditPayment(txId!!, seconds, amount)
                     } catch (e: Exception) {
@@ -209,8 +214,15 @@ class KioskHttpServer(
                             newFixedLengthResponse(Response.Status.SERVICE_UNAVAILABLE, "text/plain", "SERVICE_UNAVAILABLE")
                         }
                     }
-                } else if (seconds < 0) {
-                    delegate.onDeductTime(seconds)
+                } else if (rawSecondsLong < 0) {
+                    val positiveSecondsLong = if (rawSecondsLong == Long.MIN_VALUE) Long.MAX_VALUE else -rawSecondsLong
+                    if (positiveSecondsLong > Int.MAX_VALUE.toLong()) {
+                        Log.w(TAG, "Rejecting deduction: seconds parameter magnitude exceeds Int.MAX_VALUE ($rawSecondsLong)")
+                        return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "INVALID_SECONDS")
+                    }
+                    val positiveSeconds = positiveSecondsLong.toInt()
+                    val deductTxId = txId ?: "deduct_${System.currentTimeMillis()}"
+                    delegate.onDeductTime(positiveSeconds, deductTxId)
                     newFixedLengthResponse(Response.Status.OK, "text/plain", "OK")
                 } else {
                     newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "INVALID_SECONDS")

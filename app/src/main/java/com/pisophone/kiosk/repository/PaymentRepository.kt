@@ -148,12 +148,30 @@ class PaymentRepository(
             creditPayment(txId, seconds, amount)
         }
 
-    suspend fun deductTime(secondsDelta: Int): PaidSessionState {
+    suspend fun deductTime(secondsDelta: Int, txId: String? = null): PaidSessionState {
         val updatedState = db.withTransaction {
+            if (!txId.isNullOrBlank()) {
+                val existing = paymentDao.getReceiptByTxId(txId)
+                if (existing != null) {
+                    val currentState = paymentDao.getSessionState() ?: PaidSessionState(
+                        id = 1,
+                        sessionTimeRemaining = 0,
+                        sessionExpiryDeadlineMs = 0L,
+                        lastSavedElapsedRealtime = SystemClock.elapsedRealtime(),
+                        revision = 0L
+                    )
+                    return@withTransaction currentState
+                }
+            }
+
             val currentState = paymentDao.getSessionState()
             val nowMonotonic = SystemClock.elapsedRealtime()
             val curDeadline = currentState?.sessionExpiryDeadlineMs ?: 0L
-            val deductMs = if (secondsDelta > 0) secondsDelta * 1000L else -secondsDelta * 1000L
+
+            val rawSecondsLong = secondsDelta.toLong()
+            val positiveSecondsLong = if (rawSecondsLong == Long.MIN_VALUE) Long.MAX_VALUE else Math.abs(rawSecondsLong)
+            val deductMs = positiveSecondsLong * 1000L
+
             val newDeadline = if (curDeadline > nowMonotonic) {
                 maxOf(nowMonotonic, curDeadline - deductMs)
             } else {
@@ -166,6 +184,17 @@ class PaymentRepository(
             }
             val effectiveDeadline = if (remaining > 0) newDeadline else 0L
             val newRevision = (currentState?.revision ?: 0L) + 1L
+
+            if (!txId.isNullOrBlank()) {
+                val receipt = PaymentReceipt(
+                    txId = txId,
+                    secondsCredited = -positiveSecondsLong.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+                    amount = 0.0,
+                    acceptanceTimestamp = System.currentTimeMillis()
+                )
+                paymentDao.insertReceipt(receipt)
+            }
+
             val newState = PaidSessionState(
                 id = 1,
                 sessionTimeRemaining = remaining,
@@ -182,8 +211,8 @@ class PaymentRepository(
         return updatedState
     }
 
-    fun deductTimeBlocking(secondsDelta: Int): PaidSessionState = runBlocking(Dispatchers.IO) {
-        deductTime(secondsDelta)
+    fun deductTimeBlocking(secondsDelta: Int, txId: String? = null): PaidSessionState = runBlocking(Dispatchers.IO) {
+        deductTime(secondsDelta, txId)
     }
 
     /**

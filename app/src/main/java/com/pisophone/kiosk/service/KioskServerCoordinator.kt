@@ -88,8 +88,8 @@ class KioskServerCoordinator(
         return onCreditPayment(txId, seconds, amount)
     }
 
-    override fun onDeductTime(seconds: Int) {
-        val updated = paymentRepo.deductTimeBlocking(seconds)
+    override fun onDeductTime(seconds: Int, txId: String?) {
+        val updated = paymentRepo.deductTimeBlocking(seconds, txId)
         val targetState = if (updated.sessionTimeRemaining <= 0) 0 else null
         val applied = stateManager.applySessionUpdate(
             deadlineMs = updated.sessionExpiryDeadlineMs,
@@ -100,8 +100,9 @@ class KioskServerCoordinator(
         if (applied) {
             stateManager.saveState()
         }
+        val displayMinutes = seconds / 60
         Handler(Looper.getMainLooper()).post {
-            Toast.makeText(context, "${-seconds / 60} minutes deducted!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "$displayMinutes minutes deducted!", Toast.LENGTH_SHORT).show()
         }
     }
 
