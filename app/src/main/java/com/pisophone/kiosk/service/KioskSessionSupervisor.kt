@@ -3,6 +3,7 @@ package com.pisophone.kiosk.service
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import com.pisophone.kiosk.repository.PaymentRepository
 import com.pisophone.kiosk.system.KioskSystemMonitor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -14,6 +15,7 @@ class KioskSessionSupervisor(
     private val context: Context,
     private val scope: CoroutineScope,
     private val stateManager: KioskStateManager,
+    private val paymentRepo: PaymentRepository,
     private val onSpeakWarning: (String) -> Unit,
     private val onFinishPayment: () -> Unit,
     private val onCloseSession: (Boolean) -> Unit,
@@ -83,8 +85,10 @@ class KioskSessionSupervisor(
                         stateManager.sessionTimeRemaining.value = remainingSec
 
                         if (remainingSec <= 0) {
+                            paymentRepo.expireSessionBlocking()
                             stateManager.appState.value = 0 // Lock screen
                             stateManager.sessionExpiryDeadlineMs.value = 0L
+                            stateManager.sessionTimeRemaining.value = 0
                             onSpeakWarning("Time expired")
                             stateManager.saveState()
                             
@@ -100,7 +104,8 @@ class KioskSessionSupervisor(
                                 Log.e(TAG, "Failed to start HOME activity: ${e.message}")
                             }
                         } else {
-                            if (remainingSec % 10 == 0) {
+                            if (remainingSec % 15 == 0) {
+                                paymentRepo.checkpointSessionBlocking(remainingSec, deadline)
                                 stateManager.saveState()
                             }
 

@@ -1,14 +1,11 @@
 package com.pisophone.kiosk.service
 
 import android.content.Context
+import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
-import com.pisophone.kiosk.db.CoinEvent
-import com.pisophone.kiosk.db.CoinEventDao
-import com.pisophone.kiosk.repository.CoinEventRepository
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.test.TestScope
+import com.pisophone.kiosk.db.AppDatabase
+import com.pisophone.kiosk.repository.PaymentRepository
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -17,34 +14,25 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
-@OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 class CoinProcessorUnitTest {
 
     private lateinit var context: Context
-    private val testScope = TestScope()
-
-    private val fakeDao = object : CoinEventDao {
-        val insertedEvents = mutableListOf<CoinEvent>()
-        override fun getAllEvents(): Flow<List<CoinEvent>> = flowOf(insertedEvents)
-        override suspend fun getLatestEvents(limit: Int): List<CoinEvent> = insertedEvents.takeLast(limit)
-        override suspend fun insertEvent(event: CoinEvent) {
-            insertedEvents.add(event)
-        }
-        override suspend fun deleteOldEvents(keepLimit: Int) {
-            if (insertedEvents.size > keepLimit) {
-                val excess = insertedEvents.size - keepLimit
-                repeat(excess) { insertedEvents.removeAt(0) }
-            }
-        }
-    }
-
-    private lateinit var repository: CoinEventRepository
+    private lateinit var db: AppDatabase
+    private lateinit var paymentRepo: PaymentRepository
 
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
-        repository = CoinEventRepository(fakeDao)
+        db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        paymentRepo = PaymentRepository(db = db, isEligible = { true })
+    }
+
+    @After
+    fun tearDown() {
+        db.close()
     }
 
     @Test
@@ -52,8 +40,7 @@ class CoinProcessorUnitTest {
         var creditsApplied = 0
         val processor = CoinProcessor(
             context = context,
-            scope = testScope,
-            coinEventRepo = repository,
+            paymentRepo = paymentRepo,
             onCreditsApplied = { _, _ -> creditsApplied++ },
             onFeedbackTrigger = {}
         )
@@ -73,8 +60,7 @@ class CoinProcessorUnitTest {
         var totalSeconds = 0
         val processor = CoinProcessor(
             context = context,
-            scope = testScope,
-            coinEventRepo = repository,
+            paymentRepo = paymentRepo,
             onCreditsApplied = { sec, _ ->
                 creditsApplied++
                 totalSeconds += sec
@@ -92,5 +78,41 @@ class CoinProcessorUnitTest {
         assertTrue("Duplicate credit returns true for idempotency but does not re-credit", replayResult)
         assertEquals("Credit counter still 1 after replay", 1, creditsApplied)
         assertEquals("Total seconds unchanged after replay", 600, totalSeconds)
+    }
+
+    @Test
+    fun testCommitPublishSoundOrderAndDuplicateSuppression() {
+        val eventLog = mutableListOf<String>()
+        val txId = "tx-order-check-001"
+
+        val processor = CoinProcessor(
+            context = context,
+            paymentRepo = paymentRepo,
+            onCreditsApplied = { _, _ ->
+                // Check if payment was committed to database BEFORE publish
+                val committedReceipt = db.paymentDao().getReceiptByTxId(txId)
+                if (committedReceipt != null) {
+                    eventLog.add("COMMITTED_BEFORE_PUBLISH")
+                }
+                eventLog.add("PUBLISH_STATE")
+            },
+            onFeedbackTrigger = {
+                eventLog.add("PLAY_SOUND_AND_FEEDBACK")
+            }
+        )
+
+        val applied = processor.processCoinCredit(seconds = 300, source = "COIN", txId = txId, amount = 1.0)
+        assertTrue("Payment applied", applied)
+        assertEquals(
+            "Order must strictly be: Commit in DB -> Publish state -> Play sound/UI feedback",
+            listOf("COMMITTED_BEFORE_PUBLISH", "PUBLISH_STATE", "PLAY_SOUND_AND_FEEDBACK"),
+            eventLog
+        )
+
+        // Clear event log and replay same txId
+        eventLog.clear()
+        val replayed = processor.processCoinCredit(seconds = 300, source = "COIN", txId = txId, amount = 1.0)
+        assertTrue("Duplicate returns true", replayed)
+        assertTrue("No publish or sound/feedback should trigger on duplicate", eventLog.isEmpty())
     }
 }

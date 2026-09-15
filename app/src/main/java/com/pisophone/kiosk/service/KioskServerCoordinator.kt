@@ -7,6 +7,8 @@ import android.util.Log
 import android.widget.Toast
 import com.pisophone.kiosk.audio.KioskAudioManager
 import com.pisophone.kiosk.repository.CoinEventRepository
+import com.pisophone.kiosk.repository.PaymentRepository
+import com.pisophone.kiosk.repository.PaymentResult
 import com.pisophone.kiosk.security.KioskActivationManager
 import com.pisophone.kiosk.security.KioskSecurity
 import com.pisophone.kiosk.server.KioskServerDelegate
@@ -23,15 +25,19 @@ class KioskServerCoordinator(
     private val context: Context,
     private val stateManager: KioskStateManager,
     private val coinEventRepo: CoinEventRepository,
+    private val paymentRepo: PaymentRepository,
     private val getSecretKey: () -> String,
     private val getRealTimeBatteryInfo: () -> Pair<Int, Boolean>,
     private val getAudioManager: () -> KioskAudioManager?,
-    private val onAddCoinTime: (seconds: Int, source: String, txId: String?, amount: Double) -> Boolean
+    private val onCreditPayment: (txId: String, seconds: Int, amount: Double) -> PaymentResult,
+    private val isReady: () -> Boolean = { true }
 ) : KioskServerDelegate {
 
     companion object {
         private const val TAG = "KioskServerCoordinator"
     }
+
+    override fun isReady(): Boolean = isReady.invoke()
 
     override fun getSecretKey(): String = getSecretKey.invoke()
 
@@ -78,24 +84,15 @@ class KioskServerCoordinator(
         }
     }
 
-    override fun onCoinCredited(seconds: Int, source: String, txId: String?, amount: Double): Boolean {
-        return onAddCoinTime(seconds, source, txId, amount)
+    override fun creditPayment(txId: String, seconds: Int, amount: Double): PaymentResult {
+        return onCreditPayment(txId, seconds, amount)
     }
 
     override fun onDeductTime(seconds: Int) {
-        val nowMonotonic = android.os.SystemClock.elapsedRealtime()
-        val curDeadline = stateManager.sessionExpiryDeadlineMs.value
-        val newDeadline = if (curDeadline > nowMonotonic) {
-            maxOf(0L, curDeadline + (seconds * 1000L))
-        } else {
-            0L
-        }
-        stateManager.sessionExpiryDeadlineMs.value = newDeadline
-        val remaining = if (newDeadline > nowMonotonic) ((newDeadline - nowMonotonic) / 1000L).toInt() else 0
-        stateManager.sessionTimeRemaining.value = remaining
-        if (remaining <= 0) {
-            stateManager.sessionTimeRemaining.value = 0
-            stateManager.sessionExpiryDeadlineMs.value = 0L
+        val updated = paymentRepo.deductTimeBlocking(seconds)
+        stateManager.sessionExpiryDeadlineMs.value = updated.sessionExpiryDeadlineMs
+        stateManager.sessionTimeRemaining.value = updated.sessionTimeRemaining
+        if (updated.sessionTimeRemaining <= 0) {
             stateManager.appState.value = 0
         }
         stateManager.saveState()
@@ -134,6 +131,7 @@ class KioskServerCoordinator(
             when (action) {
                 "slot_lockdown" -> {
                     stateManager.isSlotExpired.value = true
+                    paymentRepo.expireSessionBlocking()
                     stateManager.sessionTimeRemaining.value = 0
                     stateManager.sessionExpiryDeadlineMs.value = 0L
                     stateManager.appState.value = 0
@@ -146,6 +144,15 @@ class KioskServerCoordinator(
                         expiryTs = 0L
                     )
                     Toast.makeText(context, "Device activation required.", Toast.LENGTH_LONG).show()
+                }
+                "reset_time" -> {
+                    paymentRepo.resetSessionBlocking()
+                    stateManager.sessionTimeRemaining.value = 0
+                    stateManager.sessionExpiryDeadlineMs.value = 0L
+                    stateManager.appState.value = 0
+                    stateManager.coinsInserted.value = 0
+                    stateManager.saveState()
+                    Toast.makeText(context, "Session time reset.", Toast.LENGTH_SHORT).show()
                 }
                 "slot_restore", "slot_renew" -> {
                     stateManager.isSlotExpired.value = false

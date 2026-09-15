@@ -63,9 +63,6 @@ class KioskStateManager(private val context: Context) {
             val prefs = deviceContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             prefs.edit()
                 .putInt("app_state", appState.value)
-                .putInt("session_time_remaining", sessionTimeRemaining.value)
-                .putLong("session_expiry_deadline_ms", sessionExpiryDeadlineMs.value)
-                .putLong("last_saved_elapsed_realtime", android.os.SystemClock.elapsedRealtime())
                 .putInt("coins_inserted", coinsInserted.value)
                 .putFloat("price_per_coin", pricePerCoin.value.toFloat())
                 .putInt("minutes_per_coin", minutesPerCoin.value)
@@ -87,8 +84,14 @@ class KioskStateManager(private val context: Context) {
             }
             val prefs = deviceContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             val savedState = prefs.getInt("app_state", 0)
-            val savedDeadline = prefs.getLong("session_expiry_deadline_ms", 0L)
-            val savedTime = prefs.getInt("session_time_remaining", 0)
+            
+            // Read authoritative paid balance through PaymentRepository
+            val paymentRepo = com.pisophone.kiosk.repository.PaymentRepository(
+                db = com.pisophone.kiosk.db.AppDatabase.getDatabase(context),
+                context = context
+            )
+            val restored = paymentRepo.restoreSessionState()
+
             pricePerCoin.value = prefs.getFloat("price_per_coin", 5.0f).toDouble()
             minutesPerCoin.value = prefs.getInt("minutes_per_coin", 30)
             esp32Ip = prefs.getString("esp32_ip", null)
@@ -100,29 +103,15 @@ class KioskStateManager(private val context: Context) {
             }
 
             val savedTxSet = prefs.getStringSet("processed_tx_ids", emptySet()) ?: emptySet()
-            val nowMonotonic = android.os.SystemClock.elapsedRealtime()
-            val lastSavedElapsed = prefs.getLong("last_saved_elapsed_realtime", 0L)
 
-            // Calculate remaining seconds safely:
-            // 1. If device rebooted since last save, nowMonotonic < lastSavedElapsed. In that case, use savedTime.
-            // 2. If same boot cycle and savedDeadline > nowMonotonic, compute exact remaining seconds from deadline.
-            // 3. If deadline passed within this boot cycle, session is expired (0s).
-            val effectiveRemainingSec = if (lastSavedElapsed > 0L && nowMonotonic < lastSavedElapsed) {
-                // Device was rebooted; restore saved countdown seconds cleanly
-                savedTime
-            } else if (savedDeadline > nowMonotonic) {
-                ((savedDeadline - nowMonotonic) / 1000L).toInt()
-            } else if (savedDeadline > 0L) {
-                0 // Deadline already elapsed while app/service was not running
-            } else {
-                savedTime
-            }
+            val effectiveRemainingSec = restored.remainingSeconds
+            val effectiveDeadline = restored.deadlineMs
 
             if (effectiveRemainingSec > 0) {
                 sessionTimeRemaining.value = effectiveRemainingSec
-                sessionExpiryDeadlineMs.value = nowMonotonic + (effectiveRemainingSec * 1000L)
+                sessionExpiryDeadlineMs.value = effectiveDeadline
                 appState.value = if (savedState == 1 || savedState == 3) 3 else 2
-                Log.d(TAG, "Restored active session: ${effectiveRemainingSec}s remaining (Monotonic deadline: ${sessionExpiryDeadlineMs.value})")
+                Log.d(TAG, "Restored active session: ${effectiveRemainingSec}s remaining (Monotonic deadline: $effectiveDeadline, isReboot=${restored.isReboot})")
             } else {
                 appState.value = 0
                 sessionTimeRemaining.value = 0
@@ -140,6 +129,7 @@ class KioskStateManager(private val context: Context) {
                 appState.value = 0
                 sessionTimeRemaining.value = 0
                 sessionExpiryDeadlineMs.value = 0L
+                paymentRepo.expireSessionBlocking()
             }
 
             saveState(savedTxSet)

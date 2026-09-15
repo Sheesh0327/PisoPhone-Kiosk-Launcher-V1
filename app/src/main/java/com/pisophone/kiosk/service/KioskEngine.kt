@@ -7,9 +7,12 @@ import android.util.Log
 import android.widget.Toast
 import com.pisophone.kiosk.audio.KioskAudioManager
 import com.pisophone.kiosk.db.AppDatabase
+import com.pisophone.kiosk.db.CoinEvent
 import com.pisophone.kiosk.network.Esp32ConnectionManager
 import com.pisophone.kiosk.overlay.KioskOverlayCoordinator
 import com.pisophone.kiosk.repository.CoinEventRepository
+import com.pisophone.kiosk.repository.PaymentRepository
+import com.pisophone.kiosk.repository.PaymentResult
 import com.pisophone.kiosk.security.KioskActivationManager
 import com.pisophone.kiosk.security.KioskSecurity
 import com.pisophone.kiosk.server.KioskHttpServer
@@ -44,24 +47,16 @@ class KioskEngine(
     private val coinEventRepo: CoinEventRepository = CoinEventRepository(
         AppDatabase.getDatabase(context).coinEventDao()
     )
-
-    private val audioManager = KioskAudioManager(context, scope)
-
-    private val coinProcessor = CoinProcessor(
+    val paymentRepo: PaymentRepository = PaymentRepository(
+        db = AppDatabase.getDatabase(context),
         context = context,
-        scope = scope,
-        coinEventRepo = coinEventRepo,
-        onCreditsApplied = { seconds, pesoAmount ->
-            val nowMonotonic = android.os.SystemClock.elapsedRealtime()
-            val currentDeadline = stateManager.sessionExpiryDeadlineMs.value
-            val newDeadline = if (currentDeadline > nowMonotonic) {
-                currentDeadline + (seconds * 1000L)
-            } else {
-                nowMonotonic + (seconds * 1000L)
-            }
+        onPaymentApplied = { txId, seconds, amount, newDeadline, newRemaining ->
+            val pesoAmount = if (amount >= 1.0) amount.toInt() else 1
+            // 1. Commit is finalized. Publish committed session state:
             stateManager.sessionExpiryDeadlineMs.value = newDeadline
-            stateManager.sessionTimeRemaining.value = ((newDeadline - nowMonotonic) / 1000L).toInt()
+            stateManager.sessionTimeRemaining.value = newRemaining
             stateManager.paymentTimeout.value = ARMING_TIMEOUT_SECONDS
+
             if (stateManager.appState.value == 0) {
                 stateManager.coinsInserted.value += pesoAmount
                 stateManager.appState.value = 1
@@ -71,12 +66,47 @@ class KioskEngine(
                 Log.d(TAG, "Coin credited directly to active session: +${seconds}s (₱$pesoAmount)")
             }
             stateManager.saveState()
-        },
-        onFeedbackTrigger = {
+
+            scope.launch(Dispatchers.IO) {
+                try {
+                    coinEventRepo.insertEvent(
+                        CoinEvent(
+                            txId = txId,
+                            secondsAdded = seconds,
+                            source = "Piso Coin (₱$pesoAmount)"
+                        )
+                    )
+                    coinEventRepo.deleteOldEvents(500)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to log coin event to audit ledger: ${e.message}")
+                }
+            }
+
+            // 2. Play sound / update UI feedback ONLY for newly applied payment
             audioManager.playCoinSound()
             HardwareFeedback.triggerFlashlight(context, 150L)
+            Handler(Looper.getMainLooper()).post {
+                val addedMins = seconds / 60
+                Toast.makeText(context, "₱$pesoAmount coin accepted! (+${addedMins}m)", Toast.LENGTH_SHORT).show()
+            }
+        },
+        onSessionStateChanged = { deadline, remaining ->
+            stateManager.sessionExpiryDeadlineMs.value = deadline
+            stateManager.sessionTimeRemaining.value = remaining
         }
     )
+
+    private val isInitialized = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    private val audioManager = KioskAudioManager(context, scope)
+
+    fun creditPayment(txId: String, seconds: Int, amount: Double): PaymentResult {
+        if (!isInitialized.get()) {
+            Log.w(TAG, "Rejecting payment credit: KioskEngine initialization in progress")
+            return PaymentResult.FAILED
+        }
+        return paymentRepo.creditPaymentBlocking(txId, seconds, amount)
+    }
 
     private val systemMonitor: KioskSystemMonitor = KioskSystemMonitor(
         context = context,
@@ -101,11 +131,12 @@ class KioskEngine(
     private val esp32Coordinator = KioskEsp32Coordinator(
         context = context,
         stateManager = stateManager,
+        paymentRepo = paymentRepo,
         armingTimeoutSeconds = ARMING_TIMEOUT_SECONDS,
         getSecretKey = { KioskSecurity.getSharedSecret(context) },
         getRealTimeBatteryInfo = { systemMonitor.getRealTimeBatteryInfo() },
-        onAddCoinTime = { seconds, source, txId, amount ->
-            addTimeFromMaster(seconds, source, txId, amount)
+        onCreditPayment = { txId, seconds, amount ->
+            creditPayment(txId, seconds, amount)
         },
         onSlotBusyTriggered = { triggerSlotBusy() }
     )
@@ -120,18 +151,21 @@ class KioskEngine(
         context = context,
         stateManager = stateManager,
         coinEventRepo = coinEventRepo,
+        paymentRepo = paymentRepo,
         getSecretKey = { KioskSecurity.getSharedSecret(context) },
         getRealTimeBatteryInfo = { systemMonitor.getRealTimeBatteryInfo() },
         getAudioManager = { audioManager },
-        onAddCoinTime = { seconds, source, txId, amount ->
-            addTimeFromMaster(seconds, source, txId, amount)
-        }
+        onCreditPayment = { txId, seconds, amount ->
+            creditPayment(txId, seconds, amount)
+        },
+        isReady = { isInitialized.get() }
     )
 
     private val supervisor = KioskSessionSupervisor(
         context = context,
         scope = scope,
         stateManager = stateManager,
+        paymentRepo = paymentRepo,
         onSpeakWarning = { speakWarning(it) },
         onFinishPayment = { finishPayment() },
         onCloseSession = { closeSession(it) },
@@ -144,6 +178,11 @@ class KioskEngine(
 
     fun start() {
         engineStartTimeMs = System.currentTimeMillis()
+
+        // 1. Migrate legacy installations without clearing credit and reconcile historical payments
+        paymentRepo.migrateAndInitialize(context)
+        isInitialized.set(true)
+        Log.i(TAG, "Initialization complete. Payment endpoints are now available.")
 
         audioManager.initAudioEngine()
 
@@ -175,17 +214,6 @@ class KioskEngine(
         systemMonitor.registerBatteryMonitor()
 
         scope.launch {
-            try {
-                val recentEvents = coinEventRepo.getLatestEvents(200)
-                val txSet = recentEvents.mapNotNull { it.txId.takeIf { tx -> tx.isNotBlank() } }.toSet()
-                coinProcessor.restoreProcessedTxIds(txSet)
-                Log.d(TAG, "Hydrated ${txSet.size} transaction IDs from Room DB into cache.")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error hydrating transaction cache: ${e.message}")
-            }
-        }
-
-        scope.launch {
             stateManager.appState.collect { state ->
                 if (state == 1 || state == 3) {
                     audioManager.startWaitingMusic()
@@ -198,15 +226,12 @@ class KioskEngine(
 
     @Synchronized
     fun addTimeFromMaster(seconds: Int, source: String, txId: String?, amount: Double = 1.0): Boolean {
-        val now = System.currentTimeMillis()
-        val isStartup = (now - engineStartTimeMs < 3000 && stateManager.appState.value == 0)
-        return coinProcessor.processCoinCredit(
-            seconds = seconds,
-            source = source,
-            txId = txId,
-            amount = amount,
-            isStartupPhase = isStartup
-        )
+        if (txId.isNullOrBlank()) {
+            Log.w(TAG, "Missing transaction ID for coin credit from $source")
+            return false
+        }
+        val result = creditPayment(txId, seconds, amount)
+        return result == PaymentResult.APPLIED || result == PaymentResult.ALREADY_APPLIED
     }
 
     fun triggerCandidateDiscovery() {
@@ -262,10 +287,10 @@ class KioskEngine(
             return
         }
         Log.i(TAG, "Admin bypass granted for $durationSeconds seconds.")
-        val nowMonotonic = android.os.SystemClock.elapsedRealtime()
+        val updated = paymentRepo.adjustSessionTimeBlocking(durationSeconds)
         stateManager.appState.value = 2
-        stateManager.sessionExpiryDeadlineMs.value = nowMonotonic + (durationSeconds * 1000L)
-        stateManager.sessionTimeRemaining.value = durationSeconds
+        stateManager.sessionExpiryDeadlineMs.value = updated.sessionExpiryDeadlineMs
+        stateManager.sessionTimeRemaining.value = updated.sessionTimeRemaining
         stateManager.saveState()
         Handler(Looper.getMainLooper()).post {
             Toast.makeText(context, "Admin Bypass Active (${durationSeconds / 60}m Maintenance)", Toast.LENGTH_SHORT).show()
@@ -274,6 +299,7 @@ class KioskEngine(
 
     fun performLockSession() {
         Log.i(TAG, "Lock session requested by admin.")
+        paymentRepo.resetSessionBlocking()
         stateManager.appState.value = 0
         stateManager.sessionTimeRemaining.value = 0
         stateManager.sessionExpiryDeadlineMs.value = 0L
@@ -292,6 +318,7 @@ class KioskEngine(
                         val nowMonotonic = android.os.SystemClock.elapsedRealtime()
                         if (deadline > 0L && nowMonotonic >= deadline) {
                             Log.w(TAG, "Health monitor: Session deadline expired ($deadline <= $nowMonotonic). Forcing lock state.")
+                            paymentRepo.expireSessionBlocking()
                             stateManager.appState.value = 0
                             stateManager.sessionTimeRemaining.value = 0
                             stateManager.sessionExpiryDeadlineMs.value = 0L

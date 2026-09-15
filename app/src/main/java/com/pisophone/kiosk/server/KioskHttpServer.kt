@@ -2,6 +2,7 @@ package com.pisophone.kiosk.server
 
 import android.content.Context
 import android.util.Log
+import com.pisophone.kiosk.repository.PaymentResult
 import com.pisophone.kiosk.security.KioskActivationManager
 import com.pisophone.kiosk.security.KioskSecurity
 import fi.iki.elonen.NanoHTTPD
@@ -11,13 +12,14 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 interface KioskServerDelegate {
+    fun isReady(): Boolean = true
     fun getSecretKey(): String
     fun onHeartbeat(clientIp: String?)
     fun getStatusJson(): JSONObject
     fun getSessionTimeRemaining(): Int
     fun getAppState(): Int
     fun getAuditEventsJson(): String
-    fun onCoinCredited(seconds: Int, source: String, txId: String?, amount: Double): Boolean
+    fun creditPayment(txId: String, seconds: Int, amount: Double): PaymentResult
     fun onDeductTime(seconds: Int)
     fun onConfigUpdated(price: Double?, minutes: Int?, deviceName: String?, adminPin: String?, slotNum: Int? = null)
     fun onTriggerAction(action: String, slotNum: Int? = null)
@@ -34,29 +36,10 @@ class KioskHttpServer(
         private const val TAG = "KioskHttpServer"
         private const val RATE_LIMIT_WINDOW_MS = 60000L
         private const val MAX_REQUESTS_PER_WINDOW = 60
-        private const val MAX_TRACKED_TX = 200
         private const val MAX_TIMESTAMP_SKEW_MS = 60000L
     }
 
     private val rateLimits = ConcurrentHashMap<String, MutableList<Long>>()
-    private val processedTxIds = java.util.Collections.synchronizedSet(java.util.LinkedHashSet<String>())
-
-    private fun isTxIdProcessed(txId: String): Boolean {
-        return processedTxIds.contains(txId)
-    }
-
-    private fun markTxIdProcessed(txId: String) {
-        synchronized(processedTxIds) {
-            if (processedTxIds.size >= MAX_TRACKED_TX) {
-                val iterator = processedTxIds.iterator()
-                if (iterator.hasNext()) {
-                    iterator.next()
-                    iterator.remove()
-                }
-            }
-            processedTxIds.add(txId)
-        }
-    }
 
     private fun parseQueryString(queryString: String): Map<String, String> {
         val result = mutableMapOf<String, String>()
@@ -164,35 +147,74 @@ class KioskHttpServer(
         // Replay Protection check: verify unique tx_id (Layer 2)
         val txId = (decryptedParams["tx_id"] ?: decryptedParams["nonce"])?.trim()
         if (uri == "/add_time" || uri == "/coin") {
+            if (!delegate.isReady()) {
+                Log.w(TAG, "Rejecting payment request to $uri: Server initialization in progress")
+                return newFixedLengthResponse(Response.Status.SERVICE_UNAVAILABLE, "text/plain", "INITIALIZING")
+            }
             if (txId.isNullOrBlank()) {
                 Log.w(TAG, "Rejecting coin credit: Missing tx_id in payload")
                 return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "MISSING_TX_ID")
             }
-            if (isTxIdProcessed(txId)) {
-                Log.w(TAG, "Rejecting replayed or duplicate transaction: $txId")
-                return newFixedLengthResponse(Response.Status.OK, "text/plain", "ALREADY_PROCESSED")
-            }
-            markTxIdProcessed(txId)
-        } else if (!txId.isNullOrBlank()) {
-            if (isTxIdProcessed(txId)) {
-                Log.w(TAG, "Rejecting duplicate request: $txId")
-                return newFixedLengthResponse(Response.Status.OK, "text/plain", "ALREADY_PROCESSED")
-            }
-            markTxIdProcessed(txId)
         }
 
         return when (uri) {
             "/add_time", "/coin" -> {
-                val minutes = decryptedParams["minutes"]?.toIntOrNull() ?: 0
+                val hasMinutes = decryptedParams.containsKey("minutes")
+                val hasSeconds = decryptedParams.containsKey("seconds")
+                val minutes = decryptedParams["minutes"]?.toIntOrNull()
                 val secondsParam = decryptedParams["seconds"]?.toIntOrNull()
-                val seconds = secondsParam ?: (minutes * 60)
-                val amount = decryptedParams["amount"]?.toDoubleOrNull() ?: 1.0
+                if ((hasMinutes && minutes == null) || (hasSeconds && secondsParam == null) || (!hasMinutes && !hasSeconds)) {
+                    Log.w(TAG, "Rejecting coin credit: Invalid time parameters")
+                    return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "INVALID_PAYMENT")
+                }
+                val seconds = secondsParam ?: (minutes!! * 60)
+
+                val hasAmount = decryptedParams.containsKey("amount")
+                val amountParam = decryptedParams["amount"]?.toDoubleOrNull()
+                if (hasAmount && amountParam == null) {
+                    Log.w(TAG, "Rejecting coin credit: Invalid amount parameter")
+                    return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "INVALID_AMOUNT")
+                }
+                val amount = amountParam ?: 1.0
+                if (amount < 0.0) {
+                    Log.w(TAG, "Rejecting coin credit: Negative amount")
+                    return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "INVALID_AMOUNT")
+                }
+
                 if (seconds > 0) {
-                    delegate.onCoinCredited(seconds, "HTTP /add_time", txId, amount)
+                    val result = try {
+                        delegate.creditPayment(txId!!, seconds, amount)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Exception during creditPayment for $txId: ${e.message}", e)
+                        PaymentResult.FAILED
+                    }
+                    when (result) {
+                        PaymentResult.APPLIED -> {
+                            newFixedLengthResponse(Response.Status.OK, "text/plain", "OK")
+                        }
+                        PaymentResult.ALREADY_APPLIED -> {
+                            // Acknowledge duplicate without extending time so ESP32 clears retry queue
+                            newFixedLengthResponse(Response.Status.OK, "text/plain", "ALREADY_PROCESSED")
+                        }
+                        PaymentResult.CONFLICT -> {
+                            Log.w(TAG, "Payment rejected due to conflicting values for $txId")
+                            newFixedLengthResponse(Response.Status.CONFLICT, "text/plain", "CONFLICT")
+                        }
+                        PaymentResult.NOT_ELIGIBLE -> {
+                            Log.w(TAG, "Payment rejected: device not eligible for $txId")
+                            newFixedLengthResponse(Response.Status.FORBIDDEN, "text/plain", "NOT_ELIGIBLE")
+                        }
+                        PaymentResult.FAILED -> {
+                            Log.e(TAG, "Payment failed to commit to database for $txId")
+                            newFixedLengthResponse(Response.Status.SERVICE_UNAVAILABLE, "text/plain", "SERVICE_UNAVAILABLE")
+                        }
+                    }
                 } else if (seconds < 0) {
                     delegate.onDeductTime(seconds)
+                    newFixedLengthResponse(Response.Status.OK, "text/plain", "OK")
+                } else {
+                    newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "INVALID_SECONDS")
                 }
-                newFixedLengthResponse(Response.Status.OK, "text/plain", "OK")
             }
             "/config" -> {
                 val price = decryptedParams["price"]?.toDoubleOrNull()
