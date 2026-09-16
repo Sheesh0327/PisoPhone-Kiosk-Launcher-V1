@@ -62,8 +62,9 @@ class Esp32ConnectionManager(
         .build()
 
     private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(3500, TimeUnit.MILLISECONDS)
-        .readTimeout(3500, TimeUnit.MILLISECONDS)
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
+        .writeTimeout(10, TimeUnit.SECONDS)
         .build()
 
     private var esp32Ip: String? = null

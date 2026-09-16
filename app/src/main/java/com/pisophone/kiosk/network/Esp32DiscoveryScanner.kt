@@ -231,9 +231,9 @@ class Esp32DiscoveryScanner(
 
         try {
             val fastClient = httpClient.newBuilder()
-                .connectTimeout(1, TimeUnit.SECONDS)
-                .readTimeout(1, TimeUnit.SECONDS)
-                .writeTimeout(1, TimeUnit.SECONDS)
+                .connectTimeout(3, TimeUnit.SECONDS)
+                .readTimeout(3, TimeUnit.SECONDS)
+                .writeTimeout(3, TimeUnit.SECONDS)
                 .build()
 
             val req = Request.Builder()
