@@ -108,4 +108,49 @@ class Esp32DiscoveryScannerUnitTest {
 
         assertFalse(scanner.validateEsp32Response(testMac, testIp, "", json.toString()))
     }
+
+    @Test
+    fun testValidateEsp32Response_identifyPayloadWithHmac_returnsTrue() {
+        val scanner = Esp32DiscoveryScanner(
+            context = context,
+            scope = testScope,
+            delegate = fakeDelegate,
+            isAlreadyBound = { false }
+        )
+
+        // Matches ESP32 firmware /identify response contract
+        val sig = KioskSecurity.calculateHmac("DISCOVERY:$testMac:$testIp", testSecret)
+        val json = JSONObject().apply {
+            put("device", "HARDWARE_kiosk")
+            put("mac", testMac)
+            put("ip", testIp)
+            put("sig", sig)
+            put("version", "3.0")
+            put("minutes", 30)
+            put("price", 1.0)
+        }
+
+        assertTrue(scanner.validateEsp32Response(testMac, testIp, sig, json.toString()))
+    }
+
+    @Test
+    fun testValidateEsp32Response_identifyPayloadWithInvalidHmac_returnsFalse() {
+        val scanner = Esp32DiscoveryScanner(
+            context = context,
+            scope = testScope,
+            delegate = fakeDelegate,
+            isAlreadyBound = { false }
+        )
+
+        val wrongSig = "wrong_signature_bytes"
+        val json = JSONObject().apply {
+            put("device", "HARDWARE_kiosk")
+            put("mac", testMac)
+            put("ip", testIp)
+            put("sig", wrongSig)
+            put("version", "3.0")
+        }
+
+        assertFalse(scanner.validateEsp32Response(testMac, testIp, wrongSig, json.toString()))
+    }
 }

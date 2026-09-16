@@ -291,7 +291,11 @@ void handleIdentify() {
     }
     String devName = getDeviceNameByIpOrId(reqIp, devId);
     int slotIdx = findSlotIndexForDevice(devId, reqIp);
-    String json = "{\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\",\"version\":\"3.0\",\"minutes\":" + String(minutesPerCoin) + ",\"price\":1.0";
+    String secKey = (sharedSecret.length() > 0) ? sharedSecret : String(MASTER_CRYPTO_SECRET);
+    String ipStr = WiFi.localIP().toString();
+    String sig = calculateHMAC("DISCOVERY:" + macAddressStr + ":" + ipStr, secKey);
+
+    String json = "{\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\",\"ip\":\"" + ipStr + "\",\"sig\":\"" + sig + "\",\"version\":\"3.0\",\"minutes\":" + String(minutesPerCoin) + ",\"price\":1.0";
     if (devName.length() > 0) {
         json += ",\"device_name\":\"" + devName + "\"";
     }

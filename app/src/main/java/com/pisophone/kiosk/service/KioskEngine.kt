@@ -187,8 +187,20 @@ class KioskEngine(
 
                 audioManager.initAudioEngine()
 
-                if (!stateManager.esp32Ip.isNullOrBlank()) {
-                    esp32Manager.setEsp32Ip(stateManager.esp32Ip)
+                val cachedIp = stateManager.esp32Ip
+                if (!cachedIp.isNullOrBlank()) {
+                    esp32Manager.setEsp32Ip(cachedIp)
+                    scope.launch(Dispatchers.IO) {
+                        val ok = esp32Manager.probeEsp32Connection(cachedIp)
+                        if (!ok) {
+                            Log.w(TAG, "Cached ESP32 IP $cachedIp unreachable, falling back to discovery")
+                            stateManager.esp32Ip = null
+                            esp32Manager.setEsp32Ip(null)
+                            esp32Manager.triggerCandidateDiscovery(stateManager.deviceIp.value)
+                        }
+                    }
+                } else {
+                    esp32Manager.triggerCandidateDiscovery(stateManager.deviceIp.value)
                 }
 
                 if (!KioskActivationManager.isPairingCompleted(context) && !KioskSecurity.isProvisioned(context)) {
@@ -201,7 +213,6 @@ class KioskEngine(
 
                 ensureHttpServerRunning()
 
-                esp32Manager.triggerCandidateDiscovery(stateManager.deviceIp.value)
                 esp32Manager.startHeartbeatLoop { stateManager.deviceIp.value }
 
                 supervisor.start()
