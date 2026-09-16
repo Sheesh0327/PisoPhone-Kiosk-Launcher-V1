@@ -26,6 +26,32 @@ extern const int DEFAULT_MINUTES_PER_COIN;
 #define MAX_TRACKED_DEVICES 12
 
 // ============================================================================
+// NVS KEYS
+// ============================================================================
+extern const char* const NVS_NAMESPACE;
+extern const char* const NVS_KEY_MAX_SLOTS;
+extern const char* const NVS_KEY_LICENSED;
+extern const char* const NVS_KEY_SLOTS_DATA;
+extern const char* const NVS_KEY_IPS;
+
+extern const char* const NVS_KEY_WIFI_SSID;
+extern const char* const NVS_KEY_WIFI_PASS;
+extern const char* const NVS_KEY_U_COIN_PIN;
+extern const char* const NVS_KEY_LED_PIN;
+extern const char* const NVS_KEY_LED_ACTIVE_LOW;
+extern const char* const NVS_KEY_RELAY_PIN;
+extern const char* const NVS_KEY_RELAY_ACTIVE_LOW;
+extern const char* const NVS_KEY_PORT;
+extern const char* const NVS_KEY_MINS_PER_COIN;
+extern const char* const NVS_KEY_ADMIN_PW;
+extern const char* const NVS_KEY_SHARED_SECRET;
+extern const char* const NVS_KEY_P1;
+extern const char* const NVS_KEY_P2;
+extern const char* const NVS_KEY_MATCH;
+extern const char* const NVS_KEY_TOTAL_COINS;
+extern const char* const NVS_KEY_TOTAL_EARNINGS;
+
+// ============================================================================
 // DATA STRUCTURES
 // ============================================================================
 struct DeviceConfig {
@@ -127,7 +153,7 @@ void factoryResetDefaults();
 void updateMasterTime(uint64_t ts);
 uint64_t getCurrentMasterTimeMs();
 
-bool parseDeviceEntry(String entry, DeviceConfig& out);
+bool parseDeviceEntry(const String& entry, DeviceConfig& out);
 bool areDefaultCredentialsActive();
 
 #endif // CONFIG_H

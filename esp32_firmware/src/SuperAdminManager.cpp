@@ -15,7 +15,7 @@ bool isVaultUnmasked = false;
 unsigned long unmaskExpiryTimestamp = 0;
 
 void loadSuperAdminConfig() {
-    prefs.begin("kiosk_cfg", false);
+    prefs.begin(NVS_NAMESPACE, false);
     superAdminPassword = prefs.getString("super_admin_pw", DEFAULT_SUPER_ADMIN_PW);
     vendorRevenueSplitPercent = prefs.getInt("vendor_split", DEFAULT_VENDOR_SPLIT_PERCENT);
     if (vendorRevenueSplitPercent < 0 || vendorRevenueSplitPercent > 100) {
@@ -58,9 +58,9 @@ void processSuperAdminLoop() {
             lastSavedTotalCoins = 0;
             lastSavedTotalEarnings = 0.0f;
             
-            prefs.begin("kiosk_cfg", false);
-            prefs.putULong("total_coins", 0);
-            prefs.putFloat("total_earnings", 0.0f);
+            prefs.begin(NVS_NAMESPACE, false);
+            prefs.putULong(NVS_KEY_TOTAL_COINS, 0);
+            prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, 0.0f);
             prefs.end();
             
             isVaultUnmasked = false;
@@ -134,9 +134,9 @@ void handleSuperAdminResetVault() {
     lastSavedTotalCoins = 0;
     lastSavedTotalEarnings = 0.0f;
     
-    prefs.begin("kiosk_cfg", false);
-    prefs.putULong("total_coins", 0);
-    prefs.putFloat("total_earnings", 0.0f);
+    prefs.begin(NVS_NAMESPACE, false);
+    prefs.putULong(NVS_KEY_TOTAL_COINS, 0);
+    prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, 0.0f);
     prefs.end();
     
     isVaultUnmasked = false;
@@ -156,7 +156,7 @@ void handleSuperAdminSaveSplit() {
         int split = webServer.arg("vendor_split").toInt();
         if (split >= 0 && split <= 100) {
             vendorRevenueSplitPercent = split;
-            prefs.begin("kiosk_cfg", false);
+            prefs.begin(NVS_NAMESPACE, false);
             prefs.putInt("vendor_split", vendorRevenueSplitPercent);
             prefs.end();
             Serial.printf("[👑 SUPER ADMIN] Vendor revenue split updated to %d%%.\n", vendorRevenueSplitPercent);
@@ -178,7 +178,7 @@ void handleSuperAdminChangePassword() {
         newPw.trim();
         if (newPw.length() >= 4) {
             superAdminPassword = newPw;
-            prefs.begin("kiosk_cfg", false);
+            prefs.begin(NVS_NAMESPACE, false);
             prefs.putString("super_admin_pw", superAdminPassword);
             prefs.end();
             Serial.println("[👑 SUPER ADMIN] Super Admin password successfully updated.");
