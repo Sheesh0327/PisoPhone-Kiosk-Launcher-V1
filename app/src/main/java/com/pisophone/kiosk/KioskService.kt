@@ -44,6 +44,7 @@ class KioskService : Service() {
         fun configureMasterBox(
             context: Context,
             mac: String,
+            ip: String? = null,
             slot: Int = -1,
             secret: String? = null,
             name: String? = null
@@ -52,6 +53,7 @@ class KioskService : Service() {
                 context = context,
                 secret = secret,
                 mac = mac,
+                ip = ip,
                 slot = slot,
                 name = name
             )
@@ -61,7 +63,27 @@ class KioskService : Service() {
                 if (cleanMac.isNotBlank()) {
                     service.stateManager.esp32MacAddress.value = cleanMac
                 }
-                service.triggerCandidateDiscovery()
+                if (!ip.isNullOrBlank()) {
+                    service.stateManager.esp32Ip = ip.trim()
+                    service.stateManager.saveState()
+                    service.probeEsp32Connection(ip.trim())
+                } else {
+                    service.triggerCandidateDiscovery()
+                }
+            }
+        }
+
+        fun setManualEsp32Ip(context: Context, ip: String) {
+            val trimmed = ip.trim()
+            KioskSecurity.setConfiguredEsp32Ip(context, trimmed)
+            activeInstance?.let { service ->
+                service.stateManager.esp32Ip = if (trimmed.isNotBlank()) trimmed else null
+                service.stateManager.saveState()
+                if (trimmed.isNotBlank()) {
+                    service.probeEsp32Connection(trimmed)
+                } else {
+                    service.triggerCandidateDiscovery()
+                }
             }
         }
 

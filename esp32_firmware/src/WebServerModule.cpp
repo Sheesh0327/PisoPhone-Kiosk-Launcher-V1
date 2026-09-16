@@ -74,9 +74,9 @@ void setupWebServer() {
 
         bool hasInvert = webServer.hasArg("invert");
         if (hasInvert) {
-            prefs.begin(NVS_NAMESPACE, false);
+            prefs.begin("kiosk_cfg", false);
             relayActiveLow = (webServer.arg("invert") == "1" || webServer.arg("invert") == "true");
-            prefs.putBool(NVS_KEY_RELAY_ACTIVE_LOW, relayActiveLow);
+            prefs.putBool("relay_active_low", relayActiveLow);
             prefs.end();
         }
         if (webServer.hasArg("state")) {

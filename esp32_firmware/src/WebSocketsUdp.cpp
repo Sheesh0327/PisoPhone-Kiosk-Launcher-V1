@@ -323,15 +323,10 @@ void processWebSocketServer() {
 void sendUdpDiscoveryResponse(IPAddress targetIp, uint16_t targetPort) {
     if (WiFi.status() != WL_CONNECTED) return;
 
-    String secKey = (sharedSecret.length() > 0) ? sharedSecret : String(MASTER_CRYPTO_SECRET);
-    String ipStr = WiFi.localIP().toString();
-    String sig = calculateHMAC("DISCOVERY:" + macAddressStr + ":" + ipStr, secKey);
-
     String resp = "{\"type\":\"PISOPHONE_ESP32_RESPONSE\","
                   "\"device\":\"PISOPHONE_MASTER\","
                   "\"mac\":\"" + macAddressStr + "\","
-                  "\"ip\":\"" + ipStr + "\","
-                  "\"sig\":\"" + sig + "\","
+                  "\"ip\":\"" + WiFi.localIP().toString() + "\","
                   "\"port\":80,"
                   "\"ws_port\":81,"
                   "\"device_name\":\"PisoPhone Master\","
@@ -367,26 +362,6 @@ void processUdpDiscovery() {
             msg.trim();
 
             if (msg.indexOf("PISOPHONE_DISCOVER") >= 0) {
-                // If specific target_mac is specified in probe, only respond if matching this ESP32
-                int targetMacIdx = msg.indexOf("\"target_mac\":\"");
-                if (targetMacIdx >= 0) {
-                    int valStart = targetMacIdx + 14;
-                    int valEnd = msg.indexOf("\"", valStart);
-                    if (valEnd > valStart) {
-                        String reqMac = msg.substring(valStart, valEnd);
-                        reqMac.toUpperCase();
-                        String curMac = macAddressStr;
-                        curMac.toUpperCase();
-                        String cleanReq = "";
-                        for (size_t i = 0; i < reqMac.length(); i++) if (reqMac[i] != ':') cleanReq += reqMac[i];
-                        String cleanCur = "";
-                        for (size_t i = 0; i < curMac.length(); i++) if (curMac[i] != ':') cleanCur += curMac[i];
-                        if (cleanReq != cleanCur) {
-                            return; // Probe targeted another box MAC
-                        }
-                    }
-                }
-
                 IPAddress remoteIp = udpServer.remoteIP();
                 uint16_t remotePort = udpServer.remotePort();
                 Serial.printf("[⚡ UDP Discovery] Valid probe received from %s:%d. Responding...\n",

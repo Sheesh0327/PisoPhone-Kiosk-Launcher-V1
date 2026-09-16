@@ -743,11 +743,13 @@
                 const urlParams = new URLSearchParams(window.location.search);
                 const provSecret = urlParams.get('secret');
                 const provMac = urlParams.get('mac');
+                const provIp = urlParams.get('ip');
                 const provSlot = urlParams.get('slot');
                 const provName = urlParams.get('name');
 
                 if (provSecret) provExtras += ` --es secret "${provSecret}"`;
                 if (provMac) provExtras += ` --es mac "${provMac}" --es esp32_mac "${provMac}"`;
+                if (provIp) provExtras += ` --es ip "${provIp}" --es esp32_ip "${provIp}"`;
                 if (provSlot) provExtras += ` --ei slot ${provSlot}`;
                 if (provName) provExtras += ` --es name "${provName}"`;
             } catch (e) {}
