@@ -385,18 +385,13 @@ void processSerialCli() {
     line.trim();
     if (line.length() == 0) return;
 
-    if (line.startsWith("ucoin ") || line.startsWith("ucoin")) {
-        int firstSpace = line.indexOf(' ');
-        int pulses = (firstSpace != -1) ? line.substring(firstSpace + 1).toInt() : 1;
-        if (pulses <= 0) pulses = 1;
-        triggerUniversalCoinEvent(pulses);
-    } else if (line.startsWith("add ") || line.startsWith("add")) {
+    if (line.startsWith("add ") || line.startsWith("add")) {
         int firstSpace = line.indexOf(' ');
         if (firstSpace != -1) {
             int minutes = line.substring(firstSpace + 1).toInt();
             sendAddTime(minutes, "ALL");
         }
     } else if (line.equalsIgnoreCase("help")) {
-        Serial.println("\nCommands: ucoin <1|5|10|20> | add <minutes> | help");
+        Serial.println("\nCommands: add <minutes> | help");
     }
 }

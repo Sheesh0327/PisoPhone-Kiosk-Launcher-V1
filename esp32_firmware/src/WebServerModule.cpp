@@ -44,7 +44,6 @@ void setupWebServer() {
     webServer.on("/factory_reset", HTTP_POST, handleFactoryReset);
     webServer.on("/add_time", HTTP_POST, handleAddTime);
     webServer.on("/one_vs_one", HTTP_POST, handleOneVsOne);
-    webServer.on("/insert_ucoin", HTTP_POST, handleInsertUniversalCoin);
     webServer.on("/reset_vault", HTTP_POST, handleResetVault);
     webServer.on("/api/superadmin/auth", HTTP_POST, handleSuperAdminAuth);
     webServer.on("/api/superadmin/unmask", HTTP_POST, handleSuperAdminUnmask);

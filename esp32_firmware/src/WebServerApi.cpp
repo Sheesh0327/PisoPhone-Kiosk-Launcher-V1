@@ -56,14 +56,6 @@ void handleAddTime() {
     redirectHome();
 }
 
-void handleInsertUniversalCoin() {
-    if (!checkAdminAuth()) return;
-    int pulses = webServer.hasArg("pulses") ? webServer.arg("pulses").toInt() : 1;
-    if (pulses <= 0) pulses = 1;
-    triggerUniversalCoinEvent(pulses);
-    webServer.send(200, "text/plain", "OK");
-}
-
 void handleQueryTime() {
     if (!checkAuth()) return;
     if (!webServer.hasArg("ip")) {

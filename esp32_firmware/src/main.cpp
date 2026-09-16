@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <Preferences.h>
 #include <ESPmDNS.h>
+#include <esp_task_wdt.h>
 #include "esp_wifi.h"
 #include "Config.h"
 #include "Security.h"
@@ -12,8 +13,50 @@
 #include "WebServerModule.h"
 #include "SuperAdminManager.h"
 
+#define WDT_TIMEOUT_SECONDS 15
+#define DAILY_MAINTENANCE_INTERVAL_MS 86400000UL // 24 Hours
+#define MIN_SAFE_HEAP_BYTES 15000                 // 15 KB Critical Heap Limit
+
 static unsigned long lastWifiCheckTime = 0;
 static unsigned long lastCloudSnapshotMs = 0;
+static unsigned long lastHealthCheckMs = 0;
+
+static void initHardwareWatchdog() {
+#if defined(ESP_IDF_VERSION_MAJOR) && (ESP_IDF_VERSION_MAJOR >= 5)
+    esp_task_wdt_config_t wdt_config = {
+        .timeout_ms = WDT_TIMEOUT_SECONDS * 1000,
+        .idle_core_mask = (1 << 0),
+        .trigger_panic = true
+    };
+    esp_task_wdt_init(&wdt_config);
+    esp_task_wdt_add(NULL);
+#else
+    esp_task_wdt_init(WDT_TIMEOUT_SECONDS, true);
+    esp_task_wdt_add(NULL);
+#endif
+    Serial.printf("[+] Hardware Task Watchdog (esp_task_wdt) initialized (%ds timeout, panic reset enabled)\n", WDT_TIMEOUT_SECONDS);
+}
+
+static void processSystemHealthAndAutoMaintenance() {
+    unsigned long now = millis();
+    if (now - lastHealthCheckMs < 10000) return; // Check every 10 seconds
+    lastHealthCheckMs = now;
+
+    uint32_t freeHeap = ESP.getFreeHeap();
+    bool heapCritical = (freeHeap < MIN_SAFE_HEAP_BYTES);
+    bool dailyWindowReached = (now > DAILY_MAINTENANCE_INTERVAL_MS);
+
+    if ((heapCritical || dailyWindowReached) && !isCoinSlotArmed()) {
+        if (heapCritical) {
+            Serial.printf("⚠️ [HEALTH GUARD] Free heap low (%u bytes < %d bytes threshold). Initiating safety reboot...\n", freeHeap, MIN_SAFE_HEAP_BYTES);
+        } else {
+            Serial.printf("ℹ️ [HEALTH GUARD] 24-hour uptime maintenance window reached. Initiating scheduled reboot...\n");
+        }
+        Serial.flush();
+        delay(100);
+        ESP.restart();
+    }
+}
 
 void setup() {
     Serial.begin(115200);
@@ -22,6 +65,9 @@ void setup() {
     delay(300);
 
     Serial.println("\n--- HARDWARE-C3 Master Kiosk Controller ---");
+
+    // Initialize Hardware Watchdog Early
+    initHardwareWatchdog();
 
     // Load NVS Configuration & Lifetime Vault Revenue safely
     loadAllConfig();
@@ -65,6 +111,7 @@ void setup() {
 
     while (WiFi.status() != WL_CONNECTED && (millis() - wifiConnectStart < WIFI_BOOT_TIMEOUT_MS)) {
         delay(20);
+        esp_task_wdt_reset();
         processLedBlink();
         if ((millis() - wifiConnectStart) % 500 < 20) {
             Serial.print(".");
@@ -88,6 +135,12 @@ void setup() {
 }
 
 void loop() {
+    // Feed Hardware Watchdog Timer
+    esp_task_wdt_reset();
+
+    // Memory and Uptime Health Maintenance Check
+    processSystemHealthAndAutoMaintenance();
+
     // 0. Process Debounced Hardware-Conservative NVS Revenue Persistence
     processRevenuePersistence();
 

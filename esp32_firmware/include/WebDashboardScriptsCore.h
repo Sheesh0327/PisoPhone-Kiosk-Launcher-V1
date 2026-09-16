@@ -92,12 +92,6 @@ document.addEventListener('DOMContentLoaded', () => {
     updateThemeButtonText();
 });
 
-window.triggerUniversalCoin = function(pulses) {
-    fetch('/insert_ucoin?pulses=' + pulses, { method: 'POST', credentials: 'include' })
-        .then(res => { if (res.ok) alert('✅ Universal ' + pulses + ' PHP coin drop (' + pulses + ' pulses) simulated successfully!'); else alert('❌ Auth failed or error!'); })
-        .catch(err => alert('Error: ' + err));
-};
-
 window.fetchDeviceStatus = function() {
     fetch('/api/status')
         .then(res => res.json())

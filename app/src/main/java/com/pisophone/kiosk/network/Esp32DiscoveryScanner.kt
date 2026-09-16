@@ -280,7 +280,7 @@ class Esp32DiscoveryScanner(
             val jobs = batch.map { targetIp ->
                 async(Dispatchers.IO) {
                     if (isAlreadyBound() || !scope.isActive) return@async false
-                    if (isPortOpen(targetIp, DEFAULT_WEB_PORT, 250)) {
+                    if (isPortOpen(targetIp, DEFAULT_WEB_PORT, 800)) {
                         probeEsp32Connection(targetIp)
                     } else {
                         false

@@ -117,6 +117,7 @@ class Esp32ConnectionManager(
         val (ipHost, esp32Port) = discoveryScanner.getEsp32HostAndPort(ip)
         esp32Ip = ip
         lastHeartbeatTime = System.currentTimeMillis()
+        consecutiveHeartbeatFailures = 0
         delegate.onEsp32Discovered(ip)
         delegate.onOnlineStatusChanged(true, null)
         Log.d(TAG, "[+] ESP32 Master bound at $ipHost")
