@@ -67,7 +67,6 @@ class Esp32ConnectionManager(
         .writeTimeout(10, TimeUnit.SECONDS)
         .build()
 
-    @Volatile
     private var esp32Ip: String? = null
     private var lastHeartbeatTime: Long = System.currentTimeMillis()
     private var consecutiveHeartbeatFailures: Int = 0
@@ -88,15 +87,14 @@ class Esp32ConnectionManager(
         },
         isAlreadyBound = {
             val isOnline = (System.currentTimeMillis() - lastHeartbeatTime < HEARTBEAT_TIMEOUT_MS) && consecutiveHeartbeatFailures < 5
-            val currentTarget = synchronized(connectionLock) { esp32Ip }
-            isOnline && !currentTarget.isNullOrBlank()
+            isOnline && !esp32Ip.isNullOrBlank()
         }
     )
 
-    fun getEsp32Ip(): String? = synchronized(connectionLock) { esp32Ip }
+    fun getEsp32Ip(): String? = esp32Ip
 
     fun setEsp32Ip(ip: String?) {
-        synchronized(connectionLock) { esp32Ip = ip }
+        esp32Ip = ip
     }
 
     fun markHeartbeatReceived() {
@@ -118,7 +116,7 @@ class Esp32ConnectionManager(
 
     private fun handleEsp32Discovered(ip: String, rawResponseBody: String? = null) {
         val (ipHost, esp32Port) = discoveryScanner.getEsp32HostAndPort(ip)
-        synchronized(connectionLock) { esp32Ip = ip }
+        esp32Ip = ip
         lastHeartbeatTime = System.currentTimeMillis()
         consecutiveHeartbeatFailures = 0
         delegate.onEsp32Discovered(ip)
@@ -173,7 +171,7 @@ class Esp32ConnectionManager(
             while (isActive) {
                 try {
                     val currentIp = deviceIpProvider()
-                    val targetIp = synchronized(connectionLock) { esp32Ip }
+                    val targetIp = esp32Ip
 
                     if (!targetIp.isNullOrBlank()) {
                         val (host, esp32Port) = discoveryScanner.getEsp32HostAndPort(targetIp)
@@ -271,7 +269,7 @@ class Esp32ConnectionManager(
             discoveryScanner.triggerDiscovery(currentIp)
             if (offlineDuration > HEARTBEAT_TIMEOUT_MS) {
                 Log.w(TAG, "ESP32 disconnected for >${HEARTBEAT_TIMEOUT_MS}ms, clearing stale cached IP for auto-rediscovery")
-                synchronized(connectionLock) { esp32Ip = null }
+                esp32Ip = null
             }
         }
     }

@@ -10,6 +10,7 @@ class KioskStateManager(private val context: Context) {
     companion object {
         private const val TAG = "KioskStateManager"
         private const val PREFS_NAME = "kiosk_persistent_state"
+        const val ESP32_WEB_PORT = 8055
     }
 
     val appState = MutableStateFlow(0) // 0: block, 1: wait, 2: unlocked, 3: unlocked+wait, 4: unlicensed
@@ -96,8 +97,7 @@ class KioskStateManager(private val context: Context) {
                 .putInt("coins_inserted", coinsInserted.value)
                 .putFloat("price_per_coin", pricePerCoin.value.toFloat())
                 .putInt("minutes_per_coin", minutesPerCoin.value)
-                .putString("esp32_ip", esp32Ip ?: "")
-                .putString("esp32_mac", esp32MacAddress.value)
+                .putInt("target_port", ESP32_WEB_PORT)
                 .putStringSet("processed_tx_ids", txSet.take(20).toSet())
                 .apply()
         } catch (e: Exception) {
@@ -124,9 +124,7 @@ class KioskStateManager(private val context: Context) {
 
             pricePerCoin.value = prefs.getFloat("price_per_coin", 5.0f).toDouble()
             minutesPerCoin.value = prefs.getInt("minutes_per_coin", 30)
-            esp32Ip = prefs.getString("esp32_ip", null)?.takeIf { it.isNotBlank() }
-            val savedMac = prefs.getString("esp32_mac", null)?.takeIf { it.isNotBlank() }
-            if (savedMac != null) esp32MacAddress.value = savedMac
+            esp32Ip = null
 
             val savedTxSet = prefs.getStringSet("processed_tx_ids", emptySet()) ?: emptySet()
 

@@ -69,13 +69,10 @@ class Esp32DiscoveryScanner(
                 return
             }
             discoveryJob = scope.launch(Dispatchers.IO) {
-                var backoffMs = 2000L
-                val maxBackoffMs = 15000L
                 try {
                     while (!isAlreadyBound() && isActive) {
                         sendUdpDiscoveryBroadcast(localIp)
-                        delay(backoffMs)
-                        backoffMs = (backoffMs * 2).coerceAtMost(maxBackoffMs)
+                        delay(2000)
                     }
                 } finally {
                     synchronized(lock) {
@@ -238,10 +235,7 @@ class Esp32DiscoveryScanner(
             fastClient.newCall(req).execute().use { resp ->
                 if (resp.isSuccessful) {
                     val rawBody = resp.body?.string() ?: ""
-                    val json = try { JSONObject(rawBody) } catch (_: Exception) { null }
-                    val deviceMac = json?.optString("mac", "")?.ifBlank { json.optString("esp32_mac", "") } ?: ""
-                    val sig = json?.optString("sig", "")?.ifBlank { json.optString("signature", "") } ?: ""
-                    if (validateEsp32Response(deviceMac, host, sig, rawBody)) {
+                    if (isEsp32MacMatching(rawBody)) {
                         delegate.onEsp32Discovered(host, rawBody)
                         return true
                     }
@@ -270,18 +264,48 @@ class Esp32DiscoveryScanner(
         val secret = KioskSecurity.getSharedSecret(context)
         if (secret.isNotBlank()) {
             if (sig.isBlank()) {
-                Log.w(TAG, "Rejected ESP32 packet from $targetIp: Missing cryptographic signature!")
+                Log.w(TAG, "Rejected ESP32 UDP packet from $targetIp: Missing cryptographic signature!")
                 return false
             }
             val cleanDeviceMac = KioskSecurity.formatMacAddress(deviceMac)
             val expectedSig = KioskSecurity.calculateHmac("DISCOVERY:$cleanDeviceMac:$targetIp", secret)
             if (!KioskSecurity.constantTimeEquals(sig.lowercase(), expectedSig.lowercase())) {
-                Log.w(TAG, "Rejected ESP32 packet from $targetIp: HMAC signature verification failed!")
+                Log.w(TAG, "Rejected ESP32 UDP packet from $targetIp: HMAC signature verification failed!")
                 return false
             }
         }
 
         return true
+    }
+
+    /**
+     * Extracts MAC from response payload and validates against configured box MAC if set.
+     */
+    fun isEsp32MacMatching(rawResponseBody: String?): Boolean {
+        val configuredMac = KioskSecurity.getConfiguredEsp32Mac(context)
+        if (configuredMac.isBlank()) return true // No hardware MAC lock configured
+
+        var deviceMac = ""
+        if (!rawResponseBody.isNullOrBlank()) {
+            try {
+                val json = JSONObject(rawResponseBody)
+                deviceMac = json.optString("mac", "")
+                    .ifBlank { json.optString("esp32_mac", "") }
+            } catch (_: Exception) {}
+        }
+
+        if (deviceMac.isNotBlank()) {
+            val cleanDeviceMac = KioskSecurity.formatMacAddress(deviceMac)
+            val cleanConfiguredMac = KioskSecurity.formatMacAddress(configuredMac)
+            if (cleanDeviceMac.equals(cleanConfiguredMac, ignoreCase = true)) {
+                return true
+            } else {
+                Log.w(TAG, "Rejected ESP32: MAC '$cleanDeviceMac' does not match configured box MAC '$cleanConfiguredMac'")
+                return false
+            }
+        }
+
+        return false
     }
 
     private fun acquireMulticastLock() {
