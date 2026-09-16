@@ -71,12 +71,7 @@ class Esp32DiscoveryScanner(
             discoveryJob = scope.launch(Dispatchers.IO) {
                 try {
                     while (!isAlreadyBound() && isActive) {
-                        // 1. Direct probe of configured IP
-                        probeDirectCandidates()
-                        
-                        // 2. Send standard UDP discovery broadcast
                         sendUdpDiscoveryBroadcast(localIp)
-                        
                         delay(2000)
                     }
                 } finally {
@@ -135,16 +130,20 @@ class Esp32DiscoveryScanner(
                         // Validate canonical ESP32 response contract
                         if (message.contains("PISOPHONE_ESP32_RESPONSE")) {
                             var targetIp = senderIp
+                            var deviceMac = ""
+                            var sig = ""
                             try {
                                 val json = JSONObject(message)
                                 val ipInJson = json.optString("ip", "")
                                 if (ipInJson.isNotBlank() && ipInJson != "0.0.0.0" && ipInJson != "127.0.0.1") {
                                     targetIp = ipInJson
                                 }
+                                deviceMac = json.optString("mac", "").ifBlank { json.optString("esp32_mac", "") }
+                                sig = json.optString("sig", "").ifBlank { json.optString("signature", "") }
                             } catch (_: Exception) {}
 
-                            if (isEsp32MacMatching(message)) {
-                                Log.i(TAG, "[+] Discovered ESP32 Master via UDP at $targetIp")
+                            if (validateEsp32Response(deviceMac, targetIp, sig, message)) {
+                                Log.i(TAG, "[+] Discovered verified ESP32 Master via UDP at $targetIp (MAC=$deviceMac)")
                                 delegate.onEsp32Discovered(targetIp, message)
                             }
                         }
@@ -174,7 +173,13 @@ class Esp32DiscoveryScanner(
     fun sendUdpDiscoveryBroadcast(localIp: String) {
         try {
             acquireMulticastLock()
-            val data = DISCOVERY_PROBE_MSG.toByteArray(Charsets.UTF_8)
+            val configuredMac = KioskSecurity.getConfiguredEsp32Mac(context)
+            val probeMsg = if (configuredMac.isNotBlank()) {
+                "{\"type\":\"PISOPHONE_DISCOVER\",\"target_mac\":\"$configuredMac\"}"
+            } else {
+                DISCOVERY_PROBE_MSG
+            }
+            val data = probeMsg.toByteArray(Charsets.UTF_8)
             val broadcastTargets = mutableListOf("255.255.255.255")
 
             val activeIp = if (localIp.isNotBlank()) localIp else getLocalIpAddress()
@@ -213,18 +218,6 @@ class Esp32DiscoveryScanner(
         }
     }
 
-    /**
-     * Direct probe for the configured candidate IP.
-     */
-    suspend fun probeDirectCandidates() {
-        val configured = KioskSecurity.getConfiguredEsp32Ip(context)
-        if (configured.isNotBlank()) {
-            if (probeEsp32Connection(configured)) {
-                Log.i(TAG, "Direct probe succeeded for ESP32 at $configured")
-            }
-        }
-    }
-
     fun probeEsp32Connection(ip: String): Boolean {
         if (ip.isBlank()) return false
         val (host, port) = getEsp32HostAndPort(ip)
@@ -255,7 +248,38 @@ class Esp32DiscoveryScanner(
 
     /**
      * Single validation path for ESP32 identity (RULE 6 - SINGLE-AUTH-PATH).
-     * Extracts MAC from the response payload and validates against configured box MAC if set.
+     * Validates MAC match and verifies HMAC-SHA256 signature when secret is configured.
+     */
+    fun validateEsp32Response(deviceMac: String, targetIp: String, sig: String, rawResponseBody: String?): Boolean {
+        val configuredMac = KioskSecurity.getConfiguredEsp32Mac(context)
+        if (configuredMac.isNotBlank()) {
+            val cleanDeviceMac = KioskSecurity.formatMacAddress(deviceMac)
+            val cleanConfiguredMac = KioskSecurity.formatMacAddress(configuredMac)
+            if (!cleanDeviceMac.equals(cleanConfiguredMac, ignoreCase = true)) {
+                Log.w(TAG, "Rejected ESP32: MAC '$cleanDeviceMac' does not match configured box MAC '$cleanConfiguredMac'")
+                return false
+            }
+        }
+
+        val secret = KioskSecurity.getSharedSecret(context)
+        if (secret.isNotBlank()) {
+            if (sig.isBlank()) {
+                Log.w(TAG, "Rejected ESP32 UDP packet from $targetIp: Missing cryptographic signature!")
+                return false
+            }
+            val cleanDeviceMac = KioskSecurity.formatMacAddress(deviceMac)
+            val expectedSig = KioskSecurity.calculateHmac("DISCOVERY:$cleanDeviceMac:$targetIp", secret)
+            if (!KioskSecurity.constantTimeEquals(sig.lowercase(), expectedSig.lowercase())) {
+                Log.w(TAG, "Rejected ESP32 UDP packet from $targetIp: HMAC signature verification failed!")
+                return false
+            }
+        }
+
+        return true
+    }
+
+    /**
+     * Extracts MAC from response payload and validates against configured box MAC if set.
      */
     fun isEsp32MacMatching(rawResponseBody: String?): Boolean {
         val configuredMac = KioskSecurity.getConfiguredEsp32Mac(context)

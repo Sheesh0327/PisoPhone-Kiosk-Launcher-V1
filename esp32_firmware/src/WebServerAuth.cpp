@@ -134,9 +134,9 @@ void handleLogout() {
         totalEarningsSession = 0.0f;
         lastSavedTotalCoins = 0;
         lastSavedTotalEarnings = 0.0f;
-        prefs.begin("kiosk_cfg", false);
-        prefs.putULong("total_coins", 0);
-        prefs.putFloat("total_earnings", 0.0f);
+        prefs.begin(NVS_NAMESPACE, false);
+        prefs.putULong(NVS_KEY_TOTAL_COINS, 0);
+        prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, 0.0f);
         prefs.end();
         isVaultUnmasked = false;
         unmaskExpiryTimestamp = 0;

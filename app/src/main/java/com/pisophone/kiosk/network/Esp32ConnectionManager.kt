@@ -171,7 +171,7 @@ class Esp32ConnectionManager(
             while (isActive) {
                 try {
                     val currentIp = deviceIpProvider()
-                    val targetIp = esp32Ip ?: KioskSecurity.getConfiguredEsp32Ip(context).takeIf { it.isNotBlank() }
+                    val targetIp = esp32Ip
 
                     if (!targetIp.isNullOrBlank()) {
                         val (host, esp32Port) = discoveryScanner.getEsp32HostAndPort(targetIp)
@@ -261,7 +261,7 @@ class Esp32ConnectionManager(
             delegate.onOnlineStatusChanged(false, null)
             // Immediately trigger discovery to locate ESP32 if assigned a new DHCP IP
             discoveryScanner.triggerDiscovery(currentIp)
-            if (offlineDuration > 15000L && KioskSecurity.getConfiguredEsp32Ip(context).isBlank()) {
+            if (offlineDuration > 15000L) {
                 Log.w(TAG, "ESP32 disconnected for >15s, clearing stale cached IP for auto-rediscovery")
                 esp32Ip = null
             }
@@ -358,12 +358,13 @@ class Esp32ConnectionManager(
         synchronized(connectionLock) {
             attemptId = ++currentAttemptId
             forceCloseWebSocketLocked(activeWebSocket, "Re-arming slot", attemptId)
-            ip = esp32Ip ?: KioskSecurity.getConfiguredEsp32Ip(context).takeIf { it.isNotBlank() }
+            ip = esp32Ip
         }
 
         if (ip.isNullOrBlank()) {
-            Log.e(TAG, "Cannot arm slot: No active or configured ESP32 IP available")
+            Log.w(TAG, "Cannot arm slot: No discovered ESP32 IP available. Triggering discovery...")
             delegate.onOnlineStatusChanged(false, null)
+            discoveryScanner.triggerDiscovery("")
             return
         }
 

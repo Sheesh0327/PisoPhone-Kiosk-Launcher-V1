@@ -88,8 +88,8 @@ void handleCrashReport() {
 
 void handleCheckQualification() {
     if (!checkAuth()) return;
-    String p1 = webServer.hasArg("p1") ? webServer.arg("p1") : "";
-    String p2 = webServer.hasArg("p2") ? webServer.arg("p2") : "";
+    String p1 = webServer.hasArg(NVS_KEY_P1) ? webServer.arg(NVS_KEY_P1) : "";
+    String p2 = webServer.hasArg(NVS_KEY_P2) ? webServer.arg(NVS_KEY_P2) : "";
     int mins = webServer.hasArg("minutes") ? webServer.arg("minutes").toInt() : 15;
     if (mins <= 0) mins = 1;
 
@@ -161,10 +161,10 @@ void handleOneVsOne() {
         matchMinutes = webServer.arg("match_minutes").toInt();
     }
     
-    prefs.begin("kiosk_cfg", false);
-    prefs.putString("p1", p1Ip);
-    prefs.putString("p2", p2Ip);
-    prefs.putInt("match", matchMinutes);
+    prefs.begin(NVS_NAMESPACE, false);
+    prefs.putString(NVS_KEY_P1, p1Ip);
+    prefs.putString(NVS_KEY_P2, p2Ip);
+    prefs.putInt(NVS_KEY_MATCH, matchMinutes);
     prefs.end();
 
     String winner = webServer.hasArg("winner") ? webServer.arg("winner") : "";
@@ -205,12 +205,12 @@ void handleOneVsOne() {
             return;
         }
 
-        if (winner == "p1") {
+        if (winner == NVS_KEY_P1) {
             sendAddTime(matchMinutes, p1Ip);
             yield();
             sendAddTime(-matchMinutes, p2Ip);
             matchStatusMsg = "<div style='background:#e8f5e9;color:#2e7d32;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>🏆 <b>Player 1 Won:</b> Transferred +" + String(matchMinutes) + "m to Player 1 (" + p1Ip + ") and deducted -" + String(matchMinutes) + "m from Player 2 (" + p2Ip + ").</div>";
-        } else if (winner == "p2") {
+        } else if (winner == NVS_KEY_P2) {
             sendAddTime(matchMinutes, p2Ip);
             yield();
             sendAddTime(-matchMinutes, p1Ip);
