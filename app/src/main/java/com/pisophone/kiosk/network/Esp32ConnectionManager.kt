@@ -263,14 +263,12 @@ class Esp32ConnectionManager(
 
     private fun checkOfflineThreshold(currentIp: String) {
         val offlineDuration = System.currentTimeMillis() - lastHeartbeatTime
-        if (consecutiveHeartbeatFailures >= 5 || offlineDuration > HEARTBEAT_TIMEOUT_MS) {
+        if (consecutiveHeartbeatFailures >= 2 || offlineDuration > 8000L) {
             delegate.onOnlineStatusChanged(false, null)
             // Immediately trigger discovery to locate ESP32 if assigned a new DHCP IP
             discoveryScanner.triggerDiscovery(currentIp)
-            if (offlineDuration > HEARTBEAT_TIMEOUT_MS) {
-                Log.w(TAG, "ESP32 disconnected for >${HEARTBEAT_TIMEOUT_MS}ms, clearing stale cached IP for auto-rediscovery")
-                esp32Ip = null
-            }
+            Log.w(TAG, "ESP32 heartbeat failed ($consecutiveHeartbeatFailures failures, ${offlineDuration}ms offline), clearing stale cached IP for fast rediscovery")
+            esp32Ip = null
         }
     }
 

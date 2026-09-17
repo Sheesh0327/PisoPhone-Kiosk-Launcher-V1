@@ -435,9 +435,9 @@ void processUdpDiscovery() {
         }
     }
 
-    // Periodic announcement beacon (every 10 seconds while connected to WiFi)
+    // Periodic announcement beacon (every 2.5 seconds while connected to WiFi for fast DHCP recovery)
     static unsigned long lastUdpAnnounceMs = 0;
-    if (millis() - lastUdpAnnounceMs > 10000 || lastUdpAnnounceMs == 0) {
+    if (millis() - lastUdpAnnounceMs > 2500 || lastUdpAnnounceMs == 0) {
         lastUdpAnnounceMs = millis();
         sendUdpDiscoveryResponse(IPAddress(255, 255, 255, 255), UDP_DISCOVERY_PORT);
     }
