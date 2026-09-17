@@ -6,10 +6,10 @@
 // ============================================================================
 // TIMING CONSTANTS
 // ============================================================================
-static const unsigned long INTER_PULSE_TIMEOUT_MS = 300;  // 300ms gap to finish accumulating pulses
-static const unsigned long IN_FLIGHT_PULSE_GRACE_MS = 600; // Window to consider pulses still in flight
+static const unsigned long INTER_PULSE_TIMEOUT_MS = 280;  // 280ms gap of silence to finish accumulating continuous pulses
+static const unsigned long IN_FLIGHT_PULSE_GRACE_MS = 560; // 2x inter-pulse window to consider pulses still in flight
 static const unsigned long DRAIN_TIMEOUT_GUARD_MS   = 10000; // Max time to wait for final in-flight pulse delivery (10s)
-static const unsigned long IDLE_DRAIN_GRACE_MS      = 1500;  // 1.5 seconds window to wait for a potential coin to register its first pulse
+static const unsigned long IDLE_DRAIN_GRACE_MS      = 1000;  // Grace window to wait if ending while idle
 
 // ============================================================================
 // INTERNAL STATE
@@ -146,8 +146,9 @@ bool isCoinSlotBusy(const String& sessionId, CoinSlotOwnerType ownerType) {
         return false;
     }
 
-    // Auto-reclaim expired ARMED session to prevent lockup
     unsigned long now = millis();
+
+    // Auto-reclaim expired ARMED session to prevent lockup
     if (currentState == CoinSlotState::ARMED) {
         bool ttlExpired = (now >= sessionArmedUntil);
         bool maxDurationExpired = (sessionStartTimeMs > 0 && (now - sessionStartTimeMs >= MAX_SESSION_DURATION));
@@ -160,13 +161,23 @@ bool isCoinSlotBusy(const String& sessionId, CoinSlotOwnerType ownerType) {
         }
     }
 
-    // If held by the SAME session and matching owner type, it is not busy to that session
+    // Auto-reclaim expired DRAINING session to prevent lockup
+    if (currentState == CoinSlotState::DRAINING) {
+        if (now >= drainDeadlineMs || (maxDrainDeadlineMs > 0 && now >= maxDrainDeadlineMs)) {
+            Serial.printf("[🪙 COIN SLOT] Draining session '%s' expired during busy check. Auto-releasing.\n",
+                          activeSessionId.c_str());
+            finalizeSessionRelease("DRAIN_TIMEOUT");
+            return false;
+        }
+    }
+
+    // If held by the SAME session (or owner ANY match), it is not busy to that session
     if (sessionId.length() > 0 && activeSessionId == sessionId) {
         if (ownerType == CoinSlotOwnerType::ANY || activeOwnerType == CoinSlotOwnerType::ANY || activeOwnerType == ownerType) {
             return false;
         }
     }
-    // Held by a different session or different owner type -> busy
+    // Held by a different session -> busy
     return true;
 }
 

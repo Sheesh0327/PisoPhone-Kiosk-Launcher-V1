@@ -234,10 +234,12 @@ void processWebSocketServer() {
             String clientIp = newClient.remoteIP().toString();
             int wsSlotIdx = findSlotIndexForDevice(reqDeviceId, clientIp);
             if (wsSlotIdx < 0) {
-                updateDeviceTelemetry(reqDeviceId, clientIp, 0, 0, 100, false, ts);
+                updateDeviceTelemetry(reqDeviceId, clientIp, 0, 0, -1, false, ts);
                 Serial.printf("[-] WS Mutex Rejected for %s (%s): Device is not paired to any slot on this ESP32\n", 
                     reqDeviceId.c_str(), clientIp.c_str());
-                newClient.print("HTTP/1.1 423 Locked\r\n\r\nSLOT_NOT_PAIRED");
+                newClient.print("HTTP/1.1 423 Locked\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: 29\r\n\r\n{\"error\":\"SLOT_NOT_PAIRED\"}");
+                newClient.flush();
+                delay(10);
                 newClient.stop();
                 return;
             }
@@ -245,7 +247,9 @@ void processWebSocketServer() {
             if (!wsIsActive) {
                 Serial.printf("[-] WS Mutex Rejected for %s: Slot Expired / Lockdown Active (Slot #%d)\n", 
                     reqDeviceId.c_str(), licenseSlots[wsSlotIdx].slotNum);
-                newClient.print("HTTP/1.1 423 Locked\r\n\r\nSLOT_EXPIRED");
+                newClient.print("HTTP/1.1 423 Locked\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: 26\r\n\r\n{\"error\":\"SLOT_EXPIRED\"}");
+                newClient.flush();
+                delay(10);
                 newClient.stop();
                 return;
             }
@@ -253,7 +257,9 @@ void processWebSocketServer() {
             // 2. Hardware Mutex Check (Single-Client Lock)
             if (isCoinSlotBusy(reqDeviceId, CoinSlotOwnerType::PHONE)) {
                 Serial.printf("[-] WS Mutex Rejected for %s: Slot BUSY with %s\n", reqDeviceId.c_str(), getActiveCoinSessionId().c_str());
-                newClient.print("HTTP/1.1 409 Conflict\r\n\r\nSLOT_BUSY");
+                newClient.print("HTTP/1.1 409 Conflict\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: 23\r\n\r\n{\"event\":\"SLOT_BUSY\"}");
+                newClient.flush();
+                delay(10);
                 newClient.stop();
                 return;
             }

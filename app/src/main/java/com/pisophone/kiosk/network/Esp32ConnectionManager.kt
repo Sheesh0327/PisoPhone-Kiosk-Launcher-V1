@@ -498,7 +498,15 @@ class Esp32ConnectionManager(
                         Log.e(TAG, "Slot is EXPIRED on ESP32 (HTTP $code). Enforcing lockdown.")
                         delegate.onSlotLockdown("Please activate device slot on ESP32 Portal.", 0, 0L)
                     } else {
-                        Log.w(TAG, "WebSocket arming failed (HTTP $code) - letting heartbeat loop manage connectivity")
+                        Log.w(TAG, "WebSocket arming failed (HTTP $code: $msg)")
+                        // If we are waiting for payment, revert state and alert user
+                        val appState = delegate.getAppState()
+                        if (appState == 1 || appState == 3) {
+                            delegate.onSlotBusy()
+                            Handler(Looper.getMainLooper()).post {
+                                Toast.makeText(context, "Could not connect to coin slot. Please try again.", Toast.LENGTH_SHORT).show()
+                            }
+                        }
                     }
                 } else {
                     Log.d(TAG, "Suppressing stale WebSocket failure lifecycle side effects for attempt #$attemptId")

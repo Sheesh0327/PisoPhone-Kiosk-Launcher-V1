@@ -43,7 +43,7 @@ int maxLicensedSlots = DEFAULT_MAX_SLOTS;
 int targetPort        = DEFAULT_PORT;
 int minutesPerCoin    = DEFAULT_MINUTES_PER_COIN;
 
-const unsigned long ARM_TTL = 15000;
+const unsigned long ARM_TTL = 20000;
 const unsigned long MAX_SESSION_DURATION = 120000;
 
 String p1Ip = "";

@@ -150,8 +150,8 @@ void loop() {
     // 0. Process Hardware Fallback Reset Pin (GPIO 2 -> GND for 5 seconds)
     processHardwareResetPin();
 
-    // 1. Process Hardware Coin Detectors (Universal Pulse Sensor)
-    processUniversalCoinDetector();
+    // 1. Process Unified Coin Slot Manager (Arming, Pulse Accumulation & Draining)
+    processCoinSlotSession();
 
     // 2. Process Coin Slot Power/Enable Relay (Synchronized with Arming / Insert Coin)
     processRelayState();
