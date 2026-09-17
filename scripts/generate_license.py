@@ -27,6 +27,12 @@ def format_mac(mac: str) -> str:
         return ":".join(cleaned[i:i+2] for i in range(0, 12, 2))
     return mac.strip().upper()
 
+def clean_mac_str(mac: str) -> str:
+    cleaned = "".join(c for c in mac.upper() if c in "0123456789ABCDEF")
+    if len(cleaned) == 12:
+        return cleaned
+    return mac.strip().upper().replace(":", "")
+
 def parse_box_request_code(code_str: str, secret: str = DEFAULT_SECRET):
     """
     Parses Box Request Code: PISO-<MAC>-<CURRENT_SLOTS>-<MAX_SLOTS>-<CHECKSUM>
@@ -71,8 +77,8 @@ def parse_box_request_code(code_str: str, secret: str = DEFAULT_SECRET):
     return None, 0, 0, False, "Unrecognized Request Code or MAC format"
 
 def generate_slot_token(mac: str, slots: int, secret: str = DEFAULT_SECRET):
-    formatted_mac = format_mac(mac)
-    payload = f"PISOSLOT:{formatted_mac}:{slots}"
+    mac_clean = clean_mac_str(mac)
+    payload = f"PISOSLOT:{mac_clean}:{slots}"
     
     signature = hmac.new(
         secret.encode('utf-8'),
@@ -81,7 +87,7 @@ def generate_slot_token(mac: str, slots: int, secret: str = DEFAULT_SECRET):
     ).hexdigest().upper()
     
     short_key = signature[:8]
-    full_token = f"PISOSLOT.{formatted_mac}.{slots}.{signature.lower()}"
+    full_token = f"PISOSLOT.{mac_clean}.{slots}.{short_key}"
     return short_key, full_token
 
 def run_gui():
@@ -145,7 +151,7 @@ def run_gui():
 
     ent_code = tk.Entry(card, font=("Courier", 10, "bold"), bg="#0f172a", fg="#34d399", insertbackground="white", bd=1, relief="solid")
     ent_code.pack(fill="x", ipady=6, pady=(0, 6))
-    ent_code.insert(0, "PISO-AABBCCDDEEFF-1-6-8F3A")
+    ent_code.insert(0, "PISO-AABBCCDDEEFF-1-6-E183")
 
     # Machine Details Badge Box
     frame_info = tk.Frame(card, bg="#0f172a", padx=10, pady=8, bd=1, relief="solid")
@@ -180,7 +186,7 @@ def run_gui():
             )
         else:
             lbl_info_mac.config(text="📟 Enter Box Request Code or MAC", fg="#ef4444")
-            lbl_info_slots.config(text="Paste code from ESP32 Dashboard (e.g. PISO-AABBCCDDEEFF-1-6-8F3A)", fg="#94a3b8")
+            lbl_info_slots.config(text="Paste code from ESP32 Dashboard (e.g. PISO-AABBCCDDEEFF-1-6-E183)", fg="#94a3b8")
 
     ent_code.bind("<KeyRelease>", update_parsed_info)
 
@@ -188,7 +194,7 @@ def run_gui():
     lbl_slots = tk.Label(card, text="Target Total Capacity (Seats):", font=("Helvetica", 10, "bold"), bg=card_bg, fg=fg_white, anchor="w")
     lbl_slots.pack(fill="x", pady=(0, 2))
 
-    slot_options = ["2 (Dual)", "3 (Triple)", "4 (Quad)", "5 (Penta)", "6 (Max Hardware)"]
+    slot_options = ["1 (Single)", "2 (Dual)", "3 (Triple)", "4 (Quad)", "5 (Penta)", "6 (Max Hardware)"]
     var_slots = tk.StringVar(value="3 (Triple)")
     opt_slots = ttk.Combobox(card, textvariable=var_slots, values=slot_options, state="readonly", font=("Helvetica", 10))
     opt_slots.pack(fill="x", ipady=4, pady=(0, 12))

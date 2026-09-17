@@ -18,7 +18,7 @@ void handleHeartbeat() {
     
     int timeRem = webServer.hasArg("time") ? webServer.arg("time").toInt() : 0;
     int state = webServer.hasArg("state") ? webServer.arg("state").toInt() : 0;
-    int battery = webServer.hasArg("battery") ? webServer.arg("battery").toInt() : 100;
+    int battery = webServer.hasArg("battery") ? webServer.arg("battery").toInt() : -1;
     bool charging = webServer.hasArg("charging") ? (webServer.arg("charging").toInt() == 1 || webServer.arg("charging") == "true") : false;
 
     if (deviceId.length() == 0 && reqIp.length() > 0 && reqIp != "127.0.0.1" && reqIp != "0.0.0.0") {

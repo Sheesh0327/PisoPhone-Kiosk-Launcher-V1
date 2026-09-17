@@ -51,16 +51,17 @@ bool applySlotToken(String token) {
 
     String secKey = (sharedSecret.length() > 0) ? sharedSecret : String(MASTER_CRYPTO_SECRET);
 
-    // Canonical Single Verification Path: Match target slot count (2..MAX_SUPPORTED_SLOTS)
-    for (int s = 2; s <= MAX_SUPPORTED_SLOTS; s++) {
+    // Canonical Single Verification Path: Match target slot count (1..MAX_SUPPORTED_SLOTS)
+    for (int s = 1; s <= MAX_SUPPORTED_SLOTS; s++) {
         String payload = "PISOSLOT:" + cleanMac + ":" + String(s);
         String expectedSig = calculateHMAC(payload, secKey);
         expectedSig.toUpperCase();
 
         String shortSig = expectedSig.substring(0, 8);
         String fullToken = "PISOSLOT." + cleanMac + "." + String(s) + "." + shortSig;
+        String fullTokenLong = "PISOSLOT." + cleanMac + "." + String(s) + "." + expectedSig;
 
-        if (token.equalsIgnoreCase(shortSig) || token.equalsIgnoreCase(fullToken) || token.equalsIgnoreCase(expectedSig)) {
+        if (token.equalsIgnoreCase(shortSig) || token.equalsIgnoreCase(fullToken) || token.equalsIgnoreCase(fullTokenLong) || token.equalsIgnoreCase(expectedSig)) {
             maxLicensedSlots = min(max(maxLicensedSlots, s), MAX_SUPPORTED_SLOTS);
             for (int i = 0; i < maxLicensedSlots; i++) {
                 licenseSlots[i].active = true;

@@ -41,6 +41,9 @@ static String getControllerCredential() {
 
 bool handleControllerWebSocketHandshake(WiFiClient& client, const String& request, const String& secKey) {
     String sessionId = extractUrlParam(request, "session_id=");
+    if (sessionId.length() == 0) {
+        sessionId = extractUrlParam(request, "device_id=");
+    }
     String tsStr = extractUrlParam(request, "ts=");
     String sig = extractUrlParam(request, "sig=");
     
@@ -50,7 +53,7 @@ bool handleControllerWebSocketHandshake(WiFiClient& client, const String& reques
 
     // 1. Parameter presence check
     if (sessionId.length() == 0 || tsStr.length() == 0 || sig.length() == 0 || secKey.length() == 0) {
-        Serial.println("[-] Controller WS: Missing session_id, ts, sig, or secKey");
+        Serial.println("[-] Controller WS: Missing session_id/device_id, ts, sig, or secKey");
         client.print("HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"error\":\"MISSING_AUTH_PARAMS\"}");
         client.stop();
         return false;
@@ -68,15 +71,25 @@ bool handleControllerWebSocketHandshake(WiFiClient& client, const String& reques
         return false;
     }
 
-    // 3. Replay Protection & Monotonic Timestamp Verification
+    // 3. Replay Protection (Isolated to controllers - does not pollute PisoPhone trackedDevices)
     unsigned long long ts = strtoull(tsStr.c_str(), NULL, 10);
-    if (!checkReplayProtection(sessionId, ts)) {
+    static unsigned long long lastControllerNonceTs = 0;
+    unsigned long long currentMasterTs = getCurrentMasterTimeMs();
+    if (currentMasterTs > 300000ULL) {
+        if (ts < (currentMasterTs - 300000ULL) || ts > (currentMasterTs + 300000ULL)) {
+            Serial.printf("[-] Controller WS Auth Failed: Timestamp out of master window (ts=%llu)\n", ts);
+            client.print("HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\n\r\n{\"error\":\"TIMESTAMP_OUT_OF_WINDOW\"}");
+            client.stop();
+            return false;
+        }
+    }
+    if (lastControllerNonceTs > 30000ULL && ts + 30000ULL < lastControllerNonceTs) {
         Serial.printf("[-] Controller WS Auth Failed for session '%s': Replay Detected (ts=%llu)\n", sessionId.c_str(), ts);
         client.print("HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\n\r\n{\"error\":\"REPLAY_DETECTED\"}");
         client.stop();
         return false;
     }
-    recordDeviceNonce(sessionId, ts);
+    if (ts > lastControllerNonceTs) lastControllerNonceTs = ts;
     if (ts > 0) updateMasterTime(ts);
 
     // Allow the previous controller a short interval to acknowledge the final coin.
@@ -181,18 +194,19 @@ void processControllerWebSocket() {
 
     if (!controllerClient.connected()) {
         Serial.printf("[*] Controller WS Client '%s' disconnected. Releasing slot.\n", boundSessionId.c_str());
+        controllerClient.stop();
         controllerConnected = false;
         controllerSessionId = "";
         controllerSessionEnding = false;
         controllerCloseAfterMs = 0;
-        releaseCoinSlot(boundSessionId, CoinSlotOwnerType::CONTROLLER, false);
+        releaseCoinSlot(boundSessionId, CoinSlotOwnerType::CONTROLLER, false, "DISCONNECTED");
         return;
     }
 
     if (controllerClient.available()) {
         String frameText = readWsText(controllerClient);
         if (frameText.length() > 0) {
-            if (!controllerSessionEnding) {
+            if (!controllerSessionEnding && frameText != "CLOSE" && frameText != "DONE") {
                 refreshCoinSlotTtl(boundSessionId, CoinSlotOwnerType::CONTROLLER, ARM_TTL);
             }
 
@@ -221,9 +235,11 @@ void processControllerWebSocket() {
             return;
         }
         if (frameText == "DONE" || frameText == "CLOSE") {
-            Serial.printf("[⚡ CONTROLLER WS] '%s' received for '%s'. Initiating release lifecycle without premature socket abort.\n", 
+            Serial.printf("[⚡ CONTROLLER WS] '%s' received for '%s'. Releasing slot and draining.\n", 
                           frameText.c_str(), boundSessionId.c_str());
-            releaseCoinSlot(boundSessionId, CoinSlotOwnerType::CONTROLLER, false);
+            controllerSessionEnding = true;
+            controllerCloseAfterMs = millis() + 500;
+            releaseCoinSlot(boundSessionId, CoinSlotOwnerType::CONTROLLER, false, "CLIENT_CLOSED");
             return;
         }
     } else if (controllerSessionEnding) {
@@ -235,7 +251,21 @@ void processControllerWebSocket() {
             controllerCloseAfterMs = 0;
         }
     } else {
-        // Keep session armed while controller client socket remains open and connected
-        refreshCoinSlotTtl(boundSessionId, CoinSlotOwnerType::CONTROLLER, ARM_TTL);
+        // Active ping probe every 3s to detect abrupt client termination
+        static unsigned long lastCtrlPingMs = 0;
+        if (millis() - lastCtrlPingMs >= 3000) {
+            lastCtrlPingMs = millis();
+            uint8_t pingFrame[2] = {0x89, 0x00};
+            if (controllerClient.write(pingFrame, 2) != 2) {
+                Serial.printf("[*] Controller WS Client '%s' ping write failed. Releasing.\n", boundSessionId.c_str());
+                controllerClient.stop();
+                controllerConnected = false;
+                controllerSessionId = "";
+                controllerSessionEnding = false;
+                controllerCloseAfterMs = 0;
+                releaseCoinSlot(boundSessionId, CoinSlotOwnerType::CONTROLLER, false, "SOCKET_DEAD");
+                return;
+            }
+        }
     }
 }

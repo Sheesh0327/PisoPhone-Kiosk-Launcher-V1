@@ -202,15 +202,18 @@ window.fetchDeviceStatus = function() {
             let html = '';
             devices.forEach((dev) => {
                 const name = (dev.name && dev.name !== dev.id && !dev.name.startsWith('Terminal') && (!dev.id || !dev.name.includes(dev.id))) ? dev.name : ('PisoPhone ' + dev.slotNum);
-                const battery = (typeof dev.battery === 'number' && dev.battery >= 0) ? dev.battery : 100;
+                const hasBat = (typeof dev.battery === 'number' && dev.battery >= 0);
+                const battery = hasBat ? dev.battery : -1;
                 const isCharging = !!dev.charging;
                 const isExp = (!dev.active);
                 
                 let batteryStatusClass = 'status-good';
-                if (battery <= 15) {
-                    batteryStatusClass = 'status-critical';
-                } else if (battery <= 30) {
-                    batteryStatusClass = 'status-warning';
+                if (hasBat) {
+                    if (battery <= 15) {
+                        batteryStatusClass = 'status-critical';
+                    } else if (battery <= 30) {
+                        batteryStatusClass = 'status-warning';
+                    }
                 }
 
                 if (!dev.isBound && isExp) {
@@ -250,7 +253,12 @@ window.fetchDeviceStatus = function() {
                     }
                         
                     const batteryIcon = isCharging ? '⚡' : '🔋';
-                    const batteryText = (isCharging ? '⚡ ' : '') + battery + '%';
+                    const batteryText = hasBat ? ((isCharging ? '⚡ ' : '') + battery + '%') : (isCharging ? '⚡ Charging' : '🔋 --');
+                    const batteryBarHtml = hasBat
+                        ? ('<div class="battery-bar-bg" style="width: 50px; height: 6px; display: inline-block; margin-left: 4px;">' +
+                           '<div class="battery-bar-fill" style="width: ' + battery + '%;"></div>' +
+                           '</div>')
+                        : '';
 
                     html += '<div class="device-row" ' + (isExp ? 'style="opacity: 0.8;"' : '') + '>' +
                                 '<div class="device-row-identity">' +
@@ -267,9 +275,7 @@ window.fetchDeviceStatus = function() {
                                     '</div>' +
                                     '<div class="device-row-battery ' + batteryStatusClass + '">' +
                                         '<span style="font-size: 12px; font-weight: 700;">' + batteryIcon + ' ' + batteryText + '</span>' +
-                                        '<div class="battery-bar-bg" style="width: 50px; height: 6px; display: inline-block; margin-left: 4px;">' +
-                                            '<div class="battery-bar-fill" style="width: ' + battery + '%;"></div>' +
-                                        '</div>' +
+                                        batteryBarHtml +
                                     '</div>' +
                                 '</div>' +
                                 '<div class="device-row-actions">' +

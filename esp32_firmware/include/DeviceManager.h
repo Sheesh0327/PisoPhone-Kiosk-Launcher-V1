@@ -17,9 +17,9 @@ String getDeviceNameByIpOrId(String reqIp, String devId = "");
 bool checkReplayProtection(String deviceId, unsigned long long newTs);
 bool verifyTelemetryAuth(String deviceId, String tsStr, String sig);
 void recordDeviceNonce(String deviceId, unsigned long long ts);
-void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int state, int battery = 100, bool charging = false, unsigned long long ts = 0);
+void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int state, int battery = -1, bool charging = false, unsigned long long ts = 0);
 
-int getTrackedTimeRemaining(String ip, unsigned long maxAgeMs = 15000, String devId = "");
+int getTrackedTimeRemaining(String ip, unsigned long maxAgeMs = 40000, String devId = "");
 int getTrackedBatteryLevel(String ip, String devId = "");
 bool getTrackedChargingState(String ip, String devId = "");
 

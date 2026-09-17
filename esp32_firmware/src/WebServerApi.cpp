@@ -223,12 +223,12 @@ void handleApiStatus() {
         bool isBound = (devId.length() > 0);
         
         int rem = -1;
-        int bat = 100;
+        int bat = -1;
         bool chg = false;
         bool online = false;
         
         if (isBound) {
-            rem = getTrackedTimeRemaining(ip, 15000, devId);
+            rem = getTrackedTimeRemaining(ip, 40000, devId);
             bat = getTrackedBatteryLevel(ip, devId);
             chg = getTrackedChargingState(ip, devId);
             online = (rem >= 0);
