@@ -12,10 +12,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.unit.dp
 import com.pisophone.kiosk.ComposeOverlayView
 import com.pisophone.kiosk.model.BatteryStatus
-import com.pisophone.kiosk.overlay.ui.ArenaModeBanner
 import com.pisophone.kiosk.overlay.ui.BlockScreen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
@@ -68,8 +66,6 @@ class KioskOverlay(
         isArenaModeFlow = isArenaModeFlow,
         arenaPlayerRoleFlow = arenaPlayerRoleFlow,
         arenaStakeMinutesFlow = arenaStakeMinutesFlow,
-        isArenaBannerVisibleFlow = isArenaBannerVisibleFlow,
-        onDismissArenaBanner = onDismissArenaBanner,
         onInsertCoinClick = onInsertCoinClick,
         onDoneClick = onDoneClick,
         onThemeChange = onThemeChange,
@@ -90,6 +86,8 @@ class KioskOverlay(
         isArenaModeFlow = isArenaModeFlow,
         arenaPlayerRoleFlow = arenaPlayerRoleFlow,
         arenaStakeMinutesFlow = arenaStakeMinutesFlow,
+        isArenaBannerVisibleFlow = isArenaBannerVisibleFlow,
+        onDismissArenaBanner = onDismissArenaBanner,
         onInsertCoinClick = onInsertCoinClick,
         onDoneClick = onDoneClick
     )
@@ -140,8 +138,6 @@ class LockScreenOverlay(
     private val isArenaModeFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
     private val arenaPlayerRoleFlow: StateFlow<Int> = kotlinx.coroutines.flow.MutableStateFlow(0),
     private val arenaStakeMinutesFlow: StateFlow<Int> = kotlinx.coroutines.flow.MutableStateFlow(15),
-    private val isArenaBannerVisibleFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
-    private val onDismissArenaBanner: () -> Unit = {},
     private val onInsertCoinClick: () -> Unit,
     private val onDoneClick: () -> Unit,
     private val onThemeChange: () -> Unit,
@@ -168,7 +164,7 @@ class LockScreenOverlay(
         }
     }
 
-    private fun updateWindowFlagsAndDimensions(isLocked: Boolean, isBannerOnly: Boolean) {
+    private fun updateWindowFlagsAndDimensions(visible: Boolean) {
         val currentView = overlayView?.view ?: return
         if (!isViewAdded) return
         val baseFlags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or 
@@ -181,13 +177,8 @@ class LockScreenOverlay(
         layoutParams.width = WindowManager.LayoutParams.MATCH_PARENT
         layoutParams.height = WindowManager.LayoutParams.MATCH_PARENT
 
-        if (isLocked) {
+        if (visible) {
             layoutParams.flags = baseFlags
-            currentView.alpha = 1f
-        } else if (isBannerOnly) {
-            layoutParams.flags = baseFlags or 
-                                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or 
-                                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
             currentView.alpha = 1f
         } else {
             layoutParams.flags = baseFlags or 
@@ -229,7 +220,6 @@ class LockScreenOverlay(
         overlayView = newOverlay
 
         val initialVisible = isFullySetup && (appStateFlow.value == 0 || appStateFlow.value == 1)
-        val initialBanner = isFullySetup && isArenaBannerVisibleFlow.value
         val baseFlags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or 
                         WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                         WindowManager.LayoutParams.FLAG_FULLSCREEN or
@@ -241,11 +231,6 @@ class LockScreenOverlay(
         layoutParams.height = WindowManager.LayoutParams.MATCH_PARENT
         if (initialVisible) {
             layoutParams.flags = baseFlags
-            newOverlay.view.alpha = 1f
-        } else if (initialBanner) {
-            layoutParams.flags = baseFlags or 
-                                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or 
-                                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
             newOverlay.view.alpha = 1f
         } else {
             layoutParams.flags = baseFlags or 
@@ -272,117 +257,89 @@ class LockScreenOverlay(
             val isArenaMode by isArenaModeFlow.collectAsState()
             val arenaPlayerRole by arenaPlayerRoleFlow.collectAsState()
             val arenaStakeMinutes by arenaStakeMinutesFlow.collectAsState()
-            val isArenaBannerVisible by isArenaBannerVisibleFlow.collectAsState()
             val activationUpdateVersion by com.pisophone.kiosk.security.KioskActivationManager.activationUpdateVersion.collectAsState()
             
             val isSetupReady = remember(activationUpdateVersion) { 
                 com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(context)
             }
             
-            val isLockedVisible = isSetupReady && (appState == 0 || appState == 1)
-            val isBannerOnlyVisible = isSetupReady && isArenaBannerVisible && !isLockedVisible
+            val isVisible = isSetupReady && (appState == 0 || appState == 1)
 
             val unlockAlpha by androidx.compose.animation.core.animateFloatAsState(
-                targetValue = if (isLockedVisible) 1f else 0f,
+                targetValue = if (isVisible) 1f else 0f,
                 animationSpec = tween(durationMillis = 350, easing = androidx.compose.animation.core.FastOutSlowInEasing),
                 label = "unlockAlpha"
             )
             val unlockScale by androidx.compose.animation.core.animateFloatAsState(
-                targetValue = if (isLockedVisible) 1f else 1.05f,
+                targetValue = if (isVisible) 1f else 1.05f,
                 animationSpec = tween(durationMillis = 350, easing = androidx.compose.animation.core.FastOutSlowInEasing),
                 label = "unlockScale"
             )
 
-            LaunchedEffect(isLockedVisible, isBannerOnlyVisible) {
-                if (isLockedVisible) {
-                    updateWindowFlagsAndDimensions(isLocked = true, isBannerOnly = false)
-                } else if (isBannerOnlyVisible) {
-                    updateWindowFlagsAndDimensions(isLocked = false, isBannerOnly = true)
+            LaunchedEffect(isVisible) {
+                if (isVisible) {
+                    updateWindowFlagsAndDimensions(true)
                 } else {
                     delay(350)
-                    updateWindowFlagsAndDimensions(isLocked = false, isBannerOnly = false)
+                    updateWindowFlagsAndDimensions(false)
                 }
             }
 
-            LaunchedEffect(isArenaBannerVisible) {
-                if (isArenaBannerVisible) {
-                    delay(3800L)
-                    onDismissArenaBanner()
-                }
-            }
-
-            Box(modifier = Modifier.fillMaxSize()) {
-                if (isLockedVisible || unlockAlpha > 0.01f) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer(
-                                alpha = unlockAlpha,
-                                scaleX = unlockScale,
-                                scaleY = unlockScale
-                            )
-                    ) {
-                        if (appState == 0 || appState == 4 || (appState == 2 && !isLockedVisible)) {
-                            BlockScreen(
-                                onInsertCoin = onInsertCoinClick,
-                                isWaiting = false,
-                                coinsInserted = 0,
-                                paymentTimeout = 0,
-                                onDoneClick = {},
-                                isEsp32Online = isEsp32Online,
-                                isSlotBusy = isSlotBusy,
-                                pricePerCoin = pricePerCoin,
-                                minutesPerCoin = minutesPerCoin,
-                                deviceIp = deviceIp,
-                                slotNumber = slotNumber,
-                                themeIndex = themeIndex,
-                                batteryStatus = batteryStatus,
-                                onThemeChange = onThemeChange,
-                                slotWarningDaysLeft = slotWarningDaysLeft,
-                                isSlotExpired = isSlotExpired,
-                                slotExpiryReason = slotExpiryReason,
-                                isArenaMode = isArenaMode,
-                                arenaRole = arenaPlayerRole,
-                                arenaStakeMinutes = arenaStakeMinutes
-                            )
-                        } else if (appState == 1 || appState == 3 || coinsInserted > 0) {
-                            BlockScreen(
-                                onInsertCoin = onInsertCoinClick,
-                                isWaiting = isLockedVisible,
-                                coinsInserted = coinsInserted,
-                                paymentTimeout = paymentTimeout,
-                                onDoneClick = onDoneClick,
-                                isEsp32Online = isEsp32Online,
-                                isSlotBusy = isSlotBusy,
-                                pricePerCoin = pricePerCoin,
-                                minutesPerCoin = minutesPerCoin,
-                                deviceIp = deviceIp,
-                                slotNumber = slotNumber,
-                                themeIndex = themeIndex,
-                                batteryStatus = batteryStatus,
-                                onThemeChange = onThemeChange,
-                                slotWarningDaysLeft = slotWarningDaysLeft,
-                                isSlotExpired = isSlotExpired,
-                                slotExpiryReason = slotExpiryReason,
-                                isArenaMode = isArenaMode,
-                                arenaRole = arenaPlayerRole,
-                                arenaStakeMinutes = arenaStakeMinutes
-                            )
-                        }
-                    }
-                }
-
-                if (isArenaBannerVisible) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 28.dp),
-                        contentAlignment = androidx.compose.ui.Alignment.TopCenter
-                    ) {
-                        ArenaModeBanner(
-                            visible = isArenaBannerVisible,
-                            playerRole = arenaPlayerRole,
-                            stakeMinutes = arenaStakeMinutes
+            if (isVisible || unlockAlpha > 0.01f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer(
+                            alpha = unlockAlpha,
+                            scaleX = unlockScale,
+                            scaleY = unlockScale
+                        )
+                ) {
+                    if (appState == 0 || appState == 4 || (appState == 2 && !isVisible)) {
+                        BlockScreen(
+                            onInsertCoin = onInsertCoinClick,
+                            isWaiting = false,
+                            coinsInserted = 0,
+                            paymentTimeout = 0,
+                            onDoneClick = {},
+                            isEsp32Online = isEsp32Online,
+                            isSlotBusy = isSlotBusy,
+                            pricePerCoin = pricePerCoin,
+                            minutesPerCoin = minutesPerCoin,
+                            deviceIp = deviceIp,
+                            slotNumber = slotNumber,
+                            themeIndex = themeIndex,
+                            batteryStatus = batteryStatus,
+                            onThemeChange = onThemeChange,
+                            slotWarningDaysLeft = slotWarningDaysLeft,
+                            isSlotExpired = isSlotExpired,
+                            slotExpiryReason = slotExpiryReason,
+                            isArenaMode = isArenaMode,
+                            arenaRole = arenaPlayerRole,
+                            arenaStakeMinutes = arenaStakeMinutes
+                        )
+                    } else if (appState == 1 || appState == 3 || coinsInserted > 0) {
+                        BlockScreen(
+                            onInsertCoin = onInsertCoinClick,
+                            isWaiting = isVisible,
+                            coinsInserted = coinsInserted,
+                            paymentTimeout = paymentTimeout,
+                            onDoneClick = onDoneClick,
+                            isEsp32Online = isEsp32Online,
+                            isSlotBusy = isSlotBusy,
+                            pricePerCoin = pricePerCoin,
+                            minutesPerCoin = minutesPerCoin,
+                            deviceIp = deviceIp,
+                            slotNumber = slotNumber,
+                            themeIndex = themeIndex,
+                            batteryStatus = batteryStatus,
+                            onThemeChange = onThemeChange,
+                            slotWarningDaysLeft = slotWarningDaysLeft,
+                            isSlotExpired = isSlotExpired,
+                            slotExpiryReason = slotExpiryReason,
+                            isArenaMode = isArenaMode,
+                            arenaRole = arenaPlayerRole,
+                            arenaStakeMinutes = arenaStakeMinutes
                         )
                     }
                 }
@@ -466,8 +423,7 @@ class LockScreenOverlay(
             currentView.onResume()
             val isFullySetup = com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(context)
             val isVisible = isFullySetup && (appStateFlow.value == 0 || appStateFlow.value == 1)
-            val isBannerOnly = isFullySetup && isArenaBannerVisibleFlow.value && !isVisible
-            updateWindowFlagsAndDimensions(isLocked = isVisible, isBannerOnly = isBannerOnly)
+            updateWindowFlagsAndDimensions(isVisible)
             currentView.view.requestLayout()
             currentView.view.invalidate()
         } catch (e: Exception) {
@@ -485,4 +441,3 @@ class LockScreenOverlay(
         }
     }
 }
-

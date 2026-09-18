@@ -54,6 +54,8 @@ fun FloatingPill(
     isArenaMode: Boolean = false,
     arenaRole: Int = 0,
     arenaStakeMinutes: Int = 15,
+    isArenaBannerVisible: Boolean = false,
+    onDismissArenaBanner: () -> Unit = {},
     systemController: KioskSystemController? = null,
     onRequestFocus: (Boolean) -> Unit = {},
     onRequestFullScreen: (Boolean) -> Unit = {},
@@ -67,6 +69,13 @@ fun FloatingPill(
     LaunchedEffect(isWaiting) {
         if (isWaiting) {
             expanded = true
+        }
+    }
+
+    LaunchedEffect(isArenaBannerVisible) {
+        if (isArenaBannerVisible) {
+            delay(3800L)
+            onDismissArenaBanner()
         }
     }
     
@@ -199,6 +208,21 @@ fun FloatingPill(
                     }
                 }
             }
+        }
+    } else if (isArenaBannerVisible) {
+        Box(
+            modifier = Modifier
+                .width(if (isLandscape) 340.dp else 300.dp)
+                .then(dragModifier)
+        ) {
+            ArenaModeBanner(
+                visible = true,
+                playerRole = arenaRole,
+                stakeMinutes = arenaStakeMinutes,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onDismissArenaBanner() }
+            )
         }
     } else if (expanded) {
         Box(

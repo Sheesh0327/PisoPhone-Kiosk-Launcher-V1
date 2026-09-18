@@ -13,9 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.pisophone.kiosk.ComposeOverlayView
 import com.pisophone.kiosk.model.BatteryStatus
-import com.pisophone.kiosk.overlay.ui.ArenaModeBanner
 import com.pisophone.kiosk.overlay.ui.FloatingPill
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 
 class FloatingPillOverlay(
@@ -130,12 +128,13 @@ class FloatingPillOverlay(
             val isArenaMode by isArenaModeFlow.collectAsState()
             val arenaRole by arenaPlayerRoleFlow.collectAsState()
             val arenaStake by arenaStakeMinutesFlow.collectAsState()
+            val isArenaBannerVisible by isArenaBannerVisibleFlow.collectAsState()
             val activationUpdateVersion by com.pisophone.kiosk.security.KioskActivationManager.activationUpdateVersion.collectAsState()
             
             val isSetupReady = remember(activationUpdateVersion) { 
                 com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(context)
             }
-            val isVisible = isSetupReady && (appState == 2 || appState == 3)
+            val isVisible = isSetupReady && (appState == 2 || appState == 3 || isArenaBannerVisible)
             
             LaunchedEffect(isVisible) {
                 if (isVisible) {
@@ -160,6 +159,8 @@ class FloatingPillOverlay(
                     isArenaMode = isArenaMode,
                     arenaRole = arenaRole,
                     arenaStakeMinutes = arenaStake,
+                    isArenaBannerVisible = isArenaBannerVisible,
+                    onDismissArenaBanner = onDismissArenaBanner,
                     onRequestFocus = { focusable -> updateFocusable(focusable) },
                     onRequestFullScreen = { isFullScreen -> updateFullScreen(isFullScreen) },
                     onBrightnessChange = { ratio ->
@@ -249,7 +250,7 @@ class FloatingPillOverlay(
             currentView.onResume()
             val isFullySetup = com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(context)
             val appState = appStateFlow.value
-            val isVisible = isFullySetup && (appState == 2 || appState == 3)
+            val isVisible = isFullySetup && (appState == 2 || appState == 3 || isArenaBannerVisibleFlow.value)
             currentView.view.visibility = if (isVisible) View.VISIBLE else View.GONE
             windowManager.updateViewLayout(currentView.view, layoutParams)
             currentView.view.requestLayout()
