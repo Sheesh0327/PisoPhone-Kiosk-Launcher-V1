@@ -361,22 +361,56 @@ window.checkMatchQualification = function() {
     const p2 = document.getElementById('p2_select') ? document.getElementById('p2_select').value : '';
     const mins = document.getElementById('match_mins_input') ? document.getElementById('match_mins_input').value : '15';
     const resDiv = document.getElementById('match_qual_result');
-    if (!p1 || !p2) { alert('Select both players.'); return; }
-    if (p1 === p2) { resDiv.style.display = 'block'; resDiv.style.background = '#fef2f2'; resDiv.style.border = '1px solid #fecaca'; resDiv.style.color = '#991b1b'; resDiv.innerHTML = '❌ <b>Error:</b> Players cannot be the same device.'; return; }
-    resDiv.style.display = 'block'; resDiv.style.background = '#f8fafc'; resDiv.style.border = '1px solid #e2e8f0'; resDiv.style.color = '#334155'; resDiv.innerHTML = '⏳ Verifying balances...';
+    if (!resDiv) return;
+    if (!p1 || !p2) {
+        resDiv.style.display = 'block';
+        resDiv.style.background = 'rgba(239, 68, 68, 0.15)';
+        resDiv.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+        resDiv.style.color = '#f87171';
+        resDiv.innerHTML = '❌ <b>Error:</b> Please select both Player 1 and Player 2.';
+        return;
+    }
+    if (p1 === p2) {
+        resDiv.style.display = 'block';
+        resDiv.style.background = 'rgba(239, 68, 68, 0.15)';
+        resDiv.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+        resDiv.style.color = '#f87171';
+        resDiv.innerHTML = '❌ <b>Error:</b> Player 1 and Player 2 cannot be the same device.';
+        return;
+    }
+    resDiv.style.display = 'block';
+    resDiv.style.background = 'rgba(59, 130, 246, 0.15)';
+    resDiv.style.border = '1px solid rgba(59, 130, 246, 0.4)';
+    resDiv.style.color = '#93c5fd';
+    resDiv.innerHTML = '⏳ Verifying device time balances...';
+
     fetch('/check_qualification?p1=' + encodeURIComponent(p1) + '&p2=' + encodeURIComponent(p2) + '&minutes=' + encodeURIComponent(mins))
         .then(res => res.json())
         .then(data => {
-            if (data.success) {
+            if (data && data.success) {
                 if (data.qualified) {
-                    resDiv.style.background = '#f0fdf4'; resDiv.style.border = '1px solid #bbf7d0'; resDiv.style.color = '#166534';
-                    resDiv.innerHTML = '✅ <b>BOTH QUALIFIED FOR ' + data.stake_minutes + 'm MATCH!</b><br>• P1: ' + data.p1_formatted + '<br>• P2: ' + data.p2_formatted;
+                    resDiv.style.background = 'rgba(16, 185, 129, 0.15)';
+                    resDiv.style.border = '1px solid rgba(16, 185, 129, 0.4)';
+                    resDiv.style.color = '#34d399';
+                    resDiv.innerHTML = '✅ <b>BOTH PLAYERS QUALIFIED FOR ' + (data.stake_minutes || mins) + 'm MATCH!</b><br>• Player 1 (' + (data.p1_ip || p1) + '): <b>' + data.p1_formatted + '</b><br>• Player 2 (' + (data.p2_ip || p2) + '): <b>' + data.p2_formatted + '</b>';
                 } else {
-                    resDiv.style.background = '#fef2f2'; resDiv.style.border = '1px solid #fecaca'; resDiv.style.color = '#991b1b';
-                    resDiv.innerHTML = '❌ <b>NOT QUALIFIED</b><br>• P1: ' + data.p1_formatted + '<br>• P2: ' + data.p2_formatted + '<br><i>' + data.message + '</i>';
+                    resDiv.style.background = 'rgba(239, 68, 68, 0.15)';
+                    resDiv.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+                    resDiv.style.color = '#f87171';
+                    resDiv.innerHTML = '❌ <b>NOT QUALIFIED</b><br>• Player 1 (' + (data.p1_ip || p1) + '): <b>' + data.p1_formatted + '</b><br>• Player 2 (' + (data.p2_ip || p2) + '): <b>' + data.p2_formatted + '</b><br><i>' + (data.message || data.error || '') + '</i>';
                 }
-            } else { resDiv.innerHTML = '❌ Error checking qualification.'; }
-        }).catch(err => resDiv.innerHTML = '❌ Network error.');
+            } else {
+                resDiv.style.background = 'rgba(239, 68, 68, 0.15)';
+                resDiv.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+                resDiv.style.color = '#f87171';
+                resDiv.innerHTML = '❌ ' + (data && data.error ? data.error : 'Error checking qualification.');
+            }
+        }).catch(err => {
+            resDiv.style.background = 'rgba(239, 68, 68, 0.15)';
+            resDiv.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+            resDiv.style.color = '#f87171';
+            resDiv.innerHTML = '❌ Network request failed: ' + err;
+        });
 };
 )JS";
 

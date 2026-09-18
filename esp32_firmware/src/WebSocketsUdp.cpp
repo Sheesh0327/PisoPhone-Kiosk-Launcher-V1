@@ -234,7 +234,7 @@ void processWebSocketServer() {
             String clientIp = newClient.remoteIP().toString();
             int wsSlotIdx = findSlotIndexForDevice(reqDeviceId, clientIp);
             if (wsSlotIdx < 0) {
-                updateDeviceTelemetry(reqDeviceId, clientIp, 0, 0, -1, false, ts);
+                updateDynamicDeviceList(reqDeviceId, clientIp);
                 Serial.printf("[-] WS Mutex Rejected for %s (%s): Device is not paired to any slot on this ESP32\n", 
                     reqDeviceId.c_str(), clientIp.c_str());
                 newClient.print("HTTP/1.1 423 Locked\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: 29\r\n\r\n{\"error\":\"SLOT_NOT_PAIRED\"}");

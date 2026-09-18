@@ -287,7 +287,7 @@ void handleIdentify() {
         devId = "DEV_" + reqIp;
     }
     if (reqIp.length() > 0 && reqIp != "127.0.0.1" && reqIp != "0.0.0.0") {
-        updateDeviceTelemetry(devId, reqIp, 0, 0, 100, false, 0);
+        updateDynamicDeviceList(devId, reqIp);
     }
     String devName = getDeviceNameByIpOrId(reqIp, devId);
     int slotIdx = findSlotIndexForDevice(devId, reqIp);

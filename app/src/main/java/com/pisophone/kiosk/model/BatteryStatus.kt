@@ -7,7 +7,7 @@ enum class BatteryAlertState {
 }
 
 data class BatteryStatus(
-    val level: Int = 100,
+    val level: Int = -1,
     val isCharging: Boolean = false,
     val alertState: BatteryAlertState = BatteryAlertState.NONE
 )

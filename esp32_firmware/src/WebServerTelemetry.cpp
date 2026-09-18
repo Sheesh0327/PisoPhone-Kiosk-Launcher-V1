@@ -88,16 +88,16 @@ void handleCrashReport() {
 
 void handleCheckQualification() {
     if (!checkAuth()) return;
-    String p1 = webServer.hasArg(NVS_KEY_P1) ? webServer.arg(NVS_KEY_P1) : "";
-    String p2 = webServer.hasArg(NVS_KEY_P2) ? webServer.arg(NVS_KEY_P2) : "";
-    int mins = webServer.hasArg("minutes") ? webServer.arg("minutes").toInt() : 15;
+    String p1 = webServer.hasArg("p1") ? webServer.arg("p1") : (webServer.hasArg("p1_ip") ? webServer.arg("p1_ip") : (webServer.hasArg(NVS_KEY_P1) ? webServer.arg(NVS_KEY_P1) : ""));
+    String p2 = webServer.hasArg("p2") ? webServer.arg("p2") : (webServer.hasArg("p2_ip") ? webServer.arg("p2_ip") : (webServer.hasArg(NVS_KEY_P2) ? webServer.arg(NVS_KEY_P2) : ""));
+    int mins = webServer.hasArg("minutes") ? webServer.arg("minutes").toInt() : (webServer.hasArg("match_minutes") ? webServer.arg("match_minutes").toInt() : 15);
     if (mins <= 0) mins = 1;
 
     p1.trim();
     p2.trim();
 
     if (p1.length() == 0 || p2.length() == 0) {
-        webServer.send(400, "application/json", "{\"success\":false,\"error\":\"Missing player IP parameters\"}");
+        webServer.send(200, "application/json", "{\"success\":false,\"error\":\"Please select both Player 1 and Player 2.\"}");
         return;
     }
     if (p1 == p2) {
@@ -130,13 +130,13 @@ void handleCheckQualification() {
     if (bothQualified) {
         snprintf(msgBuf, sizeof(msgBuf), "Both devices meet the %dm stake requirement.", mins);
     } else if (p1Sec < 0 || p2Sec < 0) {
-        strncpy(msgBuf, "One or both devices cannot be reached.", sizeof(msgBuf));
+        strncpy(msgBuf, "One or both devices cannot be reached or have no telemetry.", sizeof(msgBuf));
     } else if (!p1Ok && !p2Ok) {
-        snprintf(msgBuf, sizeof(msgBuf), "Both players need to add more time to meet the %dm stake.", mins);
+        snprintf(msgBuf, sizeof(msgBuf), "Both players need more time to meet the %dm stake.", mins);
     } else if (!p1Ok) {
-        snprintf(msgBuf, sizeof(msgBuf), "Player 1 needs at least %dm more active time.", mins - p1M);
+        snprintf(msgBuf, sizeof(msgBuf), "Player 1 needs at least %dm more active time.", max(1, mins - p1M));
     } else {
-        snprintf(msgBuf, sizeof(msgBuf), "Player 2 needs at least %dm more active time.", mins - p2M);
+        snprintf(msgBuf, sizeof(msgBuf), "Player 2 needs at least %dm more active time.", max(1, mins - p2M));
     }
 
     char jsonBuf[512];
@@ -155,8 +155,8 @@ void handleCheckQualification() {
 
 void handleOneVsOne() {
     if (!checkAdminAuth()) return;
-    p1Ip = webServer.hasArg("p1_ip") ? webServer.arg("p1_ip") : "";
-    p2Ip = webServer.hasArg("p2_ip") ? webServer.arg("p2_ip") : "";
+    p1Ip = webServer.hasArg("p1_ip") ? webServer.arg("p1_ip") : (webServer.hasArg("p1") ? webServer.arg("p1") : "");
+    p2Ip = webServer.hasArg("p2_ip") ? webServer.arg("p2_ip") : (webServer.hasArg("p2") ? webServer.arg("p2") : "");
     if (webServer.hasArg("match_minutes")) {
         matchMinutes = webServer.arg("match_minutes").toInt();
     }
@@ -205,12 +205,12 @@ void handleOneVsOne() {
             return;
         }
 
-        if (winner == NVS_KEY_P1) {
+        if (winner == "p1" || winner == NVS_KEY_P1) {
             sendAddTime(matchMinutes, p1Ip);
             yield();
             sendAddTime(-matchMinutes, p2Ip);
             matchStatusMsg = "<div style='background:#e8f5e9;color:#2e7d32;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>🏆 <b>Player 1 Won:</b> Transferred +" + String(matchMinutes) + "m to Player 1 (" + p1Ip + ") and deducted -" + String(matchMinutes) + "m from Player 2 (" + p2Ip + ").</div>";
-        } else if (winner == NVS_KEY_P2) {
+        } else if (winner == "p2" || winner == NVS_KEY_P2) {
             sendAddTime(matchMinutes, p2Ip);
             yield();
             sendAddTime(-matchMinutes, p1Ip);
