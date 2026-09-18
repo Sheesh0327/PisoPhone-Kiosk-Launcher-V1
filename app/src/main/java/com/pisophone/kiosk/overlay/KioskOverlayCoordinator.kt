@@ -84,6 +84,11 @@ class KioskOverlayCoordinator(
                         slotWarningDaysLeftFlow = stateManager.slotWarningDaysLeft,
                         isSlotExpiredFlow = stateManager.isSlotExpired,
                         slotExpiryReasonFlow = stateManager.slotExpiryMessage,
+                        isArenaModeFlow = stateManager.isArenaMode,
+                        arenaPlayerRoleFlow = stateManager.arenaPlayerRole,
+                        arenaStakeMinutesFlow = stateManager.arenaStakeMinutes,
+                        isArenaBannerVisibleFlow = stateManager.isArenaBannerVisible,
+                        onDismissArenaBanner = { stateManager.dismissArenaBanner() },
                         onInsertCoinClick = {
                             if (stateManager.appState.value == 4) return@KioskOverlay
                             if (stateManager.isSlotExpired.value || KioskActivationManager.isSlotLockedDown(context)) {

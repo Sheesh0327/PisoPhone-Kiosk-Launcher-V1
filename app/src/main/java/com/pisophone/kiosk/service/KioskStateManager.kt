@@ -32,6 +32,10 @@ class KioskStateManager(private val context: Context) {
     val isSlotExpired = MutableStateFlow(false)
     val slotExpiryMessage = MutableStateFlow("")
     val slotNumber = MutableStateFlow(0)
+    val isArenaMode = MutableStateFlow(false)
+    val arenaPlayerRole = MutableStateFlow(0) // 1: Player 1, 2: Player 2
+    val arenaStakeMinutes = MutableStateFlow(15)
+    val isArenaBannerVisible = MutableStateFlow(false)
 
     init {
         deviceIp.value = getLocalIpAddress()
@@ -191,5 +195,24 @@ class KioskStateManager(private val context: Context) {
             ex.printStackTrace()
         }
         return fallbackIp ?: "127.0.0.1"
+    }
+
+    fun setArenaMode(active: Boolean, role: Int = 0, stake: Int = 15, showBanner: Boolean = false) {
+        val wasActive = isArenaMode.value
+        isArenaMode.value = active
+        if (active) {
+            if (role > 0) arenaPlayerRole.value = role
+            if (stake > 0) arenaStakeMinutes.value = stake
+            if (showBanner || !wasActive) {
+                isArenaBannerVisible.value = true
+            }
+        } else {
+            arenaPlayerRole.value = 0
+            isArenaBannerVisible.value = false
+        }
+    }
+
+    fun dismissArenaBanner() {
+        isArenaBannerVisible.value = false
     }
 }

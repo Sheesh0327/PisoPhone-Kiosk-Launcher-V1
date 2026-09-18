@@ -136,7 +136,8 @@ class KioskEngine(
         onCreditPayment = { txId, seconds, amount ->
             creditPayment(txId, seconds, amount)
         },
-        onSlotBusyTriggered = { triggerSlotBusy() }
+        onSlotBusyTriggered = { triggerSlotBusy() },
+        getAudioManager = { audioManager }
     )
 
     private val esp32Manager = Esp32ConnectionManager(

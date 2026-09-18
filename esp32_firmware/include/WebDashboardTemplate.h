@@ -238,10 +238,10 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                 </div>
 
                 <!-- 1v1 Match -->
-                <div class="card grid-full">
+                <div class="card grid-full {MATCH_CARD_CLASS}" style="{MATCH_CARD_STYLE}">
                     <div class="card-header">
                         <h3 class="card-title">⚔️ 1v1 Match Mode</h3>
-                        <span class="status-badge accent">ESPORTS</span>
+                        {MATCH_STATUS_BADGE}
                     </div>
                     {MATCH_ALERT}
                     <form action="/one_vs_one" method="POST" style="display: flex; flex-direction: column; gap: 16px;">
@@ -263,7 +263,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                             </div>
                         </div>
                         
-                        <button type="button" onclick="checkMatchQualification()" class="btn btn-outline" style="align-self: flex-start; border-color: var(--primary); color: var(--primary);">🔍 Verify Both Players' Balances</button>
+                        {MATCH_CONTROLS}
                     </form>
                     <div id="match_qual_result" class="alert-box"></div>
                 </div>

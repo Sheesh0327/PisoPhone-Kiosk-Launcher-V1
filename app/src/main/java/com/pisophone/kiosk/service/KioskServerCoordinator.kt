@@ -126,7 +126,7 @@ class KioskServerCoordinator(
         }
     }
 
-    override fun onTriggerAction(action: String, slotNum: Int?) {
+    override fun onTriggerAction(action: String, slotNum: Int?, extra: Map<String, String>?) {
         if (slotNum != null && slotNum > 0) {
             stateManager.slotNumber.value = slotNum
             KioskSecurity.setAssignedBoxSlot(context, slotNum)
@@ -134,6 +134,30 @@ class KioskServerCoordinator(
         }
         Handler(Looper.getMainLooper()).post {
             when (action) {
+                "arena_mode_activate_p1" -> {
+                    val stake = extra?.get("stake")?.toIntOrNull() ?: 15
+                    stateManager.setArenaMode(active = true, role = 1, stake = stake, showBanner = true)
+                    HardwareFeedback.triggerVibration(context, longArrayOf(0, 200, 100, 200, 100, 400))
+                    getAudioManager.invoke()?.speakWarning("Arena Mode activated. You are Player 1.")
+                }
+                "arena_mode_activate_p2" -> {
+                    val stake = extra?.get("stake")?.toIntOrNull() ?: 15
+                    stateManager.setArenaMode(active = true, role = 2, stake = stake, showBanner = true)
+                    HardwareFeedback.triggerVibration(context, longArrayOf(0, 200, 100, 200, 100, 400))
+                    getAudioManager.invoke()?.speakWarning("Arena Mode activated. You are Player 2.")
+                }
+                "arena_mode_activate" -> {
+                    val role = extra?.get("role")?.toIntOrNull() ?: 1
+                    val stake = extra?.get("stake")?.toIntOrNull() ?: 15
+                    stateManager.setArenaMode(active = true, role = role, stake = stake, showBanner = true)
+                    HardwareFeedback.triggerVibration(context, longArrayOf(0, 200, 100, 200, 100, 400))
+                    val roleStr = if (role == 1) "Player 1" else "Player 2"
+                    getAudioManager.invoke()?.speakWarning("Arena Mode activated. You are $roleStr.")
+                }
+                "arena_mode_deactivate", "arena_mode_end" -> {
+                    stateManager.setArenaMode(false)
+                    Toast.makeText(context, "⚔️ 1v1 Arena Mode Concluded", Toast.LENGTH_SHORT).show()
+                }
                 "slot_lockdown" -> {
                     stateManager.isSlotExpired.value = true
                     val expiredState = paymentRepo.expireSessionBlocking()
@@ -200,8 +224,10 @@ class KioskServerCoordinator(
                 "factory_reset" -> {
                     KioskSecurity.factoryResetDevice(context)
                 }
+                "identify" -> {
+                    Toast.makeText(context, "Device Identified: ${KioskSecurity.getDeviceAlias(context)}", Toast.LENGTH_LONG).show()
+                }
             }
-            Toast.makeText(context, "Device Identified: ${KioskSecurity.getDeviceAlias(context)}", Toast.LENGTH_LONG).show()
         }
     }
 

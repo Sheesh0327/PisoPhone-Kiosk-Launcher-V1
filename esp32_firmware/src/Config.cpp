@@ -49,6 +49,7 @@ const unsigned long MAX_SESSION_DURATION = 120000;
 String p1Ip = "";
 String p2Ip = "";
 int matchMinutes = 15;
+bool matchActive = false;
 String matchStatusMsg = "";
 String quickTimeStatusMsg = "";
 

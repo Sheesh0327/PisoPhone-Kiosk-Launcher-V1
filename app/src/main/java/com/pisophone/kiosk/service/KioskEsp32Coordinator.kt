@@ -7,6 +7,7 @@ import com.pisophone.kiosk.repository.PaymentRepository
 import com.pisophone.kiosk.repository.PaymentResult
 import com.pisophone.kiosk.security.KioskActivationManager
 import com.pisophone.kiosk.security.KioskSecurity
+import com.pisophone.kiosk.util.HardwareFeedback
 
 /**
  * Handles all ESP32 event and telemetry lifecycle callbacks, separating Master Box network
@@ -20,7 +21,8 @@ class KioskEsp32Coordinator(
     private val getSecretKey: () -> String,
     private val getRealTimeBatteryInfo: () -> Pair<Int, Boolean>,
     private val onCreditPayment: (txId: String, seconds: Int, amount: Double) -> PaymentResult,
-    private val onSlotBusyTriggered: () -> Unit
+    private val onSlotBusyTriggered: () -> Unit,
+    private val getAudioManager: (() -> com.pisophone.kiosk.audio.KioskAudioManager?)? = null
 ) : Esp32ConnectionDelegate {
 
     companion object {
@@ -140,6 +142,22 @@ class KioskEsp32Coordinator(
             stateManager.slotWarningDaysLeft.value = null
             KioskActivationManager.setSlotLockdown(context, false, slotNum = if (slotNum > 0) slotNum else stateManager.slotNumber.value)
             Log.i(TAG, "Slot activated on ESP32: Ready for coins (Slot #$slotNum).")
+        }
+    }
+
+    override fun onArenaModeSynced(active: Boolean, role: Int, stake: Int) {
+        val wasActive = stateManager.isArenaMode.value
+        if (active) {
+            if (!wasActive) {
+                stateManager.setArenaMode(active = true, role = role, stake = stake, showBanner = true)
+                HardwareFeedback.triggerVibration(context, longArrayOf(0, 200, 100, 200, 100, 400))
+                val roleStr = if (role == 1) "Player 1" else if (role == 2) "Player 2" else "Participant"
+                getAudioManager?.invoke()?.speakWarning("Arena Mode activated. You are $roleStr.")
+            } else {
+                stateManager.setArenaMode(active = true, role = role, stake = stake, showBanner = false)
+            }
+        } else if (wasActive) {
+            stateManager.setArenaMode(false)
         }
     }
 }

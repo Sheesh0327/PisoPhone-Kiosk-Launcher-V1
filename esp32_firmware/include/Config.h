@@ -117,6 +117,7 @@ extern const unsigned long MAX_SESSION_DURATION;
 extern String p1Ip;
 extern String p2Ip;
 extern int matchMinutes;
+extern bool matchActive;
 extern String matchStatusMsg;
 extern String quickTimeStatusMsg;
 

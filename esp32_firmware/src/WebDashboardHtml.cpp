@@ -78,11 +78,46 @@ static String getPlaceholderValue(const String& tag) {
         return "";
     }
     
+    if (tag == "MATCH_CARD_CLASS") {
+        return matchActive ? "match-active-card" : "";
+    }
+
+    if (tag == "MATCH_CARD_STYLE") {
+        return matchActive ? "border: 2px solid #8b5cf6; background: linear-gradient(135deg, rgba(139, 92, 246, 0.12) 0%, rgba(15, 23, 42, 0.95) 100%); box-shadow: 0 0 25px rgba(139, 92, 246, 0.25);" : "";
+    }
+
+    if (tag == "MATCH_STATUS_BADGE") {
+        if (matchActive) {
+            return "<span class=\"status-badge\" style=\"background:#8b5cf6; color:#ffffff; border-color:#a78bfa;\">⚔️ ARENA ACTIVE</span>";
+        } else {
+            return "<span class=\"status-badge accent\">ESPORTS</span>";
+        }
+    }
+
+    if (tag == "MATCH_CONTROLS") {
+        String html = "";
+        if (!matchActive) {
+            html += "<div style=\"display:flex;gap:12px;flex-wrap:wrap;margin-top:12px;\">";
+            html += "<button type=\"submit\" name=\"action\" value=\"activate\" class=\"btn btn-primary\" style=\"background:linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);border:none;color:#fff;font-weight:700;padding:10px 20px;border-radius:8px;\">⚔️ Activate 1v1 Mode</button>";
+            html += "<button type=\"button\" onclick=\"checkMatchQualification()\" class=\"btn btn-outline\" style=\"border-color:var(--primary);color:var(--primary);\">🔍 Check Qualification</button>";
+            html += "</div>";
+        } else {
+            html += "<div style=\"display:flex;gap:12px;flex-wrap:wrap;margin-top:12px;align-items:center;\">";
+            html += "<button type=\"submit\" name=\"action\" value=\"cancel\" class=\"btn btn-outline\" style=\"border-color:#ef4444;color:#ef4444;font-weight:700;\">❌ End / Cancel Match</button>";
+            html += "<button type=\"button\" onclick=\"checkMatchQualification()\" class=\"btn btn-outline\" style=\"border-color:var(--primary);color:var(--primary);\">🔍 Check Qualification</button>";
+            html += "</div>";
+        }
+        return html;
+    }
+
     if (tag == "MATCH_ALERT") {
         if (matchStatusMsg.length() > 0) {
             String alert = matchStatusMsg;
             matchStatusMsg = "";
             return alert;
+        }
+        if (matchActive) {
+            return "<div style='background:rgba(234, 88, 12, 0.15);border:1px solid #f97316;color:#fdba74;padding:12px 16px;border-radius:8px;margin-bottom:12px;font-size:13px;line-height:1.5;'>⚔️ <b>1v1 Arena Mode Active!</b><br>⚠️ <b>Warning:</b> Time credits are at stake (<b>" + String(matchMinutes) + " minutes</b>). The loser will forfeit their stake to the winner upon match completion.</div>";
         }
         return "";
     }

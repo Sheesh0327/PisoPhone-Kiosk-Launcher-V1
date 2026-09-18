@@ -22,7 +22,7 @@ interface KioskServerDelegate {
     fun creditPayment(txId: String, seconds: Int, amount: Double): PaymentResult
     fun onDeductTime(seconds: Int, txId: String? = null)
     fun onConfigUpdated(price: Double?, minutes: Int?, deviceName: String?, adminPin: String?, slotNum: Int? = null)
-    fun onTriggerAction(action: String, slotNum: Int? = null)
+    fun onTriggerAction(action: String, slotNum: Int? = null, extra: Map<String, String>? = null)
     fun getCrashLog(): String?
 }
 
@@ -248,15 +248,15 @@ class KioskHttpServer(
             "/trigger_action" -> {
                 val actionType = decryptedParams["action"] ?: ""
                 val slot = decryptedParams["slot"]?.toIntOrNull() ?: decryptedParams["slot_num"]?.toIntOrNull()
-                delegate.onTriggerAction(actionType, slot)
+                delegate.onTriggerAction(actionType, slot, decryptedParams)
                 createResponse(Response.Status.OK, "text/plain", "OK")
             }
             "/emergency_adb" -> {
-                delegate.onTriggerAction("enable_adb")
+                delegate.onTriggerAction("enable_adb", null, null)
                 createResponse(Response.Status.OK, "text/plain", "RECOVERY_TRIGGERED")
             }
             "/recovery" -> {
-                delegate.onTriggerAction("emergency_recovery")
+                delegate.onTriggerAction("emergency_recovery", null, null)
                 createResponse(Response.Status.OK, "text/plain", "RECOVERY_TRIGGERED")
             }
             "/crash" -> {

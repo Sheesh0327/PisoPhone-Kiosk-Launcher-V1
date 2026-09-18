@@ -35,6 +35,7 @@ interface Esp32ConnectionDelegate {
     fun onSlotWarning(daysLeft: Int, expiresAt: Long, slotNum: Int, message: String)
     fun onSlotLockdown(reason: String, slotNum: Int, expiresAt: Long)
     fun onSlotRestored(slotNum: Int = 0)
+    fun onArenaModeSynced(active: Boolean, role: Int, stake: Int) {}
 }
 
 /**
@@ -233,6 +234,13 @@ class Esp32ConnectionManager(
                                         Log.d(TAG, "[HEARTBEAT] JSON parsing successful. Setting online to true.")
                                         delegate.onOnlineStatusChanged(true, mac)
                                         delegate.onConfigSynced(price, minutes, alias, decryptedPin, slotNum)
+
+                                        if (json.has("arena_active")) {
+                                            val arenaActive = json.optBoolean("arena_active", false)
+                                            val arenaRole = json.optInt("arena_role", 0)
+                                            val arenaStake = json.optInt("arena_stake", 15)
+                                            delegate.onArenaModeSynced(arenaActive, arenaRole, arenaStake)
+                                        }
                                     } catch (e: Exception) {
                                         Log.e(TAG, "[HEARTBEAT] Exception parsing JSON body: ${e.message}", e)
                                     }

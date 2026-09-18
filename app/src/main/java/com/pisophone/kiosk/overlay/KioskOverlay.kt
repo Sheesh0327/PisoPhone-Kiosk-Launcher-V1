@@ -37,13 +37,37 @@ class KioskOverlay(
     private val slotWarningDaysLeftFlow: StateFlow<Int?> = kotlinx.coroutines.flow.MutableStateFlow(null),
     private val isSlotExpiredFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
     private val slotExpiryReasonFlow: StateFlow<String> = kotlinx.coroutines.flow.MutableStateFlow(""),
+    private val isArenaModeFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
+    private val arenaPlayerRoleFlow: StateFlow<Int> = kotlinx.coroutines.flow.MutableStateFlow(0),
+    private val arenaStakeMinutesFlow: StateFlow<Int> = kotlinx.coroutines.flow.MutableStateFlow(15),
+    private val isArenaBannerVisibleFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
+    private val onDismissArenaBanner: () -> Unit = {},
     private val onInsertCoinClick: () -> Unit,
     private val onDoneClick: () -> Unit,
     private val onThemeChange: () -> Unit,
     private val onActivateClick: (String) -> Unit = {}
 ) {
     private val lockScreenOverlay = LockScreenOverlay(context, appStateFlow, paymentTimeoutFlow, coinsInsertedFlow, themeIndexFlow, isEsp32OnlineFlow, esp32MacAddressFlow, isSlotBusyFlow, pricePerCoinFlow, minutesPerCoinFlow, deviceIpFlow, slotNumberFlow, batteryStatusFlow, slotWarningDaysLeftFlow, isSlotExpiredFlow, slotExpiryReasonFlow, onInsertCoinClick, onDoneClick, onThemeChange, onActivateClick)
-    private val floatingPillOverlay = FloatingPillOverlay(context, appStateFlow, sessionTimeFlow, paymentTimeoutFlow, coinsInsertedFlow, themeIndexFlow, isEsp32OnlineFlow, isSlotBusyFlow, pricePerCoinFlow, minutesPerCoinFlow, batteryStatusFlow, onInsertCoinClick, onDoneClick)
+    private val floatingPillOverlay = FloatingPillOverlay(
+        context = context,
+        appStateFlow = appStateFlow,
+        sessionTimeFlow = sessionTimeFlow,
+        paymentTimeoutFlow = paymentTimeoutFlow,
+        coinsInsertedFlow = coinsInsertedFlow,
+        themeIndexFlow = themeIndexFlow,
+        isEsp32OnlineFlow = isEsp32OnlineFlow,
+        isSlotBusyFlow = isSlotBusyFlow,
+        pricePerCoinFlow = pricePerCoinFlow,
+        minutesPerCoinFlow = minutesPerCoinFlow,
+        batteryStatusFlow = batteryStatusFlow,
+        isArenaModeFlow = isArenaModeFlow,
+        arenaPlayerRoleFlow = arenaPlayerRoleFlow,
+        arenaStakeMinutesFlow = arenaStakeMinutesFlow,
+        isArenaBannerVisibleFlow = isArenaBannerVisibleFlow,
+        onDismissArenaBanner = onDismissArenaBanner,
+        onInsertCoinClick = onInsertCoinClick,
+        onDoneClick = onDoneClick
+    )
     
     fun show(): Boolean {
         val lockShown = lockScreenOverlay.show()

@@ -51,6 +51,9 @@ fun FloatingPill(
     isWaiting: Boolean,
     themeIndex: Int = 0,
     batteryStatus: BatteryStatus = BatteryStatus(),
+    isArenaMode: Boolean = false,
+    arenaRole: Int = 0,
+    arenaStakeMinutes: Int = 15,
     systemController: KioskSystemController? = null,
     onRequestFocus: (Boolean) -> Unit = {},
     onRequestFullScreen: (Boolean) -> Unit = {},
@@ -202,11 +205,42 @@ fun FloatingPill(
             modifier = Modifier
                 .width(if (isLandscape) 320.dp else 300.dp)
                 .heightIn(max = maxOverlayHeight)
-                .background(Surface.copy(alpha = 0.96f), RoundedCornerShape(18.dp))
-                .border(1.5.dp, Outline.copy(alpha = 0.75f), RoundedCornerShape(18.dp))
+                .background(if (isArenaMode) Color(0xFF1E1035).copy(alpha = 0.98f) else Surface.copy(alpha = 0.96f), RoundedCornerShape(18.dp))
+                .border(if (isArenaMode) 2.dp else 1.5.dp, if (isArenaMode) Color(0xFF8B5CF6) else Outline.copy(alpha = 0.75f), RoundedCornerShape(18.dp))
                 .padding(12.dp)
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
+                if (isArenaMode) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF2E1065)),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFA78BFA))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "⚔️ 1V1 ARENA ACTIVE",
+                                color = Color(0xFFA78BFA),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                            Text(
+                                text = (if (arenaRole == 1) "PLAYER 1" else if (arenaRole == 2) "PLAYER 2" else "PARTICIPANT") + " • ${arenaStakeMinutes}m STAKE",
+                                color = Color(0xFFFFB703),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
                 if (batteryStatus.alertState != BatteryAlertState.NONE) {
                     BatteryAlertBanner(batteryStatus = batteryStatus)
                     Spacer(modifier = Modifier.height(6.dp))
@@ -423,7 +457,13 @@ fun FloatingPill(
         val pillBorderColor = when {
             isLowBattery -> Color(0xFFFF2222)
             hasBatteryAlert -> Color(0xFFFFB800)
+            isArenaMode -> Color(0xFF8B5CF6)
             else -> Outline.copy(alpha = 0.75f)
+        }
+
+        val pillBgColor = when {
+            isArenaMode -> Color(0xFF1E1035).copy(alpha = 0.95f)
+            else -> Surface.copy(alpha = 0.85f)
         }
 
         Box(
@@ -431,8 +471,8 @@ fun FloatingPill(
                 .height(30.dp)
                 .wrapContentWidth()
                 .then(dragModifier)
-                .background(Surface.copy(alpha = 0.85f), CircleShape)
-                .border(if (hasBatteryAlert) 2.dp else 1.dp, pillBorderColor, CircleShape)
+                .background(pillBgColor, CircleShape)
+                .border(if (isArenaMode || hasBatteryAlert) 2.dp else 1.dp, pillBorderColor, CircleShape)
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onTap = { expanded = true },
@@ -462,7 +502,21 @@ fun FloatingPill(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
-                if (hasBatteryAlert) {
+                if (isArenaMode) {
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = Color(0xFF8B5CF6),
+                        modifier = Modifier.padding(end = 2.dp)
+                    ) {
+                        Text(
+                            text = if (arenaRole == 1) "⚔️ P1" else if (arenaRole == 2) "⚔️ P2" else "⚔️ 1v1",
+                            color = Color.White,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 9.sp,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                        )
+                    }
+                } else if (hasBatteryAlert) {
                     Icon(
                         if (isLowBattery) Icons.Filled.BatteryFull else Icons.Filled.Bolt,
                         contentDescription = "Battery Alert",
