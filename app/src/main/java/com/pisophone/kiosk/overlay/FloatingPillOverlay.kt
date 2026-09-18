@@ -144,6 +144,25 @@ class FloatingPillOverlay(
                 }
             }
 
+            LaunchedEffect(isArenaBannerVisible) {
+                if (isArenaBannerVisible) {
+                    layoutParams.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                    layoutParams.x = 0
+                    layoutParams.y = 40
+                } else {
+                    layoutParams.gravity = Gravity.TOP or Gravity.START
+                    layoutParams.x = 20
+                    layoutParams.y = 20
+                }
+                if (isViewAdded) {
+                    try {
+                        windowManager.updateViewLayout(newOverlay.view, layoutParams)
+                    } catch (e: Exception) {
+                        android.util.Log.e("FloatingPillOverlay", "Failed to update layout for arena banner: ${e.message}")
+                    }
+                }
+            }
+
             if (isVisible) {
                 FloatingPill(
                     timeRemaining = sessionTime,
