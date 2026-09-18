@@ -33,6 +33,10 @@ void handleHeartbeat() {
         return;
     }
 
+    if (deviceId.length() > 0 || reqIp.length() > 0) {
+        updateDeviceTelemetry(deviceId, reqIp, timeRem, state, battery, charging, ts);
+    }
+
     if (slotIdx < 0 || !isAuth) {
         String devName = getDeviceNameByIpOrId(reqIp, deviceId);
         if (devName.length() == 0 || devName == deviceId) devName = "PisoPhone Terminal";
@@ -43,10 +47,6 @@ void handleHeartbeat() {
         json += ",\"device_name\":\"" + devName + "\"}";
         webServer.send(200, "application/json", json);
         return;
-    }
-
-    if (deviceId.length() > 0 || reqIp.length() > 0) {
-        updateDeviceTelemetry(deviceId, reqIp, timeRem, state, battery, charging, ts);
     }
 
     if (ts > 0) updateMasterTime(ts);

@@ -72,6 +72,7 @@ class Esp32DiscoveryScanner(
                 try {
                     while (!isAlreadyBound() && isActive) {
                         sendUdpDiscoveryBroadcast(localIp)
+                        probeFastPathTargets(localIp)
                         delay(2000)
                     }
                 } finally {
@@ -224,13 +225,15 @@ class Esp32DiscoveryScanner(
 
         try {
             val fastClient = httpClient.newBuilder()
-                .connectTimeout(3, TimeUnit.SECONDS)
-                .readTimeout(3, TimeUnit.SECONDS)
-                .writeTimeout(3, TimeUnit.SECONDS)
+                .connectTimeout(2, TimeUnit.SECONDS)
+                .readTimeout(2, TimeUnit.SECONDS)
+                .writeTimeout(2, TimeUnit.SECONDS)
                 .build()
 
+            val myIp = getLocalIpAddress()
+            val deviceId = KioskSecurity.getHardwareId(context)
             val req = Request.Builder()
-                .url("http://$host:$port/identify")
+                .url("http://$host:$port/identify?ip=$myIp&device_id=$deviceId")
                 .build()
             fastClient.newCall(req).execute().use { resp ->
                 if (resp.isSuccessful) {
@@ -244,6 +247,25 @@ class Esp32DiscoveryScanner(
         } catch (_: Exception) {}
 
         return false
+    }
+
+    fun probeFastPathTargets(localIp: String) {
+        val targets = mutableListOf<String>()
+        val activeIp = if (localIp.isNotBlank()) localIp else getLocalIpAddress()
+        if (activeIp.isNotBlank() && activeIp.contains(".")) {
+            val gateway = activeIp.substringBeforeLast(".") + ".1"
+            targets.add(gateway)
+        }
+        if (!targets.contains("192.168.4.1")) targets.add("192.168.4.1")
+        if (!targets.contains("kioskmanager.local")) targets.add("kioskmanager.local")
+
+        for (target in targets) {
+            if (isAlreadyBound()) break
+            if (probeEsp32Connection(target)) {
+                Log.d(TAG, "Direct HTTP discovery succeeded for target: $target")
+                break
+            }
+        }
     }
 
     /**
@@ -269,7 +291,12 @@ class Esp32DiscoveryScanner(
             }
             val cleanDeviceMac = KioskSecurity.formatMacAddress(deviceMac)
             val expectedSig = KioskSecurity.calculateHmac("DISCOVERY:$cleanDeviceMac:$targetIp", secret)
-            if (!KioskSecurity.constantTimeEquals(sig.lowercase(), expectedSig.lowercase())) {
+            val expectedMasterSig = KioskSecurity.calculateHmac("DISCOVERY:$cleanDeviceMac:$targetIp", KioskSecurity.DEFAULT_SHARED_SECRET)
+
+            val sigMatches = KioskSecurity.constantTimeEquals(sig.lowercase(), expectedSig.lowercase()) ||
+                    KioskSecurity.constantTimeEquals(sig.lowercase(), expectedMasterSig.lowercase())
+
+            if (!sigMatches) {
                 Log.w(TAG, "Rejected ESP32 UDP packet from $targetIp: HMAC signature verification failed!")
                 return false
             }

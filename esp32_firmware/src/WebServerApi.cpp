@@ -137,6 +137,27 @@ void handleApiSlotPair() {
     }
 }
 
+void handleApiSlotPairRequest() {
+    String reqIp = webServer.hasArg("ip") ? webServer.arg("ip") : webServer.client().remoteIP().toString();
+    String devId = webServer.hasArg("device_id") ? webServer.arg("device_id") : (webServer.hasArg("id") ? webServer.arg("id") : "");
+    String devName = webServer.hasArg("name") ? webServer.arg("name") : "PisoPhone Terminal";
+    int battery = webServer.hasArg("battery") ? webServer.arg("battery").toInt() : -1;
+    bool charging = webServer.hasArg("charging") ? (webServer.arg("charging").toInt() == 1 || webServer.arg("charging") == "true") : false;
+
+    if (devId.length() == 0 && reqIp.length() > 0 && reqIp != "127.0.0.1" && reqIp != "0.0.0.0") {
+        devId = "DEV_" + reqIp;
+    }
+    if (devId.length() > 0 || reqIp.length() > 0) {
+        updateDynamicDeviceList(devId, reqIp);
+        updateDeviceTelemetry(devId, reqIp, -1, 0, battery, charging, 0);
+    }
+    int slotIdx = findSlotIndexForDevice(devId, reqIp);
+    String json = "{\"success\":true,\"paired\":" + String(slotIdx >= 0 ? "true" : "false") +
+                  ",\"slot\":" + String(slotIdx >= 0 ? slotIdx + 1 : 0) +
+                  ",\"mac\":\"" + macAddressStr + "\"}";
+    webServer.send(200, "application/json", json);
+}
+
 void handleApiSlotUnpair() {
     if (!checkAdminAuth()) return;
     int slot = webServer.hasArg("slot") ? webServer.arg("slot").toInt() : 0;
@@ -288,6 +309,7 @@ void handleIdentify() {
     }
     if (reqIp.length() > 0 && reqIp != "127.0.0.1" && reqIp != "0.0.0.0") {
         updateDynamicDeviceList(devId, reqIp);
+        updateDeviceTelemetry(devId, reqIp, -1, 0, -1, false, 0);
     }
     String devName = getDeviceNameByIpOrId(reqIp, devId);
     int slotIdx = findSlotIndexForDevice(devId, reqIp);

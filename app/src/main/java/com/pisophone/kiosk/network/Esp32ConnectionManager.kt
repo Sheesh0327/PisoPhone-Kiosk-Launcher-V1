@@ -141,6 +141,28 @@ class Esp32ConnectionManager(
 
         scope.launch(Dispatchers.IO) {
             fetchMasterConfig(ipHost, esp32Port)
+            sendPairingRequest(ipHost)
+        }
+    }
+
+    fun sendPairingRequest(targetIp: String? = null) {
+        val host = targetIp ?: esp32Ip ?: return
+        scope.launch(Dispatchers.IO) {
+            try {
+                val (ipHost, esp32Port) = discoveryScanner.getEsp32HostAndPort(host)
+                val deviceId = KioskSecurity.getHardwareId(context)
+                val myIp = discoveryScanner.getLocalIpAddress()
+                val (curBat, isChg) = delegate.getRealTimeBatteryInfo()
+                val myName = KioskSecurity.getDeviceAlias(context).takeIf { it.isNotBlank() } ?: "PisoPhone Terminal"
+                val encodedName = java.net.URLEncoder.encode(myName, "UTF-8")
+                val url = "http://$ipHost:$esp32Port/api/slots/pair_request?device_id=$deviceId&ip=$myIp&name=$encodedName&battery=$curBat&charging=${if (isChg) 1 else 0}"
+                val req = Request.Builder().url(url).build()
+                httpClient.newCall(req).execute().use { resp ->
+                    Log.d(TAG, "Explicit pair_request sent to $ipHost:$esp32Port, status: ${resp.code}")
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "Pair request non-fatal error: ${e.message}")
+            }
         }
     }
 
@@ -195,12 +217,19 @@ class Esp32ConnectionManager(
                                 if (body.isNotBlank()) {
                                     try {
                                         val json = JSONObject(body)
-                                        val isExpired = json.optBoolean("slot_expired", false) ||
+                                        val slotNum = json.optInt("slot_num", json.optInt("slot", 0))
+                                        val isUnassigned = json.optString("status", "") == "unassigned" ||
+                                                json.optString("slot_status", "") == "unassigned" ||
+                                                (!json.optBoolean("is_paired", true) && slotNum <= 0)
+                                        val isExpired = isUnassigned ||
+                                                json.optBoolean("slot_expired", false) ||
                                                 json.optBoolean("lockdown", false) ||
                                                 json.optString("status", "") == "expired" ||
                                                 json.optString("slot_status", "") == "expired"
-                                        val slotNum = json.optInt("slot_num", json.optInt("slot", 0))
                                         val expiresAt = json.optLong("expires_at", 0L)
+                                        if (isUnassigned) {
+                                            sendPairingRequest(targetIp)
+                                        }
                                         val errorMsg = if (json.has("message") && json.optString("message").isNotBlank()) {
                                             json.optString("message")
                                         } else {

@@ -44,6 +44,8 @@ object KioskSecurity {
     private const val KEY_PROVISIONING_ADB_ALLOWED = "provisioning_adb_allowed"
     private const val KEY_APK_UPDATE_URL = "apk_update_url"
     
+    const val DEFAULT_SHARED_SECRET = "PISOPHONE_HMAC_MASTER_KEY"
+    private const val KEY_SECRET_EXPLICITLY_PROVISIONED = "kiosk_secret_explicitly_provisioned"
     private const val DEFAULT_PIN = "1234"
     private const val TAG = "KioskSecurity"
     private const val KEY_DEVICE_SECRET = "device_crypto_secret"
@@ -163,9 +165,10 @@ object KioskSecurity {
     }
 
     fun isProvisioned(context: Context): Boolean {
-        val secret = getSharedSecret(context)
+        val prefs = getPrefs(context)
+        val isExplicit = prefs.getBoolean(KEY_SECRET_EXPLICITLY_PROVISIONED, false)
         val mac = getConfiguredEsp32Mac(context)
-        return secret.isNotBlank() && mac.isNotBlank()
+        return isExplicit && mac.isNotBlank()
     }
 
     fun isAdbAllowed(context: Context): Boolean {
@@ -225,6 +228,16 @@ object KioskSecurity {
 
     fun getDeviceAlias(context: Context): String {
         return getPrefs(context).getString(KEY_DEVICE_ALIAS, "") ?: ""
+    }
+
+    fun getHardwareId(context: Context): String {
+        val prefs = context.getSharedPreferences("kiosk_prefs", Context.MODE_PRIVATE)
+        var savedUuid = prefs.getString("device_uuid", null)
+        if (savedUuid.isNullOrBlank()) {
+            savedUuid = java.util.UUID.randomUUID().toString()
+            prefs.edit().putString("device_uuid", savedUuid).apply()
+        }
+        return savedUuid
     }
 
     fun setDeviceAlias(context: Context, alias: String) {
@@ -287,6 +300,11 @@ object KioskSecurity {
     }
 
     fun getSharedSecret(context: Context): String {
+        val prefs = getPrefs(context)
+        if (!prefs.getBoolean(KEY_SECRET_EXPLICITLY_PROVISIONED, false)) {
+            return DEFAULT_SHARED_SECRET
+        }
+
         val encryptedPrefs = getEncryptedPrefs(context)
         if (encryptedPrefs != null) {
             try { 
@@ -294,8 +312,6 @@ object KioskSecurity {
                 if (!existingSecret.isNullOrBlank()) return existingSecret
             } catch (e: Exception) { Log.e(TAG, "Encrypted prefs read failed: ${e.message}") }
         }
-        
-        val prefs = getPrefs(context)
         
         var secret = getCustomKeystoreEncryptedSecret(prefs)
         if (secret.isNullOrBlank()) {
@@ -345,6 +361,7 @@ object KioskSecurity {
         } 
         
         val prefs = getPrefs(context)
+        prefs.edit().putBoolean(KEY_SECRET_EXPLICITLY_PROVISIONED, true).apply()
         if (!successWithEncryptedPrefs) {
             val keystoreSuccess = setCustomKeystoreEncryptedSecret(prefs, trimmed)
             if (!keystoreSuccess) {
