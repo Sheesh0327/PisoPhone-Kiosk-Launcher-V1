@@ -33,8 +33,14 @@ void handleHeartbeat() {
         return;
     }
 
+    bool isAppReq = (webServer.hasArg("app") && (webServer.arg("app") == "1" || webServer.arg("app") == "true")) ||
+                    (webServer.hasArg("client") && webServer.arg("client") == "pisophone_app") ||
+                    (webServer.hasArg("source") && webServer.arg("source") == "app");
+
+    bool fromApp = isAppReq || (isAuth && webServer.hasArg("battery") && webServer.hasArg("charging"));
+
     if (deviceId.length() > 0 || reqIp.length() > 0) {
-        updateDeviceTelemetry(deviceId, reqIp, timeRem, state, battery, charging, ts);
+        updateDeviceTelemetry(deviceId, reqIp, timeRem, state, battery, charging, ts, fromApp);
     }
 
     if (slotIdx < 0 || !isAuth) {

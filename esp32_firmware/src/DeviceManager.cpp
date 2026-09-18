@@ -246,11 +246,12 @@ void recordDeviceNonce(String deviceId, unsigned long long ts) {
         trackedDevices[trackedDeviceCount].isCharging = false;
         trackedDevices[trackedDeviceCount].lastSeenMs = 0;
         trackedDevices[trackedDeviceCount].lastNonceTs = ts;
+        trackedDevices[trackedDeviceCount].isApp = false;
         trackedDeviceCount++;
     }
 }
 
-void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int state, int battery, bool charging, unsigned long long ts) {
+void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int state, int battery, bool charging, unsigned long long ts, bool isApp) {
     ip.trim();
     if (ip == "127.0.0.1") ip = "";
     if (ip.length() > 0) {
@@ -278,6 +279,7 @@ void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int st
             trackedDevices[i].isCharging = charging;
             trackedDevices[i].lastSeenMs = millis();
             if (ts > trackedDevices[i].lastNonceTs) trackedDevices[i].lastNonceTs = ts;
+            if (isApp) trackedDevices[i].isApp = true;
             return;
         }
     }
@@ -290,6 +292,7 @@ void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int st
         trackedDevices[trackedDeviceCount].isCharging = charging;
         trackedDevices[trackedDeviceCount].lastSeenMs = millis();
         trackedDevices[trackedDeviceCount].lastNonceTs = ts;
+        trackedDevices[trackedDeviceCount].isApp = isApp;
         trackedDeviceCount++;
     }
 }

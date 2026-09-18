@@ -77,6 +77,7 @@ struct DeviceTelemetry {
     bool isCharging;
     unsigned long lastSeenMs;
     unsigned long long lastNonceTs;
+    bool isApp; // True ONLY if request comes from the PisoPhone app (filters out external script coinslot access requests)
 };
 
 struct AuthRequest {

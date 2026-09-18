@@ -115,6 +115,7 @@ String renderLicenseSlotsHtml() {
     unsigned long currentMillis = millis();
     for (int i = 0; i < trackedDeviceCount; i++) {
         if (trackedDevices[i].deviceId.length() == 0) continue;
+        if (!trackedDevices[i].isApp) continue; // Only show requests that come from the app
         if (findSlotIndexForDevice(trackedDevices[i].deviceId, trackedDevices[i].lastKnownIp) >= 0) continue;
         if (currentMillis - trackedDevices[i].lastSeenMs < 300000) {
             unassignedCount++;
