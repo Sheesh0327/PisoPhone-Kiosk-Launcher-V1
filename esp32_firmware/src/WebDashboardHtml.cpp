@@ -94,12 +94,29 @@ static String getPlaceholderValue(const String& tag) {
         }
     }
 
+    if (tag == "MATCH_HEADER_MARGIN") {
+        return matchActive ? "16px" : "0px";
+    }
+
+    if (tag == "MATCH_CONTENT_DISPLAY") {
+        return matchActive ? "display: block;" : "display: none;";
+    }
+
+    if (tag == "MATCH_HEADER_ACTION") {
+        if (!matchActive) {
+            return "<button type=\"button\" id=\"match_toggle_btn\" onclick=\"toggle1v1MatchBox()\" class=\"btn btn-primary\" style=\"background:linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);border:none;color:#fff;font-weight:700;padding:8px 18px;border-radius:8px;font-size:13px;box-shadow:0 2px 10px rgba(139,92,246,0.3);\">⚔️ Activate 1v1 Mode</button>";
+        } else {
+            return "<span class=\"status-badge\" style=\"background:linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%); color:#ffffff; font-weight:bold; border-color:#a78bfa;\">⚔️ LIVE DUEL IN PROGRESS</span>";
+        }
+    }
+
     if (tag == "MATCH_CONTROLS") {
         String html = "";
         if (!matchActive) {
-            html += "<div style=\"display:flex;gap:12px;flex-wrap:wrap;margin-top:12px;\">";
-            html += "<button type=\"submit\" name=\"action\" value=\"activate\" class=\"btn btn-primary\" style=\"background:linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);border:none;color:#fff;font-weight:700;padding:10px 20px;border-radius:8px;\">⚔️ Activate 1v1 Mode</button>";
+            html += "<div style=\"display:flex;gap:12px;flex-wrap:wrap;margin-top:12px;align-items:center;\">";
+            html += "<button type=\"submit\" name=\"action\" value=\"activate\" class=\"btn btn-primary\" style=\"background:linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);border:none;color:#fff;font-weight:700;padding:10px 20px;border-radius:8px;\">⚔️ Start 1v1 Match</button>";
             html += "<button type=\"button\" onclick=\"checkMatchQualification()\" class=\"btn btn-outline\" style=\"border-color:var(--primary);color:var(--primary);\">🔍 Check Qualification</button>";
+            html += "<button type=\"button\" onclick=\"toggle1v1MatchBox()\" class=\"btn btn-outline\" style=\"margin-left:auto;\">Close</button>";
             html += "</div>";
         } else {
             html += "<div style=\"display:flex;gap:12px;flex-wrap:wrap;margin-top:12px;align-items:center;\">";

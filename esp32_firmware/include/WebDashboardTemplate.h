@@ -238,34 +238,39 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                 </div>
 
                 <!-- 1v1 Match -->
-                <div class="card grid-full {MATCH_CARD_CLASS}" style="{MATCH_CARD_STYLE}">
-                    <div class="card-header">
-                        <h3 class="card-title">⚔️ 1v1 Match Mode</h3>
-                        {MATCH_STATUS_BADGE}
+                <div class="card grid-full {MATCH_CARD_CLASS}" id="match_card_box" style="{MATCH_CARD_STYLE}">
+                    <div class="card-header" id="match_card_header" style="margin-bottom: {MATCH_HEADER_MARGIN};">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <h3 class="card-title">⚔️ 1v1 Match Mode</h3>
+                            {MATCH_STATUS_BADGE}
+                        </div>
+                        {MATCH_HEADER_ACTION}
                     </div>
-                    {MATCH_ALERT}
-                    <form action="/one_vs_one" method="POST" style="display: flex; flex-direction: column; gap: 16px;">
-                        <div class="form-group" style="max-width: 200px;">
-                            <label>Stake Minutes</label>
-                            <input type="number" id="match_mins_input" name="match_minutes" value="{MATCH_MINUTES}" min="1">
-                        </div>
-                        
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px;">
-                            <div style="background: var(--bg); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border);">
-                                <label style="color: var(--primary);">🎮 Player 1</label>
-                                <select id="p1_select" name="p1_ip" style="margin-bottom: 12px;">{P1_OPTIONS}</select>
-                                <button type="submit" name="winner" value="p1" class="btn btn-outline" style="width: 100%;">🏆 Award Win to P1</button>
+                    <div id="match_collapsible_content" style="{MATCH_CONTENT_DISPLAY}">
+                        {MATCH_ALERT}
+                        <form action="/one_vs_one" method="POST" style="display: flex; flex-direction: column; gap: 16px;">
+                            <div class="form-group" style="max-width: 200px;">
+                                <label>Stake Minutes</label>
+                                <input type="number" id="match_mins_input" name="match_minutes" value="{MATCH_MINUTES}" min="1">
                             </div>
-                            <div style="background: var(--bg); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border);">
-                                <label style="color: var(--danger);">🎮 Player 2</label>
-                                <select id="p2_select" name="p2_ip" style="margin-bottom: 12px;">{P2_OPTIONS}</select>
-                                <button type="submit" name="winner" value="p2" class="btn btn-outline" style="width: 100%;">🏆 Award Win to P2</button>
+                            
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px;">
+                                <div style="background: var(--bg); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border);">
+                                    <label style="color: var(--primary);">🎮 Player 1</label>
+                                    <select id="p1_select" name="p1_ip" style="margin-bottom: 12px;">{P1_OPTIONS}</select>
+                                    <button type="submit" name="winner" value="p1" class="btn btn-outline" style="width: 100%;">🏆 Award Win to P1</button>
+                                </div>
+                                <div style="background: var(--bg); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border);">
+                                    <label style="color: var(--danger);">🎮 Player 2</label>
+                                    <select id="p2_select" name="p2_ip" style="margin-bottom: 12px;">{P2_OPTIONS}</select>
+                                    <button type="submit" name="winner" value="p2" class="btn btn-outline" style="width: 100%;">🏆 Award Win to P2</button>
+                                </div>
                             </div>
-                        </div>
-                        
-                        {MATCH_CONTROLS}
-                    </form>
-                    <div id="match_qual_result" class="alert-box"></div>
+                            
+                            {MATCH_CONTROLS}
+                        </form>
+                        <div id="match_qual_result" class="alert-box"></div>
+                    </div>
                 </div>
 
                 <!-- OTA Update -->

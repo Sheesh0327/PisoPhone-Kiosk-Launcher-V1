@@ -412,6 +412,34 @@ window.checkMatchQualification = function() {
             resDiv.innerHTML = '❌ Network request failed: ' + err;
         });
 };
+
+window.toggle1v1MatchBox = function() {
+    var content = document.getElementById('match_collapsible_content');
+    var btn = document.getElementById('match_toggle_btn');
+    var header = document.getElementById('match_card_header');
+    if (!content) return;
+    if (content.style.display === 'none' || content.style.display === '') {
+        content.style.display = 'block';
+        if (header) header.style.marginBottom = '16px';
+        if (btn) {
+            btn.innerHTML = '▲ Close 1v1 Setup';
+            btn.style.background = 'transparent';
+            btn.style.border = '1px solid var(--border)';
+            btn.style.color = 'var(--text-muted)';
+            btn.style.boxShadow = 'none';
+        }
+    } else {
+        content.style.display = 'none';
+        if (header) header.style.marginBottom = '0px';
+        if (btn) {
+            btn.innerHTML = '⚔️ Activate 1v1 Mode';
+            btn.style.background = 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)';
+            btn.style.border = 'none';
+            btn.style.color = '#fff';
+            btn.style.boxShadow = '0 2px 10px rgba(139,92,246,0.3)';
+        }
+    }
+};
 )JS";
 
 #endif // WEB_DASHBOARD_SCRIPTS_CORE_H
