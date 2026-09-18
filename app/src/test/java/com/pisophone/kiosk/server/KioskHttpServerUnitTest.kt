@@ -38,7 +38,7 @@ class KioskHttpServerUnitTest {
         }
         override fun onDeductTime(seconds: Int, txId: String?) {}
         override fun onConfigUpdated(price: Double?, minutes: Int?, deviceName: String?, adminPin: String?, slotNum: Int?) {}
-        override fun onTriggerAction(action: String, slotNum: Int?) {}
+        override fun onTriggerAction(action: String, slotNum: Int?, extra: Map<String, String>?) {}
         override fun getCrashLog(): String? = null
     }
 
@@ -205,7 +205,7 @@ class KioskHttpServerUnitTest {
             override fun creditPayment(txId: String, seconds: Int, amount: Double): PaymentResult = PaymentResult.APPLIED
             override fun onDeductTime(seconds: Int, txId: String?) {}
             override fun onConfigUpdated(price: Double?, minutes: Int?, deviceName: String?, adminPin: String?, slotNum: Int?) {}
-            override fun onTriggerAction(action: String, slotNum: Int?) {}
+            override fun onTriggerAction(action: String, slotNum: Int?, extra: Map<String, String>?) {}
             override fun getCrashLog(): String? = null
         }
         val unreadyServer = KioskHttpServer(context = context, port = 8080, delegate = unreadyDelegate)

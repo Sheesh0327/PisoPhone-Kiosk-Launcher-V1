@@ -9,6 +9,7 @@ import com.pisophone.kiosk.overlay.ui.BatteryAlertBanner
 
 import android.content.Context
 import android.content.res.Configuration
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -57,6 +58,9 @@ fun BlockScreen(
     slotWarningDaysLeft: Int? = null,
     isSlotExpired: Boolean = false,
     slotExpiryReason: String = "",
+    isArenaMode: Boolean = false,
+    arenaRole: Int = 0,
+    arenaStakeMinutes: Int = 15,
     modifier: Modifier = Modifier.fillMaxSize()
 ) {
     data class OverlayTheme(
@@ -184,6 +188,57 @@ fun BlockScreen(
                 SlotExpiredBanner(reason = slotExpiryReason)
             } else if (slotWarningDaysLeft != null && slotWarningDaysLeft >= 0) {
                 SlotExpirationWarningBanner(daysLeft = slotWarningDaysLeft)
+            }
+
+            if (isArenaMode) {
+                val roleName = if (arenaRole == 1) "Player 1" else if (arenaRole == 2) "Player 2" else "Participant"
+                val roleBadge = if (arenaRole == 1) "P1" else if (arenaRole == 2) "P2" else "1v1"
+                val roleColor = if (arenaRole == 1) Color(0xFF38BDF8) else Color(0xFFFF5252)
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1035)),
+                    border = BorderStroke(1.5.dp, Color(0xFF8B5CF6))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text("⚔️", fontSize = 20.sp)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "1V1 ARENA DUEL ACTIVE",
+                                color = Color(0xFFA78BFA),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                            Text(
+                                text = "You are $roleName • ${arenaStakeMinutes}m Stake",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = roleColor.copy(alpha = 0.2f),
+                            border = BorderStroke(1.dp, roleColor.copy(alpha = 0.8f))
+                        ) {
+                            Text(
+                                text = roleBadge,
+                                color = roleColor,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+                }
             }
 
             // Scrollable Content

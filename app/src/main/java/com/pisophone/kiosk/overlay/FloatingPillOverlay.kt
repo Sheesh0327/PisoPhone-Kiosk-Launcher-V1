@@ -130,23 +130,13 @@ class FloatingPillOverlay(
             val isArenaMode by isArenaModeFlow.collectAsState()
             val arenaRole by arenaPlayerRoleFlow.collectAsState()
             val arenaStake by arenaStakeMinutesFlow.collectAsState()
-            val isArenaBannerVisible by isArenaBannerVisibleFlow.collectAsState()
             val activationUpdateVersion by com.pisophone.kiosk.security.KioskActivationManager.activationUpdateVersion.collectAsState()
             
             val isSetupReady = remember(activationUpdateVersion) { 
                 com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(context)
             }
-            val isVisible = isSetupReady && (appState == 2 || appState == 3 || isArenaBannerVisible)
+            val isVisible = isSetupReady && (appState == 2 || appState == 3)
             
-            LaunchedEffect(isArenaBannerVisible) {
-                if (isArenaBannerVisible) {
-                    updateFullScreen(true)
-                    delay(3800L)
-                    onDismissArenaBanner()
-                    updateFullScreen(false)
-                }
-            }
-
             LaunchedEffect(isVisible) {
                 if (isVisible) {
                     newOverlay.view.visibility = View.VISIBLE
@@ -156,59 +146,40 @@ class FloatingPillOverlay(
             }
 
             if (isVisible) {
-                Box(modifier = Modifier.fillMaxSize()) {
-                    if (appState == 2 || appState == 3) {
-                        FloatingPill(
-                            timeRemaining = sessionTime,
-                            onInsertCoinClick = onInsertCoinClick,
-                            coinsInserted = coinsInserted,
-                            paymentTimeout = paymentTimeout,
-                            onDoneClick = onDoneClick,
-                            isEsp32Online = isEsp32Online,
-                            isSlotBusy = isSlotBusy,
-                            isWaiting = appState == 3,
-                            themeIndex = themeIndex,
-                            batteryStatus = batteryStatus,
-                            isArenaMode = isArenaMode,
-                            arenaRole = arenaRole,
-                            arenaStakeMinutes = arenaStake,
-                            onRequestFocus = { focusable -> updateFocusable(focusable) },
-                            onRequestFullScreen = { isFullScreen -> updateFullScreen(isFullScreen) },
-                            onBrightnessChange = { ratio ->
-                                layoutParams.screenBrightness = ratio
-                                if (isViewAdded) {
-                                    try {
-                                        windowManager.updateViewLayout(newOverlay.view, layoutParams)
-                                    } catch (e: Exception) {}
-                                }
-                            },
-                            onDrag = { dx, dy ->
-                                layoutParams.x += dx.toInt()
-                                layoutParams.y += dy.toInt()
-                                try {
-                                    windowManager.updateViewLayout(newOverlay.view, layoutParams)
-                                } catch (e: Exception) {
-                                    android.util.Log.e("FloatingPillOverlay", "Failed to update layout: ${e.message}")
-                                }
-                            }
-                        )
-                    }
-
-                    if (isArenaBannerVisible) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 24.dp),
-                            contentAlignment = Alignment.TopCenter
-                        ) {
-                            ArenaModeBanner(
-                                visible = isArenaBannerVisible,
-                                playerRole = arenaRole,
-                                stakeMinutes = arenaStake
-                            )
+                FloatingPill(
+                    timeRemaining = sessionTime,
+                    onInsertCoinClick = onInsertCoinClick,
+                    coinsInserted = coinsInserted,
+                    paymentTimeout = paymentTimeout,
+                    onDoneClick = onDoneClick,
+                    isEsp32Online = isEsp32Online,
+                    isSlotBusy = isSlotBusy,
+                    isWaiting = appState == 3,
+                    themeIndex = themeIndex,
+                    batteryStatus = batteryStatus,
+                    isArenaMode = isArenaMode,
+                    arenaRole = arenaRole,
+                    arenaStakeMinutes = arenaStake,
+                    onRequestFocus = { focusable -> updateFocusable(focusable) },
+                    onRequestFullScreen = { isFullScreen -> updateFullScreen(isFullScreen) },
+                    onBrightnessChange = { ratio ->
+                        layoutParams.screenBrightness = ratio
+                        if (isViewAdded) {
+                            try {
+                                windowManager.updateViewLayout(newOverlay.view, layoutParams)
+                            } catch (e: Exception) {}
+                        }
+                    },
+                    onDrag = { dx, dy ->
+                        layoutParams.x += dx.toInt()
+                        layoutParams.y += dy.toInt()
+                        try {
+                            windowManager.updateViewLayout(newOverlay.view, layoutParams)
+                        } catch (e: Exception) {
+                            android.util.Log.e("FloatingPillOverlay", "Failed to update layout: ${e.message}")
                         }
                     }
-                }
+                )
             }
         }
         try {
