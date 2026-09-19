@@ -69,10 +69,10 @@ class KioskEsp32Coordinator(
         stateManager.saveState()
     }
 
-    override fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?) {
+    override fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?): PaymentResult {
         if (txId.isNullOrBlank()) {
             Log.e(TAG, "Invalid coin message over WebSocket: missing transaction ID")
-            return
+            return PaymentResult.FAILED
         }
 
         Log.d(TAG, "Received validated coin via WebSocket: seconds=$seconds, amount=₱$amount, tx_id=$txId")
@@ -95,6 +95,7 @@ class KioskEsp32Coordinator(
                 Log.e(TAG, "WebSocket coin database failure: txId=$txId")
             }
         }
+        return result
     }
 
     override fun onSlotBusy() {

@@ -29,7 +29,7 @@ interface Esp32ConnectionDelegate {
     fun onEsp32Discovered(ip: String)
     fun onOnlineStatusChanged(isOnline: Boolean, mac: String?)
     fun onConfigSynced(price: Double?, minutes: Int?, alias: String?, adminPin: String? = null, slotNum: Int? = null)
-    fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?)
+    fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?): com.pisophone.kiosk.repository.PaymentResult
     fun onSlotBusy()
     fun onArmSuccess()
     fun onSlotWarning(daysLeft: Int, expiresAt: Long, slotNum: Int, message: String)
@@ -506,24 +506,30 @@ class Esp32ConnectionManager(
                         }
 
                         Log.i(TAG, "⚡ Validated WebSocket Coin Processed: +${seconds}s, amount=₱$amount, txId=$txId")
-                        delegate.onCoinMessageReceived(seconds, amount, txId)
+                        val result = delegate.onCoinMessageReceived(seconds, amount, txId)
 
-                        // Send signed durable ACK back to ESP32 over WebSocket
-                        try {
-                            val ackNow = System.currentTimeMillis()
-                            val ackPayload = "v1:$targetDev:$txId:$amountPulses:$ackNow"
-                            val ackSig = KioskSecurity.calculateHmac(ackPayload, secretKey)
-                            val ackJson = JSONObject().apply {
-                                put("event", "ACK")
-                                put("device_id", targetDev)
-                                put("tx_id", txId)
-                                put("amount", amountPulses)
-                                put("ts", ackNow.toString())
-                                put("v_sig", ackSig)
+                        // Send signed durable ACK back to ESP32 over WebSocket only if APPLIED or ALREADY_APPLIED
+                        if (result == com.pisophone.kiosk.repository.PaymentResult.APPLIED || 
+                            result == com.pisophone.kiosk.repository.PaymentResult.ALREADY_APPLIED) {
+                            try {
+                                val ackNow = System.currentTimeMillis()
+                                val ackPayload = "v1:$targetDev:$txId:$amountPulses:$ackNow"
+                                val ackSig = KioskSecurity.calculateHmac(ackPayload, secretKey)
+                                val ackJson = JSONObject().apply {
+                                    put("event", "ACK")
+                                    put("device_id", targetDev)
+                                    put("tx_id", txId)
+                                    put("amount", amountPulses)
+                                    put("ts", ackNow.toString())
+                                    put("v_sig", ackSig)
+                                    put("status", if (result == com.pisophone.kiosk.repository.PaymentResult.ALREADY_APPLIED) "ALREADY_PROCESSED" else "APPLIED")
+                                }
+                                webSocket.send(ackJson.toString())
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Failed to send WebSocket ACK for $txId: ${e.message}")
                             }
-                            webSocket.send(ackJson.toString())
-                        } catch (e: Exception) {
-                            Log.w(TAG, "Failed to send WebSocket ACK for $txId: ${e.message}")
+                        } else {
+                            Log.w(TAG, "WebSocket ACK suppressed for $txId due to payment result: $result")
                         }
 
                         // If coin arrives during drain window, reset drain timeout to allow subsequent pulses
