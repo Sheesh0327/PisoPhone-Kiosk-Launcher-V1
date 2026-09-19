@@ -88,6 +88,7 @@ void resetCoinDetectorStates() {
     noInterrupts();
     isrUniversalPulseCount = 0;
     isrLastPulseTimeMs = 0;
+    isrLastPulseTimeUs = 0;
     interrupts();
 }
 
@@ -130,13 +131,18 @@ void processRelayState() {
 // ============================================================================
 volatile int isrUniversalPulseCount = 0;
 volatile unsigned long isrLastPulseTimeMs = 0;
-static const unsigned long U_MIN_PULSE_DEBOUNCE_MS = 30; // Reject spikes shorter than 30ms
+volatile unsigned long isrLastPulseTimeUs = 0;
+// Debounce threshold: 10ms (10,000us) ensures 20ms FAST coin pulses are cleanly captured
+// while mechanical noise spikes (< 10ms) are strictly filtered out.
+static const unsigned long U_MIN_PULSE_DEBOUNCE_US = 10000;
 
 void IRAM_ATTR universalCoinIsr() {
-    unsigned long now = millis();
-    if (now - isrLastPulseTimeMs >= U_MIN_PULSE_DEBOUNCE_MS) {
+    unsigned long nowUs = micros();
+    unsigned long elapsedUs = nowUs - isrLastPulseTimeUs;
+    if (elapsedUs >= U_MIN_PULSE_DEBOUNCE_US) {
         isrUniversalPulseCount++;
-        isrLastPulseTimeMs = now;
+        isrLastPulseTimeUs = nowUs;
+        isrLastPulseTimeMs = millis();
     }
 }
 

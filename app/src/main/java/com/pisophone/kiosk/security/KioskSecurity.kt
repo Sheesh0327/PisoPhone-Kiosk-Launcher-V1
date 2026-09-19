@@ -64,7 +64,7 @@ object KioskSecurity {
         }
     }
 
-    private fun getEncryptedPrefs(context: Context): SharedPreferences? {
+    fun getEncryptedPrefs(context: Context): SharedPreferences? {
         if (encryptedPrefsInstance != null) return encryptedPrefsInstance
         
         return synchronized(this) {
@@ -87,6 +87,10 @@ object KioskSecurity {
                 null
             }
         }
+    }
+
+    fun getEncryptedPreferences(context: Context): SharedPreferences {
+        return getEncryptedPrefs(context) ?: getDirectBootPrefs(context, "secure_kiosk_prefs")
     }
 
     fun getDirectBootPrefs(context: Context, name: String = PREFS_SECURITY_OLD): SharedPreferences {

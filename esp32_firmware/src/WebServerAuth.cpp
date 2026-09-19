@@ -36,6 +36,37 @@ void authWorkerTask(void *pvParameters) {
                 finalParams += "&tx_id=" + currentTxId;
             }
 
+            String currentDevId = "";
+            int devPos = finalParams.indexOf("device_id=");
+            if (devPos != -1) {
+                int endDev = finalParams.indexOf('&', devPos);
+                if (endDev == -1) endDev = finalParams.length();
+                currentDevId = finalParams.substring(devPos + 10, endDev);
+            }
+
+            String currentAmount = "1";
+            int amtPos = finalParams.indexOf("amount=");
+            if (amtPos != -1) {
+                int endAmt = finalParams.indexOf('&', amtPos);
+                if (endAmt == -1) endAmt = finalParams.length();
+                currentAmount = finalParams.substring(amtPos + 7, endAmt);
+            }
+
+            String currentTs = String(currentMasterMs);
+            int pTsPos = finalParams.indexOf("ts=");
+            if (pTsPos != -1) {
+                int endTs = finalParams.indexOf('&', pTsPos);
+                if (endTs == -1) endTs = finalParams.length();
+                currentTs = finalParams.substring(pTsPos + 3, endTs);
+            }
+
+            // Ensure versioned signature on all /add_time requests
+            if (String(req.actionPath) == "/add_time" && finalParams.indexOf("v_sig=") == -1 && currentDevId.length() > 0) {
+                String vPayload = "v1:" + currentDevId + ":" + currentTxId + ":" + currentAmount + ":" + currentTs;
+                String vSig = calculateHMAC(vPayload, sharedSecret);
+                finalParams += "&v_sig=" + vSig;
+            }
+
             int retries = 0;
             const int maxAttempts = 3;
             bool delivered = false;
@@ -62,11 +93,67 @@ void authWorkerTask(void *pvParameters) {
                     int code = http.GET();
                     Serial.printf("[AUTH WORKER] %s -> HTTP %d (attempt %d/%d)\n",
                                   req.actionPath, code, retries + 1, maxAttempts);
-                    http.end();
+                    String respBody = "";
                     if (code >= 200 && code < 300) {
-                        delivered = true;
-                        if (currentTxId.length() > 0) {
-                            acknowledgePayment(currentTxId);
+                        respBody = http.getString();
+                    }
+                    http.end();
+
+                    if (code >= 200 && code < 300) {
+                        if (currentTxId.length() > 0 && currentDevId.length() > 0) {
+                            bool ackValid = false;
+                            int ackTxPos = respBody.indexOf("tx_id=");
+                            int ackDevPos = respBody.indexOf("device_id=");
+                            if (ackTxPos != -1 && ackDevPos != -1) {
+                                int ackTxEnd = respBody.indexOf(':', ackTxPos);
+                                if (ackTxEnd == -1) ackTxEnd = respBody.length();
+                                String ackTx = respBody.substring(ackTxPos + 6, ackTxEnd);
+
+                                int ackDevEnd = respBody.indexOf(':', ackDevPos);
+                                if (ackDevEnd == -1) ackDevEnd = respBody.length();
+                                String ackDev = respBody.substring(ackDevPos + 10, ackDevEnd);
+
+                                if (ackTx == currentTxId && ackDev == currentDevId) {
+                                    int sigPos = respBody.indexOf("v_sig=");
+                                    int tsPosIdx = respBody.indexOf("ts=");
+                                    if (sigPos != -1 && tsPosIdx != -1) {
+                                        int sigEnd = respBody.indexOf(':', sigPos);
+                                        if (sigEnd == -1) sigEnd = respBody.length();
+                                        String ackSig = respBody.substring(sigPos + 6, sigEnd);
+
+                                        int tsEnd = respBody.indexOf(':', tsPosIdx);
+                                        if (tsEnd == -1) tsEnd = respBody.length();
+                                        String ackTs = respBody.substring(tsPosIdx + 3, tsEnd);
+
+                                        String expectedSig = calculateHMAC("v1:" + currentDevId + ":" + currentTxId + ":" + currentAmount + ":" + ackTs, sharedSecret);
+                                        if (ackSig.equalsIgnoreCase(expectedSig)) {
+                                            ackValid = true;
+                                        } else {
+                                            Serial.printf("[AUTH WORKER] Invalid ACK signature for tx_id='%s'\n", currentTxId.c_str());
+                                        }
+                                    } else {
+                                        ackValid = true;
+                                    }
+                                } else {
+                                    Serial.printf("[AUTH WORKER] Mismatched ACK: (dev=%s, tx=%s) vs received (dev=%s, tx=%s)\n",
+                                                  currentDevId.c_str(), currentTxId.c_str(), ackDev.c_str(), ackTx.c_str());
+                                }
+                            } else if (respBody.startsWith("OK") || respBody.startsWith("ALREADY_PROCESSED")) {
+                                ackValid = true;
+                            }
+
+                            if (ackValid) {
+                                delivered = true;
+                                if (acknowledgePhonePayment(currentDevId, currentTxId)) {
+                                    Serial.printf("[AUTH WORKER] Durable phone ACK accepted for tx_id='%s' (device: %s)\n",
+                                                  currentTxId.c_str(), currentDevId.c_str());
+                                }
+                            } else {
+                                Serial.printf("[AUTH WORKER] Payment ACK rejected due to mismatched recipient/signature (tx_id=%s)\n",
+                                              currentTxId.c_str());
+                            }
+                        } else {
+                            delivered = true;
                         }
                     }
                 }

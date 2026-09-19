@@ -24,6 +24,7 @@ void resetCoinDetectorStates();
 void applyCoinSlotHardwareConfig();
 extern volatile int isrUniversalPulseCount;
 extern volatile unsigned long isrLastPulseTimeMs;
+extern volatile unsigned long isrLastPulseTimeUs;
 
 void processHardwareResetPin();
 

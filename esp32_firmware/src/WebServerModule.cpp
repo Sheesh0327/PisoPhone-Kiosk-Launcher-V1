@@ -1,5 +1,6 @@
 #include "WebServerModule.h"
 #include "CoinSlotManager.h"
+#include "PaymentQueueManager.h"
 #include "Config.h"
 #include "Security.h"
 #include "HardwareManager.h"
@@ -97,6 +98,8 @@ void setupWebServer() {
         if (!otaIsValidBinary || Update.hasError() || !otaUpdateSuccess) {
             String errStr = otaErrorMsg.length() > 0 ? otaErrorMsg : ("Flash write failed (Error Code " + String(Update.getError()) + ")");
             webServer.send(400, "text/plain", errStr);
+        } else if (!canPerformRebootOrOta()) {
+            webServer.send(409, "text/plain", "BUSY: Unpersisted transactions in RAM");
         } else {
             webServer.send(200, "text/plain", "SUCCESS");
             delay(1000);
@@ -113,6 +116,13 @@ void setupWebServer() {
             otaErrorMsg = "";
             Update.clearError();
             
+            if (!canPerformRebootOrOta()) {
+                otaIsValidBinary = false;
+                otaErrorMsg = "OTA blocked: unpersisted transactions in RAM";
+                Serial.println("[OTA] Aborted: unpersisted transactions in RAM");
+                return;
+            }
+
             Serial.printf("[OTA] Starting firmware flash: %s\n", upload.filename.c_str());
             
             if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {

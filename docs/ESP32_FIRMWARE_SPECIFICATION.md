@@ -108,6 +108,7 @@ When a physical coin is inserted into the coin selector, the ESP32 increments th
 ---
 
 ## 6. Hardware & Coin Acceptor Logic
-1. **Interrupt Pin Handler**: ESP32 captures pulse trains from multi-coin selectors (e.g., 1 pulse = ₱1, 5 pulses = ₱5, 10 pulses = ₱10).
-2. **Debounce Guard**: Hardware timer debounce (50ms) filters noise.
-3. **Relay Control**: Optical relay isolates power to the coin selector, powering it on ONLY during active arming windows.
+1. **Interrupt Pin Handler**: ESP32 captures pulse trains from multi-coin selectors (e.g., 1 pulse = ₱1, 5 pulses = ₱5, 10 pulses = ₱10) using microsecond-accurate edge timing.
+2. **Debounce Guard**: Microsecond-precision edge timing with a 10ms (10,000 µs) debounce threshold cleanly captures FAST multi-coin selector pulse bursts (20ms–60ms pulses) while strictly filtering out EMI and contact chatter (< 10ms).
+3. **Atomic Pulse Buffering**: Harvests raw ISR pulses into session accumulators without pulse dropping during network dispatch or rapid consecutive insertions.
+4. **Relay Control**: Optical relay isolates power to the coin selector, powering it on ONLY during active arming windows and preserving in-flight pulses during draining.

@@ -41,6 +41,8 @@ class KioskServerCoordinator(
 
     override fun getSecretKey(): String = getSecretKey.invoke()
 
+    override fun getDeviceId(): String = stateManager.deviceId.value.ifBlank { KioskSecurity.getHardwareId(context) }
+
     override fun onHeartbeat(clientIp: String?) {
         stateManager.isEsp32Online.value = true
         if (!clientIp.isNullOrEmpty() && clientIp != "127.0.0.1") {

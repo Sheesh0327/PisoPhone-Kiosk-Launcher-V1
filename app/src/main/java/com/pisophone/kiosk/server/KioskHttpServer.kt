@@ -14,6 +14,7 @@ import java.util.concurrent.ConcurrentHashMap
 interface KioskServerDelegate {
     fun isReady(): Boolean = true
     fun getSecretKey(): String
+    fun getDeviceId(): String = ""
     fun onHeartbeat(clientIp: String?)
     fun getStatusJson(): JSONObject
     fun getSessionTimeRemaining(): Int
@@ -167,6 +168,13 @@ class KioskHttpServer(
 
         return when (uri) {
             "/add_time", "/coin" -> {
+                val targetDev = decryptedParams["device_id"]?.trim() ?: ""
+                val myDeviceId = delegate.getDeviceId().ifBlank { KioskSecurity.getHardwareId(context) }
+                if (targetDev.isNotBlank() && !targetDev.equals(myDeviceId, ignoreCase = true)) {
+                    Log.w(TAG, "Rejecting payment request: Recipient mismatch (target='$targetDev', local='$myDeviceId')")
+                    return createResponse(Response.Status.FORBIDDEN, "text/plain", "MISMATCHED_RECIPIENT")
+                }
+
                 val hasMinutes = decryptedParams.containsKey("minutes")
                 val hasSeconds = decryptedParams.containsKey("seconds")
                 val minutesLong = decryptedParams["minutes"]?.toLongOrNull()
@@ -189,6 +197,17 @@ class KioskHttpServer(
                     return createResponse(Response.Status.BAD_REQUEST, "text/plain", "INVALID_AMOUNT")
                 }
 
+                val amountPulses = amount.toInt()
+                val tsParam = decryptedParams["ts"]?.trim() ?: ""
+                val vSig = decryptedParams["v_sig"]?.trim() ?: ""
+                if (vSig.isNotBlank()) {
+                    val expectedVSig = KioskSecurity.calculateHmac("v1:$targetDev:$txId:$amountPulses:$tsParam", secretKey)
+                    if (!KioskSecurity.constantTimeEquals(vSig.lowercase(), expectedVSig.lowercase())) {
+                        Log.w(TAG, "Rejecting payment: Invalid versioned HMAC signature for $txId")
+                        return createResponse(Response.Status.UNAUTHORIZED, "text/plain", "INVALID_SIGNATURE")
+                    }
+                }
+
                 if (rawSecondsLong > 0) {
                     if (rawSecondsLong > Int.MAX_VALUE.toLong()) {
                         Log.w(TAG, "Rejecting coin credit: seconds parameter exceeds Int.MAX_VALUE ($rawSecondsLong)")
@@ -201,13 +220,24 @@ class KioskHttpServer(
                         Log.e(TAG, "Exception during creditPayment for $txId: ${e.message}", e)
                         PaymentResult.FAILED
                     }
+
+                    val ackResp = if (targetDev.isNotBlank()) {
+                        val ackNow = System.currentTimeMillis()
+                        val ackPayload = "v1:$targetDev:$txId:$amountPulses:$ackNow"
+                        val ackSig = KioskSecurity.calculateHmac(ackPayload, secretKey)
+                        "OK:tx_id=$txId:device_id=$targetDev:amount=$amountPulses:ts=$ackNow:v_sig=$ackSig"
+                    } else {
+                        "OK"
+                    }
+
                     when (result) {
                         PaymentResult.APPLIED -> {
-                            createResponse(Response.Status.OK, "text/plain", "OK")
+                            createResponse(Response.Status.OK, "text/plain", ackResp)
                         }
                         PaymentResult.ALREADY_APPLIED -> {
-                            // Acknowledge duplicate without extending time so ESP32 clears retry queue
-                            createResponse(Response.Status.OK, "text/plain", "ALREADY_PROCESSED")
+                            // Acknowledge duplicate with context if present so ESP32 clears retry queue
+                            val resp = if (targetDev.isNotBlank()) "ALREADY_PROCESSED:$ackResp" else "ALREADY_PROCESSED"
+                            createResponse(Response.Status.OK, "text/plain", resp)
                         }
                         PaymentResult.CONFLICT -> {
                             Log.w(TAG, "Payment rejected due to conflicting values for $txId")

@@ -49,11 +49,11 @@ void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId) {
     String targetIp = "";
     if (targetDev.length() > 0) {
         targetIp = getIpFromDeviceId(targetDev);
-    }
-    if (targetIp.length() == 0) {
-        targetIp = getPrimaryTerminalIp();
-        if (targetIp.length() > 0) {
-            Serial.printf("[⚡ AUTO-ROUTED COIN] Auto-routing ₱%d universal coin to terminal: %s\n", pulses, targetIp.c_str());
+        if (targetIp.length() == 0 || targetIp == "127.0.0.1") {
+            int slotIdx = findSlotIndexForDevice(targetDev, "");
+            if (slotIdx >= 0 && isSlotActive(slotIdx)) {
+                targetIp = licenseSlots[slotIdx].ip;
+            }
         }
     }
 
@@ -81,27 +81,25 @@ void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId) {
                       txId.c_str());
     }
 
-    // If WebSocket is connected and belongs to this device, send event frame
-    if (isWsConnected && wsClient.connected() && (targetDev.length() == 0 || wsSessionDeviceId == targetDev)) {
+    // Require an exact device-ID match before WebSocket delivery. Never transfer pending credit to a replacement phone automatically.
+    String vPayload = "v1:" + targetDev + ":" + txId + ":" + String(pulses) + ":" + String(ts);
+    String vSig = calculateHMAC(vPayload, sharedSecret);
+
+    if (isWsConnected && wsClient.connected() && targetDev.length() > 0 && wsSessionDeviceId == targetDev) {
         Serial.printf("[⚡] Pushing ₱%d (+%d mins / %d secs) over WebSocket to %s!\n", pulses, addedMinutes, addedSeconds, targetDev.c_str());
-        String innerJson = "{\"seconds\":" + String(addedSeconds) + ",\"minutes\":" + String(addedMinutes) + ",\"amount\":" + String(pulses) + ",\"tx_id\":\"" + txId + "\",\"ts\":\"" + String(ts) + "\"}";
+        String innerJson = "{\"seconds\":" + String(addedSeconds) + ",\"minutes\":" + String(addedMinutes) + ",\"amount\":" + String(pulses) + ",\"tx_id\":\"" + txId + "\",\"ts\":\"" + String(ts) + "\",\"device_id\":\"" + targetDev + "\",\"v_sig\":\"" + vSig + "\"}";
         String payload = aes_encrypt(innerJson, sharedSecret);
         String json = "{\"event\":\"COIN_DETECTED\",\"payload\":\"" + payload + "\",\"seconds\":" + String(addedSeconds) + ",\"amount\":" + String(pulses) + ",\"tx_id\":\"" + txId + "\"}";
         sendWsText(wsClient, json);
-        if (targetDev.length() > 0) refreshCoinSlotTtl(targetDev, CoinSlotOwnerType::PHONE, ARM_TTL);
+        refreshCoinSlotTtl(targetDev, CoinSlotOwnerType::PHONE, ARM_TTL);
     }
 
-    if (targetIp.length() > 0) {
+    if (targetIp.length() > 0 && targetIp != "127.0.0.1") {
         Serial.printf("[⚡] Routing universal coin to IP: %s (Device: %s)\n", targetIp.c_str(), targetDev.c_str());
-        sendAuthenticated(targetIp, targetPort, "/add_time", "/challenge", "minutes=" + String(addedMinutes) + "&seconds=" + String(addedSeconds) + "&amount=" + String(pulses) + "&tx_id=" + txId, 1000);
+        sendAuthenticated(targetIp, targetPort, "/add_time", "/challenge", "minutes=" + String(addedMinutes) + "&seconds=" + String(addedSeconds) + "&amount=" + String(pulses) + "&tx_id=" + txId + "&device_id=" + targetDev + "&ts=" + String(ts) + "&v_sig=" + vSig, 1000);
         if (targetDev.length() > 0) refreshCoinSlotTtl(targetDev, CoinSlotOwnerType::PHONE, ARM_TTL);
     } else {
-        for (int i = 0; i < maxLicensedSlots; i++) {
-            if (licenseSlots[i].deviceId.length() > 0 && licenseSlots[i].ip.length() > 0 && licenseSlots[i].ip != "127.0.0.1") {
-                Serial.printf("[⚡ FALLBACK] Dispatching coin to paired slot device IP: %s\n", licenseSlots[i].ip.c_str());
-                sendAuthenticated(licenseSlots[i].ip, targetPort, "/add_time", "/challenge", "minutes=" + String(addedMinutes) + "&seconds=" + String(addedSeconds) + "&amount=" + String(pulses) + "&tx_id=" + txId, 1000);
-            }
-        }
+        Serial.printf("[⚡] Device '%s' currently offline/unreachable; retained in queue for retry.\n", targetDev.c_str());
     }
 }
 
@@ -120,19 +118,31 @@ void sendCloudSnapshot() {
 
 bool retryPhonePayment(const String& targetDeviceId, int pulses, int creditSeconds,
                        const String& txId) {
-    int slotIndex = findSlotIndexForDevice(targetDeviceId, "");
-    if (slotIndex < 0 || !isSlotActive(slotIndex)) return false;
+    if (targetDeviceId.length() == 0) return false;
 
-    String targetIp = licenseSlots[slotIndex].ip;
+    // Resolve current IP directly from active telemetry/device tracking, or fall back to slot mapping
+    String targetIp = getIpFromDeviceId(targetDeviceId);
+    if (targetIp.length() == 0 || targetIp == "127.0.0.1") {
+        int slotIndex = findSlotIndexForDevice(targetDeviceId, "");
+        if (slotIndex >= 0 && isSlotActive(slotIndex)) {
+            targetIp = licenseSlots[slotIndex].ip;
+        }
+    }
     if (targetIp.length() == 0 || targetIp == "127.0.0.1") return false;
 
     int safeSeconds = creditSeconds > 0
         ? creditSeconds
         : pulses * max(minutesPerCoin, 1) * 60;
+    uint64_t retryTs = getCurrentMasterTimeMs();
+    String vPayload = "v1:" + targetDeviceId + ":" + txId + ":" + String(pulses) + ":" + String(retryTs);
+    String vSig = calculateHMAC(vPayload, sharedSecret);
     String params = "minutes=" + String(safeSeconds / 60) +
                     "&seconds=" + String(safeSeconds) +
                     "&amount=" + String(pulses) +
-                    "&tx_id=" + txId;
+                    "&tx_id=" + txId +
+                    "&device_id=" + targetDeviceId +
+                    "&ts=" + String(retryTs) +
+                    "&v_sig=" + vSig;
     return sendAuthenticated(targetIp, targetPort, "/add_time", "/challenge",
                              params, 1000);
 }

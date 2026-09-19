@@ -9,6 +9,7 @@ import com.pisophone.kiosk.db.AppMetadata
 import com.pisophone.kiosk.db.PaidSessionState
 import com.pisophone.kiosk.db.PaymentReceipt
 import com.pisophone.kiosk.security.KioskActivationManager
+import com.pisophone.kiosk.security.KioskSecurity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 
@@ -54,6 +55,8 @@ class PaymentRepository(
         const val PREFS_NAME = "kiosk_persistent_state"
         const val KEY_MIGRATION_MARKER = "legacy_paid_state_migrated_v4"
         const val KEY_MIGRATION_MARKER_PREFS = "legacy_paid_state_migrated_v3"
+        const val KEY_BOOT_COUNT = "BOOT_COUNT"
+        const val KEY_PENDING_TX = "pending_transaction_in_flight"
     }
 
     constructor(
@@ -123,8 +126,10 @@ class PaymentRepository(
                     revision = newRevision
                 )
 
+                paymentDao.setMetadata(AppMetadata(KEY_PENDING_TX, "$txId:$seconds:$amount"))
                 paymentDao.insertReceipt(receipt)
                 paymentDao.updateSessionState(newState)
+                paymentDao.setMetadata(AppMetadata(KEY_PENDING_TX, ""))
 
                 committedSnapshot = SessionSnapshot(newDeadline, newSessionTime, newRevision)
                 PaymentResult.APPLIED
@@ -360,13 +365,112 @@ class PaymentRepository(
             checkpointSession(snapshotRevision)
         }
 
+    suspend fun recoverUncommittedTransactions(nowMonotonic: Long = SystemClock.elapsedRealtime()) {
+        // 1. Recover / clear incomplete pending transaction marker
+        val pendingTx = paymentDao.getMetadata(KEY_PENDING_TX)
+        if (!pendingTx.isNullOrBlank()) {
+            val parts = pendingTx.split(":")
+            if (parts.size >= 3) {
+                val txId = parts[0]
+                val existingReceipt = paymentDao.getReceiptByTxId(txId)
+                if (existingReceipt != null) {
+                    Log.i(TAG, "Startup recovery: In-flight transaction $txId was already committed.")
+                } else {
+                    Log.w(TAG, "Startup recovery: Rolling back uncommitted in-flight transaction $txId")
+                }
+            }
+            paymentDao.setMetadata(AppMetadata(KEY_PENDING_TX, ""))
+        }
+
+        // 2. Reconcile any unrecorded coin events into payment receipts
+        try {
+            val events = db.coinEventDao().getLatestEvents(limit = 100)
+            for (ev in events) {
+                if (paymentDao.getReceiptByTxId(ev.txId) == null) {
+                    paymentDao.insertReceiptIgnore(
+                        PaymentReceipt(
+                            txId = ev.txId,
+                            secondsCredited = ev.secondsAdded,
+                            amount = 0.0,
+                            acceptanceTimestamp = ev.timestamp
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error reconciling coin events during recovery: ${e.message}")
+        }
+
+        // 3. Inspect and sanitize PaidSessionState
+        val currentState = paymentDao.getSessionState()
+        if (currentState != null) {
+            var sanitizedRemaining = currentState.sessionTimeRemaining
+            var sanitizedDeadline = currentState.sessionExpiryDeadlineMs
+            var needsUpdate = false
+
+            if (sanitizedRemaining < 0) {
+                sanitizedRemaining = 0
+                sanitizedDeadline = 0L
+                needsUpdate = true
+            }
+            if (sanitizedDeadline < 0L) {
+                sanitizedDeadline = 0L
+                sanitizedRemaining = 0
+                needsUpdate = true
+            }
+
+            if (needsUpdate) {
+                paymentDao.updateSessionState(
+                    currentState.copy(
+                        sessionTimeRemaining = sanitizedRemaining,
+                        sessionExpiryDeadlineMs = sanitizedDeadline,
+                        lastSavedElapsedRealtime = nowMonotonic,
+                        revision = currentState.revision + 1L
+                    )
+                )
+            }
+        }
+    }
+
+    fun recoverUncommittedTransactionsBlocking(nowMonotonic: Long = SystemClock.elapsedRealtime()) =
+        runBlocking(Dispatchers.IO) {
+            recoverUncommittedTransactions(nowMonotonic)
+        }
+
     fun restoreSessionState(ctx: Context? = context): RestoredSessionState = runBlocking(Dispatchers.IO) {
         if (ctx != null) {
             migrateAndInitialize(ctx)
         }
+
+        val effectiveCtx = ctx ?: context
+        val encryptedPrefs = effectiveCtx?.let { KioskSecurity.getEncryptedPreferences(it) }
+        val currentBootCount = if (effectiveCtx != null) {
+            try {
+                android.provider.Settings.Global.getInt(
+                    effectiveCtx.contentResolver,
+                    android.provider.Settings.Global.BOOT_COUNT,
+                    -1
+                )
+            } catch (e: Exception) {
+                -1
+            }
+        } else {
+            -1
+        }
+        val lastSavedBootCount = encryptedPrefs?.getInt(KEY_BOOT_COUNT, -1) ?: -1
+        val isBootCountChanged = if (currentBootCount != -1) {
+            val changed = lastSavedBootCount != -1 && currentBootCount != lastSavedBootCount
+            encryptedPrefs?.edit()?.putInt(KEY_BOOT_COUNT, currentBootCount)?.commit()
+            changed
+        } else {
+            false
+        }
+
         val (snapshot, isReboot) = db.withTransaction {
-            val paidState = paymentDao.getSessionState()
             val nowMonotonic = SystemClock.elapsedRealtime()
+            recoverUncommittedTransactions(nowMonotonic)
+
+            val paidState = paymentDao.getSessionState()
             if (paidState == null) {
                 return@withTransaction Pair(SessionSnapshot(0L, 0, 0L), false)
             }
@@ -375,13 +479,21 @@ class PaymentRepository(
             val savedTime = paidState.sessionTimeRemaining
             val lastSavedElapsed = paidState.lastSavedElapsedRealtime
 
-            val rebootDetected = lastSavedElapsed > 0L && nowMonotonic < lastSavedElapsed
+            val monotonicRebootDetected = lastSavedElapsed > 0L && nowMonotonic < lastSavedElapsed
+            val rebootDetected = isBootCountChanged || monotonicRebootDetected
+            if (currentBootCount == -1 && monotonicRebootDetected) {
+                val nextCount = (lastSavedBootCount.takeIf { it >= 0 } ?: 0) + 1
+                encryptedPrefs?.edit()?.putInt(KEY_BOOT_COUNT, nextCount)?.commit()
+            }
+
             val effectiveRemainingSec: Int
             val effectiveDeadline: Long
             var updatedRevision = paidState.revision
 
             if (rebootDetected) {
-                effectiveRemainingSec = maxOf(0, savedTime)
+                // Recover active session using elapsed real time since boot, not wall clock
+                val elapsedBootSeconds = (nowMonotonic / 1000L).toInt()
+                effectiveRemainingSec = maxOf(0, savedTime - elapsedBootSeconds)
                 effectiveDeadline = if (effectiveRemainingSec > 0) nowMonotonic + (effectiveRemainingSec * 1000L) else 0L
                 updatedRevision += 1L
                 paymentDao.updateSessionState(

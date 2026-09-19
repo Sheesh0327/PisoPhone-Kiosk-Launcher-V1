@@ -12,6 +12,9 @@ static const unsigned long RETRY_INTERVAL_MS = 10000;
 
 static PaymentRecord paymentQueue[MAX_PAYMENT_QUEUE_SIZE];
 static bool paymentSlotUsed[MAX_PAYMENT_QUEUE_SIZE] = {false};
+static bool paymentSlotPersisted[MAX_PAYMENT_QUEUE_SIZE] = {false};
+static unsigned long lastPersistAttemptMs[MAX_PAYMENT_QUEUE_SIZE] = {0};
+static uint8_t persistRetryCount[MAX_PAYMENT_QUEUE_SIZE] = {0};
 static unsigned long lastDispatchMs[MAX_PAYMENT_QUEUE_SIZE] = {0};
 static int activePaymentCount = 0;
 static SemaphoreHandle_t paymentQueueMutex = nullptr;
@@ -66,6 +69,9 @@ void initPaymentQueue() {
     lockQueue();
     memset(paymentQueue, 0, sizeof(paymentQueue));
     memset(paymentSlotUsed, 0, sizeof(paymentSlotUsed));
+    memset(paymentSlotPersisted, 0, sizeof(paymentSlotPersisted));
+    memset(lastPersistAttemptMs, 0, sizeof(lastPersistAttemptMs));
+    memset(persistRetryCount, 0, sizeof(persistRetryCount));
     memset(lastDispatchMs, 0, sizeof(lastDispatchMs));
     activePaymentCount = 0;
     paymentStorageReady = false;
@@ -90,6 +96,7 @@ void initPaymentQueue() {
             validRecord(rec)) {
             paymentQueue[i] = rec;
             paymentSlotUsed[i] = true;
+            paymentSlotPersisted[i] = true;
             activePaymentCount++;
             Serial.printf("[PAY QUEUE] Restored tx_id='%s' for '%s'.\n", rec.txId, rec.targetId);
         } else {
@@ -104,9 +111,38 @@ void initPaymentQueue() {
 
 bool isPaymentQueueFull() {
     lockQueue();
-    bool full = !paymentStorageReady || activePaymentCount >= MAX_PAYMENT_QUEUE_SIZE;
+    // Reserve at least 2 slots for in-flight pulses so they can safely drain
+    bool full = !paymentStorageReady || (activePaymentCount >= MAX_PAYMENT_QUEUE_SIZE - 2);
     unlockQueue();
     return full;
+}
+
+bool isPaymentStorageReady() {
+    lockQueue();
+    bool ready = paymentStorageReady;
+    unlockQueue();
+    return ready;
+}
+
+bool hasUnpersistedPayments() {
+    lockQueue();
+    bool unpersisted = false;
+    for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
+        if (paymentSlotUsed[i] && !paymentSlotPersisted[i]) {
+            unpersisted = true;
+            break;
+        }
+    }
+    unlockQueue();
+    return unpersisted;
+}
+
+bool canPerformRebootOrOta() {
+    if (hasUnpersistedPayments()) {
+        Serial.println("[PAY QUEUE] Reboot/OTA blocked: unpersisted transactions remain in RAM.");
+        return false;
+    }
+    return true;
 }
 
 int getPendingPaymentCount() {
@@ -127,11 +163,6 @@ bool enqueuePendingPayment(const String& txId, const String& targetId, int pulse
     }
 
     lockQueue();
-    if (!paymentStorageReady) {
-        unlockQueue();
-        Serial.println("[PAY QUEUE] Persistent storage unavailable; payment rejected.");
-        return false;
-    }
     for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
         if (paymentSlotUsed[i] && String(paymentQueue[i].txId) == txId) {
             unlockQueue();
@@ -162,17 +193,27 @@ bool enqueuePendingPayment(const String& txId, const String& targetId, int pulse
     rec.ownerType = ownerType == CoinSlotOwnerType::CONTROLLER ? 2 : 1;
     rec.timestamp = getCurrentMasterTimeMs();
 
-    if (!persistRecord(freeIndex, rec)) {
-        paymentStorageReady = false;
-        unlockQueue();
-        Serial.printf("[PAY QUEUE] Failed to persist tx_id='%s'.\n", txId.c_str());
-        return false;
-    }
-
+    // Retain in RAM under all conditions (never lose in-flight transactions or change tx_id)
     paymentQueue[freeIndex] = rec;
     paymentSlotUsed[freeIndex] = true;
-    lastDispatchMs[freeIndex] = millis();
+    paymentSlotPersisted[freeIndex] = false;
+    lastPersistAttemptMs[freeIndex] = millis();
+    persistRetryCount[freeIndex] = 0;
+    lastDispatchMs[freeIndex] = 0;
     activePaymentCount++;
+
+    // Attempt durable NVS flash persistence
+    if (!persistRecord(freeIndex, rec)) {
+        paymentStorageReady = false;
+        persistRetryCount[freeIndex] = 1;
+        unlockQueue();
+        Serial.printf("[PAY QUEUE] NVS write failed for tx_id='%s'. Retained in RAM; persistence will retry with backoff.\n", txId.c_str());
+        return true;
+    }
+
+    paymentSlotPersisted[freeIndex] = true;
+    paymentStorageReady = true;
+    lastDispatchMs[freeIndex] = millis();
     unlockQueue();
 
     Serial.printf("[PAY QUEUE] Persisted tx_id='%s' for '%s' (%d pulse(s)).\n",
@@ -206,6 +247,9 @@ static bool acknowledgeMatchingPayment(const String& txId, const String* session
 
     memset(&paymentQueue[foundIndex], 0, sizeof(PaymentRecord));
     paymentSlotUsed[foundIndex] = false;
+    paymentSlotPersisted[foundIndex] = false;
+    lastPersistAttemptMs[foundIndex] = 0;
+    persistRetryCount[foundIndex] = 0;
     lastDispatchMs[foundIndex] = 0;
     activePaymentCount--;
     unlockQueue();
@@ -213,8 +257,9 @@ static bool acknowledgeMatchingPayment(const String& txId, const String* session
     return true;
 }
 
-bool acknowledgePayment(const String& txId) {
-    return acknowledgeMatchingPayment(txId, nullptr, 0);
+bool acknowledgePhonePayment(const String& deviceId, const String& txId) {
+    if (deviceId.length() == 0 || txId.length() == 0) return false;
+    return acknowledgeMatchingPayment(txId, &deviceId, 1);
 }
 
 bool acknowledgeControllerPayment(const String& sessionId, const String& txId) {
@@ -228,7 +273,7 @@ void dispatchPendingControllerPayments(const String& sessionId) {
         PaymentRecord rec;
         bool matches = false;
         lockQueue();
-        if (paymentSlotUsed[i] && paymentQueue[i].ownerType == 2 &&
+        if (paymentSlotUsed[i] && paymentSlotPersisted[i] && paymentQueue[i].ownerType == 2 &&
             String(paymentQueue[i].targetId) == sessionId) {
             rec = paymentQueue[i];
             lastDispatchMs[i] = millis();
@@ -245,13 +290,52 @@ void dispatchPendingControllerPayments(const String& sessionId) {
 void processPendingPaymentRetries() {
     unsigned long now = millis();
 
+    // 1. Retry unpersisted records in RAM with exponential backoff
+    for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
+        PaymentRecord rec;
+        bool needPersist = false;
+        int currentAttempt = 0;
+
+        lockQueue();
+        if (paymentSlotUsed[i] && !paymentSlotPersisted[i]) {
+            uint8_t count = persistRetryCount[i] > 5 ? 5 : persistRetryCount[i];
+            unsigned long backoffMs = 1000UL << count; // 1s, 2s, 4s, 8s, 16s, 32s
+            if ((long)(now - (lastPersistAttemptMs[i] + backoffMs)) >= 0) {
+                rec = paymentQueue[i];
+                lastPersistAttemptMs[i] = now;
+                currentAttempt = persistRetryCount[i] + 1;
+                needPersist = true;
+            }
+        }
+        unlockQueue();
+
+        if (needPersist) {
+            Serial.printf("[PAY QUEUE] Retrying NVS persistence for tx_id='%s' (attempt %d)...\n",
+                          rec.txId, currentAttempt);
+            if (persistRecord(i, rec)) {
+                lockQueue();
+                paymentSlotPersisted[i] = true;
+                paymentStorageReady = true;
+                lastDispatchMs[i] = millis();
+                unlockQueue();
+                Serial.printf("[PAY QUEUE] NVS persistence recovered for tx_id='%s'.\n", rec.txId);
+            } else {
+                lockQueue();
+                if (persistRetryCount[i] < 10) persistRetryCount[i]++;
+                unlockQueue();
+                Serial.printf("[PAY QUEUE] Persistence retry failed for tx_id='%s'. Retained in RAM.\n", rec.txId);
+            }
+        }
+    }
+
+    // 2. Dispatch / retry only durably persisted records
     for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
         PaymentRecord rec;
         bool shouldDispatch = false;
 
         lockQueue();
-        if (paymentSlotUsed[i] &&
-            (lastDispatchMs[i] == 0 || now - lastDispatchMs[i] >= RETRY_INTERVAL_MS)) {
+        if (paymentSlotUsed[i] && paymentSlotPersisted[i] &&
+            (lastDispatchMs[i] == 0 || (long)(now - (lastDispatchMs[i] + RETRY_INTERVAL_MS)) >= 0)) {
             rec = paymentQueue[i];
             lastDispatchMs[i] = now;
             shouldDispatch = true;

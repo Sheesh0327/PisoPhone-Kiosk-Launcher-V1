@@ -99,8 +99,8 @@ bool handleControllerWebSocketHandshake(WiFiClient& client, const String& reques
         return false;
     }
 
-    // 4. Shared Single-Session Mutex Check (CoinSlotManager)
-    if (isCoinSlotBusy(sessionId, CoinSlotOwnerType::CONTROLLER)) {
+    // 4. Shared Single-Session Mutex Check & Atomic Arming Claim (CoinSlotManager)
+    if (!tryClaimCoinSlotForArming(sessionId, CoinSlotOwnerType::CONTROLLER, 5000)) {
         String activeOwner = getActiveCoinSessionId();
         Serial.printf("[-] Controller WS Mutex Rejected for '%s': Slot BUSY with '%s'\n", 
                       sessionId.c_str(), activeOwner.c_str());
@@ -170,6 +170,7 @@ bool handleControllerWebSocketHandshake(WiFiClient& client, const String& reques
     );
 
     if (!ok) {
+        cancelCoinSlotClaim(sessionId, CoinSlotOwnerType::CONTROLLER);
         Serial.printf("[-] Controller WS failed to reserve slot for '%s'\n", sessionId.c_str());
         sendWsText(controllerClient, "{\"event\":\"BUSY\",\"session_id\":\"" + sessionId + "\"}");
         controllerClient.stop();

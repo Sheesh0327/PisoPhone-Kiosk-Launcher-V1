@@ -5,6 +5,7 @@ import com.pisophone.kiosk.security.KioskSecurity
 import fi.iki.elonen.NanoHTTPD
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -241,5 +242,48 @@ class KioskHttpServerUnitTest {
         val res2 = server.serve(createSession("/coin", params))
         assertEquals("Second attempt still calls delegate and returns 503", 503, res2.status.requestStatus)
         assertEquals("Delegate called twice (no in-memory cache hijack)", 2, creditPaymentCallCount)
+    }
+
+    @Test
+    fun testMismatchedRecipientRejectedWith403() {
+        val now = System.currentTimeMillis()
+        val query = "tx_id=tx-mismatch&device_id=OTHER_DEVICE_ID&seconds=300&amount=5.0&ts=$now"
+        val params = createEncryptedParams(query)
+
+        val response = server.serve(createSession("/coin", params))
+        assertEquals("Status must be 403 Forbidden on recipient mismatch", 403, response.status.requestStatus)
+        assertEquals("Body must be MISMATCHED_RECIPIENT", "MISMATCHED_RECIPIENT", readResponseBody(response))
+        assertEquals("Delegate must not be called", 0, creditPaymentCallCount)
+    }
+
+    @Test
+    fun testInvalidVersionedSignatureRejectedWith401() {
+        val now = System.currentTimeMillis()
+        val query = "tx_id=tx-badsig&seconds=300&amount=5.0&ts=$now&v_sig=bad_signature_value"
+        val params = createEncryptedParams(query)
+
+        val response = server.serve(createSession("/coin", params))
+        assertEquals("Status must be 401 Unauthorized on invalid signature", 401, response.status.requestStatus)
+        assertEquals("Body must be INVALID_SIGNATURE", "INVALID_SIGNATURE", readResponseBody(response))
+        assertEquals("Delegate must not be called", 0, creditPaymentCallCount)
+    }
+
+    @Test
+    fun testValidVersionedSignatureAndSignedAcknowledgment() {
+        simulatedPaymentResult = PaymentResult.APPLIED
+        val now = System.currentTimeMillis()
+        val myDeviceId = KioskSecurity.getHardwareId(context)
+        val validSig = KioskSecurity.calculateHmac("v1:$myDeviceId:tx-valid:5:$now", testSecret)
+        val query = "tx_id=tx-valid&device_id=$myDeviceId&seconds=300&amount=5.0&ts=$now&v_sig=$validSig"
+        val params = createEncryptedParams(query)
+
+        val response = server.serve(createSession("/coin", params))
+        assertEquals("Status must be 200 OK", 200, response.status.requestStatus)
+        val body = readResponseBody(response)
+        assertTrue("Body must start with OK", body.startsWith("OK:"))
+        assertTrue("Body must contain tx_id=tx-valid", body.contains("tx_id=tx-valid"))
+        assertTrue("Body must contain device_id=$myDeviceId", body.contains("device_id=$myDeviceId"))
+        assertTrue("Body must contain v_sig=", body.contains("v_sig="))
+        assertEquals("Delegate called once", 1, creditPaymentCallCount)
     }
 }

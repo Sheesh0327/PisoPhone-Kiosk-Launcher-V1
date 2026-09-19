@@ -468,6 +468,13 @@ class Esp32ConnectionManager(
                             return
                         }
 
+                        val targetDev = decryptedJson.optString("device_id", "").trim()
+                        val myDevId = delegate.getDeviceId()
+                        if (targetDev.isNotBlank() && myDevId.isNotBlank() && !targetDev.equals(myDevId, ignoreCase = true)) {
+                            Log.w(TAG, "Rejected WebSocket coin event: Recipient mismatch (target='$targetDev', local='$myDevId')")
+                            return
+                        }
+
                         val tsStr = decryptedJson.optString("ts", "").trim()
                         val ts = tsStr.toLongOrNull() ?: 0L
                         val now = System.currentTimeMillis()
@@ -487,9 +494,37 @@ class Esp32ConnectionManager(
                             return
                         }
                         val seconds = rawSeconds.toInt()
+                        val amountPulses = amount.toInt()
+
+                        val vSig = decryptedJson.optString("v_sig", "").trim()
+                        if (vSig.isNotBlank()) {
+                            val expectedVSig = KioskSecurity.calculateHmac("v1:$targetDev:$txId:$amountPulses:$tsStr", secretKey)
+                            if (!KioskSecurity.constantTimeEquals(vSig.lowercase(), expectedVSig.lowercase())) {
+                                Log.w(TAG, "Rejected WebSocket coin event: Invalid versioned HMAC signature for $txId")
+                                return
+                            }
+                        }
 
                         Log.i(TAG, "⚡ Validated WebSocket Coin Processed: +${seconds}s, amount=₱$amount, txId=$txId")
                         delegate.onCoinMessageReceived(seconds, amount, txId)
+
+                        // Send signed durable ACK back to ESP32 over WebSocket
+                        try {
+                            val ackNow = System.currentTimeMillis()
+                            val ackPayload = "v1:$targetDev:$txId:$amountPulses:$ackNow"
+                            val ackSig = KioskSecurity.calculateHmac(ackPayload, secretKey)
+                            val ackJson = JSONObject().apply {
+                                put("event", "ACK")
+                                put("device_id", targetDev)
+                                put("tx_id", txId)
+                                put("amount", amountPulses)
+                                put("ts", ackNow.toString())
+                                put("v_sig", ackSig)
+                            }
+                            webSocket.send(ackJson.toString())
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to send WebSocket ACK for $txId: ${e.message}")
+                        }
 
                         // If coin arrives during drain window, reset drain timeout to allow subsequent pulses
                         synchronized(connectionLock) {

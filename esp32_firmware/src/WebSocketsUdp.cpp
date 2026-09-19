@@ -1,12 +1,14 @@
 #include "WebSocketsUdp.h"
 #include "CoinSlotManager.h"
 #include "ControllerWebSocket.h"
+#include "PaymentQueueManager.h"
 #include "WebServerModule.h"
 #include "Config.h"
 #include "HardwareManager.h"
 #include "Security.h"
 #include "DeviceManager.h"
 #include "DeviceNetwork.h"
+#include <ArduinoJson.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
 
@@ -64,84 +66,199 @@ void sendWsPong(WiFiClient& client, const uint8_t* payload, size_t len) {
     client.flush();
 }
 
+static bool readExactBytes(WiFiClient& client, uint8_t* buf, size_t count, unsigned long deadlineMs) {
+    size_t readCount = 0;
+    unsigned long start = millis();
+    while (readCount < count) {
+        if (!client.connected()) return false;
+        int avail = client.available();
+        if (avail > 0) {
+            int toRead = (int)min((size_t)avail, count - readCount);
+            int bytesRead = client.read(buf + readCount, toRead);
+            if (bytesRead <= 0) return false;
+            readCount += bytesRead;
+        } else {
+            if ((long)(millis() - (start + deadlineMs)) >= 0) {
+                return false;
+            }
+            delay(1);
+        }
+    }
+    return true;
+}
+
 String readWsText(WiFiClient& client) {
     if (!client.available()) return "";
-    int b0 = client.read();
-    if (b0 < 0) return "";
-    int opcode = b0 & 0x0F;
-    if (opcode == 0x08) { // Connection Close
-        return "CLOSE";
-    }
 
-    unsigned long waitStart = millis();
-    while (!client.available() && (millis() - waitStart < 100));
-    if (!client.available()) return "";
+    const unsigned long FRAME_DEADLINE_MS = 300;
+    const size_t MAX_WS_MESSAGE_SIZE = 2048;
+    String assembledText = "";
+    bool inFragmentedMessage = false;
 
-    int b1 = client.read();
-    if (b1 < 0) return "";
-    bool isMasked = (b1 & 0x80) != 0;
-    uint64_t payloadLen = (b1 & 0x7F);
+    unsigned long overallStart = millis();
 
-    if (payloadLen == 126) {
-        waitStart = millis();
-        while (client.available() < 2 && (millis() - waitStart < 100));
-        if (client.available() < 2) return "";
-        payloadLen = (client.read() << 8) | client.read();
-    } else if (payloadLen == 127) {
-        waitStart = millis();
-        while (client.available() < 8 && (millis() - waitStart < 100));
-        if (client.available() < 8) return "";
-        payloadLen = 0;
-        for (int i = 0; i < 8; i++) {
-            payloadLen = (payloadLen << 8) | client.read();
+    while (client.connected()) {
+        if ((long)(millis() - (overallStart + FRAME_DEADLINE_MS)) >= 0) {
+            Serial.println("[WS] Strict frame deadline exceeded. Dropping connection.");
+            client.stop();
+            return "";
         }
-    }
 
-    uint8_t mask[4] = {0, 0, 0, 0};
-    if (isMasked) {
-        waitStart = millis();
-        while (client.available() < 4 && (millis() - waitStart < 100));
-        if (client.available() < 4) return "";
-        client.read(mask, 4);
-    }
-
-    if (payloadLen > 2048) {
-        return "";
-    }
-
-    uint8_t* payloadBuf = NULL;
-    if (payloadLen > 0) {
-        payloadBuf = (uint8_t*)malloc((size_t)payloadLen);
-    }
-
-    String result = "";
-    result.reserve((size_t)payloadLen);
-    for (size_t i = 0; i < payloadLen; i++) {
         if (!client.available()) {
-            unsigned long wStart = millis();
-            while (!client.available() && (millis() - wStart < 100));
-            if (!client.available()) break;
+            if (!inFragmentedMessage) {
+                return "";
+            }
+            delay(2);
+            continue;
         }
-        uint8_t b = client.read();
-        if (isMasked) {
-            b ^= mask[i % 4];
+
+        uint8_t header[2];
+        if (!readExactBytes(client, header, 2, 100)) {
+            Serial.println("[WS] Failed to read frame header within deadline. Dropping.");
+            client.stop();
+            return "";
         }
-        if (payloadBuf) payloadBuf[i] = b;
-        result += (char)b;
+
+        bool fin = (header[0] & 0x80) != 0;
+        uint8_t rsv = header[0] & 0x70;
+        uint8_t opcode = header[0] & 0x0F;
+        bool isMasked = (header[1] & 0x80) != 0;
+        uint64_t payloadLen = header[1] & 0x7F;
+
+        // RFC 6455: RSV bits must be 0 unless negotiated
+        if (rsv != 0) {
+            Serial.println("[WS] Protocol error: non-zero RSV bits. Dropping.");
+            client.stop();
+            return "";
+        }
+
+        // Client-to-server frames MUST be masked
+        if (!isMasked) {
+            Serial.println("[WS] Protocol error: unmasked client frame. Dropping.");
+            client.stop();
+            return "";
+        }
+
+        // Extended payload length parsing
+        if (payloadLen == 126) {
+            uint8_t extLen[2];
+            if (!readExactBytes(client, extLen, 2, 100)) {
+                Serial.println("[WS] Failed to read 16-bit extended length. Dropping.");
+                client.stop();
+                return "";
+            }
+            payloadLen = ((uint64_t)extLen[0] << 8) | extLen[1];
+        } else if (payloadLen == 127) {
+            uint8_t extLen[8];
+            if (!readExactBytes(client, extLen, 8, 100)) {
+                Serial.println("[WS] Failed to read 64-bit extended length. Dropping.");
+                client.stop();
+                return "";
+            }
+            payloadLen = 0;
+            for (int i = 0; i < 8; i++) {
+                payloadLen = (payloadLen << 8) | extLen[i];
+            }
+        }
+
+        // Control frame checks (RFC 6455: payload <= 125, FIN must be 1)
+        bool isControl = (opcode >= 0x08);
+        if (isControl) {
+            if (!fin || payloadLen > 125) {
+                Serial.println("[WS] Protocol error: invalid control frame. Dropping.");
+                client.stop();
+                return "";
+            }
+        }
+
+        // Enforce maximum buffer limit
+        if (payloadLen > MAX_WS_MESSAGE_SIZE || (assembledText.length() + payloadLen > MAX_WS_MESSAGE_SIZE)) {
+            Serial.printf("[WS] Payload length %llu exceeds safe limit %u. Dropping.\n", payloadLen, (unsigned int)MAX_WS_MESSAGE_SIZE);
+            client.stop();
+            return "";
+        }
+
+        // Read 4-byte masking key
+        uint8_t mask[4] = {0};
+        if (!readExactBytes(client, mask, 4, 100)) {
+            Serial.println("[WS] Failed to read mask key. Dropping.");
+            client.stop();
+            return "";
+        }
+
+        // Read payload bytes with deadline
+        uint8_t* payloadBuf = nullptr;
+        if (payloadLen > 0) {
+            payloadBuf = (uint8_t*)malloc((size_t)payloadLen);
+            if (!payloadBuf) {
+                Serial.println("[WS] Out of memory for payload. Dropping.");
+                client.stop();
+                return "";
+            }
+            if (!readExactBytes(client, payloadBuf, (size_t)payloadLen, 150)) {
+                Serial.println("[WS] Failed to read full payload within deadline. Dropping.");
+                free(payloadBuf);
+                client.stop();
+                return "";
+            }
+            // Unmask payload
+            for (size_t i = 0; i < (size_t)payloadLen; i++) {
+                payloadBuf[i] ^= mask[i % 4];
+            }
+        }
+
+        // Handle Control Frames without breaking fragmented text assembly
+        if (opcode == 0x08) { // Connection Close
+            Serial.println("[WS] Received Close frame.");
+            if (payloadBuf) free(payloadBuf);
+            client.stop();
+            return "CLOSE";
+        }
+        if (opcode == 0x09) { // Ping -> Send Pong
+            sendWsPong(client, payloadBuf, (size_t)payloadLen);
+            if (payloadBuf) free(payloadBuf);
+            if (!inFragmentedMessage) {
+                return "PING";
+            }
+            continue;
+        }
+        if (opcode == 0x0A) { // Pong -> Ignore
+            if (payloadBuf) free(payloadBuf);
+            if (!inFragmentedMessage) {
+                return "PONG";
+            }
+            continue;
+        }
+
+        // Handle Data Frames (0x01 = Text, 0x00 = Continuation)
+        if (opcode == 0x01 || (opcode == 0x00 && inFragmentedMessage)) {
+            if (opcode == 0x01 && inFragmentedMessage) {
+                Serial.println("[WS] Protocol error: new text frame before fragment complete. Dropping.");
+                if (payloadBuf) free(payloadBuf);
+                client.stop();
+                return "";
+            }
+
+            if (payloadBuf && payloadLen > 0) {
+                assembledText.concat((const char*)payloadBuf, (unsigned int)payloadLen);
+            }
+            if (payloadBuf) free(payloadBuf);
+
+            if (fin) {
+                return assembledText;
+            } else {
+                inFragmentedMessage = true;
+                continue;
+            }
+        } else {
+            Serial.printf("[WS] Unsupported or unexpected opcode 0x%02X. Dropping.\n", opcode);
+            if (payloadBuf) free(payloadBuf);
+            client.stop();
+            return "";
+        }
     }
 
-    if (opcode == 0x09) { // Ping frame -> Respond with Pong (0x8A)
-        sendWsPong(client, payloadBuf, (size_t)payloadLen);
-        if (payloadBuf) free(payloadBuf);
-        return "PING";
-    }
-    if (opcode == 0x0A) { // Pong frame
-        if (payloadBuf) free(payloadBuf);
-        return "PONG";
-    }
-
-    if (payloadBuf) free(payloadBuf);
-    return result;
+    return assembledText;
 }
 
 void processWebSocketServer() {
@@ -254,8 +371,8 @@ void processWebSocketServer() {
                 return;
             }
             
-            // 2. Hardware Mutex Check (Single-Client Lock)
-            if (isCoinSlotBusy(reqDeviceId, CoinSlotOwnerType::PHONE)) {
+            // 2. Hardware Mutex Check & Atomic Arming Claim (Prevents TOCTOU race)
+            if (!tryClaimCoinSlotForArming(reqDeviceId, CoinSlotOwnerType::PHONE, 5000)) {
                 Serial.printf("[-] WS Mutex Rejected for %s: Slot BUSY with %s\n", reqDeviceId.c_str(), getActiveCoinSessionId().c_str());
                 newClient.print("HTTP/1.1 409 Conflict\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: 23\r\n\r\n{\"event\":\"SLOT_BUSY\"}");
                 newClient.flush();
@@ -303,6 +420,7 @@ void processWebSocketServer() {
             );
 
             if (!reserved) {
+                cancelCoinSlotClaim(reqDeviceId, CoinSlotOwnerType::PHONE);
                 sendWsText(wsClient, "{\"event\":\"ERROR\",\"reason\":\"SLOT_UNAVAILABLE\"}");
                 wsClient.stop();
                 isWsConnected = false;
@@ -331,6 +449,34 @@ void processWebSocketServer() {
             String frameText = readWsText(wsClient);
             if (frameText.length() > 0) {
                 refreshCoinSlotTtl(boundDevId, CoinSlotOwnerType::PHONE, ARM_TTL);
+
+                StaticJsonDocument<256> ackDoc;
+                DeserializationError ackErr = deserializeJson(ackDoc, frameText);
+                if (!ackErr && String(ackDoc["event"] | "") == "ACK") {
+                    String ackDevId = String(ackDoc["device_id"] | "");
+                    String ackTxId = String(ackDoc["tx_id"] | "");
+                    String ackSig = String(ackDoc["v_sig"] | "");
+                    String ackTs = String(ackDoc["ts"] | "");
+                    String ackPulses = String(ackDoc["amount"] | "1");
+
+                    if (ackDevId.length() > 0 && ackTxId.length() > 0 && ackDevId == boundDevId) {
+                        bool sigValid = true;
+                        if (ackSig.length() > 0 && ackTs.length() > 0) {
+                            String expectedSig = calculateHMAC("v1:" + ackDevId + ":" + ackTxId + ":" + ackPulses + ":" + ackTs, sharedSecret);
+                            if (!ackSig.equalsIgnoreCase(expectedSig)) {
+                                sigValid = false;
+                                Serial.printf("[⚡ WS Port 81] Rejected ACK for '%s': Invalid signature\n", ackTxId.c_str());
+                            }
+                        }
+                        if (sigValid && acknowledgePhonePayment(ackDevId, ackTxId)) {
+                            Serial.printf("[⚡ WS Port 81] Durable phone ACK accepted for tx_id='%s' (device: %s)\n",
+                                          ackTxId.c_str(), ackDevId.c_str());
+                        }
+                    } else {
+                        Serial.printf("[⚡ WS Port 81] Rejected mismatched ACK: dev='%s' vs bound='%s'\n",
+                                      ackDevId.c_str(), boundDevId.c_str());
+                    }
+                }
             }
             if (frameText == "DONE" || frameText == "CLOSE") {
                 Serial.printf("[⚡ WS Port 81] 'DONE' received for %s. Requesting slot release.\n", boundDevId.c_str());

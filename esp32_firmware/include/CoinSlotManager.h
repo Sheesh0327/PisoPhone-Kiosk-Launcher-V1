@@ -17,9 +17,10 @@ enum class CoinSlotOwnerType {
 };
 
 enum class CoinSlotState {
-    IDLE,       // No session, relay OFF, acceptor disabled
-    ARMED,      // Active session running, relay ON, accepting coins
-    DRAINING    // Session closing/timed-out, relay ON, waiting for in-flight pulses to finish
+    IDLE,               // No session, relay OFF, acceptor disabled
+    RESERVED_ARMING,    // Atomically claimed by incoming connection, awaiting socket readiness/handshake completion
+    ARMED,              // Active session running, relay ON, accepting coins
+    DRAINING            // Session closing/timed-out, relay ON, waiting for in-flight pulses to finish
 };
 
 // ============================================================================
@@ -32,8 +33,19 @@ enum class CoinSlotState {
 void initCoinSlotManager();
 
 /**
+ * Atomically attempts to claim the slot during handshake phase before network I/O.
+ * Returns true if successfully transitioned to RESERVED_ARMING for this session.
+ */
+bool tryClaimCoinSlotForArming(const String& sessionId, CoinSlotOwnerType ownerType, unsigned long timeoutMs = 5000);
+
+/**
+ * Cancels a pending claim if handshake or socket upgrade fails.
+ */
+void cancelCoinSlotClaim(const String& sessionId, CoinSlotOwnerType ownerType = CoinSlotOwnerType::ANY);
+
+/**
  * Attempts to reserve the coin slot for a specific session/device.
- * - If currently IDLE: arms acceptor relay, resets detector, starts session.
+ * - If currently IDLE or RESERVED_ARMING by same session: arms acceptor relay, resets detector, starts session.
  * - If already reserved by SAME sessionId & ownerType: refreshes TTL and preserves accumulated pulses.
  * - If reserved/draining for ANOTHER session or different ownerType: rejects request (returns false).
  */

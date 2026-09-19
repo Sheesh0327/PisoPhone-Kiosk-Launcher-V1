@@ -18,10 +18,13 @@ struct PaymentRecord {
 void initPaymentQueue();
 bool enqueuePendingPayment(const String& txId, const String& targetId, int pulses,
                            CoinSlotOwnerType ownerType, int creditSeconds = 0);
-bool acknowledgePayment(const String& txId);
 bool acknowledgeControllerPayment(const String& sessionId, const String& txId);
 bool isPaymentQueueFull();
+bool isPaymentStorageReady();
+bool hasUnpersistedPayments();
+bool canPerformRebootOrOta();
 int getPendingPaymentCount();
+bool acknowledgePhonePayment(const String& deviceId, const String& txId);
 void dispatchPendingControllerPayments(const String& sessionId);
 void processPendingPaymentRetries();
 

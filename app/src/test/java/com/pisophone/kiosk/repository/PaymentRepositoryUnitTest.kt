@@ -483,6 +483,92 @@ class PaymentRepositoryUnitTest {
         assertEquals("Session time remaining remains the purchased time", paymentState.sessionTimeRemaining, stateManager.sessionTimeRemaining.value)
         assertEquals("App state remains unlocked (2)", 2, stateManager.appState.value)
     }
+
+    @Test
+    fun testRebootRecoveryRebuildsSessionDeadlineUsingElapsedRealtime() = runBlocking {
+        val nowMonotonic = SystemClock.elapsedRealtime()
+        val prevBootElapsed = nowMonotonic + 1000_000L // Larger than current -> indicates reboot
+        val savedRemaining = 300
+
+        db.paymentDao().updateSessionState(
+            PaidSessionState(
+                id = 1,
+                sessionTimeRemaining = savedRemaining,
+                sessionExpiryDeadlineMs = prevBootElapsed + 300_000L,
+                lastSavedElapsedRealtime = prevBootElapsed,
+                revision = 10L
+            )
+        )
+
+        val repository = PaymentRepository(db = db, context = context, isEligible = { true })
+        val restored = repository.restoreSessionState(context)
+
+        assertTrue("Reboot must be detected", restored.isReboot)
+        val expectedRemaining = maxOf(0, savedRemaining - (nowMonotonic / 1000L).toInt())
+        assertEquals("Remaining time must equal saved time minus boot uptime", expectedRemaining, restored.remainingSeconds)
+        assertEquals("Monotonic deadline must be now + remainingMs", nowMonotonic + (expectedRemaining * 1000L), restored.deadlineMs)
+        assertEquals(11L, restored.revision)
+    }
+
+    @Test
+    fun testBootCountChangeTriggersRebootRecovery() = runBlocking {
+        val encryptedPrefs = com.pisophone.kiosk.security.KioskSecurity.getEncryptedPreferences(context)
+        encryptedPrefs.edit().putInt(PaymentRepository.KEY_BOOT_COUNT, 1).commit()
+
+        val nowMonotonic = SystemClock.elapsedRealtime()
+        // lastSavedElapsed is LESS than nowMonotonic so monotonic check alone would NOT detect reboot
+        val lastSavedElapsed = maxOf(1L, nowMonotonic - 5000L)
+        val savedRemaining = 600
+
+        db.paymentDao().updateSessionState(
+            PaidSessionState(
+                id = 1,
+                sessionTimeRemaining = savedRemaining,
+                sessionExpiryDeadlineMs = nowMonotonic + 600_000L,
+                lastSavedElapsedRealtime = lastSavedElapsed,
+                revision = 5L
+            )
+        )
+
+        // Simulate new boot count by updating Settings.Global.BOOT_COUNT or synthetic boot count
+        android.provider.Settings.Global.putInt(context.contentResolver, android.provider.Settings.Global.BOOT_COUNT, 2)
+
+        val repository = PaymentRepository(db = db, context = context, isEligible = { true })
+        val restored = repository.restoreSessionState(context)
+
+        assertTrue("Reboot must be detected via BOOT_COUNT change", restored.isReboot)
+        val expectedRemaining = maxOf(0, savedRemaining - (nowMonotonic / 1000L).toInt())
+        assertEquals(expectedRemaining, restored.remainingSeconds)
+        assertEquals(6L, restored.revision)
+        assertEquals(2, encryptedPrefs.getInt(PaymentRepository.KEY_BOOT_COUNT, -1))
+    }
+
+    @Test
+    fun testRecoverUncommittedTransactionsClearsPendingMarkerAndSanitizesCorruptState() = runBlocking {
+        db.paymentDao().setMetadata(com.pisophone.kiosk.db.AppMetadata(PaymentRepository.KEY_PENDING_TX, "tx-ghost:300:5.0"))
+        db.paymentDao().updateSessionState(
+            PaidSessionState(
+                id = 1,
+                sessionTimeRemaining = -10,
+                sessionExpiryDeadlineMs = -500L,
+                lastSavedElapsedRealtime = 1000L,
+                revision = 1L
+            )
+        )
+
+        val repository = PaymentRepository(db = db, context = context, isEligible = { true })
+        repository.recoverUncommittedTransactions()
+
+        // Verify uncommitted pending tx marker is cleared
+        val pendingMarker = db.paymentDao().getMetadata(PaymentRepository.KEY_PENDING_TX)
+        assertTrue(pendingMarker.isNullOrEmpty())
+
+        // Verify corrupt session state was safely reverted to 0
+        val sanitizedState = repository.getSessionState()!!
+        assertEquals("Negative remaining time must be sanitized to 0", 0, sanitizedState.sessionTimeRemaining)
+        assertEquals("Negative deadline must be sanitized to 0L", 0L, sanitizedState.sessionExpiryDeadlineMs)
+        assertEquals(2L, sanitizedState.revision)
+    }
 }
 
 
