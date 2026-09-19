@@ -138,6 +138,10 @@ CoinSlotState getCoinSlotState() {
     return currentState;
 }
 
+int getSessionAccumulatedPulses() {
+    return sessionAccumulatedPulses;
+}
+
 bool isCoinSlotArmed() {
     if (currentState == CoinSlotState::ARMED) {
         return ((long)(sessionArmedUntil - millis()) > 0);
@@ -206,6 +210,10 @@ CoinSlotOwnerType getActiveCoinOwnerType() {
 
 bool tryClaimCoinSlotForArming(const String& sessionId, CoinSlotOwnerType ownerType, unsigned long timeoutMs) {
     if (sessionId.length() == 0) return false;
+    if (isMaintenanceMode()) {
+        Serial.printf("[🪙 COIN SLOT] Claim rejected for '%s': Device is in maintenance mode.\n", sessionId.c_str());
+        return false;
+    }
     if (isPaymentQueueFull() || !isPaymentStorageReady()) return false;
 
     unsigned long now = millis();
@@ -249,6 +257,11 @@ bool reserveCoinSlot(const String& sessionId, CoinSlotOwnerType ownerType, unsig
                      CoinPaymentCallback onPayment, 
                      CoinSessionEndCallback onSessionEnd) {
     if (sessionId.length() == 0) return false;
+
+    if (isMaintenanceMode()) {
+        Serial.printf("[🪙 COIN SLOT] Reservation rejected for '%s': Device is in maintenance mode.\n", sessionId.c_str());
+        return false;
+    }
 
     if (isPaymentQueueFull() || !isPaymentStorageReady()) {
         Serial.printf("[🪙 COIN SLOT] Reservation rejected for '%s': Storage unavailable or queue full!\n", sessionId.c_str());

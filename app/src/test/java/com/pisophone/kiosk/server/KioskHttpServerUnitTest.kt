@@ -90,18 +90,30 @@ class KioskHttpServerUnitTest {
         return response.data?.readBytes()?.toString(Charsets.UTF_8) ?: ""
     }
 
+    private fun makePaymentQuery(
+        txId: String,
+        seconds: Int = 300,
+        amount: Double = 5.0,
+        ts: Long = System.currentTimeMillis(),
+        deviceId: String? = null
+    ): String {
+        val targetDev = deviceId ?: KioskSecurity.getHardwareId(context)
+        val sig = KioskSecurity.calculatePaymentSignature(targetDev, txId, amount.toInt(), ts.toString(), testSecret)
+        val devParam = if (deviceId != null) "&device_id=$deviceId" else ""
+        return "tx_id=$txId$devParam&seconds=$seconds&amount=$amount&ts=$ts&v_sig=$sig"
+    }
+
     @Test
     fun testAppliedReturns200Ok() {
         simulatedPaymentResult = PaymentResult.APPLIED
-        val now = System.currentTimeMillis()
-        val query = "tx_id=tx-100&seconds=300&amount=5.0&ts=$now"
+        val query = makePaymentQuery("tx-100", 300, 5.0)
         val params = createEncryptedParams(query)
         val session = createSession("/coin", params)
 
         val response = server.serve(session)
 
         assertEquals("Status must be 200", 200, response.status.requestStatus)
-        assertEquals("Body must be OK", "OK", readResponseBody(response))
+        assertTrue("Body must start with OK", readResponseBody(response).startsWith("OK"))
         assertEquals("creditPayment called once", 1, creditPaymentCallCount)
         assertEquals("tx-100", lastCreditedTxId)
         assertEquals(300, lastCreditedSeconds)
@@ -111,15 +123,14 @@ class KioskHttpServerUnitTest {
     @Test
     fun testAlreadyAppliedReturns200AlreadyProcessed() {
         simulatedPaymentResult = PaymentResult.ALREADY_APPLIED
-        val now = System.currentTimeMillis()
-        val query = "tx_id=tx-200&seconds=300&amount=5.0&ts=$now"
+        val query = makePaymentQuery("tx-200", 300, 5.0)
         val params = createEncryptedParams(query)
         val session = createSession("/coin", params)
 
         val response = server.serve(session)
 
         assertEquals("Status must be 200", 200, response.status.requestStatus)
-        assertEquals("Body must be ALREADY_PROCESSED", "ALREADY_PROCESSED", readResponseBody(response))
+        assertTrue("Body must contain ALREADY_PROCESSED", readResponseBody(response).contains("ALREADY_PROCESSED"))
         assertEquals("creditPayment called", 1, creditPaymentCallCount)
     }
 
@@ -128,27 +139,32 @@ class KioskHttpServerUnitTest {
         val now = System.currentTimeMillis()
 
         // Missing tx_id
-        val qMissingTx = "seconds=300&amount=5.0&ts=$now"
+        val qMissingTx = "seconds=300&amount=5.0&ts=$now&v_sig=dummy"
         val resMissingTx = server.serve(createSession("/coin", createEncryptedParams(qMissingTx)))
         assertEquals("Missing tx_id returns 400", 400, resMissingTx.status.requestStatus)
 
         // Negative amount
-        val qNegAmount = "tx_id=tx-301&seconds=300&amount=-5.0&ts=$now"
+        val qNegAmount = makePaymentQuery("tx-301", 300, -5.0, now)
         val resNegAmount = server.serve(createSession("/coin", createEncryptedParams(qNegAmount)))
         assertEquals("Negative amount returns 400", 400, resNegAmount.status.requestStatus)
 
         // Invalid seconds parameter
-        val qInvalidSec = "tx_id=tx-302&seconds=invalid&amount=5.0&ts=$now"
+        val devId = KioskSecurity.getHardwareId(context)
+        val sig302 = KioskSecurity.calculatePaymentSignature(devId, "tx-302", 5, now.toString(), testSecret)
+        val qInvalidSec = "tx_id=tx-302&seconds=invalid&amount=5.0&ts=$now&v_sig=$sig302"
         val resInvalidSec = server.serve(createSession("/coin", createEncryptedParams(qInvalidSec)))
         assertEquals("Invalid seconds returns 400", 400, resInvalidSec.status.requestStatus)
 
         // Missing all time parameters
-        val qNoTime = "tx_id=tx-303&amount=5.0&ts=$now"
+        val sig303 = KioskSecurity.calculatePaymentSignature(devId, "tx-303", 5, now.toString(), testSecret)
+        val qNoTime = "tx_id=tx-303&amount=5.0&ts=$now&v_sig=$sig303"
         val resNoTime = server.serve(createSession("/coin", createEncryptedParams(qNoTime)))
         assertEquals("Missing time returns 400", 400, resNoTime.status.requestStatus)
 
         // Stale timestamp (skew > 60s)
-        val qStale = "tx_id=tx-304&seconds=300&amount=5.0&ts=${now - 120_000L}"
+        val staleTs = now - 120_000L
+        val sig304 = KioskSecurity.calculatePaymentSignature(devId, "tx-304", 5, staleTs.toString(), testSecret)
+        val qStale = "tx_id=tx-304&seconds=300&amount=5.0&ts=$staleTs&v_sig=$sig304"
         val resStale = server.serve(createSession("/coin", createEncryptedParams(qStale)))
         assertEquals("Stale timestamp returns 400", 400, resStale.status.requestStatus)
     }
@@ -156,8 +172,7 @@ class KioskHttpServerUnitTest {
     @Test
     fun testNotEligibleReturns403() {
         simulatedPaymentResult = PaymentResult.NOT_ELIGIBLE
-        val now = System.currentTimeMillis()
-        val query = "tx_id=tx-400&seconds=300&amount=5.0&ts=$now"
+        val query = makePaymentQuery("tx-400", 300, 5.0)
         val session = createSession("/coin", createEncryptedParams(query))
 
         val response = server.serve(session)
@@ -169,8 +184,7 @@ class KioskHttpServerUnitTest {
     @Test
     fun testConflictReturns409() {
         simulatedPaymentResult = PaymentResult.CONFLICT
-        val now = System.currentTimeMillis()
-        val query = "tx_id=tx-500&seconds=300&amount=5.0&ts=$now"
+        val query = makePaymentQuery("tx-500", 300, 5.0)
         val session = createSession("/coin", createEncryptedParams(query))
 
         val response = server.serve(session)
@@ -182,8 +196,7 @@ class KioskHttpServerUnitTest {
     @Test
     fun testFailedReturns503() {
         simulatedPaymentResult = PaymentResult.FAILED
-        val now = System.currentTimeMillis()
-        val query = "tx_id=tx-600&seconds=300&amount=5.0&ts=$now"
+        val query = makePaymentQuery("tx-600", 300, 5.0)
         val session = createSession("/coin", createEncryptedParams(query))
 
         val response = server.serve(session)
@@ -211,8 +224,7 @@ class KioskHttpServerUnitTest {
         }
         val unreadyServer = KioskHttpServer(context = context, port = 8080, delegate = unreadyDelegate)
 
-        val now = System.currentTimeMillis()
-        val query = "tx_id=tx-init-test&seconds=300&amount=5.0&ts=$now"
+        val query = makePaymentQuery("tx-init-test", 300, 5.0)
         val params = createEncryptedParams(query)
 
         val response = unreadyServer.serve(createSession("/coin", params))
@@ -223,7 +235,7 @@ class KioskHttpServerUnitTest {
         isServerReady = true
         val readyResponse = unreadyServer.serve(createSession("/coin", params))
         assertEquals("Status must be 200 once initialized", 200, readyResponse.status.requestStatus)
-        assertEquals("Body must be OK", "OK", readResponseBody(readyResponse))
+        assertTrue("Body must start with OK", readResponseBody(readyResponse).startsWith("OK"))
     }
 
     @Test
@@ -231,8 +243,7 @@ class KioskHttpServerUnitTest {
         // When delegate reports FAILED, retrying with the same tx_id must STILL call delegate
         // and must NEVER return 200 from an in-memory cache!
         simulatedPaymentResult = PaymentResult.FAILED
-        val now = System.currentTimeMillis()
-        val query = "tx_id=tx-700&seconds=300&amount=5.0&ts=$now"
+        val query = makePaymentQuery("tx-700", 300, 5.0)
         val params = createEncryptedParams(query)
 
         val res1 = server.serve(createSession("/coin", params))
@@ -247,7 +258,7 @@ class KioskHttpServerUnitTest {
     @Test
     fun testMismatchedRecipientRejectedWith403() {
         val now = System.currentTimeMillis()
-        val query = "tx_id=tx-mismatch&device_id=OTHER_DEVICE_ID&seconds=300&amount=5.0&ts=$now"
+        val query = makePaymentQuery("tx-mismatch", 300, 5.0, now, deviceId = "OTHER_DEVICE_ID")
         val params = createEncryptedParams(query)
 
         val response = server.serve(createSession("/coin", params))
@@ -273,7 +284,7 @@ class KioskHttpServerUnitTest {
         simulatedPaymentResult = PaymentResult.APPLIED
         val now = System.currentTimeMillis()
         val myDeviceId = KioskSecurity.getHardwareId(context)
-        val validSig = KioskSecurity.calculateHmac("v1:$myDeviceId:tx-valid:5:$now", testSecret)
+        val validSig = KioskSecurity.calculatePaymentSignature(myDeviceId, "tx-valid", 5, now.toString(), testSecret)
         val query = "tx_id=tx-valid&device_id=$myDeviceId&seconds=300&amount=5.0&ts=$now&v_sig=$validSig"
         val params = createEncryptedParams(query)
 

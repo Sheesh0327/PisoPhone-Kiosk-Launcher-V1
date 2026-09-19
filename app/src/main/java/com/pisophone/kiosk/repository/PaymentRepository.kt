@@ -397,33 +397,34 @@ class PaymentRepository(
 
         val effectiveCtx = ctx ?: context
         val encryptedPrefs = effectiveCtx?.let { KioskSecurity.getEncryptedPreferences(it) }
-        val currentBootCount = if (effectiveCtx != null) {
-            try {
-                android.provider.Settings.Global.getInt(
-                    effectiveCtx.contentResolver,
-                    android.provider.Settings.Global.BOOT_COUNT,
-                    -1
-                )
-            } catch (e: Exception) {
-                -1
-            }
-        } else {
-            -1
-        }
-        val lastSavedBootCountStr = paymentDao.getMetadata(KEY_BOOT_COUNT)
-        val lastSavedBootCount = lastSavedBootCountStr?.toIntOrNull() ?: encryptedPrefs?.getInt(KEY_BOOT_COUNT, -1) ?: -1
-        val isBootCountChanged = if (currentBootCount != -1) {
-            val changed = lastSavedBootCount != -1 && currentBootCount != lastSavedBootCount
-            encryptedPrefs?.edit()?.putInt(KEY_BOOT_COUNT, currentBootCount)?.commit()
-            paymentDao.setMetadata(AppMetadata(KEY_BOOT_COUNT, currentBootCount.toString()))
-            changed
-        } else {
-            false
-        }
 
         val (snapshot, isReboot) = db.withTransaction {
             val nowMonotonic = SystemClock.elapsedRealtime()
             recoverUncommittedTransactions(nowMonotonic)
+
+            val currentBootCount = if (effectiveCtx != null) {
+                try {
+                    android.provider.Settings.Global.getInt(
+                        effectiveCtx.contentResolver,
+                        android.provider.Settings.Global.BOOT_COUNT,
+                        -1
+                    )
+                } catch (e: Exception) {
+                    -1
+                }
+            } else {
+                -1
+            }
+            val lastSavedBootCountStr = paymentDao.getMetadata(KEY_BOOT_COUNT)
+            val lastSavedBootCount = lastSavedBootCountStr?.toIntOrNull() ?: encryptedPrefs?.getInt(KEY_BOOT_COUNT, -1) ?: -1
+            val isBootCountChanged = if (currentBootCount != -1) {
+                val changed = lastSavedBootCount != -1 && currentBootCount != lastSavedBootCount
+                encryptedPrefs?.edit()?.putInt(KEY_BOOT_COUNT, currentBootCount)?.commit()
+                paymentDao.setMetadata(AppMetadata(KEY_BOOT_COUNT, currentBootCount.toString()))
+                changed
+            } else {
+                false
+            }
 
             val paidState = paymentDao.getSessionState()
             if (paidState == null) {

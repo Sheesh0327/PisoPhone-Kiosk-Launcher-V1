@@ -70,6 +70,11 @@ bool refreshCoinSlotTtl(const String& sessionId, CoinSlotOwnerType ownerType, un
 void processCoinSlotSession();
 
 /**
+ * Returns the number of pulses currently buffered in the session pulse accumulator.
+ */
+int getSessionAccumulatedPulses();
+
+/**
  * Returns true if the coin slot is currently reserved and powered/armed.
  */
 bool isCoinSlotArmed();

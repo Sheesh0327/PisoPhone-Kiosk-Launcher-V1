@@ -139,9 +139,23 @@ bool hasUnpersistedPayments() {
     return unpersisted;
 }
 
+static bool maintenanceMode = false;
+
+void setMaintenanceMode(bool enable) {
+    maintenanceMode = enable;
+}
+
+bool isMaintenanceMode() {
+    return maintenanceMode;
+}
+
 bool canPerformRebootOrOta() {
     if (hasUnpersistedPayments()) {
         Serial.println("[PAY QUEUE] Reboot/OTA blocked: unpersisted transactions remain in RAM.");
+        return false;
+    }
+    if (getCoinSlotState() != CoinSlotState::IDLE) {
+        Serial.println("[PAY QUEUE] Reboot/OTA blocked: coin slot state is not IDLE.");
         return false;
     }
     if (isCoinSlotArmed()) {
@@ -150,6 +164,10 @@ bool canPerformRebootOrOta() {
     }
     if (isrUniversalPulseCount > 0) {
         Serial.println("[PAY QUEUE] Reboot/OTA blocked: in-flight coin pulses pending in ISR buffer.");
+        return false;
+    }
+    if (getSessionAccumulatedPulses() > 0) {
+        Serial.println("[PAY QUEUE] Reboot/OTA blocked: accumulated coin pulses in buffer.");
         return false;
     }
     return true;

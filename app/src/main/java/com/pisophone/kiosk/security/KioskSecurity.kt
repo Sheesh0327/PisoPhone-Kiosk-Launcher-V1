@@ -416,17 +416,13 @@ object KioskSecurity {
     fun verifyPaymentSignature(deviceId: String, txId: String, amount: Int, ts: String, sig: String, secret: String): Boolean {
         if (sig.isBlank()) return false
         val expectedPay = calculatePaymentSignature(deviceId, txId, amount, ts, secret)
-        if (constantTimeEquals(sig.lowercase(), expectedPay.lowercase())) return true
-        val legacyPay = calculateHmac("v1:$deviceId:$txId:$amount:$ts", secret)
-        return constantTimeEquals(sig.lowercase(), legacyPay.lowercase())
+        return constantTimeEquals(sig.lowercase(), expectedPay.lowercase())
     }
 
     fun verifyAckSignature(deviceId: String, txId: String, amount: Int, ts: String, sig: String, secret: String): Boolean {
         if (sig.isBlank()) return false
         val expectedAck = calculateAckSignature(deviceId, txId, amount, ts, secret)
-        if (constantTimeEquals(sig.lowercase(), expectedAck.lowercase())) return true
-        val legacyAck = calculateHmac("v1:$deviceId:$txId:$amount:$ts", secret)
-        return constantTimeEquals(sig.lowercase(), legacyAck.lowercase())
+        return constantTimeEquals(sig.lowercase(), expectedAck.lowercase())
     }
 
     fun generateTimestampSignature(deviceId: String, ts: String, secret: String): String {

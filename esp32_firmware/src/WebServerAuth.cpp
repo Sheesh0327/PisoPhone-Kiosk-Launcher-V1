@@ -62,8 +62,9 @@ void authWorkerTask(void *pvParameters) {
 
             // Ensure versioned signature on all /add_time requests
             if (String(req.actionPath) == "/add_time" && finalParams.indexOf("v_sig=") == -1 && currentDevId.length() > 0) {
-                String vPayload = "v1:" + currentDevId + ":" + currentTxId + ":" + currentAmount + ":" + currentTs;
-                String vSig = calculateHMAC(vPayload, sharedSecret);
+                int amtVal = currentAmount.toInt();
+                unsigned long long tsVal = strtoull(currentTs.c_str(), NULL, 10);
+                String vSig = calculatePaymentSignature(currentDevId, currentTxId, amtVal, tsVal, sharedSecret);
                 finalParams += "&v_sig=" + vSig;
             }
 
@@ -126,7 +127,8 @@ void authWorkerTask(void *pvParameters) {
                                         String ackTs = respBody.substring(tsPosIdx + 3, tsEnd);
                                         unsigned long long tsVal = strtoull(ackTs.c_str(), NULL, 10);
 
-                                        if (verifyAckSignature(currentDevId, currentTxId, currentAmount, tsVal, ackSig, sharedSecret)) {
+                                        int currentAmtInt = currentAmount.toInt();
+                                        if (verifyAckSignature(currentDevId, currentTxId, currentAmtInt, tsVal, ackSig, sharedSecret)) {
                                             ackValid = true;
                                         } else {
                                             Serial.printf("[AUTH WORKER] Invalid ACK signature for tx_id='%s'\n", currentTxId.c_str());

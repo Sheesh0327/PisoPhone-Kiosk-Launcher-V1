@@ -497,12 +497,9 @@ class Esp32ConnectionManager(
                         val amountPulses = amount.toInt()
 
                         val vSig = decryptedJson.optString("v_sig", "").trim()
-                        if (vSig.isNotBlank()) {
-                            val expectedVSig = KioskSecurity.calculateHmac("v1:$targetDev:$txId:$amountPulses:$tsStr", secretKey)
-                            if (!KioskSecurity.constantTimeEquals(vSig.lowercase(), expectedVSig.lowercase())) {
-                                Log.w(TAG, "Rejected WebSocket coin event: Invalid versioned HMAC signature for $txId")
-                                return
-                            }
+                        if (vSig.isBlank() || !KioskSecurity.verifyPaymentSignature(targetDev, txId, amountPulses, tsStr, vSig, secretKey)) {
+                            Log.w(TAG, "Rejected WebSocket coin event: Missing or invalid versioned HMAC signature for $txId")
+                            return
                         }
 
                         Log.i(TAG, "⚡ Validated WebSocket Coin Processed: +${seconds}s, amount=₱$amount, txId=$txId")
@@ -513,8 +510,7 @@ class Esp32ConnectionManager(
                             result == com.pisophone.kiosk.repository.PaymentResult.ALREADY_APPLIED) {
                             try {
                                 val ackNow = System.currentTimeMillis()
-                                val ackPayload = "v1:$targetDev:$txId:$amountPulses:$ackNow"
-                                val ackSig = KioskSecurity.calculateHmac(ackPayload, secretKey)
+                                val ackSig = KioskSecurity.calculateAckSignature(targetDev, txId, amountPulses, ackNow.toString(), secretKey)
                                 val ackJson = JSONObject().apply {
                                     put("event", "ACK")
                                     put("device_id", targetDev)

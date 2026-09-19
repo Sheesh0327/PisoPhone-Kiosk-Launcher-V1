@@ -123,10 +123,12 @@ void setupWebServer() {
                 return;
             }
 
+            setMaintenanceMode(true);
             Serial.printf("[OTA] Starting firmware flash: %s\n", upload.filename.c_str());
             
             if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
                 otaIsValidBinary = false;
+                setMaintenanceMode(false);
                 otaErrorMsg = "Failed to begin flash partition write (Error: " + String(Update.getError()) + ")";
                 Serial.printf("[OTA] Error: %s\n", otaErrorMsg.c_str());
             }
@@ -150,14 +152,17 @@ void setupWebServer() {
                     otaUpdateSuccess = true;
                 } else {
                     otaIsValidBinary = false;
+                    setMaintenanceMode(false);
                     otaErrorMsg = "Firmware verification failed after write (Error: " + String(Update.getError()) + ")";
                     Serial.printf("[OTA] Error: %s\n", otaErrorMsg.c_str());
                 }
             } else {
                 Update.abort();
+                setMaintenanceMode(false);
             }
         } else if (upload.status == UPLOAD_FILE_ABORTED) {
             Update.abort();
+            setMaintenanceMode(false);
             otaIsValidBinary = false;
             otaErrorMsg = "Upload connection was aborted prematurely.";
             Serial.println("[OTA] Upload aborted by client.");

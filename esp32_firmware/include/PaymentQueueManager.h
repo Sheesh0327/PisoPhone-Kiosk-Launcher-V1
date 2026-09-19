@@ -22,6 +22,8 @@ bool acknowledgeControllerPayment(const String& sessionId, const String& txId);
 bool isPaymentQueueFull();
 bool isPaymentStorageReady();
 bool hasUnpersistedPayments();
+void setMaintenanceMode(bool enable);
+bool isMaintenanceMode();
 bool canPerformRebootOrOta();
 int getPendingPaymentCount();
 bool acknowledgePhonePayment(const String& deviceId, const String& txId);
