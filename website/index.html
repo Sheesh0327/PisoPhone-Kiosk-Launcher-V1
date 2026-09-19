@@ -68,6 +68,11 @@
                 <li>Click <b>Install Terminal</b> or <b>Deprovision</b> to launch this tool with authorized credentials.</li>
             </ol>
         </div>
+        <div class="pt-2 border-t border-slate-800/80 space-y-2">
+            <a href="./update/app-release.apk" download="app-release.apk" class="inline-flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-bold text-emerald-400 transition">
+                <span>📥 Direct Download APK (Manual Install)</span>
+            </a>
+        </div>
         <div class="text-[11px] text-slate-500">
             PisoPhone Kiosk Hardware Utility • Private Terminal
         </div>
@@ -145,8 +150,10 @@
             </button>
 
             <div class="flex items-center justify-between text-[11px] text-slate-400 px-1">
-                <span>Optional custom file:</span>
-                <label for="localApkInput" class="text-emerald-400 hover:text-emerald-300 cursor-pointer font-bold underline flex items-center gap-1">
+                <a href="./update/app-release.apk" download="app-release.apk" class="text-emerald-400 hover:text-emerald-300 cursor-pointer font-bold underline flex items-center gap-1">
+                    📥 Download APK File
+                </a>
+                <label for="localApkInput" class="text-cyan-400 hover:text-cyan-300 cursor-pointer font-bold underline flex items-center gap-1">
                     📁 Select Local .APK
                 </label>
                 <input type="file" id="localApkInput" accept=".apk" class="hidden">
@@ -278,7 +285,9 @@
                 window.location.origin + '/update/app-release.apk',
                 window.location.origin + '/app-release.apk',
                 'https://pisophone.pages.dev/update/app-release.apk',
-                'https://pisophone.pages.dev/app-release.apk'
+                'https://pisophone.pages.dev/app-release.apk',
+                'https://cdn.jsdelivr.net/gh/Sheesh0327/PisoPhone-Kiosk-Launcher-V1@main/website/update/app-release.apk',
+                'https://raw.githubusercontent.com/Sheesh0327/PisoPhone-Kiosk-Launcher-V1/main/website/update/app-release.apk'
             ];
 
             // Local APK File Upload Option

@@ -29,34 +29,45 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Decode Production Keystore
+      - name: Decode Production or Fallback Keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          STORE_PWD: ${{ secrets.STORE_PASSWORD }}
+          ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PWD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "::error::Missing secret 'KEYSTORE_BASE64'. Please add KEYSTORE_BASE64 to your repository GitHub Secrets."
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo -n "$KEYSTORE_BASE64" | tr -d '\r\n ' | base64 -d -i > /tmp/release-keystore.jks
+            echo "Production keystore successfully decoded from GitHub Secrets."
+            echo "STORE_PASSWORD=$STORE_PWD" >> $GITHUB_ENV
+            echo "KEY_ALIAS=$ALIAS" >> $GITHUB_ENV
+            echo "KEY_PASSWORD=$KEY_PWD" >> $GITHUB_ENV
+          elif [ -f "debug.keystore.base64" ]; then
+            echo "Notice: KEYSTORE_BASE64 secret not found. Using repository debug.keystore.base64..."
+            cat debug.keystore.base64 | tr -d '\r\n ' | base64 -d -i > /tmp/release-keystore.jks
+            echo "STORE_PASSWORD=android" >> $GITHUB_ENV
+            echo "KEY_ALIAS=androiddebugkey" >> $GITHUB_ENV
+            echo "KEY_PASSWORD=android" >> $GITHUB_ENV
+          else
+            echo "::error::No keystore available to sign release APK."
             exit 1
           fi
-          echo -n "$KEYSTORE_BASE64" | tr -d '\r\n ' | base64 -d -i > /tmp/release-keystore.jks
-          echo "Production keystore successfully decoded from GitHub Secrets."
 
       - name: Build Release APK
         env:
           KEYSTORE_PATH: /tmp/release-keystore.jks
-          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew :app:assembleRelease --no-daemon --no-configuration-cache --stacktrace
 
       - name: Clean up Keystore
         if: always()
         run: rm -f /tmp/release-keystore.jks
 
-      - name: Push APK directly to website/update directory
+      - name: Push APK directly to website directory
         run: |
           mkdir -p website/update
           if [ -f "app/build/outputs/apk/release/app-release.apk" ]; then
             cp app/build/outputs/apk/release/app-release.apk website/update/app-release.apk
+            cp app/build/outputs/apk/release/app-release.apk website/app-release.apk
           else
             echo "Error: No release APK found in app/build/outputs/apk/release/"
             exit 1
@@ -68,10 +79,10 @@ jobs:
           
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add -f website/update/
+          git add -f website/update/app-release.apk website/app-release.apk
           # Only commit if there are changes to avoid failing the workflow
           if ! git diff --staged --quiet; then
-            git commit -m "chore: auto-update APK and firmware binaries in website/update directory [skip ci]"
+            git commit -m "chore: auto-update APK and firmware binaries in website directory [skip ci]"
             git pull --rebase --autostash origin main || git pull --rebase --autostash origin ${GITHUB_REF_NAME:-main}
             git push
           fi
