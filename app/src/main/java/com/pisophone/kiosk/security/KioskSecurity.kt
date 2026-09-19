@@ -405,23 +405,89 @@ object KioskSecurity {
         return hmacBytes.joinToString("") { "%02x".format(it) }
     }
 
-    fun calculatePaymentSignature(deviceId: String, txId: String, amount: Int, ts: String, secret: String): String {
-        return calculateHmac("v1_pay:$deviceId:$txId:$amount:$ts", secret)
+    private fun lengthPrefixed(vararg fields: String): String {
+        return fields.joinToString("") { "${it.length}:$it" }
     }
 
-    fun calculateAckSignature(deviceId: String, txId: String, amount: Int, ts: String, secret: String): String {
-        return calculateHmac("v1_ack:$deviceId:$txId:$amount:$ts", secret)
+    fun calculateHttpReqSignature(
+        method: String,
+        endpoint: String,
+        recipient: String,
+        txId: String,
+        ts: String,
+        payload: String,
+        secret: String
+    ): String {
+        val formatted = lengthPrefixed("HTTP_REQ", method, endpoint, recipient, txId, ts, payload)
+        return calculateHmac(formatted, secret)
     }
 
-    fun verifyPaymentSignature(deviceId: String, txId: String, amount: Int, ts: String, sig: String, secret: String): Boolean {
+    fun verifyHttpReqSignature(
+        method: String,
+        endpoint: String,
+        recipient: String,
+        txId: String,
+        ts: String,
+        payload: String,
+        sig: String,
+        secret: String
+    ): Boolean {
         if (sig.isBlank()) return false
-        val expectedPay = calculatePaymentSignature(deviceId, txId, amount, ts, secret)
-        return constantTimeEquals(sig.lowercase(), expectedPay.lowercase())
+        val expected = calculateHttpReqSignature(method, endpoint, recipient, txId, ts, payload, secret)
+        return constantTimeEquals(sig.lowercase(), expected.lowercase())
     }
 
-    fun verifyAckSignature(deviceId: String, txId: String, amount: Int, ts: String, sig: String, secret: String): Boolean {
+    fun calculateWsPaySignature(
+        event: String,
+        recipient: String,
+        txId: String,
+        ts: String,
+        payload: String,
+        secret: String
+    ): String {
+        val formatted = lengthPrefixed("WS_PAY", event, recipient, txId, ts, payload)
+        return calculateHmac(formatted, secret)
+    }
+
+    fun verifyWsPaySignature(
+        event: String,
+        recipient: String,
+        txId: String,
+        ts: String,
+        payload: String,
+        sig: String,
+        secret: String
+    ): Boolean {
         if (sig.isBlank()) return false
-        val expectedAck = calculateAckSignature(deviceId, txId, amount, ts, secret)
+        val expected = calculateWsPaySignature(event, recipient, txId, ts, payload, secret)
+        return constantTimeEquals(sig.lowercase(), expected.lowercase())
+    }
+
+    fun calculateAckSignature(
+        deviceId: String,
+        txId: String,
+        amount: Int,
+        seconds: Int,
+        ts: String,
+        status: String,
+        secret: String
+    ): String {
+        val formatted = lengthPrefixed("ACK", deviceId, txId, amount.toString(), seconds.toString(), ts, status)
+        return calculateHmac(formatted, secret)
+    }
+
+    fun verifyAckSignature(
+        deviceId: String,
+        txId: String,
+        amount: Int,
+        seconds: Int,
+        ts: String,
+        status: String,
+        sig: String,
+        secret: String
+    ): Boolean {
+        if (sig.isBlank()) return false
+        val expectedAck = calculateAckSignature(deviceId, txId, amount, seconds, ts, status, secret)
         return constantTimeEquals(sig.lowercase(), expectedAck.lowercase())
     }
 

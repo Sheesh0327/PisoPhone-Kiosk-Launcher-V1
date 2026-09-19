@@ -26,8 +26,11 @@ void sendAddTime(int minutes, String targetIp, String txId) {
                         Serial.printf("[-] sendAddTime skipped for %s (Slot #%d): Device Expired / Uncredited\n",
                             cfg.ip.c_str(), (slotIdx >= 0) ? licenseSlots[slotIdx].slotNum : 0);
                     } else {
-                        String params = "minutes=" + String(minutes);
-                        if (txId.length() > 0) params += "&tx_id=" + txId;
+                        String currentTxId = txId;
+                        if (currentTxId.length() == 0) {
+                            currentTxId = "adj-" + cfg.id + "-" + String(millis()) + "-" + String(random(1000, 9999));
+                        }
+                        String params = "device_id=" + cfg.id + "&tx_id=" + currentTxId + "&seconds=" + String(minutes * 60) + "&amount=0";
                         sendAuthenticated(cfg.ip, targetPort, "/add_time", "/challenge", params, 1000);
                     }
                 }
@@ -93,15 +96,15 @@ bool retryPhonePayment(const String& targetDeviceId, int pulses, int creditSecon
         : pulses * max(minutesPerCoin, 1) * 60;
     int addedMinutes = safeSeconds / 60;
     uint64_t retryTs = getCurrentMasterTimeMs();
-    String vSig = calculatePaymentSignature(targetDeviceId, txId, pulses, retryTs, sharedSecret);
 
     bool dispatched = false;
 
     // 1. Dispatch over WebSocket if client is connected for targetDeviceId
     if (isWsConnected && wsClient.connected() && wsSessionDeviceId == targetDeviceId) {
-        String innerJson = "{\"seconds\":" + String(safeSeconds) + ",\"minutes\":" + String(addedMinutes) + ",\"amount\":" + String(pulses) + ",\"tx_id\":\"" + txId + "\",\"ts\":\"" + String(retryTs) + "\",\"device_id\":\"" + targetDeviceId + "\",\"v_sig\":\"" + vSig + "\"}";
+        String innerJson = "{\"seconds\":" + String(safeSeconds) + ",\"minutes\":" + String(addedMinutes) + ",\"amount\":" + String(pulses) + ",\"tx_id\":\"" + txId + "\",\"ts\":\"" + String(retryTs) + "\",\"device_id\":\"" + targetDeviceId + "\"}";
         String payload = aes_encrypt(innerJson, sharedSecret);
-        String json = "{\"event\":\"COIN_DETECTED\",\"payload\":\"" + payload + "\",\"seconds\":" + String(safeSeconds) + ",\"amount\":" + String(pulses) + ",\"tx_id\":\"" + txId + "\"}";
+        String vSig = calculateWsPaySignature("COIN_DETECTED", targetDeviceId, txId, String(retryTs), payload, sharedSecret);
+        String json = "{\"event\":\"COIN_DETECTED\",\"payload\":\"" + payload + "\",\"seconds\":" + String(safeSeconds) + ",\"amount\":" + String(pulses) + ",\"tx_id\":\"" + txId + "\",\"ts\":\"" + String(retryTs) + "\",\"v_sig\":\"" + vSig + "\"}";
         sendWsText(wsClient, json);
         refreshCoinSlotTtl(targetDeviceId, CoinSlotOwnerType::PHONE, ARM_TTL);
         dispatched = true;

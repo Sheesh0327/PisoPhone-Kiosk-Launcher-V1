@@ -131,9 +131,21 @@ class KioskHttpServer(
             return createResponse(Response.Status.UNAUTHORIZED, "text/plain", "HMAC signature required for integrity")
         }
 
-        val expectedHmac = KioskSecurity.calculateHmac(payload, secretKey)
-        if (!KioskSecurity.constantTimeEquals(hmac.trim().lowercase(), expectedHmac.trim().lowercase())) {
-            Log.w(TAG, "Rejected payload with invalid HMAC signature: $uri")
+        val outerDeviceId = params["device_id"]?.trim() ?: ""
+        val outerTxId = params["tx_id"]?.trim() ?: ""
+        val outerTs = params["ts"]?.trim() ?: ""
+
+        if (!KioskSecurity.verifyHttpReqSignature(
+                method = session.method.name,
+                endpoint = uri,
+                recipient = outerDeviceId,
+                txId = outerTxId,
+                ts = outerTs,
+                payload = payload,
+                sig = hmac,
+                secret = secretKey
+            )) {
+            Log.w(TAG, "Rejected payload with invalid HttpReq signature: $uri")
             return createResponse(Response.Status.UNAUTHORIZED, "text/plain", "HMAC verification failed")
         }
 
@@ -144,8 +156,25 @@ class KioskHttpServer(
         }
         val decryptedParams = parseQueryString(decryptedStr)
 
+        val decTxId = (decryptedParams["tx_id"] ?: decryptedParams["nonce"])?.trim() ?: ""
+        val decDeviceId = decryptedParams["device_id"]?.trim() ?: ""
+        val decTs = decryptedParams["ts"]?.trim() ?: ""
+
+        if (outerTxId.isNotBlank() && !outerTxId.equals(decTxId, ignoreCase = true)) {
+            Log.w(TAG, "Rejecting request: outer tx_id ($outerTxId) does not match decrypted tx_id ($decTxId)")
+            return createResponse(Response.Status.BAD_REQUEST, "text/plain", "MUTATED_TRANSACTION_ID")
+        }
+        if (outerDeviceId.isNotBlank() && !outerDeviceId.equals(decDeviceId, ignoreCase = true)) {
+            Log.w(TAG, "Rejecting request: outer device_id ($outerDeviceId) does not match decrypted device_id ($decDeviceId)")
+            return createResponse(Response.Status.BAD_REQUEST, "text/plain", "MUTATED_DEVICE_ID")
+        }
+        if (outerTs.isNotBlank() && !outerTs.equals(decTs, ignoreCase = true)) {
+            Log.w(TAG, "Rejecting request: outer ts ($outerTs) does not match decrypted ts ($decTs)")
+            return createResponse(Response.Status.BAD_REQUEST, "text/plain", "MUTATED_TIMESTAMP")
+        }
+
         // Validate timestamp freshness (Replay protection Layer 1)
-        val ts = decryptedParams["ts"]?.trim()?.toLongOrNull() ?: 0L
+        val ts = decTs.toLongOrNull() ?: 0L
         val now = System.currentTimeMillis()
         val skew = Math.abs(now - ts)
         if (ts <= 0L || skew > MAX_TIMESTAMP_SKEW_MS) {
@@ -154,7 +183,7 @@ class KioskHttpServer(
         }
 
         // Replay Protection check: verify unique tx_id (Layer 2)
-        val txId = (decryptedParams["tx_id"] ?: decryptedParams["nonce"])?.trim()
+        val txId = decTxId.ifBlank { null }
         if (uri == "/add_time" || uri == "/coin") {
             if (!delegate.isReady()) {
                 Log.w(TAG, "Rejecting payment request to $uri: Server initialization in progress")
@@ -168,7 +197,7 @@ class KioskHttpServer(
 
         return when (uri) {
             "/add_time", "/coin" -> {
-                val targetDev = decryptedParams["device_id"]?.trim() ?: ""
+                val targetDev = decDeviceId
                 val myDeviceId = delegate.getDeviceId().ifBlank { KioskSecurity.getHardwareId(context) }
                 if (targetDev.isNotBlank() && !targetDev.equals(myDeviceId, ignoreCase = true)) {
                     Log.w(TAG, "Rejecting payment request: Recipient mismatch (target='$targetDev', local='$myDeviceId')")
@@ -197,14 +226,7 @@ class KioskHttpServer(
                     return createResponse(Response.Status.BAD_REQUEST, "text/plain", "INVALID_AMOUNT")
                 }
 
-                val effectiveTargetDev = if (targetDev.isNotBlank()) targetDev else myDeviceId
                 val amountPulses = amount.toInt()
-                val tsParam = decryptedParams["ts"]?.trim() ?: ""
-                val vSig = decryptedParams["v_sig"]?.trim() ?: ""
-                if (vSig.isBlank() || !KioskSecurity.verifyPaymentSignature(effectiveTargetDev, txId!!, amountPulses, tsParam, vSig, secretKey)) {
-                    Log.w(TAG, "Rejecting payment: Missing or invalid versioned HMAC signature for $txId")
-                    return createResponse(Response.Status.UNAUTHORIZED, "text/plain", "INVALID_SIGNATURE")
-                }
 
                 if (rawSecondsLong > 0) {
                     if (rawSecondsLong > Int.MAX_VALUE.toLong()) {
@@ -221,20 +243,24 @@ class KioskHttpServer(
 
                     val ackResp = if (targetDev.isNotBlank()) {
                         val ackNow = System.currentTimeMillis()
-                        val ackSig = KioskSecurity.calculateAckSignature(targetDev, txId!!, amountPulses, ackNow.toString(), secretKey)
-                        "OK:tx_id=$txId:device_id=$targetDev:amount=$amountPulses:ts=$ackNow:v_sig=$ackSig"
+                        val statusStr = if (result == PaymentResult.ALREADY_APPLIED) "ALREADY_PROCESSED" else "OK"
+                        val ackSig = KioskSecurity.calculateAckSignature(
+                            deviceId = targetDev,
+                            txId = txId!!,
+                            amount = amountPulses,
+                            seconds = seconds,
+                            ts = ackNow.toString(),
+                            status = statusStr,
+                            secret = secretKey
+                        )
+                        "$statusStr:tx_id=$txId:device_id=$targetDev:amount=$amountPulses:seconds=$seconds:ts=$ackNow:v_sig=$ackSig"
                     } else {
-                        "OK"
+                        if (result == PaymentResult.ALREADY_APPLIED) "ALREADY_PROCESSED" else "OK"
                     }
 
                     when (result) {
-                        PaymentResult.APPLIED -> {
+                        PaymentResult.APPLIED, PaymentResult.ALREADY_APPLIED -> {
                             createResponse(Response.Status.OK, "text/plain", ackResp)
-                        }
-                        PaymentResult.ALREADY_APPLIED -> {
-                            // Acknowledge duplicate with context if present so ESP32 clears retry queue
-                            val resp = if (targetDev.isNotBlank()) "ALREADY_PROCESSED:$ackResp" else "ALREADY_PROCESSED"
-                            createResponse(Response.Status.OK, "text/plain", resp)
                         }
                         PaymentResult.CONFLICT -> {
                             Log.w(TAG, "Payment rejected due to conflicting values for $txId")
@@ -258,7 +284,24 @@ class KioskHttpServer(
                     val positiveSeconds = positiveSecondsLong.toInt()
                     val deductTxId = txId ?: "deduct_${System.currentTimeMillis()}"
                     delegate.onDeductTime(positiveSeconds, deductTxId)
-                    createResponse(Response.Status.OK, "text/plain", "OK")
+                    
+                    val ackResp = if (targetDev.isNotBlank()) {
+                        val ackNow = System.currentTimeMillis()
+                        val statusStr = "OK"
+                        val ackSig = KioskSecurity.calculateAckSignature(
+                            deviceId = targetDev,
+                            txId = deductTxId,
+                            amount = 0,
+                            seconds = rawSecondsLong.toInt(),
+                            ts = ackNow.toString(),
+                            status = statusStr,
+                            secret = secretKey
+                        )
+                        "$statusStr:tx_id=$deductTxId:device_id=$targetDev:amount=0:seconds=${rawSecondsLong.toInt()}:ts=$ackNow:v_sig=$ackSig"
+                    } else {
+                        "OK"
+                    }
+                    createResponse(Response.Status.OK, "text/plain", ackResp)
                 } else {
                     createResponse(Response.Status.BAD_REQUEST, "text/plain", "INVALID_SECONDS")
                 }

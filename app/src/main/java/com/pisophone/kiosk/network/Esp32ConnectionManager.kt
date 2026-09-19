@@ -448,6 +448,12 @@ class Esp32ConnectionManager(
                             return
                         }
 
+                        val hmac = json.optString("v_sig", "").trim()
+                        if (hmac.isBlank()) {
+                            Log.w(TAG, "Rejected WebSocket coin event: Missing signature")
+                            return
+                        }
+
                         val secretKey = delegate.getSecretKey()
                         val decryptedStr = KioskSecurity.decrypt(payload, secretKey)
                         if (decryptedStr.isBlank()) {
@@ -496,9 +502,16 @@ class Esp32ConnectionManager(
                         val seconds = rawSeconds.toInt()
                         val amountPulses = amount.toInt()
 
-                        val vSig = decryptedJson.optString("v_sig", "").trim()
-                        if (vSig.isBlank() || !KioskSecurity.verifyPaymentSignature(targetDev, txId, amountPulses, tsStr, vSig, secretKey)) {
-                            Log.w(TAG, "Rejected WebSocket coin event: Missing or invalid versioned HMAC signature for $txId")
+                        if (!KioskSecurity.verifyWsPaySignature(
+                                event = "COIN_DETECTED",
+                                recipient = targetDev,
+                                txId = txId,
+                                ts = tsStr,
+                                payload = payload,
+                                sig = hmac,
+                                secret = secretKey
+                            )) {
+                            Log.w(TAG, "Rejected WebSocket coin event: Signature verification failed")
                             return
                         }
 
@@ -510,15 +523,25 @@ class Esp32ConnectionManager(
                             result == com.pisophone.kiosk.repository.PaymentResult.ALREADY_APPLIED) {
                             try {
                                 val ackNow = System.currentTimeMillis()
-                                val ackSig = KioskSecurity.calculateAckSignature(targetDev, txId, amountPulses, ackNow.toString(), secretKey)
+                                val statusStr = if (result == com.pisophone.kiosk.repository.PaymentResult.ALREADY_APPLIED) "ALREADY_PROCESSED" else "OK"
+                                val ackSig = KioskSecurity.calculateAckSignature(
+                                    deviceId = targetDev,
+                                    txId = txId,
+                                    amount = amountPulses,
+                                    seconds = seconds,
+                                    ts = ackNow.toString(),
+                                    status = statusStr,
+                                    secret = secretKey
+                                )
                                 val ackJson = JSONObject().apply {
                                     put("event", "ACK")
                                     put("device_id", targetDev)
                                     put("tx_id", txId)
                                     put("amount", amountPulses)
+                                    put("seconds", seconds)
                                     put("ts", ackNow.toString())
                                     put("v_sig", ackSig)
-                                    put("status", if (result == com.pisophone.kiosk.repository.PaymentResult.ALREADY_APPLIED) "ALREADY_PROCESSED" else "APPLIED")
+                                    put("status", statusStr)
                                 }
                                 webSocket.send(ackJson.toString())
                             } catch (e: Exception) {

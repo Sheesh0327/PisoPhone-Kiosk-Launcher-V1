@@ -26,7 +26,7 @@ void setMaintenanceMode(bool enable);
 bool isMaintenanceMode();
 bool canPerformRebootOrOta();
 int getPendingPaymentCount();
-bool acknowledgePhonePayment(const String& deviceId, const String& txId);
+bool acknowledgePhonePayment(const String& deviceId, const String& txId, int expectedPulses, const String& status);
 void dispatchPendingControllerPayments(const String& sessionId);
 void processPendingPaymentRetries();
 

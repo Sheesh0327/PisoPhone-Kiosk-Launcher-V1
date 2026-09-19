@@ -468,14 +468,19 @@ void processWebSocketServer() {
                     String ackTxId = String(ackDoc["tx_id"] | "");
                     String ackSig = String(ackDoc["v_sig"] | "");
                     String ackTs = String(ackDoc["ts"] | "");
-                    String ackPulses = String(ackDoc["amount"] | "1");
+                    
+                    if (!ackDoc["amount"].is<int>()) {
+                        Serial.println("[⚡ WS Port 81] Rejected ACK: amount must be a valid integer");
+                        continue;
+                    }
+                    int amountVal = ackDoc["amount"].as<int>();
+                    int secondsVal = ackDoc["seconds"].is<int>() ? ackDoc["seconds"].as<int>() : 0;
+                    String statusVal = String(ackDoc["status"] | "OK");
 
                     if (ackDevId.length() > 0 && ackTxId.length() > 0 && ackDevId == boundDevId) {
                         bool sigValid = false;
                         if (ackSig.length() > 0 && ackTs.length() > 0) {
-                            unsigned long long tsVal = strtoull(ackTs.c_str(), NULL, 10);
-                            int amountVal = ackPulses.toInt();
-                            if (verifyAckSignature(ackDevId, ackTxId, amountVal, tsVal, ackSig, sharedSecret)) {
+                            if (verifyAckSignature(ackDevId, ackTxId, amountVal, secondsVal, ackTs, statusVal, ackSig, sharedSecret)) {
                                 sigValid = true;
                             } else {
                                 Serial.printf("[⚡ WS Port 81] Rejected ACK for '%s': Invalid signature\n", ackTxId.c_str());
@@ -483,7 +488,7 @@ void processWebSocketServer() {
                         } else {
                             Serial.printf("[⚡ WS Port 81] Rejected ACK for '%s': Missing signature or timestamp\n", ackTxId.c_str());
                         }
-                        if (sigValid && acknowledgePhonePayment(ackDevId, ackTxId)) {
+                        if (sigValid && acknowledgePhonePayment(ackDevId, ackTxId, amountVal, statusVal)) {
                             Serial.printf("[⚡ WS Port 81] Durable phone ACK accepted for tx_id='%s' (device: %s)\n",
                                           ackTxId.c_str(), ackDevId.c_str());
                         }

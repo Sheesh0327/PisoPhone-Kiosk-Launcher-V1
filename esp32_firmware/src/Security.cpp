@@ -26,23 +26,106 @@ String calculateHMAC(String challenge, String secret) {
     return hex;
 }
 
-String calculatePaymentSignature(const String& deviceId, const String& txId, int amount, unsigned long long ts, const String& secret) {
-    return calculateHMAC("v1_pay:" + deviceId + ":" + txId + ":" + String(amount) + ":" + String(ts), secret);
+static String lengthPrefixedField(const String& field) {
+    return String(field.length()) + ":" + field;
 }
 
-String calculateAckSignature(const String& deviceId, const String& txId, int amount, unsigned long long ts, const String& secret) {
-    return calculateHMAC("v1_ack:" + deviceId + ":" + txId + ":" + String(amount) + ":" + String(ts), secret);
+String calculateHttpReqSignature(
+    const String& method,
+    const String& endpoint,
+    const String& recipient,
+    const String& txId,
+    const String& ts,
+    const String& payload,
+    const String& secret
+) {
+    String formatted = lengthPrefixedField("HTTP_REQ") +
+                       lengthPrefixedField(method) +
+                       lengthPrefixedField(endpoint) +
+                       lengthPrefixedField(recipient) +
+                       lengthPrefixedField(txId) +
+                       lengthPrefixedField(ts) +
+                       lengthPrefixedField(payload);
+    return calculateHMAC(formatted, secret);
 }
 
-bool verifyPaymentSignature(const String& deviceId, const String& txId, int amount, unsigned long long ts, const String& sig, const String& secret) {
+bool verifyHttpReqSignature(
+    const String& method,
+    const String& endpoint,
+    const String& recipient,
+    const String& txId,
+    const String& ts,
+    const String& payload,
+    const String& sig,
+    const String& secret
+) {
     if (sig.length() == 0) return false;
-    String expectedPay = calculatePaymentSignature(deviceId, txId, amount, ts, secret);
-    return sig.equalsIgnoreCase(expectedPay);
+    String expected = calculateHttpReqSignature(method, endpoint, recipient, txId, ts, payload, secret);
+    return sig.equalsIgnoreCase(expected);
 }
 
-bool verifyAckSignature(const String& deviceId, const String& txId, int amount, unsigned long long ts, const String& sig, const String& secret) {
+String calculateWsPaySignature(
+    const String& event,
+    const String& recipient,
+    const String& txId,
+    const String& ts,
+    const String& payload,
+    const String& secret
+) {
+    String formatted = lengthPrefixedField("WS_PAY") +
+                       lengthPrefixedField(event) +
+                       lengthPrefixedField(recipient) +
+                       lengthPrefixedField(txId) +
+                       lengthPrefixedField(ts) +
+                       lengthPrefixedField(payload);
+    return calculateHMAC(formatted, secret);
+}
+
+bool verifyWsPaySignature(
+    const String& event,
+    const String& recipient,
+    const String& txId,
+    const String& ts,
+    const String& payload,
+    const String& sig,
+    const String& secret
+) {
     if (sig.length() == 0) return false;
-    String expectedAck = calculateAckSignature(deviceId, txId, amount, ts, secret);
+    String expected = calculateWsPaySignature(event, recipient, txId, ts, payload, secret);
+    return sig.equalsIgnoreCase(expected);
+}
+
+String calculateAckSignature(
+    const String& deviceId,
+    const String& txId,
+    int amount,
+    int seconds,
+    const String& ts,
+    const String& status,
+    const String& secret
+) {
+    String formatted = lengthPrefixedField("ACK") +
+                       lengthPrefixedField(deviceId) +
+                       lengthPrefixedField(txId) +
+                       lengthPrefixedField(String(amount)) +
+                       lengthPrefixedField(String(seconds)) +
+                       lengthPrefixedField(ts) +
+                       lengthPrefixedField(status);
+    return calculateHMAC(formatted, secret);
+}
+
+bool verifyAckSignature(
+    const String& deviceId,
+    const String& txId,
+    int amount,
+    int seconds,
+    const String& ts,
+    const String& status,
+    const String& sig,
+    const String& secret
+) {
+    if (sig.length() == 0) return false;
+    String expectedAck = calculateAckSignature(deviceId, txId, amount, seconds, ts, status, secret);
     return sig.equalsIgnoreCase(expectedAck);
 }
 

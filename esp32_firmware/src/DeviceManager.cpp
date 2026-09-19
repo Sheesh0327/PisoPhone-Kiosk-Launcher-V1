@@ -363,6 +363,26 @@ String getIpFromDeviceId(String id) {
     return id;
 }
 
+String getDeviceIdFromIp(String ip) {
+    int startIdx = 0;
+    while (startIdx < androidIps.length()) {
+        int comma = androidIps.indexOf(',', startIdx);
+        if (comma == -1) comma = androidIps.length();
+        String entry = androidIps.substring(startIdx, comma);
+        entry.trim();
+        if (entry.length() > 0) {
+            DeviceConfig cfg;
+            if (parseDeviceEntry(entry, cfg)) {
+                if (cfg.ip == ip) {
+                    return cfg.id;
+                }
+            }
+        }
+        startIdx = comma + 1;
+    }
+    return "";
+}
+
 String getPrimaryTerminalIp() {
     String currentSession = getActiveCoinSessionId();
     if (currentSession.length() > 0) {

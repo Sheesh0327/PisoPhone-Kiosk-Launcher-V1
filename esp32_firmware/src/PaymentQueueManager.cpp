@@ -291,7 +291,7 @@ static bool acknowledgeMatchingPayment(const String& txId, const String* session
     return true;
 }
 
-bool acknowledgePhonePayment(const String& deviceId, const String& txId) {
+bool acknowledgePhonePayment(const String& deviceId, const String& txId, int expectedPulses, const String& status) {
     if (deviceId.length() == 0 || txId.length() == 0) return false;
     return acknowledgeMatchingPayment(txId, &deviceId, 1);
 }

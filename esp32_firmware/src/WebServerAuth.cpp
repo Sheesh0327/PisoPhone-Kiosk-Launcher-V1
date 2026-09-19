@@ -8,6 +8,15 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 
+static String parseAckField(const String& body, const String& key) {
+    int pos = body.indexOf(key + "=");
+    if (pos == -1) return "";
+    int start = pos + key.length() + 1;
+    int end = body.indexOf(':', start);
+    if (end == -1) end = body.length();
+    return body.substring(start, end);
+}
+
 void authWorkerTask(void *pvParameters) {
     AuthRequest req;
     while (true) {
@@ -43,8 +52,11 @@ void authWorkerTask(void *pvParameters) {
                 if (endDev == -1) endDev = finalParams.length();
                 currentDevId = finalParams.substring(devPos + 10, endDev);
             }
+            if (currentDevId.length() == 0) {
+                currentDevId = getDeviceIdFromIp(ip);
+            }
 
-            String currentAmount = "1";
+            String currentAmount = "0";
             int amtPos = finalParams.indexOf("amount=");
             if (amtPos != -1) {
                 int endAmt = finalParams.indexOf('&', amtPos);
@@ -60,12 +72,13 @@ void authWorkerTask(void *pvParameters) {
                 currentTs = finalParams.substring(pTsPos + 3, endTs);
             }
 
-            // Ensure versioned signature on all /add_time requests
-            if (String(req.actionPath) == "/add_time" && finalParams.indexOf("v_sig=") == -1 && currentDevId.length() > 0) {
-                int amtVal = currentAmount.toInt();
-                unsigned long long tsVal = strtoull(currentTs.c_str(), NULL, 10);
-                String vSig = calculatePaymentSignature(currentDevId, currentTxId, amtVal, tsVal, sharedSecret);
-                finalParams += "&v_sig=" + vSig;
+            if (currentDevId.length() > 0 && finalParams.indexOf("device_id=") == -1) {
+                if (finalParams.length() > 0) finalParams += "&device_id=" + currentDevId;
+                else finalParams = "device_id=" + currentDevId;
+            }
+            if (currentTxId.length() > 0 && finalParams.indexOf("tx_id=") == -1) {
+                if (finalParams.length() > 0) finalParams += "&tx_id=" + currentTxId;
+                else finalParams = "tx_id=" + currentTxId;
             }
 
             int retries = 0;
@@ -87,8 +100,8 @@ void authWorkerTask(void *pvParameters) {
 
                 String actionUrl = "http://" + ip + ":" + String(req.port) + String(req.actionPath);
                 String encryptedPayload = aes_encrypt(finalParams, sharedSecret);
-                String hmacSig = calculateHMAC(encryptedPayload, sharedSecret);
-                actionUrl += "?payload=" + encryptedPayload + "&hmac=" + hmacSig;
+                String hmacSig = calculateHttpReqSignature("GET", String(req.actionPath), currentDevId, currentTxId, currentTs, encryptedPayload, sharedSecret);
+                actionUrl += "?payload=" + encryptedPayload + "&hmac=" + hmacSig + "&device_id=" + currentDevId + "&tx_id=" + currentTxId + "&ts=" + currentTs;
 
                 if (http.begin(client, actionUrl)) {
                     int code = http.GET();
@@ -103,38 +116,29 @@ void authWorkerTask(void *pvParameters) {
                     if (code >= 200 && code < 300) {
                         if (currentTxId.length() > 0 && currentDevId.length() > 0) {
                             bool ackValid = false;
-                            int ackTxPos = respBody.indexOf("tx_id=");
-                            int ackDevPos = respBody.indexOf("device_id=");
-                            if (ackTxPos != -1 && ackDevPos != -1) {
-                                int ackTxEnd = respBody.indexOf(':', ackTxPos);
-                                if (ackTxEnd == -1) ackTxEnd = respBody.length();
-                                String ackTx = respBody.substring(ackTxPos + 6, ackTxEnd);
+                            String status = "";
+                            if (respBody.startsWith("OK")) {
+                                status = "OK";
+                            } else if (respBody.startsWith("ALREADY_PROCESSED")) {
+                                status = "ALREADY_PROCESSED";
+                            }
 
-                                int ackDevEnd = respBody.indexOf(':', ackDevPos);
-                                if (ackDevEnd == -1) ackDevEnd = respBody.length();
-                                String ackDev = respBody.substring(ackDevPos + 10, ackDevEnd);
+                            if (status.length() > 0) {
+                                String ackTx = parseAckField(respBody, "tx_id");
+                                String ackDev = parseAckField(respBody, "device_id");
+                                String ackAmtStr = parseAckField(respBody, "amount");
+                                String ackSecStr = parseAckField(respBody, "seconds");
+                                String ackTs = parseAckField(respBody, "ts");
+                                String ackSig = parseAckField(respBody, "v_sig");
 
-                                 if (ackTx == currentTxId && ackDev == currentDevId) {
-                                    int sigPos = respBody.indexOf("v_sig=");
-                                    int tsPosIdx = respBody.indexOf("ts=");
-                                    if (sigPos != -1 && tsPosIdx != -1) {
-                                        int sigEnd = respBody.indexOf(':', sigPos);
-                                        if (sigEnd == -1) sigEnd = respBody.length();
-                                        String ackSig = respBody.substring(sigPos + 6, sigEnd);
+                                int ackAmt = ackAmtStr.toInt();
+                                int ackSec = ackSecStr.toInt();
 
-                                        int tsEnd = respBody.indexOf(':', tsPosIdx);
-                                        if (tsEnd == -1) tsEnd = respBody.length();
-                                        String ackTs = respBody.substring(tsPosIdx + 3, tsEnd);
-                                        unsigned long long tsVal = strtoull(ackTs.c_str(), NULL, 10);
-
-                                        int currentAmtInt = currentAmount.toInt();
-                                        if (verifyAckSignature(currentDevId, currentTxId, currentAmtInt, tsVal, ackSig, sharedSecret)) {
-                                            ackValid = true;
-                                        } else {
-                                            Serial.printf("[AUTH WORKER] Invalid ACK signature for tx_id='%s'\n", currentTxId.c_str());
-                                        }
+                                if (ackTx == currentTxId && ackDev == currentDevId) {
+                                    if (verifyAckSignature(ackDev, ackTx, ackAmt, ackSec, ackTs, status, ackSig, sharedSecret)) {
+                                        ackValid = true;
                                     } else {
-                                        Serial.printf("[AUTH WORKER] Missing signature or timestamp in ACK for tx_id='%s'\n", currentTxId.c_str());
+                                        Serial.printf("[AUTH WORKER] Invalid ACK signature for tx_id='%s'\n", currentTxId.c_str());
                                     }
                                 } else {
                                     Serial.printf("[AUTH WORKER] Mismatched ACK: (dev=%s, tx=%s) vs received (dev=%s, tx=%s)\n",
@@ -147,7 +151,8 @@ void authWorkerTask(void *pvParameters) {
 
                             if (ackValid) {
                                 delivered = true;
-                                if (acknowledgePhonePayment(currentDevId, currentTxId)) {
+                                int currentAmtInt = currentAmount.toInt();
+                                if (acknowledgePhonePayment(currentDevId, currentTxId, currentAmtInt, status)) {
                                     Serial.printf("[AUTH WORKER] Durable phone ACK accepted for tx_id='%s' (device: %s)\n",
                                                   currentTxId.c_str(), currentDevId.c_str());
                                 }

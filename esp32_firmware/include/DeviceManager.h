@@ -25,6 +25,7 @@ bool getTrackedChargingState(String ip, String devId = "");
 
 String getFirstKnownIp();
 String getIpFromDeviceId(String id);
+String getDeviceIdFromIp(String ip);
 String getPrimaryTerminalIp();
 
 #endif // DEVICE_MANAGER_H
