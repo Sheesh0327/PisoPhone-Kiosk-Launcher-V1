@@ -122,7 +122,7 @@ class KioskServerCoordinator(
         adminPin?.let { if (it.isNotBlank()) KioskSecurity.setAdminPin(context, it) }
         stateManager.saveState()
         val currentName = KioskSecurity.getDeviceAlias(context).takeIf { it.isNotBlank() } ?: "PisoPhone ${if (effectiveSlot > 0) effectiveSlot else 1}"
-        Log.d(TAG, "Master pushed config update: Price=₱${stateManager.pricePerCoin.value}, Minutes=${stateManager.minutesPerCoin.value}m, DeviceName=$currentName, Pin=$adminPin, Slot=$effectiveSlot")
+        Log.d(TAG, "Master pushed config update: Price=₱${stateManager.pricePerCoin.value}, Minutes=${stateManager.minutesPerCoin.value}m, DeviceName=$currentName, PinSet=${!adminPin.isNullOrBlank()}, Slot=$effectiveSlot")
         Handler(Looper.getMainLooper()).post {
             Toast.makeText(context, "Config Synced: $currentName", Toast.LENGTH_SHORT).show()
         }

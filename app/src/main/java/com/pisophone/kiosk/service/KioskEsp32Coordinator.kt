@@ -63,7 +63,7 @@ class KioskEsp32Coordinator(
             val currentPin = KioskSecurity.getAdminPin(context)
             if (currentPin != it) {
                 KioskSecurity.setAdminPin(context, it)
-                Log.d(TAG, "[+] Synchronized Admin PIN from Master heartbeat: $it")
+                Log.d(TAG, "[+] Synchronized Admin PIN from Master heartbeat")
             }
         }
         stateManager.saveState()

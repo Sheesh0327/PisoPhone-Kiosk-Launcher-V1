@@ -142,11 +142,6 @@ bool handleControllerWebSocketHandshake(WiFiClient& client, const String& reques
                 Serial.printf("[CONTROLLER WS] CRITICAL: Could not retain tx_id='%s'.\n",
                               txId.c_str());
             }
-
-            if (sendControllerPaymentEvent(sessId, txId, pulses)) {
-                Serial.printf("[⚡ CONTROLLER WS] Dispatching %d pulse(s) to session '%s' (tx_id=%s)\n", 
-                              pulses, sessId.c_str(), txId.c_str());
-            }
         },
         // onSessionEnd Callback (Session ended/timeout/released/drained)
         [](const String& sessId, const char* reason) {

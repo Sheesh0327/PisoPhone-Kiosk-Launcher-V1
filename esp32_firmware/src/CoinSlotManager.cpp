@@ -28,6 +28,9 @@ static CoinPaymentCallback currentPaymentCallback = nullptr;
 static CoinSessionEndCallback currentEndCallback = nullptr;
 static CoinPaymentCallback globalPaymentCallback = nullptr;
 
+static unsigned long bootStartTimeMs = 0;
+static bool bootSuppressionDone = false;
+
 // Internal helper to complete release and invoke the end callback exactly once
 static void finalizeSessionRelease(const char* reason) {
     if (activeSessionId.length() == 0 && currentState == CoinSlotState::IDLE) {
@@ -110,6 +113,8 @@ static void initiateSessionRelease(const char* reason, bool force) {
 }
 
 void initCoinSlotManager() {
+    bootStartTimeMs = millis();
+    bootSuppressionDone = false;
     currentState = CoinSlotState::IDLE;
     activeSessionId = "";
     sessionArmedUntil = 0;
@@ -334,14 +339,24 @@ void processCoinSlotSession() {
     // Periodically retry unacknowledged payment dispatches
     processPendingPaymentRetries();
 
-    // 1. Ignore early boot spikes (< 3000ms)
-    if (now < 3000) {
-        if (isrUniversalPulseCount > 0) {
-            noInterrupts();
-            isrUniversalPulseCount = 0;
-            interrupts();
+    // 1. One-time boot pulse suppression (3000ms after boot)
+    if (!bootSuppressionDone) {
+        if ((long)(now - (bootStartTimeMs + 3000UL)) < 0) {
+            if (isrUniversalPulseCount > 0) {
+                noInterrupts();
+                isrUniversalPulseCount = 0;
+                interrupts();
+            }
+            return;
+        } else {
+            bootSuppressionDone = true;
+            if (isrUniversalPulseCount > 0) {
+                noInterrupts();
+                isrUniversalPulseCount = 0;
+                interrupts();
+            }
+            Serial.println("[🪙 COIN SLOT] Startup pulse suppression complete.");
         }
-        return;
     }
 
     // 2. Read and harvest new pulses atomically from ISR counter into session buffer
@@ -433,8 +448,15 @@ void processCoinSlotSession() {
         }
     }
 
-    // 6. Check session TTL and MAX duration expiration for ARMED state
+    // 6. Check session state guards (Storage failure, Queue full, TTL, MAX duration) for ARMED state
     if (currentState == CoinSlotState::ARMED) {
+        if (isPaymentQueueFull() || !isPaymentStorageReady()) {
+            Serial.printf("[🪙 COIN SLOT] Storage/queue failure during active session '%s'. Draining and releasing...\n",
+                          activeSessionId.c_str());
+            initiateSessionRelease("STORAGE_UNAVAILABLE", false);
+            return;
+        }
+
         bool ttlExpired = ((long)(now - sessionArmedUntil) >= 0);
         bool maxDurationExpired = (sessionStartTimeMs > 0 && ((long)(now - (sessionStartTimeMs + MAX_SESSION_DURATION)) >= 0));
 

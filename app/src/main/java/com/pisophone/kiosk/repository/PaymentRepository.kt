@@ -126,10 +126,8 @@ class PaymentRepository(
                     revision = newRevision
                 )
 
-                paymentDao.setMetadata(AppMetadata(KEY_PENDING_TX, "$txId:$seconds:$amount"))
                 paymentDao.insertReceipt(receipt)
                 paymentDao.updateSessionState(newState)
-                paymentDao.setMetadata(AppMetadata(KEY_PENDING_TX, ""))
 
                 committedSnapshot = SessionSnapshot(newDeadline, newSessionTime, newRevision)
                 PaymentResult.APPLIED
@@ -355,53 +353,8 @@ class PaymentRepository(
         checkpointSession(snapshotRevision)
     }
 
-    // Overload for backward compatibility
-    suspend fun checkpointSession(remainingSec: Int, deadlineMs: Long, snapshotRevision: Long = 0L) {
-        checkpointSession(snapshotRevision)
-    }
-
-    fun checkpointSessionBlocking(remainingSec: Int, deadlineMs: Long, snapshotRevision: Long = 0L) =
-        runBlocking(Dispatchers.IO) {
-            checkpointSession(snapshotRevision)
-        }
-
     suspend fun recoverUncommittedTransactions(nowMonotonic: Long = SystemClock.elapsedRealtime()) {
-        // 1. Recover / clear incomplete pending transaction marker
-        val pendingTx = paymentDao.getMetadata(KEY_PENDING_TX)
-        if (!pendingTx.isNullOrBlank()) {
-            val parts = pendingTx.split(":")
-            if (parts.size >= 3) {
-                val txId = parts[0]
-                val existingReceipt = paymentDao.getReceiptByTxId(txId)
-                if (existingReceipt != null) {
-                    Log.i(TAG, "Startup recovery: In-flight transaction $txId was already committed.")
-                } else {
-                    Log.w(TAG, "Startup recovery: Rolling back uncommitted in-flight transaction $txId")
-                }
-            }
-            paymentDao.setMetadata(AppMetadata(KEY_PENDING_TX, ""))
-        }
-
-        // 2. Reconcile any unrecorded coin events into payment receipts
-        try {
-            val events = db.coinEventDao().getLatestEvents(limit = 100)
-            for (ev in events) {
-                if (paymentDao.getReceiptByTxId(ev.txId) == null) {
-                    paymentDao.insertReceiptIgnore(
-                        PaymentReceipt(
-                            txId = ev.txId,
-                            secondsCredited = ev.secondsAdded,
-                            amount = 0.0,
-                            acceptanceTimestamp = ev.timestamp
-                        )
-                    )
-                }
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Error reconciling coin events during recovery: ${e.message}")
-        }
-
-        // 3. Inspect and sanitize PaidSessionState
+        // Inspect and sanitize PaidSessionState
         val currentState = paymentDao.getSessionState()
         if (currentState != null) {
             var sanitizedRemaining = currentState.sessionTimeRemaining
@@ -457,10 +410,12 @@ class PaymentRepository(
         } else {
             -1
         }
-        val lastSavedBootCount = encryptedPrefs?.getInt(KEY_BOOT_COUNT, -1) ?: -1
+        val lastSavedBootCountStr = paymentDao.getMetadata(KEY_BOOT_COUNT)
+        val lastSavedBootCount = lastSavedBootCountStr?.toIntOrNull() ?: encryptedPrefs?.getInt(KEY_BOOT_COUNT, -1) ?: -1
         val isBootCountChanged = if (currentBootCount != -1) {
             val changed = lastSavedBootCount != -1 && currentBootCount != lastSavedBootCount
             encryptedPrefs?.edit()?.putInt(KEY_BOOT_COUNT, currentBootCount)?.commit()
+            paymentDao.setMetadata(AppMetadata(KEY_BOOT_COUNT, currentBootCount.toString()))
             changed
         } else {
             false

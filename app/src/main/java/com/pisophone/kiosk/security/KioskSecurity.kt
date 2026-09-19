@@ -405,6 +405,30 @@ object KioskSecurity {
         return hmacBytes.joinToString("") { "%02x".format(it) }
     }
 
+    fun calculatePaymentSignature(deviceId: String, txId: String, amount: Int, ts: String, secret: String): String {
+        return calculateHmac("v1_pay:$deviceId:$txId:$amount:$ts", secret)
+    }
+
+    fun calculateAckSignature(deviceId: String, txId: String, amount: Int, ts: String, secret: String): String {
+        return calculateHmac("v1_ack:$deviceId:$txId:$amount:$ts", secret)
+    }
+
+    fun verifyPaymentSignature(deviceId: String, txId: String, amount: Int, ts: String, sig: String, secret: String): Boolean {
+        if (sig.isBlank()) return false
+        val expectedPay = calculatePaymentSignature(deviceId, txId, amount, ts, secret)
+        if (constantTimeEquals(sig.lowercase(), expectedPay.lowercase())) return true
+        val legacyPay = calculateHmac("v1:$deviceId:$txId:$amount:$ts", secret)
+        return constantTimeEquals(sig.lowercase(), legacyPay.lowercase())
+    }
+
+    fun verifyAckSignature(deviceId: String, txId: String, amount: Int, ts: String, sig: String, secret: String): Boolean {
+        if (sig.isBlank()) return false
+        val expectedAck = calculateAckSignature(deviceId, txId, amount, ts, secret)
+        if (constantTimeEquals(sig.lowercase(), expectedAck.lowercase())) return true
+        val legacyAck = calculateHmac("v1:$deviceId:$txId:$amount:$ts", secret)
+        return constantTimeEquals(sig.lowercase(), legacyAck.lowercase())
+    }
+
     fun generateTimestampSignature(deviceId: String, ts: String, secret: String): String {
         return calculateHmac("$deviceId:$ts", secret)
     }

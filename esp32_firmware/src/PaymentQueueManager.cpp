@@ -1,4 +1,6 @@
 #include "PaymentQueueManager.h"
+#include "CoinSlotManager.h"
+#include "HardwareManager.h"
 #include "ControllerWebSocket.h"
 #include "DeviceNetwork.h"
 #include "Config.h"
@@ -142,6 +144,14 @@ bool canPerformRebootOrOta() {
         Serial.println("[PAY QUEUE] Reboot/OTA blocked: unpersisted transactions remain in RAM.");
         return false;
     }
+    if (isCoinSlotArmed()) {
+        Serial.println("[PAY QUEUE] Reboot/OTA blocked: coin slot hardware is currently ARMED.");
+        return false;
+    }
+    if (isrUniversalPulseCount > 0) {
+        Serial.println("[PAY QUEUE] Reboot/OTA blocked: in-flight coin pulses pending in ISR buffer.");
+        return false;
+    }
     return true;
 }
 
@@ -216,8 +226,14 @@ bool enqueuePendingPayment(const String& txId, const String& targetId, int pulse
     lastDispatchMs[freeIndex] = millis();
     unlockQueue();
 
-    Serial.printf("[PAY QUEUE] Persisted tx_id='%s' for '%s' (%d pulse(s)).\n",
+    Serial.printf("[PAY QUEUE] Persisted tx_id='%s' for '%s' (%d pulse(s)). Dispatching via single payment path...\n",
                   txId.c_str(), targetId.c_str(), pulses);
+
+    if (rec.ownerType == 2) {
+        sendControllerPaymentEvent(String(rec.targetId), String(rec.txId), rec.pulses);
+    } else if (rec.ownerType == 1) {
+        retryPhonePayment(String(rec.targetId), rec.pulses, rec.creditSeconds, String(rec.txId));
+    }
     return true;
 }
 

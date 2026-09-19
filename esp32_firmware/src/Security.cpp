@@ -26,6 +26,30 @@ String calculateHMAC(String challenge, String secret) {
     return hex;
 }
 
+String calculatePaymentSignature(const String& deviceId, const String& txId, int amount, unsigned long long ts, const String& secret) {
+    return calculateHMAC("v1_pay:" + deviceId + ":" + txId + ":" + String(amount) + ":" + String(ts), secret);
+}
+
+String calculateAckSignature(const String& deviceId, const String& txId, int amount, unsigned long long ts, const String& secret) {
+    return calculateHMAC("v1_ack:" + deviceId + ":" + txId + ":" + String(amount) + ":" + String(ts), secret);
+}
+
+bool verifyPaymentSignature(const String& deviceId, const String& txId, int amount, unsigned long long ts, const String& sig, const String& secret) {
+    if (sig.length() == 0) return false;
+    String expectedPay = calculatePaymentSignature(deviceId, txId, amount, ts, secret);
+    if (sig.equalsIgnoreCase(expectedPay)) return true;
+    String legacyPay = calculateHMAC("v1:" + deviceId + ":" + txId + ":" + String(amount) + ":" + String(ts), secret);
+    return sig.equalsIgnoreCase(legacyPay);
+}
+
+bool verifyAckSignature(const String& deviceId, const String& txId, int amount, unsigned long long ts, const String& sig, const String& secret) {
+    if (sig.length() == 0) return false;
+    String expectedAck = calculateAckSignature(deviceId, txId, amount, ts, secret);
+    if (sig.equalsIgnoreCase(expectedAck)) return true;
+    String legacyAck = calculateHMAC("v1:" + deviceId + ":" + txId + ":" + String(amount) + ":" + String(ts), secret);
+    return sig.equalsIgnoreCase(legacyAck);
+}
+
 bool applySlotToken(String token) {
     token.trim();
     token.toUpperCase();

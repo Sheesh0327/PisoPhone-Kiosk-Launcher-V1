@@ -113,7 +113,7 @@ void authWorkerTask(void *pvParameters) {
                                 if (ackDevEnd == -1) ackDevEnd = respBody.length();
                                 String ackDev = respBody.substring(ackDevPos + 10, ackDevEnd);
 
-                                if (ackTx == currentTxId && ackDev == currentDevId) {
+                                 if (ackTx == currentTxId && ackDev == currentDevId) {
                                     int sigPos = respBody.indexOf("v_sig=");
                                     int tsPosIdx = respBody.indexOf("ts=");
                                     if (sigPos != -1 && tsPosIdx != -1) {
@@ -124,22 +124,23 @@ void authWorkerTask(void *pvParameters) {
                                         int tsEnd = respBody.indexOf(':', tsPosIdx);
                                         if (tsEnd == -1) tsEnd = respBody.length();
                                         String ackTs = respBody.substring(tsPosIdx + 3, tsEnd);
+                                        unsigned long long tsVal = strtoull(ackTs.c_str(), NULL, 10);
 
-                                        String expectedSig = calculateHMAC("v1:" + currentDevId + ":" + currentTxId + ":" + currentAmount + ":" + ackTs, sharedSecret);
-                                        if (ackSig.equalsIgnoreCase(expectedSig)) {
+                                        if (verifyAckSignature(currentDevId, currentTxId, currentAmount, tsVal, ackSig, sharedSecret)) {
                                             ackValid = true;
                                         } else {
                                             Serial.printf("[AUTH WORKER] Invalid ACK signature for tx_id='%s'\n", currentTxId.c_str());
                                         }
                                     } else {
-                                        ackValid = true;
+                                        Serial.printf("[AUTH WORKER] Missing signature or timestamp in ACK for tx_id='%s'\n", currentTxId.c_str());
                                     }
                                 } else {
                                     Serial.printf("[AUTH WORKER] Mismatched ACK: (dev=%s, tx=%s) vs received (dev=%s, tx=%s)\n",
                                                   currentDevId.c_str(), currentTxId.c_str(), ackDev.c_str(), ackTx.c_str());
                                 }
-                            } else if (respBody.startsWith("OK") || respBody.startsWith("ALREADY_PROCESSED")) {
-                                ackValid = true;
+                            } else {
+                                Serial.printf("[AUTH WORKER] Unsigned/malformed response body for tx_id='%s': '%s'\n",
+                                              currentTxId.c_str(), respBody.c_str());
                             }
 
                             if (ackValid) {

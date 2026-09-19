@@ -544,8 +544,7 @@ class PaymentRepositoryUnitTest {
     }
 
     @Test
-    fun testRecoverUncommittedTransactionsClearsPendingMarkerAndSanitizesCorruptState() = runBlocking {
-        db.paymentDao().setMetadata(com.pisophone.kiosk.db.AppMetadata(PaymentRepository.KEY_PENDING_TX, "tx-ghost:300:5.0"))
+    fun testRecoverUncommittedTransactionsSanitizesCorruptState() = runBlocking {
         db.paymentDao().updateSessionState(
             PaidSessionState(
                 id = 1,
@@ -558,10 +557,6 @@ class PaymentRepositoryUnitTest {
 
         val repository = PaymentRepository(db = db, context = context, isEligible = { true })
         repository.recoverUncommittedTransactions()
-
-        // Verify uncommitted pending tx marker is cleared
-        val pendingMarker = db.paymentDao().getMetadata(PaymentRepository.KEY_PENDING_TX)
-        assertTrue(pendingMarker.isNullOrEmpty())
 
         // Verify corrupt session state was safely reverted to 0
         val sanitizedState = repository.getSessionState()!!

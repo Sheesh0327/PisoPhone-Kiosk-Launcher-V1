@@ -201,8 +201,7 @@ class KioskHttpServer(
                 val tsParam = decryptedParams["ts"]?.trim() ?: ""
                 val vSig = decryptedParams["v_sig"]?.trim() ?: ""
                 if (vSig.isNotBlank()) {
-                    val expectedVSig = KioskSecurity.calculateHmac("v1:$targetDev:$txId:$amountPulses:$tsParam", secretKey)
-                    if (!KioskSecurity.constantTimeEquals(vSig.lowercase(), expectedVSig.lowercase())) {
+                    if (!KioskSecurity.verifyPaymentSignature(targetDev, txId!!, amountPulses, tsParam, vSig, secretKey)) {
                         Log.w(TAG, "Rejecting payment: Invalid versioned HMAC signature for $txId")
                         return createResponse(Response.Status.UNAUTHORIZED, "text/plain", "INVALID_SIGNATURE")
                     }
@@ -223,8 +222,7 @@ class KioskHttpServer(
 
                     val ackResp = if (targetDev.isNotBlank()) {
                         val ackNow = System.currentTimeMillis()
-                        val ackPayload = "v1:$targetDev:$txId:$amountPulses:$ackNow"
-                        val ackSig = KioskSecurity.calculateHmac(ackPayload, secretKey)
+                        val ackSig = KioskSecurity.calculateAckSignature(targetDev, txId!!, amountPulses, ackNow.toString(), secretKey)
                         "OK:tx_id=$txId:device_id=$targetDev:amount=$amountPulses:ts=$ackNow:v_sig=$ackSig"
                     } else {
                         "OK"

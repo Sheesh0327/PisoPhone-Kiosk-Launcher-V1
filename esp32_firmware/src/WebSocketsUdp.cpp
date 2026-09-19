@@ -97,8 +97,15 @@ String readWsText(WiFiClient& client) {
 
     unsigned long overallStart = millis();
 
+    auto getRemainingDeadlineMs = [overallStart, FRAME_DEADLINE_MS]() -> unsigned long {
+        unsigned long elapsed = millis() - overallStart;
+        if (elapsed >= FRAME_DEADLINE_MS) return 0;
+        return FRAME_DEADLINE_MS - elapsed;
+    };
+
     while (client.connected()) {
-        if ((long)(millis() - (overallStart + FRAME_DEADLINE_MS)) >= 0) {
+        unsigned long remainingMs = getRemainingDeadlineMs();
+        if (remainingMs == 0) {
             Serial.println("[WS] Strict frame deadline exceeded. Dropping connection.");
             client.stop();
             return "";
@@ -113,7 +120,7 @@ String readWsText(WiFiClient& client) {
         }
 
         uint8_t header[2];
-        if (!readExactBytes(client, header, 2, 100)) {
+        if (!readExactBytes(client, header, 2, remainingMs)) {
             Serial.println("[WS] Failed to read frame header within deadline. Dropping.");
             client.stop();
             return "";
@@ -142,16 +149,18 @@ String readWsText(WiFiClient& client) {
         // Extended payload length parsing
         if (payloadLen == 126) {
             uint8_t extLen[2];
-            if (!readExactBytes(client, extLen, 2, 100)) {
-                Serial.println("[WS] Failed to read 16-bit extended length. Dropping.");
+            remainingMs = getRemainingDeadlineMs();
+            if (remainingMs == 0 || !readExactBytes(client, extLen, 2, remainingMs)) {
+                Serial.println("[WS] Failed to read 16-bit extended length within deadline. Dropping.");
                 client.stop();
                 return "";
             }
             payloadLen = ((uint64_t)extLen[0] << 8) | extLen[1];
         } else if (payloadLen == 127) {
             uint8_t extLen[8];
-            if (!readExactBytes(client, extLen, 8, 100)) {
-                Serial.println("[WS] Failed to read 64-bit extended length. Dropping.");
+            remainingMs = getRemainingDeadlineMs();
+            if (remainingMs == 0 || !readExactBytes(client, extLen, 8, remainingMs)) {
+                Serial.println("[WS] Failed to read 64-bit extended length within deadline. Dropping.");
                 client.stop();
                 return "";
             }
@@ -180,13 +189,14 @@ String readWsText(WiFiClient& client) {
 
         // Read 4-byte masking key
         uint8_t mask[4] = {0};
-        if (!readExactBytes(client, mask, 4, 100)) {
-            Serial.println("[WS] Failed to read mask key. Dropping.");
+        remainingMs = getRemainingDeadlineMs();
+        if (remainingMs == 0 || !readExactBytes(client, mask, 4, remainingMs)) {
+            Serial.println("[WS] Failed to read mask key within deadline. Dropping.");
             client.stop();
             return "";
         }
 
-        // Read payload bytes with deadline
+        // Read payload bytes with unified deadline
         uint8_t* payloadBuf = nullptr;
         if (payloadLen > 0) {
             payloadBuf = (uint8_t*)malloc((size_t)payloadLen);
@@ -195,7 +205,8 @@ String readWsText(WiFiClient& client) {
                 client.stop();
                 return "";
             }
-            if (!readExactBytes(client, payloadBuf, (size_t)payloadLen, 150)) {
+            remainingMs = getRemainingDeadlineMs();
+            if (remainingMs == 0 || !readExactBytes(client, payloadBuf, (size_t)payloadLen, remainingMs)) {
                 Serial.println("[WS] Failed to read full payload within deadline. Dropping.");
                 free(payloadBuf);
                 client.stop();
@@ -460,13 +471,17 @@ void processWebSocketServer() {
                     String ackPulses = String(ackDoc["amount"] | "1");
 
                     if (ackDevId.length() > 0 && ackTxId.length() > 0 && ackDevId == boundDevId) {
-                        bool sigValid = true;
+                        bool sigValid = false;
                         if (ackSig.length() > 0 && ackTs.length() > 0) {
-                            String expectedSig = calculateHMAC("v1:" + ackDevId + ":" + ackTxId + ":" + ackPulses + ":" + ackTs, sharedSecret);
-                            if (!ackSig.equalsIgnoreCase(expectedSig)) {
-                                sigValid = false;
+                            unsigned long long tsVal = strtoull(ackTs.c_str(), NULL, 10);
+                            int amountVal = ackPulses.toInt();
+                            if (verifyAckSignature(ackDevId, ackTxId, amountVal, tsVal, ackSig, sharedSecret)) {
+                                sigValid = true;
+                            } else {
                                 Serial.printf("[⚡ WS Port 81] Rejected ACK for '%s': Invalid signature\n", ackTxId.c_str());
                             }
+                        } else {
+                            Serial.printf("[⚡ WS Port 81] Rejected ACK for '%s': Missing signature or timestamp\n", ackTxId.c_str());
                         }
                         if (sigValid && acknowledgePhonePayment(ackDevId, ackTxId)) {
                             Serial.printf("[⚡ WS Port 81] Durable phone ACK accepted for tx_id='%s' (device: %s)\n",
