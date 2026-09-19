@@ -504,8 +504,8 @@ class PaymentRepositoryUnitTest {
         val restored = repository.restoreSessionState(context)
 
         assertTrue("Reboot must be detected", restored.isReboot)
-        val expectedRemaining = maxOf(0, savedRemaining - (nowMonotonic / 1000L).toInt())
-        assertEquals("Remaining time must equal saved time minus boot uptime", expectedRemaining, restored.remainingSeconds)
+        val expectedRemaining = maxOf(0, savedRemaining)
+        assertEquals("Remaining time must equal saved time exactly after reboot", expectedRemaining, restored.remainingSeconds)
         assertEquals("Monotonic deadline must be now + remainingMs", nowMonotonic + (expectedRemaining * 1000L), restored.deadlineMs)
         assertEquals(11L, restored.revision)
     }
@@ -537,10 +537,10 @@ class PaymentRepositoryUnitTest {
         val restored = repository.restoreSessionState(context)
 
         assertTrue("Reboot must be detected via BOOT_COUNT change", restored.isReboot)
-        val expectedRemaining = maxOf(0, savedRemaining - (nowMonotonic / 1000L).toInt())
+        val expectedRemaining = maxOf(0, savedRemaining)
         assertEquals(expectedRemaining, restored.remainingSeconds)
         assertEquals(6L, restored.revision)
-        assertEquals(2, encryptedPrefs.getInt(PaymentRepository.KEY_BOOT_COUNT, -1))
+        assertEquals("2", db.paymentDao().getMetadata(PaymentRepository.KEY_BOOT_COUNT))
     }
 
     @Test

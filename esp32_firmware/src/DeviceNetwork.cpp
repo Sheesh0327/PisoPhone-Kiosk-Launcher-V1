@@ -125,8 +125,7 @@ bool retryPhonePayment(const String& targetDeviceId, int pulses, int creditSecon
                         "&amount=" + String(pulses) +
                         "&tx_id=" + txId +
                         "&device_id=" + targetDeviceId +
-                        "&ts=" + String(retryTs) +
-                        "&v_sig=" + vSig;
+                        "&ts=" + String(retryTs);
         if (sendAuthenticated(targetIp, targetPort, "/add_time", "/challenge", params, 1000)) {
             refreshCoinSlotTtl(targetDeviceId, CoinSlotOwnerType::PHONE, ARM_TTL);
             dispatched = true;

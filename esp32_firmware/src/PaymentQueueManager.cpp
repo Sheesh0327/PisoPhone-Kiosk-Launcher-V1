@@ -291,9 +291,79 @@ static bool acknowledgeMatchingPayment(const String& txId, const String* session
     return true;
 }
 
-bool acknowledgePhonePayment(const String& deviceId, const String& txId, int expectedPulses, const String& status) {
+bool acknowledgePhonePayment(
+    const String& deviceId,
+    const String& txId,
+    int acknowledgedPulses,
+    int acknowledgedSeconds,
+    const String& status) {
     if (deviceId.length() == 0 || txId.length() == 0) return false;
-    return acknowledgeMatchingPayment(txId, &deviceId, 1);
+
+    // 1. Reject status other than OK or ALREADY_PROCESSED.
+    if (status != "OK" && status != "ALREADY_PROCESSED") {
+        return false;
+    }
+
+    lockQueue();
+    // 2. Find the exact PHONE record matching both transaction and device ID.
+    int foundIndex = -1;
+    for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
+        if (paymentSlotUsed[i] && 
+            paymentQueue[i].ownerType == 1 && 
+            String(paymentQueue[i].txId) == txId && 
+            String(paymentQueue[i].targetId) == deviceId) {
+            foundIndex = i;
+            break;
+        }
+    }
+
+    if (foundIndex < 0) {
+        unlockQueue();
+        return false;
+    }
+
+    // 3. Require it to be durably persisted.
+    if (!paymentSlotPersisted[foundIndex]) {
+        unlockQueue();
+        Serial.printf("[PAY QUEUE] Reject ACK for tx_id='%s': record not yet durably persisted.\n", txId.c_str());
+        return false;
+    }
+
+    // 4. Require acknowledgedPulses == record.pulses.
+    if (acknowledgedPulses != paymentQueue[foundIndex].pulses) {
+        unlockQueue();
+        Serial.printf("[PAY QUEUE] Reject ACK for tx_id='%s': mismatched pulses (%d vs %d).\n", 
+                      txId.c_str(), acknowledgedPulses, paymentQueue[foundIndex].pulses);
+        return false;
+    }
+
+    // 5. Require acknowledgedSeconds == record.creditSeconds.
+    if (acknowledgedSeconds != paymentQueue[foundIndex].creditSeconds) {
+        unlockQueue();
+        Serial.printf("[PAY QUEUE] Reject ACK for tx_id='%s': mismatched seconds (%d vs %d).\n", 
+                      txId.c_str(), acknowledgedSeconds, paymentQueue[foundIndex].creditSeconds);
+        return false;
+    }
+
+    // 6. Delete the NVS record.
+    if (!eraseRecord(foundIndex)) {
+        unlockQueue();
+        Serial.printf("[PAY QUEUE] Failed to erase acknowledged tx_id='%s' from NVS.\n", txId.c_str());
+        return false;
+    }
+
+    // 7. Clear its RAM slot only after successful NVS deletion.
+    memset(&paymentQueue[foundIndex], 0, sizeof(PaymentRecord));
+    paymentSlotUsed[foundIndex] = false;
+    paymentSlotPersisted[foundIndex] = false;
+    lastPersistAttemptMs[foundIndex] = 0;
+    persistRetryCount[foundIndex] = 0;
+    lastDispatchMs[foundIndex] = 0;
+    activePaymentCount--;
+
+    unlockQueue();
+    Serial.printf("[PAY QUEUE] Acknowledged tx_id='%s' (device: %s) successfully erased and cleared.\n", txId.c_str(), deviceId.c_str());
+    return true;
 }
 
 bool acknowledgeControllerPayment(const String& sessionId, const String& txId) {

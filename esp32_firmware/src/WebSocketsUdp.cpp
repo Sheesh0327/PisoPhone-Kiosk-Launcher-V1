@@ -461,40 +461,57 @@ void processWebSocketServer() {
             if (frameText.length() > 0) {
                 refreshCoinSlotTtl(boundDevId, CoinSlotOwnerType::PHONE, ARM_TTL);
 
-                StaticJsonDocument<256> ackDoc;
+                StaticJsonDocument<512> ackDoc;
                 DeserializationError ackErr = deserializeJson(ackDoc, frameText);
                 if (!ackErr && String(ackDoc["event"] | "") == "ACK") {
-                    String ackDevId = String(ackDoc["device_id"] | "");
-                    String ackTxId = String(ackDoc["tx_id"] | "");
-                    String ackSig = String(ackDoc["v_sig"] | "");
-                    String ackTs = String(ackDoc["ts"] | "");
-                    
-                    if (!ackDoc["amount"].is<int>()) {
-                        Serial.println("[⚡ WS Port 81] Rejected ACK: amount must be a valid integer");
-                        continue;
-                    }
-                    int amountVal = ackDoc["amount"].as<int>();
-                    int secondsVal = ackDoc["seconds"].is<int>() ? ackDoc["seconds"].as<int>() : 0;
-                    String statusVal = String(ackDoc["status"] | "OK");
+                    bool ackValid = true;
+                    String ackDevId = "";
+                    String ackTxId = "";
+                    String ackSig = "";
+                    String ackTs = "";
+                    int amountVal = 0;
+                    int secondsVal = 0;
+                    String statusVal = "";
 
-                    if (ackDevId.length() > 0 && ackTxId.length() > 0 && ackDevId == boundDevId) {
-                        bool sigValid = false;
-                        if (ackSig.length() > 0 && ackTs.length() > 0) {
-                            if (verifyAckSignature(ackDevId, ackTxId, amountVal, secondsVal, ackTs, statusVal, ackSig, sharedSecret)) {
-                                sigValid = true;
+                    // Validate all required fields
+                    if (!ackDoc["device_id"].is<const char*>() || !ackDoc["tx_id"].is<const char*>() ||
+                        !ackDoc["v_sig"].is<const char*>() || !ackDoc["ts"].is<const char*>() ||
+                        !ackDoc["status"].is<const char*>() || !ackDoc["amount"].is<int>() ||
+                        !ackDoc["seconds"].is<int>()) {
+                        Serial.println("[⚡ WS Port 81] Rejected ACK: Missing or invalid JSON types");
+                        ackValid = false;
+                    } else {
+                        ackDevId = ackDoc["device_id"].as<String>();
+                        ackTxId = ackDoc["tx_id"].as<String>();
+                        ackSig = ackDoc["v_sig"].as<String>();
+                        ackTs = ackDoc["ts"].as<String>();
+                        amountVal = ackDoc["amount"].as<int>();
+                        secondsVal = ackDoc["seconds"].as<int>();
+                        statusVal = ackDoc["status"].as<String>();
+
+                        if (ackDevId.length() == 0 || ackTxId.length() == 0 || ackSig.length() == 0 || ackTs.length() == 0) {
+                            Serial.println("[⚡ WS Port 81] Rejected ACK: Empty string fields");
+                            ackValid = false;
+                        } else if (statusVal != "OK" && statusVal != "ALREADY_PROCESSED") {
+                            Serial.printf("[⚡ WS Port 81] Rejected ACK: Invalid status '%s'\n", statusVal.c_str());
+                            ackValid = false;
+                        } else if (ackDevId != boundDevId) {
+                            Serial.printf("[⚡ WS Port 81] Rejected ACK: dev='%s' vs bound='%s'\n", ackDevId.c_str(), boundDevId.c_str());
+                            ackValid = false;
+                        }
+                    }
+
+                    if (ackValid) {
+                        if (verifyAckSignature(ackDevId, ackTxId, amountVal, secondsVal, ackTs, statusVal, ackSig, sharedSecret)) {
+                            if (acknowledgePhonePayment(ackDevId, ackTxId, amountVal, secondsVal, statusVal)) {
+                                Serial.printf("[⚡ WS Port 81] Durable phone ACK accepted for tx_id='%s' (device: %s)\n",
+                                              ackTxId.c_str(), ackDevId.c_str());
                             } else {
-                                Serial.printf("[⚡ WS Port 81] Rejected ACK for '%s': Invalid signature\n", ackTxId.c_str());
+                                Serial.printf("[⚡ WS Port 81] Rejected ACK for '%s': Queue matching/NVS delete failed\n", ackTxId.c_str());
                             }
                         } else {
-                            Serial.printf("[⚡ WS Port 81] Rejected ACK for '%s': Missing signature or timestamp\n", ackTxId.c_str());
+                            Serial.printf("[⚡ WS Port 81] Rejected ACK for '%s': Invalid signature\n", ackTxId.c_str());
                         }
-                        if (sigValid && acknowledgePhonePayment(ackDevId, ackTxId, amountVal, statusVal)) {
-                            Serial.printf("[⚡ WS Port 81] Durable phone ACK accepted for tx_id='%s' (device: %s)\n",
-                                          ackTxId.c_str(), ackDevId.c_str());
-                        }
-                    } else {
-                        Serial.printf("[⚡ WS Port 81] Rejected mismatched ACK: dev='%s' vs bound='%s'\n",
-                                      ackDevId.c_str(), boundDevId.c_str());
                     }
                 }
             }

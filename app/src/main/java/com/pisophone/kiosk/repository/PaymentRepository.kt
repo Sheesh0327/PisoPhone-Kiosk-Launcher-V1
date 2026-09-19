@@ -416,10 +416,13 @@ class PaymentRepository(
                 -1
             }
             val lastSavedBootCountStr = paymentDao.getMetadata(KEY_BOOT_COUNT)
-            val lastSavedBootCount = lastSavedBootCountStr?.toIntOrNull() ?: encryptedPrefs?.getInt(KEY_BOOT_COUNT, -1) ?: -1
+            val lastSavedBootCount = if (lastSavedBootCountStr != null) {
+                lastSavedBootCountStr.toIntOrNull() ?: -1
+            } else {
+                encryptedPrefs?.getInt(KEY_BOOT_COUNT, -1) ?: -1
+            }
             val isBootCountChanged = if (currentBootCount != -1) {
                 val changed = lastSavedBootCount != -1 && currentBootCount != lastSavedBootCount
-                encryptedPrefs?.edit()?.putInt(KEY_BOOT_COUNT, currentBootCount)?.commit()
                 paymentDao.setMetadata(AppMetadata(KEY_BOOT_COUNT, currentBootCount.toString()))
                 changed
             } else {
@@ -439,7 +442,7 @@ class PaymentRepository(
             val rebootDetected = isBootCountChanged || monotonicRebootDetected
             if (currentBootCount == -1 && monotonicRebootDetected) {
                 val nextCount = (lastSavedBootCount.takeIf { it >= 0 } ?: 0) + 1
-                encryptedPrefs?.edit()?.putInt(KEY_BOOT_COUNT, nextCount)?.commit()
+                paymentDao.setMetadata(AppMetadata(KEY_BOOT_COUNT, nextCount.toString()))
             }
 
             val effectiveRemainingSec: Int
@@ -447,9 +450,7 @@ class PaymentRepository(
             var updatedRevision = paidState.revision
 
             if (rebootDetected) {
-                // Recover active session using elapsed real time since boot, not wall clock
-                val elapsedBootSeconds = (nowMonotonic / 1000L).toInt()
-                effectiveRemainingSec = maxOf(0, savedTime - elapsedBootSeconds)
+                effectiveRemainingSec = maxOf(0, savedTime)
                 effectiveDeadline = if (effectiveRemainingSec > 0) nowMonotonic + (effectiveRemainingSec * 1000L) else 0L
                 updatedRevision += 1L
                 paymentDao.updateSessionState(

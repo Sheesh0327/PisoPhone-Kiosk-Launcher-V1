@@ -117,6 +117,10 @@ void authWorkerTask(void *pvParameters) {
                         if (currentTxId.length() > 0 && currentDevId.length() > 0) {
                             bool ackValid = false;
                             String status = "";
+                            int ackAmt = 0;
+                            int ackSec = 0;
+                            String ackDev = "";
+                            String ackTx = "";
                             if (respBody.startsWith("OK")) {
                                 status = "OK";
                             } else if (respBody.startsWith("ALREADY_PROCESSED")) {
@@ -124,25 +128,44 @@ void authWorkerTask(void *pvParameters) {
                             }
 
                             if (status.length() > 0) {
-                                String ackTx = parseAckField(respBody, "tx_id");
-                                String ackDev = parseAckField(respBody, "device_id");
+                                ackTx = parseAckField(respBody, "tx_id");
+                                ackDev = parseAckField(respBody, "device_id");
                                 String ackAmtStr = parseAckField(respBody, "amount");
                                 String ackSecStr = parseAckField(respBody, "seconds");
                                 String ackTs = parseAckField(respBody, "ts");
                                 String ackSig = parseAckField(respBody, "v_sig");
 
-                                int ackAmt = ackAmtStr.toInt();
-                                int ackSec = ackSecStr.toInt();
+                                if (ackTx.length() > 0 && ackDev.length() > 0 && ackTs.length() > 0 && ackSig.length() > 0) {
+                                    bool amtIsNum = true;
+                                    if (ackAmtStr.length() == 0) amtIsNum = false;
+                                    for (unsigned int i = 0; i < ackAmtStr.length(); i++) {
+                                        if (!isDigit(ackAmtStr[i])) amtIsNum = false;
+                                    }
+                                    bool secIsNum = true;
+                                    if (ackSecStr.length() == 0) secIsNum = false;
+                                    for (unsigned int i = 0; i < ackSecStr.length(); i++) {
+                                        if (!isDigit(ackSecStr[i])) secIsNum = false;
+                                    }
 
-                                if (ackTx == currentTxId && ackDev == currentDevId) {
-                                    if (verifyAckSignature(ackDev, ackTx, ackAmt, ackSec, ackTs, status, ackSig, sharedSecret)) {
-                                        ackValid = true;
+                                    if (amtIsNum && secIsNum) {
+                                        ackAmt = ackAmtStr.toInt();
+                                        ackSec = ackSecStr.toInt();
+
+                                        if (ackTx == currentTxId && ackDev == currentDevId) {
+                                            if (verifyAckSignature(ackDev, ackTx, ackAmt, ackSec, ackTs, status, ackSig, sharedSecret)) {
+                                                ackValid = true;
+                                            } else {
+                                                Serial.printf("[AUTH WORKER] Invalid ACK signature for tx_id='%s'\n", currentTxId.c_str());
+                                            }
+                                        } else {
+                                            Serial.printf("[AUTH WORKER] Mismatched ACK: (dev=%s, tx=%s) vs received (dev=%s, tx=%s)\n",
+                                                          currentDevId.c_str(), currentTxId.c_str(), ackDev.c_str(), ackTx.c_str());
+                                        }
                                     } else {
-                                        Serial.printf("[AUTH WORKER] Invalid ACK signature for tx_id='%s'\n", currentTxId.c_str());
+                                        Serial.printf("[AUTH WORKER] Non-numeric ACK fields: amountStr='%s', secondsStr='%s'\n", ackAmtStr.c_str(), ackSecStr.c_str());
                                     }
                                 } else {
-                                    Serial.printf("[AUTH WORKER] Mismatched ACK: (dev=%s, tx=%s) vs received (dev=%s, tx=%s)\n",
-                                                  currentDevId.c_str(), currentTxId.c_str(), ackDev.c_str(), ackTx.c_str());
+                                    Serial.printf("[AUTH WORKER] Empty required ACK fields for tx_id='%s'\n", currentTxId.c_str());
                                 }
                             } else {
                                 Serial.printf("[AUTH WORKER] Unsigned/malformed response body for tx_id='%s': '%s'\n",
@@ -151,10 +174,9 @@ void authWorkerTask(void *pvParameters) {
 
                             if (ackValid) {
                                 delivered = true;
-                                int currentAmtInt = currentAmount.toInt();
-                                if (acknowledgePhonePayment(currentDevId, currentTxId, currentAmtInt, status)) {
+                                if (acknowledgePhonePayment(ackDev, ackTx, ackAmt, ackSec, status)) {
                                     Serial.printf("[AUTH WORKER] Durable phone ACK accepted for tx_id='%s' (device: %s)\n",
-                                                  currentTxId.c_str(), currentDevId.c_str());
+                                                  currentTxId.c_str(), ackDev.c_str());
                                 }
                             } else {
                                 Serial.printf("[AUTH WORKER] Payment ACK rejected due to mismatched recipient/signature (tx_id=%s)\n",
