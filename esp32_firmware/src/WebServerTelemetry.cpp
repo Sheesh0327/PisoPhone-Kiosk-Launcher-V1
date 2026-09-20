@@ -278,9 +278,11 @@ void handleOneVsOne() {
         String loserLabel = (winner == "p1" || winner == NVS_KEY_P1) ? "Player 2" : "Player 1";
 
         // Keep separate linked outcomes and show partial completion
-        AddTimeSummary deductSummary = sendAddTime(-matchMinutes, loserIp, deductTxId);
+        int64_t deductSeconds = -matchMinutes * 60LL;
+        int64_t creditSeconds = matchMinutes * 60LL;
+        AddTimeSummary deductSummary = sendAddTime(deductSeconds, loserIp, deductTxId, OP_KIND_MATCH_TRANSFER);
         yield();
-        AddTimeSummary creditSummary = sendAddTime(matchMinutes, winnerIp, creditTxId);
+        AddTimeSummary creditSummary = sendAddTime(creditSeconds, winnerIp, creditTxId, OP_KIND_MATCH_TRANSFER);
 
         bool deductOk = (deductSummary.queuedRequests > 0);
         bool creditOk = (creditSummary.queuedRequests > 0);

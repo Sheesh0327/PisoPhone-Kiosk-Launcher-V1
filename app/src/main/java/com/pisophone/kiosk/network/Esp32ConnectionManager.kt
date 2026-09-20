@@ -29,7 +29,17 @@ interface Esp32ConnectionDelegate {
     fun onEsp32Discovered(ip: String)
     fun onOnlineStatusChanged(isOnline: Boolean, mac: String?)
     fun onConfigSynced(price: Double?, minutes: Int?, alias: String?, adminPin: String? = null, slotNum: Int? = null)
-    fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?): com.pisophone.kiosk.repository.PaymentResult
+    fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?): com.pisophone.kiosk.repository.PaymentResult = com.pisophone.kiosk.repository.PaymentResult.FAILED
+    fun onCoinMessageReceived(
+        seconds: Int,
+        amount: Double,
+        txId: String?,
+        operationKind: String,
+        coinAmount: Int,
+        pricePerCoin: Double,
+        boxInstallationEpoch: Long,
+        phonePairingEpoch: Long
+    ): com.pisophone.kiosk.repository.PaymentResult = onCoinMessageReceived(seconds, amount, txId)
     fun onSlotBusy()
     fun onArmSuccess()
     fun onSlotWarning(daysLeft: Int, expiresAt: Long, slotNum: Int, message: String)
@@ -550,8 +560,30 @@ class Esp32ConnectionManager(
                         val txId = innerTxId.ifBlank { outerTxId }
                         val targetDev = innerDev.ifBlank { outerDevId }
 
-                        Log.i(TAG, "⚡ Validated WebSocket Coin Processed: +${seconds}s, amount=₱$amount, txId=$txId")
-                        val result = delegate.onCoinMessageReceived(seconds, amount, txId)
+                        val rawOpKind = decryptedJson.optString("op_kind", "1")
+                        val opKindStr = when (rawOpKind) {
+                            "1" -> "COIN"
+                            "2" -> "QUICK_ADJUST"
+                            "3" -> "MANUAL_DEDUCTION"
+                            "4" -> "MATCH_TRANSFER"
+                            "5" -> "CONTROLLER"
+                            else -> rawOpKind
+                        }
+                        val pricePerCoin = decryptedJson.optDouble("price_per_coin", 0.0)
+                        val boxEpoch = decryptedJson.optLong("box_installation_epoch", 0L)
+                        val phoneEpoch = decryptedJson.optLong("phone_pairing_epoch", 0L)
+
+                        Log.i(TAG, "⚡ Validated WebSocket Coin Processed: +${seconds}s, amount=₱$amount, txId=$txId, opKind=$opKindStr")
+                        val result = delegate.onCoinMessageReceived(
+                            seconds = seconds,
+                            amount = amount,
+                            txId = txId,
+                            operationKind = opKindStr,
+                            coinAmount = amountPulses,
+                            pricePerCoin = pricePerCoin,
+                            boxInstallationEpoch = boxEpoch,
+                            phonePairingEpoch = phoneEpoch
+                        )
 
                         // Send signed durable ACK back to ESP32 over WebSocket only if APPLIED or ALREADY_APPLIED
                         if (result == com.pisophone.kiosk.repository.PaymentResult.APPLIED || 

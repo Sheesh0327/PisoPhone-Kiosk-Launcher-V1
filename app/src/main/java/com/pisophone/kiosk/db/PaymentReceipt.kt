@@ -22,6 +22,6 @@ data class PaymentReceipt(
     val recordSchemaVersion: Int = CURRENT_RECORD_SCHEMA_VERSION
 ) {
     companion object {
-        const val CURRENT_RECORD_SCHEMA_VERSION = 5
+        const val CURRENT_RECORD_SCHEMA_VERSION = 6
     }
 }

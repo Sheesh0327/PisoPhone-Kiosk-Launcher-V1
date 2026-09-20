@@ -109,17 +109,23 @@ class PaymentRepository(
             db.withTransaction {
                 val existing = paymentDao.getReceiptByTxId(txId)
                 if (existing != null) {
-                    val isLegacyPlaceholder = existing.secondsCredited == 0 && Math.abs(existing.amount - 0.0) < 0.0001
-                    val baseIdentical = (existing.secondsCredited == seconds && Math.abs(existing.amount - amount) < 0.0001) ||
-                            (existing.secondsCredited == seconds && Math.abs(existing.amount - 0.0) < 0.0001) ||
-                            isLegacyPlaceholder
-                    val kindMatch = existing.operationKind.isBlank() || operationKind.isBlank() || existing.operationKind == operationKind
-                    val coinMatch = (existing.coinAmount == coinAmount)
-                    val priceMatch = (pricePerCoin <= 0.0 && existing.pricePerCoin <= 0.0) || Math.abs(existing.pricePerCoin - pricePerCoin) < 0.001
-                    val boxEpochMatch = (boxInstallationEpoch == 0L || existing.boxInstallationEpoch == 0L || existing.boxInstallationEpoch == boxInstallationEpoch)
-                    val phoneEpochMatch = (phonePairingEpoch == 0L || existing.phonePairingEpoch == 0L || existing.phonePairingEpoch == phonePairingEpoch)
+                    val isLegacy = existing.recordSchemaVersion < 5
+                    val isIdentical = if (isLegacy) {
+                        val isLegacyPlaceholder = existing.secondsCredited == 0 && Math.abs(existing.amount - 0.0) < 0.0001
+                        val secondsMatch = existing.secondsCredited == seconds
+                        val amountMatch = Math.abs(existing.amount - amount) < 0.0001 || Math.abs(existing.amount - 0.0) < 0.0001
+                        (secondsMatch && amountMatch) || isLegacyPlaceholder
+                    } else {
+                        val secondsMatch = existing.secondsCredited == seconds
+                        val amountMatch = Math.abs(existing.amount - amount) < 0.0001
+                        val kindMatch = existing.operationKind == operationKind
+                        val coinMatch = existing.coinAmount == coinAmount
+                        val priceMatch = Math.abs(existing.pricePerCoin - pricePerCoin) < 0.001
+                        val boxEpochMatch = existing.boxInstallationEpoch == boxInstallationEpoch
+                        val phoneEpochMatch = existing.phonePairingEpoch == phonePairingEpoch
+                        secondsMatch && amountMatch && kindMatch && coinMatch && priceMatch && boxEpochMatch && phoneEpochMatch
+                    }
 
-                    val isIdentical = baseIdentical && kindMatch && coinMatch && priceMatch && boxEpochMatch && phoneEpochMatch
                     if (isIdentical) {
                         return@withTransaction PaymentResult.ALREADY_APPLIED
                     } else {
@@ -222,11 +228,19 @@ class PaymentRepository(
                 if (txId.isNotBlank()) {
                     val existing = paymentDao.getReceiptByTxId(txId)
                     if (existing != null) {
-                        val kindMatch = existing.operationKind.isBlank() || operationKind.isBlank() || existing.operationKind == operationKind
-                        val boxEpochMatch = (boxInstallationEpoch == 0L || existing.boxInstallationEpoch == 0L || existing.boxInstallationEpoch == boxInstallationEpoch)
-                        val phoneEpochMatch = (phonePairingEpoch == 0L || existing.phonePairingEpoch == 0L || existing.phonePairingEpoch == phonePairingEpoch)
-                        val isIdentical = (existing.secondsCredited == expectedNegativeSeconds && Math.abs(existing.amount - 0.0) < 0.0001) &&
-                                kindMatch && boxEpochMatch && phoneEpochMatch
+                        val isLegacy = existing.recordSchemaVersion < 5
+                        val isIdentical = if (isLegacy) {
+                            val secondsMatch = existing.secondsCredited == expectedNegativeSeconds
+                            val amountMatch = Math.abs(existing.amount - 0.0) < 0.0001
+                            secondsMatch && amountMatch
+                        } else {
+                            val secondsMatch = existing.secondsCredited == expectedNegativeSeconds
+                            val amountMatch = Math.abs(existing.amount - 0.0) < 0.0001
+                            val kindMatch = existing.operationKind == operationKind
+                            val boxEpochMatch = existing.boxInstallationEpoch == boxInstallationEpoch
+                            val phoneEpochMatch = existing.phonePairingEpoch == phonePairingEpoch
+                            secondsMatch && amountMatch && kindMatch && boxEpochMatch && phoneEpochMatch
+                        }
 
                         if (isIdentical) {
                             return@withTransaction PaymentResult.ALREADY_APPLIED

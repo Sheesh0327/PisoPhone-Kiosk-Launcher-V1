@@ -69,14 +69,46 @@ class KioskEsp32Coordinator(
         stateManager.saveState()
     }
 
-    override fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?): PaymentResult {
+    override fun onCoinMessageReceived(
+        seconds: Int,
+        amount: Double,
+        txId: String?,
+        operationKind: String,
+        coinAmount: Int,
+        pricePerCoin: Double,
+        boxInstallationEpoch: Long,
+        phonePairingEpoch: Long
+    ): PaymentResult {
         if (txId.isNullOrBlank()) {
             Log.e(TAG, "Invalid coin message over WebSocket: missing transaction ID")
             return PaymentResult.FAILED
         }
 
-        Log.d(TAG, "Received validated coin via WebSocket: seconds=$seconds, amount=₱$amount, tx_id=$txId")
-        val result = onCreditPayment(txId, seconds, amount)
+        Log.d(TAG, "Received validated coin via WebSocket: seconds=$seconds, amount=₱$amount, tx_id=$txId, opKind=$operationKind")
+        val result = paymentRepo.creditPaymentBlocking(
+            txId = txId,
+            seconds = seconds,
+            amount = amount,
+            operationKind = operationKind,
+            coinAmount = coinAmount,
+            pricePerCoin = pricePerCoin,
+            boxInstallationEpoch = boxInstallationEpoch,
+            phonePairingEpoch = phonePairingEpoch
+        )
+        if (result == PaymentResult.APPLIED || result == PaymentResult.ALREADY_APPLIED) {
+            val currentState = paymentRepo.getSessionState()
+            val remaining = currentState?.sessionTimeRemaining ?: 0
+            val deadline = currentState?.sessionExpiryDeadlineMs ?: 0L
+            val rev = currentState?.revision ?: 0L
+            val applied = stateManager.applySessionUpdate(
+                deadlineMs = deadline,
+                remainingSeconds = remaining,
+                revision = rev
+            )
+            if (applied) {
+                stateManager.saveState()
+            }
+        }
         when (result) {
             PaymentResult.APPLIED -> {
                 Log.i(TAG, "WebSocket coin applied: +${seconds}s, ₱$amount (txId=$txId)")

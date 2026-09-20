@@ -208,16 +208,21 @@ void authWorkerTask(void *pvParameters) {
                             }
 
                             if (ackValid) {
-                                delivered = true;
-                                if (currentTxId.startsWith("tx-")) {
+                                if (hasPendingPayment(ackTx)) {
                                     if (acknowledgePhonePayment(ackDev, ackTx, ackAmt, ackSec, status)) {
-                                        Serial.printf("[AUTH WORKER] Durable phone ACK accepted for tx_id='%s' (device: %s)\n",
+                                        delivered = true;
+                                        Serial.printf("[AUTH WORKER] Durable phone/coin ACK accepted for tx_id='%s' (device: %s)\n",
                                                       currentTxId.c_str(), ackDev.c_str());
+                                    } else {
+                                        Serial.printf("[AUTH WORKER] Queued payment ACK failed (e.g. flash erase error or parameter mismatch) for tx_id='%s'\n",
+                                                      currentTxId.c_str());
                                     }
                                 } else {
+                                    // Not a queued payment record or already cleared; check/confirm manual adjustment
+                                    recordAdjustmentConfirmed(currentTxId, ackDev, ackSec);
+                                    delivered = true;
                                     Serial.printf("[AUTH WORKER] Verified adjustment ACK confirmed for tx_id='%s' (device: %s, seconds: %d)\n",
                                                   currentTxId.c_str(), ackDev.c_str(), ackSec);
-                                    recordAdjustmentConfirmed(currentTxId, ackDev, ackSec);
                                 }
                             } else {
                                 Serial.printf("[AUTH WORKER] Payment ACK rejected due to mismatched recipient/signature (tx_id=%s)\n",

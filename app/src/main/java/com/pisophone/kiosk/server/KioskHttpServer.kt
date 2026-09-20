@@ -20,8 +20,27 @@ interface KioskServerDelegate {
     fun getSessionTimeRemaining(): Int
     fun getAppState(): Int
     fun getAuditEventsJson(): String
-    fun creditPayment(txId: String, seconds: Int, amount: Double): PaymentResult
-    fun onDeductTime(seconds: Int, txId: String? = null): PaymentResult
+    fun creditPayment(txId: String, seconds: Int, amount: Double): PaymentResult = PaymentResult.FAILED
+    fun creditPayment(
+        txId: String,
+        seconds: Int,
+        amount: Double,
+        operationKind: String,
+        coinAmount: Int,
+        pricePerCoin: Double,
+        boxInstallationEpoch: Long,
+        phonePairingEpoch: Long
+    ): PaymentResult = creditPayment(txId, seconds, amount)
+
+    fun onDeductTime(seconds: Int, txId: String? = null): PaymentResult = PaymentResult.FAILED
+    fun onDeductTime(
+        seconds: Int,
+        txId: String?,
+        operationKind: String,
+        boxInstallationEpoch: Long,
+        phonePairingEpoch: Long
+    ): PaymentResult = onDeductTime(seconds, txId)
+
     fun onConfigUpdated(price: Double?, minutes: Int?, deviceName: String?, adminPin: String?, slotNum: Int? = null)
     fun onTriggerAction(action: String, slotNum: Int? = null, extra: Map<String, String>? = null)
     fun getCrashLog(): String?
@@ -227,6 +246,21 @@ class KioskHttpServer(
                 }
 
                 val amountPulses = amount.toInt()
+                val rawOpKind = decryptedParams["op_kind"] ?: decryptedParams["operation_kind"] ?: ""
+                val opKindStr = when (rawOpKind) {
+                    "1" -> "COIN"
+                    "2" -> "QUICK_ADJUST"
+                    "3" -> "MANUAL_DEDUCTION"
+                    "4" -> "MATCH_TRANSFER"
+                    "5" -> "CONTROLLER"
+                    else -> if (rawOpKind.isNotBlank()) rawOpKind else (if (rawSecondsLong >= 0) "QUICK_ADJUST" else "MANUAL_DEDUCTION")
+                }
+                val pricePerCoin = decryptedParams["price_per_coin"]?.toDoubleOrNull()
+                    ?: decryptedParams["price"]?.toDoubleOrNull() ?: 0.0
+                val boxEpoch = decryptedParams["box_installation_epoch"]?.toLongOrNull()
+                    ?: decryptedParams["box_epoch"]?.toLongOrNull() ?: 0L
+                val phoneEpoch = decryptedParams["phone_pairing_epoch"]?.toLongOrNull()
+                    ?: decryptedParams["phone_epoch"]?.toLongOrNull() ?: 0L
 
                 if (rawSecondsLong > 0) {
                     if (rawSecondsLong > Int.MAX_VALUE.toLong()) {
@@ -234,8 +268,18 @@ class KioskHttpServer(
                         return createResponse(Response.Status.BAD_REQUEST, "text/plain", "INVALID_SECONDS")
                     }
                     val seconds = rawSecondsLong.toInt()
+                    val creditOpKind = if (opKindStr.isBlank() || opKindStr == "MANUAL_DEDUCTION") (if (amount > 0.0) "COIN" else "QUICK_ADJUST") else opKindStr
                     val result = try {
-                        delegate.creditPayment(txId!!, seconds, amount)
+                        delegate.creditPayment(
+                            txId = txId!!,
+                            seconds = seconds,
+                            amount = amount,
+                            operationKind = creditOpKind,
+                            coinAmount = amountPulses,
+                            pricePerCoin = pricePerCoin,
+                            boxInstallationEpoch = boxEpoch,
+                            phonePairingEpoch = phoneEpoch
+                        )
                     } catch (e: Exception) {
                         Log.e(TAG, "Exception during creditPayment for $txId: ${e.message}", e)
                         PaymentResult.FAILED
@@ -283,8 +327,15 @@ class KioskHttpServer(
                     }
                     val positiveSeconds = positiveSecondsLong.toInt()
                     val deductTxId = txId ?: "deduct_${System.currentTimeMillis()}"
+                    val deductOpKind = if (opKindStr.isBlank() || opKindStr == "COIN") "MANUAL_DEDUCTION" else opKindStr
                     val result = try {
-                        delegate.onDeductTime(positiveSeconds, deductTxId)
+                        delegate.onDeductTime(
+                            seconds = positiveSeconds,
+                            txId = deductTxId,
+                            operationKind = deductOpKind,
+                            boxInstallationEpoch = boxEpoch,
+                            phonePairingEpoch = phoneEpoch
+                        )
                     } catch (e: Exception) {
                         Log.e(TAG, "Exception during onDeductTime for $deductTxId: ${e.message}", e)
                         PaymentResult.FAILED

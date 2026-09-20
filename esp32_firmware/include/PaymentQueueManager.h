@@ -53,6 +53,7 @@ bool isMaintenanceMode();
 bool canPerformRebootOrOta();
 bool requestSystemRestart(const char* reason, unsigned long timeoutMs = 15000);
 int getPendingPaymentCount();
+bool hasPendingPayment(const String& txId);
 
 bool acknowledgePhonePayment(
     const String& deviceId,

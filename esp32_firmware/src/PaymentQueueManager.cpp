@@ -404,7 +404,7 @@ bool enqueuePendingPayment(const String& txId, const String& targetId, int pulse
     if (rec.ownerType == 2) {
         sendControllerPaymentEvent(String(rec.targetId), String(rec.txId), rec.pulses);
     } else if (rec.ownerType == 1) {
-        retryPhonePayment(String(rec.targetId), rec.pulses, rec.creditSeconds, String(rec.txId));
+        retryPhonePayment(String(rec.targetId), rec.pulses, rec.creditSeconds, String(rec.txId), rec.opKind, rec.boxInstallationEpoch, rec.phonePairingEpoch);
     }
     return true;
 }
@@ -450,6 +450,20 @@ static bool acknowledgeMatchingPayment(const String& txId, const String* session
     unlockQueue();
     Serial.printf("[PAY QUEUE] Acknowledged tx_id='%s'.\n", txId.c_str());
     return true;
+}
+
+bool hasPendingPayment(const String& txId) {
+    if (txId.length() == 0) return false;
+    lockQueue();
+    bool found = false;
+    for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
+        if (paymentSlotUsed[i] && String(paymentQueue[i].txId) == txId) {
+            found = true;
+            break;
+        }
+    }
+    unlockQueue();
+    return found;
 }
 
 bool acknowledgePhonePayment(
@@ -595,7 +609,7 @@ void processPendingPaymentRetries() {
                 if (rec.ownerType == 2) {
                     sendControllerPaymentEvent(String(rec.targetId), String(rec.txId), rec.pulses);
                 } else if (rec.ownerType == 1) {
-                    retryPhonePayment(String(rec.targetId), rec.pulses, rec.creditSeconds, String(rec.txId));
+                    retryPhonePayment(String(rec.targetId), rec.pulses, rec.creditSeconds, String(rec.txId), rec.opKind, rec.boxInstallationEpoch, rec.phonePairingEpoch);
                 }
             } else {
                 lockQueue();
@@ -629,7 +643,7 @@ void processPendingPaymentRetries() {
             sendControllerPaymentEvent(String(rec.targetId), String(rec.txId), rec.pulses);
         } else if (rec.ownerType == 1) {
             retryPhonePayment(String(rec.targetId), rec.pulses,
-                              rec.creditSeconds, String(rec.txId));
+                              rec.creditSeconds, String(rec.txId), rec.opKind, rec.boxInstallationEpoch, rec.phonePairingEpoch);
         }
     }
 }

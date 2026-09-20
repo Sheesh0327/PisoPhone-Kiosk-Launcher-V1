@@ -9,7 +9,7 @@
 #include <HTTPClient.h>
 
 struct AdjustmentRecord {
-    char txId[48];
+    char txId[64];
     char deviceId[32];
     int seconds;
     bool confirmed;
@@ -57,7 +57,7 @@ bool isAdjustmentConfirmed(const String& txId) {
     return confirmed;
 }
 
-AddTimeSummary sendAddTime(int64_t signedSeconds, String targetIp, String txId) {
+AddTimeSummary sendAddTime(int64_t signedSeconds, String targetIp, String txId, uint8_t opKindParam) {
     AddTimeSummary summary = {0, 0, 0, 0};
     if (androidIps.length() == 0) return summary;
     int startIdx = 0;
@@ -82,9 +82,18 @@ AddTimeSummary sendAddTime(int64_t signedSeconds, String targetIp, String txId) 
                         if (currentTxId.length() == 0) {
                             currentTxId = generateCollisionResistantTxId("adj");
                         }
-                        String params = "device_id=" + cfg.id + "&tx_id=" + currentTxId + "&seconds=" + String((long)signedSeconds) + "&amount=0";
+                        PaymentOpKind opKind = (opKindParam != 0)
+                            ? (PaymentOpKind)opKindParam
+                            : (signedSeconds >= 0 ? OP_KIND_QUICK_ADJUST : OP_KIND_MANUAL_DEDUCT);
+                        uint64_t boxEpoch = 0;
+                        uint64_t phoneEpoch = (slotIdx >= 0) ? licenseSlots[slotIdx].pairingEpoch : 0;
                         recordAdjustmentPending(currentTxId, cfg.id, (int)signedSeconds);
-                        if (sendAuthenticated(cfg.ip, targetPort, "/add_time", "/challenge", params, 1000)) {
+
+                        bool queued = enqueuePendingPayment(
+                            currentTxId, cfg.id, 0, CoinSlotOwnerType::PHONE, (int)signedSeconds,
+                            opKind, 0.0, boxEpoch, phoneEpoch
+                        );
+                        if (queued) {
                             summary.queuedRequests++;
                         } else {
                             summary.failedSubmissions++;
@@ -146,18 +155,27 @@ void sendCloudSnapshot() {
 }
 
 bool retryPhonePayment(const String& targetDeviceId, int pulses, int creditSeconds,
-                       const String& txId) {
+                       const String& txId, uint8_t opKind, uint64_t boxEpoch, uint64_t phoneEpoch) {
     if (targetDeviceId.length() == 0) return false;
 
-    int safeSeconds = creditSeconds > 0
-        ? creditSeconds
-        : pulses * max(minutesPerCoin, 1) * 60;
+    int safeSeconds = creditSeconds;
+    if (safeSeconds == 0 && pulses > 0) {
+        safeSeconds = pulses * max(minutesPerCoin, 1) * 60;
+    }
     int addedMinutes = safeSeconds / 60;
     uint64_t retryTs = getCurrentMasterTimeMs();
 
     // 1. Dispatch over WebSocket if client is connected for targetDeviceId
     if (isWsConnected && wsClient.connected() && wsSessionDeviceId == targetDeviceId) {
-        String innerJson = "{\"seconds\":" + String(safeSeconds) + ",\"minutes\":" + String(addedMinutes) + ",\"amount\":" + String(pulses) + ",\"tx_id\":\"" + txId + "\",\"ts\":\"" + String(retryTs) + "\",\"device_id\":\"" + targetDeviceId + "\"}";
+        String innerJson = "{\"seconds\":" + String(safeSeconds) +
+                           ",\"minutes\":" + String(addedMinutes) +
+                           ",\"amount\":" + String(pulses) +
+                           ",\"tx_id\":\"" + txId + "\"" +
+                           ",\"op_kind\":" + String((int)opKind) +
+                           ",\"box_installation_epoch\":" + String((unsigned long long)boxEpoch) +
+                           ",\"phone_pairing_epoch\":" + String((unsigned long long)phoneEpoch) +
+                           ",\"ts\":\"" + String(retryTs) + "\"" +
+                           ",\"device_id\":\"" + targetDeviceId + "\"}";
         String payload = aes_encrypt(innerJson, sharedSecret);
         String vSig = calculateWsPaySignature("COIN_DETECTED", targetDeviceId, txId, String(retryTs), payload, sharedSecret);
         String json = "{\"event\":\"COIN_DETECTED\",\"device_id\":\"" + targetDeviceId + "\",\"payload\":\"" + payload + "\",\"seconds\":" + String(safeSeconds) + ",\"amount\":" + String(pulses) + ",\"tx_id\":\"" + txId + "\",\"ts\":\"" + String(retryTs) + "\",\"v_sig\":\"" + vSig + "\"}";
@@ -173,6 +191,9 @@ bool retryPhonePayment(const String& targetDeviceId, int pulses, int creditSecon
                         "&seconds=" + String(safeSeconds) +
                         "&amount=" + String(pulses) +
                         "&tx_id=" + txId +
+                        "&op_kind=" + String((int)opKind) +
+                        "&box_installation_epoch=" + String((unsigned long long)boxEpoch) +
+                        "&phone_pairing_epoch=" + String((unsigned long long)phoneEpoch) +
                         "&device_id=" + targetDeviceId +
                         "&ts=" + String(retryTs);
         if (sendAuthenticated(targetIp, targetPort, "/add_time", "/challenge", params, 1000)) {

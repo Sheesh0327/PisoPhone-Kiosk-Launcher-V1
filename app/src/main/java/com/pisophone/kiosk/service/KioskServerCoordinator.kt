@@ -86,13 +86,58 @@ class KioskServerCoordinator(
         }
     }
 
-    override fun creditPayment(txId: String, seconds: Int, amount: Double): PaymentResult {
-        return onCreditPayment(txId, seconds, amount)
+    override fun creditPayment(
+        txId: String,
+        seconds: Int,
+        amount: Double,
+        operationKind: String,
+        coinAmount: Int,
+        pricePerCoin: Double,
+        boxInstallationEpoch: Long,
+        phonePairingEpoch: Long
+    ): PaymentResult {
+        val result = paymentRepo.creditPaymentBlocking(
+            txId = txId,
+            seconds = seconds,
+            amount = amount,
+            operationKind = operationKind,
+            coinAmount = coinAmount,
+            pricePerCoin = pricePerCoin,
+            boxInstallationEpoch = boxInstallationEpoch,
+            phonePairingEpoch = phonePairingEpoch
+        )
+        if (result == PaymentResult.APPLIED || result == PaymentResult.ALREADY_APPLIED) {
+            val currentState = paymentRepo.getSessionState()
+            val remaining = currentState?.sessionTimeRemaining ?: 0
+            val deadline = currentState?.sessionExpiryDeadlineMs ?: 0L
+            val rev = currentState?.revision ?: 0L
+            val applied = stateManager.applySessionUpdate(
+                deadlineMs = deadline,
+                remainingSeconds = remaining,
+                revision = rev
+            )
+            if (applied) {
+                stateManager.saveState()
+            }
+        }
+        return result
     }
 
-    override fun onDeductTime(seconds: Int, txId: String?): PaymentResult {
+    override fun onDeductTime(
+        seconds: Int,
+        txId: String?,
+        operationKind: String,
+        boxInstallationEpoch: Long,
+        phonePairingEpoch: Long
+    ): PaymentResult {
         val effectiveTxId = txId ?: "deduct_${System.currentTimeMillis()}"
-        val result = paymentRepo.deductPaymentBlocking(effectiveTxId, seconds)
+        val result = paymentRepo.deductPaymentBlocking(
+            txId = effectiveTxId,
+            seconds = seconds,
+            operationKind = operationKind,
+            boxInstallationEpoch = boxInstallationEpoch,
+            phonePairingEpoch = phonePairingEpoch
+        )
         if (result == PaymentResult.APPLIED || result == PaymentResult.ALREADY_APPLIED) {
             val currentState = paymentRepo.getSessionState()
             val remaining = currentState?.sessionTimeRemaining ?: 0

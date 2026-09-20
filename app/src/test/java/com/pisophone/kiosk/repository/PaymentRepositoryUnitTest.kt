@@ -6,6 +6,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.pisophone.kiosk.db.AppDatabase
 import com.pisophone.kiosk.db.PaidSessionState
+import com.pisophone.kiosk.db.PaymentReceipt
 import com.pisophone.kiosk.service.KioskStateManager
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -592,7 +593,7 @@ class PaymentRepositoryUnitTest {
         assertEquals(5.0, receipt?.pricePerCoin ?: 0.0, 0.001)
         assertEquals(1710000000L, receipt?.boxInstallationEpoch)
         assertEquals(1710050000L, receipt?.phonePairingEpoch)
-        assertEquals(5, receipt?.recordSchemaVersion)
+        assertEquals(PaymentReceipt.CURRENT_RECORD_SCHEMA_VERSION, receipt?.recordSchemaVersion)
 
         // Duplicate identical submission returns ALREADY_APPLIED
         val dupResult = repository.creditPayment(
@@ -883,6 +884,193 @@ class PaymentRepositoryUnitTest {
 
         phone1Db.close()
         phone2Db.close()
+    }
+
+    @Test
+    fun testOnDiskV4DatabaseMigrationAndProductionRepository() = runBlocking {
+        val dbFile = context.getDatabasePath("test_v4_ondisk.db")
+        if (dbFile.exists()) {
+            dbFile.delete()
+        }
+
+        // 1. Create a real v4 SQLite database file on disk and seed v4 receipts & session balance
+        val rawDb = android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(dbFile, null)
+        rawDb.execSQL("CREATE TABLE IF NOT EXISTS `coin_events` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `txId` TEXT NOT NULL, `secondsAdded` INTEGER NOT NULL, `source` TEXT NOT NULL, `timestamp` INTEGER NOT NULL);")
+        rawDb.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_coin_events_txId` ON `coin_events` (`txId`);")
+        rawDb.execSQL("CREATE TABLE IF NOT EXISTS `payment_receipts` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `txId` TEXT NOT NULL, `secondsCredited` INTEGER NOT NULL, `amount` REAL NOT NULL, `acceptanceTimestamp` INTEGER NOT NULL);")
+        rawDb.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_payment_receipts_txId` ON `payment_receipts` (`txId`);")
+        rawDb.execSQL("CREATE TABLE IF NOT EXISTS `paid_session_state` (`id` INTEGER NOT NULL, `sessionTimeRemaining` INTEGER NOT NULL, `sessionExpiryDeadlineMs` INTEGER NOT NULL, `lastSavedElapsedRealtime` INTEGER NOT NULL, `revision` INTEGER NOT NULL, PRIMARY KEY(`id`));")
+        rawDb.execSQL("CREATE TABLE IF NOT EXISTS `app_metadata` (`key` TEXT NOT NULL, `value` TEXT NOT NULL, PRIMARY KEY(`key`));")
+        rawDb.execSQL("CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY, identity_hash TEXT);")
+        rawDb.execSQL("INSERT OR REPLACE INTO room_master_table (id, identity_hash) VALUES(42, 'cb710ab4ae7aa7cddb70934f06260d43');")
+        rawDb.execSQL("PRAGMA user_version = 4;")
+
+        // Seed legacy v4 receipts:
+        // tx-old: +300s, amount=5.0
+        // adj-old: -60s, amount=0.0
+        rawDb.execSQL("INSERT INTO `payment_receipts` (`txId`, `secondsCredited`, `amount`, `acceptanceTimestamp`) VALUES ('tx-old', 300, 5.0, 1700000000000);")
+        rawDb.execSQL("INSERT INTO `payment_receipts` (`txId`, `secondsCredited`, `amount`, `acceptanceTimestamp`) VALUES ('adj-old', -60, 0.0, 1700000001000);")
+        val nowMonotonic = SystemClock.elapsedRealtime()
+        rawDb.execSQL("INSERT INTO `paid_session_state` (`id`, `sessionTimeRemaining`, `sessionExpiryDeadlineMs`, `lastSavedElapsedRealtime`, `revision`) VALUES (1, 300, ${nowMonotonic + 300000L}, $nowMonotonic, 1);")
+        rawDb.close()
+
+        // 2. Open via Room AppDatabase (executing real migrations 4 -> 5 -> 6)
+        val migratedDb = Room.databaseBuilder(context, AppDatabase::class.java, "test_v4_ondisk.db")
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_1_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6)
+            .allowMainThreadQueries()
+            .build()
+
+        val repository = PaymentRepository(db = migratedDb, context = context, isEligible = { true })
+
+        // 3. Test production repository interactions on migrated legacy receipts
+        // v4 receipt tx-old (+300s, amount 5.0): identical retry returns ALREADY_APPLIED
+        val dupTxOld = repository.creditPayment(
+            txId = "tx-old",
+            seconds = 300,
+            amount = 5.0,
+            operationKind = "COIN",
+            coinAmount = 5,
+            pricePerCoin = 1.0,
+            boxInstallationEpoch = 1000L,
+            phonePairingEpoch = 2000L
+        )
+        assertEquals("Identical retry for legacy tx-old returns ALREADY_APPLIED", PaymentResult.ALREADY_APPLIED, dupTxOld)
+
+        // Retrying tx-old with conflicting seconds returns CONFLICT
+        val conflictTxOld = repository.creditPayment(
+            txId = "tx-old",
+            seconds = 600,
+            amount = 5.0
+        )
+        assertEquals("Conflicting retry for legacy tx-old returns CONFLICT", PaymentResult.CONFLICT, conflictTxOld)
+
+        // v4 receipt adj-old (-60s, amount 0.0): identical deduction retry returns ALREADY_APPLIED
+        val dupAdjOld = repository.deductPayment(
+            txId = "adj-old",
+            seconds = 60,
+            operationKind = "MANUAL_DEDUCTION",
+            boxInstallationEpoch = 1000L
+        )
+        assertEquals("Identical retry for legacy adj-old returns ALREADY_APPLIED", PaymentResult.ALREADY_APPLIED, dupAdjOld)
+
+        // Retrying adj-old with conflicting deduction seconds returns CONFLICT
+        val conflictAdjOld = repository.deductPayment(
+            txId = "adj-old",
+            seconds = 120
+        )
+        assertEquals("Conflicting deduction retry for legacy adj-old returns CONFLICT", PaymentResult.CONFLICT, conflictAdjOld)
+
+        migratedDb.close()
+    }
+
+    @Test
+    fun testOnDiskV5RepairPathAndProductionRepository() = runBlocking {
+        val dbFile = context.getDatabasePath("test_v5_ondisk.db")
+        if (dbFile.exists()) {
+            dbFile.delete()
+        }
+
+        // 1. Create a database simulating an existing shipped v5 installation where MIGRATION_4_5 ran
+        val rawDb = android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(dbFile, null)
+        rawDb.execSQL("CREATE TABLE IF NOT EXISTS `coin_events` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `txId` TEXT NOT NULL, `secondsAdded` INTEGER NOT NULL, `source` TEXT NOT NULL, `timestamp` INTEGER NOT NULL);")
+        rawDb.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_coin_events_txId` ON `coin_events` (`txId`);")
+        rawDb.execSQL("CREATE TABLE IF NOT EXISTS `payment_receipts` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `txId` TEXT NOT NULL, `secondsCredited` INTEGER NOT NULL, `amount` REAL NOT NULL, `acceptanceTimestamp` INTEGER NOT NULL, `operationKind` TEXT NOT NULL, `coinAmount` INTEGER NOT NULL, `pricePerCoin` REAL NOT NULL, `boxInstallationEpoch` INTEGER NOT NULL, `phonePairingEpoch` INTEGER NOT NULL, `recordSchemaVersion` INTEGER NOT NULL);")
+        rawDb.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_payment_receipts_txId` ON `payment_receipts` (`txId`);")
+        rawDb.execSQL("CREATE TABLE IF NOT EXISTS `paid_session_state` (`id` INTEGER NOT NULL, `sessionTimeRemaining` INTEGER NOT NULL, `sessionExpiryDeadlineMs` INTEGER NOT NULL, `lastSavedElapsedRealtime` INTEGER NOT NULL, `revision` INTEGER NOT NULL, PRIMARY KEY(`id`));")
+        rawDb.execSQL("CREATE TABLE IF NOT EXISTS `app_metadata` (`key` TEXT NOT NULL, `value` TEXT NOT NULL, PRIMARY KEY(`key`));")
+        rawDb.execSQL("CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY, identity_hash TEXT);")
+        rawDb.execSQL("INSERT OR REPLACE INTO room_master_table (id, identity_hash) VALUES(42, 'eeda8a76f8700216258d9bbe38c3d0cc');")
+        rawDb.execSQL("PRAGMA user_version = 5;")
+
+        // Seed legacy receipts with default v5 values (operationKind='COIN', coinAmount=0, recordSchemaVersion=1)
+        rawDb.execSQL("INSERT INTO `payment_receipts` (`txId`, `secondsCredited`, `amount`, `acceptanceTimestamp`, `operationKind`, `coinAmount`, `pricePerCoin`, `boxInstallationEpoch`, `phonePairingEpoch`, `recordSchemaVersion`) VALUES ('tx-old-v5', 300, 5.0, 1700000000000, 'COIN', 0, 0.0, 0, 0, 1);")
+        rawDb.execSQL("INSERT INTO `payment_receipts` (`txId`, `secondsCredited`, `amount`, `acceptanceTimestamp`, `operationKind`, `coinAmount`, `pricePerCoin`, `boxInstallationEpoch`, `phonePairingEpoch`, `recordSchemaVersion`) VALUES ('adj-old-v5', -60, 0.0, 1700000001000, 'COIN', 0, 0.0, 0, 0, 1);")
+        val nowMonotonic = SystemClock.elapsedRealtime()
+        rawDb.execSQL("INSERT INTO `paid_session_state` (`id`, `sessionTimeRemaining`, `sessionExpiryDeadlineMs`, `lastSavedElapsedRealtime`, `revision`) VALUES (1, 300, ${nowMonotonic + 300000L}, $nowMonotonic, 1);")
+        rawDb.close()
+
+        // 2. Open via Room AppDatabase v6 (triggers MIGRATION_5_6 forward repair migration)
+        val repairedDb = Room.databaseBuilder(context, AppDatabase::class.java, "test_v5_ondisk.db")
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_1_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6)
+            .allowMainThreadQueries()
+            .build()
+
+        val repository = PaymentRepository(db = repairedDb, context = context, isEligible = { true })
+
+        // 3. Verify repair path succeeded and production repository handles retries properly
+        val dupCredit = repository.creditPayment(
+            txId = "tx-old-v5",
+            seconds = 300,
+            amount = 5.0,
+            operationKind = "COIN",
+            coinAmount = 5,
+            pricePerCoin = 1.0,
+            boxInstallationEpoch = 1000L,
+            phonePairingEpoch = 2000L
+        )
+        assertEquals("Repaired v5 installation returns ALREADY_APPLIED for credit retry", PaymentResult.ALREADY_APPLIED, dupCredit)
+
+        val dupDeduct = repository.deductPayment(
+            txId = "adj-old-v5",
+            seconds = 60,
+            operationKind = "MANUAL_DEDUCTION"
+        )
+        assertEquals("Repaired v5 installation returns ALREADY_APPLIED for deduction retry", PaymentResult.ALREADY_APPLIED, dupDeduct)
+
+        // Conflicting retries still return CONFLICT
+        val conflictCredit = repository.creditPayment(
+            txId = "tx-old-v5",
+            seconds = 900,
+            amount = 5.0
+        )
+        assertEquals("Repaired v5 installation returns CONFLICT for conflicting credit retry", PaymentResult.CONFLICT, conflictCredit)
+
+        repairedDb.close()
+    }
+
+    @Test
+    fun testNewReceiptsStrictComparisonInSchema6() = runBlocking {
+        val repository = PaymentRepository(db = db, isEligible = { true })
+
+        // Apply new receipt in schema 6
+        val txId = "tx-v6-new"
+        val applyRes = repository.creditPayment(
+            txId = txId,
+            seconds = 600,
+            amount = 5.0,
+            operationKind = "COIN",
+            coinAmount = 1,
+            pricePerCoin = 5.0,
+            boxInstallationEpoch = 1000L,
+            phonePairingEpoch = 2000L
+        )
+        assertEquals(PaymentResult.APPLIED, applyRes)
+
+        // Identical retry returns ALREADY_APPLIED
+        val dupRes = repository.creditPayment(
+            txId = txId,
+            seconds = 600,
+            amount = 5.0,
+            operationKind = "COIN",
+            coinAmount = 1,
+            pricePerCoin = 5.0,
+            boxInstallationEpoch = 1000L,
+            phonePairingEpoch = 2000L
+        )
+        assertEquals(PaymentResult.ALREADY_APPLIED, dupRes)
+
+        // Strict comparison: retry with zero boxInstallationEpoch must NOT act as a wildcard and must return CONFLICT
+        val wildcardEpochRes = repository.creditPayment(
+            txId = txId,
+            seconds = 600,
+            amount = 5.0,
+            operationKind = "COIN",
+            coinAmount = 1,
+            pricePerCoin = 5.0,
+            boxInstallationEpoch = 0L,
+            phonePairingEpoch = 2000L
+        )
+        assertEquals("Zero epoch must NOT act as wildcard for new receipts; return CONFLICT", PaymentResult.CONFLICT, wildcardEpochRes)
     }
 }
 
