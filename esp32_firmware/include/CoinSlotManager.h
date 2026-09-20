@@ -7,7 +7,7 @@
 // ============================================================================
 // CALLBACK SIGNATURES & ENUMS
 // ============================================================================
-typedef std::function<void(const String& sessionId, int pulses)> CoinPaymentCallback;
+typedef std::function<bool(const String& sessionId, int pulses)> CoinPaymentCallback;
 typedef std::function<void(const String& sessionId, const char* reason)> CoinSessionEndCallback;
 
 enum class CoinSlotOwnerType {

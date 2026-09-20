@@ -253,7 +253,7 @@ class KioskHttpServer(
                     "3" -> "MANUAL_DEDUCTION"
                     "4" -> "MATCH_TRANSFER"
                     "5" -> "CONTROLLER"
-                    else -> if (rawOpKind.isNotBlank()) rawOpKind else (if (rawSecondsLong >= 0) "QUICK_ADJUST" else "MANUAL_DEDUCTION")
+                    else -> if (rawOpKind.isNotBlank()) rawOpKind else (if (amount > 0.0) "COIN" else (if (rawSecondsLong >= 0) "QUICK_ADJUST" else "MANUAL_DEDUCTION"))
                 }
                 val pricePerCoin = decryptedParams["price_per_coin"]?.toDoubleOrNull()
                     ?: decryptedParams["price"]?.toDoubleOrNull() ?: 0.0

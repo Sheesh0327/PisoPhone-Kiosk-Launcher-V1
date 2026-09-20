@@ -386,13 +386,15 @@ void processRevenuePersistence() {
 
 void factoryResetDefaults() {
     Serial.println("\n=======================================================");
-    Serial.println("[⚠️ FACTORY RESET] Restoring all settings to defaults...");
+    Serial.println("[⚠️ FACTORY RESET] Restoring config settings to defaults...");
     Serial.println("=======================================================");
 
     lockNvs();
-    prefs.begin(NVS_NAMESPACE, false);
-    prefs.clear();
-    prefs.end();
+    Preferences storage;
+    if (storage.begin(NVS_NAMESPACE, false)) {
+        storage.clear(); // Clears ONLY "pisophone" config namespace
+        storage.end();
+    }
     unlockNvs();
 
     wifiSsid = DEFAULT_SSID;
@@ -401,23 +403,28 @@ void factoryResetDefaults() {
     ledPin = DEFAULT_LED_PIN;
     ledActiveLow = DEFAULT_LED_ACTIVE_LOW;
     relayPin = DEFAULT_RELAY_PIN;
-    androidIps = "";
     targetPort = DEFAULT_PORT;
     minutesPerCoin = DEFAULT_MINUTES_PER_COIN;
     webPassword = DEFAULT_ADMIN_PW;
-    sharedSecret = MASTER_CRYPTO_SECRET;
     p1Ip = "";
     p2Ip = "";
     matchMinutes = 15;
-    maxLicensedSlots = DEFAULT_MAX_SLOTS;
-    for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
-        licenseSlots[i].slotNum = i + 1;
-        licenseSlots[i].deviceId = "";
-        licenseSlots[i].ip = "";
-        licenseSlots[i].name = "PisoPhone " + String(i + 1);
-        licenseSlots[i].active = (i < DEFAULT_MAX_SLOTS);
+
+    if (hasPendingPayments()) {
+        Serial.println("[⚠️ FACTORY RESET] Unresolved payment records exist! Preserving license slots, registered devices, and crypto key for delivery.");
+    } else {
+        androidIps = "";
+        sharedSecret = MASTER_CRYPTO_SECRET;
+        maxLicensedSlots = DEFAULT_MAX_SLOTS;
+        for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
+            licenseSlots[i].slotNum = i + 1;
+            licenseSlots[i].deviceId = "";
+            licenseSlots[i].ip = "";
+            licenseSlots[i].name = "PisoPhone " + String(i + 1);
+            licenseSlots[i].active = (i < DEFAULT_MAX_SLOTS);
+        }
+        saveSlotLicenses();
     }
-    saveSlotLicenses();
 
     totalCoinsLifetime = 0;
     totalCoinsSession = 0;

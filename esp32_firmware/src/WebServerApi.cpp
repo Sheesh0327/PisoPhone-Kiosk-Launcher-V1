@@ -191,7 +191,7 @@ void handleApiSlotUnpair() {
         sendCloudSnapshot();
         webServer.send(200, "application/json", "{\"success\":true,\"slot\":" + String(slot) + "}");
     } else {
-        webServer.send(500, "application/json", "{\"success\":false,\"error\":\"Failed to unpair\"}");
+        webServer.send(409, "application/json", "{\"success\":false,\"error\":\"BUSY: Device owns active session or unresolved payments\"}");
     }
 }
 

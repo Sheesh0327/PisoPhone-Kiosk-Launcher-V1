@@ -69,14 +69,14 @@ static void processSystemHealthAndAutoMaintenance() {
 
     // 1. Low Memory Load Shedding: Stop new admissions and trim stale telemetry cache
     if (freeHeap < LOW_HEAP_WARNING_BYTES) {
-        if (!isMaintenanceMode()) {
+        if (!isMaintenanceReasonActive(MAINT_REASON_HEAP)) {
             Serial.printf("⚠️ [HEALTH GUARD] Free heap low (%u bytes). Stopping new session admissions and shedding cache...\n", freeHeap);
-            setMaintenanceMode(true);
+            setMaintenanceReason(MAINT_REASON_HEAP, true);
         }
-    } else if (isMaintenanceMode() && freeHeap >= (LOW_HEAP_WARNING_BYTES + 5000)) {
+    } else if (isMaintenanceReasonActive(MAINT_REASON_HEAP) && freeHeap >= (LOW_HEAP_WARNING_BYTES + 5000)) {
         // Hysteresis recovery if memory pressure subsides without reboot
-        setMaintenanceMode(false);
-        Serial.printf("ℹ️ [HEALTH GUARD] Free heap recovered (%u bytes). Resuming admissions.\n", freeHeap);
+        setMaintenanceReason(MAINT_REASON_HEAP, false);
+        Serial.printf("ℹ️ [HEALTH GUARD] Free heap recovered (%u bytes). Resuming admissions for heap condition.\n", freeHeap);
     }
 
     // 2. Critical Heap Pressure: Attempt safe gated restart only if safe
@@ -108,8 +108,8 @@ void setup() {
     // Initialize Dynamic Hardware Pins & Hardware Reset Pin (GPIO 2)
     applyCoinSlotHardwareConfig();
     initCoinSlotManager();
-    setGlobalCoinPaymentCallback([](const String& sessionId, int pulses) {
-        triggerUniversalCoinEvent(pulses, sessionId);
+    setGlobalCoinPaymentCallback([](const String& sessionId, int pulses) -> bool {
+        return triggerUniversalCoinEvent(pulses, sessionId);
     });
     pinMode(HARDWARE_RESET_PIN, INPUT_PULLUP);
     setLedHardware(false);
@@ -184,6 +184,9 @@ void loop() {
 
     // Memory and Uptime Health Maintenance Check
     processSystemHealthAndAutoMaintenance();
+
+    // 0. Process Pending System Restart
+    processPendingSystemRestart();
 
     // 0. Process Debounced Hardware-Conservative NVS Revenue Persistence
     processRevenuePersistence();

@@ -48,8 +48,20 @@ bool isPaymentQueueFull();
 bool isPaymentStorageReady();
 bool hasUnpersistedPayments();
 int getQuarantinedRecordCount();
+#define MAINT_REASON_HEAP     0x01
+#define MAINT_REASON_RESTART  0x02
+#define MAINT_REASON_OTA      0x04
+#define MAINT_REASON_STORAGE  0x08
+#define MAINT_REASON_RESET    0x10
+
+void setMaintenanceReason(uint32_t reason, bool enable);
 void setMaintenanceMode(bool enable);
 bool isMaintenanceMode();
+bool isMaintenanceReasonActive(uint32_t reason);
+bool hasPendingPaymentsForTarget(const String& targetId);
+bool hasPendingPayments();
+void processPendingSystemRestart();
+void setFactoryResetPending(bool pending);
 bool canPerformRebootOrOta();
 bool requestSystemRestart(const char* reason, unsigned long timeoutMs = 15000);
 int getPendingPaymentCount();
@@ -62,6 +74,44 @@ bool acknowledgePhonePayment(
     int acknowledgedSeconds,
     const String& status,
     uint8_t expectedOpKind = 0);
+
+bool cancelPaymentRecord(const String& txId);
+
+enum MatchSettleState : uint8_t {
+    MATCH_SETTLE_NONE = 0,
+    MATCH_SETTLE_DEDUCT_PENDING = 1,
+    MATCH_SETTLE_DEDUCT_COMMITTED_CREDIT_PENDING = 2,
+    MATCH_SETTLE_COMPLETED = 3,
+    MATCH_SETTLE_REJECTED = 4
+};
+
+struct MatchSettlementRecord {
+    uint32_t magic;
+    uint16_t schemaVersion;
+    uint8_t state;
+    char matchId[64];
+    char loserId[97];
+    char winnerId[97];
+    int32_t stakeSeconds;
+    char deductTxId[64];
+    char creditTxId[64];
+    uint64_t timestamp;
+    uint32_t crc32;
+};
+
+void initMatchSettlement();
+bool startMatchSettlement(
+    const String& matchId,
+    const String& loserId,
+    const String& winnerId,
+    int stakeSeconds,
+    String& outDeductTxId,
+    String& outCreditTxId,
+    String& errOut);
+bool recordMatchDeductionCommitted(const String& deductTxId);
+bool recordMatchDeductionRejected(const String& deductTxId);
+bool recordMatchCreditCommitted(const String& creditTxId);
+String getMatchSettlementStatusHtml(const String& currentMatchId = "");
 
 void dispatchPendingControllerPayments(const String& sessionId);
 void processPendingPaymentRetries();

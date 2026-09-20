@@ -269,32 +269,16 @@ void handleOneVsOne() {
         matchActive = false;
 
         String matchId = "match-" + String((unsigned long long)getCurrentMasterTimeMs());
-        String deductTxId = matchId + "-deduct-" + generateCollisionResistantTxId("mdd");
-        String creditTxId = matchId + "-credit-" + generateCollisionResistantTxId("mcr");
-
         String winnerIp = (winner == "p1" || winner == NVS_KEY_P1) ? p1Ip : p2Ip;
         String loserIp = (winner == "p1" || winner == NVS_KEY_P1) ? p2Ip : p1Ip;
-        String winnerLabel = (winner == "p1" || winner == NVS_KEY_P1) ? "Player 1" : "Player 2";
-        String loserLabel = (winner == "p1" || winner == NVS_KEY_P1) ? "Player 2" : "Player 1";
 
-        // Keep separate linked outcomes and show partial completion
-        int64_t deductSeconds = -matchMinutes * 60LL;
-        int64_t creditSeconds = matchMinutes * 60LL;
-        AddTimeSummary deductSummary = sendAddTime(deductSeconds, loserIp, deductTxId, OP_KIND_MATCH_TRANSFER);
-        yield();
-        AddTimeSummary creditSummary = sendAddTime(creditSeconds, winnerIp, creditTxId, OP_KIND_MATCH_TRANSFER);
+        String deductTxId = "", creditTxId = "", errMsg = "";
+        bool started = startMatchSettlement(matchId, loserIp, winnerIp, reqStakeSeconds, deductTxId, creditTxId, errMsg);
 
-        bool deductOk = (deductSummary.queuedRequests > 0);
-        bool creditOk = (creditSummary.queuedRequests > 0);
-
-        if (deductOk && creditOk) {
-            matchStatusMsg = "<div style='background:#e8f5e9;color:#2e7d32;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>🏆 <b>" + winnerLabel + " Won:</b> Transferred +" + String(matchMinutes) + "m to " + winnerLabel + " (" + winnerIp + ") and deducted -" + String(matchMinutes) + "m from " + loserLabel + " (" + loserIp + "). [Match: " + matchId + "]</div>";
-        } else if (creditOk && !deductOk) {
-            matchStatusMsg = "<div style='background:#fef3c7;color:#b45309;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>⚠️ <b>Partial Match Transfer:</b> Credited +" + String(matchMinutes) + "m to " + winnerLabel + " (" + winnerIp + "), but deduction from " + loserLabel + " (" + loserIp + ") failed/queued. [Match: " + matchId + "]</div>";
-        } else if (!creditOk && deductOk) {
-            matchStatusMsg = "<div style='background:#fef3c7;color:#b45309;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>⚠️ <b>Partial Match Transfer:</b> Deducted -" + String(matchMinutes) + "m from " + loserLabel + " (" + loserIp + "), but credit to " + winnerLabel + " (" + winnerIp + ") failed/queued. [Match: " + matchId + "]</div>";
+        if (started) {
+            matchStatusMsg = getMatchSettlementStatusHtml(matchId);
         } else {
-            matchStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Match Transfer Failed:</b> Could not dispatch adjustments for either player. [Match: " + matchId + "]</div>";
+            matchStatusMsg = "<div style='background:#ffebee;color:#c62828;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Match Settlement Blocked:</b> " + errMsg + "</div>";
         }
 
         sendAuthenticated(p1Ip, targetPort, "/trigger_action", "/challenge", "action=arena_mode_deactivate", 1000);

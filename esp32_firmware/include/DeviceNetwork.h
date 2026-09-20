@@ -15,7 +15,7 @@ AddTimeSummary sendAddTime(int64_t signedSeconds, String targetIp = "ALL", Strin
 void recordAdjustmentPending(const String& txId, const String& deviceId, int seconds);
 void recordAdjustmentConfirmed(const String& txId, const String& deviceId, int seconds);
 bool isAdjustmentConfirmed(const String& txId);
-void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId = "");
+bool triggerUniversalCoinEvent(int pulses, const String& targetDeviceId = "");
 int getDeviceTimeRemainingSeconds(String targetIp, String *errOut = nullptr);
 
 void sendCloudSnapshot();

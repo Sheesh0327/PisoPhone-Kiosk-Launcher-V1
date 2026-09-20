@@ -80,25 +80,16 @@ void handlePortalRoot() {
 void handleReboot() {
     if (!checkAdminAuth()) return;
     Serial.println("\n[🔄 HTTP API] Reboot request received from Web Portal.");
-    if (!canPerformRebootOrOta()) {
-        webServer.send(409, "text/plain", "BUSY: Unpersisted transactions in RAM");
-        return;
-    }
     webServer.send(200, "text/plain", "REBOOTING");
-    delay(200);
     requestSystemRestart("Web Portal Admin Reboot");
 }
 
 void handleFactoryReset() {
     if (!checkAdminAuth()) return;
     Serial.println("\n[⚠️ HTTP API] Factory reset request received from Web Portal.");
-    if (!canPerformRebootOrOta()) {
-        webServer.send(409, "text/plain", "BUSY: Unpersisted transactions in RAM");
-        return;
-    }
-    factoryResetDefaults();
+    setFactoryResetPending(true);
+    setMaintenanceReason(MAINT_REASON_RESET, true);
     webServer.send(200, "text/plain", "OK");
-    delay(500);
     requestSystemRestart("Web Portal Factory Reset");
 }
 

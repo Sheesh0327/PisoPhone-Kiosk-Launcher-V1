@@ -115,6 +115,10 @@ void setRelayHardware(bool active) {
     }
 }
 
+bool isRelayHardwareActive() {
+    return isRelayCurrentlyActive;
+}
+
 bool isSlotArmed() {
     return isCoinSlotArmed() && !isStartupSuppressionActive();
 }
@@ -175,10 +179,11 @@ void processHardwareResetPin() {
             resetPinLowStart = millis();
             Serial.println("[⚠️] GPIO 2 connected to GND. Hold for 5 seconds to factory reset...");
         } else if (millis() - resetPinLowStart >= 5000) {
-            Serial.println("\n[⚠️ RESET] GPIO 2 held to GND for > 5 seconds! Triggering Factory Reset...");
-            factoryResetDefaults();
-            delay(500);
+            Serial.println("\n[⚠️ RESET] GPIO 2 held to GND for > 5 seconds! Requesting Factory Reset...");
+            setFactoryResetPending(true);
+            setMaintenanceReason(MAINT_REASON_RESET, true);
             requestSystemRestart("Hardware Pin 2 Factory Reset");
+            resetPinLowStart = 0;
         }
     } else {
         if (resetPinLowStart != 0) {

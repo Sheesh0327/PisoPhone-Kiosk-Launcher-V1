@@ -440,26 +440,33 @@ void processCoinSlotSession() {
     // 4. Process completed pulse train after inter-pulse silence timeout
     if (sessionAccumulatedPulses > 0 && ((int32_t)((uint32_t)now - (uint32_t)lastPulseTime) >= (int32_t)INTER_PULSE_TIMEOUT_MS)) {
         int finalPulses = sessionAccumulatedPulses;
-        sessionAccumulatedPulses = 0;
 
         if (finalPulses > 0) {
             String deliveringSession = activeSessionId;
             Serial.printf("[🪙 COIN SLOT] Detected %d pulse(s) for session '%s'. Delivering payment...\n", 
                           finalPulses, deliveringSession.c_str());
 
+            bool retained = false;
             if (currentPaymentCallback) {
-                currentPaymentCallback(deliveringSession, finalPulses);
+                retained = currentPaymentCallback(deliveringSession, finalPulses);
             } else if (globalPaymentCallback) {
-                globalPaymentCallback(deliveringSession, finalPulses);
+                retained = globalPaymentCallback(deliveringSession, finalPulses);
             }
-        }
 
-        // If in DRAINING state, in-flight pulses are now delivered. Finalize session release.
-        if (currentState == CoinSlotState::DRAINING) {
-            Serial.println("[🪙 COIN SLOT] In-flight pulses drained and delivered. Completing release.");
-            String reason = pendingEndReason.length() > 0 ? pendingEndReason : "RELEASED";
-            finalizeSessionRelease(reason.c_str());
-            return;
+            if (retained) {
+                sessionAccumulatedPulses = 0; // Clear pulse copy only after verified retention
+                if (currentState == CoinSlotState::DRAINING) {
+                    Serial.println("[🪙 COIN SLOT] In-flight pulses drained and delivered. Completing release.");
+                    String reason = pendingEndReason.length() > 0 ? pendingEndReason : "RELEASED";
+                    finalizeSessionRelease(reason.c_str());
+                    return;
+                }
+            } else {
+                Serial.printf("[🪙 COIN SLOT] CRITICAL: Payment callback failed to retain transaction for '%s'! Retaining pulse copy and stopping admission.\n",
+                              deliveringSession.c_str());
+                setMaintenanceMode(true);
+                return; // Do NOT finalize release or clear pulses!
+            }
         }
     }
 
@@ -477,14 +484,22 @@ void processCoinSlotSession() {
             interrupts();
             
             int remainingPulses = sessionAccumulatedPulses + trailingPulses;
-            sessionAccumulatedPulses = 0;
             
             if (remainingPulses > 0) {
+                bool retained = false;
                 if (currentPaymentCallback) {
-                    currentPaymentCallback(activeSessionId, remainingPulses);
+                    retained = currentPaymentCallback(activeSessionId, remainingPulses);
                 } else if (globalPaymentCallback) {
-                    globalPaymentCallback(activeSessionId, remainingPulses);
+                    retained = globalPaymentCallback(activeSessionId, remainingPulses);
                 }
+                if (!retained) {
+                    sessionAccumulatedPulses = remainingPulses; // Preserve pulse copy!
+                    Serial.printf("[🪙 COIN SLOT] CRITICAL: Drain timeout delivery failed for '%s'! Retaining pulses and stopping admission.\n",
+                                  activeSessionId.c_str());
+                    setMaintenanceMode(true);
+                    return; // Do NOT finalize session release!
+                }
+                sessionAccumulatedPulses = 0;
             }
 
             String reason = pendingEndReason.length() > 0 ? pendingEndReason : "DRAIN_TIMEOUT";

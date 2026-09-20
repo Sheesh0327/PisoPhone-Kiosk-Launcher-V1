@@ -86,7 +86,7 @@ AddTimeSummary sendAddTime(int64_t signedSeconds, String targetIp, String txId, 
                             ? (PaymentOpKind)opKindParam
                             : (signedSeconds >= 0 ? OP_KIND_QUICK_ADJUST : OP_KIND_MANUAL_DEDUCT);
                         uint64_t boxEpoch = 0;
-                        uint64_t phoneEpoch = (slotIdx >= 0) ? licenseSlots[slotIdx].pairingEpoch : 0;
+                        uint64_t phoneEpoch = 0; // Legacy epoch; pairing-generation enforcement recorded as unfinished
                         recordAdjustmentPending(currentTxId, cfg.id, (int)signedSeconds);
 
                         bool queued = enqueuePendingPayment(
@@ -107,18 +107,35 @@ AddTimeSummary sendAddTime(int64_t signedSeconds, String targetIp, String txId, 
     return summary;
 }
 
-void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId) {
-    if (pulses <= 0) return;
+bool triggerUniversalCoinEvent(int pulses, const String& targetDeviceId) {
+    if (pulses <= 0) return false;
     Serial.printf("[⚡ UNIVERSAL COIN] %d total pulses accumulated on GPIO %d (₱%d PHP)\n", pulses, universalCoinPin, pulses);
 
     String targetDev = targetDeviceId;
     if (targetDev.length() == 0) {
         targetDev = getActiveCoinSessionId();
     }
+    if (targetDev.length() == 0) {
+        Serial.println("[UNIVERSAL COIN] CRITICAL: No target device available! Stopping new admission.");
+        setMaintenanceMode(true);
+        return false;
+    }
 
     int rate = (minutesPerCoin > 0) ? minutesPerCoin : 1;
     int addedMinutes = pulses * rate;
     int addedSeconds = addedMinutes * 60;
+
+    String txId = generateCollisionResistantTxId("coin");
+
+    bool retained = enqueuePendingPayment(
+        txId, targetDev, pulses, CoinSlotOwnerType::PHONE, addedSeconds,
+        OP_KIND_COIN, 5.0, 0, 0);
+    if (!retained) {
+        Serial.printf("[UNIVERSAL COIN] CRITICAL: Could not retain tx_id='%s'. Stopping new admission.\n",
+                      txId.c_str());
+        setMaintenanceMode(true);
+        return false;
+    }
 
     totalCoinsLifetime += pulses;
     totalCoinsSession += pulses;
@@ -129,16 +146,7 @@ void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId) {
     lastCoinChangeTime = millis();
 
     triggerLedBlink(pulses > 1 ? 4 : 2);
-
-    String txId = generateCollisionResistantTxId("coin");
-
-    bool retained = enqueuePendingPayment(
-        txId, targetDev, pulses, CoinSlotOwnerType::PHONE, addedSeconds,
-        OP_KIND_COIN, 5.0, 0, 0);
-    if (!retained) {
-        Serial.printf("[UNIVERSAL COIN] CRITICAL: Could not retain tx_id='%s'.\n",
-                      txId.c_str());
-    }
+    return true;
 }
 
 int getDeviceTimeRemainingSeconds(String targetIp, String* errOut) {
@@ -165,8 +173,8 @@ bool retryPhonePayment(const String& targetDeviceId, int pulses, int creditSecon
     int addedMinutes = safeSeconds / 60;
     uint64_t retryTs = getCurrentMasterTimeMs();
 
-    // 1. Dispatch over WebSocket if client is connected for targetDeviceId
-    if (isWsConnected && wsClient.connected() && wsSessionDeviceId == targetDeviceId) {
+    // 1. Dispatch over WebSocket if client is connected for targetDeviceId AND operation is a genuine coin event
+    if (opKind == OP_KIND_COIN && isWsConnected && wsClient.connected() && wsSessionDeviceId == targetDeviceId) {
         String innerJson = "{\"seconds\":" + String(safeSeconds) +
                            ",\"minutes\":" + String(addedMinutes) +
                            ",\"amount\":" + String(pulses) +

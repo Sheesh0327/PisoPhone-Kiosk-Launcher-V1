@@ -203,6 +203,7 @@ void initPaymentQueue() {
     Serial.printf("[PAY QUEUE] Ready with %d pending payment(s), %d quarantined.\n",
                   activePaymentCount, quarantineRecordCount);
     unlockQueue();
+    initMatchSettlement();
 }
 
 bool isPaymentQueueFull() {
@@ -238,27 +239,70 @@ int getQuarantinedRecordCount() {
     return count;
 }
 
-static bool maintenanceMode = false;
+static uint32_t maintenanceReasons = 0;
+
+void setMaintenanceReason(uint32_t reason, bool enable) {
+    if (enable) {
+        maintenanceReasons |= reason;
+    } else {
+        maintenanceReasons &= ~reason;
+    }
+}
 
 void setMaintenanceMode(bool enable) {
-    maintenanceMode = enable;
+    setMaintenanceReason(MAINT_REASON_STORAGE, enable);
 }
 
 bool isMaintenanceMode() {
-    return maintenanceMode;
+    return (maintenanceReasons != 0);
+}
+
+bool isMaintenanceReasonActive(uint32_t reason) {
+    return (maintenanceReasons & reason) != 0;
+}
+
+bool hasPendingPaymentsForTarget(const String& targetId) {
+    if (targetId.length() == 0) return false;
+    lockQueue();
+    for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
+        if (paymentSlotUsed[i] && String(paymentQueue[i].targetId) == targetId) {
+            unlockQueue();
+            return true;
+        }
+    }
+    unlockQueue();
+    return false;
+}
+
+bool hasPendingPayments() {
+    lockQueue();
+    for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
+        if (paymentSlotUsed[i]) {
+            unlockQueue();
+            return true;
+        }
+    }
+    unlockQueue();
+    return false;
 }
 
 bool canPerformRebootOrOta() {
+    if (!isMaintenanceMode()) {
+        Serial.println("[PAY QUEUE] Reboot/OTA blocked: admission is not closed (maintenance mode off).");
+        return false;
+    }
     if (hasUnpersistedPayments()) {
         Serial.println("[PAY QUEUE] Reboot/OTA blocked: unpersisted transactions remain in RAM.");
         return false;
     }
-    if (getCoinSlotState() != CoinSlotState::IDLE) {
-        Serial.println("[PAY QUEUE] Reboot/OTA blocked: coin slot state is not IDLE.");
+    if (isCoinSlotArmed() || isRelayHardwareActive()) {
+        Serial.println("[PAY QUEUE] Reboot/OTA blocked: relay or coin slot hardware is powered/ARMED.");
         return false;
     }
-    if (isCoinSlotArmed()) {
-        Serial.println("[PAY QUEUE] Reboot/OTA blocked: coin slot hardware is currently ARMED.");
+    String activeDev = getActiveCoinSessionId();
+    CoinSlotState state = getCoinSlotState();
+    if (activeDev.length() > 0 || state == CoinSlotState::ARMED || state == CoinSlotState::DRAINING || state == CoinSlotState::RESERVED_ARMING) {
+        Serial.println("[PAY QUEUE] Reboot/OTA blocked: active or draining session owner exists.");
         return false;
     }
     if (isrUniversalPulseCount > 0) {
@@ -272,53 +316,70 @@ bool canPerformRebootOrOta() {
     return true;
 }
 
+static bool pendingRestartRequested = false;
+static String pendingRestartReason = "";
+static unsigned long pendingRestartStartMs = 0;
+static unsigned long pendingRestartTimeoutMs = 15000;
+static bool factoryResetPending = false;
+
+void setFactoryResetPending(bool pending) {
+    factoryResetPending = pending;
+}
+
 bool requestSystemRestart(const char* reason, unsigned long timeoutMs) {
     Serial.printf("\n=======================================================\n");
     Serial.printf("[🛑 REBOOT GATE] Planned restart requested: %s\n", reason ? reason : "Unknown");
     Serial.printf("=======================================================\n");
 
-    // 1. Close Admission: Enter maintenance mode to reject new sessions/requests
-    setMaintenanceMode(true);
+    setMaintenanceReason(MAINT_REASON_RESTART, true);
 
-    // 2. Wait for in-flight sessions/pulses to drain safely until timeout
-    unsigned long startMs = millis();
-    while (millis() - startMs < timeoutMs) {
-        // Run retry loop and revenue flushing while draining
-        processPendingPaymentRetries();
-        processRevenuePersistence();
-
-        if (canPerformRebootOrOta()) {
-            break;
-        }
-        delay(50);
-    }
-
-    // 3. Check if durability and idle conditions succeeded
-    if (!canPerformRebootOrOta()) {
-        Serial.printf("[🛑 REBOOT GATE] FAILED: System could not reach safe IDLE state or unpersisted RAM money exists. Restart aborted!\n");
-        setMaintenanceMode(false);
-        return false;
-    }
-
-    // 4. Final flush of any dirty revenue to NVS flash
-    if (revenueDirty || totalCoinsLifetime != lastSavedTotalCoins || totalEarningsLifetime != lastSavedTotalEarnings) {
-        lockNvs();
-        prefs.begin(NVS_NAMESPACE, false);
-        prefs.putULong(NVS_KEY_TOTAL_COINS, totalCoinsLifetime);
-        prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, totalEarningsLifetime);
-        prefs.end();
-        unlockNvs();
-        lastSavedTotalCoins = totalCoinsLifetime;
-        lastSavedTotalEarnings = totalEarningsLifetime;
-        revenueDirty = false;
-        Serial.println("[🛑 REBOOT GATE] Revenue counters durably flushed to NVS flash.");
-    }
-
-    Serial.printf("[🛑 REBOOT GATE] Pre-reboot invariants verified. System restarting now...\n");
-    Serial.flush();
-    delay(200);
-    ESP.restart();
+    pendingRestartRequested = true;
+    pendingRestartReason = reason ? reason : "Planned Restart";
+    pendingRestartStartMs = millis();
+    pendingRestartTimeoutMs = (timeoutMs > 0) ? timeoutMs : 15000;
     return true;
+}
+
+void processPendingSystemRestart() {
+    if (!pendingRestartRequested) return;
+
+    unsigned long now = millis();
+
+    if (canPerformRebootOrOta()) {
+        if (factoryResetPending) {
+            Serial.println("[🛑 REBOOT GATE] Safe maintenance acquired. Executing factory reset before restart...");
+            factoryResetDefaults();
+            factoryResetPending = false;
+        }
+
+        if (revenueDirty || totalCoinsLifetime != lastSavedTotalCoins || totalEarningsLifetime != lastSavedTotalEarnings) {
+            lockNvs();
+            prefs.begin(NVS_NAMESPACE, false);
+            prefs.putULong(NVS_KEY_TOTAL_COINS, totalCoinsLifetime);
+            prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, totalEarningsLifetime);
+            prefs.end();
+            unlockNvs();
+            lastSavedTotalCoins = totalCoinsLifetime;
+            lastSavedTotalEarnings = totalEarningsLifetime;
+            revenueDirty = false;
+            Serial.println("[🛑 REBOOT GATE] Revenue counters durably flushed to NVS flash.");
+        }
+
+        Serial.printf("[🛑 REBOOT GATE] Pre-reboot invariants verified (%s). System restarting now...\n", pendingRestartReason.c_str());
+        Serial.flush();
+        delay(200);
+        ESP.restart();
+        return;
+    }
+
+    if (now - pendingRestartStartMs >= pendingRestartTimeoutMs) {
+        Serial.printf("[🛑 REBOOT GATE] Timeout (%lu ms) waiting for safe reboot conditions (%s). Restart request canceled.\n",
+                      pendingRestartTimeoutMs, pendingRestartReason.c_str());
+        pendingRestartRequested = false;
+        factoryResetPending = false;
+        setMaintenanceReason(MAINT_REASON_RESTART, false);
+        setMaintenanceReason(MAINT_REASON_RESET, false);
+    }
 }
 
 int getPendingPaymentCount() {
@@ -547,6 +608,8 @@ bool acknowledgePhonePayment(
 
     unlockQueue();
     Serial.printf("[PAY QUEUE] Acknowledged tx_id='%s' (device: %s) successfully erased and cleared.\n", txId.c_str(), deviceId.c_str());
+    recordMatchDeductionCommitted(txId);
+    recordMatchCreditCommitted(txId);
     return true;
 }
 
@@ -646,4 +709,240 @@ void processPendingPaymentRetries() {
                               rec.creditSeconds, String(rec.txId), rec.opKind, rec.boxInstallationEpoch, rec.phonePairingEpoch);
         }
     }
+}
+
+bool cancelPaymentRecord(const String& txId) {
+    if (txId.length() == 0) return false;
+    lockQueue();
+    int foundIndex = -1;
+    for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
+        if (paymentSlotUsed[i] && String(paymentQueue[i].txId) == txId) {
+            foundIndex = i;
+            break;
+        }
+    }
+    if (foundIndex < 0) {
+        unlockQueue();
+        return false;
+    }
+    eraseRecord(foundIndex);
+    memset(&paymentQueue[foundIndex], 0, sizeof(PaymentRecord));
+    paymentSlotUsed[foundIndex] = false;
+    paymentSlotPersisted[foundIndex] = false;
+    lastPersistAttemptMs[foundIndex] = 0;
+    persistRetryCount[foundIndex] = 0;
+    lastDispatchMs[foundIndex] = 0;
+    activePaymentCount--;
+    unlockQueue();
+    Serial.printf("[PAY QUEUE] Canceled/rejected tx_id='%s'.\n", txId.c_str());
+    return true;
+}
+
+uint32_t computeMatchRecordCrc32(const MatchSettlementRecord& rec) {
+    const uint8_t* data = (const uint8_t*)&rec;
+    size_t length = offsetof(MatchSettlementRecord, crc32);
+    uint32_t crc = 0xFFFFFFFF;
+    for (size_t i = 0; i < length; i++) {
+        crc ^= data[i];
+        for (int j = 0; j < 8; j++) {
+            crc = (crc >> 1) ^ (0xEDB88320 & -(crc & 1));
+        }
+    }
+    return ~crc;
+}
+
+static bool loadMatchRecord(MatchSettlementRecord& outRec) {
+    lockNvs();
+    Preferences storage;
+    if (!storage.begin("match_settle", true)) {
+        unlockNvs();
+        return false;
+    }
+    size_t read = storage.getBytes("current", &outRec, sizeof(outRec));
+    storage.end();
+    unlockNvs();
+    if (read != sizeof(outRec)) return false;
+    if (outRec.magic != 0x4D53544CUL || outRec.schemaVersion != 1) return false;
+    if (outRec.crc32 != computeMatchRecordCrc32(outRec)) return false;
+    return true;
+}
+
+static bool saveMatchRecord(MatchSettlementRecord& rec) {
+    rec.magic = 0x4D53544CUL;
+    rec.schemaVersion = 1;
+    rec.crc32 = computeMatchRecordCrc32(rec);
+    lockNvs();
+    Preferences storage;
+    if (!storage.begin("match_settle", false)) {
+        unlockNvs();
+        return false;
+    }
+    size_t written = storage.putBytes("current", &rec, sizeof(rec));
+    storage.end();
+    unlockNvs();
+    return written == sizeof(rec);
+}
+
+void initMatchSettlement() {
+    MatchSettlementRecord rec;
+    if (!loadMatchRecord(rec)) return;
+
+    Serial.printf("[MATCH SETTLE] Loaded stored settlement record: matchId='%s', state=%d, deductTx='%s', creditTx='%s'\n",
+                  rec.matchId, (int)rec.state, rec.deductTxId, rec.creditTxId);
+
+    if (rec.state == MATCH_SETTLE_DEDUCT_PENDING) {
+        if (!hasPendingPayment(String(rec.deductTxId))) {
+            Serial.printf("[MATCH SETTLE] Restoring deduction tx_id='%s' to queue on reboot...\n", rec.deductTxId);
+            enqueuePendingPayment(
+                String(rec.deductTxId), String(rec.loserId), 0, CoinSlotOwnerType::PHONE,
+                -rec.stakeSeconds, OP_KIND_MATCH_TRANSFER, 0.0, 0, 0
+            );
+        }
+    } else if (rec.state == MATCH_SETTLE_DEDUCT_COMMITTED_CREDIT_PENDING) {
+        if (!hasPendingPayment(String(rec.creditTxId))) {
+            Serial.printf("[MATCH SETTLE] Restoring credit tx_id='%s' to queue on reboot...\n", rec.creditTxId);
+            enqueuePendingPayment(
+                String(rec.creditTxId), String(rec.winnerId), 0, CoinSlotOwnerType::PHONE,
+                rec.stakeSeconds, OP_KIND_MATCH_TRANSFER, 0.0, 0, 0
+            );
+        }
+    }
+}
+
+bool startMatchSettlement(
+    const String& matchId,
+    const String& loserId,
+    const String& winnerId,
+    int stakeSeconds,
+    String& outDeductTxId,
+    String& outCreditTxId,
+    String& errOut) {
+
+    MatchSettlementRecord existing;
+    if (loadMatchRecord(existing)) {
+        if (existing.state == MATCH_SETTLE_DEDUCT_PENDING || 
+            existing.state == MATCH_SETTLE_DEDUCT_COMMITTED_CREDIT_PENDING) {
+            if (String(existing.matchId) == matchId || matchId.length() == 0) {
+                errOut = "Settlement already in progress for this match.";
+                return false;
+            }
+        }
+        if (String(existing.matchId) == matchId) {
+            if (existing.state == MATCH_SETTLE_COMPLETED) {
+                errOut = "Match settlement already completed.";
+                return false;
+            }
+            if (existing.state == MATCH_SETTLE_REJECTED) {
+                errOut = "Match settlement was already rejected.";
+                return false;
+            }
+        }
+    }
+
+    String mId = matchId.length() > 0 ? matchId : ("match-" + String((unsigned long long)getCurrentMasterTimeMs()));
+    outDeductTxId = mId + "-deduct-" + generateCollisionResistantTxId("mdd");
+    outCreditTxId = mId + "-credit-" + generateCollisionResistantTxId("mcr");
+
+    MatchSettlementRecord newRec;
+    memset(&newRec, 0, sizeof(newRec));
+    newRec.state = MATCH_SETTLE_DEDUCT_PENDING;
+    strncpy(newRec.matchId, mId.c_str(), sizeof(newRec.matchId) - 1);
+    strncpy(newRec.loserId, loserId.c_str(), sizeof(newRec.loserId) - 1);
+    strncpy(newRec.winnerId, winnerId.c_str(), sizeof(newRec.winnerId) - 1);
+    newRec.stakeSeconds = stakeSeconds;
+    strncpy(newRec.deductTxId, outDeductTxId.c_str(), sizeof(newRec.deductTxId) - 1);
+    strncpy(newRec.creditTxId, outCreditTxId.c_str(), sizeof(newRec.creditTxId) - 1);
+    newRec.timestamp = getCurrentMasterTimeMs();
+
+    if (!saveMatchRecord(newRec)) {
+        errOut = "Failed to persist settlement record to NVS.";
+        return false;
+    }
+
+    bool queued = enqueuePendingPayment(
+        outDeductTxId, loserId, 0, CoinSlotOwnerType::PHONE,
+        -stakeSeconds, OP_KIND_MATCH_TRANSFER, 0.0, 0, 0
+    );
+
+    if (!queued) {
+        newRec.state = MATCH_SETTLE_REJECTED;
+        saveMatchRecord(newRec);
+        errOut = "Failed to queue deduction payment request.";
+        return false;
+    }
+
+    return true;
+}
+
+bool recordMatchDeductionCommitted(const String& deductTxId) {
+    MatchSettlementRecord rec;
+    if (!loadMatchRecord(rec)) return false;
+    if (String(rec.deductTxId) != deductTxId) return false;
+    if (rec.state != MATCH_SETTLE_DEDUCT_PENDING) return true;
+
+    rec.state = MATCH_SETTLE_DEDUCT_COMMITTED_CREDIT_PENDING;
+    saveMatchRecord(rec);
+
+    Serial.printf("[MATCH SETTLE] Deduction committed for match '%s'. Submitting credit tx_id='%s' to '%s'...\n",
+                  rec.matchId, rec.creditTxId, rec.winnerId);
+
+    enqueuePendingPayment(
+        String(rec.creditTxId), String(rec.winnerId), 0, CoinSlotOwnerType::PHONE,
+        rec.stakeSeconds, OP_KIND_MATCH_TRANSFER, 0.0, 0, 0
+    );
+    return true;
+}
+
+bool recordMatchDeductionRejected(const String& deductTxId) {
+    MatchSettlementRecord rec;
+    if (!loadMatchRecord(rec)) return false;
+    if (String(rec.deductTxId) != deductTxId) return false;
+
+    rec.state = MATCH_SETTLE_REJECTED;
+    saveMatchRecord(rec);
+
+    Serial.printf("[MATCH SETTLE] Deduction REJECTED for match '%s' (tx_id='%s'). Marked REJECTED.\n",
+                  rec.matchId, deductTxId.c_str());
+
+    cancelPaymentRecord(deductTxId);
+    return true;
+}
+
+bool recordMatchCreditCommitted(const String& creditTxId) {
+    MatchSettlementRecord rec;
+    if (!loadMatchRecord(rec)) return false;
+    if (String(rec.creditTxId) != creditTxId) return false;
+
+    rec.state = MATCH_SETTLE_COMPLETED;
+    saveMatchRecord(rec);
+
+    Serial.printf("[MATCH SETTLE] Credit committed for match '%s' (tx_id='%s'). Match settlement COMPLETED!\n",
+                  rec.matchId, creditTxId.c_str());
+    return true;
+}
+
+String getMatchSettlementStatusHtml(const String& currentMatchId) {
+    MatchSettlementRecord rec;
+    if (!loadMatchRecord(rec)) {
+        return "";
+    }
+    if (currentMatchId.length() > 0 && String(rec.matchId) != currentMatchId) {
+        return "";
+    }
+
+    int mins = rec.stakeSeconds / 60;
+    String mId = String(rec.matchId);
+    String loser = String(rec.loserId);
+    String winner = String(rec.winnerId);
+
+    if (rec.state == MATCH_SETTLE_DEDUCT_PENDING) {
+        return "<div style='background:#fef3c7;color:#92400e;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>⏳ <b>Match Settlement Pending:</b> Deduction (-" + String(mins) + "m) submitted for loser (" + loser + "), credit pending deduction confirmation. [Match: " + mId + "]</div>";
+    } else if (rec.state == MATCH_SETTLE_DEDUCT_COMMITTED_CREDIT_PENDING) {
+        return "<div style='background:#d1ecf1;color:#0c5460;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>⏳ <b>Match Settlement In Progress:</b> Deduction committed (-" + String(mins) + "m from " + loser + "), credit pending transfer to winner (" + winner + "). [Match: " + mId + "]</div>";
+    } else if (rec.state == MATCH_SETTLE_COMPLETED) {
+        return "<div style='background:#e8f5e9;color:#2e7d32;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>🏆 <b>Match Transfer Completed:</b> Transferred +" + String(mins) + "m to winner (" + winner + ") and deducted -" + String(mins) + "m from loser (" + loser + "). [Match: " + mId + "]</div>";
+    } else if (rec.state == MATCH_SETTLE_REJECTED) {
+        return "<div style='background:#ffebee;color:#c62828;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Match Transfer Rejected:</b> Deduction failed on loser (" + loser + ", e.g. insufficient funds). No credits were transferred. [Match: " + mId + "]</div>";
+    }
+    return "";
 }

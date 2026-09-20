@@ -264,6 +264,18 @@ class PaymentRepository(
                 val curDeadline = currentState?.sessionExpiryDeadlineMs ?: 0L
                 val deductMs = positiveSeconds.toLong() * 1000L
 
+                val isMatchTransfer = operationKind.equals("MATCH_TRANSFER", ignoreCase = true)
+                if (isMatchTransfer) {
+                    val currentRemainingMs = if (curDeadline > nowMonotonic) (curDeadline - nowMonotonic) else 0L
+                    if (currentRemainingMs < deductMs) {
+                        Log.w(
+                            TAG,
+                            "Match transfer deduction rejected for $txId: Insufficient balance ($currentRemainingMs ms < $deductMs ms required)."
+                        )
+                        return@withTransaction PaymentResult.NOT_ELIGIBLE
+                    }
+                }
+
                 val newDeadline = if (curDeadline > nowMonotonic) {
                     maxOf(nowMonotonic, curDeadline - deductMs)
                 } else {
