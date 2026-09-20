@@ -39,7 +39,7 @@ class KioskHttpServerUnitTest {
             lastCreditedAmount = amount
             return simulatedPaymentResult
         }
-        override fun onDeductTime(seconds: Int, txId: String?) {}
+        override fun onDeductTime(seconds: Int, txId: String?): PaymentResult = simulatedPaymentResult
         override fun onConfigUpdated(price: Double?, minutes: Int?, deviceName: String?, adminPin: String?, slotNum: Int?) {}
         override fun onTriggerAction(action: String, slotNum: Int?, extra: Map<String, String>?) {}
         override fun getCrashLog(): String? = null
@@ -240,7 +240,7 @@ class KioskHttpServerUnitTest {
             override fun getAppState(): Int = 2
             override fun getDeviceId(): String = "TEST_DEVICE"
             override fun creditPayment(txId: String, seconds: Int, amount: Double): PaymentResult = PaymentResult.APPLIED
-            override fun onDeductTime(seconds: Int, txId: String?) {}
+            override fun onDeductTime(seconds: Int, txId: String?): PaymentResult = PaymentResult.APPLIED
             override fun onConfigUpdated(price: Double?, minutes: Int?, deviceName: String?, adminPin: String?, slotNum: Int?) {}
             override fun onTriggerAction(action: String, slotNum: Int?, extra: Map<String, String>?) {}
             override fun getCrashLog(): String? = null
@@ -318,5 +318,89 @@ class KioskHttpServerUnitTest {
         assertTrue("Body must contain device_id=$myDeviceId", body.contains("device_id=$myDeviceId"))
         assertTrue("Body must contain v_sig=", body.contains("v_sig="))
         assertEquals("Delegate called once", 1, creditPaymentCallCount)
+    }
+
+    @Test
+    fun testQuickAdjustAddTimePositiveMinutes() {
+        simulatedPaymentResult = PaymentResult.APPLIED
+        val now = System.currentTimeMillis()
+        val myDeviceId = "TEST_DEVICE"
+        val txId = "adj-TEST_DEVICE-12345"
+        val query = "device_id=$myDeviceId&tx_id=$txId&seconds=60&amount=0&ts=$now"
+        val params = createEncryptedParams("/add_time", query)
+
+        val response = server.serve(createSession("/add_time", params))
+        assertEquals("Status must be 200 OK", 200, response.status.requestStatus)
+        val body = readResponseBody(response)
+        assertTrue("Body must start with OK", body.startsWith("OK:"))
+        assertTrue("Body must contain tx_id=$txId", body.contains("tx_id=$txId"))
+        assertTrue("Body must contain device_id=$myDeviceId", body.contains("device_id=$myDeviceId"))
+        assertTrue("Body must contain seconds=60", body.contains("seconds=60"))
+        assertTrue("Body must contain amount=0", body.contains("amount=0"))
+        assertTrue("Body must contain v_sig=", body.contains("v_sig="))
+        assertEquals("Delegate called once", 1, creditPaymentCallCount)
+        assertEquals(txId, lastCreditedTxId)
+        assertEquals(60, lastCreditedSeconds)
+        assertEquals(0.0, lastCreditedAmount ?: 1.0, 0.001)
+    }
+
+    @Test
+    fun testQuickAdjustDeductTimeNegativeMinutes() {
+        simulatedPaymentResult = PaymentResult.APPLIED
+        val now = System.currentTimeMillis()
+        val myDeviceId = "TEST_DEVICE"
+        val txId = "adj-TEST_DEVICE-deduct-123"
+        val query = "device_id=$myDeviceId&tx_id=$txId&seconds=-60&amount=0&ts=$now"
+        val params = createEncryptedParams("/add_time", query)
+
+        val response = server.serve(createSession("/add_time", params))
+        assertEquals("Status must be 200 OK", 200, response.status.requestStatus)
+        val body = readResponseBody(response)
+        assertTrue("Body must start with OK", body.startsWith("OK:"))
+        assertTrue("Body must contain tx_id=$txId", body.contains("tx_id=$txId"))
+        assertTrue("Body must contain seconds=-60", body.contains("seconds=-60"))
+        assertTrue("Body must contain amount=0", body.contains("amount=0"))
+        assertTrue("Body must contain v_sig=", body.contains("v_sig="))
+    }
+
+    @Test
+    fun testQuickAdjustDeductTimeAlreadyProcessed() {
+        simulatedPaymentResult = PaymentResult.ALREADY_APPLIED
+        val now = System.currentTimeMillis()
+        val myDeviceId = "TEST_DEVICE"
+        val txId = "adj-TEST_DEVICE-repeat-1"
+        val query = "device_id=$myDeviceId&tx_id=$txId&seconds=-60&amount=0&ts=$now"
+        val params = createEncryptedParams("/add_time", query)
+
+        val response = server.serve(createSession("/add_time", params))
+        assertEquals("Status must be 200 OK", 200, response.status.requestStatus)
+        val body = readResponseBody(response)
+        assertTrue("Body must start with ALREADY_PROCESSED", body.startsWith("ALREADY_PROCESSED:"))
+        assertTrue("Body must contain tx_id=$txId", body.contains("tx_id=$txId"))
+        assertTrue("Body must contain v_sig=", body.contains("v_sig="))
+    }
+
+    @Test
+    fun testQuickAdjustDeductTimeConflictAndFailureResponses() {
+        val now = System.currentTimeMillis()
+        val myDeviceId = "TEST_DEVICE"
+
+        // Conflict
+        simulatedPaymentResult = PaymentResult.CONFLICT
+        val queryConflict = "device_id=$myDeviceId&tx_id=adj-conflict&seconds=-60&amount=0&ts=$now"
+        val respConflict = server.serve(createSession("/add_time", createEncryptedParams("/add_time", queryConflict)))
+        assertEquals("Conflict returns 409", 409, respConflict.status.requestStatus)
+
+        // Not eligible
+        simulatedPaymentResult = PaymentResult.NOT_ELIGIBLE
+        val queryIneligible = "device_id=$myDeviceId&tx_id=adj-ineligible&seconds=-60&amount=0&ts=$now"
+        val respIneligible = server.serve(createSession("/add_time", createEncryptedParams("/add_time", queryIneligible)))
+        assertEquals("Ineligible returns 403", 403, respIneligible.status.requestStatus)
+
+        // Database failure
+        simulatedPaymentResult = PaymentResult.FAILED
+        val queryFail = "device_id=$myDeviceId&tx_id=adj-fail&seconds=-60&amount=0&ts=$now"
+        val respFail = server.serve(createSession("/add_time", createEncryptedParams("/add_time", queryFail)))
+        assertEquals("Failure returns 503", 503, respFail.status.requestStatus)
     }
 }

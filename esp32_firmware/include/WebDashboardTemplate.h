@@ -97,7 +97,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                     <div class="form-group">
                         <label>Target Device</label>
                         <select id="quick_adjust_target" name="target_ip" onchange="checkQuickAdjustInactive()">
-                            <option value="ALL">All Devices (Broadcast)</option>
+                            <option value="ALL">All Active Devices</option>
                             {DEVICE_OPTIONS}
                         </select>
                         <div id="quick_adjust_warn" style="display: none; margin-top: 6px; padding: 6px 10px; background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; font-size: 11px; font-weight: 700;">
@@ -108,9 +108,10 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                         <label>Minutes</label>
                         <input type="number" name="add_minutes" value="60" min="1">
                     </div>
+                    <input type="hidden" id="quick_adjust_action" name="adjust_action" value="add">
                     <div style="display: flex; gap: 12px; margin-top: 12px;">
-                        <button type="submit" name="adjust_action" value="add" class="btn btn-warning" style="flex: 1;" onclick="return validateQuickAdjust(event, 'add')">+ Add</button>
-                        <button type="submit" name="adjust_action" value="subtract" class="btn btn-danger" style="flex: 1;" onclick="return validateQuickAdjust(event, 'subtract')">- Subtract</button>
+                        <button type="submit" class="btn btn-warning" style="flex: 1;" onclick="document.getElementById('quick_adjust_action').value='add'">+ Add</button>
+                        <button type="submit" class="btn btn-danger" style="flex: 1;" onclick="document.getElementById('quick_adjust_action').value='subtract'">- Subtract</button>
                     </div>
                 </form>
             </div>

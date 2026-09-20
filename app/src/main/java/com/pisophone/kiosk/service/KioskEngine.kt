@@ -51,28 +51,40 @@ class KioskEngine(
         db = AppDatabase.getDatabase(context),
         context = context,
         onPaymentApplied = { txId, seconds, amount, snapshot ->
-            val pesoAmount = if (amount >= 1.0) amount.toInt() else 1
+            val isManualAdjustment = (amount <= 0.0)
+            val pesoAmount = if (amount >= 1.0) amount.toInt() else 0
             // 1. Commit is finalized. Publish committed session state through serialized handler:
-            val targetState = if (stateManager.appState.value == 0) 1 else null
+            val targetState = if (isManualAdjustment) {
+                if (stateManager.appState.value == 0 || stateManager.appState.value == 1) 2 else null
+            } else {
+                if (stateManager.appState.value == 0) 1 else null
+            }
             val applied = stateManager.applySessionUpdate(snapshot, targetState)
             if (applied) {
-                stateManager.paymentTimeout.value = ARMING_TIMEOUT_SECONDS
-
-                if (stateManager.appState.value == 1 || stateManager.appState.value == 3) {
-                    stateManager.coinsInserted.value += pesoAmount
-                } else if (stateManager.appState.value == 2) {
-                    Log.d(TAG, "Coin credited directly to active session: +${seconds}s (₱$pesoAmount)")
+                if (isManualAdjustment) {
+                    if (targetState == 2) {
+                        stateManager.paymentTimeout.value = 0
+                    }
+                    Log.d(TAG, "Admin manual adjustment credited: +${seconds}s (targetState=$targetState)")
+                } else {
+                    stateManager.paymentTimeout.value = ARMING_TIMEOUT_SECONDS
+                    if (stateManager.appState.value == 1 || stateManager.appState.value == 3) {
+                        stateManager.coinsInserted.value += pesoAmount
+                    } else if (stateManager.appState.value == 2) {
+                        Log.d(TAG, "Coin credited directly to active session: +${seconds}s (₱$pesoAmount)")
+                    }
                 }
                 stateManager.saveState()
             }
 
             scope.launch(Dispatchers.IO) {
                 try {
+                    val eventSource = if (isManualAdjustment) "Admin Quick Adjust" else "Piso Coin (₱$pesoAmount)"
                     coinEventRepo.insertEvent(
                         CoinEvent(
                             txId = txId,
                             secondsAdded = seconds,
-                            source = "Piso Coin (₱$pesoAmount)"
+                            source = eventSource
                         )
                     )
                     coinEventRepo.deleteOldEvents(500)
@@ -86,7 +98,11 @@ class KioskEngine(
             HardwareFeedback.triggerFlashlight(context, 150L)
             Handler(Looper.getMainLooper()).post {
                 val addedMins = seconds / 60
-                Toast.makeText(context, "₱$pesoAmount coin accepted! (+${addedMins}m)", Toast.LENGTH_SHORT).show()
+                if (isManualAdjustment) {
+                    Toast.makeText(context, "${addedMins}m added by admin!", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "₱$pesoAmount coin accepted! (+${addedMins}m)", Toast.LENGTH_SHORT).show()
+                }
             }
         },
         onSessionStateChanged = { snapshot ->

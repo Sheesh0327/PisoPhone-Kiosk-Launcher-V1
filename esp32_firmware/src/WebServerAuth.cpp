@@ -4,6 +4,7 @@
 #include "Config.h"
 #include "Security.h"
 #include "DeviceManager.h"
+#include "DeviceNetwork.h"
 #include "SuperAdminManager.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
@@ -136,29 +137,63 @@ void authWorkerTask(void *pvParameters) {
                                 String ackSig = parseAckField(respBody, "v_sig");
 
                                 if (ackTx.length() > 0 && ackDev.length() > 0 && ackTs.length() > 0 && ackSig.length() > 0) {
-                                    bool amtIsNum = true;
-                                    if (ackAmtStr.length() == 0) amtIsNum = false;
+                                    // Parse amount as nonnegative integer (reject empty, fractional, non-digits, out-of-range)
+                                    bool amtIsNum = (ackAmtStr.length() > 0 && ackAmtStr.length() <= 10);
                                     for (unsigned int i = 0; i < ackAmtStr.length(); i++) {
-                                        if (!isDigit(ackAmtStr[i])) amtIsNum = false;
+                                        if (!isDigit(ackAmtStr[i])) { amtIsNum = false; break; }
                                     }
-                                    bool secIsNum = true;
-                                    if (ackSecStr.length() == 0) secIsNum = false;
-                                    for (unsigned int i = 0; i < ackSecStr.length(); i++) {
-                                        if (!isDigit(ackSecStr[i])) secIsNum = false;
+                                    long long amtVal = amtIsNum ? atoll(ackAmtStr.c_str()) : -1;
+                                    if (amtVal < 0 || amtVal > 1000000) amtIsNum = false;
+
+                                    // Parse seconds as signed integer with optional leading minus sign
+                                    bool secIsNum = (ackSecStr.length() > 0);
+                                    size_t startSecIdx = 0;
+                                    if (ackSecStr[0] == '-') {
+                                        if (ackSecStr.length() == 1) secIsNum = false;
+                                        startSecIdx = 1;
+                                    }
+                                    if (secIsNum && (ackSecStr.length() - startSecIdx) <= 10) {
+                                        for (size_t i = startSecIdx; i < ackSecStr.length(); i++) {
+                                            if (!isDigit(ackSecStr[i])) { secIsNum = false; break; }
+                                        }
+                                    } else {
+                                        secIsNum = false;
+                                    }
+                                    long long secValLL = 0;
+                                    if (secIsNum) {
+                                        secValLL = atoll(ackSecStr.c_str());
+                                        if (secValLL < -2147483648LL || secValLL > 2147483647LL) {
+                                            secIsNum = false;
+                                        }
                                     }
 
                                     if (amtIsNum && secIsNum) {
-                                        ackAmt = ackAmtStr.toInt();
-                                        ackSec = ackSecStr.toInt();
+                                        ackAmt = (int)amtVal;
+                                        ackSec = (int)secValLL;
+
+                                        // Verify recipient, transaction ID, amount, and seconds against outgoing adjustment
+                                        int expectedAmt = currentAmount.toInt();
+                                        int expectedSec = 0;
+                                        int secParamPos = finalParams.indexOf("seconds=");
+                                        if (secParamPos != -1) {
+                                            int endSec = finalParams.indexOf('&', secParamPos);
+                                            if (endSec == -1) endSec = finalParams.length();
+                                            expectedSec = finalParams.substring(secParamPos + 8, endSec).toInt();
+                                        }
 
                                         if (ackTx == currentTxId && ackDev == currentDevId) {
-                                            if (verifyAckSignature(ackDev, ackTx, ackAmt, ackSec, ackTs, status, ackSig, sharedSecret)) {
-                                                ackValid = true;
+                                            if (ackAmt == expectedAmt && ackSec == expectedSec) {
+                                                if (verifyAckSignature(ackDev, ackTx, ackAmt, ackSec, ackTs, status, ackSig, sharedSecret)) {
+                                                    ackValid = true;
+                                                } else {
+                                                    Serial.printf("[AUTH WORKER] Invalid ACK signature for tx_id='%s'\n", currentTxId.c_str());
+                                                }
                                             } else {
-                                                Serial.printf("[AUTH WORKER] Invalid ACK signature for tx_id='%s'\n", currentTxId.c_str());
+                                                Serial.printf("[AUTH WORKER] Mismatched ACK adjustment values for tx_id='%s': expected (amt=%d, sec=%d) vs got (amt=%d, sec=%d)\n",
+                                                              currentTxId.c_str(), expectedAmt, expectedSec, ackAmt, ackSec);
                                             }
                                         } else {
-                                            Serial.printf("[AUTH WORKER] Mismatched ACK: (dev=%s, tx=%s) vs received (dev=%s, tx=%s)\n",
+                                            Serial.printf("[AUTH WORKER] Mismatched ACK recipient/tx: (dev=%s, tx=%s) vs received (dev=%s, tx=%s)\n",
                                                           currentDevId.c_str(), currentTxId.c_str(), ackDev.c_str(), ackTx.c_str());
                                         }
                                     } else {
@@ -174,9 +209,15 @@ void authWorkerTask(void *pvParameters) {
 
                             if (ackValid) {
                                 delivered = true;
-                                if (acknowledgePhonePayment(ackDev, ackTx, ackAmt, ackSec, status)) {
-                                    Serial.printf("[AUTH WORKER] Durable phone ACK accepted for tx_id='%s' (device: %s)\n",
-                                                  currentTxId.c_str(), ackDev.c_str());
+                                if (currentTxId.startsWith("tx-")) {
+                                    if (acknowledgePhonePayment(ackDev, ackTx, ackAmt, ackSec, status)) {
+                                        Serial.printf("[AUTH WORKER] Durable phone ACK accepted for tx_id='%s' (device: %s)\n",
+                                                      currentTxId.c_str(), ackDev.c_str());
+                                    }
+                                } else {
+                                    Serial.printf("[AUTH WORKER] Verified adjustment ACK confirmed for tx_id='%s' (device: %s, seconds: %d)\n",
+                                                  currentTxId.c_str(), ackDev.c_str(), ackSec);
+                                    recordAdjustmentConfirmed(currentTxId, ackDev, ackSec);
                                 }
                             } else {
                                 Serial.printf("[AUTH WORKER] Payment ACK rejected due to mismatched recipient/signature (tx_id=%s)\n",

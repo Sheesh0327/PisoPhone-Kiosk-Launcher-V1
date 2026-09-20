@@ -90,22 +90,32 @@ class KioskServerCoordinator(
         return onCreditPayment(txId, seconds, amount)
     }
 
-    override fun onDeductTime(seconds: Int, txId: String?) {
-        val updated = paymentRepo.deductTimeBlocking(seconds, txId)
-        val targetState = if (updated.sessionTimeRemaining <= 0) 0 else null
-        val applied = stateManager.applySessionUpdate(
-            deadlineMs = updated.sessionExpiryDeadlineMs,
-            remainingSeconds = updated.sessionTimeRemaining,
-            revision = updated.revision,
-            targetAppState = targetState
-        )
-        if (applied) {
-            stateManager.saveState()
+    override fun onDeductTime(seconds: Int, txId: String?): PaymentResult {
+        val effectiveTxId = txId ?: "deduct_${System.currentTimeMillis()}"
+        val result = paymentRepo.deductPaymentBlocking(effectiveTxId, seconds)
+        if (result == PaymentResult.APPLIED || result == PaymentResult.ALREADY_APPLIED) {
+            val currentState = paymentRepo.getSessionState()
+            val remaining = currentState?.sessionTimeRemaining ?: 0
+            val deadline = currentState?.sessionExpiryDeadlineMs ?: 0L
+            val rev = currentState?.revision ?: 0L
+            val targetState = if (remaining <= 0) 0 else null
+            val applied = stateManager.applySessionUpdate(
+                deadlineMs = deadline,
+                remainingSeconds = remaining,
+                revision = rev,
+                targetAppState = targetState
+            )
+            if (applied) {
+                stateManager.saveState()
+            }
+            if (result == PaymentResult.APPLIED) {
+                val displayMinutes = seconds / 60
+                Handler(Looper.getMainLooper()).post {
+                    Toast.makeText(context, "$displayMinutes minutes deducted!", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
-        val displayMinutes = seconds / 60
-        Handler(Looper.getMainLooper()).post {
-            Toast.makeText(context, "$displayMinutes minutes deducted!", Toast.LENGTH_SHORT).show()
-        }
+        return result
     }
 
     override fun onConfigUpdated(price: Double?, minutes: Int?, deviceName: String?, adminPin: String?, slotNum: Int?) {

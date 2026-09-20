@@ -8,8 +8,58 @@
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 
-void sendAddTime(int minutes, String targetIp, String txId) {
-    if (androidIps.length() == 0) return;
+struct AdjustmentRecord {
+    char txId[48];
+    char deviceId[32];
+    int seconds;
+    bool confirmed;
+    uint32_t timestamp;
+};
+static AdjustmentRecord s_adjustments[16];
+static size_t s_adjCount = 0;
+static portMUX_TYPE s_adjMux = portMUX_INITIALIZER_UNLOCKED;
+
+void recordAdjustmentPending(const String& txId, const String& deviceId, int seconds) {
+    portENTER_CRITICAL(&s_adjMux);
+    size_t idx = s_adjCount % 16;
+    s_adjCount++;
+    memset(&s_adjustments[idx], 0, sizeof(AdjustmentRecord));
+    strncpy(s_adjustments[idx].txId, txId.c_str(), sizeof(s_adjustments[idx].txId) - 1);
+    strncpy(s_adjustments[idx].deviceId, deviceId.c_str(), sizeof(s_adjustments[idx].deviceId) - 1);
+    s_adjustments[idx].seconds = seconds;
+    s_adjustments[idx].confirmed = false;
+    s_adjustments[idx].timestamp = millis();
+    portEXIT_CRITICAL(&s_adjMux);
+}
+
+void recordAdjustmentConfirmed(const String& txId, const String& deviceId, int seconds) {
+    portENTER_CRITICAL(&s_adjMux);
+    for (size_t i = 0; i < 16; i++) {
+        if (strncmp(s_adjustments[i].txId, txId.c_str(), sizeof(s_adjustments[i].txId)) == 0) {
+            s_adjustments[i].confirmed = true;
+            s_adjustments[i].timestamp = millis();
+            break;
+        }
+    }
+    portEXIT_CRITICAL(&s_adjMux);
+}
+
+bool isAdjustmentConfirmed(const String& txId) {
+    bool confirmed = false;
+    portENTER_CRITICAL(&s_adjMux);
+    for (size_t i = 0; i < 16; i++) {
+        if (strncmp(s_adjustments[i].txId, txId.c_str(), sizeof(s_adjustments[i].txId)) == 0) {
+            confirmed = s_adjustments[i].confirmed;
+            break;
+        }
+    }
+    portEXIT_CRITICAL(&s_adjMux);
+    return confirmed;
+}
+
+AddTimeSummary sendAddTime(int64_t signedSeconds, String targetIp, String txId) {
+    AddTimeSummary summary = {0, 0, 0, 0};
+    if (androidIps.length() == 0) return summary;
     int startIdx = 0;
     while (startIdx < androidIps.length()) {
         int comma = androidIps.indexOf(',', startIdx);
@@ -20,24 +70,32 @@ void sendAddTime(int minutes, String targetIp, String txId) {
             DeviceConfig cfg;
             if (parseDeviceEntry(entry, cfg)) {
                 if (targetIp == "ALL" || targetIp == cfg.ip) {
+                    summary.matchedRecipients++;
                     int slotIdx = findSlotIndexForDevice(cfg.id, cfg.ip);
                     bool isActive = isSlotActive(slotIdx);
                     if (!isActive) {
-                        Serial.printf("[-] sendAddTime skipped for %s (Slot #%d): Device Expired / Uncredited\n",
+                        Serial.printf("[-] sendAddTime skipped for %s (Slot #%d): Device Inactive / Unlicensed\n",
                             cfg.ip.c_str(), (slotIdx >= 0) ? licenseSlots[slotIdx].slotNum : 0);
+                        summary.skippedInactive++;
                     } else {
                         String currentTxId = txId;
                         if (currentTxId.length() == 0) {
                             currentTxId = "adj-" + cfg.id + "-" + String(millis()) + "-" + String(random(1000, 9999));
                         }
-                        String params = "device_id=" + cfg.id + "&tx_id=" + currentTxId + "&seconds=" + String(minutes * 60) + "&amount=0";
-                        sendAuthenticated(cfg.ip, targetPort, "/add_time", "/challenge", params, 1000);
+                        String params = "device_id=" + cfg.id + "&tx_id=" + currentTxId + "&seconds=" + String((long)signedSeconds) + "&amount=0";
+                        recordAdjustmentPending(currentTxId, cfg.id, (int)signedSeconds);
+                        if (sendAuthenticated(cfg.ip, targetPort, "/add_time", "/challenge", params, 1000)) {
+                            summary.queuedRequests++;
+                        } else {
+                            summary.failedSubmissions++;
+                        }
                     }
                 }
             }
         }
         startIdx = comma + 1;
     }
+    return summary;
 }
 
 void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId) {

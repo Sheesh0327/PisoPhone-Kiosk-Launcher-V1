@@ -151,6 +151,92 @@ class PaymentRepository(
             creditPayment(txId, seconds, amount)
         }
 
+    suspend fun deductPayment(txId: String, seconds: Int): PaymentResult {
+        var committedSnapshot: SessionSnapshot? = null
+        val positiveSeconds = if (seconds == Int.MIN_VALUE) Int.MAX_VALUE else Math.abs(seconds)
+        val expectedNegativeSeconds = -positiveSeconds
+
+        val result = try {
+            db.withTransaction {
+                if (txId.isNotBlank()) {
+                    val existing = paymentDao.getReceiptByTxId(txId)
+                    if (existing != null) {
+                        val isIdentical = (existing.secondsCredited == expectedNegativeSeconds && Math.abs(existing.amount - 0.0) < 0.0001)
+                        if (isIdentical) {
+                            return@withTransaction PaymentResult.ALREADY_APPLIED
+                        } else {
+                            Log.w(
+                                TAG,
+                                "Deduction transaction conflict for $txId: existing=(s=${existing.secondsCredited}, a=${existing.amount}) vs new=(s=$expectedNegativeSeconds, a=0.0)"
+                            )
+                            return@withTransaction PaymentResult.CONFLICT
+                        }
+                    }
+                }
+
+                if (!isEligible()) {
+                    Log.w(TAG, "Deduction rejected for $txId: Device/slot is not currently eligible.")
+                    return@withTransaction PaymentResult.NOT_ELIGIBLE
+                }
+
+                val currentState = paymentDao.getSessionState()
+                val nowMonotonic = SystemClock.elapsedRealtime()
+                val curDeadline = currentState?.sessionExpiryDeadlineMs ?: 0L
+                val deductMs = positiveSeconds.toLong() * 1000L
+
+                val newDeadline = if (curDeadline > nowMonotonic) {
+                    maxOf(nowMonotonic, curDeadline - deductMs)
+                } else {
+                    0L
+                }
+                val remaining = if (newDeadline > nowMonotonic) {
+                    ((newDeadline - nowMonotonic) / 1000L).toInt()
+                } else {
+                    0
+                }
+                val effectiveDeadline = if (remaining > 0) newDeadline else 0L
+                val newRevision = (currentState?.revision ?: 0L) + 1L
+
+                if (txId.isNotBlank()) {
+                    val receipt = PaymentReceipt(
+                        txId = txId,
+                        secondsCredited = expectedNegativeSeconds,
+                        amount = 0.0,
+                        acceptanceTimestamp = System.currentTimeMillis()
+                    )
+                    paymentDao.insertReceipt(receipt)
+                }
+
+                val newState = PaidSessionState(
+                    id = 1,
+                    sessionTimeRemaining = remaining,
+                    sessionExpiryDeadlineMs = effectiveDeadline,
+                    lastSavedElapsedRealtime = nowMonotonic,
+                    revision = newRevision
+                )
+                paymentDao.updateSessionState(newState)
+
+                committedSnapshot = SessionSnapshot(effectiveDeadline, remaining, newRevision)
+                PaymentResult.APPLIED
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Database transaction failed for deductPayment txId $txId: ${e.message}", e)
+            PaymentResult.FAILED
+        }
+
+        if (result == PaymentResult.APPLIED) {
+            val snapshot = committedSnapshot ?: SessionSnapshot(0L, 0, 0L)
+            onSessionStateChanged?.invoke(snapshot)
+        }
+
+        return result
+    }
+
+    fun deductPaymentBlocking(txId: String, seconds: Int): PaymentResult =
+        runBlocking(Dispatchers.IO) {
+            deductPayment(txId, seconds)
+        }
+
     suspend fun deductTime(secondsDelta: Int, txId: String? = null): PaidSessionState {
         val updatedState = db.withTransaction {
             if (!txId.isNullOrBlank()) {

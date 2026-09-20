@@ -21,7 +21,7 @@ interface KioskServerDelegate {
     fun getAppState(): Int
     fun getAuditEventsJson(): String
     fun creditPayment(txId: String, seconds: Int, amount: Double): PaymentResult
-    fun onDeductTime(seconds: Int, txId: String? = null)
+    fun onDeductTime(seconds: Int, txId: String? = null): PaymentResult
     fun onConfigUpdated(price: Double?, minutes: Int?, deviceName: String?, adminPin: String?, slotNum: Int? = null)
     fun onTriggerAction(action: String, slotNum: Int? = null, extra: Map<String, String>? = null)
     fun getCrashLog(): String?
@@ -283,11 +283,16 @@ class KioskHttpServer(
                     }
                     val positiveSeconds = positiveSecondsLong.toInt()
                     val deductTxId = txId ?: "deduct_${System.currentTimeMillis()}"
-                    delegate.onDeductTime(positiveSeconds, deductTxId)
-                    
+                    val result = try {
+                        delegate.onDeductTime(positiveSeconds, deductTxId)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Exception during onDeductTime for $deductTxId: ${e.message}", e)
+                        PaymentResult.FAILED
+                    }
+
                     val ackResp = if (targetDev.isNotBlank()) {
                         val ackNow = System.currentTimeMillis()
-                        val statusStr = "OK"
+                        val statusStr = if (result == PaymentResult.ALREADY_APPLIED) "ALREADY_PROCESSED" else "OK"
                         val ackSig = KioskSecurity.calculateAckSignature(
                             deviceId = targetDev,
                             txId = deductTxId,
@@ -299,9 +304,26 @@ class KioskHttpServer(
                         )
                         "$statusStr:tx_id=$deductTxId:device_id=$targetDev:amount=0:seconds=${rawSecondsLong.toInt()}:ts=$ackNow:v_sig=$ackSig"
                     } else {
-                        "OK"
+                        if (result == PaymentResult.ALREADY_APPLIED) "ALREADY_PROCESSED" else "OK"
                     }
-                    createResponse(Response.Status.OK, "text/plain", ackResp)
+
+                    when (result) {
+                        PaymentResult.APPLIED, PaymentResult.ALREADY_APPLIED -> {
+                            createResponse(Response.Status.OK, "text/plain", ackResp)
+                        }
+                        PaymentResult.CONFLICT -> {
+                            Log.w(TAG, "Deduction rejected due to conflicting values for $deductTxId")
+                            createResponse(Response.Status.CONFLICT, "text/plain", "CONFLICT")
+                        }
+                        PaymentResult.NOT_ELIGIBLE -> {
+                            Log.w(TAG, "Deduction rejected: device not eligible for $deductTxId")
+                            createResponse(Response.Status.FORBIDDEN, "text/plain", "NOT_ELIGIBLE")
+                        }
+                        PaymentResult.FAILED -> {
+                            Log.e(TAG, "Deduction failed to commit to database for $deductTxId")
+                            createResponse(Response.Status.SERVICE_UNAVAILABLE, "text/plain", "SERVICE_UNAVAILABLE")
+                        }
+                    }
                 } else {
                     createResponse(Response.Status.BAD_REQUEST, "text/plain", "INVALID_SECONDS")
                 }

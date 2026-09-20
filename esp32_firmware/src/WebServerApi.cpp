@@ -11,48 +11,68 @@
 
 void handleAddTime() {
     if (!checkAdminAuth()) return;
-    int minutes = 60;
-    if (webServer.hasArg("add_minutes")) {
-        minutes = webServer.arg("add_minutes").toInt();
-    }
-    if (webServer.hasArg("adjust_action") && webServer.arg("adjust_action") == "subtract") {
-        minutes = -abs(minutes);
-    }
+
     String targetIp = webServer.hasArg("target_ip") ? webServer.arg("target_ip") : "ALL";
+    targetIp.trim();
 
-    // Enforce Expiration Check (RULE 6: Single verification path)
-    if (targetIp != "ALL") {
-        DeviceConfig targetCfg;
-        targetCfg.ip = targetIp;
-        int startIdx = 0;
-        while (startIdx < androidIps.length()) {
-            int comma = androidIps.indexOf(',', startIdx);
-            if (comma == -1) comma = androidIps.length();
-            String entry = androidIps.substring(startIdx, comma);
-            entry.trim();
-            if (entry.length() > 0) {
-                DeviceConfig cfg;
-                if (parseDeviceEntry(entry, cfg) && cfg.ip == targetIp) {
-                    targetCfg = cfg;
-                    break;
-                }
-            }
-            startIdx = comma + 1;
-        }
-
-        int slotIdx = findSlotIndexForDevice(targetCfg.id, targetCfg.ip);
-        bool isActive = isSlotActive(slotIdx);
-        if (!isActive) {
-            Serial.printf("[-] handleAddTime blocked: Target device %s (Slot #%d) is EXPIRED!\n",
-                targetIp.c_str(), (slotIdx >= 0) ? licenseSlots[slotIdx].slotNum : 0);
-            quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Adjustment Blocked: Target device " + targetIp + " is EXPIRED! Add credits in the Master Credit Vault to pair device.</div>";
+    if (!webServer.hasArg("add_minutes")) {
+        quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Missing minutes parameter.</div>";
+        redirectHome();
+        return;
+    }
+    String minStr = webServer.arg("add_minutes");
+    minStr.trim();
+    if (minStr.length() == 0) {
+        quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Missing minutes value.</div>";
+        redirectHome();
+        return;
+    }
+    for (size_t i = 0; i < minStr.length(); i++) {
+        if (!isDigit(minStr[i])) {
+            quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Invalid minutes: Must be a positive integer.</div>";
             redirectHome();
             return;
         }
     }
+    if (minStr.length() > 9) {
+        quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Value too large: Minutes value exceeds maximum limit.</div>";
+        redirectHome();
+        return;
+    }
+    int64_t minutesVal = minStr.toInt();
+    if (minutesVal <= 0) {
+        quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Minutes must be greater than zero.</div>";
+        redirectHome();
+        return;
+    }
+    int64_t rawSeconds = minutesVal * 60LL;
+    if (rawSeconds > 2147483647LL) {
+        quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Seconds overflow: Value exceeds protocol limits.</div>";
+        redirectHome();
+        return;
+    }
+    String action = webServer.hasArg("adjust_action") ? webServer.arg("adjust_action") : "add";
+    int64_t signedSeconds = (action == "subtract") ? -rawSeconds : rawSeconds;
 
-    sendAddTime(minutes, targetIp);
-    quickTimeStatusMsg = "<div style='background:#e8f5e9;color:#2e7d32;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(16,185,129,0.3);'>✅ Adjusted " + String(minutes > 0 ? "+" : "") + String(minutes) + "m for " + (targetIp == "ALL" ? "All Active Devices" : targetIp) + ".</div>";
+    AddTimeSummary summary = sendAddTime(signedSeconds, targetIp);
+
+    if (summary.matchedRecipients == 0) {
+        quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ No matching target device found for " + targetIp + ".</div>";
+    } else if (summary.queuedRequests == 0) {
+        if (summary.skippedInactive > 0) {
+            quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Adjustment Blocked: Target device " + targetIp + " is INACTIVE or UNLICENSED.</div>";
+        } else if (summary.failedSubmissions > 0) {
+            quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Failed to queue adjustment: Auth queue full or network unavailable.</div>";
+        } else {
+            quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ No eligible devices found to adjust.</div>";
+        }
+    } else {
+        if (summary.skippedInactive > 0 || summary.failedSubmissions > 0) {
+            quickTimeStatusMsg = "<div style='background:#fef3c7;color:#b45309;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(245,158,11,0.3);'>⚠️ Adjustment queued: " + String(action == "subtract" ? "-" : "+") + String((long)minutesVal) + "m (" + String(summary.queuedRequests) + " queued, " + String(summary.skippedInactive) + " inactive skipped, " + String(summary.failedSubmissions) + " failed).</div>";
+        } else {
+            quickTimeStatusMsg = "<div style='background:#e8f5e9;color:#2e7d32;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(16,185,129,0.3);'>✅ Adjustment queued: " + String(action == "subtract" ? "-" : "+") + String((long)minutesVal) + "m for " + (targetIp == "ALL" ? "All Active Devices" : targetIp) + ".</div>";
+        }
+    }
     redirectHome();
 }
 
