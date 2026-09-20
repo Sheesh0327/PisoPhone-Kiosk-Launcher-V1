@@ -132,7 +132,7 @@ bool handleControllerWebSocketHandshake(WiFiClient& client, const String& reques
     // 6. Reserve Coin Slot and bind session-isolated callbacks
     bool ok = reserveCoinSlot(sessionId, CoinSlotOwnerType::CONTROLLER, ARM_TTL,
         // onPayment Callback (Pure pulses, no PisoPhone pricing or routing)
-        [](const String& sessId, int pulses) {
+        [](const String& sessId, int pulses) -> bool {
             String txId = generateCollisionResistantTxId("ctrl");
             
             bool retained = enqueuePendingPayment(
@@ -142,6 +142,7 @@ bool handleControllerWebSocketHandshake(WiFiClient& client, const String& reques
                 Serial.printf("[CONTROLLER WS] CRITICAL: Could not retain tx_id='%s'.\n",
                               txId.c_str());
             }
+            return retained;
         },
         // onSessionEnd Callback (Session ended/timeout/released/drained)
         [](const String& sessId, const char* reason) {

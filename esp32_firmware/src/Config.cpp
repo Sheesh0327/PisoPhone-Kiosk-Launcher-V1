@@ -1,6 +1,7 @@
 #include "Config.h"
 #include "DeviceManager.h"
 #include "HardwareManager.h"
+#include "PaymentQueueManager.h"
 #include "SuperAdminManager.h"
 
 // ============================================================================

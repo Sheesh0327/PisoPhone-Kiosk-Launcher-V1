@@ -415,8 +415,8 @@ void processWebSocketServer() {
             wsSessionDeviceId = reqDeviceId;
             
             bool reserved = reserveCoinSlot(reqDeviceId, CoinSlotOwnerType::PHONE, ARM_TTL,
-                [](const String& devId, int pulses) {
-                    triggerUniversalCoinEvent(pulses, devId);
+                [](const String& devId, int pulses) -> bool {
+                    return triggerUniversalCoinEvent(pulses, devId);
                 },
                 [](const String& devId, const char* reason) {
                     if (isWsConnected && wsClient.connected()) {
