@@ -13,6 +13,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -69,9 +70,11 @@ class PaymentRepositoryUnitTest {
         )
 
         val txId = "tx-1001"
-        val result = repository.creditPayment(txId = txId, seconds = 600, amount = 5.0)
+        val outcome = repository.creditPayment(txId = txId, seconds = 600, amount = 5.0)
 
-        assertEquals("First credit should return APPLIED", PaymentResult.APPLIED, result)
+        assertEquals("First credit should return APPLIED", PaymentResult.APPLIED, outcome.result)
+        assertNotNull("APPLIED outcome must include snapshot", outcome.snapshot)
+        assertEquals("Snapshot revision must be 1", 1L, outcome.snapshot?.revision)
         assertEquals("Post-commit callback called once", 1, appliedCount)
 
         val receipt = db.paymentDao().getReceiptByTxId(txId)
@@ -96,13 +99,13 @@ class PaymentRepositoryUnitTest {
         )
 
         val txId = "tx-1002"
-        val result1 = repository.creditPayment(txId = txId, seconds = 300, amount = 1.0)
+        val result1 = repository.creditPayment(txId = txId, seconds = 300, amount = 1.0).result
         assertEquals(PaymentResult.APPLIED, result1)
         assertEquals(1, appliedCount)
 
         val deadlineAfterFirst = repository.getSessionState()?.sessionExpiryDeadlineMs ?: 0L
 
-        val result2 = repository.creditPayment(txId = txId, seconds = 300, amount = 1.0)
+        val result2 = repository.creditPayment(txId = txId, seconds = 300, amount = 1.0).result
         assertEquals("Duplicate identical payment returns ALREADY_APPLIED", PaymentResult.ALREADY_APPLIED, result2)
         assertEquals("Post-commit callback must NOT fire on duplicate", 1, appliedCount)
 
@@ -118,13 +121,13 @@ class PaymentRepositoryUnitTest {
         )
 
         val txId = "tx-1003"
-        val res1 = repository.creditPayment(txId = txId, seconds = 300, amount = 1.0)
+        val res1 = repository.creditPayment(txId = txId, seconds = 300, amount = 1.0).result
         assertEquals(PaymentResult.APPLIED, res1)
 
-        val resDiffSeconds = repository.creditPayment(txId = txId, seconds = 600, amount = 1.0)
+        val resDiffSeconds = repository.creditPayment(txId = txId, seconds = 600, amount = 1.0).result
         assertEquals("Different seconds returns CONFLICT", PaymentResult.CONFLICT, resDiffSeconds)
 
-        val resDiffAmount = repository.creditPayment(txId = txId, seconds = 300, amount = 5.0)
+        val resDiffAmount = repository.creditPayment(txId = txId, seconds = 300, amount = 5.0).result
         assertEquals("Different amount returns CONFLICT", PaymentResult.CONFLICT, resDiffAmount)
     }
 
@@ -137,7 +140,7 @@ class PaymentRepositoryUnitTest {
         )
 
         val txId = "tx-1004"
-        val result = repository.creditPayment(txId = txId, seconds = 300, amount = 1.0)
+        val result = repository.creditPayment(txId = txId, seconds = 300, amount = 1.0).result
         assertEquals("New payment rejected when not eligible", PaymentResult.NOT_ELIGIBLE, result)
 
         val receipt = db.paymentDao().getReceiptByTxId(txId)
@@ -196,7 +199,7 @@ class PaymentRepositoryUnitTest {
         assertTrue("Timer observes expired deadline", timerObservedDeadline <= now)
 
         // 3. Concurrently, a new payment is committed
-        val paymentResult = repository.creditPayment("tx-new-topup", 600, 5.0)
+        val paymentResult = repository.creditPayment("tx-new-topup", 600, 5.0).result
         assertEquals(PaymentResult.APPLIED, paymentResult)
 
         val stateAfterPayment = repository.getSessionState()!!
@@ -444,7 +447,7 @@ class PaymentRepositoryUnitTest {
         val delayedExpiryState = expiryResult.sessionState
 
         // 3. Before the UI handler for expiration runs, a new payment commits in Room and publishes revision 3
-        val paymentResult = repository.creditPayment("tx-race-1", 600, 5.0)
+        val paymentResult = repository.creditPayment("tx-race-1", 600, 5.0).result
         assertEquals(PaymentResult.APPLIED, paymentResult)
         val paymentState = repository.getSessionState()!!
         assertEquals(3L, paymentState.revision)
@@ -579,7 +582,7 @@ class PaymentRepositoryUnitTest {
             pricePerCoin = 5.0,
             boxInstallationEpoch = 1710000000L,
             phonePairingEpoch = 1710050000L
-        )
+        ).result
 
         assertEquals(PaymentResult.APPLIED, result)
 
@@ -605,7 +608,7 @@ class PaymentRepositoryUnitTest {
             pricePerCoin = 5.0,
             boxInstallationEpoch = 1710000000L,
             phonePairingEpoch = 1710050000L
-        )
+        ).result
         assertEquals(PaymentResult.ALREADY_APPLIED, dupResult)
     }
 
@@ -622,7 +625,7 @@ class PaymentRepositoryUnitTest {
             pricePerCoin = 1.0,
             boxInstallationEpoch = 1000L,
             phonePairingEpoch = 2000L
-        )
+        ).result
         assertEquals(PaymentResult.APPLIED, res1)
 
         // Conflicting operation kind
@@ -631,7 +634,7 @@ class PaymentRepositoryUnitTest {
             seconds = 600,
             amount = 1.0,
             operationKind = "MANUAL_ADJUSTMENT"
-        )
+        ).result
         assertEquals("Conflicting operationKind must return CONFLICT", PaymentResult.CONFLICT, resKind)
 
         // Conflicting coin amount
@@ -640,7 +643,7 @@ class PaymentRepositoryUnitTest {
             seconds = 600,
             amount = 1.0,
             coinAmount = 5
-        )
+        ).result
         assertEquals("Conflicting coinAmount must return CONFLICT", PaymentResult.CONFLICT, resCoin)
 
         // Conflicting pricePerCoin
@@ -649,7 +652,7 @@ class PaymentRepositoryUnitTest {
             seconds = 600,
             amount = 1.0,
             pricePerCoin = 5.0
-        )
+        ).result
         assertEquals("Conflicting pricePerCoin must return CONFLICT", PaymentResult.CONFLICT, resPrice)
 
         // Conflicting epochs
@@ -658,7 +661,7 @@ class PaymentRepositoryUnitTest {
             seconds = 600,
             amount = 1.0,
             boxInstallationEpoch = 9999L
-        )
+        ).result
         assertEquals("Conflicting boxInstallationEpoch must return CONFLICT", PaymentResult.CONFLICT, resEpoch)
     }
 
@@ -675,7 +678,7 @@ class PaymentRepositoryUnitTest {
             operationKind = "MATCH_TRANSFER_DEDUCT",
             boxInstallationEpoch = 1000L,
             phonePairingEpoch = 2000L
-        )
+        ).result
         assertEquals(PaymentResult.APPLIED, result)
 
         val receipt = db.paymentDao().getReceiptByTxId(txId)
@@ -692,14 +695,14 @@ class PaymentRepositoryUnitTest {
             operationKind = "MATCH_TRANSFER_DEDUCT",
             boxInstallationEpoch = 1000L,
             phonePairingEpoch = 2000L
-        )
+        ).result
         assertEquals(PaymentResult.ALREADY_APPLIED, dupResult)
 
         // Conflict returns CONFLICT
         val conflictResult = repository.deductPayment(
             txId = txId,
             seconds = 300
-        )
+        ).result
         assertEquals(PaymentResult.CONFLICT, conflictResult)
     }
 
@@ -745,8 +748,8 @@ class PaymentRepositoryUnitTest {
             stakeSeconds = transferSeconds,
             deductTxId = deductTxId,
             creditTxId = creditTxId,
-            deductResult = deductRes,
-            creditResult = creditRes
+            deductResult = deductRes.result,
+            creditResult = creditRes.result
         )
 
         assertEquals(PaymentResult.APPLIED, outcome.deductResult)
@@ -791,8 +794,8 @@ class PaymentRepositoryUnitTest {
             stakeSeconds = transferSeconds,
             deductTxId = deductTxId,
             creditTxId = creditTxId,
-            deductResult = deductRes,
-            creditResult = creditRes
+            deductResult = deductRes.result,
+            creditResult = creditRes.result
         )
 
         assertEquals(PaymentResult.NOT_ELIGIBLE, outcome.deductResult)
@@ -837,8 +840,8 @@ class PaymentRepositoryUnitTest {
             stakeSeconds = transferSeconds,
             deductTxId = deductTxId,
             creditTxId = creditTxId,
-            deductResult = deductRes,
-            creditResult = creditRes
+            deductResult = deductRes.result,
+            creditResult = creditRes.result
         )
 
         assertEquals(PaymentResult.APPLIED, outcome.deductResult)
@@ -866,18 +869,18 @@ class PaymentRepositoryUnitTest {
         val deduct1 = p1Repo.deductPayment(txId = deductTxId, seconds = transferSeconds)
         val credit1 = p2Repo.creditPayment(txId = creditTxId, seconds = transferSeconds, amount = 0.0)
         val outcome1 = p1Repo.evaluateMatchTransfer(
-            matchId, "p1", "p2", transferSeconds, deductTxId, creditTxId, deduct1, credit1
+            matchId, "p1", "p2", transferSeconds, deductTxId, creditTxId, deduct1.result, credit1.result
         )
         assertTrue(outcome1.isComplete)
 
         // Retry with same IDs
         val deduct2 = p1Repo.deductPayment(txId = deductTxId, seconds = transferSeconds)
         val credit2 = p2Repo.creditPayment(txId = creditTxId, seconds = transferSeconds, amount = 0.0)
-        assertEquals(PaymentResult.ALREADY_APPLIED, deduct2)
-        assertEquals(PaymentResult.ALREADY_APPLIED, credit2)
+        assertEquals(PaymentResult.ALREADY_APPLIED, deduct2.result)
+        assertEquals(PaymentResult.ALREADY_APPLIED, credit2.result)
 
         val outcome2 = p1Repo.evaluateMatchTransfer(
-            matchId, "p1", "p2", transferSeconds, deductTxId, creditTxId, deduct2, credit2
+            matchId, "p1", "p2", transferSeconds, deductTxId, creditTxId, deduct2.result, credit2.result
         )
         assertTrue("Retried complete transfer remains complete", outcome2.isComplete)
         assertFalse(outcome2.isPartial)
@@ -933,7 +936,7 @@ class PaymentRepositoryUnitTest {
             pricePerCoin = 1.0,
             boxInstallationEpoch = 1000L,
             phonePairingEpoch = 2000L
-        )
+        ).result
         assertEquals("Identical retry for legacy tx-old returns ALREADY_APPLIED", PaymentResult.ALREADY_APPLIED, dupTxOld)
 
         // Retrying tx-old with conflicting seconds returns CONFLICT
@@ -941,7 +944,7 @@ class PaymentRepositoryUnitTest {
             txId = "tx-old",
             seconds = 600,
             amount = 5.0
-        )
+        ).result
         assertEquals("Conflicting retry for legacy tx-old returns CONFLICT", PaymentResult.CONFLICT, conflictTxOld)
 
         // v4 receipt adj-old (-60s, amount 0.0): identical deduction retry returns ALREADY_APPLIED
@@ -950,14 +953,14 @@ class PaymentRepositoryUnitTest {
             seconds = 60,
             operationKind = "MANUAL_DEDUCTION",
             boxInstallationEpoch = 1000L
-        )
+        ).result
         assertEquals("Identical retry for legacy adj-old returns ALREADY_APPLIED", PaymentResult.ALREADY_APPLIED, dupAdjOld)
 
         // Retrying adj-old with conflicting deduction seconds returns CONFLICT
         val conflictAdjOld = repository.deductPayment(
             txId = "adj-old",
             seconds = 120
-        )
+        ).result
         assertEquals("Conflicting deduction retry for legacy adj-old returns CONFLICT", PaymentResult.CONFLICT, conflictAdjOld)
 
         migratedDb.close()
@@ -1007,14 +1010,14 @@ class PaymentRepositoryUnitTest {
             pricePerCoin = 1.0,
             boxInstallationEpoch = 1000L,
             phonePairingEpoch = 2000L
-        )
+        ).result
         assertEquals("Repaired v5 installation returns ALREADY_APPLIED for credit retry", PaymentResult.ALREADY_APPLIED, dupCredit)
 
         val dupDeduct = repository.deductPayment(
             txId = "adj-old-v5",
             seconds = 60,
             operationKind = "MANUAL_DEDUCTION"
-        )
+        ).result
         assertEquals("Repaired v5 installation returns ALREADY_APPLIED for deduction retry", PaymentResult.ALREADY_APPLIED, dupDeduct)
 
         // Conflicting retries still return CONFLICT
@@ -1022,7 +1025,7 @@ class PaymentRepositoryUnitTest {
             txId = "tx-old-v5",
             seconds = 900,
             amount = 5.0
-        )
+        ).result
         assertEquals("Repaired v5 installation returns CONFLICT for conflicting credit retry", PaymentResult.CONFLICT, conflictCredit)
 
         repairedDb.close()
@@ -1043,7 +1046,7 @@ class PaymentRepositoryUnitTest {
             pricePerCoin = 5.0,
             boxInstallationEpoch = 1000L,
             phonePairingEpoch = 2000L
-        )
+        ).result
         assertEquals(PaymentResult.APPLIED, applyRes)
 
         // Identical retry returns ALREADY_APPLIED
@@ -1056,7 +1059,7 @@ class PaymentRepositoryUnitTest {
             pricePerCoin = 5.0,
             boxInstallationEpoch = 1000L,
             phonePairingEpoch = 2000L
-        )
+        ).result
         assertEquals(PaymentResult.ALREADY_APPLIED, dupRes)
 
         // Strict comparison: retry with zero boxInstallationEpoch must NOT act as a wildcard and must return CONFLICT
@@ -1069,8 +1072,22 @@ class PaymentRepositoryUnitTest {
             pricePerCoin = 5.0,
             boxInstallationEpoch = 0L,
             phonePairingEpoch = 2000L
-        )
+        ).result
         assertEquals("Zero epoch must NOT act as wildcard for new receipts; return CONFLICT", PaymentResult.CONFLICT, wildcardEpochRes)
+    }
+
+    @Test
+    fun testPaymentOutcomeContainsSnapshotOnlyOnApplied() = runBlocking {
+        val repository = PaymentRepository(db = db, isEligible = { true })
+        val outcome1 = repository.creditPayment("tx-outcome-1", 300, 5.0)
+        assertEquals(PaymentResult.APPLIED, outcome1.result)
+        assertNotNull("APPLIED outcome must contain SessionSnapshot", outcome1.snapshot)
+        assertEquals(300, outcome1.snapshot?.remainingSeconds)
+        assertEquals(1L, outcome1.snapshot?.revision)
+
+        val outcomeDup = repository.creditPayment("tx-outcome-1", 300, 5.0)
+        assertEquals(PaymentResult.ALREADY_APPLIED, outcomeDup.result)
+        assertNull("Non-APPLIED outcome must never contain SessionSnapshot", outcomeDup.snapshot)
     }
 }
 

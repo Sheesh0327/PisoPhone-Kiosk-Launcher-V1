@@ -143,11 +143,16 @@ class KioskEsp32Coordinator(
         stateManager.slotExpiryMessage.value = if (reason.isNotBlank()) reason else "Device activation required."
         stateManager.slotNumber.value = slotNum
         stateManager.slotWarningDaysLeft.value = 0
-        paymentRepo.expireSessionBlocking()
-        stateManager.sessionTimeRemaining.value = 0
-        stateManager.sessionExpiryDeadlineMs.value = 0L
-        stateManager.appState.value = 0
-        stateManager.saveState()
+        val expiredState = paymentRepo.expireSessionBlocking()
+        val applied = stateManager.applySessionUpdate(
+            deadlineMs = expiredState.sessionExpiryDeadlineMs,
+            remainingSeconds = expiredState.sessionTimeRemaining,
+            revision = expiredState.revision,
+            targetAppState = 0
+        )
+        if (applied) {
+            stateManager.saveState()
+        }
         KioskActivationManager.setSlotLockdown(context, true, reason, slotNum, expiresAt)
     }
 

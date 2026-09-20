@@ -77,7 +77,7 @@ class KioskEngine(
             Log.w(TAG, "Rejecting payment credit: KioskEngine initialization in progress")
             return PaymentResult.FAILED
         }
-        val result = paymentRepo.creditPaymentBlocking(
+        val outcome = paymentRepo.creditPaymentBlocking(
             txId = txId,
             seconds = seconds,
             amount = amount,
@@ -87,15 +87,10 @@ class KioskEngine(
             boxInstallationEpoch = boxInstallationEpoch,
             phonePairingEpoch = phonePairingEpoch
         )
-        if (result == PaymentResult.APPLIED) {
-            val snapshot = paymentRepo.lastCommittedSnapshot ?: runBlocking(Dispatchers.IO) {
-                paymentRepo.getSessionState()?.let {
-                    SessionSnapshot(it.sessionExpiryDeadlineMs, it.sessionTimeRemaining, it.revision)
-                }
-            } ?: SessionSnapshot(0L, 0, 0L)
-            publishCommittedCreditSnapshot(txId, seconds, amount, operationKind, snapshot)
+        if (outcome.result == PaymentResult.APPLIED && outcome.snapshot != null) {
+            publishCommittedCreditSnapshot(txId, seconds, amount, operationKind, outcome.snapshot)
         }
-        return result
+        return outcome.result
     }
 
     fun deductPayment(
@@ -110,22 +105,17 @@ class KioskEngine(
             return PaymentResult.FAILED
         }
         val effectiveTxId = txId?.trim().takeIf { !it.isNullOrBlank() } ?: "deduct_${System.currentTimeMillis()}"
-        val result = paymentRepo.deductPaymentBlocking(
+        val outcome = paymentRepo.deductPaymentBlocking(
             txId = effectiveTxId,
             seconds = seconds,
             operationKind = operationKind,
             boxInstallationEpoch = boxInstallationEpoch,
             phonePairingEpoch = phonePairingEpoch
         )
-        if (result == PaymentResult.APPLIED) {
-            val snapshot = paymentRepo.lastCommittedSnapshot ?: runBlocking(Dispatchers.IO) {
-                paymentRepo.getSessionState()?.let {
-                    SessionSnapshot(it.sessionExpiryDeadlineMs, it.sessionTimeRemaining, it.revision)
-                }
-            } ?: SessionSnapshot(0L, 0, 0L)
-            publishCommittedDeductSnapshot(seconds, snapshot)
+        if (outcome.result == PaymentResult.APPLIED && outcome.snapshot != null) {
+            publishCommittedDeductSnapshot(seconds, outcome.snapshot)
         }
-        return result
+        return outcome.result
     }
 
     private fun publishCommittedCreditSnapshot(

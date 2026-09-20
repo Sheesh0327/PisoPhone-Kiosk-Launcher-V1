@@ -23,6 +23,14 @@ data class SessionSnapshot(
 )
 
 /**
+ * Per-call outcome combining payment result status and optional session snapshot from committed transactions.
+ */
+data class PaymentOutcome(
+    val result: PaymentResult,
+    val snapshot: SessionSnapshot? = null
+)
+
+/**
  * Result of restoring session state from local persistence.
  */
 data class RestoredSessionState(
@@ -92,10 +100,6 @@ class PaymentRepository(
 
     private val paymentDao = db.paymentDao()
 
-    @Volatile
-    var lastCommittedSnapshot: SessionSnapshot? = null
-        private set
-
     suspend fun creditPayment(
         txId: String,
         seconds: Int,
@@ -106,10 +110,8 @@ class PaymentRepository(
         boxInstallationEpoch: Long = 0L,
         phonePairingEpoch: Long = 0L,
         recordSchemaVersion: Int = PaymentReceipt.CURRENT_RECORD_SCHEMA_VERSION
-    ): PaymentResult {
-        var committedSnapshot: SessionSnapshot? = null
-
-        val result = try {
+    ): PaymentOutcome {
+        val (result, snapshot) = try {
             db.withTransaction {
                 val existing = paymentDao.getReceiptByTxId(txId)
                 if (existing != null) {
@@ -131,19 +133,19 @@ class PaymentRepository(
                     }
 
                     if (isIdentical) {
-                        return@withTransaction PaymentResult.ALREADY_APPLIED
+                        return@withTransaction Pair(PaymentResult.ALREADY_APPLIED, null)
                     } else {
                         Log.w(
                             TAG,
                             "Transaction ID conflict for $txId: existing=(s=${existing.secondsCredited}, a=${existing.amount}, k=${existing.operationKind}) vs new=(s=$seconds, a=$amount, k=$operationKind)"
                         )
-                        return@withTransaction PaymentResult.CONFLICT
+                        return@withTransaction Pair(PaymentResult.CONFLICT, null)
                     }
                 }
 
                 if (!isEligible()) {
                     Log.w(TAG, "Payment rejected for $txId: Device/slot is not currently eligible.")
-                    return@withTransaction PaymentResult.NOT_ELIGIBLE
+                    return@withTransaction Pair(PaymentResult.NOT_ELIGIBLE, null)
                 }
 
                 val currentState = paymentDao.getSessionState()
@@ -180,22 +182,20 @@ class PaymentRepository(
                 paymentDao.insertReceipt(receipt)
                 paymentDao.updateSessionState(newState)
 
-                committedSnapshot = SessionSnapshot(newDeadline, newSessionTime, newRevision)
-                lastCommittedSnapshot = committedSnapshot
-                PaymentResult.APPLIED
+                val committedSnapshot = SessionSnapshot(newDeadline, newSessionTime, newRevision)
+                Pair(PaymentResult.APPLIED, committedSnapshot)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Database transaction failed for txId $txId: ${e.message}", e)
-            PaymentResult.FAILED
+            Pair(PaymentResult.FAILED, null)
         }
 
-        if (result == PaymentResult.APPLIED) {
-            val snapshot = committedSnapshot ?: SessionSnapshot(0L, 0, 0L)
+        if (result == PaymentResult.APPLIED && snapshot != null) {
             onPaymentApplied?.invoke(txId, seconds, amount, snapshot)
             onSessionStateChanged?.invoke(snapshot)
         }
 
-        return result
+        return PaymentOutcome(result, snapshot)
     }
 
     fun creditPaymentBlocking(
@@ -207,7 +207,7 @@ class PaymentRepository(
         pricePerCoin: Double = 0.0,
         boxInstallationEpoch: Long = 0L,
         phonePairingEpoch: Long = 0L
-    ): PaymentResult =
+    ): PaymentOutcome =
         runBlocking(Dispatchers.IO) {
             creditPayment(
                 txId, seconds, amount,
@@ -223,12 +223,11 @@ class PaymentRepository(
         boxInstallationEpoch: Long = 0L,
         phonePairingEpoch: Long = 0L,
         recordSchemaVersion: Int = PaymentReceipt.CURRENT_RECORD_SCHEMA_VERSION
-    ): PaymentResult {
-        var committedSnapshot: SessionSnapshot? = null
+    ): PaymentOutcome {
         val positiveSeconds = if (seconds == Int.MIN_VALUE) Int.MAX_VALUE else Math.abs(seconds)
         val expectedNegativeSeconds = -positiveSeconds
 
-        val result = try {
+        val (result, snapshot) = try {
             db.withTransaction {
                 if (txId.isNotBlank()) {
                     val existing = paymentDao.getReceiptByTxId(txId)
@@ -248,20 +247,20 @@ class PaymentRepository(
                         }
 
                         if (isIdentical) {
-                            return@withTransaction PaymentResult.ALREADY_APPLIED
+                            return@withTransaction Pair(PaymentResult.ALREADY_APPLIED, null)
                         } else {
                             Log.w(
                                 TAG,
                                 "Deduction transaction conflict for $txId: existing=(s=${existing.secondsCredited}, a=${existing.amount}, k=${existing.operationKind}) vs new=(s=$expectedNegativeSeconds, a=0.0, k=$operationKind)"
                             )
-                            return@withTransaction PaymentResult.CONFLICT
+                            return@withTransaction Pair(PaymentResult.CONFLICT, null)
                         }
                     }
                 }
 
                 if (!isEligible()) {
                     Log.w(TAG, "Deduction rejected for $txId: Device/slot is not currently eligible.")
-                    return@withTransaction PaymentResult.NOT_ELIGIBLE
+                    return@withTransaction Pair(PaymentResult.NOT_ELIGIBLE, null)
                 }
 
                 val currentState = paymentDao.getSessionState()
@@ -277,7 +276,7 @@ class PaymentRepository(
                             TAG,
                             "Match transfer deduction rejected for $txId: Insufficient balance ($currentRemainingMs ms < $deductMs ms required)."
                         )
-                        return@withTransaction PaymentResult.NOT_ELIGIBLE
+                        return@withTransaction Pair(PaymentResult.NOT_ELIGIBLE, null)
                     }
                 }
 
@@ -319,21 +318,19 @@ class PaymentRepository(
                 )
                 paymentDao.updateSessionState(newState)
 
-                committedSnapshot = SessionSnapshot(effectiveDeadline, remaining, newRevision)
-                lastCommittedSnapshot = committedSnapshot
-                PaymentResult.APPLIED
+                val committedSnapshot = SessionSnapshot(effectiveDeadline, remaining, newRevision)
+                Pair(PaymentResult.APPLIED, committedSnapshot)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Database transaction failed for deductPayment txId $txId: ${e.message}", e)
-            PaymentResult.FAILED
+            Pair(PaymentResult.FAILED, null)
         }
 
-        if (result == PaymentResult.APPLIED) {
-            val snapshot = committedSnapshot ?: SessionSnapshot(0L, 0, 0L)
+        if (result == PaymentResult.APPLIED && snapshot != null) {
             onSessionStateChanged?.invoke(snapshot)
         }
 
-        return result
+        return PaymentOutcome(result, snapshot)
     }
 
     fun deductPaymentBlocking(
@@ -342,7 +339,7 @@ class PaymentRepository(
         operationKind: String = "MANUAL_DEDUCTION",
         boxInstallationEpoch: Long = 0L,
         phonePairingEpoch: Long = 0L
-    ): PaymentResult =
+    ): PaymentOutcome =
         runBlocking(Dispatchers.IO) {
             deductPayment(txId, seconds, operationKind, boxInstallationEpoch, phonePairingEpoch)
         }
