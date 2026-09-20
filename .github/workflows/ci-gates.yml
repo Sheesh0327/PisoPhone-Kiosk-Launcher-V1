@@ -1,0 +1,67 @@
+name: CI Verification Gates
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android-gates:
+    name: Android Verification Gates (Tests & Build)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Run Android Unit Tests
+        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Assemble Android Debug APK
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Verify Exported Room Schema
+        run: |
+          if [ ! -f "app/schemas/com.pisophone.kiosk.db.AppDatabase/4.json" ]; then
+            echo "Error: Room schema 4.json was not generated or missing from schemas directory!"
+            exit 1
+          fi
+          echo "Room schema v4 successfully verified."
+
+  esp32-gates:
+    name: ESP32 & C3 Firmware Development Build Gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install PlatformIO Core
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install platformio==6.2.0
+
+      - name: Build ESP32 Classic Development Firmware
+        run: pio run -e esp32dev-dev -d esp32_firmware
+
+      - name: Build ESP32-C3 Development Firmware
+        run: pio run -e esp32-c3-dev -d esp32_firmware

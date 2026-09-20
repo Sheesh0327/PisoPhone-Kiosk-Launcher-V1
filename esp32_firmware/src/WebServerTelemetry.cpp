@@ -5,6 +5,7 @@
 #include "Security.h"
 #include "DeviceManager.h"
 #include "DeviceNetwork.h"
+#include "PaymentQueueManager.h"
 #include <WiFi.h>
 #include <WebServer.h>
 
@@ -267,16 +268,31 @@ void handleOneVsOne() {
 
         matchActive = false;
 
-        if (winner == "p1" || winner == NVS_KEY_P1) {
-            sendAddTime(matchMinutes, p1Ip);
-            yield();
-            sendAddTime(-matchMinutes, p2Ip);
-            matchStatusMsg = "<div style='background:#e8f5e9;color:#2e7d32;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>🏆 <b>Player 1 Won:</b> Transferred +" + String(matchMinutes) + "m to Player 1 (" + p1Ip + ") and deducted -" + String(matchMinutes) + "m from Player 2 (" + p2Ip + ").</div>";
-        } else if (winner == "p2" || winner == NVS_KEY_P2) {
-            sendAddTime(matchMinutes, p2Ip);
-            yield();
-            sendAddTime(-matchMinutes, p1Ip);
-            matchStatusMsg = "<div style='background:#e8f5e9;color:#2e7d32;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>🏆 <b>Player 2 Won:</b> Transferred +" + String(matchMinutes) + "m to Player 2 (" + p2Ip + ") and deducted -" + String(matchMinutes) + "m from Player 1 (" + p1Ip + ").</div>";
+        String matchId = "match-" + String((unsigned long long)getCurrentMasterTimeMs());
+        String deductTxId = matchId + "-deduct-" + generateCollisionResistantTxId("mdd");
+        String creditTxId = matchId + "-credit-" + generateCollisionResistantTxId("mcr");
+
+        String winnerIp = (winner == "p1" || winner == NVS_KEY_P1) ? p1Ip : p2Ip;
+        String loserIp = (winner == "p1" || winner == NVS_KEY_P1) ? p2Ip : p1Ip;
+        String winnerLabel = (winner == "p1" || winner == NVS_KEY_P1) ? "Player 1" : "Player 2";
+        String loserLabel = (winner == "p1" || winner == NVS_KEY_P1) ? "Player 2" : "Player 1";
+
+        // Keep separate linked outcomes and show partial completion
+        AddTimeSummary deductSummary = sendAddTime(-matchMinutes, loserIp, deductTxId);
+        yield();
+        AddTimeSummary creditSummary = sendAddTime(matchMinutes, winnerIp, creditTxId);
+
+        bool deductOk = (deductSummary.queuedRequests > 0);
+        bool creditOk = (creditSummary.queuedRequests > 0);
+
+        if (deductOk && creditOk) {
+            matchStatusMsg = "<div style='background:#e8f5e9;color:#2e7d32;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>🏆 <b>" + winnerLabel + " Won:</b> Transferred +" + String(matchMinutes) + "m to " + winnerLabel + " (" + winnerIp + ") and deducted -" + String(matchMinutes) + "m from " + loserLabel + " (" + loserIp + "). [Match: " + matchId + "]</div>";
+        } else if (creditOk && !deductOk) {
+            matchStatusMsg = "<div style='background:#fef3c7;color:#b45309;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>⚠️ <b>Partial Match Transfer:</b> Credited +" + String(matchMinutes) + "m to " + winnerLabel + " (" + winnerIp + "), but deduction from " + loserLabel + " (" + loserIp + ") failed/queued. [Match: " + matchId + "]</div>";
+        } else if (!creditOk && deductOk) {
+            matchStatusMsg = "<div style='background:#fef3c7;color:#b45309;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>⚠️ <b>Partial Match Transfer:</b> Deducted -" + String(matchMinutes) + "m from " + loserLabel + " (" + loserIp + "), but credit to " + winnerLabel + " (" + winnerIp + ") failed/queued. [Match: " + matchId + "]</div>";
+        } else {
+            matchStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Match Transfer Failed:</b> Could not dispatch adjustments for either player. [Match: " + matchId + "]</div>";
         }
 
         sendAuthenticated(p1Ip, targetPort, "/trigger_action", "/challenge", "action=arena_mode_deactivate", 1000);

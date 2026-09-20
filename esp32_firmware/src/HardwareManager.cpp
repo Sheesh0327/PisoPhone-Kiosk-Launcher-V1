@@ -1,5 +1,6 @@
 #include "HardwareManager.h"
 #include "CoinSlotManager.h"
+#include "PaymentQueueManager.h"
 #include "Config.h"
 #include "DeviceManager.h"
 #include <WiFi.h>
@@ -93,6 +94,11 @@ void resetCoinDetectorStates() {
 }
 
 void setRelayHardware(bool active) {
+    // Startup suppression hard-lock: do not power acceptor until startup suppression finishes
+    if (active && isStartupSuppressionActive()) {
+        active = false;
+    }
+
     if (active) {
         pinMode(relayPin, OUTPUT);
         digitalWrite(relayPin, relayActiveLow ? LOW : HIGH);
@@ -110,19 +116,20 @@ void setRelayHardware(bool active) {
 }
 
 bool isSlotArmed() {
-    return isCoinSlotArmed();
+    return isCoinSlotArmed() && !isStartupSuppressionActive();
 }
 
 void processRelayState() {
-    bool shouldBeOn = isCoinSlotArmed();
+    bool shouldBeOn = isCoinSlotArmed() && !isStartupSuppressionActive();
     static int lastAppliedRelayState = -1;
     int cur = shouldBeOn ? 1 : 0;
     if (cur != lastAppliedRelayState) {
         lastAppliedRelayState = cur;
         setRelayHardware(shouldBeOn);
-        Serial.printf("[⚡ RELAY] Pin %d set to %s (ActiveLow=%s, SlotArmed=%s)\n",
+        Serial.printf("[⚡ RELAY] Pin %d set to %s (ActiveLow=%s, SlotArmed=%s, Suppressed=%s)\n",
             relayPin, shouldBeOn ? "ON (POWERED)" : "OFF (STANDBY)",
-            relayActiveLow ? "true" : "false", shouldBeOn ? "true" : "false");
+            relayActiveLow ? "true" : "false", isCoinSlotArmed() ? "true" : "false",
+            isStartupSuppressionActive() ? "true" : "false");
     }
 }
 
@@ -170,8 +177,8 @@ void processHardwareResetPin() {
         } else if (millis() - resetPinLowStart >= 5000) {
             Serial.println("\n[⚠️ RESET] GPIO 2 held to GND for > 5 seconds! Triggering Factory Reset...");
             factoryResetDefaults();
-            delay(1000);
-            ESP.restart();
+            delay(500);
+            requestSystemRestart("Hardware Pin 2 Factory Reset");
         }
     } else {
         if (resetPinLowStart != 0) {

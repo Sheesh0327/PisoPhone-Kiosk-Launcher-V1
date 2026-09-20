@@ -102,8 +102,8 @@ void setupWebServer() {
             webServer.send(409, "text/plain", "BUSY: Unpersisted transactions in RAM");
         } else {
             webServer.send(200, "text/plain", "SUCCESS");
-            delay(1000);
-            ESP.restart();
+            delay(500);
+            requestSystemRestart("OTA Firmware Update Complete");
         }
     }, []() {
         if (!checkAdminAuth()) return;

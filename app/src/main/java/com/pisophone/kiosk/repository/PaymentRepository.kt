@@ -41,6 +41,24 @@ data class ExpiryResult(
 )
 
 /**
+ * Outcome of a two-phone match transfer keeping separate linked outcomes
+ * and showing partial completion instead of pretending independent databases
+ * form one atomic transaction.
+ */
+data class MatchTransferOutcome(
+    val matchId: String,
+    val sourceDeviceId: String,
+    val targetDeviceId: String,
+    val stakeSeconds: Int,
+    val deductTxId: String,
+    val creditTxId: String,
+    val deductResult: PaymentResult,
+    val creditResult: PaymentResult,
+    val isComplete: Boolean,
+    val isPartial: Boolean
+)
+
+/**
  * Repository acting as the single payment-processing and session-balance authority.
  */
 class PaymentRepository(
@@ -74,7 +92,17 @@ class PaymentRepository(
 
     private val paymentDao = db.paymentDao()
 
-    suspend fun creditPayment(txId: String, seconds: Int, amount: Double): PaymentResult {
+    suspend fun creditPayment(
+        txId: String,
+        seconds: Int,
+        amount: Double,
+        operationKind: String = "COIN",
+        coinAmount: Int = amount.toInt(),
+        pricePerCoin: Double = 0.0,
+        boxInstallationEpoch: Long = 0L,
+        phonePairingEpoch: Long = 0L,
+        recordSchemaVersion: Int = PaymentReceipt.CURRENT_RECORD_SCHEMA_VERSION
+    ): PaymentResult {
         var committedSnapshot: SessionSnapshot? = null
 
         val result = try {
@@ -82,15 +110,22 @@ class PaymentRepository(
                 val existing = paymentDao.getReceiptByTxId(txId)
                 if (existing != null) {
                     val isLegacyPlaceholder = existing.secondsCredited == 0 && Math.abs(existing.amount - 0.0) < 0.0001
-                    val isIdentical = (existing.secondsCredited == seconds && Math.abs(existing.amount - amount) < 0.0001) ||
+                    val baseIdentical = (existing.secondsCredited == seconds && Math.abs(existing.amount - amount) < 0.0001) ||
                             (existing.secondsCredited == seconds && Math.abs(existing.amount - 0.0) < 0.0001) ||
                             isLegacyPlaceholder
+                    val kindMatch = existing.operationKind.isBlank() || operationKind.isBlank() || existing.operationKind == operationKind
+                    val coinMatch = (existing.coinAmount == coinAmount)
+                    val priceMatch = (pricePerCoin <= 0.0 && existing.pricePerCoin <= 0.0) || Math.abs(existing.pricePerCoin - pricePerCoin) < 0.001
+                    val boxEpochMatch = (boxInstallationEpoch == 0L || existing.boxInstallationEpoch == 0L || existing.boxInstallationEpoch == boxInstallationEpoch)
+                    val phoneEpochMatch = (phonePairingEpoch == 0L || existing.phonePairingEpoch == 0L || existing.phonePairingEpoch == phonePairingEpoch)
+
+                    val isIdentical = baseIdentical && kindMatch && coinMatch && priceMatch && boxEpochMatch && phoneEpochMatch
                     if (isIdentical) {
                         return@withTransaction PaymentResult.ALREADY_APPLIED
                     } else {
                         Log.w(
                             TAG,
-                            "Transaction ID conflict for $txId: existing=(s=${existing.secondsCredited}, a=${existing.amount}) vs new=(s=$seconds, a=$amount)"
+                            "Transaction ID conflict for $txId: existing=(s=${existing.secondsCredited}, a=${existing.amount}, k=${existing.operationKind}) vs new=(s=$seconds, a=$amount, k=$operationKind)"
                         )
                         return@withTransaction PaymentResult.CONFLICT
                     }
@@ -116,7 +151,13 @@ class PaymentRepository(
                     txId = txId,
                     secondsCredited = seconds,
                     amount = amount,
-                    acceptanceTimestamp = System.currentTimeMillis()
+                    acceptanceTimestamp = System.currentTimeMillis(),
+                    operationKind = operationKind,
+                    coinAmount = coinAmount,
+                    pricePerCoin = pricePerCoin,
+                    boxInstallationEpoch = boxInstallationEpoch,
+                    phonePairingEpoch = phonePairingEpoch,
+                    recordSchemaVersion = recordSchemaVersion
                 )
                 val newState = PaidSessionState(
                     id = 1,
@@ -146,12 +187,32 @@ class PaymentRepository(
         return result
     }
 
-    fun creditPaymentBlocking(txId: String, seconds: Int, amount: Double): PaymentResult =
+    fun creditPaymentBlocking(
+        txId: String,
+        seconds: Int,
+        amount: Double,
+        operationKind: String = "COIN",
+        coinAmount: Int = amount.toInt(),
+        pricePerCoin: Double = 0.0,
+        boxInstallationEpoch: Long = 0L,
+        phonePairingEpoch: Long = 0L
+    ): PaymentResult =
         runBlocking(Dispatchers.IO) {
-            creditPayment(txId, seconds, amount)
+            creditPayment(
+                txId, seconds, amount,
+                operationKind, coinAmount, pricePerCoin,
+                boxInstallationEpoch, phonePairingEpoch
+            )
         }
 
-    suspend fun deductPayment(txId: String, seconds: Int): PaymentResult {
+    suspend fun deductPayment(
+        txId: String,
+        seconds: Int,
+        operationKind: String = "MANUAL_DEDUCTION",
+        boxInstallationEpoch: Long = 0L,
+        phonePairingEpoch: Long = 0L,
+        recordSchemaVersion: Int = PaymentReceipt.CURRENT_RECORD_SCHEMA_VERSION
+    ): PaymentResult {
         var committedSnapshot: SessionSnapshot? = null
         val positiveSeconds = if (seconds == Int.MIN_VALUE) Int.MAX_VALUE else Math.abs(seconds)
         val expectedNegativeSeconds = -positiveSeconds
@@ -161,13 +222,18 @@ class PaymentRepository(
                 if (txId.isNotBlank()) {
                     val existing = paymentDao.getReceiptByTxId(txId)
                     if (existing != null) {
-                        val isIdentical = (existing.secondsCredited == expectedNegativeSeconds && Math.abs(existing.amount - 0.0) < 0.0001)
+                        val kindMatch = existing.operationKind.isBlank() || operationKind.isBlank() || existing.operationKind == operationKind
+                        val boxEpochMatch = (boxInstallationEpoch == 0L || existing.boxInstallationEpoch == 0L || existing.boxInstallationEpoch == boxInstallationEpoch)
+                        val phoneEpochMatch = (phonePairingEpoch == 0L || existing.phonePairingEpoch == 0L || existing.phonePairingEpoch == phonePairingEpoch)
+                        val isIdentical = (existing.secondsCredited == expectedNegativeSeconds && Math.abs(existing.amount - 0.0) < 0.0001) &&
+                                kindMatch && boxEpochMatch && phoneEpochMatch
+
                         if (isIdentical) {
                             return@withTransaction PaymentResult.ALREADY_APPLIED
                         } else {
                             Log.w(
                                 TAG,
-                                "Deduction transaction conflict for $txId: existing=(s=${existing.secondsCredited}, a=${existing.amount}) vs new=(s=$expectedNegativeSeconds, a=0.0)"
+                                "Deduction transaction conflict for $txId: existing=(s=${existing.secondsCredited}, a=${existing.amount}, k=${existing.operationKind}) vs new=(s=$expectedNegativeSeconds, a=0.0, k=$operationKind)"
                             )
                             return@withTransaction PaymentResult.CONFLICT
                         }
@@ -202,7 +268,13 @@ class PaymentRepository(
                         txId = txId,
                         secondsCredited = expectedNegativeSeconds,
                         amount = 0.0,
-                        acceptanceTimestamp = System.currentTimeMillis()
+                        acceptanceTimestamp = System.currentTimeMillis(),
+                        operationKind = operationKind,
+                        coinAmount = 0,
+                        pricePerCoin = 0.0,
+                        boxInstallationEpoch = boxInstallationEpoch,
+                        phonePairingEpoch = phonePairingEpoch,
+                        recordSchemaVersion = recordSchemaVersion
                     )
                     paymentDao.insertReceipt(receipt)
                 }
@@ -232,10 +304,44 @@ class PaymentRepository(
         return result
     }
 
-    fun deductPaymentBlocking(txId: String, seconds: Int): PaymentResult =
+    fun deductPaymentBlocking(
+        txId: String,
+        seconds: Int,
+        operationKind: String = "MANUAL_DEDUCTION",
+        boxInstallationEpoch: Long = 0L,
+        phonePairingEpoch: Long = 0L
+    ): PaymentResult =
         runBlocking(Dispatchers.IO) {
-            deductPayment(txId, seconds)
+            deductPayment(txId, seconds, operationKind, boxInstallationEpoch, phonePairingEpoch)
         }
+
+    fun evaluateMatchTransfer(
+        matchId: String,
+        sourceDeviceId: String,
+        targetDeviceId: String,
+        stakeSeconds: Int,
+        deductTxId: String,
+        creditTxId: String,
+        deductResult: PaymentResult,
+        creditResult: PaymentResult
+    ): MatchTransferOutcome {
+        val hasDeductSuccess = (deductResult == PaymentResult.APPLIED || deductResult == PaymentResult.ALREADY_APPLIED)
+        val hasCreditSuccess = (creditResult == PaymentResult.APPLIED || creditResult == PaymentResult.ALREADY_APPLIED)
+        val isComplete = hasDeductSuccess && hasCreditSuccess
+        val isPartial = (hasDeductSuccess && !hasCreditSuccess) || (!hasDeductSuccess && hasCreditSuccess)
+        return MatchTransferOutcome(
+            matchId = matchId,
+            sourceDeviceId = sourceDeviceId,
+            targetDeviceId = targetDeviceId,
+            stakeSeconds = stakeSeconds,
+            deductTxId = deductTxId,
+            creditTxId = creditTxId,
+            deductResult = deductResult,
+            creditResult = creditResult,
+            isComplete = isComplete,
+            isPartial = isPartial
+        )
+    }
 
     suspend fun deductTime(secondsDelta: Int, txId: String? = null): PaidSessionState {
         val updatedState = db.withTransaction {

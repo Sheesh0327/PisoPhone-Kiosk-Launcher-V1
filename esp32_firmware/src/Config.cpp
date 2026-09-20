@@ -24,6 +24,15 @@ const int   DEFAULT_MINUTES_PER_COIN   = 6;
 // GLOBAL VARIABLES DEFINITION
 // ============================================================================
 Preferences prefs;
+static portMUX_TYPE s_nvsMux = portMUX_INITIALIZER_UNLOCKED;
+
+void lockNvs() {
+    portENTER_CRITICAL(&s_nvsMux);
+}
+
+void unlockNvs() {
+    portEXIT_CRITICAL(&s_nvsMux);
+}
 
 int universalCoinPin = DEFAULT_UNIVERSAL_COIN_PIN;
 int ledPin           = DEFAULT_LED_PIN;
@@ -194,6 +203,7 @@ void syncAndroidIpsFromSlots() {
 }
 
 void saveSlotLicenses() {
+    lockNvs();
     prefs.begin(NVS_NAMESPACE, false);
     prefs.putInt(NVS_KEY_MAX_SLOTS, maxLicensedSlots);
     prefs.putBool(NVS_KEY_LICENSED, is_licensed);
@@ -211,9 +221,11 @@ void saveSlotLicenses() {
     syncAndroidIpsFromSlots();
     prefs.putString(NVS_KEY_IPS, androidIps);
     prefs.end();
+    unlockNvs();
 }
 
 void loadSlotLicenses() {
+    lockNvs();
     prefs.begin(NVS_NAMESPACE, false);
     maxLicensedSlots = prefs.getInt(NVS_KEY_MAX_SLOTS, DEFAULT_MAX_SLOTS);
     if (maxLicensedSlots < 1) maxLicensedSlots = DEFAULT_MAX_SLOTS;
@@ -288,6 +300,7 @@ void loadSlotLicenses() {
         }
     }
     prefs.end();
+    unlockNvs();
     syncAndroidIpsFromSlots();
 }
 
@@ -297,6 +310,7 @@ void loadAllConfig() {
     loadSuperAdminConfig();
 
     // 2. Open NVS for all kiosk configuration & lifetime vault revenue counters
+    lockNvs();
     prefs.begin(NVS_NAMESPACE, false);
     is_licensed       = prefs.getBool(NVS_KEY_LICENSED, (maxLicensedSlots > 1));
     wifiSsid          = prefs.getString(NVS_KEY_WIFI_SSID, wifiSsid);
@@ -329,6 +343,7 @@ void loadAllConfig() {
     revenueDirty = false;
 
     prefs.end();
+    unlockNvs();
 
     // Sanitize and purge any corrupted legacy entries
     String bootCleanIps = "";
@@ -356,10 +371,12 @@ void loadAllConfig() {
 
 void processRevenuePersistence() {
     if (revenueDirty && (millis() - lastCoinChangeTime >= REVENUE_SAVE_DELAY_MS)) {
+        lockNvs();
         prefs.begin(NVS_NAMESPACE, false);
         prefs.putULong(NVS_KEY_TOTAL_COINS, totalCoinsLifetime);
         prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, totalEarningsLifetime);
         prefs.end();
+        unlockNvs();
         lastSavedTotalCoins = totalCoinsLifetime;
         lastSavedTotalEarnings = totalEarningsLifetime;
         revenueDirty = false;
@@ -372,9 +389,11 @@ void factoryResetDefaults() {
     Serial.println("[⚠️ FACTORY RESET] Restoring all settings to defaults...");
     Serial.println("=======================================================");
 
+    lockNvs();
     prefs.begin(NVS_NAMESPACE, false);
     prefs.clear();
     prefs.end();
+    unlockNvs();
 
     wifiSsid = DEFAULT_SSID;
     wifiPass = DEFAULT_PASS;

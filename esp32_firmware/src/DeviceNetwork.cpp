@@ -80,7 +80,7 @@ AddTimeSummary sendAddTime(int64_t signedSeconds, String targetIp, String txId) 
                     } else {
                         String currentTxId = txId;
                         if (currentTxId.length() == 0) {
-                            currentTxId = "adj-" + cfg.id + "-" + String(millis()) + "-" + String(random(1000, 9999));
+                            currentTxId = generateCollisionResistantTxId("adj");
                         }
                         String params = "device_id=" + cfg.id + "&tx_id=" + currentTxId + "&seconds=" + String((long)signedSeconds) + "&amount=0";
                         recordAdjustmentPending(currentTxId, cfg.id, (int)signedSeconds);
@@ -121,11 +121,11 @@ void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId) {
 
     triggerLedBlink(pulses > 1 ? 4 : 2);
 
-    unsigned long long ts = (unsigned long long)getCurrentMasterTimeMs();
-    String txId = "tx-" + String(ts) + "-" + String(random(10000, 99999));
+    String txId = generateCollisionResistantTxId("coin");
 
     bool retained = enqueuePendingPayment(
-        txId, targetDev, pulses, CoinSlotOwnerType::PHONE, addedSeconds);
+        txId, targetDev, pulses, CoinSlotOwnerType::PHONE, addedSeconds,
+        OP_KIND_COIN, 5.0, 0, 0);
     if (!retained) {
         Serial.printf("[UNIVERSAL COIN] CRITICAL: Could not retain tx_id='%s'.\n",
                       txId.c_str());
@@ -155,28 +155,19 @@ bool retryPhonePayment(const String& targetDeviceId, int pulses, int creditSecon
     int addedMinutes = safeSeconds / 60;
     uint64_t retryTs = getCurrentMasterTimeMs();
 
-    bool dispatched = false;
-
     // 1. Dispatch over WebSocket if client is connected for targetDeviceId
     if (isWsConnected && wsClient.connected() && wsSessionDeviceId == targetDeviceId) {
         String innerJson = "{\"seconds\":" + String(safeSeconds) + ",\"minutes\":" + String(addedMinutes) + ",\"amount\":" + String(pulses) + ",\"tx_id\":\"" + txId + "\",\"ts\":\"" + String(retryTs) + "\",\"device_id\":\"" + targetDeviceId + "\"}";
         String payload = aes_encrypt(innerJson, sharedSecret);
         String vSig = calculateWsPaySignature("COIN_DETECTED", targetDeviceId, txId, String(retryTs), payload, sharedSecret);
-        String json = "{\"event\":\"COIN_DETECTED\",\"payload\":\"" + payload + "\",\"seconds\":" + String(safeSeconds) + ",\"amount\":" + String(pulses) + ",\"tx_id\":\"" + txId + "\",\"ts\":\"" + String(retryTs) + "\",\"v_sig\":\"" + vSig + "\"}";
+        String json = "{\"event\":\"COIN_DETECTED\",\"device_id\":\"" + targetDeviceId + "\",\"payload\":\"" + payload + "\",\"seconds\":" + String(safeSeconds) + ",\"amount\":" + String(pulses) + ",\"tx_id\":\"" + txId + "\",\"ts\":\"" + String(retryTs) + "\",\"v_sig\":\"" + vSig + "\"}";
         sendWsText(wsClient, json);
         refreshCoinSlotTtl(targetDeviceId, CoinSlotOwnerType::PHONE, ARM_TTL);
-        dispatched = true;
+        return true; // At most one delivery per operation/transport in flight
     }
 
-    // 2. Dispatch over HTTP if device IP is resolved
+    // 2. Dispatch over HTTP if WebSocket not active and device IP is resolved by authenticated identity
     String targetIp = getIpFromDeviceId(targetDeviceId);
-    if (targetIp.length() == 0 || targetIp == "127.0.0.1") {
-        int slotIndex = findSlotIndexForDevice(targetDeviceId, "");
-        if (slotIndex >= 0 && isSlotActive(slotIndex)) {
-            targetIp = licenseSlots[slotIndex].ip;
-        }
-    }
-
     if (targetIp.length() > 0 && targetIp != "127.0.0.1") {
         String params = "minutes=" + String(addedMinutes) +
                         "&seconds=" + String(safeSeconds) +
@@ -186,11 +177,11 @@ bool retryPhonePayment(const String& targetDeviceId, int pulses, int creditSecon
                         "&ts=" + String(retryTs);
         if (sendAuthenticated(targetIp, targetPort, "/add_time", "/challenge", params, 1000)) {
             refreshCoinSlotTtl(targetDeviceId, CoinSlotOwnerType::PHONE, ARM_TTL);
-            dispatched = true;
+            return true;
         }
     }
 
-    return dispatched;
+    return false;
 }
 
 bool sendAuthenticated(String ip, int port, String actionPath, String challengePath, String params, int timeoutMs) {

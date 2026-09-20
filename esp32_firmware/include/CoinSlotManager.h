@@ -20,7 +20,8 @@ enum class CoinSlotState {
     IDLE,               // No session, relay OFF, acceptor disabled
     RESERVED_ARMING,    // Atomically claimed by incoming connection, awaiting socket readiness/handshake completion
     ARMED,              // Active session running, relay ON, accepting coins
-    DRAINING            // Session closing/timed-out, relay ON, waiting for in-flight pulses to finish
+    DRAINING,           // Session closing/timed-out, relay ON, waiting for in-flight pulses to finish
+    FAULT_MAINTENANCE   // Hardware fault, storage unavailable, or maintenance lockdown; acceptor disabled
 };
 
 // ============================================================================
@@ -103,5 +104,11 @@ CoinSlotOwnerType getActiveCoinOwnerType();
  * Registers a global fallback payment callback if no session-specific callback is set.
  */
 void setGlobalCoinPaymentCallback(CoinPaymentCallback callback);
+
+/**
+ * Returns true if startup pulse suppression window is active.
+ * During this time, acceptor power MUST NOT be enabled.
+ */
+bool isStartupSuppressionActive();
 
 #endif // COIN_SLOT_MANAGER_H

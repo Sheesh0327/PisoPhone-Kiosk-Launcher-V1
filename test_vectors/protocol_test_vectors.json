@@ -1,0 +1,245 @@
+{
+  "protocol_version": "PISOPHONE-PROTOCOL-V1",
+  "shared_secret": "PISOPHONE_SHARED_SECRET_KEY_32B!",
+  "framing_vectors": [
+    {
+      "input": "hello",
+      "expected_framed": "5:hello",
+      "utf8_byte_length": 5
+    },
+    {
+      "input": "₱",
+      "expected_framed": "3:₱",
+      "utf8_byte_length": 3
+    },
+    {
+      "input": "Café",
+      "expected_framed": "5:Café",
+      "utf8_byte_length": 5
+    },
+    {
+      "input": "⚡",
+      "expected_framed": "3:⚡",
+      "utf8_byte_length": 3
+    },
+    {
+      "input": "",
+      "expected_framed": "0:",
+      "utf8_byte_length": 0
+    },
+    {
+      "input": "1800",
+      "expected_framed": "4:1800",
+      "utf8_byte_length": 4
+    },
+    {
+      "input": "-600",
+      "expected_framed": "4:-600",
+      "utf8_byte_length": 4
+    }
+  ],
+  "http_req_vectors": {
+    "valid_standard": {
+      "method": "GET",
+      "endpoint": "/add_time",
+      "recipient": "dev_slot_1",
+      "tx_id": "tx-1700000000-0001",
+      "ts": "1700000000000",
+      "payload": "4a6f7365",
+      "raw_framed": "8:HTTP_REQ3:GET9:/add_time10:dev_slot_118:tx-1700000000-000113:17000000000008:4a6f7365",
+      "hmac": "ffc8db2a5e62bc36a2d732f0845a592f2edb9d8d51a2c3cb610e8c0cd558c53d"
+    },
+    "valid_non_ascii": {
+      "method": "GET",
+      "endpoint": "/config",
+      "recipient": "dev-₱-01",
+      "tx_id": "tx-config-01",
+      "ts": "1700000000500",
+      "payload": "636166c3a9",
+      "raw_framed": "8:HTTP_REQ3:GET7:/config10:dev-₱-0112:tx-config-0113:170000000050010:636166c3a9",
+      "hmac": "7c35faa41657fc448c20d7141f1baed0d5e080a76a50461f1d43d27162a6209f"
+    },
+    "tampered_endpoint": {
+      "original": {
+        "method": "GET",
+        "endpoint": "/add_time",
+        "recipient": "dev_slot_1",
+        "tx_id": "tx-1700000000-0001",
+        "ts": "1700000000000",
+        "payload": "4a6f7365",
+        "raw_framed": "8:HTTP_REQ3:GET9:/add_time10:dev_slot_118:tx-1700000000-000113:17000000000008:4a6f7365",
+        "hmac": "ffc8db2a5e62bc36a2d732f0845a592f2edb9d8d51a2c3cb610e8c0cd558c53d"
+      },
+      "tampered_endpoint": "/coin"
+    },
+    "tampered_recipient": {
+      "original": {
+        "method": "GET",
+        "endpoint": "/add_time",
+        "recipient": "dev_slot_1",
+        "tx_id": "tx-1700000000-0001",
+        "ts": "1700000000000",
+        "payload": "4a6f7365",
+        "raw_framed": "8:HTTP_REQ3:GET9:/add_time10:dev_slot_118:tx-1700000000-000113:17000000000008:4a6f7365",
+        "hmac": "ffc8db2a5e62bc36a2d732f0845a592f2edb9d8d51a2c3cb610e8c0cd558c53d"
+      },
+      "tampered_recipient": "dev_slot_2"
+    },
+    "tampered_seconds_in_payload": {
+      "original": {
+        "method": "GET",
+        "endpoint": "/add_time",
+        "recipient": "dev_slot_1",
+        "tx_id": "tx-1700000000-0001",
+        "ts": "1700000000000",
+        "payload": "4a6f7365",
+        "raw_framed": "8:HTTP_REQ3:GET9:/add_time10:dev_slot_118:tx-1700000000-000113:17000000000008:4a6f7365",
+        "hmac": "ffc8db2a5e62bc36a2d732f0845a592f2edb9d8d51a2c3cb610e8c0cd558c53d"
+      },
+      "tampered_payload": "4a6f7366"
+    }
+  },
+  "ws_pay_vectors": {
+    "valid_coin": {
+      "event": "COIN_DETECTED",
+      "recipient": "dev_slot_1",
+      "tx_id": "tx-1700000000-0002",
+      "ts": "1700000001000",
+      "payload": "d3adb33f",
+      "raw_framed": "6:WS_PAY13:COIN_DETECTED10:dev_slot_118:tx-1700000000-000213:17000000010008:d3adb33f",
+      "hmac": "a7c895d37782578092f1d044d09d3037e0a411defc24857f99199f543d0150c5"
+    },
+    "valid_non_ascii": {
+      "event": "COIN_DETECTED",
+      "recipient": "dev-⚡-02",
+      "tx_id": "tx-coin-⚡",
+      "ts": "1700000002000",
+      "payload": "deadbeef",
+      "raw_framed": "6:WS_PAY13:COIN_DETECTED10:dev-⚡-0211:tx-coin-⚡13:17000000020008:deadbeef",
+      "hmac": "f31d2b551f25735a1f1939d6c21efae8974826718b34f5dc962ffeea1a8ec0f0"
+    },
+    "tampered_event": {
+      "original": {
+        "event": "COIN_DETECTED",
+        "recipient": "dev_slot_1",
+        "tx_id": "tx-1700000000-0002",
+        "ts": "1700000001000",
+        "payload": "d3adb33f",
+        "raw_framed": "6:WS_PAY13:COIN_DETECTED10:dev_slot_118:tx-1700000000-000213:17000000010008:d3adb33f",
+        "hmac": "a7c895d37782578092f1d044d09d3037e0a411defc24857f99199f543d0150c5"
+      },
+      "tampered_event": "ADMIN_COIN"
+    },
+    "tampered_recipient": {
+      "original": {
+        "event": "COIN_DETECTED",
+        "recipient": "dev_slot_1",
+        "tx_id": "tx-1700000000-0002",
+        "ts": "1700000001000",
+        "payload": "d3adb33f",
+        "raw_framed": "6:WS_PAY13:COIN_DETECTED10:dev_slot_118:tx-1700000000-000213:17000000010008:d3adb33f",
+        "hmac": "a7c895d37782578092f1d044d09d3037e0a411defc24857f99199f543d0150c5"
+      },
+      "tampered_recipient": "dev_slot_99"
+    }
+  },
+  "ack_vectors": {
+    "valid_ok": {
+      "device_id": "dev_slot_1",
+      "tx_id": "tx-1700000000-0002",
+      "amount": 5,
+      "seconds": 1800,
+      "ts": "1700000001500",
+      "status": "OK",
+      "raw_framed": "3:ACK10:dev_slot_118:tx-1700000000-00021:54:180013:17000000015002:OK",
+      "hmac": "41f60c11dc9336664b600b20cb715e151e54b40abb5d2c7ccea8a0ec8235e20b"
+    },
+    "valid_already_processed": {
+      "device_id": "dev_slot_1",
+      "tx_id": "tx-1700000000-0002",
+      "amount": 5,
+      "seconds": 1800,
+      "ts": "1700000001550",
+      "status": "ALREADY_PROCESSED",
+      "raw_framed": "3:ACK10:dev_slot_118:tx-1700000000-00021:54:180013:170000000155017:ALREADY_PROCESSED",
+      "hmac": "2c858a63a6f5ae6fffee7d2db72a83d10d704e76c781f91e1050e3325847a629"
+    },
+    "valid_negative_adjustment": {
+      "device_id": "dev_slot_1",
+      "tx_id": "adj-deduct-001",
+      "amount": 0,
+      "seconds": -300,
+      "ts": "1700000003000",
+      "status": "OK",
+      "raw_framed": "3:ACK10:dev_slot_114:adj-deduct-0011:04:-30013:17000000030002:OK",
+      "hmac": "14a303e3f5359d8829e0d25903168554a815f2c930c9dd031ca432becfeee23c"
+    },
+    "valid_non_ascii_device": {
+      "device_id": "terminal-₱",
+      "tx_id": "tx-999",
+      "amount": 1,
+      "seconds": 60,
+      "ts": "1700000004000",
+      "status": "OK",
+      "raw_framed": "3:ACK12:terminal-₱6:tx-9991:12:6013:17000000040002:OK",
+      "hmac": "91f8b09c9653ea562c51e04c19d031a10966c7cf11f5232e155bde9baa21f42f"
+    },
+    "tampered_seconds": {
+      "original": {
+        "device_id": "dev_slot_1",
+        "tx_id": "tx-1700000000-0002",
+        "amount": 5,
+        "seconds": 1800,
+        "ts": "1700000001500",
+        "status": "OK",
+        "raw_framed": "3:ACK10:dev_slot_118:tx-1700000000-00021:54:180013:17000000015002:OK",
+        "hmac": "41f60c11dc9336664b600b20cb715e151e54b40abb5d2c7ccea8a0ec8235e20b"
+      },
+      "tampered_seconds": 1801
+    },
+    "tampered_status": {
+      "original": {
+        "device_id": "dev_slot_1",
+        "tx_id": "tx-1700000000-0002",
+        "amount": 5,
+        "seconds": 1800,
+        "ts": "1700000001500",
+        "status": "OK",
+        "raw_framed": "3:ACK10:dev_slot_118:tx-1700000000-00021:54:180013:17000000015002:OK",
+        "hmac": "41f60c11dc9336664b600b20cb715e151e54b40abb5d2c7ccea8a0ec8235e20b"
+      },
+      "tampered_status": "MUTATED"
+    },
+    "tampered_amount": {
+      "original": {
+        "device_id": "dev_slot_1",
+        "tx_id": "tx-1700000000-0002",
+        "amount": 5,
+        "seconds": 1800,
+        "ts": "1700000001500",
+        "status": "OK",
+        "raw_framed": "3:ACK10:dev_slot_118:tx-1700000000-00021:54:180013:17000000015002:OK",
+        "hmac": "41f60c11dc9336664b600b20cb715e151e54b40abb5d2c7ccea8a0ec8235e20b"
+      },
+      "tampered_amount": 10
+    }
+  },
+  "malformed_framing_cases": [
+    {
+      "input": "5:abc",
+      "reason": "Length specified is 5 but actual bytes is 3"
+    },
+    {
+      "input": "-1:abc",
+      "reason": "Negative length prefix"
+    },
+    {
+      "input": "abc:abc",
+      "reason": "Non-numeric length prefix"
+    },
+    {
+      "input": "5",
+      "reason": "Missing colon delimiter"
+    }
+  ]
+}

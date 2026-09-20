@@ -1,4 +1,5 @@
 #include "Security.h"
+#include "ProtocolFraming.h"
 #include "Config.h"
 #include "esp_mac.h"
 #include "mbedtls/md.h"
@@ -39,14 +40,11 @@ String calculateHttpReqSignature(
     const String& payload,
     const String& secret
 ) {
-    String formatted = lengthPrefixedField("HTTP_REQ") +
-                       lengthPrefixedField(method) +
-                       lengthPrefixedField(endpoint) +
-                       lengthPrefixedField(recipient) +
-                       lengthPrefixedField(txId) +
-                       lengthPrefixedField(ts) +
-                       lengthPrefixedField(payload);
-    return calculateHMAC(formatted, secret);
+    std::string framed = PisoPhone::formatHttpReqData(
+        method.c_str(), endpoint.c_str(), recipient.c_str(),
+        txId.c_str(), ts.c_str(), payload.c_str()
+    );
+    return calculateHMAC(String(framed.c_str()), secret);
 }
 
 bool verifyHttpReqSignature(
@@ -61,7 +59,7 @@ bool verifyHttpReqSignature(
 ) {
     if (sig.length() == 0) return false;
     String expected = calculateHttpReqSignature(method, endpoint, recipient, txId, ts, payload, secret);
-    return sig.equalsIgnoreCase(expected);
+    return PisoPhone::constantTimeCompare(sig.c_str(), expected.c_str());
 }
 
 String calculateWsPaySignature(
@@ -72,13 +70,11 @@ String calculateWsPaySignature(
     const String& payload,
     const String& secret
 ) {
-    String formatted = lengthPrefixedField("WS_PAY") +
-                       lengthPrefixedField(event) +
-                       lengthPrefixedField(recipient) +
-                       lengthPrefixedField(txId) +
-                       lengthPrefixedField(ts) +
-                       lengthPrefixedField(payload);
-    return calculateHMAC(formatted, secret);
+    std::string framed = PisoPhone::formatWsPayData(
+        event.c_str(), recipient.c_str(), txId.c_str(),
+        ts.c_str(), payload.c_str()
+    );
+    return calculateHMAC(String(framed.c_str()), secret);
 }
 
 bool verifyWsPaySignature(
@@ -92,7 +88,7 @@ bool verifyWsPaySignature(
 ) {
     if (sig.length() == 0) return false;
     String expected = calculateWsPaySignature(event, recipient, txId, ts, payload, secret);
-    return sig.equalsIgnoreCase(expected);
+    return PisoPhone::constantTimeCompare(sig.c_str(), expected.c_str());
 }
 
 String calculateAckSignature(
@@ -104,14 +100,11 @@ String calculateAckSignature(
     const String& status,
     const String& secret
 ) {
-    String formatted = lengthPrefixedField("ACK") +
-                       lengthPrefixedField(deviceId) +
-                       lengthPrefixedField(txId) +
-                       lengthPrefixedField(String(amount)) +
-                       lengthPrefixedField(String(seconds)) +
-                       lengthPrefixedField(ts) +
-                       lengthPrefixedField(status);
-    return calculateHMAC(formatted, secret);
+    std::string framed = PisoPhone::formatAckData(
+        deviceId.c_str(), txId.c_str(), amount, seconds,
+        ts.c_str(), status.c_str()
+    );
+    return calculateHMAC(String(framed.c_str()), secret);
 }
 
 bool verifyAckSignature(
@@ -126,7 +119,7 @@ bool verifyAckSignature(
 ) {
     if (sig.length() == 0) return false;
     String expectedAck = calculateAckSignature(deviceId, txId, amount, seconds, ts, status, secret);
-    return sig.equalsIgnoreCase(expectedAck);
+    return PisoPhone::constantTimeCompare(sig.c_str(), expectedAck.c_str());
 }
 
 bool applySlotToken(String token) {

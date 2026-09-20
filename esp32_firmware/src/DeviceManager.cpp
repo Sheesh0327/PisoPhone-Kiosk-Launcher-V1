@@ -344,6 +344,20 @@ String getFirstKnownIp() {
 }
 
 String getIpFromDeviceId(String id) {
+    id.trim();
+    if (id.length() == 0) return "";
+
+    // 1. Check paired license slots (authenticated binding)
+    int slotIdx = findSlotIndexForDevice(id, "");
+    if (slotIdx >= 0 && isSlotActive(slotIdx)) {
+        String slotIp = licenseSlots[slotIdx].ip;
+        slotIp.trim();
+        if (slotIp.length() > 0 && slotIp != "127.0.0.1") {
+            return slotIp;
+        }
+    }
+
+    // 2. Check static configured androidIps
     int startIdx = 0;
     while (startIdx < androidIps.length()) {
         int comma = androidIps.indexOf(',', startIdx);
@@ -360,7 +374,15 @@ String getIpFromDeviceId(String id) {
         }
         startIdx = comma + 1;
     }
-    return id;
+
+    // 3. If the input itself is already a valid IPv4 address
+    IPAddress ipAddr;
+    if (ipAddr.fromString(id)) {
+        return id;
+    }
+
+    // Unresolved identity; never return deviceId as IP
+    return "";
 }
 
 String getDeviceIdFromIp(String ip) {

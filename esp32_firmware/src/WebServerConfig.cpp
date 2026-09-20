@@ -84,18 +84,9 @@ void handleReboot() {
         webServer.send(409, "text/plain", "BUSY: Unpersisted transactions in RAM");
         return;
     }
-    if (revenueDirty || totalCoinsLifetime != lastSavedTotalCoins || totalEarningsLifetime != lastSavedTotalEarnings) {
-        prefs.begin(NVS_NAMESPACE, false);
-        prefs.putULong(NVS_KEY_TOTAL_COINS, totalCoinsLifetime);
-        prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, totalEarningsLifetime);
-        prefs.end();
-        lastSavedTotalCoins = totalCoinsLifetime;
-        lastSavedTotalEarnings = totalEarningsLifetime;
-        revenueDirty = false;
-    }
     webServer.send(200, "text/plain", "REBOOTING");
-    delay(500);
-    ESP.restart();
+    delay(200);
+    requestSystemRestart("Web Portal Admin Reboot");
 }
 
 void handleFactoryReset() {
@@ -107,8 +98,8 @@ void handleFactoryReset() {
     }
     factoryResetDefaults();
     webServer.send(200, "text/plain", "OK");
-    delay(1000);
-    ESP.restart();
+    delay(500);
+    requestSystemRestart("Web Portal Factory Reset");
 }
 
 void handleResetVault() {
@@ -122,10 +113,12 @@ void handleResetVault() {
             totalEarningsSession = 0.0f;
             lastSavedTotalCoins = 0;
             lastSavedTotalEarnings = 0.0f;
+            lockNvs();
             prefs.begin(NVS_NAMESPACE, false);
             prefs.putULong(NVS_KEY_TOTAL_COINS, 0);
             prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, 0.0f);
             prefs.end();
+            unlockNvs();
             Serial.println("[👑 VAULT] Lifetime revenue counter reset to 0 by Super Admin (Vendor).");
         } else {
             Serial.println("[⚠️ VAULT] Reset attempted without valid Super Admin credentials.");
@@ -139,16 +132,19 @@ void handleSave() {
 
     // Immediately flush any dirty revenue to NVS flash on manual save
     if (revenueDirty || totalCoinsLifetime != lastSavedTotalCoins || totalEarningsLifetime != lastSavedTotalEarnings) {
+        lockNvs();
         prefs.begin(NVS_NAMESPACE, false);
         prefs.putULong(NVS_KEY_TOTAL_COINS, totalCoinsLifetime);
         prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, totalEarningsLifetime);
         prefs.end();
+        unlockNvs();
         lastSavedTotalCoins = totalCoinsLifetime;
         lastSavedTotalEarnings = totalEarningsLifetime;
         revenueDirty = false;
         Serial.println("[💰 VAULT] Revenue counters flushed to NVS flash on config save.");
     }
 
+    lockNvs();
     prefs.begin(NVS_NAMESPACE, false);
     if (webServer.hasArg(NVS_KEY_WIFI_SSID)) { wifiSsid = webServer.arg(NVS_KEY_WIFI_SSID); prefs.putString(NVS_KEY_WIFI_SSID, wifiSsid); }
     if (webServer.hasArg(NVS_KEY_WIFI_PASS)) { wifiPass = webServer.arg(NVS_KEY_WIFI_PASS); prefs.putString(NVS_KEY_WIFI_PASS, wifiPass); }
@@ -230,6 +226,7 @@ void handleSave() {
         prefs.putString(NVS_KEY_SHARED_SECRET, sharedSecret);
     }
     prefs.end();
+    unlockNvs();
 
     // Dynamic Hardware Pin and Coin Slot reconfiguration
     applyCoinSlotHardwareConfig();

@@ -13,5 +13,15 @@ data class PaymentReceipt(
     val txId: String,
     val secondsCredited: Int,
     val amount: Double,
-    val acceptanceTimestamp: Long = System.currentTimeMillis()
-)
+    val acceptanceTimestamp: Long = System.currentTimeMillis(),
+    val operationKind: String = "COIN",
+    val coinAmount: Int = 0,
+    val pricePerCoin: Double = 0.0,
+    val boxInstallationEpoch: Long = 0L,
+    val phonePairingEpoch: Long = 0L,
+    val recordSchemaVersion: Int = CURRENT_RECORD_SCHEMA_VERSION
+) {
+    companion object {
+        const val CURRENT_RECORD_SCHEMA_VERSION = 5
+    }
+}

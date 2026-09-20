@@ -151,6 +151,9 @@ void syncAndroidIpsFromSlots();
 
 void processRevenuePersistence();
 
+void lockNvs();
+void unlockNvs();
+
 void factoryResetDefaults();
 void updateMasterTime(uint64_t ts);
 uint64_t getCurrentMasterTimeMs();

@@ -9,7 +9,6 @@
 #include <freertos/semphr.h>
 
 static const int MAX_PAYMENT_QUEUE_SIZE = 20;
-static const uint32_t PAYMENT_RECORD_MAGIC = 0x50415932UL; // "PAY2"
 static const unsigned long RETRY_INTERVAL_MS = 10000;
 
 static PaymentRecord paymentQueue[MAX_PAYMENT_QUEUE_SIZE];
@@ -19,8 +18,36 @@ static unsigned long lastPersistAttemptMs[MAX_PAYMENT_QUEUE_SIZE] = {0};
 static uint8_t persistRetryCount[MAX_PAYMENT_QUEUE_SIZE] = {0};
 static unsigned long lastDispatchMs[MAX_PAYMENT_QUEUE_SIZE] = {0};
 static int activePaymentCount = 0;
+static int quarantineRecordCount = 0;
 static SemaphoreHandle_t paymentQueueMutex = nullptr;
 static bool paymentStorageReady = false;
+
+uint32_t computeRecordCrc32(const PaymentRecord& rec) {
+    const uint8_t* data = (const uint8_t*)&rec;
+    size_t length = offsetof(PaymentRecord, crc32);
+    uint32_t crc = 0xFFFFFFFF;
+    for (size_t i = 0; i < length; i++) {
+        crc ^= data[i];
+        for (int j = 0; j < 8; j++) {
+            crc = (crc >> 1) ^ (0xEDB88320 & -(crc & 1));
+        }
+    }
+    return ~crc;
+}
+
+String generateCollisionResistantTxId(const char* prefix) {
+    uint64_t ts = (uint64_t)getCurrentMasterTimeMs();
+#if defined(ESP32) || defined(ARDUINO)
+    uint32_t r1 = esp_random();
+    uint32_t r2 = esp_random();
+#else
+    uint32_t r1 = (uint32_t)rand();
+    uint32_t r2 = (uint32_t)rand();
+#endif
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%s-%llu-%08x%08x", prefix ? prefix : "tx", (unsigned long long)ts, r1, r2);
+    return String(buf);
+}
 
 static String recordKey(int index) {
     char key[8];
@@ -29,26 +56,39 @@ static String recordKey(int index) {
 }
 
 static bool validRecord(const PaymentRecord& rec) {
-    return rec.magic == PAYMENT_RECORD_MAGIC && rec.txId[0] != '\0' &&
-           rec.targetId[0] != '\0' && rec.pulses > 0 &&
-           (rec.ownerType == 1 || rec.ownerType == 2);
+    if (rec.magic != PAYMENT_RECORD_MAGIC) return false;
+    if (rec.schemaVersion != PAYMENT_SCHEMA_VERSION) return false;
+    if (rec.txId[0] == '\0' || rec.targetId[0] == '\0') return false;
+    if (rec.ownerType != 1 && rec.ownerType != 2) return false;
+    if (rec.crc32 != computeRecordCrc32(rec)) return false;
+    return true;
 }
 
 static bool persistRecord(int index, const PaymentRecord& rec) {
+    lockNvs();
     Preferences storage;
-    if (!storage.begin("pay_queue", false)) return false;
+    if (!storage.begin("pay_queue", false)) {
+        unlockNvs();
+        return false;
+    }
     String key = recordKey(index);
     size_t written = storage.putBytes(key.c_str(), &rec, sizeof(rec));
     storage.end();
+    unlockNvs();
     return written == sizeof(rec);
 }
 
 static bool eraseRecord(int index) {
+    lockNvs();
     Preferences storage;
-    if (!storage.begin("pay_queue", false)) return false;
+    if (!storage.begin("pay_queue", false)) {
+        unlockNvs();
+        return false;
+    }
     String key = recordKey(index);
     bool removed = !storage.isKey(key.c_str()) || storage.remove(key.c_str());
     storage.end();
+    unlockNvs();
     return removed;
 }
 
@@ -58,6 +98,15 @@ static void lockQueue() {
 
 static void unlockQueue() {
     if (paymentQueueMutex != nullptr) xSemaphoreGive(paymentQueueMutex);
+}
+
+static bool hasUnpersistedPaymentsLocked() {
+    for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
+        if (paymentSlotUsed[i] && !paymentSlotPersisted[i]) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void initPaymentQueue() {
@@ -76,11 +125,14 @@ void initPaymentQueue() {
     memset(persistRetryCount, 0, sizeof(persistRetryCount));
     memset(lastDispatchMs, 0, sizeof(lastDispatchMs));
     activePaymentCount = 0;
+    quarantineRecordCount = 0;
     paymentStorageReady = false;
 
+    lockNvs();
     Preferences storage;
     if (!storage.begin("pay_queue", false)) {
         Serial.println("[PAY QUEUE] Failed to open persistent payment storage.");
+        unlockNvs();
         unlockQueue();
         return;
     }
@@ -100,43 +152,90 @@ void initPaymentQueue() {
             paymentSlotUsed[i] = true;
             paymentSlotPersisted[i] = true;
             activePaymentCount++;
-            Serial.printf("[PAY QUEUE] Restored tx_id='%s' for '%s'.\n", rec.txId, rec.targetId);
+            Serial.printf("[PAY QUEUE] Restored tx_id='%s' for '%s' (kind=%d).\n", rec.txId, rec.targetId, rec.opKind);
         } else {
-            storage.remove(key.c_str());
-            Serial.printf("[PAY QUEUE] Removed invalid record in slot %d.\n", i);
+            // Check if it is a valid legacy V2 record to safely migrate
+            struct LegacyRecordV2 {
+                uint32_t magic;
+                char txId[64];
+                char targetId[97];
+                int pulses;
+                int creditSeconds;
+                uint8_t ownerType;
+                uint64_t timestamp;
+            } legacyRec;
+
+            if (length == sizeof(legacyRec) &&
+                storage.getBytes(key.c_str(), &legacyRec, sizeof(legacyRec)) == sizeof(legacyRec) &&
+                legacyRec.magic == PAYMENT_RECORD_MAGIC_V2 &&
+                legacyRec.txId[0] != '\0') {
+                memset(&rec, 0, sizeof(rec));
+                rec.magic = PAYMENT_RECORD_MAGIC;
+                rec.schemaVersion = PAYMENT_SCHEMA_VERSION;
+                rec.opKind = (legacyRec.ownerType == 2) ? OP_KIND_CONTROLLER : OP_KIND_COIN;
+                rec.ownerType = legacyRec.ownerType;
+                strncpy(rec.txId, legacyRec.txId, sizeof(rec.txId) - 1);
+                strncpy(rec.targetId, legacyRec.targetId, sizeof(rec.targetId) - 1);
+                rec.pulses = legacyRec.pulses;
+                rec.creditSeconds = legacyRec.creditSeconds;
+                rec.pricePerCoin = 5.0;
+                rec.timestamp = legacyRec.timestamp;
+                rec.crc32 = computeRecordCrc32(rec);
+                size_t written = storage.putBytes(key.c_str(), &rec, sizeof(rec));
+                if (written == sizeof(rec)) {
+                    paymentQueue[i] = rec;
+                    paymentSlotUsed[i] = true;
+                    paymentSlotPersisted[i] = true;
+                    activePaymentCount++;
+                    Serial.printf("[PAY QUEUE] Migrated legacy record tx_id='%s'.\n", rec.txId);
+                    continue;
+                }
+            }
+
+            // Do not erase corrupt records silently: quarantine/report and block acceptance
+            quarantineRecordCount++;
+            Serial.printf("[PAY QUEUE] CRITICAL: Corrupted/unrecognized record in slot %d (len=%u) QUARANTINED (not erased). Acceptance blocked.\n",
+                          i, (unsigned)length);
         }
     }
     storage.end();
-    Serial.printf("[PAY QUEUE] Ready with %d pending payment(s).\n", activePaymentCount);
+    unlockNvs();
+    Serial.printf("[PAY QUEUE] Ready with %d pending payment(s), %d quarantined.\n",
+                  activePaymentCount, quarantineRecordCount);
     unlockQueue();
 }
 
 bool isPaymentQueueFull() {
     lockQueue();
-    // Reserve at least 2 slots for in-flight pulses so they can safely drain
-    bool full = !paymentStorageReady || (activePaymentCount >= MAX_PAYMENT_QUEUE_SIZE - 2);
+    // Capacity reservation: reserve at least 2 slots for in-flight pulses.
+    // Stop acceptance if storage fault exists, or corrupted records exist, or queue is full.
+    bool full = !paymentStorageReady ||
+                (quarantineRecordCount > 0) ||
+                hasUnpersistedPaymentsLocked() ||
+                (activePaymentCount >= MAX_PAYMENT_QUEUE_SIZE - 2);
     unlockQueue();
     return full;
 }
 
 bool isPaymentStorageReady() {
     lockQueue();
-    bool ready = paymentStorageReady;
+    bool ready = paymentStorageReady && (quarantineRecordCount == 0) && !hasUnpersistedPaymentsLocked();
     unlockQueue();
     return ready;
 }
 
 bool hasUnpersistedPayments() {
     lockQueue();
-    bool unpersisted = false;
-    for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
-        if (paymentSlotUsed[i] && !paymentSlotPersisted[i]) {
-            unpersisted = true;
-            break;
-        }
-    }
+    bool unpersisted = hasUnpersistedPaymentsLocked();
     unlockQueue();
     return unpersisted;
+}
+
+int getQuarantinedRecordCount() {
+    lockQueue();
+    int count = quarantineRecordCount;
+    unlockQueue();
+    return count;
 }
 
 static bool maintenanceMode = false;
@@ -173,6 +272,55 @@ bool canPerformRebootOrOta() {
     return true;
 }
 
+bool requestSystemRestart(const char* reason, unsigned long timeoutMs) {
+    Serial.printf("\n=======================================================\n");
+    Serial.printf("[🛑 REBOOT GATE] Planned restart requested: %s\n", reason ? reason : "Unknown");
+    Serial.printf("=======================================================\n");
+
+    // 1. Close Admission: Enter maintenance mode to reject new sessions/requests
+    setMaintenanceMode(true);
+
+    // 2. Wait for in-flight sessions/pulses to drain safely until timeout
+    unsigned long startMs = millis();
+    while (millis() - startMs < timeoutMs) {
+        // Run retry loop and revenue flushing while draining
+        processPendingPaymentRetries();
+        processRevenuePersistence();
+
+        if (canPerformRebootOrOta()) {
+            break;
+        }
+        delay(50);
+    }
+
+    // 3. Check if durability and idle conditions succeeded
+    if (!canPerformRebootOrOta()) {
+        Serial.printf("[🛑 REBOOT GATE] FAILED: System could not reach safe IDLE state or unpersisted RAM money exists. Restart aborted!\n");
+        setMaintenanceMode(false);
+        return false;
+    }
+
+    // 4. Final flush of any dirty revenue to NVS flash
+    if (revenueDirty || totalCoinsLifetime != lastSavedTotalCoins || totalEarningsLifetime != lastSavedTotalEarnings) {
+        lockNvs();
+        prefs.begin(NVS_NAMESPACE, false);
+        prefs.putULong(NVS_KEY_TOTAL_COINS, totalCoinsLifetime);
+        prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, totalEarningsLifetime);
+        prefs.end();
+        unlockNvs();
+        lastSavedTotalCoins = totalCoinsLifetime;
+        lastSavedTotalEarnings = totalEarningsLifetime;
+        revenueDirty = false;
+        Serial.println("[🛑 REBOOT GATE] Revenue counters durably flushed to NVS flash.");
+    }
+
+    Serial.printf("[🛑 REBOOT GATE] Pre-reboot invariants verified. System restarting now...\n");
+    Serial.flush();
+    delay(200);
+    ESP.restart();
+    return true;
+}
+
 int getPendingPaymentCount() {
     lockQueue();
     int count = activePaymentCount;
@@ -181,12 +329,14 @@ int getPendingPaymentCount() {
 }
 
 bool enqueuePendingPayment(const String& txId, const String& targetId, int pulses,
-                           CoinSlotOwnerType ownerType, int creditSeconds) {
+                           CoinSlotOwnerType ownerType, int creditSeconds,
+                           PaymentOpKind opKind,
+                           double pricePerCoin,
+                           uint64_t boxEpoch, uint64_t phoneEpoch) {
     if (txId.length() == 0 || txId.length() >= sizeof(((PaymentRecord*)0)->txId) ||
         targetId.length() == 0 || targetId.length() >= sizeof(((PaymentRecord*)0)->targetId) ||
-        pulses <= 0 ||
         (ownerType != CoinSlotOwnerType::PHONE && ownerType != CoinSlotOwnerType::CONTROLLER)) {
-        Serial.println("[PAY QUEUE] Rejected invalid payment record.");
+        Serial.println("[PAY QUEUE] Rejected invalid payment record parameters.");
         return false;
     }
 
@@ -214,14 +364,20 @@ bool enqueuePendingPayment(const String& txId, const String& targetId, int pulse
     PaymentRecord rec;
     memset(&rec, 0, sizeof(rec));
     rec.magic = PAYMENT_RECORD_MAGIC;
+    rec.schemaVersion = PAYMENT_SCHEMA_VERSION;
+    rec.opKind = (uint8_t)opKind;
+    rec.ownerType = (ownerType == CoinSlotOwnerType::CONTROLLER) ? 2 : 1;
     strncpy(rec.txId, txId.c_str(), sizeof(rec.txId) - 1);
     strncpy(rec.targetId, targetId.c_str(), sizeof(rec.targetId) - 1);
     rec.pulses = pulses;
     rec.creditSeconds = creditSeconds;
-    rec.ownerType = ownerType == CoinSlotOwnerType::CONTROLLER ? 2 : 1;
+    rec.pricePerCoin = (pricePerCoin > 0.0) ? pricePerCoin : 5.0;
+    rec.boxInstallationEpoch = boxEpoch;
+    rec.phonePairingEpoch = phoneEpoch;
     rec.timestamp = getCurrentMasterTimeMs();
+    rec.crc32 = computeRecordCrc32(rec);
 
-    // Retain in RAM under all conditions (never lose in-flight transactions or change tx_id)
+    // Retain pulses in RAM before fallible flash write
     paymentQueue[freeIndex] = rec;
     paymentSlotUsed[freeIndex] = true;
     paymentSlotPersisted[freeIndex] = false;
@@ -230,9 +386,8 @@ bool enqueuePendingPayment(const String& txId, const String& targetId, int pulse
     lastDispatchMs[freeIndex] = 0;
     activePaymentCount++;
 
-    // Attempt durable NVS flash persistence
+    // Attempt durable NVS flash write
     if (!persistRecord(freeIndex, rec)) {
-        paymentStorageReady = false;
         persistRetryCount[freeIndex] = 1;
         unlockQueue();
         Serial.printf("[PAY QUEUE] NVS write failed for tx_id='%s'. Retained in RAM; persistence will retry with backoff.\n", txId.c_str());
@@ -240,12 +395,11 @@ bool enqueuePendingPayment(const String& txId, const String& targetId, int pulse
     }
 
     paymentSlotPersisted[freeIndex] = true;
-    paymentStorageReady = true;
     lastDispatchMs[freeIndex] = millis();
     unlockQueue();
 
-    Serial.printf("[PAY QUEUE] Persisted tx_id='%s' for '%s' (%d pulse(s)). Dispatching via single payment path...\n",
-                  txId.c_str(), targetId.c_str(), pulses);
+    Serial.printf("[PAY QUEUE] Persisted tx_id='%s' for '%s' (%d pulse(s), kind=%d). Dispatching durably written record...\n",
+                  txId.c_str(), targetId.c_str(), pulses, (int)opKind);
 
     if (rec.ownerType == 2) {
         sendControllerPaymentEvent(String(rec.targetId), String(rec.txId), rec.pulses);
@@ -273,9 +427,16 @@ static bool acknowledgeMatchingPayment(const String& txId, const String* session
         return false;
     }
 
+    if (!paymentSlotPersisted[foundIndex]) {
+        unlockQueue();
+        Serial.printf("[PAY QUEUE] Reject ACK for tx_id='%s': record not yet durably persisted.\n", txId.c_str());
+        return false;
+    }
+
+    // Failed flash deletion retains the record!
     if (!eraseRecord(foundIndex)) {
         unlockQueue();
-        Serial.printf("[PAY QUEUE] Failed to erase acknowledged tx_id='%s'.\n", txId.c_str());
+        Serial.printf("[PAY QUEUE] Failed to erase acknowledged tx_id='%s'. Record RETAINED in RAM and flash.\n", txId.c_str());
         return false;
     }
 
@@ -296,7 +457,8 @@ bool acknowledgePhonePayment(
     const String& txId,
     int acknowledgedPulses,
     int acknowledgedSeconds,
-    const String& status) {
+    const String& status,
+    uint8_t expectedOpKind) {
     if (deviceId.length() == 0 || txId.length() == 0) return false;
 
     // 1. Reject status other than OK or ALREADY_PROCESSED.
@@ -305,7 +467,7 @@ bool acknowledgePhonePayment(
     }
 
     lockQueue();
-    // 2. Find the exact PHONE record matching both transaction and device ID.
+    // 2. Find exact PHONE record matching transaction, device ID and parameters
     int foundIndex = -1;
     for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
         if (paymentSlotUsed[i] && 
@@ -345,14 +507,22 @@ bool acknowledgePhonePayment(
         return false;
     }
 
-    // 6. Delete the NVS record.
-    if (!eraseRecord(foundIndex)) {
+    // 6. Require expectedOpKind match if specified
+    if (expectedOpKind != 0 && paymentQueue[foundIndex].opKind != expectedOpKind) {
         unlockQueue();
-        Serial.printf("[PAY QUEUE] Failed to erase acknowledged tx_id='%s' from NVS.\n", txId.c_str());
+        Serial.printf("[PAY QUEUE] Reject ACK for tx_id='%s': mismatched opKind (%d vs %d).\n",
+                      txId.c_str(), expectedOpKind, paymentQueue[foundIndex].opKind);
         return false;
     }
 
-    // 7. Clear its RAM slot only after successful NVS deletion.
+    // 7. Delete NVS record. FAILED FLASH DELETION RETAINS THE RECORD!
+    if (!eraseRecord(foundIndex)) {
+        unlockQueue();
+        Serial.printf("[PAY QUEUE] Failed to erase acknowledged tx_id='%s' from NVS. Record RETAINED.\n", txId.c_str());
+        return false;
+    }
+
+    // 8. Clear its RAM slot only after successful NVS deletion.
     memset(&paymentQueue[foundIndex], 0, sizeof(PaymentRecord));
     paymentSlotUsed[foundIndex] = false;
     paymentSlotPersisted[foundIndex] = false;
@@ -394,7 +564,7 @@ void dispatchPendingControllerPayments(const String& sessionId) {
 void processPendingPaymentRetries() {
     unsigned long now = millis();
 
-    // 1. Retry unpersisted records in RAM with exponential backoff
+    // 1. Retry unpersisted records in RAM with exponential backoff (1s, 2s, 4s, 8s, 16s, 32s)
     for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
         PaymentRecord rec;
         bool needPersist = false;
@@ -403,7 +573,7 @@ void processPendingPaymentRetries() {
         lockQueue();
         if (paymentSlotUsed[i] && !paymentSlotPersisted[i]) {
             uint8_t count = persistRetryCount[i] > 5 ? 5 : persistRetryCount[i];
-            unsigned long backoffMs = 1000UL << count; // 1s, 2s, 4s, 8s, 16s, 32s
+            unsigned long backoffMs = 1000UL << count;
             if ((long)(now - (lastPersistAttemptMs[i] + backoffMs)) >= 0) {
                 rec = paymentQueue[i];
                 lastPersistAttemptMs[i] = now;
@@ -419,10 +589,14 @@ void processPendingPaymentRetries() {
             if (persistRecord(i, rec)) {
                 lockQueue();
                 paymentSlotPersisted[i] = true;
-                paymentStorageReady = true;
                 lastDispatchMs[i] = millis();
                 unlockQueue();
-                Serial.printf("[PAY QUEUE] NVS persistence recovered for tx_id='%s'.\n", rec.txId);
+                Serial.printf("[PAY QUEUE] NVS persistence recovered for tx_id='%s'. Dispatching...\n", rec.txId);
+                if (rec.ownerType == 2) {
+                    sendControllerPaymentEvent(String(rec.targetId), String(rec.txId), rec.pulses);
+                } else if (rec.ownerType == 1) {
+                    retryPhonePayment(String(rec.targetId), rec.pulses, rec.creditSeconds, String(rec.txId));
+                }
             } else {
                 lockQueue();
                 if (persistRetryCount[i] < 10) persistRetryCount[i]++;
@@ -432,17 +606,21 @@ void processPendingPaymentRetries() {
         }
     }
 
-    // 2. Dispatch / retry only durably persisted records
+    // 2. Dispatch / retry ONLY durably persisted records with bounded backoff (2s, 4s, 8s, 16s, 32s)
     for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
         PaymentRecord rec;
         bool shouldDispatch = false;
 
         lockQueue();
-        if (paymentSlotUsed[i] && paymentSlotPersisted[i] &&
-            (lastDispatchMs[i] == 0 || (long)(now - (lastDispatchMs[i] + RETRY_INTERVAL_MS)) >= 0)) {
-            rec = paymentQueue[i];
-            lastDispatchMs[i] = now;
-            shouldDispatch = true;
+        if (paymentSlotUsed[i] && paymentSlotPersisted[i]) {
+            uint8_t attempts = persistRetryCount[i] > 4 ? 4 : persistRetryCount[i];
+            unsigned long dispatchInterval = min(2000UL * (1UL << attempts), 32000UL);
+            if (lastDispatchMs[i] == 0 || (long)(now - (lastDispatchMs[i] + dispatchInterval)) >= 0) {
+                rec = paymentQueue[i];
+                lastDispatchMs[i] = now;
+                if (persistRetryCount[i] < 10) persistRetryCount[i]++;
+                shouldDispatch = true;
+            }
         }
         unlockQueue();
 

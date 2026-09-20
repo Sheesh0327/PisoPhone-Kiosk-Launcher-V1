@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [CoinEvent::class, PaymentReceipt::class, PaidSessionState::class, AppMetadata::class], version = 4, exportSchema = false)
+@Database(entities = [CoinEvent::class, PaymentReceipt::class, PaidSessionState::class, AppMetadata::class], version = 5, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun coinEventDao(): CoinEventDao
     abstract fun paymentDao(): PaymentDao
@@ -48,6 +48,17 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `payment_receipts` ADD COLUMN `operationKind` TEXT NOT NULL DEFAULT 'COIN'")
+                db.execSQL("ALTER TABLE `payment_receipts` ADD COLUMN `coinAmount` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `payment_receipts` ADD COLUMN `pricePerCoin` REAL NOT NULL DEFAULT 0.0")
+                db.execSQL("ALTER TABLE `payment_receipts` ADD COLUMN `boxInstallationEpoch` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `payment_receipts` ADD COLUMN `phonePairingEpoch` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `payment_receipts` ADD COLUMN `recordSchemaVersion` INTEGER NOT NULL DEFAULT 1")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) context.applicationContext.createDeviceProtectedStorageContext() else context.applicationContext
@@ -56,7 +67,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "kiosk_audit_database"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_1_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_1_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build()
                 INSTANCE = instance
                 instance

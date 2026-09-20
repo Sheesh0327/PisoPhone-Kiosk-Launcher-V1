@@ -133,11 +133,11 @@ bool handleControllerWebSocketHandshake(WiFiClient& client, const String& reques
     bool ok = reserveCoinSlot(sessionId, CoinSlotOwnerType::CONTROLLER, ARM_TTL,
         // onPayment Callback (Pure pulses, no PisoPhone pricing or routing)
         [](const String& sessId, int pulses) {
-            unsigned long long eventTs = (unsigned long long)getCurrentMasterTimeMs();
-            String txId = "tx-" + String(eventTs) + "-" + String(random(10000, 99999));
+            String txId = generateCollisionResistantTxId("ctrl");
             
             bool retained = enqueuePendingPayment(
-                txId, sessId, pulses, CoinSlotOwnerType::CONTROLLER);
+                txId, sessId, pulses, CoinSlotOwnerType::CONTROLLER, 0,
+                OP_KIND_CONTROLLER, 0.0, 0, 0);
             if (!retained) {
                 Serial.printf("[CONTROLLER WS] CRITICAL: Could not retain tx_id='%s'.\n",
                               txId.c_str());

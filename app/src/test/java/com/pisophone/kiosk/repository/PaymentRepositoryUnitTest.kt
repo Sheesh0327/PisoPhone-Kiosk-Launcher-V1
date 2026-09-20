@@ -564,6 +564,326 @@ class PaymentRepositoryUnitTest {
         assertEquals("Negative deadline must be sanitized to 0L", 0L, sanitizedState.sessionExpiryDeadlineMs)
         assertEquals(2L, sanitizedState.revision)
     }
+
+    @Test
+    fun testCreditPaymentStoresAllAuditFieldsImmutably() = runBlocking {
+        val repository = PaymentRepository(db = db, isEligible = { true })
+        val txId = "tx-audit-100"
+        val result = repository.creditPayment(
+            txId = txId,
+            seconds = 1800,
+            amount = 5.0,
+            operationKind = "COIN",
+            coinAmount = 1,
+            pricePerCoin = 5.0,
+            boxInstallationEpoch = 1710000000L,
+            phonePairingEpoch = 1710050000L
+        )
+
+        assertEquals(PaymentResult.APPLIED, result)
+
+        val receipt = db.paymentDao().getReceiptByTxId(txId)
+        assertNotNull("Receipt must be stored", receipt)
+        assertEquals(txId, receipt?.txId)
+        assertEquals(1800, receipt?.secondsCredited)
+        assertEquals(5.0, receipt?.amount ?: 0.0, 0.001)
+        assertEquals("COIN", receipt?.operationKind)
+        assertEquals(1, receipt?.coinAmount)
+        assertEquals(5.0, receipt?.pricePerCoin ?: 0.0, 0.001)
+        assertEquals(1710000000L, receipt?.boxInstallationEpoch)
+        assertEquals(1710050000L, receipt?.phonePairingEpoch)
+        assertEquals(5, receipt?.recordSchemaVersion)
+
+        // Duplicate identical submission returns ALREADY_APPLIED
+        val dupResult = repository.creditPayment(
+            txId = txId,
+            seconds = 1800,
+            amount = 5.0,
+            operationKind = "COIN",
+            coinAmount = 1,
+            pricePerCoin = 5.0,
+            boxInstallationEpoch = 1710000000L,
+            phonePairingEpoch = 1710050000L
+        )
+        assertEquals(PaymentResult.ALREADY_APPLIED, dupResult)
+    }
+
+    @Test
+    fun testAuditFieldConflictsRejectedWithConflict() = runBlocking {
+        val repository = PaymentRepository(db = db, isEligible = { true })
+        val txId = "tx-conflict-audit"
+        val res1 = repository.creditPayment(
+            txId = txId,
+            seconds = 600,
+            amount = 1.0,
+            operationKind = "COIN",
+            coinAmount = 1,
+            pricePerCoin = 1.0,
+            boxInstallationEpoch = 1000L,
+            phonePairingEpoch = 2000L
+        )
+        assertEquals(PaymentResult.APPLIED, res1)
+
+        // Conflicting operation kind
+        val resKind = repository.creditPayment(
+            txId = txId,
+            seconds = 600,
+            amount = 1.0,
+            operationKind = "MANUAL_ADJUSTMENT"
+        )
+        assertEquals("Conflicting operationKind must return CONFLICT", PaymentResult.CONFLICT, resKind)
+
+        // Conflicting coin amount
+        val resCoin = repository.creditPayment(
+            txId = txId,
+            seconds = 600,
+            amount = 1.0,
+            coinAmount = 5
+        )
+        assertEquals("Conflicting coinAmount must return CONFLICT", PaymentResult.CONFLICT, resCoin)
+
+        // Conflicting pricePerCoin
+        val resPrice = repository.creditPayment(
+            txId = txId,
+            seconds = 600,
+            amount = 1.0,
+            pricePerCoin = 5.0
+        )
+        assertEquals("Conflicting pricePerCoin must return CONFLICT", PaymentResult.CONFLICT, resPrice)
+
+        // Conflicting epochs
+        val resEpoch = repository.creditPayment(
+            txId = txId,
+            seconds = 600,
+            amount = 1.0,
+            boxInstallationEpoch = 9999L
+        )
+        assertEquals("Conflicting boxInstallationEpoch must return CONFLICT", PaymentResult.CONFLICT, resEpoch)
+    }
+
+    @Test
+    fun testDeductPaymentAppliedAndAuditFieldsPersisted() = runBlocking {
+        val repository = PaymentRepository(db = db, isEligible = { true })
+        // Add initial balance
+        repository.creditPayment("tx-initial", 1800, 5.0)
+
+        val txId = "tx-deduct-1"
+        val result = repository.deductPayment(
+            txId = txId,
+            seconds = 600,
+            operationKind = "MATCH_TRANSFER_DEDUCT",
+            boxInstallationEpoch = 1000L,
+            phonePairingEpoch = 2000L
+        )
+        assertEquals(PaymentResult.APPLIED, result)
+
+        val receipt = db.paymentDao().getReceiptByTxId(txId)
+        assertNotNull(receipt)
+        assertEquals(txId, receipt?.txId)
+        assertEquals(-600, receipt?.secondsCredited)
+        assertEquals("MATCH_TRANSFER_DEDUCT", receipt?.operationKind)
+        assertEquals(0, receipt?.coinAmount)
+
+        // Duplicate returns ALREADY_APPLIED
+        val dupResult = repository.deductPayment(
+            txId = txId,
+            seconds = 600,
+            operationKind = "MATCH_TRANSFER_DEDUCT",
+            boxInstallationEpoch = 1000L,
+            phonePairingEpoch = 2000L
+        )
+        assertEquals(PaymentResult.ALREADY_APPLIED, dupResult)
+
+        // Conflict returns CONFLICT
+        val conflictResult = repository.deductPayment(
+            txId = txId,
+            seconds = 300
+        )
+        assertEquals(PaymentResult.CONFLICT, conflictResult)
+    }
+
+    @Test
+    fun testTwoPhoneMatchTransferFullSuccess() = runBlocking {
+        val phone1Db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
+        val phone2Db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
+
+        val p1Repo = PaymentRepository(db = phone1Db, isEligible = { true })
+        val p2Repo = PaymentRepository(db = phone2Db, isEligible = { true })
+
+        // P1 has 1200 seconds initially
+        p1Repo.creditPayment("tx-p1-seed", 1200, 5.0)
+
+        val matchId = "match-test-100"
+        val transferSeconds = 300
+        val deductTxId = "$matchId-deduct"
+        val creditTxId = "$matchId-credit"
+
+        // Execute distinct operations on two separate databases
+        val deductRes = p1Repo.deductPayment(
+            txId = deductTxId,
+            seconds = transferSeconds,
+            operationKind = "MATCH_TRANSFER_DEDUCT",
+            boxInstallationEpoch = 1000L,
+            phonePairingEpoch = 2000L
+        )
+        val creditRes = p2Repo.creditPayment(
+            txId = creditTxId,
+            seconds = transferSeconds,
+            amount = 0.0,
+            operationKind = "MATCH_TRANSFER_CREDIT",
+            coinAmount = 0,
+            pricePerCoin = 0.0,
+            boxInstallationEpoch = 1000L,
+            phonePairingEpoch = 2000L
+        )
+
+        val outcome = p1Repo.evaluateMatchTransfer(
+            matchId = matchId,
+            sourceDeviceId = "p1",
+            targetDeviceId = "p2",
+            stakeSeconds = transferSeconds,
+            deductTxId = deductTxId,
+            creditTxId = creditTxId,
+            deductResult = deductRes,
+            creditResult = creditRes
+        )
+
+        assertEquals(PaymentResult.APPLIED, outcome.deductResult)
+        assertEquals(PaymentResult.APPLIED, outcome.creditResult)
+        assertTrue("Transfer must be complete", outcome.isComplete)
+        assertFalse("Transfer must not be partial", outcome.isPartial)
+
+        phone1Db.close()
+        phone2Db.close()
+    }
+
+    @Test
+    fun testTwoPhoneMatchTransferPartialDebitFailed() = runBlocking {
+        val phone1Db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
+        val phone2Db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
+
+        // P1 is not eligible to debit/credit
+        val p1Repo = PaymentRepository(db = phone1Db, isEligible = { false })
+        val p2Repo = PaymentRepository(db = phone2Db, isEligible = { true })
+
+        val matchId = "match-test-200"
+        val transferSeconds = 300
+        val deductTxId = "$matchId-deduct"
+        val creditTxId = "$matchId-credit"
+
+        val deductRes = p1Repo.deductPayment(
+            txId = deductTxId,
+            seconds = transferSeconds,
+            operationKind = "MATCH_TRANSFER_DEDUCT"
+        )
+        val creditRes = p2Repo.creditPayment(
+            txId = creditTxId,
+            seconds = transferSeconds,
+            amount = 0.0,
+            operationKind = "MATCH_TRANSFER_CREDIT"
+        )
+
+        val outcome = p1Repo.evaluateMatchTransfer(
+            matchId = matchId,
+            sourceDeviceId = "p1",
+            targetDeviceId = "p2",
+            stakeSeconds = transferSeconds,
+            deductTxId = deductTxId,
+            creditTxId = creditTxId,
+            deductResult = deductRes,
+            creditResult = creditRes
+        )
+
+        assertEquals(PaymentResult.NOT_ELIGIBLE, outcome.deductResult)
+        assertEquals(PaymentResult.APPLIED, outcome.creditResult)
+        assertFalse(outcome.isComplete)
+        assertTrue("Must be marked as partial when one phone fails", outcome.isPartial)
+
+        phone1Db.close()
+        phone2Db.close()
+    }
+
+    @Test
+    fun testTwoPhoneMatchTransferPartialCreditFailed() = runBlocking {
+        val phone1Db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
+        val phone2Db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
+
+        val p1Repo = PaymentRepository(db = phone1Db, isEligible = { true })
+        // P2 is not eligible
+        val p2Repo = PaymentRepository(db = phone2Db, isEligible = { false })
+
+        val matchId = "match-test-300"
+        val transferSeconds = 300
+        val deductTxId = "$matchId-deduct"
+        val creditTxId = "$matchId-credit"
+
+        val deductRes = p1Repo.deductPayment(
+            txId = deductTxId,
+            seconds = transferSeconds,
+            operationKind = "MATCH_TRANSFER_DEDUCT"
+        )
+        val creditRes = p2Repo.creditPayment(
+            txId = creditTxId,
+            seconds = transferSeconds,
+            amount = 0.0,
+            operationKind = "MATCH_TRANSFER_CREDIT"
+        )
+
+        val outcome = p1Repo.evaluateMatchTransfer(
+            matchId = matchId,
+            sourceDeviceId = "p1",
+            targetDeviceId = "p2",
+            stakeSeconds = transferSeconds,
+            deductTxId = deductTxId,
+            creditTxId = creditTxId,
+            deductResult = deductRes,
+            creditResult = creditRes
+        )
+
+        assertEquals(PaymentResult.APPLIED, outcome.deductResult)
+        assertEquals(PaymentResult.NOT_ELIGIBLE, outcome.creditResult)
+        assertFalse(outcome.isComplete)
+        assertTrue("Must be marked as partial when one phone fails", outcome.isPartial)
+
+        phone1Db.close()
+        phone2Db.close()
+    }
+
+    @Test
+    fun testTwoPhoneMatchTransferIdempotentRetry() = runBlocking {
+        val phone1Db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
+        val phone2Db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
+
+        val p1Repo = PaymentRepository(db = phone1Db, isEligible = { true })
+        val p2Repo = PaymentRepository(db = phone2Db, isEligible = { true })
+
+        val matchId = "match-test-400"
+        val transferSeconds = 300
+        val deductTxId = "$matchId-deduct"
+        val creditTxId = "$matchId-credit"
+
+        val deduct1 = p1Repo.deductPayment(txId = deductTxId, seconds = transferSeconds)
+        val credit1 = p2Repo.creditPayment(txId = creditTxId, seconds = transferSeconds, amount = 0.0)
+        val outcome1 = p1Repo.evaluateMatchTransfer(
+            matchId, "p1", "p2", transferSeconds, deductTxId, creditTxId, deduct1, credit1
+        )
+        assertTrue(outcome1.isComplete)
+
+        // Retry with same IDs
+        val deduct2 = p1Repo.deductPayment(txId = deductTxId, seconds = transferSeconds)
+        val credit2 = p2Repo.creditPayment(txId = creditTxId, seconds = transferSeconds, amount = 0.0)
+        assertEquals(PaymentResult.ALREADY_APPLIED, deduct2)
+        assertEquals(PaymentResult.ALREADY_APPLIED, credit2)
+
+        val outcome2 = p1Repo.evaluateMatchTransfer(
+            matchId, "p1", "p2", transferSeconds, deductTxId, creditTxId, deduct2, credit2
+        )
+        assertTrue("Retried complete transfer remains complete", outcome2.isComplete)
+        assertFalse(outcome2.isPartial)
+
+        phone1Db.close()
+        phone2Db.close()
+    }
 }
 
 

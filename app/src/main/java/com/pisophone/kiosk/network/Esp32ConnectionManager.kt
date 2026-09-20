@@ -442,22 +442,63 @@ class Esp32ConnectionManager(
                     val event = json.optString("event", "")
 
                     if (event == "COIN_DETECTED") {
-                        val payload = json.optString("payload", "")
-                        if (payload.isBlank()) {
+                        val outerPayload = json.optString("payload", "")
+                        if (outerPayload.isBlank()) {
                             Log.w(TAG, "Rejected WebSocket coin event: Missing encrypted payload")
                             return
                         }
 
-                        val hmac = json.optString("v_sig", "").trim()
-                        if (hmac.isBlank()) {
+                        val outerHmac = json.optString("v_sig", "").trim()
+                        if (outerHmac.isBlank()) {
                             Log.w(TAG, "Rejected WebSocket coin event: Missing signature")
                             return
                         }
 
+                        val outerTxId = json.optString("tx_id", "").trim()
+                        if (outerTxId.isBlank()) {
+                            Log.w(TAG, "Rejected WebSocket coin event: Missing tx_id in envelope")
+                            return
+                        }
+
+                        val outerTsStr = json.optString("ts", "").trim()
+                        val outerTs = outerTsStr.toLongOrNull() ?: 0L
+                        val now = System.currentTimeMillis()
+                        val skew = Math.abs(now - outerTs)
+                        if (outerTs <= 0L || skew > MAX_TIMESTAMP_SKEW_MS) {
+                            Log.w(TAG, "Rejected WebSocket coin event: Stale/invalid envelope timestamp ($outerTs, now=$now, skew=${skew}ms, max=${MAX_TIMESTAMP_SKEW_MS}ms)")
+                            return
+                        }
+
+                        val outerDevId = json.optString("device_id", "").trim().ifBlank { delegate.getDeviceId() }
+                        val myDevId = delegate.getDeviceId()
+                        if (outerDevId.isNotBlank() && myDevId.isNotBlank() && !outerDevId.equals(myDevId, ignoreCase = true)) {
+                            Log.w(TAG, "Rejected WebSocket coin event: Recipient mismatch (target='$outerDevId', local='$myDevId')")
+                            return
+                        }
+
+                        val outerSeconds = if (json.has("seconds")) json.optInt("seconds") else null
+                        val outerAmount = if (json.has("amount")) json.optDouble("amount") else null
+
                         val secretKey = delegate.getSecretKey()
-                        val decryptedStr = KioskSecurity.decrypt(payload, secretKey)
+
+                        // STEP 1: Verify integrity BEFORE decryption
+                        if (!KioskSecurity.verifyWsPaySignature(
+                                event = "COIN_DETECTED",
+                                recipient = outerDevId,
+                                txId = outerTxId,
+                                ts = outerTsStr,
+                                payload = outerPayload,
+                                sig = outerHmac,
+                                secret = secretKey
+                            )) {
+                            Log.w(TAG, "Rejected WebSocket coin event: Signature verification failed BEFORE decryption")
+                            return
+                        }
+
+                        // STEP 2: Decrypt payload only after signature is verified
+                        val decryptedStr = KioskSecurity.decrypt(outerPayload, secretKey)
                         if (decryptedStr.isBlank()) {
-                            Log.w(TAG, "Rejected WebSocket coin event: Decryption failed or invalid secret key")
+                            Log.w(TAG, "Rejected WebSocket coin event: Decryption failed or empty plaintext")
                             return
                         }
 
@@ -468,32 +509,37 @@ class Esp32ConnectionManager(
                             return
                         }
 
-                        val txId = decryptedJson.optString("tx_id", "").trim()
-                        if (txId.isBlank()) {
-                            Log.w(TAG, "Rejected WebSocket coin event: Missing tx_id in encrypted payload")
-                            return
-                        }
-
-                        val targetDev = decryptedJson.optString("device_id", "").trim()
-                        val myDevId = delegate.getDeviceId()
-                        if (targetDev.isNotBlank() && myDevId.isNotBlank() && !targetDev.equals(myDevId, ignoreCase = true)) {
-                            Log.w(TAG, "Rejected WebSocket coin event: Recipient mismatch (target='$targetDev', local='$myDevId')")
-                            return
-                        }
-
-                        val tsStr = decryptedJson.optString("ts", "").trim()
-                        val ts = tsStr.toLongOrNull() ?: 0L
-                        val now = System.currentTimeMillis()
-                        val skew = Math.abs(now - ts)
-                        if (ts <= 0L || skew > MAX_TIMESTAMP_SKEW_MS) {
-                            Log.w(TAG, "Rejected WebSocket coin event: Stale/invalid timestamp ($ts, now=$now, skew=${skew}ms, max=${MAX_TIMESTAMP_SKEW_MS}ms)")
-                            return
-                        }
-
+                        val innerTxId = decryptedJson.optString("tx_id", "").trim()
+                        val innerDev = decryptedJson.optString("device_id", "").trim()
+                        val innerTsStr = decryptedJson.optString("ts", "").trim()
+                        val innerTs = innerTsStr.toLongOrNull() ?: 0L
                         val minutesLong = decryptedJson.optLong("minutes", 0L)
                         val secondsOptLong = decryptedJson.optLong("seconds", 0L)
                         val rawSeconds = if (secondsOptLong > 0L) secondsOptLong else (minutesLong * 60L)
                         val amount = decryptedJson.optDouble("amount", 0.0)
+
+                        // STEP 3: Reconcile decrypted context with outer verified envelope
+                        val envelope = com.pisophone.kiosk.protocol.KioskProtocol.VerifiedEnvelope(
+                            event = "COIN_DETECTED",
+                            recipient = outerDevId,
+                            txId = outerTxId,
+                            ts = outerTs,
+                            payload = outerPayload,
+                            seconds = outerSeconds,
+                            amount = outerAmount
+                        )
+                        val innerContext = com.pisophone.kiosk.protocol.KioskProtocol.DecryptedPaymentContext(
+                            deviceId = innerDev,
+                            txId = innerTxId,
+                            ts = innerTs,
+                            seconds = rawSeconds.toInt(),
+                            amount = amount
+                        )
+                        val reconResult = com.pisophone.kiosk.protocol.KioskProtocol.reconcilePaymentContext(envelope, innerContext)
+                        if (reconResult is com.pisophone.kiosk.protocol.KioskProtocol.ProtocolValidationResult.Invalid) {
+                            Log.w(TAG, "Rejected WebSocket coin event: Context reconciliation failed: ${reconResult.reason} (${reconResult.code})")
+                            return
+                        }
 
                         if (rawSeconds !in 1L..Int.MAX_VALUE.toLong() || amount.isNaN() || amount.isInfinite() || amount <= 0.0) {
                             Log.w(TAG, "Rejected WebSocket coin event: Invalid seconds ($rawSeconds) or amount ($amount)")
@@ -501,19 +547,8 @@ class Esp32ConnectionManager(
                         }
                         val seconds = rawSeconds.toInt()
                         val amountPulses = amount.toInt()
-
-                        if (!KioskSecurity.verifyWsPaySignature(
-                                event = "COIN_DETECTED",
-                                recipient = targetDev,
-                                txId = txId,
-                                ts = tsStr,
-                                payload = payload,
-                                sig = hmac,
-                                secret = secretKey
-                            )) {
-                            Log.w(TAG, "Rejected WebSocket coin event: Signature verification failed")
-                            return
-                        }
+                        val txId = innerTxId.ifBlank { outerTxId }
+                        val targetDev = innerDev.ifBlank { outerDevId }
 
                         Log.i(TAG, "⚡ Validated WebSocket Coin Processed: +${seconds}s, amount=₱$amount, txId=$txId")
                         val result = delegate.onCoinMessageReceived(seconds, amount, txId)

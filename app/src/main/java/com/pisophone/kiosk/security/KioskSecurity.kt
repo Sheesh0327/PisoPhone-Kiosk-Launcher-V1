@@ -398,15 +398,11 @@ object KioskSecurity {
     }
 
     fun calculateHmac(data: String, key: String): String {
-        val mac = Mac.getInstance("HmacSHA256")
-        val secretKey = SecretKeySpec(key.toByteArray(Charsets.UTF_8), "HmacSHA256")
-        mac.init(secretKey)
-        val hmacBytes = mac.doFinal(data.toByteArray(Charsets.UTF_8))
-        return hmacBytes.joinToString("") { "%02x".format(it) }
+        return com.pisophone.kiosk.protocol.KioskProtocol.calculateHmac(data, key)
     }
 
     private fun lengthPrefixed(vararg fields: String): String {
-        return fields.joinToString("") { "${it.length}:$it" }
+        return fields.joinToString("") { com.pisophone.kiosk.protocol.KioskProtocol.utf8Frame(it) }
     }
 
     fun calculateHttpReqSignature(
@@ -418,8 +414,9 @@ object KioskSecurity {
         payload: String,
         secret: String
     ): String {
-        val formatted = lengthPrefixed("HTTP_REQ", method, endpoint, recipient, txId, ts, payload)
-        return calculateHmac(formatted, secret)
+        return com.pisophone.kiosk.protocol.KioskProtocol.calculateHttpReqSignature(
+            method, endpoint, recipient, txId, ts, payload, secret
+        )
     }
 
     fun verifyHttpReqSignature(
@@ -432,9 +429,9 @@ object KioskSecurity {
         sig: String,
         secret: String
     ): Boolean {
-        if (sig.isBlank()) return false
-        val expected = calculateHttpReqSignature(method, endpoint, recipient, txId, ts, payload, secret)
-        return constantTimeEquals(sig.lowercase(), expected.lowercase())
+        return com.pisophone.kiosk.protocol.KioskProtocol.verifyHttpReqSignature(
+            method, endpoint, recipient, txId, ts, payload, sig, secret
+        )
     }
 
     fun calculateWsPaySignature(
@@ -445,8 +442,9 @@ object KioskSecurity {
         payload: String,
         secret: String
     ): String {
-        val formatted = lengthPrefixed("WS_PAY", event, recipient, txId, ts, payload)
-        return calculateHmac(formatted, secret)
+        return com.pisophone.kiosk.protocol.KioskProtocol.calculateWsPaySignature(
+            event, recipient, txId, ts, payload, secret
+        )
     }
 
     fun verifyWsPaySignature(
@@ -458,9 +456,9 @@ object KioskSecurity {
         sig: String,
         secret: String
     ): Boolean {
-        if (sig.isBlank()) return false
-        val expected = calculateWsPaySignature(event, recipient, txId, ts, payload, secret)
-        return constantTimeEquals(sig.lowercase(), expected.lowercase())
+        return com.pisophone.kiosk.protocol.KioskProtocol.verifyWsPaySignature(
+            event, recipient, txId, ts, payload, sig, secret
+        )
     }
 
     fun calculateAckSignature(
@@ -472,8 +470,9 @@ object KioskSecurity {
         status: String,
         secret: String
     ): String {
-        val formatted = lengthPrefixed("ACK", deviceId, txId, amount.toString(), seconds.toString(), ts, status)
-        return calculateHmac(formatted, secret)
+        return com.pisophone.kiosk.protocol.KioskProtocol.calculateAckSignature(
+            deviceId, txId, amount, seconds, ts, status, secret
+        )
     }
 
     fun verifyAckSignature(
@@ -486,9 +485,9 @@ object KioskSecurity {
         sig: String,
         secret: String
     ): Boolean {
-        if (sig.isBlank()) return false
-        val expectedAck = calculateAckSignature(deviceId, txId, amount, seconds, ts, status, secret)
-        return constantTimeEquals(sig.lowercase(), expectedAck.lowercase())
+        return com.pisophone.kiosk.protocol.KioskProtocol.verifyAckSignature(
+            deviceId, txId, amount, seconds, ts, status, sig, secret
+        )
     }
 
     fun generateTimestampSignature(deviceId: String, ts: String, secret: String): String {

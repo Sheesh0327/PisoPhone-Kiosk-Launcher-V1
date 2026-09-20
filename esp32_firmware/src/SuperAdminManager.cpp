@@ -15,6 +15,7 @@ bool isVaultUnmasked = false;
 unsigned long unmaskExpiryTimestamp = 0;
 
 void loadSuperAdminConfig() {
+    lockNvs();
     prefs.begin(NVS_NAMESPACE, false);
     superAdminPassword = prefs.getString("super_admin_pw", DEFAULT_SUPER_ADMIN_PW);
     vendorRevenueSplitPercent = prefs.getInt("vendor_split", DEFAULT_VENDOR_SPLIT_PERCENT);
@@ -22,6 +23,7 @@ void loadSuperAdminConfig() {
         vendorRevenueSplitPercent = DEFAULT_VENDOR_SPLIT_PERCENT;
     }
     prefs.end();
+    unlockNvs();
     
     isVaultUnmasked = false;
     unmaskExpiryTimestamp = 0;
@@ -58,10 +60,12 @@ void processSuperAdminLoop() {
             lastSavedTotalCoins = 0;
             lastSavedTotalEarnings = 0.0f;
             
+            lockNvs();
             prefs.begin(NVS_NAMESPACE, false);
             prefs.putULong(NVS_KEY_TOTAL_COINS, 0);
             prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, 0.0f);
             prefs.end();
+            unlockNvs();
             
             isVaultUnmasked = false;
             unmaskExpiryTimestamp = 0;
@@ -134,10 +138,12 @@ void handleSuperAdminResetVault() {
     lastSavedTotalCoins = 0;
     lastSavedTotalEarnings = 0.0f;
     
+    lockNvs();
     prefs.begin(NVS_NAMESPACE, false);
     prefs.putULong(NVS_KEY_TOTAL_COINS, 0);
     prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, 0.0f);
     prefs.end();
+    unlockNvs();
     
     isVaultUnmasked = false;
     unmaskExpiryTimestamp = 0;
@@ -156,9 +162,11 @@ void handleSuperAdminSaveSplit() {
         int split = webServer.arg("vendor_split").toInt();
         if (split >= 0 && split <= 100) {
             vendorRevenueSplitPercent = split;
+            lockNvs();
             prefs.begin(NVS_NAMESPACE, false);
             prefs.putInt("vendor_split", vendorRevenueSplitPercent);
             prefs.end();
+            unlockNvs();
             Serial.printf("[👑 SUPER ADMIN] Vendor revenue split updated to %d%%.\n", vendorRevenueSplitPercent);
             webServer.send(200, "application/json", "{\"status\":\"ok\",\"vendor_split\":" + String(vendorRevenueSplitPercent) + "}");
             return;
@@ -178,9 +186,11 @@ void handleSuperAdminChangePassword() {
         newPw.trim();
         if (newPw.length() >= 4) {
             superAdminPassword = newPw;
+            lockNvs();
             prefs.begin(NVS_NAMESPACE, false);
             prefs.putString("super_admin_pw", superAdminPassword);
             prefs.end();
+            unlockNvs();
             Serial.println("[👑 SUPER ADMIN] Super Admin password successfully updated.");
             webServer.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Super Admin password updated.\"}");
             return;
