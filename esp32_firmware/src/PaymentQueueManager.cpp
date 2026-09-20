@@ -732,7 +732,11 @@ bool cancelPaymentRecord(const String& txId) {
         unlockQueue();
         return false;
     }
-    eraseRecord(foundIndex);
+    if (!eraseRecord(foundIndex)) {
+        unlockQueue();
+        Serial.printf("[PAY QUEUE] Failed to erase canceled/rejected tx_id='%s' from NVS. Record RETAINED.\n", txId.c_str());
+        return false;
+    }
     memset(&paymentQueue[foundIndex], 0, sizeof(PaymentRecord));
     paymentSlotUsed[foundIndex] = false;
     paymentSlotPersisted[foundIndex] = false;
@@ -741,7 +745,7 @@ bool cancelPaymentRecord(const String& txId) {
     lastDispatchMs[foundIndex] = 0;
     activePaymentCount--;
     unlockQueue();
-    Serial.printf("[PAY QUEUE] Canceled/rejected tx_id='%s'.\n", txId.c_str());
+    Serial.printf("[PAY QUEUE] Canceled/rejected tx_id='%s' successfully erased and cleared.\n", txId.c_str());
     return true;
 }
 
@@ -896,8 +900,8 @@ bool recordMatchDeductionCommitted(const String& deductTxId) {
 
     rec.state = MATCH_SETTLE_DEDUCT_COMMITTED_CREDIT_PENDING;
     if (!saveMatchRecord(rec)) {
-        Serial.printf("[MATCH SETTLE] Warning: Failed to save credit pending state for match '%s'. Retrying save...\n", rec.matchId);
-        saveMatchRecord(rec);
+        Serial.printf("[MATCH SETTLE] Failed to save credit pending state for match '%s'. State retained for retry; credit submission deferred.\n", rec.matchId);
+        return false;
     }
 
     Serial.printf("[MATCH SETTLE] Deduction committed for match '%s'. Submitting credit tx_id='%s' to '%s'...\n",
@@ -919,7 +923,10 @@ bool recordMatchDeductionRejected(const String& deductTxId) {
     if (String(rec.deductTxId) != deductTxId) return false;
 
     rec.state = MATCH_SETTLE_REJECTED;
-    saveMatchRecord(rec);
+    if (!saveMatchRecord(rec)) {
+        Serial.printf("[MATCH SETTLE] Failed to persist REJECTED state for match '%s'. Retaining state for retry.\n", rec.matchId);
+        return false;
+    }
 
     Serial.printf("[MATCH SETTLE] Deduction REJECTED for match '%s' (tx_id='%s'). Marked REJECTED.\n",
                   rec.matchId, deductTxId.c_str());
@@ -936,8 +943,8 @@ bool recordMatchCreditCommitted(const String& creditTxId) {
 
     rec.state = MATCH_SETTLE_COMPLETED;
     if (!saveMatchRecord(rec)) {
-        Serial.printf("[MATCH SETTLE] Warning: Failed to save completed state for match '%s'. Retrying save...\n", rec.matchId);
-        saveMatchRecord(rec);
+        Serial.printf("[MATCH SETTLE] Failed to save completed state for match '%s'. Retaining state for retry.\n", rec.matchId);
+        return false;
     }
 
     Serial.printf("[MATCH SETTLE] Credit committed for match '%s' (tx_id='%s'). Match settlement COMPLETED!\n",

@@ -228,14 +228,11 @@ void authWorkerTask(void *pvParameters) {
                         } else {
                             delivered = true;
                         }
-                    } else if (code == 403 || code == 409 || respBody.indexOf("NOT_ELIGIBLE") != -1 || respBody.indexOf("CONFLICT") != -1) {
-                        if (currentTxId.length() > 0) {
-                            Serial.printf("[AUTH WORKER] Transaction '%s' permanently rejected by phone (HTTP %d: %s)\n",
-                                          currentTxId.c_str(), code, respBody.c_str());
-                            recordMatchDeductionRejected(currentTxId);
-                            cancelPaymentRecord(currentTxId);
-                            delivered = true;
-                        }
+                    } else {
+                        // Non-2xx HTTP response (or network error). Retain coin payments, adjustments, and match transactions.
+                        // Never cancel or delete records based on unauthenticated HTTP status codes or error body text.
+                        Serial.printf("[AUTH WORKER] Request failed for tx_id='%s' (HTTP %d: %s). Retaining unresolved record for retry.\n",
+                                      currentTxId.c_str(), code, respBody.c_str());
                     }
                 }
 

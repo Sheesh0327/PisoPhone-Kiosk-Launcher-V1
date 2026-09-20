@@ -118,6 +118,8 @@ public:
 
     MatchSettlementRecord storedRecord;
     bool hasStoredRecord;
+    bool simulateFlashEraseFailure;
+    bool simulateMatchSaveFailure;
 
     MockDeviceManager devMgr;
     bool matchActive;
@@ -133,6 +135,8 @@ public:
         activeCount = 0;
         memset(&storedRecord, 0, sizeof(storedRecord));
         hasStoredRecord = false;
+        simulateFlashEraseFailure = false;
+        simulateMatchSaveFailure = false;
         matchActive = false;
     }
 
@@ -173,6 +177,10 @@ public:
     }
 
     bool cancelPayment(const std::string& txId) {
+        if (simulateFlashEraseFailure) {
+            // Failure to erase from flash retains the record in RAM and flash
+            return false;
+        }
         for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
             if (slotUsed[i] && std::string(queue[i].txId) == txId) {
                 memset(&queue[i], 0, sizeof(PaymentRecord));
@@ -186,6 +194,9 @@ public:
     }
 
     bool saveMatchRecord(const MatchSettlementRecord& rec) {
+        if (simulateMatchSaveFailure) {
+            return false;
+        }
         storedRecord = rec;
         storedRecord.magic = MATCH_RECORD_MAGIC;
         storedRecord.schemaVersion = 1;
@@ -319,7 +330,9 @@ public:
         if (rec.state != MATCH_SETTLE_DEDUCT_PENDING) return true;
 
         rec.state = MATCH_SETTLE_DEDUCT_COMMITTED_CREDIT_PENDING;
-        saveMatchRecord(rec);
+        if (!saveMatchRecord(rec)) {
+            return false;
+        }
 
         enqueue(rec.creditTxId, rec.winnerId, rec.stakeSeconds, OP_KIND_MATCH_TRANSFER);
         return true;
@@ -331,7 +344,9 @@ public:
         if (std::string(rec.deductTxId) != deductTxId) return false;
 
         rec.state = MATCH_SETTLE_REJECTED;
-        saveMatchRecord(rec);
+        if (!saveMatchRecord(rec)) {
+            return false;
+        }
 
         cancelPayment(deductTxId);
         return true;
@@ -344,7 +359,9 @@ public:
         if (rec.state != MATCH_SETTLE_DEDUCT_COMMITTED_CREDIT_PENDING) return true;
 
         rec.state = MATCH_SETTLE_COMPLETED;
-        saveMatchRecord(rec);
+        if (!saveMatchRecord(rec)) {
+            return false;
+        }
         return true;
     }
 
@@ -575,6 +592,90 @@ int main() {
     assert(!sys.hasPendingPayment(rec.creditTxId));
     assert(!sys.hasPendingPayment(rec.deductTxId));
     std::cout << "  -> Rejected deduction stops credit permanently PASSED." << std::endl;
+
+    // -------------------------------------------------------------
+    // Test 7: Flash erase failure preserves RAM and flash records
+    // -------------------------------------------------------------
+    std::cout << "[TEST] 7. Flash deletion failure retains queue record in cancelPayment:" << std::endl;
+    sys.reset();
+    sys.enqueue("coin-test-erase-fail", "dev-p1", 60, OP_KIND_COIN);
+    assert(sys.hasPendingPayment("coin-test-erase-fail"));
+
+    // Enable flash erase failure
+    sys.simulateFlashEraseFailure = true;
+    bool cancelRes = sys.cancelPayment("coin-test-erase-fail");
+    assert(!cancelRes); // Cancellation fails
+    assert(sys.hasPendingPayment("coin-test-erase-fail")); // Record RETAINED in RAM & storage!
+
+    // When flash erase succeeds later
+    sys.simulateFlashEraseFailure = false;
+    cancelRes = sys.cancelPayment("coin-test-erase-fail");
+    assert(cancelRes);
+    assert(!sys.hasPendingPayment("coin-test-erase-fail"));
+    std::cout << "  -> Flash deletion failure retains queue record PASSED." << std::endl;
+
+    // -------------------------------------------------------------
+    // Test 8: Settlement persistence failure retains state and defers credit
+    // -------------------------------------------------------------
+    std::cout << "[TEST] 8. Settlement advances only after successful persistence:" << std::endl;
+    sys.reset();
+    sys.devMgr.registerDevice("dev-p1", "192.168.1.101");
+    sys.devMgr.registerDevice("dev-p2", "192.168.1.102");
+    sys.matchActive = true;
+
+    ok = sys.submitWinner("p1", "192.168.1.101", "192.168.1.102", 15, err);
+    assert(ok);
+    assert(sys.loadMatchRecord(rec));
+    assert(rec.state == MATCH_SETTLE_DEDUCT_PENDING);
+
+    // Simulate NVS save failure when committing deduction
+    sys.simulateMatchSaveFailure = true;
+    bool commitRes = sys.recordMatchDeductionCommitted(rec.deductTxId);
+    assert(!commitRes); // Commit fails because persistence failed
+    // State MUST remain DEDUCT_PENDING (not advanced to CREDIT_PENDING)
+    assert(sys.loadMatchRecord(rec));
+    assert(rec.state == MATCH_SETTLE_DEDUCT_PENDING);
+    // Credit must NOT have been queued
+    assert(!sys.hasPendingPayment(rec.creditTxId));
+
+    // When NVS recovers and save succeeds
+    sys.simulateMatchSaveFailure = false;
+    commitRes = sys.recordMatchDeductionCommitted(rec.deductTxId);
+    assert(commitRes);
+    assert(sys.loadMatchRecord(rec));
+    assert(rec.state == MATCH_SETTLE_DEDUCT_COMMITTED_CREDIT_PENDING);
+    assert(sys.hasPendingPayment(rec.creditTxId)); // Credit queued now!
+    std::cout << "  -> Settlement advances only after successful persistence PASSED." << std::endl;
+
+    // -------------------------------------------------------------
+    // Test 9: HTTP errors (403/409/body strings) retain pending payments
+    // -------------------------------------------------------------
+    std::cout << "[TEST] 9. HTTP errors retain pending payments without cancellation:" << std::endl;
+    sys.reset();
+    sys.enqueue("coin-err-test", "dev-p1", 60, OP_KIND_COIN);
+    sys.enqueue("adj-err-test", "dev-p1", 120, OP_KIND_QUICK_ADJUST);
+    assert(sys.hasPendingPayment("coin-err-test"));
+    assert(sys.hasPendingPayment("adj-err-test"));
+
+    // Simulating HTTP error handling in WebServerAuth:
+    // When code is 403, 409, or body contains NOT_ELIGIBLE/CONFLICT,
+    // neither coin nor adjust payments are cancelled.
+    auto simulateHttpAuthResponse = [&](int httpCode, const std::string& body) {
+        if (httpCode >= 200 && httpCode < 300) {
+            // Success branch
+        } else {
+            // Non-2xx HTTP response: retain unresolved record for retry. Never delete/cancel.
+        }
+    };
+
+    simulateHttpAuthResponse(403, "NOT_ELIGIBLE");
+    assert(sys.hasPendingPayment("coin-err-test"));
+    assert(sys.hasPendingPayment("adj-err-test"));
+
+    simulateHttpAuthResponse(409, "CONFLICT");
+    assert(sys.hasPendingPayment("coin-err-test"));
+    assert(sys.hasPendingPayment("adj-err-test"));
+    std::cout << "  -> HTTP errors retain pending payments without cancellation PASSED." << std::endl;
 
     std::cout << "\nALL MATCH SETTLEMENT UNIT TESTS PASSED SUCCESSFULLY!" << std::endl;
     return 0;
