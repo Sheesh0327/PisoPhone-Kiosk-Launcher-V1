@@ -20,7 +20,6 @@ interface KioskServerDelegate {
     fun getSessionTimeRemaining(): Int
     fun getAppState(): Int
     fun getAuditEventsJson(): String
-    fun creditPayment(txId: String, seconds: Int, amount: Double): PaymentResult = PaymentResult.FAILED
     fun creditPayment(
         txId: String,
         seconds: Int,
@@ -30,16 +29,15 @@ interface KioskServerDelegate {
         pricePerCoin: Double,
         boxInstallationEpoch: Long,
         phonePairingEpoch: Long
-    ): PaymentResult = creditPayment(txId, seconds, amount)
+    ): PaymentResult
 
-    fun onDeductTime(seconds: Int, txId: String? = null): PaymentResult = PaymentResult.FAILED
     fun onDeductTime(
         seconds: Int,
         txId: String?,
         operationKind: String,
         boxInstallationEpoch: Long,
         phonePairingEpoch: Long
-    ): PaymentResult = onDeductTime(seconds, txId)
+    ): PaymentResult
 
     fun onConfigUpdated(price: Double?, minutes: Int?, deviceName: String?, adminPin: String?, slotNum: Int? = null)
     fun onTriggerAction(action: String, slotNum: Int? = null, extra: Map<String, String>? = null)

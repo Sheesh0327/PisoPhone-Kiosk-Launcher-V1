@@ -92,6 +92,10 @@ class PaymentRepository(
 
     private val paymentDao = db.paymentDao()
 
+    @Volatile
+    var lastCommittedSnapshot: SessionSnapshot? = null
+        private set
+
     suspend fun creditPayment(
         txId: String,
         seconds: Int,
@@ -177,6 +181,7 @@ class PaymentRepository(
                 paymentDao.updateSessionState(newState)
 
                 committedSnapshot = SessionSnapshot(newDeadline, newSessionTime, newRevision)
+                lastCommittedSnapshot = committedSnapshot
                 PaymentResult.APPLIED
             }
         } catch (e: Exception) {
@@ -315,6 +320,7 @@ class PaymentRepository(
                 paymentDao.updateSessionState(newState)
 
                 committedSnapshot = SessionSnapshot(effectiveDeadline, remaining, newRevision)
+                lastCommittedSnapshot = committedSnapshot
                 PaymentResult.APPLIED
             }
         } catch (e: Exception) {

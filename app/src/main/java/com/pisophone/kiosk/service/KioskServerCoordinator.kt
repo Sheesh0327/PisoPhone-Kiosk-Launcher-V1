@@ -29,7 +29,23 @@ class KioskServerCoordinator(
     private val getSecretKey: () -> String,
     private val getRealTimeBatteryInfo: () -> Pair<Int, Boolean>,
     private val getAudioManager: () -> KioskAudioManager?,
-    private val onCreditPayment: (txId: String, seconds: Int, amount: Double) -> PaymentResult,
+    private val onCreditPayment: (
+        txId: String,
+        seconds: Int,
+        amount: Double,
+        operationKind: String,
+        coinAmount: Int,
+        pricePerCoin: Double,
+        boxInstallationEpoch: Long,
+        phonePairingEpoch: Long
+    ) -> PaymentResult,
+    private val onDeductPayment: (
+        seconds: Int,
+        txId: String?,
+        operationKind: String,
+        boxInstallationEpoch: Long,
+        phonePairingEpoch: Long
+    ) -> PaymentResult,
     private val isReady: () -> Boolean = { true }
 ) : KioskServerDelegate {
 
@@ -96,31 +112,10 @@ class KioskServerCoordinator(
         boxInstallationEpoch: Long,
         phonePairingEpoch: Long
     ): PaymentResult {
-        val result = paymentRepo.creditPaymentBlocking(
-            txId = txId,
-            seconds = seconds,
-            amount = amount,
-            operationKind = operationKind,
-            coinAmount = coinAmount,
-            pricePerCoin = pricePerCoin,
-            boxInstallationEpoch = boxInstallationEpoch,
-            phonePairingEpoch = phonePairingEpoch
+        return onCreditPayment.invoke(
+            txId, seconds, amount, operationKind, coinAmount, pricePerCoin,
+            boxInstallationEpoch, phonePairingEpoch
         )
-        if (result == PaymentResult.APPLIED || result == PaymentResult.ALREADY_APPLIED) {
-            val currentState = paymentRepo.getSessionState()
-            val remaining = currentState?.sessionTimeRemaining ?: 0
-            val deadline = currentState?.sessionExpiryDeadlineMs ?: 0L
-            val rev = currentState?.revision ?: 0L
-            val applied = stateManager.applySessionUpdate(
-                deadlineMs = deadline,
-                remainingSeconds = remaining,
-                revision = rev
-            )
-            if (applied) {
-                stateManager.saveState()
-            }
-        }
-        return result
     }
 
     override fun onDeductTime(
@@ -130,37 +125,9 @@ class KioskServerCoordinator(
         boxInstallationEpoch: Long,
         phonePairingEpoch: Long
     ): PaymentResult {
-        val effectiveTxId = txId ?: "deduct_${System.currentTimeMillis()}"
-        val result = paymentRepo.deductPaymentBlocking(
-            txId = effectiveTxId,
-            seconds = seconds,
-            operationKind = operationKind,
-            boxInstallationEpoch = boxInstallationEpoch,
-            phonePairingEpoch = phonePairingEpoch
+        return onDeductPayment.invoke(
+            seconds, txId, operationKind, boxInstallationEpoch, phonePairingEpoch
         )
-        if (result == PaymentResult.APPLIED || result == PaymentResult.ALREADY_APPLIED) {
-            val currentState = paymentRepo.getSessionState()
-            val remaining = currentState?.sessionTimeRemaining ?: 0
-            val deadline = currentState?.sessionExpiryDeadlineMs ?: 0L
-            val rev = currentState?.revision ?: 0L
-            val targetState = if (remaining <= 0) 0 else null
-            val applied = stateManager.applySessionUpdate(
-                deadlineMs = deadline,
-                remainingSeconds = remaining,
-                revision = rev,
-                targetAppState = targetState
-            )
-            if (applied) {
-                stateManager.saveState()
-            }
-            if (result == PaymentResult.APPLIED) {
-                val displayMinutes = seconds / 60
-                Handler(Looper.getMainLooper()).post {
-                    Toast.makeText(context, "$displayMinutes minutes deducted!", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-        return result
     }
 
     override fun onConfigUpdated(price: Double?, minutes: Int?, deviceName: String?, adminPin: String?, slotNum: Int?) {

@@ -26,7 +26,16 @@ class Esp32ConnectionManagerUnitTest {
         override fun onEsp32Discovered(ip: String) {}
         override fun onOnlineStatusChanged(isOnline: Boolean, mac: String?) {}
         override fun onConfigSynced(price: Double?, minutes: Int?, alias: String?, adminPin: String?, slotNum: Int?) {}
-        override fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?): com.pisophone.kiosk.repository.PaymentResult = com.pisophone.kiosk.repository.PaymentResult.APPLIED
+        override fun onCoinMessageReceived(
+            seconds: Int,
+            amount: Double,
+            txId: String?,
+            operationKind: String,
+            coinAmount: Int,
+            pricePerCoin: Double,
+            boxInstallationEpoch: Long,
+            phonePairingEpoch: Long
+        ): com.pisophone.kiosk.repository.PaymentResult = com.pisophone.kiosk.repository.PaymentResult.APPLIED
         override fun onSlotBusy() {}
         override fun onArmSuccess() {}
         override fun onSlotWarning(daysLeft: Int, expiresAt: Long, slotNum: Int, message: String) {}

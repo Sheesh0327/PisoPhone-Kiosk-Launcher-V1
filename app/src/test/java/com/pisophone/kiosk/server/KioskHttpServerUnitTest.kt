@@ -32,14 +32,29 @@ class KioskHttpServerUnitTest {
         override fun getAppState(): Int = 2
         override fun isReady(): Boolean = true
         override fun getDeviceId(): String = "TEST_DEVICE"
-        override fun creditPayment(txId: String, seconds: Int, amount: Double): PaymentResult {
+        override fun creditPayment(
+            txId: String,
+            seconds: Int,
+            amount: Double,
+            operationKind: String,
+            coinAmount: Int,
+            pricePerCoin: Double,
+            boxInstallationEpoch: Long,
+            phonePairingEpoch: Long
+        ): PaymentResult {
             creditPaymentCallCount++
             lastCreditedTxId = txId
             lastCreditedSeconds = seconds
             lastCreditedAmount = amount
             return simulatedPaymentResult
         }
-        override fun onDeductTime(seconds: Int, txId: String?): PaymentResult = simulatedPaymentResult
+        override fun onDeductTime(
+            seconds: Int,
+            txId: String?,
+            operationKind: String,
+            boxInstallationEpoch: Long,
+            phonePairingEpoch: Long
+        ): PaymentResult = simulatedPaymentResult
         override fun onConfigUpdated(price: Double?, minutes: Int?, deviceName: String?, adminPin: String?, slotNum: Int?) {}
         override fun onTriggerAction(action: String, slotNum: Int?, extra: Map<String, String>?) {}
         override fun getCrashLog(): String? = null
@@ -239,8 +254,23 @@ class KioskHttpServerUnitTest {
             override fun getSessionTimeRemaining(): Int = 300
             override fun getAppState(): Int = 2
             override fun getDeviceId(): String = "TEST_DEVICE"
-            override fun creditPayment(txId: String, seconds: Int, amount: Double): PaymentResult = PaymentResult.APPLIED
-            override fun onDeductTime(seconds: Int, txId: String?): PaymentResult = PaymentResult.APPLIED
+            override fun creditPayment(
+                txId: String,
+                seconds: Int,
+                amount: Double,
+                operationKind: String,
+                coinAmount: Int,
+                pricePerCoin: Double,
+                boxInstallationEpoch: Long,
+                phonePairingEpoch: Long
+            ): PaymentResult = PaymentResult.APPLIED
+            override fun onDeductTime(
+                seconds: Int,
+                txId: String?,
+                operationKind: String,
+                boxInstallationEpoch: Long,
+                phonePairingEpoch: Long
+            ): PaymentResult = PaymentResult.APPLIED
             override fun onConfigUpdated(price: Double?, minutes: Int?, deviceName: String?, adminPin: String?, slotNum: Int?) {}
             override fun onTriggerAction(action: String, slotNum: Int?, extra: Map<String, String>?) {}
             override fun getCrashLog(): String? = null

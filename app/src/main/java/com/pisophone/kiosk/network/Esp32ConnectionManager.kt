@@ -29,7 +29,6 @@ interface Esp32ConnectionDelegate {
     fun onEsp32Discovered(ip: String)
     fun onOnlineStatusChanged(isOnline: Boolean, mac: String?)
     fun onConfigSynced(price: Double?, minutes: Int?, alias: String?, adminPin: String? = null, slotNum: Int? = null)
-    fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?): com.pisophone.kiosk.repository.PaymentResult = com.pisophone.kiosk.repository.PaymentResult.FAILED
     fun onCoinMessageReceived(
         seconds: Int,
         amount: Double,
@@ -39,7 +38,7 @@ interface Esp32ConnectionDelegate {
         pricePerCoin: Double,
         boxInstallationEpoch: Long,
         phonePairingEpoch: Long
-    ): com.pisophone.kiosk.repository.PaymentResult = onCoinMessageReceived(seconds, amount, txId)
+    ): com.pisophone.kiosk.repository.PaymentResult
     fun onSlotBusy()
     fun onArmSuccess()
     fun onSlotWarning(daysLeft: Int, expiresAt: Long, slotNum: Int, message: String)
