@@ -108,10 +108,7 @@ void authWorkerTask(void *pvParameters) {
                     int code = http.GET();
                     Serial.printf("[AUTH WORKER] %s -> HTTP %d (attempt %d/%d)\n",
                                   req.actionPath, code, retries + 1, maxAttempts);
-                    String respBody = "";
-                    if (code >= 200 && code < 300) {
-                        respBody = http.getString();
-                    }
+                    String respBody = http.getString();
                     http.end();
 
                     if (code >= 200 && code < 300) {
@@ -229,6 +226,14 @@ void authWorkerTask(void *pvParameters) {
                                               currentTxId.c_str());
                             }
                         } else {
+                            delivered = true;
+                        }
+                    } else if (code == 403 || code == 409 || respBody.indexOf("NOT_ELIGIBLE") != -1 || respBody.indexOf("CONFLICT") != -1) {
+                        if (currentTxId.length() > 0) {
+                            Serial.printf("[AUTH WORKER] Transaction '%s' permanently rejected by phone (HTTP %d: %s)\n",
+                                          currentTxId.c_str(), code, respBody.c_str());
+                            recordMatchDeductionRejected(currentTxId);
+                            cancelPaymentRecord(currentTxId);
                             delivered = true;
                         }
                     }

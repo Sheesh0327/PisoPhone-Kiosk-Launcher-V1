@@ -641,6 +641,13 @@ void dispatchPendingControllerPayments(const String& sessionId) {
 void processPendingPaymentRetries() {
     unsigned long now = millis();
 
+    // 0. Periodic Match Settlement Recovery (ensures queue restoration even if queue was temporarily full or rebooted)
+    static unsigned long lastMatchRecoveryMs = 0;
+    if (lastMatchRecoveryMs == 0 || (long)(now - (lastMatchRecoveryMs + 2000UL)) >= 0) {
+        lastMatchRecoveryMs = now;
+        recoverPendingMatchSettlement();
+    }
+
     // 1. Retry unpersisted records in RAM with exponential backoff (1s, 2s, 4s, 8s, 16s, 32s)
     for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
         PaymentRecord rec;
@@ -783,16 +790,14 @@ static bool saveMatchRecord(MatchSettlementRecord& rec) {
     return written == sizeof(rec);
 }
 
-void initMatchSettlement() {
+void recoverPendingMatchSettlement() {
     MatchSettlementRecord rec;
     if (!loadMatchRecord(rec)) return;
 
-    Serial.printf("[MATCH SETTLE] Loaded stored settlement record: matchId='%s', state=%d, deductTx='%s', creditTx='%s'\n",
-                  rec.matchId, (int)rec.state, rec.deductTxId, rec.creditTxId);
-
     if (rec.state == MATCH_SETTLE_DEDUCT_PENDING) {
         if (!hasPendingPayment(String(rec.deductTxId))) {
-            Serial.printf("[MATCH SETTLE] Restoring deduction tx_id='%s' to queue on reboot...\n", rec.deductTxId);
+            Serial.printf("[MATCH SETTLE RECOVERY] Restoring deduction tx_id='%s' for '%s' to queue...\n",
+                          rec.deductTxId, rec.loserId);
             enqueuePendingPayment(
                 String(rec.deductTxId), String(rec.loserId), 0, CoinSlotOwnerType::PHONE,
                 -rec.stakeSeconds, OP_KIND_MATCH_TRANSFER, 0.0, 0, 0
@@ -800,13 +805,23 @@ void initMatchSettlement() {
         }
     } else if (rec.state == MATCH_SETTLE_DEDUCT_COMMITTED_CREDIT_PENDING) {
         if (!hasPendingPayment(String(rec.creditTxId))) {
-            Serial.printf("[MATCH SETTLE] Restoring credit tx_id='%s' to queue on reboot...\n", rec.creditTxId);
+            Serial.printf("[MATCH SETTLE RECOVERY] Restoring credit tx_id='%s' for '%s' to queue...\n",
+                          rec.creditTxId, rec.winnerId);
             enqueuePendingPayment(
                 String(rec.creditTxId), String(rec.winnerId), 0, CoinSlotOwnerType::PHONE,
                 rec.stakeSeconds, OP_KIND_MATCH_TRANSFER, 0.0, 0, 0
             );
         }
     }
+}
+
+void initMatchSettlement() {
+    MatchSettlementRecord rec;
+    if (loadMatchRecord(rec)) {
+        Serial.printf("[MATCH SETTLE] Loaded stored settlement record: matchId='%s', state=%d, deductTx='%s', creditTx='%s'\n",
+                      rec.matchId, (int)rec.state, rec.deductTxId, rec.creditTxId);
+    }
+    recoverPendingMatchSettlement();
 }
 
 bool startMatchSettlement(
@@ -822,10 +837,12 @@ bool startMatchSettlement(
     if (loadMatchRecord(existing)) {
         if (existing.state == MATCH_SETTLE_DEDUCT_PENDING || 
             existing.state == MATCH_SETTLE_DEDUCT_COMMITTED_CREDIT_PENDING) {
-            if (String(existing.matchId) == matchId || matchId.length() == 0) {
-                errOut = "Settlement already in progress for this match.";
-                return false;
-            }
+            errOut = "An unresolved match settlement is already in progress. Only one unresolved settlement is supported.";
+            return false;
+        }
+        if (hasPendingPayment(String(existing.deductTxId)) || hasPendingPayment(String(existing.creditTxId))) {
+            errOut = "A transaction from a prior settlement is still pending in the queue.";
+            return false;
         }
         if (String(existing.matchId) == matchId) {
             if (existing.state == MATCH_SETTLE_COMPLETED) {
@@ -865,10 +882,7 @@ bool startMatchSettlement(
     );
 
     if (!queued) {
-        newRec.state = MATCH_SETTLE_REJECTED;
-        saveMatchRecord(newRec);
-        errOut = "Failed to queue deduction payment request.";
-        return false;
+        Serial.printf("[MATCH SETTLE] Initial queue insertion failed for deduct tx '%s'. Preserved in NVS for retry.\n", outDeductTxId.c_str());
     }
 
     return true;
@@ -881,15 +895,21 @@ bool recordMatchDeductionCommitted(const String& deductTxId) {
     if (rec.state != MATCH_SETTLE_DEDUCT_PENDING) return true;
 
     rec.state = MATCH_SETTLE_DEDUCT_COMMITTED_CREDIT_PENDING;
-    saveMatchRecord(rec);
+    if (!saveMatchRecord(rec)) {
+        Serial.printf("[MATCH SETTLE] Warning: Failed to save credit pending state for match '%s'. Retrying save...\n", rec.matchId);
+        saveMatchRecord(rec);
+    }
 
     Serial.printf("[MATCH SETTLE] Deduction committed for match '%s'. Submitting credit tx_id='%s' to '%s'...\n",
                   rec.matchId, rec.creditTxId, rec.winnerId);
 
-    enqueuePendingPayment(
+    bool queued = enqueuePendingPayment(
         String(rec.creditTxId), String(rec.winnerId), 0, CoinSlotOwnerType::PHONE,
         rec.stakeSeconds, OP_KIND_MATCH_TRANSFER, 0.0, 0, 0
     );
+    if (!queued) {
+        Serial.printf("[MATCH SETTLE] Initial credit queue insertion failed for '%s'. Preserved in NVS for retry.\n", rec.creditTxId);
+    }
     return true;
 }
 
@@ -912,9 +932,13 @@ bool recordMatchCreditCommitted(const String& creditTxId) {
     MatchSettlementRecord rec;
     if (!loadMatchRecord(rec)) return false;
     if (String(rec.creditTxId) != creditTxId) return false;
+    if (rec.state != MATCH_SETTLE_DEDUCT_COMMITTED_CREDIT_PENDING) return true;
 
     rec.state = MATCH_SETTLE_COMPLETED;
-    saveMatchRecord(rec);
+    if (!saveMatchRecord(rec)) {
+        Serial.printf("[MATCH SETTLE] Warning: Failed to save completed state for match '%s'. Retrying save...\n", rec.matchId);
+        saveMatchRecord(rec);
+    }
 
     Serial.printf("[MATCH SETTLE] Credit committed for match '%s' (tx_id='%s'). Match settlement COMPLETED!\n",
                   rec.matchId, creditTxId.c_str());

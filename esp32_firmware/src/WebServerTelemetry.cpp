@@ -230,8 +230,34 @@ void handleOneVsOne() {
         return;
     }
 
-    if (winner != "" && p1Ip != "" && p2Ip != "") {
-        if (p1Ip == p2Ip) {
+    if (winner != "") {
+        if (!matchActive) {
+            matchStatusMsg = "<div style='background:#ffebee;color:#c62828;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Match Blocked:</b> No active match in progress. 1v1 Arena Mode must be started first.</div>";
+            redirectHome();
+            return;
+        }
+
+        if (p1Ip == "" || p2Ip == "") {
+            matchStatusMsg = "<div style='background:#ffebee;color:#c62828;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Match Blocked:</b> Please select both Player 1 and Player 2!</div>";
+            redirectHome();
+            return;
+        }
+
+        String p1DevId = getDeviceIdFromIp(p1Ip);
+        String p2DevId = getDeviceIdFromIp(p2Ip);
+        p1DevId.trim();
+        p2DevId.trim();
+
+        if (p1DevId.length() == 0 || p2DevId.length() == 0) {
+            String missingDetails = "";
+            if (p1DevId.length() == 0) missingDetails += "<br>• Player 1 (" + p1Ip + ") is not paired with a canonical device ID.";
+            if (p2DevId.length() == 0) missingDetails += "<br>• Player 2 (" + p2Ip + ") is not paired with a canonical device ID.";
+            matchStatusMsg = "<div style='background:#ffebee;color:#c62828;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Match Blocked:</b> Unpaired player selected:" + missingDetails + "</div>";
+            redirectHome();
+            return;
+        }
+
+        if (p1DevId == p2DevId || p1Ip == p2Ip) {
             matchStatusMsg = "<div style='background:#ffebee;color:#c62828;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Match Blocked:</b> Player 1 and Player 2 cannot be the same device!</div>";
             redirectHome();
             return;
@@ -269,11 +295,11 @@ void handleOneVsOne() {
         matchActive = false;
 
         String matchId = "match-" + String((unsigned long long)getCurrentMasterTimeMs());
-        String winnerIp = (winner == "p1" || winner == NVS_KEY_P1) ? p1Ip : p2Ip;
-        String loserIp = (winner == "p1" || winner == NVS_KEY_P1) ? p2Ip : p1Ip;
+        String winnerDevId = (winner == "p1" || winner == NVS_KEY_P1) ? p1DevId : p2DevId;
+        String loserDevId = (winner == "p1" || winner == NVS_KEY_P1) ? p2DevId : p1DevId;
 
         String deductTxId = "", creditTxId = "", errMsg = "";
-        bool started = startMatchSettlement(matchId, loserIp, winnerIp, reqStakeSeconds, deductTxId, creditTxId, errMsg);
+        bool started = startMatchSettlement(matchId, loserDevId, winnerDevId, reqStakeSeconds, deductTxId, creditTxId, errMsg);
 
         if (started) {
             matchStatusMsg = getMatchSettlementStatusHtml(matchId);

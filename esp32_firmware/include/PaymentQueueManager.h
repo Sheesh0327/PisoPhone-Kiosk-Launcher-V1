@@ -100,6 +100,7 @@ struct MatchSettlementRecord {
 };
 
 void initMatchSettlement();
+void recoverPendingMatchSettlement();
 bool startMatchSettlement(
     const String& matchId,
     const String& loserId,

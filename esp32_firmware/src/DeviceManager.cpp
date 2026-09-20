@@ -362,12 +362,23 @@ String getIpFromDeviceId(String id) {
     if (slotIdx >= 0 && isSlotActive(slotIdx)) {
         String slotIp = licenseSlots[slotIdx].ip;
         slotIp.trim();
-        if (slotIp.length() > 0 && slotIp != "127.0.0.1") {
+        if (slotIp.length() > 0 && slotIp != "127.0.0.1" && slotIp != "0.0.0.0") {
             return slotIp;
         }
     }
 
-    // 2. Check static configured androidIps
+    // 2. Check tracked devices for recent dynamic IP from telemetry
+    for (int i = 0; i < trackedDeviceCount; i++) {
+        if (trackedDevices[i].deviceId == id) {
+            String trackIp = trackedDevices[i].lastKnownIp;
+            trackIp.trim();
+            if (trackIp.length() > 0 && trackIp != "127.0.0.1" && trackIp != "0.0.0.0") {
+                return trackIp;
+            }
+        }
+    }
+
+    // 3. Check static configured androidIps
     int startIdx = 0;
     while (startIdx < androidIps.length()) {
         int comma = androidIps.indexOf(',', startIdx);
@@ -377,18 +388,14 @@ String getIpFromDeviceId(String id) {
         if (entry.length() > 0) {
             DeviceConfig cfg;
             if (parseDeviceEntry(entry, cfg)) {
-                if (cfg.id == id || cfg.ip == id) {
-                    return cfg.ip;
+                if (cfg.id == id) {
+                    if (cfg.ip.length() > 0 && cfg.ip != "127.0.0.1" && cfg.ip != "0.0.0.0") {
+                        return cfg.ip;
+                    }
                 }
             }
         }
         startIdx = comma + 1;
-    }
-
-    // 3. If the input itself is already a valid IPv4 address
-    IPAddress ipAddr;
-    if (ipAddr.fromString(id)) {
-        return id;
     }
 
     // Unresolved identity; never return deviceId as IP
@@ -396,6 +403,29 @@ String getIpFromDeviceId(String id) {
 }
 
 String getDeviceIdFromIp(String ip) {
+    ip.trim();
+    if (ip.length() == 0) return "";
+
+    // 1. Check paired active license slots
+    for (int i = 0; i < maxLicensedSlots; i++) {
+        if (licenseSlots[i].active && licenseSlots[i].deviceId.length() > 0) {
+            if (licenseSlots[i].ip == ip || licenseSlots[i].deviceId == ip) {
+                return licenseSlots[i].deviceId;
+            }
+        }
+    }
+
+    // 2. Check tracked dynamic devices associated with active slots
+    for (int i = 0; i < trackedDeviceCount; i++) {
+        if ((trackedDevices[i].lastKnownIp == ip || trackedDevices[i].deviceId == ip) && trackedDevices[i].deviceId.length() > 0) {
+            int slotIdx = findSlotIndexForDevice(trackedDevices[i].deviceId, "");
+            if (slotIdx >= 0 && isSlotActive(slotIdx) && licenseSlots[slotIdx].deviceId.length() > 0) {
+                return licenseSlots[slotIdx].deviceId;
+            }
+        }
+    }
+
+    // 3. Check static configured androidIps
     int startIdx = 0;
     while (startIdx < androidIps.length()) {
         int comma = androidIps.indexOf(',', startIdx);
@@ -405,7 +435,11 @@ String getDeviceIdFromIp(String ip) {
         if (entry.length() > 0) {
             DeviceConfig cfg;
             if (parseDeviceEntry(entry, cfg)) {
-                if (cfg.ip == ip) {
+                if ((cfg.ip == ip || cfg.id == ip) && cfg.id.length() > 0) {
+                    int slotIdx = findSlotIndexForDevice(cfg.id, cfg.ip);
+                    if (slotIdx >= 0 && isSlotActive(slotIdx) && licenseSlots[slotIdx].deviceId.length() > 0) {
+                        return licenseSlots[slotIdx].deviceId;
+                    }
                     return cfg.id;
                 }
             }
