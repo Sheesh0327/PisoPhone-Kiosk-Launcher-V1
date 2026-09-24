@@ -63,7 +63,7 @@ int findSlotIndexForDevice(String devId, String ip) {
     return -1;
 }
 
-bool unpairSlot(int slotNum) {
+bool unpairSlot(int slotNum, bool force) {
     if (slotNum < 1 || slotNum > maxLicensedSlots) return false;
     int idx = slotNum - 1;
     String prevDevId = licenseSlots[idx].deviceId;
@@ -78,15 +78,26 @@ bool unpairSlot(int slotNum) {
     if (ownsActiveSession) {
         CoinSlotState state = getCoinSlotState();
         if (state == CoinSlotState::ARMED || state == CoinSlotState::DRAINING || state == CoinSlotState::RESERVED_ARMING) {
-            Serial.printf("[-] Unpair slot #%d rejected: Device %s owns active/draining session.\n", slotNum, prevDevId.c_str());
-            return false;
+            if (force) {
+                Serial.printf("[!] Force unpairing slot #%d: Releasing active coin session for %s.\n", slotNum, activeDev.c_str());
+                releaseCoinSlot(activeDev, CoinSlotOwnerType::ANY, true, "FORCE_UNPAIR");
+            } else {
+                Serial.printf("[-] Unpair slot #%d rejected: Device %s owns active/draining session.\n", slotNum, prevDevId.c_str());
+                return false;
+            }
         }
     }
 
     if ((prevDevId.length() > 0 && hasPendingPaymentsForTarget(prevDevId)) ||
         (prevIp.length() > 0 && hasPendingPaymentsForTarget(prevIp))) {
-        Serial.printf("[-] Unpair slot #%d rejected: Device %s has unresolved payments in queue.\n", slotNum, prevDevId.c_str());
-        return false;
+        if (force) {
+            Serial.printf("[!] Force unpairing slot #%d: Purging pending payments for %s / %s.\n", slotNum, prevDevId.c_str(), prevIp.c_str());
+            if (prevDevId.length() > 0) purgePendingPaymentsForTarget(prevDevId);
+            if (prevIp.length() > 0) purgePendingPaymentsForTarget(prevIp);
+        } else {
+            Serial.printf("[-] Unpair slot #%d rejected: Device %s has unresolved payments in queue.\n", slotNum, prevDevId.c_str());
+            return false;
+        }
     }
 
     Serial.printf("[+] Unpairing Slot #%d (was %s / %s). Seat remains open.\n", slotNum, prevDevId.c_str(), prevIp.c_str());

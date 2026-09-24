@@ -114,6 +114,11 @@ struct MockCoinSlotEngine {
                 return false;
             }
         }
+        if (currentState == CoinSlotState::ARMED) {
+            if ((long)(currentMillis - sessionArmedUntil) >= 0 || (sessionStartTimeMs > 0 && (long)(currentMillis - sessionStartTimeMs) >= (long)MAX_SESSION_DURATION)) {
+                return false;
+            }
+        }
         if (currentState == CoinSlotState::DRAINING) {
             return true;
         }
@@ -131,6 +136,10 @@ struct MockCoinSlotEngine {
 
         if (isCoinSlotBusy(sessionId, ownerType)) {
             return false;
+        }
+
+        if (currentState == CoinSlotState::ARMED && activeSessionId != sessionId) {
+            finalizeSessionRelease("TTL_EXPIRED");
         }
 
         if (activeSessionId == sessionId && (activeOwnerType == ownerType || ownerType == CoinSlotOwnerType::ANY)) {
@@ -229,6 +238,10 @@ struct MockCoinSlotEngine {
         if (maintenanceMode || paymentQueueFull || !paymentStorageReady) return false;
         if (currentState == CoinSlotState::DRAINING) return false;
         if (isCoinSlotBusy(sessionId, ownerType)) return false;
+
+        if (currentState == CoinSlotState::ARMED && activeSessionId != sessionId) {
+            finalizeSessionRelease("TTL_EXPIRED");
+        }
 
         if (activeSessionId == sessionId && (activeOwnerType == ownerType || ownerType == CoinSlotOwnerType::ANY) &&
             currentState == CoinSlotState::ARMED) {

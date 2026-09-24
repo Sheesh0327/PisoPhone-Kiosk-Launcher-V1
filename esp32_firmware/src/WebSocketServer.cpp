@@ -144,7 +144,7 @@ void processWebSocketServer() {
             Serial.printf("[*] WS Client %s disconnected. Releasing slot.\n", boundDevId.c_str());
             isWsConnected = false;
             wsSessionDeviceId = "";
-            releaseCoinSlot(boundDevId, CoinSlotOwnerType::ANY, false);
+            releaseCoinSlot(boundDevId, CoinSlotOwnerType::ANY, true, "WS_DISCONNECT");
             return;
         }
         

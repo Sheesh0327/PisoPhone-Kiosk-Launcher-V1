@@ -40,7 +40,7 @@ class KioskEsp32Coordinator(
 
     private var lastArmTimestampMs: Long = 0L
 
-    override fun getDeviceId(): String = stateManager.deviceId.value
+    override fun getDeviceId(): String = stateManager.deviceId.value.ifBlank { KioskSecurity.getHardwareId(context) }
     override fun getSecretKey(): String = getSecretKey.invoke()
     override fun getAppState(): Int = stateManager.appState.value
     override fun getSessionTimeRemaining(): Int = stateManager.sessionTimeRemaining.value

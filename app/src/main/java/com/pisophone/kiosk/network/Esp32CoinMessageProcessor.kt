@@ -26,6 +26,20 @@ object Esp32CoinMessageProcessor {
         try {
             val json = JSONObject(text)
             val event = json.optString("event", "")
+            val status = json.optString("status", "")
+            val reason = json.optString("reason", json.optString("error", ""))
+
+            if (event == "SLOT_BUSY" || event == "BUSY" || reason.contains("BUSY", ignoreCase = true) || reason.contains("SLOT_UNAVAILABLE", ignoreCase = true)) {
+                Log.w(TAG, "ESP32 coin slot is busy: event=$event, reason=$reason")
+                delegate.onSlotBusy()
+                return
+            }
+
+            if (event == "ARMED" || status == "ARMED") {
+                Log.i(TAG, "ESP32 coin slot confirmed ARMED (attempt #$attemptId)")
+                delegate.onArmSuccess()
+                return
+            }
 
             if (event == "PULSE" || event == "COIN_DETECTED") {
                 val outerPayload = json.optString("payload", "")

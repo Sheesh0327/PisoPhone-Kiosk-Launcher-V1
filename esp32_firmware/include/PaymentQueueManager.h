@@ -60,6 +60,7 @@ bool isMaintenanceMode();
 bool isMaintenanceReasonActive(uint32_t reason);
 bool hasPendingPaymentsForTarget(const String& targetId);
 bool hasPendingPayments();
+int purgePendingPaymentsForTarget(const String& targetId);
 void processPendingSystemRestart();
 void setFactoryResetPending(bool pending);
 bool canPerformRebootOrOta();

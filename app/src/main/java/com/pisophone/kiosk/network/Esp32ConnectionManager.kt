@@ -299,7 +299,12 @@ class Esp32ConnectionManager(
                 }
 
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                    Log.e(TAG, "ESP32 WebSocket onFailure (Attempt #$thisAttemptId): ${t.message}")
+                    val code = response?.code ?: 0
+                    val msg = response?.message ?: ""
+                    Log.e(TAG, "ESP32 WebSocket onFailure (Attempt #$thisAttemptId): code=$code, msg=$msg, err=${t.message}")
+                    if (code == 409 || msg.contains("BUSY", ignoreCase = true)) {
+                        delegate.onSlotBusy()
+                    }
                     forceCloseWebSocketIfAttemptCurrent(webSocket, "Transport failure: ${t.message}", thisAttemptId)
                 }
             })

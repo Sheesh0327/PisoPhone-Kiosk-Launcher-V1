@@ -224,7 +224,8 @@ void handleApiSlotUnpair() {
         return;
     }
 
-    bool res = unpairSlot(slot);
+    bool force = webServer.hasArg("force") && (webServer.arg("force") == "true" || webServer.arg("force") == "1");
+    bool res = unpairSlot(slot, force);
     if (res) {
         sendCloudSnapshot();
         webServer.send(200, "application/json", "{\"success\":true,\"slot\":" + String(slot) + "}");
