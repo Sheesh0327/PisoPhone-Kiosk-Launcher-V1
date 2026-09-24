@@ -51,7 +51,7 @@ interface Esp32ConnectionDelegate {
  * Manages active communication with the ESP32 Master kiosk box:
  * - HTTP Telemetry & Config Sync Loop (Port 80)
  * - WebSocket Slot Arming & Encrypted Coin Event Listener (Port 81)
- * - Discovery delegation via [Esp32DiscoveryScanner]
+ * - Direct pairing via /api/slots/pair_request
  */
 class Esp32ConnectionManager(
     private val context: Context,
@@ -60,10 +60,57 @@ class Esp32ConnectionManager(
 ) {
     companion object {
         private const val TAG = "Esp32ConnectionManager"
+        const val DEFAULT_STATIC_ESP32_IP = "192.168.1.10"
+        const val DEFAULT_WEB_PORT = 80
         private const val ESP32_WS_PORT = 81
         private const val HEARTBEAT_TIMEOUT_MS = 45000L
         private const val MAX_TIMESTAMP_SKEW_MS = 60000L
         private const val DRAIN_SAFETY_TIMEOUT_MS = 15000L
+
+        fun getEsp32HostAndPort(rawIp: String?): Pair<String, Int> {
+            if (rawIp.isNullOrBlank()) return Pair(DEFAULT_STATIC_ESP32_IP, DEFAULT_WEB_PORT)
+            val parts = rawIp.split(":")
+            val host = parts[0].ifBlank { DEFAULT_STATIC_ESP32_IP }
+            val port = if (parts.size > 1) parts[1].toIntOrNull() ?: DEFAULT_WEB_PORT else DEFAULT_WEB_PORT
+            return Pair(host, port)
+        }
+
+        fun getLocalIpAddress(): String {
+            try {
+                var fallbackIp = ""
+                val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+                while (interfaces != null && interfaces.hasMoreElements()) {
+                    val networkInterface = interfaces.nextElement()
+                    val addresses = networkInterface.inetAddresses
+                    while (addresses.hasMoreElements()) {
+                        val address = addresses.nextElement()
+                        if (!address.isLoopbackAddress && address is java.net.Inet4Address) {
+                            val ip = address.hostAddress
+                            if (!ip.isNullOrBlank() && ip != "127.0.0.1") {
+                                val name = networkInterface.name.lowercase()
+                                if (name.contains("wlan") ||
+                                    name.contains("eth") ||
+                                    name.contains("ap") ||
+                                    name.contains("rndis")) {
+                                    return ip
+                                }
+                                if (fallbackIp.isBlank()) fallbackIp = ip
+                            }
+                        }
+                    }
+                }
+                return fallbackIp
+            } catch (_: Exception) {}
+            return ""
+        }
+
+        fun isEsp32MacMatching(expectedMac: String?, candidateMac: String?): Boolean {
+            val cleanExpected = KioskSecurity.formatMacAddress(expectedMac ?: "")
+            if (cleanExpected.isBlank()) return true
+            val cleanCandidate = KioskSecurity.formatMacAddress(candidateMac ?: "")
+            if (cleanCandidate.isBlank()) return false
+            return cleanExpected.equals(cleanCandidate, ignoreCase = true)
+        }
     }
 
     private val okHttpClient = OkHttpClient.Builder()
@@ -87,20 +134,6 @@ class Esp32ConnectionManager(
     private var drainJob: Job? = null
     private var heartbeatJob: Job? = null
 
-    private val discoveryScanner = Esp32DiscoveryScanner(
-        context = context,
-        scope = scope,
-        delegate = object : Esp32DiscoveryDelegate {
-            override fun onEsp32Discovered(ip: String, rawResponseBody: String?) {
-                handleEsp32Discovered(ip, rawResponseBody)
-            }
-        },
-        isAlreadyBound = {
-            val isOnline = (System.currentTimeMillis() - lastHeartbeatTime < HEARTBEAT_TIMEOUT_MS) && consecutiveHeartbeatFailures < 5
-            isOnline && !esp32Ip.isNullOrBlank()
-        }
-    )
-
     fun getEsp32Ip(): String? = esp32Ip
 
     fun setEsp32Ip(ip: String?) {
@@ -113,73 +146,80 @@ class Esp32ConnectionManager(
     }
 
     // ========================================================================
-    // DISCOVERY & PROBING DELEGATION
+    // DIRECT PAIRING & CONNECTION (REPLACES LEGACY DISCOVERY)
     // ========================================================================
 
-    fun triggerCandidateDiscovery(localIp: String) {
-        val staticTarget = KioskSecurity.getConfiguredEsp32Ip(context).ifBlank { Esp32DiscoveryScanner.STATIC_ESP32_IP }
-        scope.launch(Dispatchers.IO) {
+    fun sendDirectPairingRequest(
+        targetIp: String? = null,
+        targetMac: String? = null,
+        onResult: ((Boolean, String?) -> Unit)? = null
+    ): Job {
+        val configuredIp = KioskSecurity.getConfiguredEsp32Ip(context).ifBlank { DEFAULT_STATIC_ESP32_IP }
+        val host = (targetIp ?: esp32Ip ?: configuredIp).trim()
+        val expectedMac = targetMac ?: KioskSecurity.getConfiguredEsp32Mac(context)
+
+        return scope.launch(Dispatchers.IO) {
             try {
-                if (discoveryScanner.probeEsp32Connection(staticTarget)) {
-                    Log.d(TAG, "[+] Instant connection established to configured static ESP32 at $staticTarget")
-                    return@launch
-                }
-            } catch (_: Exception) {}
-            discoveryScanner.triggerDiscovery(localIp)
-        }
-    }
-
-    fun probeEsp32Connection(ip: String): Boolean {
-        return discoveryScanner.probeEsp32Connection(ip)
-    }
-
-    private fun handleEsp32Discovered(ip: String, rawResponseBody: String? = null) {
-        val (ipHost, esp32Port) = discoveryScanner.getEsp32HostAndPort(ip)
-        esp32Ip = ip
-        lastHeartbeatTime = System.currentTimeMillis()
-        consecutiveHeartbeatFailures = 0
-        delegate.onEsp32Discovered(ip)
-        delegate.onOnlineStatusChanged(true, null)
-        Log.d(TAG, "[+] ESP32 Master bound at $ipHost")
-
-        // Parse immediate config from discovery response if present
-        if (!rawResponseBody.isNullOrBlank()) {
-            try {
-                val json = JSONObject(rawResponseBody)
-                val price = if (json.has("price")) json.optDouble("price", 5.0) else null
-                val minutes = if (json.has("minutes")) json.optInt("minutes", 30) else null
-                val alias = if (json.has("device_name")) json.optString("device_name", "").trim() else null
-                val mac = if (json.has("mac")) json.optString("mac", "") else null
-                delegate.onConfigSynced(price, minutes, alias)
-                if (!mac.isNullOrBlank()) {
-                    delegate.onOnlineStatusChanged(true, mac)
-                }
-            } catch (_: Exception) {}
-        }
-
-        scope.launch(Dispatchers.IO) {
-            fetchMasterConfig(ipHost, esp32Port)
-            sendPairingRequest(ipHost)
-        }
-    }
-
-    fun sendPairingRequest(targetIp: String? = null) {
-        val host = targetIp ?: esp32Ip ?: return
-        scope.launch(Dispatchers.IO) {
-            try {
-                val (ipHost, esp32Port) = discoveryScanner.getEsp32HostAndPort(host)
+                val (ipHost, esp32Port) = getEsp32HostAndPort(host)
                 val deviceId = KioskSecurity.getHardwareId(context)
-                val myIp = discoveryScanner.getLocalIpAddress()
+                val myIp = getLocalIpAddress()
                 val (curBat, isChg) = delegate.getRealTimeBatteryInfo()
                 val myName = KioskSecurity.getDeviceAlias(context).takeIf { it.isNotBlank() } ?: "PisoPhone Terminal"
                 val encodedName = java.net.URLEncoder.encode(myName, "UTF-8")
-                val url = "http://$ipHost:$esp32Port/api/slots/pair_request?device_id=$deviceId&ip=$myIp&name=$encodedName&battery=$curBat&charging=${if (isChg) 1 else 0}&source=app&app=1&client=pisophone_app"
+                val cleanMacParam = KioskSecurity.formatMacAddress(expectedMac)
+                val macQuery = if (cleanMacParam.isNotBlank()) "&target_mac=$cleanMacParam" else ""
+
+                val url = "http://$ipHost:$esp32Port/api/slots/pair_request?device_id=$deviceId&ip=$myIp&name=$encodedName&battery=$curBat&charging=${if (isChg) 1 else 0}&source=app&app=1&client=pisophone_app$macQuery"
+                Log.i(TAG, "[DIRECT_PAIR] Sending pairing request to $ipHost:$esp32Port (Target MAC: ${cleanMacParam.ifEmpty { "Any" }})")
+
                 val req = Request.Builder().url(url).build()
                 httpClient.newCall(req).execute().use { resp ->
-                    Log.d(TAG, "Explicit pair_request sent to $ipHost:$esp32Port, status: ${resp.code}")
+                    val body = resp.body?.string().orEmpty()
+                    if (resp.isSuccessful) {
+                        val json = JSONObject(body)
+                        if (json.optBoolean("success", false)) {
+                            val responseMac = json.optString("mac", "").trim()
+                            if (cleanMacParam.isNotBlank() && responseMac.isNotBlank()) {
+                                if (!isEsp32MacMatching(cleanMacParam, responseMac)) {
+                                    val err = "MAC mismatch: target $cleanMacParam != ESP32 $responseMac"
+                                    Log.w(TAG, "[-] Direct pairing rejected: $err")
+                                    onResult?.invoke(false, err)
+                                    return@launch
+                                }
+                            }
+
+                            // If no MAC was previously saved, adopt and persist the ESP32's hardware MAC
+                            if (cleanMacParam.isBlank() && responseMac.isNotBlank()) {
+                                KioskSecurity.setConfiguredEsp32Mac(context, responseMac)
+                            }
+
+                            esp32Ip = ipHost
+                            lastHeartbeatTime = System.currentTimeMillis()
+                            consecutiveHeartbeatFailures = 0
+                            val pairedSlot = json.optInt("slot", 0)
+                            Log.i(TAG, "[+] Direct pairing SUCCESS at $ipHost (MAC=$responseMac, slot=$pairedSlot)")
+
+                            delegate.onEsp32Discovered(ipHost)
+                            delegate.onOnlineStatusChanged(true, responseMac.ifBlank { null })
+                            if (pairedSlot > 0) {
+                                delegate.onSlotRestored(pairedSlot)
+                            }
+
+                            fetchMasterConfig(ipHost, esp32Port)
+                            onResult?.invoke(true, null)
+                        } else {
+                            val err = json.optString("error", "ESP32 rejected pair request")
+                            Log.w(TAG, "[-] Pairing rejected by ESP32: $err")
+                            onResult?.invoke(false, err)
+                        }
+                    } else {
+                        Log.w(TAG, "[-] HTTP error ${resp.code} during pair request to $ipHost")
+                        onResult?.invoke(false, "HTTP ${resp.code}")
+                    }
                 }
             } catch (e: Exception) {
-                Log.d(TAG, "Pair request non-fatal error: ${e.message}")
+                Log.w(TAG, "[-] Direct pairing failed: ${e.message}")
+                onResult?.invoke(false, e.message)
             }
         }
     }
@@ -215,7 +255,7 @@ class Esp32ConnectionManager(
                     val targetIp = esp32Ip
 
                     if (!targetIp.isNullOrBlank()) {
-                        val (host, esp32Port) = discoveryScanner.getEsp32HostAndPort(targetIp)
+                        val (host, esp32Port) = getEsp32HostAndPort(targetIp)
                         val deviceId = delegate.getDeviceId()
                         val ts = System.currentTimeMillis().toString()
                         val sig = KioskSecurity.generateTimestampSignature(deviceId, ts, delegate.getSecretKey())
@@ -246,7 +286,7 @@ class Esp32ConnectionManager(
                                                 json.optString("slot_status", "") == "expired"
                                         val expiresAt = json.optLong("expires_at", 0L)
                                         if (isUnassigned) {
-                                            sendPairingRequest(targetIp)
+                                            sendDirectPairingRequest(targetIp)
                                         }
                                         val errorMsg = if (json.has("message") && json.optString("message").isNotBlank()) {
                                             json.optString("message")
@@ -307,8 +347,8 @@ class Esp32ConnectionManager(
                             checkOfflineThreshold(currentIp)
                         }
                     } else {
-                        // Not bound yet: trigger clean discovery probe and direct candidate check
-                        discoveryScanner.triggerDiscovery(currentIp)
+                        // Not bound yet: directly send pairing request to configured IP & MAC
+                        sendDirectPairingRequest()
                     }
                 } catch (_: Exception) {}
                 delay(4000)
@@ -320,9 +360,10 @@ class Esp32ConnectionManager(
         val offlineDuration = System.currentTimeMillis() - lastHeartbeatTime
         if (consecutiveHeartbeatFailures >= 2 || offlineDuration > 8000L) {
             delegate.onOnlineStatusChanged(false, null)
-            discoveryScanner.triggerDiscovery(currentIp)
-            Log.w(TAG, "ESP32 heartbeat failed ($consecutiveHeartbeatFailures failures, ${offlineDuration}ms offline), resetting to static IP for probe")
-            esp32Ip = Esp32DiscoveryScanner.STATIC_ESP32_IP
+            val staticIp = KioskSecurity.getConfiguredEsp32Ip(context).ifBlank { DEFAULT_STATIC_ESP32_IP }
+            esp32Ip = staticIp
+            sendDirectPairingRequest(targetIp = staticIp)
+            Log.w(TAG, "ESP32 heartbeat failed ($consecutiveHeartbeatFailures failures, ${offlineDuration}ms offline), sent direct pairing request to $staticIp")
         }
     }
 
@@ -420,9 +461,9 @@ class Esp32ConnectionManager(
         }
 
         if (ip.isNullOrBlank()) {
-            Log.w(TAG, "Cannot arm slot: No discovered ESP32 IP available. Triggering discovery...")
+            Log.w(TAG, "Cannot arm slot: ESP32 IP not bound. Sending direct pairing request...")
             delegate.onOnlineStatusChanged(false, null)
-            discoveryScanner.triggerDiscovery("")
+            sendDirectPairingRequest()
             return
         }
 
@@ -741,6 +782,5 @@ class Esp32ConnectionManager(
     fun shutdown() {
         heartbeatJob?.cancel()
         forceCloseWebSocket(activeWebSocket, "Shutdown")
-        discoveryScanner.shutdown()
     }
 }

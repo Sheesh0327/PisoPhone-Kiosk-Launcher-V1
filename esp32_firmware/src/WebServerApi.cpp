@@ -8,6 +8,7 @@
 #include "DeviceNetwork.h"
 #include "CoinSlotManager.h"
 #include "PaymentQueueManager.h"
+#include "SuperAdminManager.h"
 #include <WiFi.h>
 #include <WebServer.h>
 
@@ -183,6 +184,22 @@ void handleApiSlotPairRequest() {
     if (!isAppClient) {
         webServer.send(403, "application/json", "{\"success\":false,\"error\":\"APP_CLIENT_REQUIRED\"}");
         return;
+    }
+
+    // Optional direct MAC verification if requested by caller
+    String targetMac = webServer.hasArg("target_mac") ? webServer.arg("target_mac") : (webServer.hasArg("esp32_mac") ? webServer.arg("esp32_mac") : "");
+    if (targetMac.length() > 0) {
+        String cleanTarget = targetMac;
+        cleanTarget.replace(":", "");
+        cleanTarget.toUpperCase();
+        String cleanSelf = macAddressStr;
+        cleanSelf.replace(":", "");
+        cleanSelf.toUpperCase();
+        if (cleanTarget != cleanSelf) {
+            String errJson = "{\"success\":false,\"error\":\"MAC_MISMATCH\",\"mac\":\"" + macAddressStr + "\"}";
+            webServer.send(400, "application/json", errJson);
+            return;
+        }
     }
 
     if (devId.length() == 0 && reqIp.length() > 0 && reqIp != "127.0.0.1" && reqIp != "0.0.0.0") {

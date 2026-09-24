@@ -60,12 +60,25 @@ class KioskService : Service() {
                 if (cleanMac.isNotBlank()) {
                     service.stateManager.esp32MacAddress.value = cleanMac
                 }
-                service.triggerCandidateDiscovery()
+                service.engine?.triggerDirectPairing(targetMac = cleanMac)
             }
         }
 
-        fun triggerEsp32Rescan(context: Context) {
-            activeInstance?.triggerCandidateDiscovery()
+        fun triggerDirectPairing(context: Context, ip: String? = null, mac: String? = null) {
+            activeInstance?.engine?.triggerDirectPairing(ip, mac)
+        }
+
+        fun updateConfiguredEsp32Mac(context: Context, mac: String): Boolean {
+            val clean = KioskSecurity.formatMacAddress(mac)
+            if (clean.isNotBlank()) {
+                KioskSecurity.setConfiguredEsp32Mac(context, clean)
+                activeInstance?.let { service ->
+                    service.stateManager.esp32MacAddress.value = clean
+                    service.engine?.triggerDirectPairing(targetMac = clean)
+                }
+                return true
+            }
+            return false
         }
 
         fun updateConfiguredEsp32Ip(context: Context, ip: String): Boolean {
@@ -203,11 +216,9 @@ class KioskService : Service() {
         engine?.speakWarning(text)
     }
 
-    fun triggerCandidateDiscovery() {
-        engine?.triggerCandidateDiscovery()
+    fun triggerDirectPairing(ip: String? = null, mac: String? = null) {
+        engine?.triggerDirectPairing(ip, mac)
     }
-
-    fun probeEsp32Connection(ip: String): Boolean = engine?.probeEsp32Connection(ip) ?: false
 
     private fun acquireLocks() {
         try {

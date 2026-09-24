@@ -33,6 +33,8 @@ fun VaultEsp32SettingsSection(
 ) {
     var savedIp by remember { mutableStateOf(KioskSecurity.getConfiguredEsp32Ip(context)) }
     var inputIp by remember { mutableStateOf(savedIp) }
+    var savedMac by remember { mutableStateOf(KioskSecurity.getConfiguredEsp32Mac(context)) }
+    var inputMac by remember { mutableStateOf(savedMac) }
     var isEditing by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isPinging by remember { mutableStateOf(false) }
@@ -66,27 +68,27 @@ fun VaultEsp32SettingsSection(
                 Spacer(modifier = Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "ESP32 Master Controller IP",
+                        "ESP32 Master Controller IP & MAC",
                         color = Color.White,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        "Static fast-path address for coin hardware",
+                        "Direct IP & Hardware MAC destination",
                         color = Color(0xFF94A3B8),
                         fontSize = 10.sp
                     )
                 }
                 HelpInfoButton(
-                    title = "ESP32 Controller Static IP",
-                    description = "Configures the IP address where the kiosk app probes and binds to the coin controller box over Wi-Fi. Default is 192.168.1.10. Changing this immediately updates discovery probing.",
+                    title = "ESP32 Direct Connection",
+                    description = "Configures the IP address and MAC address of the ESP32 coin controller box. Direct pairing requests will be sent directly to this destination without discovery scanning.",
                     onShowHelp = onShowHelp
                 )
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // IP Input & Status
+            // IP Input
             OutlinedTextField(
                 value = inputIp,
                 onValueChange = {
@@ -98,6 +100,40 @@ fun VaultEsp32SettingsSection(
                 placeholder = { Text(KioskSecurity.DEFAULT_ESP32_IP, fontSize = 12.sp, color = Color(0xFF64748B)) },
                 isError = errorMessage != null,
                 supportingText = errorMessage?.let { { Text(it, color = Color(0xFFEF4444), fontSize = 10.sp) } },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Ascii,
+                    imeAction = ImeAction.Next
+                ),
+                textStyle = TextStyle(
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold
+                ),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color(0xFF6366F1),
+                    unfocusedBorderColor = Color(0xFF334155),
+                    focusedContainerColor = Color(0xFF0F172A),
+                    unfocusedContainerColor = Color(0xFF0F172A),
+                    cursorColor = Color(0xFF818CF8)
+                ),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // MAC Input
+            OutlinedTextField(
+                value = inputMac,
+                onValueChange = {
+                    inputMac = it
+                    errorMessage = null
+                    isEditing = true
+                },
+                label = { Text("ESP32 MAC Address (Optional / Pinning)", fontSize = 11.sp, color = Color(0xFF94A3B8)) },
+                placeholder = { Text("AA:BB:CC:DD:EE:FF", fontSize = 12.sp, color = Color(0xFF64748B)) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Ascii,
@@ -136,15 +172,22 @@ fun VaultEsp32SettingsSection(
                 Button(
                     onClick = {
                         keyboardController?.hide()
-                        val trimmed = inputIp.trim()
-                        if (KioskSecurity.isValidIpv4(trimmed)) {
-                            val success = KioskService.updateConfiguredEsp32Ip(context, trimmed)
-                            if (success) {
-                                savedIp = trimmed
-                                inputIp = trimmed
+                        val trimmedIp = inputIp.trim()
+                        val trimmedMac = inputMac.trim()
+                        if (KioskSecurity.isValidIpv4(trimmedIp)) {
+                            val ipSuccess = KioskService.updateConfiguredEsp32Ip(context, trimmedIp)
+                            if (trimmedMac.isNotBlank()) {
+                                KioskService.updateConfiguredEsp32Mac(context, trimmedMac)
+                            }
+                            if (ipSuccess) {
+                                savedIp = trimmedIp
+                                savedMac = KioskSecurity.getConfiguredEsp32Mac(context)
+                                inputIp = savedIp
+                                inputMac = savedMac
                                 isEditing = false
                                 errorMessage = null
-                                Toast.makeText(context, "ESP32 IP set to $trimmed", Toast.LENGTH_SHORT).show()
+                                KioskService.triggerDirectPairing(context, savedIp, savedMac)
+                                Toast.makeText(context, "Saved & Pairing request sent to $trimmedIp", Toast.LENGTH_SHORT).show()
                             } else {
                                 errorMessage = "Failed to save IP address."
                             }
@@ -159,15 +202,15 @@ fun VaultEsp32SettingsSection(
                 ) {
                     Icon(Icons.Filled.Save, contentDescription = null, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Save & Apply", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("Save & Pair", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
 
-                // Probe / Rescan Button
+                // Direct Pair Button
                 OutlinedButton(
                     onClick = {
                         isPinging = true
-                        KioskService.triggerEsp32Rescan(context)
-                        Toast.makeText(context, "Probing ESP32 at $savedIp...", Toast.LENGTH_SHORT).show()
+                        KioskService.triggerDirectPairing(context, savedIp, savedMac)
+                        Toast.makeText(context, "Sending direct pairing request to $savedIp...", Toast.LENGTH_SHORT).show()
                         isPinging = false
                     },
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF38BDF8)),
@@ -178,7 +221,7 @@ fun VaultEsp32SettingsSection(
                 ) {
                     Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Test Probe", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("Direct Pair", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
 
                 // Reset to Default Button
@@ -190,6 +233,7 @@ fun VaultEsp32SettingsSection(
                         savedIp = defaultIp
                         isEditing = false
                         errorMessage = null
+                        KioskService.triggerDirectPairing(context, defaultIp, savedMac)
                         Toast.makeText(context, "Reset to default: $defaultIp", Toast.LENGTH_SHORT).show()
                     },
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF94A3B8)),

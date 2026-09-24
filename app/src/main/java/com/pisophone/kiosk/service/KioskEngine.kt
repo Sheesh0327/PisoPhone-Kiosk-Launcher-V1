@@ -306,7 +306,7 @@ class KioskEngine(
 
                 ensureHttpServerRunning()
 
-                esp32Manager.triggerCandidateDiscovery(stateManager.deviceIp.value)
+                esp32Manager.sendDirectPairingRequest()
                 esp32Manager.startHeartbeatLoop { stateManager.deviceIp.value }
 
                 supervisor.start()
@@ -379,8 +379,8 @@ class KioskEngine(
         return result == PaymentResult.APPLIED || result == PaymentResult.ALREADY_APPLIED
     }
 
-    fun triggerCandidateDiscovery() {
-        esp32Manager.triggerCandidateDiscovery(stateManager.deviceIp.value)
+    fun triggerDirectPairing(targetIp: String? = null, targetMac: String? = null) {
+        esp32Manager.sendDirectPairingRequest(targetIp, targetMac)
     }
 
     fun updateEsp32StaticIp(newIp: String): Boolean {
@@ -389,19 +389,9 @@ class KioskEngine(
             val cleanIp = newIp.trim()
             stateManager.esp32Ip = cleanIp
             esp32Manager.setEsp32Ip(cleanIp)
-            triggerCandidateDiscovery()
+            triggerDirectPairing(targetIp = cleanIp)
         }
         return valid
-    }
-
-    fun probeEsp32Connection(ip: String): Boolean {
-        if (Looper.myLooper() == Looper.getMainLooper()) {
-            scope.launch(Dispatchers.IO) {
-                esp32Manager.probeEsp32Connection(ip)
-            }
-            return false
-        }
-        return esp32Manager.probeEsp32Connection(ip)
     }
 
     fun closeSession(sendUnarmToEsp: Boolean = false) {
