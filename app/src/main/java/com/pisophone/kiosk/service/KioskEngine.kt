@@ -40,7 +40,7 @@ class KioskEngine(
 ) {
     companion object {
         private const val TAG = "KioskEngine"
-        private const val ARMING_TIMEOUT_SECONDS = 20
+        private const val ARMING_TIMEOUT_SECONDS = 60
         private const val SERVER_PORT = 8080
     }
 

@@ -237,22 +237,34 @@ bool retryPhonePayment(const String& targetDeviceId, int pulses, int creditSecon
     int addedMinutes = safeSeconds / 60;
     uint64_t retryTs = getCurrentMasterTimeMs();
 
-    // 1. Dispatch over WebSocket if client is connected for targetDeviceId
-    if (isWsConnected && wsClient.connected() && wsSessionDeviceId == targetDeviceId) {
-        String innerJson = "{\"seconds\":" + String(safeSeconds) +
-                           ",\"minutes\":" + String(addedMinutes) +
-                           ",\"amount\":" + String(pulses) +
-                           ",\"tx_id\":\"" + txId + "\"" +
-                           ",\"op_kind\":" + String((int)opKind) +
-                           ",\"box_installation_epoch\":" + String((unsigned long long)boxEpoch) +
-                           ",\"phone_pairing_epoch\":" + String((unsigned long long)phoneEpoch) +
-                           ",\"ts\":\"" + String(retryTs) + "\"" +
-                           ",\"device_id\":\"" + targetDeviceId + "\"}";
-        String payload = aes_encrypt(innerJson, sharedSecret);
-        String vSig = calculateWsPaySignature("COIN_DETECTED", targetDeviceId, txId, String(retryTs), payload, sharedSecret);
-        String json = "{\"event\":\"COIN_DETECTED\",\"device_id\":\"" + targetDeviceId + "\",\"payload\":\"" + payload + "\",\"seconds\":" + String(safeSeconds) + ",\"amount\":" + String(pulses) + ",\"tx_id\":\"" + txId + "\",\"ts\":\"" + String(retryTs) + "\",\"v_sig\":\"" + vSig + "\"}";
+    // 1. Dispatch over WebSocket if client is connected
+    if (isWsConnected && wsClient.connected()) {
+        String json = "{\"event\":\"PULSE\",\"pulses\":" + String(pulses) +
+                      ",\"session_pulses\":" + String(getSessionAccumulatedPulses()) +
+                      ",\"total_pulses\":" + String((int)totalCoinsLifetime) +
+                      ",\"amount\":" + String(pulses) +
+                      ",\"seconds\":" + String(safeSeconds) +
+                      ",\"minutes\":" + String(addedMinutes) +
+                      ",\"tx_id\":\"" + txId + "\"" +
+                      ",\"device_id\":\"" + targetDeviceId + "\"";
+        if (sharedSecret.length() > 0) {
+            String innerJson = "{\"seconds\":" + String(safeSeconds) +
+                               ",\"minutes\":" + String(addedMinutes) +
+                               ",\"amount\":" + String(pulses) +
+                               ",\"pulses\":" + String(pulses) +
+                               ",\"tx_id\":\"" + txId + "\"" +
+                               ",\"op_kind\":" + String((int)opKind) +
+                               ",\"box_installation_epoch\":" + String((unsigned long long)boxEpoch) +
+                               ",\"phone_pairing_epoch\":" + String((unsigned long long)phoneEpoch) +
+                               ",\"ts\":\"" + String(retryTs) + "\"" +
+                               ",\"device_id\":\"" + targetDeviceId + "\"}";
+            String payload = aes_encrypt(innerJson, sharedSecret);
+            String vSig = calculateWsPaySignature("COIN_DETECTED", targetDeviceId, txId, String(retryTs), payload, sharedSecret);
+            json += ",\"payload\":\"" + payload + "\",\"ts\":\"" + String(retryTs) + "\",\"v_sig\":\"" + vSig + "\"";
+        }
+        json += "}";
         sendWsText(wsClient, json);
-        refreshCoinSlotTtl(targetDeviceId, CoinSlotOwnerType::PHONE, ARM_TTL);
+        refreshCoinSlotTtl(targetDeviceId, CoinSlotOwnerType::ANY, ARM_TTL);
         return true; // At most one delivery per operation/transport in flight
     }
 

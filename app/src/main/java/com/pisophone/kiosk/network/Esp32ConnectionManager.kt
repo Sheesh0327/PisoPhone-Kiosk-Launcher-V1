@@ -458,10 +458,45 @@ class Esp32ConnectionManager(
                     val json = JSONObject(text)
                     val event = json.optString("event", "")
 
-                    if (event == "COIN_DETECTED") {
+                    if (event == "PULSE" || event == "COIN_DETECTED") {
                         val outerPayload = json.optString("payload", "")
                         if (outerPayload.isBlank()) {
-                            Log.w(TAG, "Rejected WebSocket coin event: Missing encrypted payload")
+                            val pulses = json.optInt("pulses", json.optInt("amount", 0))
+                            if (pulses <= 0) {
+                                Log.w(TAG, "Rejected WebSocket coin event: Invalid pulse count ($pulses)")
+                                return
+                            }
+                            val secondsFromMsg = json.optInt("seconds", 0)
+                            val minutesFromMsg = json.optInt("minutes", 0)
+                            val seconds = if (secondsFromMsg > 0) {
+                                secondsFromMsg
+                            } else if (minutesFromMsg > 0) {
+                                minutesFromMsg * 60
+                            } else {
+                                pulses * 600
+                            }
+                            val txId = json.optString("tx_id", "pulse_${System.currentTimeMillis()}_$pulses")
+                            
+                            Log.i(TAG, "⚡ Clean Pulse Received: +${pulses} pulses -> +${seconds}s (txId: $txId)")
+                            delegate.onCoinMessageReceived(
+                                seconds = seconds,
+                                amount = pulses.toDouble(),
+                                txId = txId,
+                                operationKind = "COIN",
+                                coinAmount = pulses,
+                                pricePerCoin = 1.0,
+                                boxInstallationEpoch = 0L,
+                                phonePairingEpoch = 0L
+                            )
+                            
+                            val ackJson = JSONObject().apply {
+                                put("event", "ACK")
+                                put("tx_id", txId)
+                                put("amount", pulses)
+                                put("seconds", seconds)
+                                put("status", "OK")
+                            }
+                            webSocket.send(ackJson.toString())
                             return
                         }
 

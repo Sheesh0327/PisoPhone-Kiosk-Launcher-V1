@@ -142,7 +142,7 @@ class PaymentOrchestrationIntegrationTest {
         assertEquals(PaymentResult.APPLIED, result)
         assertEquals(1, stateManager.appState.value) // Armed payment state
         assertEquals(5, stateManager.coinsInserted.value)
-        assertEquals(20, stateManager.paymentTimeout.value)
+        assertEquals(60, stateManager.paymentTimeout.value)
     }
 
     @Test

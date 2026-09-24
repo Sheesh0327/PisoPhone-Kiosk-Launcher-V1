@@ -10,7 +10,6 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <HTTPClient.h>
-#include <WiFiUdp.h>
 #include <ESPmDNS.h>
 #include <Update.h>
 #include "esp_wifi.h"
@@ -63,6 +62,18 @@ void setupWebServer() {
     webServer.on("/api/slots/unpair", HTTP_ANY, handleApiSlotUnpair);
     webServer.on("/api/slots/apply_token", HTTP_POST, handleApiSlotApplyToken);
     webServer.on("/api/slots/cloud_sync", HTTP_POST, handleApiSlotCloudSync);
+    
+    // Simple Universal Coinslot Endpoints for scripts / services
+    webServer.on("/api/coinslot/activate", HTTP_ANY, handleCoinslotActivate);
+    webServer.on("/api/coinslot/status", HTTP_GET, handleCoinslotStatus);
+    webServer.on("/api/coinslot/pulses", HTTP_GET, handleCoinslotStatus);
+    webServer.on("/api/coinslot/deactivate", HTTP_ANY, handleCoinslotDeactivate);
+    webServer.on("/api/coinslot/disarm", HTTP_ANY, handleCoinslotDeactivate);
+    webServer.on("/coinslot/activate", HTTP_ANY, handleCoinslotActivate);
+    webServer.on("/coinslot/status", HTTP_GET, handleCoinslotStatus);
+    webServer.on("/coinslot/pulses", HTTP_GET, handleCoinslotStatus);
+    webServer.on("/coinslot/deactivate", HTTP_ANY, handleCoinslotDeactivate);
+    webServer.on("/coinslot/disarm", HTTP_ANY, handleCoinslotDeactivate);
     
     webServer.on("/api/relay", HTTP_ANY, []() {
         if (!checkAdminAuth()) return;

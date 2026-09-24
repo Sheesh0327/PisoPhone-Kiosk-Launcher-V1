@@ -6,6 +6,7 @@
 #include "HardwareManager.h"
 #include "DeviceManager.h"
 #include "DeviceNetwork.h"
+#include "CoinSlotManager.h"
 #include <WiFi.h>
 #include <WebServer.h>
 
@@ -358,3 +359,67 @@ void handleIdentify() {
     json += "}";
     webServer.send(200, "application/json", json);
 }
+
+void handleCoinslotActivate() {
+    String clientIp = webServer.client().remoteIP().toString();
+    String sessionId = webServer.hasArg("session_id") ? webServer.arg("session_id") : ("client_" + clientIp);
+    sessionId.trim();
+    
+    unsigned long timeoutSec = 60;
+    if (webServer.hasArg("timeout")) {
+        timeoutSec = (unsigned long)webServer.arg("timeout").toInt();
+        if (timeoutSec < 5) timeoutSec = 5;
+        if (timeoutSec > 3600) timeoutSec = 3600;
+    }
+
+    if (isMaintenanceMode()) {
+        webServer.send(503, "application/json", "{\"status\":\"error\",\"error\":\"MAINTENANCE_MODE\"}");
+        return;
+    }
+
+    if (isCoinSlotBusy(sessionId, CoinSlotOwnerType::ANY)) {
+        String active = getActiveCoinSessionId();
+        webServer.send(409, "application/json", "{\"status\":\"error\",\"error\":\"SLOT_BUSY\",\"active_session\":\"" + active + "\"}");
+        return;
+    }
+
+    bool ok = reserveCoinSlot(sessionId, CoinSlotOwnerType::ANY, timeoutSec * 1000UL);
+    if (!ok) {
+        webServer.send(500, "application/json", "{\"status\":\"error\",\"error\":\"ARM_FAILED\"}");
+        return;
+    }
+
+    String json = "{\"status\":\"ok\",\"state\":\"ARMED\",\"is_armed\":true,\"session_id\":\"" + sessionId +
+                  "\",\"timeout_seconds\":" + String(timeoutSec) +
+                  ",\"pulses\":" + String(getSessionAccumulatedPulses()) +
+                  ",\"total_pulses\":" + String((int)totalCoinsLifetime) + "}";
+    webServer.send(200, "application/json", json);
+}
+
+void handleCoinslotStatus() {
+    CoinSlotState st = getCoinSlotState();
+    String stateStr = "IDLE";
+    if (st == CoinSlotState::ARMED) stateStr = "ARMED";
+    else if (st == CoinSlotState::DRAINING) stateStr = "DRAINING";
+    else if (st == CoinSlotState::RESERVED_ARMING) stateStr = "RESERVED_ARMING";
+    else if (st == CoinSlotState::FAULT_MAINTENANCE) stateStr = "FAULT_MAINTENANCE";
+
+    String json = "{\"status\":\"ok\",\"state\":\"" + stateStr +
+                  "\",\"is_armed\":" + String(isCoinSlotArmed() ? "true" : "false") +
+                  ",\"active_session\":\"" + getActiveCoinSessionId() +
+                  "\",\"pulses\":" + String(getSessionAccumulatedPulses()) +
+                  ",\"total_pulses\":" + String((int)totalCoinsLifetime) + "}";
+    webServer.send(200, "application/json", json);
+}
+
+void handleCoinslotDeactivate() {
+    String sessionId = webServer.hasArg("session_id") ? webServer.arg("session_id") : getActiveCoinSessionId();
+    int finalPulses = getSessionAccumulatedPulses();
+    releaseCoinSlot(sessionId, CoinSlotOwnerType::ANY, true, "API_DEACTIVATE");
+
+    String json = "{\"status\":\"ok\",\"state\":\"IDLE\",\"is_armed\":false" +
+                  ",\"pulses\":" + String(finalPulses) +
+                  ",\"total_pulses\":" + String((int)totalCoinsLifetime) + "}";
+    webServer.send(200, "application/json", json);
+}
+
