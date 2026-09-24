@@ -20,7 +20,6 @@ WiFiServer wsServer(81);
 WiFiClient wsClient;
 bool isWsConnected = false;
 String wsSessionDeviceId = "";
-WiFiUDP udpServer;
 QueueHandle_t authQueue = NULL;
 
 void setupWebServer() {
@@ -98,12 +97,23 @@ void setupWebServer() {
         if (!otaIsValidBinary || Update.hasError() || !otaUpdateSuccess) {
             String errStr = otaErrorMsg.length() > 0 ? otaErrorMsg : ("Flash write failed (Error Code " + String(Update.getError()) + ")");
             webServer.send(400, "text/plain", errStr);
-        } else if (!canPerformRebootOrOta()) {
-            webServer.send(409, "text/plain", "BUSY: Unpersisted transactions in RAM");
         } else {
+            if (revenueDirty || totalCoinsLifetime != lastSavedTotalCoins || totalEarningsLifetime != lastSavedTotalEarnings) {
+                lockNvs();
+                prefs.begin(NVS_NAMESPACE, false);
+                prefs.putULong(NVS_KEY_TOTAL_COINS, totalCoinsLifetime);
+                prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, totalEarningsLifetime);
+                prefs.end();
+                unlockNvs();
+                lastSavedTotalCoins = totalCoinsLifetime;
+                lastSavedTotalEarnings = totalEarningsLifetime;
+                revenueDirty = false;
+            }
             webServer.send(200, "text/plain", "SUCCESS");
+            Serial.println("[OTA] Firmware flashing verified & completed successfully. Restarting...");
+            Serial.flush();
             delay(500);
-            requestSystemRestart("OTA Firmware Update Complete");
+            ESP.restart();
         }
     }, []() {
         if (!checkAdminAuth()) return;
@@ -116,14 +126,22 @@ void setupWebServer() {
             otaErrorMsg = "";
             Update.clearError();
             
-            if (!canPerformRebootOrOta()) {
-                otaIsValidBinary = false;
-                otaErrorMsg = "OTA blocked: unpersisted transactions in RAM";
-                Serial.println("[OTA] Aborted: unpersisted transactions in RAM");
-                return;
+            setMaintenanceMode(true);
+            releaseCoinSlot(getActiveCoinSessionId(), CoinSlotOwnerType::ANY, true, "OTA_FLASH");
+
+            if (revenueDirty || totalCoinsLifetime != lastSavedTotalCoins || totalEarningsLifetime != lastSavedTotalEarnings) {
+                lockNvs();
+                prefs.begin(NVS_NAMESPACE, false);
+                prefs.putULong(NVS_KEY_TOTAL_COINS, totalCoinsLifetime);
+                prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, totalEarningsLifetime);
+                prefs.end();
+                unlockNvs();
+                lastSavedTotalCoins = totalCoinsLifetime;
+                lastSavedTotalEarnings = totalEarningsLifetime;
+                revenueDirty = false;
+                Serial.println("[OTA] Revenue counters flushed to NVS flash before flashing.");
             }
 
-            setMaintenanceMode(true);
             Serial.printf("[OTA] Starting firmware flash: %s\n", upload.filename.c_str());
             
             if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
@@ -173,14 +191,9 @@ void setupWebServer() {
     // Port 81: Real-time WebSocket Server
     wsServer.begin();
 
-    // Port 8888: UDP Broadcast Discovery Service
-    udpServer.begin(UDP_DISCOVERY_PORT);
-    Serial.printf("[!] Port %d: UDP Discovery Server active\n", UDP_DISCOVERY_PORT);
-
     if (WiFi.status() == WL_CONNECTED) {
         Serial.printf("[!] Port 80: Management at http://%s:80\n", WiFi.localIP().toString().c_str());
         Serial.printf("[!] Port 81: WebSocket at ws://%s:81/ws\n\n", WiFi.localIP().toString().c_str());
-        sendUdpDiscoveryResponse(IPAddress(255, 255, 255, 255), UDP_DISCOVERY_PORT);
     } else {
         Serial.printf("[!] Wi-Fi disconnected. Waiting for hotspot '%s' to become available...\n", wifiSsid.c_str());
     }

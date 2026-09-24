@@ -339,7 +339,7 @@ fun BlockScreen(
                                             letterSpacing = 0.5.sp
                                         )
                                         Text(
-                                            if (isEsp32Online) "Autonomous Discovery & Interlock Synchronized" else "Searching for ESP32 on network...", 
+                                            if (isEsp32Online) "Hardware Interlock Synchronized (192.168.1.10)" else "Connecting to ESP32 (192.168.1.10)...", 
                                             color = TextTertiary, 
                                             fontSize = 10.sp
                                         )

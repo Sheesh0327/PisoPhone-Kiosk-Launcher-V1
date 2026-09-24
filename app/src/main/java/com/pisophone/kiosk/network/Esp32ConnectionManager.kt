@@ -77,7 +77,7 @@ class Esp32ConnectionManager(
         .writeTimeout(4, TimeUnit.SECONDS)
         .build()
 
-    private var esp32Ip: String? = null
+    private var esp32Ip: String? = Esp32DiscoveryScanner.STATIC_ESP32_IP
     private var lastHeartbeatTime: Long = System.currentTimeMillis()
     private var consecutiveHeartbeatFailures: Int = 0
     private val connectionLock = Any()
@@ -117,7 +117,16 @@ class Esp32ConnectionManager(
     // ========================================================================
 
     fun triggerCandidateDiscovery(localIp: String) {
-        discoveryScanner.triggerDiscovery(localIp)
+        val staticTarget = Esp32DiscoveryScanner.STATIC_ESP32_IP
+        scope.launch(Dispatchers.IO) {
+            try {
+                if (discoveryScanner.probeEsp32Connection(staticTarget)) {
+                    Log.d(TAG, "[+] Instant connection established to static ESP32 at $staticTarget")
+                    return@launch
+                }
+            } catch (_: Exception) {}
+            discoveryScanner.triggerDiscovery(localIp)
+        }
     }
 
     fun probeEsp32Connection(ip: String): Boolean {
@@ -133,7 +142,7 @@ class Esp32ConnectionManager(
         delegate.onOnlineStatusChanged(true, null)
         Log.d(TAG, "[+] ESP32 Master bound at $ipHost")
 
-        // Parse immediate config from UDP response if present
+        // Parse immediate config from discovery response if present
         if (!rawResponseBody.isNullOrBlank()) {
             try {
                 val json = JSONObject(rawResponseBody)
@@ -311,10 +320,9 @@ class Esp32ConnectionManager(
         val offlineDuration = System.currentTimeMillis() - lastHeartbeatTime
         if (consecutiveHeartbeatFailures >= 2 || offlineDuration > 8000L) {
             delegate.onOnlineStatusChanged(false, null)
-            // Immediately trigger discovery to locate ESP32 if assigned a new DHCP IP
             discoveryScanner.triggerDiscovery(currentIp)
-            Log.w(TAG, "ESP32 heartbeat failed ($consecutiveHeartbeatFailures failures, ${offlineDuration}ms offline), clearing stale cached IP for fast rediscovery")
-            esp32Ip = null
+            Log.w(TAG, "ESP32 heartbeat failed ($consecutiveHeartbeatFailures failures, ${offlineDuration}ms offline), resetting to static IP for probe")
+            esp32Ip = Esp32DiscoveryScanner.STATIC_ESP32_IP
         }
     }
 

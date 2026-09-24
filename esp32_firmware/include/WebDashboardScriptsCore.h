@@ -239,10 +239,30 @@ window.fetchDeviceStatus = function() {
                                 '</div>' +
                             '</div>';
                 } else if (dev.online) {
-                    const mins = Math.floor(dev.time / 60);
-                    const secs = dev.time % 60;
+                    let effectiveTime = (typeof dev.time === 'number') ? dev.time : 0;
+                    const slotKey = 'slot_' + dev.slotNum;
+                    const now = Date.now();
+                    window._timerState = window._timerState || {};
+
+                    if (effectiveTime > 0) {
+                        window._timerState[slotKey] = { time: effectiveTime, lastPoll: now };
+                    } else if (window._timerState[slotKey] && window._timerState[slotKey].time > 0) {
+                        const elapsed = Math.floor((now - window._timerState[slotKey].lastPoll) / 1000);
+                        const interpolated = window._timerState[slotKey].time - elapsed;
+                        if (interpolated > 0 && (now - window._timerState[slotKey].lastPoll) < 8000) {
+                            effectiveTime = interpolated;
+                        } else {
+                            window._timerState[slotKey] = { time: 0, lastPoll: now };
+                            effectiveTime = 0;
+                        }
+                    } else {
+                        effectiveTime = 0;
+                    }
+
+                    const mins = Math.floor(effectiveTime / 60);
+                    const secs = effectiveTime % 60;
                     const timeStr = mins + 'm ' + secs + 's';
-                    const active = dev.time > 0;
+                    const active = effectiveTime > 0;
                     
                     let badgeHtml = active 
                         ? '<span class="device-badge active">ACTIVE</span>'
@@ -269,8 +289,8 @@ window.fetchDeviceStatus = function() {
                                     '</div>' +
                                 '</div>' +
                                 '<div class="device-row-metrics">' +
-                                    '<div class="device-row-timer">' +
-                                        '<span>⏱️ ' + timeStr + '</span>' +
+                                    '<div class="device-row-timer" data-timer-slot="' + slotKey + '">' +
+                                        '<span class="timer-display-text">⏱️ ' + timeStr + '</span>' +
                                         badgeHtml +
                                     '</div>' +
                                     '<div class="device-row-battery ' + batteryStatusClass + '">' +
@@ -355,6 +375,24 @@ window.fetchDeviceStatus = function() {
 };
 setInterval(fetchDeviceStatus, 3000);
 document.addEventListener("DOMContentLoaded", fetchDeviceStatus);
+setInterval(function() {
+    if (!window._timerState) return;
+    const now = Date.now();
+    document.querySelectorAll('[data-timer-slot]').forEach(function(el) {
+        const slotKey = el.getAttribute('data-timer-slot');
+        const st = window._timerState[slotKey];
+        if (st && st.time > 0) {
+            const elapsed = Math.floor((now - st.lastPoll) / 1000);
+            const remaining = Math.max(0, st.time - elapsed);
+            const m = Math.floor(remaining / 60);
+            const s = remaining % 60;
+            const span = el.querySelector('.timer-display-text');
+            if (span) {
+                span.textContent = '⏱️ ' + m + 'm ' + s + 's';
+            }
+        }
+    });
+}, 1000);
 
 window.checkMatchQualification = function() {
     const p1 = document.getElementById('p1_select') ? document.getElementById('p1_select').value : '';

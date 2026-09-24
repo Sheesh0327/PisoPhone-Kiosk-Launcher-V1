@@ -87,6 +87,19 @@ static void processSystemHealthAndAutoMaintenance() {
     }
 }
 
+static const IPAddress STATIC_IP(192, 168, 1, 10);
+static const IPAddress GATEWAY_IP(192, 168, 1, 1);
+static const IPAddress SUBNET_MASK(255, 255, 255, 0);
+static const IPAddress DNS_IP(192, 168, 1, 1);
+
+static void applyStaticIpConfig() {
+    if (!WiFi.config(STATIC_IP, GATEWAY_IP, SUBNET_MASK, DNS_IP)) {
+        Serial.println("[-] Static IP configuration failed, proceeding with DHCP fallback");
+    } else {
+        Serial.println("[+] Static IP configured: 192.168.1.10");
+    }
+}
+
 void setup() {
     Serial.begin(115200);
     unsigned long start = millis();
@@ -133,6 +146,9 @@ void setup() {
     WiFi.setTxPower(WIFI_POWER_8_5dBm);
     esp_wifi_set_max_tx_power(34);
     esp_wifi_set_ps(WIFI_PS_NONE);
+
+    // Static IP assignment: 192.168.1.10
+    applyStaticIpConfig();
 
     WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
 
@@ -210,10 +226,7 @@ void loop() {
     // 4. Handle Port 81 WebSocket Client & Frames
     processWebSocketServer();
     
-    // 5. Handle Port 8888 UDP Broadcast Discovery
-    processUdpDiscovery();
-    
-    // 6. Handle USB Serial CLI commands
+    // 5. Handle USB Serial CLI commands
     processSerialCli();
     
     // 7. Robust Non-Blocking Wi-Fi Reconnection Watchdog with Bounded Exponential Backoff + Jitter
@@ -237,9 +250,8 @@ void loop() {
                 Serial.printf("\n[📶 WATCHDOG] Wi-Fi lost. Attempting reconnection to \"%s\" (next retry in ~%lu ms)...\n",
                               wifiSsid.c_str(), (unsigned long)wifiBackoffMs);
                 WiFi.disconnect();
+                applyStaticIpConfig();
                 WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
-                udpServer.stop();
-                udpServer.begin(UDP_DISCOVERY_PORT);
             }
         }
     }

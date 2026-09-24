@@ -7,6 +7,30 @@
 
 String renderDeviceOptions(String selectedIp) {
     String opts = "";
+    bool renderedIds[MAX_SUPPORTED_SLOTS] = { false };
+
+    // 1. Render all configured or paired license slots
+    for (int i = 0; i < maxLicensedSlots; i++) {
+        if (licenseSlots[i].deviceId.length() > 0 || licenseSlots[i].ip.length() > 0) {
+            String val = licenseSlots[i].ip;
+            if (val.length() == 0 || val == "127.0.0.1") {
+                val = licenseSlots[i].deviceId;
+            }
+            if (val.length() == 0) continue;
+
+            String name = licenseSlots[i].name.length() > 0 ? licenseSlots[i].name : ("Slot #" + String(licenseSlots[i].slotNum));
+            bool isActive = isSlotActive(i);
+            bool isInactive = !isActive;
+            String expAttr = isInactive ? " data-inactive=\"true\"" : " data-inactive=\"false\"";
+            String badge = isInactive ? " [🔴 INACTIVE]" : "";
+            String sel = (val == selectedIp || licenseSlots[i].ip == selectedIp || licenseSlots[i].deviceId == selectedIp) ? " selected" : "";
+            
+            opts += "<option value=\"" + val + "\"" + sel + expAttr + ">" + name + " (" + val + ")" + badge + "</option>";
+            renderedIds[i] = true;
+        }
+    }
+
+    // 2. Render any legacy or static androidIps not covered by license slots
     int startIdx = 0, devNum = 1;
     while (startIdx < androidIps.length()) {
         int comma = androidIps.indexOf(',', startIdx);
@@ -16,14 +40,25 @@ String renderDeviceOptions(String selectedIp) {
         if (entry.length() > 0) {
             DeviceConfig cfg;
             if (parseDeviceEntry(entry, cfg)) {
-                String name = cfg.name.length() > 0 ? cfg.name : ("PisoPhone " + String(devNum));
-                String sel = (cfg.ip == selectedIp) ? " selected" : "";
-                int slotIdx = findSlotIndexForDevice(cfg.id, cfg.ip);
-                bool isActive = isSlotActive(slotIdx);
-                bool isInactive = !isActive;
-                String expAttr = isInactive ? " data-inactive=\"true\"" : " data-inactive=\"false\"";
-                String badge = isInactive ? " [🔴 INACTIVE]" : "";
-                opts += "<option value=\"" + cfg.ip + "\"" + sel + expAttr + ">" + name + " (" + cfg.ip + ")" + badge + "</option>";
+                // Check if already rendered via licenseSlots
+                bool alreadyRendered = false;
+                for (int i = 0; i < maxLicensedSlots; i++) {
+                    if (renderedIds[i] && (licenseSlots[i].deviceId == cfg.id || licenseSlots[i].ip == cfg.ip)) {
+                        alreadyRendered = true;
+                        break;
+                    }
+                }
+                if (!alreadyRendered) {
+                    String name = cfg.name.length() > 0 ? cfg.name : ("PisoPhone " + String(devNum));
+                    String val = cfg.ip.length() > 0 ? cfg.ip : cfg.id;
+                    String sel = (val == selectedIp || cfg.ip == selectedIp || cfg.id == selectedIp) ? " selected" : "";
+                    int slotIdx = findSlotIndexForDevice(cfg.id, cfg.ip);
+                    bool isActive = isSlotActive(slotIdx);
+                    bool isInactive = !isActive;
+                    String expAttr = isInactive ? " data-inactive=\"true\"" : " data-inactive=\"false\"";
+                    String badge = isInactive ? " [🔴 INACTIVE]" : "";
+                    opts += "<option value=\"" + val + "\"" + sel + expAttr + ">" + name + " (" + val + ")" + badge + "</option>";
+                }
                 devNum++;
             }
         }

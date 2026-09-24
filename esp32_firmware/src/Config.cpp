@@ -18,7 +18,6 @@ const bool  DEFAULT_LED_ACTIVE_LOW     = false;
 const int   DEFAULT_RELAY_PIN          = 4;
 const int   DEFAULT_PORT               = 8080;
 const int   HARDWARE_RESET_PIN         = 2;
-const int   UDP_DISCOVERY_PORT         = 8888;
 const int   DEFAULT_MINUTES_PER_COIN   = 6;
 
 // ============================================================================
@@ -345,26 +344,6 @@ void loadAllConfig() {
 
     prefs.end();
     unlockNvs();
-
-    // Sanitize and purge any corrupted legacy entries
-    String bootCleanIps = "";
-    bootCleanIps.reserve(androidIps.length());
-    int bootIdx = 0;
-    while (bootIdx < androidIps.length()) {
-        int comma = androidIps.indexOf(',', bootIdx);
-        if (comma == -1) comma = androidIps.length();
-        String entry = androidIps.substring(bootIdx, comma);
-        entry.trim();
-        if (entry.length() > 0) {
-            DeviceConfig cfg;
-            if (parseDeviceEntry(entry, cfg)) {
-                if (bootCleanIps.length() > 0) bootCleanIps += ",";
-                bootCleanIps += cfg.id + "|" + cfg.ip + "|" + cfg.name;
-            }
-        }
-        bootIdx = comma + 1;
-    }
-    androidIps = bootCleanIps;
 
     Serial.printf("[💾 CONFIG] Loaded NVS Config: SSID='%s', Port=%d, AdminPW='%s', RelayPin=%d, TotalCoins=%u, TotalEarnings=₱%.2f\n",
         wifiSsid.c_str(), targetPort, webPassword.c_str(), relayPin, totalCoinsLifetime, totalEarningsLifetime);

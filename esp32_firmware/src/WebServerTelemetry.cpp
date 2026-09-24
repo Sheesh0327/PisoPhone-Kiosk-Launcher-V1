@@ -17,7 +17,7 @@ void handleHeartbeat() {
     String sig = webServer.hasArg("sig") ? webServer.arg("sig") : "";
     unsigned long long ts = strtoull(tsStr.c_str(), NULL, 10);
     
-    int timeRem = webServer.hasArg("time") ? webServer.arg("time").toInt() : 0;
+    int timeRem = webServer.hasArg("time") ? webServer.arg("time").toInt() : -1;
     int state = webServer.hasArg("state") ? webServer.arg("state").toInt() : 0;
     int battery = webServer.hasArg("battery") ? webServer.arg("battery").toInt() : -1;
     bool charging = webServer.hasArg("charging") ? (webServer.arg("charging").toInt() == 1 || webServer.arg("charging") == "true") : false;
@@ -34,11 +34,18 @@ void handleHeartbeat() {
         return;
     }
 
+    bool isCoinslotOnly = (webServer.hasArg("mode") && webServer.arg("mode") == "coinslot") ||
+                          (webServer.hasArg("coinslot") && (webServer.arg("coinslot") == "1" || webServer.arg("coinslot") == "true")) ||
+                          (webServer.hasArg("type") && (webServer.arg("type") == "controller" || webServer.arg("type") == "coinslot")) ||
+                          (webServer.hasArg("client") && (webServer.arg("client") == "controller" || webServer.arg("client") == "coinslot")) ||
+                          (webServer.hasArg("op_kind") && webServer.arg("op_kind") == "5") ||
+                          (deviceId.startsWith("CTRL_") || deviceId.startsWith("ROUTER_"));
+
     bool isAppReq = (webServer.hasArg("app") && (webServer.arg("app") == "1" || webServer.arg("app") == "true")) ||
                     (webServer.hasArg("client") && webServer.arg("client") == "pisophone_app") ||
                     (webServer.hasArg("source") && webServer.arg("source") == "app");
 
-    bool fromApp = isAppReq || (isAuth && webServer.hasArg("battery") && webServer.hasArg("charging"));
+    bool fromApp = !isCoinslotOnly && (isAppReq || (isAuth && webServer.hasArg("battery") && webServer.hasArg("charging")));
 
     if (deviceId.length() > 0 || reqIp.length() > 0) {
         updateDeviceTelemetry(deviceId, reqIp, timeRem, state, battery, charging, ts, fromApp);

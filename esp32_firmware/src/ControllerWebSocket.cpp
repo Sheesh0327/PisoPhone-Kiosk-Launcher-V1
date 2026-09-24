@@ -4,7 +4,7 @@
 #include "Config.h"
 #include "DeviceManager.h"
 #include "Security.h"
-#include "WebSocketsUdp.h"
+#include "WebSocketServer.h"
 #include <ArduinoJson.h>
 
 // Controller connection state

@@ -6,7 +6,6 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -123,7 +122,6 @@ class KioskService : Service() {
     private var engine: KioskEngine? = null
     val stateManager: KioskStateManager by lazy { KioskStateManager(applicationContext) }
 
-    private var multicastLock: WifiManager.MulticastLock? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onCreate() {
@@ -205,24 +203,18 @@ class KioskService : Service() {
 
     private fun acquireLocks() {
         try {
-            val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-            multicastLock = wifi?.createMulticastLock("pisophone_multicast_lock")?.apply {
-                setReferenceCounted(true)
-                acquire()
-            }
             val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
             wakeLock = powerManager?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "pisophone:kiosk_service_wakelock")?.apply {
                 acquire()
             }
-            Log.d(TAG, "[+] Acquired MulticastLock and Partial WakeLock for reliable ESP32 networking.")
+            Log.d(TAG, "[+] Acquired Partial WakeLock for reliable kiosk background operations.")
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to acquire MulticastLock or WakeLock: ${e.message}")
+            Log.w(TAG, "Failed to acquire WakeLock: ${e.message}")
         }
     }
 
     private fun releaseLocks() {
         try {
-            if (multicastLock?.isHeld == true) multicastLock?.release()
             if (wakeLock?.isHeld == true) wakeLock?.release()
         } catch (_: Exception) {}
     }

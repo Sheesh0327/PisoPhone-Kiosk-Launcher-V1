@@ -59,7 +59,42 @@ bool isAdjustmentConfirmed(const String& txId) {
 
 AddTimeSummary sendAddTime(int64_t signedSeconds, String targetIp, String txId, uint8_t opKindParam) {
     AddTimeSummary summary = {0, 0, 0, 0};
-    if (androidIps.length() == 0) return summary;
+    targetIp.trim();
+
+    struct TargetRecipient {
+        String devId;
+        String ip;
+        int slotIdx;
+    };
+    TargetRecipient targets[MAX_SUPPORTED_SLOTS];
+    int targetCount = 0;
+
+    // 1. Collect from paired / configured licenseSlots
+    for (int i = 0; i < maxLicensedSlots; i++) {
+        if (licenseSlots[i].deviceId.length() > 0 || licenseSlots[i].ip.length() > 0) {
+            String slotDevId = licenseSlots[i].deviceId;
+            String slotIp = licenseSlots[i].ip;
+            bool matches = false;
+            if (targetIp == "ALL") {
+                matches = true;
+            } else if (slotIp.length() > 0 && targetIp == slotIp) {
+                matches = true;
+            } else if (slotDevId.length() > 0 && targetIp == slotDevId) {
+                matches = true;
+            } else if (targetIp == String(licenseSlots[i].slotNum)) {
+                matches = true;
+            }
+
+            if (matches && targetCount < MAX_SUPPORTED_SLOTS) {
+                targets[targetCount].devId = slotDevId;
+                targets[targetCount].ip = slotIp;
+                targets[targetCount].slotIdx = i;
+                targetCount++;
+            }
+        }
+    }
+
+    // 2. Collect any remaining targets from static androidIps
     int startIdx = 0;
     while (startIdx < androidIps.length()) {
         int comma = androidIps.indexOf(',', startIdx);
@@ -69,40 +104,69 @@ AddTimeSummary sendAddTime(int64_t signedSeconds, String targetIp, String txId, 
         if (entry.length() > 0) {
             DeviceConfig cfg;
             if (parseDeviceEntry(entry, cfg)) {
-                if (targetIp == "ALL" || targetIp == cfg.ip) {
-                    summary.matchedRecipients++;
-                    int slotIdx = findSlotIndexForDevice(cfg.id, cfg.ip);
-                    bool isActive = isSlotActive(slotIdx);
-                    if (!isActive) {
-                        Serial.printf("[-] sendAddTime skipped for %s (Slot #%d): Device Inactive / Unlicensed\n",
-                            cfg.ip.c_str(), (slotIdx >= 0) ? licenseSlots[slotIdx].slotNum : 0);
-                        summary.skippedInactive++;
-                    } else {
-                        String currentTxId = txId;
-                        if (currentTxId.length() == 0) {
-                            currentTxId = generateCollisionResistantTxId("adj");
+                bool matches = (targetIp == "ALL" || targetIp == cfg.ip || targetIp == cfg.id);
+                if (matches) {
+                    bool alreadyAdded = false;
+                    for (int k = 0; k < targetCount; k++) {
+                        if ((cfg.id.length() > 0 && targets[k].devId == cfg.id) ||
+                            (cfg.ip.length() > 0 && targets[k].ip == cfg.ip)) {
+                            alreadyAdded = true;
+                            break;
                         }
-                        PaymentOpKind opKind = (opKindParam != 0)
-                            ? (PaymentOpKind)opKindParam
-                            : (signedSeconds >= 0 ? OP_KIND_QUICK_ADJUST : OP_KIND_MANUAL_DEDUCT);
-                        uint64_t boxEpoch = 0;
-                        uint64_t phoneEpoch = 0; // Legacy epoch; pairing-generation enforcement recorded as unfinished
-                        recordAdjustmentPending(currentTxId, cfg.id, (int)signedSeconds);
-
-                        bool queued = enqueuePendingPayment(
-                            currentTxId, cfg.id, 0, CoinSlotOwnerType::PHONE, (int)signedSeconds,
-                            opKind, 0.0, boxEpoch, phoneEpoch
-                        );
-                        if (queued) {
-                            summary.queuedRequests++;
-                        } else {
-                            summary.failedSubmissions++;
-                        }
+                    }
+                    if (!alreadyAdded && targetCount < MAX_SUPPORTED_SLOTS) {
+                        targets[targetCount].devId = cfg.id;
+                        targets[targetCount].ip = cfg.ip;
+                        targets[targetCount].slotIdx = findSlotIndexForDevice(cfg.id, cfg.ip);
+                        targetCount++;
                     }
                 }
             }
         }
         startIdx = comma + 1;
+    }
+
+    // 3. Dispatch payment queue adjustments to all matched recipients
+    summary.matchedRecipients = targetCount;
+    for (int i = 0; i < targetCount; i++) {
+        int slotIdx = targets[i].slotIdx;
+        bool isActive = isSlotActive(slotIdx);
+        if (!isActive) {
+            Serial.printf("[-] sendAddTime skipped for %s (Slot #%d): Device Inactive / Unlicensed\n",
+                targets[i].ip.c_str(), (slotIdx >= 0) ? licenseSlots[slotIdx].slotNum : 0);
+            summary.skippedInactive++;
+        } else {
+            String currentTxId = txId;
+            if (currentTxId.length() == 0) {
+                currentTxId = generateCollisionResistantTxId("adj");
+            }
+            PaymentOpKind opKind = (opKindParam != 0)
+                ? (PaymentOpKind)opKindParam
+                : (signedSeconds >= 0 ? OP_KIND_QUICK_ADJUST : OP_KIND_MANUAL_DEDUCT);
+            uint64_t boxEpoch = 0;
+            uint64_t phoneEpoch = 0;
+            String targetDevId = targets[i].devId;
+            if (targetDevId.length() == 0 || targetDevId.indexOf('.') != -1) {
+                String resolved = getDeviceIdFromIp(targets[i].ip.length() > 0 ? targets[i].ip : targets[i].devId);
+                if (resolved.length() > 0) {
+                    targetDevId = resolved;
+                } else if (targetDevId.length() == 0) {
+                    targetDevId = targets[i].ip;
+                }
+            }
+
+            recordAdjustmentPending(currentTxId, targetDevId, (int)signedSeconds);
+
+            bool queued = enqueuePendingPayment(
+                currentTxId, targetDevId, 0, CoinSlotOwnerType::PHONE, (int)signedSeconds,
+                opKind, 0.0, boxEpoch, phoneEpoch
+            );
+            if (queued) {
+                summary.queuedRequests++;
+            } else {
+                summary.failedSubmissions++;
+            }
+        }
     }
     return summary;
 }
@@ -173,8 +237,8 @@ bool retryPhonePayment(const String& targetDeviceId, int pulses, int creditSecon
     int addedMinutes = safeSeconds / 60;
     uint64_t retryTs = getCurrentMasterTimeMs();
 
-    // 1. Dispatch over WebSocket if client is connected for targetDeviceId AND operation is a genuine coin event
-    if (opKind == OP_KIND_COIN && isWsConnected && wsClient.connected() && wsSessionDeviceId == targetDeviceId) {
+    // 1. Dispatch over WebSocket if client is connected for targetDeviceId
+    if (isWsConnected && wsClient.connected() && wsSessionDeviceId == targetDeviceId) {
         String innerJson = "{\"seconds\":" + String(safeSeconds) +
                            ",\"minutes\":" + String(addedMinutes) +
                            ",\"amount\":" + String(pulses) +

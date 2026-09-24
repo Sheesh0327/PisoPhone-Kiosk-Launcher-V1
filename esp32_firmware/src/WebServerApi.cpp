@@ -164,6 +164,25 @@ void handleApiSlotPairRequest() {
     int battery = webServer.hasArg("battery") ? webServer.arg("battery").toInt() : -1;
     bool charging = webServer.hasArg("charging") ? (webServer.arg("charging").toInt() == 1 || webServer.arg("charging") == "true") : false;
 
+    // Filter out coinslot-only requests and non-app clients
+    bool isCoinslotOnly = (webServer.hasArg("mode") && webServer.arg("mode") == "coinslot") ||
+                          (webServer.hasArg("coinslot") && (webServer.arg("coinslot") == "1" || webServer.arg("coinslot") == "true")) ||
+                          (webServer.hasArg("type") && (webServer.arg("type") == "controller" || webServer.arg("type") == "coinslot")) ||
+                          (webServer.hasArg("client") && (webServer.arg("client") == "controller" || webServer.arg("client") == "coinslot")) ||
+                          (webServer.hasArg("op_kind") && webServer.arg("op_kind") == "5");
+    if (isCoinslotOnly) {
+        webServer.send(200, "application/json", "{\"success\":false,\"error\":\"COINSLOT_ONLY_NOT_PAIRABLE\"}");
+        return;
+    }
+
+    bool isAppClient = (webServer.hasArg("app") && (webServer.arg("app") == "1" || webServer.arg("app") == "true")) ||
+                       (webServer.hasArg("client") && webServer.arg("client") == "pisophone_app") ||
+                       (webServer.hasArg("source") && webServer.arg("source") == "app");
+    if (!isAppClient) {
+        webServer.send(403, "application/json", "{\"success\":false,\"error\":\"APP_CLIENT_REQUIRED\"}");
+        return;
+    }
+
     if (devId.length() == 0 && reqIp.length() > 0 && reqIp != "127.0.0.1" && reqIp != "0.0.0.0") {
         devId = "DEV_" + reqIp;
     }
@@ -328,13 +347,11 @@ void handleIdentify() {
     if (devId.length() == 0 && reqIp.length() > 0 && reqIp != "127.0.0.1" && reqIp != "0.0.0.0") {
         devId = "DEV_" + reqIp;
     }
-    if (reqIp.length() > 0 && reqIp != "127.0.0.1" && reqIp != "0.0.0.0") {
-        updateDynamicDeviceList(devId, reqIp);
-        updateDeviceTelemetry(devId, reqIp, -1, 0, -1, false, 0);
-    }
     String devName = getDeviceNameByIpOrId(reqIp, devId);
     int slotIdx = findSlotIndexForDevice(devId, reqIp);
-    String json = "{\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\",\"version\":\"3.0\",\"minutes\":" + String(minutesPerCoin) + ",\"price\":1.0";
+    String secKey = (sharedSecret.length() > 0) ? sharedSecret : String(MASTER_CRYPTO_SECRET);
+    String sig = calculateHMAC("DISCOVERY:" + macAddressStr + ":" + WiFi.localIP().toString(), secKey);
+    String json = "{\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\",\"ip\":\"" + WiFi.localIP().toString() + "\",\"sig\":\"" + sig + "\",\"version\":\"3.0\",\"minutes\":" + String(minutesPerCoin) + ",\"price\":1.0";
     if (devName.length() > 0) {
         json += ",\"device_name\":\"" + devName + "\"";
     }

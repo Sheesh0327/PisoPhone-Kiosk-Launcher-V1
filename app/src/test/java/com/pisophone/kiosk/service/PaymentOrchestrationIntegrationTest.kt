@@ -209,4 +209,53 @@ class PaymentOrchestrationIntegrationTest {
         )
         assertEquals(PaymentResult.FAILED, wsResult)
     }
+
+    @Test
+    fun testSlotLockdownAppliesAuthoritativeStateWithTargetLockState() {
+        stateManager.appState.value = 2 // Active
+        stateManager.sessionTimeRemaining.value = 300
+        stateManager.sessionExpiryDeadlineMs.value = android.os.SystemClock.elapsedRealtime() + 300_000L
+
+        engine.esp32Coordinator.onSlotLockdown("Licensing expired", 2, 0L)
+
+        assertEquals(true, stateManager.isSlotExpired.value)
+        assertEquals("Licensing expired", stateManager.slotExpiryMessage.value)
+        assertEquals(2, stateManager.slotNumber.value)
+        assertEquals(0, stateManager.appState.value)
+        assertEquals(0, stateManager.sessionTimeRemaining.value)
+        assertEquals(0L, stateManager.sessionExpiryDeadlineMs.value)
+
+        val dbState = runBlocking(Dispatchers.IO) {
+            engine.paymentRepo.getSessionState()
+        }
+        assertNotNull(dbState)
+        assertEquals(0, dbState?.sessionTimeRemaining)
+        assertEquals(0L, dbState?.sessionExpiryDeadlineMs)
+        assertEquals(dbState?.revision, stateManager.sessionRevision.value)
+    }
+
+    @Test
+    fun testSlotLockdownRejectsStaleUpdateIfNewerRevisionActive() {
+        // Commit an active session with revision in stateManager
+        val initialOutcome = engine.paymentRepo.creditPaymentBlocking("TX_PRE_LOCK", 600, 5.0)
+        assertEquals(PaymentResult.APPLIED, initialOutcome.result)
+        assertNotNull(initialOutcome.snapshot)
+        val initialRev = initialOutcome.snapshot!!.revision
+
+        stateManager.applySessionUpdate(initialOutcome.snapshot!!, targetAppState = 2)
+        assertEquals(initialRev, stateManager.sessionRevision.value)
+        assertEquals(2, stateManager.appState.value)
+
+        // Attempting to apply an expired snapshot with older revision must be rejected
+        val staleSnapshot = com.pisophone.kiosk.repository.SessionSnapshot(
+            deadlineMs = 0L,
+            remainingSeconds = 0,
+            revision = initialRev - 1L
+        )
+        val appliedStale = stateManager.applySessionUpdate(staleSnapshot, targetAppState = 0)
+        assertEquals(false, appliedStale)
+        assertEquals(initialRev, stateManager.sessionRevision.value)
+        assertEquals(2, stateManager.appState.value)
+        assertEquals(600, stateManager.sessionTimeRemaining.value)
+    }
 }
