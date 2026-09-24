@@ -159,7 +159,7 @@ object KioskUpdateManager {
         } finally {
             try {
                 session?.close()
-            } catch (_: Exception) {}
+            } catch (e: Exception) {}
         }
     }
 

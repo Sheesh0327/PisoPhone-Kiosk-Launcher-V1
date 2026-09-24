@@ -98,7 +98,7 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
                     context.startActivity(sIntent)
-                } catch (_: Exception) {}
+                } catch (e: Exception) {}
             }
 
             ACTION_ADMIN_BYPASS -> {

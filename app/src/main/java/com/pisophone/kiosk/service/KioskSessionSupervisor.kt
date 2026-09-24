@@ -18,6 +18,7 @@ class KioskSessionSupervisor(
     private val paymentRepo: PaymentRepository,
     private val onSpeakWarning: (String) -> Unit,
     private val onFinishPayment: () -> Unit,
+    private val onCancelPayment: () -> Unit = {},
     private val onCloseSession: (Boolean) -> Unit,
     private val onCheckBatteryAlerts: () -> Unit
 ) {
@@ -61,13 +62,7 @@ class KioskSessionSupervisor(
                             if (stateManager.coinsInserted.value > 0) {
                                 onFinishPayment()
                             } else {
-                                onCloseSession(true)
-                                if (curState == 3) {
-                                    stateManager.appState.value = 2
-                                } else {
-                                    stateManager.appState.value = 0
-                                }
-                                stateManager.saveState()
+                                onCancelPayment()
                             }
                         }
                     }

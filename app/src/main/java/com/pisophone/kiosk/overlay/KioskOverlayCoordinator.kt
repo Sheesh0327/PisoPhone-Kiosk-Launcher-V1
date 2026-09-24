@@ -24,7 +24,8 @@ class KioskOverlayCoordinator(
     private val batteryStatusFlow: StateFlow<BatteryStatus>,
     private val armingTimeoutSeconds: Int,
     private val onArmSlot: () -> Unit,
-    private val onFinishPayment: () -> Unit
+    private val onFinishPayment: () -> Unit,
+    private val onCancelPayment: () -> Unit = {}
 ) {
     companion object {
         private const val TAG = "KioskOverlayCoordinator"
@@ -112,6 +113,7 @@ class KioskOverlayCoordinator(
                             onArmSlot()
                         },
                         onDoneClick = { onFinishPayment() },
+                        onCancelClick = { onCancelPayment() },
                         onThemeChange = {
                             stateManager.themeIndex.value = (stateManager.themeIndex.value + 1) % 3
                         }

@@ -46,7 +46,7 @@ class KioskEsp32Coordinator(
     override fun getSessionTimeRemaining(): Int = stateManager.sessionTimeRemaining.value
     override fun getRealTimeBatteryInfo(): Pair<Int, Boolean> = getRealTimeBatteryInfo.invoke()
 
-    override fun onEsp32Discovered(ip: String) {
+    override fun onEsp32Paired(ip: String) {
         stateManager.esp32Ip = ip
         stateManager.isEsp32Online.value = true
         stateManager.saveState()
@@ -54,7 +54,11 @@ class KioskEsp32Coordinator(
 
     override fun onOnlineStatusChanged(isOnline: Boolean, mac: String?) {
         stateManager.isEsp32Online.value = isOnline
-        if (!mac.isNullOrBlank()) stateManager.esp32MacAddress.value = mac
+        if (!isOnline && mac == null) {
+            stateManager.esp32MacAddress.value = ""
+        } else if (!mac.isNullOrBlank()) {
+            stateManager.esp32MacAddress.value = mac
+        }
     }
 
     override fun onConfigSynced(price: Double?, minutes: Int?, alias: String?, adminPin: String?, slotNum: Int?) {

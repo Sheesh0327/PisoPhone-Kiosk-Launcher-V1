@@ -68,6 +68,20 @@ class KioskService : Service() {
             activeInstance?.engine?.triggerDirectPairing(ip, mac)
         }
 
+        fun triggerUnpair(context: Context, onResult: ((Boolean, String?) -> Unit)? = null) {
+            KioskSecurity.clearPinnedEsp32Mac(context)
+            val service = activeInstance
+            if (service != null) {
+                service.stateManager.esp32MacAddress.value = ""
+                service.stateManager.isEsp32Online.value = false
+                service.engine?.unpairEsp32(onResult) ?: run {
+                    onResult?.invoke(true, null)
+                }
+            } else {
+                onResult?.invoke(true, null)
+            }
+        }
+
         fun updateConfiguredEsp32Mac(context: Context, mac: String): Boolean {
             val clean = KioskSecurity.formatMacAddress(mac)
             if (clean.isNotBlank()) {
@@ -220,6 +234,14 @@ class KioskService : Service() {
         engine?.triggerDirectPairing(ip, mac)
     }
 
+    fun triggerUnpair(onResult: ((Boolean, String?) -> Unit)? = null) {
+        stateManager.esp32MacAddress.value = ""
+        stateManager.isEsp32Online.value = false
+        engine?.unpairEsp32(onResult) ?: run {
+            onResult?.invoke(true, null)
+        }
+    }
+
     private fun acquireLocks() {
         try {
             val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
@@ -235,7 +257,7 @@ class KioskService : Service() {
     private fun releaseLocks() {
         try {
             if (wakeLock?.isHeld == true) wakeLock?.release()
-        } catch (_: Exception) {}
+        } catch (e: Exception) {}
     }
 
     private fun createNotificationChannel() {

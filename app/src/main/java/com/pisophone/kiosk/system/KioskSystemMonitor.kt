@@ -60,7 +60,7 @@ class KioskSystemMonitor(
             val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
             val bmCapacity = try {
                 bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
-            } catch (_: Exception) { -1 }
+            } catch (e: Exception) { -1 }
 
             val pct = when {
                 level >= 0 && scale > 0 -> (level * 100 / scale.toFloat()).toInt().coerceIn(0, 100)
@@ -71,7 +71,7 @@ class KioskSystemMonitor(
                              status == BatteryManager.BATTERY_STATUS_FULL ||
                              plugged > 0
             return BatteryStatus(level = pct, isCharging = isCharging)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             return BatteryStatus(level = -1, isCharging = false)
         }
     }
@@ -173,7 +173,7 @@ class KioskSystemMonitor(
                 val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
                 val bmCap = try {
                     bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
-                } catch (_: Exception) { -1 }
+                } catch (e: Exception) { -1 }
                 if (bmCap in 0..100) {
                     pct = bmCap
                 }
@@ -213,7 +213,7 @@ class KioskSystemMonitor(
         val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
         val bmCapacity = try {
             bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
-        } catch (_: Exception) { -1 }
+        } catch (e: Exception) { -1 }
 
         val pct = when {
             level >= 0 && scale > 0 -> (level * 100 / scale.toFloat()).toInt().coerceIn(0, 100)

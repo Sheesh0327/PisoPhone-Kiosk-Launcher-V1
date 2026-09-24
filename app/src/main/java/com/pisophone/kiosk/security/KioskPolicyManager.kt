@@ -122,7 +122,7 @@ object KioskPolicyManager {
                             DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED
                         )
                     }
-                } catch (_: Exception) {}
+                } catch (e: Exception) {}
             }
         }
         Log.i(TAG, "Auto-granted runtime permissions for ${targetPackages.size} packages.")

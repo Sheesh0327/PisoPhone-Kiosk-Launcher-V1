@@ -7,6 +7,7 @@ import com.pisophone.kiosk.db.AppDatabase
 import com.pisophone.kiosk.repository.PaymentRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import org.junit.After
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -71,6 +72,7 @@ class KioskSessionSupervisorUnitTest {
             paymentRepo = paymentRepo,
             onSpeakWarning = {},
             onFinishPayment = {},
+            onCancelPayment = {},
             onCloseSession = {},
             onCheckBatteryAlerts = {}
         )
@@ -78,5 +80,61 @@ class KioskSessionSupervisorUnitTest {
         // ensureRunning should start supervisor if not running
         supervisor.ensureRunning()
         assertFalse(supervisor.isStalled(maxLagMs = 5000L))
+    }
+
+    @Test
+    fun testPaymentTimeoutWithNoCoinsCallsCancelPayment() {
+        var cancelPaymentCalled = false
+        var finishPaymentCalled = false
+
+        stateManager.appState.value = 1 // Waiting for coins
+        stateManager.paymentTimeout.value = 1
+        stateManager.coinsInserted.value = 0
+
+        val supervisor = KioskSessionSupervisor(
+            context = context,
+            scope = testScope,
+            stateManager = stateManager,
+            paymentRepo = paymentRepo,
+            onSpeakWarning = {},
+            onFinishPayment = { finishPaymentCalled = true },
+            onCancelPayment = { cancelPaymentCalled = true },
+            onCloseSession = {},
+            onCheckBatteryAlerts = {}
+        )
+
+        supervisor.start()
+        testScope.advanceTimeBy(1100)
+
+        assertTrue("onCancelPayment should be called when timeout reaches 0 with 0 coins", cancelPaymentCalled)
+        assertFalse("onFinishPayment should not be called with 0 coins", finishPaymentCalled)
+    }
+
+    @Test
+    fun testPaymentTimeoutWithCoinsCallsFinishPayment() {
+        var cancelPaymentCalled = false
+        var finishPaymentCalled = false
+
+        stateManager.appState.value = 1 // Waiting for coins
+        stateManager.paymentTimeout.value = 1
+        stateManager.coinsInserted.value = 2
+
+        val supervisor = KioskSessionSupervisor(
+            context = context,
+            scope = testScope,
+            stateManager = stateManager,
+            paymentRepo = paymentRepo,
+            onSpeakWarning = {},
+            onFinishPayment = { finishPaymentCalled = true },
+            onCancelPayment = { cancelPaymentCalled = true },
+            onCloseSession = {},
+            onCheckBatteryAlerts = {}
+        )
+
+        supervisor.start()
+        testScope.advanceTimeBy(1100)
+
+        assertTrue("onFinishPayment should be called when timeout reaches 0 with coins", finishPaymentCalled)
+        assertFalse("onCancelPayment should not be called when coins were inserted", cancelPaymentCalled)
     }
 }

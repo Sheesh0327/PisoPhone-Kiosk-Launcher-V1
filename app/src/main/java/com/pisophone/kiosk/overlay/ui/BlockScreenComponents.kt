@@ -155,6 +155,7 @@ fun BlockScreenRateTableCard(
     textTertiaryColor: Color,
     successColor: Color,
     onDoneClick: () -> Unit,
+    onCancelClick: () -> Unit = {},
     onInsertCoin: () -> Unit
 ) {
     Column(
@@ -224,6 +225,19 @@ fun BlockScreenRateTableCard(
                 shape = RoundedCornerShape(14.dp)
             ) {
                 Text("DONE (${paymentTimeout}s)", fontWeight = FontWeight.Bold, fontSize = 14.sp, letterSpacing = 1.sp)
+            }
+        } else if (isWaiting && coinsInserted == 0) {
+            Button(
+                onClick = onCancelClick,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155), contentColor = Color.White),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("CANCEL (${paymentTimeout}s)", fontWeight = FontWeight.Bold, fontSize = 14.sp, letterSpacing = 1.sp)
             }
         } else if (!isWaiting) {
             val activeContainerColor = if (isSlotExpired) Color(0xFF7F1D1D) else if (isSlotBusy) Color(0xFFDC3545) else if (isEsp32Online) primaryColor else surfaceVariantColor

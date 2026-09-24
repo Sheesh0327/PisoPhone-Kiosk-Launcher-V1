@@ -260,7 +260,7 @@ class KioskServerCoordinator(
             val logDir = context.getExternalFilesDir(null) ?: context.filesDir
             val file = File(logDir, "crash.log")
             if (file.exists()) file.readText() else null
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             null
         }
     }

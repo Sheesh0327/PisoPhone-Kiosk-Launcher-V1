@@ -49,7 +49,7 @@ object HardwareFeedback {
                     try {
                         val characteristics = cameraManager.getCameraCharacteristics(id)
                         characteristics.get(android.hardware.camera2.CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
-                    } catch (_: Exception) {
+                    } catch (e: Exception) {
                         false
                     }
                 } ?: cameraManager.cameraIdList.firstOrNull() // Fallback to first if none report flash info available
@@ -66,12 +66,12 @@ object HardwareFeedback {
                                 state = !state
                                 try {
                                     cameraManager.setTorchMode(cameraId, state)
-                                } catch (_: Exception) {}
+                                } catch (e: Exception) {}
                                 handler.postDelayed(this, intervalMs)
                             } else {
                                 try {
                                     cameraManager.setTorchMode(cameraId, false)
-                                } catch (_: Exception) {}
+                                } catch (e: Exception) {}
                             }
                         }
                     }

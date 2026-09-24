@@ -163,7 +163,7 @@ fun VaultEsp32SettingsSection(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Action Buttons
+            // Action Buttons Row 1: Save & Pair, Direct Pair
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -223,7 +223,13 @@ fun VaultEsp32SettingsSection(
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("Direct Pair", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
+            }
 
+            // Action Buttons Row 2: Reset Default IP, Unpair Device
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 // Reset to Default Button
                 OutlinedButton(
                     onClick = {
@@ -239,10 +245,37 @@ fun VaultEsp32SettingsSection(
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF94A3B8)),
                     border = BorderStroke(1.dp, Color(0xFF475569)),
                     shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.height(36.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp)
+                    modifier = Modifier.weight(1f).height(36.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp)
                 ) {
-                    Text("Default", fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                    Text("Reset Default IP", fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                }
+
+                // Unpair / Disconnect Button
+                OutlinedButton(
+                    onClick = {
+                        KioskService.triggerUnpair(context) { success, _ ->
+                            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                savedMac = ""
+                                inputMac = ""
+                                isEditing = false
+                                Toast.makeText(
+                                    context,
+                                    if (success) "Unpaired from ESP32 successfully" else "Unpaired locally (ESP32 unreachable)",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFF87171)),
+                    border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.6f)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.weight(1f).height(36.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp)
+                ) {
+                    Icon(Icons.Filled.Clear, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Unpair Device", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }

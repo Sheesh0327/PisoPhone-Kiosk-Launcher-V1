@@ -1,11 +1,4 @@
-
-
 package com.pisophone.kiosk.overlay.ui
-import kotlinx.coroutines.isActive
-import com.pisophone.kiosk.overlay.ui.AdminAuthenticationDialog
-import com.pisophone.kiosk.overlay.ui.SecurityVaultView
-import com.pisophone.kiosk.overlay.ui.EmergencyRecoveryDialog
-import com.pisophone.kiosk.overlay.ui.BatteryAlertBanner
 
 import android.content.Context
 import android.content.res.Configuration
@@ -19,12 +12,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -34,9 +26,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pisophone.kiosk.model.BatteryAlertState
 import com.pisophone.kiosk.model.BatteryStatus
-import com.pisophone.kiosk.security.KioskActivationManager
-import com.pisophone.kiosk.security.KioskSecurity
-import kotlinx.coroutines.delay
 
 @Composable
 fun BlockScreen(
@@ -45,6 +34,7 @@ fun BlockScreen(
     coinsInserted: Int,
     paymentTimeout: Int,
     onDoneClick: () -> Unit,
+    onCancelClick: () -> Unit = {},
     isEsp32Online: Boolean,
     isSlotBusy: Boolean = false,
     pricePerCoin: Double = 5.0,
@@ -63,92 +53,7 @@ fun BlockScreen(
     arenaStakeMinutes: Int = 15,
     modifier: Modifier = Modifier.fillMaxSize()
 ) {
-    data class OverlayTheme(
-        val name: String,
-        val background: Color,
-        val primary: Color,
-        val onPrimary: Color,
-        val surface: Color,
-        val border: Color,
-        val secondary: Color
-    )
-
-    val themes = listOf(
-        OverlayTheme(
-            name = "PISOPHONE OBSIDIAN",
-            background = Color(0xFF060B14),
-            primary = Color(0xFF10B981),
-            onPrimary = Color(0xFF020617),
-            surface = Color(0xFF0F172A),
-            border = Color(0xFF1E293B),
-            secondary = Color(0xFF34D399)
-        ),
-        OverlayTheme(
-            name = "ULTRA VIOLET",
-            background = Color(0xFF0F061E),
-            primary = Color(0xFFB026FF),
-            onPrimary = Color(0xFFFFFFFF),
-            surface = Color(0xFF221140),
-            border = Color(0xFFB026FF),
-            secondary = Color(0xFFFFB800)
-        ),
-        OverlayTheme(
-            name = "MATRIX LIME",
-            background = Color(0xFF04120B),
-            primary = Color(0xFF00FF88),
-            onPrimary = Color(0xFF000000),
-            surface = Color(0xFF0C2B1D),
-            border = Color(0xFF00FF88),
-            secondary = Color(0xFF00F5D4)
-        ),
-        OverlayTheme(
-            name = "SOLAR FLARE",
-            background = Color(0xFF140804),
-            primary = Color(0xFFFF6600),
-            onPrimary = Color(0xFF000000),
-            surface = Color(0xFF2A140B),
-            border = Color(0xFFFF6600),
-            secondary = Color(0xFFFFD600)
-        ),
-        OverlayTheme(
-            name = "CRIMSON NOVA",
-            background = Color(0xFF120509),
-            primary = Color(0xFFFF2A5F),
-            onPrimary = Color(0xFFFFFFFF),
-            surface = Color(0xFF2C111C),
-            border = Color(0xFFFF2A5F),
-            secondary = Color(0xFFFF6488)
-        ),
-        OverlayTheme(
-            name = "ELECTRIC SUNSET",
-            background = Color(0xFF130410),
-            primary = Color(0xFFFF007F),
-            onPrimary = Color(0xFFFFFFFF),
-            surface = Color(0xFF2D1027),
-            border = Color(0xFFFF007F),
-            secondary = Color(0xFFFF66B2)
-        ),
-        OverlayTheme(
-            name = "ARCTIC FROST",
-            background = Color(0xFF060D17),
-            primary = Color(0xFF38BDF8),
-            onPrimary = Color(0xFF000000),
-            surface = Color(0xFF16273B),
-            border = Color(0xFF38BDF8),
-            secondary = Color(0xFF7DD3FC)
-        ),
-        OverlayTheme(
-            name = "NEON MATRIX",
-            background = Color(0xFF040E07),
-            primary = Color(0xFF00FF66),
-            onPrimary = Color(0xFF000000),
-            surface = Color(0xFF0F2A16),
-            border = Color(0xFF00FF66),
-            secondary = Color(0xFF66FF99)
-        )
-    )
-
-    val currentTheme = themes[themeIndex % themes.size]
+    val currentTheme = KIOSK_OVERLAY_THEMES[themeIndex % KIOSK_OVERLAY_THEMES.size]
     val Background = currentTheme.background
     val TextPrimary = Color(0xFFFFFFFF)
     val Primary = currentTheme.primary
@@ -305,6 +210,7 @@ fun BlockScreen(
                             textTertiaryColor = TextTertiary,
                             successColor = Success,
                             onDoneClick = onDoneClick,
+                            onCancelClick = onCancelClick,
                             onInsertCoin = onInsertCoin
                         )
                     }
@@ -312,62 +218,19 @@ fun BlockScreen(
                 
                 val bottomSection: @Composable (Modifier) -> Unit = { mod ->
                     Column(modifier = mod) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Surface, RoundedCornerShape(28.dp))
-                                .padding(20.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(10.dp)
-                                            .background(if (isEsp32Online) Success else Color.Red, CircleShape)
-                                    )
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Column {
-                                        Text(
-                                            if (isEsp32Online) "HARDWARE CONTROLLER CONNECTED" else "HARDWARE CONTROLLER OFFLINE", 
-                                            color = TextPrimary, 
-                                            fontSize = 11.sp, 
-                                            fontWeight = FontWeight.Bold, 
-                                            letterSpacing = 0.5.sp
-                                        )
-                                        val configuredEsp32Ip = remember(context) { KioskSecurity.getConfiguredEsp32Ip(context) }
-                                        Text(
-                                            if (isEsp32Online) "Hardware Interlock Synchronized ($configuredEsp32Ip)" else "Connecting to ESP32 ($configuredEsp32Ip)...", 
-                                            color = TextTertiary, 
-                                            fontSize = 10.sp
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 24.dp)
-                                .alpha(0.6f),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            IconButton(onClick = onThemeChange) { 
-                                Icon(Icons.Filled.Palette, contentDescription = "Change Theme", tint = TextPrimary) 
-                            }
-                            Spacer(modifier = Modifier.width(16.dp))
-                            IconButton(onClick = { showPinDialog = true }) { 
-                                Icon(Icons.Filled.AdminPanelSettings, contentDescription = "Security Vault", tint = TextPrimary) 
-                            }
-                        }
+                        BlockScreenHardwareFooter(
+                            context = context,
+                            isEsp32Online = isEsp32Online,
+                            surfaceColor = Surface,
+                            successColor = Success,
+                            textPrimaryColor = TextPrimary,
+                            textTertiaryColor = TextTertiary,
+                            onThemeChange = onThemeChange,
+                            onOpenSecurityVault = { showPinDialog = true }
+                        )
                     }
                 }
-
+                
                 if (isWide) {
                     Row(
                         modifier = Modifier
