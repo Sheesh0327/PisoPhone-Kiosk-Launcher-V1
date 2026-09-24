@@ -1,0 +1,206 @@
+package com.pisophone.kiosk.overlay.ui
+
+import android.content.Context
+import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.pisophone.kiosk.KioskService
+import com.pisophone.kiosk.security.KioskSecurity
+
+@Composable
+fun VaultEsp32SettingsSection(
+    context: Context,
+    onShowHelp: (String, String) -> Unit
+) {
+    var savedIp by remember { mutableStateOf(KioskSecurity.getConfiguredEsp32Ip(context)) }
+    var inputIp by remember { mutableStateOf(savedIp) }
+    var isEditing by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var isPinging by remember { mutableStateOf(false) }
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B).copy(alpha = 0.6f)),
+        border = BorderStroke(1.dp, Color(0xFF334155).copy(alpha = 0.6f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            // Header Row
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .background(Color(0xFF6366F1).copy(alpha = 0.2f), RoundedCornerShape(8.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.Router,
+                        contentDescription = null,
+                        tint = Color(0xFF818CF8),
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "ESP32 Master Controller IP",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "Static fast-path address for coin hardware",
+                        color = Color(0xFF94A3B8),
+                        fontSize = 10.sp
+                    )
+                }
+                HelpInfoButton(
+                    title = "ESP32 Controller Static IP",
+                    description = "Configures the IP address where the kiosk app probes and binds to the coin controller box over Wi-Fi. Default is 192.168.1.10. Changing this immediately updates discovery probing.",
+                    onShowHelp = onShowHelp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // IP Input & Status
+            OutlinedTextField(
+                value = inputIp,
+                onValueChange = {
+                    inputIp = it
+                    errorMessage = null
+                    isEditing = true
+                },
+                label = { Text("ESP32 Static IPv4 Address", fontSize = 11.sp, color = Color(0xFF94A3B8)) },
+                placeholder = { Text(KioskSecurity.DEFAULT_ESP32_IP, fontSize = 12.sp, color = Color(0xFF64748B)) },
+                isError = errorMessage != null,
+                supportingText = errorMessage?.let { { Text(it, color = Color(0xFFEF4444), fontSize = 10.sp) } },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Ascii,
+                    imeAction = ImeAction.Done
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = {
+                        keyboardController?.hide()
+                    }
+                ),
+                textStyle = TextStyle(
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold
+                ),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color(0xFF6366F1),
+                    unfocusedBorderColor = Color(0xFF334155),
+                    focusedContainerColor = Color(0xFF0F172A),
+                    unfocusedContainerColor = Color(0xFF0F172A),
+                    cursorColor = Color(0xFF818CF8)
+                ),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Action Buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Save Button
+                Button(
+                    onClick = {
+                        keyboardController?.hide()
+                        val trimmed = inputIp.trim()
+                        if (KioskSecurity.isValidIpv4(trimmed)) {
+                            val success = KioskService.updateConfiguredEsp32Ip(context, trimmed)
+                            if (success) {
+                                savedIp = trimmed
+                                inputIp = trimmed
+                                isEditing = false
+                                errorMessage = null
+                                Toast.makeText(context, "ESP32 IP set to $trimmed", Toast.LENGTH_SHORT).show()
+                            } else {
+                                errorMessage = "Failed to save IP address."
+                            }
+                        } else {
+                            errorMessage = "Invalid IPv4 format (e.g. 192.168.1.10)"
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.weight(1f).height(36.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp)
+                ) {
+                    Icon(Icons.Filled.Save, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Save & Apply", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+
+                // Probe / Rescan Button
+                OutlinedButton(
+                    onClick = {
+                        isPinging = true
+                        KioskService.triggerEsp32Rescan(context)
+                        Toast.makeText(context, "Probing ESP32 at $savedIp...", Toast.LENGTH_SHORT).show()
+                        isPinging = false
+                    },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF38BDF8)),
+                    border = BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.6f)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.weight(1f).height(36.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp)
+                ) {
+                    Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Test Probe", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+
+                // Reset to Default Button
+                OutlinedButton(
+                    onClick = {
+                        val defaultIp = KioskSecurity.DEFAULT_ESP32_IP
+                        inputIp = defaultIp
+                        KioskService.updateConfiguredEsp32Ip(context, defaultIp)
+                        savedIp = defaultIp
+                        isEditing = false
+                        errorMessage = null
+                        Toast.makeText(context, "Reset to default: $defaultIp", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF94A3B8)),
+                    border = BorderStroke(1.dp, Color(0xFF475569)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.height(36.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp)
+                ) {
+                    Text("Default", fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                }
+            }
+        }
+    }
+}

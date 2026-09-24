@@ -40,10 +40,12 @@ object KioskSecurity {
     private const val KEY_LOW_BATTERY_THRESHOLD = "low_battery_threshold"
     private const val KEY_HIGH_BATTERY_THRESHOLD = "high_battery_threshold"
     private const val KEY_CONFIGURED_ESP32_MAC = "configured_esp32_mac"
+    private const val KEY_CONFIGURED_ESP32_IP = "configured_esp32_ip"
     private const val KEY_ASSIGNED_BOX_SLOT = "assigned_box_slot"
     private const val KEY_PROVISIONING_ADB_ALLOWED = "provisioning_adb_allowed"
     private const val KEY_APK_UPDATE_URL = "apk_update_url"
     
+    const val DEFAULT_ESP32_IP = "192.168.1.10"
     const val DEFAULT_SHARED_SECRET = "PISOPHONE_HMAC_MASTER_KEY"
     private const val KEY_SECRET_EXPLICITLY_PROVISIONED = "kiosk_secret_explicitly_provisioned"
     private const val DEFAULT_PIN = "1234"
@@ -139,6 +141,30 @@ object KioskSecurity {
     fun setConfiguredEsp32Mac(context: Context, mac: String) {
         val clean = formatMacAddress(mac)
         getPrefs(context).edit().putString(KEY_CONFIGURED_ESP32_MAC, clean).apply()
+    }
+
+    fun getConfiguredEsp32Ip(context: Context): String {
+        val ip = getPrefs(context).getString(KEY_CONFIGURED_ESP32_IP, DEFAULT_ESP32_IP) ?: DEFAULT_ESP32_IP
+        return if (ip.isNotBlank()) ip.trim() else DEFAULT_ESP32_IP
+    }
+
+    fun setConfiguredEsp32Ip(context: Context, ip: String): Boolean {
+        val trimmed = ip.trim()
+        if (isValidIpv4(trimmed)) {
+            getPrefs(context).edit().putString(KEY_CONFIGURED_ESP32_IP, trimmed).apply()
+            return true
+        }
+        return false
+    }
+
+    fun isValidIpv4(ip: String): Boolean {
+        val trimmed = ip.trim()
+        val parts = trimmed.split(".")
+        if (parts.size != 4) return false
+        return parts.all { part ->
+            val num = part.toIntOrNull()
+            num != null && num in 0..255 && (part.length == 1 || !part.startsWith("0"))
+        }
     }
 
     fun getAssignedBoxSlot(context: Context): Int {

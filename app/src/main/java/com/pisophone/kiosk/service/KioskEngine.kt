@@ -383,6 +383,17 @@ class KioskEngine(
         esp32Manager.triggerCandidateDiscovery(stateManager.deviceIp.value)
     }
 
+    fun updateEsp32StaticIp(newIp: String): Boolean {
+        val valid = KioskSecurity.setConfiguredEsp32Ip(context, newIp)
+        if (valid) {
+            val cleanIp = newIp.trim()
+            stateManager.esp32Ip = cleanIp
+            esp32Manager.setEsp32Ip(cleanIp)
+            triggerCandidateDiscovery()
+        }
+        return valid
+    }
+
     fun probeEsp32Connection(ip: String): Boolean {
         if (Looper.myLooper() == Looper.getMainLooper()) {
             scope.launch(Dispatchers.IO) {

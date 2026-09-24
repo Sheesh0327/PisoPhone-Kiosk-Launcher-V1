@@ -177,7 +177,14 @@ To prevent length-mismatch vulnerabilities and multi-byte character divergence b
   - `{"event":"SESSION_ENDED","session_id":"<id>","reason":"<reason>"}`
 - **ACK:** `{"event":"ACK","session_id":"<id>","tx_id":"<tx>"}`
 
-### 4.5 UDP Discovery (Port 8888)
+### 4.5 Universal HTTP Coinslot Endpoints (Port 80)
+
+For third-party microservices, POS terminals, and CLI scripts:
+- **Activate & Arm:** `POST /api/coinslot/activate` (params: `session_id`, `timeout` in seconds, default 60). Returns JSON status with armed state.
+- **Poll Status & Pulses:** `GET /api/coinslot/status` (or `/api/coinslot/pulses`). Returns current session pulse count and armed state.
+- **Immediate Manual Disarm:** `POST /api/coinslot/disarm` (or `/api/coinslot/deactivate`, params: `session_id`). Immediately releases the coin slot so it becomes available for other users/devices without waiting for the timeout.
+
+### 4.6 UDP Discovery (Port 8888)
 
 - **Probe (Client Broadcast/Unicast):** Packet containing `"PISOPHONE_DISCOVER"` (optionally `"target_mac": "..."`).
 - **Response (ESP32 Unicast & Broadcast):**

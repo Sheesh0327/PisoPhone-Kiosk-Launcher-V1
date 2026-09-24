@@ -77,7 +77,7 @@ class Esp32ConnectionManager(
         .writeTimeout(4, TimeUnit.SECONDS)
         .build()
 
-    private var esp32Ip: String? = Esp32DiscoveryScanner.STATIC_ESP32_IP
+    private var esp32Ip: String? = KioskSecurity.getConfiguredEsp32Ip(context)
     private var lastHeartbeatTime: Long = System.currentTimeMillis()
     private var consecutiveHeartbeatFailures: Int = 0
     private val connectionLock = Any()
@@ -117,11 +117,11 @@ class Esp32ConnectionManager(
     // ========================================================================
 
     fun triggerCandidateDiscovery(localIp: String) {
-        val staticTarget = Esp32DiscoveryScanner.STATIC_ESP32_IP
+        val staticTarget = KioskSecurity.getConfiguredEsp32Ip(context).ifBlank { Esp32DiscoveryScanner.STATIC_ESP32_IP }
         scope.launch(Dispatchers.IO) {
             try {
                 if (discoveryScanner.probeEsp32Connection(staticTarget)) {
-                    Log.d(TAG, "[+] Instant connection established to static ESP32 at $staticTarget")
+                    Log.d(TAG, "[+] Instant connection established to configured static ESP32 at $staticTarget")
                     return@launch
                 }
             } catch (_: Exception) {}

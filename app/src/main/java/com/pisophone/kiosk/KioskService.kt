@@ -68,6 +68,14 @@ class KioskService : Service() {
             activeInstance?.triggerCandidateDiscovery()
         }
 
+        fun updateConfiguredEsp32Ip(context: Context, ip: String): Boolean {
+            val valid = KioskSecurity.setConfiguredEsp32Ip(context, ip)
+            if (valid) {
+                activeInstance?.engine?.updateEsp32StaticIp(ip)
+            }
+            return valid
+        }
+
         fun triggerAdminBypass(context: Context, durationSeconds: Int = 900) {
             val instance = activeInstance
             if (instance != null) {

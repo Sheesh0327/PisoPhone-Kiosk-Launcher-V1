@@ -338,8 +338,9 @@ fun BlockScreen(
                                             fontWeight = FontWeight.Bold, 
                                             letterSpacing = 0.5.sp
                                         )
+                                        val configuredEsp32Ip = remember(context) { KioskSecurity.getConfiguredEsp32Ip(context) }
                                         Text(
-                                            if (isEsp32Online) "Hardware Interlock Synchronized (192.168.1.10)" else "Connecting to ESP32 (192.168.1.10)...", 
+                                            if (isEsp32Online) "Hardware Interlock Synchronized ($configuredEsp32Ip)" else "Connecting to ESP32 ($configuredEsp32Ip)...", 
                                             color = TextTertiary, 
                                             fontSize = 10.sp
                                         )

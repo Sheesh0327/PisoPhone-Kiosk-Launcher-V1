@@ -104,8 +104,14 @@ class Esp32DiscoveryScanner(
 
     fun probeFastPathTargets(localIp: String) {
         val targets = mutableListOf<String>()
-        // 1. Direct Static IP probe (primary fast path)
-        targets.add(STATIC_ESP32_IP)
+        // 1. Direct Configured Static IP probe (primary fast path)
+        val configuredIp = KioskSecurity.getConfiguredEsp32Ip(context)
+        if (configuredIp.isNotBlank() && !targets.contains(configuredIp)) {
+            targets.add(configuredIp)
+        }
+        if (!targets.contains(STATIC_ESP32_IP)) {
+            targets.add(STATIC_ESP32_IP)
+        }
 
         val activeIp = if (localIp.isNotBlank()) localIp else getLocalIpAddress()
         if (activeIp.isNotBlank() && activeIp.contains(".")) {

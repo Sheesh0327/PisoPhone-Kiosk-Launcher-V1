@@ -87,16 +87,26 @@ static void processSystemHealthAndAutoMaintenance() {
     }
 }
 
-static const IPAddress STATIC_IP(192, 168, 1, 10);
-static const IPAddress GATEWAY_IP(192, 168, 1, 1);
-static const IPAddress SUBNET_MASK(255, 255, 255, 0);
-static const IPAddress DNS_IP(192, 168, 1, 1);
-
 static void applyStaticIpConfig() {
-    if (!WiFi.config(STATIC_IP, GATEWAY_IP, SUBNET_MASK, DNS_IP)) {
+    IPAddress staticIp, gatewayIp, subnetMask, dnsIp;
+    if (!staticIp.fromString(staticIpStr.c_str())) {
+        staticIp = IPAddress(192, 168, 1, 10);
+    }
+    if (!gatewayIp.fromString(gatewayIpStr.c_str())) {
+        gatewayIp = IPAddress(192, 168, 1, 1);
+    }
+    if (!subnetMask.fromString(subnetMaskStr.c_str())) {
+        subnetMask = IPAddress(255, 255, 255, 0);
+    }
+    if (!dnsIp.fromString(dnsIpStr.c_str())) {
+        dnsIp = IPAddress(192, 168, 1, 1);
+    }
+
+    if (!WiFi.config(staticIp, gatewayIp, subnetMask, dnsIp)) {
         Serial.println("[-] Static IP configuration failed, proceeding with DHCP fallback");
     } else {
-        Serial.println("[+] Static IP configured: 192.168.1.10");
+        Serial.printf("[+] Static IP configured: %s (Gateway: %s, Subnet: %s, DNS: %s)\n",
+            staticIp.toString().c_str(), gatewayIp.toString().c_str(), subnetMask.toString().c_str(), dnsIp.toString().c_str());
     }
 }
 

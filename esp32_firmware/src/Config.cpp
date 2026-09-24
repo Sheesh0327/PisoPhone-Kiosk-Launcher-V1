@@ -42,6 +42,10 @@ bool relayActiveLow  = false;
 
 String wifiSsid      = DEFAULT_SSID;
 String wifiPass      = DEFAULT_PASS;
+String staticIpStr   = "192.168.1.10";
+String gatewayIpStr  = "192.168.1.1";
+String subnetMaskStr = "255.255.255.0";
+String dnsIpStr      = "192.168.1.1";
 String androidIps    = "";
 String webPassword   = DEFAULT_ADMIN_PW;
 String sharedSecret  = MASTER_CRYPTO_SECRET;
@@ -175,6 +179,10 @@ const char* const NVS_KEY_IPS         = "ips";
 
 const char* const NVS_KEY_WIFI_SSID        = "wifi_ssid";
 const char* const NVS_KEY_WIFI_PASS        = "wifi_pass";
+const char* const NVS_KEY_STATIC_IP        = "static_ip";
+const char* const NVS_KEY_GATEWAY_IP       = "gateway_ip";
+const char* const NVS_KEY_SUBNET_MASK      = "subnet_mask";
+const char* const NVS_KEY_DNS_IP           = "dns_ip";
 const char* const NVS_KEY_U_COIN_PIN       = "u_coin_pin";
 const char* const NVS_KEY_LED_PIN          = "led_pin";
 const char* const NVS_KEY_LED_ACTIVE_LOW   = "led_act_low";
@@ -315,6 +323,10 @@ void loadAllConfig() {
     is_licensed       = prefs.getBool(NVS_KEY_LICENSED, (maxLicensedSlots > 1));
     wifiSsid          = prefs.getString(NVS_KEY_WIFI_SSID, wifiSsid);
     wifiPass          = prefs.getString(NVS_KEY_WIFI_PASS, wifiPass);
+    staticIpStr       = prefs.getString(NVS_KEY_STATIC_IP, staticIpStr);
+    gatewayIpStr      = prefs.getString(NVS_KEY_GATEWAY_IP, gatewayIpStr);
+    subnetMaskStr     = prefs.getString(NVS_KEY_SUBNET_MASK, subnetMaskStr);
+    dnsIpStr          = prefs.getString(NVS_KEY_DNS_IP, dnsIpStr);
     universalCoinPin  = prefs.getInt(NVS_KEY_U_COIN_PIN, universalCoinPin);
     ledPin            = prefs.getInt(NVS_KEY_LED_PIN, ledPin);
     ledActiveLow      = prefs.getBool(NVS_KEY_LED_ACTIVE_LOW, DEFAULT_LED_ACTIVE_LOW);

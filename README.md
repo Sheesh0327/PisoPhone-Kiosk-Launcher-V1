@@ -161,7 +161,12 @@ To prevent players from sending fake coin packets using network sniffing apps:
 5. **Validation & Credits:** If signature matches and nonce is fresh, credits and session time are added immediately.
 
 ### ESP32-C3 Firmware Features
-- **Built-in Captive Config Portal (Port 80):** Host IP, Wi-Fi credentials, and Shared Secret can be configured via any phone browser without re-flashing Arduino code.
+- **Built-in Captive Config Portal (Port 80):** Host IP, Static IP (default: `192.168.1.10`), Gateway, Subnet, Wi-Fi credentials, and Shared Secret can be configured via any phone browser without re-flashing Arduino code.
+- **Configurable Static IP in Admin Vault:** Operators can adjust the ESP32 Static IP in the Android Admin Vault (`SecurityVaultView`) under **ESP32 Master Controller IP** and immediately probe the hardware.
+- **Automatic Disarm & Universal REST Access:**
+  - The coin slot automatically disarms after 60 seconds (or configured timeout).
+  - External callers and scripts can manually disarm the slot via `POST /api/coinslot/disarm` to immediately make it available for other users.
+  - Sample CLI access scripts provided in `scripts/coinslot_access.py` and `scripts/coinslot_access.sh` support configurable `--ip` and immediate manual disarm.
 - **Hardware Fallback Factory Reset (GPIO 2):**
   - **Ground Pin for 5 Seconds:** Shorting **GPIO 2 to Ground (GND) for 5 seconds** wipes NVS storage and restores all settings to default values at any time (no complex APs or unstable timers).
   - **Visual Confirmation:** Status LED rapidly strobes 10 times to confirm factory reset.

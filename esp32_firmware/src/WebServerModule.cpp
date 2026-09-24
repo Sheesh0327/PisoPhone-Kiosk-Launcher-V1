@@ -39,6 +39,7 @@ void setupWebServer() {
     webServer.on("/", HTTP_GET, handlePortalRoot);
     webServer.on("/logout", HTTP_GET, handleLogout);
     webServer.on("/save", HTTP_POST, handleSave);
+    webServer.on("/api/config", HTTP_POST, handleSave);
     webServer.on("/reboot", HTTP_POST, handleReboot);
     webServer.on("/factory_reset", HTTP_POST, handleFactoryReset);
     webServer.on("/add_time", HTTP_POST, handleAddTime);

@@ -139,6 +139,10 @@ void handleSave() {
     prefs.begin(NVS_NAMESPACE, false);
     if (webServer.hasArg(NVS_KEY_WIFI_SSID)) { wifiSsid = webServer.arg(NVS_KEY_WIFI_SSID); prefs.putString(NVS_KEY_WIFI_SSID, wifiSsid); }
     if (webServer.hasArg(NVS_KEY_WIFI_PASS)) { wifiPass = webServer.arg(NVS_KEY_WIFI_PASS); prefs.putString(NVS_KEY_WIFI_PASS, wifiPass); }
+    if (webServer.hasArg(NVS_KEY_STATIC_IP))  { staticIpStr = webServer.arg(NVS_KEY_STATIC_IP); prefs.putString(NVS_KEY_STATIC_IP, staticIpStr); }
+    if (webServer.hasArg(NVS_KEY_GATEWAY_IP)) { gatewayIpStr = webServer.arg(NVS_KEY_GATEWAY_IP); prefs.putString(NVS_KEY_GATEWAY_IP, gatewayIpStr); }
+    if (webServer.hasArg(NVS_KEY_SUBNET_MASK)){ subnetMaskStr = webServer.arg(NVS_KEY_SUBNET_MASK); prefs.putString(NVS_KEY_SUBNET_MASK, subnetMaskStr); }
+    if (webServer.hasArg(NVS_KEY_DNS_IP))     { dnsIpStr = webServer.arg(NVS_KEY_DNS_IP); prefs.putString(NVS_KEY_DNS_IP, dnsIpStr); }
     if (webServer.hasArg(NVS_KEY_U_COIN_PIN)) { universalCoinPin = webServer.arg(NVS_KEY_U_COIN_PIN).toInt(); prefs.putInt(NVS_KEY_U_COIN_PIN, universalCoinPin); }
     if (webServer.hasArg(NVS_KEY_LED_PIN))    { ledPin  = webServer.arg(NVS_KEY_LED_PIN).toInt();  prefs.putInt(NVS_KEY_LED_PIN, ledPin); }
     if (webServer.hasArg(NVS_KEY_LED_ACTIVE_LOW)) {

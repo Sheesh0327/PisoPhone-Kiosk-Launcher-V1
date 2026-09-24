@@ -21,6 +21,9 @@ static int getWifiQuality(int rssi) {
 static String getPlaceholderValue(const String& tag) {
     if (tag == "WIFI_SSID") return wifiSsid;
     if (tag == "WIFI_PASS") return wifiPass;
+    if (tag == "STATIC_IP") return staticIpStr;
+    if (tag == "GATEWAY_IP") return gatewayIpStr;
+    if (tag == "SUBNET_MASK") return subnetMaskStr;
     if (tag == "PORT") return String(targetPort);
     if (tag == "U_COIN_PIN") return String(universalCoinPin);
     if (tag == "LED_PIN") return String(ledPin);

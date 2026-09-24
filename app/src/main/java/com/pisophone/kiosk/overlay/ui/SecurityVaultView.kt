@@ -111,6 +111,14 @@ fun SecurityVaultView(
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp), color = Color(0xFF334155))
 
+            // Section 1B: ESP32 Master Controller Static IP Configuration
+            VaultEsp32SettingsSection(
+                context = context,
+                onShowHelp = { t, d -> activeHelpDialog = Pair(t, d) }
+            )
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp), color = Color(0xFF334155))
+
             // Section 2: Auto-Clear Cache & Battery TTS Voice Reminders
             VaultSleepAndBatterySection(
                 context = context,

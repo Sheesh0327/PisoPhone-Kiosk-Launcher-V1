@@ -156,6 +156,21 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                             <input type="password" name="wifi_pass" value="{WIFI_PASS}">
                         </div>
                         <div class="form-group">
+                            <label>ESP32 Static IPv4 Address</label>
+                            <input type="text" name="static_ip" value="{STATIC_IP}" pattern="^([0-9]{1,3}\.){3}[0-9]{1,3}$">
+                            <div class="hint">Default is 192.168.1.10.</div>
+                        </div>
+                        <div class="form-group">
+                            <label>Gateway IPv4 Address</label>
+                            <input type="text" name="gateway_ip" value="{GATEWAY_IP}" pattern="^([0-9]{1,3}\.){3}[0-9]{1,3}$">
+                            <div class="hint">Default is 192.168.1.1.</div>
+                        </div>
+                        <div class="form-group">
+                            <label>Subnet Mask</label>
+                            <input type="text" name="subnet_mask" value="{SUBNET_MASK}" pattern="^([0-9]{1,3}\.){3}[0-9]{1,3}$">
+                            <div class="hint">Default is 255.255.255.0.</div>
+                        </div>
+                        <div class="form-group">
                             <label>Android App Port</label>
                             <input type="number" name="port" value="{PORT}">
                             <div class="hint">Default is 8080.</div>

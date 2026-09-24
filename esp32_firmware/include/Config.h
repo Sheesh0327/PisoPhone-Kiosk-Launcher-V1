@@ -35,6 +35,10 @@ extern const char* const NVS_KEY_IPS;
 
 extern const char* const NVS_KEY_WIFI_SSID;
 extern const char* const NVS_KEY_WIFI_PASS;
+extern const char* const NVS_KEY_STATIC_IP;
+extern const char* const NVS_KEY_GATEWAY_IP;
+extern const char* const NVS_KEY_SUBNET_MASK;
+extern const char* const NVS_KEY_DNS_IP;
 extern const char* const NVS_KEY_U_COIN_PIN;
 extern const char* const NVS_KEY_LED_PIN;
 extern const char* const NVS_KEY_LED_ACTIVE_LOW;
@@ -102,6 +106,10 @@ extern bool relayActiveLow;
 
 extern String wifiSsid;
 extern String wifiPass;
+extern String staticIpStr;
+extern String gatewayIpStr;
+extern String subnetMaskStr;
+extern String dnsIpStr;
 extern String androidIps;
 extern String webPassword;
 extern String sharedSecret;
