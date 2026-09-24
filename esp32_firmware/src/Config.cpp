@@ -3,6 +3,7 @@
 #include "HardwareManager.h"
 #include "PaymentQueueManager.h"
 #include "SuperAdminManager.h"
+#include "Security.h"
 
 // ============================================================================
 // HARDWARE CONSTANTS & PIN DEFAULTS DEFINITION
@@ -339,7 +340,12 @@ void loadAllConfig() {
     
     webPassword       = prefs.getString(NVS_KEY_ADMIN_PW, webPassword);
     relayActiveLow    = prefs.getBool(NVS_KEY_RELAY_ACTIVE_LOW, false);
-    sharedSecret      = prefs.getString(NVS_KEY_SHARED_SECRET, sharedSecret);
+    sharedSecret      = prefs.getString(NVS_KEY_SHARED_SECRET, "");
+    if (sharedSecret.length() == 0 || sharedSecret == MASTER_CRYPTO_SECRET) {
+        sharedSecret = generateHighEntropySecret();
+        prefs.putString(NVS_KEY_SHARED_SECRET, sharedSecret);
+        Serial.println("[🔐 SECURITY] Generated fresh 256-bit high-entropy shared secret key.");
+    }
     p1Ip              = prefs.getString(NVS_KEY_P1, p1Ip);
     p2Ip              = prefs.getString(NVS_KEY_P2, p2Ip);
     matchMinutes      = prefs.getInt(NVS_KEY_MATCH, matchMinutes);
@@ -406,7 +412,12 @@ void factoryResetDefaults() {
         Serial.println("[⚠️ FACTORY RESET] Unresolved payment records exist! Preserving license slots, registered devices, and crypto key for delivery.");
     } else {
         androidIps = "";
-        sharedSecret = MASTER_CRYPTO_SECRET;
+        sharedSecret = generateHighEntropySecret();
+        lockNvs();
+        prefs.begin(NVS_NAMESPACE, false);
+        prefs.putString(NVS_KEY_SHARED_SECRET, sharedSecret);
+        prefs.end();
+        unlockNvs();
         maxLicensedSlots = DEFAULT_MAX_SLOTS;
         for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
             licenseSlots[i].slotNum = i + 1;

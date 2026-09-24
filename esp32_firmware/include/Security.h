@@ -15,5 +15,7 @@ String aes_decrypt(String encryptedHex, String secret);
 String computeSecWebSocketAccept(String key);
 bool applySlotToken(String token);
 String getBoxMachineCode();
+String generateHighEntropySecret();
+bool verifyCoinSlotAuth(const String& sessionId, const String& tsStr, const String& sig);
 
 #endif // SECURITY_H

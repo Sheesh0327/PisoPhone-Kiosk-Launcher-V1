@@ -329,3 +329,53 @@ String computeSecWebSocketAccept(String key) {
     base64Result[outLen] = 0;
     return String((char*)base64Result);
 }
+
+String generateHighEntropySecret() {
+    uint8_t randBytes[32];
+    for (int i = 0; i < 32; i += 4) {
+        uint32_t r = esp_random();
+        memcpy(randBytes + i, &r, 4);
+    }
+    String hex = "";
+    hex.reserve(64);
+    char buf[3];
+    for (int i = 0; i < 32; i++) {
+        sprintf(buf, "%02x", randBytes[i]);
+        hex += buf;
+    }
+    return hex;
+}
+
+bool verifyCoinSlotAuth(const String& sessionId, const String& tsStr, const String& sig) {
+    if (sessionId.length() == 0 || tsStr.length() == 0 || sig.length() == 0) {
+        return false;
+    }
+
+    String secKey = (sharedSecret.length() > 0) ? sharedSecret : String(MASTER_CRYPTO_SECRET);
+    if (secKey.length() == 0) {
+        return false;
+    }
+
+    // Expected signature computed over "sessionId:ts"
+    String payload = sessionId + ":" + tsStr;
+    String expectedSig = calculateHMAC(payload, secKey);
+
+    if (!PisoPhone::constantTimeCompare(sig.c_str(), expectedSig.c_str())) {
+        return false;
+    }
+
+    // Timestamp window verification (5 minutes / 300000ms window)
+    unsigned long long ts = strtoull(tsStr.c_str(), NULL, 10);
+    unsigned long long currentMasterTs = getCurrentMasterTimeMs();
+    if (currentMasterTs > 300000ULL) {
+        if (ts < (currentMasterTs - 300000ULL) || ts > (currentMasterTs + 300000ULL)) {
+            return false;
+        }
+    }
+
+    if (ts > 0) {
+        updateMasterTime(ts);
+    }
+    return true;
+}
+

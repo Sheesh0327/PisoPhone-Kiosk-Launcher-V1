@@ -7,6 +7,7 @@
 #include "DeviceManager.h"
 #include "DeviceNetwork.h"
 #include "CoinSlotManager.h"
+#include "PaymentQueueManager.h"
 #include <WiFi.h>
 #include <WebServer.h>
 
@@ -360,9 +361,37 @@ void handleIdentify() {
     webServer.send(200, "application/json", json);
 }
 
+static bool checkCoinslotRequestAuth(String& sessionIdOut) {
+    if (webServer.authenticate("superadmin", superAdminPassword.c_str()) ||
+        webServer.authenticate("admin", webPassword.c_str())) {
+        return true;
+    }
+
+    String sessionId = webServer.hasArg("session_id") ? webServer.arg("session_id") : (webServer.hasArg("device_id") ? webServer.arg("device_id") : "");
+    String tsStr = webServer.hasArg("ts") ? webServer.arg("ts") : "";
+    String sig = webServer.hasArg("sig") ? webServer.arg("sig") : "";
+    
+    sessionId.trim();
+    tsStr.trim();
+    sig.trim();
+
+    if (sessionId.length() > 0) {
+        sessionIdOut = sessionId;
+    }
+
+    if (verifyCoinSlotAuth(sessionId, tsStr, sig)) {
+        return true;
+    }
+
+    webServer.send(401, "application/json", "{\"status\":\"error\",\"error\":\"UNAUTHORIZED: Invalid secret signature or missing auth credentials\"}");
+    return false;
+}
+
 void handleCoinslotActivate() {
     String clientIp = webServer.client().remoteIP().toString();
-    String sessionId = webServer.hasArg("session_id") ? webServer.arg("session_id") : ("client_" + clientIp);
+    String sessionId = "client_" + clientIp;
+    if (!checkCoinslotRequestAuth(sessionId)) return;
+
     sessionId.trim();
     
     unsigned long timeoutSec = 60;
@@ -397,6 +426,9 @@ void handleCoinslotActivate() {
 }
 
 void handleCoinslotStatus() {
+    String dummy = "";
+    if (!checkCoinslotRequestAuth(dummy)) return;
+
     CoinSlotState st = getCoinSlotState();
     String stateStr = "IDLE";
     if (st == CoinSlotState::ARMED) stateStr = "ARMED";
@@ -413,11 +445,16 @@ void handleCoinslotStatus() {
 }
 
 void handleCoinslotDeactivate() {
-    String sessionId = webServer.hasArg("session_id") ? webServer.arg("session_id") : getActiveCoinSessionId();
+    String sessionId = getActiveCoinSessionId();
+    if (!checkCoinslotRequestAuth(sessionId)) return;
+
+    if (webServer.hasArg("session_id")) {
+        sessionId = webServer.arg("session_id");
+    }
     int finalPulses = getSessionAccumulatedPulses();
     releaseCoinSlot(sessionId, CoinSlotOwnerType::ANY, true, "API_DEACTIVATE");
 
-    String json = "{\"status\":\"ok\",\"state\":\"IDLE\",\"is_armed\":false" +
+    String json = String("{\"status\":\"ok\",\"state\":\"IDLE\",\"is_armed\":false") +
                   ",\"pulses\":" + String(finalPulses) +
                   ",\"total_pulses\":" + String((int)totalCoinsLifetime) + "}";
     webServer.send(200, "application/json", json);
