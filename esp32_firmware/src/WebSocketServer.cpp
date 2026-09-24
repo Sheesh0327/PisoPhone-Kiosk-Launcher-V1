@@ -111,6 +111,11 @@ void processWebSocketServer() {
                     if (isWsConnected && wsClient.connected()) {
                         if (strcmp(reason, "TTL_EXPIRED") == 0 || strcmp(reason, "MAX_DURATION") == 0) {
                             sendWsText(wsClient, "{\"event\":\"TIMEOUT\"}");
+                        } else {
+                            int pulses = getSessionAccumulatedPulses();
+                            String doneJson = "{\"event\":\"DEACTIVATED\",\"state\":\"IDLE\",\"is_armed\":false,\"pulses\":" + String(pulses) +
+                                              ",\"total_pulses\":" + String((int)totalCoinsLifetime) + "}";
+                            sendWsText(wsClient, doneJson);
                         }
                         wsClient.stop();
                     }
@@ -157,15 +162,8 @@ void processWebSocketServer() {
                     frameText.indexOf("\"action\":\"cancel\"") >= 0 ||
                     frameText.indexOf("\"command\":\"deactivate\"") >= 0 || frameText.indexOf("\"command\":\"disarm\"") >= 0 ||
                     frameText.indexOf("\"command\":\"cancel\"") >= 0 || frameText.indexOf("\"command\":\"CANCEL\"") >= 0) {
-                    Serial.printf("[⚡ WS Port 81] Disarm/Cancel requested for %s.\n", boundDevId.c_str());
-                    int pulses = getSessionAccumulatedPulses();
+                    Serial.printf("[⚡ WS Port 81] Disarm/Cancel requested for %s. Initiating non-forced release.\n", boundDevId.c_str());
                     releaseCoinSlot(boundDevId, CoinSlotOwnerType::PHONE, false, "MANUAL_DISARM");
-                    String doneJson = "{\"event\":\"DEACTIVATED\",\"state\":\"IDLE\",\"is_armed\":false,\"pulses\":" + String(pulses) +
-                                      ",\"total_pulses\":" + String((int)totalCoinsLifetime) + "}";
-                    sendWsText(wsClient, doneJson);
-                    wsClient.stop();
-                    isWsConnected = false;
-                    wsSessionDeviceId = "";
                     return;
                 }
 
@@ -213,7 +211,7 @@ void processWebSocketServer() {
                     wsClient.stop();
                     isWsConnected = false;
                     wsSessionDeviceId = "";
-                    releaseCoinSlot(boundDevId, CoinSlotOwnerType::ANY, false);
+                    releaseCoinSlot(boundDevId, CoinSlotOwnerType::PHONE, false, "WS_PING_TIMEOUT");
                     return;
                 }
             }

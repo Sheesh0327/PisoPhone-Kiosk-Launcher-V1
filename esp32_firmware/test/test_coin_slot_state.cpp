@@ -116,7 +116,7 @@ struct MockCoinSlotEngine {
         }
         if (currentState == CoinSlotState::ARMED) {
             if ((long)(currentMillis - sessionArmedUntil) >= 0 || (sessionStartTimeMs > 0 && (long)(currentMillis - sessionStartTimeMs) >= (long)MAX_SESSION_DURATION)) {
-                return false;
+                return true; // Expired armed session remains busy to all callers (including rearming expired owner)
             }
         }
         if (currentState == CoinSlotState::DRAINING) {
@@ -136,10 +136,6 @@ struct MockCoinSlotEngine {
 
         if (isCoinSlotBusy(sessionId, ownerType)) {
             return false;
-        }
-
-        if (currentState == CoinSlotState::ARMED && activeSessionId != sessionId) {
-            finalizeSessionRelease("TTL_EXPIRED");
         }
 
         if (activeSessionId == sessionId && (activeOwnerType == ownerType || ownerType == CoinSlotOwnerType::ANY)) {
@@ -238,10 +234,6 @@ struct MockCoinSlotEngine {
         if (maintenanceMode || paymentQueueFull || !paymentStorageReady) return false;
         if (currentState == CoinSlotState::DRAINING) return false;
         if (isCoinSlotBusy(sessionId, ownerType)) return false;
-
-        if (currentState == CoinSlotState::ARMED && activeSessionId != sessionId) {
-            finalizeSessionRelease("TTL_EXPIRED");
-        }
 
         if (activeSessionId == sessionId && (activeOwnerType == ownerType || ownerType == CoinSlotOwnerType::ANY) &&
             currentState == CoinSlotState::ARMED) {
@@ -472,14 +464,89 @@ void testPureQueryDoesNotMutateState() {
     // State MUST NOT have been mutated into DRAINING or IDLE by a busy query!
     assert(engine.currentState == CoinSlotState::ARMED);
 
+    // Expired armed session is busy to all callers (including rearming the expired owner)
     bool busySame = engine.isCoinSlotBusy("phone_1", CoinSlotOwnerType::PHONE);
-    assert(busySame == false);
+    assert(busySame == true);
     assert(engine.currentState == CoinSlotState::ARMED);
 
     // State transition happens ONLY when processCoinSlotSession() runs
     engine.processCoinSlotSession();
     assert(engine.currentState == CoinSlotState::DRAINING);
     std::cout << "[PASS] testPureQueryDoesNotMutateState\n";
+}
+
+void testExpiredSessionRejectsTakeoverAndPreservesPulsesUntilDrained() {
+    MockCoinSlotEngine engine;
+    engine.init();
+    engine.currentMillis = 5000;
+    engine.processCoinSlotSession(); // complete startup suppression
+
+    int deliveredCountPhone1 = 0;
+    int receivedPulsesPhone1 = 0;
+    std::string deliveredSessionPhone1 = "";
+
+    bool res1 = engine.reserveCoinSlot("phone_1", CoinSlotOwnerType::PHONE, 5000,
+        [&](const std::string& sess, int pulses) {
+            deliveredCountPhone1++;
+            receivedPulsesPhone1 += pulses;
+            deliveredSessionPhone1 = sess;
+        },
+        nullptr
+    );
+    assert(res1 == true);
+    assert(engine.currentState == CoinSlotState::ARMED);
+
+    // Advance time past TTL (armed until 10000ms, now at 10500ms)
+    engine.currentMillis = 10500;
+
+    // Pulses arrive in ISR for phone_1 right around expiry
+    engine.isrUniversalPulseCount = 4;
+    engine.isrLastPulseTimeMs = 10500;
+
+    // phone_2 attempts takeover before drain completes: MUST BE REJECTED
+    assert(engine.isCoinSlotBusy("phone_2", CoinSlotOwnerType::PHONE) == true);
+    bool takeoverClaim = engine.tryClaimCoinSlotForArming("phone_2", CoinSlotOwnerType::PHONE, 5000);
+    assert(takeoverClaim == false);
+    bool takeoverReserve = engine.reserveCoinSlot("phone_2", CoinSlotOwnerType::PHONE, 5000, nullptr, nullptr);
+    assert(takeoverReserve == false);
+
+    // phone_1 attempting to rearm while expired: also rejected until drain completes
+    assert(engine.isCoinSlotBusy("phone_1", CoinSlotOwnerType::PHONE) == true);
+    bool rearmPhone1 = engine.reserveCoinSlot("phone_1", CoinSlotOwnerType::PHONE, 5000, nullptr, nullptr);
+    assert(rearmPhone1 == false);
+
+    // No release finalization or pulse clearing should have happened on takeover attempts
+    assert(engine.totalFinalizations == 0);
+    assert(engine.isrUniversalPulseCount == 4);
+
+    // processCoinSlotSession runs: detects TTL expiry and enters DRAINING
+    engine.processCoinSlotSession();
+    assert(engine.currentState == CoinSlotState::DRAINING);
+    assert(engine.pendingEndReason == "TTL_EXPIRED");
+    assert(engine.sessionAccumulatedPulses == 4);
+    assert(engine.relayPowered == true); // Relay remains energized during drain
+
+    // Advance time past inter-pulse gap to deliver pulses
+    engine.currentMillis = 10500 + INTER_PULSE_TIMEOUT_MS + 20;
+    engine.processCoinSlotSession();
+
+    // Payment must be delivered to phone_1!
+    assert(deliveredCountPhone1 == 1);
+    assert(receivedPulsesPhone1 == 4);
+    assert(deliveredSessionPhone1 == "phone_1");
+
+    // Draining completed and session finalized to IDLE
+    assert(engine.currentState == CoinSlotState::IDLE);
+    assert(engine.totalFinalizations == 1);
+    assert(engine.lastEndReason == "TTL_EXPIRED");
+    assert(engine.relayPowered == false);
+
+    // Now phone_2 can successfully reserve the slot
+    bool resPhone2 = engine.reserveCoinSlot("phone_2", CoinSlotOwnerType::PHONE, 10000, nullptr, nullptr);
+    assert(resPhone2 == true);
+    assert(engine.currentState == CoinSlotState::ARMED);
+    assert(engine.activeSessionId == "phone_2");
+    std::cout << "[PASS] testExpiredSessionRejectsTakeoverAndPreservesPulsesUntilDrained\n";
 }
 
 void testUnifiedDrainPathPreservesInFlightPulses() {
@@ -639,6 +706,7 @@ int main() {
     std::cout << "=== Running CoinSlotManager Hardened State Machine Tests ===\n";
     testStartupSuppressionAndRelayPowerLock();
     testPureQueryDoesNotMutateState();
+    testExpiredSessionRejectsTakeoverAndPreservesPulsesUntilDrained();
     testUnifiedDrainPathPreservesInFlightPulses();
     testDrainTimeoutGuardSalvagesTrailingPulses();
     testFaultMaintenanceBlocksReservationsAndDrainsActive();
