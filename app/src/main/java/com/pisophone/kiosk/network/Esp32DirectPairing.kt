@@ -166,44 +166,63 @@ class Esp32DirectPairing(
                 val configuredIp = KioskSecurity.getConfiguredEsp32Ip(context).ifBlank { DEFAULT_STATIC_ESP32_IP }
                 val (ipHost, esp32Port) = getEsp32HostAndPort(currentEsp32Ip ?: configuredIp)
 
-                try {
-                    val emptyBody = okhttp3.RequestBody.create(null, ByteArray(0))
-                    // Step 1: Disarm coinslot first so ESP32 knows no payment is pending
-                    try {
-                        val unarmUrl = "http://$ipHost:$esp32Port/api/slots/action?slot=$assignedSlot&command=CANCEL"
-                        httpClient.newCall(Request.Builder().url(unarmUrl).post(emptyBody).build()).execute().close()
-                    } catch (e: Exception) {}
+                val emptyBody = okhttp3.RequestBody.create(null, ByteArray(0))
+                val url = "http://$ipHost:$esp32Port/api/slots/unpair?slot=$assignedSlot"
+                val req = Request.Builder().url(url).post(emptyBody).build()
 
-                    // Step 2: Unpair slot
-                    val url = "http://$ipHost:$esp32Port/api/slots/unpair?slot=$assignedSlot" + if (force) "&force=true" else ""
-                    val req = Request.Builder().url(url).post(emptyBody).build()
+                var success = false
+                var errorMsg: String? = null
+
+                try {
                     httpClient.newCall(req).execute().use { resp ->
-                        Log.i(TAG, "[UNPAIR] ESP32 unpair HTTP response: code=${resp.code}")
-                        if (!resp.isSuccessful) {
-                            val errBody = resp.body?.string()?.trim() ?: ""
-                            Log.w(TAG, "[UNPAIR] ESP32 unpair rejected (${resp.code}): $errBody")
-                            if (!force && (errBody.contains("BUSY", ignoreCase = true) || resp.code == 409 || resp.code == 400)) {
-                                Log.i(TAG, "[UNPAIR] Retrying slot #$assignedSlot unpair with force=true override...")
-                                val forceUrl = "http://$ipHost:$esp32Port/api/slots/unpair?slot=$assignedSlot&force=true"
-                                val retryReq = Request.Builder().url(forceUrl).post(emptyBody).build()
-                                httpClient.newCall(retryReq).execute().use { retryResp ->
-                                    Log.i(TAG, "[UNPAIR] Force unpair response: code=${retryResp.code}")
+                        val respBody = resp.body?.string()?.trim() ?: ""
+                        Log.i(TAG, "[UNPAIR] ESP32 unpair HTTP response: code=${resp.code}, body=$respBody")
+
+                        if (resp.isSuccessful) {
+                            try {
+                                val json = JSONObject(respBody)
+                                if (json.optBoolean("success", false)) {
+                                    success = true
+                                } else {
+                                    errorMsg = json.optString("error", "ESP32 rejected unpair request.")
+                                }
+                            } catch (e: Exception) {
+                                errorMsg = "Malformed response from ESP32: ${e.message}"
+                            }
+                        } else {
+                            when (resp.code) {
+                                401, 403 -> {
+                                    errorMsg = "Unpair requires admin authentication. Please log in to the ESP32 Admin Web Portal at http://$ipHost:$esp32Port to unpair slot #$assignedSlot."
+                                }
+                                409 -> {
+                                    val jsonErr = try { JSONObject(respBody).optString("error", "") } catch (e: Exception) { "" }
+                                    errorMsg = if (jsonErr.isNotBlank()) jsonErr else "Slot #$assignedSlot is busy with an active session or unresolved payments."
+                                }
+                                else -> {
+                                    val jsonErr = try { JSONObject(respBody).optString("error", "") } catch (e: Exception) { "" }
+                                    errorMsg = if (jsonErr.isNotBlank()) jsonErr else "ESP32 rejected unpair (HTTP ${resp.code})."
                                 }
                             }
                         }
                     }
                 } catch (e: Exception) {
-                    Log.w(TAG, "[UNPAIR] ESP32 remote unpair notification failed (offline or unreachable): ${e.message}")
+                    Log.w(TAG, "[UNPAIR] Network failure contacting ESP32: ${e.message}")
+                    errorMsg = "Failed to connect to ESP32: ${e.message}"
                 }
 
-                onLocalStateReset()
-                KioskSecurity.clearPinnedEsp32Mac(context)
-                delegate.onOnlineStatusChanged(false, null)
-
-                Log.i(TAG, "[UNPAIR] Local terminal state reset for slot #$assignedSlot")
-                onResult?.invoke(true, null)
+                if (success) {
+                    onLocalStateReset()
+                    KioskSecurity.clearPinnedEsp32Mac(context)
+                    delegate.onOnlineStatusChanged(false, null)
+                    Log.i(TAG, "[UNPAIR] Slot #$assignedSlot unpaired successfully on ESP32; local terminal state reset.")
+                    onResult?.invoke(true, null)
+                } else {
+                    val finalMsg = errorMsg ?: "Failed to unpair slot #$assignedSlot."
+                    Log.w(TAG, "[UNPAIR] Unpair failed. Retaining local configuration. Error: $finalMsg")
+                    onResult?.invoke(false, finalMsg)
+                }
             } catch (e: Exception) {
-                Log.e(TAG, "[UNPAIR] Error unpairing: ${e.message}", e)
+                Log.e(TAG, "[UNPAIR] Unexpected error unpairing: ${e.message}", e)
                 onResult?.invoke(false, e.message)
             }
         }

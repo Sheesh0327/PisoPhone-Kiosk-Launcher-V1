@@ -74,7 +74,7 @@ void processWebSocketServer() {
             }
 
             // Hardware Mutex Check: allow if idle or same session, reject if held by a different session
-            if (isCoinSlotBusy(reqDeviceId, CoinSlotOwnerType::ANY)) {
+            if (isCoinSlotBusy(reqDeviceId, CoinSlotOwnerType::PHONE)) {
                 String activeSess = getActiveCoinSessionId();
                 Serial.printf("[-] WS Mutex Rejected for %s: Slot BUSY with %s\n", reqDeviceId.c_str(), activeSess.c_str());
                 newClient.print("HTTP/1.1 409 Conflict\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: 23\r\n\r\n{\"event\":\"SLOT_BUSY\"}");
@@ -103,7 +103,7 @@ void processWebSocketServer() {
             wsSessionDeviceId = reqDeviceId;
             
             // Automatically arm the coin slot for the connected client/service
-            bool reserved = reserveCoinSlot(reqDeviceId, CoinSlotOwnerType::ANY, ARM_TTL,
+            bool reserved = reserveCoinSlot(reqDeviceId, CoinSlotOwnerType::PHONE, ARM_TTL,
                 [](const String& devId, int pulses) -> bool {
                     return triggerUniversalCoinEvent(pulses, devId);
                 },
@@ -141,22 +141,25 @@ void processWebSocketServer() {
     if (isWsConnected) {
         String boundDevId = wsSessionDeviceId;
         if (!wsClient.connected()) {
-            Serial.printf("[*] WS Client %s disconnected. Releasing slot.\n", boundDevId.c_str());
+            Serial.printf("[*] WS Client %s disconnected. Initiating non-forced slot release.\n", boundDevId.c_str());
             isWsConnected = false;
             wsSessionDeviceId = "";
-            releaseCoinSlot(boundDevId, CoinSlotOwnerType::ANY, true, "WS_DISCONNECT");
+            releaseCoinSlot(boundDevId, CoinSlotOwnerType::PHONE, false, "WS_DISCONNECT");
             return;
         }
         
         if (wsClient.available()) {
             String frameText = readWsText(wsClient);
             if (frameText.length() > 0) {
-                if (frameText == "DONE" || frameText == "CLOSE" || frameText == "deactivate" || frameText == "disarm" ||
+                if (frameText == "DONE" || frameText == "CLOSE" || frameText == "CANCEL" ||
+                    frameText == "deactivate" || frameText == "disarm" || frameText == "cancel" ||
                     frameText.indexOf("\"action\":\"deactivate\"") >= 0 || frameText.indexOf("\"action\":\"disarm\"") >= 0 ||
-                    frameText.indexOf("\"command\":\"deactivate\"") >= 0 || frameText.indexOf("\"command\":\"disarm\"") >= 0) {
-                    Serial.printf("[⚡ WS Port 81] Disarm requested for %s.\n", boundDevId.c_str());
+                    frameText.indexOf("\"action\":\"cancel\"") >= 0 ||
+                    frameText.indexOf("\"command\":\"deactivate\"") >= 0 || frameText.indexOf("\"command\":\"disarm\"") >= 0 ||
+                    frameText.indexOf("\"command\":\"cancel\"") >= 0 || frameText.indexOf("\"command\":\"CANCEL\"") >= 0) {
+                    Serial.printf("[⚡ WS Port 81] Disarm/Cancel requested for %s.\n", boundDevId.c_str());
                     int pulses = getSessionAccumulatedPulses();
-                    releaseCoinSlot(boundDevId, CoinSlotOwnerType::ANY, true, "MANUAL_DISARM");
+                    releaseCoinSlot(boundDevId, CoinSlotOwnerType::PHONE, false, "MANUAL_DISARM");
                     String doneJson = "{\"event\":\"DEACTIVATED\",\"state\":\"IDLE\",\"is_armed\":false,\"pulses\":" + String(pulses) +
                                       ",\"total_pulses\":" + String((int)totalCoinsLifetime) + "}";
                     sendWsText(wsClient, doneJson);
@@ -166,7 +169,7 @@ void processWebSocketServer() {
                     return;
                 }
 
-                refreshCoinSlotTtl(boundDevId, CoinSlotOwnerType::ANY, ARM_TTL);
+                refreshCoinSlotTtl(boundDevId, CoinSlotOwnerType::PHONE, ARM_TTL);
 
                 if (frameText == "status" || frameText == "pulses" || frameText.indexOf("\"action\":\"status\"") >= 0) {
                     String statusJson = "{\"event\":\"STATUS\",\"state\":\"ARMED\",\"is_armed\":true,\"session_id\":\"" + boundDevId +

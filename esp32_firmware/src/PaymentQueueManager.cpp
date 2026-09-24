@@ -293,27 +293,6 @@ bool hasPendingPaymentsForTarget(const String& targetId) {
     return false;
 }
 
-int purgePendingPaymentsForTarget(const String& targetId) {
-    if (targetId.length() == 0) return 0;
-    lockQueue();
-    int purged = 0;
-    for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
-        if (paymentSlotUsed[i]) {
-            String recordTarget = String(paymentQueue[i].targetId);
-            if (recordTarget == targetId || getDeviceIdFromIp(recordTarget) == targetId || getIpFromDeviceId(recordTarget) == targetId) {
-                eraseRecord(i);
-                clearQueueSlotLocked(i);
-                purged++;
-            }
-        }
-    }
-    unlockQueue();
-    if (purged > 0) {
-        Serial.printf("[PAY QUEUE] Purged %d pending payment(s) for target '%s'.\n", purged, targetId.c_str());
-    }
-    return purged;
-}
-
 bool hasPendingPayments() {
     lockQueue();
     for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {

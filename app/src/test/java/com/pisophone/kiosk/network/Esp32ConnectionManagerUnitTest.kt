@@ -73,18 +73,18 @@ class Esp32ConnectionManagerUnitTest {
     }
 
     @Test
-    fun testUnpairExecutesSafelyAndResetsMac() = kotlinx.coroutines.runBlocking {
+    fun testUnpairRetainsStateOnNetworkFailure() = kotlinx.coroutines.runBlocking {
         com.pisophone.kiosk.security.KioskSecurity.setConfiguredEsp32Mac(context, "AA:BB:CC:DD:EE:FF")
         assertEquals("AA:BB:CC:DD:EE:FF", com.pisophone.kiosk.security.KioskSecurity.getConfiguredEsp32Mac(context))
         
-        var callbackInvoked = false
+        var callbackSuccess: Boolean? = null
         val job = manager.unpair { success, _ ->
-            callbackInvoked = true
+            callbackSuccess = success
         }
         job.join()
         
-        // Pinned MAC must be cleared
-        assertEquals("", com.pisophone.kiosk.security.KioskSecurity.getConfiguredEsp32Mac(context))
-        assertTrue(callbackInvoked)
+        // Pinned MAC must be retained when unpair fails due to network error
+        assertEquals("AA:BB:CC:DD:EE:FF", com.pisophone.kiosk.security.KioskSecurity.getConfiguredEsp32Mac(context))
+        assertEquals(false, callbackSuccess)
     }
 }

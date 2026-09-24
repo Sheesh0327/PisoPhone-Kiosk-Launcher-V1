@@ -242,21 +242,16 @@ window.submitSlotToken = function() {
         });
 };
 
-window.unpairSlot = function(slot, force) {
-    const isForce = force === true;
-    if (!isForce && !confirm('Unpair Slot #' + slot + '? This will free the seat slot on this ESP32. The coin slot will no longer accept coins for this device until paired again.')) return;
-    const url = '/api/slots/unpair?slot=' + slot + (isForce ? '&force=true' : '');
+window.unpairSlot = function(slot) {
+    if (!confirm('Unpair Slot #' + slot + '? This will free the seat slot on this ESP32. The coin slot will no longer accept coins for this device until paired again.')) return;
+    const url = '/api/slots/unpair?slot=' + slot;
     fetch(url, { method: 'POST' })
         .then(res => res.json())
         .then(data => {
             if (data.success) {
                 location.reload();
             } else {
-                if (!isForce && confirm('Failed to unpair slot: ' + (data.error || 'Unknown error') + '\n\nWould you like to FORCE UNPAIR this slot? (This will clear any active session and purge unresolved payment locks for this device)')) {
-                    window.unpairSlot(slot, true);
-                } else if (isForce) {
-                    alert('Force unpair failed: ' + (data.error || 'Unknown error'));
-                }
+                alert('Failed to unpair slot: ' + (data.error || 'Unknown error'));
             }
         })
         .catch(err => {

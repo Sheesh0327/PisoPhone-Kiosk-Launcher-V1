@@ -178,11 +178,11 @@ bool isCoinSlotBusy(const String& sessionId, CoinSlotOwnerType ownerType) {
         }
     }
 
-    // Check if ARMED session has expired
+    // Check if ARMED session has expired: must remain unavailable until processCoinSlotSession completes drain
     if (currentState == CoinSlotState::ARMED) {
         if ((long)(now - sessionArmedUntil) >= 0 || (sessionStartTimeMs > 0 && (long)(now - sessionStartTimeMs) >= (long)MAX_SESSION_DURATION)) {
-            // Expired armed session is no longer busy to incoming callers
-            return false;
+            // Expired armed session remains busy to all callers (including rearming expired owner)
+            return true;
         }
     }
 
@@ -222,11 +222,6 @@ bool tryClaimCoinSlotForArming(const String& sessionId, CoinSlotOwnerType ownerT
     // Check if busy with another session or draining
     if (isCoinSlotBusy(sessionId, ownerType)) {
         return false;
-    }
-
-    // If currently armed by another expired session, finalize old release
-    if (currentState == CoinSlotState::ARMED && activeSessionId != sessionId) {
-        finalizeSessionRelease("TTL_EXPIRED");
     }
 
     // If already armed or reserved by this exact session, permit claim refresh
@@ -283,16 +278,11 @@ bool reserveCoinSlot(const String& sessionId, CoinSlotOwnerType ownerType, unsig
         return false;
     }
 
-    // If held by another session, reject reservation
+    // If held by another session or expired armed session, reject reservation
     if (isCoinSlotBusy(sessionId, ownerType)) {
         Serial.printf("[🪙 COIN SLOT] Reservation rejected for '%s': Slot busy with '%s' (State: %d)\n", 
                       sessionId.c_str(), activeSessionId.c_str(), (int)currentState);
         return false;
-    }
-
-    // If currently armed by another expired session, cleanly finalize previous session release
-    if (currentState == CoinSlotState::ARMED && activeSessionId != sessionId) {
-        finalizeSessionRelease("TTL_EXPIRED");
     }
 
     if (activeSessionId == sessionId && (activeOwnerType == ownerType || ownerType == CoinSlotOwnerType::ANY) && 
