@@ -156,6 +156,7 @@ class Esp32DirectPairing(
 
     fun unpair(
         currentEsp32Ip: String?,
+        force: Boolean = false,
         onLocalStateReset: () -> Unit,
         onResult: ((Boolean, String?) -> Unit)? = null
     ): Job {
@@ -166,11 +167,30 @@ class Esp32DirectPairing(
                 val (ipHost, esp32Port) = getEsp32HostAndPort(currentEsp32Ip ?: configuredIp)
 
                 try {
-                    val url = "http://$ipHost:$esp32Port/api/slots/unpair?slot=$assignedSlot"
                     val emptyBody = okhttp3.RequestBody.create(null, ByteArray(0))
+                    // Step 1: Disarm coinslot first so ESP32 knows no payment is pending
+                    try {
+                        val unarmUrl = "http://$ipHost:$esp32Port/api/slots/action?slot=$assignedSlot&command=CANCEL"
+                        httpClient.newCall(Request.Builder().url(unarmUrl).post(emptyBody).build()).execute().close()
+                    } catch (e: Exception) {}
+
+                    // Step 2: Unpair slot
+                    val url = "http://$ipHost:$esp32Port/api/slots/unpair?slot=$assignedSlot" + if (force) "&force=true" else ""
                     val req = Request.Builder().url(url).post(emptyBody).build()
                     httpClient.newCall(req).execute().use { resp ->
                         Log.i(TAG, "[UNPAIR] ESP32 unpair HTTP response: code=${resp.code}")
+                        if (!resp.isSuccessful) {
+                            val errBody = resp.body?.string()?.trim() ?: ""
+                            Log.w(TAG, "[UNPAIR] ESP32 unpair rejected (${resp.code}): $errBody")
+                            if (!force && (errBody.contains("BUSY", ignoreCase = true) || resp.code == 409 || resp.code == 400)) {
+                                Log.i(TAG, "[UNPAIR] Retrying slot #$assignedSlot unpair with force=true override...")
+                                val forceUrl = "http://$ipHost:$esp32Port/api/slots/unpair?slot=$assignedSlot&force=true"
+                                val retryReq = Request.Builder().url(forceUrl).post(emptyBody).build()
+                                httpClient.newCall(retryReq).execute().use { retryResp ->
+                                    Log.i(TAG, "[UNPAIR] Force unpair response: code=${retryResp.code}")
+                                }
+                            }
+                        }
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "[UNPAIR] ESP32 remote unpair notification failed (offline or unreachable): ${e.message}")
