@@ -76,17 +76,13 @@ bool unpairSlot(int slotNum, bool force) {
     String activeDev = getActiveCoinSessionId();
     bool ownsActiveSession = (activeDev.length() > 0 && (activeDev == prevDevId || activeDev == prevIp));
     if (ownsActiveSession) {
-        CoinSlotState state = getCoinSlotState();
-        if (state == CoinSlotState::ARMED || state == CoinSlotState::DRAINING || state == CoinSlotState::RESERVED_ARMING) {
-            Serial.printf("[-] Unpair slot #%d rejected: Device %s owns active/draining session.\n", slotNum, prevDevId.c_str());
-            return false;
-        }
+        Serial.printf("[*] Unpair slot #%d: Force releasing active/draining coin session for departing device %s\n", slotNum, activeDev.c_str());
+        releaseCoinSlot(activeDev, CoinSlotOwnerType::ANY, true, "UNPAIRED");
     }
 
     if ((prevDevId.length() > 0 && hasPendingPaymentsForTarget(prevDevId)) ||
         (prevIp.length() > 0 && hasPendingPaymentsForTarget(prevIp))) {
-        Serial.printf("[-] Unpair slot #%d rejected: Device %s has unresolved payments in queue.\n", slotNum, prevDevId.c_str());
-        return false;
+        Serial.printf("[*] Unpair slot #%d: Notice: Device %s has unresolved payments in queue; proceeding with unpair.\n", slotNum, prevDevId.c_str());
     }
 
     Serial.printf("[+] Unpairing Slot #%d (was %s / %s). Seat remains open.\n", slotNum, prevDevId.c_str(), prevIp.c_str());

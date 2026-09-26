@@ -186,17 +186,19 @@ bool isCoinSlotBusy(const String& sessionId, CoinSlotOwnerType ownerType) {
         }
     }
 
-    // While draining, slot is strictly busy for all reservations
-    if (currentState == CoinSlotState::DRAINING) {
-        return true;
-    }
-
     // If held by the SAME session (or owner ANY match), it is not busy to that session
+    // (permits rapid re-arm / re-connection even if briefly DRAINING)
     if (sessionId.length() > 0 && activeSessionId == sessionId) {
         if (ownerType == CoinSlotOwnerType::ANY || activeOwnerType == CoinSlotOwnerType::ANY || activeOwnerType == ownerType) {
             return false;
         }
     }
+
+    // While draining, slot is strictly busy for all OTHER reservations
+    if (currentState == CoinSlotState::DRAINING) {
+        return true;
+    }
+
     // Held by a different session -> busy
     return true;
 }
@@ -271,22 +273,10 @@ bool reserveCoinSlot(const String& sessionId, CoinSlotOwnerType ownerType, unsig
     
     unsigned long now = millis();
 
-    // Reject reservations while draining
-    if (currentState == CoinSlotState::DRAINING) {
-        Serial.printf("[🪙 COIN SLOT] Reservation rejected for '%s': Slot is currently DRAINING.\n", 
-                      sessionId.c_str());
-        return false;
-    }
-
-    // If held by another session or expired armed session, reject reservation
-    if (isCoinSlotBusy(sessionId, ownerType)) {
-        Serial.printf("[🪙 COIN SLOT] Reservation rejected for '%s': Slot busy with '%s' (State: %d)\n", 
-                      sessionId.c_str(), activeSessionId.c_str(), (int)currentState);
-        return false;
-    }
-
+    // Reconnection or re-arming by the SAME active session:
+    // Permitted if ARMED or DRAINING (e.g., rapid reconnect after socket close on "Ready for Coin")
     if (activeSessionId == sessionId && (activeOwnerType == ownerType || ownerType == CoinSlotOwnerType::ANY) && 
-        currentState == CoinSlotState::ARMED) {
+        (currentState == CoinSlotState::ARMED || currentState == CoinSlotState::DRAINING)) {
         // RECONNECTION / RE-ARMING SAME SESSION:
         // Preserve accumulated pulses, restore ARMED state, refresh TTL
         currentState = CoinSlotState::ARMED;
@@ -302,6 +292,20 @@ bool reserveCoinSlot(const String& sessionId, CoinSlotOwnerType ownerType, unsig
         Serial.printf("[🪙 COIN SLOT] Session '%s' RECONNECTED & RE-ARMED (TTL: %lu ms, Preserved Pulses: %d)\n", 
                       activeSessionId.c_str(), ttlMs, isrUniversalPulseCount);
         return true;
+    }
+
+    // Reject new/other reservations while draining
+    if (currentState == CoinSlotState::DRAINING) {
+        Serial.printf("[🪙 COIN SLOT] Reservation rejected for '%s': Slot is currently DRAINING.\n", 
+                      sessionId.c_str());
+        return false;
+    }
+
+    // If held by another session or expired armed session, reject reservation
+    if (isCoinSlotBusy(sessionId, ownerType)) {
+        Serial.printf("[🪙 COIN SLOT] Reservation rejected for '%s': Slot busy with '%s' (State: %d)\n", 
+                      sessionId.c_str(), activeSessionId.c_str(), (int)currentState);
+        return false;
     }
 
     // BRAND NEW SESSION (or finalizing arming from RESERVED_ARMING claim):

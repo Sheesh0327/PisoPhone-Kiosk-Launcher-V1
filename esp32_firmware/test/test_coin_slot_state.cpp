@@ -119,13 +119,13 @@ struct MockCoinSlotEngine {
                 return true; // Expired armed session remains busy to all callers (including rearming expired owner)
             }
         }
-        if (currentState == CoinSlotState::DRAINING) {
-            return true;
-        }
         if (!sessionId.empty() && activeSessionId == sessionId) {
             if (ownerType == CoinSlotOwnerType::ANY || activeOwnerType == CoinSlotOwnerType::ANY || activeOwnerType == ownerType) {
                 return false;
             }
+        }
+        if (currentState == CoinSlotState::DRAINING) {
+            return true;
         }
         return true;
     }
@@ -232,11 +232,8 @@ struct MockCoinSlotEngine {
                          CoinPaymentCallback onPayment, CoinSessionEndCallback onSessionEnd) {
         if (sessionId.empty()) return false;
         if (maintenanceMode || paymentQueueFull || !paymentStorageReady) return false;
-        if (currentState == CoinSlotState::DRAINING) return false;
-        if (isCoinSlotBusy(sessionId, ownerType)) return false;
-
         if (activeSessionId == sessionId && (activeOwnerType == ownerType || ownerType == CoinSlotOwnerType::ANY) &&
-            currentState == CoinSlotState::ARMED) {
+            (currentState == CoinSlotState::ARMED || currentState == CoinSlotState::DRAINING)) {
             if (ownerType != CoinSlotOwnerType::ANY) activeOwnerType = ownerType;
             sessionArmedUntil = currentMillis + (ttlMs > 0 ? ttlMs : ARM_TTL);
             drainDeadlineMs = 0;
@@ -246,6 +243,9 @@ struct MockCoinSlotEngine {
             updateRelayHardware();
             return true;
         }
+
+        if (currentState == CoinSlotState::DRAINING) return false;
+        if (isCoinSlotBusy(sessionId, ownerType)) return false;
 
         currentState = CoinSlotState::ARMED;
         activeSessionId = sessionId;
@@ -702,6 +702,53 @@ void testRolloverSafeArithmetic() {
     std::cout << "[PASS] testRolloverSafeArithmetic\n";
 }
 
+void testSameSessionCanReArmWhileDraining() {
+    MockCoinSlotEngine engine;
+    engine.init();
+
+    // 1. Arm slot for phone_1
+    bool ok = engine.reserveCoinSlot("phone_1", CoinSlotOwnerType::PHONE, 30000, nullptr, nullptr);
+    assert(ok == true);
+    assert(engine.currentState == CoinSlotState::ARMED);
+    assert(engine.relayPowered == true);
+
+    // 2. Disconnect socket (non-forced release), enters DRAINING
+    engine.initiateSessionRelease("DISCONNECT", false);
+    assert(engine.currentState == CoinSlotState::DRAINING);
+    assert(engine.relayPowered == true);
+
+    // 3. Different phone tries to claim -> must be busy / rejected
+    assert(engine.isCoinSlotBusy("phone_2", CoinSlotOwnerType::PHONE) == true);
+    assert(engine.reserveCoinSlot("phone_2", CoinSlotOwnerType::PHONE, 30000, nullptr, nullptr) == false);
+
+    // 4. Same phone reconnects and taps "Ready for Coin" -> must NOT be busy, and reserve must succeed
+    assert(engine.isCoinSlotBusy("phone_1", CoinSlotOwnerType::PHONE) == false);
+    bool rearmOk = engine.reserveCoinSlot("phone_1", CoinSlotOwnerType::PHONE, 30000, nullptr, nullptr);
+    assert(rearmOk == true);
+    assert(engine.currentState == CoinSlotState::ARMED);
+    assert(engine.relayPowered == true);
+    assert(engine.drainDeadlineMs == 0);
+    std::cout << "[PASS] testSameSessionCanReArmWhileDraining\n";
+}
+
+void testUnpairSlotDisarmsActiveSession() {
+    MockCoinSlotEngine engine;
+    engine.init();
+
+    // 1. Phone has active armed session
+    bool ok = engine.reserveCoinSlot("DEV_SLOT_1", CoinSlotOwnerType::PHONE, 30000, nullptr, nullptr);
+    assert(ok == true);
+    assert(engine.currentState == CoinSlotState::ARMED);
+    assert(engine.relayPowered == true);
+
+    // 2. Admin unpairs slot -> force release with reason "UNPAIRED"
+    engine.initiateSessionRelease("UNPAIRED", true);
+    assert(engine.currentState == CoinSlotState::IDLE);
+    assert(engine.relayPowered == false);
+    assert(engine.activeSessionId.empty());
+    std::cout << "[PASS] testUnpairSlotDisarmsActiveSession\n";
+}
+
 int main() {
     std::cout << "=== Running CoinSlotManager Hardened State Machine Tests ===\n";
     testStartupSuppressionAndRelayPowerLock();
@@ -711,6 +758,8 @@ int main() {
     testDrainTimeoutGuardSalvagesTrailingPulses();
     testFaultMaintenanceBlocksReservationsAndDrainsActive();
     testRolloverSafeArithmetic();
+    testSameSessionCanReArmWhileDraining();
+    testUnpairSlotDisarmsActiveSession();
     std::cout << "=== All CoinSlotManager Tests Passed Successfully! ===\n";
     return 0;
 }

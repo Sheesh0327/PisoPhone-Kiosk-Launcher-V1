@@ -65,6 +65,18 @@ void processWebSocketServer() {
             }
             reqDeviceId.trim();
 
+            // Canonicalize to licensed slot identity if matched
+            String clientIp = newClient.remoteIP().toString();
+            int slotIdx = findSlotIndexForDevice(reqDeviceId, clientIp);
+            if (slotIdx >= 0 && licenseSlots[slotIdx].deviceId.length() > 0) {
+                reqDeviceId = licenseSlots[slotIdx].deviceId;
+            } else if (slotIdx >= 0) {
+                String activeSess = getActiveCoinSessionId();
+                if (activeSess.length() > 0 && (licenseSlots[slotIdx].ip == activeSess || licenseSlots[slotIdx].deviceId == activeSess)) {
+                    reqDeviceId = activeSess;
+                }
+            }
+
             // Maintenance mode check
             if (isMaintenanceMode()) {
                 Serial.printf("[-] WS Rejected for %s: Maintenance mode active\n", reqDeviceId.c_str());
