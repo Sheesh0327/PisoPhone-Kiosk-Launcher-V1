@@ -55,10 +55,16 @@ class KioskSessionSupervisor(
                     val curState = stateManager.appState.value
                     // Session arming / waiting countdown
                     if (curState == 1 || curState == 3) {
-                        if (stateManager.paymentTimeout.value > 0) {
-                            stateManager.paymentTimeout.value -= 1
+                        val deadline = stateManager.paymentTimeoutDeadlineMs.value
+                        val nowMonotonic = android.os.SystemClock.elapsedRealtime()
+                        val remainingSec = if (deadline > 0L) {
+                            maxOf(0, Math.ceil((deadline - nowMonotonic) / 1000.0).toInt())
+                        } else {
+                            0
                         }
-                        if (stateManager.paymentTimeout.value == 0) {
+                        stateManager.paymentTimeout.value = remainingSec
+                        if (deadline > 0L && nowMonotonic >= deadline) {
+                            stateManager.paymentTimeoutDeadlineMs.value = 0L
                             if (stateManager.coinsInserted.value > 0) {
                                 onFinishPayment()
                             } else {

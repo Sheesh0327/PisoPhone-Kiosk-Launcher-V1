@@ -35,7 +35,7 @@ class KioskEngine(
 ) {
     companion object {
         private const val TAG = "KioskEngine"
-        private const val ARMING_TIMEOUT_SECONDS = 60
+        private const val ARMING_TIMEOUT_SECONDS = 15
         private const val SERVER_PORT = 8080
     }
 
@@ -75,7 +75,8 @@ class KioskEngine(
         coinAmount: Int = amount.toInt(),
         pricePerCoin: Double = 0.0,
         boxInstallationEpoch: Long = 0L,
-        phonePairingEpoch: Long = 0L
+        phonePairingEpoch: Long = 0L,
+        remainingMs: Long = 15000L
     ): PaymentResult {
         if (!isInitialized.get()) {
             Log.w(TAG, "Rejecting payment credit: KioskEngine initialization in progress")
@@ -92,7 +93,7 @@ class KioskEngine(
             phonePairingEpoch = phonePairingEpoch
         )
         if (outcome.result == PaymentResult.APPLIED && outcome.snapshot != null) {
-            creditNotifier.publishCommittedCreditSnapshot(txId, seconds, amount, operationKind, outcome.snapshot)
+            creditNotifier.publishCommittedCreditSnapshot(txId, seconds, amount, operationKind, outcome.snapshot, remainingMs)
         }
         return outcome.result
     }

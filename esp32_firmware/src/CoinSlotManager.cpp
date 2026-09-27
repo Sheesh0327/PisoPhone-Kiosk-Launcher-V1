@@ -180,7 +180,10 @@ bool isCoinSlotBusy(const String& sessionId, CoinSlotOwnerType ownerType) {
 
     // Check if ARMED session has expired: must remain unavailable until processCoinSlotSession completes drain
     if (currentState == CoinSlotState::ARMED) {
-        if ((long)(now - sessionArmedUntil) >= 0 || (sessionStartTimeMs > 0 && (long)(now - sessionStartTimeMs) >= (long)MAX_SESSION_DURATION)) {
+        bool ttlExpired = ((int32_t)((uint32_t)now - (uint32_t)sessionArmedUntil) >= 0);
+        bool maxDurationExpired = (activeOwnerType != CoinSlotOwnerType::PHONE) &&
+                                  (sessionStartTimeMs > 0 && ((int32_t)((uint32_t)now - (uint32_t)sessionStartTimeMs) >= (int32_t)MAX_SESSION_DURATION));
+        if (ttlExpired || maxDurationExpired) {
             // Expired armed session remains busy to all callers (including rearming expired owner)
             return true;
         }
@@ -274,14 +277,32 @@ bool reserveCoinSlot(const String& sessionId, CoinSlotOwnerType ownerType, unsig
     unsigned long now = millis();
 
     // Reconnection or re-arming by the SAME active session:
-    // Permitted if ARMED or DRAINING (e.g., rapid reconnect after socket close on "Ready for Coin")
-    if (activeSessionId == sessionId && (activeOwnerType == ownerType || ownerType == CoinSlotOwnerType::ANY) && 
-        (currentState == CoinSlotState::ARMED || currentState == CoinSlotState::DRAINING)) {
+    // Permitted if ARMED or (for non-PHONE sessions) DRAINING (e.g., rapid reconnect after socket close on "Ready for Coin")
+    bool allowReconnection = false;
+    if (activeSessionId == sessionId && (activeOwnerType == ownerType || ownerType == CoinSlotOwnerType::ANY)) {
+        if (currentState == CoinSlotState::ARMED) {
+            allowReconnection = true;
+        } else if (currentState == CoinSlotState::DRAINING && activeOwnerType != CoinSlotOwnerType::PHONE) {
+            allowReconnection = true;
+        }
+    }
+
+    if (allowReconnection) {
         // RECONNECTION / RE-ARMING SAME SESSION:
         // Preserve accumulated pulses, restore ARMED state, refresh TTL
         currentState = CoinSlotState::ARMED;
         if (ownerType != CoinSlotOwnerType::ANY) activeOwnerType = ownerType;
-        sessionArmedUntil = now + (ttlMs > 0 ? ttlMs : ARM_TTL);
+        
+        if (activeOwnerType == CoinSlotOwnerType::PHONE) {
+            // Preserve insertion deadline for PHONE sessions (no deadline extension on retry/reconnect)
+            if (sessionArmedUntil == 0) {
+                sessionArmedUntil = now + 15000UL;
+            }
+        } else {
+            unsigned long effectiveTtl = (ttlMs > 0 ? ttlMs : ARM_TTL);
+            sessionArmedUntil = now + effectiveTtl;
+        }
+        
         drainDeadlineMs = 0;
         pendingEndReason = "";
 
@@ -289,8 +310,10 @@ bool reserveCoinSlot(const String& sessionId, CoinSlotOwnerType ownerType, unsig
         if (onSessionEnd) currentEndCallback = onSessionEnd;
 
         setRelayHardware(true);
-        Serial.printf("[🪙 COIN SLOT] Session '%s' RECONNECTED & RE-ARMED (TTL: %lu ms, Preserved Pulses: %d)\n", 
-                      activeSessionId.c_str(), ttlMs, isrUniversalPulseCount);
+        Serial.printf("[🪙 COIN SLOT] Session '%s' RECONNECTED & RE-ARMED (Preserved TTL remaining: %lu ms, Preserved Pulses: %d)\n", 
+                      activeSessionId.c_str(), 
+                      (sessionArmedUntil > now) ? (sessionArmedUntil - now) : 0UL, 
+                      isrUniversalPulseCount);
         return true;
     }
 
@@ -313,7 +336,8 @@ bool reserveCoinSlot(const String& sessionId, CoinSlotOwnerType ownerType, unsig
     activeSessionId = sessionId;
     activeOwnerType = ownerType;
     sessionStartTimeMs = now;
-    sessionArmedUntil = now + (ttlMs > 0 ? ttlMs : ARM_TTL);
+    unsigned long effectiveTtl = (ttlMs > 0 ? ttlMs : ((activeOwnerType == CoinSlotOwnerType::PHONE) ? 15000UL : ARM_TTL));
+    sessionArmedUntil = now + effectiveTtl;
     drainDeadlineMs = 0;
     pendingEndReason = "";
 
@@ -328,7 +352,7 @@ bool reserveCoinSlot(const String& sessionId, CoinSlotOwnerType ownerType, unsig
     setRelayHardware(true);
 
     Serial.printf("[🪙 COIN SLOT] Slot RESERVED & ARMED for '%s' (TTL: %lu ms)\n", 
-                  activeSessionId.c_str(), ttlMs);
+                  activeSessionId.c_str(), effectiveTtl);
     return true;
 }
 
@@ -337,10 +361,22 @@ bool refreshCoinSlotTtl(const String& sessionId, CoinSlotOwnerType ownerType, un
         (ownerType == CoinSlotOwnerType::ANY || activeOwnerType == ownerType) && 
         currentState == CoinSlotState::ARMED) {
         unsigned long now = millis();
-        sessionArmedUntil = now + (ttlMs > 0 ? ttlMs : ARM_TTL);
+        unsigned long effectiveTtl = (ttlMs > 0 ? ttlMs : ((activeOwnerType == CoinSlotOwnerType::PHONE) ? 15000UL : ARM_TTL));
+        sessionArmedUntil = now + effectiveTtl;
         return true;
     }
     return false;
+}
+
+unsigned long getRemainingCoinSlotMs() {
+    if (currentState != CoinSlotState::ARMED && currentState != CoinSlotState::DRAINING) {
+        return 0UL;
+    }
+    unsigned long now = millis();
+    if (sessionArmedUntil > now) {
+        return sessionArmedUntil - now;
+    }
+    return 0UL;
 }
 
 void releaseCoinSlot(const String& sessionId, CoinSlotOwnerType ownerType, bool force, const char* reason) {
@@ -436,6 +472,12 @@ void processCoinSlotSession() {
     }
 
     if (newPulses > 0) {
+        if (currentState == CoinSlotState::ARMED) {
+            unsigned long renewMs = (activeOwnerType == CoinSlotOwnerType::PHONE) ? 15000UL : ARM_TTL;
+            sessionArmedUntil = now + renewMs;
+            Serial.printf("[🪙 COIN SLOT] Fresh physical coin pulse detected for session '%s', resetting deadline (+%lu ms)\n",
+                          activeSessionId.c_str(), renewMs);
+        }
         sessionAccumulatedPulses += newPulses;
     }
 
@@ -457,6 +499,14 @@ void processCoinSlotSession() {
             String deliveringSession = activeSessionId;
             Serial.printf("[🪙 COIN SLOT] Detected %d pulse(s) for session '%s'. Delivering payment...\n", 
                           finalPulses, deliveringSession.c_str());
+
+            // Fresh physical coin pulse train detected during ARMED state -> Reset insertion deadline to 15s for PHONE sessions
+            if (currentState == CoinSlotState::ARMED) {
+                unsigned long renewMs = (activeOwnerType == CoinSlotOwnerType::PHONE) ? 15000UL : ARM_TTL;
+                sessionArmedUntil = now + renewMs;
+                Serial.printf("[🪙 COIN SLOT] Fresh physical coin pulse train renewed session '%s' deadline (+%lu ms)\n",
+                              deliveringSession.c_str(), renewMs);
+            }
 
             bool retained = false;
             if (currentPaymentCallback) {
@@ -530,7 +580,8 @@ void processCoinSlotSession() {
         }
 
         bool ttlExpired = ((int32_t)((uint32_t)now - (uint32_t)sessionArmedUntil) >= 0);
-        bool maxDurationExpired = (sessionStartTimeMs > 0 && ((int32_t)((uint32_t)now - (uint32_t)sessionStartTimeMs) >= (int32_t)MAX_SESSION_DURATION));
+        bool maxDurationExpired = (activeOwnerType != CoinSlotOwnerType::PHONE) &&
+                                  (sessionStartTimeMs > 0 && ((int32_t)((uint32_t)now - (uint32_t)sessionStartTimeMs) >= (int32_t)MAX_SESSION_DURATION));
 
         if (ttlExpired || maxDurationExpired) {
             const char* reason = ttlExpired ? "TTL_EXPIRED" : "MAX_DURATION";

@@ -18,7 +18,15 @@ class KioskStateManager(private val context: Context) {
     val sessionExpiryDeadlineMs = MutableStateFlow(0L)
     val sessionRevision = MutableStateFlow(0L)
     val paymentTimeout = MutableStateFlow(0)
+    val paymentTimeoutDeadlineMs = MutableStateFlow(0L)
     val coinsInserted = MutableStateFlow(0)
+
+    fun updatePaymentTimeoutFromMs(remainingMs: Long) {
+        val safeMs = maxOf(0L, remainingMs)
+        val nowMonotonic = android.os.SystemClock.elapsedRealtime()
+        paymentTimeoutDeadlineMs.value = if (safeMs > 0L) nowMonotonic + safeMs else 0L
+        paymentTimeout.value = maxOf(0, ((safeMs + 999L) / 1000L).toInt())
+    }
     val themeIndex = MutableStateFlow(0)
     val deviceIp = MutableStateFlow("127.0.0.1")
     val deviceId = MutableStateFlow("")

@@ -35,14 +35,16 @@ object Esp32CoinMessageProcessor {
                 return
             }
 
-            if (event == "ARMED" || status == "ARMED") {
-                Log.i(TAG, "ESP32 coin slot confirmed ARMED (attempt #$attemptId)")
-                delegate.onArmSuccess()
-                return
+            if (event == "ARMED" || status == "ARMED" || event == "STATUS") {
+                val remMs = if (json.has("remaining_ms")) json.optLong("remaining_ms") else json.optLong("timeout_seconds", 15L) * 1000L
+                Log.i(TAG, "ESP32 coin slot ARMED/STATUS confirmed: remMs=${remMs}ms (attempt #$attemptId)")
+                delegate.onArmSuccess(remMs)
+                if (event == "ARMED" || status == "ARMED") return
             }
 
             if (event == "PULSE" || event == "COIN_DETECTED") {
                 val outerPayload = json.optString("payload", "")
+                val outerRemMs = if (json.has("remaining_ms")) json.optLong("remaining_ms") else 15000L
                 if (outerPayload.isBlank()) {
                     val pulses = json.optInt("pulses", json.optInt("amount", 0))
                     if (pulses <= 0) {
@@ -60,7 +62,7 @@ object Esp32CoinMessageProcessor {
                     }
                     val txId = json.optString("tx_id", "pulse_${System.currentTimeMillis()}_$pulses")
                     
-                    Log.i(TAG, "⚡ Clean Pulse Received: +${pulses} pulses -> +${seconds}s (txId: $txId)")
+                    Log.i(TAG, "⚡ Clean Pulse Received: +${pulses} pulses -> +${seconds}s (txId: $txId, remMs=${outerRemMs}ms)")
                     delegate.onCoinMessageReceived(
                         seconds = seconds,
                         amount = pulses.toDouble(),
@@ -69,7 +71,8 @@ object Esp32CoinMessageProcessor {
                         coinAmount = pulses,
                         pricePerCoin = 1.0,
                         boxInstallationEpoch = 0L,
-                        phonePairingEpoch = 0L
+                        phonePairingEpoch = 0L,
+                        remainingMs = outerRemMs
                     )
                     
                     val ackJson = JSONObject().apply {
@@ -198,8 +201,9 @@ object Esp32CoinMessageProcessor {
                 val pricePerCoin = decryptedJson.optDouble("price_per_coin", 0.0)
                 val boxEpoch = decryptedJson.optLong("box_installation_epoch", 0L)
                 val phoneEpoch = decryptedJson.optLong("phone_pairing_epoch", 0L)
+                val innerRemMs = if (decryptedJson.has("remaining_ms")) decryptedJson.optLong("remaining_ms") else outerRemMs
 
-                Log.i(TAG, "⚡ Validated WebSocket Coin Processed: +${seconds}s, amount=₱$amount, txId=$txId, opKind=$opKindStr")
+                Log.i(TAG, "⚡ Validated WebSocket Coin Processed: +${seconds}s, amount=₱$amount, txId=$txId, opKind=$opKindStr, remMs=${innerRemMs}ms")
                 val result = delegate.onCoinMessageReceived(
                     seconds = seconds,
                     amount = amount,
@@ -208,7 +212,8 @@ object Esp32CoinMessageProcessor {
                     coinAmount = amountPulses,
                     pricePerCoin = pricePerCoin,
                     boxInstallationEpoch = boxEpoch,
-                    phonePairingEpoch = phoneEpoch
+                    phonePairingEpoch = phoneEpoch,
+                    remainingMs = innerRemMs
                 )
 
                 if (result == PaymentResult.APPLIED || result == PaymentResult.ALREADY_APPLIED) {

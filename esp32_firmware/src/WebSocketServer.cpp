@@ -115,7 +115,7 @@ void processWebSocketServer() {
             wsSessionDeviceId = reqDeviceId;
             
             // Automatically arm the coin slot for the connected client/service
-            bool reserved = reserveCoinSlot(reqDeviceId, CoinSlotOwnerType::PHONE, ARM_TTL,
+            bool reserved = reserveCoinSlot(reqDeviceId, CoinSlotOwnerType::PHONE, 15000UL,
                 [](const String& devId, int pulses) -> bool {
                     return triggerUniversalCoinEvent(pulses, devId);
                 },
@@ -148,7 +148,8 @@ void processWebSocketServer() {
                           reqDeviceId.c_str(), newClient.remoteIP().toString().c_str());
             
             String armedMsg = "{\"event\":\"ARMED\",\"state\":\"ARMED\",\"session_id\":\"" + reqDeviceId +
-                              "\",\"pulses\":" + String(getSessionAccumulatedPulses()) +
+                              "\",\"remaining_ms\":" + String(getRemainingCoinSlotMs()) +
+                              ",\"pulses\":" + String(getSessionAccumulatedPulses()) +
                               ",\"total_pulses\":" + String((int)totalCoinsLifetime) + "}";
             sendWsText(wsClient, armedMsg);
         }
@@ -179,11 +180,12 @@ void processWebSocketServer() {
                     return;
                 }
 
-                refreshCoinSlotTtl(boundDevId, CoinSlotOwnerType::PHONE, ARM_TTL);
+                // Note: ACKs and status requests must NOT refresh/extend insertion TTL (Requirement 3).
 
                 if (frameText == "status" || frameText == "pulses" || frameText.indexOf("\"action\":\"status\"") >= 0) {
                     String statusJson = "{\"event\":\"STATUS\",\"state\":\"ARMED\",\"is_armed\":true,\"session_id\":\"" + boundDevId +
-                                        "\",\"pulses\":" + String(getSessionAccumulatedPulses()) +
+                                        "\",\"remaining_ms\":" + String(getRemainingCoinSlotMs()) +
+                                        ",\"pulses\":" + String(getSessionAccumulatedPulses()) +
                                         ",\"total_pulses\":" + String((int)totalCoinsLifetime) + "}";
                     sendWsText(wsClient, statusJson);
                 } else {

@@ -242,6 +242,7 @@ bool retryPhonePayment(const String& targetDeviceId, int pulses, int creditSecon
         String json = "{\"event\":\"PULSE\",\"pulses\":" + String(pulses) +
                       ",\"session_pulses\":" + String(getSessionAccumulatedPulses()) +
                       ",\"total_pulses\":" + String((int)totalCoinsLifetime) +
+                      ",\"remaining_ms\":" + String(getRemainingCoinSlotMs()) +
                       ",\"amount\":" + String(pulses) +
                       ",\"seconds\":" + String(safeSeconds) +
                       ",\"minutes\":" + String(addedMinutes) +
@@ -252,6 +253,7 @@ bool retryPhonePayment(const String& targetDeviceId, int pulses, int creditSecon
                                ",\"minutes\":" + String(addedMinutes) +
                                ",\"amount\":" + String(pulses) +
                                ",\"pulses\":" + String(pulses) +
+                               ",\"remaining_ms\":" + String(getRemainingCoinSlotMs()) +
                                ",\"tx_id\":\"" + txId + "\"" +
                                ",\"op_kind\":" + String((int)opKind) +
                                ",\"box_installation_epoch\":" + String((unsigned long long)boxEpoch) +
@@ -264,7 +266,7 @@ bool retryPhonePayment(const String& targetDeviceId, int pulses, int creditSecon
         }
         json += "}";
         sendWsText(wsClient, json);
-        refreshCoinSlotTtl(targetDeviceId, CoinSlotOwnerType::ANY, ARM_TTL);
+        // Note: Payment delivery attempts/retries must NOT extend insertion TTL (Requirement 3).
         return true; // At most one delivery per operation/transport in flight
     }
 
@@ -275,13 +277,14 @@ bool retryPhonePayment(const String& targetDeviceId, int pulses, int creditSecon
                         "&seconds=" + String(safeSeconds) +
                         "&amount=" + String(pulses) +
                         "&tx_id=" + txId +
+                        "&remaining_ms=" + String(getRemainingCoinSlotMs()) +
                         "&op_kind=" + String((int)opKind) +
                         "&box_installation_epoch=" + String((unsigned long long)boxEpoch) +
                         "&phone_pairing_epoch=" + String((unsigned long long)phoneEpoch) +
                         "&device_id=" + targetDeviceId +
                         "&ts=" + String(retryTs);
         if (sendAuthenticated(targetIp, targetPort, "/add_time", "/challenge", params, 1000)) {
-            refreshCoinSlotTtl(targetDeviceId, CoinSlotOwnerType::PHONE, ARM_TTL);
+            // Note: Payment delivery attempts/retries must NOT extend insertion TTL (Requirement 3).
             return true;
         }
     }

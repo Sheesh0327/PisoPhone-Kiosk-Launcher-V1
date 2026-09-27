@@ -37,7 +37,8 @@ class KioskServerCoordinator(
         coinAmount: Int,
         pricePerCoin: Double,
         boxInstallationEpoch: Long,
-        phonePairingEpoch: Long
+        phonePairingEpoch: Long,
+        remainingMs: Long
     ) -> PaymentResult,
     private val onDeductPayment: (
         seconds: Int,
@@ -114,7 +115,7 @@ class KioskServerCoordinator(
     ): PaymentResult {
         return onCreditPayment.invoke(
             txId, seconds, amount, operationKind, coinAmount, pricePerCoin,
-            boxInstallationEpoch, phonePairingEpoch
+            boxInstallationEpoch, phonePairingEpoch, 15000L
         )
     }
 

@@ -66,11 +66,14 @@ void setupWebServer() {
     
     // Simple Universal Coinslot Endpoints for scripts / services
     webServer.on("/api/coinslot/activate", HTTP_ANY, handleCoinslotActivate);
+    webServer.on("/api/coinslot/arm", HTTP_ANY, handleCoinslotActivate);
     webServer.on("/api/coinslot/status", HTTP_GET, handleCoinslotStatus);
     webServer.on("/api/coinslot/pulses", HTTP_GET, handleCoinslotStatus);
     webServer.on("/api/coinslot/deactivate", HTTP_ANY, handleCoinslotDeactivate);
     webServer.on("/api/coinslot/disarm", HTTP_ANY, handleCoinslotDeactivate);
     webServer.on("/coinslot/activate", HTTP_ANY, handleCoinslotActivate);
+    webServer.on("/coinslot/arm", HTTP_ANY, handleCoinslotActivate);
+    webServer.on("/arm", HTTP_ANY, handleCoinslotActivate);
     webServer.on("/coinslot/status", HTTP_GET, handleCoinslotStatus);
     webServer.on("/coinslot/pulses", HTTP_GET, handleCoinslotStatus);
     webServer.on("/coinslot/deactivate", HTTP_ANY, handleCoinslotDeactivate);

@@ -86,53 +86,28 @@ class KioskSoundSynthesizer(
 
     private fun generateWaitingMusicBuffer(): ShortArray {
         val sampleRate = 44100
-        val loopDurationSec = 15.0
+        val loopDurationSec = 3.0
         val totalSamples = (loopDurationSec * sampleRate).toInt()
         val buffer = ShortArray(totalSamples)
-
-        val notes = doubleArrayOf(
-            523.25, 659.25, 783.99, 1046.50,
-            880.00, 698.46, 783.99, 659.25,
-            587.33, 659.25, 783.99, 880.00,
-            987.77, 1046.50, 1174.66
-        )
+        val notes = doubleArrayOf(523.25, 659.25, 783.99, 1046.50)
 
         for (i in 0 until totalSamples) {
             val t = i.toDouble() / sampleRate.toDouble()
-            val beatIdx = Math.min(14, t.toInt())
-            val beatT = t - beatIdx
+            val beatIdx = (t * 4 / loopDurationSec).toInt().coerceIn(0, 3)
+            val beatT = (t * 4 / loopDurationSec) - beatIdx
 
-            val tickEnv = Math.exp(-beatT * 35.0)
-            val tickVal = 0.28 * Math.sin(2.0 * Math.PI * 2200.0 * beatT) * tickEnv
+            val tickEnv = Math.exp(-beatT * 30.0)
+            val tickVal = 0.25 * Math.sin(2.0 * Math.PI * 2200.0 * beatT) * tickEnv
 
-            val bassF = when {
-                beatIdx < 4 -> 130.81
-                beatIdx < 8 -> 174.61
-                beatIdx < 12 -> 196.00
-                else -> 130.81
-            }
-            val bassEnv = Math.exp(-beatT * 3.5)
-            val bassVal = 0.32 * Math.sin(2.0 * Math.PI * bassF * t) * bassEnv
+            val bassEnv = Math.exp(-beatT * 4.0)
+            val bassVal = 0.30 * Math.sin(2.0 * Math.PI * 130.81 * t) * bassEnv
 
-            val noteF = notes[beatIdx]
-            val subBeat = ((beatT * 4) % 4).toInt()
-            val arpMult = when (subBeat) {
-                0 -> 1.0
-                1 -> 1.25
-                2 -> 1.5
-                else -> 1.25
-            }
-            val curF = noteF * arpMult
-            val subT = (beatT * 4) - (beatT * 4).toInt()
-            val melEnv = Math.exp(-subT * 6.0)
-            val melVal = 0.22 * Math.sin(2.0 * Math.PI * curF * t) * melEnv
+            val melEnv = Math.exp(-beatT * 5.0)
+            val melVal = 0.22 * Math.sin(2.0 * Math.PI * notes[beatIdx] * t) * melEnv
 
             var total = (tickVal + bassVal + melVal) * 0.75
-            if (t < 0.1) {
-                total *= (t / 0.1)
-            } else if (t > 14.8) {
-                total *= ((15.0 - t) / 0.2)
-            }
+            if (t < 0.05) total *= (t / 0.05)
+            else if (t > 2.95) total *= ((3.0 - t) / 0.05)
 
             val sample = (total * 32767.0).toInt().coerceIn(-32768, 32767)
             buffer[i] = sample.toShort()

@@ -46,6 +46,21 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
         private const val TAG = "KioskAdminAction"
     }
 
+    private data class MasterBoxParams(val secret: String?, val mac: String?, val slot: Int, val name: String?)
+
+    private fun extractMasterBoxParams(intent: Intent): MasterBoxParams = MasterBoxParams(
+        secret = intent.getStringExtra("secret") ?: intent.getStringExtra("setup_secret") ?: intent.getStringExtra("shared_secret"),
+        mac = intent.getStringExtra("esp32_mac") ?: intent.getStringExtra("mac") ?: intent.getStringExtra("box_mac"),
+        slot = intent.getIntExtra("slot", intent.getIntExtra("setup_slot", -1)),
+        name = intent.getStringExtra("name") ?: intent.getStringExtra("alias")
+    )
+
+    private fun rejectUnauthorized(context: Context, actionName: String, msg: String = "Unauthorized: Valid Admin PIN or Secret required.") {
+        Log.w(TAG, "Unauthorized attempt to trigger $actionName rejected.")
+        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+        setResultCode(android.app.Activity.RESULT_CANCELED)
+    }
+
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action ?: return
         Log.d(TAG, "Received admin action: $action")
@@ -53,9 +68,7 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
         when (action) {
             ACTION_ENABLE_ADB, "com.pisophone.kiosk.ACTION_ENABLE_ADB" -> {
                 if (!isAuthorized(context, intent)) {
-                    Log.w(TAG, "Unauthorized attempt to trigger ENABLE_ADB rejected.")
-                    Toast.makeText(context, "Unauthorized: Valid Admin PIN or Secret required.", Toast.LENGTH_SHORT).show()
-                    setResultCode(android.app.Activity.RESULT_CANCELED)
+                    rejectUnauthorized(context, "ENABLE_ADB")
                     return
                 }
                 Log.i(TAG, "Emergency Enable ADB broadcast received.")
@@ -66,9 +79,7 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
 
             ACTION_EMERGENCY_RECOVERY, "com.pisophone.kiosk.ACTION_EMERGENCY_RECOVERY" -> {
                 if (!isAuthorized(context, intent)) {
-                    Log.w(TAG, "Unauthorized attempt to trigger EMERGENCY_RECOVERY rejected.")
-                    Toast.makeText(context, "Unauthorized: Valid Admin PIN or Secret required.", Toast.LENGTH_SHORT).show()
-                    setResultCode(android.app.Activity.RESULT_CANCELED)
+                    rejectUnauthorized(context, "EMERGENCY_RECOVERY")
                     return
                 }
                 Log.i(TAG, "Emergency Full Recovery broadcast received.")
@@ -80,7 +91,7 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
 
             ACTION_EXIT_KIOSK, "com.pisophone.kiosk.ACTION_EXIT_KIOSK" -> {
                 if (!isAuthorized(context, intent)) {
-                    Log.w(TAG, "Unauthorized attempt to trigger EXIT_KIOSK rejected.")
+                    rejectUnauthorized(context, "EXIT_KIOSK")
                     return
                 }
                 Log.i(TAG, "Exit Kiosk command received.")
@@ -89,8 +100,7 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
 
             ACTION_OPEN_SETTINGS, "com.pisophone.kiosk.ACTION_OPEN_SETTINGS" -> {
                 if (!isAuthorized(context, intent)) {
-                    Log.w(TAG, "Unauthorized attempt to trigger OPEN_SETTINGS rejected.")
-                    Toast.makeText(context, "Unauthorized: Valid Admin PIN or Secret required.", Toast.LENGTH_SHORT).show()
+                    rejectUnauthorized(context, "OPEN_SETTINGS")
                     return
                 }
                 try {
@@ -214,7 +224,7 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                 setResultExtras(extras)
             }
 
-            ACTION_CONFIGURE_ESP32, "com.pisophone.kiosk.ACTION_CONFIGURE_ESP32" -> {
+            ACTION_CONFIGURE_ESP32 -> {
                 val isPaired = com.pisophone.kiosk.security.KioskActivationManager.isPairingCompleted(context) || com.pisophone.kiosk.security.KioskSecurity.isProvisioned(context)
                 val isSetupActive = com.pisophone.kiosk.security.KioskActivationManager.isSetupModeActive(context)
                 if ((isPaired || !isSetupActive) && !isAuthorized(context, intent)) {
@@ -224,15 +234,11 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                     return
                 }
 
-                val secret = intent.getStringExtra("secret") ?: intent.getStringExtra("setup_secret") ?: intent.getStringExtra("shared_secret")
-                val mac = intent.getStringExtra("esp32_mac") ?: intent.getStringExtra("mac") ?: intent.getStringExtra("box_mac")
-                val slot = intent.getIntExtra("slot", intent.getIntExtra("setup_slot", -1))
-                val name = intent.getStringExtra("name") ?: intent.getStringExtra("alias")
+                val params = extractMasterBoxParams(intent)
+                Log.i(TAG, "CONFIGURE_ESP32 received. Infusing Master MAC: '${params.mac}', Slot: ${params.slot}, SecretSet=${!params.secret.isNullOrBlank()}")
 
-                Log.i(TAG, "CONFIGURE_ESP32 received. Infusing Master MAC: '$mac', Slot: $slot, SecretSet=${!secret.isNullOrBlank()}")
-
-                if (!mac.isNullOrBlank() || slot > 0 || !secret.isNullOrBlank()) {
-                    KioskService.configureMasterBox(context, mac ?: "", slot, secret, name)
+                if (!params.mac.isNullOrBlank() || params.slot > 0 || !params.secret.isNullOrBlank()) {
+                    KioskService.configureMasterBox(context, params.mac ?: "", params.slot, params.secret, params.name)
                 }
 
                 val savedMac = com.pisophone.kiosk.security.KioskSecurity.getConfiguredEsp32Mac(context)
@@ -252,14 +258,11 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                 }
 
                 val key = intent.getStringExtra("key") ?: intent.getStringExtra("code") ?: "ACTIVATION_KEY"
-                val secret = intent.getStringExtra("secret") ?: intent.getStringExtra("setup_secret") ?: intent.getStringExtra("shared_secret")
-                val esp32Mac = intent.getStringExtra("esp32_mac") ?: intent.getStringExtra("mac") ?: intent.getStringExtra("box_mac")
-                val slot = intent.getIntExtra("slot", intent.getIntExtra("setup_slot", -1))
-                val name = intent.getStringExtra("name") ?: intent.getStringExtra("alias")
+                val params = extractMasterBoxParams(intent)
 
-                if (!esp32Mac.isNullOrBlank() || slot > 0 || !secret.isNullOrBlank()) {
-                    Log.i(TAG, "Infusing ESP32 Master params with activation: MAC '$esp32Mac', Slot $slot, SecretSet=${!secret.isNullOrBlank()}")
-                    KioskService.configureMasterBox(context, esp32Mac ?: "", slot, secret, name)
+                if (!params.mac.isNullOrBlank() || params.slot > 0 || !params.secret.isNullOrBlank()) {
+                    Log.i(TAG, "Infusing ESP32 Master params with activation: MAC '${params.mac}', Slot ${params.slot}, SecretSet=${!params.secret.isNullOrBlank()}")
+                    KioskService.configureMasterBox(context, params.mac ?: "", params.slot, params.secret, params.name)
                 }
 
                 Log.i(TAG, "Activation broadcast received with key: $key")

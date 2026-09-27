@@ -16,6 +16,7 @@ const int   DEFAULT_UNIVERSAL_COIN_PIN = 3;
 const int   DEFAULT_LED_PIN            = 8;
 const bool  DEFAULT_LED_ACTIVE_LOW     = false;
 const int   DEFAULT_RELAY_PIN          = 4;
+const bool  DEFAULT_RELAY_ACTIVE_LOW   = true;
 const int   DEFAULT_PORT               = 8080;
 const int   HARDWARE_RESET_PIN         = 2;
 const int   DEFAULT_MINUTES_PER_COIN   = 6;
@@ -38,7 +39,7 @@ int universalCoinPin = DEFAULT_UNIVERSAL_COIN_PIN;
 int ledPin           = DEFAULT_LED_PIN;
 bool ledActiveLow    = DEFAULT_LED_ACTIVE_LOW;
 int relayPin         = DEFAULT_RELAY_PIN;
-bool relayActiveLow  = false;
+bool relayActiveLow  = DEFAULT_RELAY_ACTIVE_LOW;
 
 String wifiSsid      = DEFAULT_SSID;
 String wifiPass      = DEFAULT_PASS;
@@ -109,66 +110,30 @@ bool parseDeviceEntry(const String& rawEntry, DeviceConfig& out) {
     String entry = rawEntry;
     entry.trim();
     if (entry.length() == 0) return false;
-    out.id = "";
-    out.ip = "";
-    out.name = "";
+    out.id = ""; out.ip = ""; out.name = "";
 
-    int pipe1 = entry.indexOf('|');
-    int pipe2 = (pipe1 != -1) ? entry.indexOf('|', pipe1 + 1) : -1;
+    int p1 = entry.indexOf('|');
+    int p2 = (p1 != -1) ? entry.indexOf('|', p1 + 1) : -1;
 
-    if (pipe1 != -1 && pipe2 != -1) {
-        String p1 = entry.substring(0, pipe1);
-        String p2 = entry.substring(pipe1 + 1, pipe2);
-        String p3 = entry.substring(pipe2 + 1);
-        p1.trim(); p2.trim(); p3.trim();
-
-        if (p1.indexOf('.') != -1 && p2.indexOf('.') == -1) {
-            out.ip = p1;
-            out.id = p2;
-            out.name = p3;
-        } else {
-            out.id = p1;
-            out.ip = p2;
-            out.name = p3;
-        }
-    } else if (pipe1 != -1) {
-        String p1 = entry.substring(0, pipe1);
-        String p2 = entry.substring(pipe1 + 1);
-        p1.trim(); p2.trim();
-
-        if (p2.indexOf('.') != -1) {
-            out.id = p1;
-            out.ip = p2;
-            out.name = "";
-        } else if (p1.indexOf('.') != -1) {
-            out.id = "";
-            out.ip = p1;
-            out.name = p2;
-        } else {
-            out.id = p1;
-            out.ip = p2;
-            out.name = "";
-        }
+    if (p1 != -1 && p2 != -1) {
+        String a = entry.substring(0, p1); a.trim();
+        String b = entry.substring(p1 + 1, p2); b.trim();
+        out.name = entry.substring(p2 + 1); out.name.trim();
+        if (a.indexOf('.') != -1 && b.indexOf('.') == -1) { out.ip = a; out.id = b; }
+        else { out.id = a; out.ip = b; }
+    } else if (p1 != -1) {
+        String a = entry.substring(0, p1); a.trim();
+        String b = entry.substring(p1 + 1); b.trim();
+        if (b.indexOf('.') != -1) { out.id = a; out.ip = b; }
+        else if (a.indexOf('.') != -1) { out.ip = a; out.name = b; }
+        else { out.id = a; out.ip = b; }
     } else {
-        if (entry.indexOf('.') != -1) {
-            out.id = "";
-            out.ip = entry;
-            out.name = "";
-        } else {
-            out.id = entry;
-            out.ip = "";
-            out.name = "";
-        }
+        if (entry.indexOf('.') != -1) out.ip = entry;
+        else out.id = entry;
     }
 
-    out.id.trim();
-    out.ip.trim();
-    out.name.trim();
-
-    if (out.ip.length() < 7 || out.ip.indexOf('.') == -1 || out.ip == "127.0.0.1" || out.ip == "0.0.0.0") {
-        return false;
-    }
-    return true;
+    out.id.trim(); out.ip.trim(); out.name.trim();
+    return !(out.ip.length() < 7 || out.ip.indexOf('.') == -1 || out.ip == "127.0.0.1" || out.ip == "0.0.0.0");
 }
 
 const char* const NVS_NAMESPACE       = "kiosk_cfg";
@@ -338,7 +303,7 @@ void loadAllConfig() {
     if (minutesPerCoin < 1) minutesPerCoin = 1;
     
     webPassword       = prefs.getString(NVS_KEY_ADMIN_PW, webPassword);
-    relayActiveLow    = prefs.getBool(NVS_KEY_RELAY_ACTIVE_LOW, false);
+    relayActiveLow    = prefs.getBool(NVS_KEY_RELAY_ACTIVE_LOW, DEFAULT_RELAY_ACTIVE_LOW);
     sharedSecret      = prefs.getString(NVS_KEY_SHARED_SECRET, "");
     if (sharedSecret.length() == 0) {
         sharedSecret = generateHighEntropySecret();

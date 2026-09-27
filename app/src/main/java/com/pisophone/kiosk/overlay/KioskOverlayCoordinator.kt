@@ -109,7 +109,7 @@ class KioskOverlayCoordinator(
                                 stateManager.appState.value = 1
                             }
                             stateManager.coinsInserted.value = 0
-                            stateManager.paymentTimeout.value = armingTimeoutSeconds
+                            stateManager.updatePaymentTimeoutFromMs(0L)
                             onArmSlot()
                         },
                         onDoneClick = { onFinishPayment() },

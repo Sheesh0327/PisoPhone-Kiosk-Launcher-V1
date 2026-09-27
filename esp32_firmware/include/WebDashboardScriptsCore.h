@@ -22,29 +22,26 @@ window.copyToClipboard = function(text, btnElement) {
     if (!text) return;
     const doFeedback = () => {
         if (btnElement) {
-            const origText = btnElement.innerText;
+            const orig = btnElement.innerText;
             btnElement.innerText = '✓ Copied!';
-            setTimeout(() => { btnElement.innerText = origText; }, 1800);
+            setTimeout(() => { btnElement.innerText = orig; }, 1800);
         }
     };
-    if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(text).then(doFeedback).catch(() => {
-            const ta = document.createElement('textarea');
-            ta.value = text;
-            document.body.appendChild(ta);
-            ta.select();
-            document.execCommand('copy');
-            document.body.removeChild(ta);
-            doFeedback();
-        });
-    } else {
+    const fallbackCopy = () => {
         const ta = document.createElement('textarea');
         ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
         document.body.appendChild(ta);
         ta.select();
-        document.execCommand('copy');
+        try { document.execCommand('copy'); } catch(e) {}
         document.body.removeChild(ta);
         doFeedback();
+    };
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(doFeedback).catch(fallbackCopy);
+    } else {
+        fallbackCopy();
     }
 };
 

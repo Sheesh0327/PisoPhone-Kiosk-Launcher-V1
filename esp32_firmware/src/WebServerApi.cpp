@@ -12,6 +12,13 @@
 #include <WiFi.h>
 #include <WebServer.h>
 
+static void setQuickTimeBanner(const String& icon, const String& text, int type = 0) {
+    const char* bg = (type == 0) ? "#fee2e2" : ((type == 1) ? "#fef3c7" : "#e8f5e9");
+    const char* fg = (type == 0) ? "#dc2626" : ((type == 1) ? "#b45309" : "#2e7d32");
+    const char* bd = (type == 0) ? "rgba(239,68,68,0.3)" : ((type == 1) ? "rgba(245,158,11,0.3)" : "rgba(16,185,129,0.3)");
+    quickTimeStatusMsg = "<div style='background:" + String(bg) + ";color:" + String(fg) + ";padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid " + String(bd) + ";'>" + icon + " " + text + "</div>";
+}
+
 void handleAddTime() {
     if (!checkAdminAuth()) return;
 
@@ -19,38 +26,38 @@ void handleAddTime() {
     targetIp.trim();
 
     if (!webServer.hasArg("add_minutes")) {
-        quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Missing minutes parameter.</div>";
+        setQuickTimeBanner("❌", "Missing minutes parameter.");
         redirectHome();
         return;
     }
     String minStr = webServer.arg("add_minutes");
     minStr.trim();
     if (minStr.length() == 0) {
-        quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Missing minutes value.</div>";
+        setQuickTimeBanner("❌", "Missing minutes value.");
         redirectHome();
         return;
     }
     for (size_t i = 0; i < minStr.length(); i++) {
         if (!isDigit(minStr[i])) {
-            quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Invalid minutes: Must be a positive integer.</div>";
+            setQuickTimeBanner("❌", "Invalid minutes: Must be a positive integer.");
             redirectHome();
             return;
         }
     }
     if (minStr.length() > 9) {
-        quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Value too large: Minutes value exceeds maximum limit.</div>";
+        setQuickTimeBanner("❌", "Value too large: Minutes value exceeds maximum limit.");
         redirectHome();
         return;
     }
     int64_t minutesVal = minStr.toInt();
     if (minutesVal <= 0) {
-        quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Minutes must be greater than zero.</div>";
+        setQuickTimeBanner("❌", "Minutes must be greater than zero.");
         redirectHome();
         return;
     }
     int64_t rawSeconds = minutesVal * 60LL;
     if (rawSeconds > 2147483647LL) {
-        quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Seconds overflow: Value exceeds protocol limits.</div>";
+        setQuickTimeBanner("❌", "Seconds overflow: Value exceeds protocol limits.");
         redirectHome();
         return;
     }
@@ -60,20 +67,20 @@ void handleAddTime() {
     AddTimeSummary summary = sendAddTime(signedSeconds, targetIp);
 
     if (summary.matchedRecipients == 0) {
-        quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ No matching target device found for " + targetIp + ".</div>";
+        setQuickTimeBanner("❌", "No matching target device found for " + targetIp + ".");
     } else if (summary.queuedRequests == 0) {
         if (summary.skippedInactive > 0) {
-            quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Adjustment Blocked: Target device " + targetIp + " is INACTIVE or UNLICENSED.</div>";
+            setQuickTimeBanner("❌", "Adjustment Blocked: Target device " + targetIp + " is INACTIVE or UNLICENSED.");
         } else if (summary.failedSubmissions > 0) {
-            quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Failed to queue adjustment: Auth queue full or network unavailable.</div>";
+            setQuickTimeBanner("❌", "Failed to queue adjustment: Auth queue full or network unavailable.");
         } else {
-            quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ No eligible devices found to adjust.</div>";
+            setQuickTimeBanner("❌", "No eligible devices found to adjust.");
         }
     } else {
         if (summary.skippedInactive > 0 || summary.failedSubmissions > 0) {
-            quickTimeStatusMsg = "<div style='background:#fef3c7;color:#b45309;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(245,158,11,0.3);'>⚠️ Adjustment queued: " + String(action == "subtract" ? "-" : "+") + String((long)minutesVal) + "m (" + String(summary.queuedRequests) + " queued, " + String(summary.skippedInactive) + " inactive skipped, " + String(summary.failedSubmissions) + " failed).</div>";
+            setQuickTimeBanner("⚠️", "Adjustment queued: " + String(action == "subtract" ? "-" : "+") + String((long)minutesVal) + "m (" + String(summary.queuedRequests) + " queued, " + String(summary.skippedInactive) + " inactive skipped, " + String(summary.failedSubmissions) + " failed).", 1);
         } else {
-            quickTimeStatusMsg = "<div style='background:#e8f5e9;color:#2e7d32;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(16,185,129,0.3);'>✅ Adjustment queued: " + String(action == "subtract" ? "-" : "+") + String((long)minutesVal) + "m for " + (targetIp == "ALL" ? "All Active Devices" : targetIp) + ".</div>";
+            setQuickTimeBanner("✅", "Adjustment queued: " + String(action == "subtract" ? "-" : "+") + String((long)minutesVal) + "m for " + (targetIp == "ALL" ? "All Active Devices" : targetIp) + ".", 2);
         }
     }
     redirectHome();

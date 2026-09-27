@@ -35,7 +35,8 @@ class KioskCreditNotifier(
         seconds: Int,
         amount: Double,
         operationKind: String,
-        snapshot: SessionSnapshot
+        snapshot: SessionSnapshot,
+        remainingMs: Long = 15000L
     ) {
         val isQuickAdd = (amount <= 0.0) || operationKind.equals("QUICK_ADJUST", ignoreCase = true)
         val pesoAmount = if (amount >= 1.0) amount.toInt() else 0
@@ -49,11 +50,11 @@ class KioskCreditNotifier(
         if (applied) {
             if (isQuickAdd) {
                 if (targetState == 2) {
-                    stateManager.paymentTimeout.value = 0
+                    stateManager.updatePaymentTimeoutFromMs(0L)
                 }
                 Log.d(TAG, "Quick Add adjustment credited: +${seconds}s (targetState=$targetState, rev=${snapshot.revision})")
             } else {
-                stateManager.paymentTimeout.value = armingTimeoutSeconds
+                stateManager.updatePaymentTimeoutFromMs(remainingMs)
                 if (stateManager.appState.value == 1 || stateManager.appState.value == 3) {
                     stateManager.coinsInserted.value += pesoAmount
                 } else if (stateManager.appState.value == 2) {

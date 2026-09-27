@@ -15,6 +15,7 @@ extern const int DEFAULT_UNIVERSAL_COIN_PIN;
 extern const int DEFAULT_LED_PIN;
 extern const bool DEFAULT_LED_ACTIVE_LOW;
 extern const int DEFAULT_RELAY_PIN;
+extern const bool DEFAULT_RELAY_ACTIVE_LOW;
 extern const int DEFAULT_PORT;
 extern const int HARDWARE_RESET_PIN;
 extern const int DEFAULT_MINUTES_PER_COIN;

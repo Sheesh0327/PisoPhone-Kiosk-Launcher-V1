@@ -99,18 +99,32 @@ void setRelayHardware(bool active) {
         active = false;
     }
 
+    uint8_t driveLevel = active ? (relayActiveLow ? LOW : HIGH) : (relayActiveLow ? HIGH : LOW);
+
+    // Primary configured relay pin
+    pinMode(relayPin, OUTPUT);
+    digitalWrite(relayPin, driveLevel);
+
+    // Mirror on alternative relay GPIO (supports both GPIO 4 and GPIO 5 wiring)
+    if (relayPin == 4) {
+        pinMode(5, OUTPUT);
+        digitalWrite(5, driveLevel);
+    } else if (relayPin == 5) {
+        pinMode(4, OUTPUT);
+        digitalWrite(4, driveLevel);
+    }
+
     if (active) {
-        pinMode(relayPin, OUTPUT);
-        digitalWrite(relayPin, relayActiveLow ? LOW : HIGH);
         if (!isRelayCurrentlyActive) {
             isRelayCurrentlyActive = true;
-            Serial.printf("[⚡ RELAY] Coin slot powered ON (Pin %d, Mode=OUTPUT, ActiveLow=%s).\n", relayPin, relayActiveLow ? "true" : "false");
+            Serial.printf("[⚡ RELAY] Coin slot powered ON (Pin %d / Mirrored, Level=%s, ActiveLow=%s).\n", 
+                          relayPin, driveLevel == LOW ? "LOW" : "HIGH", relayActiveLow ? "true" : "false");
         }
     } else {
-        pinMode(relayPin, INPUT);
         if (isRelayCurrentlyActive) {
             isRelayCurrentlyActive = false;
-            Serial.printf("[⚡ RELAY] Coin slot powered down into hi-Z standby (Pin %d, Mode=INPUT).\n", relayPin);
+            Serial.printf("[⚡ RELAY] Coin slot powered OFF (Pin %d / Mirrored, Level=%s, ActiveLow=%s).\n", 
+                          relayPin, driveLevel == LOW ? "LOW" : "HIGH", relayActiveLow ? "true" : "false");
         }
     }
 }
