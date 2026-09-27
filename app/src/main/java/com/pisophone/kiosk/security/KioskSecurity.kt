@@ -21,7 +21,6 @@ object KioskSecurity {
     private const val TAG = "KioskSecurity"
     
     const val DEFAULT_ESP32_IP: String = KioskConfigStore.DEFAULT_ESP32_IP
-    const val DEFAULT_SHARED_SECRET: String = KioskCryptoManager.DEFAULT_SHARED_SECRET
     const val DEFAULT_PIN: String = KioskConfigStore.DEFAULT_PIN
 
     fun getEncryptedPrefs(context: Context): SharedPreferences? =

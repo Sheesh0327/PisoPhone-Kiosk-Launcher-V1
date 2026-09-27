@@ -11,7 +11,6 @@
 const char* DEFAULT_SSID        = "AdminSetup";
 const char* DEFAULT_PASS        = "Admin@123";
 const char* DEFAULT_ADMIN_PW    = "admin";
-const char* MASTER_CRYPTO_SECRET = "PISOPHONE_HMAC_MASTER_KEY";
 
 const int   DEFAULT_UNIVERSAL_COIN_PIN = 3;
 const int   DEFAULT_LED_PIN            = 8;
@@ -49,7 +48,7 @@ String subnetMaskStr = "255.255.255.0";
 String dnsIpStr      = "192.168.1.1";
 String androidIps    = "";
 String webPassword   = DEFAULT_ADMIN_PW;
-String sharedSecret  = MASTER_CRYPTO_SECRET;
+String sharedSecret  = "";
 String macAddressStr = "";
 bool is_licensed     = false;
 int maxLicensedSlots = DEFAULT_MAX_SLOTS;
@@ -341,7 +340,7 @@ void loadAllConfig() {
     webPassword       = prefs.getString(NVS_KEY_ADMIN_PW, webPassword);
     relayActiveLow    = prefs.getBool(NVS_KEY_RELAY_ACTIVE_LOW, false);
     sharedSecret      = prefs.getString(NVS_KEY_SHARED_SECRET, "");
-    if (sharedSecret.length() == 0 || sharedSecret == MASTER_CRYPTO_SECRET) {
+    if (sharedSecret.length() == 0) {
         sharedSecret = generateHighEntropySecret();
         prefs.putString(NVS_KEY_SHARED_SECRET, sharedSecret);
         Serial.println("[🔐 SECURITY] Generated fresh 256-bit high-entropy shared secret key.");

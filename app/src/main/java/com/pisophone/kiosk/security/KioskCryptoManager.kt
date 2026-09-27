@@ -25,9 +25,6 @@ object KioskCryptoManager {
     private const val CUSTOM_KEYSTORE_ALIAS = "kiosk_custom_secret_key"
     private const val KEY_CUSTOM_ENCRYPTED_SECRET = "custom_encrypted_device_secret"
     private const val KEY_DEVICE_SECRET = "device_crypto_secret"
-    private const val KEY_SECRET_EXPLICITLY_PROVISIONED = "kiosk_secret_explicitly_provisioned"
-    
-    const val DEFAULT_SHARED_SECRET = "PISOPHONE_HMAC_MASTER_KEY"
 
     fun getCustomKeystoreEncryptedSecret(prefs: SharedPreferences): String? {
         val encryptedBase64 = prefs.getString(KEY_CUSTOM_ENCRYPTED_SECRET, null) ?: return null
@@ -83,10 +80,6 @@ object KioskCryptoManager {
 
     fun getSharedSecret(context: Context): String {
         val prefs = KioskConfigStore.getPrefs(context)
-        if (!prefs.getBoolean(KEY_SECRET_EXPLICITLY_PROVISIONED, false)) {
-            return DEFAULT_SHARED_SECRET
-        }
-
         val encryptedPrefs = KioskConfigStore.getEncryptedPrefs(context)
         if (encryptedPrefs != null) {
             try { 
@@ -96,35 +89,34 @@ object KioskCryptoManager {
         }
         
         var secret = getCustomKeystoreEncryptedSecret(prefs)
-        if (secret.isNullOrBlank()) {
-            secret = null
+        if (!secret.isNullOrBlank()) {
+            return secret
         }
         
-        if (secret == null && prefs.contains(KEY_DEVICE_SECRET)) {
+        if (prefs.contains(KEY_DEVICE_SECRET)) {
             val oldPlainSecret = prefs.getString(KEY_DEVICE_SECRET, null)
             if (!oldPlainSecret.isNullOrBlank()) {
                 val keystoreSuccess = setCustomKeystoreEncryptedSecret(prefs, oldPlainSecret)
                 if (keystoreSuccess) {
                     prefs.edit().remove(KEY_DEVICE_SECRET).apply()
                 }
-                secret = oldPlainSecret
+                return oldPlainSecret
             }
         }
         
-        if (secret == null) {
-            val randomBytes = ByteArray(32)
-            SecureRandom().nextBytes(randomBytes)
-            secret = randomBytes.joinToString("") { "%02x".format(it) }
-            
-            if (encryptedPrefs != null) {
-                try {
-                    encryptedPrefs.edit().putString(KEY_DEVICE_SECRET, secret).apply()
-                    return secret
-                } catch (e: Exception) { Log.e(TAG, "Encrypted prefs write failed: ${e.message}") }
-            }
-            setCustomKeystoreEncryptedSecret(prefs, secret)
+        // Generate a fresh 256-bit high-entropy secret if none exists yet
+        val randomBytes = ByteArray(32)
+        SecureRandom().nextBytes(randomBytes)
+        val newSecret = randomBytes.joinToString("") { "%02x".format(it) }
+        
+        if (encryptedPrefs != null) {
+            try {
+                encryptedPrefs.edit().putString(KEY_DEVICE_SECRET, newSecret).apply()
+                return newSecret
+            } catch (e: Exception) { Log.e(TAG, "Encrypted prefs write failed: ${e.message}") }
         }
-        return secret
+        setCustomKeystoreEncryptedSecret(prefs, newSecret)
+        return newSecret
     }
 
     fun setSharedSecret(context: Context, newSecret: String) {
@@ -143,7 +135,6 @@ object KioskCryptoManager {
         } 
         
         val prefs = KioskConfigStore.getPrefs(context)
-        prefs.edit().putBoolean(KEY_SECRET_EXPLICITLY_PROVISIONED, true).apply()
         if (!successWithEncryptedPrefs) {
             val keystoreSuccess = setCustomKeystoreEncryptedSecret(prefs, trimmed)
             if (!keystoreSuccess) {

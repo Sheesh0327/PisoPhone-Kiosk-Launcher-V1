@@ -10,7 +10,6 @@
 extern const char* DEFAULT_SSID;
 extern const char* DEFAULT_PASS;
 extern const char* DEFAULT_ADMIN_PW;
-extern const char* MASTER_CRYPTO_SECRET;
 
 extern const int DEFAULT_UNIVERSAL_COIN_PIN;
 extern const int DEFAULT_LED_PIN;

@@ -11,7 +11,6 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HARDWARE Admin Console</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
     <style>
 {PORTAL_STYLES}
     </style>

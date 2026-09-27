@@ -82,34 +82,6 @@ const char PORTAL_MODALS_HTML[] PROGMEM = R"HTML(
     </div>
 </div>
 
-<!-- QR Code Handshake Pairing Modal -->
-<div id="qr_pair_modal" class="modal-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 10000; align-items: center; justify-content: center; padding: 16px;">
-    <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; max-width: 440px; width: 100%; box-shadow: var(--card-shadow); text-align: center;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-            <h3 style="margin: 0; font-size: 18px; font-weight: 700;">📱 Pair Phone to Slot #<span id="qr_slot_title">1</span></h3>
-            <button type="button" onclick="closePairingQrModal()" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-muted);">&times;</button>
-        </div>
-        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
-            Open the PisoPhone Kiosk App on your phone and scan this QR code to initialize pairing and exchange shared cryptographic keys.
-        </p>
-        
-        <div style="background: white; padding: 16px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin-bottom: 14px;">
-            <canvas id="qr_canvas" width="260" height="260" style="display: block; margin: 0 auto;"></canvas>
-        </div>
-        
-        <div id="qr_fallback_text" style="display: none; font-family: monospace; font-size: 11px; word-break: break-all; color: var(--primary); margin-bottom: 12px;"></div>
-
-        <div style="background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px; font-size: 12px; text-align: left; margin-bottom: 16px;">
-            <div style="display: flex; justify-content: space-between;">
-                <span style="color: var(--text-muted);">Cabinet IP:</span>
-                <span id="qr_modal_ip" style="font-family: monospace; font-weight: 600;">{IP_ADDRESS}</span>
-            </div>
-        </div>
-
-        <button type="button" class="btn btn-outline" style="width: 100%;" onclick="closePairingQrModal()">Done</button>
-    </div>
-</div>
-
 <!-- WebUSB 1-Click Provisioning Modal -->
 <div id="provision_modal" class="modal-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 10000; align-items: center; justify-content: center; padding: 16px;">
     <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; max-width: 480px; width: 100%; box-shadow: var(--card-shadow);">
