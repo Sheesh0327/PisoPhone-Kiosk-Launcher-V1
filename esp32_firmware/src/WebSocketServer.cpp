@@ -49,6 +49,20 @@ void processWebSocketServer() {
             }
             reqPath.trim();
 
+            if (reqPath.startsWith("/ws/controller")) {
+                if (handleControllerWebSocketHandshake(newClient, request, secKey)) {
+                    return;
+                }
+                return;
+            }
+
+            if (!reqPath.startsWith("/ws/arm") && !reqPath.startsWith("/ws/coinslot")) {
+                Serial.printf("[-] WS Rejected: Invalid request path '%s' from IP '%s'\n", reqPath.c_str(), newClient.remoteIP().toString().c_str());
+                newClient.print("HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n\r\nNot Found");
+                newClient.stop();
+                return;
+            }
+
             if (secKey.length() == 0) {
                 newClient.print("HTTP/1.1 400 Bad Request\r\n\r\nMissing Sec-WebSocket-Key");
                 newClient.stop();
