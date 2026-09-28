@@ -88,10 +88,11 @@ class Esp32DirectPairingUnitTest {
             coinAmount: Int,
             pricePerCoin: Double,
             boxInstallationEpoch: Long,
-            phonePairingEpoch: Long
+            phonePairingEpoch: Long,
+            remainingMs: Long
         ): com.pisophone.kiosk.repository.PaymentResult = com.pisophone.kiosk.repository.PaymentResult.APPLIED
         override fun onSlotBusy() {}
-        override fun onArmSuccess() {}
+        override fun onArmSuccess(remainingMs: Long) {}
         override fun onSlotWarning(daysLeft: Int, expiresAt: Long, slotNum: Int, message: String) {}
         override fun onSlotLockdown(reason: String, slotNum: Int, expiresAt: Long) {}
         override fun onSlotRestored(slotNum: Int) {}

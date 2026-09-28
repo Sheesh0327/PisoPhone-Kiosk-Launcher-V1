@@ -1,6 +1,5 @@
 #include "WebSocketServer.h"
 #include "CoinSlotManager.h"
-#include "ControllerWebSocket.h"
 #include "PaymentQueueManager.h"
 #include "WebServerModule.h"
 #include "Config.h"
@@ -48,13 +47,6 @@ void processWebSocketServer() {
                 reqPath = (qMark != -1) ? fullUri.substring(0, qMark) : fullUri;
             }
             reqPath.trim();
-
-            if (reqPath.startsWith("/ws/controller")) {
-                if (handleControllerWebSocketHandshake(newClient, request, secKey)) {
-                    return;
-                }
-                return;
-            }
 
             if (!reqPath.startsWith("/ws/arm") && !reqPath.startsWith("/ws/coinslot")) {
                 Serial.printf("[-] WS Rejected: Invalid request path '%s' from IP '%s'\n", reqPath.c_str(), newClient.remoteIP().toString().c_str());
@@ -245,9 +237,6 @@ void processWebSocketServer() {
             }
         }
     }
-
-    // Process active Controller WebSocket connection
-    processControllerWebSocket();
 }
 
 void processSerialCli() {

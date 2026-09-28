@@ -20,7 +20,8 @@ class KioskSessionSupervisor(
     private val onFinishPayment: () -> Unit,
     private val onCancelPayment: () -> Unit = {},
     private val onCloseSession: (Boolean) -> Unit,
-    private val onCheckBatteryAlerts: () -> Unit
+    private val onCheckBatteryAlerts: () -> Unit,
+    private val onPeriodicHealthCheck: () -> Unit = {}
 ) {
     companion object {
         private const val TAG = "KioskSessionSupervisor"
@@ -29,6 +30,7 @@ class KioskSessionSupervisor(
     private var timerJob: Job? = null
     @Volatile
     private var lastTickMonotonicMs: Long = 0L
+    private var tickCounter: Long = 0L
 
     fun isStalled(maxLagMs: Long = 5000L): Boolean {
         val last = lastTickMonotonicMs
@@ -57,18 +59,29 @@ class KioskSessionSupervisor(
                     if (curState == 1 || curState == 3) {
                         val deadline = stateManager.paymentTimeoutDeadlineMs.value
                         val nowMonotonic = android.os.SystemClock.elapsedRealtime()
-                        val remainingSec = if (deadline > 0L) {
-                            maxOf(0, Math.ceil((deadline - nowMonotonic) / 1000.0).toInt())
+                        if (deadline > 0L) {
+                            val remainingSec = maxOf(0, Math.ceil((deadline - nowMonotonic) / 1000.0).toInt())
+                            stateManager.paymentTimeout.value = remainingSec
+                            if (nowMonotonic >= deadline) {
+                                stateManager.paymentTimeoutDeadlineMs.value = 0L
+                                if (stateManager.coinsInserted.value > 0) {
+                                    onFinishPayment()
+                                } else {
+                                    onCancelPayment()
+                                }
+                            }
                         } else {
-                            0
-                        }
-                        stateManager.paymentTimeout.value = remainingSec
-                        if (deadline > 0L && nowMonotonic >= deadline) {
-                            stateManager.paymentTimeoutDeadlineMs.value = 0L
-                            if (stateManager.coinsInserted.value > 0) {
-                                onFinishPayment()
-                            } else {
-                                onCancelPayment()
+                            val curTimeout = stateManager.paymentTimeout.value
+                            if (curTimeout > 0) {
+                                val remainingSec = maxOf(0, curTimeout - 1)
+                                stateManager.paymentTimeout.value = remainingSec
+                                if (remainingSec <= 0) {
+                                    if (stateManager.coinsInserted.value > 0) {
+                                        onFinishPayment()
+                                    } else {
+                                        onCancelPayment()
+                                    }
+                                }
                             }
                         }
                     }
@@ -140,6 +153,10 @@ class KioskSessionSupervisor(
                     }
 
                     onCheckBatteryAlerts()
+                    tickCounter++
+                    if (tickCounter % 10L == 0L) {
+                        onPeriodicHealthCheck()
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Exception in timer loop: ${e.message}")
                 }

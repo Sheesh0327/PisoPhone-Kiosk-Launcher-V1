@@ -3,7 +3,9 @@ package com.pisophone.kiosk.audio
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioTrack
+import android.media.ToneGenerator
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -15,7 +17,7 @@ import kotlinx.coroutines.launch
 
 /**
  * Handles synthesized tone generation, PCM audio playback, coin sound effects,
- * and loopable kiosk waiting music.
+ * and loopable kiosk waiting music efficiently with lazy initialization.
  */
 class KioskSoundSynthesizer(
     private val context: Context,
@@ -23,69 +25,81 @@ class KioskSoundSynthesizer(
 ) {
     companion object {
         private const val TAG = "KioskSoundSynthesizer"
+        private const val SAMPLE_RATE = 22050 // Lower sample rate (22.05kHz) saves 50% RAM while maintaining crisp audio quality
     }
 
     private var coinAudioTrack: AudioTrack? = null
     private var waitingMusicTrack: AudioTrack? = null
+    private var toneGenerator: ToneGenerator? = null
     @Volatile private var isWaitingMusicDesired = false
     private var waitingMusicJob: Job? = null
     private val audioLock = Any()
     private var precomputedWaitingBuffer: ShortArray? = null
 
     fun initAudioEngine() {
-        scope.launch(Dispatchers.Default) {
-            precomputedWaitingBuffer = generateWaitingMusicBuffer()
-            initCoinAudioTrack()
+        // Lightweight lazy initialization: allocate ToneGenerator only
+        scope.launch(Dispatchers.IO) {
+            try {
+                toneGenerator = ToneGenerator(AudioManager.STREAM_MUSIC, 80)
+            } catch (e: Exception) {
+                Log.w(TAG, "ToneGenerator unavailable: ${e.message}")
+            }
         }
     }
 
-    private fun initCoinAudioTrack() {
-        try {
-            val sampleRate = 44100
-            val durationSec = 0.38
-            val numSamples = (durationSec * sampleRate).toInt()
-            val buffer = ShortArray(numSamples)
-            val splitSample = (0.085 * sampleRate).toInt()
-            for (i in 0 until numSamples) {
-                val t = i.toDouble() / sampleRate.toDouble()
-                val valSample: Double
-                val env: Double
-                if (i < splitSample) {
-                    val f = 987.77 // B5
-                    env = 1.0 - (t / 0.085) * 0.15
-                    valSample = 0.7 * Math.sin(2.0 * Math.PI * f * t) + 0.25 * Math.sin(4.0 * Math.PI * f * t)
-                } else {
-                    val f = 1318.51 // E6
-                    val t2 = t - 0.085
-                    env = Math.exp(-t2 * 8.5)
-                    valSample = 0.75 * Math.sin(2.0 * Math.PI * f * t) + 0.2 * Math.sin(4.0 * Math.PI * f * t) + 0.1 * Math.sin(6.0 * Math.PI * f * t)
+    private fun getOrCreateCoinAudioTrack(): AudioTrack? {
+        if (coinAudioTrack != null) return coinAudioTrack
+        synchronized(audioLock) {
+            if (coinAudioTrack != null) return coinAudioTrack
+            try {
+                val sampleRate = SAMPLE_RATE
+                val durationSec = 0.35
+                val numSamples = (durationSec * sampleRate).toInt()
+                val buffer = ShortArray(numSamples)
+                val splitSample = (0.085 * sampleRate).toInt()
+                for (i in 0 until numSamples) {
+                    val t = i.toDouble() / sampleRate.toDouble()
+                    val valSample: Double
+                    val env: Double
+                    if (i < splitSample) {
+                        val f = 987.77 // B5
+                        env = 1.0 - (t / 0.085) * 0.15
+                        valSample = 0.7 * Math.sin(2.0 * Math.PI * f * t) + 0.25 * Math.sin(4.0 * Math.PI * f * t)
+                    } else {
+                        val f = 1318.51 // E6
+                        val t2 = t - 0.085
+                        env = Math.exp(-t2 * 8.5)
+                        valSample = 0.75 * Math.sin(2.0 * Math.PI * f * t) + 0.2 * Math.sin(4.0 * Math.PI * f * t)
+                    }
+                    val sample = (valSample * env * 32767.0 * 0.88).toInt().coerceIn(-32768, 32767)
+                    buffer[i] = sample.toShort()
                 }
-                val sample = (valSample * env * 32767.0 * 0.88).toInt().coerceIn(-32768, 32767)
-                buffer[i] = sample.toShort()
+                val audioAttributes = AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+                val audioFormat = AudioFormat.Builder()
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .setSampleRate(sampleRate)
+                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                    .build()
+                val track = AudioTrack.Builder()
+                    .setAudioAttributes(audioAttributes)
+                    .setAudioFormat(audioFormat)
+                    .setBufferSizeInBytes(buffer.size * 2)
+                    .setTransferMode(AudioTrack.MODE_STATIC)
+                    .build()
+                track.write(buffer, 0, buffer.size)
+                coinAudioTrack = track
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to create coin audio track", e)
             }
-            val audioAttributes = AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build()
-            val audioFormat = AudioFormat.Builder()
-                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                .setSampleRate(sampleRate)
-                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                .build()
-            coinAudioTrack = AudioTrack.Builder()
-                .setAudioAttributes(audioAttributes)
-                .setAudioFormat(audioFormat)
-                .setBufferSizeInBytes(buffer.size * 2)
-                .setTransferMode(AudioTrack.MODE_STATIC)
-                .build()
-            coinAudioTrack?.write(buffer, 0, buffer.size)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to pre-initialize coin audio track", e)
         }
+        return coinAudioTrack
     }
 
     private fun generateWaitingMusicBuffer(): ShortArray {
-        val sampleRate = 44100
+        val sampleRate = SAMPLE_RATE
         val loopDurationSec = 3.0
         val totalSamples = (loopDurationSec * sampleRate).toInt()
         val buffer = ShortArray(totalSamples)
@@ -119,7 +133,8 @@ class KioskSoundSynthesizer(
         scope.launch(Dispatchers.IO) {
             HardwareFeedback.triggerShortHaptic(context, 120L)
             try {
-                coinAudioTrack?.let {
+                val track = getOrCreateCoinAudioTrack()
+                track?.let {
                     if (it.state == AudioTrack.STATE_INITIALIZED) {
                         it.stop()
                         it.reloadStaticData()
@@ -135,16 +150,20 @@ class KioskSoundSynthesizer(
     fun playSynthesizedTone(freqHz: Int, durationMs: Int) {
         scope.launch(Dispatchers.IO) {
             try {
-                val sampleRate = 44100
-                val numSamples = (sampleRate * (durationMs / 1000.0)).toInt()
-                val buffer = ShortArray(numSamples)
-                for (i in 0 until numSamples) {
-                    val angle = 2.0 * Math.PI * i / (sampleRate.toDouble() / freqHz)
-                    val decay = 1.0 - (i.toDouble() / numSamples.toDouble())
-                    buffer[i] = (Math.sin(angle) * 32767 * decay * 0.7).toInt().toShort()
+                toneGenerator?.startTone(ToneGenerator.TONE_PROP_BEEP, durationMs) ?: run {
+                    val sampleRate = SAMPLE_RATE
+                    val numSamples = (sampleRate * (durationMs / 1000.0)).toInt()
+                    val buffer = ShortArray(numSamples)
+                    for (i in 0 until numSamples) {
+                        val angle = 2.0 * Math.PI * i / (sampleRate.toDouble() / freqHz)
+                        val decay = 1.0 - (i.toDouble() / numSamples.toDouble())
+                        buffer[i] = (Math.sin(angle) * 32767 * decay * 0.7).toInt().toShort()
+                    }
+                    playPcmBuffer(buffer, sampleRate, durationMs)
                 }
-                playPcmBuffer(buffer, sampleRate, durationMs)
-            } catch (e: Exception) {}
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to play synthesized tone: ${e.message}")
+            }
         }
     }
 
@@ -191,7 +210,7 @@ class KioskSoundSynthesizer(
                 if (!isWaitingMusicDesired) return@launch
 
                 try {
-                    val sampleRate = 44100
+                    val sampleRate = SAMPLE_RATE
                     val audioAttributes = AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_MEDIA)
                         .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
@@ -212,7 +231,7 @@ class KioskSoundSynthesizer(
 
                     track.write(buffer, 0, buffer.size)
                     track.setLoopPoints(0, buffer.size, -1)
-                    
+
                     if (isWaitingMusicDesired && !isTtsActive()) {
                         track.play()
                         waitingMusicTrack = track
@@ -290,18 +309,20 @@ class KioskSoundSynthesizer(
     fun playAnnoyingLowBatteryTone() {
         scope.launch(Dispatchers.IO) {
             try {
-                val sampleRate = 44100
-                val durationSec = 0.45
-                val numSamples = (sampleRate * durationSec).toInt()
-                val buffer = ShortArray(numSamples)
-                for (i in 0 until numSamples) {
-                    val t = i.toDouble() / sampleRate
-                    val freq = if ((t * 9).toInt() % 2 == 0) 880.0 else 1174.66
-                    val decay = 1.0 - (t / durationSec) * 0.2
-                    val sample = (Math.sin(2.0 * Math.PI * freq * t) * 32767 * decay * 0.85).toInt().coerceIn(-32768, 32767)
-                    buffer[i] = sample.toShort()
+                toneGenerator?.startTone(ToneGenerator.TONE_CDMA_NETWORK_BUSY, 400) ?: run {
+                    val sampleRate = SAMPLE_RATE
+                    val durationSec = 0.45
+                    val numSamples = (sampleRate * durationSec).toInt()
+                    val buffer = ShortArray(numSamples)
+                    for (i in 0 until numSamples) {
+                        val t = i.toDouble() / sampleRate
+                        val freq = if ((t * 9).toInt() % 2 == 0) 880.0 else 1174.66
+                        val decay = 1.0 - (t / durationSec) * 0.2
+                        val sample = (Math.sin(2.0 * Math.PI * freq * t) * 32767 * decay * 0.85).toInt().coerceIn(-32768, 32767)
+                        buffer[i] = sample.toShort()
+                    }
+                    playPcmBuffer(buffer, sampleRate, (durationSec * 1000).toInt())
                 }
-                playPcmBuffer(buffer, sampleRate, (durationSec * 1000).toInt())
             } catch (e: Exception) {}
         }
     }
@@ -309,18 +330,20 @@ class KioskSoundSynthesizer(
     fun playHighBatteryAttentionTone() {
         scope.launch(Dispatchers.IO) {
             try {
-                val sampleRate = 44100
-                val durationSec = 0.4
-                val numSamples = (sampleRate * durationSec).toInt()
-                val buffer = ShortArray(numSamples)
-                for (i in 0 until numSamples) {
-                    val t = i.toDouble() / sampleRate
-                    val freq = if (t < 0.2) 1318.51 else 1567.98
-                    val env = 1.0 - (t / durationSec) * 0.15
-                    val sample = (Math.sin(2.0 * Math.PI * freq * t) * 32767 * env * 0.75).toInt().coerceIn(-32768, 32767)
-                    buffer[i] = sample.toShort()
+                toneGenerator?.startTone(ToneGenerator.TONE_PROP_ACK, 350) ?: run {
+                    val sampleRate = SAMPLE_RATE
+                    val durationSec = 0.4
+                    val numSamples = (sampleRate * durationSec).toInt()
+                    val buffer = ShortArray(numSamples)
+                    for (i in 0 until numSamples) {
+                        val t = i.toDouble() / sampleRate
+                        val freq = if (t < 0.2) 1318.51 else 1567.98
+                        val env = 1.0 - (t / durationSec) * 0.15
+                        val sample = (Math.sin(2.0 * Math.PI * freq * t) * 32767 * env * 0.75).toInt().coerceIn(-32768, 32767)
+                        buffer[i] = sample.toShort()
+                    }
+                    playPcmBuffer(buffer, sampleRate, (durationSec * 1000).toInt())
                 }
-                playPcmBuffer(buffer, sampleRate, (durationSec * 1000).toInt())
             } catch (e: Exception) {}
         }
     }
@@ -329,6 +352,9 @@ class KioskSoundSynthesizer(
         stopWaitingMusic()
         try {
             coinAudioTrack?.release()
+            toneGenerator?.release()
         } catch (e: Exception) {}
+        coinAudioTrack = null
+        toneGenerator = null
     }
 }

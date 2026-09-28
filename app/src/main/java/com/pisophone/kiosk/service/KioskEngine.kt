@@ -14,7 +14,6 @@ import com.pisophone.kiosk.repository.PaymentRepository
 import com.pisophone.kiosk.repository.PaymentResult
 import com.pisophone.kiosk.security.KioskActivationManager
 import com.pisophone.kiosk.security.KioskSecurity
-import com.pisophone.kiosk.server.KioskHttpServer
 import com.pisophone.kiosk.system.KioskSystemMonitor
 import com.pisophone.kiosk.system.KioskSystemMonitorDelegate
 import kotlinx.coroutines.CoroutineScope
@@ -36,7 +35,6 @@ class KioskEngine(
     companion object {
         private const val TAG = "KioskEngine"
         private const val ARMING_TIMEOUT_SECONDS = 15
-        private const val SERVER_PORT = 8080
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -162,20 +160,7 @@ class KioskEngine(
         delegate = esp32Coordinator
     )
 
-    internal val serverCoordinator = KioskServerCoordinator(
-        context = context,
-        stateManager = stateManager,
-        coinEventRepo = coinEventRepo,
-        paymentRepo = paymentRepo,
-        getSecretKey = { KioskSecurity.getSharedSecret(context) },
-        getRealTimeBatteryInfo = { systemMonitor.getRealTimeBatteryInfo() },
-        getAudioManager = { audioManager },
-        onCreditPayment = ::creditPayment,
-        onDeductPayment = ::deductPayment,
-        isReady = { isInitialized.get() }
-    )
-
-    private val supervisor = KioskSessionSupervisor(
+    private val supervisor: KioskSessionSupervisor = KioskSessionSupervisor(
         context = context,
         scope = scope,
         stateManager = stateManager,
@@ -184,10 +169,11 @@ class KioskEngine(
         onFinishPayment = { finishPayment() },
         onCancelPayment = { cancelPayment() },
         onCloseSession = { closeSession(it) },
-        onCheckBatteryAlerts = { systemMonitor.checkPeriodicBatteryAlerts() }
+        onCheckBatteryAlerts = { systemMonitor.checkPeriodicBatteryAlerts() },
+        onPeriodicHealthCheck = { healthMonitor.performPeriodicCheck() }
     )
 
-    private val healthMonitor = KioskEngineHealthMonitor(
+    private val healthMonitor: KioskEngineHealthMonitor = KioskEngineHealthMonitor(
         scope = scope,
         stateManager = stateManager,
         paymentRepo = paymentRepo,
@@ -195,7 +181,6 @@ class KioskEngine(
         supervisor = supervisor
     )
 
-    private var nanoServer: KioskHttpServer? = null
     private var slotBusyJob: Job? = null
     private var engineStartTimeMs = 0L
 
@@ -207,7 +192,7 @@ class KioskEngine(
                 stateManager.restoreState()
                 paymentRepo.migrateAndInitialize(context)
                 isInitialized.set(true)
-                Log.i(TAG, "Initialization complete. Payment endpoints are now available.")
+                Log.i(TAG, "Initialization complete. Direct ESP32 communication active.")
 
                 audioManager.initAudioEngine()
 
@@ -222,8 +207,6 @@ class KioskEngine(
                 Handler(Looper.getMainLooper()).post {
                     overlayCoordinator.setupOverlay()
                 }
-
-                ensureHttpServerRunning()
 
                 esp32Manager.sendDirectPairingRequest()
                 esp32Manager.startHeartbeatLoop { stateManager.deviceIp.value }
@@ -246,28 +229,6 @@ class KioskEngine(
                     audioManager.stopWaitingMusic()
                 }
             }
-        }
-    }
-
-    @Synchronized
-    fun ensureHttpServerRunning(): Boolean {
-        if (nanoServer?.isAlive == true) {
-            val healthy = healthMonitor.checkHttpLoopbackHealth(SERVER_PORT)
-            if (healthy) return true
-            Log.w(TAG, "NanoHTTPD is alive but loopback health probe failed. Rebuilding listener...")
-        }
-        try {
-            nanoServer?.stop()
-        } catch (e: Exception) {}
-        return try {
-            val server = KioskHttpServer(context, SERVER_PORT, serverCoordinator)
-            server.start(fi.iki.elonen.NanoHTTPD.SOCKET_READ_TIMEOUT, false)
-            nanoServer = server
-            Log.i(TAG, "NanoHTTPD HTTP server successfully started/repaired on port $SERVER_PORT")
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start/repair NanoHTTPD server: ${e.message}")
-            false
         }
     }
 
@@ -387,7 +348,6 @@ class KioskEngine(
         systemMonitor.shutdown()
         esp32Manager.shutdown()
         audioManager.shutdown()
-        nanoServer?.stop()
         overlayCoordinator.remove()
     }
 }

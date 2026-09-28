@@ -1,7 +1,6 @@
 #include "PaymentQueueManager.h"
 #include "CoinSlotManager.h"
 #include "HardwareManager.h"
-#include "ControllerWebSocket.h"
 #include "DeviceNetwork.h"
 #include "DeviceManager.h"
 #include "Config.h"
@@ -121,9 +120,7 @@ static void clearQueueSlotLocked(int index) {
 }
 
 static void dispatchPaymentRecord(const PaymentRecord& rec) {
-    if (rec.ownerType == 2) {
-        sendControllerPaymentEvent(String(rec.targetId), String(rec.txId), rec.pulses);
-    } else if (rec.ownerType == 1) {
+    if (rec.ownerType == 1 || rec.ownerType == 0) {
         retryPhonePayment(String(rec.targetId), rec.pulses, rec.creditSeconds, String(rec.txId), rec.opKind, rec.boxInstallationEpoch, rec.phonePairingEpoch);
     }
 }
@@ -616,31 +613,6 @@ bool acknowledgePhonePayment(
     recordMatchDeductionCommitted(txId);
     recordMatchCreditCommitted(txId);
     return true;
-}
-
-bool acknowledgeControllerPayment(const String& sessionId, const String& txId) {
-    return acknowledgeMatchingPayment(txId, &sessionId, 2);
-}
-
-void dispatchPendingControllerPayments(const String& sessionId) {
-    if (sessionId.length() == 0) return;
-
-    for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
-        PaymentRecord rec;
-        bool matches = false;
-        lockQueue();
-        if (paymentSlotUsed[i] && paymentSlotPersisted[i] && paymentQueue[i].ownerType == 2 &&
-            String(paymentQueue[i].targetId) == sessionId) {
-            rec = paymentQueue[i];
-            lastDispatchMs[i] = millis();
-            matches = true;
-        }
-        unlockQueue();
-
-        if (matches) {
-            sendControllerPaymentEvent(sessionId, String(rec.txId), rec.pulses);
-        }
-    }
 }
 
 void processPendingPaymentRetries() {

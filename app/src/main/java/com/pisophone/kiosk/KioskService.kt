@@ -212,8 +212,6 @@ class KioskService : Service() {
 
     fun isOverlayHealthy(): Boolean = engine?.overlayCoordinator?.isOverlayHealthy() ?: false
 
-    fun ensureHttpServerRunning(): Boolean = engine?.ensureHttpServerRunning() ?: false
-
     fun setupOverlay() {
         engine?.overlayCoordinator?.setupOverlay()
     }

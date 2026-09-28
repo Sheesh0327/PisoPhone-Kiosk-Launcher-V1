@@ -15,8 +15,4 @@ void handleApiSlotCloudSync();
 void handleApiStatus();
 void handleIdentify();
 
-void handleCoinslotActivate();
-void handleCoinslotStatus();
-void handleCoinslotDeactivate();
-
 #endif // WEB_SERVER_API_H

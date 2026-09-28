@@ -79,7 +79,6 @@ bool cancelPaymentRecord(const String& txId);
 
 #include "MatchSettlementManager.h"
 
-void dispatchPendingControllerPayments(const String& sessionId);
 void processPendingPaymentRetries();
 
 #endif // PAYMENT_QUEUE_MANAGER_H

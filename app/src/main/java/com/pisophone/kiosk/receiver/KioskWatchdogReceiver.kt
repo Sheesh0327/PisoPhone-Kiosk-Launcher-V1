@@ -66,28 +66,11 @@ class KioskWatchdogReceiver : BroadcastReceiver() {
     private fun ensureKioskServiceRunningAsync(context: Context) {
         val serviceInstance = KioskService.activeInstance
         val isProcessRunning = KioskService.isServiceRunning || isServiceRunning(context, KioskService::class.java)
-        
-        // 1. Local App Loopback Health Check
-        val isHttpHealthy = try {
-            val url = URL("http://127.0.0.1:8080/challenge")
-            val connection = url.openConnection() as HttpURLConnection
-            connection.connectTimeout = 3000
-            connection.readTimeout = 3000
-            connection.requestMethod = "GET"
-            try {
-                connection.responseCode == 200
-            } finally {
-                connection.disconnect()
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Local loopback HTTP check failed: ${e.message}")
-            false
-        }
 
-        // 2. Overlay Attachment Health Check
+        // Overlay Attachment Health Check
         val isOverlayHealthy = serviceInstance?.isOverlayHealthy() ?: false
 
-        if (!isProcessRunning || !isHttpHealthy || !isOverlayHealthy) {
+        if (!isProcessRunning || !isOverlayHealthy) {
             val isFullySetup = com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(context)
             if (!isFullySetup) {
                 Log.d(TAG, "Device not yet fully setup/activated. Watchdog skipping KioskService start.")
@@ -95,10 +78,6 @@ class KioskWatchdogReceiver : BroadcastReceiver() {
             }
 
             if (isProcessRunning && serviceInstance != null) {
-                if (!isHttpHealthy) {
-                    Log.w(TAG, "KioskService is running but HTTP server is unhealthy. Repairing HTTP listener...")
-                    serviceInstance.ensureHttpServerRunning()
-                }
                 if (!isOverlayHealthy) {
                     Log.w(TAG, "KioskService is running but overlay is missing/unattached. Rebuilding overlay...")
                     serviceInstance.setupOverlay()
