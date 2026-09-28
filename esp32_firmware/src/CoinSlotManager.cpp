@@ -148,11 +148,15 @@ bool isStartupSuppressionActive() {
 }
 
 bool isCoinSlotArmed() {
+    if (isMaintenanceMode()) return false;
     if (currentState == CoinSlotState::ARMED) {
         return ((int32_t)((uint32_t)sessionArmedUntil - (uint32_t)millis()) > 0);
     }
     if (currentState == CoinSlotState::DRAINING) {
-        return true; // Keep physical relay energized throughout DRAINING lifecycle
+        unsigned long now = millis();
+        bool drainExpired = (drainDeadlineMs > 0 && ((int32_t)((uint32_t)now - (uint32_t)drainDeadlineMs) >= 0));
+        bool maxCapExpired = (maxDrainDeadlineMs > 0 && ((int32_t)((uint32_t)now - (uint32_t)maxDrainDeadlineMs) >= 0));
+        return (!drainExpired && !maxCapExpired);
     }
     return false;
 }
@@ -524,8 +528,9 @@ void processCoinSlotSession() {
                     return;
                 }
             } else {
-                Serial.printf("[🪙 COIN SLOT] CRITICAL: Payment callback failed to retain transaction for '%s'! Retaining pulse copy and stopping admission.\n",
+                Serial.printf("[🪙 COIN SLOT] CRITICAL: Payment callback failed to retain transaction for '%s'! Disarming physical slot, retaining pulse copy and stopping admission.\n",
                               deliveringSession.c_str());
+                setRelayHardware(false);
                 setMaintenanceMode(true);
                 return; // Do NOT finalize release or clear pulses!
             }
@@ -537,8 +542,11 @@ void processCoinSlotSession() {
         bool drainExpired = ((int32_t)((uint32_t)now - (uint32_t)drainDeadlineMs) >= 0);
         bool maxCapExpired = (maxDrainDeadlineMs > 0 && ((int32_t)((uint32_t)now - (uint32_t)maxDrainDeadlineMs) >= 0));
         if (drainExpired || maxCapExpired) {
-            Serial.println("[🪙 COIN SLOT] Drain guard timeout reached. Delivering remaining pulses and finalizing release.");
+            Serial.println("[🪙 COIN SLOT] Drain guard timeout reached. Disarming physical acceptor, delivering remaining pulses, and finalizing release.");
             
+            // Immediately cut physical relay power to prevent any further coin insertions
+            setRelayHardware(false);
+
             // Salvage any pulses that accumulated before the guard tripped
             noInterrupts();
             int trailingPulses = isrUniversalPulseCount;
@@ -556,7 +564,7 @@ void processCoinSlotSession() {
                 }
                 if (!retained) {
                     sessionAccumulatedPulses = remainingPulses; // Preserve pulse copy!
-                    Serial.printf("[🪙 COIN SLOT] CRITICAL: Drain timeout delivery failed for '%s'! Retaining pulses and stopping admission.\n",
+                    Serial.printf("[🪙 COIN SLOT] CRITICAL: Drain timeout delivery failed for '%s'! Physical slot disarmed, retaining pulses in recovery buffer.\n",
                                   activeSessionId.c_str());
                     setMaintenanceMode(true);
                     return; // Do NOT finalize session release!

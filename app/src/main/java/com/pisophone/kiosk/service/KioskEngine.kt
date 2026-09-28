@@ -22,7 +22,16 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
+
+enum class InitializationState {
+    UNINITIALIZED,
+    INITIALIZING,
+    READY,
+    FAILED
+}
 
 /**
  * Core business orchestrator for the PisoPhone Kiosk.
@@ -35,9 +44,13 @@ class KioskEngine(
     companion object {
         private const val TAG = "KioskEngine"
         private const val ARMING_TIMEOUT_SECONDS = 15
+        private const val MAX_INIT_ATTEMPTS = 5
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    val initializationState = MutableStateFlow(InitializationState.UNINITIALIZED)
+    val isEngineReady: Boolean get() = initializationState.value == InitializationState.READY
 
     private val coinEventRepo: CoinEventRepository = CoinEventRepository(
         AppDatabase.getDatabase(context).coinEventDao()
@@ -178,48 +191,82 @@ class KioskEngine(
         stateManager = stateManager,
         paymentRepo = paymentRepo,
         overlayCoordinator = overlayCoordinator,
-        supervisor = supervisor
+        supervisor = supervisor,
+        isEngineReady = { isEngineReady },
+        onRetryInitialization = { retryInitializationIfNeeded() }
     )
 
     private var slotBusyJob: Job? = null
+    private var initJob: Job? = null
     private var engineStartTimeMs = 0L
+
+    fun retryInitializationIfNeeded() {
+        if (initializationState.value == InitializationState.FAILED || initializationState.value == InitializationState.UNINITIALIZED) {
+            triggerInitialization()
+        }
+    }
+
+    fun triggerInitialization() {
+        if (initializationState.value == InitializationState.INITIALIZING || initializationState.value == InitializationState.READY) {
+            return
+        }
+        initJob?.cancel()
+        initJob = scope.launch(Dispatchers.IO) {
+            var attempt = 0
+            var success = false
+
+            while (attempt < MAX_INIT_ATTEMPTS && !success && isActive) {
+                attempt++
+                initializationState.value = InitializationState.INITIALIZING
+                Log.i(TAG, "Starting engine initialization (attempt $attempt of $MAX_INIT_ATTEMPTS)...")
+                try {
+                    stateManager.restoreState()
+                    paymentRepo.migrateAndInitialize(context)
+
+                    audioManager.initAudioEngine()
+
+                    if (!stateManager.esp32Ip.isNullOrBlank()) {
+                        esp32Manager.setEsp32Ip(stateManager.esp32Ip)
+                    }
+
+                    if (!KioskActivationManager.isPairingCompleted(context) && !KioskSecurity.isProvisioned(context)) {
+                        KioskActivationManager.startSetupWindow(context)
+                    }
+
+                    Handler(Looper.getMainLooper()).post {
+                        overlayCoordinator.setupOverlay()
+                    }
+
+                    esp32Manager.sendDirectPairingRequest()
+                    esp32Manager.startHeartbeatLoop { stateManager.deviceIp.value }
+
+                    supervisor.start()
+                    healthMonitor.start()
+
+                    systemMonitor.registerScreenOffReceiver()
+                    systemMonitor.registerBatteryMonitor()
+
+                    isInitialized.set(true)
+                    initializationState.value = InitializationState.READY
+                    success = true
+                    Log.i(TAG, "Engine initialization completed successfully on attempt $attempt.")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Engine initialization attempt $attempt failed: ${e.message}", e)
+                    if (attempt >= MAX_INIT_ATTEMPTS) {
+                        initializationState.value = InitializationState.FAILED
+                        Log.e(TAG, "Engine initialization failed permanently after $MAX_INIT_ATTEMPTS attempts.")
+                    } else {
+                        val backoffMs = (1000L * (1 shl (attempt - 1))).coerceAtMost(10000L)
+                        delay(backoffMs)
+                    }
+                }
+            }
+        }
+    }
 
     fun start() {
         engineStartTimeMs = System.currentTimeMillis()
-
-        scope.launch(Dispatchers.IO) {
-            try {
-                stateManager.restoreState()
-                paymentRepo.migrateAndInitialize(context)
-                isInitialized.set(true)
-                Log.i(TAG, "Initialization complete. Direct ESP32 communication active.")
-
-                audioManager.initAudioEngine()
-
-                if (!stateManager.esp32Ip.isNullOrBlank()) {
-                    esp32Manager.setEsp32Ip(stateManager.esp32Ip)
-                }
-
-                if (!KioskActivationManager.isPairingCompleted(context) && !KioskSecurity.isProvisioned(context)) {
-                    KioskActivationManager.startSetupWindow(context)
-                }
-
-                Handler(Looper.getMainLooper()).post {
-                    overlayCoordinator.setupOverlay()
-                }
-
-                esp32Manager.sendDirectPairingRequest()
-                esp32Manager.startHeartbeatLoop { stateManager.deviceIp.value }
-
-                supervisor.start()
-                healthMonitor.start()
-
-                systemMonitor.registerScreenOffReceiver()
-                systemMonitor.registerBatteryMonitor()
-            } catch (e: Exception) {
-                Log.e(TAG, "Engine start initialization failed: ${e.message}", e)
-            }
-        }
+        triggerInitialization()
 
         scope.launch {
             stateManager.appState.collect { state ->

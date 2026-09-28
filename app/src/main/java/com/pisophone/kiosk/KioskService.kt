@@ -210,6 +210,12 @@ class KioskService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    fun isEngineReady(): Boolean = engine?.isEngineReady ?: false
+
+    fun retryEngineInitialization() {
+        engine?.retryInitializationIfNeeded()
+    }
+
     fun isOverlayHealthy(): Boolean = engine?.overlayCoordinator?.isOverlayHealthy() ?: false
 
     fun setupOverlay() {

@@ -15,7 +15,9 @@ class KioskEngineHealthMonitor(
     private val stateManager: KioskStateManager,
     private val paymentRepo: PaymentRepository,
     private val overlayCoordinator: KioskOverlayCoordinator,
-    private val supervisor: KioskSessionSupervisor
+    private val supervisor: KioskSessionSupervisor,
+    private val isEngineReady: () -> Boolean = { true },
+    private val onRetryInitialization: () -> Unit = {}
 ) {
     companion object {
         private const val TAG = "KioskEngineHealth"
@@ -27,6 +29,12 @@ class KioskEngineHealthMonitor(
 
     fun performPeriodicCheck() {
         try {
+            // 1. Verify and recover engine operational status
+            if (!isEngineReady.invoke()) {
+                Log.w(TAG, "Health monitor: Engine is not ready or initialization failed. Triggering recovery...")
+                onRetryInitialization.invoke()
+            }
+
             supervisor.ensureRunning()
             val appState = stateManager.appState.value
             if (appState == 2 || appState == 3) {

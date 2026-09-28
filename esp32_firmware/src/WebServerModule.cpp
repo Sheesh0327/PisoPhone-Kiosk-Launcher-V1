@@ -126,8 +126,22 @@ void setupWebServer() {
             otaErrorMsg = "";
             Update.clearError();
             
-            setMaintenanceMode(true);
-            releaseCoinSlot(getActiveCoinSessionId(), CoinSlotOwnerType::ANY, true, "OTA_FLASH");
+            // 1. Close new admissions
+            setMaintenanceReason(MAINT_REASON_RESTART, true);
+            
+            // 2. Initiate clean session drain if active (do not force-destroy in-flight pulses)
+            if (getActiveCoinSessionId().length() > 0) {
+                releaseCoinSlot(getActiveCoinSessionId(), CoinSlotOwnerType::ANY, false, "OTA_PREPARATION");
+            }
+
+            // 3. Verify that the hardware has finished draining and all transactions are persisted
+            if (!canPerformRebootOrOta()) {
+                otaIsValidBinary = false;
+                setMaintenanceReason(MAINT_REASON_RESTART, false);
+                otaErrorMsg = "OTA update blocked: Active coin session or pending in-flight payments. Please wait for coin drain to complete and retry.";
+                Serial.printf("[OTA] Error: %s\n", otaErrorMsg.c_str());
+                return;
+            }
 
             if (revenueDirty || totalCoinsLifetime != lastSavedTotalCoins || totalEarningsLifetime != lastSavedTotalEarnings) {
                 lockNvs();
