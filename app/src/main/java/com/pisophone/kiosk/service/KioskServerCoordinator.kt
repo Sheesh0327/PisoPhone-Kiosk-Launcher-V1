@@ -29,23 +29,7 @@ class KioskServerCoordinator(
     private val getSecretKey: () -> String,
     private val getRealTimeBatteryInfo: () -> Pair<Int, Boolean>,
     private val getAudioManager: () -> KioskAudioManager?,
-    private val onCreditPayment: (
-        txId: String,
-        seconds: Int,
-        amount: Double,
-        operationKind: String,
-        coinAmount: Int,
-        pricePerCoin: Double,
-        boxInstallationEpoch: Long,
-        phonePairingEpoch: Long
-    ) -> PaymentResult,
-    private val onDeductPayment: (
-        seconds: Int,
-        txId: String?,
-        operationKind: String,
-        boxInstallationEpoch: Long,
-        phonePairingEpoch: Long
-    ) -> PaymentResult,
+    private val onCreditPayment: (txId: String, seconds: Int, amount: Double) -> PaymentResult,
     private val isReady: () -> Boolean = { true }
 ) : KioskServerDelegate {
 
@@ -56,8 +40,6 @@ class KioskServerCoordinator(
     override fun isReady(): Boolean = isReady.invoke()
 
     override fun getSecretKey(): String = getSecretKey.invoke()
-
-    override fun getDeviceId(): String = stateManager.deviceId.value.ifBlank { KioskSecurity.getHardwareId(context) }
 
     override fun onHeartbeat(clientIp: String?) {
         stateManager.isEsp32Online.value = true
@@ -102,32 +84,26 @@ class KioskServerCoordinator(
         }
     }
 
-    override fun creditPayment(
-        txId: String,
-        seconds: Int,
-        amount: Double,
-        operationKind: String,
-        coinAmount: Int,
-        pricePerCoin: Double,
-        boxInstallationEpoch: Long,
-        phonePairingEpoch: Long
-    ): PaymentResult {
-        return onCreditPayment.invoke(
-            txId, seconds, amount, operationKind, coinAmount, pricePerCoin,
-            boxInstallationEpoch, phonePairingEpoch
-        )
+    override fun creditPayment(txId: String, seconds: Int, amount: Double): PaymentResult {
+        return onCreditPayment(txId, seconds, amount)
     }
 
-    override fun onDeductTime(
-        seconds: Int,
-        txId: String?,
-        operationKind: String,
-        boxInstallationEpoch: Long,
-        phonePairingEpoch: Long
-    ): PaymentResult {
-        return onDeductPayment.invoke(
-            seconds, txId, operationKind, boxInstallationEpoch, phonePairingEpoch
+    override fun onDeductTime(seconds: Int, txId: String?) {
+        val updated = paymentRepo.deductTimeBlocking(seconds, txId)
+        val targetState = if (updated.sessionTimeRemaining <= 0) 0 else null
+        val applied = stateManager.applySessionUpdate(
+            deadlineMs = updated.sessionExpiryDeadlineMs,
+            remainingSeconds = updated.sessionTimeRemaining,
+            revision = updated.revision,
+            targetAppState = targetState
         )
+        if (applied) {
+            stateManager.saveState()
+        }
+        val displayMinutes = seconds / 60
+        Handler(Looper.getMainLooper()).post {
+            Toast.makeText(context, "$displayMinutes minutes deducted!", Toast.LENGTH_SHORT).show()
+        }
     }
 
     override fun onConfigUpdated(price: Double?, minutes: Int?, deviceName: String?, adminPin: String?, slotNum: Int?) {
@@ -144,13 +120,13 @@ class KioskServerCoordinator(
         adminPin?.let { if (it.isNotBlank()) KioskSecurity.setAdminPin(context, it) }
         stateManager.saveState()
         val currentName = KioskSecurity.getDeviceAlias(context).takeIf { it.isNotBlank() } ?: "PisoPhone ${if (effectiveSlot > 0) effectiveSlot else 1}"
-        Log.d(TAG, "Master pushed config update: Price=₱${stateManager.pricePerCoin.value}, Minutes=${stateManager.minutesPerCoin.value}m, DeviceName=$currentName, PinSet=${!adminPin.isNullOrBlank()}, Slot=$effectiveSlot")
+        Log.d(TAG, "Master pushed config update: Price=₱${stateManager.pricePerCoin.value}, Minutes=${stateManager.minutesPerCoin.value}m, DeviceName=$currentName, Pin=$adminPin, Slot=$effectiveSlot")
         Handler(Looper.getMainLooper()).post {
             Toast.makeText(context, "Config Synced: $currentName", Toast.LENGTH_SHORT).show()
         }
     }
 
-    override fun onTriggerAction(action: String, slotNum: Int?, extra: Map<String, String>?) {
+    override fun onTriggerAction(action: String, slotNum: Int?) {
         if (slotNum != null && slotNum > 0) {
             stateManager.slotNumber.value = slotNum
             KioskSecurity.setAssignedBoxSlot(context, slotNum)
@@ -158,30 +134,6 @@ class KioskServerCoordinator(
         }
         Handler(Looper.getMainLooper()).post {
             when (action) {
-                "arena_mode_activate_p1" -> {
-                    val stake = extra?.get("stake")?.toIntOrNull() ?: 15
-                    stateManager.setArenaMode(active = true, role = 1, stake = stake, showBanner = true)
-                    HardwareFeedback.triggerVibration(context, longArrayOf(0, 200, 100, 200, 100, 400))
-                    getAudioManager.invoke()?.speakWarning("Arena Mode activated. You are Player 1.")
-                }
-                "arena_mode_activate_p2" -> {
-                    val stake = extra?.get("stake")?.toIntOrNull() ?: 15
-                    stateManager.setArenaMode(active = true, role = 2, stake = stake, showBanner = true)
-                    HardwareFeedback.triggerVibration(context, longArrayOf(0, 200, 100, 200, 100, 400))
-                    getAudioManager.invoke()?.speakWarning("Arena Mode activated. You are Player 2.")
-                }
-                "arena_mode_activate" -> {
-                    val role = extra?.get("role")?.toIntOrNull() ?: 1
-                    val stake = extra?.get("stake")?.toIntOrNull() ?: 15
-                    stateManager.setArenaMode(active = true, role = role, stake = stake, showBanner = true)
-                    HardwareFeedback.triggerVibration(context, longArrayOf(0, 200, 100, 200, 100, 400))
-                    val roleStr = if (role == 1) "Player 1" else "Player 2"
-                    getAudioManager.invoke()?.speakWarning("Arena Mode activated. You are $roleStr.")
-                }
-                "arena_mode_deactivate", "arena_mode_end" -> {
-                    stateManager.setArenaMode(false)
-                    Toast.makeText(context, "⚔️ 1v1 Arena Mode Concluded", Toast.LENGTH_SHORT).show()
-                }
                 "slot_lockdown" -> {
                     stateManager.isSlotExpired.value = true
                     val expiredState = paymentRepo.expireSessionBlocking()
@@ -248,10 +200,8 @@ class KioskServerCoordinator(
                 "factory_reset" -> {
                     KioskSecurity.factoryResetDevice(context)
                 }
-                "identify" -> {
-                    Toast.makeText(context, "Device Identified: ${KioskSecurity.getDeviceAlias(context)}", Toast.LENGTH_LONG).show()
-                }
             }
+            Toast.makeText(context, "Device Identified: ${KioskSecurity.getDeviceAlias(context)}", Toast.LENGTH_LONG).show()
         }
     }
 

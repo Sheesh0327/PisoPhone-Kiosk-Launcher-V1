@@ -29,22 +29,12 @@ interface Esp32ConnectionDelegate {
     fun onEsp32Discovered(ip: String)
     fun onOnlineStatusChanged(isOnline: Boolean, mac: String?)
     fun onConfigSynced(price: Double?, minutes: Int?, alias: String?, adminPin: String? = null, slotNum: Int? = null)
-    fun onCoinMessageReceived(
-        seconds: Int,
-        amount: Double,
-        txId: String?,
-        operationKind: String,
-        coinAmount: Int,
-        pricePerCoin: Double,
-        boxInstallationEpoch: Long,
-        phonePairingEpoch: Long
-    ): com.pisophone.kiosk.repository.PaymentResult
+    fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?)
     fun onSlotBusy()
     fun onArmSuccess()
     fun onSlotWarning(daysLeft: Int, expiresAt: Long, slotNum: Int, message: String)
     fun onSlotLockdown(reason: String, slotNum: Int, expiresAt: Long)
     fun onSlotRestored(slotNum: Int = 0)
-    fun onArenaModeSynced(active: Boolean, role: Int, stake: Int) {}
 }
 
 /**
@@ -61,7 +51,7 @@ class Esp32ConnectionManager(
     companion object {
         private const val TAG = "Esp32ConnectionManager"
         private const val ESP32_WS_PORT = 81
-        private const val HEARTBEAT_TIMEOUT_MS = 45000L
+        private const val HEARTBEAT_TIMEOUT_MS = 20000L
         private const val MAX_TIMESTAMP_SKEW_MS = 60000L
         private const val DRAIN_SAFETY_TIMEOUT_MS = 15000L
     }
@@ -72,12 +62,11 @@ class Esp32ConnectionManager(
         .build()
 
     private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(4, TimeUnit.SECONDS)
-        .readTimeout(4, TimeUnit.SECONDS)
-        .writeTimeout(4, TimeUnit.SECONDS)
+        .connectTimeout(3500, TimeUnit.MILLISECONDS)
+        .readTimeout(3500, TimeUnit.MILLISECONDS)
         .build()
 
-    private var esp32Ip: String? = Esp32DiscoveryScanner.STATIC_ESP32_IP
+    private var esp32Ip: String? = null
     private var lastHeartbeatTime: Long = System.currentTimeMillis()
     private var consecutiveHeartbeatFailures: Int = 0
     private val connectionLock = Any()
@@ -96,7 +85,7 @@ class Esp32ConnectionManager(
             }
         },
         isAlreadyBound = {
-            val isOnline = (System.currentTimeMillis() - lastHeartbeatTime < HEARTBEAT_TIMEOUT_MS) && consecutiveHeartbeatFailures < 5
+            val isOnline = (System.currentTimeMillis() - lastHeartbeatTime < HEARTBEAT_TIMEOUT_MS) && consecutiveHeartbeatFailures == 0
             isOnline && !esp32Ip.isNullOrBlank()
         }
     )
@@ -117,16 +106,7 @@ class Esp32ConnectionManager(
     // ========================================================================
 
     fun triggerCandidateDiscovery(localIp: String) {
-        val staticTarget = Esp32DiscoveryScanner.STATIC_ESP32_IP
-        scope.launch(Dispatchers.IO) {
-            try {
-                if (discoveryScanner.probeEsp32Connection(staticTarget)) {
-                    Log.d(TAG, "[+] Instant connection established to static ESP32 at $staticTarget")
-                    return@launch
-                }
-            } catch (_: Exception) {}
-            discoveryScanner.triggerDiscovery(localIp)
-        }
+        discoveryScanner.triggerDiscovery(localIp)
     }
 
     fun probeEsp32Connection(ip: String): Boolean {
@@ -137,12 +117,11 @@ class Esp32ConnectionManager(
         val (ipHost, esp32Port) = discoveryScanner.getEsp32HostAndPort(ip)
         esp32Ip = ip
         lastHeartbeatTime = System.currentTimeMillis()
-        consecutiveHeartbeatFailures = 0
         delegate.onEsp32Discovered(ip)
         delegate.onOnlineStatusChanged(true, null)
         Log.d(TAG, "[+] ESP32 Master bound at $ipHost")
 
-        // Parse immediate config from discovery response if present
+        // Parse immediate config from UDP response if present
         if (!rawResponseBody.isNullOrBlank()) {
             try {
                 val json = JSONObject(rawResponseBody)
@@ -159,28 +138,6 @@ class Esp32ConnectionManager(
 
         scope.launch(Dispatchers.IO) {
             fetchMasterConfig(ipHost, esp32Port)
-            sendPairingRequest(ipHost)
-        }
-    }
-
-    fun sendPairingRequest(targetIp: String? = null) {
-        val host = targetIp ?: esp32Ip ?: return
-        scope.launch(Dispatchers.IO) {
-            try {
-                val (ipHost, esp32Port) = discoveryScanner.getEsp32HostAndPort(host)
-                val deviceId = KioskSecurity.getHardwareId(context)
-                val myIp = discoveryScanner.getLocalIpAddress()
-                val (curBat, isChg) = delegate.getRealTimeBatteryInfo()
-                val myName = KioskSecurity.getDeviceAlias(context).takeIf { it.isNotBlank() } ?: "PisoPhone Terminal"
-                val encodedName = java.net.URLEncoder.encode(myName, "UTF-8")
-                val url = "http://$ipHost:$esp32Port/api/slots/pair_request?device_id=$deviceId&ip=$myIp&name=$encodedName&battery=$curBat&charging=${if (isChg) 1 else 0}&source=app&app=1&client=pisophone_app"
-                val req = Request.Builder().url(url).build()
-                httpClient.newCall(req).execute().use { resp ->
-                    Log.d(TAG, "Explicit pair_request sent to $ipHost:$esp32Port, status: ${resp.code}")
-                }
-            } catch (e: Exception) {
-                Log.d(TAG, "Pair request non-fatal error: ${e.message}")
-            }
         }
     }
 
@@ -212,7 +169,7 @@ class Esp32ConnectionManager(
             while (isActive) {
                 try {
                     val currentIp = deviceIpProvider()
-                    val targetIp = esp32Ip
+                    val targetIp = esp32Ip ?: KioskSecurity.getConfiguredEsp32Ip(context).takeIf { it.isNotBlank() }
 
                     if (!targetIp.isNullOrBlank()) {
                         val (host, esp32Port) = discoveryScanner.getEsp32HostAndPort(targetIp)
@@ -222,7 +179,7 @@ class Esp32ConnectionManager(
                         val (curBat, isChg) = delegate.getRealTimeBatteryInfo()
 
                         val req = Request.Builder()
-                            .url("http://$host:${esp32Port}/heartbeat?device_id=$deviceId&ip=${if (currentIp == "127.0.0.1") "" else currentIp}&time=${delegate.getSessionTimeRemaining()}&state=${delegate.getAppState()}&battery=$curBat&charging=${if (isChg) 1 else 0}&ts=$ts&sig=$sig&source=app&app=1&client=pisophone_app")
+                            .url("http://$host:${esp32Port}/heartbeat?device_id=$deviceId&ip=${if (currentIp == "127.0.0.1") "" else currentIp}&time=${delegate.getSessionTimeRemaining()}&state=${delegate.getAppState()}&battery=$curBat&charging=${if (isChg) 1 else 0}&ts=$ts&sig=$sig")
                             .build()
                         try {
                             httpClient.newCall(req).execute().use { response ->
@@ -235,19 +192,12 @@ class Esp32ConnectionManager(
                                 if (body.isNotBlank()) {
                                     try {
                                         val json = JSONObject(body)
-                                        val slotNum = json.optInt("slot_num", json.optInt("slot", 0))
-                                        val isUnassigned = json.optString("status", "") == "unassigned" ||
-                                                json.optString("slot_status", "") == "unassigned" ||
-                                                (!json.optBoolean("is_paired", true) && slotNum <= 0)
-                                        val isExpired = isUnassigned ||
-                                                json.optBoolean("slot_expired", false) ||
+                                        val isExpired = json.optBoolean("slot_expired", false) ||
                                                 json.optBoolean("lockdown", false) ||
                                                 json.optString("status", "") == "expired" ||
                                                 json.optString("slot_status", "") == "expired"
+                                        val slotNum = json.optInt("slot_num", json.optInt("slot", 0))
                                         val expiresAt = json.optLong("expires_at", 0L)
-                                        if (isUnassigned) {
-                                            sendPairingRequest(targetIp)
-                                        }
                                         val errorMsg = if (json.has("message") && json.optString("message").isNotBlank()) {
                                             json.optString("message")
                                         } else {
@@ -277,32 +227,19 @@ class Esp32ConnectionManager(
                                             val dec = KioskSecurity.decrypt(encryptedPin, delegate.getSecretKey()).trim()
                                             if (dec.startsWith("PIN:")) dec.substring(4).trim().takeIf { it.isNotBlank() } else null
                                         } else null
-                                        
-                                        Log.d(TAG, "[HEARTBEAT] JSON parsing successful. Setting online to true.")
+
                                         delegate.onOnlineStatusChanged(true, mac)
                                         delegate.onConfigSynced(price, minutes, alias, decryptedPin, slotNum)
-
-                                        if (json.has("arena_active")) {
-                                            val arenaActive = json.optBoolean("arena_active", false)
-                                            val arenaRole = json.optInt("arena_role", 0)
-                                            val arenaStake = json.optInt("arena_stake", 15)
-                                            delegate.onArenaModeSynced(arenaActive, arenaRole, arenaStake)
-                                        }
-                                    } catch (e: Exception) {
-                                        Log.e(TAG, "[HEARTBEAT] Exception parsing JSON body: ${e.message}", e)
-                                    }
+                                    } catch (_: Exception) {}
                                 } else {
-                                    Log.d(TAG, "[HEARTBEAT] Body is blank. Setting online to true.")
                                     delegate.onOnlineStatusChanged(true, null)
                                 }
                             } else {
-                                Log.w(TAG, "[HEARTBEAT] Unsuccessful HTTP code: $code")
                                 consecutiveHeartbeatFailures++
                                 checkOfflineThreshold(currentIp)
                             }
                         }
-                        } catch (e: Exception) {
-                            Log.e(TAG, "[HEARTBEAT] Exception during HTTP request: ${e.message}", e)
+                        } catch (_: Exception) {
                             consecutiveHeartbeatFailures++
                             checkOfflineThreshold(currentIp)
                         }
@@ -318,11 +255,14 @@ class Esp32ConnectionManager(
 
     private fun checkOfflineThreshold(currentIp: String) {
         val offlineDuration = System.currentTimeMillis() - lastHeartbeatTime
-        if (consecutiveHeartbeatFailures >= 2 || offlineDuration > 8000L) {
+        if (consecutiveHeartbeatFailures >= 2 || offlineDuration > HEARTBEAT_TIMEOUT_MS) {
             delegate.onOnlineStatusChanged(false, null)
+            // Immediately trigger discovery to locate ESP32 if assigned a new DHCP IP
             discoveryScanner.triggerDiscovery(currentIp)
-            Log.w(TAG, "ESP32 heartbeat failed ($consecutiveHeartbeatFailures failures, ${offlineDuration}ms offline), resetting to static IP for probe")
-            esp32Ip = Esp32DiscoveryScanner.STATIC_ESP32_IP
+            if (offlineDuration > 15000L && KioskSecurity.getConfiguredEsp32Ip(context).isBlank()) {
+                Log.w(TAG, "ESP32 disconnected for >15s, clearing stale cached IP for auto-rediscovery")
+                esp32Ip = null
+            }
         }
     }
 
@@ -416,13 +356,12 @@ class Esp32ConnectionManager(
         synchronized(connectionLock) {
             attemptId = ++currentAttemptId
             forceCloseWebSocketLocked(activeWebSocket, "Re-arming slot", attemptId)
-            ip = esp32Ip
+            ip = esp32Ip ?: KioskSecurity.getConfiguredEsp32Ip(context).takeIf { it.isNotBlank() }
         }
 
         if (ip.isNullOrBlank()) {
-            Log.w(TAG, "Cannot arm slot: No discovered ESP32 IP available. Triggering discovery...")
+            Log.e(TAG, "Cannot arm slot: No active or configured ESP32 IP available")
             delegate.onOnlineStatusChanged(false, null)
-            discoveryScanner.triggerDiscovery("")
             return
         }
 
@@ -459,63 +398,16 @@ class Esp32ConnectionManager(
                     val event = json.optString("event", "")
 
                     if (event == "COIN_DETECTED") {
-                        val outerPayload = json.optString("payload", "")
-                        if (outerPayload.isBlank()) {
+                        val payload = json.optString("payload", "")
+                        if (payload.isBlank()) {
                             Log.w(TAG, "Rejected WebSocket coin event: Missing encrypted payload")
                             return
                         }
 
-                        val outerHmac = json.optString("v_sig", "").trim()
-                        if (outerHmac.isBlank()) {
-                            Log.w(TAG, "Rejected WebSocket coin event: Missing signature")
-                            return
-                        }
-
-                        val outerTxId = json.optString("tx_id", "").trim()
-                        if (outerTxId.isBlank()) {
-                            Log.w(TAG, "Rejected WebSocket coin event: Missing tx_id in envelope")
-                            return
-                        }
-
-                        val outerTsStr = json.optString("ts", "").trim()
-                        val outerTs = outerTsStr.toLongOrNull() ?: 0L
-                        val now = System.currentTimeMillis()
-                        val skew = Math.abs(now - outerTs)
-                        if (outerTs <= 0L || skew > MAX_TIMESTAMP_SKEW_MS) {
-                            Log.w(TAG, "Rejected WebSocket coin event: Stale/invalid envelope timestamp ($outerTs, now=$now, skew=${skew}ms, max=${MAX_TIMESTAMP_SKEW_MS}ms)")
-                            return
-                        }
-
-                        val outerDevId = json.optString("device_id", "").trim().ifBlank { delegate.getDeviceId() }
-                        val myDevId = delegate.getDeviceId()
-                        if (outerDevId.isNotBlank() && myDevId.isNotBlank() && !outerDevId.equals(myDevId, ignoreCase = true)) {
-                            Log.w(TAG, "Rejected WebSocket coin event: Recipient mismatch (target='$outerDevId', local='$myDevId')")
-                            return
-                        }
-
-                        val outerSeconds = if (json.has("seconds")) json.optInt("seconds") else null
-                        val outerAmount = if (json.has("amount")) json.optDouble("amount") else null
-
                         val secretKey = delegate.getSecretKey()
-
-                        // STEP 1: Verify integrity BEFORE decryption
-                        if (!KioskSecurity.verifyWsPaySignature(
-                                event = "COIN_DETECTED",
-                                recipient = outerDevId,
-                                txId = outerTxId,
-                                ts = outerTsStr,
-                                payload = outerPayload,
-                                sig = outerHmac,
-                                secret = secretKey
-                            )) {
-                            Log.w(TAG, "Rejected WebSocket coin event: Signature verification failed BEFORE decryption")
-                            return
-                        }
-
-                        // STEP 2: Decrypt payload only after signature is verified
-                        val decryptedStr = KioskSecurity.decrypt(outerPayload, secretKey)
+                        val decryptedStr = KioskSecurity.decrypt(payload, secretKey)
                         if (decryptedStr.isBlank()) {
-                            Log.w(TAG, "Rejected WebSocket coin event: Decryption failed or empty plaintext")
+                            Log.w(TAG, "Rejected WebSocket coin event: Decryption failed or invalid secret key")
                             return
                         }
 
@@ -526,104 +418,34 @@ class Esp32ConnectionManager(
                             return
                         }
 
-                        val innerTxId = decryptedJson.optString("tx_id", "").trim()
-                        val innerDev = decryptedJson.optString("device_id", "").trim()
-                        val innerTsStr = decryptedJson.optString("ts", "").trim()
-                        val innerTs = innerTsStr.toLongOrNull() ?: 0L
+                        val txId = decryptedJson.optString("tx_id", "").trim()
+                        if (txId.isBlank()) {
+                            Log.w(TAG, "Rejected WebSocket coin event: Missing tx_id in encrypted payload")
+                            return
+                        }
+
+                        val tsStr = decryptedJson.optString("ts", "").trim()
+                        val ts = tsStr.toLongOrNull() ?: 0L
+                        val now = System.currentTimeMillis()
+                        val skew = Math.abs(now - ts)
+                        if (ts <= 0L || skew > MAX_TIMESTAMP_SKEW_MS) {
+                            Log.w(TAG, "Rejected WebSocket coin event: Stale/invalid timestamp ($ts, now=$now, skew=${skew}ms, max=${MAX_TIMESTAMP_SKEW_MS}ms)")
+                            return
+                        }
+
                         val minutesLong = decryptedJson.optLong("minutes", 0L)
                         val secondsOptLong = decryptedJson.optLong("seconds", 0L)
                         val rawSeconds = if (secondsOptLong > 0L) secondsOptLong else (minutesLong * 60L)
                         val amount = decryptedJson.optDouble("amount", 0.0)
-
-                        // STEP 3: Reconcile decrypted context with outer verified envelope
-                        val envelope = com.pisophone.kiosk.protocol.KioskProtocol.VerifiedEnvelope(
-                            event = "COIN_DETECTED",
-                            recipient = outerDevId,
-                            txId = outerTxId,
-                            ts = outerTs,
-                            payload = outerPayload,
-                            seconds = outerSeconds,
-                            amount = outerAmount
-                        )
-                        val innerContext = com.pisophone.kiosk.protocol.KioskProtocol.DecryptedPaymentContext(
-                            deviceId = innerDev,
-                            txId = innerTxId,
-                            ts = innerTs,
-                            seconds = rawSeconds.toInt(),
-                            amount = amount
-                        )
-                        val reconResult = com.pisophone.kiosk.protocol.KioskProtocol.reconcilePaymentContext(envelope, innerContext)
-                        if (reconResult is com.pisophone.kiosk.protocol.KioskProtocol.ProtocolValidationResult.Invalid) {
-                            Log.w(TAG, "Rejected WebSocket coin event: Context reconciliation failed: ${reconResult.reason} (${reconResult.code})")
-                            return
-                        }
 
                         if (rawSeconds !in 1L..Int.MAX_VALUE.toLong() || amount.isNaN() || amount.isInfinite() || amount <= 0.0) {
                             Log.w(TAG, "Rejected WebSocket coin event: Invalid seconds ($rawSeconds) or amount ($amount)")
                             return
                         }
                         val seconds = rawSeconds.toInt()
-                        val amountPulses = amount.toInt()
-                        val txId = innerTxId.ifBlank { outerTxId }
-                        val targetDev = innerDev.ifBlank { outerDevId }
 
-                        val rawOpKind = decryptedJson.optString("op_kind", "1")
-                        val opKindStr = when (rawOpKind) {
-                            "1" -> "COIN"
-                            "2" -> "QUICK_ADJUST"
-                            "3" -> "MANUAL_DEDUCTION"
-                            "4" -> "MATCH_TRANSFER"
-                            "5" -> "CONTROLLER"
-                            else -> rawOpKind
-                        }
-                        val pricePerCoin = decryptedJson.optDouble("price_per_coin", 0.0)
-                        val boxEpoch = decryptedJson.optLong("box_installation_epoch", 0L)
-                        val phoneEpoch = decryptedJson.optLong("phone_pairing_epoch", 0L)
-
-                        Log.i(TAG, "⚡ Validated WebSocket Coin Processed: +${seconds}s, amount=₱$amount, txId=$txId, opKind=$opKindStr")
-                        val result = delegate.onCoinMessageReceived(
-                            seconds = seconds,
-                            amount = amount,
-                            txId = txId,
-                            operationKind = opKindStr,
-                            coinAmount = amountPulses,
-                            pricePerCoin = pricePerCoin,
-                            boxInstallationEpoch = boxEpoch,
-                            phonePairingEpoch = phoneEpoch
-                        )
-
-                        // Send signed durable ACK back to ESP32 over WebSocket only if APPLIED or ALREADY_APPLIED
-                        if (result == com.pisophone.kiosk.repository.PaymentResult.APPLIED || 
-                            result == com.pisophone.kiosk.repository.PaymentResult.ALREADY_APPLIED) {
-                            try {
-                                val ackNow = System.currentTimeMillis()
-                                val statusStr = if (result == com.pisophone.kiosk.repository.PaymentResult.ALREADY_APPLIED) "ALREADY_PROCESSED" else "OK"
-                                val ackSig = KioskSecurity.calculateAckSignature(
-                                    deviceId = targetDev,
-                                    txId = txId,
-                                    amount = amountPulses,
-                                    seconds = seconds,
-                                    ts = ackNow.toString(),
-                                    status = statusStr,
-                                    secret = secretKey
-                                )
-                                val ackJson = JSONObject().apply {
-                                    put("event", "ACK")
-                                    put("device_id", targetDev)
-                                    put("tx_id", txId)
-                                    put("amount", amountPulses)
-                                    put("seconds", seconds)
-                                    put("ts", ackNow.toString())
-                                    put("v_sig", ackSig)
-                                    put("status", statusStr)
-                                }
-                                webSocket.send(ackJson.toString())
-                            } catch (e: Exception) {
-                                Log.w(TAG, "Failed to send WebSocket ACK for $txId: ${e.message}")
-                            }
-                        } else {
-                            Log.w(TAG, "WebSocket ACK suppressed for $txId due to payment result: $result")
-                        }
+                        Log.i(TAG, "⚡ Validated WebSocket Coin Processed: +${seconds}s, amount=₱$amount, txId=$txId")
+                        delegate.onCoinMessageReceived(seconds, amount, txId)
 
                         // If coin arrives during drain window, reset drain timeout to allow subsequent pulses
                         synchronized(connectionLock) {
@@ -667,15 +489,7 @@ class Esp32ConnectionManager(
                         Log.e(TAG, "Slot is EXPIRED on ESP32 (HTTP $code). Enforcing lockdown.")
                         delegate.onSlotLockdown("Please activate device slot on ESP32 Portal.", 0, 0L)
                     } else {
-                        Log.w(TAG, "WebSocket arming failed (HTTP $code: $msg)")
-                        // If we are waiting for payment, revert state and alert user
-                        val appState = delegate.getAppState()
-                        if (appState == 1 || appState == 3) {
-                            delegate.onSlotBusy()
-                            Handler(Looper.getMainLooper()).post {
-                                Toast.makeText(context, "Could not connect to coin slot. Please try again.", Toast.LENGTH_SHORT).show()
-                            }
-                        }
+                        Log.w(TAG, "WebSocket arming failed (HTTP $code) - letting heartbeat loop manage connectivity")
                     }
                 } else {
                     Log.d(TAG, "Suppressing stale WebSocket failure lifecycle side effects for attempt #$attemptId")

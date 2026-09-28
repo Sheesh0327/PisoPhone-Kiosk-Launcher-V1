@@ -9,7 +9,6 @@ import com.pisophone.kiosk.db.AppMetadata
 import com.pisophone.kiosk.db.PaidSessionState
 import com.pisophone.kiosk.db.PaymentReceipt
 import com.pisophone.kiosk.security.KioskActivationManager
-import com.pisophone.kiosk.security.KioskSecurity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 
@@ -20,14 +19,6 @@ data class SessionSnapshot(
     val deadlineMs: Long,
     val remainingSeconds: Int,
     val revision: Long
-)
-
-/**
- * Per-call outcome combining payment result status and optional session snapshot from committed transactions.
- */
-data class PaymentOutcome(
-    val result: PaymentResult,
-    val snapshot: SessionSnapshot? = null
 )
 
 /**
@@ -49,24 +40,6 @@ data class ExpiryResult(
 )
 
 /**
- * Outcome of a two-phone match transfer keeping separate linked outcomes
- * and showing partial completion instead of pretending independent databases
- * form one atomic transaction.
- */
-data class MatchTransferOutcome(
-    val matchId: String,
-    val sourceDeviceId: String,
-    val targetDeviceId: String,
-    val stakeSeconds: Int,
-    val deductTxId: String,
-    val creditTxId: String,
-    val deductResult: PaymentResult,
-    val creditResult: PaymentResult,
-    val isComplete: Boolean,
-    val isPartial: Boolean
-)
-
-/**
  * Repository acting as the single payment-processing and session-balance authority.
  */
 class PaymentRepository(
@@ -81,8 +54,6 @@ class PaymentRepository(
         const val PREFS_NAME = "kiosk_persistent_state"
         const val KEY_MIGRATION_MARKER = "legacy_paid_state_migrated_v4"
         const val KEY_MIGRATION_MARKER_PREFS = "legacy_paid_state_migrated_v3"
-        const val KEY_BOOT_COUNT = "BOOT_COUNT"
-        const val KEY_PENDING_TX = "pending_transaction_in_flight"
     }
 
     constructor(
@@ -100,52 +71,31 @@ class PaymentRepository(
 
     private val paymentDao = db.paymentDao()
 
-    suspend fun creditPayment(
-        txId: String,
-        seconds: Int,
-        amount: Double,
-        operationKind: String = "COIN",
-        coinAmount: Int = amount.toInt(),
-        pricePerCoin: Double = 0.0,
-        boxInstallationEpoch: Long = 0L,
-        phonePairingEpoch: Long = 0L,
-        recordSchemaVersion: Int = PaymentReceipt.CURRENT_RECORD_SCHEMA_VERSION
-    ): PaymentOutcome {
-        val (result, snapshot) = try {
+    suspend fun creditPayment(txId: String, seconds: Int, amount: Double): PaymentResult {
+        var committedSnapshot: SessionSnapshot? = null
+
+        val result = try {
             db.withTransaction {
                 val existing = paymentDao.getReceiptByTxId(txId)
                 if (existing != null) {
-                    val isLegacy = existing.recordSchemaVersion < 5
-                    val isIdentical = if (isLegacy) {
-                        val isLegacyPlaceholder = existing.secondsCredited == 0 && Math.abs(existing.amount - 0.0) < 0.0001
-                        val secondsMatch = existing.secondsCredited == seconds
-                        val amountMatch = Math.abs(existing.amount - amount) < 0.0001 || Math.abs(existing.amount - 0.0) < 0.0001
-                        (secondsMatch && amountMatch) || isLegacyPlaceholder
-                    } else {
-                        val secondsMatch = existing.secondsCredited == seconds
-                        val amountMatch = Math.abs(existing.amount - amount) < 0.0001
-                        val kindMatch = existing.operationKind == operationKind
-                        val coinMatch = existing.coinAmount == coinAmount
-                        val priceMatch = Math.abs(existing.pricePerCoin - pricePerCoin) < 0.001
-                        val boxEpochMatch = existing.boxInstallationEpoch == boxInstallationEpoch
-                        val phoneEpochMatch = existing.phonePairingEpoch == phonePairingEpoch
-                        secondsMatch && amountMatch && kindMatch && coinMatch && priceMatch && boxEpochMatch && phoneEpochMatch
-                    }
-
+                    val isLegacyPlaceholder = existing.secondsCredited == 0 && Math.abs(existing.amount - 0.0) < 0.0001
+                    val isIdentical = (existing.secondsCredited == seconds && Math.abs(existing.amount - amount) < 0.0001) ||
+                            (existing.secondsCredited == seconds && Math.abs(existing.amount - 0.0) < 0.0001) ||
+                            isLegacyPlaceholder
                     if (isIdentical) {
-                        return@withTransaction Pair(PaymentResult.ALREADY_APPLIED, null)
+                        return@withTransaction PaymentResult.ALREADY_APPLIED
                     } else {
                         Log.w(
                             TAG,
-                            "Transaction ID conflict for $txId: existing=(s=${existing.secondsCredited}, a=${existing.amount}, k=${existing.operationKind}) vs new=(s=$seconds, a=$amount, k=$operationKind)"
+                            "Transaction ID conflict for $txId: existing=(s=${existing.secondsCredited}, a=${existing.amount}) vs new=(s=$seconds, a=$amount)"
                         )
-                        return@withTransaction Pair(PaymentResult.CONFLICT, null)
+                        return@withTransaction PaymentResult.CONFLICT
                     }
                 }
 
                 if (!isEligible()) {
                     Log.w(TAG, "Payment rejected for $txId: Device/slot is not currently eligible.")
-                    return@withTransaction Pair(PaymentResult.NOT_ELIGIBLE, null)
+                    return@withTransaction PaymentResult.NOT_ELIGIBLE
                 }
 
                 val currentState = paymentDao.getSessionState()
@@ -163,13 +113,7 @@ class PaymentRepository(
                     txId = txId,
                     secondsCredited = seconds,
                     amount = amount,
-                    acceptanceTimestamp = System.currentTimeMillis(),
-                    operationKind = operationKind,
-                    coinAmount = coinAmount,
-                    pricePerCoin = pricePerCoin,
-                    boxInstallationEpoch = boxInstallationEpoch,
-                    phonePairingEpoch = phonePairingEpoch,
-                    recordSchemaVersion = recordSchemaVersion
+                    acceptanceTimestamp = System.currentTimeMillis()
                 )
                 val newState = PaidSessionState(
                     id = 1,
@@ -182,195 +126,27 @@ class PaymentRepository(
                 paymentDao.insertReceipt(receipt)
                 paymentDao.updateSessionState(newState)
 
-                val committedSnapshot = SessionSnapshot(newDeadline, newSessionTime, newRevision)
-                Pair(PaymentResult.APPLIED, committedSnapshot)
+                committedSnapshot = SessionSnapshot(newDeadline, newSessionTime, newRevision)
+                PaymentResult.APPLIED
             }
         } catch (e: Exception) {
             Log.e(TAG, "Database transaction failed for txId $txId: ${e.message}", e)
-            Pair(PaymentResult.FAILED, null)
+            PaymentResult.FAILED
         }
 
-        if (result == PaymentResult.APPLIED && snapshot != null) {
+        if (result == PaymentResult.APPLIED) {
+            val snapshot = committedSnapshot ?: SessionSnapshot(0L, 0, 0L)
             onPaymentApplied?.invoke(txId, seconds, amount, snapshot)
             onSessionStateChanged?.invoke(snapshot)
         }
 
-        return PaymentOutcome(result, snapshot)
+        return result
     }
 
-    fun creditPaymentBlocking(
-        txId: String,
-        seconds: Int,
-        amount: Double,
-        operationKind: String = "COIN",
-        coinAmount: Int = amount.toInt(),
-        pricePerCoin: Double = 0.0,
-        boxInstallationEpoch: Long = 0L,
-        phonePairingEpoch: Long = 0L
-    ): PaymentOutcome =
+    fun creditPaymentBlocking(txId: String, seconds: Int, amount: Double): PaymentResult =
         runBlocking(Dispatchers.IO) {
-            creditPayment(
-                txId, seconds, amount,
-                operationKind, coinAmount, pricePerCoin,
-                boxInstallationEpoch, phonePairingEpoch
-            )
+            creditPayment(txId, seconds, amount)
         }
-
-    suspend fun deductPayment(
-        txId: String,
-        seconds: Int,
-        operationKind: String = "MANUAL_DEDUCTION",
-        boxInstallationEpoch: Long = 0L,
-        phonePairingEpoch: Long = 0L,
-        recordSchemaVersion: Int = PaymentReceipt.CURRENT_RECORD_SCHEMA_VERSION
-    ): PaymentOutcome {
-        val positiveSeconds = if (seconds == Int.MIN_VALUE) Int.MAX_VALUE else Math.abs(seconds)
-        val expectedNegativeSeconds = -positiveSeconds
-
-        val (result, snapshot) = try {
-            db.withTransaction {
-                if (txId.isNotBlank()) {
-                    val existing = paymentDao.getReceiptByTxId(txId)
-                    if (existing != null) {
-                        val isLegacy = existing.recordSchemaVersion < 5
-                        val isIdentical = if (isLegacy) {
-                            val secondsMatch = existing.secondsCredited == expectedNegativeSeconds
-                            val amountMatch = Math.abs(existing.amount - 0.0) < 0.0001
-                            secondsMatch && amountMatch
-                        } else {
-                            val secondsMatch = existing.secondsCredited == expectedNegativeSeconds
-                            val amountMatch = Math.abs(existing.amount - 0.0) < 0.0001
-                            val kindMatch = existing.operationKind == operationKind
-                            val boxEpochMatch = existing.boxInstallationEpoch == boxInstallationEpoch
-                            val phoneEpochMatch = existing.phonePairingEpoch == phonePairingEpoch
-                            secondsMatch && amountMatch && kindMatch && boxEpochMatch && phoneEpochMatch
-                        }
-
-                        if (isIdentical) {
-                            return@withTransaction Pair(PaymentResult.ALREADY_APPLIED, null)
-                        } else {
-                            Log.w(
-                                TAG,
-                                "Deduction transaction conflict for $txId: existing=(s=${existing.secondsCredited}, a=${existing.amount}, k=${existing.operationKind}) vs new=(s=$expectedNegativeSeconds, a=0.0, k=$operationKind)"
-                            )
-                            return@withTransaction Pair(PaymentResult.CONFLICT, null)
-                        }
-                    }
-                }
-
-                if (!isEligible()) {
-                    Log.w(TAG, "Deduction rejected for $txId: Device/slot is not currently eligible.")
-                    return@withTransaction Pair(PaymentResult.NOT_ELIGIBLE, null)
-                }
-
-                val currentState = paymentDao.getSessionState()
-                val nowMonotonic = SystemClock.elapsedRealtime()
-                val curDeadline = currentState?.sessionExpiryDeadlineMs ?: 0L
-                val deductMs = positiveSeconds.toLong() * 1000L
-
-                val isMatchTransfer = operationKind.equals("MATCH_TRANSFER", ignoreCase = true)
-                if (isMatchTransfer) {
-                    val currentRemainingMs = if (curDeadline > nowMonotonic) (curDeadline - nowMonotonic) else 0L
-                    if (currentRemainingMs < deductMs) {
-                        Log.w(
-                            TAG,
-                            "Match transfer deduction rejected for $txId: Insufficient balance ($currentRemainingMs ms < $deductMs ms required)."
-                        )
-                        return@withTransaction Pair(PaymentResult.NOT_ELIGIBLE, null)
-                    }
-                }
-
-                val newDeadline = if (curDeadline > nowMonotonic) {
-                    maxOf(nowMonotonic, curDeadline - deductMs)
-                } else {
-                    0L
-                }
-                val remaining = if (newDeadline > nowMonotonic) {
-                    ((newDeadline - nowMonotonic) / 1000L).toInt()
-                } else {
-                    0
-                }
-                val effectiveDeadline = if (remaining > 0) newDeadline else 0L
-                val newRevision = (currentState?.revision ?: 0L) + 1L
-
-                if (txId.isNotBlank()) {
-                    val receipt = PaymentReceipt(
-                        txId = txId,
-                        secondsCredited = expectedNegativeSeconds,
-                        amount = 0.0,
-                        acceptanceTimestamp = System.currentTimeMillis(),
-                        operationKind = operationKind,
-                        coinAmount = 0,
-                        pricePerCoin = 0.0,
-                        boxInstallationEpoch = boxInstallationEpoch,
-                        phonePairingEpoch = phonePairingEpoch,
-                        recordSchemaVersion = recordSchemaVersion
-                    )
-                    paymentDao.insertReceipt(receipt)
-                }
-
-                val newState = PaidSessionState(
-                    id = 1,
-                    sessionTimeRemaining = remaining,
-                    sessionExpiryDeadlineMs = effectiveDeadline,
-                    lastSavedElapsedRealtime = nowMonotonic,
-                    revision = newRevision
-                )
-                paymentDao.updateSessionState(newState)
-
-                val committedSnapshot = SessionSnapshot(effectiveDeadline, remaining, newRevision)
-                Pair(PaymentResult.APPLIED, committedSnapshot)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Database transaction failed for deductPayment txId $txId: ${e.message}", e)
-            Pair(PaymentResult.FAILED, null)
-        }
-
-        if (result == PaymentResult.APPLIED && snapshot != null) {
-            onSessionStateChanged?.invoke(snapshot)
-        }
-
-        return PaymentOutcome(result, snapshot)
-    }
-
-    fun deductPaymentBlocking(
-        txId: String,
-        seconds: Int,
-        operationKind: String = "MANUAL_DEDUCTION",
-        boxInstallationEpoch: Long = 0L,
-        phonePairingEpoch: Long = 0L
-    ): PaymentOutcome =
-        runBlocking(Dispatchers.IO) {
-            deductPayment(txId, seconds, operationKind, boxInstallationEpoch, phonePairingEpoch)
-        }
-
-    fun evaluateMatchTransfer(
-        matchId: String,
-        sourceDeviceId: String,
-        targetDeviceId: String,
-        stakeSeconds: Int,
-        deductTxId: String,
-        creditTxId: String,
-        deductResult: PaymentResult,
-        creditResult: PaymentResult
-    ): MatchTransferOutcome {
-        val hasDeductSuccess = (deductResult == PaymentResult.APPLIED || deductResult == PaymentResult.ALREADY_APPLIED)
-        val hasCreditSuccess = (creditResult == PaymentResult.APPLIED || creditResult == PaymentResult.ALREADY_APPLIED)
-        val isComplete = hasDeductSuccess && hasCreditSuccess
-        val isPartial = (hasDeductSuccess && !hasCreditSuccess) || (!hasDeductSuccess && hasCreditSuccess)
-        return MatchTransferOutcome(
-            matchId = matchId,
-            sourceDeviceId = sourceDeviceId,
-            targetDeviceId = targetDeviceId,
-            stakeSeconds = stakeSeconds,
-            deductTxId = deductTxId,
-            creditTxId = creditTxId,
-            deductResult = deductResult,
-            creditResult = creditResult,
-            isComplete = isComplete,
-            isPartial = isPartial
-        )
-    }
 
     suspend fun deductTime(secondsDelta: Int, txId: String? = null): PaidSessionState {
         val updatedState = db.withTransaction {
@@ -574,83 +350,23 @@ class PaymentRepository(
         checkpointSession(snapshotRevision)
     }
 
-    suspend fun recoverUncommittedTransactions(nowMonotonic: Long = SystemClock.elapsedRealtime()) {
-        // Inspect and sanitize PaidSessionState
-        val currentState = paymentDao.getSessionState()
-        if (currentState != null) {
-            var sanitizedRemaining = currentState.sessionTimeRemaining
-            var sanitizedDeadline = currentState.sessionExpiryDeadlineMs
-            var needsUpdate = false
-
-            if (sanitizedRemaining < 0) {
-                sanitizedRemaining = 0
-                sanitizedDeadline = 0L
-                needsUpdate = true
-            }
-            if (sanitizedDeadline < 0L) {
-                sanitizedDeadline = 0L
-                sanitizedRemaining = 0
-                needsUpdate = true
-            }
-
-            if (needsUpdate) {
-                paymentDao.updateSessionState(
-                    currentState.copy(
-                        sessionTimeRemaining = sanitizedRemaining,
-                        sessionExpiryDeadlineMs = sanitizedDeadline,
-                        lastSavedElapsedRealtime = nowMonotonic,
-                        revision = currentState.revision + 1L
-                    )
-                )
-            }
-        }
+    // Overload for backward compatibility
+    suspend fun checkpointSession(remainingSec: Int, deadlineMs: Long, snapshotRevision: Long = 0L) {
+        checkpointSession(snapshotRevision)
     }
 
-    fun recoverUncommittedTransactionsBlocking(nowMonotonic: Long = SystemClock.elapsedRealtime()) =
+    fun checkpointSessionBlocking(remainingSec: Int, deadlineMs: Long, snapshotRevision: Long = 0L) =
         runBlocking(Dispatchers.IO) {
-            recoverUncommittedTransactions(nowMonotonic)
+            checkpointSession(snapshotRevision)
         }
 
     fun restoreSessionState(ctx: Context? = context): RestoredSessionState = runBlocking(Dispatchers.IO) {
         if (ctx != null) {
             migrateAndInitialize(ctx)
         }
-
-        val effectiveCtx = ctx ?: context
-        val encryptedPrefs = effectiveCtx?.let { KioskSecurity.getEncryptedPreferences(it) }
-
         val (snapshot, isReboot) = db.withTransaction {
-            val nowMonotonic = SystemClock.elapsedRealtime()
-            recoverUncommittedTransactions(nowMonotonic)
-
-            val currentBootCount = if (effectiveCtx != null) {
-                try {
-                    android.provider.Settings.Global.getInt(
-                        effectiveCtx.contentResolver,
-                        android.provider.Settings.Global.BOOT_COUNT,
-                        -1
-                    )
-                } catch (e: Exception) {
-                    -1
-                }
-            } else {
-                -1
-            }
-            val lastSavedBootCountStr = paymentDao.getMetadata(KEY_BOOT_COUNT)
-            val lastSavedBootCount = if (lastSavedBootCountStr != null) {
-                lastSavedBootCountStr.toIntOrNull() ?: -1
-            } else {
-                encryptedPrefs?.getInt(KEY_BOOT_COUNT, -1) ?: -1
-            }
-            val isBootCountChanged = if (currentBootCount != -1) {
-                val changed = lastSavedBootCount != -1 && currentBootCount != lastSavedBootCount
-                paymentDao.setMetadata(AppMetadata(KEY_BOOT_COUNT, currentBootCount.toString()))
-                changed
-            } else {
-                false
-            }
-
             val paidState = paymentDao.getSessionState()
+            val nowMonotonic = SystemClock.elapsedRealtime()
             if (paidState == null) {
                 return@withTransaction Pair(SessionSnapshot(0L, 0, 0L), false)
             }
@@ -659,13 +375,7 @@ class PaymentRepository(
             val savedTime = paidState.sessionTimeRemaining
             val lastSavedElapsed = paidState.lastSavedElapsedRealtime
 
-            val monotonicRebootDetected = lastSavedElapsed > 0L && nowMonotonic < lastSavedElapsed
-            val rebootDetected = isBootCountChanged || monotonicRebootDetected
-            if (currentBootCount == -1 && monotonicRebootDetected) {
-                val nextCount = (lastSavedBootCount.takeIf { it >= 0 } ?: 0) + 1
-                paymentDao.setMetadata(AppMetadata(KEY_BOOT_COUNT, nextCount.toString()))
-            }
-
+            val rebootDetected = lastSavedElapsed > 0L && nowMonotonic < lastSavedElapsed
             val effectiveRemainingSec: Int
             val effectiveDeadline: Long
             var updatedRevision = paidState.revision

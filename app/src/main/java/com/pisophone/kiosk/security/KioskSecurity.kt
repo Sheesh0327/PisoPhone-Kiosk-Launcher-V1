@@ -39,13 +39,12 @@ object KioskSecurity {
     private const val KEY_BATTERY_ALERTS_ENABLED = "battery_alerts_enabled"
     private const val KEY_LOW_BATTERY_THRESHOLD = "low_battery_threshold"
     private const val KEY_HIGH_BATTERY_THRESHOLD = "high_battery_threshold"
+    private const val KEY_CONFIGURED_ESP32_IP = "configured_esp32_ip"
     private const val KEY_CONFIGURED_ESP32_MAC = "configured_esp32_mac"
     private const val KEY_ASSIGNED_BOX_SLOT = "assigned_box_slot"
     private const val KEY_PROVISIONING_ADB_ALLOWED = "provisioning_adb_allowed"
     private const val KEY_APK_UPDATE_URL = "apk_update_url"
     
-    const val DEFAULT_SHARED_SECRET = "PISOPHONE_HMAC_MASTER_KEY"
-    private const val KEY_SECRET_EXPLICITLY_PROVISIONED = "kiosk_secret_explicitly_provisioned"
     private const val DEFAULT_PIN = "1234"
     private const val TAG = "KioskSecurity"
     private const val KEY_DEVICE_SECRET = "device_crypto_secret"
@@ -64,7 +63,7 @@ object KioskSecurity {
         }
     }
 
-    fun getEncryptedPrefs(context: Context): SharedPreferences? {
+    private fun getEncryptedPrefs(context: Context): SharedPreferences? {
         if (encryptedPrefsInstance != null) return encryptedPrefsInstance
         
         return synchronized(this) {
@@ -87,10 +86,6 @@ object KioskSecurity {
                 null
             }
         }
-    }
-
-    fun getEncryptedPreferences(context: Context): SharedPreferences {
-        return getEncryptedPrefs(context) ?: getDirectBootPrefs(context, "secure_kiosk_prefs")
     }
 
     fun getDirectBootPrefs(context: Context, name: String = PREFS_SECURITY_OLD): SharedPreferences {
@@ -132,6 +127,14 @@ object KioskSecurity {
         getPrefs(context).edit().putInt(KEY_HIGH_BATTERY_THRESHOLD, threshold.coerceIn(50, 100)).apply()
     }
 
+    fun getConfiguredEsp32Ip(context: Context): String {
+        return getPrefs(context).getString(KEY_CONFIGURED_ESP32_IP, "") ?: ""
+    }
+
+    fun setConfiguredEsp32Ip(context: Context, ip: String) {
+        getPrefs(context).edit().putString(KEY_CONFIGURED_ESP32_IP, ip.trim()).apply()
+    }
+
     fun getConfiguredEsp32Mac(context: Context): String {
         return getPrefs(context).getString(KEY_CONFIGURED_ESP32_MAC, "") ?: ""
     }
@@ -169,10 +172,10 @@ object KioskSecurity {
     }
 
     fun isProvisioned(context: Context): Boolean {
-        val prefs = getPrefs(context)
-        val isExplicit = prefs.getBoolean(KEY_SECRET_EXPLICITLY_PROVISIONED, false)
+        val secret = getSharedSecret(context)
         val mac = getConfiguredEsp32Mac(context)
-        return isExplicit && mac.isNotBlank()
+        val ip = getConfiguredEsp32Ip(context)
+        return secret.isNotBlank() && (mac.isNotBlank() || ip.isNotBlank())
     }
 
     fun isAdbAllowed(context: Context): Boolean {
@@ -234,16 +237,6 @@ object KioskSecurity {
         return getPrefs(context).getString(KEY_DEVICE_ALIAS, "") ?: ""
     }
 
-    fun getHardwareId(context: Context): String {
-        val prefs = context.getSharedPreferences("kiosk_prefs", Context.MODE_PRIVATE)
-        var savedUuid = prefs.getString("device_uuid", null)
-        if (savedUuid.isNullOrBlank()) {
-            savedUuid = java.util.UUID.randomUUID().toString()
-            prefs.edit().putString("device_uuid", savedUuid).apply()
-        }
-        return savedUuid
-    }
-
     fun setDeviceAlias(context: Context, alias: String) {
         getPrefs(context).edit().putString(KEY_DEVICE_ALIAS, alias.trim()).apply()
     }
@@ -272,8 +265,8 @@ object KioskSecurity {
         }
     }
 
-    private fun setCustomKeystoreEncryptedSecret(prefs: SharedPreferences, secret: String): Boolean {
-        return try {
+    private fun setCustomKeystoreEncryptedSecret(prefs: SharedPreferences, secret: String) {
+        try {
             val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
             if (!keyStore.containsAlias(CUSTOM_KEYSTORE_ALIAS)) {
                 val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
@@ -296,19 +289,12 @@ object KioskSecurity {
             val ivBase64 = Base64.encodeToString(iv, Base64.NO_WRAP)
             val cipherTextBase64 = Base64.encodeToString(cipherText, Base64.NO_WRAP)
             prefs.edit().putString(KEY_CUSTOM_ENCRYPTED_SECRET, "$ivBase64:$cipherTextBase64").apply()
-            true
         } catch (e: Exception) {
             Log.e(TAG, "Custom Keystore encryption failed: ${e.message}")
-            false
         }
     }
 
     fun getSharedSecret(context: Context): String {
-        val prefs = getPrefs(context)
-        if (!prefs.getBoolean(KEY_SECRET_EXPLICITLY_PROVISIONED, false)) {
-            return DEFAULT_SHARED_SECRET
-        }
-
         val encryptedPrefs = getEncryptedPrefs(context)
         if (encryptedPrefs != null) {
             try { 
@@ -316,6 +302,8 @@ object KioskSecurity {
                 if (!existingSecret.isNullOrBlank()) return existingSecret
             } catch (e: Exception) { Log.e(TAG, "Encrypted prefs read failed: ${e.message}") }
         }
+        
+        val prefs = getPrefs(context)
         
         var secret = getCustomKeystoreEncryptedSecret(prefs)
         if (secret.isNullOrBlank()) {
@@ -325,10 +313,8 @@ object KioskSecurity {
         if (secret == null && prefs.contains(KEY_DEVICE_SECRET)) {
             val oldPlainSecret = prefs.getString(KEY_DEVICE_SECRET, null)
             if (!oldPlainSecret.isNullOrBlank()) {
-                val keystoreSuccess = setCustomKeystoreEncryptedSecret(prefs, oldPlainSecret)
-                if (keystoreSuccess) {
-                    prefs.edit().remove(KEY_DEVICE_SECRET).apply()
-                }
+                setCustomKeystoreEncryptedSecret(prefs, oldPlainSecret)
+                prefs.edit().remove(KEY_DEVICE_SECRET).apply()
                 secret = oldPlainSecret
             }
         }
@@ -364,18 +350,10 @@ object KioskSecurity {
             } catch (e: Exception) { Log.e(TAG, "Encrypted prefs write failed: ${e.message}") }
         } 
         
-        val prefs = getPrefs(context)
-        prefs.edit().putBoolean(KEY_SECRET_EXPLICITLY_PROVISIONED, true).apply()
         if (!successWithEncryptedPrefs) {
-            val keystoreSuccess = setCustomKeystoreEncryptedSecret(prefs, trimmed)
-            if (!keystoreSuccess) {
-                prefs.edit().putString(KEY_DEVICE_SECRET, trimmed).apply()
-            } else {
-                prefs.edit().remove(KEY_DEVICE_SECRET).apply()
-            }
-        } else {
-            prefs.edit().remove(KEY_DEVICE_SECRET).apply()
+            setCustomKeystoreEncryptedSecret(getPrefs(context), trimmed)
         }
+        getPrefs(context).edit().remove(KEY_DEVICE_SECRET).apply()
     }
 
     fun getAdminPin(context: Context): String {
@@ -398,96 +376,11 @@ object KioskSecurity {
     }
 
     fun calculateHmac(data: String, key: String): String {
-        return com.pisophone.kiosk.protocol.KioskProtocol.calculateHmac(data, key)
-    }
-
-    private fun lengthPrefixed(vararg fields: String): String {
-        return fields.joinToString("") { com.pisophone.kiosk.protocol.KioskProtocol.utf8Frame(it) }
-    }
-
-    fun calculateHttpReqSignature(
-        method: String,
-        endpoint: String,
-        recipient: String,
-        txId: String,
-        ts: String,
-        payload: String,
-        secret: String
-    ): String {
-        return com.pisophone.kiosk.protocol.KioskProtocol.calculateHttpReqSignature(
-            method, endpoint, recipient, txId, ts, payload, secret
-        )
-    }
-
-    fun verifyHttpReqSignature(
-        method: String,
-        endpoint: String,
-        recipient: String,
-        txId: String,
-        ts: String,
-        payload: String,
-        sig: String,
-        secret: String
-    ): Boolean {
-        return com.pisophone.kiosk.protocol.KioskProtocol.verifyHttpReqSignature(
-            method, endpoint, recipient, txId, ts, payload, sig, secret
-        )
-    }
-
-    fun calculateWsPaySignature(
-        event: String,
-        recipient: String,
-        txId: String,
-        ts: String,
-        payload: String,
-        secret: String
-    ): String {
-        return com.pisophone.kiosk.protocol.KioskProtocol.calculateWsPaySignature(
-            event, recipient, txId, ts, payload, secret
-        )
-    }
-
-    fun verifyWsPaySignature(
-        event: String,
-        recipient: String,
-        txId: String,
-        ts: String,
-        payload: String,
-        sig: String,
-        secret: String
-    ): Boolean {
-        return com.pisophone.kiosk.protocol.KioskProtocol.verifyWsPaySignature(
-            event, recipient, txId, ts, payload, sig, secret
-        )
-    }
-
-    fun calculateAckSignature(
-        deviceId: String,
-        txId: String,
-        amount: Int,
-        seconds: Int,
-        ts: String,
-        status: String,
-        secret: String
-    ): String {
-        return com.pisophone.kiosk.protocol.KioskProtocol.calculateAckSignature(
-            deviceId, txId, amount, seconds, ts, status, secret
-        )
-    }
-
-    fun verifyAckSignature(
-        deviceId: String,
-        txId: String,
-        amount: Int,
-        seconds: Int,
-        ts: String,
-        status: String,
-        sig: String,
-        secret: String
-    ): Boolean {
-        return com.pisophone.kiosk.protocol.KioskProtocol.verifyAckSignature(
-            deviceId, txId, amount, seconds, ts, status, sig, secret
-        )
+        val mac = Mac.getInstance("HmacSHA256")
+        val secretKey = SecretKeySpec(key.toByteArray(Charsets.UTF_8), "HmacSHA256")
+        mac.init(secretKey)
+        val hmacBytes = mac.doFinal(data.toByteArray(Charsets.UTF_8))
+        return hmacBytes.joinToString("") { "%02x".format(it) }
     }
 
     fun generateTimestampSignature(deviceId: String, ts: String, secret: String): String {
@@ -679,6 +572,7 @@ object KioskSecurity {
         context: Context,
         secret: String? = null,
         mac: String? = null,
+        ip: String? = null,
         slot: Int = -1,
         name: String? = null
     ): Boolean {
@@ -686,6 +580,9 @@ object KioskSecurity {
             setSharedSecret(context, secret.trim())
         } else if (secret != null) {
             Log.e(TAG, "[-] Rejected direct provisioning with empty or blank secret key for security!")
+        }
+        if (!ip.isNullOrBlank()) {
+            setConfiguredEsp32Ip(context, ip.trim())
         }
         if (!mac.isNullOrBlank()) {
             val formattedMac = formatMacAddress(mac.trim())
@@ -699,7 +596,7 @@ object KioskSecurity {
         } else if (!name.isNullOrBlank()) {
             setDeviceAlias(context, name.trim())
         }
-        Log.i(TAG, "[+] Successfully applied Direct Provisioning setup: MAC=$mac, Slot=$slot, SecretConfigured=${!secret.isNullOrBlank()}")
+        Log.i(TAG, "[+] Successfully applied Direct Provisioning setup: MAC=$mac, IP=$ip, Slot=$slot, SecretConfigured=${!secret.isNullOrBlank()}")
         return true
     }
 }

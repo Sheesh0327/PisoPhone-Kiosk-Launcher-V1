@@ -6,14 +6,12 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.pisophone.kiosk.db.AppDatabase
 import com.pisophone.kiosk.db.PaidSessionState
-import com.pisophone.kiosk.db.PaymentReceipt
 import com.pisophone.kiosk.service.KioskStateManager
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -70,11 +68,9 @@ class PaymentRepositoryUnitTest {
         )
 
         val txId = "tx-1001"
-        val outcome = repository.creditPayment(txId = txId, seconds = 600, amount = 5.0)
+        val result = repository.creditPayment(txId = txId, seconds = 600, amount = 5.0)
 
-        assertEquals("First credit should return APPLIED", PaymentResult.APPLIED, outcome.result)
-        assertNotNull("APPLIED outcome must include snapshot", outcome.snapshot)
-        assertEquals("Snapshot revision must be 1", 1L, outcome.snapshot?.revision)
+        assertEquals("First credit should return APPLIED", PaymentResult.APPLIED, result)
         assertEquals("Post-commit callback called once", 1, appliedCount)
 
         val receipt = db.paymentDao().getReceiptByTxId(txId)
@@ -99,13 +95,13 @@ class PaymentRepositoryUnitTest {
         )
 
         val txId = "tx-1002"
-        val result1 = repository.creditPayment(txId = txId, seconds = 300, amount = 1.0).result
+        val result1 = repository.creditPayment(txId = txId, seconds = 300, amount = 1.0)
         assertEquals(PaymentResult.APPLIED, result1)
         assertEquals(1, appliedCount)
 
         val deadlineAfterFirst = repository.getSessionState()?.sessionExpiryDeadlineMs ?: 0L
 
-        val result2 = repository.creditPayment(txId = txId, seconds = 300, amount = 1.0).result
+        val result2 = repository.creditPayment(txId = txId, seconds = 300, amount = 1.0)
         assertEquals("Duplicate identical payment returns ALREADY_APPLIED", PaymentResult.ALREADY_APPLIED, result2)
         assertEquals("Post-commit callback must NOT fire on duplicate", 1, appliedCount)
 
@@ -121,13 +117,13 @@ class PaymentRepositoryUnitTest {
         )
 
         val txId = "tx-1003"
-        val res1 = repository.creditPayment(txId = txId, seconds = 300, amount = 1.0).result
+        val res1 = repository.creditPayment(txId = txId, seconds = 300, amount = 1.0)
         assertEquals(PaymentResult.APPLIED, res1)
 
-        val resDiffSeconds = repository.creditPayment(txId = txId, seconds = 600, amount = 1.0).result
+        val resDiffSeconds = repository.creditPayment(txId = txId, seconds = 600, amount = 1.0)
         assertEquals("Different seconds returns CONFLICT", PaymentResult.CONFLICT, resDiffSeconds)
 
-        val resDiffAmount = repository.creditPayment(txId = txId, seconds = 300, amount = 5.0).result
+        val resDiffAmount = repository.creditPayment(txId = txId, seconds = 300, amount = 5.0)
         assertEquals("Different amount returns CONFLICT", PaymentResult.CONFLICT, resDiffAmount)
     }
 
@@ -140,7 +136,7 @@ class PaymentRepositoryUnitTest {
         )
 
         val txId = "tx-1004"
-        val result = repository.creditPayment(txId = txId, seconds = 300, amount = 1.0).result
+        val result = repository.creditPayment(txId = txId, seconds = 300, amount = 1.0)
         assertEquals("New payment rejected when not eligible", PaymentResult.NOT_ELIGIBLE, result)
 
         val receipt = db.paymentDao().getReceiptByTxId(txId)
@@ -199,7 +195,7 @@ class PaymentRepositoryUnitTest {
         assertTrue("Timer observes expired deadline", timerObservedDeadline <= now)
 
         // 3. Concurrently, a new payment is committed
-        val paymentResult = repository.creditPayment("tx-new-topup", 600, 5.0).result
+        val paymentResult = repository.creditPayment("tx-new-topup", 600, 5.0)
         assertEquals(PaymentResult.APPLIED, paymentResult)
 
         val stateAfterPayment = repository.getSessionState()!!
@@ -447,7 +443,7 @@ class PaymentRepositoryUnitTest {
         val delayedExpiryState = expiryResult.sessionState
 
         // 3. Before the UI handler for expiration runs, a new payment commits in Room and publishes revision 3
-        val paymentResult = repository.creditPayment("tx-race-1", 600, 5.0).result
+        val paymentResult = repository.creditPayment("tx-race-1", 600, 5.0)
         assertEquals(PaymentResult.APPLIED, paymentResult)
         val paymentState = repository.getSessionState()!!
         assertEquals(3L, paymentState.revision)
@@ -486,608 +482,6 @@ class PaymentRepositoryUnitTest {
         assertEquals("Session revision remains 3L", 3L, stateManager.sessionRevision.value)
         assertEquals("Session time remaining remains the purchased time", paymentState.sessionTimeRemaining, stateManager.sessionTimeRemaining.value)
         assertEquals("App state remains unlocked (2)", 2, stateManager.appState.value)
-    }
-
-    @Test
-    fun testRebootRecoveryRebuildsSessionDeadlineUsingElapsedRealtime() = runBlocking {
-        val nowMonotonic = SystemClock.elapsedRealtime()
-        val prevBootElapsed = nowMonotonic + 1000_000L // Larger than current -> indicates reboot
-        val savedRemaining = 300
-
-        db.paymentDao().updateSessionState(
-            PaidSessionState(
-                id = 1,
-                sessionTimeRemaining = savedRemaining,
-                sessionExpiryDeadlineMs = prevBootElapsed + 300_000L,
-                lastSavedElapsedRealtime = prevBootElapsed,
-                revision = 10L
-            )
-        )
-
-        val repository = PaymentRepository(db = db, context = context, isEligible = { true })
-        val restored = repository.restoreSessionState(context)
-
-        assertTrue("Reboot must be detected", restored.isReboot)
-        val expectedRemaining = maxOf(0, savedRemaining)
-        assertEquals("Remaining time must equal saved time exactly after reboot", expectedRemaining, restored.remainingSeconds)
-        assertEquals("Monotonic deadline must be now + remainingMs", nowMonotonic + (expectedRemaining * 1000L), restored.deadlineMs)
-        assertEquals(11L, restored.revision)
-    }
-
-    @Test
-    fun testBootCountChangeTriggersRebootRecovery() = runBlocking {
-        val encryptedPrefs = com.pisophone.kiosk.security.KioskSecurity.getEncryptedPreferences(context)
-        encryptedPrefs.edit().putInt(PaymentRepository.KEY_BOOT_COUNT, 1).commit()
-
-        val nowMonotonic = SystemClock.elapsedRealtime()
-        // lastSavedElapsed is LESS than nowMonotonic so monotonic check alone would NOT detect reboot
-        val lastSavedElapsed = maxOf(1L, nowMonotonic - 5000L)
-        val savedRemaining = 600
-
-        db.paymentDao().updateSessionState(
-            PaidSessionState(
-                id = 1,
-                sessionTimeRemaining = savedRemaining,
-                sessionExpiryDeadlineMs = nowMonotonic + 600_000L,
-                lastSavedElapsedRealtime = lastSavedElapsed,
-                revision = 5L
-            )
-        )
-
-        // Simulate new boot count by updating Settings.Global.BOOT_COUNT or synthetic boot count
-        android.provider.Settings.Global.putInt(context.contentResolver, android.provider.Settings.Global.BOOT_COUNT, 2)
-
-        val repository = PaymentRepository(db = db, context = context, isEligible = { true })
-        val restored = repository.restoreSessionState(context)
-
-        assertTrue("Reboot must be detected via BOOT_COUNT change", restored.isReboot)
-        val expectedRemaining = maxOf(0, savedRemaining)
-        assertEquals(expectedRemaining, restored.remainingSeconds)
-        assertEquals(6L, restored.revision)
-        assertEquals("2", db.paymentDao().getMetadata(PaymentRepository.KEY_BOOT_COUNT))
-    }
-
-    @Test
-    fun testRecoverUncommittedTransactionsSanitizesCorruptState() = runBlocking {
-        db.paymentDao().updateSessionState(
-            PaidSessionState(
-                id = 1,
-                sessionTimeRemaining = -10,
-                sessionExpiryDeadlineMs = -500L,
-                lastSavedElapsedRealtime = 1000L,
-                revision = 1L
-            )
-        )
-
-        val repository = PaymentRepository(db = db, context = context, isEligible = { true })
-        repository.recoverUncommittedTransactions()
-
-        // Verify corrupt session state was safely reverted to 0
-        val sanitizedState = repository.getSessionState()!!
-        assertEquals("Negative remaining time must be sanitized to 0", 0, sanitizedState.sessionTimeRemaining)
-        assertEquals("Negative deadline must be sanitized to 0L", 0L, sanitizedState.sessionExpiryDeadlineMs)
-        assertEquals(2L, sanitizedState.revision)
-    }
-
-    @Test
-    fun testCreditPaymentStoresAllAuditFieldsImmutably() = runBlocking {
-        val repository = PaymentRepository(db = db, isEligible = { true })
-        val txId = "tx-audit-100"
-        val result = repository.creditPayment(
-            txId = txId,
-            seconds = 1800,
-            amount = 5.0,
-            operationKind = "COIN",
-            coinAmount = 1,
-            pricePerCoin = 5.0,
-            boxInstallationEpoch = 1710000000L,
-            phonePairingEpoch = 1710050000L
-        ).result
-
-        assertEquals(PaymentResult.APPLIED, result)
-
-        val receipt = db.paymentDao().getReceiptByTxId(txId)
-        assertNotNull("Receipt must be stored", receipt)
-        assertEquals(txId, receipt?.txId)
-        assertEquals(1800, receipt?.secondsCredited)
-        assertEquals(5.0, receipt?.amount ?: 0.0, 0.001)
-        assertEquals("COIN", receipt?.operationKind)
-        assertEquals(1, receipt?.coinAmount)
-        assertEquals(5.0, receipt?.pricePerCoin ?: 0.0, 0.001)
-        assertEquals(1710000000L, receipt?.boxInstallationEpoch)
-        assertEquals(1710050000L, receipt?.phonePairingEpoch)
-        assertEquals(PaymentReceipt.CURRENT_RECORD_SCHEMA_VERSION, receipt?.recordSchemaVersion)
-
-        // Duplicate identical submission returns ALREADY_APPLIED
-        val dupResult = repository.creditPayment(
-            txId = txId,
-            seconds = 1800,
-            amount = 5.0,
-            operationKind = "COIN",
-            coinAmount = 1,
-            pricePerCoin = 5.0,
-            boxInstallationEpoch = 1710000000L,
-            phonePairingEpoch = 1710050000L
-        ).result
-        assertEquals(PaymentResult.ALREADY_APPLIED, dupResult)
-    }
-
-    @Test
-    fun testAuditFieldConflictsRejectedWithConflict() = runBlocking {
-        val repository = PaymentRepository(db = db, isEligible = { true })
-        val txId = "tx-conflict-audit"
-        val res1 = repository.creditPayment(
-            txId = txId,
-            seconds = 600,
-            amount = 1.0,
-            operationKind = "COIN",
-            coinAmount = 1,
-            pricePerCoin = 1.0,
-            boxInstallationEpoch = 1000L,
-            phonePairingEpoch = 2000L
-        ).result
-        assertEquals(PaymentResult.APPLIED, res1)
-
-        // Conflicting operation kind
-        val resKind = repository.creditPayment(
-            txId = txId,
-            seconds = 600,
-            amount = 1.0,
-            operationKind = "MANUAL_ADJUSTMENT"
-        ).result
-        assertEquals("Conflicting operationKind must return CONFLICT", PaymentResult.CONFLICT, resKind)
-
-        // Conflicting coin amount
-        val resCoin = repository.creditPayment(
-            txId = txId,
-            seconds = 600,
-            amount = 1.0,
-            coinAmount = 5
-        ).result
-        assertEquals("Conflicting coinAmount must return CONFLICT", PaymentResult.CONFLICT, resCoin)
-
-        // Conflicting pricePerCoin
-        val resPrice = repository.creditPayment(
-            txId = txId,
-            seconds = 600,
-            amount = 1.0,
-            pricePerCoin = 5.0
-        ).result
-        assertEquals("Conflicting pricePerCoin must return CONFLICT", PaymentResult.CONFLICT, resPrice)
-
-        // Conflicting epochs
-        val resEpoch = repository.creditPayment(
-            txId = txId,
-            seconds = 600,
-            amount = 1.0,
-            boxInstallationEpoch = 9999L
-        ).result
-        assertEquals("Conflicting boxInstallationEpoch must return CONFLICT", PaymentResult.CONFLICT, resEpoch)
-    }
-
-    @Test
-    fun testDeductPaymentAppliedAndAuditFieldsPersisted() = runBlocking {
-        val repository = PaymentRepository(db = db, isEligible = { true })
-        // Add initial balance
-        repository.creditPayment("tx-initial", 1800, 5.0)
-
-        val txId = "tx-deduct-1"
-        val result = repository.deductPayment(
-            txId = txId,
-            seconds = 600,
-            operationKind = "MATCH_TRANSFER_DEDUCT",
-            boxInstallationEpoch = 1000L,
-            phonePairingEpoch = 2000L
-        ).result
-        assertEquals(PaymentResult.APPLIED, result)
-
-        val receipt = db.paymentDao().getReceiptByTxId(txId)
-        assertNotNull(receipt)
-        assertEquals(txId, receipt?.txId)
-        assertEquals(-600, receipt?.secondsCredited)
-        assertEquals("MATCH_TRANSFER_DEDUCT", receipt?.operationKind)
-        assertEquals(0, receipt?.coinAmount)
-
-        // Duplicate returns ALREADY_APPLIED
-        val dupResult = repository.deductPayment(
-            txId = txId,
-            seconds = 600,
-            operationKind = "MATCH_TRANSFER_DEDUCT",
-            boxInstallationEpoch = 1000L,
-            phonePairingEpoch = 2000L
-        ).result
-        assertEquals(PaymentResult.ALREADY_APPLIED, dupResult)
-
-        // Conflict returns CONFLICT
-        val conflictResult = repository.deductPayment(
-            txId = txId,
-            seconds = 300
-        ).result
-        assertEquals(PaymentResult.CONFLICT, conflictResult)
-    }
-
-    @Test
-    fun testTwoPhoneMatchTransferFullSuccess() = runBlocking {
-        val phone1Db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
-        val phone2Db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
-
-        val p1Repo = PaymentRepository(db = phone1Db, isEligible = { true })
-        val p2Repo = PaymentRepository(db = phone2Db, isEligible = { true })
-
-        // P1 has 1200 seconds initially
-        p1Repo.creditPayment("tx-p1-seed", 1200, 5.0)
-
-        val matchId = "match-test-100"
-        val transferSeconds = 300
-        val deductTxId = "$matchId-deduct"
-        val creditTxId = "$matchId-credit"
-
-        // Execute distinct operations on two separate databases
-        val deductRes = p1Repo.deductPayment(
-            txId = deductTxId,
-            seconds = transferSeconds,
-            operationKind = "MATCH_TRANSFER_DEDUCT",
-            boxInstallationEpoch = 1000L,
-            phonePairingEpoch = 2000L
-        )
-        val creditRes = p2Repo.creditPayment(
-            txId = creditTxId,
-            seconds = transferSeconds,
-            amount = 0.0,
-            operationKind = "MATCH_TRANSFER_CREDIT",
-            coinAmount = 0,
-            pricePerCoin = 0.0,
-            boxInstallationEpoch = 1000L,
-            phonePairingEpoch = 2000L
-        )
-
-        val outcome = p1Repo.evaluateMatchTransfer(
-            matchId = matchId,
-            sourceDeviceId = "p1",
-            targetDeviceId = "p2",
-            stakeSeconds = transferSeconds,
-            deductTxId = deductTxId,
-            creditTxId = creditTxId,
-            deductResult = deductRes.result,
-            creditResult = creditRes.result
-        )
-
-        assertEquals(PaymentResult.APPLIED, outcome.deductResult)
-        assertEquals(PaymentResult.APPLIED, outcome.creditResult)
-        assertTrue("Transfer must be complete", outcome.isComplete)
-        assertFalse("Transfer must not be partial", outcome.isPartial)
-
-        phone1Db.close()
-        phone2Db.close()
-    }
-
-    @Test
-    fun testTwoPhoneMatchTransferPartialDebitFailed() = runBlocking {
-        val phone1Db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
-        val phone2Db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
-
-        // P1 is not eligible to debit/credit
-        val p1Repo = PaymentRepository(db = phone1Db, isEligible = { false })
-        val p2Repo = PaymentRepository(db = phone2Db, isEligible = { true })
-
-        val matchId = "match-test-200"
-        val transferSeconds = 300
-        val deductTxId = "$matchId-deduct"
-        val creditTxId = "$matchId-credit"
-
-        val deductRes = p1Repo.deductPayment(
-            txId = deductTxId,
-            seconds = transferSeconds,
-            operationKind = "MATCH_TRANSFER_DEDUCT"
-        )
-        val creditRes = p2Repo.creditPayment(
-            txId = creditTxId,
-            seconds = transferSeconds,
-            amount = 0.0,
-            operationKind = "MATCH_TRANSFER_CREDIT"
-        )
-
-        val outcome = p1Repo.evaluateMatchTransfer(
-            matchId = matchId,
-            sourceDeviceId = "p1",
-            targetDeviceId = "p2",
-            stakeSeconds = transferSeconds,
-            deductTxId = deductTxId,
-            creditTxId = creditTxId,
-            deductResult = deductRes.result,
-            creditResult = creditRes.result
-        )
-
-        assertEquals(PaymentResult.NOT_ELIGIBLE, outcome.deductResult)
-        assertEquals(PaymentResult.APPLIED, outcome.creditResult)
-        assertFalse(outcome.isComplete)
-        assertTrue("Must be marked as partial when one phone fails", outcome.isPartial)
-
-        phone1Db.close()
-        phone2Db.close()
-    }
-
-    @Test
-    fun testTwoPhoneMatchTransferPartialCreditFailed() = runBlocking {
-        val phone1Db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
-        val phone2Db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
-
-        val p1Repo = PaymentRepository(db = phone1Db, isEligible = { true })
-        // P2 is not eligible
-        val p2Repo = PaymentRepository(db = phone2Db, isEligible = { false })
-
-        val matchId = "match-test-300"
-        val transferSeconds = 300
-        val deductTxId = "$matchId-deduct"
-        val creditTxId = "$matchId-credit"
-
-        val deductRes = p1Repo.deductPayment(
-            txId = deductTxId,
-            seconds = transferSeconds,
-            operationKind = "MATCH_TRANSFER_DEDUCT"
-        )
-        val creditRes = p2Repo.creditPayment(
-            txId = creditTxId,
-            seconds = transferSeconds,
-            amount = 0.0,
-            operationKind = "MATCH_TRANSFER_CREDIT"
-        )
-
-        val outcome = p1Repo.evaluateMatchTransfer(
-            matchId = matchId,
-            sourceDeviceId = "p1",
-            targetDeviceId = "p2",
-            stakeSeconds = transferSeconds,
-            deductTxId = deductTxId,
-            creditTxId = creditTxId,
-            deductResult = deductRes.result,
-            creditResult = creditRes.result
-        )
-
-        assertEquals(PaymentResult.APPLIED, outcome.deductResult)
-        assertEquals(PaymentResult.NOT_ELIGIBLE, outcome.creditResult)
-        assertFalse(outcome.isComplete)
-        assertTrue("Must be marked as partial when one phone fails", outcome.isPartial)
-
-        phone1Db.close()
-        phone2Db.close()
-    }
-
-    @Test
-    fun testTwoPhoneMatchTransferIdempotentRetry() = runBlocking {
-        val phone1Db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
-        val phone2Db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
-
-        val p1Repo = PaymentRepository(db = phone1Db, isEligible = { true })
-        val p2Repo = PaymentRepository(db = phone2Db, isEligible = { true })
-
-        val matchId = "match-test-400"
-        val transferSeconds = 300
-        val deductTxId = "$matchId-deduct"
-        val creditTxId = "$matchId-credit"
-
-        val deduct1 = p1Repo.deductPayment(txId = deductTxId, seconds = transferSeconds)
-        val credit1 = p2Repo.creditPayment(txId = creditTxId, seconds = transferSeconds, amount = 0.0)
-        val outcome1 = p1Repo.evaluateMatchTransfer(
-            matchId, "p1", "p2", transferSeconds, deductTxId, creditTxId, deduct1.result, credit1.result
-        )
-        assertTrue(outcome1.isComplete)
-
-        // Retry with same IDs
-        val deduct2 = p1Repo.deductPayment(txId = deductTxId, seconds = transferSeconds)
-        val credit2 = p2Repo.creditPayment(txId = creditTxId, seconds = transferSeconds, amount = 0.0)
-        assertEquals(PaymentResult.ALREADY_APPLIED, deduct2.result)
-        assertEquals(PaymentResult.ALREADY_APPLIED, credit2.result)
-
-        val outcome2 = p1Repo.evaluateMatchTransfer(
-            matchId, "p1", "p2", transferSeconds, deductTxId, creditTxId, deduct2.result, credit2.result
-        )
-        assertTrue("Retried complete transfer remains complete", outcome2.isComplete)
-        assertFalse(outcome2.isPartial)
-
-        phone1Db.close()
-        phone2Db.close()
-    }
-
-    @Test
-    fun testOnDiskV4DatabaseMigrationAndProductionRepository() = runBlocking {
-        val dbFile = context.getDatabasePath("test_v4_ondisk.db")
-        if (dbFile.exists()) {
-            dbFile.delete()
-        }
-
-        // 1. Create a real v4 SQLite database file on disk and seed v4 receipts & session balance
-        val rawDb = android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(dbFile, null)
-        rawDb.execSQL("CREATE TABLE IF NOT EXISTS `coin_events` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `txId` TEXT NOT NULL, `secondsAdded` INTEGER NOT NULL, `source` TEXT NOT NULL, `timestamp` INTEGER NOT NULL);")
-        rawDb.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_coin_events_txId` ON `coin_events` (`txId`);")
-        rawDb.execSQL("CREATE TABLE IF NOT EXISTS `payment_receipts` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `txId` TEXT NOT NULL, `secondsCredited` INTEGER NOT NULL, `amount` REAL NOT NULL, `acceptanceTimestamp` INTEGER NOT NULL);")
-        rawDb.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_payment_receipts_txId` ON `payment_receipts` (`txId`);")
-        rawDb.execSQL("CREATE TABLE IF NOT EXISTS `paid_session_state` (`id` INTEGER NOT NULL, `sessionTimeRemaining` INTEGER NOT NULL, `sessionExpiryDeadlineMs` INTEGER NOT NULL, `lastSavedElapsedRealtime` INTEGER NOT NULL, `revision` INTEGER NOT NULL, PRIMARY KEY(`id`));")
-        rawDb.execSQL("CREATE TABLE IF NOT EXISTS `app_metadata` (`key` TEXT NOT NULL, `value` TEXT NOT NULL, PRIMARY KEY(`key`));")
-        rawDb.execSQL("CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY, identity_hash TEXT);")
-        rawDb.execSQL("INSERT OR REPLACE INTO room_master_table (id, identity_hash) VALUES(42, 'cb710ab4ae7aa7cddb70934f06260d43');")
-        rawDb.execSQL("PRAGMA user_version = 4;")
-
-        // Seed legacy v4 receipts:
-        // tx-old: +300s, amount=5.0
-        // adj-old: -60s, amount=0.0
-        rawDb.execSQL("INSERT INTO `payment_receipts` (`txId`, `secondsCredited`, `amount`, `acceptanceTimestamp`) VALUES ('tx-old', 300, 5.0, 1700000000000);")
-        rawDb.execSQL("INSERT INTO `payment_receipts` (`txId`, `secondsCredited`, `amount`, `acceptanceTimestamp`) VALUES ('adj-old', -60, 0.0, 1700000001000);")
-        val nowMonotonic = SystemClock.elapsedRealtime()
-        rawDb.execSQL("INSERT INTO `paid_session_state` (`id`, `sessionTimeRemaining`, `sessionExpiryDeadlineMs`, `lastSavedElapsedRealtime`, `revision`) VALUES (1, 300, ${nowMonotonic + 300000L}, $nowMonotonic, 1);")
-        rawDb.close()
-
-        // 2. Open via Room AppDatabase (executing real migrations 4 -> 5 -> 6)
-        val migratedDb = Room.databaseBuilder(context, AppDatabase::class.java, "test_v4_ondisk.db")
-            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_1_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6)
-            .allowMainThreadQueries()
-            .build()
-
-        val repository = PaymentRepository(db = migratedDb, context = context, isEligible = { true })
-
-        // 3. Test production repository interactions on migrated legacy receipts
-        // v4 receipt tx-old (+300s, amount 5.0): identical retry returns ALREADY_APPLIED
-        val dupTxOld = repository.creditPayment(
-            txId = "tx-old",
-            seconds = 300,
-            amount = 5.0,
-            operationKind = "COIN",
-            coinAmount = 5,
-            pricePerCoin = 1.0,
-            boxInstallationEpoch = 1000L,
-            phonePairingEpoch = 2000L
-        ).result
-        assertEquals("Identical retry for legacy tx-old returns ALREADY_APPLIED", PaymentResult.ALREADY_APPLIED, dupTxOld)
-
-        // Retrying tx-old with conflicting seconds returns CONFLICT
-        val conflictTxOld = repository.creditPayment(
-            txId = "tx-old",
-            seconds = 600,
-            amount = 5.0
-        ).result
-        assertEquals("Conflicting retry for legacy tx-old returns CONFLICT", PaymentResult.CONFLICT, conflictTxOld)
-
-        // v4 receipt adj-old (-60s, amount 0.0): identical deduction retry returns ALREADY_APPLIED
-        val dupAdjOld = repository.deductPayment(
-            txId = "adj-old",
-            seconds = 60,
-            operationKind = "MANUAL_DEDUCTION",
-            boxInstallationEpoch = 1000L
-        ).result
-        assertEquals("Identical retry for legacy adj-old returns ALREADY_APPLIED", PaymentResult.ALREADY_APPLIED, dupAdjOld)
-
-        // Retrying adj-old with conflicting deduction seconds returns CONFLICT
-        val conflictAdjOld = repository.deductPayment(
-            txId = "adj-old",
-            seconds = 120
-        ).result
-        assertEquals("Conflicting deduction retry for legacy adj-old returns CONFLICT", PaymentResult.CONFLICT, conflictAdjOld)
-
-        migratedDb.close()
-    }
-
-    @Test
-    fun testOnDiskV5RepairPathAndProductionRepository() = runBlocking {
-        val dbFile = context.getDatabasePath("test_v5_ondisk.db")
-        if (dbFile.exists()) {
-            dbFile.delete()
-        }
-
-        // 1. Create a database simulating an existing shipped v5 installation where MIGRATION_4_5 ran
-        val rawDb = android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(dbFile, null)
-        rawDb.execSQL("CREATE TABLE IF NOT EXISTS `coin_events` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `txId` TEXT NOT NULL, `secondsAdded` INTEGER NOT NULL, `source` TEXT NOT NULL, `timestamp` INTEGER NOT NULL);")
-        rawDb.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_coin_events_txId` ON `coin_events` (`txId`);")
-        rawDb.execSQL("CREATE TABLE IF NOT EXISTS `payment_receipts` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `txId` TEXT NOT NULL, `secondsCredited` INTEGER NOT NULL, `amount` REAL NOT NULL, `acceptanceTimestamp` INTEGER NOT NULL, `operationKind` TEXT NOT NULL, `coinAmount` INTEGER NOT NULL, `pricePerCoin` REAL NOT NULL, `boxInstallationEpoch` INTEGER NOT NULL, `phonePairingEpoch` INTEGER NOT NULL, `recordSchemaVersion` INTEGER NOT NULL);")
-        rawDb.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_payment_receipts_txId` ON `payment_receipts` (`txId`);")
-        rawDb.execSQL("CREATE TABLE IF NOT EXISTS `paid_session_state` (`id` INTEGER NOT NULL, `sessionTimeRemaining` INTEGER NOT NULL, `sessionExpiryDeadlineMs` INTEGER NOT NULL, `lastSavedElapsedRealtime` INTEGER NOT NULL, `revision` INTEGER NOT NULL, PRIMARY KEY(`id`));")
-        rawDb.execSQL("CREATE TABLE IF NOT EXISTS `app_metadata` (`key` TEXT NOT NULL, `value` TEXT NOT NULL, PRIMARY KEY(`key`));")
-        rawDb.execSQL("CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY, identity_hash TEXT);")
-        rawDb.execSQL("INSERT OR REPLACE INTO room_master_table (id, identity_hash) VALUES(42, 'eeda8a76f8700216258d9bbe38c3d0cc');")
-        rawDb.execSQL("PRAGMA user_version = 5;")
-
-        // Seed legacy receipts with default v5 values (operationKind='COIN', coinAmount=0, recordSchemaVersion=1)
-        rawDb.execSQL("INSERT INTO `payment_receipts` (`txId`, `secondsCredited`, `amount`, `acceptanceTimestamp`, `operationKind`, `coinAmount`, `pricePerCoin`, `boxInstallationEpoch`, `phonePairingEpoch`, `recordSchemaVersion`) VALUES ('tx-old-v5', 300, 5.0, 1700000000000, 'COIN', 0, 0.0, 0, 0, 1);")
-        rawDb.execSQL("INSERT INTO `payment_receipts` (`txId`, `secondsCredited`, `amount`, `acceptanceTimestamp`, `operationKind`, `coinAmount`, `pricePerCoin`, `boxInstallationEpoch`, `phonePairingEpoch`, `recordSchemaVersion`) VALUES ('adj-old-v5', -60, 0.0, 1700000001000, 'COIN', 0, 0.0, 0, 0, 1);")
-        val nowMonotonic = SystemClock.elapsedRealtime()
-        rawDb.execSQL("INSERT INTO `paid_session_state` (`id`, `sessionTimeRemaining`, `sessionExpiryDeadlineMs`, `lastSavedElapsedRealtime`, `revision`) VALUES (1, 300, ${nowMonotonic + 300000L}, $nowMonotonic, 1);")
-        rawDb.close()
-
-        // 2. Open via Room AppDatabase v6 (triggers MIGRATION_5_6 forward repair migration)
-        val repairedDb = Room.databaseBuilder(context, AppDatabase::class.java, "test_v5_ondisk.db")
-            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_1_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6)
-            .allowMainThreadQueries()
-            .build()
-
-        val repository = PaymentRepository(db = repairedDb, context = context, isEligible = { true })
-
-        // 3. Verify repair path succeeded and production repository handles retries properly
-        val dupCredit = repository.creditPayment(
-            txId = "tx-old-v5",
-            seconds = 300,
-            amount = 5.0,
-            operationKind = "COIN",
-            coinAmount = 5,
-            pricePerCoin = 1.0,
-            boxInstallationEpoch = 1000L,
-            phonePairingEpoch = 2000L
-        ).result
-        assertEquals("Repaired v5 installation returns ALREADY_APPLIED for credit retry", PaymentResult.ALREADY_APPLIED, dupCredit)
-
-        val dupDeduct = repository.deductPayment(
-            txId = "adj-old-v5",
-            seconds = 60,
-            operationKind = "MANUAL_DEDUCTION"
-        ).result
-        assertEquals("Repaired v5 installation returns ALREADY_APPLIED for deduction retry", PaymentResult.ALREADY_APPLIED, dupDeduct)
-
-        // Conflicting retries still return CONFLICT
-        val conflictCredit = repository.creditPayment(
-            txId = "tx-old-v5",
-            seconds = 900,
-            amount = 5.0
-        ).result
-        assertEquals("Repaired v5 installation returns CONFLICT for conflicting credit retry", PaymentResult.CONFLICT, conflictCredit)
-
-        repairedDb.close()
-    }
-
-    @Test
-    fun testNewReceiptsStrictComparisonInSchema6() = runBlocking {
-        val repository = PaymentRepository(db = db, isEligible = { true })
-
-        // Apply new receipt in schema 6
-        val txId = "tx-v6-new"
-        val applyRes = repository.creditPayment(
-            txId = txId,
-            seconds = 600,
-            amount = 5.0,
-            operationKind = "COIN",
-            coinAmount = 1,
-            pricePerCoin = 5.0,
-            boxInstallationEpoch = 1000L,
-            phonePairingEpoch = 2000L
-        ).result
-        assertEquals(PaymentResult.APPLIED, applyRes)
-
-        // Identical retry returns ALREADY_APPLIED
-        val dupRes = repository.creditPayment(
-            txId = txId,
-            seconds = 600,
-            amount = 5.0,
-            operationKind = "COIN",
-            coinAmount = 1,
-            pricePerCoin = 5.0,
-            boxInstallationEpoch = 1000L,
-            phonePairingEpoch = 2000L
-        ).result
-        assertEquals(PaymentResult.ALREADY_APPLIED, dupRes)
-
-        // Strict comparison: retry with zero boxInstallationEpoch must NOT act as a wildcard and must return CONFLICT
-        val wildcardEpochRes = repository.creditPayment(
-            txId = txId,
-            seconds = 600,
-            amount = 5.0,
-            operationKind = "COIN",
-            coinAmount = 1,
-            pricePerCoin = 5.0,
-            boxInstallationEpoch = 0L,
-            phonePairingEpoch = 2000L
-        ).result
-        assertEquals("Zero epoch must NOT act as wildcard for new receipts; return CONFLICT", PaymentResult.CONFLICT, wildcardEpochRes)
-    }
-
-    @Test
-    fun testPaymentOutcomeContainsSnapshotOnlyOnApplied() = runBlocking {
-        val repository = PaymentRepository(db = db, isEligible = { true })
-        val outcome1 = repository.creditPayment("tx-outcome-1", 300, 5.0)
-        assertEquals(PaymentResult.APPLIED, outcome1.result)
-        assertNotNull("APPLIED outcome must contain SessionSnapshot", outcome1.snapshot)
-        assertEquals(300, outcome1.snapshot?.remainingSeconds)
-        assertEquals(1L, outcome1.snapshot?.revision)
-
-        val outcomeDup = repository.creditPayment("tx-outcome-1", 300, 5.0)
-        assertEquals(PaymentResult.ALREADY_APPLIED, outcomeDup.result)
-        assertNull("Non-APPLIED outcome must never contain SessionSnapshot", outcomeDup.snapshot)
     }
 }
 

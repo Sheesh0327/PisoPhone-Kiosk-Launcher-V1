@@ -1,6 +1,5 @@
 #include "WebServerModule.h"
 #include "CoinSlotManager.h"
-#include "PaymentQueueManager.h"
 #include "Config.h"
 #include "Security.h"
 #include "HardwareManager.h"
@@ -20,6 +19,7 @@ WiFiServer wsServer(81);
 WiFiClient wsClient;
 bool isWsConnected = false;
 String wsSessionDeviceId = "";
+WiFiUDP udpServer;
 QueueHandle_t authQueue = NULL;
 
 void setupWebServer() {
@@ -59,7 +59,6 @@ void setupWebServer() {
     webServer.on("/crash_report", HTTP_POST, handleCrashReport);
     webServer.on("/api/slots", HTTP_GET, handleApiSlots);
     webServer.on("/api/slots/pair", HTTP_ANY, handleApiSlotPair);
-    webServer.on("/api/slots/pair_request", HTTP_ANY, handleApiSlotPairRequest);
     webServer.on("/api/slots/unpair", HTTP_ANY, handleApiSlotUnpair);
     webServer.on("/api/slots/apply_token", HTTP_POST, handleApiSlotApplyToken);
     webServer.on("/api/slots/cloud_sync", HTTP_POST, handleApiSlotCloudSync);
@@ -75,9 +74,9 @@ void setupWebServer() {
 
         bool hasInvert = webServer.hasArg("invert");
         if (hasInvert) {
-            prefs.begin(NVS_NAMESPACE, false);
+            prefs.begin("kiosk_cfg", false);
             relayActiveLow = (webServer.arg("invert") == "1" || webServer.arg("invert") == "true");
-            prefs.putBool(NVS_KEY_RELAY_ACTIVE_LOW, relayActiveLow);
+            prefs.putBool("relay_active_low", relayActiveLow);
             prefs.end();
         }
         if (webServer.hasArg("state")) {
@@ -98,21 +97,8 @@ void setupWebServer() {
             String errStr = otaErrorMsg.length() > 0 ? otaErrorMsg : ("Flash write failed (Error Code " + String(Update.getError()) + ")");
             webServer.send(400, "text/plain", errStr);
         } else {
-            if (revenueDirty || totalCoinsLifetime != lastSavedTotalCoins || totalEarningsLifetime != lastSavedTotalEarnings) {
-                lockNvs();
-                prefs.begin(NVS_NAMESPACE, false);
-                prefs.putULong(NVS_KEY_TOTAL_COINS, totalCoinsLifetime);
-                prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, totalEarningsLifetime);
-                prefs.end();
-                unlockNvs();
-                lastSavedTotalCoins = totalCoinsLifetime;
-                lastSavedTotalEarnings = totalEarningsLifetime;
-                revenueDirty = false;
-            }
             webServer.send(200, "text/plain", "SUCCESS");
-            Serial.println("[OTA] Firmware flashing verified & completed successfully. Restarting...");
-            Serial.flush();
-            delay(500);
+            delay(1000);
             ESP.restart();
         }
     }, []() {
@@ -126,27 +112,10 @@ void setupWebServer() {
             otaErrorMsg = "";
             Update.clearError();
             
-            setMaintenanceMode(true);
-            releaseCoinSlot(getActiveCoinSessionId(), CoinSlotOwnerType::ANY, true, "OTA_FLASH");
-
-            if (revenueDirty || totalCoinsLifetime != lastSavedTotalCoins || totalEarningsLifetime != lastSavedTotalEarnings) {
-                lockNvs();
-                prefs.begin(NVS_NAMESPACE, false);
-                prefs.putULong(NVS_KEY_TOTAL_COINS, totalCoinsLifetime);
-                prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, totalEarningsLifetime);
-                prefs.end();
-                unlockNvs();
-                lastSavedTotalCoins = totalCoinsLifetime;
-                lastSavedTotalEarnings = totalEarningsLifetime;
-                revenueDirty = false;
-                Serial.println("[OTA] Revenue counters flushed to NVS flash before flashing.");
-            }
-
             Serial.printf("[OTA] Starting firmware flash: %s\n", upload.filename.c_str());
             
             if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
                 otaIsValidBinary = false;
-                setMaintenanceMode(false);
                 otaErrorMsg = "Failed to begin flash partition write (Error: " + String(Update.getError()) + ")";
                 Serial.printf("[OTA] Error: %s\n", otaErrorMsg.c_str());
             }
@@ -170,17 +139,14 @@ void setupWebServer() {
                     otaUpdateSuccess = true;
                 } else {
                     otaIsValidBinary = false;
-                    setMaintenanceMode(false);
                     otaErrorMsg = "Firmware verification failed after write (Error: " + String(Update.getError()) + ")";
                     Serial.printf("[OTA] Error: %s\n", otaErrorMsg.c_str());
                 }
             } else {
                 Update.abort();
-                setMaintenanceMode(false);
             }
         } else if (upload.status == UPLOAD_FILE_ABORTED) {
             Update.abort();
-            setMaintenanceMode(false);
             otaIsValidBinary = false;
             otaErrorMsg = "Upload connection was aborted prematurely.";
             Serial.println("[OTA] Upload aborted by client.");
@@ -191,9 +157,14 @@ void setupWebServer() {
     // Port 81: Real-time WebSocket Server
     wsServer.begin();
 
+    // Port 8888: UDP Broadcast Discovery Service
+    udpServer.begin(UDP_DISCOVERY_PORT);
+    Serial.printf("[!] Port %d: UDP Discovery Server active\n", UDP_DISCOVERY_PORT);
+
     if (WiFi.status() == WL_CONNECTED) {
         Serial.printf("[!] Port 80: Management at http://%s:80\n", WiFi.localIP().toString().c_str());
         Serial.printf("[!] Port 81: WebSocket at ws://%s:81/ws\n\n", WiFi.localIP().toString().c_str());
+        sendUdpDiscoveryResponse(IPAddress(255, 255, 255, 255), UDP_DISCOVERY_PORT);
     } else {
         Serial.printf("[!] Wi-Fi disconnected. Waiting for hotspot '%s' to become available...\n", wifiSsid.c_str());
     }

@@ -7,7 +7,6 @@ import com.pisophone.kiosk.repository.PaymentRepository
 import com.pisophone.kiosk.repository.PaymentResult
 import com.pisophone.kiosk.security.KioskActivationManager
 import com.pisophone.kiosk.security.KioskSecurity
-import com.pisophone.kiosk.util.HardwareFeedback
 
 /**
  * Handles all ESP32 event and telemetry lifecycle callbacks, separating Master Box network
@@ -20,18 +19,8 @@ class KioskEsp32Coordinator(
     private val armingTimeoutSeconds: Int,
     private val getSecretKey: () -> String,
     private val getRealTimeBatteryInfo: () -> Pair<Int, Boolean>,
-    private val onCreditPayment: (
-        txId: String,
-        seconds: Int,
-        amount: Double,
-        operationKind: String,
-        coinAmount: Int,
-        pricePerCoin: Double,
-        boxInstallationEpoch: Long,
-        phonePairingEpoch: Long
-    ) -> PaymentResult,
-    private val onSlotBusyTriggered: () -> Unit,
-    private val getAudioManager: (() -> com.pisophone.kiosk.audio.KioskAudioManager?)? = null
+    private val onCreditPayment: (txId: String, seconds: Int, amount: Double) -> PaymentResult,
+    private val onSlotBusyTriggered: () -> Unit
 ) : Esp32ConnectionDelegate {
 
     companion object {
@@ -72,35 +61,24 @@ class KioskEsp32Coordinator(
             val currentPin = KioskSecurity.getAdminPin(context)
             if (currentPin != it) {
                 KioskSecurity.setAdminPin(context, it)
-                Log.d(TAG, "[+] Synchronized Admin PIN from Master heartbeat")
+                Log.d(TAG, "[+] Synchronized Admin PIN from Master heartbeat: $it")
             }
         }
         stateManager.saveState()
     }
 
-    override fun onCoinMessageReceived(
-        seconds: Int,
-        amount: Double,
-        txId: String?,
-        operationKind: String,
-        coinAmount: Int,
-        pricePerCoin: Double,
-        boxInstallationEpoch: Long,
-        phonePairingEpoch: Long
-    ): PaymentResult {
+    override fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?) {
         if (txId.isNullOrBlank()) {
             Log.e(TAG, "Invalid coin message over WebSocket: missing transaction ID")
-            return PaymentResult.FAILED
+            return
         }
 
-        Log.d(TAG, "Received validated coin via WebSocket: seconds=$seconds, amount=₱$amount, tx_id=$txId, opKind=$operationKind")
-        val result = onCreditPayment.invoke(
-            txId, seconds, amount, operationKind, coinAmount, pricePerCoin,
-            boxInstallationEpoch, phonePairingEpoch
-        )
+        Log.d(TAG, "Received validated coin via WebSocket: seconds=$seconds, amount=₱$amount, tx_id=$txId")
+        val result = onCreditPayment(txId, seconds, amount)
         when (result) {
             PaymentResult.APPLIED -> {
                 Log.i(TAG, "WebSocket coin applied: +${seconds}s, ₱$amount (txId=$txId)")
+                stateManager.paymentTimeout.value = armingTimeoutSeconds
             }
             PaymentResult.ALREADY_APPLIED -> {
                 Log.d(TAG, "WebSocket coin already applied: txId=$txId")
@@ -115,7 +93,6 @@ class KioskEsp32Coordinator(
                 Log.e(TAG, "WebSocket coin database failure: txId=$txId")
             }
         }
-        return result
     }
 
     override fun onSlotBusy() {
@@ -143,16 +120,11 @@ class KioskEsp32Coordinator(
         stateManager.slotExpiryMessage.value = if (reason.isNotBlank()) reason else "Device activation required."
         stateManager.slotNumber.value = slotNum
         stateManager.slotWarningDaysLeft.value = 0
-        val expiredState = paymentRepo.expireSessionBlocking()
-        val applied = stateManager.applySessionUpdate(
-            deadlineMs = expiredState.sessionExpiryDeadlineMs,
-            remainingSeconds = expiredState.sessionTimeRemaining,
-            revision = expiredState.revision,
-            targetAppState = 0
-        )
-        if (applied) {
-            stateManager.saveState()
-        }
+        paymentRepo.expireSessionBlocking()
+        stateManager.sessionTimeRemaining.value = 0
+        stateManager.sessionExpiryDeadlineMs.value = 0L
+        stateManager.appState.value = 0
+        stateManager.saveState()
         KioskActivationManager.setSlotLockdown(context, true, reason, slotNum, expiresAt)
     }
 
@@ -168,22 +140,6 @@ class KioskEsp32Coordinator(
             stateManager.slotWarningDaysLeft.value = null
             KioskActivationManager.setSlotLockdown(context, false, slotNum = if (slotNum > 0) slotNum else stateManager.slotNumber.value)
             Log.i(TAG, "Slot activated on ESP32: Ready for coins (Slot #$slotNum).")
-        }
-    }
-
-    override fun onArenaModeSynced(active: Boolean, role: Int, stake: Int) {
-        val wasActive = stateManager.isArenaMode.value
-        if (active) {
-            if (!wasActive) {
-                stateManager.setArenaMode(active = true, role = role, stake = stake, showBanner = true)
-                HardwareFeedback.triggerVibration(context, longArrayOf(0, 200, 100, 200, 100, 400))
-                val roleStr = if (role == 1) "Player 1" else if (role == 2) "Player 2" else "Participant"
-                getAudioManager?.invoke()?.speakWarning("Arena Mode activated. You are $roleStr.")
-            } else {
-                stateManager.setArenaMode(active = true, role = role, stake = stake, showBanner = false)
-            }
-        } else if (wasActive) {
-            stateManager.setArenaMode(false)
         }
     }
 }

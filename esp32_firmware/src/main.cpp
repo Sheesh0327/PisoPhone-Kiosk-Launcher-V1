@@ -2,7 +2,6 @@
 #include <WiFi.h>
 #include <Preferences.h>
 #include <ESPmDNS.h>
-#include <esp_task_wdt.h>
 #include "esp_wifi.h"
 #include "Config.h"
 #include "Security.h"
@@ -12,93 +11,9 @@
 #include "DeviceNetwork.h"
 #include "WebServerModule.h"
 #include "SuperAdminManager.h"
-#include "PaymentQueueManager.h"
-#include <esp_system.h>
-
-#define WDT_TIMEOUT_SECONDS 15
-#define LOW_HEAP_WARNING_BYTES 25000              // 25 KB: Shed expendable work & stop admission
-#define MIN_SAFE_HEAP_BYTES 10000                 // 10 KB Critical Heap Limit: Request gated restart
 
 static unsigned long lastWifiCheckTime = 0;
 static unsigned long lastCloudSnapshotMs = 0;
-static unsigned long lastHealthCheckMs = 0;
-static unsigned long lastLoopTimeMs = 0;
-static unsigned long maxLoopGapMs = 0;
-static uint32_t wifiBackoffMs = 5000;             // Bounded exponential backoff with jitter
-
-static void logBootResetDiagnostics() {
-    esp_reset_reason_t reason = esp_reset_reason();
-    Serial.printf("\n[🔍 BOOT DIAGNOSTICS] ESP32 Reset Reason: %d ", (int)reason);
-    switch (reason) {
-        case ESP_RST_POWERON:   Serial.println("(Power-on reset)"); break;
-        case ESP_RST_EXT:       Serial.println("(External pin reset)"); break;
-        case ESP_RST_SW:        Serial.println("(Software ESP.restart)"); break;
-        case ESP_RST_PANIC:     Serial.println("(Exception / Panic reset)"); break;
-        case ESP_RST_INT_WDT:   Serial.println("(Interrupt watchdog reset)"); break;
-        case ESP_RST_TASK_WDT:  Serial.println("(Task watchdog reset)"); break;
-        case ESP_RST_WDT:       Serial.println("(Other watchdog reset)"); break;
-        case ESP_RST_DEEPSLEEP: Serial.println("(Deep sleep wake reset)"); break;
-        case ESP_RST_BROWNOUT:  Serial.println("(Brownout reset)"); break;
-        default:                Serial.println("(Unknown reset)"); break;
-    }
-}
-
-static void initHardwareWatchdog() {
-#if defined(ESP_IDF_VERSION_MAJOR) && (ESP_IDF_VERSION_MAJOR >= 5)
-    esp_task_wdt_config_t wdt_config = {
-        .timeout_ms = WDT_TIMEOUT_SECONDS * 1000,
-        .idle_core_mask = (1 << 0),
-        .trigger_panic = true
-    };
-    esp_task_wdt_init(&wdt_config);
-    esp_task_wdt_add(NULL);
-#else
-    esp_task_wdt_init(WDT_TIMEOUT_SECONDS, true);
-    esp_task_wdt_add(NULL);
-#endif
-    Serial.printf("[+] Hardware Task Watchdog (esp_task_wdt) initialized (%ds timeout, panic reset enabled)\n", WDT_TIMEOUT_SECONDS);
-}
-
-static void processSystemHealthAndAutoMaintenance() {
-    unsigned long now = millis();
-    if (now - lastHealthCheckMs < 5000) return; // Health check every 5 seconds
-    lastHealthCheckMs = now;
-
-    uint32_t freeHeap = ESP.getFreeHeap();
-    uint32_t minFreeHeap = ESP.getMinFreeHeap();
-
-    // 1. Low Memory Load Shedding: Stop new admissions and trim stale telemetry cache
-    if (freeHeap < LOW_HEAP_WARNING_BYTES) {
-        if (!isMaintenanceReasonActive(MAINT_REASON_HEAP)) {
-            Serial.printf("⚠️ [HEALTH GUARD] Free heap low (%u bytes). Stopping new session admissions and shedding cache...\n", freeHeap);
-            setMaintenanceReason(MAINT_REASON_HEAP, true);
-        }
-    } else if (isMaintenanceReasonActive(MAINT_REASON_HEAP) && freeHeap >= (LOW_HEAP_WARNING_BYTES + 5000)) {
-        // Hysteresis recovery if memory pressure subsides without reboot
-        setMaintenanceReason(MAINT_REASON_HEAP, false);
-        Serial.printf("ℹ️ [HEALTH GUARD] Free heap recovered (%u bytes). Resuming admissions for heap condition.\n", freeHeap);
-    }
-
-    // 2. Critical Heap Pressure: Attempt safe gated restart only if safe
-    if (freeHeap < MIN_SAFE_HEAP_BYTES) {
-        Serial.printf("🚨 [HEALTH GUARD] Critical free heap (%u bytes < %d bytes threshold). Requesting gated restart...\n",
-                      freeHeap, MIN_SAFE_HEAP_BYTES);
-        requestSystemRestart("Low Memory Emergency Recovery", 10000);
-    }
-}
-
-static const IPAddress STATIC_IP(192, 168, 1, 10);
-static const IPAddress GATEWAY_IP(192, 168, 1, 1);
-static const IPAddress SUBNET_MASK(255, 255, 255, 0);
-static const IPAddress DNS_IP(192, 168, 1, 1);
-
-static void applyStaticIpConfig() {
-    if (!WiFi.config(STATIC_IP, GATEWAY_IP, SUBNET_MASK, DNS_IP)) {
-        Serial.println("[-] Static IP configuration failed, proceeding with DHCP fallback");
-    } else {
-        Serial.println("[+] Static IP configured: 192.168.1.10");
-    }
-}
 
 void setup() {
     Serial.begin(115200);
@@ -108,12 +23,6 @@ void setup() {
 
     Serial.println("\n--- HARDWARE-C3 Master Kiosk Controller ---");
 
-    // Initialize Hardware Watchdog Early
-    initHardwareWatchdog();
-
-    // Log Boot Reset Reason Diagnostics
-    logBootResetDiagnostics();
-
     // Load NVS Configuration & Lifetime Vault Revenue safely
     loadAllConfig();
     lastWifiCheckTime = millis();
@@ -121,8 +30,8 @@ void setup() {
     // Initialize Dynamic Hardware Pins & Hardware Reset Pin (GPIO 2)
     applyCoinSlotHardwareConfig();
     initCoinSlotManager();
-    setGlobalCoinPaymentCallback([](const String& sessionId, int pulses) -> bool {
-        return triggerUniversalCoinEvent(pulses, sessionId);
+    setGlobalCoinPaymentCallback([](const String& sessionId, int pulses) {
+        triggerUniversalCoinEvent(pulses, sessionId);
     });
     pinMode(HARDWARE_RESET_PIN, INPUT_PULLUP);
     setLedHardware(false);
@@ -147,9 +56,6 @@ void setup() {
     esp_wifi_set_max_tx_power(34);
     esp_wifi_set_ps(WIFI_PS_NONE);
 
-    // Static IP assignment: 192.168.1.10
-    applyStaticIpConfig();
-
     WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
 
     Serial.printf("[*] Connecting to Wi-Fi \"%s\"", wifiSsid.c_str());
@@ -159,7 +65,6 @@ void setup() {
 
     while (WiFi.status() != WL_CONNECTED && (millis() - wifiConnectStart < WIFI_BOOT_TIMEOUT_MS)) {
         delay(20);
-        esp_task_wdt_reset();
         processLedBlink();
         if ((millis() - wifiConnectStart) % 500 < 20) {
             Serial.print(".");
@@ -183,27 +88,6 @@ void setup() {
 }
 
 void loop() {
-    unsigned long loopStart = millis();
-    if (lastLoopTimeMs > 0) {
-        unsigned long gap = loopStart - lastLoopTimeMs;
-        if (gap > maxLoopGapMs) {
-            maxLoopGapMs = gap;
-            if (gap > 500) {
-                Serial.printf("[⏱️ PERF] Main loop gap spike: %lu ms (max: %lu ms)\n", gap, maxLoopGapMs);
-            }
-        }
-    }
-    lastLoopTimeMs = loopStart;
-
-    // Feed Hardware Watchdog Timer on genuine loop progress
-    esp_task_wdt_reset();
-
-    // Memory and Uptime Health Maintenance Check
-    processSystemHealthAndAutoMaintenance();
-
-    // 0. Process Pending System Restart
-    processPendingSystemRestart();
-
     // 0. Process Debounced Hardware-Conservative NVS Revenue Persistence
     processRevenuePersistence();
 
@@ -213,8 +97,8 @@ void loop() {
     // 0. Process Hardware Fallback Reset Pin (GPIO 2 -> GND for 5 seconds)
     processHardwareResetPin();
 
-    // 1. Process Unified Coin Slot Manager (Arming, Pulse Accumulation & Draining)
-    processCoinSlotSession();
+    // 1. Process Hardware Coin Detectors (Universal Pulse Sensor)
+    processUniversalCoinDetector();
 
     // 2. Process Coin Slot Power/Enable Relay (Synchronized with Arming / Insert Coin)
     processRelayState();
@@ -226,32 +110,28 @@ void loop() {
     // 4. Handle Port 81 WebSocket Client & Frames
     processWebSocketServer();
     
-    // 5. Handle USB Serial CLI commands
+    // 5. Handle Port 8888 UDP Broadcast Discovery
+    processUdpDiscovery();
+    
+    // 6. Handle USB Serial CLI commands
     processSerialCli();
     
-    // 7. Robust Non-Blocking Wi-Fi Reconnection Watchdog with Bounded Exponential Backoff + Jitter
+    // 7. Robust Non-Blocking Wi-Fi Reconnection Watchdog & LED Status Sync
     if (WiFi.status() == WL_CONNECTED) {
         currentLedState = LED_STATE_CONNECTED;
-        wifiBackoffMs = 5000; // Reset backoff on successful connection
     } else {
-        if (millis() - lastWifiCheckTime < 10000) {
+        if (millis() - lastWifiCheckTime < 20000) {
             currentLedState = LED_STATE_CONNECTING;
         } else {
             currentLedState = LED_STATE_FAILED;
             
-            if (wifiSsid.length() > 0 && (millis() - lastWifiCheckTime > wifiBackoffMs)) {
+            if (wifiSsid.length() > 0 && (millis() - lastWifiCheckTime > 30000)) {
                 lastWifiCheckTime = millis();
-                // Add +/- 20% pseudo-random jitter to prevent network thundering herd
-                uint32_t jitter = (esp_random() % (wifiBackoffMs / 4 + 1));
-                uint32_t nextInterval = wifiBackoffMs * 2;
-                if (nextInterval > 60000) nextInterval = 60000; // Max 60 seconds
-                wifiBackoffMs = nextInterval + jitter;
-
-                Serial.printf("\n[📶 WATCHDOG] Wi-Fi lost. Attempting reconnection to \"%s\" (next retry in ~%lu ms)...\n",
-                              wifiSsid.c_str(), (unsigned long)wifiBackoffMs);
+                Serial.printf("\n[📶 WATCHDOG] Wi-Fi lost. Attempting reconnection to \"%s\"...\n", wifiSsid.c_str());
                 WiFi.disconnect();
-                applyStaticIpConfig();
                 WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
+                udpServer.stop();
+                udpServer.begin(UDP_DISCOVERY_PORT);
             }
         }
     }

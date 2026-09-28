@@ -18,37 +18,12 @@ extern const bool DEFAULT_LED_ACTIVE_LOW;
 extern const int DEFAULT_RELAY_PIN;
 extern const int DEFAULT_PORT;
 extern const int HARDWARE_RESET_PIN;
+extern const int UDP_DISCOVERY_PORT;
 extern const int DEFAULT_MINUTES_PER_COIN;
 
 #define MAX_SUPPORTED_SLOTS 6
 #define DEFAULT_MAX_SLOTS 1
 #define MAX_TRACKED_DEVICES 12
-
-// ============================================================================
-// NVS KEYS
-// ============================================================================
-extern const char* const NVS_NAMESPACE;
-extern const char* const NVS_KEY_MAX_SLOTS;
-extern const char* const NVS_KEY_LICENSED;
-extern const char* const NVS_KEY_SLOTS_DATA;
-extern const char* const NVS_KEY_IPS;
-
-extern const char* const NVS_KEY_WIFI_SSID;
-extern const char* const NVS_KEY_WIFI_PASS;
-extern const char* const NVS_KEY_U_COIN_PIN;
-extern const char* const NVS_KEY_LED_PIN;
-extern const char* const NVS_KEY_LED_ACTIVE_LOW;
-extern const char* const NVS_KEY_RELAY_PIN;
-extern const char* const NVS_KEY_RELAY_ACTIVE_LOW;
-extern const char* const NVS_KEY_PORT;
-extern const char* const NVS_KEY_MINS_PER_COIN;
-extern const char* const NVS_KEY_ADMIN_PW;
-extern const char* const NVS_KEY_SHARED_SECRET;
-extern const char* const NVS_KEY_P1;
-extern const char* const NVS_KEY_P2;
-extern const char* const NVS_KEY_MATCH;
-extern const char* const NVS_KEY_TOTAL_COINS;
-extern const char* const NVS_KEY_TOTAL_EARNINGS;
 
 // ============================================================================
 // DATA STRUCTURES
@@ -75,9 +50,7 @@ struct DeviceTelemetry {
     int batteryLevel;
     bool isCharging;
     unsigned long lastSeenMs;
-    unsigned long lastTimeUpdateMs;
     unsigned long long lastNonceTs;
-    bool isApp; // True ONLY if request comes from the PisoPhone app (filters out external script coinslot access requests)
 };
 
 struct AuthRequest {
@@ -118,7 +91,6 @@ extern const unsigned long MAX_SESSION_DURATION;
 extern String p1Ip;
 extern String p2Ip;
 extern int matchMinutes;
-extern bool matchActive;
 extern String matchStatusMsg;
 extern String quickTimeStatusMsg;
 
@@ -151,14 +123,11 @@ void syncAndroidIpsFromSlots();
 
 void processRevenuePersistence();
 
-void lockNvs();
-void unlockNvs();
-
 void factoryResetDefaults();
 void updateMasterTime(uint64_t ts);
 uint64_t getCurrentMasterTimeMs();
 
-bool parseDeviceEntry(const String& entry, DeviceConfig& out);
+bool parseDeviceEntry(String entry, DeviceConfig& out);
 bool areDefaultCredentialsActive();
 
 #endif // CONFIG_H

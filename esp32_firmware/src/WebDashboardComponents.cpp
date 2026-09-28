@@ -7,30 +7,6 @@
 
 String renderDeviceOptions(String selectedIp) {
     String opts = "";
-    bool renderedIds[MAX_SUPPORTED_SLOTS] = { false };
-
-    // 1. Render all configured or paired license slots
-    for (int i = 0; i < maxLicensedSlots; i++) {
-        if (licenseSlots[i].deviceId.length() > 0 || licenseSlots[i].ip.length() > 0) {
-            String val = licenseSlots[i].ip;
-            if (val.length() == 0 || val == "127.0.0.1") {
-                val = licenseSlots[i].deviceId;
-            }
-            if (val.length() == 0) continue;
-
-            String name = licenseSlots[i].name.length() > 0 ? licenseSlots[i].name : ("Slot #" + String(licenseSlots[i].slotNum));
-            bool isActive = isSlotActive(i);
-            bool isInactive = !isActive;
-            String expAttr = isInactive ? " data-inactive=\"true\"" : " data-inactive=\"false\"";
-            String badge = isInactive ? " [🔴 INACTIVE]" : "";
-            String sel = (val == selectedIp || licenseSlots[i].ip == selectedIp || licenseSlots[i].deviceId == selectedIp) ? " selected" : "";
-            
-            opts += "<option value=\"" + val + "\"" + sel + expAttr + ">" + name + " (" + val + ")" + badge + "</option>";
-            renderedIds[i] = true;
-        }
-    }
-
-    // 2. Render any legacy or static androidIps not covered by license slots
     int startIdx = 0, devNum = 1;
     while (startIdx < androidIps.length()) {
         int comma = androidIps.indexOf(',', startIdx);
@@ -40,25 +16,14 @@ String renderDeviceOptions(String selectedIp) {
         if (entry.length() > 0) {
             DeviceConfig cfg;
             if (parseDeviceEntry(entry, cfg)) {
-                // Check if already rendered via licenseSlots
-                bool alreadyRendered = false;
-                for (int i = 0; i < maxLicensedSlots; i++) {
-                    if (renderedIds[i] && (licenseSlots[i].deviceId == cfg.id || licenseSlots[i].ip == cfg.ip)) {
-                        alreadyRendered = true;
-                        break;
-                    }
-                }
-                if (!alreadyRendered) {
-                    String name = cfg.name.length() > 0 ? cfg.name : ("PisoPhone " + String(devNum));
-                    String val = cfg.ip.length() > 0 ? cfg.ip : cfg.id;
-                    String sel = (val == selectedIp || cfg.ip == selectedIp || cfg.id == selectedIp) ? " selected" : "";
-                    int slotIdx = findSlotIndexForDevice(cfg.id, cfg.ip);
-                    bool isActive = isSlotActive(slotIdx);
-                    bool isInactive = !isActive;
-                    String expAttr = isInactive ? " data-inactive=\"true\"" : " data-inactive=\"false\"";
-                    String badge = isInactive ? " [🔴 INACTIVE]" : "";
-                    opts += "<option value=\"" + val + "\"" + sel + expAttr + ">" + name + " (" + val + ")" + badge + "</option>";
-                }
+                String name = cfg.name.length() > 0 ? cfg.name : ("PisoPhone " + String(devNum));
+                String sel = (cfg.ip == selectedIp) ? " selected" : "";
+                int slotIdx = findSlotIndexForDevice(cfg.id, cfg.ip);
+                bool isActive = isSlotActive(slotIdx);
+                bool isInactive = !isActive;
+                String expAttr = isInactive ? " data-inactive=\"true\"" : " data-inactive=\"false\"";
+                String badge = isInactive ? " [🔴 INACTIVE]" : "";
+                opts += "<option value=\"" + cfg.ip + "\"" + sel + expAttr + ">" + name + " (" + cfg.ip + ")" + badge + "</option>";
                 devNum++;
             }
         }
@@ -150,7 +115,6 @@ String renderLicenseSlotsHtml() {
     unsigned long currentMillis = millis();
     for (int i = 0; i < trackedDeviceCount; i++) {
         if (trackedDevices[i].deviceId.length() == 0) continue;
-        if (!trackedDevices[i].isApp) continue; // Only show requests that come from the app
         if (findSlotIndexForDevice(trackedDevices[i].deviceId, trackedDevices[i].lastKnownIp) >= 0) continue;
         if (currentMillis - trackedDevices[i].lastSeenMs < 300000) {
             unassignedCount++;
@@ -172,9 +136,9 @@ String renderLicenseSlotsHtml() {
     html += "</div>";
 
     html += "<div style=\"display: flex; align-items: center; gap: 10px; flex-wrap: wrap;\">";
-    html += "<a href=\"https://pisophone.pages.dev/?mac=" + macAddressStr + "&secret=" + sharedSecret + "\" target=\"_self\" style=\"font-size: 12px; font-weight: 700; padding: 8px 16px; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: #ffffff; border-radius: 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25); transition: transform 0.15s ease;\">";
+    html += "<a href=\"https://pisophone.pages.dev/?ip=" + myIp + "&secret=" + sharedSecret + "\" target=\"_self\" style=\"font-size: 12px; font-weight: 700; padding: 8px 16px; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: #ffffff; border-radius: 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25); transition: transform 0.15s ease;\">";
     html += "<span style=\"font-size: 14px;\">📥</span> Install & Provision</a>";
-    html += "<a href=\"https://pisophone.pages.dev/?mac=" + macAddressStr + "&mode=deprovision\" target=\"_self\" style=\"font-size: 12px; font-weight: 700; padding: 8px 16px; background: linear-gradient(135deg, #e11d48 0%, #be123c 100%); color: #ffffff; border-radius: 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(225, 29, 72, 0.25); transition: transform 0.15s ease;\">";
+    html += "<a href=\"https://pisophone.pages.dev/?ip=" + myIp + "&mode=deprovision\" target=\"_self\" style=\"font-size: 12px; font-weight: 700; padding: 8px 16px; background: linear-gradient(135deg, #e11d48 0%, #be123c 100%); color: #ffffff; border-radius: 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(225, 29, 72, 0.25); transition: transform 0.15s ease;\">";
     html += "<span style=\"font-size: 14px;\">🗑️</span> Deprovision</a>";
     html += "</div>";
     html += "</div>";

@@ -11,68 +11,48 @@
 
 void handleAddTime() {
     if (!checkAdminAuth()) return;
-
+    int minutes = 60;
+    if (webServer.hasArg("add_minutes")) {
+        minutes = webServer.arg("add_minutes").toInt();
+    }
+    if (webServer.hasArg("adjust_action") && webServer.arg("adjust_action") == "subtract") {
+        minutes = -abs(minutes);
+    }
     String targetIp = webServer.hasArg("target_ip") ? webServer.arg("target_ip") : "ALL";
-    targetIp.trim();
 
-    if (!webServer.hasArg("add_minutes")) {
-        quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Missing minutes parameter.</div>";
-        redirectHome();
-        return;
-    }
-    String minStr = webServer.arg("add_minutes");
-    minStr.trim();
-    if (minStr.length() == 0) {
-        quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Missing minutes value.</div>";
-        redirectHome();
-        return;
-    }
-    for (size_t i = 0; i < minStr.length(); i++) {
-        if (!isDigit(minStr[i])) {
-            quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Invalid minutes: Must be a positive integer.</div>";
+    // Enforce Expiration Check (RULE 6: Single verification path)
+    if (targetIp != "ALL") {
+        DeviceConfig targetCfg;
+        targetCfg.ip = targetIp;
+        int startIdx = 0;
+        while (startIdx < androidIps.length()) {
+            int comma = androidIps.indexOf(',', startIdx);
+            if (comma == -1) comma = androidIps.length();
+            String entry = androidIps.substring(startIdx, comma);
+            entry.trim();
+            if (entry.length() > 0) {
+                DeviceConfig cfg;
+                if (parseDeviceEntry(entry, cfg) && cfg.ip == targetIp) {
+                    targetCfg = cfg;
+                    break;
+                }
+            }
+            startIdx = comma + 1;
+        }
+
+        int slotIdx = findSlotIndexForDevice(targetCfg.id, targetCfg.ip);
+        bool isActive = isSlotActive(slotIdx);
+        if (!isActive) {
+            Serial.printf("[-] handleAddTime blocked: Target device %s (Slot #%d) is EXPIRED!\n",
+                targetIp.c_str(), (slotIdx >= 0) ? licenseSlots[slotIdx].slotNum : 0);
+            quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Adjustment Blocked: Target device " + targetIp + " is EXPIRED! Add credits in the Master Credit Vault to pair device.</div>";
             redirectHome();
             return;
         }
     }
-    if (minStr.length() > 9) {
-        quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Value too large: Minutes value exceeds maximum limit.</div>";
-        redirectHome();
-        return;
-    }
-    int64_t minutesVal = minStr.toInt();
-    if (minutesVal <= 0) {
-        quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Minutes must be greater than zero.</div>";
-        redirectHome();
-        return;
-    }
-    int64_t rawSeconds = minutesVal * 60LL;
-    if (rawSeconds > 2147483647LL) {
-        quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Seconds overflow: Value exceeds protocol limits.</div>";
-        redirectHome();
-        return;
-    }
-    String action = webServer.hasArg("adjust_action") ? webServer.arg("adjust_action") : "add";
-    int64_t signedSeconds = (action == "subtract") ? -rawSeconds : rawSeconds;
 
-    AddTimeSummary summary = sendAddTime(signedSeconds, targetIp);
-
-    if (summary.matchedRecipients == 0) {
-        quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ No matching target device found for " + targetIp + ".</div>";
-    } else if (summary.queuedRequests == 0) {
-        if (summary.skippedInactive > 0) {
-            quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Adjustment Blocked: Target device " + targetIp + " is INACTIVE or UNLICENSED.</div>";
-        } else if (summary.failedSubmissions > 0) {
-            quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Failed to queue adjustment: Auth queue full or network unavailable.</div>";
-        } else {
-            quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ No eligible devices found to adjust.</div>";
-        }
-    } else {
-        if (summary.skippedInactive > 0 || summary.failedSubmissions > 0) {
-            quickTimeStatusMsg = "<div style='background:#fef3c7;color:#b45309;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(245,158,11,0.3);'>⚠️ Adjustment queued: " + String(action == "subtract" ? "-" : "+") + String((long)minutesVal) + "m (" + String(summary.queuedRequests) + " queued, " + String(summary.skippedInactive) + " inactive skipped, " + String(summary.failedSubmissions) + " failed).</div>";
-        } else {
-            quickTimeStatusMsg = "<div style='background:#e8f5e9;color:#2e7d32;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(16,185,129,0.3);'>✅ Adjustment queued: " + String(action == "subtract" ? "-" : "+") + String((long)minutesVal) + "m for " + (targetIp == "ALL" ? "All Active Devices" : targetIp) + ".</div>";
-        }
-    }
+    sendAddTime(minutes, targetIp);
+    quickTimeStatusMsg = "<div style='background:#e8f5e9;color:#2e7d32;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(16,185,129,0.3);'>✅ Adjusted " + String(minutes > 0 ? "+" : "") + String(minutes) + "m for " + (targetIp == "ALL" ? "All Active Devices" : targetIp) + ".</div>";
     redirectHome();
 }
 
@@ -157,46 +137,6 @@ void handleApiSlotPair() {
     }
 }
 
-void handleApiSlotPairRequest() {
-    String reqIp = webServer.hasArg("ip") ? webServer.arg("ip") : webServer.client().remoteIP().toString();
-    String devId = webServer.hasArg("device_id") ? webServer.arg("device_id") : (webServer.hasArg("id") ? webServer.arg("id") : "");
-    String devName = webServer.hasArg("name") ? webServer.arg("name") : "PisoPhone Terminal";
-    int battery = webServer.hasArg("battery") ? webServer.arg("battery").toInt() : -1;
-    bool charging = webServer.hasArg("charging") ? (webServer.arg("charging").toInt() == 1 || webServer.arg("charging") == "true") : false;
-
-    // Filter out coinslot-only requests and non-app clients
-    bool isCoinslotOnly = (webServer.hasArg("mode") && webServer.arg("mode") == "coinslot") ||
-                          (webServer.hasArg("coinslot") && (webServer.arg("coinslot") == "1" || webServer.arg("coinslot") == "true")) ||
-                          (webServer.hasArg("type") && (webServer.arg("type") == "controller" || webServer.arg("type") == "coinslot")) ||
-                          (webServer.hasArg("client") && (webServer.arg("client") == "controller" || webServer.arg("client") == "coinslot")) ||
-                          (webServer.hasArg("op_kind") && webServer.arg("op_kind") == "5");
-    if (isCoinslotOnly) {
-        webServer.send(200, "application/json", "{\"success\":false,\"error\":\"COINSLOT_ONLY_NOT_PAIRABLE\"}");
-        return;
-    }
-
-    bool isAppClient = (webServer.hasArg("app") && (webServer.arg("app") == "1" || webServer.arg("app") == "true")) ||
-                       (webServer.hasArg("client") && webServer.arg("client") == "pisophone_app") ||
-                       (webServer.hasArg("source") && webServer.arg("source") == "app");
-    if (!isAppClient) {
-        webServer.send(403, "application/json", "{\"success\":false,\"error\":\"APP_CLIENT_REQUIRED\"}");
-        return;
-    }
-
-    if (devId.length() == 0 && reqIp.length() > 0 && reqIp != "127.0.0.1" && reqIp != "0.0.0.0") {
-        devId = "DEV_" + reqIp;
-    }
-    if (devId.length() > 0 || reqIp.length() > 0) {
-        updateDynamicDeviceList(devId, reqIp);
-        updateDeviceTelemetry(devId, reqIp, -1, 0, battery, charging, 0, true);
-    }
-    int slotIdx = findSlotIndexForDevice(devId, reqIp);
-    String json = "{\"success\":true,\"paired\":" + String(slotIdx >= 0 ? "true" : "false") +
-                  ",\"slot\":" + String(slotIdx >= 0 ? slotIdx + 1 : 0) +
-                  ",\"mac\":\"" + macAddressStr + "\"}";
-    webServer.send(200, "application/json", json);
-}
-
 void handleApiSlotUnpair() {
     if (!checkAdminAuth()) return;
     int slot = webServer.hasArg("slot") ? webServer.arg("slot").toInt() : 0;
@@ -210,7 +150,7 @@ void handleApiSlotUnpair() {
         sendCloudSnapshot();
         webServer.send(200, "application/json", "{\"success\":true,\"slot\":" + String(slot) + "}");
     } else {
-        webServer.send(409, "application/json", "{\"success\":false,\"error\":\"BUSY: Device owns active session or unresolved payments\"}");
+        webServer.send(500, "application/json", "{\"success\":false,\"error\":\"Failed to unpair\"}");
     }
 }
 
@@ -283,12 +223,12 @@ void handleApiStatus() {
         bool isBound = (devId.length() > 0);
         
         int rem = -1;
-        int bat = -1;
+        int bat = 100;
         bool chg = false;
         bool online = false;
         
         if (isBound) {
-            rem = getTrackedTimeRemaining(ip, 40000, devId);
+            rem = getTrackedTimeRemaining(ip, 15000, devId);
             bat = getTrackedBatteryLevel(ip, devId);
             chg = getTrackedChargingState(ip, devId);
             online = (rem >= 0);
@@ -314,7 +254,6 @@ void handleApiStatus() {
     unsigned long nowMs = millis();
     for (int i = 0; i < trackedDeviceCount; i++) {
         if (trackedDevices[i].deviceId.length() == 0 && trackedDevices[i].lastKnownIp.length() == 0) continue;
-        if (!trackedDevices[i].isApp) continue; // Only show pairing requests that come from the app
         String dId = trackedDevices[i].deviceId;
         if (dId.length() == 0) dId = trackedDevices[i].lastKnownIp;
         if (findSlotIndexForDevice(dId, trackedDevices[i].lastKnownIp) >= 0) continue;
@@ -347,11 +286,12 @@ void handleIdentify() {
     if (devId.length() == 0 && reqIp.length() > 0 && reqIp != "127.0.0.1" && reqIp != "0.0.0.0") {
         devId = "DEV_" + reqIp;
     }
+    if (reqIp.length() > 0 && reqIp != "127.0.0.1" && reqIp != "0.0.0.0") {
+        updateDeviceTelemetry(devId, reqIp, 0, 0, 100, false, 0);
+    }
     String devName = getDeviceNameByIpOrId(reqIp, devId);
     int slotIdx = findSlotIndexForDevice(devId, reqIp);
-    String secKey = (sharedSecret.length() > 0) ? sharedSecret : String(MASTER_CRYPTO_SECRET);
-    String sig = calculateHMAC("DISCOVERY:" + macAddressStr + ":" + WiFi.localIP().toString(), secKey);
-    String json = "{\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\",\"ip\":\"" + WiFi.localIP().toString() + "\",\"sig\":\"" + sig + "\",\"version\":\"3.0\",\"minutes\":" + String(minutesPerCoin) + ",\"price\":1.0";
+    String json = "{\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\",\"version\":\"3.0\",\"minutes\":" + String(minutesPerCoin) + ",\"price\":1.0";
     if (devName.length() > 0) {
         json += ",\"device_name\":\"" + devName + "\"";
     }

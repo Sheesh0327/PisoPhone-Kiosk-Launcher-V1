@@ -13,7 +13,6 @@ import com.pisophone.kiosk.overlay.KioskOverlayCoordinator
 import com.pisophone.kiosk.repository.CoinEventRepository
 import com.pisophone.kiosk.repository.PaymentRepository
 import com.pisophone.kiosk.repository.PaymentResult
-import com.pisophone.kiosk.repository.SessionSnapshot
 import com.pisophone.kiosk.security.KioskActivationManager
 import com.pisophone.kiosk.security.KioskSecurity
 import com.pisophone.kiosk.server.KioskHttpServer
@@ -28,7 +27,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 
 /**
  * Core business orchestrator for the PisoPhone Kiosk.
@@ -40,7 +38,7 @@ class KioskEngine(
 ) {
     companion object {
         private const val TAG = "KioskEngine"
-        private const val ARMING_TIMEOUT_SECONDS = 20
+        private const val ARMING_TIMEOUT_SECONDS = 15
         private const val SERVER_PORT = 8080
     }
 
@@ -51,166 +49,61 @@ class KioskEngine(
     )
     val paymentRepo: PaymentRepository = PaymentRepository(
         db = AppDatabase.getDatabase(context),
-        context = context
+        context = context,
+        onPaymentApplied = { txId, seconds, amount, snapshot ->
+            val pesoAmount = if (amount >= 1.0) amount.toInt() else 1
+            // 1. Commit is finalized. Publish committed session state through serialized handler:
+            val targetState = if (stateManager.appState.value == 0) 1 else null
+            val applied = stateManager.applySessionUpdate(snapshot, targetState)
+            if (applied) {
+                stateManager.paymentTimeout.value = ARMING_TIMEOUT_SECONDS
+
+                if (stateManager.appState.value == 1 || stateManager.appState.value == 3) {
+                    stateManager.coinsInserted.value += pesoAmount
+                } else if (stateManager.appState.value == 2) {
+                    Log.d(TAG, "Coin credited directly to active session: +${seconds}s (₱$pesoAmount)")
+                }
+                stateManager.saveState()
+            }
+
+            scope.launch(Dispatchers.IO) {
+                try {
+                    coinEventRepo.insertEvent(
+                        CoinEvent(
+                            txId = txId,
+                            secondsAdded = seconds,
+                            source = "Piso Coin (₱$pesoAmount)"
+                        )
+                    )
+                    coinEventRepo.deleteOldEvents(500)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to log coin event to audit ledger: ${e.message}")
+                }
+            }
+
+            // 2. Play sound / update UI feedback ONLY for newly applied payment (separate from state publication)
+            audioManager.playCoinSound()
+            HardwareFeedback.triggerFlashlight(context, 150L)
+            Handler(Looper.getMainLooper()).post {
+                val addedMins = seconds / 60
+                Toast.makeText(context, "₱$pesoAmount coin accepted! (+${addedMins}m)", Toast.LENGTH_SHORT).show()
+            }
+        },
+        onSessionStateChanged = { snapshot ->
+            stateManager.applySessionUpdate(snapshot)
+        }
     )
 
     private val isInitialized = java.util.concurrent.atomic.AtomicBoolean(false)
 
-    @androidx.annotation.VisibleForTesting
-    fun setInitializedForTesting(initialized: Boolean) {
-        isInitialized.set(initialized)
-    }
-
     private val audioManager = KioskAudioManager(context, scope)
 
-    fun creditPayment(
-        txId: String,
-        seconds: Int,
-        amount: Double,
-        operationKind: String = "COIN",
-        coinAmount: Int = amount.toInt(),
-        pricePerCoin: Double = 0.0,
-        boxInstallationEpoch: Long = 0L,
-        phonePairingEpoch: Long = 0L
-    ): PaymentResult {
+    fun creditPayment(txId: String, seconds: Int, amount: Double): PaymentResult {
         if (!isInitialized.get()) {
             Log.w(TAG, "Rejecting payment credit: KioskEngine initialization in progress")
             return PaymentResult.FAILED
         }
-        val outcome = paymentRepo.creditPaymentBlocking(
-            txId = txId,
-            seconds = seconds,
-            amount = amount,
-            operationKind = operationKind,
-            coinAmount = coinAmount,
-            pricePerCoin = pricePerCoin,
-            boxInstallationEpoch = boxInstallationEpoch,
-            phonePairingEpoch = phonePairingEpoch
-        )
-        if (outcome.result == PaymentResult.APPLIED && outcome.snapshot != null) {
-            publishCommittedCreditSnapshot(txId, seconds, amount, operationKind, outcome.snapshot)
-        }
-        return outcome.result
-    }
-
-    fun deductPayment(
-        seconds: Int,
-        txId: String? = null,
-        operationKind: String = "MANUAL_DEDUCTION",
-        boxInstallationEpoch: Long = 0L,
-        phonePairingEpoch: Long = 0L
-    ): PaymentResult {
-        if (!isInitialized.get()) {
-            Log.w(TAG, "Rejecting payment deduction: KioskEngine initialization in progress")
-            return PaymentResult.FAILED
-        }
-        val effectiveTxId = txId?.trim().takeIf { !it.isNullOrBlank() } ?: "deduct_${System.currentTimeMillis()}"
-        val outcome = paymentRepo.deductPaymentBlocking(
-            txId = effectiveTxId,
-            seconds = seconds,
-            operationKind = operationKind,
-            boxInstallationEpoch = boxInstallationEpoch,
-            phonePairingEpoch = phonePairingEpoch
-        )
-        if (outcome.result == PaymentResult.APPLIED && outcome.snapshot != null) {
-            publishCommittedDeductSnapshot(seconds, outcome.snapshot)
-        }
-        return outcome.result
-    }
-
-    private fun publishCommittedCreditSnapshot(
-        txId: String,
-        seconds: Int,
-        amount: Double,
-        operationKind: String,
-        snapshot: SessionSnapshot
-    ) {
-        val isQuickAdd = (amount <= 0.0) || operationKind.equals("QUICK_ADJUST", ignoreCase = true)
-        val pesoAmount = if (amount >= 1.0) amount.toInt() else 0
-
-        val targetState = if (isQuickAdd) {
-            if (stateManager.appState.value == 0 || stateManager.appState.value == 1) 2 else null
-        } else {
-            if (stateManager.appState.value == 0) 1 else null
-        }
-        val applied = stateManager.applySessionUpdate(snapshot, targetState)
-        if (applied) {
-            if (isQuickAdd) {
-                if (targetState == 2) {
-                    stateManager.paymentTimeout.value = 0
-                }
-                Log.d(TAG, "Quick Add adjustment credited: +${seconds}s (targetState=$targetState, rev=${snapshot.revision})")
-            } else {
-                stateManager.paymentTimeout.value = ARMING_TIMEOUT_SECONDS
-                if (stateManager.appState.value == 1 || stateManager.appState.value == 3) {
-                    stateManager.coinsInserted.value += pesoAmount
-                } else if (stateManager.appState.value == 2) {
-                    Log.d(TAG, "Coin credited directly to active session: +${seconds}s (₱$pesoAmount, rev=${snapshot.revision})")
-                }
-            }
-            stateManager.saveState()
-        }
-
-        scope.launch(Dispatchers.IO) {
-            try {
-                val eventSource = if (isQuickAdd) "Admin Quick Adjust" else "Piso Coin (₱$pesoAmount)"
-                coinEventRepo.insertEvent(
-                    CoinEvent(
-                        txId = txId,
-                        secondsAdded = seconds,
-                        source = eventSource
-                    )
-                )
-                coinEventRepo.deleteOldEvents(500)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to log coin event to audit ledger: ${e.message}")
-            }
-        }
-
-        if (!isQuickAdd) {
-            try {
-                audioManager.playCoinSound()
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to play coin sound: ${e.message}")
-            }
-            try {
-                HardwareFeedback.triggerFlashlight(context, 150L)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to trigger flashlight: ${e.message}")
-            }
-        }
-
-        try {
-            Handler(Looper.getMainLooper()).post {
-                val addedMins = seconds / 60
-                if (isQuickAdd) {
-                    Toast.makeText(context, "${addedMins}m added by admin!", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(context, "₱$pesoAmount coin accepted! (+${addedMins}m)", Toast.LENGTH_SHORT).show()
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to post credit toast: ${e.message}")
-        }
-    }
-
-    private fun publishCommittedDeductSnapshot(
-        seconds: Int,
-        snapshot: SessionSnapshot
-    ) {
-        val targetState = if (snapshot.remainingSeconds <= 0) 0 else null
-        val applied = stateManager.applySessionUpdate(snapshot, targetState)
-        if (applied) {
-            stateManager.saveState()
-        }
-        try {
-            val displayMinutes = seconds / 60
-            Handler(Looper.getMainLooper()).post {
-                Toast.makeText(context, "$displayMinutes minutes deducted!", Toast.LENGTH_SHORT).show()
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to post deduction toast: ${e.message}")
-        }
+        return paymentRepo.creditPaymentBlocking(txId, seconds, amount)
     }
 
     private val systemMonitor: KioskSystemMonitor = KioskSystemMonitor(
@@ -233,16 +126,17 @@ class KioskEngine(
         onFinishPayment = { finishPayment() }
     )
 
-    internal val esp32Coordinator = KioskEsp32Coordinator(
+    private val esp32Coordinator = KioskEsp32Coordinator(
         context = context,
         stateManager = stateManager,
         paymentRepo = paymentRepo,
         armingTimeoutSeconds = ARMING_TIMEOUT_SECONDS,
         getSecretKey = { KioskSecurity.getSharedSecret(context) },
         getRealTimeBatteryInfo = { systemMonitor.getRealTimeBatteryInfo() },
-        onCreditPayment = ::creditPayment,
-        onSlotBusyTriggered = { triggerSlotBusy() },
-        getAudioManager = { audioManager }
+        onCreditPayment = { txId, seconds, amount ->
+            creditPayment(txId, seconds, amount)
+        },
+        onSlotBusyTriggered = { triggerSlotBusy() }
     )
 
     private val esp32Manager = Esp32ConnectionManager(
@@ -251,7 +145,7 @@ class KioskEngine(
         delegate = esp32Coordinator
     )
 
-    internal val serverCoordinator = KioskServerCoordinator(
+    private val serverCoordinator = KioskServerCoordinator(
         context = context,
         stateManager = stateManager,
         coinEventRepo = coinEventRepo,
@@ -259,8 +153,9 @@ class KioskEngine(
         getSecretKey = { KioskSecurity.getSharedSecret(context) },
         getRealTimeBatteryInfo = { systemMonitor.getRealTimeBatteryInfo() },
         getAudioManager = { audioManager },
-        onCreditPayment = ::creditPayment,
-        onDeductPayment = ::deductPayment,
+        onCreditPayment = { txId, seconds, amount ->
+            creditPayment(txId, seconds, amount)
+        },
         isReady = { isInitialized.get() }
     )
 

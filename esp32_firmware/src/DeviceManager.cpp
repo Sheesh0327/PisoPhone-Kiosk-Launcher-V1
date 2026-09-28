@@ -1,7 +1,6 @@
 #include "DeviceManager.h"
 #include "CoinSlotManager.h"
 #include "HardwareManager.h"
-#include "PaymentQueueManager.h"
 #include "Security.h"
 #include "WebServerModule.h"
 #include <WiFi.h>
@@ -68,28 +67,19 @@ bool unpairSlot(int slotNum) {
     int idx = slotNum - 1;
     String prevDevId = licenseSlots[idx].deviceId;
     String prevIp = licenseSlots[idx].ip;
-
-    if (prevDevId.length() == 0 && prevIp.length() == 0) {
-        return true; // Already unpaired
-    }
-
-    String activeDev = getActiveCoinSessionId();
-    bool ownsActiveSession = (activeDev.length() > 0 && (activeDev == prevDevId || activeDev == prevIp));
-    if (ownsActiveSession) {
-        CoinSlotState state = getCoinSlotState();
-        if (state == CoinSlotState::ARMED || state == CoinSlotState::DRAINING || state == CoinSlotState::RESERVED_ARMING) {
-            Serial.printf("[-] Unpair slot #%d rejected: Device %s owns active/draining session.\n", slotNum, prevDevId.c_str());
-            return false;
-        }
-    }
-
-    if ((prevDevId.length() > 0 && hasPendingPaymentsForTarget(prevDevId)) ||
-        (prevIp.length() > 0 && hasPendingPaymentsForTarget(prevIp))) {
-        Serial.printf("[-] Unpair slot #%d rejected: Device %s has unresolved payments in queue.\n", slotNum, prevDevId.c_str());
-        return false;
-    }
-
     Serial.printf("[+] Unpairing Slot #%d (was %s / %s). Seat remains open.\n", slotNum, prevDevId.c_str(), prevIp.c_str());
+    
+    String activeDev = getActiveCoinSessionId();
+    if (getActiveCoinOwnerType() == CoinSlotOwnerType::PHONE &&
+        activeDev.length() > 0 && (activeDev == prevDevId || activeDev == prevIp)) {
+        if (isWsConnected && wsClient.connected()) {
+            sendWsText(wsClient, "{\"event\":\"UNPAIRED\"}");
+            wsClient.stop();
+            isWsConnected = false;
+        }
+        releaseCoinSlot(activeDev, CoinSlotOwnerType::PHONE, true, "UNPAIRED");
+        Serial.println("[*] Active armed session disarmed due to unpair.");
+    }
 
     licenseSlots[idx].deviceId = "";
     licenseSlots[idx].ip = "";
@@ -167,8 +157,11 @@ void updateDynamicDeviceList(String deviceId, String ip) {
     }
 }
 
-template <typename F>
-static void forEachDeviceConfig(F&& callback) {
+String getDeviceNameByIpOrId(String reqIp, String devId) {
+    int slotIdx = findSlotIndexForDevice(devId, reqIp);
+    if (slotIdx >= 0) {
+        return "PisoPhone " + String(licenseSlots[slotIdx].slotNum);
+    }
     int startIdx = 0;
     int devNum = 1;
     while (startIdx < androidIps.length()) {
@@ -179,32 +172,18 @@ static void forEachDeviceConfig(F&& callback) {
         if (entry.length() > 0) {
             DeviceConfig cfg;
             if (parseDeviceEntry(entry, cfg)) {
-                if (!callback(cfg, devNum)) break;
+                if ((devId.length() > 0 && cfg.id == devId) || (reqIp.length() > 0 && cfg.ip == reqIp)) {
+                    if (cfg.name.length() > 0 && cfg.name != devId && cfg.name.indexOf(devId) == -1) {
+                        return cfg.name;
+                    }
+                    return "PisoPhone " + String(devNum);
+                }
             }
             devNum++;
         }
         startIdx = comma + 1;
     }
-}
-
-String getDeviceNameByIpOrId(String reqIp, String devId) {
-    int slotIdx = findSlotIndexForDevice(devId, reqIp);
-    if (slotIdx >= 0) {
-        return "PisoPhone " + String(licenseSlots[slotIdx].slotNum);
-    }
-    String resolvedName = "PisoPhone";
-    forEachDeviceConfig([&](const DeviceConfig& cfg, int devNum) {
-        if ((devId.length() > 0 && cfg.id == devId) || (reqIp.length() > 0 && cfg.ip == reqIp)) {
-            if (cfg.name.length() > 0 && cfg.name != devId && cfg.name.indexOf(devId) == -1) {
-                resolvedName = cfg.name;
-            } else {
-                resolvedName = "PisoPhone " + String(devNum);
-            }
-            return false;
-        }
-        return true;
-    });
-    return resolvedName;
+    return "PisoPhone";
 }
 
 bool checkReplayProtection(String deviceId, unsigned long long newTs) {
@@ -236,12 +215,7 @@ bool verifyTelemetryAuth(String deviceId, String tsStr, String sig) {
     if (deviceId.length() == 0) return false;
     String secKey = (sharedSecret.length() > 0) ? sharedSecret : String(MASTER_CRYPTO_SECRET);
     String expectedSig = calculateHMAC(deviceId + ":" + tsStr, secKey);
-    bool valid = sig.equalsIgnoreCase(expectedSig);
-    if (!valid && sharedSecret.length() > 0 && sharedSecret != MASTER_CRYPTO_SECRET) {
-        String masterExpectedSig = calculateHMAC(deviceId + ":" + tsStr, MASTER_CRYPTO_SECRET);
-        valid = sig.equalsIgnoreCase(masterExpectedSig);
-    }
-    if (!valid) {
+    if (!sig.equalsIgnoreCase(expectedSig)) {
         return false;
     }
     unsigned long long ts = strtoull(tsStr.c_str(), NULL, 10);
@@ -261,19 +235,17 @@ void recordDeviceNonce(String deviceId, unsigned long long ts) {
     if (trackedDeviceCount < MAX_TRACKED_DEVICES) {
         trackedDevices[trackedDeviceCount].deviceId = deviceId;
         trackedDevices[trackedDeviceCount].lastKnownIp = "";
-        trackedDevices[trackedDeviceCount].timeRemainingSeconds = -1;
+        trackedDevices[trackedDeviceCount].timeRemainingSeconds = 0;
         trackedDevices[trackedDeviceCount].state = 0;
-        trackedDevices[trackedDeviceCount].batteryLevel = -1;
+        trackedDevices[trackedDeviceCount].batteryLevel = 100;
         trackedDevices[trackedDeviceCount].isCharging = false;
-        trackedDevices[trackedDeviceCount].lastSeenMs = 0;
-        trackedDevices[trackedDeviceCount].lastTimeUpdateMs = 0;
+        trackedDevices[trackedDeviceCount].lastSeenMs = millis();
         trackedDevices[trackedDeviceCount].lastNonceTs = ts;
-        trackedDevices[trackedDeviceCount].isApp = false;
         trackedDeviceCount++;
     }
 }
 
-void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int state, int battery, bool charging, unsigned long long ts, bool isApp) {
+void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int state, int battery, bool charging, unsigned long long ts) {
     ip.trim();
     if (ip == "127.0.0.1") ip = "";
     if (ip.length() > 0) {
@@ -293,10 +265,7 @@ void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int st
         if (match) {
             if (deviceId.length() > 0) trackedDevices[i].deviceId = deviceId;
             if (ip.length() > 0) trackedDevices[i].lastKnownIp = ip;
-            if (timeRemaining >= 0) {
-                trackedDevices[i].timeRemainingSeconds = timeRemaining;
-                trackedDevices[i].lastTimeUpdateMs = millis();
-            }
+            trackedDevices[i].timeRemainingSeconds = timeRemaining;
             trackedDevices[i].state = state;
             if (validBattery >= 0) {
                 trackedDevices[i].batteryLevel = validBattery;
@@ -304,7 +273,6 @@ void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int st
             trackedDevices[i].isCharging = charging;
             trackedDevices[i].lastSeenMs = millis();
             if (ts > trackedDevices[i].lastNonceTs) trackedDevices[i].lastNonceTs = ts;
-            if (isApp) trackedDevices[i].isApp = true;
             return;
         }
     }
@@ -313,12 +281,10 @@ void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int st
         trackedDevices[trackedDeviceCount].lastKnownIp = ip;
         trackedDevices[trackedDeviceCount].timeRemainingSeconds = timeRemaining;
         trackedDevices[trackedDeviceCount].state = state;
-        trackedDevices[trackedDeviceCount].batteryLevel = validBattery;
+        trackedDevices[trackedDeviceCount].batteryLevel = (validBattery >= 0) ? validBattery : 100;
         trackedDevices[trackedDeviceCount].isCharging = charging;
         trackedDevices[trackedDeviceCount].lastSeenMs = millis();
-        trackedDevices[trackedDeviceCount].lastTimeUpdateMs = (timeRemaining >= 0) ? millis() : 0;
         trackedDevices[trackedDeviceCount].lastNonceTs = ts;
-        trackedDevices[trackedDeviceCount].isApp = isApp;
         trackedDeviceCount++;
     }
 }
@@ -327,13 +293,9 @@ int getTrackedTimeRemaining(String ip, unsigned long maxAgeMs, String devId) {
     for (int i = 0; i < trackedDeviceCount; i++) {
         bool match = (trackedDevices[i].lastKnownIp == ip || trackedDevices[i].deviceId == ip);
         if (!match && devId.length() > 0 && trackedDevices[i].deviceId == devId) match = true;
-        if (match && trackedDevices[i].lastSeenMs > 0) {
+        if (match) {
             if (millis() - trackedDevices[i].lastSeenMs <= maxAgeMs) {
-                if (trackedDevices[i].timeRemainingSeconds < 0) return -1;
-                unsigned long elapsedSec = 0;
-                if (trackedDevices[i].lastTimeUpdateMs > 0 && millis() >= trackedDevices[i].lastTimeUpdateMs) {
-                    elapsedSec = (millis() - trackedDevices[i].lastTimeUpdateMs) / 1000;
-                }
+                unsigned long elapsedSec = (millis() - trackedDevices[i].lastSeenMs) / 1000;
                 int remaining = trackedDevices[i].timeRemainingSeconds - (int)elapsedSec;
                 return (remaining > 0) ? remaining : 0;
             }
@@ -350,7 +312,7 @@ int getTrackedBatteryLevel(String ip, String devId) {
             return trackedDevices[i].batteryLevel;
         }
     }
-    return -1;
+    return 100;
 }
 
 bool getTrackedChargingState(String ip, String devId) {
@@ -373,86 +335,23 @@ String getFirstKnownIp() {
 }
 
 String getIpFromDeviceId(String id) {
-    id.trim();
-    if (id.length() == 0) return "";
-    if (id.indexOf('.') != -1 && id != "127.0.0.1" && id != "0.0.0.0") {
-        return id;
-    }
-
-    // 1. Check paired license slots (authenticated binding)
-    int slotIdx = findSlotIndexForDevice(id, "");
-    if (slotIdx >= 0 && isSlotActive(slotIdx)) {
-        String slotIp = licenseSlots[slotIdx].ip;
-        slotIp.trim();
-        if (slotIp.length() > 0 && slotIp != "127.0.0.1" && slotIp != "0.0.0.0") {
-            return slotIp;
-        }
-    }
-
-    // 2. Check tracked devices for recent dynamic IP from telemetry
-    for (int i = 0; i < trackedDeviceCount; i++) {
-        if (trackedDevices[i].deviceId == id) {
-            String trackIp = trackedDevices[i].lastKnownIp;
-            trackIp.trim();
-            if (trackIp.length() > 0 && trackIp != "127.0.0.1" && trackIp != "0.0.0.0") {
-                return trackIp;
+    int startIdx = 0;
+    while (startIdx < androidIps.length()) {
+        int comma = androidIps.indexOf(',', startIdx);
+        if (comma == -1) comma = androidIps.length();
+        String entry = androidIps.substring(startIdx, comma);
+        entry.trim();
+        if (entry.length() > 0) {
+            DeviceConfig cfg;
+            if (parseDeviceEntry(entry, cfg)) {
+                if (cfg.id == id || cfg.ip == id) {
+                    return cfg.ip;
+                }
             }
         }
+        startIdx = comma + 1;
     }
-
-    // 3. Check static configured androidIps
-    String foundIp = "";
-    forEachDeviceConfig([&](const DeviceConfig& cfg, int) {
-        if (cfg.id == id && cfg.ip.length() > 0 && cfg.ip != "127.0.0.1" && cfg.ip != "0.0.0.0") {
-            foundIp = cfg.ip;
-            return false;
-        }
-        return true;
-    });
-    if (foundIp.length() > 0) return foundIp;
-
-    // Unresolved identity; never return deviceId as IP
-    return "";
-}
-
-String getDeviceIdFromIp(String ip) {
-    ip.trim();
-    if (ip.length() == 0) return "";
-
-    // 1. Check paired active license slots
-    for (int i = 0; i < maxLicensedSlots; i++) {
-        if (licenseSlots[i].active && licenseSlots[i].deviceId.length() > 0) {
-            if (licenseSlots[i].ip == ip || licenseSlots[i].deviceId == ip) {
-                return licenseSlots[i].deviceId;
-            }
-        }
-    }
-
-    // 2. Check tracked dynamic devices associated with active slots
-    for (int i = 0; i < trackedDeviceCount; i++) {
-        if ((trackedDevices[i].lastKnownIp == ip || trackedDevices[i].deviceId == ip) && trackedDevices[i].deviceId.length() > 0) {
-            int slotIdx = findSlotIndexForDevice(trackedDevices[i].deviceId, "");
-            if (slotIdx >= 0 && isSlotActive(slotIdx) && licenseSlots[slotIdx].deviceId.length() > 0) {
-                return licenseSlots[slotIdx].deviceId;
-            }
-        }
-    }
-
-    // 3. Check static configured androidIps
-    String foundDevId = "";
-    forEachDeviceConfig([&](const DeviceConfig& cfg, int) {
-        if ((cfg.ip == ip || cfg.id == ip) && cfg.id.length() > 0) {
-            int slotIdx = findSlotIndexForDevice(cfg.id, cfg.ip);
-            if (slotIdx >= 0 && isSlotActive(slotIdx) && licenseSlots[slotIdx].deviceId.length() > 0) {
-                foundDevId = licenseSlots[slotIdx].deviceId;
-            } else {
-                foundDevId = cfg.id;
-            }
-            return false;
-        }
-        return true;
-    });
-    return foundDevId;
+    return id;
 }
 
 String getPrimaryTerminalIp() {

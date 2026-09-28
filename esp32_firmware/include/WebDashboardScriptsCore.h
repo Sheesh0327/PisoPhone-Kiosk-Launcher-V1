@@ -202,18 +202,15 @@ window.fetchDeviceStatus = function() {
             let html = '';
             devices.forEach((dev) => {
                 const name = (dev.name && dev.name !== dev.id && !dev.name.startsWith('Terminal') && (!dev.id || !dev.name.includes(dev.id))) ? dev.name : ('PisoPhone ' + dev.slotNum);
-                const hasBat = (typeof dev.battery === 'number' && dev.battery >= 0);
-                const battery = hasBat ? dev.battery : -1;
+                const battery = (typeof dev.battery === 'number' && dev.battery >= 0) ? dev.battery : 100;
                 const isCharging = !!dev.charging;
                 const isExp = (!dev.active);
                 
                 let batteryStatusClass = 'status-good';
-                if (hasBat) {
-                    if (battery <= 15) {
-                        batteryStatusClass = 'status-critical';
-                    } else if (battery <= 30) {
-                        batteryStatusClass = 'status-warning';
-                    }
+                if (battery <= 15) {
+                    batteryStatusClass = 'status-critical';
+                } else if (battery <= 30) {
+                    batteryStatusClass = 'status-warning';
                 }
 
                 if (!dev.isBound && isExp) {
@@ -239,30 +236,10 @@ window.fetchDeviceStatus = function() {
                                 '</div>' +
                             '</div>';
                 } else if (dev.online) {
-                    let effectiveTime = (typeof dev.time === 'number') ? dev.time : 0;
-                    const slotKey = 'slot_' + dev.slotNum;
-                    const now = Date.now();
-                    window._timerState = window._timerState || {};
-
-                    if (effectiveTime > 0) {
-                        window._timerState[slotKey] = { time: effectiveTime, lastPoll: now };
-                    } else if (window._timerState[slotKey] && window._timerState[slotKey].time > 0) {
-                        const elapsed = Math.floor((now - window._timerState[slotKey].lastPoll) / 1000);
-                        const interpolated = window._timerState[slotKey].time - elapsed;
-                        if (interpolated > 0 && (now - window._timerState[slotKey].lastPoll) < 8000) {
-                            effectiveTime = interpolated;
-                        } else {
-                            window._timerState[slotKey] = { time: 0, lastPoll: now };
-                            effectiveTime = 0;
-                        }
-                    } else {
-                        effectiveTime = 0;
-                    }
-
-                    const mins = Math.floor(effectiveTime / 60);
-                    const secs = effectiveTime % 60;
+                    const mins = Math.floor(dev.time / 60);
+                    const secs = dev.time % 60;
                     const timeStr = mins + 'm ' + secs + 's';
-                    const active = effectiveTime > 0;
+                    const active = dev.time > 0;
                     
                     let badgeHtml = active 
                         ? '<span class="device-badge active">ACTIVE</span>'
@@ -273,12 +250,7 @@ window.fetchDeviceStatus = function() {
                     }
                         
                     const batteryIcon = isCharging ? '⚡' : '🔋';
-                    const batteryText = hasBat ? ((isCharging ? '⚡ ' : '') + battery + '%') : (isCharging ? '⚡ Charging' : '🔋 --');
-                    const batteryBarHtml = hasBat
-                        ? ('<div class="battery-bar-bg" style="width: 50px; height: 6px; display: inline-block; margin-left: 4px;">' +
-                           '<div class="battery-bar-fill" style="width: ' + battery + '%;"></div>' +
-                           '</div>')
-                        : '';
+                    const batteryText = (isCharging ? '⚡ ' : '') + battery + '%';
 
                     html += '<div class="device-row" ' + (isExp ? 'style="opacity: 0.8;"' : '') + '>' +
                                 '<div class="device-row-identity">' +
@@ -289,13 +261,15 @@ window.fetchDeviceStatus = function() {
                                     '</div>' +
                                 '</div>' +
                                 '<div class="device-row-metrics">' +
-                                    '<div class="device-row-timer" data-timer-slot="' + slotKey + '">' +
-                                        '<span class="timer-display-text">⏱️ ' + timeStr + '</span>' +
+                                    '<div class="device-row-timer">' +
+                                        '<span>⏱️ ' + timeStr + '</span>' +
                                         badgeHtml +
                                     '</div>' +
                                     '<div class="device-row-battery ' + batteryStatusClass + '">' +
                                         '<span style="font-size: 12px; font-weight: 700;">' + batteryIcon + ' ' + batteryText + '</span>' +
-                                        batteryBarHtml +
+                                        '<div class="battery-bar-bg" style="width: 50px; height: 6px; display: inline-block; margin-left: 4px;">' +
+                                            '<div class="battery-bar-fill" style="width: ' + battery + '%;"></div>' +
+                                        '</div>' +
                                     '</div>' +
                                 '</div>' +
                                 '<div class="device-row-actions">' +
@@ -375,108 +349,28 @@ window.fetchDeviceStatus = function() {
 };
 setInterval(fetchDeviceStatus, 3000);
 document.addEventListener("DOMContentLoaded", fetchDeviceStatus);
-setInterval(function() {
-    if (!window._timerState) return;
-    const now = Date.now();
-    document.querySelectorAll('[data-timer-slot]').forEach(function(el) {
-        const slotKey = el.getAttribute('data-timer-slot');
-        const st = window._timerState[slotKey];
-        if (st && st.time > 0) {
-            const elapsed = Math.floor((now - st.lastPoll) / 1000);
-            const remaining = Math.max(0, st.time - elapsed);
-            const m = Math.floor(remaining / 60);
-            const s = remaining % 60;
-            const span = el.querySelector('.timer-display-text');
-            if (span) {
-                span.textContent = '⏱️ ' + m + 'm ' + s + 's';
-            }
-        }
-    });
-}, 1000);
 
 window.checkMatchQualification = function() {
     const p1 = document.getElementById('p1_select') ? document.getElementById('p1_select').value : '';
     const p2 = document.getElementById('p2_select') ? document.getElementById('p2_select').value : '';
     const mins = document.getElementById('match_mins_input') ? document.getElementById('match_mins_input').value : '15';
     const resDiv = document.getElementById('match_qual_result');
-    if (!resDiv) return;
-    if (!p1 || !p2) {
-        resDiv.style.display = 'block';
-        resDiv.style.background = 'rgba(239, 68, 68, 0.15)';
-        resDiv.style.border = '1px solid rgba(239, 68, 68, 0.4)';
-        resDiv.style.color = '#f87171';
-        resDiv.innerHTML = '❌ <b>Error:</b> Please select both Player 1 and Player 2.';
-        return;
-    }
-    if (p1 === p2) {
-        resDiv.style.display = 'block';
-        resDiv.style.background = 'rgba(239, 68, 68, 0.15)';
-        resDiv.style.border = '1px solid rgba(239, 68, 68, 0.4)';
-        resDiv.style.color = '#f87171';
-        resDiv.innerHTML = '❌ <b>Error:</b> Player 1 and Player 2 cannot be the same device.';
-        return;
-    }
-    resDiv.style.display = 'block';
-    resDiv.style.background = 'rgba(59, 130, 246, 0.15)';
-    resDiv.style.border = '1px solid rgba(59, 130, 246, 0.4)';
-    resDiv.style.color = '#93c5fd';
-    resDiv.innerHTML = '⏳ Verifying device time balances...';
-
+    if (!p1 || !p2) { alert('Select both players.'); return; }
+    if (p1 === p2) { resDiv.style.display = 'block'; resDiv.style.background = '#fef2f2'; resDiv.style.border = '1px solid #fecaca'; resDiv.style.color = '#991b1b'; resDiv.innerHTML = '❌ <b>Error:</b> Players cannot be the same device.'; return; }
+    resDiv.style.display = 'block'; resDiv.style.background = '#f8fafc'; resDiv.style.border = '1px solid #e2e8f0'; resDiv.style.color = '#334155'; resDiv.innerHTML = '⏳ Verifying balances...';
     fetch('/check_qualification?p1=' + encodeURIComponent(p1) + '&p2=' + encodeURIComponent(p2) + '&minutes=' + encodeURIComponent(mins))
         .then(res => res.json())
         .then(data => {
-            if (data && data.success) {
+            if (data.success) {
                 if (data.qualified) {
-                    resDiv.style.background = 'rgba(16, 185, 129, 0.15)';
-                    resDiv.style.border = '1px solid rgba(16, 185, 129, 0.4)';
-                    resDiv.style.color = '#34d399';
-                    resDiv.innerHTML = '✅ <b>BOTH PLAYERS QUALIFIED FOR ' + (data.stake_minutes || mins) + 'm MATCH!</b><br>• Player 1 (' + (data.p1_ip || p1) + '): <b>' + data.p1_formatted + '</b><br>• Player 2 (' + (data.p2_ip || p2) + '): <b>' + data.p2_formatted + '</b>';
+                    resDiv.style.background = '#f0fdf4'; resDiv.style.border = '1px solid #bbf7d0'; resDiv.style.color = '#166534';
+                    resDiv.innerHTML = '✅ <b>BOTH QUALIFIED FOR ' + data.stake_minutes + 'm MATCH!</b><br>• P1: ' + data.p1_formatted + '<br>• P2: ' + data.p2_formatted;
                 } else {
-                    resDiv.style.background = 'rgba(239, 68, 68, 0.15)';
-                    resDiv.style.border = '1px solid rgba(239, 68, 68, 0.4)';
-                    resDiv.style.color = '#f87171';
-                    resDiv.innerHTML = '❌ <b>NOT QUALIFIED</b><br>• Player 1 (' + (data.p1_ip || p1) + '): <b>' + data.p1_formatted + '</b><br>• Player 2 (' + (data.p2_ip || p2) + '): <b>' + data.p2_formatted + '</b><br><i>' + (data.message || data.error || '') + '</i>';
+                    resDiv.style.background = '#fef2f2'; resDiv.style.border = '1px solid #fecaca'; resDiv.style.color = '#991b1b';
+                    resDiv.innerHTML = '❌ <b>NOT QUALIFIED</b><br>• P1: ' + data.p1_formatted + '<br>• P2: ' + data.p2_formatted + '<br><i>' + data.message + '</i>';
                 }
-            } else {
-                resDiv.style.background = 'rgba(239, 68, 68, 0.15)';
-                resDiv.style.border = '1px solid rgba(239, 68, 68, 0.4)';
-                resDiv.style.color = '#f87171';
-                resDiv.innerHTML = '❌ ' + (data && data.error ? data.error : 'Error checking qualification.');
-            }
-        }).catch(err => {
-            resDiv.style.background = 'rgba(239, 68, 68, 0.15)';
-            resDiv.style.border = '1px solid rgba(239, 68, 68, 0.4)';
-            resDiv.style.color = '#f87171';
-            resDiv.innerHTML = '❌ Network request failed: ' + err;
-        });
-};
-
-window.toggle1v1MatchBox = function() {
-    var content = document.getElementById('match_collapsible_content');
-    var btn = document.getElementById('match_toggle_btn');
-    var header = document.getElementById('match_card_header');
-    if (!content) return;
-    if (content.style.display === 'none' || content.style.display === '') {
-        content.style.display = 'block';
-        if (header) header.style.marginBottom = '16px';
-        if (btn) {
-            btn.innerHTML = '▲ Close 1v1 Setup';
-            btn.style.background = 'transparent';
-            btn.style.border = '1px solid var(--border)';
-            btn.style.color = 'var(--text-muted)';
-            btn.style.boxShadow = 'none';
-        }
-    } else {
-        content.style.display = 'none';
-        if (header) header.style.marginBottom = '0px';
-        if (btn) {
-            btn.innerHTML = '⚔️ Activate 1v1 Mode';
-            btn.style.background = 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)';
-            btn.style.border = 'none';
-            btn.style.color = '#fff';
-            btn.style.boxShadow = '0 2px 10px rgba(139,92,246,0.3)';
-        }
-    }
+            } else { resDiv.innerHTML = '❌ Error checking qualification.'; }
+        }).catch(err => resDiv.innerHTML = '❌ Network error.');
 };
 )JS";
 

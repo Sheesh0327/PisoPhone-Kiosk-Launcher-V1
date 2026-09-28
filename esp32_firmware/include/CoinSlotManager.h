@@ -7,7 +7,7 @@
 // ============================================================================
 // CALLBACK SIGNATURES & ENUMS
 // ============================================================================
-typedef std::function<bool(const String& sessionId, int pulses)> CoinPaymentCallback;
+typedef std::function<void(const String& sessionId, int pulses)> CoinPaymentCallback;
 typedef std::function<void(const String& sessionId, const char* reason)> CoinSessionEndCallback;
 
 enum class CoinSlotOwnerType {
@@ -17,11 +17,9 @@ enum class CoinSlotOwnerType {
 };
 
 enum class CoinSlotState {
-    IDLE,               // No session, relay OFF, acceptor disabled
-    RESERVED_ARMING,    // Atomically claimed by incoming connection, awaiting socket readiness/handshake completion
-    ARMED,              // Active session running, relay ON, accepting coins
-    DRAINING,           // Session closing/timed-out, relay ON, waiting for in-flight pulses to finish
-    FAULT_MAINTENANCE   // Hardware fault, storage unavailable, or maintenance lockdown; acceptor disabled
+    IDLE,       // No session, relay OFF, acceptor disabled
+    ARMED,      // Active session running, relay ON, accepting coins
+    DRAINING    // Session closing/timed-out, relay ON, waiting for in-flight pulses to finish
 };
 
 // ============================================================================
@@ -34,19 +32,8 @@ enum class CoinSlotState {
 void initCoinSlotManager();
 
 /**
- * Atomically attempts to claim the slot during handshake phase before network I/O.
- * Returns true if successfully transitioned to RESERVED_ARMING for this session.
- */
-bool tryClaimCoinSlotForArming(const String& sessionId, CoinSlotOwnerType ownerType, unsigned long timeoutMs = 5000);
-
-/**
- * Cancels a pending claim if handshake or socket upgrade fails.
- */
-void cancelCoinSlotClaim(const String& sessionId, CoinSlotOwnerType ownerType = CoinSlotOwnerType::ANY);
-
-/**
  * Attempts to reserve the coin slot for a specific session/device.
- * - If currently IDLE or RESERVED_ARMING by same session: arms acceptor relay, resets detector, starts session.
+ * - If currently IDLE: arms acceptor relay, resets detector, starts session.
  * - If already reserved by SAME sessionId & ownerType: refreshes TTL and preserves accumulated pulses.
  * - If reserved/draining for ANOTHER session or different ownerType: rejects request (returns false).
  */
@@ -69,11 +56,6 @@ bool refreshCoinSlotTtl(const String& sessionId, CoinSlotOwnerType ownerType, un
  * payment callback dispatching, and session timeout management.
  */
 void processCoinSlotSession();
-
-/**
- * Returns the number of pulses currently buffered in the session pulse accumulator.
- */
-int getSessionAccumulatedPulses();
 
 /**
  * Returns true if the coin slot is currently reserved and powered/armed.
@@ -104,11 +86,5 @@ CoinSlotOwnerType getActiveCoinOwnerType();
  * Registers a global fallback payment callback if no session-specific callback is set.
  */
 void setGlobalCoinPaymentCallback(CoinPaymentCallback callback);
-
-/**
- * Returns true if startup pulse suppression window is active.
- * During this time, acceptor power MUST NOT be enabled.
- */
-bool isStartupSuppressionActive();
 
 #endif // COIN_SLOT_MANAGER_H

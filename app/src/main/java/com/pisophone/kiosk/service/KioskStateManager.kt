@@ -32,10 +32,6 @@ class KioskStateManager(private val context: Context) {
     val isSlotExpired = MutableStateFlow(false)
     val slotExpiryMessage = MutableStateFlow("")
     val slotNumber = MutableStateFlow(0)
-    val isArenaMode = MutableStateFlow(false)
-    val arenaPlayerRole = MutableStateFlow(0) // 1: Player 1, 2: Player 2
-    val arenaStakeMinutes = MutableStateFlow(15)
-    val isArenaBannerVisible = MutableStateFlow(false)
 
     init {
         deviceIp.value = getLocalIpAddress()
@@ -101,6 +97,7 @@ class KioskStateManager(private val context: Context) {
                 .putInt("coins_inserted", coinsInserted.value)
                 .putFloat("price_per_coin", pricePerCoin.value.toFloat())
                 .putInt("minutes_per_coin", minutesPerCoin.value)
+                .putString("esp32_ip", esp32Ip)
                 .putInt("target_port", ESP32_WEB_PORT)
                 .putStringSet("processed_tx_ids", txSet.take(20).toSet())
                 .apply()
@@ -128,7 +125,13 @@ class KioskStateManager(private val context: Context) {
 
             pricePerCoin.value = prefs.getFloat("price_per_coin", 5.0f).toDouble()
             minutesPerCoin.value = prefs.getInt("minutes_per_coin", 30)
-            esp32Ip = null
+            esp32Ip = prefs.getString("esp32_ip", null)
+            if (esp32Ip.isNullOrBlank()) {
+                val configured = KioskSecurity.getConfiguredEsp32Ip(context)
+                if (configured.isNotBlank()) {
+                    esp32Ip = configured
+                }
+            }
 
             val savedTxSet = prefs.getStringSet("processed_tx_ids", emptySet()) ?: emptySet()
 
@@ -195,24 +198,5 @@ class KioskStateManager(private val context: Context) {
             ex.printStackTrace()
         }
         return fallbackIp ?: "127.0.0.1"
-    }
-
-    fun setArenaMode(active: Boolean, role: Int = 0, stake: Int = 15, showBanner: Boolean = false) {
-        val wasActive = isArenaMode.value
-        isArenaMode.value = active
-        if (active) {
-            if (role > 0) arenaPlayerRole.value = role
-            if (stake > 0) arenaStakeMinutes.value = stake
-            if (showBanner || !wasActive) {
-                isArenaBannerVisible.value = true
-            }
-        } else {
-            arenaPlayerRole.value = 0
-            isArenaBannerVisible.value = false
-        }
-    }
-
-    fun dismissArenaBanner() {
-        isArenaBannerVisible.value = false
     }
 }

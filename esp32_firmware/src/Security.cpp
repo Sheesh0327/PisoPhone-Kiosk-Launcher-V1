@@ -1,5 +1,4 @@
 #include "Security.h"
-#include "ProtocolFraming.h"
 #include "Config.h"
 #include "esp_mac.h"
 #include "mbedtls/md.h"
@@ -27,101 +26,6 @@ String calculateHMAC(String challenge, String secret) {
     return hex;
 }
 
-static String lengthPrefixedField(const String& field) {
-    return String(field.length()) + ":" + field;
-}
-
-String calculateHttpReqSignature(
-    const String& method,
-    const String& endpoint,
-    const String& recipient,
-    const String& txId,
-    const String& ts,
-    const String& payload,
-    const String& secret
-) {
-    std::string framed = PisoPhone::formatHttpReqData(
-        method.c_str(), endpoint.c_str(), recipient.c_str(),
-        txId.c_str(), ts.c_str(), payload.c_str()
-    );
-    return calculateHMAC(String(framed.c_str()), secret);
-}
-
-bool verifyHttpReqSignature(
-    const String& method,
-    const String& endpoint,
-    const String& recipient,
-    const String& txId,
-    const String& ts,
-    const String& payload,
-    const String& sig,
-    const String& secret
-) {
-    if (sig.length() == 0) return false;
-    String expected = calculateHttpReqSignature(method, endpoint, recipient, txId, ts, payload, secret);
-    return PisoPhone::constantTimeCompare(sig.c_str(), expected.c_str());
-}
-
-String calculateWsPaySignature(
-    const String& event,
-    const String& recipient,
-    const String& txId,
-    const String& ts,
-    const String& payload,
-    const String& secret
-) {
-    std::string framed = PisoPhone::formatWsPayData(
-        event.c_str(), recipient.c_str(), txId.c_str(),
-        ts.c_str(), payload.c_str()
-    );
-    return calculateHMAC(String(framed.c_str()), secret);
-}
-
-bool verifyWsPaySignature(
-    const String& event,
-    const String& recipient,
-    const String& txId,
-    const String& ts,
-    const String& payload,
-    const String& sig,
-    const String& secret
-) {
-    if (sig.length() == 0) return false;
-    String expected = calculateWsPaySignature(event, recipient, txId, ts, payload, secret);
-    return PisoPhone::constantTimeCompare(sig.c_str(), expected.c_str());
-}
-
-String calculateAckSignature(
-    const String& deviceId,
-    const String& txId,
-    int amount,
-    int seconds,
-    const String& ts,
-    const String& status,
-    const String& secret
-) {
-    std::string framed = PisoPhone::formatAckData(
-        deviceId.c_str(), txId.c_str(), amount, seconds,
-        ts.c_str(), status.c_str()
-    );
-    return calculateHMAC(String(framed.c_str()), secret);
-}
-
-bool verifyAckSignature(
-    const String& deviceId,
-    const String& txId,
-    int amount,
-    int seconds,
-    const String& ts,
-    const String& status,
-    const String& sig,
-    const String& secret
-) {
-    if (sig.length() == 0) return false;
-    String expectedAck = calculateAckSignature(deviceId, txId, amount, seconds, ts, status, secret);
-    return PisoPhone::constantTimeCompare(sig.c_str(), expectedAck.c_str());
-}
-
 bool applySlotToken(String token) {
     token.trim();
     token.toUpperCase();
@@ -147,17 +51,16 @@ bool applySlotToken(String token) {
 
     String secKey = (sharedSecret.length() > 0) ? sharedSecret : String(MASTER_CRYPTO_SECRET);
 
-    // Canonical Single Verification Path: Match target slot count (1..MAX_SUPPORTED_SLOTS)
-    for (int s = 1; s <= MAX_SUPPORTED_SLOTS; s++) {
+    // Canonical Single Verification Path: Match target slot count (2..MAX_SUPPORTED_SLOTS)
+    for (int s = 2; s <= MAX_SUPPORTED_SLOTS; s++) {
         String payload = "PISOSLOT:" + cleanMac + ":" + String(s);
         String expectedSig = calculateHMAC(payload, secKey);
         expectedSig.toUpperCase();
 
         String shortSig = expectedSig.substring(0, 8);
         String fullToken = "PISOSLOT." + cleanMac + "." + String(s) + "." + shortSig;
-        String fullTokenLong = "PISOSLOT." + cleanMac + "." + String(s) + "." + expectedSig;
 
-        if (token.equalsIgnoreCase(shortSig) || token.equalsIgnoreCase(fullToken) || token.equalsIgnoreCase(fullTokenLong) || token.equalsIgnoreCase(expectedSig)) {
+        if (token.equalsIgnoreCase(shortSig) || token.equalsIgnoreCase(fullToken) || token.equalsIgnoreCase(expectedSig)) {
             maxLicensedSlots = min(max(maxLicensedSlots, s), MAX_SUPPORTED_SLOTS);
             for (int i = 0; i < maxLicensedSlots; i++) {
                 licenseSlots[i].active = true;

@@ -14,33 +14,15 @@ import java.util.concurrent.ConcurrentHashMap
 interface KioskServerDelegate {
     fun isReady(): Boolean = true
     fun getSecretKey(): String
-    fun getDeviceId(): String = ""
     fun onHeartbeat(clientIp: String?)
     fun getStatusJson(): JSONObject
     fun getSessionTimeRemaining(): Int
     fun getAppState(): Int
     fun getAuditEventsJson(): String
-    fun creditPayment(
-        txId: String,
-        seconds: Int,
-        amount: Double,
-        operationKind: String,
-        coinAmount: Int,
-        pricePerCoin: Double,
-        boxInstallationEpoch: Long,
-        phonePairingEpoch: Long
-    ): PaymentResult
-
-    fun onDeductTime(
-        seconds: Int,
-        txId: String?,
-        operationKind: String,
-        boxInstallationEpoch: Long,
-        phonePairingEpoch: Long
-    ): PaymentResult
-
+    fun creditPayment(txId: String, seconds: Int, amount: Double): PaymentResult
+    fun onDeductTime(seconds: Int, txId: String? = null)
     fun onConfigUpdated(price: Double?, minutes: Int?, deviceName: String?, adminPin: String?, slotNum: Int? = null)
-    fun onTriggerAction(action: String, slotNum: Int? = null, extra: Map<String, String>? = null)
+    fun onTriggerAction(action: String, slotNum: Int? = null)
     fun getCrashLog(): String?
 }
 
@@ -87,14 +69,6 @@ class KioskHttpServer(
         }
     }
 
-    private fun createResponse(status: Response.IStatus, mimeType: String, txt: String): Response {
-        val bytes = txt.toByteArray(Charsets.UTF_8)
-        val response = newFixedLengthResponse(status, mimeType, java.io.ByteArrayInputStream(bytes), bytes.size.toLong())
-        response.setGzipEncoding(false)
-        response.addHeader("Connection", "close")
-        return response
-    }
-
     override fun serve(session: IHTTPSession): Response {
         val uri = session.uri
         val params = session.parameters.mapValues { it.value.firstOrNull() ?: "" }
@@ -103,131 +77,95 @@ class KioskHttpServer(
         if (uri == "/heartbeat" || uri == "/ping") {
             val clientIp = session.headers["remote-addr"] ?: session.headers["http-client-ip"]
             delegate.onHeartbeat(clientIp)
-            return createResponse(Response.Status.OK, "text/plain", "OK")
+            return newFixedLengthResponse(Response.Status.OK, "text/plain", "OK")
         }
 
         if (uri == "/identify" || uri == "/status") {
             val clientIp = session.headers["remote-addr"] ?: session.headers["http-client-ip"]
             delegate.onHeartbeat(clientIp)
             val json = delegate.getStatusJson()
-            return createResponse(Response.Status.OK, "application/json", json.toString())
+            return newFixedLengthResponse(Response.Status.OK, "application/json", json.toString())
         }
 
         if (uri == "/challenge" || uri == "/heartbeat_challenge") {
-            return createResponse(Response.Status.OK, "text/plain", "OK")
+            return newFixedLengthResponse(Response.Status.OK, "text/plain", "OK")
         }
 
         if (uri == "/get_time") {
-            return createResponse(Response.Status.OK, "text/plain", delegate.getSessionTimeRemaining().toString())
+            return newFixedLengthResponse(Response.Status.OK, "text/plain", delegate.getSessionTimeRemaining().toString())
         }
 
         if (uri == "/state") {
-            return createResponse(Response.Status.OK, "text/plain", delegate.getAppState().toString())
+            return newFixedLengthResponse(Response.Status.OK, "text/plain", delegate.getAppState().toString())
         }
 
         if (uri == "/audit") {
             val auditJson = delegate.getAuditEventsJson()
-            return createResponse(Response.Status.OK, "application/json", auditJson)
+            return newFixedLengthResponse(Response.Status.OK, "application/json", auditJson)
         }
 
         val clientIp = session.headers["remote-addr"] ?: session.headers["http-client-ip"] ?: "unknown"
         if (isRateLimited(clientIp)) {
-            return createResponse(Response.Status.UNAUTHORIZED, "text/plain", "Rate limit exceeded")
+            return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Rate limit exceeded")
         }
 
         val secretKey = delegate.getSecretKey()
         val payload = params["payload"]
         if (payload.isNullOrBlank()) {
             Log.w(TAG, "Rejected unauthenticated request to protected endpoint: $uri")
-            return createResponse(Response.Status.UNAUTHORIZED, "text/plain", "Encrypted payload required")
+            return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Encrypted payload required")
         }
 
         val hmac = params["hmac"]
         if (hmac.isNullOrBlank()) {
             Log.w(TAG, "Rejected request without HMAC signature: $uri")
-            return createResponse(Response.Status.UNAUTHORIZED, "text/plain", "HMAC signature required for integrity")
+            return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "HMAC signature required for integrity")
         }
 
-        val outerDeviceId = params["device_id"]?.trim() ?: ""
-        val outerTxId = params["tx_id"]?.trim() ?: ""
-        val outerTs = params["ts"]?.trim() ?: ""
-
-        if (!KioskSecurity.verifyHttpReqSignature(
-                method = session.method.name,
-                endpoint = uri,
-                recipient = outerDeviceId,
-                txId = outerTxId,
-                ts = outerTs,
-                payload = payload,
-                sig = hmac,
-                secret = secretKey
-            )) {
-            Log.w(TAG, "Rejected payload with invalid HttpReq signature: $uri")
-            return createResponse(Response.Status.UNAUTHORIZED, "text/plain", "HMAC verification failed")
+        val expectedHmac = KioskSecurity.calculateHmac(payload, secretKey)
+        if (!KioskSecurity.constantTimeEquals(hmac.trim().lowercase(), expectedHmac.trim().lowercase())) {
+            Log.w(TAG, "Rejected payload with invalid HMAC signature: $uri")
+            return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "HMAC verification failed")
         }
 
         val decryptedStr = KioskSecurity.decrypt(payload, secretKey)
         if (decryptedStr.isBlank()) {
             Log.w(TAG, "Rejected payload with invalid AES key or corrupted signature: $uri")
-            return createResponse(Response.Status.UNAUTHORIZED, "text/plain", "Decryption failed")
+            return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Decryption failed")
         }
         val decryptedParams = parseQueryString(decryptedStr)
 
-        val decTxId = (decryptedParams["tx_id"] ?: decryptedParams["nonce"])?.trim() ?: ""
-        val decDeviceId = decryptedParams["device_id"]?.trim() ?: ""
-        val decTs = decryptedParams["ts"]?.trim() ?: ""
-
-        if (outerTxId.isNotBlank() && !outerTxId.equals(decTxId, ignoreCase = true)) {
-            Log.w(TAG, "Rejecting request: outer tx_id ($outerTxId) does not match decrypted tx_id ($decTxId)")
-            return createResponse(Response.Status.BAD_REQUEST, "text/plain", "MUTATED_TRANSACTION_ID")
-        }
-        if (outerDeviceId.isNotBlank() && !outerDeviceId.equals(decDeviceId, ignoreCase = true)) {
-            Log.w(TAG, "Rejecting request: outer device_id ($outerDeviceId) does not match decrypted device_id ($decDeviceId)")
-            return createResponse(Response.Status.BAD_REQUEST, "text/plain", "MUTATED_DEVICE_ID")
-        }
-        if (outerTs.isNotBlank() && !outerTs.equals(decTs, ignoreCase = true)) {
-            Log.w(TAG, "Rejecting request: outer ts ($outerTs) does not match decrypted ts ($decTs)")
-            return createResponse(Response.Status.BAD_REQUEST, "text/plain", "MUTATED_TIMESTAMP")
-        }
-
         // Validate timestamp freshness (Replay protection Layer 1)
-        val ts = decTs.toLongOrNull() ?: 0L
+        val ts = decryptedParams["ts"]?.trim()?.toLongOrNull() ?: 0L
         val now = System.currentTimeMillis()
         val skew = Math.abs(now - ts)
         if (ts <= 0L || skew > MAX_TIMESTAMP_SKEW_MS) {
             Log.w(TAG, "Rejecting $uri request: Stale or invalid timestamp ($ts, now=$now, skew=${skew}ms)")
-            return createResponse(Response.Status.BAD_REQUEST, "text/plain", "STALE_TIMESTAMP")
+            return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "STALE_TIMESTAMP")
         }
 
         // Replay Protection check: verify unique tx_id (Layer 2)
-        val txId = decTxId.ifBlank { null }
+        val txId = (decryptedParams["tx_id"] ?: decryptedParams["nonce"])?.trim()
         if (uri == "/add_time" || uri == "/coin") {
             if (!delegate.isReady()) {
                 Log.w(TAG, "Rejecting payment request to $uri: Server initialization in progress")
-                return createResponse(Response.Status.SERVICE_UNAVAILABLE, "text/plain", "INITIALIZING")
+                return newFixedLengthResponse(Response.Status.SERVICE_UNAVAILABLE, "text/plain", "INITIALIZING")
             }
             if (txId.isNullOrBlank()) {
                 Log.w(TAG, "Rejecting coin credit: Missing tx_id in payload")
-                return createResponse(Response.Status.BAD_REQUEST, "text/plain", "MISSING_TX_ID")
+                return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "MISSING_TX_ID")
             }
         }
 
         return when (uri) {
             "/add_time", "/coin" -> {
-                val targetDev = decDeviceId
-                val myDeviceId = delegate.getDeviceId().ifBlank { KioskSecurity.getHardwareId(context) }
-                if (targetDev.isNotBlank() && !targetDev.equals(myDeviceId, ignoreCase = true)) {
-                    Log.w(TAG, "Rejecting payment request: Recipient mismatch (target='$targetDev', local='$myDeviceId')")
-                    return createResponse(Response.Status.FORBIDDEN, "text/plain", "MISMATCHED_RECIPIENT")
-                }
-
                 val hasMinutes = decryptedParams.containsKey("minutes")
                 val hasSeconds = decryptedParams.containsKey("seconds")
                 val minutesLong = decryptedParams["minutes"]?.toLongOrNull()
                 val secondsParamLong = decryptedParams["seconds"]?.toLongOrNull()
                 if ((hasMinutes && minutesLong == null) || (hasSeconds && secondsParamLong == null) || (!hasMinutes && !hasSeconds)) {
                     Log.w(TAG, "Rejecting coin credit: Invalid time parameters")
-                    return createResponse(Response.Status.BAD_REQUEST, "text/plain", "INVALID_PAYMENT")
+                    return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "INVALID_PAYMENT")
                 }
                 val rawSecondsLong = secondsParamLong ?: ((minutesLong ?: 0L) * 60L)
 
@@ -235,146 +173,59 @@ class KioskHttpServer(
                 val amountParam = decryptedParams["amount"]?.toDoubleOrNull()
                 if (hasAmount && (amountParam == null || amountParam.isNaN() || amountParam.isInfinite())) {
                     Log.w(TAG, "Rejecting coin credit: Invalid amount parameter")
-                    return createResponse(Response.Status.BAD_REQUEST, "text/plain", "INVALID_AMOUNT")
+                    return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "INVALID_AMOUNT")
                 }
                 val amount = amountParam ?: 1.0
                 if (amount < 0.0) {
                     Log.w(TAG, "Rejecting coin credit: Negative amount")
-                    return createResponse(Response.Status.BAD_REQUEST, "text/plain", "INVALID_AMOUNT")
+                    return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "INVALID_AMOUNT")
                 }
-
-                val amountPulses = amount.toInt()
-                val rawOpKind = decryptedParams["op_kind"] ?: decryptedParams["operation_kind"] ?: ""
-                val opKindStr = when (rawOpKind) {
-                    "1" -> "COIN"
-                    "2" -> "QUICK_ADJUST"
-                    "3" -> "MANUAL_DEDUCTION"
-                    "4" -> "MATCH_TRANSFER"
-                    "5" -> "CONTROLLER"
-                    else -> if (rawOpKind.isNotBlank()) rawOpKind else (if (amount > 0.0) "COIN" else (if (rawSecondsLong >= 0) "QUICK_ADJUST" else "MANUAL_DEDUCTION"))
-                }
-                val pricePerCoin = decryptedParams["price_per_coin"]?.toDoubleOrNull()
-                    ?: decryptedParams["price"]?.toDoubleOrNull() ?: 0.0
-                val boxEpoch = decryptedParams["box_installation_epoch"]?.toLongOrNull()
-                    ?: decryptedParams["box_epoch"]?.toLongOrNull() ?: 0L
-                val phoneEpoch = decryptedParams["phone_pairing_epoch"]?.toLongOrNull()
-                    ?: decryptedParams["phone_epoch"]?.toLongOrNull() ?: 0L
 
                 if (rawSecondsLong > 0) {
                     if (rawSecondsLong > Int.MAX_VALUE.toLong()) {
                         Log.w(TAG, "Rejecting coin credit: seconds parameter exceeds Int.MAX_VALUE ($rawSecondsLong)")
-                        return createResponse(Response.Status.BAD_REQUEST, "text/plain", "INVALID_SECONDS")
+                        return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "INVALID_SECONDS")
                     }
                     val seconds = rawSecondsLong.toInt()
-                    val creditOpKind = if (opKindStr.isBlank() || opKindStr == "MANUAL_DEDUCTION") (if (amount > 0.0) "COIN" else "QUICK_ADJUST") else opKindStr
                     val result = try {
-                        delegate.creditPayment(
-                            txId = txId!!,
-                            seconds = seconds,
-                            amount = amount,
-                            operationKind = creditOpKind,
-                            coinAmount = amountPulses,
-                            pricePerCoin = pricePerCoin,
-                            boxInstallationEpoch = boxEpoch,
-                            phonePairingEpoch = phoneEpoch
-                        )
+                        delegate.creditPayment(txId!!, seconds, amount)
                     } catch (e: Exception) {
                         Log.e(TAG, "Exception during creditPayment for $txId: ${e.message}", e)
                         PaymentResult.FAILED
                     }
-
-                    val ackResp = if (targetDev.isNotBlank()) {
-                        val ackNow = System.currentTimeMillis()
-                        val statusStr = if (result == PaymentResult.ALREADY_APPLIED) "ALREADY_PROCESSED" else "OK"
-                        val ackSig = KioskSecurity.calculateAckSignature(
-                            deviceId = targetDev,
-                            txId = txId!!,
-                            amount = amountPulses,
-                            seconds = seconds,
-                            ts = ackNow.toString(),
-                            status = statusStr,
-                            secret = secretKey
-                        )
-                        "$statusStr:tx_id=$txId:device_id=$targetDev:amount=$amountPulses:seconds=$seconds:ts=$ackNow:v_sig=$ackSig"
-                    } else {
-                        if (result == PaymentResult.ALREADY_APPLIED) "ALREADY_PROCESSED" else "OK"
-                    }
-
                     when (result) {
-                        PaymentResult.APPLIED, PaymentResult.ALREADY_APPLIED -> {
-                            createResponse(Response.Status.OK, "text/plain", ackResp)
+                        PaymentResult.APPLIED -> {
+                            newFixedLengthResponse(Response.Status.OK, "text/plain", "OK")
+                        }
+                        PaymentResult.ALREADY_APPLIED -> {
+                            // Acknowledge duplicate without extending time so ESP32 clears retry queue
+                            newFixedLengthResponse(Response.Status.OK, "text/plain", "ALREADY_PROCESSED")
                         }
                         PaymentResult.CONFLICT -> {
                             Log.w(TAG, "Payment rejected due to conflicting values for $txId")
-                            createResponse(Response.Status.CONFLICT, "text/plain", "CONFLICT")
+                            newFixedLengthResponse(Response.Status.CONFLICT, "text/plain", "CONFLICT")
                         }
                         PaymentResult.NOT_ELIGIBLE -> {
                             Log.w(TAG, "Payment rejected: device not eligible for $txId")
-                            createResponse(Response.Status.FORBIDDEN, "text/plain", "NOT_ELIGIBLE")
+                            newFixedLengthResponse(Response.Status.FORBIDDEN, "text/plain", "NOT_ELIGIBLE")
                         }
                         PaymentResult.FAILED -> {
                             Log.e(TAG, "Payment failed to commit to database for $txId")
-                            createResponse(Response.Status.SERVICE_UNAVAILABLE, "text/plain", "SERVICE_UNAVAILABLE")
+                            newFixedLengthResponse(Response.Status.SERVICE_UNAVAILABLE, "text/plain", "SERVICE_UNAVAILABLE")
                         }
                     }
                 } else if (rawSecondsLong < 0) {
                     val positiveSecondsLong = if (rawSecondsLong == Long.MIN_VALUE) Long.MAX_VALUE else -rawSecondsLong
                     if (positiveSecondsLong > Int.MAX_VALUE.toLong()) {
                         Log.w(TAG, "Rejecting deduction: seconds parameter magnitude exceeds Int.MAX_VALUE ($rawSecondsLong)")
-                        return createResponse(Response.Status.BAD_REQUEST, "text/plain", "INVALID_SECONDS")
+                        return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "INVALID_SECONDS")
                     }
                     val positiveSeconds = positiveSecondsLong.toInt()
                     val deductTxId = txId ?: "deduct_${System.currentTimeMillis()}"
-                    val deductOpKind = if (opKindStr.isBlank() || opKindStr == "COIN") "MANUAL_DEDUCTION" else opKindStr
-                    val result = try {
-                        delegate.onDeductTime(
-                            seconds = positiveSeconds,
-                            txId = deductTxId,
-                            operationKind = deductOpKind,
-                            boxInstallationEpoch = boxEpoch,
-                            phonePairingEpoch = phoneEpoch
-                        )
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Exception during onDeductTime for $deductTxId: ${e.message}", e)
-                        PaymentResult.FAILED
-                    }
-
-                    val ackResp = if (targetDev.isNotBlank()) {
-                        val ackNow = System.currentTimeMillis()
-                        val statusStr = if (result == PaymentResult.ALREADY_APPLIED) "ALREADY_PROCESSED" else "OK"
-                        val ackSig = KioskSecurity.calculateAckSignature(
-                            deviceId = targetDev,
-                            txId = deductTxId,
-                            amount = 0,
-                            seconds = rawSecondsLong.toInt(),
-                            ts = ackNow.toString(),
-                            status = statusStr,
-                            secret = secretKey
-                        )
-                        "$statusStr:tx_id=$deductTxId:device_id=$targetDev:amount=0:seconds=${rawSecondsLong.toInt()}:ts=$ackNow:v_sig=$ackSig"
-                    } else {
-                        if (result == PaymentResult.ALREADY_APPLIED) "ALREADY_PROCESSED" else "OK"
-                    }
-
-                    when (result) {
-                        PaymentResult.APPLIED, PaymentResult.ALREADY_APPLIED -> {
-                            createResponse(Response.Status.OK, "text/plain", ackResp)
-                        }
-                        PaymentResult.CONFLICT -> {
-                            Log.w(TAG, "Deduction rejected due to conflicting values for $deductTxId")
-                            createResponse(Response.Status.CONFLICT, "text/plain", "CONFLICT")
-                        }
-                        PaymentResult.NOT_ELIGIBLE -> {
-                            Log.w(TAG, "Deduction rejected: device not eligible for $deductTxId")
-                            createResponse(Response.Status.FORBIDDEN, "text/plain", "NOT_ELIGIBLE")
-                        }
-                        PaymentResult.FAILED -> {
-                            Log.e(TAG, "Deduction failed to commit to database for $deductTxId")
-                            createResponse(Response.Status.SERVICE_UNAVAILABLE, "text/plain", "SERVICE_UNAVAILABLE")
-                        }
-                    }
+                    delegate.onDeductTime(positiveSeconds, deductTxId)
+                    newFixedLengthResponse(Response.Status.OK, "text/plain", "OK")
                 } else {
-                    createResponse(Response.Status.BAD_REQUEST, "text/plain", "INVALID_SECONDS")
+                    newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "INVALID_SECONDS")
                 }
             }
             "/config" -> {
@@ -384,31 +235,31 @@ class KioskHttpServer(
                 val pin = decryptedParams["admin_pin"]
                 val slot = decryptedParams["slot"]?.toIntOrNull() ?: decryptedParams["slot_num"]?.toIntOrNull()
                 delegate.onConfigUpdated(price, minutes, devName, pin, slot)
-                createResponse(Response.Status.OK, "text/plain", "OK")
+                newFixedLengthResponse(Response.Status.OK, "text/plain", "OK")
             }
             "/trigger_action" -> {
                 val actionType = decryptedParams["action"] ?: ""
                 val slot = decryptedParams["slot"]?.toIntOrNull() ?: decryptedParams["slot_num"]?.toIntOrNull()
-                delegate.onTriggerAction(actionType, slot, decryptedParams)
-                createResponse(Response.Status.OK, "text/plain", "OK")
+                delegate.onTriggerAction(actionType, slot)
+                newFixedLengthResponse(Response.Status.OK, "text/plain", "OK")
             }
             "/emergency_adb" -> {
-                delegate.onTriggerAction("enable_adb", null, null)
-                createResponse(Response.Status.OK, "text/plain", "RECOVERY_TRIGGERED")
+                delegate.onTriggerAction("enable_adb")
+                newFixedLengthResponse(Response.Status.OK, "text/plain", "RECOVERY_TRIGGERED")
             }
             "/recovery" -> {
-                delegate.onTriggerAction("emergency_recovery", null, null)
-                createResponse(Response.Status.OK, "text/plain", "RECOVERY_TRIGGERED")
+                delegate.onTriggerAction("emergency_recovery")
+                newFixedLengthResponse(Response.Status.OK, "text/plain", "RECOVERY_TRIGGERED")
             }
             "/crash" -> {
                 val crashText = delegate.getCrashLog()
                 if (crashText != null) {
-                    createResponse(Response.Status.OK, "text/plain", crashText)
+                    newFixedLengthResponse(Response.Status.OK, "text/plain", crashText)
                 } else {
-                    createResponse(Response.Status.NOT_FOUND, "text/plain", "No crash log found")
+                    newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "No crash log found")
                 }
             }
-            else -> createResponse(Response.Status.NOT_FOUND, "text/plain", "Not Found")
+            else -> newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not Found")
         }
     }
 }

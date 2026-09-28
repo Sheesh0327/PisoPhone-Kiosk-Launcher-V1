@@ -19,6 +19,7 @@ window.closeUnassignedPairModal = function() {
 window.openInstallerForActiveSlot = function() {
     const s = activeSlotNum || 1;
     const targetUrl = 'https://pisophone.pages.dev/?mac=' + encodeURIComponent(ESP32_MAC) + 
+                      '&ip=' + encodeURIComponent(ESP32_HOST) + 
                       '&slot=' + encodeURIComponent(s) + 
                       '&secret=' + encodeURIComponent(ESP32_SECRET) +
                       '&name=' + encodeURIComponent('PisoPhone ' + s);
@@ -105,6 +106,7 @@ window.copyMacToClipboard = function(mac) {
 
 window.openInstaller = function() {
     const targetUrl = 'https://pisophone.pages.dev/?mac=' + encodeURIComponent(ESP32_MAC) + 
+                      '&ip=' + encodeURIComponent(ESP32_HOST) + 
                       '&secret=' + encodeURIComponent(ESP32_SECRET);
     window.open(targetUrl, '_self');
 };
@@ -297,7 +299,7 @@ window.closeSlotActivationModal = function() {
 
 window.submitModalFlash = function() {
     closeSlotActivationModal();
-    window.open('https://pisophone.pages.dev/?mac=' + ESP32_MAC + '&slot=' + targetModalSlot, '_self');
+    window.open('https://pisophone.pages.dev/?mac=' + ESP32_MAC + '&ip=' + ESP32_HOST + '&slot=' + targetModalSlot, '_self');
 };
 
 window.submitModalUnpair = function() {
@@ -314,7 +316,7 @@ window.closeProvisionModal = function() {
     document.getElementById('provision_modal').style.display = 'none';
 };
 window.launchHttpsFlasher = function() {
-    window.open('https://pisophone.pages.dev/?mac=' + ESP32_MAC + '&slot=' + activeSlotNum, '_self');
+    window.open('https://pisophone.pages.dev/?mac=' + ESP32_MAC + '&ip=' + ESP32_HOST + '&slot=' + activeSlotNum, '_self');
     closeProvisionModal();
 };
 
@@ -364,35 +366,28 @@ window.checkQuickAdjustInactive = function() {
     const sel = document.getElementById('quick_adjust_target');
     const warn = document.getElementById('quick_adjust_warn');
     if (!sel || !warn) return false;
+    let hasInactive = false;
     if (sel.value === 'ALL') {
-        const allOpts = sel.querySelectorAll('option:not([value="ALL"])');
-        const activeOpts = sel.querySelectorAll('option:not([value="ALL"]):not([data-inactive="true"])');
         const inactiveOpts = sel.querySelectorAll('option[data-inactive="true"]');
-        if (allOpts.length === 0 || activeOpts.length === 0) {
-            warn.innerHTML = '🚫 <b>No Eligible Devices:</b> No active devices registered to adjust.';
+        hasInactive = (inactiveOpts.length > 0);
+        if (hasInactive) {
+            warn.innerHTML = '🚫 <b>Broadcast Notice:</b> ' + inactiveOpts.length + ' registered device(s) are INACTIVE. Adjusting time is blocked until activations are allocated.';
             warn.style.display = 'block';
-            return true;
-        } else if (inactiveOpts.length > 0) {
-            warn.innerHTML = '⚠️ <b>Notice:</b> ' + inactiveOpts.length + ' inactive device(s) will be skipped during broadcast.';
-            warn.style.display = 'block';
-            return false;
         } else {
             warn.style.display = 'none';
-            return false;
         }
     } else {
         const opt = sel.options[sel.selectedIndex];
-        const isInactive = (opt && opt.getAttribute('data-inactive') === 'true');
-        if (isInactive) {
+        hasInactive = (opt && opt.getAttribute('data-inactive') === 'true');
+        if (hasInactive) {
             const label = opt ? opt.text : 'Selected Device';
             warn.innerHTML = '🚫 <b>Device Inactive:</b> ' + label + ' is INACTIVE. Manual time adjustment is blocked until activations are allocated.';
             warn.style.display = 'block';
-            return true;
         } else {
             warn.style.display = 'none';
-            return false;
         }
     }
+    return hasInactive;
 };
 
 window.validateQuickAdjust = function(e) {
@@ -404,19 +399,9 @@ window.validateQuickAdjust = function(e) {
         const sel = document.getElementById('quick_adjust_target');
         const isAll = (sel && sel.value === 'ALL');
         const msg = isAll 
-            ? "❌ Action Blocked: No active devices available for broadcast adjustment."
+            ? "❌ Action Blocked: One or more devices in broadcast are INACTIVE or UNLICENSED!\n\nPlease upgrade slot capacity and pair devices before adjusting time."
             : "❌ Action Blocked: The selected device is INACTIVE or UNLICENSED!\n\nPlease pair an active licensed slot before adjusting time.";
         alert(msg);
-        return false;
-    }
-    const minInput = document.querySelector('#quick_adjust_form input[name="add_minutes"]');
-    const val = minInput ? parseInt(minInput.value, 10) : 0;
-    if (!val || val <= 0) {
-        if (e) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-        alert("❌ Please enter a valid positive number of minutes.");
         return false;
     }
     return true;

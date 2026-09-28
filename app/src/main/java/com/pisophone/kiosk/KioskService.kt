@@ -6,6 +6,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -43,6 +44,7 @@ class KioskService : Service() {
         fun configureMasterBox(
             context: Context,
             mac: String,
+            ip: String? = null,
             slot: Int = -1,
             secret: String? = null,
             name: String? = null
@@ -51,6 +53,7 @@ class KioskService : Service() {
                 context = context,
                 secret = secret,
                 mac = mac,
+                ip = ip,
                 slot = slot,
                 name = name
             )
@@ -60,7 +63,27 @@ class KioskService : Service() {
                 if (cleanMac.isNotBlank()) {
                     service.stateManager.esp32MacAddress.value = cleanMac
                 }
-                service.triggerCandidateDiscovery()
+                if (!ip.isNullOrBlank()) {
+                    service.stateManager.esp32Ip = ip.trim()
+                    service.stateManager.saveState()
+                    service.probeEsp32Connection(ip.trim())
+                } else {
+                    service.triggerCandidateDiscovery()
+                }
+            }
+        }
+
+        fun setManualEsp32Ip(context: Context, ip: String) {
+            val trimmed = ip.trim()
+            KioskSecurity.setConfiguredEsp32Ip(context, trimmed)
+            activeInstance?.let { service ->
+                service.stateManager.esp32Ip = if (trimmed.isNotBlank()) trimmed else null
+                service.stateManager.saveState()
+                if (trimmed.isNotBlank()) {
+                    service.probeEsp32Connection(trimmed)
+                } else {
+                    service.triggerCandidateDiscovery()
+                }
             }
         }
 
@@ -122,6 +145,7 @@ class KioskService : Service() {
     private var engine: KioskEngine? = null
     val stateManager: KioskStateManager by lazy { KioskStateManager(applicationContext) }
 
+    private var multicastLock: WifiManager.MulticastLock? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onCreate() {
@@ -203,18 +227,24 @@ class KioskService : Service() {
 
     private fun acquireLocks() {
         try {
+            val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            multicastLock = wifi?.createMulticastLock("pisophone_multicast_lock")?.apply {
+                setReferenceCounted(true)
+                acquire()
+            }
             val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
             wakeLock = powerManager?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "pisophone:kiosk_service_wakelock")?.apply {
                 acquire()
             }
-            Log.d(TAG, "[+] Acquired Partial WakeLock for reliable kiosk background operations.")
+            Log.d(TAG, "[+] Acquired MulticastLock and Partial WakeLock for reliable ESP32 networking.")
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to acquire WakeLock: ${e.message}")
+            Log.w(TAG, "Failed to acquire MulticastLock or WakeLock: ${e.message}")
         }
     }
 
     private fun releaseLocks() {
         try {
+            if (multicastLock?.isHeld == true) multicastLock?.release()
             if (wakeLock?.isHeld == true) wakeLock?.release()
         } catch (_: Exception) {}
     }

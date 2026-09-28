@@ -1,6 +1,5 @@
 #include "HardwareManager.h"
 #include "CoinSlotManager.h"
-#include "PaymentQueueManager.h"
 #include "Config.h"
 #include "DeviceManager.h"
 #include <WiFi.h>
@@ -89,16 +88,10 @@ void resetCoinDetectorStates() {
     noInterrupts();
     isrUniversalPulseCount = 0;
     isrLastPulseTimeMs = 0;
-    isrLastPulseTimeUs = 0;
     interrupts();
 }
 
 void setRelayHardware(bool active) {
-    // Startup suppression hard-lock: do not power acceptor until startup suppression finishes
-    if (active && isStartupSuppressionActive()) {
-        active = false;
-    }
-
     if (active) {
         pinMode(relayPin, OUTPUT);
         digitalWrite(relayPin, relayActiveLow ? LOW : HIGH);
@@ -115,25 +108,20 @@ void setRelayHardware(bool active) {
     }
 }
 
-bool isRelayHardwareActive() {
-    return isRelayCurrentlyActive;
-}
-
 bool isSlotArmed() {
-    return isCoinSlotArmed() && !isStartupSuppressionActive();
+    return isCoinSlotArmed();
 }
 
 void processRelayState() {
-    bool shouldBeOn = isCoinSlotArmed() && !isStartupSuppressionActive();
+    bool shouldBeOn = isCoinSlotArmed();
     static int lastAppliedRelayState = -1;
     int cur = shouldBeOn ? 1 : 0;
     if (cur != lastAppliedRelayState) {
         lastAppliedRelayState = cur;
         setRelayHardware(shouldBeOn);
-        Serial.printf("[⚡ RELAY] Pin %d set to %s (ActiveLow=%s, SlotArmed=%s, Suppressed=%s)\n",
+        Serial.printf("[⚡ RELAY] Pin %d set to %s (ActiveLow=%s, SlotArmed=%s)\n",
             relayPin, shouldBeOn ? "ON (POWERED)" : "OFF (STANDBY)",
-            relayActiveLow ? "true" : "false", isCoinSlotArmed() ? "true" : "false",
-            isStartupSuppressionActive() ? "true" : "false");
+            relayActiveLow ? "true" : "false", shouldBeOn ? "true" : "false");
     }
 }
 
@@ -142,18 +130,13 @@ void processRelayState() {
 // ============================================================================
 volatile int isrUniversalPulseCount = 0;
 volatile unsigned long isrLastPulseTimeMs = 0;
-volatile unsigned long isrLastPulseTimeUs = 0;
-// Debounce threshold: 10ms (10,000us) ensures 20ms FAST coin pulses are cleanly captured
-// while mechanical noise spikes (< 10ms) are strictly filtered out.
-static const unsigned long U_MIN_PULSE_DEBOUNCE_US = 10000;
+static const unsigned long U_MIN_PULSE_DEBOUNCE_MS = 30; // Reject spikes shorter than 30ms
 
 void IRAM_ATTR universalCoinIsr() {
-    unsigned long nowUs = micros();
-    unsigned long elapsedUs = nowUs - isrLastPulseTimeUs;
-    if (elapsedUs >= U_MIN_PULSE_DEBOUNCE_US) {
+    unsigned long now = millis();
+    if (now - isrLastPulseTimeMs >= U_MIN_PULSE_DEBOUNCE_MS) {
         isrUniversalPulseCount++;
-        isrLastPulseTimeUs = nowUs;
-        isrLastPulseTimeMs = millis();
+        isrLastPulseTimeMs = now;
     }
 }
 
@@ -168,6 +151,10 @@ void applyCoinSlotHardwareConfig() {
     resetCoinDetectorStates();
 }
 
+void processUniversalCoinDetector() {
+    processCoinSlotSession();
+}
+
 // ============================================================================
 // HARDWARE RESET PIN SUPERVISOR (GPIO 2 -> GND for 5 seconds)
 // ============================================================================
@@ -179,11 +166,10 @@ void processHardwareResetPin() {
             resetPinLowStart = millis();
             Serial.println("[⚠️] GPIO 2 connected to GND. Hold for 5 seconds to factory reset...");
         } else if (millis() - resetPinLowStart >= 5000) {
-            Serial.println("\n[⚠️ RESET] GPIO 2 held to GND for > 5 seconds! Requesting Factory Reset...");
-            setFactoryResetPending(true);
-            setMaintenanceReason(MAINT_REASON_RESET, true);
-            requestSystemRestart("Hardware Pin 2 Factory Reset");
-            resetPinLowStart = 0;
+            Serial.println("\n[⚠️ RESET] GPIO 2 held to GND for > 5 seconds! Triggering Factory Reset...");
+            factoryResetDefaults();
+            delay(1000);
+            ESP.restart();
         }
     } else {
         if (resetPinLowStart != 0) {
