@@ -111,6 +111,7 @@ dependencies {
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
   implementation(libs.okhttp)
+  implementation(libs.nanohttpd)
   // org.json is built into the Android SDK for app runtime; testImplementation used for local JVM unit tests
   testImplementation("org.json:json:20231013")
   testImplementation(libs.androidx.compose.ui.test.junit4)

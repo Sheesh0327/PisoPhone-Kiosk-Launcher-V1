@@ -173,6 +173,95 @@ class KioskEngine(
         delegate = esp32Coordinator
     )
 
+    val serverCoordinator: com.pisophone.kiosk.server.KioskServerCoordinator = com.pisophone.kiosk.server.KioskServerCoordinator(
+        delegate = object : com.pisophone.kiosk.server.KioskServerDelegate {
+            override fun isInitialized(): Boolean = isInitialized.get()
+            override fun getDeviceId(): String = stateManager.deviceId.value.ifBlank { KioskSecurity.getHardwareId(context) }
+            override fun getSecretKey(): String = KioskSecurity.getSharedSecret(context)
+            override fun onCreditPayment(
+                txId: String,
+                seconds: Int,
+                amount: Double,
+                operationKind: String,
+                coinAmount: Int,
+                pricePerCoin: Double,
+                boxInstallationEpoch: Long,
+                phonePairingEpoch: Long
+            ): PaymentResult {
+                return creditPayment(
+                    txId = txId,
+                    seconds = seconds,
+                    amount = amount,
+                    operationKind = operationKind,
+                    coinAmount = coinAmount,
+                    pricePerCoin = pricePerCoin,
+                    boxInstallationEpoch = boxInstallationEpoch,
+                    phonePairingEpoch = phonePairingEpoch,
+                    remainingMs = 0L // HTTP credit does not start or reset the 15-second countdown
+                )
+            }
+
+            override fun onDeductPayment(
+                seconds: Int,
+                txId: String?,
+                operationKind: String,
+                boxInstallationEpoch: Long,
+                phonePairingEpoch: Long
+            ): PaymentResult {
+                return deductPayment(
+                    seconds = seconds,
+                    txId = txId,
+                    operationKind = operationKind,
+                    boxInstallationEpoch = boxInstallationEpoch,
+                    phonePairingEpoch = phonePairingEpoch
+                )
+            }
+
+            override fun onConfigSynced(
+                price: Double?,
+                minutes: Int?,
+                alias: String?,
+                adminPin: String?,
+                slotNum: Int?
+            ) {
+                esp32Coordinator.onConfigSynced(price, minutes, alias, adminPin, slotNum)
+            }
+
+            override fun onTriggerAction(action: String, params: Map<String, String>): Boolean {
+                return when (action) {
+                    "slot_lockdown" -> {
+                        val reason = params["reason"] ?: "Device activation required."
+                        val slotNum = params["slot"]?.toIntOrNull() ?: params["slot_num"]?.toIntOrNull() ?: 0
+                        val expiresAt = params["expires_at"]?.toLongOrNull() ?: 0L
+                        esp32Coordinator.onSlotLockdown(reason, slotNum, expiresAt)
+                        true
+                    }
+                    "slot_restored" -> {
+                        val slotNum = params["slot"]?.toIntOrNull() ?: params["slot_num"]?.toIntOrNull() ?: 0
+                        esp32Coordinator.onSlotRestored(slotNum)
+                        true
+                    }
+                    "arena_mode_activate_p1" -> {
+                        val stake = params["stake"]?.toIntOrNull() ?: 5
+                        esp32Coordinator.onArenaModeSynced(true, 1, stake)
+                        true
+                    }
+                    "arena_mode_activate_p2" -> {
+                        val stake = params["stake"]?.toIntOrNull() ?: 5
+                        esp32Coordinator.onArenaModeSynced(true, 2, stake)
+                        true
+                    }
+                    "arena_mode_deactivate" -> {
+                        esp32Coordinator.onArenaModeSynced(false, 0, 0)
+                        true
+                    }
+                    else -> false
+                }
+            }
+        },
+        defaultPort = 8080
+    )
+
     private val supervisor: KioskSessionSupervisor = KioskSessionSupervisor(
         context = context,
         scope = scope,
@@ -242,6 +331,8 @@ class KioskEngine(
 
                     supervisor.start()
                     healthMonitor.start()
+
+                    serverCoordinator.startServer(8080)
 
                     systemMonitor.registerScreenOffReceiver()
                     systemMonitor.registerBatteryMonitor()
@@ -389,7 +480,14 @@ class KioskEngine(
         stateManager.saveState()
     }
 
+    fun ensureHttpServerRunning() {
+        serverCoordinator.startServer(8080)
+    }
+
+    fun isHttpServerHealthy(): Boolean = serverCoordinator.isServerRunning()
+
     fun stop() {
+        serverCoordinator.stopServer()
         scope.cancel()
         supervisor.stop()
         systemMonitor.shutdown()

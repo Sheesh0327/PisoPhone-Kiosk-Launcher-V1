@@ -2,10 +2,11 @@ package com.pisophone.kiosk.service
 
 import android.content.Context
 import android.content.Intent
+import android.os.SystemClock
 import android.util.Log
 import com.pisophone.kiosk.repository.PaymentRepository
-import com.pisophone.kiosk.system.KioskSystemMonitor
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -35,7 +36,7 @@ class KioskSessionSupervisor(
     fun isStalled(maxLagMs: Long = 5000L): Boolean {
         val last = lastTickMonotonicMs
         if (last == 0L) return false
-        return (android.os.SystemClock.elapsedRealtime() - last) > maxLagMs
+        return (SystemClock.elapsedRealtime() - last) > maxLagMs
     }
 
     fun ensureRunning() {
@@ -47,23 +48,24 @@ class KioskSessionSupervisor(
 
     fun start() {
         timerJob?.cancel()
-        lastTickMonotonicMs = android.os.SystemClock.elapsedRealtime()
+        lastTickMonotonicMs = SystemClock.elapsedRealtime()
         timerJob = scope.launch {
             while (isActive) {
                 try {
                     delay(1000)
-                    lastTickMonotonicMs = android.os.SystemClock.elapsedRealtime()
-                    
+                    lastTickMonotonicMs = SystemClock.elapsedRealtime()
+
                     val curState = stateManager.appState.value
-                    // Session arming / waiting countdown
+                    // 1. Session arming / waiting countdown (Payment mode)
                     if (curState == 1 || curState == 3) {
                         val deadline = stateManager.paymentTimeoutDeadlineMs.value
-                        val nowMonotonic = android.os.SystemClock.elapsedRealtime()
+                        val nowMonotonic = SystemClock.elapsedRealtime()
                         if (deadline > 0L) {
                             val remainingSec = maxOf(0, Math.ceil((deadline - nowMonotonic) / 1000.0).toInt())
                             stateManager.paymentTimeout.value = remainingSec
-                            if (nowMonotonic >= deadline) {
+                            if (nowMonotonic >= deadline || remainingSec <= 0) {
                                 stateManager.paymentTimeoutDeadlineMs.value = 0L
+                                stateManager.paymentTimeout.value = 0
                                 if (stateManager.coinsInserted.value > 0) {
                                     onFinishPayment()
                                 } else {
@@ -85,11 +87,11 @@ class KioskSessionSupervisor(
                             }
                         }
                     }
-                    
-                    // Active session countdown
+
+                    // 2. Active session countdown
                     if (curState == 2 || curState == 3) {
                         val deadline = stateManager.sessionExpiryDeadlineMs.value
-                        val nowMonotonic = android.os.SystemClock.elapsedRealtime()
+                        val nowMonotonic = SystemClock.elapsedRealtime()
                         val remainingSec = if (deadline > 0L) {
                             maxOf(0, ((deadline - nowMonotonic) / 1000L).toInt())
                         } else {
@@ -99,43 +101,45 @@ class KioskSessionSupervisor(
                         stateManager.sessionTimeRemaining.value = remainingSec
 
                         if (remainingSec <= 0) {
-                            val expiryResult = paymentRepo.expireSessionIfDueBlocking()
-                            if (expiryResult.didExpire) {
-                                val applied = stateManager.applySessionUpdate(
-                                    deadlineMs = expiryResult.sessionState.sessionExpiryDeadlineMs,
-                                    remainingSeconds = expiryResult.sessionState.sessionTimeRemaining,
-                                    revision = expiryResult.sessionState.revision,
-                                    targetAppState = 0
-                                )
-                                if (applied) {
-                                    onSpeakWarning("Time expired")
-                                    stateManager.saveState()
-                                    
-                                    val startMain = Intent(Intent.ACTION_MAIN).apply {
-                                        addCategory(Intent.CATEGORY_HOME)
-                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or 
-                                                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or 
-                                                Intent.FLAG_ACTIVITY_CLEAR_TOP
-                                    }
-                                    try {
-                                        context.startActivity(startMain)
-                                    } catch (e: Exception) {
-                                        Log.e(TAG, "Failed to start HOME activity: ${e.message}")
+                            scope.launch(Dispatchers.IO) {
+                                val expiryResult = paymentRepo.expireSessionIfDueBlocking()
+                                if (expiryResult.didExpire) {
+                                    val applied = stateManager.applySessionUpdate(
+                                        deadlineMs = expiryResult.sessionState.sessionExpiryDeadlineMs,
+                                        remainingSeconds = expiryResult.sessionState.sessionTimeRemaining,
+                                        revision = expiryResult.sessionState.revision,
+                                        targetAppState = 0
+                                    )
+                                    if (applied) {
+                                        onSpeakWarning("Time expired")
+                                        stateManager.saveState()
+
+                                        val startMain = Intent(Intent.ACTION_MAIN).apply {
+                                            addCategory(Intent.CATEGORY_HOME)
+                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                                                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                                                    Intent.FLAG_ACTIVITY_CLEAR_TOP
+                                        }
+                                        try {
+                                            context.startActivity(startMain)
+                                        } catch (e: Exception) {
+                                            Log.e(TAG, "Failed to start HOME activity: ${e.message}")
+                                        }
                                     }
                                 } else {
-                                    Log.d(TAG, "Skipping stale expiration lock and announcement because newer revision is active")
+                                    stateManager.applySessionUpdate(
+                                        expiryResult.sessionState.sessionExpiryDeadlineMs,
+                                        expiryResult.sessionState.sessionTimeRemaining,
+                                        expiryResult.sessionState.revision
+                                    )
                                 }
-                            } else {
-                                stateManager.applySessionUpdate(
-                                    expiryResult.sessionState.sessionExpiryDeadlineMs,
-                                    expiryResult.sessionState.sessionTimeRemaining,
-                                    expiryResult.sessionState.revision
-                                )
                             }
                         } else {
                             if (remainingSec % 15 == 0) {
-                                paymentRepo.checkpointSessionBlocking(stateManager.sessionRevision.value)
-                                stateManager.saveState()
+                                scope.launch(Dispatchers.IO) {
+                                    paymentRepo.checkpointSessionBlocking(stateManager.sessionRevision.value)
+                                    stateManager.saveState()
+                                }
                             }
 
                             when (remainingSec) {

@@ -251,27 +251,8 @@ class Esp32ConnectionManager(
             }
 
             val deviceId = delegate.getDeviceId()
-            val ts = System.currentTimeMillis().toString()
-            val sig = KioskSecurity.generateTimestampSignature(deviceId, ts, delegate.getSecretKey())
 
-            // 1. Immediate HTTP pre-arming to guarantee instant relay trigger and coin slot power-up beep
-            launch(Dispatchers.IO) {
-                try {
-                    val httpArmUrl = "http://$host:$port/api/coinslot/activate?device_id=$deviceId&timeout=$timeoutSeconds&ts=$ts&sig=$sig"
-                    val httpReq = Request.Builder().url(httpArmUrl).build()
-                    httpClient.newCall(httpReq).execute().use { resp ->
-                        if (resp.isSuccessful) {
-                            Log.i(TAG, "Immediate HTTP hardware arming acknowledged by ESP32: code=${resp.code}")
-                        } else {
-                            Log.w(TAG, "HTTP pre-arming returned code=${resp.code}")
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.d(TAG, "HTTP pre-arming attempt: ${e.message}")
-                }
-            }
-
-            // 2. WebSocket listener for live stream of coin pulse events
+            // Connect WebSocket listener for live stream of coin pulse events
             val wsUrl = "ws://$host:$ESP32_WS_PORT/ws/arm?device_id=$deviceId&timeout=$timeoutSeconds"
             val request = Request.Builder().url(wsUrl).build()
 

@@ -111,6 +111,11 @@ static void applyStaticIpConfig() {
 }
 
 void setup() {
+    // 0. Immediate hardware isolation: set relay GPIOs to High-Z INPUT mode before anything else
+    pinMode(4, INPUT);
+    pinMode(5, INPUT);
+    pinMode(relayPin, INPUT);
+
     Serial.begin(115200);
     unsigned long start = millis();
     while (!Serial && (millis() - start < 2500));

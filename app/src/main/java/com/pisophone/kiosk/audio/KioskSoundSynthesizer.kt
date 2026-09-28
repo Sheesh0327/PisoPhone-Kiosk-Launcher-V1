@@ -25,7 +25,7 @@ class KioskSoundSynthesizer(
 ) {
     companion object {
         private const val TAG = "KioskSoundSynthesizer"
-        private const val SAMPLE_RATE = 22050 // Lower sample rate (22.05kHz) saves 50% RAM while maintaining crisp audio quality
+        private const val SAMPLE_RATE = 44100 // Standard CD-quality 44.1kHz ensures native hardware playback without DSP downsampling / slow-motion distortion
     }
 
     private var coinAudioTrack: AudioTrack? = null
@@ -40,7 +40,7 @@ class KioskSoundSynthesizer(
         // Lightweight lazy initialization: allocate ToneGenerator only
         scope.launch(Dispatchers.IO) {
             try {
-                toneGenerator = ToneGenerator(AudioManager.STREAM_MUSIC, 80)
+                toneGenerator = ToneGenerator(AudioManager.STREAM_MUSIC, 85)
             } catch (e: Exception) {
                 Log.w(TAG, "ToneGenerator unavailable: ${e.message}")
             }
@@ -53,22 +53,22 @@ class KioskSoundSynthesizer(
             if (coinAudioTrack != null) return coinAudioTrack
             try {
                 val sampleRate = SAMPLE_RATE
-                val durationSec = 0.35
+                val durationSec = 0.28
                 val numSamples = (durationSec * sampleRate).toInt()
                 val buffer = ShortArray(numSamples)
-                val splitSample = (0.085 * sampleRate).toInt()
+                val splitSample = (0.07 * sampleRate).toInt()
                 for (i in 0 until numSamples) {
                     val t = i.toDouble() / sampleRate.toDouble()
                     val valSample: Double
                     val env: Double
                     if (i < splitSample) {
                         val f = 987.77 // B5
-                        env = 1.0 - (t / 0.085) * 0.15
+                        env = 1.0 - (t / 0.07) * 0.15
                         valSample = 0.7 * Math.sin(2.0 * Math.PI * f * t) + 0.25 * Math.sin(4.0 * Math.PI * f * t)
                     } else {
                         val f = 1318.51 // E6
-                        val t2 = t - 0.085
-                        env = Math.exp(-t2 * 8.5)
+                        val t2 = t - 0.07
+                        env = Math.exp(-t2 * 12.0)
                         valSample = 0.75 * Math.sin(2.0 * Math.PI * f * t) + 0.2 * Math.sin(4.0 * Math.PI * f * t)
                     }
                     val sample = (valSample * env * 32767.0 * 0.88).toInt().coerceIn(-32768, 32767)
@@ -100,9 +100,10 @@ class KioskSoundSynthesizer(
 
     private fun generateWaitingMusicBuffer(): ShortArray {
         val sampleRate = SAMPLE_RATE
-        val loopDurationSec = 3.0
+        val loopDurationSec = 1.6 // Snappy, pleasant 1.6s arpeggio loop (150 BPM)
         val totalSamples = (loopDurationSec * sampleRate).toInt()
         val buffer = ShortArray(totalSamples)
+        // Upbeat arpeggio: C5 -> E5 -> G5 -> C6
         val notes = doubleArrayOf(523.25, 659.25, 783.99, 1046.50)
 
         for (i in 0 until totalSamples) {
@@ -110,18 +111,18 @@ class KioskSoundSynthesizer(
             val beatIdx = (t * 4 / loopDurationSec).toInt().coerceIn(0, 3)
             val beatT = (t * 4 / loopDurationSec) - beatIdx
 
-            val tickEnv = Math.exp(-beatT * 30.0)
-            val tickVal = 0.25 * Math.sin(2.0 * Math.PI * 2200.0 * beatT) * tickEnv
+            val tickEnv = Math.exp(-beatT * 40.0)
+            val tickVal = 0.20 * Math.sin(2.0 * Math.PI * 2400.0 * beatT) * tickEnv
 
-            val bassEnv = Math.exp(-beatT * 4.0)
-            val bassVal = 0.30 * Math.sin(2.0 * Math.PI * 130.81 * t) * bassEnv
+            val bassEnv = Math.exp(-beatT * 6.0)
+            val bassVal = 0.25 * Math.sin(2.0 * Math.PI * 130.81 * t) * bassEnv
 
-            val melEnv = Math.exp(-beatT * 5.0)
-            val melVal = 0.22 * Math.sin(2.0 * Math.PI * notes[beatIdx] * t) * melEnv
+            val melEnv = Math.exp(-beatT * 8.0)
+            val melVal = 0.30 * Math.sin(2.0 * Math.PI * notes[beatIdx] * t) * melEnv
 
             var total = (tickVal + bassVal + melVal) * 0.75
-            if (t < 0.05) total *= (t / 0.05)
-            else if (t > 2.95) total *= ((3.0 - t) / 0.05)
+            if (t < 0.03) total *= (t / 0.03)
+            else if (t > 1.57) total *= ((1.6 - t) / 0.03)
 
             val sample = (total * 32767.0).toInt().coerceIn(-32768, 32767)
             buffer[i] = sample.toShort()

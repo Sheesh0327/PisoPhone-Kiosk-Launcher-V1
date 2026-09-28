@@ -237,41 +237,53 @@ bool retryPhonePayment(const String& targetDeviceId, int pulses, int creditSecon
     int addedMinutes = safeSeconds / 60;
     uint64_t retryTs = getCurrentMasterTimeMs();
 
-    // 1. Dispatch over WebSocket if client is connected
-    if (isWsConnected && wsClient.connected()) {
-        String json = "{\"event\":\"PULSE\",\"pulses\":" + String(pulses) +
-                      ",\"session_pulses\":" + String(getSessionAccumulatedPulses()) +
-                      ",\"total_pulses\":" + String((int)totalCoinsLifetime) +
-                      ",\"remaining_ms\":" + String(getRemainingCoinSlotMs()) +
-                      ",\"amount\":" + String(pulses) +
-                      ",\"seconds\":" + String(safeSeconds) +
-                      ",\"minutes\":" + String(addedMinutes) +
-                      ",\"tx_id\":\"" + txId + "\"" +
-                      ",\"device_id\":\"" + targetDeviceId + "\"";
-        if (sharedSecret.length() > 0) {
-            String innerJson = "{\"seconds\":" + String(safeSeconds) +
-                               ",\"minutes\":" + String(addedMinutes) +
-                               ",\"amount\":" + String(pulses) +
-                               ",\"pulses\":" + String(pulses) +
-                               ",\"remaining_ms\":" + String(getRemainingCoinSlotMs()) +
-                               ",\"tx_id\":\"" + txId + "\"" +
-                               ",\"op_kind\":" + String((int)opKind) +
-                               ",\"box_installation_epoch\":" + String((unsigned long long)boxEpoch) +
-                               ",\"phone_pairing_epoch\":" + String((unsigned long long)phoneEpoch) +
-                               ",\"ts\":\"" + String(retryTs) + "\"" +
-                               ",\"device_id\":\"" + targetDeviceId + "\"}";
-            String payload = aes_encrypt(innerJson, sharedSecret);
-            String vSig = calculateWsPaySignature("COIN_DETECTED", targetDeviceId, txId, String(retryTs), payload, sharedSecret);
-            json += ",\"payload\":\"" + payload + "\",\"ts\":\"" + String(retryTs) + "\",\"v_sig\":\"" + vSig + "\"";
+    bool isAdjustment = (opKind == OP_KIND_QUICK_ADJUST || opKind == OP_KIND_MANUAL_DEDUCT || pulses <= 0);
+
+    // 1. Dispatch over WebSocket ONLY for actual coin pulse events if the active WebSocket belongs to this target device
+    if (!isAdjustment && isWsConnected && wsClient.connected()) {
+        String activeCoinSession = getActiveCoinSessionId();
+        if (targetDeviceId == activeCoinSession || activeCoinSession.length() == 0 || targetDeviceId == wsSessionDeviceId) {
+            String json = "{\"event\":\"PULSE\",\"pulses\":" + String(pulses) +
+                          ",\"session_pulses\":" + String(getSessionAccumulatedPulses()) +
+                          ",\"total_pulses\":" + String((int)totalCoinsLifetime) +
+                          ",\"remaining_ms\":" + String(getRemainingCoinSlotMs()) +
+                          ",\"amount\":" + String(pulses) +
+                          ",\"seconds\":" + String(safeSeconds) +
+                          ",\"minutes\":" + String(addedMinutes) +
+                          ",\"tx_id\":\"" + txId + "\"" +
+                          ",\"device_id\":\"" + targetDeviceId + "\"";
+            if (sharedSecret.length() > 0) {
+                String innerJson = "{\"seconds\":" + String(safeSeconds) +
+                                   ",\"minutes\":" + String(addedMinutes) +
+                                   ",\"amount\":" + String(pulses) +
+                                   ",\"pulses\":" + String(pulses) +
+                                   ",\"remaining_ms\":" + String(getRemainingCoinSlotMs()) +
+                                   ",\"tx_id\":\"" + txId + "\"" +
+                                   ",\"op_kind\":" + String((int)opKind) +
+                                   ",\"box_installation_epoch\":" + String((unsigned long long)boxEpoch) +
+                                   ",\"phone_pairing_epoch\":" + String((unsigned long long)phoneEpoch) +
+                                   ",\"ts\":\"" + String(retryTs) + "\"" +
+                                   ",\"device_id\":\"" + targetDeviceId + "\"}";
+                String payload = aes_encrypt(innerJson, sharedSecret);
+                String vSig = calculateWsPaySignature("COIN_DETECTED", targetDeviceId, txId, String(retryTs), payload, sharedSecret);
+                json += ",\"payload\":\"" + payload + "\",\"ts\":\"" + String(retryTs) + "\",\"v_sig\":\"" + vSig + "\"";
+            }
+            json += "}";
+            sendWsText(wsClient, json);
+            // Note: Payment delivery attempts/retries must NOT extend insertion TTL (Requirement 3).
+            return true;
         }
-        json += "}";
-        sendWsText(wsClient, json);
-        // Note: Payment delivery attempts/retries must NOT extend insertion TTL (Requirement 3).
-        return true; // At most one delivery per operation/transport in flight
     }
 
-    // 2. Dispatch over HTTP if WebSocket not active and device IP is resolved by authenticated identity
+    // 2. Dispatch over authenticated HTTP for adjustments (QUICK_ADJUST, MANUAL_DEDUCTION) and coin fallbacks
+    // Use the intended device's resolved IP
     String targetIp = getIpFromDeviceId(targetDeviceId);
+    if (targetIp.length() == 0 || targetIp == "127.0.0.1") {
+        if (targetDeviceId.indexOf('.') != -1) {
+            targetIp = targetDeviceId;
+        }
+    }
+
     if (targetIp.length() > 0 && targetIp != "127.0.0.1") {
         String params = "minutes=" + String(addedMinutes) +
                         "&seconds=" + String(safeSeconds) +

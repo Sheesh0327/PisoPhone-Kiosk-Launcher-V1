@@ -73,7 +73,10 @@ class KioskWatchdogReceiver : BroadcastReceiver() {
         // 2. Overlay Attachment Health Check
         val isOverlayHealthy = serviceInstance?.isOverlayHealthy() ?: false
 
-        if (!isProcessRunning || !isEngineReady || !isOverlayHealthy) {
+        // 3. HTTP Server Health Check
+        val isHttpServerHealthy = serviceInstance?.isHttpServerHealthy() ?: false
+
+        if (!isProcessRunning || !isEngineReady || !isOverlayHealthy || !isHttpServerHealthy) {
             val isFullySetup = com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(context)
             if (!isFullySetup) {
                 Log.d(TAG, "Device not yet fully setup/activated. Watchdog skipping KioskService start.")
@@ -88,6 +91,10 @@ class KioskWatchdogReceiver : BroadcastReceiver() {
                 if (!isOverlayHealthy) {
                     Log.w(TAG, "KioskService is running but overlay is missing/unattached. Rebuilding overlay...")
                     serviceInstance.setupOverlay()
+                }
+                if (!isHttpServerHealthy) {
+                    Log.w(TAG, "KioskService is running but HTTP server is inactive. Repairing listener...")
+                    serviceInstance.ensureHttpServerRunning()
                 }
             } else {
                 Log.w(TAG, "KioskService process is not running. Reviving foreground service immediately...")

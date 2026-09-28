@@ -222,6 +222,12 @@ class KioskService : Service() {
         engine?.overlayCoordinator?.setupOverlay()
     }
 
+    fun isHttpServerHealthy(): Boolean = engine?.isHttpServerHealthy() ?: false
+
+    fun ensureHttpServerRunning() {
+        engine?.ensureHttpServerRunning()
+    }
+
     fun performAdminBypass(durationSeconds: Int = 900) {
         engine?.performAdminBypass(durationSeconds)
     }
