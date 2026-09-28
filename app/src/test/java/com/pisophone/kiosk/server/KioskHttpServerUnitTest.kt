@@ -131,7 +131,7 @@ class KioskHttpServerUnitTest {
         val txId = "tx-quick-lock-01"
         val seconds = 300 // 5 minutes
         val now = System.currentTimeMillis().toString()
-        val plainParams = "minutes=5&seconds=300&amount=0&tx_id=$txId&device_id=PHONE_A&ts=$now&op_kind=1"
+        val plainParams = "minutes=5&seconds=300&amount=0&tx_id=$txId&device_id=PHONE_A&ts=$now&op_kind=2"
         val encryptedPayload = KioskSecurity.encrypt(plainParams, sharedSecret)
         val hmac = KioskProtocol.calculateHttpReqSignature("GET", "/add_time", "PHONE_A", txId, now, encryptedPayload, sharedSecret)
 
@@ -173,7 +173,7 @@ class KioskHttpServerUnitTest {
         val txId = "tx-quick-play-02"
         val seconds = 300 // 5 minutes
         val now = System.currentTimeMillis().toString()
-        val plainParams = "minutes=5&seconds=300&amount=0&tx_id=$txId&device_id=PHONE_A&ts=$now&op_kind=1"
+        val plainParams = "minutes=5&seconds=300&amount=0&tx_id=$txId&device_id=PHONE_A&ts=$now&op_kind=2"
         val encryptedPayload = KioskSecurity.encrypt(plainParams, sharedSecret)
         val hmac = KioskProtocol.calculateHttpReqSignature("GET", "/add_time", "PHONE_A", txId, now, encryptedPayload, sharedSecret)
 
@@ -202,7 +202,7 @@ class KioskHttpServerUnitTest {
         val txId = "tx-dedup-03"
         val seconds = 300
         val now = System.currentTimeMillis().toString()
-        val plainParams = "minutes=5&seconds=300&amount=0&tx_id=$txId&device_id=PHONE_A&ts=$now&op_kind=1"
+        val plainParams = "minutes=5&seconds=300&amount=0&tx_id=$txId&device_id=PHONE_A&ts=$now&op_kind=2"
         val encryptedPayload = KioskSecurity.encrypt(plainParams, sharedSecret)
         val hmac = KioskProtocol.calculateHttpReqSignature("GET", "/add_time", "PHONE_A", txId, now, encryptedPayload, sharedSecret)
 
@@ -297,12 +297,45 @@ class KioskHttpServerUnitTest {
         val uninitHandler = KioskHttpPaymentHandler(uninitDelegate)
 
         val txId = "tx-uninit-06"
-        val parms = mapOf("tx_id" to txId, "seconds" to "300")
+        val now = System.currentTimeMillis().toString()
+        val plainParams = "minutes=5&seconds=300&amount=0&tx_id=$txId&device_id=PHONE_A&ts=$now&op_kind=2"
+        val encryptedPayload = KioskSecurity.encrypt(plainParams, sharedSecret)
+        val hmac = KioskProtocol.calculateHttpReqSignature("GET", "/add_time", "PHONE_A", txId, now, encryptedPayload, sharedSecret)
+
+        val parms = mapOf(
+            "payload" to encryptedPayload,
+            "hmac" to hmac,
+            "device_id" to "PHONE_A",
+            "tx_id" to txId,
+            "ts" to now
+        )
         val session = createMockSession("/add_time", NanoHTTPD.Method.GET, parms)
         val response = uninitHandler.handlePaymentRequest(session)
 
         assertEquals(NanoHTTPD.Response.Status.SERVICE_UNAVAILABLE, response.status)
         val body = response.data.bufferedReader().readText()
         assertEquals("INITIALIZATION_IN_PROGRESS", body)
+    }
+
+    @Test
+    fun testUnsignedRequestRejection() {
+        stateManager.appState.value = 0
+        stateManager.sessionTimeRemaining.value = 0
+
+        val txId = "tx-unsigned-07"
+        val parms = mapOf(
+            "device_id" to "PHONE_A",
+            "tx_id" to txId,
+            "seconds" to "300"
+        )
+        val session = createMockSession("/add_time", NanoHTTPD.Method.GET, parms)
+        val response = paymentHandler.handlePaymentRequest(session)
+
+        assertEquals(NanoHTTPD.Response.Status.UNAUTHORIZED, response.status)
+        val body = response.data.bufferedReader().readText()
+        assertEquals("UNAUTHORIZED", body)
+
+        // Balance must NOT have changed!
+        assertEquals(0, stateManager.sessionTimeRemaining.value)
     }
 }

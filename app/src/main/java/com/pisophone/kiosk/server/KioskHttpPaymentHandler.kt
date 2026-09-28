@@ -45,35 +45,36 @@ class KioskHttpPaymentHandler(
 
             val extractedParams = HashMap<String, String>()
 
-            if (!payload.isNullOrBlank()) {
-                val tsVal = ts.toLongOrNull() ?: 0L
-                val currentMs = System.currentTimeMillis()
-                if (Math.abs(currentMs - tsVal) > MAX_TIMESTAMP_SKEW_MS) {
-                    Log.w(TAG, "Rejected HTTP request: Timestamp skew ($currentMs vs $tsVal)")
-                    return NanoHTTPD.newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "TIMESTAMP_SKEW")
-                }
-
-                val targetDev = if (deviceId.isNotBlank()) deviceId else expectedDevId
-                val validSig = KioskProtocol.verifyHttpReqSignature(
-                    method = session.method.name,
-                    endpoint = session.uri,
-                    recipient = targetDev,
-                    txId = txId,
-                    ts = ts,
-                    payload = payload,
-                    sig = hmac ?: "",
-                    secret = secretKey
-                )
-                if (!validSig) {
-                    Log.w(TAG, "Rejected HTTP request: Invalid signature for $txId")
-                    return NanoHTTPD.newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "INVALID_SIGNATURE")
-                }
-
-                val decrypted = KioskSecurity.decrypt(payload, secretKey)
-                parseQueryParams(decrypted, extractedParams)
-            } else {
-                extractedParams.putAll(parms)
+            if (payload.isNullOrBlank()) {
+                Log.w(TAG, "Rejected HTTP request: Missing signed payload")
+                return NanoHTTPD.newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "UNAUTHORIZED")
             }
+
+            val tsVal = ts.toLongOrNull() ?: 0L
+            val currentMs = System.currentTimeMillis()
+            if (Math.abs(currentMs - tsVal) > MAX_TIMESTAMP_SKEW_MS) {
+                Log.w(TAG, "Rejected HTTP request: Timestamp skew ($currentMs vs $tsVal)")
+                return NanoHTTPD.newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "TIMESTAMP_SKEW")
+            }
+
+            val targetDev = if (deviceId.isNotBlank()) deviceId else expectedDevId
+            val validSig = KioskProtocol.verifyHttpReqSignature(
+                method = session.method.name,
+                endpoint = session.uri,
+                recipient = targetDev,
+                txId = txId,
+                ts = ts,
+                payload = payload,
+                sig = hmac ?: "",
+                secret = secretKey
+            )
+            if (!validSig) {
+                Log.w(TAG, "Rejected HTTP request: Invalid signature for $txId")
+                return NanoHTTPD.newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "INVALID_SIGNATURE")
+            }
+
+            val decrypted = KioskSecurity.decrypt(payload, secretKey)
+            parseQueryParams(decrypted, extractedParams)
 
             val effectiveDevId = extractedParams["device_id"] ?: deviceId
             if (effectiveDevId.isNotBlank() && expectedDevId.isNotBlank() && effectiveDevId != "ALL" && effectiveDevId != expectedDevId) {
@@ -94,10 +95,16 @@ class KioskHttpPaymentHandler(
 
             val opKindInt = extractedParams["op_kind"]?.toIntOrNull()
             val opKindStr = when (opKindInt) {
-                1 -> "QUICK_ADJUST"
-                2 -> "MANUAL_DEDUCTION"
-                0 -> "COIN"
-                else -> extractedParams["op_kind"] ?: if (amountVal <= 0.0) "QUICK_ADJUST" else "COIN"
+                1 -> "COIN"
+                2 -> "QUICK_ADJUST"
+                3 -> "MANUAL_DEDUCTION"
+                4 -> "MATCH_TRANSFER"
+                5 -> "CONTROLLER"
+                else -> return NanoHTTPD.newFixedLengthResponse(
+                    Response.Status.BAD_REQUEST,
+                    "text/plain",
+                    "INVALID_OP_KIND"
+                )
             }
 
             val coinAmount = extractedParams["pulses"]?.toIntOrNull()

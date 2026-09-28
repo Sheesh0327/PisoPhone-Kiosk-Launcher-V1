@@ -21,8 +21,7 @@ import java.util.Locale
 class KioskTtsEngine(
     private val context: Context,
     private val onTtsStart: () -> Unit,
-    private val onTtsFinish: () -> Unit,
-    private val onFallbackTone: (freqHz: Int, durationMs: Int) -> Unit
+    private val onTtsFinish: () -> Unit
 ) {
     companion object {
         private const val TAG = "KioskTtsEngine"
@@ -255,17 +254,14 @@ class KioskTtsEngine(
                 val utteranceId = "kiosk_warning_${System.currentTimeMillis()}"
                 val result = tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
                 if (result != TextToSpeech.SUCCESS) {
-                    Log.w(TAG, "TTS speak returned non-success code $result, triggering fallback")
-                    onFallbackTone(880, 160)
+                    Log.w(TAG, "TTS speak returned non-success code $result")
                     onTtsFinished()
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "TTS speak failed: ${e.message}")
-                onFallbackTone(880, 160)
                 onTtsFinished()
             }
         } else {
-            onFallbackTone(880, 160)
             onTtsFinished()
         }
     }
