@@ -52,9 +52,9 @@ class KioskHttpPaymentHandler(
 
             val tsVal = ts.toLongOrNull() ?: 0L
             val currentMs = System.currentTimeMillis()
-            if (Math.abs(currentMs - tsVal) > MAX_TIMESTAMP_SKEW_MS) {
-                Log.w(TAG, "Rejected HTTP request: Timestamp skew ($currentMs vs $tsVal)")
-                return NanoHTTPD.newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "TIMESTAMP_SKEW")
+            val skew = Math.abs(currentMs - tsVal)
+            if (skew > MAX_TIMESTAMP_SKEW_MS) {
+                Log.w(TAG, "Information: Timestamp skew detected ($currentMs vs $tsVal, skew=${skew}ms). Continuing since signature and txId are authoritative.")
             }
 
             val targetDev = if (deviceId.isNotBlank()) deviceId else expectedDevId

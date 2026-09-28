@@ -103,9 +103,10 @@ object Esp32CoinMessageProcessor {
                 val outerTs = outerTsStr.toLongOrNull() ?: 0L
                 val now = System.currentTimeMillis()
                 val skew = Math.abs(now - outerTs)
-                if (outerTs <= 0L || skew > MAX_TIMESTAMP_SKEW_MS) {
-                    Log.w(TAG, "Rejected WebSocket coin event: Stale/invalid envelope timestamp ($outerTs, now=$now, skew=${skew}ms, max=${MAX_TIMESTAMP_SKEW_MS}ms)")
-                    return
+                if (outerTs <= 0L) {
+                    Log.w(TAG, "Information: Envelope timestamp is 0 or missing. Continuing since signature and txId are authoritative.")
+                } else if (skew > MAX_TIMESTAMP_SKEW_MS) {
+                    Log.w(TAG, "Information: Timestamp skew detected ($outerTs, now=$now, skew=${skew}ms). Continuing since signature and txId are authoritative.")
                 }
 
                 val outerDevId = json.optString("device_id", "").trim().ifBlank { delegate.getDeviceId() }

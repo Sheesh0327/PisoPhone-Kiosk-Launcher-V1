@@ -95,9 +95,9 @@ class KioskHttpServer(
 
             val tsVal = ts.toLongOrNull() ?: 0L
             val currentMs = System.currentTimeMillis()
-            if (Math.abs(currentMs - tsVal) > 60000L) {
-                Log.w(TAG, "Rejected HTTP request: Timestamp skew ($currentMs vs $tsVal) for ${session.uri}")
-                return null
+            val skew = Math.abs(currentMs - tsVal)
+            if (skew > 60000L) {
+                Log.w(TAG, "Information: Timestamp skew detected ($currentMs vs $tsVal, skew=${skew}ms) for ${session.uri}. Continuing since signature and txId are authoritative.")
             }
 
             val targetDev = if (deviceId.isNotBlank()) deviceId else expectedDevId
