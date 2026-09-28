@@ -320,7 +320,7 @@ class MainActivity : ComponentActivity() {
 
                     val appName = try {
                         resolveInfo.loadLabel(pm).toString()
-                    } catch (e: Throwable) {
+                    } catch (_: Throwable) {
                         pkgName
                     }
 
@@ -333,7 +333,7 @@ class MainActivity : ComponentActivity() {
                         iconDrawable.setBounds(0, 0, w, h)
                         iconDrawable.draw(canvas)
                         bmp.asImageBitmap()
-                    } catch (e: Throwable) {
+                    } catch (_: Throwable) {
                         null
                     }
 

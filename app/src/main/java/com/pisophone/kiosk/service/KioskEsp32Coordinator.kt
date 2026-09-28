@@ -28,8 +28,7 @@ class KioskEsp32Coordinator(
         coinAmount: Int,
         pricePerCoin: Double,
         boxInstallationEpoch: Long,
-        phonePairingEpoch: Long,
-        remainingMs: Long
+        phonePairingEpoch: Long
     ) -> PaymentResult,
     private val onSlotBusyTriggered: () -> Unit,
     private val getAudioManager: (() -> com.pisophone.kiosk.audio.KioskAudioManager?)? = null
@@ -41,13 +40,13 @@ class KioskEsp32Coordinator(
 
     private var lastArmTimestampMs: Long = 0L
 
-    override fun getDeviceId(): String = stateManager.deviceId.value.ifBlank { KioskSecurity.getHardwareId(context) }
+    override fun getDeviceId(): String = stateManager.deviceId.value
     override fun getSecretKey(): String = getSecretKey.invoke()
     override fun getAppState(): Int = stateManager.appState.value
     override fun getSessionTimeRemaining(): Int = stateManager.sessionTimeRemaining.value
     override fun getRealTimeBatteryInfo(): Pair<Int, Boolean> = getRealTimeBatteryInfo.invoke()
 
-    override fun onEsp32Paired(ip: String) {
+    override fun onEsp32Discovered(ip: String) {
         stateManager.esp32Ip = ip
         stateManager.isEsp32Online.value = true
         stateManager.saveState()
@@ -55,11 +54,7 @@ class KioskEsp32Coordinator(
 
     override fun onOnlineStatusChanged(isOnline: Boolean, mac: String?) {
         stateManager.isEsp32Online.value = isOnline
-        if (!isOnline && mac == null) {
-            stateManager.esp32MacAddress.value = ""
-        } else if (!mac.isNullOrBlank()) {
-            stateManager.esp32MacAddress.value = mac
-        }
+        if (!mac.isNullOrBlank()) stateManager.esp32MacAddress.value = mac
     }
 
     override fun onConfigSynced(price: Double?, minutes: Int?, alias: String?, adminPin: String?, slotNum: Int?) {
@@ -91,20 +86,17 @@ class KioskEsp32Coordinator(
         coinAmount: Int,
         pricePerCoin: Double,
         boxInstallationEpoch: Long,
-        phonePairingEpoch: Long,
-        remainingMs: Long
+        phonePairingEpoch: Long
     ): PaymentResult {
         if (txId.isNullOrBlank()) {
             Log.e(TAG, "Invalid coin message over WebSocket: missing transaction ID")
             return PaymentResult.FAILED
         }
 
-        stateManager.updatePaymentTimeoutFromMs(remainingMs)
-
-        Log.d(TAG, "Received validated coin via WebSocket: seconds=$seconds, amount=₱$amount, tx_id=$txId, opKind=$operationKind, remMs=${remainingMs}ms")
+        Log.d(TAG, "Received validated coin via WebSocket: seconds=$seconds, amount=₱$amount, tx_id=$txId, opKind=$operationKind")
         val result = onCreditPayment.invoke(
             txId, seconds, amount, operationKind, coinAmount, pricePerCoin,
-            boxInstallationEpoch, phonePairingEpoch, remainingMs
+            boxInstallationEpoch, phonePairingEpoch
         )
         when (result) {
             PaymentResult.APPLIED -> {
@@ -135,10 +127,9 @@ class KioskEsp32Coordinator(
         }
     }
 
-    override fun onArmSuccess(remainingMs: Long) {
+    override fun onArmSuccess() {
         lastArmTimestampMs = System.currentTimeMillis()
         stateManager.isEsp32Online.value = true
-        stateManager.updatePaymentTimeoutFromMs(remainingMs)
     }
 
     override fun onSlotWarning(daysLeft: Int, expiresAt: Long, slotNum: Int, message: String) {

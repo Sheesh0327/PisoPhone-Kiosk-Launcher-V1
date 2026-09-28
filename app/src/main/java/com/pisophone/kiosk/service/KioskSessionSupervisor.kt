@@ -2,11 +2,10 @@ package com.pisophone.kiosk.service
 
 import android.content.Context
 import android.content.Intent
-import android.os.SystemClock
 import android.util.Log
 import com.pisophone.kiosk.repository.PaymentRepository
+import com.pisophone.kiosk.system.KioskSystemMonitor
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -19,10 +18,8 @@ class KioskSessionSupervisor(
     private val paymentRepo: PaymentRepository,
     private val onSpeakWarning: (String) -> Unit,
     private val onFinishPayment: () -> Unit,
-    private val onCancelPayment: () -> Unit = {},
     private val onCloseSession: (Boolean) -> Unit,
-    private val onCheckBatteryAlerts: () -> Unit,
-    private val onPeriodicHealthCheck: () -> Unit = {}
+    private val onCheckBatteryAlerts: () -> Unit
 ) {
     companion object {
         private const val TAG = "KioskSessionSupervisor"
@@ -31,12 +28,11 @@ class KioskSessionSupervisor(
     private var timerJob: Job? = null
     @Volatile
     private var lastTickMonotonicMs: Long = 0L
-    private var tickCounter: Long = 0L
 
     fun isStalled(maxLagMs: Long = 5000L): Boolean {
         val last = lastTickMonotonicMs
         if (last == 0L) return false
-        return (SystemClock.elapsedRealtime() - last) > maxLagMs
+        return (android.os.SystemClock.elapsedRealtime() - last) > maxLagMs
     }
 
     fun ensureRunning() {
@@ -48,50 +44,38 @@ class KioskSessionSupervisor(
 
     fun start() {
         timerJob?.cancel()
-        lastTickMonotonicMs = SystemClock.elapsedRealtime()
+        lastTickMonotonicMs = android.os.SystemClock.elapsedRealtime()
         timerJob = scope.launch {
             while (isActive) {
                 try {
                     delay(1000)
-                    lastTickMonotonicMs = SystemClock.elapsedRealtime()
-
+                    lastTickMonotonicMs = android.os.SystemClock.elapsedRealtime()
+                    
                     val curState = stateManager.appState.value
-                    // 1. Session arming / waiting countdown (Payment mode)
+                    // Session arming / waiting countdown
                     if (curState == 1 || curState == 3) {
-                        val deadline = stateManager.paymentTimeoutDeadlineMs.value
-                        val nowMonotonic = SystemClock.elapsedRealtime()
-                        if (deadline > 0L) {
-                            val remainingSec = maxOf(0, Math.ceil((deadline - nowMonotonic) / 1000.0).toInt())
-                            stateManager.paymentTimeout.value = remainingSec
-                            if (nowMonotonic >= deadline || remainingSec <= 0) {
-                                stateManager.paymentTimeoutDeadlineMs.value = 0L
-                                stateManager.paymentTimeout.value = 0
-                                if (stateManager.coinsInserted.value > 0) {
-                                    onFinishPayment()
+                        if (stateManager.paymentTimeout.value > 0) {
+                            stateManager.paymentTimeout.value -= 1
+                        }
+                        if (stateManager.paymentTimeout.value == 0) {
+                            if (stateManager.coinsInserted.value > 0) {
+                                onFinishPayment()
+                            } else {
+                                onCloseSession(true)
+                                if (curState == 3) {
+                                    stateManager.appState.value = 2
                                 } else {
-                                    onCancelPayment()
+                                    stateManager.appState.value = 0
                                 }
-                            }
-                        } else {
-                            val curTimeout = stateManager.paymentTimeout.value
-                            if (curTimeout > 0) {
-                                val remainingSec = maxOf(0, curTimeout - 1)
-                                stateManager.paymentTimeout.value = remainingSec
-                                if (remainingSec <= 0) {
-                                    if (stateManager.coinsInserted.value > 0) {
-                                        onFinishPayment()
-                                    } else {
-                                        onCancelPayment()
-                                    }
-                                }
+                                stateManager.saveState()
                             }
                         }
                     }
-
-                    // 2. Active session countdown
+                    
+                    // Active session countdown
                     if (curState == 2 || curState == 3) {
                         val deadline = stateManager.sessionExpiryDeadlineMs.value
-                        val nowMonotonic = SystemClock.elapsedRealtime()
+                        val nowMonotonic = android.os.SystemClock.elapsedRealtime()
                         val remainingSec = if (deadline > 0L) {
                             maxOf(0, ((deadline - nowMonotonic) / 1000L).toInt())
                         } else {
@@ -101,45 +85,43 @@ class KioskSessionSupervisor(
                         stateManager.sessionTimeRemaining.value = remainingSec
 
                         if (remainingSec <= 0) {
-                            scope.launch(Dispatchers.IO) {
-                                val expiryResult = paymentRepo.expireSessionIfDueBlocking()
-                                if (expiryResult.didExpire) {
-                                    val applied = stateManager.applySessionUpdate(
-                                        deadlineMs = expiryResult.sessionState.sessionExpiryDeadlineMs,
-                                        remainingSeconds = expiryResult.sessionState.sessionTimeRemaining,
-                                        revision = expiryResult.sessionState.revision,
-                                        targetAppState = 0
-                                    )
-                                    if (applied) {
-                                        onSpeakWarning("Time expired")
-                                        stateManager.saveState()
-
-                                        val startMain = Intent(Intent.ACTION_MAIN).apply {
-                                            addCategory(Intent.CATEGORY_HOME)
-                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                                                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                                                    Intent.FLAG_ACTIVITY_CLEAR_TOP
-                                        }
-                                        try {
-                                            context.startActivity(startMain)
-                                        } catch (e: Exception) {
-                                            Log.e(TAG, "Failed to start HOME activity: ${e.message}")
-                                        }
+                            val expiryResult = paymentRepo.expireSessionIfDueBlocking()
+                            if (expiryResult.didExpire) {
+                                val applied = stateManager.applySessionUpdate(
+                                    deadlineMs = expiryResult.sessionState.sessionExpiryDeadlineMs,
+                                    remainingSeconds = expiryResult.sessionState.sessionTimeRemaining,
+                                    revision = expiryResult.sessionState.revision,
+                                    targetAppState = 0
+                                )
+                                if (applied) {
+                                    onSpeakWarning("Time expired")
+                                    stateManager.saveState()
+                                    
+                                    val startMain = Intent(Intent.ACTION_MAIN).apply {
+                                        addCategory(Intent.CATEGORY_HOME)
+                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or 
+                                                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or 
+                                                Intent.FLAG_ACTIVITY_CLEAR_TOP
+                                    }
+                                    try {
+                                        context.startActivity(startMain)
+                                    } catch (e: Exception) {
+                                        Log.e(TAG, "Failed to start HOME activity: ${e.message}")
                                     }
                                 } else {
-                                    stateManager.applySessionUpdate(
-                                        expiryResult.sessionState.sessionExpiryDeadlineMs,
-                                        expiryResult.sessionState.sessionTimeRemaining,
-                                        expiryResult.sessionState.revision
-                                    )
+                                    Log.d(TAG, "Skipping stale expiration lock and announcement because newer revision is active")
                                 }
+                            } else {
+                                stateManager.applySessionUpdate(
+                                    expiryResult.sessionState.sessionExpiryDeadlineMs,
+                                    expiryResult.sessionState.sessionTimeRemaining,
+                                    expiryResult.sessionState.revision
+                                )
                             }
                         } else {
                             if (remainingSec % 15 == 0) {
-                                scope.launch(Dispatchers.IO) {
-                                    paymentRepo.checkpointSessionBlocking(stateManager.sessionRevision.value)
-                                    stateManager.saveState()
-                                }
+                                paymentRepo.checkpointSessionBlocking(stateManager.sessionRevision.value)
+                                stateManager.saveState()
                             }
 
                             when (remainingSec) {
@@ -157,10 +139,6 @@ class KioskSessionSupervisor(
                     }
 
                     onCheckBatteryAlerts()
-                    tickCounter++
-                    if (tickCounter % 10L == 0L) {
-                        onPeriodicHealthCheck()
-                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Exception in timer loop: ${e.message}")
                 }

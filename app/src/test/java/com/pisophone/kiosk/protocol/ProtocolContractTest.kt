@@ -10,18 +10,11 @@ class ProtocolContractTest {
     private val sharedSecret = "PISOPHONE_SHARED_SECRET_KEY_32B!"
 
     private fun loadVectorJson(): JSONObject {
-        val userDir = File(System.getProperty("user.dir") ?: ".")
-        val candidates = listOf(
+        val vectorFile = listOf(
             File("test_vectors/protocol_test_vectors.json"),
             File("../test_vectors/protocol_test_vectors.json"),
-            File("../../test_vectors/protocol_test_vectors.json"),
-            File("../../../test_vectors/protocol_test_vectors.json"),
-            File(userDir, "test_vectors/protocol_test_vectors.json"),
-            File(userDir.parentFile, "test_vectors/protocol_test_vectors.json"),
-            File(userDir.parentFile?.parentFile, "test_vectors/protocol_test_vectors.json")
-        )
-        val vectorFile = candidates.firstOrNull { it != null && it.exists() }
-            ?: error("protocol_test_vectors.json not found in search paths (cwd=${userDir.absolutePath})")
+            File("../../test_vectors/protocol_test_vectors.json")
+        ).firstOrNull { it.exists() } ?: error("protocol_test_vectors.json not found in search paths")
         return JSONObject(vectorFile.readText())
     }
 

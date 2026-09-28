@@ -34,8 +34,7 @@ class FloatingPillOverlay(
     private val isArenaBannerVisibleFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
     private val onDismissArenaBanner: () -> Unit = {},
     private val onInsertCoinClick: () -> Unit,
-    private val onDoneClick: () -> Unit,
-    private val onCancelClick: () -> Unit = {}
+    private val onDoneClick: () -> Unit
 ) {
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private var overlayView: ComposeOverlayView? = null
@@ -171,7 +170,6 @@ class FloatingPillOverlay(
                     coinsInserted = coinsInserted,
                     paymentTimeout = paymentTimeout,
                     onDoneClick = onDoneClick,
-                    onCancelClick = onCancelClick,
                     isEsp32Online = isEsp32Online,
                     isSlotBusy = isSlotBusy,
                     isWaiting = appState == 3,

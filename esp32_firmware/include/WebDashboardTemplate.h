@@ -11,6 +11,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HARDWARE Admin Console</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
     <style>
 {PORTAL_STYLES}
     </style>
@@ -153,21 +154,6 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                         <div class="form-group">
                             <label>Password</label>
                             <input type="password" name="wifi_pass" value="{WIFI_PASS}">
-                        </div>
-                        <div class="form-group">
-                            <label>ESP32 Static IPv4 Address</label>
-                            <input type="text" name="static_ip" value="{STATIC_IP}" pattern="^([0-9]{1,3}\.){3}[0-9]{1,3}$">
-                            <div class="hint">Default is 192.168.1.10.</div>
-                        </div>
-                        <div class="form-group">
-                            <label>Gateway IPv4 Address</label>
-                            <input type="text" name="gateway_ip" value="{GATEWAY_IP}" pattern="^([0-9]{1,3}\.){3}[0-9]{1,3}$">
-                            <div class="hint">Default is 192.168.1.1.</div>
-                        </div>
-                        <div class="form-group">
-                            <label>Subnet Mask</label>
-                            <input type="text" name="subnet_mask" value="{SUBNET_MASK}" pattern="^([0-9]{1,3}\.){3}[0-9]{1,3}$">
-                            <div class="hint">Default is 255.255.255.0.</div>
                         </div>
                         <div class="form-group">
                             <label>Android App Port</label>

@@ -60,47 +60,12 @@ class KioskService : Service() {
                 if (cleanMac.isNotBlank()) {
                     service.stateManager.esp32MacAddress.value = cleanMac
                 }
-                service.engine?.triggerDirectPairing(targetMac = cleanMac)
+                service.triggerCandidateDiscovery()
             }
         }
 
-        fun triggerDirectPairing(context: Context, ip: String? = null, mac: String? = null) {
-            activeInstance?.engine?.triggerDirectPairing(ip, mac)
-        }
-
-        fun triggerUnpair(context: Context, onResult: ((Boolean, String?) -> Unit)? = null) {
-            KioskSecurity.clearPinnedEsp32Mac(context)
-            val service = activeInstance
-            if (service != null) {
-                service.stateManager.esp32MacAddress.value = ""
-                service.stateManager.isEsp32Online.value = false
-                service.engine?.unpairEsp32(onResult) ?: run {
-                    onResult?.invoke(true, null)
-                }
-            } else {
-                onResult?.invoke(true, null)
-            }
-        }
-
-        fun updateConfiguredEsp32Mac(context: Context, mac: String): Boolean {
-            val clean = KioskSecurity.formatMacAddress(mac)
-            if (clean.isNotBlank()) {
-                KioskSecurity.setConfiguredEsp32Mac(context, clean)
-                activeInstance?.let { service ->
-                    service.stateManager.esp32MacAddress.value = clean
-                    service.engine?.triggerDirectPairing(targetMac = clean)
-                }
-                return true
-            }
-            return false
-        }
-
-        fun updateConfiguredEsp32Ip(context: Context, ip: String): Boolean {
-            val valid = KioskSecurity.setConfiguredEsp32Ip(context, ip)
-            if (valid) {
-                activeInstance?.engine?.updateEsp32StaticIp(ip)
-            }
-            return valid
+        fun triggerEsp32Rescan(context: Context) {
+            activeInstance?.triggerCandidateDiscovery()
         }
 
         fun triggerAdminBypass(context: Context, durationSeconds: Int = 900) {
@@ -210,22 +175,12 @@ class KioskService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    fun isEngineReady(): Boolean = engine?.isEngineReady ?: false
-
-    fun retryEngineInitialization() {
-        engine?.retryInitializationIfNeeded()
-    }
-
     fun isOverlayHealthy(): Boolean = engine?.overlayCoordinator?.isOverlayHealthy() ?: false
+
+    fun ensureHttpServerRunning(): Boolean = engine?.ensureHttpServerRunning() ?: false
 
     fun setupOverlay() {
         engine?.overlayCoordinator?.setupOverlay()
-    }
-
-    fun isHttpServerHealthy(): Boolean = engine?.isHttpServerHealthy() ?: false
-
-    fun ensureHttpServerRunning() {
-        engine?.ensureHttpServerRunning()
     }
 
     fun performAdminBypass(durationSeconds: Int = 900) {
@@ -240,17 +195,11 @@ class KioskService : Service() {
         engine?.speakWarning(text)
     }
 
-    fun triggerDirectPairing(ip: String? = null, mac: String? = null) {
-        engine?.triggerDirectPairing(ip, mac)
+    fun triggerCandidateDiscovery() {
+        engine?.triggerCandidateDiscovery()
     }
 
-    fun triggerUnpair(onResult: ((Boolean, String?) -> Unit)? = null) {
-        stateManager.esp32MacAddress.value = ""
-        stateManager.isEsp32Online.value = false
-        engine?.unpairEsp32(onResult) ?: run {
-            onResult?.invoke(true, null)
-        }
-    }
+    fun probeEsp32Connection(ip: String): Boolean = engine?.probeEsp32Connection(ip) ?: false
 
     private fun acquireLocks() {
         try {
@@ -267,7 +216,7 @@ class KioskService : Service() {
     private fun releaseLocks() {
         try {
             if (wakeLock?.isHeld == true) wakeLock?.release()
-        } catch (e: Exception) {}
+        } catch (_: Exception) {}
     }
 
     private fun createNotificationChannel() {

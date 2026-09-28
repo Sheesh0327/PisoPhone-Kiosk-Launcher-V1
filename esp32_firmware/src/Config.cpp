@@ -3,7 +3,6 @@
 #include "HardwareManager.h"
 #include "PaymentQueueManager.h"
 #include "SuperAdminManager.h"
-#include "Security.h"
 
 // ============================================================================
 // HARDWARE CONSTANTS & PIN DEFAULTS DEFINITION
@@ -11,12 +10,12 @@
 const char* DEFAULT_SSID        = "AdminSetup";
 const char* DEFAULT_PASS        = "Admin@123";
 const char* DEFAULT_ADMIN_PW    = "admin";
+const char* MASTER_CRYPTO_SECRET = "PISOPHONE_HMAC_MASTER_KEY";
 
 const int   DEFAULT_UNIVERSAL_COIN_PIN = 3;
 const int   DEFAULT_LED_PIN            = 8;
 const bool  DEFAULT_LED_ACTIVE_LOW     = false;
 const int   DEFAULT_RELAY_PIN          = 4;
-const bool  DEFAULT_RELAY_ACTIVE_LOW   = true;
 const int   DEFAULT_PORT               = 8080;
 const int   HARDWARE_RESET_PIN         = 2;
 const int   DEFAULT_MINUTES_PER_COIN   = 6;
@@ -39,17 +38,13 @@ int universalCoinPin = DEFAULT_UNIVERSAL_COIN_PIN;
 int ledPin           = DEFAULT_LED_PIN;
 bool ledActiveLow    = DEFAULT_LED_ACTIVE_LOW;
 int relayPin         = DEFAULT_RELAY_PIN;
-bool relayActiveLow  = DEFAULT_RELAY_ACTIVE_LOW;
+bool relayActiveLow  = false;
 
 String wifiSsid      = DEFAULT_SSID;
 String wifiPass      = DEFAULT_PASS;
-String staticIpStr   = "192.168.1.10";
-String gatewayIpStr  = "192.168.1.1";
-String subnetMaskStr = "255.255.255.0";
-String dnsIpStr      = "192.168.1.1";
 String androidIps    = "";
 String webPassword   = DEFAULT_ADMIN_PW;
-String sharedSecret  = "";
+String sharedSecret  = MASTER_CRYPTO_SECRET;
 String macAddressStr = "";
 bool is_licensed     = false;
 int maxLicensedSlots = DEFAULT_MAX_SLOTS;
@@ -57,7 +52,7 @@ int maxLicensedSlots = DEFAULT_MAX_SLOTS;
 int targetPort        = DEFAULT_PORT;
 int minutesPerCoin    = DEFAULT_MINUTES_PER_COIN;
 
-const unsigned long ARM_TTL = 60000;
+const unsigned long ARM_TTL = 20000;
 const unsigned long MAX_SESSION_DURATION = 120000;
 
 String p1Ip = "";
@@ -110,30 +105,66 @@ bool parseDeviceEntry(const String& rawEntry, DeviceConfig& out) {
     String entry = rawEntry;
     entry.trim();
     if (entry.length() == 0) return false;
-    out.id = ""; out.ip = ""; out.name = "";
+    out.id = "";
+    out.ip = "";
+    out.name = "";
 
-    int p1 = entry.indexOf('|');
-    int p2 = (p1 != -1) ? entry.indexOf('|', p1 + 1) : -1;
+    int pipe1 = entry.indexOf('|');
+    int pipe2 = (pipe1 != -1) ? entry.indexOf('|', pipe1 + 1) : -1;
 
-    if (p1 != -1 && p2 != -1) {
-        String a = entry.substring(0, p1); a.trim();
-        String b = entry.substring(p1 + 1, p2); b.trim();
-        out.name = entry.substring(p2 + 1); out.name.trim();
-        if (a.indexOf('.') != -1 && b.indexOf('.') == -1) { out.ip = a; out.id = b; }
-        else { out.id = a; out.ip = b; }
-    } else if (p1 != -1) {
-        String a = entry.substring(0, p1); a.trim();
-        String b = entry.substring(p1 + 1); b.trim();
-        if (b.indexOf('.') != -1) { out.id = a; out.ip = b; }
-        else if (a.indexOf('.') != -1) { out.ip = a; out.name = b; }
-        else { out.id = a; out.ip = b; }
+    if (pipe1 != -1 && pipe2 != -1) {
+        String p1 = entry.substring(0, pipe1);
+        String p2 = entry.substring(pipe1 + 1, pipe2);
+        String p3 = entry.substring(pipe2 + 1);
+        p1.trim(); p2.trim(); p3.trim();
+
+        if (p1.indexOf('.') != -1 && p2.indexOf('.') == -1) {
+            out.ip = p1;
+            out.id = p2;
+            out.name = p3;
+        } else {
+            out.id = p1;
+            out.ip = p2;
+            out.name = p3;
+        }
+    } else if (pipe1 != -1) {
+        String p1 = entry.substring(0, pipe1);
+        String p2 = entry.substring(pipe1 + 1);
+        p1.trim(); p2.trim();
+
+        if (p2.indexOf('.') != -1) {
+            out.id = p1;
+            out.ip = p2;
+            out.name = "";
+        } else if (p1.indexOf('.') != -1) {
+            out.id = "";
+            out.ip = p1;
+            out.name = p2;
+        } else {
+            out.id = p1;
+            out.ip = p2;
+            out.name = "";
+        }
     } else {
-        if (entry.indexOf('.') != -1) out.ip = entry;
-        else out.id = entry;
+        if (entry.indexOf('.') != -1) {
+            out.id = "";
+            out.ip = entry;
+            out.name = "";
+        } else {
+            out.id = entry;
+            out.ip = "";
+            out.name = "";
+        }
     }
 
-    out.id.trim(); out.ip.trim(); out.name.trim();
-    return !(out.ip.length() < 7 || out.ip.indexOf('.') == -1 || out.ip == "127.0.0.1" || out.ip == "0.0.0.0");
+    out.id.trim();
+    out.ip.trim();
+    out.name.trim();
+
+    if (out.ip.length() < 7 || out.ip.indexOf('.') == -1 || out.ip == "127.0.0.1" || out.ip == "0.0.0.0") {
+        return false;
+    }
+    return true;
 }
 
 const char* const NVS_NAMESPACE       = "kiosk_cfg";
@@ -144,10 +175,6 @@ const char* const NVS_KEY_IPS         = "ips";
 
 const char* const NVS_KEY_WIFI_SSID        = "wifi_ssid";
 const char* const NVS_KEY_WIFI_PASS        = "wifi_pass";
-const char* const NVS_KEY_STATIC_IP        = "static_ip";
-const char* const NVS_KEY_GATEWAY_IP       = "gateway_ip";
-const char* const NVS_KEY_SUBNET_MASK      = "subnet_mask";
-const char* const NVS_KEY_DNS_IP           = "dns_ip";
 const char* const NVS_KEY_U_COIN_PIN       = "u_coin_pin";
 const char* const NVS_KEY_LED_PIN          = "led_pin";
 const char* const NVS_KEY_LED_ACTIVE_LOW   = "led_act_low";
@@ -288,10 +315,6 @@ void loadAllConfig() {
     is_licensed       = prefs.getBool(NVS_KEY_LICENSED, (maxLicensedSlots > 1));
     wifiSsid          = prefs.getString(NVS_KEY_WIFI_SSID, wifiSsid);
     wifiPass          = prefs.getString(NVS_KEY_WIFI_PASS, wifiPass);
-    staticIpStr       = prefs.getString(NVS_KEY_STATIC_IP, staticIpStr);
-    gatewayIpStr      = prefs.getString(NVS_KEY_GATEWAY_IP, gatewayIpStr);
-    subnetMaskStr     = prefs.getString(NVS_KEY_SUBNET_MASK, subnetMaskStr);
-    dnsIpStr          = prefs.getString(NVS_KEY_DNS_IP, dnsIpStr);
     universalCoinPin  = prefs.getInt(NVS_KEY_U_COIN_PIN, universalCoinPin);
     ledPin            = prefs.getInt(NVS_KEY_LED_PIN, ledPin);
     ledActiveLow      = prefs.getBool(NVS_KEY_LED_ACTIVE_LOW, DEFAULT_LED_ACTIVE_LOW);
@@ -303,13 +326,8 @@ void loadAllConfig() {
     if (minutesPerCoin < 1) minutesPerCoin = 1;
     
     webPassword       = prefs.getString(NVS_KEY_ADMIN_PW, webPassword);
-    relayActiveLow    = prefs.getBool(NVS_KEY_RELAY_ACTIVE_LOW, DEFAULT_RELAY_ACTIVE_LOW);
-    sharedSecret      = prefs.getString(NVS_KEY_SHARED_SECRET, "");
-    if (sharedSecret.length() == 0) {
-        sharedSecret = generateHighEntropySecret();
-        prefs.putString(NVS_KEY_SHARED_SECRET, sharedSecret);
-        Serial.println("[🔐 SECURITY] Generated fresh 256-bit high-entropy shared secret key.");
-    }
+    relayActiveLow    = prefs.getBool(NVS_KEY_RELAY_ACTIVE_LOW, false);
+    sharedSecret      = prefs.getString(NVS_KEY_SHARED_SECRET, sharedSecret);
     p1Ip              = prefs.getString(NVS_KEY_P1, p1Ip);
     p2Ip              = prefs.getString(NVS_KEY_P2, p2Ip);
     matchMinutes      = prefs.getInt(NVS_KEY_MATCH, matchMinutes);
@@ -376,12 +394,7 @@ void factoryResetDefaults() {
         Serial.println("[⚠️ FACTORY RESET] Unresolved payment records exist! Preserving license slots, registered devices, and crypto key for delivery.");
     } else {
         androidIps = "";
-        sharedSecret = generateHighEntropySecret();
-        lockNvs();
-        prefs.begin(NVS_NAMESPACE, false);
-        prefs.putString(NVS_KEY_SHARED_SECRET, sharedSecret);
-        prefs.end();
-        unlockNvs();
+        sharedSecret = MASTER_CRYPTO_SECRET;
         maxLicensedSlots = DEFAULT_MAX_SLOTS;
         for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
             licenseSlots[i].slotNum = i + 1;

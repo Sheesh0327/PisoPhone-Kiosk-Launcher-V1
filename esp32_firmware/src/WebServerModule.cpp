@@ -10,6 +10,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <HTTPClient.h>
+#include <WiFiUdp.h>
 #include <ESPmDNS.h>
 #include <Update.h>
 #include "esp_wifi.h"
@@ -39,7 +40,6 @@ void setupWebServer() {
     webServer.on("/", HTTP_GET, handlePortalRoot);
     webServer.on("/logout", HTTP_GET, handleLogout);
     webServer.on("/save", HTTP_POST, handleSave);
-    webServer.on("/api/config", HTTP_POST, handleSave);
     webServer.on("/reboot", HTTP_POST, handleReboot);
     webServer.on("/factory_reset", HTTP_POST, handleFactoryReset);
     webServer.on("/add_time", HTTP_POST, handleAddTime);
@@ -63,7 +63,7 @@ void setupWebServer() {
     webServer.on("/api/slots/unpair", HTTP_ANY, handleApiSlotUnpair);
     webServer.on("/api/slots/apply_token", HTTP_POST, handleApiSlotApplyToken);
     webServer.on("/api/slots/cloud_sync", HTTP_POST, handleApiSlotCloudSync);
-
+    
     webServer.on("/api/relay", HTTP_ANY, []() {
         if (!checkAdminAuth()) return;
 
@@ -126,22 +126,8 @@ void setupWebServer() {
             otaErrorMsg = "";
             Update.clearError();
             
-            // 1. Close new admissions
-            setMaintenanceReason(MAINT_REASON_RESTART, true);
-            
-            // 2. Initiate clean session drain if active (do not force-destroy in-flight pulses)
-            if (getActiveCoinSessionId().length() > 0) {
-                releaseCoinSlot(getActiveCoinSessionId(), CoinSlotOwnerType::ANY, false, "OTA_PREPARATION");
-            }
-
-            // 3. Verify that the hardware has finished draining and all transactions are persisted
-            if (!canPerformRebootOrOta()) {
-                otaIsValidBinary = false;
-                setMaintenanceReason(MAINT_REASON_RESTART, false);
-                otaErrorMsg = "OTA update blocked: Active coin session or pending in-flight payments. Please wait for coin drain to complete and retry.";
-                Serial.printf("[OTA] Error: %s\n", otaErrorMsg.c_str());
-                return;
-            }
+            setMaintenanceMode(true);
+            releaseCoinSlot(getActiveCoinSessionId(), CoinSlotOwnerType::ANY, true, "OTA_FLASH");
 
             if (revenueDirty || totalCoinsLifetime != lastSavedTotalCoins || totalEarningsLifetime != lastSavedTotalEarnings) {
                 lockNvs();

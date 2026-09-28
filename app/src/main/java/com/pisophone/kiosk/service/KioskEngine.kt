@@ -7,15 +7,19 @@ import android.util.Log
 import android.widget.Toast
 import com.pisophone.kiosk.audio.KioskAudioManager
 import com.pisophone.kiosk.db.AppDatabase
+import com.pisophone.kiosk.db.CoinEvent
 import com.pisophone.kiosk.network.Esp32ConnectionManager
 import com.pisophone.kiosk.overlay.KioskOverlayCoordinator
 import com.pisophone.kiosk.repository.CoinEventRepository
 import com.pisophone.kiosk.repository.PaymentRepository
 import com.pisophone.kiosk.repository.PaymentResult
+import com.pisophone.kiosk.repository.SessionSnapshot
 import com.pisophone.kiosk.security.KioskActivationManager
 import com.pisophone.kiosk.security.KioskSecurity
+import com.pisophone.kiosk.server.KioskHttpServer
 import com.pisophone.kiosk.system.KioskSystemMonitor
 import com.pisophone.kiosk.system.KioskSystemMonitorDelegate
+import com.pisophone.kiosk.util.HardwareFeedback
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -24,14 +28,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.MutableStateFlow
-
-enum class InitializationState {
-    UNINITIALIZED,
-    INITIALIZING,
-    READY,
-    FAILED
-}
+import kotlinx.coroutines.runBlocking
 
 /**
  * Core business orchestrator for the PisoPhone Kiosk.
@@ -43,14 +40,11 @@ class KioskEngine(
 ) {
     companion object {
         private const val TAG = "KioskEngine"
-        private const val ARMING_TIMEOUT_SECONDS = 15
-        private const val MAX_INIT_ATTEMPTS = 5
+        private const val ARMING_TIMEOUT_SECONDS = 20
+        private const val SERVER_PORT = 8080
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-
-    val initializationState = MutableStateFlow(InitializationState.UNINITIALIZED)
-    val isEngineReady: Boolean get() = initializationState.value == InitializationState.READY
 
     private val coinEventRepo: CoinEventRepository = CoinEventRepository(
         AppDatabase.getDatabase(context).coinEventDao()
@@ -69,15 +63,6 @@ class KioskEngine(
 
     private val audioManager = KioskAudioManager(context, scope)
 
-    private val creditNotifier = KioskCreditNotifier(
-        context = context,
-        scope = scope,
-        stateManager = stateManager,
-        coinEventRepo = coinEventRepo,
-        audioManager = audioManager,
-        armingTimeoutSeconds = ARMING_TIMEOUT_SECONDS
-    )
-
     fun creditPayment(
         txId: String,
         seconds: Int,
@@ -86,8 +71,7 @@ class KioskEngine(
         coinAmount: Int = amount.toInt(),
         pricePerCoin: Double = 0.0,
         boxInstallationEpoch: Long = 0L,
-        phonePairingEpoch: Long = 0L,
-        remainingMs: Long = 15000L
+        phonePairingEpoch: Long = 0L
     ): PaymentResult {
         if (!isInitialized.get()) {
             Log.w(TAG, "Rejecting payment credit: KioskEngine initialization in progress")
@@ -104,7 +88,7 @@ class KioskEngine(
             phonePairingEpoch = phonePairingEpoch
         )
         if (outcome.result == PaymentResult.APPLIED && outcome.snapshot != null) {
-            creditNotifier.publishCommittedCreditSnapshot(txId, seconds, amount, operationKind, outcome.snapshot, remainingMs)
+            publishCommittedCreditSnapshot(txId, seconds, amount, operationKind, outcome.snapshot)
         }
         return outcome.result
     }
@@ -129,9 +113,104 @@ class KioskEngine(
             phonePairingEpoch = phonePairingEpoch
         )
         if (outcome.result == PaymentResult.APPLIED && outcome.snapshot != null) {
-            creditNotifier.publishCommittedDeductSnapshot(seconds, outcome.snapshot)
+            publishCommittedDeductSnapshot(seconds, outcome.snapshot)
         }
         return outcome.result
+    }
+
+    private fun publishCommittedCreditSnapshot(
+        txId: String,
+        seconds: Int,
+        amount: Double,
+        operationKind: String,
+        snapshot: SessionSnapshot
+    ) {
+        val isQuickAdd = (amount <= 0.0) || operationKind.equals("QUICK_ADJUST", ignoreCase = true)
+        val pesoAmount = if (amount >= 1.0) amount.toInt() else 0
+
+        val targetState = if (isQuickAdd) {
+            if (stateManager.appState.value == 0 || stateManager.appState.value == 1) 2 else null
+        } else {
+            if (stateManager.appState.value == 0) 1 else null
+        }
+        val applied = stateManager.applySessionUpdate(snapshot, targetState)
+        if (applied) {
+            if (isQuickAdd) {
+                if (targetState == 2) {
+                    stateManager.paymentTimeout.value = 0
+                }
+                Log.d(TAG, "Quick Add adjustment credited: +${seconds}s (targetState=$targetState, rev=${snapshot.revision})")
+            } else {
+                stateManager.paymentTimeout.value = ARMING_TIMEOUT_SECONDS
+                if (stateManager.appState.value == 1 || stateManager.appState.value == 3) {
+                    stateManager.coinsInserted.value += pesoAmount
+                } else if (stateManager.appState.value == 2) {
+                    Log.d(TAG, "Coin credited directly to active session: +${seconds}s (₱$pesoAmount, rev=${snapshot.revision})")
+                }
+            }
+            stateManager.saveState()
+        }
+
+        scope.launch(Dispatchers.IO) {
+            try {
+                val eventSource = if (isQuickAdd) "Admin Quick Adjust" else "Piso Coin (₱$pesoAmount)"
+                coinEventRepo.insertEvent(
+                    CoinEvent(
+                        txId = txId,
+                        secondsAdded = seconds,
+                        source = eventSource
+                    )
+                )
+                coinEventRepo.deleteOldEvents(500)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to log coin event to audit ledger: ${e.message}")
+            }
+        }
+
+        if (!isQuickAdd) {
+            try {
+                audioManager.playCoinSound()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to play coin sound: ${e.message}")
+            }
+            try {
+                HardwareFeedback.triggerFlashlight(context, 150L)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to trigger flashlight: ${e.message}")
+            }
+        }
+
+        try {
+            Handler(Looper.getMainLooper()).post {
+                val addedMins = seconds / 60
+                if (isQuickAdd) {
+                    Toast.makeText(context, "${addedMins}m added by admin!", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "₱$pesoAmount coin accepted! (+${addedMins}m)", Toast.LENGTH_SHORT).show()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to post credit toast: ${e.message}")
+        }
+    }
+
+    private fun publishCommittedDeductSnapshot(
+        seconds: Int,
+        snapshot: SessionSnapshot
+    ) {
+        val targetState = if (snapshot.remainingSeconds <= 0) 0 else null
+        val applied = stateManager.applySessionUpdate(snapshot, targetState)
+        if (applied) {
+            stateManager.saveState()
+        }
+        try {
+            val displayMinutes = seconds / 60
+            Handler(Looper.getMainLooper()).post {
+                Toast.makeText(context, "$displayMinutes minutes deducted!", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to post deduction toast: ${e.message}")
+        }
     }
 
     private val systemMonitor: KioskSystemMonitor = KioskSystemMonitor(
@@ -151,8 +230,7 @@ class KioskEngine(
         batteryStatusFlow = systemMonitor.batteryStatus,
         armingTimeoutSeconds = ARMING_TIMEOUT_SECONDS,
         onArmSlot = { armSlot() },
-        onFinishPayment = { finishPayment() },
-        onCancelPayment = { cancelPayment() }
+        onFinishPayment = { finishPayment() }
     )
 
     internal val esp32Coordinator = KioskEsp32Coordinator(
@@ -173,191 +251,73 @@ class KioskEngine(
         delegate = esp32Coordinator
     )
 
-    val serverCoordinator: com.pisophone.kiosk.server.KioskServerCoordinator = com.pisophone.kiosk.server.KioskServerCoordinator(
-        delegate = object : com.pisophone.kiosk.server.KioskServerDelegate {
-            override fun isInitialized(): Boolean = isInitialized.get()
-            override fun getDeviceId(): String = stateManager.deviceId.value.ifBlank { KioskSecurity.getHardwareId(context) }
-            override fun getSecretKey(): String = KioskSecurity.getSharedSecret(context)
-            override fun onCreditPayment(
-                txId: String,
-                seconds: Int,
-                amount: Double,
-                operationKind: String,
-                coinAmount: Int,
-                pricePerCoin: Double,
-                boxInstallationEpoch: Long,
-                phonePairingEpoch: Long
-            ): PaymentResult {
-                return creditPayment(
-                    txId = txId,
-                    seconds = seconds,
-                    amount = amount,
-                    operationKind = operationKind,
-                    coinAmount = coinAmount,
-                    pricePerCoin = pricePerCoin,
-                    boxInstallationEpoch = boxInstallationEpoch,
-                    phonePairingEpoch = phonePairingEpoch,
-                    remainingMs = 0L // HTTP credit does not start or reset the 15-second countdown
-                )
-            }
-
-            override fun onDeductPayment(
-                seconds: Int,
-                txId: String?,
-                operationKind: String,
-                boxInstallationEpoch: Long,
-                phonePairingEpoch: Long
-            ): PaymentResult {
-                return deductPayment(
-                    seconds = seconds,
-                    txId = txId,
-                    operationKind = operationKind,
-                    boxInstallationEpoch = boxInstallationEpoch,
-                    phonePairingEpoch = phonePairingEpoch
-                )
-            }
-
-            override fun onConfigSynced(
-                price: Double?,
-                minutes: Int?,
-                alias: String?,
-                adminPin: String?,
-                slotNum: Int?
-            ) {
-                esp32Coordinator.onConfigSynced(price, minutes, alias, adminPin, slotNum)
-            }
-
-            override fun onTriggerAction(action: String, params: Map<String, String>): Boolean {
-                return when (action) {
-                    "slot_lockdown" -> {
-                        val reason = params["reason"] ?: "Device activation required."
-                        val slotNum = params["slot"]?.toIntOrNull() ?: params["slot_num"]?.toIntOrNull() ?: 0
-                        val expiresAt = params["expires_at"]?.toLongOrNull() ?: 0L
-                        esp32Coordinator.onSlotLockdown(reason, slotNum, expiresAt)
-                        true
-                    }
-                    "slot_restored" -> {
-                        val slotNum = params["slot"]?.toIntOrNull() ?: params["slot_num"]?.toIntOrNull() ?: 0
-                        esp32Coordinator.onSlotRestored(slotNum)
-                        true
-                    }
-                    "arena_mode_activate_p1" -> {
-                        val stake = params["stake"]?.toIntOrNull() ?: 5
-                        esp32Coordinator.onArenaModeSynced(true, 1, stake)
-                        true
-                    }
-                    "arena_mode_activate_p2" -> {
-                        val stake = params["stake"]?.toIntOrNull() ?: 5
-                        esp32Coordinator.onArenaModeSynced(true, 2, stake)
-                        true
-                    }
-                    "arena_mode_deactivate" -> {
-                        esp32Coordinator.onArenaModeSynced(false, 0, 0)
-                        true
-                    }
-                    else -> false
-                }
-            }
-        },
-        defaultPort = 8080
+    internal val serverCoordinator = KioskServerCoordinator(
+        context = context,
+        stateManager = stateManager,
+        coinEventRepo = coinEventRepo,
+        paymentRepo = paymentRepo,
+        getSecretKey = { KioskSecurity.getSharedSecret(context) },
+        getRealTimeBatteryInfo = { systemMonitor.getRealTimeBatteryInfo() },
+        getAudioManager = { audioManager },
+        onCreditPayment = ::creditPayment,
+        onDeductPayment = ::deductPayment,
+        isReady = { isInitialized.get() }
     )
 
-    private val supervisor: KioskSessionSupervisor = KioskSessionSupervisor(
+    private val supervisor = KioskSessionSupervisor(
         context = context,
         scope = scope,
         stateManager = stateManager,
         paymentRepo = paymentRepo,
         onSpeakWarning = { speakWarning(it) },
         onFinishPayment = { finishPayment() },
-        onCancelPayment = { cancelPayment() },
         onCloseSession = { closeSession(it) },
-        onCheckBatteryAlerts = { systemMonitor.checkPeriodicBatteryAlerts() },
-        onPeriodicHealthCheck = { healthMonitor.performPeriodicCheck() }
+        onCheckBatteryAlerts = { systemMonitor.checkPeriodicBatteryAlerts() }
     )
 
-    private val healthMonitor: KioskEngineHealthMonitor = KioskEngineHealthMonitor(
-        scope = scope,
-        stateManager = stateManager,
-        paymentRepo = paymentRepo,
-        overlayCoordinator = overlayCoordinator,
-        supervisor = supervisor,
-        isEngineReady = { isEngineReady },
-        onRetryInitialization = { retryInitializationIfNeeded() }
-    )
-
+    private var nanoServer: KioskHttpServer? = null
     private var slotBusyJob: Job? = null
-    private var initJob: Job? = null
     private var engineStartTimeMs = 0L
-
-    fun retryInitializationIfNeeded() {
-        if (initializationState.value == InitializationState.FAILED || initializationState.value == InitializationState.UNINITIALIZED) {
-            triggerInitialization()
-        }
-    }
-
-    fun triggerInitialization() {
-        if (initializationState.value == InitializationState.INITIALIZING || initializationState.value == InitializationState.READY) {
-            return
-        }
-        initJob?.cancel()
-        initJob = scope.launch(Dispatchers.IO) {
-            var attempt = 0
-            var success = false
-
-            while (attempt < MAX_INIT_ATTEMPTS && !success && isActive) {
-                attempt++
-                initializationState.value = InitializationState.INITIALIZING
-                Log.i(TAG, "Starting engine initialization (attempt $attempt of $MAX_INIT_ATTEMPTS)...")
-                try {
-                    stateManager.restoreState()
-                    paymentRepo.migrateAndInitialize(context)
-
-                    audioManager.initAudioEngine()
-
-                    if (!stateManager.esp32Ip.isNullOrBlank()) {
-                        esp32Manager.setEsp32Ip(stateManager.esp32Ip)
-                    }
-
-                    if (!KioskActivationManager.isPairingCompleted(context) && !KioskSecurity.isProvisioned(context)) {
-                        KioskActivationManager.startSetupWindow(context)
-                    }
-
-                    Handler(Looper.getMainLooper()).post {
-                        overlayCoordinator.setupOverlay()
-                    }
-
-                    esp32Manager.sendDirectPairingRequest()
-                    esp32Manager.startHeartbeatLoop { stateManager.deviceIp.value }
-
-                    supervisor.start()
-                    healthMonitor.start()
-
-                    serverCoordinator.startServer(8080)
-
-                    systemMonitor.registerScreenOffReceiver()
-                    systemMonitor.registerBatteryMonitor()
-
-                    isInitialized.set(true)
-                    initializationState.value = InitializationState.READY
-                    success = true
-                    Log.i(TAG, "Engine initialization completed successfully on attempt $attempt.")
-                } catch (e: Exception) {
-                    Log.e(TAG, "Engine initialization attempt $attempt failed: ${e.message}", e)
-                    if (attempt >= MAX_INIT_ATTEMPTS) {
-                        initializationState.value = InitializationState.FAILED
-                        Log.e(TAG, "Engine initialization failed permanently after $MAX_INIT_ATTEMPTS attempts.")
-                    } else {
-                        val backoffMs = (1000L * (1 shl (attempt - 1))).coerceAtMost(10000L)
-                        delay(backoffMs)
-                    }
-                }
-            }
-        }
-    }
 
     fun start() {
         engineStartTimeMs = System.currentTimeMillis()
-        triggerInitialization()
+
+        scope.launch(Dispatchers.IO) {
+            try {
+                // 1. Restore state and initialize payment database
+                stateManager.restoreState()
+                paymentRepo.migrateAndInitialize(context)
+                isInitialized.set(true)
+                Log.i(TAG, "Initialization complete. Payment endpoints are now available.")
+
+                audioManager.initAudioEngine()
+
+                if (!stateManager.esp32Ip.isNullOrBlank()) {
+                    esp32Manager.setEsp32Ip(stateManager.esp32Ip)
+                }
+
+                if (!KioskActivationManager.isPairingCompleted(context) && !KioskSecurity.isProvisioned(context)) {
+                    KioskActivationManager.startSetupWindow(context)
+                }
+
+                Handler(Looper.getMainLooper()).post {
+                    overlayCoordinator.setupOverlay()
+                }
+
+                ensureHttpServerRunning()
+
+                esp32Manager.triggerCandidateDiscovery(stateManager.deviceIp.value)
+                esp32Manager.startHeartbeatLoop { stateManager.deviceIp.value }
+
+                supervisor.start()
+                startHealthMonitor()
+
+                systemMonitor.registerScreenOffReceiver()
+                systemMonitor.registerBatteryMonitor()
+            } catch (e: Exception) {
+                Log.e(TAG, "Engine start initialization failed: ${e.message}", e)
+            }
+        }
 
         scope.launch {
             stateManager.appState.collect { state ->
@@ -371,6 +331,45 @@ class KioskEngine(
     }
 
     @Synchronized
+    fun ensureHttpServerRunning(): Boolean {
+        if (nanoServer?.isAlive == true) {
+            val healthy = checkHttpLoopbackHealth()
+            if (healthy) return true
+            Log.w(TAG, "NanoHTTPD is alive but loopback health probe failed. Rebuilding listener...")
+        }
+        try {
+            nanoServer?.stop()
+        } catch (_: Exception) {}
+        return try {
+            val server = KioskHttpServer(context, SERVER_PORT, serverCoordinator)
+            server.start(fi.iki.elonen.NanoHTTPD.SOCKET_READ_TIMEOUT, false)
+            nanoServer = server
+            Log.i(TAG, "NanoHTTPD HTTP server successfully started/repaired on port $SERVER_PORT")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start/repair NanoHTTPD server: ${e.message}")
+            false
+        }
+    }
+
+    private fun checkHttpLoopbackHealth(): Boolean {
+        return try {
+            val url = java.net.URL("http://127.0.0.1:$SERVER_PORT/ping")
+            val connection = url.openConnection() as java.net.HttpURLConnection
+            connection.connectTimeout = 1500
+            connection.readTimeout = 1500
+            connection.requestMethod = "GET"
+            try {
+                connection.responseCode == 200
+            } finally {
+                connection.disconnect()
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    @Synchronized
     fun addTimeFromMaster(seconds: Int, source: String, txId: String?, amount: Double = 1.0): Boolean {
         if (txId.isNullOrBlank()) {
             Log.w(TAG, "Missing transaction ID for coin credit from $source")
@@ -380,27 +379,22 @@ class KioskEngine(
         return result == PaymentResult.APPLIED || result == PaymentResult.ALREADY_APPLIED
     }
 
-    fun triggerDirectPairing(targetIp: String? = null, targetMac: String? = null) {
-        esp32Manager.sendDirectPairingRequest(targetIp, targetMac)
+    fun triggerCandidateDiscovery() {
+        esp32Manager.triggerCandidateDiscovery(stateManager.deviceIp.value)
     }
 
-    fun unpairEsp32(onResult: ((Boolean, String?) -> Unit)? = null) {
-        esp32Manager.unpair(onResult)
-    }
-
-    fun updateEsp32StaticIp(newIp: String): Boolean {
-        val valid = KioskSecurity.setConfiguredEsp32Ip(context, newIp)
-        if (valid) {
-            val cleanIp = newIp.trim()
-            stateManager.esp32Ip = cleanIp
-            esp32Manager.setEsp32Ip(cleanIp)
-            triggerDirectPairing(targetIp = cleanIp)
+    fun probeEsp32Connection(ip: String): Boolean {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            scope.launch(Dispatchers.IO) {
+                esp32Manager.probeEsp32Connection(ip)
+            }
+            return false
         }
-        return valid
+        return esp32Manager.probeEsp32Connection(ip)
     }
 
-    fun closeSession(sendUnarmToEsp: Boolean = false, command: String = "DONE") {
-        esp32Manager.closeSession(sendUnarmToEsp, command)
+    fun closeSession(sendUnarmToEsp: Boolean = false) {
+        esp32Manager.closeSession(sendUnarmToEsp)
     }
 
     fun triggerSlotBusy() {
@@ -417,7 +411,7 @@ class KioskEngine(
     }
 
     fun finishPayment() {
-        closeSession(sendUnarmToEsp = true, command = "DONE")
+        closeSession(sendUnarmToEsp = true)
         if (stateManager.coinsInserted.value > 0) {
             stateManager.appState.value = 2
         } else {
@@ -426,17 +420,6 @@ class KioskEngine(
             } else {
                 stateManager.appState.value = 0
             }
-        }
-        stateManager.coinsInserted.value = 0
-        stateManager.saveState()
-    }
-
-    fun cancelPayment() {
-        closeSession(sendUnarmToEsp = true, command = "CANCEL")
-        if (stateManager.appState.value == 3) {
-            stateManager.appState.value = 2
-        } else {
-            stateManager.appState.value = 0
         }
         stateManager.coinsInserted.value = 0
         stateManager.saveState()
@@ -480,19 +463,63 @@ class KioskEngine(
         stateManager.saveState()
     }
 
-    fun ensureHttpServerRunning() {
-        serverCoordinator.startServer(8080)
+    private fun startHealthMonitor() {
+        scope.launch(Dispatchers.Main) {
+            while (isActive) {
+                delay(10_000L)
+                try {
+                    supervisor.ensureRunning()
+                    val appState = stateManager.appState.value
+                    if (appState == 2 || appState == 3) {
+                        val deadline = stateManager.sessionExpiryDeadlineMs.value
+                        val nowMonotonic = android.os.SystemClock.elapsedRealtime()
+                        if (deadline > 0L && nowMonotonic >= deadline) {
+                            val expiryResult = paymentRepo.expireSessionIfDueBlocking()
+                            if (expiryResult.didExpire) {
+                                val applied = stateManager.applySessionUpdate(
+                                    deadlineMs = expiryResult.sessionState.sessionExpiryDeadlineMs,
+                                    remainingSeconds = expiryResult.sessionState.sessionTimeRemaining,
+                                    revision = expiryResult.sessionState.revision,
+                                    targetAppState = 0
+                                )
+                                if (applied) {
+                                    Log.w(TAG, "Health monitor: Session deadline expired ($deadline <= $nowMonotonic). Forcing lock state.")
+                                    stateManager.saveState()
+                                } else {
+                                    Log.d(TAG, "Health monitor: Skipping stale expiration lock because newer revision is active")
+                                }
+                            } else {
+                                stateManager.applySessionUpdate(
+                                    expiryResult.sessionState.sessionExpiryDeadlineMs,
+                                    expiryResult.sessionState.sessionTimeRemaining,
+                                    expiryResult.sessionState.revision
+                                )
+                            }
+                        }
+                    }
+
+                    val currentAppState = stateManager.appState.value
+                    if (currentAppState == 0 || currentAppState == 1) {
+                        if (!overlayCoordinator.isOverlayHealthy()) {
+                            Log.w(TAG, "Health monitor: Overlay missing or detached while locked/armed (AppState: $currentAppState). Rebuilding...")
+                            overlayCoordinator.remove()
+                            overlayCoordinator.setupOverlay()
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Health monitor check failed: ${e.message}")
+                }
+            }
+        }
     }
 
-    fun isHttpServerHealthy(): Boolean = serverCoordinator.isServerRunning()
-
     fun stop() {
-        serverCoordinator.stopServer()
         scope.cancel()
         supervisor.stop()
         systemMonitor.shutdown()
         esp32Manager.shutdown()
         audioManager.shutdown()
+        nanoServer?.stop()
         overlayCoordinator.remove()
     }
 }

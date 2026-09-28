@@ -49,7 +49,7 @@ fun SecurityVaultView(
                 name = resolveInfo.loadLabel(pm).toString(),
                 packageName = pkgName,
                 icon = resolveInfo.activityInfo.loadIcon(pm),
-                bitmap = try { resolveInfo.activityInfo.loadIcon(pm).toBitmap().asImageBitmap() } catch (e: Exception) { null }
+                bitmap = try { resolveInfo.activityInfo.loadIcon(pm).toBitmap().asImageBitmap() } catch (_: Exception) { null }
             )
         }.sortedBy { it.name }
     }
@@ -107,14 +107,6 @@ fun SecurityVaultView(
                         showRecoveryHub = true
                     }
                 }
-            )
-
-            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp), color = Color(0xFF334155))
-
-            // Section 1B: ESP32 Master Controller Static IP Configuration
-            VaultEsp32SettingsSection(
-                context = context,
-                onShowHelp = { t, d -> activeHelpDialog = Pair(t, d) }
             )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp), color = Color(0xFF334155))

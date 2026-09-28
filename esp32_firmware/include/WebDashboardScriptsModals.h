@@ -159,6 +159,54 @@ window.occupySlot = function(slot) {
     modal.style.display = 'flex';
 };
 
+window.showPairingQrModal = function(slotNum) {
+    activeSlotNum = slotNum || 1;
+    const modal = document.getElementById('qr_pair_modal');
+    if (!modal) return;
+    const slotTitle = document.getElementById('qr_slot_title');
+    if (slotTitle) slotTitle.textContent = activeSlotNum;
+    const ipElem = document.getElementById('qr_modal_ip');
+    const hostIp = window.location.hostname || "kioskmanager.local";
+    if (ipElem) ipElem.textContent = hostIp;
+
+    const payloadObj = {
+        pisophone_pair: 1,
+        ip: hostIp,
+        port: 80,
+        ws_port: 81,
+        mac: ESP32_MAC,
+        secret: ESP32_SECRET,
+        slot: activeSlotNum,
+        name: "Slot #" + activeSlotNum
+    };
+    const payloadStr = JSON.stringify(payloadObj);
+
+    modal.style.display = 'flex';
+    try {
+        if (typeof QRious !== 'undefined') {
+            new QRious({
+                element: document.getElementById('qr_canvas'),
+                value: payloadStr,
+                size: 260,
+                level: 'M'
+            });
+        } else {
+            const fb = document.getElementById('qr_fallback_text');
+            if (fb) {
+                fb.textContent = payloadStr;
+                fb.style.display = 'block';
+            }
+        }
+    } catch (e) {
+        console.error("QR render error:", e);
+    }
+};
+
+window.closePairingQrModal = function() {
+    const modal = document.getElementById('qr_pair_modal');
+    if (modal) modal.style.display = 'none';
+};
+
 window.openTokenModal = function() {
     document.getElementById('token_modal').style.display = 'flex';
     document.getElementById('token_input').value = '';
@@ -196,8 +244,7 @@ window.submitSlotToken = function() {
 
 window.unpairSlot = function(slot) {
     if (!confirm('Unpair Slot #' + slot + '? This will free the seat slot on this ESP32. The coin slot will no longer accept coins for this device until paired again.')) return;
-    const url = '/api/slots/unpair?slot=' + slot;
-    fetch(url, { method: 'POST' })
+    fetch('/api/slots/unpair?slot=' + slot, { method: 'POST' })
         .then(res => res.json())
         .then(data => {
             if (data.success) {

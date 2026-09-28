@@ -72,7 +72,7 @@ class AndroidKioskSystemController(
     override fun getScreenBrightness(): Float {
         return try {
             Settings.System.getInt(appContext.contentResolver, Settings.System.SCREEN_BRIGHTNESS).toFloat()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             DEFAULT_BRIGHTNESS
         }
     }

@@ -63,7 +63,7 @@ int findSlotIndexForDevice(String devId, String ip) {
     return -1;
 }
 
-bool unpairSlot(int slotNum, bool force) {
+bool unpairSlot(int slotNum) {
     if (slotNum < 1 || slotNum > maxLicensedSlots) return false;
     int idx = slotNum - 1;
     String prevDevId = licenseSlots[idx].deviceId;
@@ -76,13 +76,17 @@ bool unpairSlot(int slotNum, bool force) {
     String activeDev = getActiveCoinSessionId();
     bool ownsActiveSession = (activeDev.length() > 0 && (activeDev == prevDevId || activeDev == prevIp));
     if (ownsActiveSession) {
-        Serial.printf("[*] Unpair slot #%d: Force releasing active/draining coin session for departing device %s\n", slotNum, activeDev.c_str());
-        releaseCoinSlot(activeDev, CoinSlotOwnerType::ANY, true, "UNPAIRED");
+        CoinSlotState state = getCoinSlotState();
+        if (state == CoinSlotState::ARMED || state == CoinSlotState::DRAINING || state == CoinSlotState::RESERVED_ARMING) {
+            Serial.printf("[-] Unpair slot #%d rejected: Device %s owns active/draining session.\n", slotNum, prevDevId.c_str());
+            return false;
+        }
     }
 
     if ((prevDevId.length() > 0 && hasPendingPaymentsForTarget(prevDevId)) ||
         (prevIp.length() > 0 && hasPendingPaymentsForTarget(prevIp))) {
-        Serial.printf("[*] Unpair slot #%d: Notice: Device %s has unresolved payments in queue; proceeding with unpair.\n", slotNum, prevDevId.c_str());
+        Serial.printf("[-] Unpair slot #%d rejected: Device %s has unresolved payments in queue.\n", slotNum, prevDevId.c_str());
+        return false;
     }
 
     Serial.printf("[+] Unpairing Slot #%d (was %s / %s). Seat remains open.\n", slotNum, prevDevId.c_str(), prevIp.c_str());
@@ -229,9 +233,15 @@ bool checkReplayProtection(String deviceId, unsigned long long newTs) {
 }
 
 bool verifyTelemetryAuth(String deviceId, String tsStr, String sig) {
-    if (deviceId.length() == 0 || sharedSecret.length() == 0) return false;
-    String expectedSig = calculateHMAC(deviceId + ":" + tsStr, sharedSecret);
-    if (!sig.equalsIgnoreCase(expectedSig)) {
+    if (deviceId.length() == 0) return false;
+    String secKey = (sharedSecret.length() > 0) ? sharedSecret : String(MASTER_CRYPTO_SECRET);
+    String expectedSig = calculateHMAC(deviceId + ":" + tsStr, secKey);
+    bool valid = sig.equalsIgnoreCase(expectedSig);
+    if (!valid && sharedSecret.length() > 0 && sharedSecret != MASTER_CRYPTO_SECRET) {
+        String masterExpectedSig = calculateHMAC(deviceId + ":" + tsStr, MASTER_CRYPTO_SECRET);
+        valid = sig.equalsIgnoreCase(masterExpectedSig);
+    }
+    if (!valid) {
         return false;
     }
     unsigned long long ts = strtoull(tsStr.c_str(), NULL, 10);

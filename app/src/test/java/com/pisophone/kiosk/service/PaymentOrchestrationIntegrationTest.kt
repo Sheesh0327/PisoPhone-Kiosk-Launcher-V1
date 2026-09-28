@@ -55,8 +55,8 @@ class PaymentOrchestrationIntegrationTest {
         val boxEpoch = 123456789L
         val phoneEpoch = 987654321L
 
-        // 1. Initial credit via KioskEngine
-        val httpResult = engine.creditPayment(
+        // 1. Initial credit via HTTP Server Coordinator
+        val httpResult = engine.serverCoordinator.creditPayment(
             txId = txId,
             seconds = seconds,
             amount = amount,
@@ -102,7 +102,7 @@ class PaymentOrchestrationIntegrationTest {
 
         val txId = "QUICK_ADD_1"
         val seconds = 600
-        val result = engine.creditPayment(
+        val result = engine.serverCoordinator.creditPayment(
             txId = txId,
             seconds = seconds,
             amount = 0.0,
@@ -142,7 +142,7 @@ class PaymentOrchestrationIntegrationTest {
         assertEquals(PaymentResult.APPLIED, result)
         assertEquals(1, stateManager.appState.value) // Armed payment state
         assertEquals(5, stateManager.coinsInserted.value)
-        assertEquals(15, stateManager.paymentTimeout.value)
+        assertEquals(20, stateManager.paymentTimeout.value)
     }
 
     @Test
@@ -159,7 +159,7 @@ class PaymentOrchestrationIntegrationTest {
         )
         stateManager.appState.value = 2
 
-        val result = engine.deductPayment(
+        val result = engine.serverCoordinator.onDeductTime(
             seconds = 300,
             txId = "DEDUCT_FULL",
             operationKind = "MANUAL_DEDUCTION",
@@ -176,7 +176,7 @@ class PaymentOrchestrationIntegrationTest {
     fun testInitializationGuardRejectsEarlyRequests() {
         engine.setInitializedForTesting(false)
 
-        val creditResult = engine.creditPayment(
+        val creditResult = engine.serverCoordinator.creditPayment(
             txId = "EARLY_CREDIT",
             seconds = 300,
             amount = 5.0,
@@ -188,7 +188,7 @@ class PaymentOrchestrationIntegrationTest {
         )
         assertEquals(PaymentResult.FAILED, creditResult)
 
-        val deductResult = engine.deductPayment(
+        val deductResult = engine.serverCoordinator.onDeductTime(
             seconds = 60,
             txId = "EARLY_DEDUCT",
             operationKind = "MANUAL_DEDUCTION",

@@ -70,7 +70,7 @@ object KioskRecoveryManager {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 context.startActivity(settingsIntent)
-            } catch (e: Exception) {}
+            } catch (_: Exception) {}
         }
         return success
     }
@@ -156,7 +156,7 @@ object KioskRecoveryManager {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 context.startActivity(intent)
-            } catch (e: Exception) {}
+            } catch (_: Exception) {}
 
             true
         } catch (e: Exception) {

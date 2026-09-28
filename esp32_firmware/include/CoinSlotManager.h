@@ -65,11 +65,6 @@ void releaseCoinSlot(const String& sessionId, CoinSlotOwnerType ownerType = Coin
 bool refreshCoinSlotTtl(const String& sessionId, CoinSlotOwnerType ownerType, unsigned long ttlMs);
 
 /**
- * Returns remaining time in milliseconds for active armed/draining session.
- */
-unsigned long getRemainingCoinSlotMs();
-
-/**
  * Non-blocking main loop processor for pulse accumulation, debouncing,
  * payment callback dispatching, and session timeout management.
  */

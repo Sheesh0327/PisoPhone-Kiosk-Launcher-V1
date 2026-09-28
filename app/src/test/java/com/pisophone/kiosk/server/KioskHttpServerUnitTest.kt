@@ -1,53 +1,260 @@
 package com.pisophone.kiosk.server
 
-import android.content.Context
-import androidx.test.core.app.ApplicationProvider
-import com.pisophone.kiosk.db.AppDatabase
-import com.pisophone.kiosk.protocol.KioskProtocol
 import com.pisophone.kiosk.repository.PaymentResult
 import com.pisophone.kiosk.security.KioskSecurity
-import com.pisophone.kiosk.service.KioskEngine
-import com.pisophone.kiosk.service.KioskStateManager
 import fi.iki.elonen.NanoHTTPD
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.runBlocking
-import org.junit.After
-import org.junit.Assert.*
+import org.json.JSONObject
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.shadows.ShadowLooper
+import java.io.ByteArrayInputStream
+import java.io.InputStream
 
-@OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 class KioskHttpServerUnitTest {
 
-    private lateinit var context: Context
-    private lateinit var stateManager: KioskStateManager
-    private lateinit var engine: KioskEngine
-    private lateinit var db: AppDatabase
-    private lateinit var paymentHandler: KioskHttpPaymentHandler
-    private val sharedSecret = "PISOPHONE_SHARED_SECRET_KEY_32B!"
+    private val testSecret = "0123456789abcdef0123456789abcdef"
+    private var simulatedPaymentResult: PaymentResult = PaymentResult.APPLIED
+    private var lastCreditedTxId: String? = null
+    private var lastCreditedSeconds: Int? = null
+    private var lastCreditedAmount: Double? = null
+    private var creditPaymentCallCount: Int = 0
+
+    private val fakeDelegate = object : KioskServerDelegate {
+        override fun getSecretKey(): String = testSecret
+        override fun onHeartbeat(clientIp: String?) {}
+        override fun getStatusJson(): JSONObject = JSONObject()
+        override fun getAuditEventsJson(): String = "[]"
+        override fun getSessionTimeRemaining(): Int = 300
+        override fun getAppState(): Int = 2
+        override fun isReady(): Boolean = true
+        override fun getDeviceId(): String = "TEST_DEVICE"
+        override fun creditPayment(
+            txId: String,
+            seconds: Int,
+            amount: Double,
+            operationKind: String,
+            coinAmount: Int,
+            pricePerCoin: Double,
+            boxInstallationEpoch: Long,
+            phonePairingEpoch: Long
+        ): PaymentResult {
+            creditPaymentCallCount++
+            lastCreditedTxId = txId
+            lastCreditedSeconds = seconds
+            lastCreditedAmount = amount
+            return simulatedPaymentResult
+        }
+        override fun onDeductTime(
+            seconds: Int,
+            txId: String?,
+            operationKind: String,
+            boxInstallationEpoch: Long,
+            phonePairingEpoch: Long
+        ): PaymentResult = simulatedPaymentResult
+        override fun onConfigUpdated(price: Double?, minutes: Int?, deviceName: String?, adminPin: String?, slotNum: Int?) {}
+        override fun onTriggerAction(action: String, slotNum: Int?, extra: Map<String, String>?) {}
+        override fun getCrashLog(): String? = null
+    }
+
+    private lateinit var server: KioskHttpServer
+    private lateinit var context: android.content.Context
 
     @Before
     fun setUp() {
-        context = ApplicationProvider.getApplicationContext()
-        KioskSecurity.setSharedSecret(context, sharedSecret)
-        stateManager = KioskStateManager(context)
-        stateManager.deviceId.value = "PHONE_A"
-        engine = KioskEngine(context, stateManager)
-        db = AppDatabase.getDatabase(context)
+        context = androidx.test.core.app.ApplicationProvider.getApplicationContext()
+        server = KioskHttpServer(context = context, port = 8080, delegate = fakeDelegate)
+        creditPaymentCallCount = 0
+        lastCreditedTxId = null
+        lastCreditedSeconds = null
+        lastCreditedAmount = null
+    }
 
-        engine.paymentRepo.migrateAndInitialize(context)
-        engine.setInitializedForTesting(true)
+    private fun createSession(
+        uri: String,
+        params: Map<String, String>,
+        headers: Map<String, String> = mapOf("remote-addr" to "192.168.4.2")
+    ): NanoHTTPD.IHTTPSession {
+        return object : NanoHTTPD.IHTTPSession {
+            override fun execute() {}
+            override fun getCookies(): NanoHTTPD.CookieHandler? = null
+            override fun getHeaders(): Map<String, String> = headers
+            override fun getInputStream(): InputStream = ByteArrayInputStream(ByteArray(0))
+            override fun getMethod(): NanoHTTPD.Method = NanoHTTPD.Method.POST
+            override fun getParms(): Map<String, String> = params
+            override fun getParameters(): Map<String, List<String>> = params.mapValues { listOf(it.value) }
+            override fun getQueryParameterString(): String = ""
+            override fun getUri(): String = uri
+            override fun parseBody(files: MutableMap<String, String>?) {}
+            override fun getRemoteIpAddress(): String = headers["remote-addr"] ?: "127.0.0.1"
+            override fun getRemoteHostName(): String = "test-host"
+        }
+    }
 
-        val delegate = object : KioskServerDelegate {
-            override fun isInitialized(): Boolean = engine.isEngineReady || engine.paymentRepo != null
-            override fun getDeviceId(): String = "PHONE_A"
-            override fun getSecretKey(): String = sharedSecret
-            override fun onCreditPayment(
+    private fun parseQueryString(query: String): Map<String, String> {
+        return query.split("&").associate {
+            val parts = it.split("=", limit = 2)
+            val key = parts[0]
+            val value = if (parts.size > 1) parts[1] else ""
+            key to value
+        }
+    }
+
+    private fun createEncryptedParams(uri: String, query: String): Map<String, String> {
+        val decryptedParams = parseQueryString(query)
+        val txId = decryptedParams["tx_id"] ?: decryptedParams["nonce"] ?: ""
+        val deviceId = decryptedParams["device_id"] ?: ""
+        val ts = decryptedParams["ts"] ?: ""
+
+        val encryptedPayload = KioskSecurity.encrypt(query, testSecret)
+        val hmac = KioskSecurity.calculateHttpReqSignature(
+            method = "POST",
+            endpoint = uri,
+            recipient = deviceId,
+            txId = txId,
+            ts = ts,
+            payload = encryptedPayload,
+            secret = testSecret
+        )
+        return mapOf(
+            "payload" to encryptedPayload,
+            "hmac" to hmac,
+            "device_id" to deviceId,
+            "tx_id" to txId,
+            "ts" to ts
+        )
+    }
+
+    private fun readResponseBody(response: NanoHTTPD.Response): String {
+        return response.data?.readBytes()?.toString(Charsets.UTF_8) ?: ""
+    }
+
+    private fun makePaymentQuery(
+        txId: String,
+        seconds: Int = 300,
+        amount: Double = 5.0,
+        ts: Long = System.currentTimeMillis(),
+        deviceId: String? = null
+    ): String {
+        val targetDev = deviceId ?: "TEST_DEVICE"
+        val devParam = if (deviceId != null) "&device_id=$deviceId" else "&device_id=TEST_DEVICE"
+        return "tx_id=$txId$devParam&seconds=$seconds&amount=$amount&ts=$ts"
+    }
+
+    @Test
+    fun testAppliedReturns200Ok() {
+        simulatedPaymentResult = PaymentResult.APPLIED
+        val query = makePaymentQuery("tx-100", 300, 5.0)
+        val params = createEncryptedParams("/coin", query)
+        val session = createSession("/coin", params)
+
+        val response = server.serve(session)
+
+        assertEquals("Status must be 200", 200, response.status.requestStatus)
+        assertTrue("Body must start with OK", readResponseBody(response).startsWith("OK"))
+        assertEquals("creditPayment called once", 1, creditPaymentCallCount)
+        assertEquals("tx-100", lastCreditedTxId)
+        assertEquals(300, lastCreditedSeconds)
+        assertEquals(5.0, lastCreditedAmount ?: 0.0, 0.001)
+    }
+
+    @Test
+    fun testAlreadyAppliedReturns200AlreadyProcessed() {
+        simulatedPaymentResult = PaymentResult.ALREADY_APPLIED
+        val query = makePaymentQuery("tx-200", 300, 5.0)
+        val params = createEncryptedParams("/coin", query)
+        val session = createSession("/coin", params)
+
+        val response = server.serve(session)
+
+        assertEquals("Status must be 200", 200, response.status.requestStatus)
+        assertTrue("Body must start with ALREADY_PROCESSED", readResponseBody(response).startsWith("ALREADY_PROCESSED"))
+        assertEquals("creditPayment called once", 1, creditPaymentCallCount)
+    }
+
+    @Test
+    fun testValidationLayerAndTimestampChecks() {
+        val now = System.currentTimeMillis()
+
+        // Missing tx_id
+        val qMissingTx = "seconds=300&amount=5.0&ts=$now"
+        val resMissingTx = server.serve(createSession("/coin", createEncryptedParams("/coin", qMissingTx)))
+        assertEquals("Missing tx_id returns 400", 400, resMissingTx.status.requestStatus)
+
+        // Negative amount
+        val qNegAmount = makePaymentQuery("tx-301", 300, -5.0, now)
+        val resNegAmount = server.serve(createSession("/coin", createEncryptedParams("/coin", qNegAmount)))
+        assertEquals("Negative amount returns 400", 400, resNegAmount.status.requestStatus)
+
+        // Invalid seconds parameter
+        val qInvalidSec = "tx_id=tx-302&device_id=TEST_DEVICE&seconds=invalid&amount=5.0&ts=$now"
+        val resInvalidSec = server.serve(createSession("/coin", createEncryptedParams("/coin", qInvalidSec)))
+        assertEquals("Invalid seconds returns 400", 400, resInvalidSec.status.requestStatus)
+
+        // Missing all time parameters
+        val qNoTime = "tx_id=tx-303&device_id=TEST_DEVICE&amount=5.0&ts=$now"
+        val resNoTime = server.serve(createSession("/coin", createEncryptedParams("/coin", qNoTime)))
+        assertEquals("Missing time returns 400", 400, resNoTime.status.requestStatus)
+
+        // Stale timestamp (skew > 60s)
+        val staleTs = now - 120_000L
+        val qStale = "tx_id=tx-304&device_id=TEST_DEVICE&seconds=300&amount=5.0&ts=$staleTs"
+        val resStale = server.serve(createSession("/coin", createEncryptedParams("/coin", qStale)))
+        assertEquals("Stale timestamp returns 400", 400, resStale.status.requestStatus)
+    }
+
+    @Test
+    fun testNotEligibleReturns403() {
+        simulatedPaymentResult = PaymentResult.NOT_ELIGIBLE
+        val query = makePaymentQuery("tx-400", 300, 5.0)
+        val session = createSession("/coin", createEncryptedParams("/coin", query))
+
+        val response = server.serve(session)
+
+        assertEquals("Status must be 403", 403, response.status.requestStatus)
+        assertEquals("Body must be NOT_ELIGIBLE", "NOT_ELIGIBLE", readResponseBody(response))
+    }
+
+    @Test
+    fun testConflictReturns409() {
+        simulatedPaymentResult = PaymentResult.CONFLICT
+        val query = makePaymentQuery("tx-500", 300, 5.0)
+        val session = createSession("/coin", createEncryptedParams("/coin", query))
+
+        val response = server.serve(session)
+
+        assertEquals("Status must be 409", 409, response.status.requestStatus)
+        assertEquals("Body must be CONFLICT", "CONFLICT", readResponseBody(response))
+    }
+
+    @Test
+    fun testFailedReturns503() {
+        simulatedPaymentResult = PaymentResult.FAILED
+        val query = makePaymentQuery("tx-600", 300, 5.0)
+        val session = createSession("/coin", createEncryptedParams("/coin", query))
+
+        val response = server.serve(session)
+
+        assertEquals("Status must be 503", 503, response.status.requestStatus)
+        assertEquals("Body must be SERVICE_UNAVAILABLE", "SERVICE_UNAVAILABLE", readResponseBody(response))
+    }
+
+    @Test
+    fun testPaymentEndpointsReturn503WhenServerNotReady() {
+        var isServerReady = false
+        val unreadyDelegate = object : KioskServerDelegate {
+            override fun isReady(): Boolean = isServerReady
+            override fun getSecretKey(): String = testSecret
+            override fun onHeartbeat(clientIp: String?) {}
+            override fun getStatusJson(): JSONObject = JSONObject()
+            override fun getAuditEventsJson(): String = "[]"
+            override fun getSessionTimeRemaining(): Int = 300
+            override fun getAppState(): Int = 2
+            override fun getDeviceId(): String = "TEST_DEVICE"
+            override fun creditPayment(
                 txId: String,
                 seconds: Int,
                 amount: Double,
@@ -56,286 +263,174 @@ class KioskHttpServerUnitTest {
                 pricePerCoin: Double,
                 boxInstallationEpoch: Long,
                 phonePairingEpoch: Long
-            ): PaymentResult {
-                return engine.creditPayment(
-                    txId = txId,
-                    seconds = seconds,
-                    amount = amount,
-                    operationKind = operationKind,
-                    coinAmount = coinAmount,
-                    pricePerCoin = pricePerCoin,
-                    boxInstallationEpoch = boxInstallationEpoch,
-                    phonePairingEpoch = phonePairingEpoch,
-                    remainingMs = 0L
-                )
-            }
-
-            override fun onDeductPayment(
+            ): PaymentResult = PaymentResult.APPLIED
+            override fun onDeductTime(
                 seconds: Int,
                 txId: String?,
                 operationKind: String,
                 boxInstallationEpoch: Long,
                 phonePairingEpoch: Long
-            ): PaymentResult {
-                return engine.deductPayment(
-                    seconds = seconds,
-                    txId = txId,
-                    operationKind = operationKind,
-                    boxInstallationEpoch = boxInstallationEpoch,
-                    phonePairingEpoch = phonePairingEpoch
-                )
-            }
+            ): PaymentResult = PaymentResult.APPLIED
+            override fun onConfigUpdated(price: Double?, minutes: Int?, deviceName: String?, adminPin: String?, slotNum: Int?) {}
+            override fun onTriggerAction(action: String, slotNum: Int?, extra: Map<String, String>?) {}
+            override fun getCrashLog(): String? = null
+        }
+        val unreadyServer = KioskHttpServer(context = context, port = 8080, delegate = unreadyDelegate)
 
-            override fun onConfigSynced(price: Double?, minutes: Int?, alias: String?, adminPin: String?, slotNum: Int?) {}
-            override fun onTriggerAction(action: String, params: Map<String, String>): Boolean = true
+        val query = makePaymentQuery("tx-init-test", 300, 5.0)
+        val params = createEncryptedParams("/coin", query)
+
+        val response = unreadyServer.serve(createSession("/coin", params))
+        assertEquals("Status must be 503 while initializing", 503, response.status.requestStatus)
+        assertEquals("Body must be INITIALIZING", "INITIALIZING", readResponseBody(response))
+
+        // Once ready, it succeeds
+        isServerReady = true
+        val readyResponse = unreadyServer.serve(createSession("/coin", params))
+        assertEquals("Status must be 200 once initialized", 200, readyResponse.status.requestStatus)
+        assertTrue("Body must start with OK", readResponseBody(readyResponse).startsWith("OK"))
+    }
+
+    @Test
+    fun testNoInMemoryCacheBypassOnDuplicateAttempts() {
+        simulatedPaymentResult = PaymentResult.FAILED
+        val query = makePaymentQuery("tx-700", 300, 5.0)
+        val params = createEncryptedParams("/coin", query)
+
+        val res1 = server.serve(createSession("/coin", params))
+        assertEquals("First attempt fails with 503", 503, res1.status.requestStatus)
+        assertEquals("Delegate called once", 1, creditPaymentCallCount)
+
+        val res2 = server.serve(createSession("/coin", params))
+        assertEquals("Second attempt still calls delegate and returns 503", 503, res2.status.requestStatus)
+        assertEquals("Delegate called twice (no in-memory cache hijack)", 2, creditPaymentCallCount)
+    }
+
+    @Test
+    fun testMismatchedRecipientRejectedWith403() {
+        val now = System.currentTimeMillis()
+        val query = makePaymentQuery("tx-mismatch", 300, 5.0, now, deviceId = "OTHER_DEVICE_ID")
+        val params = createEncryptedParams("/coin", query)
+
+        val response = server.serve(createSession("/coin", params))
+        assertEquals("Status must be 403 Forbidden on recipient mismatch", 403, response.status.requestStatus)
+        assertEquals("Body must be MISMATCHED_RECIPIENT", "MISMATCHED_RECIPIENT", readResponseBody(response))
+        assertEquals("Delegate must not be called", 0, creditPaymentCallCount)
+    }
+
+    @Test
+    fun testInvalidHttpReqSignatureRejectedWith401() {
+        val now = System.currentTimeMillis()
+        val query = "tx_id=tx-badsig&device_id=TEST_DEVICE&seconds=300&amount=5.0&ts=$now"
+        val params = createEncryptedParams("/coin", query).toMutableMap().apply {
+            put("hmac", "bad_signature_value")
         }
 
-        paymentHandler = KioskHttpPaymentHandler(delegate)
-    }
-
-    @After
-    fun tearDown() {
-        runBlocking(Dispatchers.IO) {
-            db.clearAllTables()
-        }
-        ShadowLooper.idleMainLooper()
-    }
-
-    private fun createMockSession(
-        uri: String,
-        method: NanoHTTPD.Method,
-        params: Map<String, String>
-    ): NanoHTTPD.IHTTPSession {
-        return object : NanoHTTPD.IHTTPSession {
-            override fun execute() {}
-            override fun getCookies() = null
-            override fun getHeaders() = HashMap<String, String>()
-            override fun getInputStream() = "".byteInputStream()
-            override fun getMethod() = method
-            override fun getParms() = HashMap(params)
-            override fun getQueryParameterString() = ""
-            override fun getUri() = uri
-            override fun parseBody(files: MutableMap<String, String>?) {}
-            override fun getRemoteIpAddress() = "192.168.1.10"
-            override fun getRemoteHostName() = "192.168.1.10"
-            override fun getParameters() = HashMap<String, MutableList<String>>()
-        }
+        val response = server.serve(createSession("/coin", params))
+        assertEquals("Status must be 401 Unauthorized on invalid signature", 401, response.status.requestStatus)
+        assertEquals("Body must be HMAC verification failed", "HMAC verification failed", readResponseBody(response))
+        assertEquals("Delegate must not be called", 0, creditPaymentCallCount)
     }
 
     @Test
-    fun testQuickAddWhilePhoneIsLockedUnlocksDirectlyWithoutCountdown() {
-        stateManager.appState.value = 0 // Locked
-        stateManager.sessionTimeRemaining.value = 0
-        stateManager.paymentTimeout.value = 0
+    fun testValidHttpReqSignatureAndSignedAcknowledgment() {
+        simulatedPaymentResult = PaymentResult.APPLIED
+        val now = System.currentTimeMillis()
+        val myDeviceId = "TEST_DEVICE"
+        val query = "tx_id=tx-valid&device_id=$myDeviceId&seconds=300&amount=5.0&ts=$now"
+        val params = createEncryptedParams("/coin", query)
 
-        val txId = "tx-quick-lock-01"
-        val seconds = 300 // 5 minutes
-        val now = System.currentTimeMillis().toString()
-        val plainParams = "minutes=5&seconds=300&amount=0&tx_id=$txId&device_id=PHONE_A&ts=$now&op_kind=2"
-        val encryptedPayload = KioskSecurity.encrypt(plainParams, sharedSecret)
-        val hmac = KioskProtocol.calculateHttpReqSignature("GET", "/add_time", "PHONE_A", txId, now, encryptedPayload, sharedSecret)
-
-        val parms = mapOf(
-            "payload" to encryptedPayload,
-            "hmac" to hmac,
-            "device_id" to "PHONE_A",
-            "tx_id" to txId,
-            "ts" to now
-        )
-
-        val session = createMockSession("/add_time", NanoHTTPD.Method.GET, parms)
-        val response = paymentHandler.handlePaymentRequest(session)
-
-        assertEquals(NanoHTTPD.Response.Status.OK, response.status)
-
-        // Read response body
-        val reader = response.data.bufferedReader()
-        val body = reader.readText()
-
-        assertTrue("Response body must start with OK", body.startsWith("OK"))
-        assertTrue("Response must contain tx_id", body.contains("tx_id=$txId"))
-        assertTrue("Response must contain seconds=300", body.contains("seconds=300"))
-        assertTrue("Response must contain v_sig", body.contains("v_sig="))
-
-        // Verify phone state: transitioned to active session (appState=2) with 300 seconds, and NO payment timeout
-        assertEquals(2, stateManager.appState.value)
-        assertEquals(300, stateManager.sessionTimeRemaining.value)
-        assertEquals(0, stateManager.paymentTimeout.value)
+        val response = server.serve(createSession("/coin", params))
+        assertEquals("Status must be 200 OK", 200, response.status.requestStatus)
+        val body = readResponseBody(response)
+        assertTrue("Body must start with OK", body.startsWith("OK:"))
+        assertTrue("Body must contain tx_id=tx-valid", body.contains("tx_id=tx-valid"))
+        assertTrue("Body must contain device_id=$myDeviceId", body.contains("device_id=$myDeviceId"))
+        assertTrue("Body must contain v_sig=", body.contains("v_sig="))
+        assertEquals("Delegate called once", 1, creditPaymentCallCount)
     }
 
     @Test
-    fun testQuickAddWhilePhoneIsPlayingExtendsActiveTime() {
-        // Initialize an active base session of 600s
-        engine.creditPayment("tx-base-00", 600, 5.0, "COIN")
-        stateManager.appState.value = 2 // Active / Playing
-        stateManager.paymentTimeout.value = 0
+    fun testQuickAdjustAddTimePositiveMinutes() {
+        simulatedPaymentResult = PaymentResult.APPLIED
+        val now = System.currentTimeMillis()
+        val myDeviceId = "TEST_DEVICE"
+        val txId = "adj-TEST_DEVICE-12345"
+        val query = "device_id=$myDeviceId&tx_id=$txId&seconds=60&amount=0&ts=$now"
+        val params = createEncryptedParams("/add_time", query)
 
-        val txId = "tx-quick-play-02"
-        val seconds = 300 // 5 minutes
-        val now = System.currentTimeMillis().toString()
-        val plainParams = "minutes=5&seconds=300&amount=0&tx_id=$txId&device_id=PHONE_A&ts=$now&op_kind=2"
-        val encryptedPayload = KioskSecurity.encrypt(plainParams, sharedSecret)
-        val hmac = KioskProtocol.calculateHttpReqSignature("GET", "/add_time", "PHONE_A", txId, now, encryptedPayload, sharedSecret)
-
-        val parms = mapOf(
-            "payload" to encryptedPayload,
-            "hmac" to hmac,
-            "device_id" to "PHONE_A",
-            "tx_id" to txId,
-            "ts" to now
-        )
-
-        val session = createMockSession("/add_time", NanoHTTPD.Method.GET, parms)
-        val response = paymentHandler.handlePaymentRequest(session)
-
-        assertEquals(NanoHTTPD.Response.Status.OK, response.status)
-        assertEquals(2, stateManager.appState.value)
-        assertEquals(900, stateManager.sessionTimeRemaining.value) // 600 + 300
-        assertEquals(0, stateManager.paymentTimeout.value)
+        val response = server.serve(createSession("/add_time", params))
+        assertEquals("Status must be 200 OK", 200, response.status.requestStatus)
+        val body = readResponseBody(response)
+        assertTrue("Body must start with OK", body.startsWith("OK:"))
+        assertTrue("Body must contain tx_id=$txId", body.contains("tx_id=$txId"))
+        assertTrue("Body must contain device_id=$myDeviceId", body.contains("device_id=$myDeviceId"))
+        assertTrue("Body must contain seconds=60", body.contains("seconds=60"))
+        assertTrue("Body must contain amount=0", body.contains("amount=0"))
+        assertTrue("Body must contain v_sig=", body.contains("v_sig="))
+        assertEquals("Delegate called once", 1, creditPaymentCallCount)
+        assertEquals(txId, lastCreditedTxId)
+        assertEquals(60, lastCreditedSeconds)
+        assertEquals(0.0, lastCreditedAmount ?: 1.0, 0.001)
     }
 
     @Test
-    fun testRetrySameTransactionReturnsAlreadyProcessedAndCreditsOnce() {
-        stateManager.appState.value = 0
-        stateManager.sessionTimeRemaining.value = 0
+    fun testQuickAdjustDeductTimeNegativeMinutes() {
+        simulatedPaymentResult = PaymentResult.APPLIED
+        val now = System.currentTimeMillis()
+        val myDeviceId = "TEST_DEVICE"
+        val txId = "adj-TEST_DEVICE-deduct-123"
+        val query = "device_id=$myDeviceId&tx_id=$txId&seconds=-60&amount=0&ts=$now"
+        val params = createEncryptedParams("/add_time", query)
 
-        val txId = "tx-dedup-03"
-        val seconds = 300
-        val now = System.currentTimeMillis().toString()
-        val plainParams = "minutes=5&seconds=300&amount=0&tx_id=$txId&device_id=PHONE_A&ts=$now&op_kind=2"
-        val encryptedPayload = KioskSecurity.encrypt(plainParams, sharedSecret)
-        val hmac = KioskProtocol.calculateHttpReqSignature("GET", "/add_time", "PHONE_A", txId, now, encryptedPayload, sharedSecret)
-
-        val parms = mapOf(
-            "payload" to encryptedPayload,
-            "hmac" to hmac,
-            "device_id" to "PHONE_A",
-            "tx_id" to txId,
-            "ts" to now
-        )
-
-        // 1. First execution
-        val session1 = createMockSession("/add_time", NanoHTTPD.Method.GET, parms)
-        val response1 = paymentHandler.handlePaymentRequest(session1)
-        assertEquals(NanoHTTPD.Response.Status.OK, response1.status)
-        val body1 = response1.data.bufferedReader().readText()
-        assertTrue(body1.startsWith("OK"))
-        assertEquals(300, stateManager.sessionTimeRemaining.value)
-
-        // 2. Retry with same transaction ID
-        val session2 = createMockSession("/add_time", NanoHTTPD.Method.GET, parms)
-        val response2 = paymentHandler.handlePaymentRequest(session2)
-        assertEquals(NanoHTTPD.Response.Status.OK, response2.status)
-        val body2 = response2.data.bufferedReader().readText()
-        assertTrue("Second delivery must return ALREADY_PROCESSED status", body2.startsWith("ALREADY_PROCESSED"))
-        assertTrue("Second delivery must contain same tx_id", body2.contains("tx_id=$txId"))
-
-        // Time must NOT be added twice!
-        assertEquals(300, stateManager.sessionTimeRemaining.value)
+        val response = server.serve(createSession("/add_time", params))
+        assertEquals("Status must be 200 OK", 200, response.status.requestStatus)
+        val body = readResponseBody(response)
+        assertTrue("Body must start with OK", body.startsWith("OK:"))
+        assertTrue("Body must contain tx_id=$txId", body.contains("tx_id=$txId"))
+        assertTrue("Body must contain seconds=-60", body.contains("seconds=-60"))
+        assertTrue("Body must contain amount=0", body.contains("amount=0"))
+        assertTrue("Body must contain v_sig=", body.contains("v_sig="))
     }
 
     @Test
-    fun testUpdatePhoneBWhilePhoneAIsTargetedRejectsMismatch() {
-        val txId = "tx-wrong-dev-04"
-        val now = System.currentTimeMillis().toString()
-        val plainParams = "minutes=5&seconds=300&amount=0&tx_id=$txId&device_id=PHONE_B&ts=$now"
-        val encryptedPayload = KioskSecurity.encrypt(plainParams, sharedSecret)
-        val hmac = KioskProtocol.calculateHttpReqSignature("GET", "/add_time", "PHONE_B", txId, now, encryptedPayload, sharedSecret)
+    fun testQuickAdjustDeductTimeAlreadyProcessed() {
+        simulatedPaymentResult = PaymentResult.ALREADY_APPLIED
+        val now = System.currentTimeMillis()
+        val myDeviceId = "TEST_DEVICE"
+        val txId = "adj-TEST_DEVICE-repeat-1"
+        val query = "device_id=$myDeviceId&tx_id=$txId&seconds=-60&amount=0&ts=$now"
+        val params = createEncryptedParams("/add_time", query)
 
-        val parms = mapOf(
-            "payload" to encryptedPayload,
-            "hmac" to hmac,
-            "device_id" to "PHONE_B",
-            "tx_id" to txId,
-            "ts" to now
-        )
-
-        // Request intended for PHONE_B received by PHONE_A
-        val session = createMockSession("/add_time", NanoHTTPD.Method.GET, parms)
-        val response = paymentHandler.handlePaymentRequest(session)
-
-        // Must reject with Bad Request and produce NO success ACK
-        assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, response.status)
-        val body = response.data.bufferedReader().readText()
-        assertFalse("Must not produce success ACK for wrong device", body.startsWith("OK") || body.startsWith("ALREADY_PROCESSED"))
+        val response = server.serve(createSession("/add_time", params))
+        assertEquals("Status must be 200 OK", 200, response.status.requestStatus)
+        val body = readResponseBody(response)
+        assertTrue("Body must start with ALREADY_PROCESSED", body.startsWith("ALREADY_PROCESSED:"))
+        assertTrue("Body must contain tx_id=$txId", body.contains("tx_id=$txId"))
+        assertTrue("Body must contain v_sig=", body.contains("v_sig="))
     }
 
     @Test
-    fun testTamperedSignatureRejection() {
-        val txId = "tx-tamper-05"
-        val now = System.currentTimeMillis().toString()
-        val plainParams = "minutes=5&seconds=300&amount=0&tx_id=$txId&device_id=PHONE_A&ts=$now"
-        val encryptedPayload = KioskSecurity.encrypt(plainParams, sharedSecret)
+    fun testQuickAdjustDeductTimeConflictAndFailureResponses() {
+        val now = System.currentTimeMillis()
+        val myDeviceId = "TEST_DEVICE"
 
-        val parms = mapOf(
-            "payload" to encryptedPayload,
-            "hmac" to "bad_tampered_hmac_signature",
-            "device_id" to "PHONE_A",
-            "tx_id" to txId,
-            "ts" to now
-        )
+        // Conflict
+        simulatedPaymentResult = PaymentResult.CONFLICT
+        val queryConflict = "device_id=$myDeviceId&tx_id=adj-conflict&seconds=-60&amount=0&ts=$now"
+        val respConflict = server.serve(createSession("/add_time", createEncryptedParams("/add_time", queryConflict)))
+        assertEquals("Conflict returns 409", 409, respConflict.status.requestStatus)
 
-        val session = createMockSession("/add_time", NanoHTTPD.Method.GET, parms)
-        val response = paymentHandler.handlePaymentRequest(session)
+        // Not eligible
+        simulatedPaymentResult = PaymentResult.NOT_ELIGIBLE
+        val queryIneligible = "device_id=$myDeviceId&tx_id=adj-ineligible&seconds=-60&amount=0&ts=$now"
+        val respIneligible = server.serve(createSession("/add_time", createEncryptedParams("/add_time", queryIneligible)))
+        assertEquals("Ineligible returns 403", 403, respIneligible.status.requestStatus)
 
-        assertEquals(NanoHTTPD.Response.Status.UNAUTHORIZED, response.status)
-        val body = response.data.bufferedReader().readText()
-        assertFalse("Tampered signature must not produce success ACK", body.startsWith("OK"))
-    }
-
-    @Test
-    fun testUninitializedRejection() {
-        val uninitDelegate = object : KioskServerDelegate {
-            override fun isInitialized(): Boolean = false
-            override fun getDeviceId(): String = "PHONE_A"
-            override fun getSecretKey(): String = sharedSecret
-            override fun onCreditPayment(txId: String, seconds: Int, amount: Double, operationKind: String, coinAmount: Int, pricePerCoin: Double, boxInstallationEpoch: Long, phonePairingEpoch: Long) = PaymentResult.FAILED
-            override fun onDeductPayment(seconds: Int, txId: String?, operationKind: String, boxInstallationEpoch: Long, phonePairingEpoch: Long) = PaymentResult.FAILED
-            override fun onConfigSynced(price: Double?, minutes: Int?, alias: String?, adminPin: String?, slotNum: Int?) {}
-            override fun onTriggerAction(action: String, params: Map<String, String>) = false
-        }
-        val uninitHandler = KioskHttpPaymentHandler(uninitDelegate)
-
-        val txId = "tx-uninit-06"
-        val now = System.currentTimeMillis().toString()
-        val plainParams = "minutes=5&seconds=300&amount=0&tx_id=$txId&device_id=PHONE_A&ts=$now&op_kind=2"
-        val encryptedPayload = KioskSecurity.encrypt(plainParams, sharedSecret)
-        val hmac = KioskProtocol.calculateHttpReqSignature("GET", "/add_time", "PHONE_A", txId, now, encryptedPayload, sharedSecret)
-
-        val parms = mapOf(
-            "payload" to encryptedPayload,
-            "hmac" to hmac,
-            "device_id" to "PHONE_A",
-            "tx_id" to txId,
-            "ts" to now
-        )
-        val session = createMockSession("/add_time", NanoHTTPD.Method.GET, parms)
-        val response = uninitHandler.handlePaymentRequest(session)
-
-        assertEquals(NanoHTTPD.Response.Status.SERVICE_UNAVAILABLE, response.status)
-        val body = response.data.bufferedReader().readText()
-        assertEquals("INITIALIZATION_IN_PROGRESS", body)
-    }
-
-    @Test
-    fun testUnsignedRequestRejection() {
-        stateManager.appState.value = 0
-        stateManager.sessionTimeRemaining.value = 0
-
-        val txId = "tx-unsigned-07"
-        val parms = mapOf(
-            "device_id" to "PHONE_A",
-            "tx_id" to txId,
-            "seconds" to "300"
-        )
-        val session = createMockSession("/add_time", NanoHTTPD.Method.GET, parms)
-        val response = paymentHandler.handlePaymentRequest(session)
-
-        assertEquals(NanoHTTPD.Response.Status.UNAUTHORIZED, response.status)
-        val body = response.data.bufferedReader().readText()
-        assertEquals("UNAUTHORIZED", body)
-
-        // Balance must NOT have changed!
-        assertEquals(0, stateManager.sessionTimeRemaining.value)
+        // Database failure
+        simulatedPaymentResult = PaymentResult.FAILED
+        val queryFail = "device_id=$myDeviceId&tx_id=adj-fail&seconds=-60&amount=0&ts=$now"
+        val respFail = server.serve(createSession("/add_time", createEncryptedParams("/add_time", queryFail)))
+        assertEquals("Failure returns 503", 503, respFail.status.requestStatus)
     }
 }

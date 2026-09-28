@@ -10,12 +10,12 @@
 extern const char* DEFAULT_SSID;
 extern const char* DEFAULT_PASS;
 extern const char* DEFAULT_ADMIN_PW;
+extern const char* MASTER_CRYPTO_SECRET;
 
 extern const int DEFAULT_UNIVERSAL_COIN_PIN;
 extern const int DEFAULT_LED_PIN;
 extern const bool DEFAULT_LED_ACTIVE_LOW;
 extern const int DEFAULT_RELAY_PIN;
-extern const bool DEFAULT_RELAY_ACTIVE_LOW;
 extern const int DEFAULT_PORT;
 extern const int HARDWARE_RESET_PIN;
 extern const int DEFAULT_MINUTES_PER_COIN;
@@ -35,10 +35,6 @@ extern const char* const NVS_KEY_IPS;
 
 extern const char* const NVS_KEY_WIFI_SSID;
 extern const char* const NVS_KEY_WIFI_PASS;
-extern const char* const NVS_KEY_STATIC_IP;
-extern const char* const NVS_KEY_GATEWAY_IP;
-extern const char* const NVS_KEY_SUBNET_MASK;
-extern const char* const NVS_KEY_DNS_IP;
 extern const char* const NVS_KEY_U_COIN_PIN;
 extern const char* const NVS_KEY_LED_PIN;
 extern const char* const NVS_KEY_LED_ACTIVE_LOW;
@@ -106,10 +102,6 @@ extern bool relayActiveLow;
 
 extern String wifiSsid;
 extern String wifiPass;
-extern String staticIpStr;
-extern String gatewayIpStr;
-extern String subnetMaskStr;
-extern String dnsIpStr;
 extern String androidIps;
 extern String webPassword;
 extern String sharedSecret;

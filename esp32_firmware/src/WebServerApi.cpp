@@ -6,18 +6,8 @@
 #include "HardwareManager.h"
 #include "DeviceManager.h"
 #include "DeviceNetwork.h"
-#include "CoinSlotManager.h"
-#include "PaymentQueueManager.h"
-#include "SuperAdminManager.h"
 #include <WiFi.h>
 #include <WebServer.h>
-
-static void setQuickTimeBanner(const String& icon, const String& text, int type = 0) {
-    const char* bg = (type == 0) ? "#fee2e2" : ((type == 1) ? "#fef3c7" : "#e8f5e9");
-    const char* fg = (type == 0) ? "#dc2626" : ((type == 1) ? "#b45309" : "#2e7d32");
-    const char* bd = (type == 0) ? "rgba(239,68,68,0.3)" : ((type == 1) ? "rgba(245,158,11,0.3)" : "rgba(16,185,129,0.3)");
-    quickTimeStatusMsg = "<div style='background:" + String(bg) + ";color:" + String(fg) + ";padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid " + String(bd) + ";'>" + icon + " " + text + "</div>";
-}
 
 void handleAddTime() {
     if (!checkAdminAuth()) return;
@@ -26,38 +16,38 @@ void handleAddTime() {
     targetIp.trim();
 
     if (!webServer.hasArg("add_minutes")) {
-        setQuickTimeBanner("❌", "Missing minutes parameter.");
+        quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Missing minutes parameter.</div>";
         redirectHome();
         return;
     }
     String minStr = webServer.arg("add_minutes");
     minStr.trim();
     if (minStr.length() == 0) {
-        setQuickTimeBanner("❌", "Missing minutes value.");
+        quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Missing minutes value.</div>";
         redirectHome();
         return;
     }
     for (size_t i = 0; i < minStr.length(); i++) {
         if (!isDigit(minStr[i])) {
-            setQuickTimeBanner("❌", "Invalid minutes: Must be a positive integer.");
+            quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Invalid minutes: Must be a positive integer.</div>";
             redirectHome();
             return;
         }
     }
     if (minStr.length() > 9) {
-        setQuickTimeBanner("❌", "Value too large: Minutes value exceeds maximum limit.");
+        quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Value too large: Minutes value exceeds maximum limit.</div>";
         redirectHome();
         return;
     }
     int64_t minutesVal = minStr.toInt();
     if (minutesVal <= 0) {
-        setQuickTimeBanner("❌", "Minutes must be greater than zero.");
+        quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Minutes must be greater than zero.</div>";
         redirectHome();
         return;
     }
     int64_t rawSeconds = minutesVal * 60LL;
     if (rawSeconds > 2147483647LL) {
-        setQuickTimeBanner("❌", "Seconds overflow: Value exceeds protocol limits.");
+        quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Seconds overflow: Value exceeds protocol limits.</div>";
         redirectHome();
         return;
     }
@@ -67,20 +57,20 @@ void handleAddTime() {
     AddTimeSummary summary = sendAddTime(signedSeconds, targetIp);
 
     if (summary.matchedRecipients == 0) {
-        setQuickTimeBanner("❌", "No matching target device found for " + targetIp + ".");
+        quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ No matching target device found for " + targetIp + ".</div>";
     } else if (summary.queuedRequests == 0) {
         if (summary.skippedInactive > 0) {
-            setQuickTimeBanner("❌", "Adjustment Blocked: Target device " + targetIp + " is INACTIVE or UNLICENSED.");
+            quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Adjustment Blocked: Target device " + targetIp + " is INACTIVE or UNLICENSED.</div>";
         } else if (summary.failedSubmissions > 0) {
-            setQuickTimeBanner("❌", "Failed to queue adjustment: Auth queue full or network unavailable.");
+            quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Failed to queue adjustment: Auth queue full or network unavailable.</div>";
         } else {
-            setQuickTimeBanner("❌", "No eligible devices found to adjust.");
+            quickTimeStatusMsg = "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ No eligible devices found to adjust.</div>";
         }
     } else {
         if (summary.skippedInactive > 0 || summary.failedSubmissions > 0) {
-            setQuickTimeBanner("⚠️", "Adjustment queued: " + String(action == "subtract" ? "-" : "+") + String((long)minutesVal) + "m (" + String(summary.queuedRequests) + " queued, " + String(summary.skippedInactive) + " inactive skipped, " + String(summary.failedSubmissions) + " failed).", 1);
+            quickTimeStatusMsg = "<div style='background:#fef3c7;color:#b45309;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(245,158,11,0.3);'>⚠️ Adjustment queued: " + String(action == "subtract" ? "-" : "+") + String((long)minutesVal) + "m (" + String(summary.queuedRequests) + " queued, " + String(summary.skippedInactive) + " inactive skipped, " + String(summary.failedSubmissions) + " failed).</div>";
         } else {
-            setQuickTimeBanner("✅", "Adjustment queued: " + String(action == "subtract" ? "-" : "+") + String((long)minutesVal) + "m for " + (targetIp == "ALL" ? "All Active Devices" : targetIp) + ".", 2);
+            quickTimeStatusMsg = "<div style='background:#e8f5e9;color:#2e7d32;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(16,185,129,0.3);'>✅ Adjustment queued: " + String(action == "subtract" ? "-" : "+") + String((long)minutesVal) + "m for " + (targetIp == "ALL" ? "All Active Devices" : targetIp) + ".</div>";
         }
     }
     redirectHome();
@@ -193,22 +183,6 @@ void handleApiSlotPairRequest() {
         return;
     }
 
-    // Optional direct MAC verification if requested by caller
-    String targetMac = webServer.hasArg("target_mac") ? webServer.arg("target_mac") : (webServer.hasArg("esp32_mac") ? webServer.arg("esp32_mac") : "");
-    if (targetMac.length() > 0) {
-        String cleanTarget = targetMac;
-        cleanTarget.replace(":", "");
-        cleanTarget.toUpperCase();
-        String cleanSelf = macAddressStr;
-        cleanSelf.replace(":", "");
-        cleanSelf.toUpperCase();
-        if (cleanTarget != cleanSelf) {
-            String errJson = "{\"success\":false,\"error\":\"MAC_MISMATCH\",\"mac\":\"" + macAddressStr + "\"}";
-            webServer.send(400, "application/json", errJson);
-            return;
-        }
-    }
-
     if (devId.length() == 0 && reqIp.length() > 0 && reqIp != "127.0.0.1" && reqIp != "0.0.0.0") {
         devId = "DEV_" + reqIp;
     }
@@ -231,13 +205,12 @@ void handleApiSlotUnpair() {
         return;
     }
 
-    bool force = webServer.hasArg("force") && (webServer.arg("force") == "true" || webServer.arg("force") == "1");
-    bool res = unpairSlot(slot, force);
+    bool res = unpairSlot(slot);
     if (res) {
         sendCloudSnapshot();
         webServer.send(200, "application/json", "{\"success\":true,\"slot\":" + String(slot) + "}");
     } else {
-        webServer.send(500, "application/json", "{\"success\":false,\"error\":\"Failed to unpair slot\"}");
+        webServer.send(409, "application/json", "{\"success\":false,\"error\":\"BUSY: Device owns active session or unresolved payments\"}");
     }
 }
 
@@ -376,7 +349,7 @@ void handleIdentify() {
     }
     String devName = getDeviceNameByIpOrId(reqIp, devId);
     int slotIdx = findSlotIndexForDevice(devId, reqIp);
-    String secKey = sharedSecret;
+    String secKey = (sharedSecret.length() > 0) ? sharedSecret : String(MASTER_CRYPTO_SECRET);
     String sig = calculateHMAC("DISCOVERY:" + macAddressStr + ":" + WiFi.localIP().toString(), secKey);
     String json = "{\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\",\"ip\":\"" + WiFi.localIP().toString() + "\",\"sig\":\"" + sig + "\",\"version\":\"3.0\",\"minutes\":" + String(minutesPerCoin) + ",\"price\":1.0";
     if (devName.length() > 0) {
@@ -385,4 +358,3 @@ void handleIdentify() {
     json += "}";
     webServer.send(200, "application/json", json);
 }
-

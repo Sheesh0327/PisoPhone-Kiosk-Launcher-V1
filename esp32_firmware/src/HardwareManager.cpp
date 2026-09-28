@@ -100,37 +100,17 @@ void setRelayHardware(bool active) {
     }
 
     if (active) {
-        uint8_t activeDriveLevel = relayActiveLow ? LOW : HIGH;
-        digitalWrite(relayPin, activeDriveLevel);
         pinMode(relayPin, OUTPUT);
-
-        // Mirror on alternative relay GPIO (supports both GPIO 4 and GPIO 5 wiring)
-        if (relayPin == 4) {
-            digitalWrite(5, activeDriveLevel);
-            pinMode(5, OUTPUT);
-        } else if (relayPin == 5) {
-            digitalWrite(4, activeDriveLevel);
-            pinMode(4, OUTPUT);
-        }
-
+        digitalWrite(relayPin, relayActiveLow ? LOW : HIGH);
         if (!isRelayCurrentlyActive) {
             isRelayCurrentlyActive = true;
-            Serial.printf("[⚡ RELAY] Coin slot powered ON (Pin %d / Mirrored, Level=%s, ActiveLow=%s).\n", 
-                          relayPin, activeDriveLevel == LOW ? "LOW" : "HIGH", relayActiveLow ? "true" : "false");
+            Serial.printf("[⚡ RELAY] Coin slot powered ON (Pin %d, Mode=OUTPUT, ActiveLow=%s).\n", relayPin, relayActiveLow ? "true" : "false");
         }
     } else {
-        // High-Impedance INPUT mode when inactive/standby to prevent false triggering on sensitive 5V optocoupled relays
         pinMode(relayPin, INPUT);
-        if (relayPin == 4) {
-            pinMode(5, INPUT);
-        } else if (relayPin == 5) {
-            pinMode(4, INPUT);
-        }
-
         if (isRelayCurrentlyActive) {
             isRelayCurrentlyActive = false;
-            Serial.printf("[⚡ RELAY] Coin slot powered OFF (Pin %d / Mirrored set to High-Z INPUT standby).\n", 
-                          relayPin);
+            Serial.printf("[⚡ RELAY] Coin slot powered down into hi-Z standby (Pin %d, Mode=INPUT).\n", relayPin);
         }
     }
 }
@@ -184,14 +164,6 @@ void applyCoinSlotHardwareConfig() {
     pinMode(universalCoinPin, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(universalCoinPin), universalCoinIsr, FALLING);
     Serial.printf("[+] Active Coin Mode: UNIVERSAL MULTI-COIN (GPIO %d, Interrupt Active).\n", universalCoinPin);
-
-    // Relay pin in High-Impedance INPUT mode on bootup/standby to prevent false triggering on sensitive relays
-    pinMode(relayPin, INPUT);
-    if (relayPin == 4) {
-        pinMode(5, INPUT);
-    } else if (relayPin == 5) {
-        pinMode(4, INPUT);
-    }
 
     resetCoinDetectorStates();
 }

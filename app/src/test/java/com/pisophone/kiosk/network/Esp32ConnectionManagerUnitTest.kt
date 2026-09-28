@@ -4,10 +4,7 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
-import kotlinx.coroutines.test.advanceUntilIdle
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -26,7 +23,7 @@ class Esp32ConnectionManagerUnitTest {
         override fun getAppState(): Int = 0
         override fun getSessionTimeRemaining(): Int = 0
         override fun getRealTimeBatteryInfo(): Pair<Int, Boolean> = Pair(90, false)
-        override fun onEsp32Paired(ip: String) {}
+        override fun onEsp32Discovered(ip: String) {}
         override fun onOnlineStatusChanged(isOnline: Boolean, mac: String?) {}
         override fun onConfigSynced(price: Double?, minutes: Int?, alias: String?, adminPin: String?, slotNum: Int?) {}
         override fun onCoinMessageReceived(
@@ -37,11 +34,10 @@ class Esp32ConnectionManagerUnitTest {
             coinAmount: Int,
             pricePerCoin: Double,
             boxInstallationEpoch: Long,
-            phonePairingEpoch: Long,
-            remainingMs: Long
+            phonePairingEpoch: Long
         ): com.pisophone.kiosk.repository.PaymentResult = com.pisophone.kiosk.repository.PaymentResult.APPLIED
         override fun onSlotBusy() {}
-        override fun onArmSuccess(remainingMs: Long) {}
+        override fun onArmSuccess() {}
         override fun onSlotWarning(daysLeft: Int, expiresAt: Long, slotNum: Int, message: String) {}
         override fun onSlotLockdown(reason: String, slotNum: Int, expiresAt: Long) {}
         override fun onSlotRestored(slotNum: Int) {}
@@ -59,11 +55,7 @@ class Esp32ConnectionManagerUnitTest {
     fun testCloseSessionGracefulDoesNotThrow() {
         assertNotNull(manager)
         // Invoking graceful closeSession when no socket is open should safely no-op
-        manager.closeSession(sendUnarmToEsp = true, command = "DONE")
-        manager.closeSession(sendUnarmToEsp = true, command = "CANCEL")
-        // Invoking disarmSlot should safely no-op when disconnected
-        manager.disarmSlot("CANCEL")
-        manager.disarmSlot("DONE")
+        manager.closeSession(sendUnarmToEsp = true)
         // Invoking forced closeSession should safely no-op
         manager.closeSession(sendUnarmToEsp = false)
     }
@@ -71,21 +63,5 @@ class Esp32ConnectionManagerUnitTest {
     @Test
     fun testShutdownCleansUpResourcesSafely() {
         manager.shutdown()
-    }
-
-    @Test
-    fun testUnpairRetainsStateOnNetworkFailure() = kotlinx.coroutines.runBlocking {
-        com.pisophone.kiosk.security.KioskSecurity.setConfiguredEsp32Mac(context, "AA:BB:CC:DD:EE:FF")
-        assertEquals("AA:BB:CC:DD:EE:FF", com.pisophone.kiosk.security.KioskSecurity.getConfiguredEsp32Mac(context))
-        
-        var callbackSuccess: Boolean? = null
-        val job = manager.unpair { success, _ ->
-            callbackSuccess = success
-        }
-        job.join()
-        
-        // Pinned MAC must be retained when unpair fails due to network error
-        assertEquals("AA:BB:CC:DD:EE:FF", com.pisophone.kiosk.security.KioskSecurity.getConfiguredEsp32Mac(context))
-        assertEquals(false, callbackSuccess)
     }
 }

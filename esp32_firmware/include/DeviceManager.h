@@ -6,7 +6,7 @@
 #include "DeviceNetwork.h"
 
 bool pairDeviceToSlot(int slotNum, String devId, String ip, String name);
-bool unpairSlot(int slotNum, bool force = false);
+bool unpairSlot(int slotNum);
 int findSlotIndexForDevice(String devId, String ip);
 
 bool isSlotActive(int slotIdx);
