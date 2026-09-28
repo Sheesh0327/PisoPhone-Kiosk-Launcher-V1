@@ -63,7 +63,7 @@ class KioskTtsEngine(
                             .build()
                         tts?.setAudioAttributes(audioAttributes)
                     }
-                    tts?.setSpeechRate(1.02f)
+                    tts?.setSpeechRate(1.20f)
                     tts?.setPitch(1.0f)
 
                     tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {

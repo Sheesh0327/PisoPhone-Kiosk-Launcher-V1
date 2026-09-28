@@ -14,8 +14,8 @@ class KioskAudioManager(
 
     private val ttsEngine = KioskTtsEngine(
         context = context,
-        onTtsStart = { synthesizer.pauseWaitingMusicForTts() },
-        onTtsFinish = { synthesizer.resumeWaitingMusicAfterTts() },
+        onTtsStart = { /* No-op: keep background countdown chime loop playing continuously under speech counts */ },
+        onTtsFinish = { /* No-op */ },
         onFallbackTone = { freqHz, durationMs -> synthesizer.playSynthesizedTone(freqHz, durationMs) }
     )
 
