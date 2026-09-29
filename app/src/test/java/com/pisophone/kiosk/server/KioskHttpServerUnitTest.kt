@@ -36,7 +36,7 @@ class KioskHttpServerUnitTest {
             lastCreditedAmount = amount
             return simulatedPaymentResult
         }
-        override fun onDeductTime(seconds: Int, txId: String?) {}
+        override fun onDeductTime(seconds: Int) {}
         override fun onConfigUpdated(price: Double?, minutes: Int?, deviceName: String?, adminPin: String?, slotNum: Int?) {}
         override fun onTriggerAction(action: String, slotNum: Int?) {}
         override fun getCrashLog(): String? = null
@@ -203,7 +203,7 @@ class KioskHttpServerUnitTest {
             override fun getSessionTimeRemaining(): Int = 300
             override fun getAppState(): Int = 2
             override fun creditPayment(txId: String, seconds: Int, amount: Double): PaymentResult = PaymentResult.APPLIED
-            override fun onDeductTime(seconds: Int, txId: String?) {}
+            override fun onDeductTime(seconds: Int) {}
             override fun onConfigUpdated(price: Double?, minutes: Int?, deviceName: String?, adminPin: String?, slotNum: Int?) {}
             override fun onTriggerAction(action: String, slotNum: Int?) {}
             override fun getCrashLog(): String? = null

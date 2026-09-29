@@ -117,6 +117,7 @@ class Esp32ConnectionManager(
         val (ipHost, esp32Port) = discoveryScanner.getEsp32HostAndPort(ip)
         esp32Ip = ip
         lastHeartbeatTime = System.currentTimeMillis()
+        consecutiveHeartbeatFailures = 0
         delegate.onEsp32Discovered(ip)
         delegate.onOnlineStatusChanged(true, null)
         Log.d(TAG, "[+] ESP32 Master bound at $ipHost")
@@ -143,10 +144,8 @@ class Esp32ConnectionManager(
 
     private fun fetchMasterConfig(ipHost: String, esp32Port: Int) {
         try {
-            val hwId = java.net.URLEncoder.encode(delegate.getDeviceId(), "UTF-8")
-            val model = java.net.URLEncoder.encode(com.pisophone.kiosk.security.KioskActivationManager.getHardwareDescription(), "UTF-8")
             val req = Request.Builder()
-                .url("http://$ipHost:${esp32Port}/identify?device_id=$hwId&name=$model")
+                .url("http://$ipHost:${esp32Port}/identify")
                 .build()
             httpClient.newCall(req).execute().use { resp ->
                 if (resp.isSuccessful) {
@@ -179,10 +178,9 @@ class Esp32ConnectionManager(
                         val ts = System.currentTimeMillis().toString()
                         val sig = KioskSecurity.generateTimestampSignature(deviceId, ts, delegate.getSecretKey())
                         val (curBat, isChg) = delegate.getRealTimeBatteryInfo()
-                        val encodedModel = java.net.URLEncoder.encode(com.pisophone.kiosk.security.KioskActivationManager.getHardwareDescription(), "UTF-8")
 
                         val req = Request.Builder()
-                            .url("http://$host:${esp32Port}/heartbeat?device_id=$deviceId&ip=${if (currentIp == "127.0.0.1") "" else currentIp}&time=${delegate.getSessionTimeRemaining()}&state=${delegate.getAppState()}&battery=$curBat&charging=${if (isChg) 1 else 0}&ts=$ts&sig=$sig&name=$encodedModel&device_name=$encodedModel")
+                            .url("http://$host:${esp32Port}/heartbeat?device_id=$deviceId&ip=${if (currentIp == "127.0.0.1") "" else currentIp}&time=${delegate.getSessionTimeRemaining()}&state=${delegate.getAppState()}&battery=$curBat&charging=${if (isChg) 1 else 0}&ts=$ts&sig=$sig")
                             .build()
                         try {
                             httpClient.newCall(req).execute().use { response ->

@@ -90,21 +90,20 @@ bool areDefaultCredentialsActive() {
     return (webPassword == DEFAULT_ADMIN_PW || wifiPass == DEFAULT_PASS);
 }
 
-bool parseDeviceEntry(const String& entry, DeviceConfig& out) {
-    String str = entry;
-    str.trim();
-    if (str.length() == 0) return false;
+bool parseDeviceEntry(String entry, DeviceConfig& out) {
+    entry.trim();
+    if (entry.length() == 0) return false;
     out.id = "";
     out.ip = "";
     out.name = "";
 
-    int pipe1 = str.indexOf('|');
-    int pipe2 = (pipe1 != -1) ? str.indexOf('|', pipe1 + 1) : -1;
+    int pipe1 = entry.indexOf('|');
+    int pipe2 = (pipe1 != -1) ? entry.indexOf('|', pipe1 + 1) : -1;
 
     if (pipe1 != -1 && pipe2 != -1) {
-        String p1 = str.substring(0, pipe1);
-        String p2 = str.substring(pipe1 + 1, pipe2);
-        String p3 = str.substring(pipe2 + 1);
+        String p1 = entry.substring(0, pipe1);
+        String p2 = entry.substring(pipe1 + 1, pipe2);
+        String p3 = entry.substring(pipe2 + 1);
         p1.trim(); p2.trim(); p3.trim();
 
         if (p1.indexOf('.') != -1 && p2.indexOf('.') == -1) {
@@ -117,8 +116,8 @@ bool parseDeviceEntry(const String& entry, DeviceConfig& out) {
             out.name = p3;
         }
     } else if (pipe1 != -1) {
-        String p1 = str.substring(0, pipe1);
-        String p2 = str.substring(pipe1 + 1);
+        String p1 = entry.substring(0, pipe1);
+        String p2 = entry.substring(pipe1 + 1);
         p1.trim(); p2.trim();
 
         if (p2.indexOf('.') != -1) {
@@ -135,12 +134,12 @@ bool parseDeviceEntry(const String& entry, DeviceConfig& out) {
             out.name = "";
         }
     } else {
-        if (str.indexOf('.') != -1) {
+        if (entry.indexOf('.') != -1) {
             out.id = "";
-            out.ip = str;
+            out.ip = entry;
             out.name = "";
         } else {
-            out.id = str;
+            out.id = entry;
             out.ip = "";
             out.name = "";
         }

@@ -45,7 +45,6 @@ struct LicenseSlot {
 struct DeviceTelemetry {
     String deviceId;
     String lastKnownIp;
-    String name;
     int timeRemainingSeconds;
     int state;
     int batteryLevel;
@@ -128,7 +127,7 @@ void factoryResetDefaults();
 void updateMasterTime(uint64_t ts);
 uint64_t getCurrentMasterTimeMs();
 
-bool parseDeviceEntry(const String& entry, DeviceConfig& out);
+bool parseDeviceEntry(String entry, DeviceConfig& out);
 bool areDefaultCredentialsActive();
 
 #endif // CONFIG_H
