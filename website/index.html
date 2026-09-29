@@ -201,14 +201,36 @@
     <script src="js/webadb_manager.js"></script>
 
     <script>
-        // Parse incoming ESP32 parameters
+        // Parse incoming ESP32 parameters into in-memory provisioning object
         const urlParams = new URLSearchParams(window.location.search);
-        const urlMac = urlParams.get('mac');
-        const urlIp = urlParams.get('ip');
-        const urlSlot = parseInt(urlParams.get('slot') || '1', 10);
-        const urlSecret = urlParams.get('secret') || '';
-        const urlName = urlParams.get('name') || `PisoPhone Slot ${urlSlot}`;
-        const initialMode = (urlParams.get('mode') === 'deprovision' || urlParams.get('action') === 'deprovision') ? 'deprovision' : 'install';
+        const hashRaw = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash;
+        const hashParams = new URLSearchParams(hashRaw);
+
+        const provisioningConfig = {
+            mac: urlParams.get('mac') || hashParams.get('mac') || '',
+            ip: urlParams.get('ip') || hashParams.get('ip') || '',
+            slot: parseInt(urlParams.get('slot') || hashParams.get('slot') || '1', 10),
+            secret: hashParams.get('secret') || urlParams.get('secret') || '',
+            name: urlParams.get('name') || hashParams.get('name') || `PisoPhone Slot ${urlParams.get('slot') || hashParams.get('slot') || '1'}`,
+            mode: (urlParams.get('mode') === 'deprovision' || urlParams.get('action') === 'deprovision' || hashParams.get('mode') === 'deprovision') ? 'deprovision' : 'install'
+        };
+
+        // Immediately purge secret from URL and browser history
+        if (window.location.hash || urlParams.has('secret')) {
+            try {
+                const cleanUrl = new URL(window.location.href);
+                cleanUrl.hash = '';
+                cleanUrl.searchParams.delete('secret');
+                window.history.replaceState({}, document.title, cleanUrl.pathname + (cleanUrl.searchParams.toString() ? '?' + cleanUrl.searchParams.toString() : ''));
+            } catch (_) {}
+        }
+
+        const urlMac = provisioningConfig.mac;
+        const urlIp = provisioningConfig.ip;
+        const urlSlot = provisioningConfig.slot;
+        const urlSecret = provisioningConfig.secret;
+        const urlName = provisioningConfig.name;
+        const initialMode = provisioningConfig.mode;
 
         const restrictedView = document.getElementById('restrictedView');
         const mainView = document.getElementById('mainView');
@@ -333,7 +355,7 @@
 
                     // Step 3: Flash & Device Owner
                     logMessage("Step 3: Flashing package onto device & configuring Device Owner lockdown...");
-                    await window.webADB.installKioskApp(candidateApkUrls, logMessage);
+                    await window.webADB.installKioskApp(candidateApkUrls, logMessage, provisioningConfig);
 
                     // Step 4: Inject parameters into Android app (MAC-only, no dynamic IP)
                     logMessage("Step 4: Infusing hardware configuration parameters into Android...");

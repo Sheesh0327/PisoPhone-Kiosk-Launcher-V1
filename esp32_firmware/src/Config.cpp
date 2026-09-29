@@ -330,9 +330,24 @@ void loadAllConfig() {
     relayActiveLow    = prefs.getBool(NVS_KEY_RELAY_ACTIVE_LOW, false);
     sharedSecret      = prefs.getString(NVS_KEY_SHARED_SECRET, "");
     if (sharedSecret.length() == 0 || sharedSecret == MASTER_CRYPTO_SECRET) {
-        sharedSecret = generateRandom256BitKeyHex();
-        prefs.putString(NVS_KEY_SHARED_SECRET, sharedSecret);
-        Serial.println("[🔐 SECURITY] Generated and persisted new unique per-box 256-bit secret key.");
+        String newKey = generateRandom256BitKeyHex();
+        size_t written = prefs.putString(NVS_KEY_SHARED_SECRET, newKey);
+        String readBack = prefs.getString(NVS_KEY_SHARED_SECRET, "");
+        if (written > 0 && readBack == newKey && readBack.length() > 0) {
+            sharedSecret = newKey;
+            Serial.println("[🔐 SECURITY] Generated, verified, and persisted new unique per-box 256-bit secret key.");
+        } else {
+            sharedSecret = "";
+            Serial.println("[❌ SECURITY ERROR] Flash NVS storage failed for per-box secret key! Payment admission remains disarmed.");
+        }
+    } else {
+        String verifyKey = prefs.getString(NVS_KEY_SHARED_SECRET, "");
+        if (verifyKey != sharedSecret || sharedSecret.length() == 0) {
+            sharedSecret = "";
+            Serial.println("[❌ SECURITY ERROR] Stored per-box secret key failed read verification! Payment admission remains disarmed.");
+        } else {
+            Serial.println("[🔐 SECURITY] Loaded and verified persistent per-box secret key.");
+        }
     }
     p1Ip              = prefs.getString(NVS_KEY_P1, p1Ip);
     p2Ip              = prefs.getString(NVS_KEY_P2, p2Ip);
@@ -406,9 +421,16 @@ void factoryResetDefaults() {
     targetPort = DEFAULT_PORT;
     minutesPerCoin = DEFAULT_MINUTES_PER_COIN;
     webPassword = DEFAULT_ADMIN_PW;
-    sharedSecret = generateRandom256BitKeyHex();
+    String newKey = generateRandom256BitKeyHex();
     prefs.begin(NVS_NAMESPACE, false);
-    prefs.putString(NVS_KEY_SHARED_SECRET, sharedSecret);
+    size_t written = prefs.putString(NVS_KEY_SHARED_SECRET, newKey);
+    String readBack = prefs.getString(NVS_KEY_SHARED_SECRET, "");
+    if (written > 0 && readBack == newKey && readBack.length() > 0) {
+        sharedSecret = newKey;
+    } else {
+        sharedSecret = "";
+        Serial.println("[❌ ERROR] Flash NVS storage failed for reset per-box secret key! Payment admission remains disarmed.");
+    }
     prefs.end();
     p1Ip = "";
     p2Ip = "";
