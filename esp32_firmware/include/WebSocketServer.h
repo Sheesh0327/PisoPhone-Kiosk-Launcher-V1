@@ -1,5 +1,5 @@
-#ifndef WEBSOCKETS_UDP_H
-#define WEBSOCKETS_UDP_H
+#ifndef WEBSOCKET_SERVER_H
+#define WEBSOCKET_SERVER_H
 
 #include <Arduino.h>
 #include <WiFiClient.h>
@@ -10,8 +10,6 @@ void sendWsText(WiFiClient& client, String text);
 String readWsText(WiFiClient& client);
 void processWebSocketServer();
 
-void sendUdpDiscoveryResponse(IPAddress targetIp, uint16_t targetPort);
-void processUdpDiscovery();
 void processSerialCli();
 
-#endif // WEBSOCKETS_UDP_H
+#endif // WEBSOCKET_SERVER_H

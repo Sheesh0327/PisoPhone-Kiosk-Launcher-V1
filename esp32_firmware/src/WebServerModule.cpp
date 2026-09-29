@@ -9,7 +9,6 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <HTTPClient.h>
-#include <WiFiUdp.h>
 #include <ESPmDNS.h>
 #include <Update.h>
 #include "esp_wifi.h"
@@ -19,7 +18,6 @@ WiFiServer wsServer(81);
 WiFiClient wsClient;
 bool isWsConnected = false;
 String wsSessionDeviceId = "";
-WiFiUDP udpServer;
 QueueHandle_t authQueue = NULL;
 
 void setupWebServer() {
@@ -157,14 +155,9 @@ void setupWebServer() {
     // Port 81: Real-time WebSocket Server
     wsServer.begin();
 
-    // Port 8888: UDP Broadcast Discovery Service
-    udpServer.begin(UDP_DISCOVERY_PORT);
-    Serial.printf("[!] Port %d: UDP Discovery Server active\n", UDP_DISCOVERY_PORT);
-
     if (WiFi.status() == WL_CONNECTED) {
         Serial.printf("[!] Port 80: Management at http://%s:80\n", WiFi.localIP().toString().c_str());
         Serial.printf("[!] Port 81: WebSocket at ws://%s:81/ws\n\n", WiFi.localIP().toString().c_str());
-        sendUdpDiscoveryResponse(IPAddress(255, 255, 255, 255), UDP_DISCOVERY_PORT);
     } else {
         Serial.printf("[!] Wi-Fi disconnected. Waiting for hotspot '%s' to become available...\n", wifiSsid.c_str());
     }

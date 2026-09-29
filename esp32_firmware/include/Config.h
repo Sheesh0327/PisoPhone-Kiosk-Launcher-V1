@@ -18,7 +18,6 @@ extern const bool DEFAULT_LED_ACTIVE_LOW;
 extern const int DEFAULT_RELAY_PIN;
 extern const int DEFAULT_PORT;
 extern const int HARDWARE_RESET_PIN;
-extern const int UDP_DISCOVERY_PORT;
 extern const int DEFAULT_MINUTES_PER_COIN;
 
 #define MAX_SUPPORTED_SLOTS 6

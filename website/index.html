@@ -357,14 +357,15 @@
                     logMessage("Step 3: Flashing package onto device & configuring Device Owner lockdown...");
                     await window.webADB.installKioskApp(candidateApkUrls, logMessage, provisioningConfig);
 
-                    // Step 4: Inject parameters into Android app (MAC-only, no dynamic IP)
+                    // Step 4: Inject parameters into Android app (MAC & IP address)
                     logMessage("Step 4: Infusing hardware configuration parameters into Android...");
                     try {
                         let bCastCmd = `am broadcast -a com.pisophone.kiosk.CONFIGURE_ESP32 -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es esp32_mac "${urlMac}" --ei slot ${urlSlot}`;
+                        if (urlIp) bCastCmd += ` --es ip "${urlIp}" --es esp32_ip "${urlIp}"`;
                         if (urlSecret) bCastCmd += ` --es secret "${urlSecret}"`;
                         if (urlName) bCastCmd += ` --es name "${urlName}"`;
                         await window.webADB.runShell(bCastCmd);
-                        await window.webADB.runShell(`am broadcast -a com.pisophone.kiosk.ACTIVATE -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es key "PISOPHONE-BOX-ACTIVATED" --es esp32_mac "${urlMac}" --ei slot ${urlSlot}${urlSecret ? ' --es secret "' + urlSecret + '"' : ''}`);
+                        await window.webADB.runShell(`am broadcast -a com.pisophone.kiosk.ACTIVATE -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es key "PISOPHONE-BOX-ACTIVATED" --es esp32_mac "${urlMac}"${urlIp ? ' --es ip "' + urlIp + '" --es esp32_ip "' + urlIp + '"' : ''} --ei slot ${urlSlot}${urlSecret ? ' --es secret "' + urlSecret + '"' : ''}`);
                     } catch (bErr) {
                         logMessage(`[!] Config broadcast notice: ${bErr.message}`);
                     }

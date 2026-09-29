@@ -118,3 +118,109 @@ fun VaultBypassSection(
     }
 }
 
+@Composable
+fun VaultEsp32HardwareSection(
+    context: Context,
+    onShowHelp: (String, String) -> Unit
+) {
+    var configuredIp by remember { mutableStateOf(KioskSecurity.getConfiguredEsp32Ip(context)) }
+    var configuredMac by remember { mutableStateOf(KioskSecurity.getConfiguredEsp32Mac(context)) }
+
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B).copy(alpha = 0.6f)),
+        border = BorderStroke(1.dp, Color(0xFF334155).copy(alpha = 0.6f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .background(Color(0xFF6366F1).copy(alpha = 0.2f), RoundedCornerShape(8.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Filled.Router,
+                            contentDescription = null,
+                            tint = Color(0xFF818CF8),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text("ESP32 Master Box Configuration", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("Manual IP & MAC Address settings", color = Color(0xFF94A3B8), fontSize = 10.sp)
+                    }
+                }
+                HelpInfoButton(
+                    title = "ESP32 Hardware Configuration",
+                    description = "Manually configure the ESP32 Master Cabinet IP address and MAC address for hardware communication.",
+                    onShowHelp = onShowHelp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            OutlinedTextField(
+                value = configuredIp,
+                onValueChange = { configuredIp = it },
+                label = { Text("ESP32 IP Address", fontSize = 11.sp, color = Color(0xFF94A3B8)) },
+                placeholder = { Text("e.g. 192.168.1.100", fontSize = 11.sp, color = Color.Gray) },
+                singleLine = true,
+                textStyle = TextStyle(color = Color.White, fontSize = 12.sp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color(0xFF6366F1),
+                    unfocusedBorderColor = Color(0xFF334155),
+                    focusedContainerColor = Color(0xFF0F172A),
+                    unfocusedContainerColor = Color(0xFF0F172A)
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedTextField(
+                value = configuredMac,
+                onValueChange = { configuredMac = it },
+                label = { Text("ESP32 MAC Address", fontSize = 11.sp, color = Color(0xFF94A3B8)) },
+                placeholder = { Text("e.g. AA:BB:CC:DD:EE:FF", fontSize = 11.sp, color = Color.Gray) },
+                singleLine = true,
+                textStyle = TextStyle(color = Color.White, fontSize = 12.sp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color(0xFF6366F1),
+                    unfocusedBorderColor = Color(0xFF334155),
+                    focusedContainerColor = Color(0xFF0F172A),
+                    unfocusedContainerColor = Color(0xFF0F172A)
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Button(
+                onClick = {
+                    val cleanMac = KioskSecurity.formatMacAddress(configuredMac)
+                    val cleanIp = configuredIp.trim()
+                    KioskSecurity.setConfiguredEsp32Ip(context, cleanIp)
+                    KioskSecurity.setConfiguredEsp32Mac(context, cleanMac)
+                    KioskService.configureMasterBox(context, mac = cleanMac, ip = cleanIp)
+                    Toast.makeText(context, "Hardware Box settings saved!", Toast.LENGTH_SHORT).show()
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5)),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.fillMaxWidth().height(36.dp)
+            ) {
+                Icon(Icons.Filled.Save, contentDescription = null, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Save Hardware Settings", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+

@@ -278,6 +278,10 @@ class KioskEngine(
         esp32Manager.triggerCandidateDiscovery(stateManager.deviceIp.value)
     }
 
+    fun setEsp32Ip(ip: String?) {
+        esp32Manager.setEsp32Ip(ip)
+    }
+
     fun probeEsp32Connection(ip: String): Boolean {
         if (Looper.myLooper() == Looper.getMainLooper()) {
             scope.launch(Dispatchers.IO) {

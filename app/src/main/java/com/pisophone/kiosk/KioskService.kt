@@ -46,20 +46,27 @@ class KioskService : Service() {
             mac: String,
             slot: Int = -1,
             secret: String? = null,
-            name: String? = null
+            name: String? = null,
+            ip: String? = null
         ) {
             KioskSecurity.applyDirectProvisioning(
                 context = context,
                 secret = secret,
                 mac = mac,
                 slot = slot,
-                name = name
+                name = name,
+                ip = ip
             )
             KioskActivationManager.setPairingCompleted(context, true)
             val cleanMac = KioskSecurity.formatMacAddress(mac)
+            val cleanIp = KioskSecurity.getConfiguredEsp32Ip(context)
             activeInstance?.let { service ->
                 if (cleanMac.isNotBlank()) {
                     service.stateManager.esp32MacAddress.value = cleanMac
+                }
+                if (cleanIp.isNotBlank()) {
+                    service.stateManager.esp32Ip = cleanIp
+                    service.engine?.setEsp32Ip(cleanIp)
                 }
                 service.triggerCandidateDiscovery()
             }

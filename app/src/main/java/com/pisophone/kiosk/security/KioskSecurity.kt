@@ -29,6 +29,7 @@ object KioskSecurity {
     private const val KEY_LOW_BATTERY_THRESHOLD = "low_battery_threshold"
     private const val KEY_HIGH_BATTERY_THRESHOLD = "high_battery_threshold"
     private const val KEY_CONFIGURED_ESP32_MAC = "configured_esp32_mac"
+    private const val KEY_CONFIGURED_ESP32_IP = "configured_esp32_ip"
     private const val KEY_ASSIGNED_BOX_SLOT = "assigned_box_slot"
     private const val KEY_PROVISIONING_ADB_ALLOWED = "provisioning_adb_allowed"
     private const val KEY_APK_UPDATE_URL = "apk_update_url"
@@ -120,6 +121,15 @@ object KioskSecurity {
     fun setConfiguredEsp32Mac(context: Context, mac: String) {
         val clean = formatMacAddress(mac)
         getPrefs(context).edit().putString(KEY_CONFIGURED_ESP32_MAC, clean).apply()
+    }
+
+    fun getConfiguredEsp32Ip(context: Context): String {
+        return getPrefs(context).getString(KEY_CONFIGURED_ESP32_IP, "") ?: ""
+    }
+
+    fun setConfiguredEsp32Ip(context: Context, ip: String) {
+        val trimmed = ip.trim()
+        getPrefs(context).edit().putString(KEY_CONFIGURED_ESP32_IP, trimmed).apply()
     }
 
     fun getAssignedBoxSlot(context: Context): Int {
@@ -463,7 +473,8 @@ object KioskSecurity {
         secret: String? = null,
         mac: String? = null,
         slot: Int = -1,
-        name: String? = null
+        name: String? = null,
+        ip: String? = null
     ): Boolean {
         if (!secret.isNullOrBlank()) {
             setSharedSecret(context, secret.trim())
@@ -476,13 +487,16 @@ object KioskSecurity {
                 setConfiguredEsp32Mac(context, formattedMac)
             }
         }
+        if (!ip.isNullOrBlank()) {
+            setConfiguredEsp32Ip(context, ip.trim())
+        }
         if (slot > 0) {
             setAssignedBoxSlot(context, slot)
             setDeviceAlias(context, "PisoPhone $slot")
         } else if (!name.isNullOrBlank()) {
             setDeviceAlias(context, name.trim())
         }
-        Log.i(TAG, "[+] Successfully applied Direct Provisioning setup: MAC=$mac, Slot=$slot, SecretConfigured=${!secret.isNullOrBlank()}")
+        Log.i(TAG, "[+] Successfully applied Direct Provisioning setup: MAC=$mac, IP=$ip, Slot=$slot, SecretConfigured=${!secret.isNullOrBlank()}")
         return true
     }
 }

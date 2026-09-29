@@ -164,13 +164,10 @@ void loop() {
     // 4. Handle Port 81 WebSocket Client & Frames
     processWebSocketServer();
     
-    // 5. Handle Port 8888 UDP Broadcast Discovery
-    processUdpDiscovery();
-    
-    // 6. Handle USB Serial CLI commands
+    // 5. Handle USB Serial CLI commands
     processSerialCli();
     
-    // 7. Robust Non-Blocking Wi-Fi Reconnection Watchdog & LED Status Sync
+    // 6. Robust Non-Blocking Wi-Fi Reconnection Watchdog & LED Status Sync
     if (WiFi.status() == WL_CONNECTED) {
         currentLedState = LED_STATE_CONNECTED;
     } else {
@@ -184,8 +181,6 @@ void loop() {
                 Serial.printf("\n[📶 WATCHDOG] Wi-Fi lost. Attempting reconnection to \"%s\"...\n", wifiSsid.c_str());
                 WiFi.disconnect();
                 WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
-                udpServer.stop();
-                udpServer.begin(UDP_DISCOVERY_PORT);
             }
         }
     }

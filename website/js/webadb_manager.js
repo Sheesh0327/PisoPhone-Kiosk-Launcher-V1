@@ -744,11 +744,13 @@
                 const config = provConfig || {};
                 const provSecret = config.secret || '';
                 const provMac = config.mac || '';
+                const provIp = config.ip || '';
                 const provSlot = config.slot || 1;
                 const provName = config.name || '';
 
                 if (provSecret) provExtras += ` --es secret "${provSecret}"`;
                 if (provMac) provExtras += ` --es mac "${provMac}" --es esp32_mac "${provMac}"`;
+                if (provIp) provExtras += ` --es ip "${provIp}" --es esp32_ip "${provIp}"`;
                 if (provSlot) provExtras += ` --ei slot ${provSlot}`;
                 if (provName) provExtras += ` --es name "${provName}"`;
             } catch (e) {}
