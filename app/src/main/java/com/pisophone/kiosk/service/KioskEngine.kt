@@ -302,6 +302,10 @@ class KioskEngine(
     }
 
     fun armSlot() {
+        supervisor.ensureRunning()
+        if (!stateManager.esp32Ip.isNullOrBlank()) {
+            esp32Manager.setEsp32Ip(stateManager.esp32Ip)
+        }
         esp32Manager.armSlot(ARMING_TIMEOUT_SECONDS)
     }
 

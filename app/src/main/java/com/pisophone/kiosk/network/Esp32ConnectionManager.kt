@@ -26,6 +26,7 @@ interface Esp32ConnectionDelegate {
     fun getAppState(): Int
     fun getSessionTimeRemaining(): Int
     fun getRealTimeBatteryInfo(): Pair<Int, Boolean>
+    fun getTargetIp(): String? = null
     fun onEsp32Discovered(ip: String)
     fun onOnlineStatusChanged(isOnline: Boolean, mac: String?)
     fun onConfigSynced(price: Double?, minutes: Int?, alias: String?, adminPin: String? = null, slotNum: Int? = null)
@@ -171,7 +172,10 @@ class Esp32ConnectionManager(
             while (isActive) {
                 try {
                     val currentIp = deviceIpProvider()
-                    val targetIp = esp32Ip
+                    val targetIp = esp32Ip ?: delegate.getTargetIp()
+                    if (esp32Ip.isNullOrBlank() && !targetIp.isNullOrBlank()) {
+                        esp32Ip = targetIp
+                    }
 
                     if (!targetIp.isNullOrBlank()) {
                         val (host, esp32Port) = discoveryScanner.getEsp32HostAndPort(targetIp)
@@ -364,6 +368,12 @@ class Esp32ConnectionManager(
         synchronized(connectionLock) {
             attemptId = ++currentAttemptId
             forceCloseWebSocketLocked(activeWebSocket, "Re-arming slot", attemptId)
+            if (esp32Ip.isNullOrBlank()) {
+                val fallback = delegate.getTargetIp()
+                if (!fallback.isNullOrBlank()) {
+                    esp32Ip = fallback
+                }
+            }
             ip = esp32Ip
         }
 
@@ -374,12 +384,14 @@ class Esp32ConnectionManager(
             return
         }
 
+        val (host, _) = discoveryScanner.getEsp32HostAndPort(ip)
+        val targetHost = if (host.isNotBlank()) host else ip
         val deviceId = delegate.getDeviceId()
         val ts = System.currentTimeMillis().toString()
         val sig = KioskSecurity.generateTimestampSignature(deviceId, ts, delegate.getSecretKey())
 
-        val wsUrl = "ws://$ip:$ESP32_WS_PORT/ws?device_id=$deviceId&ts=$ts&sig=$sig"
-        Log.d(TAG, "Connecting to Master WebSocket at $ip:$ESP32_WS_PORT (attempt #$attemptId)")
+        val wsUrl = "ws://$targetHost:$ESP32_WS_PORT/ws?device_id=$deviceId&ts=$ts&sig=$sig"
+        Log.d(TAG, "Connecting to Master WebSocket at $targetHost:$ESP32_WS_PORT (attempt #$attemptId)")
 
         val request = Request.Builder().url(wsUrl).build()
 
