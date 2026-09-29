@@ -145,6 +145,21 @@ bool isCoinSlotBusy(const String& sessionId, CoinSlotOwnerType ownerType) {
     if (currentState == CoinSlotState::IDLE || activeSessionId.length() == 0) {
         return false;
     }
+
+    // Auto-reclaim expired ARMED session to prevent lockup
+    unsigned long now = millis();
+    if (currentState == CoinSlotState::ARMED) {
+        bool ttlExpired = (now >= sessionArmedUntil);
+        bool maxDurationExpired = (sessionStartTimeMs > 0 && (now - sessionStartTimeMs >= MAX_SESSION_DURATION));
+        if (ttlExpired || maxDurationExpired) {
+            const char* reason = ttlExpired ? "TTL_EXPIRED" : "MAX_DURATION";
+            Serial.printf("[🪙 COIN SLOT] Active session '%s' expired during busy check (%s). Auto-releasing.\n",
+                          activeSessionId.c_str(), reason);
+            finalizeSessionRelease(reason);
+            return false;
+        }
+    }
+
     // If held by the SAME session and matching owner type, it is not busy to that session
     if (sessionId.length() > 0 && activeSessionId == sessionId) {
         if (ownerType == CoinSlotOwnerType::ANY || activeOwnerType == CoinSlotOwnerType::ANY || activeOwnerType == ownerType) {

@@ -153,21 +153,17 @@ class MainActivity : ComponentActivity() {
             ?: intent.getStringExtra("esp32_mac")
             ?: intent.getStringExtra("mac")
             ?: intent.getStringExtra("box_mac")
-        val ip = intent.getStringExtra("setup_ip")
-            ?: intent.getStringExtra("esp32_ip")
-            ?: intent.getStringExtra("ip")
         val slot = intent.getIntExtra("setup_slot", intent.getIntExtra("slot", -1))
         val name = intent.getStringExtra("setup_name")
             ?: intent.getStringExtra("name")
             ?: intent.getStringExtra("alias")
         val activate = intent.getBooleanExtra("activate", intent.hasExtra("setup_secret") || intent.hasExtra("secret") || intent.hasExtra("setup_mac"))
 
-        if (!secret.isNullOrBlank() || !mac.isNullOrBlank() || !ip.isNullOrBlank() || slot > 0) {
-            android.util.Log.i("MainActivity", "Direct Provisioning setup parameters received: MAC=$mac, IP=$ip, Slot=$slot, SecretConfigured=${!secret.isNullOrBlank()}")
+        if (!secret.isNullOrBlank() || !mac.isNullOrBlank() || slot > 0) {
+            android.util.Log.i("MainActivity", "Direct Provisioning setup parameters received: MAC=$mac, Slot=$slot, SecretConfigured=${!secret.isNullOrBlank()}")
             KioskService.configureMasterBox(
                 context = this,
                 mac = mac ?: "",
-                ip = ip,
                 slot = slot,
                 secret = secret,
                 name = name

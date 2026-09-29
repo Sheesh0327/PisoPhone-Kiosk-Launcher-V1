@@ -235,11 +235,11 @@ void recordDeviceNonce(String deviceId, unsigned long long ts) {
     if (trackedDeviceCount < MAX_TRACKED_DEVICES) {
         trackedDevices[trackedDeviceCount].deviceId = deviceId;
         trackedDevices[trackedDeviceCount].lastKnownIp = "";
-        trackedDevices[trackedDeviceCount].timeRemainingSeconds = 0;
+        trackedDevices[trackedDeviceCount].timeRemainingSeconds = -1;
         trackedDevices[trackedDeviceCount].state = 0;
-        trackedDevices[trackedDeviceCount].batteryLevel = 100;
+        trackedDevices[trackedDeviceCount].batteryLevel = -1;
         trackedDevices[trackedDeviceCount].isCharging = false;
-        trackedDevices[trackedDeviceCount].lastSeenMs = millis();
+        trackedDevices[trackedDeviceCount].lastSeenMs = 0;
         trackedDevices[trackedDeviceCount].lastNonceTs = ts;
         trackedDeviceCount++;
     }
@@ -281,7 +281,7 @@ void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int st
         trackedDevices[trackedDeviceCount].lastKnownIp = ip;
         trackedDevices[trackedDeviceCount].timeRemainingSeconds = timeRemaining;
         trackedDevices[trackedDeviceCount].state = state;
-        trackedDevices[trackedDeviceCount].batteryLevel = (validBattery >= 0) ? validBattery : 100;
+        trackedDevices[trackedDeviceCount].batteryLevel = validBattery;
         trackedDevices[trackedDeviceCount].isCharging = charging;
         trackedDevices[trackedDeviceCount].lastSeenMs = millis();
         trackedDevices[trackedDeviceCount].lastNonceTs = ts;
@@ -293,8 +293,9 @@ int getTrackedTimeRemaining(String ip, unsigned long maxAgeMs, String devId) {
     for (int i = 0; i < trackedDeviceCount; i++) {
         bool match = (trackedDevices[i].lastKnownIp == ip || trackedDevices[i].deviceId == ip);
         if (!match && devId.length() > 0 && trackedDevices[i].deviceId == devId) match = true;
-        if (match) {
+        if (match && trackedDevices[i].lastSeenMs > 0) {
             if (millis() - trackedDevices[i].lastSeenMs <= maxAgeMs) {
+                if (trackedDevices[i].timeRemainingSeconds < 0) return 0;
                 unsigned long elapsedSec = (millis() - trackedDevices[i].lastSeenMs) / 1000;
                 int remaining = trackedDevices[i].timeRemainingSeconds - (int)elapsedSec;
                 return (remaining > 0) ? remaining : 0;
@@ -312,7 +313,7 @@ int getTrackedBatteryLevel(String ip, String devId) {
             return trackedDevices[i].batteryLevel;
         }
     }
-    return 100;
+    return -1;
 }
 
 bool getTrackedChargingState(String ip, String devId) {

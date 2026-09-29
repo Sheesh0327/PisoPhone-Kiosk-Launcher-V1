@@ -106,7 +106,7 @@ void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId) {
 }
 
 int getDeviceTimeRemainingSeconds(String targetIp, String* errOut) {
-    int rem = getTrackedTimeRemaining(targetIp, 15000);
+    int rem = getTrackedTimeRemaining(targetIp, 40000);
     if (rem < 0) {
         if (errOut) *errOut = "Device offline or unreachable via telemetry.";
         return -1;

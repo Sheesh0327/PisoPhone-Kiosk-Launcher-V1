@@ -51,7 +51,7 @@ class Esp32ConnectionManager(
     companion object {
         private const val TAG = "Esp32ConnectionManager"
         private const val ESP32_WS_PORT = 81
-        private const val HEARTBEAT_TIMEOUT_MS = 20000L
+        private const val HEARTBEAT_TIMEOUT_MS = 45000L
         private const val MAX_TIMESTAMP_SKEW_MS = 60000L
         private const val DRAIN_SAFETY_TIMEOUT_MS = 15000L
     }
@@ -62,8 +62,9 @@ class Esp32ConnectionManager(
         .build()
 
     private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(3500, TimeUnit.MILLISECONDS)
-        .readTimeout(3500, TimeUnit.MILLISECONDS)
+        .connectTimeout(4, TimeUnit.SECONDS)
+        .readTimeout(4, TimeUnit.SECONDS)
+        .writeTimeout(4, TimeUnit.SECONDS)
         .build()
 
     private var esp32Ip: String? = null
@@ -85,7 +86,7 @@ class Esp32ConnectionManager(
             }
         },
         isAlreadyBound = {
-            val isOnline = (System.currentTimeMillis() - lastHeartbeatTime < HEARTBEAT_TIMEOUT_MS) && consecutiveHeartbeatFailures == 0
+            val isOnline = (System.currentTimeMillis() - lastHeartbeatTime < HEARTBEAT_TIMEOUT_MS) && consecutiveHeartbeatFailures < 5
             isOnline && !esp32Ip.isNullOrBlank()
         }
     )
@@ -117,6 +118,7 @@ class Esp32ConnectionManager(
         val (ipHost, esp32Port) = discoveryScanner.getEsp32HostAndPort(ip)
         esp32Ip = ip
         lastHeartbeatTime = System.currentTimeMillis()
+        consecutiveHeartbeatFailures = 0
         delegate.onEsp32Discovered(ip)
         delegate.onOnlineStatusChanged(true, null)
         Log.d(TAG, "[+] ESP32 Master bound at $ipHost")
@@ -169,7 +171,7 @@ class Esp32ConnectionManager(
             while (isActive) {
                 try {
                     val currentIp = deviceIpProvider()
-                    val targetIp = esp32Ip ?: KioskSecurity.getConfiguredEsp32Ip(context).takeIf { it.isNotBlank() }
+                    val targetIp = esp32Ip
 
                     if (!targetIp.isNullOrBlank()) {
                         val (host, esp32Port) = discoveryScanner.getEsp32HostAndPort(targetIp)
@@ -227,19 +229,25 @@ class Esp32ConnectionManager(
                                             val dec = KioskSecurity.decrypt(encryptedPin, delegate.getSecretKey()).trim()
                                             if (dec.startsWith("PIN:")) dec.substring(4).trim().takeIf { it.isNotBlank() } else null
                                         } else null
-
+                                        
+                                        Log.d(TAG, "[HEARTBEAT] JSON parsing successful. Setting online to true.")
                                         delegate.onOnlineStatusChanged(true, mac)
                                         delegate.onConfigSynced(price, minutes, alias, decryptedPin, slotNum)
-                                    } catch (_: Exception) {}
+                                    } catch (e: Exception) {
+                                        Log.e(TAG, "[HEARTBEAT] Exception parsing JSON body: ${e.message}", e)
+                                    }
                                 } else {
+                                    Log.d(TAG, "[HEARTBEAT] Body is blank. Setting online to true.")
                                     delegate.onOnlineStatusChanged(true, null)
                                 }
                             } else {
+                                Log.w(TAG, "[HEARTBEAT] Unsuccessful HTTP code: $code")
                                 consecutiveHeartbeatFailures++
                                 checkOfflineThreshold(currentIp)
                             }
                         }
-                        } catch (_: Exception) {
+                        } catch (e: Exception) {
+                            Log.e(TAG, "[HEARTBEAT] Exception during HTTP request: ${e.message}", e)
                             consecutiveHeartbeatFailures++
                             checkOfflineThreshold(currentIp)
                         }
@@ -255,12 +263,12 @@ class Esp32ConnectionManager(
 
     private fun checkOfflineThreshold(currentIp: String) {
         val offlineDuration = System.currentTimeMillis() - lastHeartbeatTime
-        if (consecutiveHeartbeatFailures >= 2 || offlineDuration > HEARTBEAT_TIMEOUT_MS) {
+        if (consecutiveHeartbeatFailures >= 5 || offlineDuration > HEARTBEAT_TIMEOUT_MS) {
             delegate.onOnlineStatusChanged(false, null)
             // Immediately trigger discovery to locate ESP32 if assigned a new DHCP IP
             discoveryScanner.triggerDiscovery(currentIp)
-            if (offlineDuration > 15000L && KioskSecurity.getConfiguredEsp32Ip(context).isBlank()) {
-                Log.w(TAG, "ESP32 disconnected for >15s, clearing stale cached IP for auto-rediscovery")
+            if (offlineDuration > HEARTBEAT_TIMEOUT_MS) {
+                Log.w(TAG, "ESP32 disconnected for >${HEARTBEAT_TIMEOUT_MS}ms, clearing stale cached IP for auto-rediscovery")
                 esp32Ip = null
             }
         }
@@ -356,12 +364,13 @@ class Esp32ConnectionManager(
         synchronized(connectionLock) {
             attemptId = ++currentAttemptId
             forceCloseWebSocketLocked(activeWebSocket, "Re-arming slot", attemptId)
-            ip = esp32Ip ?: KioskSecurity.getConfiguredEsp32Ip(context).takeIf { it.isNotBlank() }
+            ip = esp32Ip
         }
 
         if (ip.isNullOrBlank()) {
-            Log.e(TAG, "Cannot arm slot: No active or configured ESP32 IP available")
+            Log.w(TAG, "Cannot arm slot: No discovered ESP32 IP available. Triggering discovery...")
             delegate.onOnlineStatusChanged(false, null)
+            discoveryScanner.triggerDiscovery("")
             return
         }
 

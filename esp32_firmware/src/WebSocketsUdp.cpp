@@ -171,8 +171,29 @@ void processWebSocketServer() {
                 }
             }
             
-            if (request.indexOf("session_id=") != -1 || request.indexOf("/coinslot") != -1 || request.indexOf("/ws/coinslot") != -1) {
+            // Extract URI Path from HTTP Request line (e.g., "GET /ws/coinslot?session_id=... HTTP/1.1")
+            String reqPath = "";
+            int firstSpace = request.indexOf(' ');
+            if (firstSpace != -1) {
+                int secondSpace = request.indexOf(' ', firstSpace + 1);
+                String fullUri = (secondSpace != -1) ? request.substring(firstSpace + 1, secondSpace) : request.substring(firstSpace + 1);
+                int qMark = fullUri.indexOf('?');
+                reqPath = (qMark != -1) ? fullUri.substring(0, qMark) : fullUri;
+            }
+            reqPath.trim();
+
+            // Strict Endpoint Routing:
+            // 1. Controller endpoints: /coinslot or /ws/coinslot (never registers to trackedDevices or pairing queue)
+            if (reqPath == "/coinslot" || reqPath == "/ws/coinslot") {
                 handleControllerWebSocketHandshake(newClient, request, secKey);
+                return;
+            }
+
+            // 2. PisoPhone Terminal endpoints: must target /ws (or /ws/terminal)
+            if (reqPath != "/ws" && reqPath != "/ws/terminal" && reqPath != "/") {
+                Serial.printf("[-] WS Rejected: Unknown endpoint '%s'\n", reqPath.c_str());
+                newClient.print("HTTP/1.1 404 Not Found\r\n\r\nInvalid WebSocket Endpoint");
+                newClient.stop();
                 return;
             }
 
@@ -311,8 +332,20 @@ void processWebSocketServer() {
                 return;
             }
         } else {
-            // Keep slot armed continuously while WebSocket client remains connected
-            refreshCoinSlotTtl(boundDevId, CoinSlotOwnerType::PHONE, ARM_TTL);
+            // Actively ping client every 3 seconds to detect socket disconnect promptly
+            static unsigned long lastPhoneWsPingMs = 0;
+            if (millis() - lastPhoneWsPingMs >= 3000) {
+                lastPhoneWsPingMs = millis();
+                uint8_t pingFrame[2] = {0x89, 0x00};
+                if (wsClient.write(pingFrame, 2) != 2) {
+                    Serial.printf("[*] WS Client %s ping write failed. Releasing.\n", boundDevId.c_str());
+                    wsClient.stop();
+                    isWsConnected = false;
+                    wsSessionDeviceId = "";
+                    releaseCoinSlot(boundDevId, CoinSlotOwnerType::PHONE, false);
+                    return;
+                }
+            }
         }
     }
 
@@ -323,10 +356,15 @@ void processWebSocketServer() {
 void sendUdpDiscoveryResponse(IPAddress targetIp, uint16_t targetPort) {
     if (WiFi.status() != WL_CONNECTED) return;
 
+    String secKey = (sharedSecret.length() > 0) ? sharedSecret : String(MASTER_CRYPTO_SECRET);
+    String ipStr = WiFi.localIP().toString();
+    String sig = calculateHMAC("DISCOVERY:" + macAddressStr + ":" + ipStr, secKey);
+
     String resp = "{\"type\":\"PISOPHONE_ESP32_RESPONSE\","
                   "\"device\":\"PISOPHONE_MASTER\","
                   "\"mac\":\"" + macAddressStr + "\","
-                  "\"ip\":\"" + WiFi.localIP().toString() + "\","
+                  "\"ip\":\"" + ipStr + "\","
+                  "\"sig\":\"" + sig + "\","
                   "\"port\":80,"
                   "\"ws_port\":81,"
                   "\"device_name\":\"PisoPhone Master\","
@@ -362,6 +400,26 @@ void processUdpDiscovery() {
             msg.trim();
 
             if (msg.indexOf("PISOPHONE_DISCOVER") >= 0) {
+                // If specific target_mac is specified in probe, only respond if matching this ESP32
+                int targetMacIdx = msg.indexOf("\"target_mac\":\"");
+                if (targetMacIdx >= 0) {
+                    int valStart = targetMacIdx + 14;
+                    int valEnd = msg.indexOf("\"", valStart);
+                    if (valEnd > valStart) {
+                        String reqMac = msg.substring(valStart, valEnd);
+                        reqMac.toUpperCase();
+                        String curMac = macAddressStr;
+                        curMac.toUpperCase();
+                        String cleanReq = "";
+                        for (size_t i = 0; i < reqMac.length(); i++) if (reqMac[i] != ':') cleanReq += reqMac[i];
+                        String cleanCur = "";
+                        for (size_t i = 0; i < curMac.length(); i++) if (curMac[i] != ':') cleanCur += curMac[i];
+                        if (cleanReq != cleanCur) {
+                            return; // Probe targeted another box MAC
+                        }
+                    }
+                }
+
                 IPAddress remoteIp = udpServer.remoteIP();
                 uint16_t remotePort = udpServer.remotePort();
                 Serial.printf("[⚡ UDP Discovery] Valid probe received from %s:%d. Responding...\n",
