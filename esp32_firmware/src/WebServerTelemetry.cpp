@@ -58,7 +58,7 @@ void handleHeartbeat() {
     bool isActive = isSlotActive(slotIdx);
 
     String status = (!isActive) ? "slot_expired" : "ok";
-    String devName = getDeviceNameByIpOrId(reqIp, deviceId);
+    devName = getDeviceNameByIpOrId(reqIp, deviceId);
     String json = "{\"status\":\"" + status + "\",\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\"";
     if (slotIdx >= 0) {
         String encPin = aes_encrypt("PIN:" + webPassword, sharedSecret);

@@ -59,6 +59,20 @@ int findSlotIndexForDevice(String devId, String ip) {
             }
         }
     }
+
+    // Auto-bind to the first available active slot if unassigned
+    if (devId.length() > 0 || (ip.length() > 0 && ip != "127.0.0.1")) {
+        for (int i = 0; i < maxLicensedSlots; i++) {
+            if (licenseSlots[i].active && licenseSlots[i].deviceId.length() == 0) {
+                licenseSlots[i].deviceId = devId;
+                if (ip.length() > 0 && ip != "127.0.0.1") licenseSlots[i].ip = ip;
+                saveSlotLicenses();
+                Serial.printf("[+] Auto-bound Slot #%d to device %s (%s)\n", i + 1, devId.c_str(), ip.c_str());
+                return i;
+            }
+        }
+    }
+
     return -1;
 }
 

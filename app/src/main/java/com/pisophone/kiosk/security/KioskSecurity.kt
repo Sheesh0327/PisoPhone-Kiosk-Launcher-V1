@@ -47,6 +47,7 @@ object KioskSecurity {
     private const val DEFAULT_PIN = "1234"
     private const val TAG = "KioskSecurity"
     private const val KEY_DEVICE_SECRET = "device_crypto_secret"
+    const val MASTER_CRYPTO_SECRET = "PISOPHONE_HMAC_MASTER_KEY"
 
     @Volatile
     private var prefsInstance: SharedPreferences? = null
@@ -291,7 +292,9 @@ object KioskSecurity {
         if (encryptedPrefs != null) {
             try { 
                 val existingSecret = encryptedPrefs.getString(KEY_DEVICE_SECRET, null)
-                if (!existingSecret.isNullOrBlank()) return existingSecret
+                if (!existingSecret.isNullOrBlank() && !(existingSecret.length == 64 && existingSecret.all { it in "0123456789abcdefABCDEF" } && existingSecret != MASTER_CRYPTO_SECRET)) {
+                    return existingSecret
+                }
             } catch (e: Exception) { Log.e(TAG, "Encrypted prefs read failed: ${e.message}") }
         }
         
@@ -313,20 +316,17 @@ object KioskSecurity {
             }
         }
         
-        if (secret == null) {
-            val randomBytes = ByteArray(32)
-            SecureRandom().nextBytes(randomBytes)
-            secret = randomBytes.joinToString("") { "%02x".format(it) }
-            
+        if (secret == null || (secret.length == 64 && secret.all { it in "0123456789abcdefABCDEF" } && secret != MASTER_CRYPTO_SECRET)) {
+            secret = MASTER_CRYPTO_SECRET
             if (encryptedPrefs != null) {
                 try {
                     encryptedPrefs.edit().putString(KEY_DEVICE_SECRET, secret).apply()
                     return secret
                 } catch (e: Exception) { Log.e(TAG, "Encrypted prefs write failed: ${e.message}") }
             }
-            setCustomKeystoreEncryptedSecret(prefs, secret!!)
+            setCustomKeystoreEncryptedSecret(prefs, secret)
         }
-        return secret!!
+        return secret
     }
 
     fun setSharedSecret(context: Context, newSecret: String) {

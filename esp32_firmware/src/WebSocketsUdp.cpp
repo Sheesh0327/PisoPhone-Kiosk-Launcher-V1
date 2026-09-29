@@ -211,14 +211,20 @@ void processWebSocketServer() {
             }
             
             // 1. Verify HMAC Signature
-            if (sharedSecret.length() > 0) {
-                String expectedSig = calculateHMAC(reqDeviceId + ":" + tsStr, sharedSecret);
-                if (!sig.equalsIgnoreCase(expectedSig)) {
-                    Serial.printf("[-] WS Auth Failed for %s: Signature Mismatch\n", reqDeviceId.c_str());
-                    newClient.print("HTTP/1.1 403 Forbidden\r\n\r\nInvalid Signature");
-                    newClient.stop();
-                    return;
+            String secKeyAuth = (sharedSecret.length() > 0) ? sharedSecret : String(MASTER_CRYPTO_SECRET);
+            String expectedSig = calculateHMAC(reqDeviceId + ":" + tsStr, secKeyAuth);
+            bool sigMatches = sig.equalsIgnoreCase(expectedSig);
+            if (!sigMatches && secKeyAuth != MASTER_CRYPTO_SECRET) {
+                String fallbackSig = calculateHMAC(reqDeviceId + ":" + tsStr, String(MASTER_CRYPTO_SECRET));
+                if (sig.equalsIgnoreCase(fallbackSig)) {
+                    sigMatches = true;
                 }
+            }
+            if (!sigMatches) {
+                Serial.printf("[-] WS Auth Failed for %s: Signature Mismatch\n", reqDeviceId.c_str());
+                newClient.print("HTTP/1.1 403 Forbidden\r\n\r\nInvalid Signature");
+                newClient.stop();
+                return;
             }
 
             // 1b. Verify Replay Protection

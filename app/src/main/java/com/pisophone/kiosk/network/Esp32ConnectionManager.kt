@@ -488,6 +488,9 @@ class Esp32ConnectionManager(
                                 }
                             }
                         }
+                    } else if (event == "ARMED") {
+                        Log.i(TAG, "⚡ ESP32 Coin Slot ARMED confirmed via WebSocket (attempt #$attemptId)")
+                        delegate.onArmSuccess()
                     } else if (event == "TIMEOUT" || event == "CLOSED" || event == "SESSION_ENDED") {
                         Log.d(TAG, "Received $event event from ESP32 WebSocket (attempt #$attemptId)")
                         forceCloseWebSocketIfAttemptCurrent(webSocket, "ESP32 event: $event", attemptId)
