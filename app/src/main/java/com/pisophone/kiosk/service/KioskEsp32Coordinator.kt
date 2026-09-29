@@ -3,6 +3,8 @@ package com.pisophone.kiosk.service
 import android.content.Context
 import android.util.Log
 import com.pisophone.kiosk.network.Esp32ConnectionDelegate
+import com.pisophone.kiosk.repository.PaymentRepository
+import com.pisophone.kiosk.repository.PaymentResult
 import com.pisophone.kiosk.security.KioskActivationManager
 import com.pisophone.kiosk.security.KioskSecurity
 
@@ -13,10 +15,11 @@ import com.pisophone.kiosk.security.KioskSecurity
 class KioskEsp32Coordinator(
     private val context: Context,
     private val stateManager: KioskStateManager,
+    private val paymentRepo: PaymentRepository,
     private val armingTimeoutSeconds: Int,
     private val getSecretKey: () -> String,
     private val getRealTimeBatteryInfo: () -> Pair<Int, Boolean>,
-    private val onAddCoinTime: (seconds: Int, source: String, txId: String?, amount: Double) -> Unit,
+    private val onCreditPayment: (txId: String, seconds: Int, amount: Double) -> PaymentResult,
     private val onSlotBusyTriggered: () -> Unit
 ) : Esp32ConnectionDelegate {
 
@@ -65,19 +68,31 @@ class KioskEsp32Coordinator(
     }
 
     override fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?) {
-        if (!KioskActivationManager.isAppAllowedToRun(context)) {
-            Log.e(TAG, "Device not provisioned: Discarding coin event.")
-            return
-        }
         if (txId.isNullOrBlank()) {
             Log.e(TAG, "Invalid coin message over WebSocket: missing transaction ID")
             return
         }
 
-
         Log.d(TAG, "Received validated coin via WebSocket: seconds=$seconds, amount=₱$amount, tx_id=$txId")
-        onAddCoinTime(seconds, "WebSocket Port 81", txId, amount)
-        stateManager.paymentTimeout.value = armingTimeoutSeconds
+        val result = onCreditPayment(txId, seconds, amount)
+        when (result) {
+            PaymentResult.APPLIED -> {
+                Log.i(TAG, "WebSocket coin applied: +${seconds}s, ₱$amount (txId=$txId)")
+                stateManager.paymentTimeout.value = armingTimeoutSeconds
+            }
+            PaymentResult.ALREADY_APPLIED -> {
+                Log.d(TAG, "WebSocket coin already applied: txId=$txId")
+            }
+            PaymentResult.CONFLICT -> {
+                Log.w(TAG, "WebSocket coin conflict: txId=$txId")
+            }
+            PaymentResult.NOT_ELIGIBLE -> {
+                Log.w(TAG, "WebSocket coin rejected: Not eligible (txId=$txId)")
+            }
+            PaymentResult.FAILED -> {
+                Log.e(TAG, "WebSocket coin database failure: txId=$txId")
+            }
+        }
     }
 
     override fun onSlotBusy() {
@@ -105,6 +120,7 @@ class KioskEsp32Coordinator(
         stateManager.slotExpiryMessage.value = if (reason.isNotBlank()) reason else "Device activation required."
         stateManager.slotNumber.value = slotNum
         stateManager.slotWarningDaysLeft.value = 0
+        paymentRepo.expireSessionBlocking()
         stateManager.sessionTimeRemaining.value = 0
         stateManager.sessionExpiryDeadlineMs.value = 0L
         stateManager.appState.value = 0

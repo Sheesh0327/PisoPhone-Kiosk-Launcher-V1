@@ -33,4 +33,7 @@ bool isControllerWsConnected();
  */
 String getControllerSessionId();
 
+/** Re-delivers a retained controller payment only to its original session. */
+bool sendControllerPaymentEvent(const String& sessionId, const String& txId, int pulses);
+
 #endif // CONTROLLER_WEB_SOCKET_H

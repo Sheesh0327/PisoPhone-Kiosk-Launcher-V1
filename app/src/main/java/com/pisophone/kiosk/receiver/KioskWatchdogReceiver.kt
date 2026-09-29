@@ -74,9 +74,11 @@ class KioskWatchdogReceiver : BroadcastReceiver() {
             connection.connectTimeout = 3000
             connection.readTimeout = 3000
             connection.requestMethod = "GET"
-            val code = connection.responseCode
-            connection.disconnect()
-            code == 200
+            try {
+                connection.responseCode == 200
+            } finally {
+                connection.disconnect()
+            }
         } catch (e: Exception) {
             Log.w(TAG, "Local loopback HTTP check failed: ${e.message}")
             false
@@ -92,11 +94,17 @@ class KioskWatchdogReceiver : BroadcastReceiver() {
                 return
             }
 
-            if (isProcessRunning && serviceInstance != null && isHttpHealthy && !isOverlayHealthy) {
-                Log.w(TAG, "KioskService process & HTTP server are running, but overlay is missing/unattached! Rebuilding overlay immediately...")
-                serviceInstance.setupOverlay()
+            if (isProcessRunning && serviceInstance != null) {
+                if (!isHttpHealthy) {
+                    Log.w(TAG, "KioskService is running but HTTP server is unhealthy. Repairing HTTP listener...")
+                    serviceInstance.ensureHttpServerRunning()
+                }
+                if (!isOverlayHealthy) {
+                    Log.w(TAG, "KioskService is running but overlay is missing/unattached. Rebuilding overlay...")
+                    serviceInstance.setupOverlay()
+                }
             } else {
-                Log.w(TAG, "KioskService is NOT healthy (Process: $isProcessRunning, HTTP: $isHttpHealthy, Overlay: $isOverlayHealthy)! Reviving foreground service immediately...")
+                Log.w(TAG, "KioskService process is not running. Reviving foreground service immediately...")
                 val serviceIntent = Intent(context, KioskService::class.java)
                 try {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

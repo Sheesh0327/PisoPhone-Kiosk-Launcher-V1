@@ -1,9 +1,13 @@
 package com.pisophone.kiosk.service
 
 import android.content.Context
+import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import com.pisophone.kiosk.db.AppDatabase
+import com.pisophone.kiosk.repository.PaymentRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
+import org.junit.After
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -16,13 +20,24 @@ import org.robolectric.RobolectricTestRunner
 class KioskSessionSupervisorUnitTest {
 
     private lateinit var context: Context
+    private lateinit var db: AppDatabase
+    private lateinit var paymentRepo: PaymentRepository
     private lateinit var stateManager: KioskStateManager
     private val testScope = TestScope()
 
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
+        db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        paymentRepo = PaymentRepository(db = db, isEligible = { true })
         stateManager = KioskStateManager(context)
+    }
+
+    @After
+    fun tearDown() {
+        db.close()
     }
 
     @Test
@@ -31,6 +46,7 @@ class KioskSessionSupervisorUnitTest {
             context = context,
             scope = testScope,
             stateManager = stateManager,
+            paymentRepo = paymentRepo,
             onSpeakWarning = {},
             onFinishPayment = {},
             onCloseSession = {},
@@ -52,6 +68,7 @@ class KioskSessionSupervisorUnitTest {
             context = context,
             scope = testScope,
             stateManager = stateManager,
+            paymentRepo = paymentRepo,
             onSpeakWarning = {},
             onFinishPayment = {},
             onCloseSession = {},

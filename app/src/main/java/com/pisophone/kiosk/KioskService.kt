@@ -143,8 +143,7 @@ class KioskService : Service() {
     }
 
     private var engine: KioskEngine? = null
-    val stateManager: KioskStateManager
-        get() = engine?.stateManager ?: KioskStateManager(this)
+    val stateManager: KioskStateManager by lazy { KioskStateManager(applicationContext) }
 
     private var multicastLock: WifiManager.MulticastLock? = null
     private var wakeLock: PowerManager.WakeLock? = null
@@ -170,9 +169,7 @@ class KioskService : Service() {
         CrashReporter.init(this)
         acquireLocks()
 
-        val sm = KioskStateManager(this)
-        sm.restoreState()
-        val eng = KioskEngine(this, sm)
+        val eng = KioskEngine(this, stateManager)
         engine = eng
         eng.start()
     }
@@ -203,6 +200,8 @@ class KioskService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     fun isOverlayHealthy(): Boolean = engine?.overlayCoordinator?.isOverlayHealthy() ?: false
+
+    fun ensureHttpServerRunning(): Boolean = engine?.ensureHttpServerRunning() ?: false
 
     fun setupOverlay() {
         engine?.overlayCoordinator?.setupOverlay()

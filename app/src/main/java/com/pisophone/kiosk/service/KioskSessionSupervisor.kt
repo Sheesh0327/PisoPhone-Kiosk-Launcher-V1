@@ -3,6 +3,7 @@ package com.pisophone.kiosk.service
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import com.pisophone.kiosk.repository.PaymentRepository
 import com.pisophone.kiosk.system.KioskSystemMonitor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -14,6 +15,7 @@ class KioskSessionSupervisor(
     private val context: Context,
     private val scope: CoroutineScope,
     private val stateManager: KioskStateManager,
+    private val paymentRepo: PaymentRepository,
     private val onSpeakWarning: (String) -> Unit,
     private val onFinishPayment: () -> Unit,
     private val onCloseSession: (Boolean) -> Unit,
@@ -73,9 +75,9 @@ class KioskSessionSupervisor(
                     // Active session countdown
                     if (curState == 2 || curState == 3) {
                         val deadline = stateManager.sessionExpiryDeadlineMs.value
-                        val now = System.currentTimeMillis()
+                        val nowMonotonic = android.os.SystemClock.elapsedRealtime()
                         val remainingSec = if (deadline > 0L) {
-                            maxOf(0, ((deadline - now) / 1000L).toInt())
+                            maxOf(0, ((deadline - nowMonotonic) / 1000L).toInt())
                         } else {
                             maxOf(0, stateManager.sessionTimeRemaining.value - 1)
                         }
@@ -83,24 +85,42 @@ class KioskSessionSupervisor(
                         stateManager.sessionTimeRemaining.value = remainingSec
 
                         if (remainingSec <= 0) {
-                            stateManager.appState.value = 0 // Lock screen
-                            stateManager.sessionExpiryDeadlineMs.value = 0L
-                            onSpeakWarning("Time expired")
-                            stateManager.saveState()
-                            
-                            val startMain = Intent(Intent.ACTION_MAIN).apply {
-                                addCategory(Intent.CATEGORY_HOME)
-                                flags = Intent.FLAG_ACTIVITY_NEW_TASK or 
-                                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or 
-                                        Intent.FLAG_ACTIVITY_CLEAR_TOP
-                            }
-                            try {
-                                context.startActivity(startMain)
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Failed to start HOME activity: ${e.message}")
+                            val expiryResult = paymentRepo.expireSessionIfDueBlocking()
+                            if (expiryResult.didExpire) {
+                                val applied = stateManager.applySessionUpdate(
+                                    deadlineMs = expiryResult.sessionState.sessionExpiryDeadlineMs,
+                                    remainingSeconds = expiryResult.sessionState.sessionTimeRemaining,
+                                    revision = expiryResult.sessionState.revision,
+                                    targetAppState = 0
+                                )
+                                if (applied) {
+                                    onSpeakWarning("Time expired")
+                                    stateManager.saveState()
+                                    
+                                    val startMain = Intent(Intent.ACTION_MAIN).apply {
+                                        addCategory(Intent.CATEGORY_HOME)
+                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or 
+                                                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or 
+                                                Intent.FLAG_ACTIVITY_CLEAR_TOP
+                                    }
+                                    try {
+                                        context.startActivity(startMain)
+                                    } catch (e: Exception) {
+                                        Log.e(TAG, "Failed to start HOME activity: ${e.message}")
+                                    }
+                                } else {
+                                    Log.d(TAG, "Skipping stale expiration lock and announcement because newer revision is active")
+                                }
+                            } else {
+                                stateManager.applySessionUpdate(
+                                    expiryResult.sessionState.sessionExpiryDeadlineMs,
+                                    expiryResult.sessionState.sessionTimeRemaining,
+                                    expiryResult.sessionState.revision
+                                )
                             }
                         } else {
-                            if (remainingSec % 10 == 0) {
+                            if (remainingSec % 15 == 0) {
+                                paymentRepo.checkpointSessionBlocking(stateManager.sessionRevision.value)
                                 stateManager.saveState()
                             }
 
