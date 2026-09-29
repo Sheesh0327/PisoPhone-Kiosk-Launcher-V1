@@ -54,7 +54,7 @@ class Esp32ConnectionManager(
         private const val TAG = "Esp32ConnectionManager"
         private const val ESP32_WS_PORT = 81
         private const val HEARTBEAT_TIMEOUT_MS = 45000L
-        private const val MAX_TIMESTAMP_SKEW_MS = 60000L
+        private const val MAX_TIMESTAMP_SKEW_MS = 300000L
         private const val DRAIN_SAFETY_TIMEOUT_MS = 15000L
     }
 
@@ -384,12 +384,36 @@ class Esp32ConnectionManager(
         }
 
         if (ip.isNullOrBlank()) {
-            Log.w(TAG, "Cannot arm slot: No discovered ESP32 IP available. Triggering discovery...")
-            delegate.onOnlineStatusChanged(false, null)
+            Log.w(TAG, "Cannot arm slot immediately: No cached ESP32 IP. Initiating fast discovery and connect (attempt #$attemptId)...")
             discoveryScanner.triggerDiscovery("")
+            scope.launch(Dispatchers.IO) {
+                var resolvedIp: String? = null
+                for (i in 0 until 35) { // Wait up to 3.5 seconds
+                    kotlinx.coroutines.delay(100)
+                    synchronized(connectionLock) {
+                        if (attemptId != currentAttemptId) return@launch
+                        resolvedIp = esp32Ip ?: delegate.getTargetIp()
+                    }
+                    if (!resolvedIp.isNullOrBlank()) break
+                }
+                val target = resolvedIp
+                if (!target.isNullOrBlank()) {
+                    initiateWebSocketArming(attemptId, target, armingTimeoutSeconds)
+                } else {
+                    Log.e(TAG, "Arming failed: Could not discover ESP32 IP within timeout for attempt #$attemptId.")
+                    delegate.onOnlineStatusChanged(false, null)
+                    Handler(Looper.getMainLooper()).post {
+                        Toast.makeText(context, "Cannot connect to ESP32. Please check Wi-Fi connection.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
             return
         }
 
+        initiateWebSocketArming(attemptId, ip, armingTimeoutSeconds)
+    }
+
+    private fun initiateWebSocketArming(attemptId: Long, ip: String, armingTimeoutSeconds: Int) {
         val (host, _) = discoveryScanner.getEsp32HostAndPort(ip)
         val targetHost = if (host.isNotBlank()) host else ip
         val deviceId = delegate.getDeviceId()
@@ -397,7 +421,7 @@ class Esp32ConnectionManager(
         val sig = KioskSecurity.generateTimestampSignature(deviceId, ts, delegate.getSecretKey())
 
         val wsUrl = "ws://$targetHost:$ESP32_WS_PORT/ws?device_id=$deviceId&ts=$ts&sig=$sig"
-        Log.d(TAG, "Connecting to Master WebSocket at $targetHost:$ESP32_WS_PORT (attempt #$attemptId)")
+        Log.i(TAG, "⚡ [Single-Path Arming] Connecting WebSocket to $targetHost:$ESP32_WS_PORT (attempt #$attemptId, deviceId=$deviceId)")
 
         val request = Request.Builder().url(wsUrl).build()
 
@@ -414,7 +438,7 @@ class Esp32ConnectionManager(
                 delegate.onOnlineStatusChanged(true, null)
                 delegate.onArmSuccess()
                 Handler(Looper.getMainLooper()).post {
-                    Toast.makeText(context, "Coin slot locked (Ready for coin - ${armingTimeoutSeconds}s)", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Coin slot ready (${armingTimeoutSeconds}s)", Toast.LENGTH_SHORT).show()
                 }
             }
 
@@ -481,7 +505,7 @@ class Esp32ConnectionManager(
                                 drainJob?.cancel()
                                 drainJob = scope.launch(Dispatchers.IO) {
                                     try {
-                                        delay(DRAIN_SAFETY_TIMEOUT_MS)
+                                        kotlinx.coroutines.delay(DRAIN_SAFETY_TIMEOUT_MS)
                                         Log.w(TAG, "Extended drain safety timeout reached; closing WebSocket.")
                                         forceCloseWebSocketIfAttemptCurrent(webSocket, "Drain safety timeout after coin", attemptId)
                                     } catch (_: kotlinx.coroutines.CancellationException) {}

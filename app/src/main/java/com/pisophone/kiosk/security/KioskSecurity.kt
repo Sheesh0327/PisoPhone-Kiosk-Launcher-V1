@@ -410,7 +410,12 @@ object KioskSecurity {
             val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
             cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
             val decryptedBytes = cipher.doFinal(cipherText)
-            return String(decryptedBytes, Charsets.UTF_8)
+            val result = String(decryptedBytes, Charsets.UTF_8)
+            if (result.any { it < ' ' && it != '\n' && it != '\r' && it != '\t' } || result.contains('\uFFFD')) {
+                Log.w(TAG, "AES Decrypted text contains non-printable characters or invalid UTF-8 (wrong secret key)")
+                return ""
+            }
+            return result
         } catch (e: Exception) {
             Log.e(TAG, "AES Decryption error: ${e.message}")
             return ""
