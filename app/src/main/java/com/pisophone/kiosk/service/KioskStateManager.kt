@@ -97,7 +97,6 @@ class KioskStateManager(private val context: Context) {
                 .putInt("coins_inserted", coinsInserted.value)
                 .putFloat("price_per_coin", pricePerCoin.value.toFloat())
                 .putInt("minutes_per_coin", minutesPerCoin.value)
-                .putString("esp32_ip", esp32Ip)
                 .putInt("target_port", ESP32_WEB_PORT)
                 .putStringSet("processed_tx_ids", txSet.take(20).toSet())
                 .apply()
@@ -125,13 +124,7 @@ class KioskStateManager(private val context: Context) {
 
             pricePerCoin.value = prefs.getFloat("price_per_coin", 5.0f).toDouble()
             minutesPerCoin.value = prefs.getInt("minutes_per_coin", 30)
-            esp32Ip = prefs.getString("esp32_ip", null)
-            if (esp32Ip.isNullOrBlank()) {
-                val configured = KioskSecurity.getConfiguredEsp32Ip(context)
-                if (configured.isNotBlank()) {
-                    esp32Ip = configured
-                }
-            }
+            esp32Ip = null
 
             val savedTxSet = prefs.getStringSet("processed_tx_ids", emptySet()) ?: emptySet()
 

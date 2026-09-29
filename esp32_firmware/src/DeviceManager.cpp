@@ -15,25 +15,6 @@ bool pairDeviceToSlot(int slotNum, String devId, String ip, String name) {
     devId.trim();
     ip.trim();
 
-    // If IP is missing, look up from tracked devices by devId
-    if (ip.length() == 0 && devId.length() > 0) {
-        for (int i = 0; i < trackedDeviceCount; i++) {
-            if (trackedDevices[i].deviceId == devId && trackedDevices[i].lastKnownIp.length() > 0) {
-                ip = trackedDevices[i].lastKnownIp;
-                break;
-            }
-        }
-    }
-    // If devId is missing, look up from tracked devices by IP
-    if (devId.length() == 0 && ip.length() > 0) {
-        for (int i = 0; i < trackedDeviceCount; i++) {
-            if (trackedDevices[i].lastKnownIp == ip && trackedDevices[i].deviceId.length() > 0) {
-                devId = trackedDevices[i].deviceId;
-                break;
-            }
-        }
-    }
-
     for (int i = 0; i < maxLicensedSlots; i++) {
         if (i != targetIdx && licenseSlots[i].deviceId.length() > 0 && licenseSlots[i].deviceId == devId) {
             licenseSlots[i].deviceId = "";
@@ -43,7 +24,7 @@ bool pairDeviceToSlot(int slotNum, String devId, String ip, String name) {
 
     licenseSlots[targetIdx].deviceId = devId;
     if (ip.length() > 0) licenseSlots[targetIdx].ip = ip;
-    String cleanName = (name.length() > 0 && name != devId && !name.startsWith("DEV_")) ? name : ("PisoPhone " + String(slotNum));
+    String cleanName = "PisoPhone " + String(slotNum);
     licenseSlots[targetIdx].name = cleanName;
     licenseSlots[targetIdx].active = true;
 
@@ -254,17 +235,17 @@ void recordDeviceNonce(String deviceId, unsigned long long ts) {
     if (trackedDeviceCount < MAX_TRACKED_DEVICES) {
         trackedDevices[trackedDeviceCount].deviceId = deviceId;
         trackedDevices[trackedDeviceCount].lastKnownIp = "";
-        trackedDevices[trackedDeviceCount].timeRemainingSeconds = 0;
+        trackedDevices[trackedDeviceCount].timeRemainingSeconds = -1;
         trackedDevices[trackedDeviceCount].state = 0;
-        trackedDevices[trackedDeviceCount].batteryLevel = 100;
+        trackedDevices[trackedDeviceCount].batteryLevel = -1;
         trackedDevices[trackedDeviceCount].isCharging = false;
-        trackedDevices[trackedDeviceCount].lastSeenMs = millis();
+        trackedDevices[trackedDeviceCount].lastSeenMs = 0;
         trackedDevices[trackedDeviceCount].lastNonceTs = ts;
         trackedDeviceCount++;
     }
 }
 
-void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int state, int battery, bool charging, unsigned long long ts, String devName) {
+void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int state, int battery, bool charging, unsigned long long ts) {
     ip.trim();
     if (ip == "127.0.0.1") ip = "";
     if (ip.length() > 0) {
@@ -272,9 +253,6 @@ void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int st
     }
     
     int validBattery = (battery >= 0 && battery <= 100) ? battery : -1;
-    String cleanName = devName;
-    cleanName.trim();
-    if (cleanName == deviceId || cleanName.startsWith("DEV_")) cleanName = "";
     
     for (int i = 0; i < trackedDeviceCount; i++) {
         bool match = false;
@@ -287,7 +265,6 @@ void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int st
         if (match) {
             if (deviceId.length() > 0) trackedDevices[i].deviceId = deviceId;
             if (ip.length() > 0) trackedDevices[i].lastKnownIp = ip;
-            if (cleanName.length() > 0) trackedDevices[i].name = cleanName;
             trackedDevices[i].timeRemainingSeconds = timeRemaining;
             trackedDevices[i].state = state;
             if (validBattery >= 0) {
@@ -299,35 +276,16 @@ void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int st
             return;
         }
     }
-
-    int targetSlot = -1;
     if (trackedDeviceCount < MAX_TRACKED_DEVICES) {
-        targetSlot = trackedDeviceCount++;
-    } else {
-        // Evict oldest unassigned stale entry if table is full
-        unsigned long oldestSeen = 0xFFFFFFFF;
-        int evictIdx = -1;
-        for (int i = 0; i < trackedDeviceCount; i++) {
-            if (findSlotIndexForDevice(trackedDevices[i].deviceId, trackedDevices[i].lastKnownIp) < 0) {
-                if (trackedDevices[i].lastSeenMs < oldestSeen) {
-                    oldestSeen = trackedDevices[i].lastSeenMs;
-                    evictIdx = i;
-                }
-            }
-        }
-        if (evictIdx >= 0) targetSlot = evictIdx;
-    }
-
-    if (targetSlot >= 0) {
-        trackedDevices[targetSlot].deviceId = deviceId;
-        trackedDevices[targetSlot].lastKnownIp = ip;
-        trackedDevices[targetSlot].name = cleanName.length() > 0 ? cleanName : "PisoPhone Terminal";
-        trackedDevices[targetSlot].timeRemainingSeconds = timeRemaining;
-        trackedDevices[targetSlot].state = state;
-        trackedDevices[targetSlot].batteryLevel = (validBattery >= 0) ? validBattery : 100;
-        trackedDevices[targetSlot].isCharging = charging;
-        trackedDevices[targetSlot].lastSeenMs = millis();
-        trackedDevices[targetSlot].lastNonceTs = ts;
+        trackedDevices[trackedDeviceCount].deviceId = deviceId;
+        trackedDevices[trackedDeviceCount].lastKnownIp = ip;
+        trackedDevices[trackedDeviceCount].timeRemainingSeconds = timeRemaining;
+        trackedDevices[trackedDeviceCount].state = state;
+        trackedDevices[trackedDeviceCount].batteryLevel = validBattery;
+        trackedDevices[trackedDeviceCount].isCharging = charging;
+        trackedDevices[trackedDeviceCount].lastSeenMs = millis();
+        trackedDevices[trackedDeviceCount].lastNonceTs = ts;
+        trackedDeviceCount++;
     }
 }
 
@@ -335,8 +293,9 @@ int getTrackedTimeRemaining(String ip, unsigned long maxAgeMs, String devId) {
     for (int i = 0; i < trackedDeviceCount; i++) {
         bool match = (trackedDevices[i].lastKnownIp == ip || trackedDevices[i].deviceId == ip);
         if (!match && devId.length() > 0 && trackedDevices[i].deviceId == devId) match = true;
-        if (match) {
+        if (match && trackedDevices[i].lastSeenMs > 0) {
             if (millis() - trackedDevices[i].lastSeenMs <= maxAgeMs) {
+                if (trackedDevices[i].timeRemainingSeconds < 0) return 0;
                 unsigned long elapsedSec = (millis() - trackedDevices[i].lastSeenMs) / 1000;
                 int remaining = trackedDevices[i].timeRemainingSeconds - (int)elapsedSec;
                 return (remaining > 0) ? remaining : 0;
@@ -354,7 +313,7 @@ int getTrackedBatteryLevel(String ip, String devId) {
             return trackedDevices[i].batteryLevel;
         }
     }
-    return 100;
+    return -1;
 }
 
 bool getTrackedChargingState(String ip, String devId) {

@@ -18,23 +18,11 @@ void handleHeartbeat() {
     
     int timeRem = webServer.hasArg("time") ? webServer.arg("time").toInt() : 0;
     int state = webServer.hasArg("state") ? webServer.arg("state").toInt() : 0;
-    int battery = webServer.hasArg("battery") ? webServer.arg("battery").toInt() : 100;
+    int battery = webServer.hasArg("battery") ? webServer.arg("battery").toInt() : -1;
     bool charging = webServer.hasArg("charging") ? (webServer.arg("charging").toInt() == 1 || webServer.arg("charging") == "true") : false;
-
-    String devName = webServer.hasArg("device_name") ? webServer.arg("device_name") : 
-                    (webServer.hasArg("name") ? webServer.arg("name") : 
-                    (webServer.hasArg("model") ? webServer.arg("model") : ""));
-    devName.trim();
 
     if (deviceId.length() == 0 && reqIp.length() > 0 && reqIp != "127.0.0.1" && reqIp != "0.0.0.0") {
         deviceId = "DEV_" + reqIp;
-    }
-
-    if (devName.length() == 0) {
-        devName = getDeviceNameByIpOrId(reqIp, deviceId);
-    }
-    if (devName.length() == 0 || devName == deviceId) {
-        devName = "PisoPhone Terminal";
     }
 
     bool isAuth = verifyTelemetryAuth(deviceId, tsStr, sig);
@@ -45,12 +33,10 @@ void handleHeartbeat() {
         return;
     }
 
-    // Always record presence and telemetry for both paired and unassigned devices
-    if (deviceId.length() > 0 || reqIp.length() > 0) {
-        updateDeviceTelemetry(deviceId, reqIp, timeRem, state, battery, charging, ts, devName);
-    }
-
     if (slotIdx < 0 || !isAuth) {
+        String devName = getDeviceNameByIpOrId(reqIp, deviceId);
+        if (devName.length() == 0 || devName == deviceId) devName = "PisoPhone Terminal";
+
         String json = "{\"status\":\"unassigned\",\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\"";
         json += ",\"slot_num\":0,\"is_paired\":false,\"slot_expired\":true,\"slot_status\":\"unassigned\",\"slot_warning\":false";
         json += ",\"message\":\"Connected to ESP32: Awaiting Slot Assignment in Admin Portal.\"";
@@ -59,10 +45,15 @@ void handleHeartbeat() {
         return;
     }
 
+    if (deviceId.length() > 0 || reqIp.length() > 0) {
+        updateDeviceTelemetry(deviceId, reqIp, timeRem, state, battery, charging, ts);
+    }
+
     if (ts > 0) updateMasterTime(ts);
     bool isActive = isSlotActive(slotIdx);
 
     String status = (!isActive) ? "slot_expired" : "ok";
+    String devName = getDeviceNameByIpOrId(reqIp, deviceId);
     String json = "{\"status\":\"" + status + "\",\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\"";
     if (slotIdx >= 0) {
         String encPin = aes_encrypt("PIN:" + webPassword, sharedSecret);
@@ -97,8 +88,8 @@ void handleCrashReport() {
 
 void handleCheckQualification() {
     if (!checkAuth()) return;
-    String p1 = webServer.hasArg("p1") ? webServer.arg("p1") : "";
-    String p2 = webServer.hasArg("p2") ? webServer.arg("p2") : "";
+    String p1 = webServer.hasArg(NVS_KEY_P1) ? webServer.arg(NVS_KEY_P1) : "";
+    String p2 = webServer.hasArg(NVS_KEY_P2) ? webServer.arg(NVS_KEY_P2) : "";
     int mins = webServer.hasArg("minutes") ? webServer.arg("minutes").toInt() : 15;
     if (mins <= 0) mins = 1;
 
@@ -170,10 +161,10 @@ void handleOneVsOne() {
         matchMinutes = webServer.arg("match_minutes").toInt();
     }
     
-    prefs.begin("kiosk_cfg", false);
-    prefs.putString("p1", p1Ip);
-    prefs.putString("p2", p2Ip);
-    prefs.putInt("match", matchMinutes);
+    prefs.begin(NVS_NAMESPACE, false);
+    prefs.putString(NVS_KEY_P1, p1Ip);
+    prefs.putString(NVS_KEY_P2, p2Ip);
+    prefs.putInt(NVS_KEY_MATCH, matchMinutes);
     prefs.end();
 
     String winner = webServer.hasArg("winner") ? webServer.arg("winner") : "";
@@ -214,12 +205,12 @@ void handleOneVsOne() {
             return;
         }
 
-        if (winner == "p1") {
+        if (winner == NVS_KEY_P1) {
             sendAddTime(matchMinutes, p1Ip);
             yield();
             sendAddTime(-matchMinutes, p2Ip);
             matchStatusMsg = "<div style='background:#e8f5e9;color:#2e7d32;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>🏆 <b>Player 1 Won:</b> Transferred +" + String(matchMinutes) + "m to Player 1 (" + p1Ip + ") and deducted -" + String(matchMinutes) + "m from Player 2 (" + p2Ip + ").</div>";
-        } else if (winner == "p2") {
+        } else if (winner == NVS_KEY_P2) {
             sendAddTime(matchMinutes, p2Ip);
             yield();
             sendAddTime(-matchMinutes, p1Ip);

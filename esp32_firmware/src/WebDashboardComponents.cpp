@@ -114,9 +114,8 @@ String renderLicenseSlotsHtml() {
     int unassignedCount = 0;
     unsigned long currentMillis = millis();
     for (int i = 0; i < trackedDeviceCount; i++) {
-        if (trackedDevices[i].deviceId.length() == 0 && trackedDevices[i].lastKnownIp.length() == 0) continue;
-        String dId = trackedDevices[i].deviceId.length() > 0 ? trackedDevices[i].deviceId : trackedDevices[i].lastKnownIp;
-        if (findSlotIndexForDevice(dId, trackedDevices[i].lastKnownIp) >= 0) continue;
+        if (trackedDevices[i].deviceId.length() == 0) continue;
+        if (findSlotIndexForDevice(trackedDevices[i].deviceId, trackedDevices[i].lastKnownIp) >= 0) continue;
         if (currentMillis - trackedDevices[i].lastSeenMs < 300000) {
             unassignedCount++;
         }
@@ -137,9 +136,9 @@ String renderLicenseSlotsHtml() {
     html += "</div>";
 
     html += "<div style=\"display: flex; align-items: center; gap: 10px; flex-wrap: wrap;\">";
-    html += "<a href=\"https://pisophone.pages.dev/?ip=" + myIp + "&secret=" + sharedSecret + "\" target=\"_self\" style=\"font-size: 12px; font-weight: 700; padding: 8px 16px; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: #ffffff; border-radius: 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25); transition: transform 0.15s ease;\">";
+    html += "<a href=\"https://pisophone.pages.dev/?mac=" + macAddressStr + "&secret=" + sharedSecret + "\" target=\"_self\" style=\"font-size: 12px; font-weight: 700; padding: 8px 16px; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: #ffffff; border-radius: 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25); transition: transform 0.15s ease;\">";
     html += "<span style=\"font-size: 14px;\">📥</span> Install & Provision</a>";
-    html += "<a href=\"https://pisophone.pages.dev/?ip=" + myIp + "&mode=deprovision\" target=\"_self\" style=\"font-size: 12px; font-weight: 700; padding: 8px 16px; background: linear-gradient(135deg, #e11d48 0%, #be123c 100%); color: #ffffff; border-radius: 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(225, 29, 72, 0.25); transition: transform 0.15s ease;\">";
+    html += "<a href=\"https://pisophone.pages.dev/?mac=" + macAddressStr + "&mode=deprovision\" target=\"_self\" style=\"font-size: 12px; font-weight: 700; padding: 8px 16px; background: linear-gradient(135deg, #e11d48 0%, #be123c 100%); color: #ffffff; border-radius: 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(225, 29, 72, 0.25); transition: transform 0.15s ease;\">";
     html += "<span style=\"font-size: 14px;\">🗑️</span> Deprovision</a>";
     html += "</div>";
     html += "</div>";

@@ -80,9 +80,9 @@ void handleReboot() {
     if (!checkAdminAuth()) return;
     Serial.println("\n[🔄 HTTP API] Reboot request received from Web Portal.");
     if (revenueDirty || totalCoinsLifetime != lastSavedTotalCoins || totalEarningsLifetime != lastSavedTotalEarnings) {
-        prefs.begin("kiosk_cfg", false);
-        prefs.putULong("total_coins", totalCoinsLifetime);
-        prefs.putFloat("total_earnings", totalEarningsLifetime);
+        prefs.begin(NVS_NAMESPACE, false);
+        prefs.putULong(NVS_KEY_TOTAL_COINS, totalCoinsLifetime);
+        prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, totalEarningsLifetime);
         prefs.end();
         lastSavedTotalCoins = totalCoinsLifetime;
         lastSavedTotalEarnings = totalEarningsLifetime;
@@ -113,9 +113,9 @@ void handleResetVault() {
             totalEarningsSession = 0.0f;
             lastSavedTotalCoins = 0;
             lastSavedTotalEarnings = 0.0f;
-            prefs.begin("kiosk_cfg", false);
-            prefs.putULong("total_coins", 0);
-            prefs.putFloat("total_earnings", 0.0f);
+            prefs.begin(NVS_NAMESPACE, false);
+            prefs.putULong(NVS_KEY_TOTAL_COINS, 0);
+            prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, 0.0f);
             prefs.end();
             Serial.println("[👑 VAULT] Lifetime revenue counter reset to 0 by Super Admin (Vendor).");
         } else {
@@ -130,9 +130,9 @@ void handleSave() {
 
     // Immediately flush any dirty revenue to NVS flash on manual save
     if (revenueDirty || totalCoinsLifetime != lastSavedTotalCoins || totalEarningsLifetime != lastSavedTotalEarnings) {
-        prefs.begin("kiosk_cfg", false);
-        prefs.putULong("total_coins", totalCoinsLifetime);
-        prefs.putFloat("total_earnings", totalEarningsLifetime);
+        prefs.begin(NVS_NAMESPACE, false);
+        prefs.putULong(NVS_KEY_TOTAL_COINS, totalCoinsLifetime);
+        prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, totalEarningsLifetime);
         prefs.end();
         lastSavedTotalCoins = totalCoinsLifetime;
         lastSavedTotalEarnings = totalEarningsLifetime;
@@ -140,16 +140,16 @@ void handleSave() {
         Serial.println("[💰 VAULT] Revenue counters flushed to NVS flash on config save.");
     }
 
-    prefs.begin("kiosk_cfg", false);
-    if (webServer.hasArg("wifi_ssid")) { wifiSsid = webServer.arg("wifi_ssid"); prefs.putString("wifi_ssid", wifiSsid); }
-    if (webServer.hasArg("wifi_pass")) { wifiPass = webServer.arg("wifi_pass"); prefs.putString("wifi_pass", wifiPass); }
-    if (webServer.hasArg("u_coin_pin")) { universalCoinPin = webServer.arg("u_coin_pin").toInt(); prefs.putInt("u_coin_pin", universalCoinPin); }
-    if (webServer.hasArg("led_pin"))    { ledPin  = webServer.arg("led_pin").toInt();  prefs.putInt("led_pin", ledPin); }
-    if (webServer.hasArg("led_active_low")) {
-        ledActiveLow = (webServer.arg("led_active_low") == "1");
-        prefs.putBool("led_active_low", ledActiveLow);
+    prefs.begin(NVS_NAMESPACE, false);
+    if (webServer.hasArg(NVS_KEY_WIFI_SSID)) { wifiSsid = webServer.arg(NVS_KEY_WIFI_SSID); prefs.putString(NVS_KEY_WIFI_SSID, wifiSsid); }
+    if (webServer.hasArg(NVS_KEY_WIFI_PASS)) { wifiPass = webServer.arg(NVS_KEY_WIFI_PASS); prefs.putString(NVS_KEY_WIFI_PASS, wifiPass); }
+    if (webServer.hasArg(NVS_KEY_U_COIN_PIN)) { universalCoinPin = webServer.arg(NVS_KEY_U_COIN_PIN).toInt(); prefs.putInt(NVS_KEY_U_COIN_PIN, universalCoinPin); }
+    if (webServer.hasArg(NVS_KEY_LED_PIN))    { ledPin  = webServer.arg(NVS_KEY_LED_PIN).toInt();  prefs.putInt(NVS_KEY_LED_PIN, ledPin); }
+    if (webServer.hasArg(NVS_KEY_LED_ACTIVE_LOW)) {
+        ledActiveLow = (webServer.arg(NVS_KEY_LED_ACTIVE_LOW) == "1");
+        prefs.putBool(NVS_KEY_LED_ACTIVE_LOW, ledActiveLow);
     }
-    if (webServer.hasArg("relay_pin"))  { relayPin = webServer.arg("relay_pin").toInt(); prefs.putInt("relay_pin", relayPin); }
+    if (webServer.hasArg(NVS_KEY_RELAY_PIN))  { relayPin = webServer.arg(NVS_KEY_RELAY_PIN).toInt(); prefs.putInt(NVS_KEY_RELAY_PIN, relayPin); }
     if (webServer.hasArg("ips")) {
         String rawIps = webServer.arg("ips");
         rawIps.trim();
@@ -203,22 +203,22 @@ void handleSave() {
             trackedDeviceCount = newCount;
         }
     }
-    if (webServer.hasArg("port"))       { targetPort = webServer.arg("port").toInt(); prefs.putInt("port", targetPort); }
-    if (webServer.hasArg("admin_pw"))   { webPassword = webServer.arg("admin_pw"); prefs.putString("admin_pw", webPassword); }
+    if (webServer.hasArg(NVS_KEY_PORT))       { targetPort = webServer.arg(NVS_KEY_PORT).toInt(); prefs.putInt(NVS_KEY_PORT, targetPort); }
+    if (webServer.hasArg(NVS_KEY_ADMIN_PW))   { webPassword = webServer.arg(NVS_KEY_ADMIN_PW); prefs.putString(NVS_KEY_ADMIN_PW, webPassword); }
     if (webServer.hasArg("minutes_per_coin")) {
         int m = webServer.arg("minutes_per_coin").toInt();
         if (m >= 1) {
             minutesPerCoin = m;
-            prefs.putInt("mins_per_coin", minutesPerCoin);
+            prefs.putInt(NVS_KEY_MINS_PER_COIN, minutesPerCoin);
         }
     }
-    if (webServer.hasArg("relay_active_low")) {
-        relayActiveLow = (webServer.arg("relay_active_low") == "1" || webServer.arg("relay_active_low") == "true");
-        prefs.putBool("relay_active_low", relayActiveLow);
+    if (webServer.hasArg(NVS_KEY_RELAY_ACTIVE_LOW)) {
+        relayActiveLow = (webServer.arg(NVS_KEY_RELAY_ACTIVE_LOW) == "1" || webServer.arg(NVS_KEY_RELAY_ACTIVE_LOW) == "true");
+        prefs.putBool(NVS_KEY_RELAY_ACTIVE_LOW, relayActiveLow);
     }
-    if (webServer.hasArg("shared_secret")) {
-        sharedSecret = webServer.arg("shared_secret");
-        prefs.putString("shared_secret", sharedSecret);
+    if (webServer.hasArg(NVS_KEY_SHARED_SECRET)) {
+        sharedSecret = webServer.arg(NVS_KEY_SHARED_SECRET);
+        prefs.putString(NVS_KEY_SHARED_SECRET, sharedSecret);
     }
     prefs.end();
 
