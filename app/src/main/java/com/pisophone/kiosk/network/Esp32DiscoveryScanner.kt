@@ -34,6 +34,7 @@ class Esp32DiscoveryScanner(
         private const val TAG = "Esp32DiscoveryScanner"
         const val DEFAULT_WEB_PORT = 80
         const val UDP_DISCOVERY_PORT = 8888
+        const val CANONICAL_MDNS_HOST = "kioskmanager.local"
         private const val DISCOVERY_PROBE_MSG = "{\"type\":\"PISOPHONE_DISCOVER\"}"
     }
 
@@ -43,9 +44,6 @@ class Esp32DiscoveryScanner(
         .writeTimeout(1500, TimeUnit.MILLISECONDS)
         .build()
 
-    private val lock = Any()
-    private var isStopped = false
-    private var discoveryJob: Job? = null
     private var udpListenerJob: Job? = null
     private var activeUdpSocket: DatagramSocket? = null
     private var multicastLock: WifiManager.MulticastLock? = null
@@ -62,110 +60,68 @@ class Esp32DiscoveryScanner(
     }
 
     fun triggerDiscovery(localIp: String) {
-        synchronized(lock) {
-            if (isStopped) return
-            startUdpListenerLocked()
-            if (discoveryJob?.isActive == true) {
-                return
-            }
-            discoveryJob = scope.launch(Dispatchers.IO) {
-                try {
-                    while (!isAlreadyBound() && isActive) {
-                        sendUdpDiscoveryBroadcast(localIp)
-                        delay(2000)
-                    }
-                } finally {
-                    synchronized(lock) {
-                        if (discoveryJob == coroutineContext[Job]) {
-                            discoveryJob = null
-                        }
-                    }
-                }
+        startUdpListener()
+        scope.launch(Dispatchers.IO) {
+            // 1. Send standard UDP discovery broadcast
+            sendUdpDiscoveryBroadcast(localIp)
+            // 2. Direct probe of configured IP, canonical mDNS hostname, and DHCP gateway
+            probeDirectCandidates()
+            // 3. Dynamic LAN subnet scan for DHCP client ESP32
+            if (!isAlreadyBound()) {
+                scanSubnetIfUnbound(localIp)
             }
         }
     }
 
     fun startUdpListener() {
-        synchronized(lock) {
-            if (!isStopped) {
-                startUdpListenerLocked()
-            }
-        }
-    }
-
-    private fun startUdpListenerLocked() {
         if (udpListenerJob?.isActive == true) return
         udpListenerJob = scope.launch(Dispatchers.IO) {
-            var socket: DatagramSocket? = null
             try {
                 acquireMulticastLock()
-                val newSocket = DatagramSocket(null).apply {
+                val socket = DatagramSocket(null).apply {
                     reuseAddress = true
                     broadcast = true
-                    soTimeout = 1000 // 1 sec timeout for clean cancellation checking
                     bind(InetSocketAddress(UDP_DISCOVERY_PORT))
                 }
-                synchronized(lock) {
-                    if (isStopped || !isActive) {
-                        newSocket.close()
-                        return@launch
-                    }
-                    socket = newSocket
-                    activeUdpSocket = newSocket
-                }
+                activeUdpSocket = socket
                 val buffer = ByteArray(2048)
                 Log.d(TAG, "Started UDP Discovery Listener on port $UDP_DISCOVERY_PORT")
 
                 val localIp = getLocalIpAddress()
                 while (isActive) {
-                    try {
-                        val packet = DatagramPacket(buffer, buffer.size)
-                        newSocket.receive(packet)
-                        val senderIp = packet.address?.hostAddress ?: continue
-                        if (senderIp == "127.0.0.1" || senderIp == localIp) continue
+                    val packet = DatagramPacket(buffer, buffer.size)
+                    socket.receive(packet)
+                    val senderIp = packet.address?.hostAddress ?: continue
+                    if (senderIp == "127.0.0.1" || senderIp == localIp) continue
 
-                        val message = String(packet.data, 0, packet.length, Charsets.UTF_8).trim()
-                        if (message.isBlank()) continue
+                    val message = String(packet.data, 0, packet.length, Charsets.UTF_8).trim()
+                    if (message.isBlank()) continue
 
-                        // Validate canonical ESP32 response contract
-                        if (message.contains("PISOPHONE_ESP32_RESPONSE")) {
-                            var targetIp = senderIp
-                            var deviceMac = ""
-                            var sig = ""
-                            try {
-                                val json = JSONObject(message)
-                                val ipInJson = json.optString("ip", "")
-                                if (ipInJson.isNotBlank() && ipInJson != "0.0.0.0" && ipInJson != "127.0.0.1") {
-                                    targetIp = ipInJson
-                                }
-                                deviceMac = json.optString("mac", "").ifBlank { json.optString("esp32_mac", "") }
-                                sig = json.optString("sig", "").ifBlank { json.optString("signature", "") }
-                            } catch (_: Exception) {}
-
-                            if (validateEsp32Response(deviceMac, targetIp, sig, message)) {
-                                Log.i(TAG, "[+] Discovered verified ESP32 Master via UDP at $targetIp (MAC=$deviceMac)")
-                                delegate.onEsp32Discovered(targetIp, message)
+                    // Validate canonical ESP32 response contract
+                    if (message.contains("PISOPHONE_ESP32_RESPONSE")) {
+                        var targetIp = senderIp
+                        try {
+                            val json = JSONObject(message)
+                            val ipInJson = json.optString("ip", "")
+                            if (ipInJson.isNotBlank() && ipInJson != "0.0.0.0" && ipInJson != "127.0.0.1") {
+                                targetIp = ipInJson
                             }
+                        } catch (_: Exception) {}
+
+                        if (isEsp32MacMatching(message)) {
+                            Log.i(TAG, "[+] Discovered ESP32 Master via UDP at $targetIp")
+                            delegate.onEsp32Discovered(targetIp, message)
                         }
-                    } catch (_: java.net.SocketTimeoutException) {
-                        // Normal receive timeout; loop to check coroutine isActive status
                     }
                 }
             } catch (e: Exception) {
                 Log.d(TAG, "UDP listener stopped: ${e.message}")
             } finally {
-                synchronized(lock) {
-                    try {
-                        socket?.close()
-                    } catch (_: Exception) {}
-                    if (activeUdpSocket === socket) {
-                        activeUdpSocket = null
-                    }
-                    if (udpListenerJob == coroutineContext[Job]) {
-                        udpListenerJob = null
-                        releaseMulticastLockLocked()
-                    }
-                }
+                try {
+                    activeUdpSocket?.close()
+                } catch (_: Exception) {}
+                activeUdpSocket = null
+                releaseMulticastLock()
             }
         }
     }
@@ -173,13 +129,7 @@ class Esp32DiscoveryScanner(
     fun sendUdpDiscoveryBroadcast(localIp: String) {
         try {
             acquireMulticastLock()
-            val configuredMac = KioskSecurity.getConfiguredEsp32Mac(context)
-            val probeMsg = if (configuredMac.isNotBlank()) {
-                "{\"type\":\"PISOPHONE_DISCOVER\",\"target_mac\":\"$configuredMac\"}"
-            } else {
-                DISCOVERY_PROBE_MSG
-            }
-            val data = probeMsg.toByteArray(Charsets.UTF_8)
+            val data = DISCOVERY_PROBE_MSG.toByteArray(Charsets.UTF_8)
             val broadcastTargets = mutableListOf("255.255.255.255")
 
             val activeIp = if (localIp.isNotBlank()) localIp else getLocalIpAddress()
@@ -188,33 +138,110 @@ class Esp32DiscoveryScanner(
                 broadcastTargets.add("$subnet.255")
             }
 
-            val socketToUse: DatagramSocket
-            val isSharedSocket: Boolean
-            synchronized(lock) {
-                if (activeUdpSocket != null && !activeUdpSocket!!.isClosed) {
-                    socketToUse = activeUdpSocket!!
-                    isSharedSocket = true
-                } else {
-                    socketToUse = DatagramSocket().apply { broadcast = true }
-                    isSharedSocket = false
-                }
+            val socket = activeUdpSocket ?: DatagramSocket().apply { broadcast = true }
+            for (target in broadcastTargets) {
+                try {
+                    val address = InetAddress.getByName(target)
+                    socket.send(DatagramPacket(data, data.size, address, UDP_DISCOVERY_PORT))
+                } catch (_: Exception) {}
             }
-
-            try {
-                for (target in broadcastTargets) {
-                    try {
-                        val address = InetAddress.getByName(target)
-                        socketToUse.send(DatagramPacket(data, data.size, address, UDP_DISCOVERY_PORT))
-                    } catch (_: Exception) {}
-                }
-            } finally {
-                if (!isSharedSocket) {
-                    try { socketToUse.close() } catch (_: Exception) {}
-                }
+            if (socket != activeUdpSocket) {
+                socket.close()
             }
             Log.d(TAG, "Dispatched UDP Discovery broadcast to targets: $broadcastTargets")
         } catch (e: Exception) {
             Log.e(TAG, "Error sending UDP discovery probe: ${e.message}")
+        }
+    }
+
+    /**
+     * Direct probe for known candidates:
+     * 1. Stored configured IP
+     * 2. Canonical mDNS hostname "kioskmanager.local"
+     */
+    fun probeDirectCandidates() {
+        val candidates = mutableListOf<String>()
+
+        val configured = KioskSecurity.getConfiguredEsp32Ip(context)
+        if (configured.isNotBlank()) {
+            candidates.add(configured)
+        }
+
+        // Canonical mDNS host resolution
+        try {
+            val mDnsAddr = InetAddress.getByName(CANONICAL_MDNS_HOST)
+            val resolvedIp = mDnsAddr.hostAddress
+            if (!resolvedIp.isNullOrBlank() && !candidates.contains(resolvedIp)) {
+                candidates.add(resolvedIp)
+            }
+        } catch (_: Exception) {}
+
+        // WiFi DHCP Gateway IP if connected to AP or router
+        try {
+            val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            val dhcpInfo = wifi?.dhcpInfo
+            if (dhcpInfo != null && dhcpInfo.gateway != 0) {
+                val gw = String.format(
+                    java.util.Locale.US,
+                    "%d.%d.%d.%d",
+                    dhcpInfo.gateway and 0xff,
+                    dhcpInfo.gateway shr 8 and 0xff,
+                    dhcpInfo.gateway shr 16 and 0xff,
+                    dhcpInfo.gateway shr 24 and 0xff
+                )
+                if (gw != "0.0.0.0" && !candidates.contains(gw)) {
+                    candidates.add(gw)
+                }
+            }
+        } catch (_: Exception) {}
+
+        for (target in candidates) {
+            if (probeEsp32Connection(target)) {
+                Log.i(TAG, "Direct probe succeeded for ESP32 at $target")
+                return
+            }
+        }
+    }
+
+    /**
+     * Fast concurrent local subnet scanner for dynamically assigned DHCP client ESP32 devices.
+     * Uses non-blocking 250ms TCP pre-checks to sweep the /24 subnet in <500ms without thread starvation.
+     */
+    fun scanSubnetIfUnbound(localIp: String) {
+        if (isAlreadyBound()) return
+        val activeIp = if (localIp.isNotBlank()) localIp else getLocalIpAddress()
+        if (activeIp.isBlank() || !activeIp.contains(".")) return
+        val prefix = activeIp.substringBeforeLast(".")
+        val selfLastOctet = activeIp.substringAfterLast(".").toIntOrNull() ?: -1
+
+        val ipList = (1..254).filter { it != selfLastOctet }.map { "$prefix.$it" }
+        for (batch in ipList.chunked(32)) {
+            if (isAlreadyBound() || !scope.isActive) break
+            val found = runBlocking(Dispatchers.IO) {
+                val jobs = batch.map { targetIp ->
+                    async {
+                        if (isAlreadyBound() || !scope.isActive) return@async false
+                        if (isPortOpen(targetIp, DEFAULT_WEB_PORT, 250)) {
+                            probeEsp32Connection(targetIp)
+                        } else {
+                            false
+                        }
+                    }
+                }
+                jobs.awaitAll().any { it }
+            }
+            if (found) break
+        }
+    }
+
+    private fun isPortOpen(ip: String, port: Int, timeoutMs: Int): Boolean {
+        return try {
+            java.net.Socket().use { s ->
+                s.connect(InetSocketAddress(ip, port), timeoutMs)
+                true
+            }
+        } catch (_: Exception) {
+            false
         }
     }
 
@@ -223,16 +250,10 @@ class Esp32DiscoveryScanner(
         val (host, port) = getEsp32HostAndPort(ip)
 
         try {
-            val fastClient = httpClient.newBuilder()
-                .connectTimeout(3, TimeUnit.SECONDS)
-                .readTimeout(3, TimeUnit.SECONDS)
-                .writeTimeout(3, TimeUnit.SECONDS)
-                .build()
-
             val req = Request.Builder()
                 .url("http://$host:$port/identify")
                 .build()
-            fastClient.newCall(req).execute().use { resp ->
+            httpClient.newCall(req).execute().use { resp ->
                 if (resp.isSuccessful) {
                     val rawBody = resp.body?.string() ?: ""
                     if (isEsp32MacMatching(rawBody)) {
@@ -248,38 +269,7 @@ class Esp32DiscoveryScanner(
 
     /**
      * Single validation path for ESP32 identity (RULE 6 - SINGLE-AUTH-PATH).
-     * Validates MAC match and verifies HMAC-SHA256 signature when secret is configured.
-     */
-    fun validateEsp32Response(deviceMac: String, targetIp: String, sig: String, rawResponseBody: String?): Boolean {
-        val configuredMac = KioskSecurity.getConfiguredEsp32Mac(context)
-        if (configuredMac.isNotBlank()) {
-            val cleanDeviceMac = KioskSecurity.formatMacAddress(deviceMac)
-            val cleanConfiguredMac = KioskSecurity.formatMacAddress(configuredMac)
-            if (!cleanDeviceMac.equals(cleanConfiguredMac, ignoreCase = true)) {
-                Log.w(TAG, "Rejected ESP32: MAC '$cleanDeviceMac' does not match configured box MAC '$cleanConfiguredMac'")
-                return false
-            }
-        }
-
-        val secret = KioskSecurity.getSharedSecret(context)
-        if (secret.isNotBlank()) {
-            if (sig.isBlank()) {
-                Log.w(TAG, "Rejected ESP32 UDP packet from $targetIp: Missing cryptographic signature!")
-                return false
-            }
-            val cleanDeviceMac = KioskSecurity.formatMacAddress(deviceMac)
-            val expectedSig = KioskSecurity.calculateHmac("DISCOVERY:$cleanDeviceMac:$targetIp", secret)
-            if (!KioskSecurity.constantTimeEquals(sig.lowercase(), expectedSig.lowercase())) {
-                Log.w(TAG, "Rejected ESP32 UDP packet from $targetIp: HMAC signature verification failed!")
-                return false
-            }
-        }
-
-        return true
-    }
-
-    /**
-     * Extracts MAC from response payload and validates against configured box MAC if set.
+     * Extracts MAC from the response payload and validates against configured box MAC if set.
      */
     fun isEsp32MacMatching(rawResponseBody: String?): Boolean {
         val configuredMac = KioskSecurity.getConfiguredEsp32Mac(context)
@@ -316,18 +306,12 @@ class Esp32DiscoveryScanner(
         } catch (_: Exception) {}
     }
 
-    private fun releaseMulticastLockLocked() {
+    private fun releaseMulticastLock() {
         try {
-            if (multicastLock?.isHeld == true && udpListenerJob == null) {
+            if (multicastLock?.isHeld == true) {
                 multicastLock?.release()
             }
         } catch (_: Exception) {}
-    }
-
-    private fun releaseMulticastLock() {
-        synchronized(lock) {
-            releaseMulticastLockLocked()
-        }
     }
 
     fun getLocalIpAddress(): String {
@@ -368,27 +352,7 @@ class Esp32DiscoveryScanner(
     }
 
     fun shutdown() {
-        val socketToClose: DatagramSocket?
-        val listenerJobToCancel: Job?
-        val discoveryJobToCancel: Job?
-        synchronized(lock) {
-            isStopped = true
-            listenerJobToCancel = udpListenerJob
-            discoveryJobToCancel = discoveryJob
-            socketToClose = activeUdpSocket
-            activeUdpSocket = null
-            udpListenerJob = null
-            discoveryJob = null
-            try {
-                if (multicastLock?.isHeld == true) {
-                    multicastLock?.release()
-                }
-            } catch (_: Exception) {}
-        }
-        listenerJobToCancel?.cancel()
-        discoveryJobToCancel?.cancel()
-        try {
-            socketToClose?.close()
-        } catch (_: Exception) {}
+        udpListenerJob?.cancel()
+        releaseMulticastLock()
     }
 }

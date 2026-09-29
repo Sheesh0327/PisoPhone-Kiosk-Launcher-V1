@@ -203,7 +203,7 @@
     <script>
         // Parse incoming ESP32 parameters
         const urlParams = new URLSearchParams(window.location.search);
-        const urlMac = urlParams.get('mac');
+        const urlMac = urlParams.get('mac') || '00:00:00:00:00:00';
         const urlIp = urlParams.get('ip');
         const urlSlot = parseInt(urlParams.get('slot') || '1', 10);
         const urlSecret = urlParams.get('secret') || '';
@@ -213,8 +213,8 @@
         const restrictedView = document.getElementById('restrictedView');
         const mainView = document.getElementById('mainView');
 
-        // Security Gate: Strict access verification (MAC is required for hardware pairing)
-        if (!urlMac || urlMac === '00:00:00:00:00:00') {
+        // Security Gate: Strict access verification (IP is required to redirect back to the cabinet)
+        if (!urlIp) {
             restrictedView.classList.remove('hidden');
         } else {
             mainView.classList.remove('hidden');
@@ -222,12 +222,8 @@
             // Populate Hardware Information
             document.getElementById('displayMac').textContent = urlMac;
             document.getElementById('displaySlot').textContent = `Slot #${urlSlot}`;
-            document.getElementById('displayIp').textContent = urlIp || 'Dynamic (DHCP)';
-            if (urlIp) {
-                document.getElementById('returnToEsp32Link').href = `http://${urlIp}/`;
-            } else {
-                document.getElementById('returnToEsp32Link').href = `javascript:history.back()`;
-            }
+            document.getElementById('displayIp').textContent = urlIp;
+            document.getElementById('returnToEsp32Link').href = `http://${urlIp}/`;
 
             if (!navigator.usb) {
                 document.getElementById('browserWarning').classList.remove('hidden');
@@ -335,14 +331,14 @@
                     logMessage("Step 3: Flashing package onto device & configuring Device Owner lockdown...");
                     await window.webADB.installKioskApp(candidateApkUrls, logMessage);
 
-                    // Step 4: Inject parameters into Android app (MAC-only, no dynamic IP)
+                    // Step 4: Inject parameters into Android app
                     logMessage("Step 4: Infusing hardware configuration parameters into Android...");
                     try {
-                        let bCastCmd = `am broadcast -a com.pisophone.kiosk.CONFIGURE_ESP32 -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es esp32_mac "${urlMac}" --ei slot ${urlSlot}`;
+                        let bCastCmd = `am broadcast -a com.pisophone.kiosk.CONFIGURE_ESP32 -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es esp32_mac "${urlMac}" --es esp32_ip "${urlIp}" --ei slot ${urlSlot}`;
                         if (urlSecret) bCastCmd += ` --es secret "${urlSecret}"`;
                         if (urlName) bCastCmd += ` --es name "${urlName}"`;
                         await window.webADB.runShell(bCastCmd);
-                        await window.webADB.runShell(`am broadcast -a com.pisophone.kiosk.ACTIVATE -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es key "PISOPHONE-BOX-ACTIVATED" --es esp32_mac "${urlMac}" --ei slot ${urlSlot}${urlSecret ? ' --es secret "' + urlSecret + '"' : ''}`);
+                        await window.webADB.runShell(`am broadcast -a com.pisophone.kiosk.ACTIVATE -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es key "PISOPHONE-BOX-ACTIVATED" --es esp32_mac "${urlMac}" --es esp32_ip "${urlIp}" --ei slot ${urlSlot}${urlSecret ? ' --es secret "' + urlSecret + '"' : ''}`);
                     } catch (bErr) {
                         logMessage(`[!] Config broadcast notice: ${bErr.message}`);
                     }
@@ -369,16 +365,9 @@
 
                     await window.webADB.disconnect();
 
-                    // Redirect back to ESP32 local portal if IP known or referrer available
+                    // Redirect back to ESP32 local portal
                     setTimeout(() => {
-                        if (urlIp) {
-                            window.location.href = `http://${urlIp}/?action=pair&slot=${urlSlot}&id=${encodeURIComponent(serial)}&name=PisoPhone+Slot+${urlSlot}`;
-                        } else if (document.referrer && document.referrer.startsWith('http')) {
-                            const refBase = document.referrer.split('?')[0];
-                            window.location.href = `${refBase}?action=pair&slot=${urlSlot}&id=${encodeURIComponent(serial)}&name=PisoPhone+Slot+${urlSlot}`;
-                        } else {
-                            logMessage("💡 Setup complete! You can return to your ESP32 portal.");
-                        }
+                        window.location.href = `http://${urlIp}/?action=pair&slot=${urlSlot}&id=${encodeURIComponent(serial)}&name=PisoPhone+Slot+${urlSlot}`;
                     }, 2500);
 
                 } catch (err) {

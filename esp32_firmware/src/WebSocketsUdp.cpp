@@ -1,7 +1,7 @@
 #include "WebSocketsUdp.h"
 #include "CoinSlotManager.h"
 #include "ControllerWebSocket.h"
-#include "WebServerModule.h"
+#include "WebServer.h"
 #include "Config.h"
 #include "HardwareManager.h"
 #include "Security.h"
@@ -171,29 +171,8 @@ void processWebSocketServer() {
                 }
             }
             
-            // Extract URI Path from HTTP Request line (e.g., "GET /ws/coinslot?session_id=... HTTP/1.1")
-            String reqPath = "";
-            int firstSpace = request.indexOf(' ');
-            if (firstSpace != -1) {
-                int secondSpace = request.indexOf(' ', firstSpace + 1);
-                String fullUri = (secondSpace != -1) ? request.substring(firstSpace + 1, secondSpace) : request.substring(firstSpace + 1);
-                int qMark = fullUri.indexOf('?');
-                reqPath = (qMark != -1) ? fullUri.substring(0, qMark) : fullUri;
-            }
-            reqPath.trim();
-
-            // Strict Endpoint Routing:
-            // 1. Controller endpoints: /coinslot or /ws/coinslot (never registers to trackedDevices or pairing queue)
-            if (reqPath == "/coinslot" || reqPath == "/ws/coinslot") {
+            if (request.indexOf("session_id=") != -1 || request.indexOf("/coinslot") != -1 || request.indexOf("/ws/coinslot") != -1) {
                 handleControllerWebSocketHandshake(newClient, request, secKey);
-                return;
-            }
-
-            // 2. PisoPhone Terminal endpoints: must target /ws (or /ws/terminal)
-            if (reqPath != "/ws" && reqPath != "/ws/terminal" && reqPath != "/") {
-                Serial.printf("[-] WS Rejected: Unknown endpoint '%s'\n", reqPath.c_str());
-                newClient.print("HTTP/1.1 404 Not Found\r\n\r\nInvalid WebSocket Endpoint");
-                newClient.stop();
                 return;
             }
 
@@ -234,12 +213,10 @@ void processWebSocketServer() {
             String clientIp = newClient.remoteIP().toString();
             int wsSlotIdx = findSlotIndexForDevice(reqDeviceId, clientIp);
             if (wsSlotIdx < 0) {
-                updateDeviceTelemetry(reqDeviceId, clientIp, 0, 0, -1, false, ts);
+                updateDeviceTelemetry(reqDeviceId, clientIp, 0, 0, 100, false, ts);
                 Serial.printf("[-] WS Mutex Rejected for %s (%s): Device is not paired to any slot on this ESP32\n", 
                     reqDeviceId.c_str(), clientIp.c_str());
-                newClient.print("HTTP/1.1 423 Locked\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: 29\r\n\r\n{\"error\":\"SLOT_NOT_PAIRED\"}");
-                newClient.flush();
-                delay(10);
+                newClient.print("HTTP/1.1 423 Locked\r\n\r\nSLOT_NOT_PAIRED");
                 newClient.stop();
                 return;
             }
@@ -247,19 +224,15 @@ void processWebSocketServer() {
             if (!wsIsActive) {
                 Serial.printf("[-] WS Mutex Rejected for %s: Slot Expired / Lockdown Active (Slot #%d)\n", 
                     reqDeviceId.c_str(), licenseSlots[wsSlotIdx].slotNum);
-                newClient.print("HTTP/1.1 423 Locked\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: 26\r\n\r\n{\"error\":\"SLOT_EXPIRED\"}");
-                newClient.flush();
-                delay(10);
+                newClient.print("HTTP/1.1 423 Locked\r\n\r\nSLOT_EXPIRED");
                 newClient.stop();
                 return;
             }
             
             // 2. Hardware Mutex Check (Single-Client Lock)
-            if (isCoinSlotBusy(reqDeviceId, CoinSlotOwnerType::PHONE)) {
+            if (isCoinSlotBusy(reqDeviceId)) {
                 Serial.printf("[-] WS Mutex Rejected for %s: Slot BUSY with %s\n", reqDeviceId.c_str(), getActiveCoinSessionId().c_str());
-                newClient.print("HTTP/1.1 409 Conflict\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: 23\r\n\r\n{\"event\":\"SLOT_BUSY\"}");
-                newClient.flush();
-                delay(10);
+                newClient.print("HTTP/1.1 409 Conflict\r\n\r\nSLOT_BUSY");
                 newClient.stop();
                 return;
             }
@@ -286,7 +259,7 @@ void processWebSocketServer() {
             isWsConnected = true;
             wsSessionDeviceId = reqDeviceId;
             
-            bool reserved = reserveCoinSlot(reqDeviceId, CoinSlotOwnerType::PHONE, ARM_TTL,
+            reserveCoinSlot(reqDeviceId, ARM_TTL,
                 [](const String& devId, int pulses) {
                     triggerUniversalCoinEvent(pulses, devId);
                 },
@@ -301,15 +274,6 @@ void processWebSocketServer() {
                     wsSessionDeviceId = "";
                 }
             );
-
-            if (!reserved) {
-                sendWsText(wsClient, "{\"event\":\"ERROR\",\"reason\":\"SLOT_UNAVAILABLE\"}");
-                wsClient.stop();
-                isWsConnected = false;
-                wsSessionDeviceId = "";
-                Serial.printf("[-] WS reservation failed for %s after handshake.\n", reqDeviceId.c_str());
-                return;
-            }
             
             Serial.printf("[⚡ WS Port 81] WebSocket ARMED securely for %s (TTL: %lu s)\n", reqDeviceId.c_str(), ARM_TTL / 1000);
             sendWsText(wsClient, "{\"event\":\"ARMED\"}");
@@ -323,35 +287,25 @@ void processWebSocketServer() {
             Serial.printf("[*] WS Client %s disconnected. Releasing slot.\n", boundDevId.c_str());
             isWsConnected = false;
             wsSessionDeviceId = "";
-            releaseCoinSlot(boundDevId, CoinSlotOwnerType::PHONE, false);
+            releaseCoinSlot(boundDevId, false);
             return;
         }
         
         if (wsClient.available()) {
             String frameText = readWsText(wsClient);
             if (frameText.length() > 0) {
-                refreshCoinSlotTtl(boundDevId, CoinSlotOwnerType::PHONE, ARM_TTL);
+                refreshCoinSlotTtl(boundDevId, ARM_TTL);
             }
             if (frameText == "DONE" || frameText == "CLOSE") {
                 Serial.printf("[⚡ WS Port 81] 'DONE' received for %s. Requesting slot release.\n", boundDevId.c_str());
-                releaseCoinSlot(boundDevId, CoinSlotOwnerType::PHONE, false);
+                // Release slot through CoinSlotManager. If pulses are draining, socket stays open
+                // until all pulses are credited and onSessionEnd fires SESSION_ENDED.
+                releaseCoinSlot(boundDevId, false);
                 return;
             }
         } else {
-            // Actively ping client every 3 seconds to detect socket disconnect promptly
-            static unsigned long lastPhoneWsPingMs = 0;
-            if (millis() - lastPhoneWsPingMs >= 3000) {
-                lastPhoneWsPingMs = millis();
-                uint8_t pingFrame[2] = {0x89, 0x00};
-                if (wsClient.write(pingFrame, 2) != 2) {
-                    Serial.printf("[*] WS Client %s ping write failed. Releasing.\n", boundDevId.c_str());
-                    wsClient.stop();
-                    isWsConnected = false;
-                    wsSessionDeviceId = "";
-                    releaseCoinSlot(boundDevId, CoinSlotOwnerType::PHONE, false);
-                    return;
-                }
-            }
+            // Keep slot armed continuously while WebSocket client remains connected
+            refreshCoinSlotTtl(boundDevId, ARM_TTL);
         }
     }
 
@@ -362,15 +316,10 @@ void processWebSocketServer() {
 void sendUdpDiscoveryResponse(IPAddress targetIp, uint16_t targetPort) {
     if (WiFi.status() != WL_CONNECTED) return;
 
-    String secKey = (sharedSecret.length() > 0) ? sharedSecret : String(MASTER_CRYPTO_SECRET);
-    String ipStr = WiFi.localIP().toString();
-    String sig = calculateHMAC("DISCOVERY:" + macAddressStr + ":" + ipStr, secKey);
-
     String resp = "{\"type\":\"PISOPHONE_ESP32_RESPONSE\","
                   "\"device\":\"PISOPHONE_MASTER\","
                   "\"mac\":\"" + macAddressStr + "\","
-                  "\"ip\":\"" + ipStr + "\","
-                  "\"sig\":\"" + sig + "\","
+                  "\"ip\":\"" + WiFi.localIP().toString() + "\","
                   "\"port\":80,"
                   "\"ws_port\":81,"
                   "\"device_name\":\"PisoPhone Master\","
@@ -406,26 +355,6 @@ void processUdpDiscovery() {
             msg.trim();
 
             if (msg.indexOf("PISOPHONE_DISCOVER") >= 0) {
-                // If specific target_mac is specified in probe, only respond if matching this ESP32
-                int targetMacIdx = msg.indexOf("\"target_mac\":\"");
-                if (targetMacIdx >= 0) {
-                    int valStart = targetMacIdx + 14;
-                    int valEnd = msg.indexOf("\"", valStart);
-                    if (valEnd > valStart) {
-                        String reqMac = msg.substring(valStart, valEnd);
-                        reqMac.toUpperCase();
-                        String curMac = macAddressStr;
-                        curMac.toUpperCase();
-                        String cleanReq = "";
-                        for (size_t i = 0; i < reqMac.length(); i++) if (reqMac[i] != ':') cleanReq += reqMac[i];
-                        String cleanCur = "";
-                        for (size_t i = 0; i < curMac.length(); i++) if (curMac[i] != ':') cleanCur += curMac[i];
-                        if (cleanReq != cleanCur) {
-                            return; // Probe targeted another box MAC
-                        }
-                    }
-                }
-
                 IPAddress remoteIp = udpServer.remoteIP();
                 uint16_t remotePort = udpServer.remotePort();
                 Serial.printf("[⚡ UDP Discovery] Valid probe received from %s:%d. Responding...\n",
@@ -435,9 +364,9 @@ void processUdpDiscovery() {
         }
     }
 
-    // Periodic announcement beacon (every 2.5 seconds while connected to WiFi for fast DHCP recovery)
+    // Periodic announcement beacon (every 10 seconds while connected to WiFi)
     static unsigned long lastUdpAnnounceMs = 0;
-    if (millis() - lastUdpAnnounceMs > 2500 || lastUdpAnnounceMs == 0) {
+    if (millis() - lastUdpAnnounceMs > 10000 || lastUdpAnnounceMs == 0) {
         lastUdpAnnounceMs = millis();
         sendUdpDiscoveryResponse(IPAddress(255, 255, 255, 255), UDP_DISCOVERY_PORT);
     }
@@ -449,13 +378,18 @@ void processSerialCli() {
     line.trim();
     if (line.length() == 0) return;
 
-    if (line.startsWith("add ") || line.startsWith("add")) {
+    if (line.startsWith("ucoin ") || line.startsWith("ucoin")) {
+        int firstSpace = line.indexOf(' ');
+        int pulses = (firstSpace != -1) ? line.substring(firstSpace + 1).toInt() : 1;
+        if (pulses <= 0) pulses = 1;
+        triggerUniversalCoinEvent(pulses);
+    } else if (line.startsWith("add ") || line.startsWith("add")) {
         int firstSpace = line.indexOf(' ');
         if (firstSpace != -1) {
             int minutes = line.substring(firstSpace + 1).toInt();
             sendAddTime(minutes, "ALL");
         }
     } else if (line.equalsIgnoreCase("help")) {
-        Serial.println("\nCommands: add <minutes> | help");
+        Serial.println("\nCommands: ucoin <1|5|10|20> | add <minutes> | help");
     }
 }

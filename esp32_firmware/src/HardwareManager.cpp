@@ -151,6 +151,10 @@ void applyCoinSlotHardwareConfig() {
     resetCoinDetectorStates();
 }
 
+void processUniversalCoinDetector() {
+    processCoinSlotSession();
+}
+
 // ============================================================================
 // HARDWARE RESET PIN SUPERVISOR (GPIO 2 -> GND for 5 seconds)
 // ============================================================================

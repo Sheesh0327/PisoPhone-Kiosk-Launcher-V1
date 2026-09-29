@@ -2,7 +2,7 @@
 #include "CoinSlotManager.h"
 #include "HardwareManager.h"
 #include "Security.h"
-#include "WebServerModule.h"
+#include "WebServer.h"
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
@@ -70,14 +70,13 @@ bool unpairSlot(int slotNum) {
     Serial.printf("[+] Unpairing Slot #%d (was %s / %s). Seat remains open.\n", slotNum, prevDevId.c_str(), prevIp.c_str());
     
     String activeDev = getActiveCoinSessionId();
-    if (getActiveCoinOwnerType() == CoinSlotOwnerType::PHONE &&
-        activeDev.length() > 0 && (activeDev == prevDevId || activeDev == prevIp)) {
+    if (activeDev.length() > 0 && (activeDev == prevDevId || activeDev == prevIp)) {
         if (isWsConnected && wsClient.connected()) {
             sendWsText(wsClient, "{\"event\":\"UNPAIRED\"}");
             wsClient.stop();
             isWsConnected = false;
         }
-        releaseCoinSlot(activeDev, CoinSlotOwnerType::PHONE, true, "UNPAIRED");
+        releaseCoinSlot(activeDev, true);
         Serial.println("[*] Active armed session disarmed due to unpair.");
     }
 
@@ -235,11 +234,11 @@ void recordDeviceNonce(String deviceId, unsigned long long ts) {
     if (trackedDeviceCount < MAX_TRACKED_DEVICES) {
         trackedDevices[trackedDeviceCount].deviceId = deviceId;
         trackedDevices[trackedDeviceCount].lastKnownIp = "";
-        trackedDevices[trackedDeviceCount].timeRemainingSeconds = -1;
+        trackedDevices[trackedDeviceCount].timeRemainingSeconds = 0;
         trackedDevices[trackedDeviceCount].state = 0;
-        trackedDevices[trackedDeviceCount].batteryLevel = -1;
+        trackedDevices[trackedDeviceCount].batteryLevel = 100;
         trackedDevices[trackedDeviceCount].isCharging = false;
-        trackedDevices[trackedDeviceCount].lastSeenMs = 0;
+        trackedDevices[trackedDeviceCount].lastSeenMs = millis();
         trackedDevices[trackedDeviceCount].lastNonceTs = ts;
         trackedDeviceCount++;
     }
@@ -281,7 +280,7 @@ void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int st
         trackedDevices[trackedDeviceCount].lastKnownIp = ip;
         trackedDevices[trackedDeviceCount].timeRemainingSeconds = timeRemaining;
         trackedDevices[trackedDeviceCount].state = state;
-        trackedDevices[trackedDeviceCount].batteryLevel = validBattery;
+        trackedDevices[trackedDeviceCount].batteryLevel = (validBattery >= 0) ? validBattery : 100;
         trackedDevices[trackedDeviceCount].isCharging = charging;
         trackedDevices[trackedDeviceCount].lastSeenMs = millis();
         trackedDevices[trackedDeviceCount].lastNonceTs = ts;
@@ -293,9 +292,8 @@ int getTrackedTimeRemaining(String ip, unsigned long maxAgeMs, String devId) {
     for (int i = 0; i < trackedDeviceCount; i++) {
         bool match = (trackedDevices[i].lastKnownIp == ip || trackedDevices[i].deviceId == ip);
         if (!match && devId.length() > 0 && trackedDevices[i].deviceId == devId) match = true;
-        if (match && trackedDevices[i].lastSeenMs > 0) {
+        if (match) {
             if (millis() - trackedDevices[i].lastSeenMs <= maxAgeMs) {
-                if (trackedDevices[i].timeRemainingSeconds < 0) return 0;
                 unsigned long elapsedSec = (millis() - trackedDevices[i].lastSeenMs) / 1000;
                 int remaining = trackedDevices[i].timeRemainingSeconds - (int)elapsedSec;
                 return (remaining > 0) ? remaining : 0;
@@ -313,7 +311,7 @@ int getTrackedBatteryLevel(String ip, String devId) {
             return trackedDevices[i].batteryLevel;
         }
     }
-    return -1;
+    return 100;
 }
 
 bool getTrackedChargingState(String ip, String devId) {
@@ -387,3 +385,4 @@ String getPrimaryTerminalIp() {
     }
     return "";
 }
+

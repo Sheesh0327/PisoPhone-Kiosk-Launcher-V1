@@ -15,7 +15,6 @@ class KioskDeviceAdminReceiver : DeviceAdminReceiver() {
             Log.d("KioskDeviceAdmin", "Silent installation callback. Status: $status, message: $msg")
             if (status == PackageInstaller.STATUS_SUCCESS) {
                 Log.i("KioskDeviceAdmin", "Silent update succeeded! Launching updated kiosk application.")
-                com.pisophone.kiosk.security.KioskUpdateManager.onInstallSuccess()
                 val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
                 if (launchIntent != null) {
                     launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -23,9 +22,7 @@ class KioskDeviceAdminReceiver : DeviceAdminReceiver() {
                 }
             } else {
                 Log.e("KioskDeviceAdmin", "Silent update failed. Code: $status, Info: $msg")
-                val errorMsg = msg ?: "Update installation failed (code: $status)"
-                com.pisophone.kiosk.security.KioskUpdateManager.onInstallError(errorMsg)
-                Toast.makeText(context, "Update Installation Failed: $errorMsg", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "Update Installation Failed: $msg", Toast.LENGTH_LONG).show()
             }
             return
         }

@@ -20,6 +20,7 @@ bool isSlotArmed();
 void processRelayState();
 
 void IRAM_ATTR universalCoinIsr();
+void processUniversalCoinDetector();
 void resetCoinDetectorStates();
 void applyCoinSlotHardwareConfig();
 extern volatile int isrUniversalPulseCount;

@@ -16,7 +16,6 @@ class KioskStateManager(private val context: Context) {
     val appState = MutableStateFlow(0) // 0: block, 1: wait, 2: unlocked, 3: unlocked+wait, 4: unlicensed
     val sessionTimeRemaining = MutableStateFlow(0)
     val sessionExpiryDeadlineMs = MutableStateFlow(0L)
-    val sessionRevision = MutableStateFlow(0L)
     val paymentTimeout = MutableStateFlow(0)
     val coinsInserted = MutableStateFlow(0)
     val themeIndex = MutableStateFlow(0)
@@ -36,6 +35,7 @@ class KioskStateManager(private val context: Context) {
     init {
         deviceIp.value = getLocalIpAddress()
         initDeviceId()
+        restoreState()
     }
 
     private fun initDeviceId() {
@@ -53,37 +53,6 @@ class KioskStateManager(private val context: Context) {
         deviceId.value = savedUuid
     }
 
-    @Synchronized
-    fun applySessionUpdate(
-        snapshot: com.pisophone.kiosk.repository.SessionSnapshot,
-        targetAppState: Int? = null
-    ): Boolean {
-        if (snapshot.revision < sessionRevision.value) {
-            Log.d(TAG, "Ignoring stale session update: incoming rev ${snapshot.revision} < current rev ${sessionRevision.value}")
-            return false
-        }
-        sessionRevision.value = snapshot.revision
-        sessionExpiryDeadlineMs.value = snapshot.deadlineMs
-        sessionTimeRemaining.value = snapshot.remainingSeconds
-        if (targetAppState != null) {
-            appState.value = targetAppState
-        }
-        return true
-    }
-
-    @Synchronized
-    fun applySessionUpdate(
-        deadlineMs: Long,
-        remainingSeconds: Int,
-        revision: Long,
-        targetAppState: Int? = null
-    ): Boolean {
-        return applySessionUpdate(
-            com.pisophone.kiosk.repository.SessionSnapshot(deadlineMs, remainingSeconds, revision),
-            targetAppState
-        )
-    }
-
     fun saveState(txSet: Set<String> = emptySet()) {
         try {
             val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
@@ -94,9 +63,12 @@ class KioskStateManager(private val context: Context) {
             val prefs = deviceContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             prefs.edit()
                 .putInt("app_state", appState.value)
+                .putInt("session_time_remaining", sessionTimeRemaining.value)
+                .putLong("session_expiry_deadline_ms", sessionExpiryDeadlineMs.value)
                 .putInt("coins_inserted", coinsInserted.value)
                 .putFloat("price_per_coin", pricePerCoin.value.toFloat())
                 .putInt("minutes_per_coin", minutesPerCoin.value)
+                .putString("esp32_ip", esp32Ip)
                 .putInt("target_port", ESP32_WEB_PORT)
                 .putStringSet("processed_tx_ids", txSet.take(20).toSet())
                 .apply()
@@ -114,29 +86,35 @@ class KioskStateManager(private val context: Context) {
             }
             val prefs = deviceContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             val savedState = prefs.getInt("app_state", 0)
-            
-            // Read authoritative paid balance through PaymentRepository
-            val paymentRepo = com.pisophone.kiosk.repository.PaymentRepository(
-                db = com.pisophone.kiosk.db.AppDatabase.getDatabase(context),
-                context = context
-            )
-            val restored = paymentRepo.restoreSessionState()
-
+            val savedDeadline = prefs.getLong("session_expiry_deadline_ms", 0L)
+            val savedTime = prefs.getInt("session_time_remaining", 0)
             pricePerCoin.value = prefs.getFloat("price_per_coin", 5.0f).toDouble()
             minutesPerCoin.value = prefs.getInt("minutes_per_coin", 30)
-            esp32Ip = null
+            esp32Ip = prefs.getString("esp32_ip", null)
+            if (esp32Ip.isNullOrBlank()) {
+                val configured = KioskSecurity.getConfiguredEsp32Ip(context)
+                if (configured.isNotBlank()) {
+                    esp32Ip = configured
+                }
+            }
 
             val savedTxSet = prefs.getStringSet("processed_tx_ids", emptySet()) ?: emptySet()
+            val now = System.currentTimeMillis()
 
-            val effectiveRemainingSec = restored.remainingSeconds
-            val effectiveDeadline = restored.deadlineMs
-            sessionRevision.value = restored.revision
+            val effectiveRemainingSec = if (savedDeadline > now) {
+                ((savedDeadline - now) / 1000L).toInt()
+            } else if (savedDeadline > 0L) {
+                0 // Deadline already elapsed while app/process was killed
+            } else {
+                // Legacy fallback if no deadline was persisted
+                savedTime
+            }
 
             if (effectiveRemainingSec > 0) {
                 sessionTimeRemaining.value = effectiveRemainingSec
-                sessionExpiryDeadlineMs.value = effectiveDeadline
+                sessionExpiryDeadlineMs.value = if (savedDeadline > now) savedDeadline else (now + (effectiveRemainingSec * 1000L))
                 appState.value = if (savedState == 1 || savedState == 3) 3 else 2
-                Log.d(TAG, "Restored active session: ${effectiveRemainingSec}s remaining (Monotonic deadline: $effectiveDeadline, isReboot=${restored.isReboot}, rev=${restored.revision})")
+                Log.d(TAG, "Restored active session: ${effectiveRemainingSec}s remaining (Deadline: ${sessionExpiryDeadlineMs.value})")
             } else {
                 appState.value = 0
                 sessionTimeRemaining.value = 0
@@ -154,7 +132,6 @@ class KioskStateManager(private val context: Context) {
                 appState.value = 0
                 sessionTimeRemaining.value = 0
                 sessionExpiryDeadlineMs.value = 0L
-                paymentRepo.expireSessionBlocking()
             }
 
             saveState(savedTxSet)

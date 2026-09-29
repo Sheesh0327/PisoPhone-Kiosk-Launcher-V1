@@ -1,0 +1,33 @@
+--- esp32_firmware/src/CoinSlotManager.cpp
++++ esp32_firmware/src/CoinSlotManager.cpp
+@@ -273,23 +273,7 @@
+ 
+         if (ttlExpired || maxDurationExpired) {
+             const char* reason = ttlExpired ? "TTL_EXPIRED" : "MAX_DURATION";
+-            Serial.printf("[🪙 COIN SLOT] Session %s for '%s'. Disarming relay and checking in-flight pulses...\n", 
+-                          reason, activeSessionId.c_str());
+-
+-            // De-energize relay immediately
+-            setRelayHardware(false);
+-
+-            // Check if pulses are in flight or arrived recently
+-            noInterrupts();
+-            int currentPulses = isrUniversalPulseCount;
+-            unsigned long lastPulse = isrLastPulseTimeMs;
+-            interrupts();
+-
+-            if (currentPulses > 0 || (lastPulse > 0 && (now - lastPulse < IN_FLIGHT_PULSE_GRACE_MS))) {
+-                Serial.printf("[🪙 COIN SLOT] Pulses in flight (%d pulses) during timeout. Entering DRAINING state...\n", currentPulses);
+-                currentState = CoinSlotState::DRAINING;
+-                pendingEndReason = reason;
+-                drainDeadlineMs = now + DRAIN_TIMEOUT_GUARD_MS;
+-            } else {
+-                finalizeSessionRelease(reason);
+-            }
++            Serial.printf("[🪙 COIN SLOT] Session %s for '%s'. Checking in-flight pulses...\n",
++                           reason, activeSessionId.c_str());
++
++            initiateSessionRelease(reason, false);
+         }
+     }
+ }

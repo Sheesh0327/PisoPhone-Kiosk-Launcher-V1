@@ -111,7 +111,6 @@ object KioskUpdateManager {
 
     private fun installSilent(context: Context, apkFile: File): Boolean {
         var session: PackageInstaller.Session? = null
-        var committed = false
         try {
             val packageInstaller = context.packageManager.packageInstaller
             val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
@@ -122,16 +121,16 @@ object KioskUpdateManager {
             val sessionId = packageInstaller.createSession(params)
             session = packageInstaller.openSession(sessionId)
 
-            session.openWrite("COSU_Install", 0, apkFile.length()).use { out ->
-                FileInputStream(apkFile).use { fis ->
-                    val buffer = ByteArray(65536)
-                    var c: Int
-                    while (fis.read(buffer).also { c = it } != -1) {
-                        out.write(buffer, 0, c)
-                    }
-                    session.fsync(out)
+            val out = session.openWrite("COSU_Install", 0, apkFile.length())
+            FileInputStream(apkFile).use { fis ->
+                val buffer = ByteArray(65536)
+                var c: Int
+                while (fis.read(buffer).also { c = it } != -1) {
+                    out.write(buffer, 0, c)
                 }
+                session.fsync(out)
             }
+            out.close()
 
             val intent = Intent(context, com.pisophone.kiosk.receiver.KioskDeviceAdminReceiver::class.java).apply {
                 action = "com.pisophone.kiosk.ACTION_INSTALL_COMPLETE"
@@ -144,22 +143,12 @@ object KioskUpdateManager {
             val pendingIntent = PendingIntent.getBroadcast(context, 0, intent, flags)
 
             session.commit(pendingIntent.intentSender)
-            committed = true
             return true
         } catch (e: Exception) {
             Log.e(TAG, "Silent install failed: ${e.message}", e)
-            if (!committed) {
-                try {
-                    session?.abandon()
-                } catch (abandonEx: Exception) {
-                    Log.w(TAG, "Failed to abandon failed install session: ${abandonEx.message}")
-                }
-            }
             return false
         } finally {
-            try {
-                session?.close()
-            } catch (_: Exception) {}
+            session?.close()
         }
     }
 
@@ -177,14 +166,6 @@ object KioskUpdateManager {
             Log.e(TAG, "Standard install failed: ${e.message}", e)
             false
         }
-    }
-
-    fun onInstallSuccess() {
-        _updateState.value = UpdateState.Success
-    }
-
-    fun onInstallError(message: String) {
-        _updateState.value = UpdateState.Error(message)
     }
 
     fun resetState() {

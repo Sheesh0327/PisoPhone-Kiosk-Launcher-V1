@@ -7,12 +7,9 @@ import android.util.Log
 import android.widget.Toast
 import com.pisophone.kiosk.audio.KioskAudioManager
 import com.pisophone.kiosk.db.AppDatabase
-import com.pisophone.kiosk.db.CoinEvent
 import com.pisophone.kiosk.network.Esp32ConnectionManager
 import com.pisophone.kiosk.overlay.KioskOverlayCoordinator
 import com.pisophone.kiosk.repository.CoinEventRepository
-import com.pisophone.kiosk.repository.PaymentRepository
-import com.pisophone.kiosk.repository.PaymentResult
 import com.pisophone.kiosk.security.KioskActivationManager
 import com.pisophone.kiosk.security.KioskSecurity
 import com.pisophone.kiosk.server.KioskHttpServer
@@ -38,7 +35,7 @@ class KioskEngine(
 ) {
     companion object {
         private const val TAG = "KioskEngine"
-        private const val ARMING_TIMEOUT_SECONDS = 20
+        private const val ARMING_TIMEOUT_SECONDS = 15
         private const val SERVER_PORT = 8080
     }
 
@@ -47,64 +44,39 @@ class KioskEngine(
     private val coinEventRepo: CoinEventRepository = CoinEventRepository(
         AppDatabase.getDatabase(context).coinEventDao()
     )
-    val paymentRepo: PaymentRepository = PaymentRepository(
-        db = AppDatabase.getDatabase(context),
-        context = context,
-        onPaymentApplied = { txId, seconds, amount, snapshot ->
-            val pesoAmount = if (amount >= 1.0) amount.toInt() else 1
-            // 1. Commit is finalized. Publish committed session state through serialized handler:
-            val targetState = if (stateManager.appState.value == 0) 1 else null
-            val applied = stateManager.applySessionUpdate(snapshot, targetState)
-            if (applied) {
-                stateManager.paymentTimeout.value = ARMING_TIMEOUT_SECONDS
-
-                if (stateManager.appState.value == 1 || stateManager.appState.value == 3) {
-                    stateManager.coinsInserted.value += pesoAmount
-                } else if (stateManager.appState.value == 2) {
-                    Log.d(TAG, "Coin credited directly to active session: +${seconds}s (₱$pesoAmount)")
-                }
-                stateManager.saveState()
-            }
-
-            scope.launch(Dispatchers.IO) {
-                try {
-                    coinEventRepo.insertEvent(
-                        CoinEvent(
-                            txId = txId,
-                            secondsAdded = seconds,
-                            source = "Piso Coin (₱$pesoAmount)"
-                        )
-                    )
-                    coinEventRepo.deleteOldEvents(500)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to log coin event to audit ledger: ${e.message}")
-                }
-            }
-
-            // 2. Play sound / update UI feedback ONLY for newly applied payment (separate from state publication)
-            audioManager.playCoinSound()
-            HardwareFeedback.triggerFlashlight(context, 150L)
-            Handler(Looper.getMainLooper()).post {
-                val addedMins = seconds / 60
-                Toast.makeText(context, "₱$pesoAmount coin accepted! (+${addedMins}m)", Toast.LENGTH_SHORT).show()
-            }
-        },
-        onSessionStateChanged = { snapshot ->
-            stateManager.applySessionUpdate(snapshot)
-        }
-    )
-
-    private val isInitialized = java.util.concurrent.atomic.AtomicBoolean(false)
 
     private val audioManager = KioskAudioManager(context, scope)
 
-    fun creditPayment(txId: String, seconds: Int, amount: Double): PaymentResult {
-        if (!isInitialized.get()) {
-            Log.w(TAG, "Rejecting payment credit: KioskEngine initialization in progress")
-            return PaymentResult.FAILED
+    private val coinProcessor = CoinProcessor(
+        context = context,
+        scope = scope,
+        coinEventRepo = coinEventRepo,
+        onCreditsApplied = { seconds, pesoAmount ->
+            val now = System.currentTimeMillis()
+            val currentDeadline = stateManager.sessionExpiryDeadlineMs.value
+            val newDeadline = if (currentDeadline > now) {
+                currentDeadline + (seconds * 1000L)
+            } else {
+                now + (seconds * 1000L)
+            }
+            stateManager.sessionExpiryDeadlineMs.value = newDeadline
+            stateManager.sessionTimeRemaining.value = ((newDeadline - now) / 1000L).toInt()
+            stateManager.paymentTimeout.value = ARMING_TIMEOUT_SECONDS
+            if (stateManager.appState.value == 0) {
+                stateManager.coinsInserted.value += pesoAmount
+                stateManager.appState.value = 1
+            } else if (stateManager.appState.value == 1 || stateManager.appState.value == 3) {
+                stateManager.coinsInserted.value += pesoAmount
+            } else if (stateManager.appState.value == 2) {
+                Log.d(TAG, "Coin credited directly to active session: +${seconds}s (₱$pesoAmount)")
+            }
+            stateManager.saveState()
+        },
+        onFeedbackTrigger = {
+            audioManager.playCoinSound()
+            HardwareFeedback.triggerFlashlight(context, 150L)
         }
-        return paymentRepo.creditPaymentBlocking(txId, seconds, amount)
-    }
+    )
 
     private val systemMonitor: KioskSystemMonitor = KioskSystemMonitor(
         context = context,
@@ -129,12 +101,11 @@ class KioskEngine(
     private val esp32Coordinator = KioskEsp32Coordinator(
         context = context,
         stateManager = stateManager,
-        paymentRepo = paymentRepo,
         armingTimeoutSeconds = ARMING_TIMEOUT_SECONDS,
         getSecretKey = { KioskSecurity.getSharedSecret(context) },
         getRealTimeBatteryInfo = { systemMonitor.getRealTimeBatteryInfo() },
-        onCreditPayment = { txId, seconds, amount ->
-            creditPayment(txId, seconds, amount)
+        onAddCoinTime = { seconds, source, txId, amount ->
+            addTimeFromMaster(seconds, source, txId, amount)
         },
         onSlotBusyTriggered = { triggerSlotBusy() }
     )
@@ -149,21 +120,18 @@ class KioskEngine(
         context = context,
         stateManager = stateManager,
         coinEventRepo = coinEventRepo,
-        paymentRepo = paymentRepo,
         getSecretKey = { KioskSecurity.getSharedSecret(context) },
         getRealTimeBatteryInfo = { systemMonitor.getRealTimeBatteryInfo() },
         getAudioManager = { audioManager },
-        onCreditPayment = { txId, seconds, amount ->
-            creditPayment(txId, seconds, amount)
-        },
-        isReady = { isInitialized.get() }
+        onAddCoinTime = { seconds, source, txId, amount ->
+            addTimeFromMaster(seconds, source, txId, amount)
+        }
     )
 
     private val supervisor = KioskSessionSupervisor(
         context = context,
         scope = scope,
         stateManager = stateManager,
-        paymentRepo = paymentRepo,
         onSpeakWarning = { speakWarning(it) },
         onFinishPayment = { finishPayment() },
         onCloseSession = { closeSession(it) },
@@ -177,40 +145,43 @@ class KioskEngine(
     fun start() {
         engineStartTimeMs = System.currentTimeMillis()
 
-        scope.launch(Dispatchers.IO) {
+        audioManager.initAudioEngine()
+
+        if (!stateManager.esp32Ip.isNullOrBlank()) {
+            esp32Manager.setEsp32Ip(stateManager.esp32Ip)
+        }
+
+        if (!KioskActivationManager.isPairingCompleted(context) && !KioskSecurity.isProvisioned(context)) {
+            KioskActivationManager.startSetupWindow(context)
+        }
+
+        overlayCoordinator.setupOverlay()
+
+        try {
+            nanoServer = KioskHttpServer(context, SERVER_PORT, serverCoordinator)
+            nanoServer?.start(fi.iki.elonen.NanoHTTPD.SOCKET_READ_TIMEOUT, false)
+            Log.d(TAG, "NanoHTTPD Server listening on port $SERVER_PORT")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start NanoHTTPD server: ${e.message}")
+        }
+
+        esp32Manager.triggerCandidateDiscovery(stateManager.deviceIp.value)
+        esp32Manager.startHeartbeatLoop { stateManager.deviceIp.value }
+
+        supervisor.start()
+        startHealthMonitor()
+
+        systemMonitor.registerScreenOffReceiver()
+        systemMonitor.registerBatteryMonitor()
+
+        scope.launch {
             try {
-                // 1. Restore state and initialize payment database
-                stateManager.restoreState()
-                paymentRepo.migrateAndInitialize(context)
-                isInitialized.set(true)
-                Log.i(TAG, "Initialization complete. Payment endpoints are now available.")
-
-                audioManager.initAudioEngine()
-
-                if (!stateManager.esp32Ip.isNullOrBlank()) {
-                    esp32Manager.setEsp32Ip(stateManager.esp32Ip)
-                }
-
-                if (!KioskActivationManager.isPairingCompleted(context) && !KioskSecurity.isProvisioned(context)) {
-                    KioskActivationManager.startSetupWindow(context)
-                }
-
-                Handler(Looper.getMainLooper()).post {
-                    overlayCoordinator.setupOverlay()
-                }
-
-                ensureHttpServerRunning()
-
-                esp32Manager.triggerCandidateDiscovery(stateManager.deviceIp.value)
-                esp32Manager.startHeartbeatLoop { stateManager.deviceIp.value }
-
-                supervisor.start()
-                startHealthMonitor()
-
-                systemMonitor.registerScreenOffReceiver()
-                systemMonitor.registerBatteryMonitor()
+                val recentEvents = coinEventRepo.getLatestEvents(200)
+                val txSet = recentEvents.mapNotNull { it.txId.takeIf { tx -> tx.isNotBlank() } }.toSet()
+                coinProcessor.restoreProcessedTxIds(txSet)
+                Log.d(TAG, "Hydrated ${txSet.size} transaction IDs from Room DB into cache.")
             } catch (e: Exception) {
-                Log.e(TAG, "Engine start initialization failed: ${e.message}", e)
+                Log.e(TAG, "Error hydrating transaction cache: ${e.message}")
             }
         }
 
@@ -226,52 +197,16 @@ class KioskEngine(
     }
 
     @Synchronized
-    fun ensureHttpServerRunning(): Boolean {
-        if (nanoServer?.isAlive == true) {
-            val healthy = checkHttpLoopbackHealth()
-            if (healthy) return true
-            Log.w(TAG, "NanoHTTPD is alive but loopback health probe failed. Rebuilding listener...")
-        }
-        try {
-            nanoServer?.stop()
-        } catch (_: Exception) {}
-        return try {
-            val server = KioskHttpServer(context, SERVER_PORT, serverCoordinator)
-            server.start(fi.iki.elonen.NanoHTTPD.SOCKET_READ_TIMEOUT, false)
-            nanoServer = server
-            Log.i(TAG, "NanoHTTPD HTTP server successfully started/repaired on port $SERVER_PORT")
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start/repair NanoHTTPD server: ${e.message}")
-            false
-        }
-    }
-
-    private fun checkHttpLoopbackHealth(): Boolean {
-        return try {
-            val url = java.net.URL("http://127.0.0.1:$SERVER_PORT/ping")
-            val connection = url.openConnection() as java.net.HttpURLConnection
-            connection.connectTimeout = 1500
-            connection.readTimeout = 1500
-            connection.requestMethod = "GET"
-            try {
-                connection.responseCode == 200
-            } finally {
-                connection.disconnect()
-            }
-        } catch (_: Exception) {
-            false
-        }
-    }
-
-    @Synchronized
     fun addTimeFromMaster(seconds: Int, source: String, txId: String?, amount: Double = 1.0): Boolean {
-        if (txId.isNullOrBlank()) {
-            Log.w(TAG, "Missing transaction ID for coin credit from $source")
-            return false
-        }
-        val result = creditPayment(txId, seconds, amount)
-        return result == PaymentResult.APPLIED || result == PaymentResult.ALREADY_APPLIED
+        val now = System.currentTimeMillis()
+        val isStartup = (now - engineStartTimeMs < 3000 && stateManager.appState.value == 0)
+        return coinProcessor.processCoinCredit(
+            seconds = seconds,
+            source = source,
+            txId = txId,
+            amount = amount,
+            isStartupPhase = isStartup
+        )
     }
 
     fun triggerCandidateDiscovery() {
@@ -279,12 +214,6 @@ class KioskEngine(
     }
 
     fun probeEsp32Connection(ip: String): Boolean {
-        if (Looper.myLooper() == Looper.getMainLooper()) {
-            scope.launch(Dispatchers.IO) {
-                esp32Manager.probeEsp32Connection(ip)
-            }
-            return false
-        }
         return esp32Manager.probeEsp32Connection(ip)
     }
 
@@ -333,13 +262,10 @@ class KioskEngine(
             return
         }
         Log.i(TAG, "Admin bypass granted for $durationSeconds seconds.")
-        val updated = paymentRepo.adjustSessionTimeBlocking(durationSeconds)
-        stateManager.applySessionUpdate(
-            deadlineMs = updated.sessionExpiryDeadlineMs,
-            remainingSeconds = updated.sessionTimeRemaining,
-            revision = updated.revision,
-            targetAppState = 2
-        )
+        val now = System.currentTimeMillis()
+        stateManager.appState.value = 2
+        stateManager.sessionExpiryDeadlineMs.value = now + (durationSeconds * 1000L)
+        stateManager.sessionTimeRemaining.value = durationSeconds
         stateManager.saveState()
         Handler(Looper.getMainLooper()).post {
             Toast.makeText(context, "Admin Bypass Active (${durationSeconds / 60}m Maintenance)", Toast.LENGTH_SHORT).show()
@@ -348,13 +274,9 @@ class KioskEngine(
 
     fun performLockSession() {
         Log.i(TAG, "Lock session requested by admin.")
-        val resetState = paymentRepo.resetSessionBlocking()
-        stateManager.applySessionUpdate(
-            deadlineMs = resetState.sessionExpiryDeadlineMs,
-            remainingSeconds = resetState.sessionTimeRemaining,
-            revision = resetState.revision,
-            targetAppState = 0
-        )
+        stateManager.appState.value = 0
+        stateManager.sessionTimeRemaining.value = 0
+        stateManager.sessionExpiryDeadlineMs.value = 0L
         stateManager.saveState()
     }
 
@@ -367,29 +289,13 @@ class KioskEngine(
                     val appState = stateManager.appState.value
                     if (appState == 2 || appState == 3) {
                         val deadline = stateManager.sessionExpiryDeadlineMs.value
-                        val nowMonotonic = android.os.SystemClock.elapsedRealtime()
-                        if (deadline > 0L && nowMonotonic >= deadline) {
-                            val expiryResult = paymentRepo.expireSessionIfDueBlocking()
-                            if (expiryResult.didExpire) {
-                                val applied = stateManager.applySessionUpdate(
-                                    deadlineMs = expiryResult.sessionState.sessionExpiryDeadlineMs,
-                                    remainingSeconds = expiryResult.sessionState.sessionTimeRemaining,
-                                    revision = expiryResult.sessionState.revision,
-                                    targetAppState = 0
-                                )
-                                if (applied) {
-                                    Log.w(TAG, "Health monitor: Session deadline expired ($deadline <= $nowMonotonic). Forcing lock state.")
-                                    stateManager.saveState()
-                                } else {
-                                    Log.d(TAG, "Health monitor: Skipping stale expiration lock because newer revision is active")
-                                }
-                            } else {
-                                stateManager.applySessionUpdate(
-                                    expiryResult.sessionState.sessionExpiryDeadlineMs,
-                                    expiryResult.sessionState.sessionTimeRemaining,
-                                    expiryResult.sessionState.revision
-                                )
-                            }
+                        val now = System.currentTimeMillis()
+                        if (deadline > 0L && now >= deadline) {
+                            Log.w(TAG, "Health monitor: Session deadline expired ($deadline <= $now). Forcing lock state.")
+                            stateManager.appState.value = 0
+                            stateManager.sessionTimeRemaining.value = 0
+                            stateManager.sessionExpiryDeadlineMs.value = 0L
+                            stateManager.saveState()
                         }
                     }
 

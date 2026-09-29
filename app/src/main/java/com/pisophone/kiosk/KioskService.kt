@@ -44,6 +44,7 @@ class KioskService : Service() {
         fun configureMasterBox(
             context: Context,
             mac: String,
+            ip: String? = null,
             slot: Int = -1,
             secret: String? = null,
             name: String? = null
@@ -52,6 +53,7 @@ class KioskService : Service() {
                 context = context,
                 secret = secret,
                 mac = mac,
+                ip = ip,
                 slot = slot,
                 name = name
             )
@@ -61,7 +63,27 @@ class KioskService : Service() {
                 if (cleanMac.isNotBlank()) {
                     service.stateManager.esp32MacAddress.value = cleanMac
                 }
-                service.triggerCandidateDiscovery()
+                if (!ip.isNullOrBlank()) {
+                    service.stateManager.esp32Ip = ip.trim()
+                    service.stateManager.saveState()
+                    service.probeEsp32Connection(ip.trim())
+                } else {
+                    service.triggerCandidateDiscovery()
+                }
+            }
+        }
+
+        fun setManualEsp32Ip(context: Context, ip: String) {
+            val trimmed = ip.trim()
+            KioskSecurity.setConfiguredEsp32Ip(context, trimmed)
+            activeInstance?.let { service ->
+                service.stateManager.esp32Ip = if (trimmed.isNotBlank()) trimmed else null
+                service.stateManager.saveState()
+                if (trimmed.isNotBlank()) {
+                    service.probeEsp32Connection(trimmed)
+                } else {
+                    service.triggerCandidateDiscovery()
+                }
             }
         }
 
@@ -121,7 +143,8 @@ class KioskService : Service() {
     }
 
     private var engine: KioskEngine? = null
-    val stateManager: KioskStateManager by lazy { KioskStateManager(applicationContext) }
+    val stateManager: KioskStateManager
+        get() = engine?.stateManager ?: KioskStateManager(this)
 
     private var multicastLock: WifiManager.MulticastLock? = null
     private var wakeLock: PowerManager.WakeLock? = null
@@ -147,7 +170,9 @@ class KioskService : Service() {
         CrashReporter.init(this)
         acquireLocks()
 
-        val eng = KioskEngine(this, stateManager)
+        val sm = KioskStateManager(this)
+        sm.restoreState()
+        val eng = KioskEngine(this, sm)
         engine = eng
         eng.start()
     }
@@ -178,8 +203,6 @@ class KioskService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     fun isOverlayHealthy(): Boolean = engine?.overlayCoordinator?.isOverlayHealthy() ?: false
-
-    fun ensureHttpServerRunning(): Boolean = engine?.ensureHttpServerRunning() ?: false
 
     fun setupOverlay() {
         engine?.overlayCoordinator?.setupOverlay()
