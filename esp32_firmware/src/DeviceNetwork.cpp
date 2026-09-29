@@ -85,7 +85,7 @@ void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId) {
     if (isWsConnected && wsClient.connected() && (targetDev.length() == 0 || wsSessionDeviceId == targetDev)) {
         Serial.printf("[⚡] Pushing ₱%d (+%d mins / %d secs) over WebSocket to %s!\n", pulses, addedMinutes, addedSeconds, targetDev.c_str());
         String innerJson = "{\"seconds\":" + String(addedSeconds) + ",\"minutes\":" + String(addedMinutes) + ",\"amount\":" + String(pulses) + ",\"tx_id\":\"" + txId + "\",\"ts\":\"" + String(ts) + "\"}";
-        String payload = aes_encrypt(innerJson, sharedSecret);
+        String payload = aes_encrypt(innerJson, MASTER_CRYPTO_SECRET);
         String json = "{\"event\":\"COIN_DETECTED\",\"payload\":\"" + payload + "\",\"seconds\":" + String(addedSeconds) + ",\"amount\":" + String(pulses) + ",\"tx_id\":\"" + txId + "\"}";
         sendWsText(wsClient, json);
         if (targetDev.length() > 0) refreshCoinSlotTtl(targetDev, CoinSlotOwnerType::PHONE, ARM_TTL);

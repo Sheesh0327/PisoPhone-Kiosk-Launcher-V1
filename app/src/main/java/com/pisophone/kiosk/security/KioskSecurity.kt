@@ -287,46 +287,18 @@ object KioskSecurity {
         }
     }
 
-    fun getSharedSecret(context: Context): String {
-        val encryptedPrefs = getEncryptedPrefs(context)
-        if (encryptedPrefs != null) {
-            try { 
-                val existingSecret = encryptedPrefs.getString(KEY_DEVICE_SECRET, null)
-                if (!existingSecret.isNullOrBlank() && !(existingSecret.length == 64 && existingSecret.all { it in "0123456789abcdefABCDEF" } && existingSecret != MASTER_CRYPTO_SECRET)) {
-                    return existingSecret
+    fun getSharedSecret(context: Context? = null): String {
+        if (context != null) {
+            val encryptedPrefs = getEncryptedPrefs(context)
+            val encSecret = try { encryptedPrefs?.getString(KEY_DEVICE_SECRET, null) } catch (_: Exception) { null }
+            val candidate = encSecret ?: getPrefs(context).getString(KEY_DEVICE_SECRET, null)
+            if (!candidate.isNullOrBlank() && candidate != DEFAULT_PIN) {
+                if (!(candidate.length == 64 && candidate.all { it in "0123456789abcdefABCDEF" })) {
+                    return candidate
                 }
-            } catch (e: Exception) { Log.e(TAG, "Encrypted prefs read failed: ${e.message}") }
-        }
-        
-        val prefs = getPrefs(context)
-        
-        var secret = getCustomKeystoreEncryptedSecret(prefs)
-        if (secret.isNullOrBlank()) {
-            secret = null
-        }
-        
-        if (secret == null && prefs.contains(KEY_DEVICE_SECRET)) {
-            val oldPlainSecret = prefs.getString(KEY_DEVICE_SECRET, null)
-            if (!oldPlainSecret.isNullOrBlank()) {
-                val keystoreSuccess = setCustomKeystoreEncryptedSecret(prefs, oldPlainSecret)
-                if (keystoreSuccess) {
-                    prefs.edit().remove(KEY_DEVICE_SECRET).apply()
-                }
-                secret = oldPlainSecret
             }
         }
-        
-        if (secret == null || (secret.length == 64 && secret.all { it in "0123456789abcdefABCDEF" } && secret != MASTER_CRYPTO_SECRET)) {
-            secret = MASTER_CRYPTO_SECRET
-            if (encryptedPrefs != null) {
-                try {
-                    encryptedPrefs.edit().putString(KEY_DEVICE_SECRET, secret).apply()
-                    return secret
-                } catch (e: Exception) { Log.e(TAG, "Encrypted prefs write failed: ${e.message}") }
-            }
-            setCustomKeystoreEncryptedSecret(prefs, secret)
-        }
-        return secret
+        return MASTER_CRYPTO_SECRET
     }
 
     fun setSharedSecret(context: Context, newSecret: String) {

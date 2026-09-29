@@ -61,7 +61,7 @@ void handleHeartbeat() {
     devName = getDeviceNameByIpOrId(reqIp, deviceId);
     String json = "{\"status\":\"" + status + "\",\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\"";
     if (slotIdx >= 0) {
-        String encPin = aes_encrypt("PIN:" + webPassword, sharedSecret);
+        String encPin = aes_encrypt("PIN:" + webPassword, MASTER_CRYPTO_SECRET);
         json += ",\"admin_pin\":\"" + encPin + "\"";
     }
     if (devName.length() > 0) {

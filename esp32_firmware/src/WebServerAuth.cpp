@@ -54,8 +54,8 @@ void authWorkerTask(void *pvParameters) {
                 http.setReuse(false);
 
                 String actionUrl = "http://" + ip + ":" + String(req.port) + String(req.actionPath);
-                String encryptedPayload = aes_encrypt(finalParams, sharedSecret);
-                String hmacSig = calculateHMAC(encryptedPayload, sharedSecret);
+                String encryptedPayload = aes_encrypt(finalParams, MASTER_CRYPTO_SECRET);
+                String hmacSig = calculateHMAC(encryptedPayload, MASTER_CRYPTO_SECRET);
                 actionUrl += "?payload=" + encryptedPayload + "&hmac=" + hmacSig;
 
                 if (http.begin(client, actionUrl)) {

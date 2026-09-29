@@ -211,17 +211,10 @@ void processWebSocketServer() {
             }
             
             // 1. Verify HMAC Signature
-            String secKeyAuth = (sharedSecret.length() > 0) ? sharedSecret : String(MASTER_CRYPTO_SECRET);
-            String expectedSig = calculateHMAC(reqDeviceId + ":" + tsStr, secKeyAuth);
-            bool sigMatches = sig.equalsIgnoreCase(expectedSig);
-            if (!sigMatches && secKeyAuth != MASTER_CRYPTO_SECRET) {
-                String fallbackSig = calculateHMAC(reqDeviceId + ":" + tsStr, String(MASTER_CRYPTO_SECRET));
-                if (sig.equalsIgnoreCase(fallbackSig)) {
-                    sigMatches = true;
-                }
-            }
-            if (!sigMatches) {
-                Serial.printf("[-] WS Auth Failed for %s: Signature Mismatch\n", reqDeviceId.c_str());
+            String expectedSig = calculateHMAC(reqDeviceId + ":" + tsStr, MASTER_CRYPTO_SECRET);
+            if (!sig.equalsIgnoreCase(expectedSig)) {
+                Serial.printf("[-] WS Auth Failed for %s: Signature Mismatch (sig=%s, expected=%s)\n", 
+                    reqDeviceId.c_str(), sig.c_str(), expectedSig.c_str());
                 newClient.print("HTTP/1.1 403 Forbidden\r\n\r\nInvalid Signature");
                 newClient.stop();
                 return;
@@ -362,9 +355,8 @@ void processWebSocketServer() {
 void sendUdpDiscoveryResponse(IPAddress targetIp, uint16_t targetPort) {
     if (WiFi.status() != WL_CONNECTED) return;
 
-    String secKey = (sharedSecret.length() > 0) ? sharedSecret : String(MASTER_CRYPTO_SECRET);
     String ipStr = WiFi.localIP().toString();
-    String sig = calculateHMAC("DISCOVERY:" + macAddressStr + ":" + ipStr, secKey);
+    String sig = calculateHMAC("DISCOVERY:" + macAddressStr + ":" + ipStr, MASTER_CRYPTO_SECRET);
 
     String resp = "{\"type\":\"PISOPHONE_ESP32_RESPONSE\","
                   "\"device\":\"PISOPHONE_MASTER\","
