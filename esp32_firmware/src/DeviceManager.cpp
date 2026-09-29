@@ -227,7 +227,7 @@ bool checkReplayProtection(String deviceId, unsigned long long newTs) {
 
 bool verifyTelemetryAuth(String deviceId, String tsStr, String sig) {
     if (deviceId.length() == 0) return false;
-    String expectedSig = calculateHMAC(deviceId + ":" + tsStr, MASTER_CRYPTO_SECRET);
+    String expectedSig = calculateHMAC(deviceId + ":" + tsStr, sharedSecret);
     if (!sig.equalsIgnoreCase(expectedSig)) {
         return false;
     }

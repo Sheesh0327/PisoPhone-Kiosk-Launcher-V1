@@ -36,7 +36,6 @@ object KioskSecurity {
     private const val DEFAULT_PIN = "1234"
     private const val TAG = "KioskSecurity"
     private const val KEY_DEVICE_SECRET = "device_crypto_secret"
-    const val MASTER_CRYPTO_SECRET = "PISOPHONE_HMAC_MASTER_KEY"
 
     @Volatile
     private var prefsInstance: SharedPreferences? = null
@@ -150,6 +149,10 @@ object KioskSecurity {
         return input.trim().uppercase()
     }
 
+    fun isPaymentConfigured(context: Context): Boolean {
+        return getSharedSecret(context).isNotBlank()
+    }
+
     fun isProvisioned(context: Context): Boolean {
         val secret = getSharedSecret(context)
         val mac = getConfiguredEsp32Mac(context)
@@ -220,17 +223,46 @@ object KioskSecurity {
     }
 
     fun getSharedSecret(context: Context? = null): String {
-        if (context != null) {
+        if (context == null) return ""
+        try {
+            // 1. AndroidX EncryptedSharedPreferences
             val encryptedPrefs = getEncryptedPrefs(context)
-            val encSecret = try { encryptedPrefs?.getString(KEY_DEVICE_SECRET, null) } catch (_: Exception) { null }
-            val candidate = encSecret ?: getPrefs(context).getString(KEY_DEVICE_SECRET, null)
-            if (!candidate.isNullOrBlank() && candidate != DEFAULT_PIN) {
-                if (!(candidate.length == 64 && candidate.all { it in "0123456789abcdefABCDEF" })) {
-                    return candidate
-                }
+            val encSecret = try {
+                encryptedPrefs?.getString(KEY_DEVICE_SECRET, null)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed reading EncryptedSharedPreferences: ${e.message}")
+                null
             }
+            if (!encSecret.isNullOrBlank() && encSecret.trim() != DEFAULT_PIN) {
+                return encSecret.trim()
+            }
+
+            // 2. Custom Android KeyStore AES-GCM encrypted fallback
+            val prefs = getPrefs(context)
+            val customKeystoreSecret = try {
+                KioskCrypto.getCustomKeystoreEncryptedSecret(prefs)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed reading custom Keystore encrypted secret: ${e.message}")
+                null
+            }
+            if (!customKeystoreSecret.isNullOrBlank() && customKeystoreSecret.trim() != DEFAULT_PIN) {
+                return customKeystoreSecret.trim()
+            }
+
+            // 3. Plaintext SharedPreferences fallback
+            val plainSecret = try {
+                prefs.getString(KEY_DEVICE_SECRET, null)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed reading SharedPreferences secret: ${e.message}")
+                null
+            }
+            if (!plainSecret.isNullOrBlank() && plainSecret.trim() != DEFAULT_PIN) {
+                return plainSecret.trim()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Unexpected error retrieving shared secret: ${e.message}", e)
         }
-        return MASTER_CRYPTO_SECRET
+        return ""
     }
 
     fun setSharedSecret(context: Context, newSecret: String) {
@@ -259,6 +291,17 @@ object KioskSecurity {
         } else {
             prefs.edit().remove(KEY_DEVICE_SECRET).apply()
         }
+    }
+
+    fun clearSharedSecret(context: Context) {
+        try {
+            getEncryptedPrefs(context)?.edit()?.remove(KEY_DEVICE_SECRET)?.apply()
+        } catch (_: Exception) {}
+        val prefs = getPrefs(context)
+        prefs.edit()
+            .remove(KEY_DEVICE_SECRET)
+            .remove(KioskCrypto.KEY_CUSTOM_ENCRYPTED_SECRET)
+            .apply()
     }
 
     fun getAdminPin(context: Context): String {

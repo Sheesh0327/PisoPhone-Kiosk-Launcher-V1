@@ -211,7 +211,7 @@ void processWebSocketServer() {
             }
             
             // 1. Verify HMAC Signature
-            String expectedSig = calculateHMAC(reqDeviceId + ":" + tsStr, MASTER_CRYPTO_SECRET);
+            String expectedSig = calculateHMAC(reqDeviceId + ":" + tsStr, sharedSecret);
             if (!sig.equalsIgnoreCase(expectedSig)) {
                 Serial.printf("[-] WS Auth Failed for %s: Signature Mismatch (sig=%s, expected=%s)\n", 
                     reqDeviceId.c_str(), sig.c_str(), expectedSig.c_str());
@@ -356,7 +356,7 @@ void sendUdpDiscoveryResponse(IPAddress targetIp, uint16_t targetPort) {
     if (WiFi.status() != WL_CONNECTED) return;
 
     String ipStr = WiFi.localIP().toString();
-    String sig = calculateHMAC("DISCOVERY:" + macAddressStr + ":" + ipStr, MASTER_CRYPTO_SECRET);
+    String sig = calculateHMAC("DISCOVERY:" + macAddressStr + ":" + ipStr, sharedSecret);
 
     String resp = "{\"type\":\"PISOPHONE_ESP32_RESPONSE\","
                   "\"device\":\"PISOPHONE_MASTER\","

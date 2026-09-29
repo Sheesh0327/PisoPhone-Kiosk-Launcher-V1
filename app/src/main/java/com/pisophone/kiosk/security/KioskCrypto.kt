@@ -19,7 +19,7 @@ import javax.crypto.spec.SecretKeySpec
 object KioskCrypto {
     private const val TAG = "KioskCrypto"
     private const val CUSTOM_KEYSTORE_ALIAS = "kiosk_custom_secret_key"
-    private const val KEY_CUSTOM_ENCRYPTED_SECRET = "custom_encrypted_device_secret"
+    const val KEY_CUSTOM_ENCRYPTED_SECRET = "custom_encrypted_device_secret"
 
     fun calculateHmac(data: String, key: String): String {
         val mac = Mac.getInstance("HmacSHA256")

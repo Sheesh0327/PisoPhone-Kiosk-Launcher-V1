@@ -197,7 +197,7 @@ class Esp32ConnectionManager(
                                 val code = response.code
                                 val body = response.body?.string() ?: ""
 
-                                if (response.isSuccessful || code == 403 || code == 423) {
+                                if (response.isSuccessful || code == 423) {
                                     consecutiveHeartbeatFailures = 0
                                     lastHeartbeatTime = System.currentTimeMillis()
                                     if (body.isNotBlank()) {
@@ -212,7 +212,11 @@ class Esp32ConnectionManager(
                                 } else {
                                     Log.w(TAG, "[HEARTBEAT] Unsuccessful HTTP code: $code")
                                     consecutiveHeartbeatFailures++
-                                    checkOfflineThreshold(currentIp)
+                                    if (code == 403) {
+                                        delegate.onOnlineStatusChanged(false, null)
+                                    } else {
+                                        checkOfflineThreshold(currentIp)
+                                    }
                                 }
                             }
                         } catch (e: Exception) {
@@ -311,6 +315,15 @@ class Esp32ConnectionManager(
     }
 
     fun armSlot(armingTimeoutSeconds: Int) {
+        val secret = delegate.getSecretKey().trim()
+        if (secret.isEmpty()) {
+            Log.e(TAG, "Arming rejected: Missing or unreadable payment credentials. Payment setup required.")
+            Handler(Looper.getMainLooper()).post {
+                Toast.makeText(context, "Payment setup required: Please pair device with Box secret key.", Toast.LENGTH_LONG).show()
+            }
+            return
+        }
+
         val attemptId: Long
         val ip: String?
         synchronized(connectionLock) {
@@ -356,11 +369,19 @@ class Esp32ConnectionManager(
     }
 
     private fun initiateWebSocketArming(attemptId: Long, ip: String, armingTimeoutSeconds: Int) {
+        val secret = delegate.getSecretKey().trim()
+        if (secret.isEmpty()) {
+            Log.e(TAG, "Arming rejected: Missing payment credentials for attempt #$attemptId. Payment setup required.")
+            Handler(Looper.getMainLooper()).post {
+                Toast.makeText(context, "Payment setup required: No valid box key provisioned.", Toast.LENGTH_LONG).show()
+            }
+            return
+        }
         val (host, _) = discoveryScanner.getEsp32HostAndPort(ip)
         val targetHost = if (host.isNotBlank()) host else ip
         val deviceId = delegate.getDeviceId()
         val ts = System.currentTimeMillis().toString()
-        val sig = KioskSecurity.generateTimestampSignature(deviceId, ts, delegate.getSecretKey())
+        val sig = KioskSecurity.generateTimestampSignature(deviceId, ts, secret)
 
         val wsUrl = "ws://$targetHost:$ESP32_WS_PORT/ws?device_id=$deviceId&ts=$ts&sig=$sig"
         Log.i(TAG, "⚡ [Single-Path Arming] Connecting WebSocket to $targetHost:$ESP32_WS_PORT (attempt #$attemptId, deviceId=$deviceId)")
@@ -432,7 +453,12 @@ class Esp32ConnectionManager(
                         Handler(Looper.getMainLooper()).post {
                             Toast.makeText(context, "Slot is currently busy with another device.", Toast.LENGTH_LONG).show()
                         }
-                    } else if (code == 403 || code == 423 || msg.contains("SLOT_EXPIRED", ignoreCase = true) || msg.contains("423", ignoreCase = true)) {
+                    } else if (code == 403) {
+                        delegate.onOnlineStatusChanged(false, null)
+                        Handler(Looper.getMainLooper()).post {
+                            Toast.makeText(context, "Payment setup required: Box authentication failed (Secret key mismatch).", Toast.LENGTH_LONG).show()
+                        }
+                    } else if (code == 423 || msg.contains("SLOT_EXPIRED", ignoreCase = true) || msg.contains("423", ignoreCase = true)) {
                         delegate.onSlotLockdown("Please activate device slot on ESP32 Portal.", 0, 0L)
                     }
                 }

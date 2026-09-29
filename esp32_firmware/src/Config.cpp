@@ -35,7 +35,7 @@ String wifiSsid      = DEFAULT_SSID;
 String wifiPass      = DEFAULT_PASS;
 String androidIps    = "";
 String webPassword   = DEFAULT_ADMIN_PW;
-String sharedSecret  = MASTER_CRYPTO_SECRET;
+String sharedSecret  = "";
 String macAddressStr = "";
 bool is_licensed     = false;
 int maxLicensedSlots = DEFAULT_MAX_SLOTS;
@@ -89,6 +89,22 @@ void updateMasterTime(uint64_t ts) {
 
 bool areDefaultCredentialsActive() {
     return (webPassword == DEFAULT_ADMIN_PW || wifiPass == DEFAULT_PASS);
+}
+
+static String generateRandom256BitKeyHex() {
+    uint8_t randBytes[32];
+    for (int i = 0; i < 32; i += 4) {
+        uint32_t r = esp_random();
+        memcpy(randBytes + i, &r, 4);
+    }
+    String hex = "";
+    hex.reserve(65);
+    for (int i = 0; i < 32; i++) {
+        char buf[3];
+        sprintf(buf, "%02x", randBytes[i]);
+        hex += buf;
+    }
+    return hex;
 }
 
 bool parseDeviceEntry(const String& rawEntry, DeviceConfig& out) {
@@ -312,7 +328,12 @@ void loadAllConfig() {
     
     webPassword       = prefs.getString(NVS_KEY_ADMIN_PW, webPassword);
     relayActiveLow    = prefs.getBool(NVS_KEY_RELAY_ACTIVE_LOW, false);
-    sharedSecret      = prefs.getString(NVS_KEY_SHARED_SECRET, sharedSecret);
+    sharedSecret      = prefs.getString(NVS_KEY_SHARED_SECRET, "");
+    if (sharedSecret.length() == 0 || sharedSecret == MASTER_CRYPTO_SECRET) {
+        sharedSecret = generateRandom256BitKeyHex();
+        prefs.putString(NVS_KEY_SHARED_SECRET, sharedSecret);
+        Serial.println("[🔐 SECURITY] Generated and persisted new unique per-box 256-bit secret key.");
+    }
     p1Ip              = prefs.getString(NVS_KEY_P1, p1Ip);
     p2Ip              = prefs.getString(NVS_KEY_P2, p2Ip);
     matchMinutes      = prefs.getInt(NVS_KEY_MATCH, matchMinutes);
@@ -385,7 +406,10 @@ void factoryResetDefaults() {
     targetPort = DEFAULT_PORT;
     minutesPerCoin = DEFAULT_MINUTES_PER_COIN;
     webPassword = DEFAULT_ADMIN_PW;
-    sharedSecret = MASTER_CRYPTO_SECRET;
+    sharedSecret = generateRandom256BitKeyHex();
+    prefs.begin(NVS_NAMESPACE, false);
+    prefs.putString(NVS_KEY_SHARED_SECRET, sharedSecret);
+    prefs.end();
     p1Ip = "";
     p2Ip = "";
     matchMinutes = 15;
