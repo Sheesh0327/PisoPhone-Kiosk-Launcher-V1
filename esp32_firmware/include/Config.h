@@ -45,6 +45,7 @@ struct LicenseSlot {
 struct DeviceTelemetry {
     String deviceId;
     String lastKnownIp;
+    String name;
     int timeRemainingSeconds;
     int state;
     int batteryLevel;

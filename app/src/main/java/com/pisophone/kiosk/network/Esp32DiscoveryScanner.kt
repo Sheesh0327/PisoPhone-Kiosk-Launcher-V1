@@ -175,10 +175,18 @@ class Esp32DiscoveryScanner(
     fun sendUdpDiscoveryBroadcast(localIp: String) {
         try {
             acquireMulticastLock()
-            val data = DISCOVERY_PROBE_MSG.toByteArray(Charsets.UTF_8)
+            val hwId = com.pisophone.kiosk.security.KioskActivationManager.getHardwareFingerprint(context)
+            val model = com.pisophone.kiosk.security.KioskActivationManager.getHardwareDescription()
+            val activeIp = if (localIp.isNotBlank()) localIp else getLocalIpAddress()
+            val probeMsg = JSONObject().apply {
+                put("type", "PISOPHONE_DISCOVER")
+                put("device_id", hwId)
+                put("name", model)
+                if (activeIp.isNotBlank()) put("ip", activeIp)
+            }.toString()
+            val data = probeMsg.toByteArray(Charsets.UTF_8)
             val broadcastTargets = mutableListOf("255.255.255.255")
 
-            val activeIp = if (localIp.isNotBlank()) localIp else getLocalIpAddress()
             if (activeIp.isNotBlank() && activeIp.contains(".")) {
                 val subnet = activeIp.substringBeforeLast(".")
                 broadcastTargets.add("$subnet.255")
@@ -308,8 +316,10 @@ class Esp32DiscoveryScanner(
         val (host, port) = getEsp32HostAndPort(ip)
 
         try {
+            val hwId = java.net.URLEncoder.encode(com.pisophone.kiosk.security.KioskActivationManager.getHardwareFingerprint(context), "UTF-8")
+            val model = java.net.URLEncoder.encode(com.pisophone.kiosk.security.KioskActivationManager.getHardwareDescription(), "UTF-8")
             val req = Request.Builder()
-                .url("http://$host:$port/identify")
+                .url("http://$host:$port/identify?device_id=$hwId&name=$model")
                 .build()
             httpClient.newCall(req).execute().use { resp ->
                 if (resp.isSuccessful) {
