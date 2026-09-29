@@ -55,7 +55,7 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_4_5 = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE `payment_receipts` ADD COLUMN `operationKind` TEXT NOT NULL DEFAULT 'CREDIT'")
-                db.execSQL("ALTER TABLE `payment_receipts` ADD COLUMN `coinAmount` REAL NOT NULL DEFAULT 0.0")
+                db.execSQL("ALTER TABLE `payment_receipts` ADD COLUMN `coinAmount` INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE `payment_receipts` ADD COLUMN `pricePerCoin` REAL NOT NULL DEFAULT 0.0")
                 db.execSQL("ALTER TABLE `payment_receipts` ADD COLUMN `boxInstallationEpoch` INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE `payment_receipts` ADD COLUMN `phonePairingEpoch` INTEGER NOT NULL DEFAULT 0")
@@ -71,7 +71,11 @@ abstract class AppDatabase : RoomDatabase() {
 
         val MIGRATION_6_7 = object : Migration(6, 7) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                // Version 7 forward migration matching restored v6 schema
+                db.execSQL("CREATE TABLE IF NOT EXISTS `payment_receipts_new` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `txId` TEXT NOT NULL, `secondsCredited` INTEGER NOT NULL, `amount` REAL NOT NULL, `acceptanceTimestamp` INTEGER NOT NULL, `operationKind` TEXT NOT NULL, `coinAmount` REAL NOT NULL, `pricePerCoin` REAL NOT NULL, `boxInstallationEpoch` INTEGER NOT NULL, `phonePairingEpoch` INTEGER NOT NULL, `recordSchemaVersion` INTEGER NOT NULL)")
+                db.execSQL("INSERT INTO `payment_receipts_new` (`id`, `txId`, `secondsCredited`, `amount`, `acceptanceTimestamp`, `operationKind`, `coinAmount`, `pricePerCoin`, `boxInstallationEpoch`, `phonePairingEpoch`, `recordSchemaVersion`) SELECT `id`, `txId`, `secondsCredited`, `amount`, `acceptanceTimestamp`, `operationKind`, CAST(`coinAmount` AS REAL), `pricePerCoin`, `boxInstallationEpoch`, `phonePairingEpoch`, `recordSchemaVersion` FROM `payment_receipts`")
+                db.execSQL("DROP TABLE `payment_receipts`")
+                db.execSQL("ALTER TABLE `payment_receipts_new` RENAME TO `payment_receipts`")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_payment_receipts_txId` ON `payment_receipts` (`txId`)")
             }
         }
 

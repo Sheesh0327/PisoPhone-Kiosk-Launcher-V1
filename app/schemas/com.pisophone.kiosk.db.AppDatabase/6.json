@@ -59,7 +59,7 @@
       },
       {
         "tableName": "payment_receipts",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `txId` TEXT NOT NULL, `secondsCredited` INTEGER NOT NULL, `amount` REAL NOT NULL, `acceptanceTimestamp` INTEGER NOT NULL, `operationKind` TEXT NOT NULL, `coinAmount` REAL NOT NULL, `pricePerCoin` REAL NOT NULL, `boxInstallationEpoch` INTEGER NOT NULL, `phonePairingEpoch` INTEGER NOT NULL, `recordSchemaVersion` INTEGER NOT NULL)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `txId` TEXT NOT NULL, `secondsCredited` INTEGER NOT NULL, `amount` REAL NOT NULL, `acceptanceTimestamp` INTEGER NOT NULL, `operationKind` TEXT NOT NULL, `coinAmount` INTEGER NOT NULL, `pricePerCoin` REAL NOT NULL, `boxInstallationEpoch` INTEGER NOT NULL, `phonePairingEpoch` INTEGER NOT NULL, `recordSchemaVersion` INTEGER NOT NULL)",
         "fields": [
           {
             "fieldPath": "id",
@@ -100,7 +100,7 @@
           {
             "fieldPath": "coinAmount",
             "columnName": "coinAmount",
-            "affinity": "REAL",
+            "affinity": "INTEGER",
             "notNull": true
           },
           {
