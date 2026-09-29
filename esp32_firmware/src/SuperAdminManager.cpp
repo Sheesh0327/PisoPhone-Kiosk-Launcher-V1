@@ -85,7 +85,6 @@ void handleSuperAdminAuth() {
     String json = "{";
     json += "\"status\":\"ok\",";
     json += "\"is_super_admin\":true,";
-    json += "\"session_timeout_seconds\":300,";
     json += "\"vendor_split\":" + String(vendorRevenueSplitPercent) + ",";
     json += "\"is_unmasked\":" + String(isVaultUnmasked ? "true" : "false") + ",";
     json += "\"remaining_seconds\":" + String(remainingSec) + ",";
