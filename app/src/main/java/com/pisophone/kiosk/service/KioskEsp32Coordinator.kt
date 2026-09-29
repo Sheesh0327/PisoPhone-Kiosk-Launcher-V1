@@ -34,6 +34,10 @@ class KioskEsp32Coordinator(
     override fun getAppState(): Int = stateManager.appState.value
     override fun getSessionTimeRemaining(): Int = stateManager.sessionTimeRemaining.value
     override fun getRealTimeBatteryInfo(): Pair<Int, Boolean> = getRealTimeBatteryInfo.invoke()
+    override fun getDeviceName(): String {
+        val alias = KioskSecurity.getDeviceAlias(context)
+        return if (alias.isNotBlank()) alias else (android.os.Build.MODEL ?: "PisoPhone Terminal")
+    }
     override fun getTargetIp(): String? = stateManager.esp32Ip
 
     override fun onEsp32Discovered(ip: String) {

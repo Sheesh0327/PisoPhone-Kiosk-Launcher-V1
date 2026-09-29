@@ -235,6 +235,7 @@ void recordDeviceNonce(String deviceId, unsigned long long ts) {
     if (trackedDeviceCount < MAX_TRACKED_DEVICES) {
         trackedDevices[trackedDeviceCount].deviceId = deviceId;
         trackedDevices[trackedDeviceCount].lastKnownIp = "";
+        trackedDevices[trackedDeviceCount].deviceName = "";
         trackedDevices[trackedDeviceCount].timeRemainingSeconds = -1;
         trackedDevices[trackedDeviceCount].state = 0;
         trackedDevices[trackedDeviceCount].batteryLevel = -1;
@@ -245,7 +246,7 @@ void recordDeviceNonce(String deviceId, unsigned long long ts) {
     }
 }
 
-void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int state, int battery, bool charging, unsigned long long ts) {
+void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int state, int battery, bool charging, unsigned long long ts, String deviceName) {
     ip.trim();
     if (ip == "127.0.0.1") ip = "";
     if (ip.length() > 0) {
@@ -265,6 +266,9 @@ void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int st
         if (match) {
             if (deviceId.length() > 0) trackedDevices[i].deviceId = deviceId;
             if (ip.length() > 0) trackedDevices[i].lastKnownIp = ip;
+            if (deviceName.length() > 0 && deviceName != deviceId) {
+                trackedDevices[i].deviceName = deviceName;
+            }
             trackedDevices[i].timeRemainingSeconds = timeRemaining;
             trackedDevices[i].state = state;
             if (validBattery >= 0) {
@@ -279,6 +283,7 @@ void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int st
     if (trackedDeviceCount < MAX_TRACKED_DEVICES) {
         trackedDevices[trackedDeviceCount].deviceId = deviceId;
         trackedDevices[trackedDeviceCount].lastKnownIp = ip;
+        trackedDevices[trackedDeviceCount].deviceName = deviceName;
         trackedDevices[trackedDeviceCount].timeRemainingSeconds = timeRemaining;
         trackedDevices[trackedDeviceCount].state = state;
         trackedDevices[trackedDeviceCount].batteryLevel = validBattery;
@@ -286,6 +291,29 @@ void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int st
         trackedDevices[trackedDeviceCount].lastSeenMs = millis();
         trackedDevices[trackedDeviceCount].lastNonceTs = ts;
         trackedDeviceCount++;
+    } else {
+        // Evict oldest unassigned device if stale (> 60 seconds)
+        int oldestIdx = -1;
+        unsigned long oldestTime = millis();
+        for (int i = 0; i < trackedDeviceCount; i++) {
+            if (findSlotIndexForDevice(trackedDevices[i].deviceId, trackedDevices[i].lastKnownIp) < 0) {
+                if (trackedDevices[i].lastSeenMs < oldestTime) {
+                    oldestTime = trackedDevices[i].lastSeenMs;
+                    oldestIdx = i;
+                }
+            }
+        }
+        if (oldestIdx >= 0 && (millis() - oldestTime > 60000)) {
+            trackedDevices[oldestIdx].deviceId = deviceId;
+            trackedDevices[oldestIdx].lastKnownIp = ip;
+            trackedDevices[oldestIdx].deviceName = deviceName;
+            trackedDevices[oldestIdx].timeRemainingSeconds = timeRemaining;
+            trackedDevices[oldestIdx].state = state;
+            trackedDevices[oldestIdx].batteryLevel = validBattery;
+            trackedDevices[oldestIdx].isCharging = charging;
+            trackedDevices[oldestIdx].lastSeenMs = millis();
+            trackedDevices[oldestIdx].lastNonceTs = ts;
+        }
     }
 }
 

@@ -424,6 +424,29 @@ void processUdpDiscovery() {
                 uint16_t remotePort = udpServer.remotePort();
                 Serial.printf("[⚡ UDP Discovery] Valid probe received from %s:%d. Responding...\n",
                               remoteIp.toString().c_str(), remotePort);
+
+                // Register discovery probe sender into trackedDevices if device_id or name provided
+                String probeDevId = "";
+                int devIdIdx = msg.indexOf("\"device_id\":\"");
+                if (devIdIdx >= 0) {
+                    int vStart = devIdIdx + 13;
+                    int vEnd = msg.indexOf("\"", vStart);
+                    if (vEnd > vStart) probeDevId = msg.substring(vStart, vEnd);
+                }
+                String probeName = "";
+                int nameIdx = msg.indexOf("\"name\":\"");
+                if (nameIdx >= 0) {
+                    int vStart = nameIdx + 8;
+                    int vEnd = msg.indexOf("\"", vStart);
+                    if (vEnd > vStart) probeName = msg.substring(vStart, vEnd);
+                }
+                String rIpStr = remoteIp.toString();
+                if (probeDevId.length() > 0 || (rIpStr.length() > 0 && rIpStr != "0.0.0.0" && rIpStr != "127.0.0.1")) {
+                    if (probeDevId.length() == 0) probeDevId = "DEV_" + rIpStr;
+                    if (probeName.length() == 0) probeName = "PisoPhone Terminal";
+                    updateDeviceTelemetry(probeDevId, rIpStr, 0, 0, -1, false, 0, probeName);
+                }
+
                 sendUdpDiscoveryResponse(remoteIp, remotePort);
             }
         }

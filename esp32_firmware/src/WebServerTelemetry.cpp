@@ -25,6 +25,10 @@ void handleHeartbeat() {
         deviceId = "DEV_" + reqIp;
     }
 
+    String devName = webServer.hasArg("name") ? webServer.arg("name") : (webServer.hasArg("device_name") ? webServer.arg("device_name") : "");
+    if (devName.length() == 0) devName = getDeviceNameByIpOrId(reqIp, deviceId);
+    if (devName.length() == 0 || devName == deviceId) devName = "PisoPhone Terminal";
+
     bool isAuth = verifyTelemetryAuth(deviceId, tsStr, sig);
     int slotIdx = findSlotIndexForDevice(deviceId, reqIp);
 
@@ -34,8 +38,9 @@ void handleHeartbeat() {
     }
 
     if (slotIdx < 0 || !isAuth) {
-        String devName = getDeviceNameByIpOrId(reqIp, deviceId);
-        if (devName.length() == 0 || devName == deviceId) devName = "PisoPhone Terminal";
+        if (deviceId.length() > 0 || reqIp.length() > 0) {
+            updateDeviceTelemetry(deviceId, reqIp, timeRem, state, battery, charging, ts, devName);
+        }
 
         String json = "{\"status\":\"unassigned\",\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\"";
         json += ",\"slot_num\":0,\"is_paired\":false,\"slot_expired\":true,\"slot_status\":\"unassigned\",\"slot_warning\":false";
@@ -46,7 +51,7 @@ void handleHeartbeat() {
     }
 
     if (deviceId.length() > 0 || reqIp.length() > 0) {
-        updateDeviceTelemetry(deviceId, reqIp, timeRem, state, battery, charging, ts);
+        updateDeviceTelemetry(deviceId, reqIp, timeRem, state, battery, charging, ts, devName);
     }
 
     if (ts > 0) updateMasterTime(ts);

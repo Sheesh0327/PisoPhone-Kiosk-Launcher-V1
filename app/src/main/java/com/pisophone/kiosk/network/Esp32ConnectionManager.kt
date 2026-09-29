@@ -26,6 +26,7 @@ interface Esp32ConnectionDelegate {
     fun getAppState(): Int
     fun getSessionTimeRemaining(): Int
     fun getRealTimeBatteryInfo(): Pair<Int, Boolean>
+    fun getDeviceName(): String = "PisoPhone Terminal"
     fun getTargetIp(): String? = null
     fun onEsp32Discovered(ip: String)
     fun onOnlineStatusChanged(isOnline: Boolean, mac: String?)
@@ -146,8 +147,11 @@ class Esp32ConnectionManager(
 
     private fun fetchMasterConfig(ipHost: String, esp32Port: Int) {
         try {
+            val deviceId = delegate.getDeviceId()
+            val devName = delegate.getDeviceName()
+            val encodedName = java.net.URLEncoder.encode(devName, "UTF-8")
             val req = Request.Builder()
-                .url("http://$ipHost:${esp32Port}/identify")
+                .url("http://$ipHost:${esp32Port}/identify?device_id=$deviceId&name=$encodedName")
                 .build()
             httpClient.newCall(req).execute().use { resp ->
                 if (resp.isSuccessful) {
@@ -183,9 +187,11 @@ class Esp32ConnectionManager(
                         val ts = System.currentTimeMillis().toString()
                         val sig = KioskSecurity.generateTimestampSignature(deviceId, ts, delegate.getSecretKey())
                         val (curBat, isChg) = delegate.getRealTimeBatteryInfo()
+                        val devName = delegate.getDeviceName()
+                        val encodedName = java.net.URLEncoder.encode(devName, "UTF-8")
 
                         val req = Request.Builder()
-                            .url("http://$host:${esp32Port}/heartbeat?device_id=$deviceId&ip=${if (currentIp == "127.0.0.1") "" else currentIp}&time=${delegate.getSessionTimeRemaining()}&state=${delegate.getAppState()}&battery=$curBat&charging=${if (isChg) 1 else 0}&ts=$ts&sig=$sig")
+                            .url("http://$host:${esp32Port}/heartbeat?device_id=$deviceId&name=$encodedName&ip=${if (currentIp == "127.0.0.1") "" else currentIp}&time=${delegate.getSessionTimeRemaining()}&state=${delegate.getAppState()}&battery=$curBat&charging=${if (isChg) 1 else 0}&ts=$ts&sig=$sig")
                             .build()
                         try {
                             httpClient.newCall(req).execute().use { response ->

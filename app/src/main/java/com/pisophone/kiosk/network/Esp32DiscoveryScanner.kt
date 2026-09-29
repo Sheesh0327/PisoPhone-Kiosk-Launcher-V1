@@ -72,7 +72,8 @@ class Esp32DiscoveryScanner(
                 try {
                     while (!isAlreadyBound() && isActive) {
                         sendUdpDiscoveryBroadcast(localIp)
-                        delay(2000)
+                        probeCandidates(localIp)
+                        delay(2500)
                     }
                 } finally {
                     synchronized(lock) {
@@ -174,15 +175,17 @@ class Esp32DiscoveryScanner(
         try {
             acquireMulticastLock()
             val configuredMac = KioskSecurity.getConfiguredEsp32Mac(context)
+            val devAlias = KioskSecurity.getDeviceAlias(context).ifBlank { android.os.Build.MODEL ?: "PisoPhone Terminal" }
+            val cleanAlias = devAlias.replace("\"", "")
+            val activeIp = if (localIp.isNotBlank()) localIp else getLocalIpAddress()
             val probeMsg = if (configuredMac.isNotBlank()) {
-                "{\"type\":\"PISOPHONE_DISCOVER\",\"target_mac\":\"$configuredMac\"}"
+                "{\"type\":\"PISOPHONE_DISCOVER\",\"target_mac\":\"$configuredMac\",\"name\":\"$cleanAlias\",\"ip\":\"$activeIp\"}"
             } else {
-                DISCOVERY_PROBE_MSG
+                "{\"type\":\"PISOPHONE_DISCOVER\",\"name\":\"$cleanAlias\",\"ip\":\"$activeIp\"}"
             }
             val data = probeMsg.toByteArray(Charsets.UTF_8)
             val broadcastTargets = mutableListOf("255.255.255.255")
 
-            val activeIp = if (localIp.isNotBlank()) localIp else getLocalIpAddress()
             if (activeIp.isNotBlank() && activeIp.contains(".")) {
                 val subnet = activeIp.substringBeforeLast(".")
                 broadcastTargets.add("$subnet.255")
@@ -218,19 +221,36 @@ class Esp32DiscoveryScanner(
         }
     }
 
+    fun probeCandidates(localIp: String) {
+        val candidates = mutableListOf<String>()
+        val activeIp = if (localIp.isNotBlank()) localIp else getLocalIpAddress()
+        if (activeIp.isNotBlank() && activeIp.contains(".")) {
+            val subnet = activeIp.substringBeforeLast(".")
+            candidates.add("$subnet.1")
+        }
+        candidates.add("192.168.4.1")
+        candidates.add("kioskmanager.local")
+        for (candidate in candidates) {
+            if (isAlreadyBound()) break
+            probeEsp32Connection(candidate)
+        }
+    }
+
     fun probeEsp32Connection(ip: String): Boolean {
         if (ip.isBlank()) return false
         val (host, port) = getEsp32HostAndPort(ip)
 
         try {
             val fastClient = httpClient.newBuilder()
-                .connectTimeout(3, TimeUnit.SECONDS)
-                .readTimeout(3, TimeUnit.SECONDS)
-                .writeTimeout(3, TimeUnit.SECONDS)
+                .connectTimeout(1500, TimeUnit.MILLISECONDS)
+                .readTimeout(1500, TimeUnit.MILLISECONDS)
+                .writeTimeout(1500, TimeUnit.MILLISECONDS)
                 .build()
 
+            val devAlias = KioskSecurity.getDeviceAlias(context).ifBlank { android.os.Build.MODEL ?: "PisoPhone Terminal" }
+            val encodedName = java.net.URLEncoder.encode(devAlias, "UTF-8")
             val req = Request.Builder()
-                .url("http://$host:$port/identify")
+                .url("http://$host:$port/identify?name=$encodedName")
                 .build()
             fastClient.newCall(req).execute().use { resp ->
                 if (resp.isSuccessful) {
