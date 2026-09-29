@@ -115,6 +115,7 @@ class KioskServerCoordinator(
             KioskSecurity.setAssignedBoxSlot(context, effectiveSlot)
             val autoName = "PisoPhone $effectiveSlot"
             KioskSecurity.setDeviceAlias(context, autoName)
+            com.pisophone.kiosk.security.KioskActivationManager.setPairingCompleted(context, true)
             Log.d(TAG, "[+] Device Name automatically linked to Slot #$effectiveSlot -> $autoName")
         }
         adminPin?.let { if (it.isNotBlank()) KioskSecurity.setAdminPin(context, it) }
@@ -131,6 +132,7 @@ class KioskServerCoordinator(
             stateManager.slotNumber.value = slotNum
             KioskSecurity.setAssignedBoxSlot(context, slotNum)
             KioskSecurity.setDeviceAlias(context, "PisoPhone $slotNum")
+            com.pisophone.kiosk.security.KioskActivationManager.setPairingCompleted(context, true)
         }
         Handler(Looper.getMainLooper()).post {
             when (action) {

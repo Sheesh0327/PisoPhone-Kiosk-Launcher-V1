@@ -21,8 +21,20 @@ void handleHeartbeat() {
     int battery = webServer.hasArg("battery") ? webServer.arg("battery").toInt() : 100;
     bool charging = webServer.hasArg("charging") ? (webServer.arg("charging").toInt() == 1 || webServer.arg("charging") == "true") : false;
 
+    String devName = webServer.hasArg("device_name") ? webServer.arg("device_name") : 
+                    (webServer.hasArg("name") ? webServer.arg("name") : 
+                    (webServer.hasArg("model") ? webServer.arg("model") : ""));
+    devName.trim();
+
     if (deviceId.length() == 0 && reqIp.length() > 0 && reqIp != "127.0.0.1" && reqIp != "0.0.0.0") {
         deviceId = "DEV_" + reqIp;
+    }
+
+    if (devName.length() == 0) {
+        devName = getDeviceNameByIpOrId(reqIp, deviceId);
+    }
+    if (devName.length() == 0 || devName == deviceId) {
+        devName = "PisoPhone Terminal";
     }
 
     bool isAuth = verifyTelemetryAuth(deviceId, tsStr, sig);
@@ -33,10 +45,12 @@ void handleHeartbeat() {
         return;
     }
 
-    if (slotIdx < 0 || !isAuth) {
-        String devName = getDeviceNameByIpOrId(reqIp, deviceId);
-        if (devName.length() == 0 || devName == deviceId) devName = "PisoPhone Terminal";
+    // Always record presence and telemetry for both paired and unassigned devices
+    if (deviceId.length() > 0 || reqIp.length() > 0) {
+        updateDeviceTelemetry(deviceId, reqIp, timeRem, state, battery, charging, ts, devName);
+    }
 
+    if (slotIdx < 0 || !isAuth) {
         String json = "{\"status\":\"unassigned\",\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\"";
         json += ",\"slot_num\":0,\"is_paired\":false,\"slot_expired\":true,\"slot_status\":\"unassigned\",\"slot_warning\":false";
         json += ",\"message\":\"Connected to ESP32: Awaiting Slot Assignment in Admin Portal.\"";
@@ -45,15 +59,10 @@ void handleHeartbeat() {
         return;
     }
 
-    if (deviceId.length() > 0 || reqIp.length() > 0) {
-        updateDeviceTelemetry(deviceId, reqIp, timeRem, state, battery, charging, ts);
-    }
-
     if (ts > 0) updateMasterTime(ts);
     bool isActive = isSlotActive(slotIdx);
 
     String status = (!isActive) ? "slot_expired" : "ok";
-    String devName = getDeviceNameByIpOrId(reqIp, deviceId);
     String json = "{\"status\":\"" + status + "\",\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\"";
     if (slotIdx >= 0) {
         String encPin = aes_encrypt("PIN:" + webPassword, sharedSecret);

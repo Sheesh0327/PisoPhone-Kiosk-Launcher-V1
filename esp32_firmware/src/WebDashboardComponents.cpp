@@ -114,8 +114,9 @@ String renderLicenseSlotsHtml() {
     int unassignedCount = 0;
     unsigned long currentMillis = millis();
     for (int i = 0; i < trackedDeviceCount; i++) {
-        if (trackedDevices[i].deviceId.length() == 0) continue;
-        if (findSlotIndexForDevice(trackedDevices[i].deviceId, trackedDevices[i].lastKnownIp) >= 0) continue;
+        if (trackedDevices[i].deviceId.length() == 0 && trackedDevices[i].lastKnownIp.length() == 0) continue;
+        String dId = trackedDevices[i].deviceId.length() > 0 ? trackedDevices[i].deviceId : trackedDevices[i].lastKnownIp;
+        if (findSlotIndexForDevice(dId, trackedDevices[i].lastKnownIp) >= 0) continue;
         if (currentMillis - trackedDevices[i].lastSeenMs < 300000) {
             unassignedCount++;
         }

@@ -55,6 +55,7 @@ class KioskEsp32Coordinator(
             KioskSecurity.setAssignedBoxSlot(context, effectiveSlot)
             val autoName = "PisoPhone $effectiveSlot"
             KioskSecurity.setDeviceAlias(context, autoName)
+            KioskActivationManager.setPairingCompleted(context, true)
             Log.d(TAG, "[+] Device Name automatically linked to Slot #$effectiveSlot -> $autoName")
         }
         adminPin?.takeIf { it.isNotBlank() }?.let {
@@ -133,6 +134,7 @@ class KioskEsp32Coordinator(
             stateManager.slotNumber.value = slotNum
             KioskSecurity.setAssignedBoxSlot(context, slotNum)
             KioskSecurity.setDeviceAlias(context, "PisoPhone $slotNum")
+            KioskActivationManager.setPairingCompleted(context, true)
         }
         if (stateManager.isSlotExpired.value) {
             stateManager.isSlotExpired.value = false

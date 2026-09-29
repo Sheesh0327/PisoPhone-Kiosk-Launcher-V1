@@ -264,7 +264,10 @@ void handleApiStatus() {
         if (!firstUnassigned) json += ",";
         firstUnassigned = false;
         
-        String dName = getDeviceNameByIpOrId(trackedDevices[i].lastKnownIp, dId);
+        String dName = trackedDevices[i].name;
+        if (dName.length() == 0 || dName == dId || dName.startsWith("DEV_")) {
+            dName = getDeviceNameByIpOrId(trackedDevices[i].lastKnownIp, dId);
+        }
         if (dName.length() == 0 || dName == dId) dName = "PisoPhone Terminal";
         
         json += "{";
@@ -283,13 +286,22 @@ void handleApiStatus() {
 void handleIdentify() {
     String reqIp = webServer.hasArg("ip") ? webServer.arg("ip") : webServer.client().remoteIP().toString();
     String devId = webServer.hasArg("device_id") ? webServer.arg("device_id") : (webServer.hasArg("id") ? webServer.arg("id") : "");
+    String devName = webServer.hasArg("device_name") ? webServer.arg("device_name") : (webServer.hasArg("name") ? webServer.arg("name") : "");
+    devName.trim();
+
     if (devId.length() == 0 && reqIp.length() > 0 && reqIp != "127.0.0.1" && reqIp != "0.0.0.0") {
         devId = "DEV_" + reqIp;
     }
-    if (reqIp.length() > 0 && reqIp != "127.0.0.1" && reqIp != "0.0.0.0") {
-        updateDeviceTelemetry(devId, reqIp, 0, 0, 100, false, 0);
+    if (devName.length() == 0) {
+        devName = getDeviceNameByIpOrId(reqIp, devId);
     }
-    String devName = getDeviceNameByIpOrId(reqIp, devId);
+    if (devName.length() == 0 || devName == devId) {
+        devName = "PisoPhone Terminal";
+    }
+
+    if (reqIp.length() > 0 && reqIp != "127.0.0.1" && reqIp != "0.0.0.0") {
+        updateDeviceTelemetry(devId, reqIp, 0, 0, 100, false, 0, devName);
+    }
     int slotIdx = findSlotIndexForDevice(devId, reqIp);
     String json = "{\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\",\"version\":\"3.0\",\"minutes\":" + String(minutesPerCoin) + ",\"price\":1.0";
     if (devName.length() > 0) {
