@@ -56,7 +56,7 @@ class KioskAudioManager(
     fun initAudioEngine() {
         initTts()
         scope.launch(Dispatchers.Default) {
-            precomputedWaitingBuffer = generateWaitingMusicBuffer()
+            precomputedWaitingBuffer = KioskSoundSynthesizer.generateWaitingMusicBuffer()
             initCoinAudioTrack()
         }
     }
@@ -127,7 +127,6 @@ class KioskAudioManager(
                         preMuteMediaVolume = currentVol
                         isMediaMutedForTts = true
                         am.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0)
-                        Log.i(TAG, "Hardware STREAM_MUSIC muted for TTS (saved pre-mute volume: $currentVol)")
                     }
                     if (!isAlarmMaxedForTts) {
                         val currentAlarmVol = am.getStreamVolume(AudioManager.STREAM_ALARM)
@@ -135,7 +134,6 @@ class KioskAudioManager(
                         isAlarmMaxedForTts = true
                         val maxAlarmVol = am.getStreamMaxVolume(AudioManager.STREAM_ALARM)
                         am.setStreamVolume(AudioManager.STREAM_ALARM, maxAlarmVol, 0)
-                        Log.i(TAG, "Hardware STREAM_ALARM maximized to max ($maxAlarmVol) for TTS (saved pre-max volume: $currentAlarmVol)")
                     }
                 }
             } catch (e: Exception) {
@@ -152,20 +150,14 @@ class KioskAudioManager(
 
                 if (isMediaMutedForTts) {
                     val restoreVol = preMuteMediaVolume ?: 0
-                    systemAudioManager?.let { am ->
-                        am.setStreamVolume(AudioManager.STREAM_MUSIC, restoreVol, 0)
-                        Log.i(TAG, "Hardware STREAM_MUSIC restored to $restoreVol after TTS")
-                    }
+                    systemAudioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, restoreVol, 0)
                     isMediaMutedForTts = false
                     preMuteMediaVolume = null
                 }
 
                 if (isAlarmMaxedForTts) {
                     val restoreAlarmVol = preMuteAlarmVolume ?: 0
-                    systemAudioManager?.let { am ->
-                        am.setStreamVolume(AudioManager.STREAM_ALARM, restoreAlarmVol, 0)
-                        Log.i(TAG, "Hardware STREAM_ALARM restored to $restoreAlarmVol after TTS")
-                    }
+                    systemAudioManager?.setStreamVolume(AudioManager.STREAM_ALARM, restoreAlarmVol, 0)
                     isAlarmMaxedForTts = false
                     preMuteAlarmVolume = null
                 }
@@ -185,15 +177,11 @@ class KioskAudioManager(
                 waitingMusicTrack?.let { track ->
                     if (track.playState == AudioTrack.PLAYSTATE_PLAYING) {
                         track.pause()
-                        Log.d(TAG, "Paused kiosk waiting music for active TTS speech")
                     }
                 }
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to pause waiting music on TTS start: ${e.message}")
-            }
+            } catch (_: Exception) {}
         }
 
-        // Schedule safety watchdog unmute in case TTS callback is dropped or interrupted
         safetyUnmuteRunnable?.let { mainHandler.removeCallbacks(it) }
         val watchdog = Runnable {
             Log.w(TAG, "Safety watchdog triggered — restoring media volume after TTS timeout")
@@ -214,12 +202,9 @@ class KioskAudioManager(
                     waitingMusicTrack?.let { track ->
                         if (track.state == AudioTrack.STATE_INITIALIZED && track.playState != AudioTrack.PLAYSTATE_PLAYING) {
                             track.play()
-                            Log.d(TAG, "Resumed kiosk waiting music after TTS completed")
                         }
                     }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to resume waiting music after TTS: ${e.message}")
-                }
+                } catch (_: Exception) {}
             }
         }
     }
@@ -248,7 +233,6 @@ class KioskAudioManager(
                     AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
                 )
             }
-            Log.d(TAG, "Requested exclusive transient Audio Focus on STREAM_ALARM for TTS")
         } catch (e: Exception) {
             Log.w(TAG, "Error requesting audio focus: ${e.message}")
         }
@@ -265,36 +249,13 @@ class KioskAudioManager(
                 @Suppress("DEPRECATION")
                 systemAudioManager?.abandonAudioFocus(null)
             }
-            Log.d(TAG, "Released Audio Focus after TTS playback")
-        } catch (e: Exception) {
-            Log.w(TAG, "Error abandoning audio focus: ${e.message}")
-        }
+        } catch (_: Exception) {}
     }
 
     private fun initCoinAudioTrack() {
         try {
             val sampleRate = 44100
-            val durationSec = 0.38
-            val numSamples = (durationSec * sampleRate).toInt()
-            val buffer = ShortArray(numSamples)
-            val splitSample = (0.085 * sampleRate).toInt()
-            for (i in 0 until numSamples) {
-                val t = i.toDouble() / sampleRate.toDouble()
-                val valSample: Double
-                val env: Double
-                if (i < splitSample) {
-                    val f = 987.77 // B5
-                    env = 1.0 - (t / 0.085) * 0.15
-                    valSample = 0.7 * Math.sin(2.0 * Math.PI * f * t) + 0.25 * Math.sin(4.0 * Math.PI * f * t)
-                } else {
-                    val f = 1318.51 // E6
-                    val t2 = t - 0.085
-                    env = Math.exp(-t2 * 8.5)
-                    valSample = 0.75 * Math.sin(2.0 * Math.PI * f * t) + 0.2 * Math.sin(4.0 * Math.PI * f * t) + 0.1 * Math.sin(6.0 * Math.PI * f * t)
-                }
-                val sample = (valSample * env * 32767.0 * 0.88).toInt().coerceIn(-32768, 32767)
-                buffer[i] = sample.toShort()
-            }
+            val buffer = KioskSoundSynthesizer.generateCoinSoundBuffer(sampleRate)
             val audioAttributes = AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_MEDIA)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -316,71 +277,9 @@ class KioskAudioManager(
         }
     }
 
-    private fun generateWaitingMusicBuffer(): ShortArray {
-        val sampleRate = 44100
-        val loopDurationSec = 15.0
-        val totalSamples = (loopDurationSec * sampleRate).toInt()
-        val buffer = ShortArray(totalSamples)
-
-        val notes = doubleArrayOf(
-            523.25, 659.25, 783.99, 1046.50, // C5, E5, G5, C6 (s 1-4)
-            880.00, 698.46, 783.99, 659.25,  // A5, F5, G5, E5 (s 5-8)
-            587.33, 659.25, 783.99, 880.00,  // D5, E5, G5, A5 (s 9-12)
-            987.77, 1046.50, 1174.66         // B5, C6, D6 (s 13-15 urgency)
-        )
-
-        for (i in 0 until totalSamples) {
-            val t = i.toDouble() / sampleRate.toDouble()
-            val beatIdx = Math.min(14, t.toInt())
-            val beatT = t - beatIdx
-
-            // 1. Rhythmic clock tick on every second
-            val tickEnv = Math.exp(-beatT * 35.0)
-            val tickVal = 0.28 * Math.sin(2.0 * Math.PI * 2200.0 * beatT) * tickEnv
-
-            // 2. Warm bass pulse
-            val bassF = when {
-                beatIdx < 4 -> 130.81
-                beatIdx < 8 -> 174.61
-                beatIdx < 12 -> 196.00
-                else -> 130.81
-            }
-            val bassEnv = Math.exp(-beatT * 3.5)
-            val bassVal = 0.32 * Math.sin(2.0 * Math.PI * bassF * t) * bassEnv
-
-            // 3. Arpeggiated melody note
-            val noteF = notes[beatIdx]
-            val subBeat = ((beatT * 4) % 4).toInt()
-            val arpMult = when (subBeat) {
-                0 -> 1.0
-                1 -> 1.25
-                2 -> 1.5
-                else -> 1.25
-            }
-            val curF = noteF * arpMult
-            val subT = (beatT * 4) - (beatT * 4).toInt()
-            val melEnv = Math.exp(-subT * 6.0)
-            val melVal = 0.22 * Math.sin(2.0 * Math.PI * curF * t) * melEnv
-
-            var total = (tickVal + bassVal + melVal) * 0.75
-            if (t < 0.1) {
-                total *= (t / 0.1)
-            } else if (t > 14.8) {
-                total *= ((15.0 - t) / 0.2)
-            }
-
-            val sample = (total * 32767.0).toInt().coerceIn(-32768, 32767)
-            buffer[i] = sample.toShort()
-        }
-        return buffer
-    }
-
     fun speakWarning(text: String) {
-        // Cancel any pending delayed speech
         delayedTtsRunnable?.let { mainHandler.removeCallbacks(it) }
         delayedTtsRunnable = null
-
-        // Mute media volume and maximize alarm volume immediately when warning is requested
         muteMediaStreamForTts()
 
         if (!isTtsReady || tts == null) {
@@ -392,25 +291,19 @@ class KioskAudioManager(
         HardwareFeedback.triggerAlertFeedback(context)
         onTtsStartedImmediate()
 
-        if (isTtsReady && tts != null) {
-            try {
-                val params = Bundle().apply {
-                    putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f)
-                    putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_ALARM)
-                }
-                val utteranceId = "kiosk_warning_${System.currentTimeMillis()}"
-                val result = tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
-                if (result != TextToSpeech.SUCCESS) {
-                    Log.w(TAG, "TTS speak returned non-success code $result, triggering fallback")
-                    playSynthesizedTone(880, 160)
-                    onTtsFinished()
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "TTS speak failed: ${e.message}")
+        try {
+            val params = Bundle().apply {
+                putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f)
+                putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_ALARM)
+            }
+            val utteranceId = "kiosk_warning_${System.currentTimeMillis()}"
+            val result = tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
+            if (result != TextToSpeech.SUCCESS) {
                 playSynthesizedTone(880, 160)
                 onTtsFinished()
             }
-        } else {
+        } catch (e: Exception) {
+            Log.e(TAG, "TTS speak failed: ${e.message}")
             playSynthesizedTone(880, 160)
             onTtsFinished()
         }
@@ -437,13 +330,7 @@ class KioskAudioManager(
         scope.launch(Dispatchers.IO) {
             try {
                 val sampleRate = 44100
-                val numSamples = (sampleRate * (durationMs / 1000.0)).toInt()
-                val buffer = ShortArray(numSamples)
-                for (i in 0 until numSamples) {
-                    val angle = 2.0 * Math.PI * i / (sampleRate.toDouble() / freqHz)
-                    val decay = 1.0 - (i.toDouble() / numSamples.toDouble())
-                    buffer[i] = (Math.sin(angle) * 32767 * decay * 0.7).toInt().toShort()
-                }
+                val buffer = KioskSoundSynthesizer.generateSynthesizedToneBuffer(freqHz, durationMs, sampleRate)
                 playPcmBuffer(buffer, sampleRate, durationMs)
             } catch (_: Exception) {}
         }
@@ -488,7 +375,7 @@ class KioskAudioManager(
                 if (!isWaitingMusicDesired) return@launch
                 stopWaitingMusicInternalLocked()
 
-                val buffer = precomputedWaitingBuffer ?: generateWaitingMusicBuffer().also { precomputedWaitingBuffer = it }
+                val buffer = precomputedWaitingBuffer ?: KioskSoundSynthesizer.generateWaitingMusicBuffer().also { precomputedWaitingBuffer = it }
                 if (!isWaitingMusicDesired) return@launch
 
                 try {
@@ -512,7 +399,7 @@ class KioskAudioManager(
                         .build()
 
                     track.write(buffer, 0, buffer.size)
-                    track.setLoopPoints(0, buffer.size, -1) // Infinite looping until stopped
+                    track.setLoopPoints(0, buffer.size, -1)
                     
                     if (isWaitingMusicDesired && !isTtsActive) {
                         track.play()
@@ -551,7 +438,6 @@ class KioskAudioManager(
         scope.launch(Dispatchers.IO) {
             synchronized(audioLock) {
                 stopWaitingMusicInternalLocked()
-                Log.d(TAG, "Waiting music stopped successfully")
             }
         }
     }
@@ -561,15 +447,7 @@ class KioskAudioManager(
             try {
                 val sampleRate = 44100
                 val durationSec = 0.45
-                val numSamples = (sampleRate * durationSec).toInt()
-                val buffer = ShortArray(numSamples)
-                for (i in 0 until numSamples) {
-                    val t = i.toDouble() / sampleRate
-                    val freq = if ((t * 9).toInt() % 2 == 0) 880.0 else 1174.66
-                    val decay = 1.0 - (t / durationSec) * 0.2
-                    val sample = (Math.sin(2.0 * Math.PI * freq * t) * 32767 * decay * 0.85).toInt().coerceIn(-32768, 32767)
-                    buffer[i] = sample.toShort()
-                }
+                val buffer = KioskSoundSynthesizer.generateLowBatteryToneBuffer(sampleRate, durationSec)
                 playPcmBuffer(buffer, sampleRate, (durationSec * 1000).toInt())
             } catch (_: Exception) {}
         }
@@ -580,15 +458,7 @@ class KioskAudioManager(
             try {
                 val sampleRate = 44100
                 val durationSec = 0.4
-                val numSamples = (sampleRate * durationSec).toInt()
-                val buffer = ShortArray(numSamples)
-                for (i in 0 until numSamples) {
-                    val t = i.toDouble() / sampleRate
-                    val freq = if (t < 0.2) 1318.51 else 1567.98
-                    val env = 1.0 - (t / durationSec) * 0.15
-                    val sample = (Math.sin(2.0 * Math.PI * freq * t) * 32767 * env * 0.75).toInt().coerceIn(-32768, 32767)
-                    buffer[i] = sample.toShort()
-                }
+                val buffer = KioskSoundSynthesizer.generateHighBatteryToneBuffer(sampleRate, durationSec)
                 playPcmBuffer(buffer, sampleRate, (durationSec * 1000).toInt())
             } catch (_: Exception) {}
         }

@@ -4,13 +4,11 @@ import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -19,7 +17,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -131,111 +128,8 @@ fun EmergencyRecoveryDialog(
                         .weight(1f)
                         .verticalScroll(rememberScrollState())
                 ) {
-                    // Diagnostic Status Matrix with fluid layout
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, Color(0xFF1E293B))
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text(
-                                text = "SYSTEM STATUS DIAGNOSTICS",
-                                color = Color(0xFF38BDF8),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace,
-                                letterSpacing = 0.5.sp
-                            )
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            // Diagnostic Row 1: ADB Status
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(Color(0xFF1E293B).copy(alpha = 0.6f), RoundedCornerShape(8.dp))
-                                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                                    Text("USB Debugging (ADB)", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                    Text(
-                                        if (isAdbEnabled) "Hardware USB bridge active" else "USB debug policy disabled",
-                                        color = Color(0xFF94A3B8),
-                                        fontSize = 10.sp
-                                    )
-                                }
-                                Surface(
-                                    color = if (isAdbEnabled) Color(0xFF065F46) else Color(0xFF7F1D1D),
-                                    shape = RoundedCornerShape(6.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(6.dp)
-                                                .background(if (isAdbEnabled) Color(0xFF34D399) else Color(0xFFF87171), CircleShape)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = if (isAdbEnabled) "ACTIVE" else "RESTRICTED",
-                                            color = if (isAdbEnabled) Color(0xFF34D399) else Color(0xFFF87171),
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 10.sp,
-                                            fontFamily = FontFamily.Monospace
-                                        )
-                                    }
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            // Diagnostic Row 2: Device Owner Status
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(Color(0xFF1E293B).copy(alpha = 0.6f), RoundedCornerShape(8.dp))
-                                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                                    Text("Device Owner Mode", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                    Text(
-                                        if (isDeviceOwner) "Kiosk system lockdown enabled" else "Standard unmanaged user mode",
-                                        color = Color(0xFF94A3B8),
-                                        fontSize = 10.sp
-                                    )
-                                }
-                                Surface(
-                                    color = if (isDeviceOwner) Color(0xFF065F46) else Color(0xFF78350F),
-                                    shape = RoundedCornerShape(6.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(6.dp)
-                                                .background(if (isDeviceOwner) Color(0xFF34D399) else Color(0xFFFBBF24), CircleShape)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = if (isDeviceOwner) "PROVISIONED" else "NOT SET",
-                                            color = if (isDeviceOwner) Color(0xFF34D399) else Color(0xFFFBBF24),
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 10.sp,
-                                            fontFamily = FontFamily.Monospace
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    // Diagnostic Status Matrix
+                    RecoveryStatusCard(isAdbEnabled = isAdbEnabled, isDeviceOwner = isDeviceOwner)
 
                     Spacer(modifier = Modifier.height(16.dp))
 
@@ -312,118 +206,22 @@ fun EmergencyRecoveryDialog(
                             onClick = { showConfirmDeprovision = true }
                         )
                     } else {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF450A0A)),
-                            shape = RoundedCornerShape(10.dp),
-                            border = BorderStroke(1.dp, Color(0xFFEF4444))
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Filled.Warning, contentDescription = null, tint = Color(0xFFF87171), modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = "CONFIRM DE-PROVISION",
-                                        color = Color(0xFFF87171),
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = "This completely removes Device Owner lockdown so you can uninstall the app without factory resetting. Proceed?",
-                                    color = Color(0xFFE2E8F0),
-                                    fontSize = 12.sp,
-                                    lineHeight = 16.sp
-                                )
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.End,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    TextButton(onClick = { showConfirmDeprovision = false }) {
-                                        Text("Cancel", color = Color(0xFF94A3B8), fontSize = 12.sp)
-                                    }
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Button(
-                                        onClick = {
-                                            KioskSecurity.emergencyClearDeviceOwner(context)
-                                            refreshStatus()
-                                            showConfirmDeprovision = false
-                                            onClose()
-                                            Toast.makeText(context, "✅ Device Owner successfully removed!", Toast.LENGTH_LONG).show()
-                                        },
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626), contentColor = Color.White),
-                                        shape = RoundedCornerShape(8.dp)
-                                    ) {
-                                        Text("Yes, De-provision", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
+                        DeprovisionConfirmationCard(
+                            onCancel = { showConfirmDeprovision = false },
+                            onConfirm = {
+                                KioskSecurity.emergencyClearDeviceOwner(context)
+                                refreshStatus()
+                                showConfirmDeprovision = false
+                                onClose()
+                                Toast.makeText(context, "✅ Device Owner successfully removed!", Toast.LENGTH_LONG).show()
                             }
-                        }
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
 
                     // Developer Remote Emergency Reference Guide
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
-                        shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, Color(0xFF1E293B))
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Filled.Terminal, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("REMOTE ADB / BROADCAST RECOVERY", color = Color(0xFF38BDF8), fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                            }
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            Text("Enable ADB remotely via shell:", color = Color(0xFF94A3B8), fontSize = 11.sp)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(Color(0xFF020617), RoundedCornerShape(6.dp))
-                                    .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(6.dp))
-                                    .padding(horizontal = 10.dp, vertical = 6.dp)
-                            ) {
-                                SelectionContainer {
-                                    Text(
-                                        text = "adb shell am broadcast -a com.pisophone.kiosk.ENABLE_ADB --es pin 1234",
-                                        color = Color(0xFF38BDF8),
-                                        fontSize = 10.sp,
-                                        fontFamily = FontFamily.Monospace,
-                                        lineHeight = 15.sp
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            Text("Deprovision Device Owner remotely:", color = Color(0xFF94A3B8), fontSize = 11.sp)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(Color(0xFF020617), RoundedCornerShape(6.dp))
-                                    .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(6.dp))
-                                    .padding(horizontal = 10.dp, vertical = 6.dp)
-                            ) {
-                                SelectionContainer {
-                                    Text(
-                                        text = "adb shell am broadcast -a com.pisophone.kiosk.DEPROVISION --es pin 1234",
-                                        color = Color(0xFFFCA5A5),
-                                        fontSize = 10.sp,
-                                        fontFamily = FontFamily.Monospace,
-                                        lineHeight = 15.sp
-                                    )
-                                }
-                            }
-                        }
-                    }
+                    RecoveryReferenceCard()
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -449,64 +247,52 @@ fun EmergencyRecoveryDialog(
 }
 
 @Composable
-private fun RecoveryActionButton(
-    icon: ImageVector,
-    iconTint: Color,
-    title: String,
-    subtitle: String,
-    containerColor: Color,
-    contentColor: Color,
-    borderColor: Color? = null,
-    onClick: () -> Unit
+private fun DeprovisionConfirmationCard(
+    onCancel: () -> Unit,
+    onConfirm: () -> Unit
 ) {
-    Button(
-        onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 52.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = containerColor,
-            contentColor = contentColor
-        ),
-        border = borderColor?.let { BorderStroke(1.dp, it) },
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF450A0A)),
         shape = RoundedCornerShape(10.dp),
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+        border = BorderStroke(1.dp, Color(0xFFEF4444))
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .background(Color.Black.copy(alpha = 0.25f), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = iconTint)
-            }
-            Spacer(modifier = Modifier.width(10.dp))
-            Column(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Warning, contentDescription = null, tint = Color(0xFFF87171), modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = title,
+                    text = "CONFIRM DE-PROVISION",
+                    color = Color(0xFFF87171),
                     fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp,
-                    color = contentColor,
-                    lineHeight = 16.sp
-                )
-                Text(
-                    text = subtitle,
-                    fontSize = 10.sp,
-                    color = contentColor.copy(alpha = 0.75f),
-                    lineHeight = 14.sp
+                    fontSize = 12.sp
                 )
             }
-            Spacer(modifier = Modifier.width(6.dp))
-            Icon(
-                Icons.Filled.ChevronRight,
-                contentDescription = null,
-                modifier = Modifier.size(16.dp),
-                tint = contentColor.copy(alpha = 0.5f)
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "This completely removes Device Owner lockdown so you can uninstall the app without factory resetting. Proceed?",
+                color = Color(0xFFE2E8F0),
+                fontSize = 12.sp,
+                lineHeight = 16.sp
             )
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(onClick = onCancel) {
+                    Text("Cancel", color = Color(0xFF94A3B8), fontSize = 12.sp)
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Button(
+                    onClick = onConfirm,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626), contentColor = Color.White),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Yes, De-provision", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
         }
     }
 }

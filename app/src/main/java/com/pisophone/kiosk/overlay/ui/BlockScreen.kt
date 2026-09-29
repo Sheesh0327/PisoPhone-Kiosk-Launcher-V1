@@ -1,13 +1,5 @@
-
-
 package com.pisophone.kiosk.overlay.ui
-import kotlinx.coroutines.isActive
-import com.pisophone.kiosk.overlay.ui.AdminAuthenticationDialog
-import com.pisophone.kiosk.overlay.ui.SecurityVaultView
-import com.pisophone.kiosk.overlay.ui.EmergencyRecoveryDialog
-import com.pisophone.kiosk.overlay.ui.BatteryAlertBanner
 
-import android.content.Context
 import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -33,9 +25,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pisophone.kiosk.model.BatteryAlertState
 import com.pisophone.kiosk.model.BatteryStatus
-import com.pisophone.kiosk.security.KioskActivationManager
-import com.pisophone.kiosk.security.KioskSecurity
-import kotlinx.coroutines.delay
 
 @Composable
 fun BlockScreen(
@@ -59,102 +48,17 @@ fun BlockScreen(
     slotExpiryReason: String = "",
     modifier: Modifier = Modifier.fillMaxSize()
 ) {
-    data class OverlayTheme(
-        val name: String,
-        val background: Color,
-        val primary: Color,
-        val onPrimary: Color,
-        val surface: Color,
-        val border: Color,
-        val secondary: Color
-    )
-
-    val themes = listOf(
-        OverlayTheme(
-            name = "PISOPHONE OBSIDIAN",
-            background = Color(0xFF060B14),
-            primary = Color(0xFF10B981),
-            onPrimary = Color(0xFF020617),
-            surface = Color(0xFF0F172A),
-            border = Color(0xFF1E293B),
-            secondary = Color(0xFF34D399)
-        ),
-        OverlayTheme(
-            name = "ULTRA VIOLET",
-            background = Color(0xFF0F061E),
-            primary = Color(0xFFB026FF),
-            onPrimary = Color(0xFFFFFFFF),
-            surface = Color(0xFF221140),
-            border = Color(0xFFB026FF),
-            secondary = Color(0xFFFFB800)
-        ),
-        OverlayTheme(
-            name = "MATRIX LIME",
-            background = Color(0xFF04120B),
-            primary = Color(0xFF00FF88),
-            onPrimary = Color(0xFF000000),
-            surface = Color(0xFF0C2B1D),
-            border = Color(0xFF00FF88),
-            secondary = Color(0xFF00F5D4)
-        ),
-        OverlayTheme(
-            name = "SOLAR FLARE",
-            background = Color(0xFF140804),
-            primary = Color(0xFFFF6600),
-            onPrimary = Color(0xFF000000),
-            surface = Color(0xFF2A140B),
-            border = Color(0xFFFF6600),
-            secondary = Color(0xFFFFD600)
-        ),
-        OverlayTheme(
-            name = "CRIMSON NOVA",
-            background = Color(0xFF120509),
-            primary = Color(0xFFFF2A5F),
-            onPrimary = Color(0xFFFFFFFF),
-            surface = Color(0xFF2C111C),
-            border = Color(0xFFFF2A5F),
-            secondary = Color(0xFFFF6488)
-        ),
-        OverlayTheme(
-            name = "ELECTRIC SUNSET",
-            background = Color(0xFF130410),
-            primary = Color(0xFFFF007F),
-            onPrimary = Color(0xFFFFFFFF),
-            surface = Color(0xFF2D1027),
-            border = Color(0xFFFF007F),
-            secondary = Color(0xFFFF66B2)
-        ),
-        OverlayTheme(
-            name = "ARCTIC FROST",
-            background = Color(0xFF060D17),
-            primary = Color(0xFF38BDF8),
-            onPrimary = Color(0xFF000000),
-            surface = Color(0xFF16273B),
-            border = Color(0xFF38BDF8),
-            secondary = Color(0xFF7DD3FC)
-        ),
-        OverlayTheme(
-            name = "NEON MATRIX",
-            background = Color(0xFF040E07),
-            primary = Color(0xFF00FF66),
-            onPrimary = Color(0xFF000000),
-            surface = Color(0xFF0F2A16),
-            border = Color(0xFF00FF66),
-            secondary = Color(0xFF66FF99)
-        )
-    )
-
-    val currentTheme = themes[themeIndex % themes.size]
-    val Background = currentTheme.background
-    val TextPrimary = Color(0xFFFFFFFF)
-    val Primary = currentTheme.primary
-    val OnPrimary = currentTheme.onPrimary
-    val Surface = currentTheme.surface
-    val Border = currentTheme.border.copy(alpha = 0.5f)
-    val TextSecondary = Color(0xFFA6ADC8)
-    val TextTertiary = Color(0xFFE2E8F0)
-    val Success = currentTheme.secondary
-    val SurfaceVariant = currentTheme.surface.copy(alpha = 0.8f)
+    val currentTheme = BlockScreenThemes.themes[themeIndex % BlockScreenThemes.themes.size]
+    val background = currentTheme.background
+    val textPrimary = Color(0xFFFFFFFF)
+    val primary = currentTheme.primary
+    val onPrimary = currentTheme.onPrimary
+    val surface = currentTheme.surface
+    val border = currentTheme.border.copy(alpha = 0.5f)
+    val textSecondary = Color(0xFFA6ADC8)
+    val textTertiary = Color(0xFFE2E8F0)
+    val success = currentTheme.secondary
+    val surfaceVariant = currentTheme.surface.copy(alpha = 0.8f)
 
     val context = LocalContext.current
     var showPinDialog by remember { mutableStateOf(false) }
@@ -164,7 +68,7 @@ fun BlockScreen(
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     Box(
-        modifier = modifier.background(Background)
+        modifier = modifier.background(background)
     ) {
         Column(
             modifier = Modifier
@@ -172,7 +76,7 @@ fun BlockScreen(
                 .systemBarsPadding()
         ) {
             // Top Bar
-            BlockScreenTimeHeader(batteryStatus = batteryStatus, themeTextPrimary = TextPrimary)
+            BlockScreenTimeHeader(batteryStatus = batteryStatus, themeTextPrimary = textPrimary)
 
             // Battery Alert Banner
             if (batteryStatus.alertState != BatteryAlertState.NONE) {
@@ -198,17 +102,17 @@ fun BlockScreen(
                         Box(
                             modifier = Modifier
                                 .size(80.dp)
-                                .background(Primary.copy(alpha = 0.12f), CircleShape)
-                                .border(1.5.dp, Primary.copy(alpha = 0.4f), CircleShape),
+                                .background(primary.copy(alpha = 0.12f), CircleShape)
+                                .border(1.5.dp, primary.copy(alpha = 0.4f), CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             if (isWaiting) {
-                                Text("$paymentTimeout", color = Primary, fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                                Text("$paymentTimeout", color = primary, fontSize = 32.sp, fontWeight = FontWeight.Bold)
                             } else {
                                 Icon(
                                     Icons.Filled.LockOpen,
                                     contentDescription = null,
-                                    tint = Primary,
+                                    tint = primary,
                                     modifier = Modifier.size(40.dp)
                                 )
                             }
@@ -216,11 +120,11 @@ fun BlockScreen(
                         
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        DeviceTitleBadge(deviceIp, slotNumber, Primary, TextPrimary, TextTertiary, SurfaceVariant)
+                        DeviceTitleBadge(deviceIp, slotNumber, primary, textPrimary, textTertiary, surfaceVariant)
 
                         Text(
                             if (isWaiting) "Coins inserted: $coinsInserted" else "Insert a coin to unlock all applications for a $minutesPerCoin-minute session.",
-                            color = TextSecondary,
+                            color = textSecondary,
                             fontSize = 14.sp,
                             textAlign = TextAlign.Center,
                             lineHeight = 20.sp,
@@ -239,16 +143,16 @@ fun BlockScreen(
                             isSlotBusy = isSlotBusy,
                             isSlotExpired = isSlotExpired,
                             buttonText = buttonText,
-                            primaryColor = Primary,
-                            onPrimaryColor = OnPrimary,
-                            surfaceColor = Surface,
-                            surfaceVariantColor = SurfaceVariant,
-                            borderColor = Border,
-                            backgroundColor = Background,
-                            textPrimaryColor = TextPrimary,
-                            textSecondaryColor = TextSecondary,
-                            textTertiaryColor = TextTertiary,
-                            successColor = Success,
+                            primaryColor = primary,
+                            onPrimaryColor = onPrimary,
+                            surfaceColor = surface,
+                            surfaceVariantColor = surfaceVariant,
+                            borderColor = border,
+                            backgroundColor = background,
+                            textPrimaryColor = textPrimary,
+                            textSecondaryColor = textSecondary,
+                            textTertiaryColor = textTertiary,
+                            successColor = success,
                             onDoneClick = onDoneClick,
                             onInsertCoin = onInsertCoin
                         )
@@ -260,7 +164,7 @@ fun BlockScreen(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(Surface, RoundedCornerShape(28.dp))
+                                .background(surface, RoundedCornerShape(28.dp))
                                 .padding(20.dp)
                         ) {
                             Row(
@@ -272,20 +176,20 @@ fun BlockScreen(
                                     Box(
                                         modifier = Modifier
                                             .size(10.dp)
-                                            .background(if (isEsp32Online) Success else Color.Red, CircleShape)
+                                            .background(if (isEsp32Online) success else Color.Red, CircleShape)
                                     )
                                     Spacer(modifier = Modifier.width(10.dp))
                                     Column {
                                         Text(
                                             if (isEsp32Online) "HARDWARE CONTROLLER CONNECTED" else "HARDWARE CONTROLLER OFFLINE", 
-                                            color = TextPrimary, 
+                                            color = textPrimary, 
                                             fontSize = 11.sp, 
                                             fontWeight = FontWeight.Bold, 
                                             letterSpacing = 0.5.sp
                                         )
                                         Text(
                                             if (isEsp32Online) "Autonomous Discovery & Interlock Synchronized" else "Searching for ESP32 on network...", 
-                                            color = TextTertiary, 
+                                            color = textTertiary, 
                                             fontSize = 10.sp
                                         )
                                     }
@@ -302,11 +206,11 @@ fun BlockScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             IconButton(onClick = onThemeChange) { 
-                                Icon(Icons.Filled.Palette, contentDescription = "Change Theme", tint = TextPrimary) 
+                                Icon(Icons.Filled.Palette, contentDescription = "Change Theme", tint = textPrimary) 
                             }
                             Spacer(modifier = Modifier.width(16.dp))
                             IconButton(onClick = { showPinDialog = true }) { 
-                                Icon(Icons.Filled.AdminPanelSettings, contentDescription = "Security Vault", tint = TextPrimary) 
+                                Icon(Icons.Filled.AdminPanelSettings, contentDescription = "Security Vault", tint = textPrimary) 
                             }
                         }
                     }
@@ -360,11 +264,11 @@ fun BlockScreen(
             if (showPinDialog) {
                 AdminAuthenticationDialog(
                     context = context,
-                    surfaceColor = Surface,
-                    primaryColor = Primary,
-                    borderColor = Border,
-                    textPrimaryColor = TextPrimary,
-                    textSecondaryColor = TextSecondary,
+                    surfaceColor = surface,
+                    primaryColor = primary,
+                    borderColor = border,
+                    textPrimaryColor = textPrimary,
+                    textSecondaryColor = textSecondary,
                     onDismiss = { showPinDialog = false },
                     onUnlockSuccess = {
                         showPinDialog = false

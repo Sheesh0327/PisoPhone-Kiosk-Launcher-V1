@@ -1,12 +1,8 @@
 package com.pisophone.kiosk.overlay.ui
 
-import android.content.Context
 import android.content.res.Configuration
-import android.net.Uri
-import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -100,12 +96,12 @@ fun FloatingPill(
         Pair(Color(0xFF0F2A16), Color(0xFF00FF66))
     )
     val currentTheme = themes[themeIndex % themes.size]
-    val Surface = currentTheme.first
-    val Outline = currentTheme.second
-    val Primary = Outline
-    val OnPrimary = Color.Black
-    val SurfaceVariant = Surface.copy(alpha = 0.8f)
-    val TextTertiary = Color(0xFFA6ADC8)
+    val surface = currentTheme.first
+    val outline = currentTheme.second
+    val primary = outline
+    val onPrimary = Color.Black
+    val surfaceVariant = surface.copy(alpha = 0.8f)
+    val textTertiary = Color(0xFFA6ADC8)
 
     var currentVolume by remember { mutableIntStateOf(controller.getStreamVolume()) }
     val maxVolume = remember { controller.getStreamMaxVolume() }
@@ -149,61 +145,27 @@ fun FloatingPill(
     val isSecurityActive = showUnlockedPinDialog || showUnlockedSecurityDialog
 
     if (isSecurityActive) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.75f))
-                .clickable(enabled = false) {},
-            contentAlignment = Alignment.Center
-        ) {
-            if (showUnlockedPinDialog) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth(0.9f)
-                        .widthIn(max = 420.dp)
-                        .padding(16.dp),
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A))
-                ) {
-                    Box(modifier = Modifier.padding(16.dp)) {
-                        FloatingPillAdminAuthCard(
-                            context = context,
-                            outlineColor = Outline,
-                            primaryColor = Primary,
-                            onPrimaryColor = OnPrimary,
-                            onDismiss = { showUnlockedPinDialog = false },
-                            onUnlockSuccess = {
-                                showUnlockedPinDialog = false
-                                showUnlockedSecurityDialog = true
-                            }
-                        )
-                    }
-                }
-            } else if (showUnlockedSecurityDialog) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth(0.95f)
-                        .fillMaxHeight(0.92f)
-                        .padding(12.dp),
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A))
-                ) {
-                    Box(modifier = Modifier.padding(12.dp)) {
-                        SecurityVaultView(
-                            context = context,
-                            onClose = { showUnlockedSecurityDialog = false }
-                        )
-                    }
-                }
-            }
-        }
+        FloatingPillSecurityOverlay(
+            context = context,
+            showPinDialog = showUnlockedPinDialog,
+            showSecurityDialog = showUnlockedSecurityDialog,
+            outlineColor = outline,
+            primaryColor = primary,
+            onPrimaryColor = onPrimary,
+            onDismissPin = { showUnlockedPinDialog = false },
+            onPinSuccess = {
+                showUnlockedPinDialog = false
+                showUnlockedSecurityDialog = true
+            },
+            onCloseSecurity = { showUnlockedSecurityDialog = false }
+        )
     } else if (expanded) {
         Box(
             modifier = Modifier
                 .width(if (isLandscape) 320.dp else 300.dp)
                 .heightIn(max = maxOverlayHeight)
-                .background(Surface.copy(alpha = 0.96f), RoundedCornerShape(18.dp))
-                .border(1.5.dp, Outline.copy(alpha = 0.75f), RoundedCornerShape(18.dp))
+                .background(surface.copy(alpha = 0.96f), RoundedCornerShape(18.dp))
+                .border(1.5.dp, outline.copy(alpha = 0.75f), RoundedCornerShape(18.dp))
                 .padding(12.dp)
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
@@ -219,7 +181,7 @@ fun FloatingPill(
                         .fillMaxWidth()
                         .then(dragModifier)
                         .background(Color(0xFF0F172A).copy(alpha = 0.85f), RoundedCornerShape(10.dp))
-                        .border(1.dp, Outline.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
+                        .border(1.dp, outline.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
                         .padding(horizontal = 10.dp, vertical = 6.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -228,12 +190,12 @@ fun FloatingPill(
                             modifier = Modifier.padding(end = 6.dp)
                         ) {
                             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Box(modifier = Modifier.size(3.dp).background(Outline, CircleShape))
-                                Box(modifier = Modifier.size(3.dp).background(Outline, CircleShape))
+                                Box(modifier = Modifier.size(3.dp).background(outline, CircleShape))
+                                Box(modifier = Modifier.size(3.dp).background(outline, CircleShape))
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Box(modifier = Modifier.size(3.dp).background(Outline, CircleShape))
-                                Box(modifier = Modifier.size(3.dp).background(Outline, CircleShape))
+                                Box(modifier = Modifier.size(3.dp).background(outline, CircleShape))
+                                Box(modifier = Modifier.size(3.dp).background(outline, CircleShape))
                             }
                         }
 
@@ -246,7 +208,7 @@ fun FloatingPill(
                         }
                         Text(
                             text = if (currentAlias.isNotBlank()) currentAlias.uppercase() else "GAME SPACE",
-                            color = Outline,
+                            color = outline,
                             fontWeight = FontWeight.ExtraBold,
                             fontSize = 11.sp,
                             letterSpacing = 1.sp
@@ -315,7 +277,7 @@ fun FloatingPill(
                     FloatingPillStatusChips(
                         batteryPct = batteryPct,
                         ramStats = ramStats,
-                        outlineColor = Outline
+                        outlineColor = outline
                     )
 
                     FloatingPillBrightnessControl(
@@ -327,7 +289,7 @@ fun FloatingPill(
                     FloatingPillVolumeControl(
                         currentVolume = currentVolume,
                         maxVolume = maxVolume,
-                        outlineColor = Outline,
+                        outlineColor = outline,
                         onVolumeChange = {
                             currentVolume = it
                             controller.setStreamVolume(it)
@@ -376,9 +338,9 @@ fun FloatingPill(
                                 onClick = {},
                                 modifier = Modifier.fillMaxWidth().height(40.dp),
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = SurfaceVariant, 
+                                    containerColor = surfaceVariant, 
                                     contentColor = Color.White,
-                                    disabledContainerColor = SurfaceVariant,
+                                    disabledContainerColor = surfaceVariant,
                                     disabledContentColor = Color.White
                                 ),
                                 enabled = false,
@@ -388,8 +350,8 @@ fun FloatingPill(
                             }
                         }
                     } else {
-                        val activeContainerColor = if (isSlotBusy) Color(0xFFDC3545) else if (isEsp32Online) Primary else SurfaceVariant
-                        val activeContentColor = if (isSlotBusy) Color.White else if (isEsp32Online) OnPrimary else TextTertiary
+                        val activeContainerColor = if (isSlotBusy) Color(0xFFDC3545) else if (isEsp32Online) primary else surfaceVariant
+                        val activeContentColor = if (isSlotBusy) Color.White else if (isEsp32Online) onPrimary else textTertiary
                         val activeText = if (isSlotBusy) "COINSLOT BUSY" else if (isEsp32Online) "ADD TIME (DROP COIN)" else "ESP32 OFFLINE"
                         Button(
                             onClick = { onInsertCoinClick() },
@@ -423,7 +385,7 @@ fun FloatingPill(
         val pillBorderColor = when {
             isLowBattery -> Color(0xFFFF2222)
             hasBatteryAlert -> Color(0xFFFFB800)
-            else -> Outline.copy(alpha = 0.75f)
+            else -> outline.copy(alpha = 0.75f)
         }
 
         Box(
@@ -431,7 +393,7 @@ fun FloatingPill(
                 .height(30.dp)
                 .wrapContentWidth()
                 .then(dragModifier)
-                .background(Surface.copy(alpha = 0.85f), CircleShape)
+                .background(surface.copy(alpha = 0.85f), CircleShape)
                 .border(if (hasBatteryAlert) 2.dp else 1.dp, pillBorderColor, CircleShape)
                 .pointerInput(Unit) {
                     detectTapGestures(
@@ -473,7 +435,7 @@ fun FloatingPill(
                     Box(
                         modifier = Modifier
                             .size(6.dp)
-                            .background(if (isEsp32Online) Outline else Color(0xFFFF5252), CircleShape)
+                            .background(if (isEsp32Online) outline else Color(0xFFFF5252), CircleShape)
                     )
                 }
                 Text(
