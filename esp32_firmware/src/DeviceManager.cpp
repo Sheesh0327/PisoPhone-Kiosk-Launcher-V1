@@ -70,9 +70,9 @@ int findSlotIndexForDevice(String devId, String ip) {
             }
         }
     }
-    if (ip.length() > 0 && ip != "127.0.0.1") {
+    if (ip.length() > 0 && ip != "127.0.0.1" && ip != "0.0.0.0") {
         for (int i = 0; i < maxLicensedSlots; i++) {
-            if (licenseSlots[i].ip.length() > 0 && licenseSlots[i].ip == ip) {
+            if (licenseSlots[i].deviceId.length() > 0 && licenseSlots[i].ip.length() > 0 && licenseSlots[i].ip == ip) {
                 return i;
             }
         }
@@ -238,9 +238,9 @@ void recordDeviceNonce(String deviceId, unsigned long long ts) {
         newDev.state = 0;
         newDev.batteryLevel = -1;
         newDev.isCharging = false;
-        newDev.lastSeenMs = 0;
+        newDev.lastSeenMs = millis();
         newDev.lastNonceTs = ts;
-        newDev.isApp = false;
+        newDev.isApp = (deviceId.length() > 0 && !deviceId.startsWith("DEV_"));
     }
 }
 

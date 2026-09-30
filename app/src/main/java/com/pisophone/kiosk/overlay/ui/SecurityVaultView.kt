@@ -49,7 +49,7 @@ fun SecurityVaultView(
                 name = resolveInfo.loadLabel(pm).toString(),
                 packageName = pkgName,
                 icon = resolveInfo.activityInfo.loadIcon(pm),
-                bitmap = try { resolveInfo.activityInfo.loadIcon(pm).toBitmap().asImageBitmap() } catch (_: Exception) { null }
+                bitmap = try { resolveInfo.activityInfo.loadIcon(pm).toBitmap().asImageBitmap() } catch (e: Exception) { null }
             )
         }.sortedBy { it.name }
     }
@@ -280,8 +280,7 @@ fun SecurityVaultView(
         }
 
         // Crash-safe Modal in-view Dialog for Help Explanations
-        if (activeHelpDialog != null) {
-            val (helpTitle, helpDesc) = activeHelpDialog!!
+        activeHelpDialog?.let { (helpTitle, helpDesc) ->
             Box(
                 modifier = Modifier
                     .fillMaxSize()

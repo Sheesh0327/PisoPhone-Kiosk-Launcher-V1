@@ -342,20 +342,21 @@ object KioskSecurity {
             }
         }
         
-        if (secret == null) {
+        val resolvedSecret = secret ?: run {
             val randomBytes = ByteArray(32)
             SecureRandom().nextBytes(randomBytes)
-            secret = randomBytes.joinToString("") { "%02x".format(it) }
+            val generated = randomBytes.joinToString("") { "%02x".format(it) }
             
             if (encryptedPrefs != null) {
                 try {
-                    encryptedPrefs.edit().putString(KEY_DEVICE_SECRET, secret).apply()
-                    return secret
+                    encryptedPrefs.edit().putString(KEY_DEVICE_SECRET, generated).apply()
+                    return generated
                 } catch (e: Exception) { Log.e(TAG, "Encrypted prefs write failed: ${e.message}") }
             }
-            setCustomKeystoreEncryptedSecret(prefs, secret!!)
+            setCustomKeystoreEncryptedSecret(prefs, generated)
+            generated
         }
-        return secret!!
+        return resolvedSecret
     }
 
     fun setSharedSecret(context: Context, newSecret: String) {

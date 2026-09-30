@@ -154,13 +154,13 @@ class KioskHttpServer(
         }
 
         // Replay Protection check: verify unique tx_id (Layer 2)
-        val txId = (decryptedParams["tx_id"] ?: decryptedParams["nonce"])?.trim()
+        val txId = (decryptedParams["tx_id"] ?: decryptedParams["nonce"])?.trim() ?: ""
         if (uri == "/add_time" || uri == "/coin") {
             if (!delegate.isReady()) {
                 Log.w(TAG, "Rejecting payment request to $uri: Server initialization in progress")
                 return createResponse(Response.Status.SERVICE_UNAVAILABLE, "text/plain", "INITIALIZING")
             }
-            if (txId.isNullOrBlank()) {
+            if (txId.isBlank()) {
                 Log.w(TAG, "Rejecting coin credit: Missing tx_id in payload")
                 return createResponse(Response.Status.BAD_REQUEST, "text/plain", "MISSING_TX_ID")
             }
@@ -215,7 +215,7 @@ class KioskHttpServer(
                     }
                     val seconds = rawSecondsLong.toInt()
                     val result = try {
-                        delegate.creditPayment(txId!!, seconds, amount)
+                        delegate.creditPayment(txId, seconds, amount)
                     } catch (e: Exception) {
                         Log.e(TAG, "Exception during creditPayment for $txId: ${e.message}", e)
                         PaymentResult.FAILED

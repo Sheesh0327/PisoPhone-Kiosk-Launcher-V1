@@ -173,8 +173,11 @@ class Esp32ConnectionManager(
 
     private fun fetchMasterConfig(ipHost: String, esp32Port: Int) {
         try {
+            val deviceId = KioskSecurity.getHardwareId(context)
+            val myName = KioskSecurity.getDeviceAlias(context).takeIf { it.isNotBlank() } ?: "PisoPhone Terminal"
+            val encodedName = java.net.URLEncoder.encode(myName, "UTF-8")
             val req = Request.Builder()
-                .url("http://$ipHost:${esp32Port}/identify")
+                .url("http://$ipHost:${esp32Port}/identify?device_id=$deviceId&name=$encodedName&app=1&client=pisophone_app")
                 .build()
             httpClient.newCall(req).execute().use { resp ->
                 if (resp.isSuccessful) {

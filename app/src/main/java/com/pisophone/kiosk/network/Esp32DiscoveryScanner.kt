@@ -192,8 +192,9 @@ class Esp32DiscoveryScanner(
             val socketToUse: DatagramSocket
             val isSharedSocket: Boolean
             synchronized(lock) {
-                if (activeUdpSocket != null && !activeUdpSocket!!.isClosed) {
-                    socketToUse = activeUdpSocket!!
+                val currentSocket = activeUdpSocket
+                if (currentSocket != null && !currentSocket.isClosed) {
+                    socketToUse = currentSocket
                     isSharedSocket = true
                 } else {
                     socketToUse = DatagramSocket().apply { broadcast = true }

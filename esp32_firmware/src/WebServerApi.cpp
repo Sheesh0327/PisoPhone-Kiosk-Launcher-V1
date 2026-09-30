@@ -273,7 +273,10 @@ void handleApiStatus() {
     unsigned long nowMs = millis();
     for (int i = 0; i < trackedDeviceCount; i++) {
         if (trackedDevices[i].deviceId.length() == 0 && trackedDevices[i].lastKnownIp.length() == 0) continue;
-        if (!trackedDevices[i].isApp) continue; // Only show pairing requests that come from the app
+        bool isFromApp = trackedDevices[i].isApp || 
+                         (trackedDevices[i].deviceId.length() > 0 && !trackedDevices[i].deviceId.startsWith("DEV_")) ||
+                         (trackedDevices[i].batteryLevel >= 0);
+        if (!isFromApp) continue;
         String dId = trackedDevices[i].deviceId;
         if (dId.length() == 0) dId = trackedDevices[i].lastKnownIp;
         if (findSlotIndexForDevice(dId, trackedDevices[i].lastKnownIp) >= 0) continue;

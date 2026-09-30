@@ -495,10 +495,10 @@ fun LauncherScreen(
         }
     }
 
-    if (slotToPinIndex != null) {
+    slotToPinIndex?.let { targetSlot ->
         PinAppPickerModal(
             context = context,
-            targetSlot = slotToPinIndex!!,
+            targetSlot = targetSlot,
             apps = apps,
             colors = currentTheme,
             onDismiss = { slotToPinIndex = null },
@@ -506,8 +506,7 @@ fun LauncherScreen(
         )
     }
 
-    if (selectedPinnedSlotForOptions != null) {
-        val (slotIdx, app) = selectedPinnedSlotForOptions!!
+    selectedPinnedSlotForOptions?.let { (slotIdx, app) ->
         PinnedSlotOptionsModal(
             context = context,
             slotIdx = slotIdx,
@@ -529,8 +528,7 @@ fun LauncherScreen(
         )
     }
 
-    if (appToPinFromDrawer != null) {
-        val app = appToPinFromDrawer!!
+    appToPinFromDrawer?.let { app ->
         PinAppToSlotModal(
             context = context,
             app = app,
