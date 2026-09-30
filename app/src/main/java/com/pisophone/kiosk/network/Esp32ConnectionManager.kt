@@ -76,6 +76,7 @@ class Esp32ConnectionManager(
     private val connectionLock = Any()
     private var currentAttemptId = 0L
     private var activeWebSocket: WebSocket? = null
+    private var armingTimeoutJob: Job? = null
     private var isDraining: Boolean = false
     private var drainJob: Job? = null
     private var heartbeatJob: Job? = null
@@ -252,6 +253,8 @@ class Esp32ConnectionManager(
 
     fun closeSession(sendUnarmToEsp: Boolean = false) {
         synchronized(connectionLock) {
+            armingTimeoutJob?.cancel()
+            armingTimeoutJob = null
             val ws = activeWebSocket
             if (ws == null) {
                 isDraining = false
@@ -301,6 +304,8 @@ class Esp32ConnectionManager(
         if (targetWs != null) {
             if (targetWs === activeWebSocket) {
                 activeWebSocket = null
+                armingTimeoutJob?.cancel()
+                armingTimeoutJob = null
                 drainJob?.cancel()
                 drainJob = null
                 isDraining = false
@@ -381,6 +386,22 @@ class Esp32ConnectionManager(
             }
             return
         }
+
+        synchronized(connectionLock) {
+            if (attemptId != currentAttemptId) return
+            armingTimeoutJob?.cancel()
+            armingTimeoutJob = scope.launch(Dispatchers.IO) {
+                delay(12000) // 12 seconds bounded arming timeout
+                synchronized(connectionLock) {
+                    if (attemptId == currentAttemptId) {
+                        Log.w(TAG, "Arming attempt #$attemptId timed out (no ARMED received in 12s).")
+                        forceCloseWebSocketLocked(activeWebSocket, "Arming timeout", attemptId)
+                        delegate.onArmFailed("Arming timed out: No response from master")
+                    }
+                }
+            }
+        }
+
         val (host, _) = discoveryScanner.getEsp32HostAndPort(ip)
         val targetHost = if (host.isNotBlank()) host else ip
         val deviceId = delegate.getDeviceId()
@@ -405,6 +426,12 @@ class Esp32ConnectionManager(
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
+                synchronized(connectionLock) {
+                    if (attemptId != currentAttemptId || webSocket !== activeWebSocket) {
+                        Log.d(TAG, "Ignoring late/obsolete message on WebSocket (attempt #$attemptId): $text")
+                        return
+                    }
+                }
                 Log.d(TAG, "Master WebSocket onMessage (attempt #$attemptId): $text")
                 try {
                     val json = JSONObject(text)
@@ -430,6 +457,12 @@ class Esp32ConnectionManager(
                         }
                     } else if (event == "ARMED") {
                         Log.i(TAG, "⚡ ESP32 Coin Slot ARMED confirmed via WebSocket (attempt #$attemptId)")
+                        synchronized(connectionLock) {
+                            if (attemptId == currentAttemptId) {
+                                armingTimeoutJob?.cancel()
+                                armingTimeoutJob = null
+                            }
+                        }
                         delegate.onArmSuccess()
                         Handler(Looper.getMainLooper()).post {
                             Toast.makeText(context, "Coin slot ready (${armingTimeoutSeconds}s)", Toast.LENGTH_SHORT).show()
@@ -445,31 +478,39 @@ class Esp32ConnectionManager(
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 val isCurrent: Boolean
                 synchronized(connectionLock) {
-                    isCurrent = (attemptId == currentAttemptId || webSocket === activeWebSocket)
+                    isCurrent = (attemptId == currentAttemptId && webSocket === activeWebSocket)
+                }
+                if (!isCurrent) {
+                    Log.d(TAG, "Ignoring onFailure on obsolete WebSocket (attempt #$attemptId)")
+                    return
+                }
+                synchronized(connectionLock) {
+                    if (attemptId == currentAttemptId) {
+                        armingTimeoutJob?.cancel()
+                        armingTimeoutJob = null
+                    }
                 }
                 val code = response?.code ?: 0
                 val msg = t.message ?: ""
                 Log.e(TAG, "WebSocket failure (attempt #$attemptId, HTTP $code): $msg")
-                if (isCurrent) {
-                    val errorReason = when {
-                        code == 409 -> {
-                            delegate.onSlotBusy()
-                            "Slot is currently busy with another device."
-                        }
-                        code == 403 -> {
-                            delegate.onOnlineStatusChanged(false, null)
-                            "Box authentication failed: Secret key mismatch."
-                        }
-                        code == 423 || msg.contains("SLOT_EXPIRED", ignoreCase = true) -> {
-                            delegate.onSlotLockdown("Please activate device slot on ESP32 Portal.", 0, 0L)
-                            "Device not activated on ESP32."
-                        }
-                        else -> "Cannot connect to ESP32 coin slot."
+                val errorReason = when {
+                    code == 409 -> {
+                        delegate.onSlotBusy()
+                        "Slot is currently busy with another device."
                     }
-                    delegate.onArmFailed(errorReason)
-                    Handler(Looper.getMainLooper()).post {
-                        Toast.makeText(context, errorReason, Toast.LENGTH_LONG).show()
+                    code == 403 -> {
+                        delegate.onOnlineStatusChanged(false, null)
+                        "Box authentication failed: Secret key mismatch."
                     }
+                    code == 423 || msg.contains("SLOT_EXPIRED", ignoreCase = true) -> {
+                        delegate.onSlotLockdown("Please activate device slot on ESP32 Portal.", 0, 0L)
+                        "Device not activated on ESP32."
+                    }
+                    else -> "Cannot connect to ESP32 coin slot."
+                }
+                delegate.onArmFailed(errorReason)
+                Handler(Looper.getMainLooper()).post {
+                    Toast.makeText(context, errorReason, Toast.LENGTH_LONG).show()
                 }
                 forceCloseWebSocketIfAttemptCurrent(webSocket, "WebSocket failure: $msg", attemptId)
             }
@@ -477,6 +518,8 @@ class Esp32ConnectionManager(
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 synchronized(connectionLock) {
                     if (webSocket === activeWebSocket) {
+                        armingTimeoutJob?.cancel()
+                        armingTimeoutJob = null
                         drainJob?.cancel()
                         drainJob = null
                         isDraining = false

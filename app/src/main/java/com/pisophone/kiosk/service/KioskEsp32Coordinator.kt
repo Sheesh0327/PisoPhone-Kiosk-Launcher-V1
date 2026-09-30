@@ -101,6 +101,7 @@ class KioskEsp32Coordinator(
     }
 
     override fun onSlotBusy() {
+        stateManager.isArming.value = false
         onSlotBusyTriggered()
         if (stateManager.appState.value == 3) {
             stateManager.appState.value = 2
@@ -110,6 +111,7 @@ class KioskEsp32Coordinator(
     }
 
     override fun onArmSuccess() {
+        stateManager.isArming.value = false
         lastArmTimestampMs = System.currentTimeMillis()
         stateManager.isEsp32Online.value = true
         stateManager.paymentTimeout.value = armingTimeoutSeconds
@@ -117,6 +119,7 @@ class KioskEsp32Coordinator(
 
     override fun onArmFailed(reason: String) {
         Log.w(TAG, "Arming failed: $reason")
+        stateManager.isArming.value = false
         if (stateManager.appState.value == 1 || stateManager.appState.value == 3) {
             stateManager.paymentTimeout.value = 0
             stateManager.appState.value = if (stateManager.appState.value == 3) 2 else 0

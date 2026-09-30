@@ -23,6 +23,7 @@ class KioskStateManager(private val context: Context) {
     val deviceIp = MutableStateFlow("127.0.0.1")
     val deviceId = MutableStateFlow("")
     val isEsp32Online = MutableStateFlow(false)
+    val isArming = MutableStateFlow(false)
     val esp32MacAddress = MutableStateFlow("")
     val isSlotBusy = MutableStateFlow(false)
     val pricePerCoin = MutableStateFlow(5.0)

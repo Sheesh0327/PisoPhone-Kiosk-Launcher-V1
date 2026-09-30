@@ -54,20 +54,24 @@ class KioskSessionSupervisor(
                     val curState = stateManager.appState.value
                     // Session arming / waiting countdown
                     if (curState == 1 || curState == 3) {
-                        if (stateManager.paymentTimeout.value > 0) {
-                            stateManager.paymentTimeout.value -= 1
-                        }
-                        if (stateManager.paymentTimeout.value == 0) {
-                            if (stateManager.coinsInserted.value > 0) {
-                                onFinishPayment()
-                            } else {
-                                onCloseSession(true)
-                                if (curState == 3) {
-                                    stateManager.appState.value = 2
+                        if (stateManager.isArming.value) {
+                            // Skip payment countdown/expiration while ARMING, while continuing any existing paid-play countdown
+                        } else {
+                            if (stateManager.paymentTimeout.value > 0) {
+                                stateManager.paymentTimeout.value -= 1
+                            }
+                            if (stateManager.paymentTimeout.value == 0) {
+                                if (stateManager.coinsInserted.value > 0) {
+                                    onFinishPayment()
                                 } else {
-                                    stateManager.appState.value = 0
+                                    onCloseSession(true)
+                                    if (curState == 3) {
+                                        stateManager.appState.value = 2
+                                    } else {
+                                        stateManager.appState.value = 0
+                                    }
+                                    stateManager.saveState()
                                 }
-                                stateManager.saveState()
                             }
                         }
                     }

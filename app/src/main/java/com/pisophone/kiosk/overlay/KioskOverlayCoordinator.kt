@@ -104,6 +104,7 @@ class KioskOverlayCoordinator(
                             }
                             stateManager.coinsInserted.value = 0
                             stateManager.paymentTimeout.value = 0
+                            stateManager.isArming.value = true
                             onArmSlot()
                         },
                         onDoneClick = { onFinishPayment() },
