@@ -157,7 +157,8 @@ class KioskEngine(
         onCreditPayment = { txId, seconds, amount ->
             creditPayment(txId, seconds, amount)
         },
-        isReady = { isInitialized.get() }
+        isReady = { isInitialized.get() },
+        onEsp32IpDiscovered = { ip -> esp32Manager.setEsp32Ip(ip) }
     )
 
     private val supervisor = KioskSessionSupervisor(

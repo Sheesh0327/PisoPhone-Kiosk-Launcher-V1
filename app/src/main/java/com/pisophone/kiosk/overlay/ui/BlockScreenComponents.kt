@@ -225,7 +225,35 @@ fun BlockScreenRateTableCard(
             ) {
                 Text("DONE (${paymentTimeout}s)", fontWeight = FontWeight.Bold, fontSize = 14.sp, letterSpacing = 1.sp)
             }
-        } else if (!isWaiting) {
+        } else if (isWaiting) {
+            Button(
+                onClick = {},
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = surfaceVariantColor,
+                    contentColor = textTertiaryColor,
+                    disabledContainerColor = surfaceVariantColor,
+                    disabledContentColor = textTertiaryColor
+                ),
+                shape = RoundedCornerShape(14.dp),
+                enabled = false
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    color = primaryColor,
+                    strokeWidth = 2.dp
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    "WAITING FOR COIN (${paymentTimeout}s)...",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    letterSpacing = 1.sp
+                )
+            }
+        } else {
             val activeContainerColor = if (isSlotExpired) Color(0xFF7F1D1D) else if (isSlotBusy) Color(0xFFDC3545) else if (isEsp32Online) primaryColor else surfaceVariantColor
             val activeContentColor = if (isSlotExpired) Color(0xFFFCA5A5) else if (isSlotBusy) Color.White else if (isEsp32Online) onPrimaryColor else textTertiaryColor
             val activeText = if (isSlotExpired) "DEVICE NOT ACTIVATED" else if (isSlotBusy) "COINSLOT BUSY" else if (isEsp32Online) buttonText else "CONNECTING TO COINSLOT..."

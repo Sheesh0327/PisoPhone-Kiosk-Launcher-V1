@@ -235,11 +235,20 @@ object KioskSecurity {
     }
 
     fun getHardwareId(context: Context): String {
-        val prefs = context.getSharedPreferences("kiosk_prefs", Context.MODE_PRIVATE)
-        var savedUuid = prefs.getString("device_uuid", null)
+        val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+            context.createDeviceProtectedStorageContext()
+        } else {
+            context
+        }
+        val directPrefs = deviceContext.getSharedPreferences("kiosk_prefs", Context.MODE_PRIVATE)
+        var savedUuid = directPrefs.getString("device_uuid", null)
         if (savedUuid.isNullOrBlank()) {
-            savedUuid = java.util.UUID.randomUUID().toString()
-            prefs.edit().putString("device_uuid", savedUuid).apply()
+            val normalPrefs = context.getSharedPreferences("kiosk_prefs", Context.MODE_PRIVATE)
+            savedUuid = normalPrefs.getString("device_uuid", null)
+            if (savedUuid.isNullOrBlank()) {
+                savedUuid = java.util.UUID.randomUUID().toString()
+            }
+            directPrefs.edit().putString("device_uuid", savedUuid).apply()
         }
         return savedUuid
     }

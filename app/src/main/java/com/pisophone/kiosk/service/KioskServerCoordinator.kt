@@ -30,7 +30,8 @@ class KioskServerCoordinator(
     private val getRealTimeBatteryInfo: () -> Pair<Int, Boolean>,
     private val getAudioManager: () -> KioskAudioManager?,
     private val onCreditPayment: (txId: String, seconds: Int, amount: Double) -> PaymentResult,
-    private val isReady: () -> Boolean = { true }
+    private val isReady: () -> Boolean = { true },
+    private val onEsp32IpDiscovered: ((String) -> Unit)? = null
 ) : KioskServerDelegate {
 
     companion object {
@@ -50,6 +51,7 @@ class KioskServerCoordinator(
                 stateManager.esp32Ip = clientIp
                 stateManager.saveState()
             }
+            onEsp32IpDiscovered?.invoke(clientIp)
         }
     }
 

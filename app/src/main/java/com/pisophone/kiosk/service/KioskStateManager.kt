@@ -43,18 +43,7 @@ class KioskStateManager(private val context: Context) {
     }
 
     private fun initDeviceId() {
-        val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-            context.createDeviceProtectedStorageContext()
-        } else {
-            context
-        }
-        val prefs = deviceContext.getSharedPreferences("kiosk_prefs", Context.MODE_PRIVATE)
-        var savedUuid = prefs.getString("device_uuid", null)
-        if (savedUuid == null) {
-            savedUuid = UUID.randomUUID().toString()
-            prefs.edit().putString("device_uuid", savedUuid).apply()
-        }
-        deviceId.value = savedUuid
+        deviceId.value = com.pisophone.kiosk.security.KioskSecurity.getHardwareId(context)
     }
 
     @Synchronized

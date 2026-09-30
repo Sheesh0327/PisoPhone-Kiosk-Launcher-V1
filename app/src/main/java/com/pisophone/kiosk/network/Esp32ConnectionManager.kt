@@ -36,6 +36,7 @@ interface Esp32ConnectionDelegate {
     fun onSlotLockdown(reason: String, slotNum: Int, expiresAt: Long)
     fun onSlotRestored(slotNum: Int = 0)
     fun onArenaModeSynced(active: Boolean, role: Int, stake: Int) {}
+    fun getStoredEsp32Ip(): String? = null
 }
 
 /**
@@ -395,14 +396,21 @@ class Esp32ConnectionManager(
 
     fun armSlot(armingTimeoutSeconds: Int) {
         val attemptId: Long
-        val ip: String?
+        var ip: String?
         synchronized(connectionLock) {
             attemptId = ++currentAttemptId
             forceCloseWebSocketLocked(activeWebSocket, "Re-arming slot", attemptId)
             ip = esp32Ip
+            if (ip.isNullOrBlank()) {
+                ip = delegate.getStoredEsp32Ip()
+                if (!ip.isNullOrBlank()) {
+                    esp32Ip = ip
+                }
+            }
         }
 
-        if (ip.isNullOrBlank()) {
+        val (ipHost, _) = discoveryScanner.getEsp32HostAndPort(ip)
+        if (ipHost.isBlank()) {
             Log.w(TAG, "Cannot arm slot: No discovered ESP32 IP available. Triggering discovery...")
             delegate.onOnlineStatusChanged(false, null)
             discoveryScanner.triggerDiscovery("")
@@ -413,8 +421,8 @@ class Esp32ConnectionManager(
         val ts = System.currentTimeMillis().toString()
         val sig = KioskSecurity.generateTimestampSignature(deviceId, ts, delegate.getSecretKey())
 
-        val wsUrl = "ws://$ip:$ESP32_WS_PORT/ws?device_id=$deviceId&ts=$ts&sig=$sig"
-        Log.d(TAG, "Connecting to Master WebSocket at $ip:$ESP32_WS_PORT (attempt #$attemptId)")
+        val wsUrl = "ws://$ipHost:$ESP32_WS_PORT/ws?device_id=$deviceId&ts=$ts&sig=$sig"
+        Log.d(TAG, "Connecting to Master WebSocket at $ipHost:$ESP32_WS_PORT (attempt #$attemptId)")
 
         val request = Request.Builder().url(wsUrl).build()
 

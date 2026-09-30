@@ -59,6 +59,17 @@ int findSlotIndexForDevice(String devId, String ip) {
             }
         }
     }
+    // Auto-bind for single-slot setups: If this is a 1-slot cabinet and Slot 1 is active with no device ID,
+    // automatically pair the connecting device so it immediately works out of the box.
+    if (maxLicensedSlots == 1 && licenseSlots[0].active && licenseSlots[0].deviceId.length() == 0 && devId.length() > 0) {
+        licenseSlots[0].deviceId = devId;
+        if (ip.length() > 0 && ip != "127.0.0.1") {
+            licenseSlots[0].ip = ip;
+        }
+        saveSlotLicenses();
+        Serial.printf("[+] Auto-paired single-slot cabinet to device %s (%s)\n", devId.c_str(), ip.c_str());
+        return 0;
+    }
     return -1;
 }
 
