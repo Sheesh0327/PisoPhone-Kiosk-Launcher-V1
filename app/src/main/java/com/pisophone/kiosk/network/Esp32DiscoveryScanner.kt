@@ -14,9 +14,9 @@ interface Esp32DiscoveryDelegate {
 }
 
 /**
- * Direct Connection & Candidate Scanner for the ESP32 Master box:
- * 1. Injected/Configured IP Path: Direct HTTP probe of injected IP & configured IP.
- * 2. Fallback Candidate Scanning: Probes local gateway, AP mode (192.168.4.1) & mDNS ("kioskmanager.local").
+ * Direct Static IP Connection Scanner for the ESP32 Master box:
+ * 1. Strict Static IP Path: Direct HTTP probe exclusively targeting injected/configured static IP.
+ * 2. No Fallbacks: Does not attempt gateway, AP mode, or mDNS dynamic discovery probes.
  * 3. MAC Validation: Uniform MAC address validation from discovered JSON payload.
  */
 class Esp32DiscoveryScanner(
@@ -62,22 +62,13 @@ class Esp32DiscoveryScanner(
     }
 
     fun probeCandidates(localIp: String = "") {
-        val candidates = mutableSetOf<String>()
         val configuredIp = KioskSecurity.getConfiguredEsp32Ip(context)
         if (configuredIp.isNotBlank()) {
-            candidates.add(configuredIp)
-        }
-        val activeIp = if (localIp.isNotBlank()) localIp else getLocalIpAddress()
-        if (activeIp.isNotBlank() && activeIp.contains(".")) {
-            val subnet = activeIp.substringBeforeLast(".")
-            candidates.add("$subnet.1")
-        }
-        candidates.add("192.168.4.1")
-        candidates.add("kioskmanager.local")
-
-        for (candidate in candidates) {
-            if (isAlreadyBound() || isStopped) break
-            probeEsp32Connection(candidate)
+            if (!isAlreadyBound() && !isStopped) {
+                probeEsp32Connection(configuredIp)
+            }
+        } else {
+            Log.d(TAG, "No configured static ESP32 IP stored yet. Awaiting WebADB setup injection or manual admin configuration.")
         }
     }
 
