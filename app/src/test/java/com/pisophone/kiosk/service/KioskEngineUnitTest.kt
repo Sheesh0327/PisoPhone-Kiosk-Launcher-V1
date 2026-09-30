@@ -48,4 +48,21 @@ class KioskEngineUnitTest {
         assertEquals("AppState should be active (2) during admin bypass", 2, stateManager.appState.value)
         assertEquals("Time remaining should match bypass duration", duration, stateManager.sessionTimeRemaining.value)
     }
+
+    @Test
+    fun testArenaModeActivationAndDeactivation() {
+        stateManager.setArenaMode(active = true, role = 1, stake = 20, showBanner = true)
+        assertEquals("Arena mode should be active", true, stateManager.isArenaMode.value)
+        assertEquals("Role should be Player 1", 1, stateManager.arenaPlayerRole.value)
+        assertEquals("Stake should be 20 min", 20, stateManager.arenaStakeMinutes.value)
+        assertEquals("Banner should be visible", true, stateManager.isArenaBannerVisible.value)
+
+        stateManager.dismissArenaBanner()
+        assertEquals("Banner should be dismissed", false, stateManager.isArenaBannerVisible.value)
+        assertEquals("Arena mode should remain active", true, stateManager.isArenaMode.value)
+
+        stateManager.setArenaMode(active = false)
+        assertEquals("Arena mode should be inactive", false, stateManager.isArenaMode.value)
+        assertEquals("Role should be reset", 0, stateManager.arenaPlayerRole.value)
+    }
 }

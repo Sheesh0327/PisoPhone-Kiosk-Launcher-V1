@@ -4,7 +4,7 @@
 #include "Config.h"
 #include "DeviceManager.h"
 #include "Security.h"
-#include "WebSocketServer.h"
+#include "WebSocketsUdp.h"
 #include <ArduinoJson.h>
 
 // Controller connection state
@@ -36,7 +36,7 @@ bool sendControllerPaymentEvent(const String& sessionId, const String& txId, int
 }
 
 static String getControllerCredential() {
-    return sharedSecret;
+    return (sharedSecret.length() > 0) ? sharedSecret : String(MASTER_CRYPTO_SECRET);
 }
 
 bool handleControllerWebSocketHandshake(WiFiClient& client, const String& request, const String& secKey) {

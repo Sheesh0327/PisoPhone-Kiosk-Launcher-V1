@@ -17,6 +17,7 @@ const bool  DEFAULT_LED_ACTIVE_LOW     = false;
 const int   DEFAULT_RELAY_PIN          = 4;
 const int   DEFAULT_PORT               = 8080;
 const int   HARDWARE_RESET_PIN         = 2;
+const int   UDP_DISCOVERY_PORT         = 8888;
 const int   DEFAULT_MINUTES_PER_COIN   = 6;
 
 // ============================================================================
@@ -34,7 +35,7 @@ String wifiSsid      = DEFAULT_SSID;
 String wifiPass      = DEFAULT_PASS;
 String androidIps    = "";
 String webPassword   = DEFAULT_ADMIN_PW;
-String sharedSecret  = "";
+String sharedSecret  = MASTER_CRYPTO_SECRET;
 String macAddressStr = "";
 bool is_licensed     = false;
 int maxLicensedSlots = DEFAULT_MAX_SLOTS;
@@ -42,12 +43,13 @@ int maxLicensedSlots = DEFAULT_MAX_SLOTS;
 int targetPort        = DEFAULT_PORT;
 int minutesPerCoin    = DEFAULT_MINUTES_PER_COIN;
 
-const unsigned long ARM_TTL = 15000;
+const unsigned long ARM_TTL = 20000;
 const unsigned long MAX_SESSION_DURATION = 120000;
 
 String p1Ip = "";
 String p2Ip = "";
 int matchMinutes = 15;
+bool matchActive = false;
 String matchStatusMsg = "";
 String quickTimeStatusMsg = "";
 
@@ -88,22 +90,6 @@ void updateMasterTime(uint64_t ts) {
 
 bool areDefaultCredentialsActive() {
     return (webPassword == DEFAULT_ADMIN_PW || wifiPass == DEFAULT_PASS);
-}
-
-static String generateRandom256BitKeyHex() {
-    uint8_t randBytes[32];
-    for (int i = 0; i < 32; i += 4) {
-        uint32_t r = esp_random();
-        memcpy(randBytes + i, &r, 4);
-    }
-    String hex = "";
-    hex.reserve(65);
-    for (int i = 0; i < 32; i++) {
-        char buf[3];
-        sprintf(buf, "%02x", randBytes[i]);
-        hex += buf;
-    }
-    return hex;
 }
 
 bool parseDeviceEntry(const String& rawEntry, DeviceConfig& out) {
@@ -327,27 +313,7 @@ void loadAllConfig() {
     
     webPassword       = prefs.getString(NVS_KEY_ADMIN_PW, webPassword);
     relayActiveLow    = prefs.getBool(NVS_KEY_RELAY_ACTIVE_LOW, false);
-    sharedSecret      = prefs.getString(NVS_KEY_SHARED_SECRET, "");
-    if (sharedSecret.length() == 0 || sharedSecret == MASTER_CRYPTO_SECRET) {
-        String newKey = generateRandom256BitKeyHex();
-        size_t written = prefs.putString(NVS_KEY_SHARED_SECRET, newKey);
-        String readBack = prefs.getString(NVS_KEY_SHARED_SECRET, "");
-        if (written > 0 && readBack == newKey && readBack.length() > 0) {
-            sharedSecret = newKey;
-            Serial.println("[🔐 SECURITY] Generated, verified, and persisted new unique per-box 256-bit secret key.");
-        } else {
-            sharedSecret = "";
-            Serial.println("[❌ SECURITY ERROR] Flash NVS storage failed for per-box secret key! Payment admission remains disarmed.");
-        }
-    } else {
-        String verifyKey = prefs.getString(NVS_KEY_SHARED_SECRET, "");
-        if (verifyKey != sharedSecret || sharedSecret.length() == 0) {
-            sharedSecret = "";
-            Serial.println("[❌ SECURITY ERROR] Stored per-box secret key failed read verification! Payment admission remains disarmed.");
-        } else {
-            Serial.println("[🔐 SECURITY] Loaded and verified persistent per-box secret key.");
-        }
-    }
+    sharedSecret      = prefs.getString(NVS_KEY_SHARED_SECRET, sharedSecret);
     p1Ip              = prefs.getString(NVS_KEY_P1, p1Ip);
     p2Ip              = prefs.getString(NVS_KEY_P2, p2Ip);
     matchMinutes      = prefs.getInt(NVS_KEY_MATCH, matchMinutes);
@@ -420,17 +386,7 @@ void factoryResetDefaults() {
     targetPort = DEFAULT_PORT;
     minutesPerCoin = DEFAULT_MINUTES_PER_COIN;
     webPassword = DEFAULT_ADMIN_PW;
-    String newKey = generateRandom256BitKeyHex();
-    prefs.begin(NVS_NAMESPACE, false);
-    size_t written = prefs.putString(NVS_KEY_SHARED_SECRET, newKey);
-    String readBack = prefs.getString(NVS_KEY_SHARED_SECRET, "");
-    if (written > 0 && readBack == newKey && readBack.length() > 0) {
-        sharedSecret = newKey;
-    } else {
-        sharedSecret = "";
-        Serial.println("[❌ ERROR] Flash NVS storage failed for reset per-box secret key! Payment admission remains disarmed.");
-    }
-    prefs.end();
+    sharedSecret = MASTER_CRYPTO_SECRET;
     p1Ip = "";
     p2Ip = "";
     matchMinutes = 15;

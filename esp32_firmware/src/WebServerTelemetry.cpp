@@ -25,10 +25,6 @@ void handleHeartbeat() {
         deviceId = "DEV_" + reqIp;
     }
 
-    String devName = webServer.hasArg("name") ? webServer.arg("name") : (webServer.hasArg("device_name") ? webServer.arg("device_name") : "");
-    if (devName.length() == 0) devName = getDeviceNameByIpOrId(reqIp, deviceId);
-    if (devName.length() == 0 || devName == deviceId) devName = "PisoPhone Terminal";
-
     bool isAuth = verifyTelemetryAuth(deviceId, tsStr, sig);
     int slotIdx = findSlotIndexForDevice(deviceId, reqIp);
 
@@ -37,10 +33,19 @@ void handleHeartbeat() {
         return;
     }
 
+    bool isAppReq = (webServer.hasArg("app") && (webServer.arg("app") == "1" || webServer.arg("app") == "true")) ||
+                    (webServer.hasArg("client") && webServer.arg("client") == "pisophone_app") ||
+                    (webServer.hasArg("source") && webServer.arg("source") == "app");
+
+    bool fromApp = isAppReq || (isAuth && webServer.hasArg("battery") && webServer.hasArg("charging"));
+
+    if (deviceId.length() > 0 || reqIp.length() > 0) {
+        updateDeviceTelemetry(deviceId, reqIp, timeRem, state, battery, charging, ts, fromApp);
+    }
+
     if (slotIdx < 0 || !isAuth) {
-        if (deviceId.length() > 0 || reqIp.length() > 0) {
-            updateDeviceTelemetry(deviceId, reqIp, timeRem, state, battery, charging, ts, devName);
-        }
+        String devName = getDeviceNameByIpOrId(reqIp, deviceId);
+        if (devName.length() == 0 || devName == deviceId) devName = "PisoPhone Terminal";
 
         String json = "{\"status\":\"unassigned\",\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\"";
         json += ",\"slot_num\":0,\"is_paired\":false,\"slot_expired\":true,\"slot_status\":\"unassigned\",\"slot_warning\":false";
@@ -50,15 +55,11 @@ void handleHeartbeat() {
         return;
     }
 
-    if (deviceId.length() > 0 || reqIp.length() > 0) {
-        updateDeviceTelemetry(deviceId, reqIp, timeRem, state, battery, charging, ts, devName);
-    }
-
     if (ts > 0) updateMasterTime(ts);
     bool isActive = isSlotActive(slotIdx);
 
     String status = (!isActive) ? "slot_expired" : "ok";
-    devName = getDeviceNameByIpOrId(reqIp, deviceId);
+    String devName = getDeviceNameByIpOrId(reqIp, deviceId);
     String json = "{\"status\":\"" + status + "\",\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\"";
     if (slotIdx >= 0) {
         String encPin = aes_encrypt("PIN:" + webPassword, sharedSecret);
@@ -75,6 +76,19 @@ void handleHeartbeat() {
         json += ",\"message\":\"Device Inactive: Please activate device slot on ESP32 Portal.\"";
     } else {
         json += ",\"is_paired\":true,\"slot_expired\":false,\"slot_status\":\"active\",\"slot_warning\":false";
+    }
+    if (matchActive) {
+        bool isP1 = (p1Ip.length() > 0 && (p1Ip == reqIp || p1Ip == deviceId));
+        bool isP2 = (p2Ip.length() > 0 && (p2Ip == reqIp || p2Ip == deviceId));
+        if (isP1) {
+            json += ",\"arena_active\":true,\"arena_role\":1,\"arena_stake\":" + String(matchMinutes);
+        } else if (isP2) {
+            json += ",\"arena_active\":true,\"arena_role\":2,\"arena_stake\":" + String(matchMinutes);
+        } else {
+            json += ",\"arena_active\":false";
+        }
+    } else {
+        json += ",\"arena_active\":false";
     }
     json += "}";
     webServer.send(200, "application/json", json);
@@ -93,16 +107,16 @@ void handleCrashReport() {
 
 void handleCheckQualification() {
     if (!checkAuth()) return;
-    String p1 = webServer.hasArg(NVS_KEY_P1) ? webServer.arg(NVS_KEY_P1) : "";
-    String p2 = webServer.hasArg(NVS_KEY_P2) ? webServer.arg(NVS_KEY_P2) : "";
-    int mins = webServer.hasArg("minutes") ? webServer.arg("minutes").toInt() : 15;
+    String p1 = webServer.hasArg("p1") ? webServer.arg("p1") : (webServer.hasArg("p1_ip") ? webServer.arg("p1_ip") : (webServer.hasArg(NVS_KEY_P1) ? webServer.arg(NVS_KEY_P1) : ""));
+    String p2 = webServer.hasArg("p2") ? webServer.arg("p2") : (webServer.hasArg("p2_ip") ? webServer.arg("p2_ip") : (webServer.hasArg(NVS_KEY_P2) ? webServer.arg(NVS_KEY_P2) : ""));
+    int mins = webServer.hasArg("minutes") ? webServer.arg("minutes").toInt() : (webServer.hasArg("match_minutes") ? webServer.arg("match_minutes").toInt() : 15);
     if (mins <= 0) mins = 1;
 
     p1.trim();
     p2.trim();
 
     if (p1.length() == 0 || p2.length() == 0) {
-        webServer.send(400, "application/json", "{\"success\":false,\"error\":\"Missing player IP parameters\"}");
+        webServer.send(200, "application/json", "{\"success\":false,\"error\":\"Please select both Player 1 and Player 2.\"}");
         return;
     }
     if (p1 == p2) {
@@ -135,13 +149,13 @@ void handleCheckQualification() {
     if (bothQualified) {
         snprintf(msgBuf, sizeof(msgBuf), "Both devices meet the %dm stake requirement.", mins);
     } else if (p1Sec < 0 || p2Sec < 0) {
-        strncpy(msgBuf, "One or both devices cannot be reached.", sizeof(msgBuf));
+        strncpy(msgBuf, "One or both devices cannot be reached or have no telemetry.", sizeof(msgBuf));
     } else if (!p1Ok && !p2Ok) {
-        snprintf(msgBuf, sizeof(msgBuf), "Both players need to add more time to meet the %dm stake.", mins);
+        snprintf(msgBuf, sizeof(msgBuf), "Both players need more time to meet the %dm stake.", mins);
     } else if (!p1Ok) {
-        snprintf(msgBuf, sizeof(msgBuf), "Player 1 needs at least %dm more active time.", mins - p1M);
+        snprintf(msgBuf, sizeof(msgBuf), "Player 1 needs at least %dm more active time.", max(1, mins - p1M));
     } else {
-        snprintf(msgBuf, sizeof(msgBuf), "Player 2 needs at least %dm more active time.", mins - p2M);
+        snprintf(msgBuf, sizeof(msgBuf), "Player 2 needs at least %dm more active time.", max(1, mins - p2M));
     }
 
     char jsonBuf[512];
@@ -160,8 +174,8 @@ void handleCheckQualification() {
 
 void handleOneVsOne() {
     if (!checkAdminAuth()) return;
-    p1Ip = webServer.hasArg("p1_ip") ? webServer.arg("p1_ip") : "";
-    p2Ip = webServer.hasArg("p2_ip") ? webServer.arg("p2_ip") : "";
+    p1Ip = webServer.hasArg("p1_ip") ? webServer.arg("p1_ip") : (webServer.hasArg("p1") ? webServer.arg("p1") : "");
+    p2Ip = webServer.hasArg("p2_ip") ? webServer.arg("p2_ip") : (webServer.hasArg("p2") ? webServer.arg("p2") : "");
     if (webServer.hasArg("match_minutes")) {
         matchMinutes = webServer.arg("match_minutes").toInt();
     }
@@ -172,7 +186,48 @@ void handleOneVsOne() {
     prefs.putInt(NVS_KEY_MATCH, matchMinutes);
     prefs.end();
 
+    String action = webServer.hasArg("action") ? webServer.arg("action") : "";
     String winner = webServer.hasArg("winner") ? webServer.arg("winner") : "";
+
+    if (action == "cancel" || action == "end") {
+        matchActive = false;
+        if (p1Ip.length() > 0) {
+            sendAuthenticated(p1Ip, targetPort, "/trigger_action", "/challenge", "action=arena_mode_deactivate", 1000);
+        }
+        if (p2Ip.length() > 0) {
+            sendAuthenticated(p2Ip, targetPort, "/trigger_action", "/challenge", "action=arena_mode_deactivate", 1000);
+        }
+        matchStatusMsg = "<div style='background:#fef3c7;color:#92400e;padding:10px 14px;border-radius:6px;margin-bottom:10px;font-size:13px;'>⚔️ <b>1v1 Arena Mode Ended:</b> Match cancelled without transferring credits.</div>";
+        redirectHome();
+        return;
+    }
+
+    if (action == "activate") {
+        if (p1Ip == "" || p2Ip == "") {
+            matchStatusMsg = "<div style='background:#ffebee;color:#c62828;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Activation Blocked:</b> Please select both Player 1 and Player 2!</div>";
+            redirectHome();
+            return;
+        }
+        if (p1Ip == p2Ip) {
+            matchStatusMsg = "<div style='background:#ffebee;color:#c62828;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Activation Blocked:</b> Player 1 and Player 2 cannot be the same device!</div>";
+            redirectHome();
+            return;
+        }
+        if (matchMinutes <= 0) {
+            matchStatusMsg = "<div style='background:#ffebee;color:#c62828;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Activation Blocked:</b> Stake minutes must be at least 1 minute!</div>";
+            redirectHome();
+            return;
+        }
+
+        matchActive = true;
+        matchStatusMsg = "<div style='background:rgba(234,88,12,0.15);border:1px solid #f97316;color:#fdba74;padding:12px 16px;border-radius:8px;margin-bottom:12px;font-size:13px;line-height:1.5;'>⚔️ <b>1v1 Arena Mode Activated!</b><br>⚠️ <b>Warning:</b> Time credits are at stake (<b>" + String(matchMinutes) + " minutes</b>). The loser will forfeit their stake to the winner upon match completion.</div>";
+        
+        sendAuthenticated(p1Ip, targetPort, "/trigger_action", "/challenge", "action=arena_mode_activate_p1&role=1&stake=" + String(matchMinutes), 1000);
+        sendAuthenticated(p2Ip, targetPort, "/trigger_action", "/challenge", "action=arena_mode_activate_p2&role=2&stake=" + String(matchMinutes), 1000);
+
+        redirectHome();
+        return;
+    }
 
     if (winner != "" && p1Ip != "" && p2Ip != "") {
         if (p1Ip == p2Ip) {
@@ -210,17 +265,22 @@ void handleOneVsOne() {
             return;
         }
 
-        if (winner == NVS_KEY_P1) {
+        matchActive = false;
+
+        if (winner == "p1" || winner == NVS_KEY_P1) {
             sendAddTime(matchMinutes, p1Ip);
             yield();
             sendAddTime(-matchMinutes, p2Ip);
             matchStatusMsg = "<div style='background:#e8f5e9;color:#2e7d32;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>🏆 <b>Player 1 Won:</b> Transferred +" + String(matchMinutes) + "m to Player 1 (" + p1Ip + ") and deducted -" + String(matchMinutes) + "m from Player 2 (" + p2Ip + ").</div>";
-        } else if (winner == NVS_KEY_P2) {
+        } else if (winner == "p2" || winner == NVS_KEY_P2) {
             sendAddTime(matchMinutes, p2Ip);
             yield();
             sendAddTime(-matchMinutes, p1Ip);
             matchStatusMsg = "<div style='background:#e8f5e9;color:#2e7d32;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>🏆 <b>Player 2 Won:</b> Transferred +" + String(matchMinutes) + "m to Player 2 (" + p2Ip + ") and deducted -" + String(matchMinutes) + "m from Player 1 (" + p1Ip + ").</div>";
         }
+
+        sendAuthenticated(p1Ip, targetPort, "/trigger_action", "/challenge", "action=arena_mode_deactivate", 1000);
+        sendAuthenticated(p2Ip, targetPort, "/trigger_action", "/challenge", "action=arena_mode_deactivate", 1000);
     }
 
     redirectHome();

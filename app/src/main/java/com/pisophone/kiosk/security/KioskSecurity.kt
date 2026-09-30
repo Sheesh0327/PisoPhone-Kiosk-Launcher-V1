@@ -7,16 +7,27 @@ import android.content.SharedPreferences
 import android.media.AudioManager
 import android.os.BatteryManager
 import android.util.Log
+import java.security.MessageDigest
+import java.security.SecureRandom
+import javax.crypto.Cipher
+import javax.crypto.Mac
+import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.util.Base64
+import java.security.KeyStore
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 
 /**
  * Core security coordinator, configuration storage, and cryptographic authentication manager.
- * Specialized policy, recovery, crypto, and data clearing functions are modularized in:
+ * Specialized policy, recovery, and data clearing functions are modularized in:
  * - [KioskRecoveryManager]
  * - [KioskPolicyManager]
  * - [KioskDataCleaner]
  * - [KioskActivationManager]
- * - [KioskCrypto]
  */
 object KioskSecurity {
     private const val PREFS_SECURITY_OLD = "kiosk_security_vault"
@@ -29,11 +40,12 @@ object KioskSecurity {
     private const val KEY_LOW_BATTERY_THRESHOLD = "low_battery_threshold"
     private const val KEY_HIGH_BATTERY_THRESHOLD = "high_battery_threshold"
     private const val KEY_CONFIGURED_ESP32_MAC = "configured_esp32_mac"
-    private const val KEY_CONFIGURED_ESP32_IP = "configured_esp32_ip"
     private const val KEY_ASSIGNED_BOX_SLOT = "assigned_box_slot"
     private const val KEY_PROVISIONING_ADB_ALLOWED = "provisioning_adb_allowed"
     private const val KEY_APK_UPDATE_URL = "apk_update_url"
     
+    const val DEFAULT_SHARED_SECRET = "PISOPHONE_HMAC_MASTER_KEY"
+    private const val KEY_SECRET_EXPLICITLY_PROVISIONED = "kiosk_secret_explicitly_provisioned"
     private const val DEFAULT_PIN = "1234"
     private const val TAG = "KioskSecurity"
     private const val KEY_DEVICE_SECRET = "device_crypto_secret"
@@ -52,7 +64,7 @@ object KioskSecurity {
         }
     }
 
-    private fun getEncryptedPrefs(context: Context): SharedPreferences? {
+    fun getEncryptedPrefs(context: Context): SharedPreferences? {
         if (encryptedPrefsInstance != null) return encryptedPrefsInstance
         
         return synchronized(this) {
@@ -77,6 +89,10 @@ object KioskSecurity {
         }
     }
 
+    fun getEncryptedPreferences(context: Context): SharedPreferences {
+        return getEncryptedPrefs(context) ?: getDirectBootPrefs(context, "secure_kiosk_prefs")
+    }
+
     fun getDirectBootPrefs(context: Context, name: String = PREFS_SECURITY_OLD): SharedPreferences {
         val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
             context.createDeviceProtectedStorageContext()
@@ -89,6 +105,8 @@ object KioskSecurity {
     private fun buildPrefs(context: Context): SharedPreferences {
         return getDirectBootPrefs(context, PREFS_SECURITY_OLD)
     }
+
+
 
     fun isBatteryAlertsEnabled(context: Context): Boolean {
         return getPrefs(context).getBoolean(KEY_BATTERY_ALERTS_ENABLED, true)
@@ -123,15 +141,6 @@ object KioskSecurity {
         getPrefs(context).edit().putString(KEY_CONFIGURED_ESP32_MAC, clean).apply()
     }
 
-    fun getConfiguredEsp32Ip(context: Context): String {
-        return getPrefs(context).getString(KEY_CONFIGURED_ESP32_IP, "") ?: ""
-    }
-
-    fun setConfiguredEsp32Ip(context: Context, ip: String) {
-        val trimmed = ip.trim()
-        getPrefs(context).edit().putString(KEY_CONFIGURED_ESP32_IP, trimmed).apply()
-    }
-
     fun getAssignedBoxSlot(context: Context): Int {
         return getPrefs(context).getInt(KEY_ASSIGNED_BOX_SLOT, 1)
     }
@@ -159,14 +168,11 @@ object KioskSecurity {
         return input.trim().uppercase()
     }
 
-    fun isPaymentConfigured(context: Context): Boolean {
-        return getSharedSecret(context).isNotBlank()
-    }
-
     fun isProvisioned(context: Context): Boolean {
-        val secret = getSharedSecret(context)
+        val prefs = getPrefs(context)
+        val isExplicit = prefs.getBoolean(KEY_SECRET_EXPLICITLY_PROVISIONED, false)
         val mac = getConfiguredEsp32Mac(context)
-        return secret.isNotBlank() && mac.isNotBlank()
+        return isExplicit && mac.isNotBlank()
     }
 
     fun isAdbAllowed(context: Context): Boolean {
@@ -193,7 +199,7 @@ object KioskSecurity {
                 .putStringSet(KEY_HIDDEN_APPS, defaultHidden)
                 .putBoolean(KEY_INITIALIZED_DEFAULT_HIDDEN, true)
                 .apply()
-                return defaultHidden
+            return defaultHidden
         }
         return prefs.getStringSet(KEY_HIDDEN_APPS, emptySet()) ?: emptySet()
     }
@@ -228,51 +234,119 @@ object KioskSecurity {
         return getPrefs(context).getString(KEY_DEVICE_ALIAS, "") ?: ""
     }
 
+    fun getHardwareId(context: Context): String {
+        val prefs = context.getSharedPreferences("kiosk_prefs", Context.MODE_PRIVATE)
+        var savedUuid = prefs.getString("device_uuid", null)
+        if (savedUuid.isNullOrBlank()) {
+            savedUuid = java.util.UUID.randomUUID().toString()
+            prefs.edit().putString("device_uuid", savedUuid).apply()
+        }
+        return savedUuid
+    }
+
     fun setDeviceAlias(context: Context, alias: String) {
         getPrefs(context).edit().putString(KEY_DEVICE_ALIAS, alias.trim()).apply()
     }
 
-    fun getSharedSecret(context: Context? = null): String {
-        if (context == null) return ""
-        try {
-            // 1. AndroidX EncryptedSharedPreferences
-            val encryptedPrefs = getEncryptedPrefs(context)
-            val encSecret = try {
-                encryptedPrefs?.getString(KEY_DEVICE_SECRET, null)
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed reading EncryptedSharedPreferences: ${e.message}")
-                null
-            }
-            if (!encSecret.isNullOrBlank() && encSecret.trim() != DEFAULT_PIN) {
-                return encSecret.trim()
-            }
+    private const val CUSTOM_KEYSTORE_ALIAS = "kiosk_custom_secret_key"
+    private const val KEY_CUSTOM_ENCRYPTED_SECRET = "custom_encrypted_device_secret"
 
-            // 2. Custom Android KeyStore AES-GCM encrypted fallback
-            val prefs = getPrefs(context)
-            val customKeystoreSecret = try {
-                KioskCrypto.getCustomKeystoreEncryptedSecret(prefs)
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed reading custom Keystore encrypted secret: ${e.message}")
-                null
-            }
-            if (!customKeystoreSecret.isNullOrBlank() && customKeystoreSecret.trim() != DEFAULT_PIN) {
-                return customKeystoreSecret.trim()
-            }
-
-            // 3. Plaintext SharedPreferences fallback
-            val plainSecret = try {
-                prefs.getString(KEY_DEVICE_SECRET, null)
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed reading SharedPreferences secret: ${e.message}")
-                null
-            }
-            if (!plainSecret.isNullOrBlank() && plainSecret.trim() != DEFAULT_PIN) {
-                return plainSecret.trim()
-            }
+    private fun getCustomKeystoreEncryptedSecret(prefs: SharedPreferences): String? {
+        val encryptedBase64 = prefs.getString(KEY_CUSTOM_ENCRYPTED_SECRET, null) ?: return null
+        return try {
+            val parts = encryptedBase64.split(":")
+            if (parts.size != 2) return null
+            val iv = Base64.decode(parts[0], Base64.DEFAULT)
+            val cipherText = Base64.decode(parts[1], Base64.DEFAULT)
+            
+            val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+            val secretKey = keyStore.getKey(CUSTOM_KEYSTORE_ALIAS, null) as? SecretKey ?: return null
+            
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(128, iv))
+            val plainTextBytes = cipher.doFinal(cipherText)
+            String(plainTextBytes, Charsets.UTF_8)
         } catch (e: Exception) {
-            Log.e(TAG, "Unexpected error retrieving shared secret: ${e.message}", e)
+            Log.e(TAG, "Custom Keystore decryption failed: ${e.message}")
+            null
         }
-        return ""
+    }
+
+    private fun setCustomKeystoreEncryptedSecret(prefs: SharedPreferences, secret: String): Boolean {
+        return try {
+            val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+            if (!keyStore.containsAlias(CUSTOM_KEYSTORE_ALIAS)) {
+                val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+                val keySpec = KeyGenParameterSpec.Builder(
+                    CUSTOM_KEYSTORE_ALIAS,
+                    KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+                )
+                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                    .setRandomizedEncryptionRequired(true)
+                    .build()
+                keyGenerator.init(keySpec)
+                keyGenerator.generateKey()
+            }
+            val secretKey = keyStore.getKey(CUSTOM_KEYSTORE_ALIAS, null) as SecretKey
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.ENCRYPT_MODE, secretKey)
+            val iv = cipher.iv
+            val cipherText = cipher.doFinal(secret.toByteArray(Charsets.UTF_8))
+            val ivBase64 = Base64.encodeToString(iv, Base64.NO_WRAP)
+            val cipherTextBase64 = Base64.encodeToString(cipherText, Base64.NO_WRAP)
+            prefs.edit().putString(KEY_CUSTOM_ENCRYPTED_SECRET, "$ivBase64:$cipherTextBase64").apply()
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Custom Keystore encryption failed: ${e.message}")
+            false
+        }
+    }
+
+    fun getSharedSecret(context: Context): String {
+        val prefs = getPrefs(context)
+        if (!prefs.getBoolean(KEY_SECRET_EXPLICITLY_PROVISIONED, false)) {
+            return DEFAULT_SHARED_SECRET
+        }
+
+        val encryptedPrefs = getEncryptedPrefs(context)
+        if (encryptedPrefs != null) {
+            try { 
+                val existingSecret = encryptedPrefs.getString(KEY_DEVICE_SECRET, null)
+                if (!existingSecret.isNullOrBlank()) return existingSecret
+            } catch (e: Exception) { Log.e(TAG, "Encrypted prefs read failed: ${e.message}") }
+        }
+        
+        var secret = getCustomKeystoreEncryptedSecret(prefs)
+        if (secret.isNullOrBlank()) {
+            secret = null
+        }
+        
+        if (secret == null && prefs.contains(KEY_DEVICE_SECRET)) {
+            val oldPlainSecret = prefs.getString(KEY_DEVICE_SECRET, null)
+            if (!oldPlainSecret.isNullOrBlank()) {
+                val keystoreSuccess = setCustomKeystoreEncryptedSecret(prefs, oldPlainSecret)
+                if (keystoreSuccess) {
+                    prefs.edit().remove(KEY_DEVICE_SECRET).apply()
+                }
+                secret = oldPlainSecret
+            }
+        }
+        
+        if (secret == null) {
+            val randomBytes = ByteArray(32)
+            SecureRandom().nextBytes(randomBytes)
+            secret = randomBytes.joinToString("") { "%02x".format(it) }
+            
+            if (encryptedPrefs != null) {
+                try {
+                    encryptedPrefs.edit().putString(KEY_DEVICE_SECRET, secret).apply()
+                    return secret
+                } catch (e: Exception) { Log.e(TAG, "Encrypted prefs write failed: ${e.message}") }
+            }
+            setCustomKeystoreEncryptedSecret(prefs, secret!!)
+        }
+        return secret!!
     }
 
     fun setSharedSecret(context: Context, newSecret: String) {
@@ -291,8 +365,9 @@ object KioskSecurity {
         } 
         
         val prefs = getPrefs(context)
+        prefs.edit().putBoolean(KEY_SECRET_EXPLICITLY_PROVISIONED, true).apply()
         if (!successWithEncryptedPrefs) {
-            val keystoreSuccess = KioskCrypto.setCustomKeystoreEncryptedSecret(prefs, trimmed)
+            val keystoreSuccess = setCustomKeystoreEncryptedSecret(prefs, trimmed)
             if (!keystoreSuccess) {
                 prefs.edit().putString(KEY_DEVICE_SECRET, trimmed).apply()
             } else {
@@ -303,19 +378,9 @@ object KioskSecurity {
         }
     }
 
-    fun clearSharedSecret(context: Context) {
-        try {
-            getEncryptedPrefs(context)?.edit()?.remove(KEY_DEVICE_SECRET)?.apply()
-        } catch (_: Exception) {}
-        val prefs = getPrefs(context)
-        prefs.edit()
-            .remove(KEY_DEVICE_SECRET)
-            .remove(KioskCrypto.KEY_CUSTOM_ENCRYPTED_SECRET)
-            .apply()
-    }
-
     fun getAdminPin(context: Context): String {
         val pin = getPrefs(context).getString(KEY_ADMIN_PIN, DEFAULT_PIN) ?: DEFAULT_PIN
+        // Recover from AES decryption garbage corruption (wrong key matching 1/256 padding)
         if (pin.any { it < ' ' || it > '~' }) {
             setAdminPin(context, DEFAULT_PIN)
             return DEFAULT_PIN
@@ -332,24 +397,81 @@ object KioskSecurity {
         return constantTimeEquals(enteredPin.trim(), storedPin)
     }
 
-    // --- Crypto Delegates ---
+    fun calculateHmac(data: String, key: String): String {
+        val mac = Mac.getInstance("HmacSHA256")
+        val secretKey = SecretKeySpec(key.toByteArray(Charsets.UTF_8), "HmacSHA256")
+        mac.init(secretKey)
+        val hmacBytes = mac.doFinal(data.toByteArray(Charsets.UTF_8))
+        return hmacBytes.joinToString("") { "%02x".format(it) }
+    }
 
-    fun calculateHmac(data: String, key: String): String = KioskCrypto.calculateHmac(data, key)
+    fun generateTimestampSignature(deviceId: String, ts: String, secret: String): String {
+        return calculateHmac("$deviceId:$ts", secret)
+    }
 
-    fun generateTimestampSignature(deviceId: String, ts: String, secret: String): String =
-        KioskCrypto.generateTimestampSignature(deviceId, ts, secret)
+    fun getAesKeySpec(secret: String): SecretKeySpec {
+        val md = MessageDigest.getInstance("SHA-256")
+        val keyBytes = md.digest(secret.toByteArray(Charsets.UTF_8))
+        return SecretKeySpec(keyBytes, "AES")
+    }
 
-    fun getAesKeySpec(secret: String): SecretKeySpec = KioskCrypto.getAesKeySpec(secret)
+    fun bytesToHex(bytes: ByteArray): String {
+        return bytes.joinToString("") { "%02x".format(it) }
+    }
 
-    fun bytesToHex(bytes: ByteArray): String = KioskCrypto.bytesToHex(bytes)
+    fun hexToBytes(hex: String): ByteArray {
+        val len = hex.length
+        val data = ByteArray(len / 2)
+        var i = 0
+        while (i < len) {
+            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
+            i += 2
+        }
+        return data
+    }
 
-    fun hexToBytes(hex: String): ByteArray = KioskCrypto.hexToBytes(hex)
+    fun encrypt(plainText: String, secret: String): String {
+        try {
+            val keySpec = getAesKeySpec(secret)
+            val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+            val iv = ByteArray(16)
+            SecureRandom().nextBytes(iv)
+            val ivSpec = IvParameterSpec(iv)
+            cipher.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec)
+            val encrypted = cipher.doFinal(plainText.toByteArray(Charsets.UTF_8))
+            return bytesToHex(iv) + bytesToHex(encrypted)
+        } catch (e: Exception) {
+            Log.e(TAG, "AES Encryption error: ${e.message}")
+            return ""
+        }
+    }
 
-    fun encrypt(plainText: String, secret: String): String = KioskCrypto.encrypt(plainText, secret)
+    fun decrypt(encryptedHex: String, secret: String): String {
+        try {
+            val hex = encryptedHex.trim()
+            if (hex.length < 32) return ""
+            val encryptedBytes = hexToBytes(hex)
+            if (encryptedBytes.size < 17) return ""
+            val iv = encryptedBytes.copyOfRange(0, 16)
+            val cipherText = encryptedBytes.copyOfRange(16, encryptedBytes.size)
+            val keySpec = getAesKeySpec(secret)
+            val ivSpec = IvParameterSpec(iv)
+            val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+            cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
+            val decryptedBytes = cipher.doFinal(cipherText)
+            return String(decryptedBytes, Charsets.UTF_8)
+        } catch (e: Exception) {
+            Log.e(TAG, "AES Decryption error: ${e.message}")
+            return ""
+        }
+    }
 
-    fun decrypt(encryptedHex: String, secret: String): String = KioskCrypto.decrypt(encryptedHex, secret)
-
-    fun constantTimeEquals(a: String, b: String): Boolean = KioskCrypto.constantTimeEquals(a, b)
+    fun constantTimeEquals(a: String, b: String): Boolean {
+        return MessageDigest.isEqual(
+            a.toByteArray(Charsets.UTF_8),
+            b.toByteArray(Charsets.UTF_8)
+        )
+    }
 
     // --- Battery Diagnostics ---
 
@@ -473,8 +595,7 @@ object KioskSecurity {
         secret: String? = null,
         mac: String? = null,
         slot: Int = -1,
-        name: String? = null,
-        ip: String? = null
+        name: String? = null
     ): Boolean {
         if (!secret.isNullOrBlank()) {
             setSharedSecret(context, secret.trim())
@@ -487,16 +608,13 @@ object KioskSecurity {
                 setConfiguredEsp32Mac(context, formattedMac)
             }
         }
-        if (!ip.isNullOrBlank()) {
-            setConfiguredEsp32Ip(context, ip.trim())
-        }
         if (slot > 0) {
             setAssignedBoxSlot(context, slot)
             setDeviceAlias(context, "PisoPhone $slot")
         } else if (!name.isNullOrBlank()) {
             setDeviceAlias(context, name.trim())
         }
-        Log.i(TAG, "[+] Successfully applied Direct Provisioning setup: MAC=$mac, IP=$ip, Slot=$slot, SecretConfigured=${!secret.isNullOrBlank()}")
+        Log.i(TAG, "[+] Successfully applied Direct Provisioning setup: MAC=$mac, Slot=$slot, SecretConfigured=${!secret.isNullOrBlank()}")
         return true
     }
 }

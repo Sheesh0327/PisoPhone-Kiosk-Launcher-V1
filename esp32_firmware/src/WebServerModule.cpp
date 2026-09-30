@@ -1,5 +1,6 @@
 #include "WebServerModule.h"
 #include "CoinSlotManager.h"
+#include "PaymentQueueManager.h"
 #include "Config.h"
 #include "Security.h"
 #include "HardwareManager.h"
@@ -9,6 +10,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <HTTPClient.h>
+#include <WiFiUdp.h>
 #include <ESPmDNS.h>
 #include <Update.h>
 #include "esp_wifi.h"
@@ -18,6 +20,7 @@ WiFiServer wsServer(81);
 WiFiClient wsClient;
 bool isWsConnected = false;
 String wsSessionDeviceId = "";
+WiFiUDP udpServer;
 QueueHandle_t authQueue = NULL;
 
 void setupWebServer() {
@@ -57,6 +60,7 @@ void setupWebServer() {
     webServer.on("/crash_report", HTTP_POST, handleCrashReport);
     webServer.on("/api/slots", HTTP_GET, handleApiSlots);
     webServer.on("/api/slots/pair", HTTP_ANY, handleApiSlotPair);
+    webServer.on("/api/slots/pair_request", HTTP_ANY, handleApiSlotPairRequest);
     webServer.on("/api/slots/unpair", HTTP_ANY, handleApiSlotUnpair);
     webServer.on("/api/slots/apply_token", HTTP_POST, handleApiSlotApplyToken);
     webServer.on("/api/slots/cloud_sync", HTTP_POST, handleApiSlotCloudSync);
@@ -94,6 +98,8 @@ void setupWebServer() {
         if (!otaIsValidBinary || Update.hasError() || !otaUpdateSuccess) {
             String errStr = otaErrorMsg.length() > 0 ? otaErrorMsg : ("Flash write failed (Error Code " + String(Update.getError()) + ")");
             webServer.send(400, "text/plain", errStr);
+        } else if (!canPerformRebootOrOta()) {
+            webServer.send(409, "text/plain", "BUSY: Unpersisted transactions in RAM");
         } else {
             webServer.send(200, "text/plain", "SUCCESS");
             delay(1000);
@@ -110,6 +116,13 @@ void setupWebServer() {
             otaErrorMsg = "";
             Update.clearError();
             
+            if (!canPerformRebootOrOta()) {
+                otaIsValidBinary = false;
+                otaErrorMsg = "OTA blocked: unpersisted transactions in RAM";
+                Serial.println("[OTA] Aborted: unpersisted transactions in RAM");
+                return;
+            }
+
             Serial.printf("[OTA] Starting firmware flash: %s\n", upload.filename.c_str());
             
             if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
@@ -155,9 +168,14 @@ void setupWebServer() {
     // Port 81: Real-time WebSocket Server
     wsServer.begin();
 
+    // Port 8888: UDP Broadcast Discovery Service
+    udpServer.begin(UDP_DISCOVERY_PORT);
+    Serial.printf("[!] Port %d: UDP Discovery Server active\n", UDP_DISCOVERY_PORT);
+
     if (WiFi.status() == WL_CONNECTED) {
         Serial.printf("[!] Port 80: Management at http://%s:80\n", WiFi.localIP().toString().c_str());
         Serial.printf("[!] Port 81: WebSocket at ws://%s:81/ws\n\n", WiFi.localIP().toString().c_str());
+        sendUdpDiscoveryResponse(IPAddress(255, 255, 255, 255), UDP_DISCOVERY_PORT);
     } else {
         Serial.printf("[!] Wi-Fi disconnected. Waiting for hotspot '%s' to become available...\n", wifiSsid.c_str());
     }

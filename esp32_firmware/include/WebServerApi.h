@@ -8,6 +8,7 @@ void handleQueryTime();
 
 void handleApiSlots();
 void handleApiSlotPair();
+void handleApiSlotPairRequest();
 void handleApiSlotUnpair();
 void handleApiSlotApplyToken();
 void handleApiSlotCloudSync();

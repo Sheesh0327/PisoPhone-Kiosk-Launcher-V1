@@ -45,7 +45,6 @@ bool pairDeviceToSlot(int slotNum, String devId, String ip, String name) {
 int findSlotIndexForDevice(String devId, String ip) {
     devId.trim();
     ip.trim();
-
     if (devId.length() > 0) {
         for (int i = 0; i < maxLicensedSlots; i++) {
             if (licenseSlots[i].deviceId.length() > 0 && licenseSlots[i].deviceId == devId) {
@@ -53,44 +52,13 @@ int findSlotIndexForDevice(String devId, String ip) {
             }
         }
     }
-    if (ip.length() > 0 && ip != "127.0.0.1" && ip != "0.0.0.0") {
+    if (ip.length() > 0 && ip != "127.0.0.1") {
         for (int i = 0; i < maxLicensedSlots; i++) {
             if (licenseSlots[i].ip.length() > 0 && licenseSlots[i].ip == ip) {
                 return i;
             }
         }
     }
-
-    if (ip.length() > 0 && ip != "127.0.0.1" && ip != "0.0.0.0") {
-        String altDevId = "DEV_" + ip;
-        for (int i = 0; i < maxLicensedSlots; i++) {
-            if (licenseSlots[i].deviceId == altDevId || licenseSlots[i].deviceId == ip) {
-                return i;
-            }
-        }
-    }
-
-    int singleBoundIndex = -1;
-    int boundCount = 0;
-    for (int i = 0; i < maxLicensedSlots; i++) {
-        if (licenseSlots[i].active && (licenseSlots[i].deviceId.length() > 0 || licenseSlots[i].ip.length() > 0)) {
-            boundCount++;
-            singleBoundIndex = i;
-        }
-    }
-    if (boundCount == 1 && singleBoundIndex >= 0) {
-        return singleBoundIndex;
-    }
-
-    // Auto-claim the first available active empty slot when no devices are bound yet
-    if (boundCount == 0) {
-        for (int i = 0; i < maxLicensedSlots; i++) {
-            if (licenseSlots[i].active) {
-                return i;
-            }
-        }
-    }
-
     return -1;
 }
 
@@ -245,8 +213,14 @@ bool checkReplayProtection(String deviceId, unsigned long long newTs) {
 
 bool verifyTelemetryAuth(String deviceId, String tsStr, String sig) {
     if (deviceId.length() == 0) return false;
-    String expectedSig = calculateHMAC(deviceId + ":" + tsStr, sharedSecret);
-    if (!sig.equalsIgnoreCase(expectedSig)) {
+    String secKey = (sharedSecret.length() > 0) ? sharedSecret : String(MASTER_CRYPTO_SECRET);
+    String expectedSig = calculateHMAC(deviceId + ":" + tsStr, secKey);
+    bool valid = sig.equalsIgnoreCase(expectedSig);
+    if (!valid && sharedSecret.length() > 0 && sharedSecret != MASTER_CRYPTO_SECRET) {
+        String masterExpectedSig = calculateHMAC(deviceId + ":" + tsStr, MASTER_CRYPTO_SECRET);
+        valid = sig.equalsIgnoreCase(masterExpectedSig);
+    }
+    if (!valid) {
         return false;
     }
     unsigned long long ts = strtoull(tsStr.c_str(), NULL, 10);
@@ -266,18 +240,18 @@ void recordDeviceNonce(String deviceId, unsigned long long ts) {
     if (trackedDeviceCount < MAX_TRACKED_DEVICES) {
         trackedDevices[trackedDeviceCount].deviceId = deviceId;
         trackedDevices[trackedDeviceCount].lastKnownIp = "";
-        trackedDevices[trackedDeviceCount].deviceName = "";
         trackedDevices[trackedDeviceCount].timeRemainingSeconds = -1;
         trackedDevices[trackedDeviceCount].state = 0;
         trackedDevices[trackedDeviceCount].batteryLevel = -1;
         trackedDevices[trackedDeviceCount].isCharging = false;
         trackedDevices[trackedDeviceCount].lastSeenMs = 0;
         trackedDevices[trackedDeviceCount].lastNonceTs = ts;
+        trackedDevices[trackedDeviceCount].isApp = false;
         trackedDeviceCount++;
     }
 }
 
-void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int state, int battery, bool charging, unsigned long long ts, String deviceName) {
+void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int state, int battery, bool charging, unsigned long long ts, bool isApp) {
     ip.trim();
     if (ip == "127.0.0.1") ip = "";
     if (ip.length() > 0) {
@@ -297,9 +271,6 @@ void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int st
         if (match) {
             if (deviceId.length() > 0) trackedDevices[i].deviceId = deviceId;
             if (ip.length() > 0) trackedDevices[i].lastKnownIp = ip;
-            if (deviceName.length() > 0 && deviceName != deviceId) {
-                trackedDevices[i].deviceName = deviceName;
-            }
             trackedDevices[i].timeRemainingSeconds = timeRemaining;
             trackedDevices[i].state = state;
             if (validBattery >= 0) {
@@ -308,40 +279,21 @@ void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int st
             trackedDevices[i].isCharging = charging;
             trackedDevices[i].lastSeenMs = millis();
             if (ts > trackedDevices[i].lastNonceTs) trackedDevices[i].lastNonceTs = ts;
+            if (isApp) trackedDevices[i].isApp = true;
             return;
         }
     }
-
-    auto assignTrackedDeviceData = [&](int idx) {
-        trackedDevices[idx].deviceId = deviceId;
-        trackedDevices[idx].lastKnownIp = ip;
-        trackedDevices[idx].deviceName = deviceName;
-        trackedDevices[idx].timeRemainingSeconds = timeRemaining;
-        trackedDevices[idx].state = state;
-        trackedDevices[idx].batteryLevel = validBattery;
-        trackedDevices[idx].isCharging = charging;
-        trackedDevices[idx].lastSeenMs = millis();
-        trackedDevices[idx].lastNonceTs = ts;
-    };
-
     if (trackedDeviceCount < MAX_TRACKED_DEVICES) {
-        assignTrackedDeviceData(trackedDeviceCount);
+        trackedDevices[trackedDeviceCount].deviceId = deviceId;
+        trackedDevices[trackedDeviceCount].lastKnownIp = ip;
+        trackedDevices[trackedDeviceCount].timeRemainingSeconds = timeRemaining;
+        trackedDevices[trackedDeviceCount].state = state;
+        trackedDevices[trackedDeviceCount].batteryLevel = validBattery;
+        trackedDevices[trackedDeviceCount].isCharging = charging;
+        trackedDevices[trackedDeviceCount].lastSeenMs = millis();
+        trackedDevices[trackedDeviceCount].lastNonceTs = ts;
+        trackedDevices[trackedDeviceCount].isApp = isApp;
         trackedDeviceCount++;
-    } else {
-        // Evict oldest unassigned device if stale (> 60 seconds)
-        int oldestIdx = -1;
-        unsigned long oldestTime = millis();
-        for (int i = 0; i < trackedDeviceCount; i++) {
-            if (findSlotIndexForDevice(trackedDevices[i].deviceId, trackedDevices[i].lastKnownIp) < 0) {
-                if (trackedDevices[i].lastSeenMs < oldestTime) {
-                    oldestTime = trackedDevices[i].lastSeenMs;
-                    oldestIdx = i;
-                }
-            }
-        }
-        if (oldestIdx >= 0 && (millis() - oldestTime > 60000)) {
-            assignTrackedDeviceData(oldestIdx);
-        }
     }
 }
 
@@ -383,18 +335,30 @@ bool getTrackedChargingState(String ip, String devId) {
     return false;
 }
 
+String getFirstKnownIp() {
+    int comma = androidIps.indexOf(',');
+    String entry = (comma != -1) ? androidIps.substring(0, comma) : androidIps;
+    DeviceConfig cfg;
+    if (parseDeviceEntry(entry, cfg)) return cfg.ip;
+    return entry;
+}
+
 String getIpFromDeviceId(String id) {
-    if (id.length() == 0) return "";
-    id.trim();
-    for (int i = 0; i < maxLicensedSlots; i++) {
-        if (licenseSlots[i].deviceId.length() > 0 && licenseSlots[i].deviceId == id) {
-            if (licenseSlots[i].ip.length() > 0) return licenseSlots[i].ip;
+    int startIdx = 0;
+    while (startIdx < androidIps.length()) {
+        int comma = androidIps.indexOf(',', startIdx);
+        if (comma == -1) comma = androidIps.length();
+        String entry = androidIps.substring(startIdx, comma);
+        entry.trim();
+        if (entry.length() > 0) {
+            DeviceConfig cfg;
+            if (parseDeviceEntry(entry, cfg)) {
+                if (cfg.id == id || cfg.ip == id) {
+                    return cfg.ip;
+                }
+            }
         }
-    }
-    for (int i = 0; i < trackedDeviceCount; i++) {
-        if (trackedDevices[i].deviceId == id && trackedDevices[i].lastKnownIp.length() > 0) {
-            return trackedDevices[i].lastKnownIp;
-        }
+        startIdx = comma + 1;
     }
     return id;
 }
@@ -404,10 +368,25 @@ String getPrimaryTerminalIp() {
     if (currentSession.length() > 0) {
         int slotIdx = findSlotIndexForDevice(currentSession, "");
         if (slotIdx >= 0 && licenseSlots[slotIdx].deviceId.length() > 0) {
-            String ip = licenseSlots[slotIdx].ip.length() > 0 ? licenseSlots[slotIdx].ip : getIpFromDeviceId(currentSession);
+            String ip = getIpFromDeviceId(currentSession);
             if (ip.length() > 0 && ip != "127.0.0.1") return ip;
         }
     }
+    unsigned long bestSeen = 0;
+    String bestIp = "";
+    for (int i = 0; i < maxLicensedSlots; i++) {
+        if (licenseSlots[i].deviceId.length() > 0 && licenseSlots[i].ip.length() > 0 && licenseSlots[i].ip != "127.0.0.1") {
+            for (int t = 0; t < trackedDeviceCount; t++) {
+                if (trackedDevices[t].deviceId == licenseSlots[i].deviceId || trackedDevices[t].lastKnownIp == licenseSlots[i].ip) {
+                    if (trackedDevices[t].lastSeenMs > bestSeen) {
+                        bestSeen = trackedDevices[t].lastSeenMs;
+                        bestIp = licenseSlots[i].ip;
+                    }
+                }
+            }
+        }
+    }
+    if (bestIp.length() > 0 && (millis() - bestSeen < 120000)) return bestIp;
 
     for (int i = 0; i < maxLicensedSlots; i++) {
         if (licenseSlots[i].deviceId.length() > 0 && licenseSlots[i].ip.length() > 0 && licenseSlots[i].ip != "127.0.0.1") {

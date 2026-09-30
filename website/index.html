@@ -201,36 +201,14 @@
     <script src="js/webadb_manager.js"></script>
 
     <script>
-        // Parse incoming ESP32 parameters into in-memory provisioning object
+        // Parse incoming ESP32 parameters
         const urlParams = new URLSearchParams(window.location.search);
-        const hashRaw = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash;
-        const hashParams = new URLSearchParams(hashRaw);
-
-        const provisioningConfig = {
-            mac: urlParams.get('mac') || hashParams.get('mac') || '',
-            ip: urlParams.get('ip') || hashParams.get('ip') || '',
-            slot: parseInt(urlParams.get('slot') || hashParams.get('slot') || '1', 10),
-            secret: hashParams.get('secret') || urlParams.get('secret') || '',
-            name: urlParams.get('name') || hashParams.get('name') || `PisoPhone Slot ${urlParams.get('slot') || hashParams.get('slot') || '1'}`,
-            mode: (urlParams.get('mode') === 'deprovision' || urlParams.get('action') === 'deprovision' || hashParams.get('mode') === 'deprovision') ? 'deprovision' : 'install'
-        };
-
-        // Immediately purge secret from URL and browser history
-        if (window.location.hash || urlParams.has('secret')) {
-            try {
-                const cleanUrl = new URL(window.location.href);
-                cleanUrl.hash = '';
-                cleanUrl.searchParams.delete('secret');
-                window.history.replaceState({}, document.title, cleanUrl.pathname + (cleanUrl.searchParams.toString() ? '?' + cleanUrl.searchParams.toString() : ''));
-            } catch (_) {}
-        }
-
-        const urlMac = provisioningConfig.mac;
-        const urlIp = provisioningConfig.ip;
-        const urlSlot = provisioningConfig.slot;
-        const urlSecret = provisioningConfig.secret;
-        const urlName = provisioningConfig.name;
-        const initialMode = provisioningConfig.mode;
+        const urlMac = urlParams.get('mac');
+        const urlIp = urlParams.get('ip');
+        const urlSlot = parseInt(urlParams.get('slot') || '1', 10);
+        const urlSecret = urlParams.get('secret') || '';
+        const urlName = urlParams.get('name') || `PisoPhone Slot ${urlSlot}`;
+        const initialMode = (urlParams.get('mode') === 'deprovision' || urlParams.get('action') === 'deprovision') ? 'deprovision' : 'install';
 
         const restrictedView = document.getElementById('restrictedView');
         const mainView = document.getElementById('mainView');
@@ -355,17 +333,16 @@
 
                     // Step 3: Flash & Device Owner
                     logMessage("Step 3: Flashing package onto device & configuring Device Owner lockdown...");
-                    await window.webADB.installKioskApp(candidateApkUrls, logMessage, provisioningConfig);
+                    await window.webADB.installKioskApp(candidateApkUrls, logMessage);
 
-                    // Step 4: Inject parameters into Android app (MAC & IP address)
+                    // Step 4: Inject parameters into Android app (MAC-only, no dynamic IP)
                     logMessage("Step 4: Infusing hardware configuration parameters into Android...");
                     try {
                         let bCastCmd = `am broadcast -a com.pisophone.kiosk.CONFIGURE_ESP32 -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es esp32_mac "${urlMac}" --ei slot ${urlSlot}`;
-                        if (urlIp) bCastCmd += ` --es ip "${urlIp}" --es esp32_ip "${urlIp}"`;
                         if (urlSecret) bCastCmd += ` --es secret "${urlSecret}"`;
                         if (urlName) bCastCmd += ` --es name "${urlName}"`;
                         await window.webADB.runShell(bCastCmd);
-                        await window.webADB.runShell(`am broadcast -a com.pisophone.kiosk.ACTIVATE -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es key "PISOPHONE-BOX-ACTIVATED" --es esp32_mac "${urlMac}"${urlIp ? ' --es ip "' + urlIp + '" --es esp32_ip "' + urlIp + '"' : ''} --ei slot ${urlSlot}${urlSecret ? ' --es secret "' + urlSecret + '"' : ''}`);
+                        await window.webADB.runShell(`am broadcast -a com.pisophone.kiosk.ACTIVATE -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es key "PISOPHONE-BOX-ACTIVATED" --es esp32_mac "${urlMac}" --ei slot ${urlSlot}${urlSecret ? ' --es secret "' + urlSecret + '"' : ''}`);
                     } catch (bErr) {
                         logMessage(`[!] Config broadcast notice: ${bErr.message}`);
                     }

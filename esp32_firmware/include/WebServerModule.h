@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <WebServer.h>
+#include <WiFiUdp.h>
 #include <WiFiServer.h>
 #include <WiFiClient.h>
 #include "Config.h"
@@ -10,13 +11,14 @@
 #include "WebServerConfig.h"
 #include "WebServerApi.h"
 #include "WebServerTelemetry.h"
-#include "WebSocketServer.h"
+#include "WebSocketsUdp.h"
 
 extern WebServer webServer;
 extern WiFiServer wsServer;
 extern WiFiClient wsClient;
 extern bool isWsConnected;
 extern String wsSessionDeviceId;
+extern WiFiUDP udpServer;
 extern QueueHandle_t authQueue;
 
 void setupWebServer();

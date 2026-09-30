@@ -576,9 +576,8 @@
          * Full Automated Kiosk App Installer & Provisioner
          * @param {string} apkUrl URL of the APK to install
          * @param {function} logCallback Function to output log messages
-         * @param {object} provConfig In-memory provisioning parameters object
          */
-        async installKioskApp(apkUrl, logCallback = console.log, provConfig = null) {
+        async installKioskApp(apkUrl, logCallback = console.log) {
             // Step 1: Cache APK locally
             if (!this.cachedApkBytes) {
                 await this.downloadToLocalTemp(apkUrl, logCallback);
@@ -738,19 +737,17 @@
                 await this.shell(`dumpsys deviceidle whitelist +${PACKAGE_NAME} 2>/dev/null || true`);
             } catch (e) {}
 
-            // Construct provisioning credentials from in-memory configuration object
+            // Parse provisioning credentials if supplied via URL
             let provExtras = '';
             try {
-                const config = provConfig || {};
-                const provSecret = config.secret || '';
-                const provMac = config.mac || '';
-                const provIp = config.ip || '';
-                const provSlot = config.slot || 1;
-                const provName = config.name || '';
+                const urlParams = new URLSearchParams(window.location.search);
+                const provSecret = urlParams.get('secret');
+                const provMac = urlParams.get('mac');
+                const provSlot = urlParams.get('slot');
+                const provName = urlParams.get('name');
 
                 if (provSecret) provExtras += ` --es secret "${provSecret}"`;
                 if (provMac) provExtras += ` --es mac "${provMac}" --es esp32_mac "${provMac}"`;
-                if (provIp) provExtras += ` --es ip "${provIp}" --es esp32_ip "${provIp}"`;
                 if (provSlot) provExtras += ` --ei slot ${provSlot}`;
                 if (provName) provExtras += ` --es name "${provName}"`;
             } catch (e) {}

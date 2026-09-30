@@ -6,7 +6,11 @@ import android.graphics.PixelFormat
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.pisophone.kiosk.ComposeOverlayView
 import com.pisophone.kiosk.model.BatteryStatus
 import com.pisophone.kiosk.overlay.ui.FloatingPill
@@ -24,6 +28,11 @@ class FloatingPillOverlay(
     private val pricePerCoinFlow: StateFlow<Double>,
     private val minutesPerCoinFlow: StateFlow<Int>,
     private val batteryStatusFlow: StateFlow<BatteryStatus> = kotlinx.coroutines.flow.MutableStateFlow(BatteryStatus()),
+    private val isArenaModeFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
+    private val arenaPlayerRoleFlow: StateFlow<Int> = kotlinx.coroutines.flow.MutableStateFlow(0),
+    private val arenaStakeMinutesFlow: StateFlow<Int> = kotlinx.coroutines.flow.MutableStateFlow(15),
+    private val isArenaBannerVisibleFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
+    private val onDismissArenaBanner: () -> Unit = {},
     private val onInsertCoinClick: () -> Unit,
     private val onDoneClick: () -> Unit
 ) {
@@ -116,18 +125,41 @@ class FloatingPillOverlay(
             val isSlotBusy by isSlotBusyFlow.collectAsState()
             val themeIndex by themeIndexFlow.collectAsState()
             val batteryStatus by batteryStatusFlow.collectAsState()
+            val isArenaMode by isArenaModeFlow.collectAsState()
+            val arenaRole by arenaPlayerRoleFlow.collectAsState()
+            val arenaStake by arenaStakeMinutesFlow.collectAsState()
+            val isArenaBannerVisible by isArenaBannerVisibleFlow.collectAsState()
             val activationUpdateVersion by com.pisophone.kiosk.security.KioskActivationManager.activationUpdateVersion.collectAsState()
             
             val isSetupReady = remember(activationUpdateVersion) { 
                 com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(context)
             }
-            val isVisible = isSetupReady && (appState == 2 || appState == 3)
+            val isVisible = isSetupReady && (appState == 2 || appState == 3 || isArenaBannerVisible)
             
             LaunchedEffect(isVisible) {
                 if (isVisible) {
                     newOverlay.view.visibility = View.VISIBLE
                 } else {
                     newOverlay.view.visibility = View.GONE
+                }
+            }
+
+            LaunchedEffect(isArenaBannerVisible) {
+                if (isArenaBannerVisible) {
+                    layoutParams.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                    layoutParams.x = 0
+                    layoutParams.y = 40
+                } else {
+                    layoutParams.gravity = Gravity.TOP or Gravity.START
+                    layoutParams.x = 20
+                    layoutParams.y = 20
+                }
+                if (isViewAdded) {
+                    try {
+                        windowManager.updateViewLayout(newOverlay.view, layoutParams)
+                    } catch (e: Exception) {
+                        android.util.Log.e("FloatingPillOverlay", "Failed to update layout for arena banner: ${e.message}")
+                    }
                 }
             }
 
@@ -143,6 +175,11 @@ class FloatingPillOverlay(
                     isWaiting = appState == 3,
                     themeIndex = themeIndex,
                     batteryStatus = batteryStatus,
+                    isArenaMode = isArenaMode,
+                    arenaRole = arenaRole,
+                    arenaStakeMinutes = arenaStake,
+                    isArenaBannerVisible = isArenaBannerVisible,
+                    onDismissArenaBanner = onDismissArenaBanner,
                     onRequestFocus = { focusable -> updateFocusable(focusable) },
                     onRequestFullScreen = { isFullScreen -> updateFullScreen(isFullScreen) },
                     onBrightnessChange = { ratio ->
@@ -232,7 +269,7 @@ class FloatingPillOverlay(
             currentView.onResume()
             val isFullySetup = com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(context)
             val appState = appStateFlow.value
-            val isVisible = isFullySetup && (appState == 2 || appState == 3)
+            val isVisible = isFullySetup && (appState == 2 || appState == 3 || isArenaBannerVisibleFlow.value)
             currentView.view.visibility = if (isVisible) View.VISIBLE else View.GONE
             windowManager.updateViewLayout(currentView.view, layoutParams)
             currentView.view.requestLayout()

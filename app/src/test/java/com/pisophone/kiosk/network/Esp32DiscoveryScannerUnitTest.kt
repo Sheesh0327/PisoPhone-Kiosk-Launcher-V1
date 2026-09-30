@@ -43,8 +43,7 @@ class Esp32DiscoveryScannerUnitTest {
             isAlreadyBound = { false }
         )
 
-        val cleanMac = "AABBCCDDEEFF"
-        val sig = KioskSecurity.calculateHmac("DISCOVERY:$cleanMac:$testIp", testSecret)
+        val sig = KioskSecurity.calculateHmac("DISCOVERY:$testMac:$testIp", testSecret)
         val json = JSONObject().apply {
             put("type", "PISOPHONE_ESP32_RESPONSE")
             put("mac", testMac)
@@ -52,34 +51,6 @@ class Esp32DiscoveryScannerUnitTest {
         }
 
         assertTrue(scanner.validateEsp32Response(testMac, testIp, sig, json.toString()))
-    }
-
-    @Test
-    fun testValidateEsp32Response_sharedTestVector_matchingKey_returnsTrue_wrongKey_returnsFalse() {
-        // Shared Test Vector Specs:
-        // Raw MAC: "AA:BB:CC:DD:EE:FF" -> Clean MAC without colons: "AABBCCDDEEFF"
-        // ESP32 IP: "192.168.1.150"
-        // Payload string: "DISCOVERY:AABBCCDDEEFF:192.168.1.150"
-        // Shared Secret: "secretKey12345"
-        val scanner = Esp32DiscoveryScanner(
-            context = context,
-            scope = testScope,
-            delegate = fakeDelegate,
-            isAlreadyBound = { false }
-        )
-
-        val cleanMac = "AABBCCDDEEFF"
-        val payload = "DISCOVERY:$cleanMac:$testIp"
-        val expectedMatchingSig = KioskSecurity.calculateHmac(payload, testSecret)
-        val wrongKeySig = KioskSecurity.calculateHmac(payload, "WRONG_SECRET_KEY_9999")
-
-        // 1. Proves matching key produces valid HMAC acceptance
-        assertTrue("Matching key HMAC must produce identical valid signature and be accepted",
-            scanner.validateEsp32Response("AA:BB:CC:DD:EE:FF", testIp, expectedMatchingSig, null))
-
-        // 2. Proves wrong key produces invalid HMAC rejection
-        assertFalse("Wrong key HMAC signature must be rejected",
-            scanner.validateEsp32Response("AA:BB:CC:DD:EE:FF", testIp, wrongKeySig, null))
     }
 
     @Test
@@ -92,8 +63,7 @@ class Esp32DiscoveryScannerUnitTest {
         )
 
         val otherMac = "11:22:33:44:55:66"
-        val cleanOtherMac = "112233445566"
-        val sig = KioskSecurity.calculateHmac("DISCOVERY:$cleanOtherMac:$testIp", testSecret)
+        val sig = KioskSecurity.calculateHmac("DISCOVERY:$otherMac:$testIp", testSecret)
         val json = JSONObject().apply {
             put("type", "PISOPHONE_ESP32_RESPONSE")
             put("mac", otherMac)

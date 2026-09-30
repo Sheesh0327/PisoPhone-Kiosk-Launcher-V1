@@ -1,20 +1,18 @@
 #include "CoinSlotManager.h"
 #include "PaymentQueueManager.h"
 #include "HardwareManager.h"
-#include "DeviceManager.h"
 #include "Config.h"
 
 // ============================================================================
-// TIMING CONSTANTS (Milliseconds)
+// TIMING CONSTANTS
 // ============================================================================
-static const unsigned long INTER_PULSE_TIMEOUT_MS   = 250;   // Inactivity window indicating end of coin pulse train
-static const unsigned long IN_FLIGHT_PULSE_GRACE_MS = 800;   // Time window to consider pulses still actively arriving
-static const unsigned long IDLE_DRAIN_GRACE_MS      = 1500;  // Idle grace period to allow mechanical drop to trigger switch
-static const unsigned long DRAIN_TIMEOUT_GUARD_MS   = 8000;  // Maximum absolute time to remain in DRAINING state
-static const unsigned long MAX_SESSION_DURATION_MS  = 120000;// 2 minutes hard limit per arming session
+static const unsigned long INTER_PULSE_TIMEOUT_MS = 280;  // 280ms gap of silence to finish accumulating continuous pulses
+static const unsigned long IN_FLIGHT_PULSE_GRACE_MS = 560; // 2x inter-pulse window to consider pulses still in flight
+static const unsigned long DRAIN_TIMEOUT_GUARD_MS   = 10000; // Max time to wait for final in-flight pulse delivery (10s)
+static const unsigned long IDLE_DRAIN_GRACE_MS      = 1000;  // Grace window to wait if ending while idle
 
 // ============================================================================
-// INTERNAL MUTEX & LIFECYCLE STATE
+// INTERNAL STATE
 // ============================================================================
 static CoinSlotState currentState = CoinSlotState::IDLE;
 static CoinSlotOwnerType activeOwnerType = CoinSlotOwnerType::ANY;
@@ -22,17 +20,15 @@ static String activeSessionId = "";
 static unsigned long sessionArmedUntil = 0;
 static unsigned long sessionStartTimeMs = 0;
 static unsigned long drainDeadlineMs = 0;
-static unsigned long maxDrainDeadlineMs = 0;
+static unsigned long maxDrainDeadlineMs = 0; // Hard maximum deadline for draining
 static String pendingEndReason = "";
+static int sessionAccumulatedPulses = 0; // Buffer for pulses accumulated across consecutive bursts
 
 static CoinPaymentCallback currentPaymentCallback = nullptr;
 static CoinSessionEndCallback currentEndCallback = nullptr;
 static CoinPaymentCallback globalPaymentCallback = nullptr;
 
-// ============================================================================
-// INTERNAL RELEASE HELPERS
-// ============================================================================
-
+// Internal helper to complete release and invoke the end callback exactly once
 static void finalizeSessionRelease(const char* reason) {
     if (activeSessionId.length() == 0 && currentState == CoinSlotState::IDLE) {
         return;
@@ -41,10 +37,10 @@ static void finalizeSessionRelease(const char* reason) {
     String endingSession = activeSessionId;
     CoinSessionEndCallback endCb = currentEndCallback;
 
-    Serial.printf("[🪙 COIN SLOT] Finalizing session '%s' (Reason: %s)\n", 
-                  endingSession.c_str(), reason ? reason : "UNKNOWN");
+    Serial.printf("[🪙 COIN SLOT] Finalizing session '%s' (Reason: %s).\n", 
+                  endingSession.c_str(), reason);
 
-    // Atomically reset state machine before callback invocation
+    // Reset state before callback to prevent re-entrant issues
     currentState = CoinSlotState::IDLE;
     activeOwnerType = CoinSlotOwnerType::ANY;
     activeSessionId = "";
@@ -56,31 +52,31 @@ static void finalizeSessionRelease(const char* reason) {
     currentPaymentCallback = nullptr;
     currentEndCallback = nullptr;
 
-    // Disarm physical relay hardware (pin reverts to high-impedance INPUT)
+    // Disarm physical relay
     setRelayHardware(false);
 
-    // Reset detector pulse buffers for the next clean session
+    // Reset hardware pulse accumulators for clean next session
+    sessionAccumulatedPulses = 0;
     resetCoinDetectorStates();
 
     // Trigger end callback exactly once
     if (endCb) {
-        endCb(endingSession, reason ? reason : "RELEASED");
+        endCb(endingSession, reason);
     }
 }
 
+// Internal helper to safely start session release. Disarms if idle, otherwise enters DRAINING state
 static void initiateSessionRelease(const char* reason, bool force) {
-    if (activeSessionId.length() == 0 || currentState == CoinSlotState::IDLE) {
-        return;
-    }
-
+    if (activeSessionId.length() == 0 || currentState == CoinSlotState::IDLE) return;
+        
     unsigned long now = millis();
     const char* terminalReason = (reason != nullptr && strlen(reason) > 0) ? reason : "RELEASED";
-
+    
     if (currentState == CoinSlotState::DRAINING) {
         if (force) {
             finalizeSessionRelease(terminalReason);
         }
-        return;
+        return; // Do not reset deadlines or re-enter DRAINING state if already draining
     }
 
     if (!force) {
@@ -91,44 +87,42 @@ static void initiateSessionRelease(const char* reason, bool force) {
 
         currentState = CoinSlotState::DRAINING;
         pendingEndReason = terminalReason;
+
+        // Hard absolute deadline cap (10s max)
         maxDrainDeadlineMs = now + DRAIN_TIMEOUT_GUARD_MS;
 
-        // If pulses are currently accumulating or arrived recently, grant full drain timeout
+        // If coin pulses are in flight or arrived recently, set full timeout, otherwise set a short idle grace window
         if (currentPulses > 0 || (lastPulse > 0 && (now - lastPulse < IN_FLIGHT_PULSE_GRACE_MS))) {
-            Serial.printf("[🪙 COIN SLOT] Pulses in flight (%d). Entering full DRAINING state...\n", currentPulses);
+            Serial.printf("[🪙 COIN SLOT] Release requested for '%s' while pulses in flight (%d pulses). Entering full DRAINING state...\n",
+                           activeSessionId.c_str(), currentPulses);
             drainDeadlineMs = maxDrainDeadlineMs;
         } else {
-            Serial.printf("[🪙 COIN SLOT] Session ending while idle. Draining with %lu ms grace...\n", IDLE_DRAIN_GRACE_MS);
+            Serial.printf("[🪙 COIN SLOT] Release requested for '%s' while idle. Entering DRAINING state with %lu ms idle grace...\n",
+                           activeSessionId.c_str(), IDLE_DRAIN_GRACE_MS);
             drainDeadlineMs = now + IDLE_DRAIN_GRACE_MS;
         }
+        // Keep hardware relay powered ON to finish reading potential incoming pulses.
         return;
     }
-
-    // Immediate forced release
+        
+    // Immediate finalize release (this disarms the hardware relay)
     finalizeSessionRelease(terminalReason);
 }
 
-// ============================================================================
-// PUBLIC API IMPLEMENTATION
-// ============================================================================
-
 void initCoinSlotManager() {
     currentState = CoinSlotState::IDLE;
-    activeOwnerType = CoinSlotOwnerType::ANY;
     activeSessionId = "";
     sessionArmedUntil = 0;
     sessionStartTimeMs = 0;
     drainDeadlineMs = 0;
-    maxDrainDeadlineMs = 0;
     pendingEndReason = "";
     currentPaymentCallback = nullptr;
     currentEndCallback = nullptr;
     globalPaymentCallback = nullptr;
-
     setRelayHardware(false);
+    sessionAccumulatedPulses = 0;
     resetCoinDetectorStates();
     initPaymentQueue();
-    Serial.println("[🪙 COIN SLOT] Subsystem initialized. Relay in safe standby.");
 }
 
 void setGlobalCoinPaymentCallback(CoinPaymentCallback callback) {
@@ -141,49 +135,47 @@ CoinSlotState getCoinSlotState() {
 
 bool isCoinSlotArmed() {
     if (currentState == CoinSlotState::ARMED) {
-        return (millis() < sessionArmedUntil);
+        return ((long)(sessionArmedUntil - millis()) > 0);
     }
     if (currentState == CoinSlotState::DRAINING) {
-        return true;
+        return true; // Keep physical relay energized throughout DRAINING lifecycle
     }
     return false;
 }
 
 bool isCoinSlotBusy(const String& sessionId, CoinSlotOwnerType ownerType) {
+    // If slot is completely IDLE, it is not busy
     if (currentState == CoinSlotState::IDLE || activeSessionId.length() == 0) {
         return false;
     }
 
-    // Auto-reclaim expired sessions to prevent lockups
     unsigned long now = millis();
+
+    // Auto-reclaim expired ARMED session via drain path to preserve in-flight pulses
     if (currentState == CoinSlotState::ARMED) {
-        bool ttlExpired = (now >= sessionArmedUntil);
-        bool maxDurationExpired = (sessionStartTimeMs > 0 && (now - sessionStartTimeMs >= MAX_SESSION_DURATION_MS));
+        bool ttlExpired = ((long)(now - sessionArmedUntil) >= 0);
+        bool maxDurationExpired = (sessionStartTimeMs > 0 && ((long)(now - (sessionStartTimeMs + MAX_SESSION_DURATION)) >= 0));
         if (ttlExpired || maxDurationExpired) {
             const char* reason = ttlExpired ? "TTL_EXPIRED" : "MAX_DURATION";
-            Serial.printf("[🪙 COIN SLOT] Session '%s' expired during busy check (%s). Auto-releasing.\n",
+            Serial.printf("[🪙 COIN SLOT] Active session '%s' expired during busy check (%s). Initiating drain.\n",
                           activeSessionId.c_str(), reason);
-            finalizeSessionRelease(reason);
+            initiateSessionRelease(reason, false);
+            return true; // Draining, slot is busy
+        }
+    }
+
+    // While draining, slot is strictly busy for all reservations
+    if (currentState == CoinSlotState::DRAINING) {
+        return true;
+    }
+
+    // If held by the SAME session (or owner ANY match), it is not busy to that session
+    if (sessionId.length() > 0 && activeSessionId == sessionId) {
+        if (ownerType == CoinSlotOwnerType::ANY || activeOwnerType == CoinSlotOwnerType::ANY || activeOwnerType == ownerType) {
             return false;
         }
     }
-
-    // Same session ID is not busy to itself
-    if (sessionId.length() > 0) {
-        if (activeSessionId == sessionId) {
-            if (ownerType == CoinSlotOwnerType::ANY || activeOwnerType == CoinSlotOwnerType::ANY || activeOwnerType == ownerType) {
-                return false;
-            }
-        }
-        int activeSlot = findSlotIndexForDevice(activeSessionId, "");
-        int incomingSlot = findSlotIndexForDevice(sessionId, "");
-        if (activeSlot >= 0 && activeSlot == incomingSlot) {
-            if (ownerType == CoinSlotOwnerType::ANY || activeOwnerType == CoinSlotOwnerType::ANY || activeOwnerType == ownerType) {
-                return false;
-            }
-        }
-    }
-
+    // Held by a different session -> busy
     return true;
 }
 
@@ -195,32 +187,36 @@ CoinSlotOwnerType getActiveCoinOwnerType() {
     return activeOwnerType;
 }
 
-bool reserveCoinSlot(
-    const String& sessionId,
-    CoinSlotOwnerType ownerType,
-    unsigned long ttlMs,
-    CoinPaymentCallback onPayment,
-    CoinSessionEndCallback onSessionEnd
-) {
+bool reserveCoinSlot(const String& sessionId, CoinSlotOwnerType ownerType, unsigned long ttlMs, 
+                     CoinPaymentCallback onPayment, 
+                     CoinSessionEndCallback onSessionEnd) {
     if (sessionId.length() == 0) return false;
 
-    if (isPaymentQueueFull()) {
-        Serial.printf("[🪙 COIN SLOT] Rejected '%s': Payment queue full.\n", sessionId.c_str());
+    if (isPaymentQueueFull() || !isPaymentStorageReady()) {
+        Serial.printf("[🪙 COIN SLOT] Reservation rejected for '%s': Storage unavailable or queue full!\n", sessionId.c_str());
         return false;
     }
-
+    
     unsigned long now = millis();
 
-    // Check if slot is held by another terminal
-    if (isCoinSlotBusy(sessionId, ownerType)) {
-        Serial.printf("[🪙 COIN SLOT] Rejected '%s': Slot busy with '%s'.\n", 
-                      sessionId.c_str(), activeSessionId.c_str());
+    // Reject reservations while draining
+    if (currentState == CoinSlotState::DRAINING) {
+        Serial.printf("[🪙 COIN SLOT] Reservation rejected for '%s': Slot is currently DRAINING.\n", 
+                      sessionId.c_str());
         return false;
     }
 
-    // Reconnection / re-arming for identical active session: refresh TTL and keep state
+    // If held by another session, reject reservation
+    if (isCoinSlotBusy(sessionId, ownerType)) {
+        Serial.printf("[🪙 COIN SLOT] Reservation rejected for '%s': Slot busy with '%s' (State: %d)\n", 
+                      sessionId.c_str(), activeSessionId.c_str(), (int)currentState);
+        return false;
+    }
+
     if (activeSessionId == sessionId && (activeOwnerType == ownerType || ownerType == CoinSlotOwnerType::ANY) && 
-        (currentState == CoinSlotState::ARMED || currentState == CoinSlotState::DRAINING)) {
+        currentState == CoinSlotState::ARMED) {
+        // RECONNECTION / RE-ARMING SAME SESSION:
+        // Preserve accumulated pulses, restore ARMED state, refresh TTL
         currentState = CoinSlotState::ARMED;
         if (ownerType != CoinSlotOwnerType::ANY) activeOwnerType = ownerType;
         sessionArmedUntil = now + (ttlMs > 0 ? ttlMs : ARM_TTL);
@@ -231,11 +227,12 @@ bool reserveCoinSlot(
         if (onSessionEnd) currentEndCallback = onSessionEnd;
 
         setRelayHardware(true);
-        Serial.printf("[🪙 COIN SLOT] Session '%s' re-armed (TTL: %lu ms).\n", activeSessionId.c_str(), ttlMs);
+        Serial.printf("[🪙 COIN SLOT] Session '%s' RECONNECTED & RE-ARMED (TTL: %lu ms, Preserved Pulses: %d)\n", 
+                      activeSessionId.c_str(), ttlMs, isrUniversalPulseCount);
         return true;
     }
 
-    // New arming reservation
+    // BRAND NEW SESSION:
     currentState = CoinSlotState::ARMED;
     activeSessionId = sessionId;
     activeOwnerType = ownerType;
@@ -247,10 +244,15 @@ bool reserveCoinSlot(
     currentPaymentCallback = onPayment;
     currentEndCallback = onSessionEnd;
 
+    // Reset pulse detector states for fresh session
+    sessionAccumulatedPulses = 0;
     resetCoinDetectorStates();
+
+    // Arm hardware relay
     setRelayHardware(true);
 
-    Serial.printf("[🪙 COIN SLOT] Slot ARMED for '%s' (TTL: %lu ms).\n", activeSessionId.c_str(), ttlMs);
+    Serial.printf("[🪙 COIN SLOT] Slot RESERVED & ARMED for '%s' (TTL: %lu ms)\n", 
+                  activeSessionId.c_str(), ttlMs);
     return true;
 }
 
@@ -258,7 +260,8 @@ bool refreshCoinSlotTtl(const String& sessionId, CoinSlotOwnerType ownerType, un
     if (activeSessionId.length() > 0 && activeSessionId == sessionId && 
         (ownerType == CoinSlotOwnerType::ANY || activeOwnerType == ownerType) && 
         currentState == CoinSlotState::ARMED) {
-        sessionArmedUntil = millis() + (ttlMs > 0 ? ttlMs : ARM_TTL);
+        unsigned long now = millis();
+        sessionArmedUntil = now + (ttlMs > 0 ? ttlMs : ARM_TTL);
         return true;
     }
     return false;
@@ -268,21 +271,17 @@ void releaseCoinSlot(const String& sessionId, CoinSlotOwnerType ownerType, bool 
     if (activeSessionId.length() == 0 || currentState == CoinSlotState::IDLE) return;
     if (!force && activeSessionId != sessionId) return;
     if (!force && ownerType != CoinSlotOwnerType::ANY && activeOwnerType != ownerType) return;
-
+    
     initiateSessionRelease(reason, force);
 }
-
-// ============================================================================
-// CONTINUOUS SESSION RUNNER
-// ============================================================================
 
 void processCoinSlotSession() {
     unsigned long now = millis();
 
-    // Process pending offline/retry payment dispatches
+    // Periodically retry unacknowledged payment dispatches
     processPendingPaymentRetries();
 
-    // 1. Suppress boot power transients (< 3000 ms)
+    // 1. Ignore early boot spikes (< 3000ms)
     if (now < 3000) {
         if (isrUniversalPulseCount > 0) {
             noInterrupts();
@@ -292,40 +291,47 @@ void processCoinSlotSession() {
         return;
     }
 
-    // 2. Read pulse accumulator atomically
+    // 2. Read and harvest new pulses atomically from ISR counter into session buffer
+    int newPulses = 0;
+    unsigned long lastPulseTime = 0;
     noInterrupts();
-    int pulseCount = isrUniversalPulseCount;
-    unsigned long lastPulseTime = isrLastPulseTimeMs;
+    newPulses = isrUniversalPulseCount;
+    isrUniversalPulseCount = 0;
+    lastPulseTime = isrLastPulseTimeMs;
     interrupts();
 
-    // 3. Strict isolation: discard pulses if not reserved
+    // 3. Strict Isolation: If no active or draining session, discard any spurious pulses
     if (currentState == CoinSlotState::IDLE || activeSessionId.length() == 0) {
-        if (pulseCount > 0) {
-            noInterrupts();
-            isrUniversalPulseCount = 0;
-            interrupts();
-            Serial.printf("[🪙 COIN SLOT] Discarded %d spurious pulse(s) received while IDLE.\n", pulseCount);
+        if (newPulses > 0 || sessionAccumulatedPulses > 0) {
+            sessionAccumulatedPulses = 0;
+            Serial.printf("[🪙 COIN SLOT] Discarded %d spurious pulse(s) received while IDLE/unreserved.\n", 
+                          newPulses + sessionAccumulatedPulses);
         }
         return;
     }
 
-    // 4. In DRAINING state, if a pulse is detected, extend drain window up to max cap
-    if (currentState == CoinSlotState::DRAINING && pulseCount > 0) {
-        if (drainDeadlineMs < maxDrainDeadlineMs) {
+    if (newPulses > 0) {
+        sessionAccumulatedPulses += newPulses;
+    }
+
+    // 3b. Upgrade idle grace deadline if pulse detected during DRAINING, capped strictly at maxDrainDeadlineMs
+    if (currentState == CoinSlotState::DRAINING && newPulses > 0) {
+        if ((long)(maxDrainDeadlineMs - drainDeadlineMs) > 0) {
             drainDeadlineMs = maxDrainDeadlineMs;
+            long remMs = (long)(maxDrainDeadlineMs - now);
+            Serial.printf("[🪙 COIN SLOT] Pulse detected during DRAINING idle grace. Timeout set to hard cap (%lu ms remaining).\n",
+                          remMs > 0 ? (unsigned long)remMs : 0UL);
         }
     }
 
-    // 5. Complete pulse train after inter-pulse gap
-    if (pulseCount > 0 && (now - lastPulseTime >= INTER_PULSE_TIMEOUT_MS)) {
-        noInterrupts();
-        int finalPulses = isrUniversalPulseCount;
-        isrUniversalPulseCount = 0;
-        interrupts();
+    // 4. Process completed pulse train after inter-pulse silence timeout
+    if (sessionAccumulatedPulses > 0 && ((long)(now - (lastPulseTime + INTER_PULSE_TIMEOUT_MS)) >= 0)) {
+        int finalPulses = sessionAccumulatedPulses;
+        sessionAccumulatedPulses = 0;
 
         if (finalPulses > 0) {
             String deliveringSession = activeSessionId;
-            Serial.printf("[🪙 COIN SLOT] Detected %d pulse(s) for session '%s'. Delivering payment...\n",
+            Serial.printf("[🪙 COIN SLOT] Detected %d pulse(s) for session '%s'. Delivering payment...\n", 
                           finalPulses, deliveringSession.c_str());
 
             if (currentPaymentCallback) {
@@ -335,24 +341,31 @@ void processCoinSlotSession() {
             }
         }
 
-        // If draining, pulse delivery completes the session
+        // If in DRAINING state, in-flight pulses are now delivered. Finalize session release.
         if (currentState == CoinSlotState::DRAINING) {
-            Serial.println("[🪙 COIN SLOT] In-flight pulses delivered. Completing release.");
+            Serial.println("[🪙 COIN SLOT] In-flight pulses drained and delivered. Completing release.");
             String reason = pendingEndReason.length() > 0 ? pendingEndReason : "RELEASED";
             finalizeSessionRelease(reason.c_str());
             return;
         }
     }
 
-    // 6. Handle DRAINING timeout
+    // 5. Check DRAINING timeout guard (respecting hard cap maxDrainDeadlineMs)
     if (currentState == CoinSlotState::DRAINING) {
-        if (now >= drainDeadlineMs || (maxDrainDeadlineMs > 0 && now >= maxDrainDeadlineMs)) {
-            // Deliver any residual pulses before release
+        bool drainExpired = ((long)(now - drainDeadlineMs) >= 0);
+        bool maxCapExpired = (maxDrainDeadlineMs > 0 && ((long)(now - maxDrainDeadlineMs) >= 0));
+        if (drainExpired || maxCapExpired) {
+            Serial.println("[🪙 COIN SLOT] Drain guard timeout reached. Delivering remaining pulses and finalizing release.");
+            
+            // Salvage any pulses that accumulated before the guard tripped
             noInterrupts();
-            int remainingPulses = isrUniversalPulseCount;
+            int trailingPulses = isrUniversalPulseCount;
             isrUniversalPulseCount = 0;
             interrupts();
-
+            
+            int remainingPulses = sessionAccumulatedPulses + trailingPulses;
+            sessionAccumulatedPulses = 0;
+            
             if (remainingPulses > 0) {
                 if (currentPaymentCallback) {
                     currentPaymentCallback(activeSessionId, remainingPulses);
@@ -363,19 +376,20 @@ void processCoinSlotSession() {
 
             String reason = pendingEndReason.length() > 0 ? pendingEndReason : "DRAIN_TIMEOUT";
             finalizeSessionRelease(reason.c_str());
+            return;
         }
-        return;
     }
 
-    // 7. Enforce ARMED TTL and MAX session duration
+    // 6. Check session TTL and MAX duration expiration for ARMED state
     if (currentState == CoinSlotState::ARMED) {
-        bool ttlExpired = (now >= sessionArmedUntil);
-        bool maxDurationExpired = (sessionStartTimeMs > 0 && (now - sessionStartTimeMs >= MAX_SESSION_DURATION_MS));
+        bool ttlExpired = ((long)(now - sessionArmedUntil) >= 0);
+        bool maxDurationExpired = (sessionStartTimeMs > 0 && ((long)(now - (sessionStartTimeMs + MAX_SESSION_DURATION)) >= 0));
 
         if (ttlExpired || maxDurationExpired) {
             const char* reason = ttlExpired ? "TTL_EXPIRED" : "MAX_DURATION";
             Serial.printf("[🪙 COIN SLOT] Session %s for '%s'. Checking in-flight pulses...\n",
-                          reason, activeSessionId.c_str());
+                           reason, activeSessionId.c_str());
+
             initiateSessionRelease(reason, false);
         }
     }

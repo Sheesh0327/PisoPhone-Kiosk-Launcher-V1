@@ -5,14 +5,43 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.room.withTransaction
 import com.pisophone.kiosk.db.AppDatabase
+import com.pisophone.kiosk.db.AppMetadata
 import com.pisophone.kiosk.db.PaidSessionState
 import com.pisophone.kiosk.db.PaymentReceipt
 import com.pisophone.kiosk.security.KioskActivationManager
+import com.pisophone.kiosk.security.KioskSecurity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 
 /**
- * Authority managing transactional payment credits, ledger persistence, and monotonic rental clocks.
+ * Immutable snapshot of active paid session state.
+ */
+data class SessionSnapshot(
+    val deadlineMs: Long,
+    val remainingSeconds: Int,
+    val revision: Long
+)
+
+/**
+ * Result of restoring session state from local persistence.
+ */
+data class RestoredSessionState(
+    val remainingSeconds: Int,
+    val deadlineMs: Long,
+    val isReboot: Boolean,
+    val revision: Long = 0L
+)
+
+/**
+ * Result of conditional session expiration inside Room.
+ */
+data class ExpiryResult(
+    val didExpire: Boolean,
+    val sessionState: PaidSessionState
+)
+
+/**
+ * Repository acting as the single payment-processing and session-balance authority.
  */
 class PaymentRepository(
     private val db: AppDatabase,
@@ -23,9 +52,11 @@ class PaymentRepository(
 ) {
     companion object {
         private const val TAG = "PaymentRepository"
-        const val PREFS_NAME = PaymentMigrationHelper.PREFS_NAME
-        const val KEY_MIGRATION_MARKER = PaymentMigrationHelper.KEY_MIGRATION_MARKER
-        const val KEY_MIGRATION_MARKER_PREFS = PaymentMigrationHelper.KEY_MIGRATION_MARKER_PREFS
+        const val PREFS_NAME = "kiosk_persistent_state"
+        const val KEY_MIGRATION_MARKER = "legacy_paid_state_migrated_v4"
+        const val KEY_MIGRATION_MARKER_PREFS = "legacy_paid_state_migrated_v3"
+        const val KEY_BOOT_COUNT = "BOOT_COUNT"
+        const val KEY_PENDING_TX = "pending_transaction_in_flight"
     }
 
     constructor(
@@ -43,10 +74,6 @@ class PaymentRepository(
 
     private val paymentDao = db.paymentDao()
 
-    /**
-     * Atomically credits a coin payment transaction into the local Room ledger.
-     * Prevents double-spending, enforces idempotency on duplicate txId, and extends the monotonic session deadline.
-     */
     suspend fun creditPayment(txId: String, seconds: Int, amount: Double): PaymentResult {
         var committedSnapshot: SessionSnapshot? = null
 
@@ -70,7 +97,7 @@ class PaymentRepository(
                 }
 
                 if (!isEligible()) {
-                    Log.w(TAG, "Payment rejected for $txId: Device or slot is not eligible.")
+                    Log.w(TAG, "Payment rejected for $txId: Device/slot is not currently eligible.")
                     return@withTransaction PaymentResult.NOT_ELIGIBLE
                 }
 
@@ -99,8 +126,10 @@ class PaymentRepository(
                     revision = newRevision
                 )
 
+                paymentDao.setMetadata(AppMetadata(KEY_PENDING_TX, "$txId:$seconds:$amount"))
                 paymentDao.insertReceipt(receipt)
                 paymentDao.updateSessionState(newState)
+                paymentDao.setMetadata(AppMetadata(KEY_PENDING_TX, ""))
 
                 committedSnapshot = SessionSnapshot(newDeadline, newSessionTime, newRevision)
                 PaymentResult.APPLIED
@@ -124,9 +153,6 @@ class PaymentRepository(
             creditPayment(txId, seconds, amount)
         }
 
-    /**
-     * Atomically deducts rental time from the active session.
-     */
     suspend fun deductTime(secondsDelta: Int, txId: String? = null): PaidSessionState {
         val updatedState = db.withTransaction {
             if (!txId.isNullOrBlank()) {
@@ -195,7 +221,8 @@ class PaymentRepository(
     }
 
     /**
-     * Immediately clears and expires the session balance.
+     * Unconditionally terminates the active paid session by committing 0 remaining time and deadline in Room.
+     * Reserved for explicit administrative actions.
      */
     suspend fun expireSession(): PaidSessionState {
         val newState = db.withTransaction {
@@ -221,7 +248,8 @@ class PaymentRepository(
     }
 
     /**
-     * Evaluates whether the monotonic deadline has passed, expiring the session if due.
+     * Checks if the active paid session deadline in Room has actually expired before clearing.
+     * Clears balance ONLY if the database deadline has expired.
      */
     suspend fun expireSessionIfDue(): ExpiryResult {
         var didExpire = false
@@ -268,9 +296,6 @@ class PaymentRepository(
         expireSessionIfDue()
     }
 
-    /**
-     * Overrides or adjusts total session time directly.
-     */
     suspend fun adjustSessionTime(durationSeconds: Int): PaidSessionState {
         val newState = db.withTransaction {
             val currentState = paymentDao.getSessionState()
@@ -301,7 +326,9 @@ class PaymentRepository(
     fun resetSessionBlocking(): PaidSessionState = expireSessionBlocking()
 
     /**
-     * Checkpoints active elapsed time to database if revision matches.
+     * Checkpoints countdown progress for recovery if snapshot revision matches database revision.
+     * Calculates remaining time directly from the database's authoritative deadline without
+     * overwriting the deadline itself.
      */
     suspend fun checkpointSession(snapshotRevision: Long) {
         db.withTransaction {
@@ -328,6 +355,7 @@ class PaymentRepository(
         checkpointSession(snapshotRevision)
     }
 
+    // Overload for backward compatibility
     suspend fun checkpointSession(remainingSec: Int, deadlineMs: Long, snapshotRevision: Long = 0L) {
         checkpointSession(snapshotRevision)
     }
@@ -337,16 +365,112 @@ class PaymentRepository(
             checkpointSession(snapshotRevision)
         }
 
-    /**
-     * Restores session state from database, handling device reboots and monotonic clock offsets.
-     */
+    suspend fun recoverUncommittedTransactions(nowMonotonic: Long = SystemClock.elapsedRealtime()) {
+        // 1. Recover / clear incomplete pending transaction marker
+        val pendingTx = paymentDao.getMetadata(KEY_PENDING_TX)
+        if (!pendingTx.isNullOrBlank()) {
+            val parts = pendingTx.split(":")
+            if (parts.size >= 3) {
+                val txId = parts[0]
+                val existingReceipt = paymentDao.getReceiptByTxId(txId)
+                if (existingReceipt != null) {
+                    Log.i(TAG, "Startup recovery: In-flight transaction $txId was already committed.")
+                } else {
+                    Log.w(TAG, "Startup recovery: Rolling back uncommitted in-flight transaction $txId")
+                }
+            }
+            paymentDao.setMetadata(AppMetadata(KEY_PENDING_TX, ""))
+        }
+
+        // 2. Reconcile any unrecorded coin events into payment receipts
+        try {
+            val events = db.coinEventDao().getLatestEvents(limit = 100)
+            for (ev in events) {
+                if (paymentDao.getReceiptByTxId(ev.txId) == null) {
+                    paymentDao.insertReceiptIgnore(
+                        PaymentReceipt(
+                            txId = ev.txId,
+                            secondsCredited = ev.secondsAdded,
+                            amount = 0.0,
+                            acceptanceTimestamp = ev.timestamp
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error reconciling coin events during recovery: ${e.message}")
+        }
+
+        // 3. Inspect and sanitize PaidSessionState
+        val currentState = paymentDao.getSessionState()
+        if (currentState != null) {
+            var sanitizedRemaining = currentState.sessionTimeRemaining
+            var sanitizedDeadline = currentState.sessionExpiryDeadlineMs
+            var needsUpdate = false
+
+            if (sanitizedRemaining < 0) {
+                sanitizedRemaining = 0
+                sanitizedDeadline = 0L
+                needsUpdate = true
+            }
+            if (sanitizedDeadline < 0L) {
+                sanitizedDeadline = 0L
+                sanitizedRemaining = 0
+                needsUpdate = true
+            }
+
+            if (needsUpdate) {
+                paymentDao.updateSessionState(
+                    currentState.copy(
+                        sessionTimeRemaining = sanitizedRemaining,
+                        sessionExpiryDeadlineMs = sanitizedDeadline,
+                        lastSavedElapsedRealtime = nowMonotonic,
+                        revision = currentState.revision + 1L
+                    )
+                )
+            }
+        }
+    }
+
+    fun recoverUncommittedTransactionsBlocking(nowMonotonic: Long = SystemClock.elapsedRealtime()) =
+        runBlocking(Dispatchers.IO) {
+            recoverUncommittedTransactions(nowMonotonic)
+        }
+
     fun restoreSessionState(ctx: Context? = context): RestoredSessionState = runBlocking(Dispatchers.IO) {
         if (ctx != null) {
-            PaymentMigrationHelper.migrateAndInitialize(ctx, db)
+            migrateAndInitialize(ctx)
         }
+
+        val effectiveCtx = ctx ?: context
+        val encryptedPrefs = effectiveCtx?.let { KioskSecurity.getEncryptedPreferences(it) }
+        val currentBootCount = if (effectiveCtx != null) {
+            try {
+                android.provider.Settings.Global.getInt(
+                    effectiveCtx.contentResolver,
+                    android.provider.Settings.Global.BOOT_COUNT,
+                    -1
+                )
+            } catch (e: Exception) {
+                -1
+            }
+        } else {
+            -1
+        }
+        val lastSavedBootCount = encryptedPrefs?.getInt(KEY_BOOT_COUNT, -1) ?: -1
+        val isBootCountChanged = if (currentBootCount != -1) {
+            val changed = lastSavedBootCount != -1 && currentBootCount != lastSavedBootCount
+            encryptedPrefs?.edit()?.putInt(KEY_BOOT_COUNT, currentBootCount)?.commit()
+            changed
+        } else {
+            false
+        }
+
         val (snapshot, isReboot) = db.withTransaction {
-            val paidState = paymentDao.getSessionState()
             val nowMonotonic = SystemClock.elapsedRealtime()
+            recoverUncommittedTransactions(nowMonotonic)
+
+            val paidState = paymentDao.getSessionState()
             if (paidState == null) {
                 return@withTransaction Pair(SessionSnapshot(0L, 0, 0L), false)
             }
@@ -355,13 +479,21 @@ class PaymentRepository(
             val savedTime = paidState.sessionTimeRemaining
             val lastSavedElapsed = paidState.lastSavedElapsedRealtime
 
-            val rebootDetected = lastSavedElapsed > 0L && nowMonotonic < lastSavedElapsed
+            val monotonicRebootDetected = lastSavedElapsed > 0L && nowMonotonic < lastSavedElapsed
+            val rebootDetected = isBootCountChanged || monotonicRebootDetected
+            if (currentBootCount == -1 && monotonicRebootDetected) {
+                val nextCount = (lastSavedBootCount.takeIf { it >= 0 } ?: 0) + 1
+                encryptedPrefs?.edit()?.putInt(KEY_BOOT_COUNT, nextCount)?.commit()
+            }
+
             val effectiveRemainingSec: Int
             val effectiveDeadline: Long
             var updatedRevision = paidState.revision
 
             if (rebootDetected) {
-                effectiveRemainingSec = maxOf(0, savedTime)
+                // Recover active session using elapsed real time since boot, not wall clock
+                val elapsedBootSeconds = (nowMonotonic / 1000L).toInt()
+                effectiveRemainingSec = maxOf(0, savedTime - elapsedBootSeconds)
                 effectiveDeadline = if (effectiveRemainingSec > 0) nowMonotonic + (effectiveRemainingSec * 1000L) else 0L
                 updatedRevision += 1L
                 paymentDao.updateSessionState(
@@ -402,10 +534,120 @@ class PaymentRepository(
     }
 
     fun migrateAndInitialize(ctx: Context) = runBlocking(Dispatchers.IO) {
-        PaymentMigrationHelper.migrateAndInitialize(ctx, db)
+        val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+            ctx.applicationContext.createDeviceProtectedStorageContext()
+        } else {
+            ctx.applicationContext
+        }
+        val prefs = deviceContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+        // Fast-path check
+        val isAlreadyMigratedMeta = paymentDao.getMetadata(KEY_MIGRATION_MARKER) == "true"
+        val isLegacyPrefsMigrated = prefs.getBoolean(KEY_MIGRATION_MARKER_PREFS, false)
+        if (isAlreadyMigratedMeta || isLegacyPrefsMigrated) {
+            if (!isAlreadyMigratedMeta) {
+                db.withTransaction {
+                    paymentDao.setMetadata(AppMetadata(KEY_MIGRATION_MARKER, "true"))
+                }
+            }
+            return@runBlocking
+        }
+
+        db.withTransaction {
+            if (paymentDao.getMetadata(KEY_MIGRATION_MARKER) == "true") {
+                return@withTransaction
+            }
+
+            // 1. Reconcile coin_events without silencing exceptions
+            val existingEvents = db.coinEventDao().getLatestEvents(limit = 1000)
+            for (ev in existingEvents) {
+                paymentDao.insertReceiptIgnore(
+                    PaymentReceipt(
+                        txId = ev.txId,
+                        secondsCredited = ev.secondsAdded,
+                        amount = 0.0,
+                        acceptanceTimestamp = ev.timestamp
+                    )
+                )
+            }
+
+            // 2. Reconcile processed_tx_ids without adding credit
+            val processedTxIds = prefs.getStringSet("processed_tx_ids", emptySet()) ?: emptySet()
+            for (txId in processedTxIds) {
+                if (paymentDao.getReceiptByTxId(txId) == null) {
+                    paymentDao.insertReceiptIgnore(
+                        PaymentReceipt(
+                            txId = txId,
+                            secondsCredited = 0,
+                            amount = 0.0,
+                            acceptanceTimestamp = System.currentTimeMillis()
+                        )
+                    )
+                }
+            }
+
+            // 3. Import legacy balance ONLY if authoritative Room session state does NOT exist
+            val currentState = paymentDao.getSessionState()
+            if (currentState == null) {
+                val legacyRemaining = prefs.getInt("session_time_remaining", 0)
+                val legacyDeadline = prefs.getLong("session_expiry_deadline_ms", 0L)
+                val legacyLastElapsed = prefs.getLong("last_saved_elapsed_realtime", 0L)
+                val nowMonotonic = SystemClock.elapsedRealtime()
+
+                val isReboot = legacyLastElapsed > 0L && nowMonotonic < legacyLastElapsed
+                val effectiveRemaining: Int
+                val effectiveDeadline: Long
+
+                if (!isReboot) {
+                    if (legacyDeadline > nowMonotonic) {
+                        effectiveDeadline = legacyDeadline
+                        effectiveRemaining = ((legacyDeadline - nowMonotonic) / 1000L).toInt()
+                    } else if (legacyDeadline != 0L) {
+                        // Expired legacy session for the same boot restores zero
+                        effectiveDeadline = 0L
+                        effectiveRemaining = 0
+                    } else if (legacyRemaining > 0) {
+                        effectiveRemaining = legacyRemaining
+                        effectiveDeadline = nowMonotonic + (legacyRemaining * 1000L)
+                    } else {
+                        effectiveRemaining = 0
+                        effectiveDeadline = 0L
+                    }
+                } else {
+                    // After reboot, follow recovery policy using saved remaining time
+                    if (legacyRemaining > 0) {
+                        effectiveRemaining = legacyRemaining
+                        effectiveDeadline = nowMonotonic + (legacyRemaining * 1000L)
+                    } else {
+                        effectiveRemaining = 0
+                        effectiveDeadline = 0L
+                    }
+                }
+
+                paymentDao.updateSessionState(
+                    PaidSessionState(
+                        id = 1,
+                        sessionTimeRemaining = effectiveRemaining,
+                        sessionExpiryDeadlineMs = effectiveDeadline,
+                        lastSavedElapsedRealtime = nowMonotonic,
+                        revision = 1L
+                    )
+                )
+                Log.i(TAG, "Migrated legacy session state: ${effectiveRemaining}s (deadline=$effectiveDeadline)")
+            } else {
+                Log.i(TAG, "Authoritative Room session state already exists (rev=${currentState.revision}). Preserving.")
+            }
+
+            // 4. Mark migration completed atomically inside Room metadata
+            paymentDao.setMetadata(AppMetadata(KEY_MIGRATION_MARKER, "true"))
+        }
+
+        prefs.edit().putBoolean(KEY_MIGRATION_MARKER_PREFS, true).commit()
+        Log.i(TAG, "Migration completed atomically.")
     }
 
     fun getSessionState(): PaidSessionState? {
         return paymentDao.getSessionState()
     }
 }
+

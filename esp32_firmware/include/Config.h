@@ -18,6 +18,7 @@ extern const bool DEFAULT_LED_ACTIVE_LOW;
 extern const int DEFAULT_RELAY_PIN;
 extern const int DEFAULT_PORT;
 extern const int HARDWARE_RESET_PIN;
+extern const int UDP_DISCOVERY_PORT;
 extern const int DEFAULT_MINUTES_PER_COIN;
 
 #define MAX_SUPPORTED_SLOTS 6
@@ -70,13 +71,13 @@ struct LicenseSlot {
 struct DeviceTelemetry {
     String deviceId;
     String lastKnownIp;
-    String deviceName;
     int timeRemainingSeconds;
     int state;
     int batteryLevel;
     bool isCharging;
     unsigned long lastSeenMs;
     unsigned long long lastNonceTs;
+    bool isApp; // True ONLY if request comes from the PisoPhone app (filters out external script coinslot access requests)
 };
 
 struct AuthRequest {
@@ -117,6 +118,7 @@ extern const unsigned long MAX_SESSION_DURATION;
 extern String p1Ip;
 extern String p2Ip;
 extern int matchMinutes;
+extern bool matchActive;
 extern String matchStatusMsg;
 extern String quickTimeStatusMsg;
 

@@ -1,6 +1,7 @@
 #include "WebServerConfig.h"
 #include "WebServerModule.h"
 #include "WebServerAuth.h"
+#include "PaymentQueueManager.h"
 #include "Config.h"
 #include "Security.h"
 #include "HardwareManager.h"
@@ -79,6 +80,10 @@ void handlePortalRoot() {
 void handleReboot() {
     if (!checkAdminAuth()) return;
     Serial.println("\n[🔄 HTTP API] Reboot request received from Web Portal.");
+    if (!canPerformRebootOrOta()) {
+        webServer.send(409, "text/plain", "BUSY: Unpersisted transactions in RAM");
+        return;
+    }
     if (revenueDirty || totalCoinsLifetime != lastSavedTotalCoins || totalEarningsLifetime != lastSavedTotalEarnings) {
         prefs.begin(NVS_NAMESPACE, false);
         prefs.putULong(NVS_KEY_TOTAL_COINS, totalCoinsLifetime);
@@ -96,6 +101,10 @@ void handleReboot() {
 void handleFactoryReset() {
     if (!checkAdminAuth()) return;
     Serial.println("\n[⚠️ HTTP API] Factory reset request received from Web Portal.");
+    if (!canPerformRebootOrOta()) {
+        webServer.send(409, "text/plain", "BUSY: Unpersisted transactions in RAM");
+        return;
+    }
     factoryResetDefaults();
     webServer.send(200, "text/plain", "OK");
     delay(1000);

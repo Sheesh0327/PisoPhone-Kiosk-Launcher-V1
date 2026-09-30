@@ -19,10 +19,9 @@ window.closeUnassignedPairModal = function() {
 window.openInstallerForActiveSlot = function() {
     const s = activeSlotNum || 1;
     const targetUrl = 'https://pisophone.pages.dev/?mac=' + encodeURIComponent(ESP32_MAC) + 
-                      '&ip=' + encodeURIComponent(window.location.hostname) +
                       '&slot=' + encodeURIComponent(s) + 
-                      '&name=' + encodeURIComponent('PisoPhone ' + s) +
-                      '#secret=' + encodeURIComponent(ESP32_SECRET);
+                      '&secret=' + encodeURIComponent(ESP32_SECRET) +
+                      '&name=' + encodeURIComponent('PisoPhone ' + s);
     window.open(targetUrl, '_self');
     closeUnassignedPairModal();
 };
@@ -106,8 +105,7 @@ window.copyMacToClipboard = function(mac) {
 
 window.openInstaller = function() {
     const targetUrl = 'https://pisophone.pages.dev/?mac=' + encodeURIComponent(ESP32_MAC) + 
-                      '&ip=' + encodeURIComponent(window.location.hostname) +
-                      '#secret=' + encodeURIComponent(ESP32_SECRET);
+                      '&secret=' + encodeURIComponent(ESP32_SECRET);
     window.open(targetUrl, '_self');
 };
 
@@ -299,7 +297,7 @@ window.closeSlotActivationModal = function() {
 
 window.submitModalFlash = function() {
     closeSlotActivationModal();
-    window.open('https://pisophone.pages.dev/?mac=' + encodeURIComponent(ESP32_MAC) + '&ip=' + encodeURIComponent(window.location.hostname) + '&slot=' + encodeURIComponent(targetModalSlot) + '#secret=' + encodeURIComponent(ESP32_SECRET), '_self');
+    window.open('https://pisophone.pages.dev/?mac=' + ESP32_MAC + '&slot=' + targetModalSlot, '_self');
 };
 
 window.submitModalUnpair = function() {
@@ -316,7 +314,7 @@ window.closeProvisionModal = function() {
     document.getElementById('provision_modal').style.display = 'none';
 };
 window.launchHttpsFlasher = function() {
-    window.open('https://pisophone.pages.dev/?mac=' + encodeURIComponent(ESP32_MAC) + '&ip=' + encodeURIComponent(window.location.hostname) + '&slot=' + encodeURIComponent(activeSlotNum) + '#secret=' + encodeURIComponent(ESP32_SECRET), '_self');
+    window.open('https://pisophone.pages.dev/?mac=' + ESP32_MAC + '&slot=' + activeSlotNum, '_self');
     closeProvisionModal();
 };
 

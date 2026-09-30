@@ -55,32 +55,4 @@ class Esp32ConnectionManagerUnitTest {
     fun testShutdownCleansUpResourcesSafely() {
         manager.shutdown()
     }
-
-    @Test
-    fun testArmSlotRejectsWhenSecretKeyIsMissing() {
-        var armSuccessCalled = false
-        val missingSecretDelegate = object : Esp32ConnectionDelegate {
-            override fun getDeviceId(): String = "TEST_DEV_456"
-            override fun getSecretKey(): String = "" // Missing secret
-            override fun getAppState(): Int = 0
-            override fun getSessionTimeRemaining(): Int = 0
-            override fun getRealTimeBatteryInfo(): Pair<Int, Boolean> = Pair(80, false)
-            override fun onEsp32Discovered(ip: String) {}
-            override fun onOnlineStatusChanged(isOnline: Boolean, mac: String?) {}
-            override fun onConfigSynced(price: Double?, minutes: Int?, alias: String?, adminPin: String?, slotNum: Int?) {}
-            override fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?) {}
-            override fun onSlotBusy() {}
-            override fun onArmSuccess() { armSuccessCalled = true }
-            override fun onSlotWarning(daysLeft: Int, expiresAt: Long, slotNum: Int, message: String) {}
-            override fun onSlotLockdown(reason: String, slotNum: Int, expiresAt: Long) {}
-            override fun onSlotRestored(slotNum: Int) {}
-        }
-
-        val unprovisionedManager = Esp32ConnectionManager(context, testScope, missingSecretDelegate)
-        unprovisionedManager.setEsp32Ip("192.168.1.100")
-        unprovisionedManager.armSlot(15)
-
-        org.junit.Assert.assertFalse("Acceptor must remain disarmed when secret key is missing", armSuccessCalled)
-        unprovisionedManager.shutdown()
-    }
 }

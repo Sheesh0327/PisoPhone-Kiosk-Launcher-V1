@@ -81,8 +81,7 @@ void setup() {
     });
     pinMode(HARDWARE_RESET_PIN, INPUT_PULLUP);
     setLedHardware(false);
-    // Initialize relay hardware (INPUT by default - Armed-Only mode)
-    pinMode(relayPin, INPUT);
+    // Initialize relay hardware (OFF by default - Armed-Only mode)
     setRelayHardware(false);
     Serial.printf("[+] Hardware Pins bound: Universal Multi-Coin Pin = GPIO %d, LED Pin = GPIO %d, Relay Pin = GPIO %d (ActiveLow=%s), Reset Pin = GPIO %d\n",
         universalCoinPin, ledPin, relayPin, relayActiveLow ? "true" : "false", HARDWARE_RESET_PIN);
@@ -151,8 +150,8 @@ void loop() {
     // 0. Process Hardware Fallback Reset Pin (GPIO 2 -> GND for 5 seconds)
     processHardwareResetPin();
 
-    // 1. Process Hardware Coin Detectors (Universal Pulse Sensor)
-    processUniversalCoinDetector();
+    // 1. Process Unified Coin Slot Manager (Arming, Pulse Accumulation & Draining)
+    processCoinSlotSession();
 
     // 2. Process Coin Slot Power/Enable Relay (Synchronized with Arming / Insert Coin)
     processRelayState();
@@ -164,10 +163,13 @@ void loop() {
     // 4. Handle Port 81 WebSocket Client & Frames
     processWebSocketServer();
     
-    // 5. Handle USB Serial CLI commands
+    // 5. Handle Port 8888 UDP Broadcast Discovery
+    processUdpDiscovery();
+    
+    // 6. Handle USB Serial CLI commands
     processSerialCli();
     
-    // 6. Robust Non-Blocking Wi-Fi Reconnection Watchdog & LED Status Sync
+    // 7. Robust Non-Blocking Wi-Fi Reconnection Watchdog & LED Status Sync
     if (WiFi.status() == WL_CONNECTED) {
         currentLedState = LED_STATE_CONNECTED;
     } else {
@@ -181,6 +183,8 @@ void loop() {
                 Serial.printf("\n[📶 WATCHDOG] Wi-Fi lost. Attempting reconnection to \"%s\"...\n", wifiSsid.c_str());
                 WiFi.disconnect();
                 WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
+                udpServer.stop();
+                udpServer.begin(UDP_DISCOVERY_PORT);
             }
         }
     }

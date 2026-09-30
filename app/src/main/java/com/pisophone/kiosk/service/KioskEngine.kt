@@ -38,7 +38,7 @@ class KioskEngine(
 ) {
     companion object {
         private const val TAG = "KioskEngine"
-        private const val ARMING_TIMEOUT_SECONDS = 15
+        private const val ARMING_TIMEOUT_SECONDS = 20
         private const val SERVER_PORT = 8080
     }
 
@@ -136,7 +136,8 @@ class KioskEngine(
         onCreditPayment = { txId, seconds, amount ->
             creditPayment(txId, seconds, amount)
         },
-        onSlotBusyTriggered = { triggerSlotBusy() }
+        onSlotBusyTriggered = { triggerSlotBusy() },
+        getAudioManager = { audioManager }
     )
 
     private val esp32Manager = Esp32ConnectionManager(
@@ -278,10 +279,6 @@ class KioskEngine(
         esp32Manager.triggerCandidateDiscovery(stateManager.deviceIp.value)
     }
 
-    fun setEsp32Ip(ip: String?) {
-        esp32Manager.setEsp32Ip(ip)
-    }
-
     fun probeEsp32Connection(ip: String): Boolean {
         if (Looper.myLooper() == Looper.getMainLooper()) {
             scope.launch(Dispatchers.IO) {
@@ -306,10 +303,6 @@ class KioskEngine(
     }
 
     fun armSlot() {
-        supervisor.ensureRunning()
-        if (!stateManager.esp32Ip.isNullOrBlank()) {
-            esp32Manager.setEsp32Ip(stateManager.esp32Ip)
-        }
         esp32Manager.armSlot(ARMING_TIMEOUT_SECONDS)
     }
 

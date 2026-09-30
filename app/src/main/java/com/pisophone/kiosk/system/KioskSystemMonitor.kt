@@ -38,14 +38,43 @@ class KioskSystemMonitor(
         private const val TAG = "KioskSystemMonitor"
     }
 
-    private val _batteryStatus = MutableStateFlow(BatteryStatus())
-    val batteryStatus: StateFlow<BatteryStatus> = _batteryStatus.asStateFlow()
+    private val _batteryStatus: MutableStateFlow<BatteryStatus> by lazy {
+        MutableStateFlow(readInitialBatteryStatus())
+    }
+    val batteryStatus: StateFlow<BatteryStatus> get() = _batteryStatus
 
     private var previousAlertState = BatteryAlertState.NONE
     private var lastBatteryVoiceReminderMs = 0L
 
     private var screenOffReceiver: BroadcastReceiver? = null
     private var batteryReceiver: BroadcastReceiver? = null
+
+    private fun readInitialBatteryStatus(): BatteryStatus {
+        try {
+            val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+            val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+            val status = intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+            val plugged = intent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1) ?: 0
+
+            val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+            val bmCapacity = try {
+                bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
+            } catch (_: Exception) { -1 }
+
+            val pct = when {
+                level >= 0 && scale > 0 -> (level * 100 / scale.toFloat()).toInt().coerceIn(0, 100)
+                bmCapacity in 0..100 -> bmCapacity
+                else -> -1
+            }
+            val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                             status == BatteryManager.BATTERY_STATUS_FULL ||
+                             plugged > 0
+            return BatteryStatus(level = pct, isCharging = isCharging)
+        } catch (_: Exception) {
+            return BatteryStatus(level = -1, isCharging = false)
+        }
+    }
 
     // ========================================================================
     // SCREEN OFF / SLEEP RECEIVER

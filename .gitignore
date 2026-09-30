@@ -24,8 +24,3 @@ debug.keystore
 app/build/
 *.apk
 !website/update/
-
-# PlatformIO Generated Files
-.pio/
-.pio
-*.piopm
