@@ -37,14 +37,18 @@ void handleHeartbeat() {
                     (webServer.hasArg("client") && webServer.arg("client") == "pisophone_app") ||
                     (webServer.hasArg("source") && webServer.arg("source") == "app");
 
-    bool fromApp = isAppReq || (isAuth && webServer.hasArg("battery") && webServer.hasArg("charging"));
+    bool fromApp = isAppReq || (isAuth && webServer.hasArg("battery") && webServer.hasArg("charging")) || (deviceId.length() > 0 && !deviceId.startsWith("DEV_"));
+    String devName = webServer.hasArg("name") ? webServer.arg("name") : "";
+    devName.trim();
 
     if (deviceId.length() > 0 || reqIp.length() > 0) {
-        updateDeviceTelemetry(deviceId, reqIp, timeRem, state, battery, charging, ts, fromApp);
+        updateDeviceTelemetry(deviceId, reqIp, timeRem, state, battery, charging, ts, fromApp, devName);
     }
 
     if (slotIdx < 0 || !isAuth) {
-        String devName = getDeviceNameByIpOrId(reqIp, deviceId);
+        if (devName.length() == 0 || devName == deviceId) {
+            devName = getDeviceNameByIpOrId(reqIp, deviceId);
+        }
         if (devName.length() == 0 || devName == deviceId) devName = "PisoPhone Terminal";
 
         String json = "{\"status\":\"unassigned\",\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\"";

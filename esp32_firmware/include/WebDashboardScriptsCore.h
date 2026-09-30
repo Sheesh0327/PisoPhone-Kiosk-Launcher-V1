@@ -195,11 +195,60 @@ window.fetchDeviceStatus = function() {
                 }
             }
 
+            const reqBadge = document.getElementById('pending_requests_badge');
+            if (reqBadge) {
+                if (unassigned.length > 0) {
+                    reqBadge.style.display = 'inline-block';
+                    reqBadge.textContent = '🟡 ' + unassigned.length + ' Pair Request' + (unassigned.length > 1 ? 's' : '');
+                } else {
+                    reqBadge.style.display = 'none';
+                }
+            }
+
             if (devices.length === 0 && unassigned.length === 0) {
                 container.innerHTML = '<div style="padding: 24px; text-align: center; color: var(--text-muted); grid-column: 1/-1;">No PisoPhone devices registered.</div>';
                 return;
             }
             let html = '';
+
+            if (unassigned.length > 0) {
+                html += '<div style="grid-column: 1/-1; margin-bottom: 14px;">' +
+                        '<div style="font-size: 13px; font-weight: 800; color: #f59e0b; display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: var(--radius-md); box-shadow: 0 2px 8px rgba(245,158,11,0.08);">' +
+                            '<div style="display: flex; align-items: center; gap: 8px;">' +
+                                '<span>🟡 PENDING CONNECTION REQUESTS</span>' +
+                                '<span style="font-size: 10px; background: #f59e0b; color: #000000; font-weight: 800; padding: 2px 8px; border-radius: 10px;">' + unassigned.length + ' Terminal(s)</span>' +
+                            '</div>' +
+                            '<span style="font-size: 11px; color: var(--text-muted); font-weight: 600;">Unassigned terminals requesting connection</span>' +
+                        '</div>' +
+                        '</div>';
+
+                unassigned.forEach((uDev) => {
+                    const uName = uDev.name || 'PisoPhone Terminal';
+                    const uBat = (typeof uDev.battery === 'number' && uDev.battery >= 0) ? uDev.battery : 100;
+                    const uChg = !!uDev.charging;
+                    const uBatText = (uChg ? '⚡ ' : '🔋 ') + uBat + '%';
+
+                    html += '<div class="device-row" style="border-left: 4px solid #f59e0b; background: rgba(245, 158, 11, 0.04); margin-bottom: 10px;">' +
+                                '<div class="device-row-identity">' +
+                                    '<span class="device-slot-badge" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4);">🟡 UNASSIGNED</span>' +
+                                    '<div class="device-row-info">' +
+                                        '<span class="device-row-name">' + uName + '</span>' +
+                                        '<span class="device-row-sub">IP: <b>' + uDev.ip + '</b> • HW: <b>' + uDev.id + '</b></span>' +
+                                    '</div>' +
+                                '</div>' +
+                                '<div class="device-row-metrics">' +
+                                    '<div class="device-row-battery status-good">' +
+                                        '<span style="font-size: 12px; font-weight: 700;">' + uBatText + '</span>' +
+                                    '</div>' +
+                                '</div>' +
+                                '<div class="device-row-actions">' +
+                                    '<button type="button" class="btn btn-primary btn-sm" onclick="showSelectSlotModalForDevice(\'' + uDev.id + '\', \'' + uDev.ip + '\', \'' + uName.replace(/'/g, "\\'") + '\')" style="padding: 8px 14px; font-weight: 700; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); border: none;">' +
+                                        '⚡ Confirm Connection' +
+                                    '</button>' +
+                                '</div>' +
+                            '</div>';
+                });
+            }
             devices.forEach((dev) => {
                 const name = (dev.name && dev.name !== dev.id && !dev.name.startsWith('Terminal') && (!dev.id || !dev.name.includes(dev.id))) ? dev.name : ('PisoPhone ' + dev.slotNum);
                 const hasBat = (typeof dev.battery === 'number' && dev.battery >= 0);
@@ -305,45 +354,6 @@ window.fetchDeviceStatus = function() {
                             '</div>';
                 }
             });
-
-            if (unassigned.length > 0) {
-                html += '<div style="grid-column: 1/-1; margin-top: 18px; margin-bottom: 6px;">' +
-                        '<div style="font-size: 12px; font-weight: 800; color: #f59e0b; display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: var(--radius-md);">' +
-                            '<div style="display: flex; align-items: center; gap: 8px;">' +
-                                '<span>🟡 PENDING CONNECTION REQUESTS</span>' +
-                                '<span style="font-size: 10px; background: #f59e0b; color: #000000; font-weight: 800; padding: 2px 8px; border-radius: 10px;">' + unassigned.length + ' Terminal(s)</span>' +
-                            '</div>' +
-                            '<span style="font-size: 11px; color: var(--text-muted); font-weight: 600;">Unassigned devices requesting pairing</span>' +
-                        '</div>' +
-                        '</div>';
-
-                unassigned.forEach((uDev) => {
-                    const uName = uDev.name || 'PisoPhone Terminal';
-                    const uBat = (typeof uDev.battery === 'number' && uDev.battery >= 0) ? uDev.battery : 100;
-                    const uChg = !!uDev.charging;
-                    const uBatText = (uChg ? '⚡ ' : '🔋 ') + uBat + '%';
-
-                    html += '<div class="device-row" style="border-left: 4px solid #f59e0b; background: rgba(245, 158, 11, 0.04);">' +
-                                '<div class="device-row-identity">' +
-                                    '<span class="device-slot-badge" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4);">🟡 UNASSIGNED</span>' +
-                                    '<div class="device-row-info">' +
-                                        '<span class="device-row-name">' + uName + '</span>' +
-                                        '<span class="device-row-sub">IP: <b>' + uDev.ip + '</b> • HW: <b>' + uDev.id + '</b></span>' +
-                                    '</div>' +
-                                '</div>' +
-                                '<div class="device-row-metrics">' +
-                                    '<div class="device-row-battery status-good">' +
-                                        '<span style="font-size: 12px; font-weight: 700;">' + uBatText + '</span>' +
-                                    '</div>' +
-                                '</div>' +
-                                '<div class="device-row-actions">' +
-                                    '<button type="button" class="btn btn-primary btn-sm" onclick="showSelectSlotModalForDevice(\'' + uDev.id + '\', \'' + uDev.ip + '\', \'' + uName.replace(/'/g, "\\'") + '\')" style="padding: 8px 14px; font-weight: 700; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); border: none;">' +
-                                        '⚡ Confirm Connection' +
-                                    '</button>' +
-                                '</div>' +
-                            '</div>';
-                });
-            }
 
             if (!html) {
                 container.innerHTML = '<div style="padding: 24px; text-align: center; color: var(--text-muted); grid-column: 1/-1;">No active terminals connected. Inactive slots can be monitored under Hardware Slot Seats above.</div>';

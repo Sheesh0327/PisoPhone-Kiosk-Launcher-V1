@@ -162,22 +162,13 @@ void handleSave() {
     if (webServer.hasArg("ips")) {
         String rawIps = webServer.arg("ips");
         rawIps.trim();
+        androidIps = rawIps;
         String cleanIps = "";
-        int startIdx = 0;
-        while (startIdx < rawIps.length()) {
-            int comma = rawIps.indexOf(',', startIdx);
-            if (comma == -1) comma = rawIps.length();
-            String entry = rawIps.substring(startIdx, comma);
-            entry.trim();
-            if (entry.length() > 0) {
-                DeviceConfig cfg;
-                if (parseDeviceEntry(entry, cfg)) {
-                    if (cleanIps.length() > 0) cleanIps += ",";
-                    cleanIps += cfg.id + "|" + cfg.ip + "|" + cfg.name;
-                }
-            }
-            startIdx = comma + 1;
-        }
+        forEachConfiguredDevice([&](const DeviceConfig& cfg) {
+            if (cleanIps.length() > 0) cleanIps += ",";
+            cleanIps += cfg.id + "|" + cfg.ip + "|" + cfg.name;
+            return true;
+        });
         androidIps = cleanIps;
         prefs.putString("ips", androidIps);
 
@@ -188,20 +179,13 @@ void handleSave() {
             int newCount = 0;
             for (int i = 0; i < trackedDeviceCount; i++) {
                 bool keep = false;
-                int sIdx = 0;
-                while (sIdx < androidIps.length()) {
-                    int c = androidIps.indexOf(',', sIdx);
-                    if (c == -1) c = androidIps.length();
-                    String e = androidIps.substring(sIdx, c);
-                    DeviceConfig cCfg;
-                    if (parseDeviceEntry(e, cCfg)) {
-                        if ((cCfg.id.length() > 0 && cCfg.id == trackedDevices[i].deviceId) || cCfg.ip == trackedDevices[i].lastKnownIp) {
-                            keep = true;
-                            break;
-                        }
+                forEachConfiguredDevice([&](const DeviceConfig& cCfg) {
+                    if ((cCfg.id.length() > 0 && cCfg.id == trackedDevices[i].deviceId) || cCfg.ip == trackedDevices[i].lastKnownIp) {
+                        keep = true;
+                        return false;
                     }
-                    sIdx = c + 1;
-                }
+                    return true;
+                });
                 if (keep) {
                     if (newCount != i) {
                         trackedDevices[newCount] = trackedDevices[i];
@@ -239,27 +223,17 @@ void handleSave() {
     Serial.println("\n[+] Config updated and saved. Pushing live config to registered Android terminals...");
 
     // True Push Configuration to all registered Android terminals
-    int startIdx = 0;
-    while (startIdx < androidIps.length()) {
-        int comma = androidIps.indexOf(',', startIdx);
-        if (comma == -1) comma = androidIps.length();
-        String entry = androidIps.substring(startIdx, comma);
-        entry.trim();
-        if (entry.length() > 0) {
-            DeviceConfig cfg;
-            if (parseDeviceEntry(entry, cfg)) {
-                int slotIdx = findSlotIndexForDevice(cfg.id, cfg.ip);
-                if (slotIdx >= 0 && cfg.ip.length() > 0 && cfg.ip != "127.0.0.1") {
-                    String configParams = "admin_pin=" + webPassword + "&minutes=" + String(minutesPerCoin) + "&price=1.0";
-                    if (cfg.name.length() > 0) {
-                        configParams += "&device_name=" + urlEncode(cfg.name);
-                    }
-                    sendAuthenticated(cfg.ip, targetPort, "/config", "/challenge", configParams, 1000);
-                }
+    forEachConfiguredDevice([&](const DeviceConfig& cfg) {
+        int slotIdx = findSlotIndexForDevice(cfg.id, cfg.ip);
+        if (slotIdx >= 0 && cfg.ip.length() > 0 && cfg.ip != "127.0.0.1") {
+            String configParams = "admin_pin=" + webPassword + "&minutes=" + String(minutesPerCoin) + "&price=1.0";
+            if (cfg.name.length() > 0) {
+                configParams += "&device_name=" + urlEncode(cfg.name);
             }
+            sendAuthenticated(cfg.ip, targetPort, "/config", "/challenge", configParams, 1000);
         }
-        startIdx = comma + 1;
-    }
+        return true;
+    });
 
     webServer.send(200, "text/plain", "OK");
 }

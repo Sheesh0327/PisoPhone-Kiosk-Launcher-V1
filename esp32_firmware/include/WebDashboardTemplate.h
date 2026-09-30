@@ -58,10 +58,13 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                 <!-- Live Devices List (Horizontal) -->
                 <div class="card grid-full">
                     <div class="card-header">
-                        <div style="display: flex; align-items: center; gap: 10px;">
+                        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                             <h3 class="card-title">📡 Live Device Status</h3>
                             <span id="available_slots_badge" class="badge" style="background: rgba(16, 185, 129, 0.15); color: var(--primary); font-weight: 700; padding: 3px 10px; border-radius: 12px; font-size: 11px;">
                                 {MAX_SLOTS} Seats
+                            </span>
+                            <span id="pending_requests_badge" class="badge" style="display: none; background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.5); font-weight: 800; padding: 3px 10px; border-radius: 12px; font-size: 11px; cursor: pointer;">
+                                🟡 1 Pair Request
                             </span>
                         </div>
                         <div style="display: flex; align-items: center; gap: 8px;">

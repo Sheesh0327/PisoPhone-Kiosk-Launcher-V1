@@ -30,6 +30,8 @@ const char PORTAL_MODALS_HTML[] PROGMEM = R"HTML(
         </div>
 
         <!-- Action Buttons -->
+        <div id="modal_pair_request_container" style="display: none; margin-bottom: 12px;"></div>
+
         <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px;">
             <button type="button" onclick="submitModalFlash()" style="background: var(--input-bg); border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 12px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.15s ease; text-align: left;" onmouseover="this.style.background='rgba(59, 130, 246, 0.08)';" onmouseout="this.style.background='var(--input-bg)';">
                 <div style="display: flex; align-items: center; gap: 12px;">

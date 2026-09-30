@@ -97,6 +97,9 @@ class Esp32ConnectionManager(
 
     fun setEsp32Ip(ip: String?) {
         esp32Ip = ip
+        if (!ip.isNullOrBlank()) {
+            sendPairingRequest(ip)
+        }
     }
 
     fun markHeartbeatReceived() {
@@ -152,7 +155,8 @@ class Esp32ConnectionManager(
             try {
                 val (ipHost, esp32Port) = discoveryScanner.getEsp32HostAndPort(host)
                 val deviceId = KioskSecurity.getHardwareId(context)
-                val myIp = discoveryScanner.getLocalIpAddress()
+                val rawIp = discoveryScanner.getLocalIpAddress()
+                val myIp = if (rawIp == "127.0.0.1" || rawIp.isNullOrBlank()) "" else rawIp
                 val (curBat, isChg) = delegate.getRealTimeBatteryInfo()
                 val myName = KioskSecurity.getDeviceAlias(context).takeIf { it.isNotBlank() } ?: "PisoPhone Terminal"
                 val encodedName = java.net.URLEncoder.encode(myName, "UTF-8")
@@ -203,9 +207,12 @@ class Esp32ConnectionManager(
                         val ts = System.currentTimeMillis().toString()
                         val sig = KioskSecurity.generateTimestampSignature(deviceId, ts, delegate.getSecretKey())
                         val (curBat, isChg) = delegate.getRealTimeBatteryInfo()
+                        val myName = KioskSecurity.getDeviceAlias(context).takeIf { it.isNotBlank() } ?: "PisoPhone Terminal"
+                        val encodedName = java.net.URLEncoder.encode(myName, "UTF-8")
+                        val cleanIp = if (currentIp == "127.0.0.1" || currentIp.isBlank()) "" else currentIp
 
                         val req = Request.Builder()
-                            .url("http://$host:${esp32Port}/heartbeat?device_id=$deviceId&ip=${if (currentIp == "127.0.0.1") "" else currentIp}&time=${delegate.getSessionTimeRemaining()}&state=${delegate.getAppState()}&battery=$curBat&charging=${if (isChg) 1 else 0}&ts=$ts&sig=$sig&source=app&app=1&client=pisophone_app")
+                            .url("http://$host:${esp32Port}/heartbeat?device_id=$deviceId&ip=$cleanIp&name=$encodedName&time=${delegate.getSessionTimeRemaining()}&state=${delegate.getAppState()}&battery=$curBat&charging=${if (isChg) 1 else 0}&ts=$ts&sig=$sig&source=app&app=1&client=pisophone_app")
                             .build()
                         try {
                             httpClient.newCall(req).execute().use { response ->

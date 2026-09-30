@@ -114,9 +114,11 @@ String renderLicenseSlotsHtml() {
     int unassignedCount = 0;
     unsigned long currentMillis = millis();
     for (int i = 0; i < trackedDeviceCount; i++) {
-        if (trackedDevices[i].deviceId.length() == 0) continue;
+        if (trackedDevices[i].deviceId.length() == 0 && trackedDevices[i].lastKnownIp.length() == 0) continue;
         if (!trackedDevices[i].isApp) continue; // Only show requests that come from the app
-        if (findSlotIndexForDevice(trackedDevices[i].deviceId, trackedDevices[i].lastKnownIp) >= 0) continue;
+        String dId = trackedDevices[i].deviceId;
+        if (dId.length() == 0) dId = trackedDevices[i].lastKnownIp;
+        if (findSlotIndexForDevice(dId, trackedDevices[i].lastKnownIp) >= 0) continue;
         if (currentMillis - trackedDevices[i].lastSeenMs < 300000) {
             unassignedCount++;
         }
@@ -188,6 +190,14 @@ String renderLicenseSlotsHtml() {
 
     // Dropdown Content
     html += "<div id=\"installed-devices-dropdown-content\" style=\"display: none; margin-top: 14px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px;\">";
+
+    if (unassignedCount > 0) {
+        html += "<div style=\"grid-column: 1/-1; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: var(--radius-md); padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;\">";
+        html += "<div><div style=\"font-size: 13px; font-weight: 800; color: #f59e0b;\">🟡 " + String(unassignedCount) + " Terminal Connection Request(s) Awaiting Assignment</div>";
+        html += "<div style=\"font-size: 11px; color: var(--text-muted); margin-top: 2px;\">Click any vacant slot card below to pair connecting phone.</div></div>";
+        html += "<button type=\"button\" class=\"btn btn-primary btn-sm\" onclick=\"occupySlot(1)\" style=\"background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); border: none; font-weight: 700; padding: 6px 14px;\">⚡ Pair Terminal</button>";
+        html += "</div>";
+    }
 
     for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
         int sNum = i + 1;

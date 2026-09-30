@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <Preferences.h>
+#include <functional>
 
 // ============================================================================
 // HARDWARE CONSTANTS & PIN DEFAULTS
@@ -71,6 +72,7 @@ struct LicenseSlot {
 struct DeviceTelemetry {
     String deviceId;
     String lastKnownIp;
+    String deviceName;
     int timeRemainingSeconds;
     int state;
     int batteryLevel;
@@ -156,6 +158,7 @@ void updateMasterTime(uint64_t ts);
 uint64_t getCurrentMasterTimeMs();
 
 bool parseDeviceEntry(const String& entry, DeviceConfig& out);
+void forEachConfiguredDevice(std::function<bool(const DeviceConfig&)> callback);
 bool areDefaultCredentialsActive();
 
 #endif // CONFIG_H

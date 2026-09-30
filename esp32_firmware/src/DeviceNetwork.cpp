@@ -10,31 +10,21 @@
 
 void sendAddTime(int minutes, String targetIp, String txId) {
     if (androidIps.length() == 0) return;
-    int startIdx = 0;
-    while (startIdx < androidIps.length()) {
-        int comma = androidIps.indexOf(',', startIdx);
-        if (comma == -1) comma = androidIps.length();
-        String entry = androidIps.substring(startIdx, comma);
-        entry.trim();
-        if (entry.length() > 0) {
-            DeviceConfig cfg;
-            if (parseDeviceEntry(entry, cfg)) {
-                if (targetIp == "ALL" || targetIp == cfg.ip) {
-                    int slotIdx = findSlotIndexForDevice(cfg.id, cfg.ip);
-                    bool isActive = isSlotActive(slotIdx);
-                    if (!isActive) {
-                        Serial.printf("[-] sendAddTime skipped for %s (Slot #%d): Device Expired / Uncredited\n",
-                            cfg.ip.c_str(), (slotIdx >= 0) ? licenseSlots[slotIdx].slotNum : 0);
-                    } else {
-                        String params = "minutes=" + String(minutes);
-                        if (txId.length() > 0) params += "&tx_id=" + txId;
-                        sendAuthenticated(cfg.ip, targetPort, "/add_time", "/challenge", params, 1000);
-                    }
-                }
+    forEachConfiguredDevice([&](const DeviceConfig& cfg) {
+        if (targetIp == "ALL" || targetIp == cfg.ip) {
+            int slotIdx = findSlotIndexForDevice(cfg.id, cfg.ip);
+            bool isActive = isSlotActive(slotIdx);
+            if (!isActive) {
+                Serial.printf("[-] sendAddTime skipped for %s (Slot #%d): Device Expired / Uncredited\n",
+                    cfg.ip.c_str(), (slotIdx >= 0) ? licenseSlots[slotIdx].slotNum : 0);
+            } else {
+                String params = "minutes=" + String(minutes);
+                if (txId.length() > 0) params += "&tx_id=" + txId;
+                sendAuthenticated(cfg.ip, targetPort, "/add_time", "/challenge", params, 1000);
             }
         }
-        startIdx = comma + 1;
-    }
+        return true;
+    });
 }
 
 void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId) {
@@ -49,12 +39,6 @@ void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId) {
     String targetIp = "";
     if (targetDev.length() > 0) {
         targetIp = getIpFromDeviceId(targetDev);
-        if (targetIp.length() == 0 || targetIp == "127.0.0.1") {
-            int slotIdx = findSlotIndexForDevice(targetDev, "");
-            if (slotIdx >= 0 && isSlotActive(slotIdx)) {
-                targetIp = licenseSlots[slotIdx].ip;
-            }
-        }
     }
 
     int rate = (minutesPerCoin > 0) ? minutesPerCoin : 1;
@@ -120,14 +104,7 @@ bool retryPhonePayment(const String& targetDeviceId, int pulses, int creditSecon
                        const String& txId) {
     if (targetDeviceId.length() == 0) return false;
 
-    // Resolve current IP directly from active telemetry/device tracking, or fall back to slot mapping
     String targetIp = getIpFromDeviceId(targetDeviceId);
-    if (targetIp.length() == 0 || targetIp == "127.0.0.1") {
-        int slotIndex = findSlotIndexForDevice(targetDeviceId, "");
-        if (slotIndex >= 0 && isSlotActive(slotIndex)) {
-            targetIp = licenseSlots[slotIndex].ip;
-        }
-    }
     if (targetIp.length() == 0 || targetIp == "127.0.0.1") return false;
 
     int safeSeconds = creditSeconds > 0

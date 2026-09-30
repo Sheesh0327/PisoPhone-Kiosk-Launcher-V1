@@ -158,6 +158,24 @@ bool parseDeviceEntry(const String& rawEntry, DeviceConfig& out) {
     return true;
 }
 
+void forEachConfiguredDevice(std::function<bool(const DeviceConfig&)> callback) {
+    if (!callback) return;
+    int startIdx = 0;
+    while (startIdx < androidIps.length()) {
+        int comma = androidIps.indexOf(',', startIdx);
+        if (comma == -1) comma = androidIps.length();
+        String entry = androidIps.substring(startIdx, comma);
+        entry.trim();
+        if (entry.length() > 0) {
+            DeviceConfig cfg;
+            if (parseDeviceEntry(entry, cfg)) {
+                if (!callback(cfg)) break;
+            }
+        }
+        startIdx = comma + 1;
+    }
+}
+
 const char* const NVS_NAMESPACE       = "kiosk_cfg";
 const char* const NVS_KEY_MAX_SLOTS   = "max_slots";
 const char* const NVS_KEY_LICENSED    = "licensed";
@@ -333,21 +351,11 @@ void loadAllConfig() {
     // Sanitize and purge any corrupted legacy entries
     String bootCleanIps = "";
     bootCleanIps.reserve(androidIps.length());
-    int bootIdx = 0;
-    while (bootIdx < androidIps.length()) {
-        int comma = androidIps.indexOf(',', bootIdx);
-        if (comma == -1) comma = androidIps.length();
-        String entry = androidIps.substring(bootIdx, comma);
-        entry.trim();
-        if (entry.length() > 0) {
-            DeviceConfig cfg;
-            if (parseDeviceEntry(entry, cfg)) {
-                if (bootCleanIps.length() > 0) bootCleanIps += ",";
-                bootCleanIps += cfg.id + "|" + cfg.ip + "|" + cfg.name;
-            }
-        }
-        bootIdx = comma + 1;
-    }
+    forEachConfiguredDevice([&](const DeviceConfig& cfg) {
+        if (bootCleanIps.length() > 0) bootCleanIps += ",";
+        bootCleanIps += cfg.id + "|" + cfg.ip + "|" + cfg.name;
+        return true;
+    });
     androidIps = bootCleanIps;
 
     Serial.printf("[💾 CONFIG] Loaded NVS Config: SSID='%s', Port=%d, AdminPW='%s', RelayPin=%d, TotalCoins=%u, TotalEarnings=₱%.2f\n",
