@@ -20,27 +20,9 @@ void handleAddTime() {
     }
     String targetIp = webServer.hasArg("target_ip") ? webServer.arg("target_ip") : "ALL";
 
-    // Enforce Expiration Check (RULE 6: Single verification path)
+    // Enforce Expiration Check
     if (targetIp != "ALL") {
-        DeviceConfig targetCfg;
-        targetCfg.ip = targetIp;
-        int startIdx = 0;
-        while (startIdx < androidIps.length()) {
-            int comma = androidIps.indexOf(',', startIdx);
-            if (comma == -1) comma = androidIps.length();
-            String entry = androidIps.substring(startIdx, comma);
-            entry.trim();
-            if (entry.length() > 0) {
-                DeviceConfig cfg;
-                if (parseDeviceEntry(entry, cfg) && cfg.ip == targetIp) {
-                    targetCfg = cfg;
-                    break;
-                }
-            }
-            startIdx = comma + 1;
-        }
-
-        int slotIdx = findSlotIndexForDevice(targetCfg.id, targetCfg.ip);
+        int slotIdx = findSlotIndexForDevice("", targetIp);
         bool isActive = isSlotActive(slotIdx);
         if (!isActive) {
             Serial.printf("[-] handleAddTime blocked: Target device %s (Slot #%d) is EXPIRED!\n",
@@ -302,7 +284,7 @@ void handleIdentify() {
     cleanMac.toUpperCase();
     String sig = "";
     if (sharedSecret.length() > 0) {
-        sig = calculateHMAC("DISCOVERY:" + cleanMac + ":" + reqIp, sharedSecret);
+        sig = calculateHMAC("DISCOVERY:" + cleanMac + ":" + WiFi.localIP().toString(), sharedSecret);
     }
 
     String json = "{\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\",\"version\":\"3.0\",\"minutes\":" + String(minutesPerCoin) + ",\"price\":1.0";

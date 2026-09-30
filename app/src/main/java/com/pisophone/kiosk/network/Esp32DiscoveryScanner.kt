@@ -137,7 +137,7 @@ class Esp32DiscoveryScanner(
                 Log.w(TAG, "Rejected ESP32 response from $targetIp: Missing cryptographic signature!")
                 return false
             }
-            val cleanDeviceMac = KioskSecurity.formatMacAddress(deviceMac)
+            val cleanDeviceMac = KioskSecurity.formatMacAddress(deviceMac).replace(":", "").uppercase()
             val expectedSig = KioskSecurity.calculateHmac("DISCOVERY:$cleanDeviceMac:$targetIp", secret)
             if (!KioskSecurity.constantTimeEquals(sig.lowercase(), expectedSig.lowercase())) {
                 Log.w(TAG, "Rejected ESP32 response from $targetIp: HMAC signature verification failed!")
