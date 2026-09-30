@@ -99,6 +99,7 @@ class KioskEsp32Coordinator(
     }
 
     override fun onSlotBusy() {
+        stateManager.isArmingInProgress.value = false
         onSlotBusyTriggered()
         if (stateManager.appState.value == 3) {
             stateManager.appState.value = 2
@@ -110,6 +111,14 @@ class KioskEsp32Coordinator(
     override fun onArmSuccess() {
         lastArmTimestampMs = System.currentTimeMillis()
         stateManager.isEsp32Online.value = true
+        stateManager.isArmingInProgress.value = false
+        if (stateManager.appState.value == 2) {
+            stateManager.appState.value = 3
+        } else if (stateManager.appState.value == 0) {
+            stateManager.appState.value = 1
+        }
+        stateManager.coinsInserted.value = 0
+        stateManager.paymentTimeout.value = armingTimeoutSeconds
     }
 
     override fun onSlotWarning(daysLeft: Int, expiresAt: Long, slotNum: Int, message: String) {

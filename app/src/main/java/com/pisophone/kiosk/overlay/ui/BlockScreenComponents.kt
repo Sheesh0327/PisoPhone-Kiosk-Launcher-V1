@@ -142,6 +142,7 @@ fun BlockScreenRateTableCard(
     paymentTimeout: Int,
     isEsp32Online: Boolean,
     isSlotBusy: Boolean,
+    isArmingInProgress: Boolean = false,
     isSlotExpired: Boolean = false,
     buttonText: String,
     primaryColor: Color,
@@ -205,7 +206,7 @@ fun BlockScreenRateTableCard(
             Icon(Icons.Filled.Info, contentDescription = null, tint = successColor, modifier = Modifier.size(24.dp))
             Spacer(modifier = Modifier.width(12.dp))
             Text(
-                if (isWaiting) "Waiting for coins from coinslot..." else "Device will auto-lock when timer expires. Save all work and remove account credentials before end of session.",
+                if (isWaiting) "Waiting for coins from coinslot..." else if (isArmingInProgress) "Communicating with ESP32 to arm coinslot..." else "Device will auto-lock when timer expires. Save all work and remove account credentials before end of session.",
                 color = textSecondaryColor,
                 fontSize = 12.sp,
                 lineHeight = 16.sp
@@ -253,6 +254,34 @@ fun BlockScreenRateTableCard(
                     letterSpacing = 1.sp
                 )
             }
+        } else if (isArmingInProgress) {
+            Button(
+                onClick = {},
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = surfaceVariantColor,
+                    contentColor = textTertiaryColor,
+                    disabledContainerColor = surfaceVariantColor,
+                    disabledContentColor = textTertiaryColor
+                ),
+                shape = RoundedCornerShape(14.dp),
+                enabled = false
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    color = primaryColor,
+                    strokeWidth = 2.dp
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    "ARMING COINSLOT...",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    letterSpacing = 1.sp
+                )
+            }
         } else {
             val activeContainerColor = if (isSlotExpired) Color(0xFF7F1D1D) else if (isSlotBusy) Color(0xFFDC3545) else if (isEsp32Online) primaryColor else surfaceVariantColor
             val activeContentColor = if (isSlotExpired) Color(0xFFFCA5A5) else if (isSlotBusy) Color.White else if (isEsp32Online) onPrimaryColor else textTertiaryColor
@@ -269,7 +298,7 @@ fun BlockScreenRateTableCard(
                     disabledContentColor = activeContentColor
                 ),
                 shape = RoundedCornerShape(14.dp),
-                enabled = isEsp32Online && !isSlotBusy
+                enabled = isEsp32Online && !isSlotBusy && !isSlotExpired
             ) {
                 if (isSlotExpired) {
                     Icon(Icons.Filled.Lock, contentDescription = null, tint = Color(0xFFFCA5A5))

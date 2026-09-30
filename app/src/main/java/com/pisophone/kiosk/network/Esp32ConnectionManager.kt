@@ -420,22 +420,34 @@ class Esp32ConnectionManager(
             }
         }
 
-        val (ipHost, _) = discoveryScanner.getEsp32HostAndPort(ip)
+        var (ipHost, _) = discoveryScanner.getEsp32HostAndPort(ip)
+        if (ipHost.isBlank()) {
+            val localIp = discoveryScanner.getLocalIpAddress()
+            discoveryScanner.probeFastPathTargets(localIp)
+            val refreshedIp = esp32Ip ?: delegate.getStoredEsp32Ip()
+            ipHost = discoveryScanner.getEsp32HostAndPort(refreshedIp).first
+        }
+
         if (ipHost.isBlank()) {
             Log.w(TAG, "Cannot arm slot: No discovered ESP32 IP available. Triggering discovery...")
             delegate.onOnlineStatusChanged(false, null)
             discoveryScanner.triggerDiscovery("")
             delegate.onSlotBusy()
+            Handler(Looper.getMainLooper()).post {
+                Toast.makeText(context, "Searching for ESP32 hardware controller...", Toast.LENGTH_SHORT).show()
+            }
             return
         }
 
+        val targetIpHost = ipHost
         val deviceId = delegate.getDeviceId()
         val localIp = discoveryScanner.getLocalIpAddress() ?: "127.0.0.1"
 
         // Execute primary reliable HTTP arming
         scope.launch(Dispatchers.IO) {
+            var httpArmSuccess = false
             try {
-                val armUrl = "http://$ipHost:80/api/coinslot/arm?device_id=$deviceId&ip=$localIp&duration=$armingTimeoutSeconds"
+                val armUrl = "http://$targetIpHost:80/api/coinslot/arm?device_id=$deviceId&ip=$localIp&duration=$armingTimeoutSeconds"
                 Log.d(TAG, "Requesting coin slot arm via HTTP: $armUrl (attempt #$attemptId)")
                 val req = Request.Builder().url(armUrl).build()
                 val resp = httpClient.newCall(req).execute()
@@ -451,6 +463,7 @@ class Esp32ConnectionManager(
                 }
 
                 if (code == 200) {
+                    httpArmSuccess = true
                     Log.i(TAG, "⚡ ESP32 Coin Slot successfully ARMED via HTTP: $body")
                     lastHeartbeatTime = System.currentTimeMillis()
                     delegate.onOnlineStatusChanged(true, null)
@@ -460,10 +473,10 @@ class Esp32ConnectionManager(
                     }
 
                     // Start background polling synchronization loop to guarantee zero-drop reconciliation
-                    startCoinSyncLoop(ipHost, deviceId, armingTimeoutSeconds, attemptId)
+                    startCoinSyncLoop(targetIpHost, deviceId, armingTimeoutSeconds, attemptId)
 
                     // Also connect WebSocket as opportunistic low-latency push channel
-                    connectWebSocket(ipHost, deviceId, armingTimeoutSeconds, attemptId)
+                    connectWebSocket(targetIpHost, deviceId, armingTimeoutSeconds, attemptId, isHttpArmed = true)
                 } else if (code == 409) {
                     Log.w(TAG, "ESP32 Coin Slot is BUSY with another session (HTTP 409)")
                     delegate.onSlotBusy()
@@ -473,7 +486,7 @@ class Esp32ConnectionManager(
                 } else if (code == 423) {
                     Log.e(TAG, "ESP32 Coin Slot is LOCKED/EXPIRED (HTTP 423): $body")
                     if (body.contains("SLOT_NOT_PAIRED")) {
-                        sendPairingRequest(ipHost)
+                        sendPairingRequest(targetIpHost)
                         delegate.onSlotBusy()
                         Handler(Looper.getMainLooper()).post {
                             Toast.makeText(context, "Device connection pending admin approval on ESP32 portal.", Toast.LENGTH_LONG).show()
@@ -483,11 +496,13 @@ class Esp32ConnectionManager(
                     }
                 } else {
                     Log.w(TAG, "HTTP armSlot returned unexpected status $code: $body; falling back to WebSocket")
-                    connectWebSocket(ipHost, deviceId, armingTimeoutSeconds, attemptId)
+                    connectWebSocket(targetIpHost, deviceId, armingTimeoutSeconds, attemptId, isHttpArmed = false)
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "HTTP armSlot connection failed (${e.message}); attempting WebSocket direct arming")
-                connectWebSocket(ipHost, deviceId, armingTimeoutSeconds, attemptId)
+                if (!httpArmSuccess) {
+                    Log.w(TAG, "HTTP armSlot connection failed (${e.message}); attempting WebSocket direct arming")
+                    connectWebSocket(targetIpHost, deviceId, armingTimeoutSeconds, attemptId, isHttpArmed = false)
+                }
             }
         }
     }
@@ -550,12 +565,12 @@ class Esp32ConnectionManager(
         }
     }
 
-    private fun connectWebSocket(ipHost: String, deviceId: String, armingTimeoutSeconds: Int, attemptId: Long) {
+    private fun connectWebSocket(ipHost: String, deviceId: String, armingTimeoutSeconds: Int, attemptId: Long, isHttpArmed: Boolean = false) {
         val ts = System.currentTimeMillis().toString()
         val sig = KioskSecurity.generateTimestampSignature(deviceId, ts, delegate.getSecretKey())
 
         val wsUrl = "ws://$ipHost:$ESP32_WS_PORT/ws?device_id=$deviceId&ts=$ts&sig=$sig"
-        Log.d(TAG, "Connecting to Master WebSocket at $ipHost:$ESP32_WS_PORT (attempt #$attemptId)")
+        Log.d(TAG, "Connecting to Master WebSocket at $ipHost:$ESP32_WS_PORT (attempt #$attemptId, isHttpArmed=$isHttpArmed)")
 
         val request = Request.Builder().url(wsUrl).build()
 
@@ -570,11 +585,13 @@ class Esp32ConnectionManager(
                 }
                 lastHeartbeatTime = System.currentTimeMillis()
                 delegate.onOnlineStatusChanged(true, null)
-                delegate.onArmSuccess()
-                Handler(Looper.getMainLooper()).post {
-                    Toast.makeText(context, "Coin slot ready (Insert coins - ${armingTimeoutSeconds}s)", Toast.LENGTH_SHORT).show()
+                if (!isHttpArmed) {
+                    delegate.onArmSuccess()
+                    Handler(Looper.getMainLooper()).post {
+                        Toast.makeText(context, "Coin slot ready (Insert coins - ${armingTimeoutSeconds}s)", Toast.LENGTH_SHORT).show()
+                    }
+                    startCoinSyncLoop(ipHost, deviceId, armingTimeoutSeconds, attemptId)
                 }
-                startCoinSyncLoop(ipHost, deviceId, armingTimeoutSeconds, attemptId)
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -629,8 +646,8 @@ class Esp32ConnectionManager(
                 }
                 val code = response?.code ?: 0
                 val msg = t.message ?: ""
-                Log.e(TAG, "WebSocket failure (attempt #$attemptId, HTTP $code): $msg")
-                if (isCurrent) {
+                Log.e(TAG, "WebSocket failure (attempt #$attemptId, HTTP $code, isHttpArmed=$isHttpArmed): $msg")
+                if (isCurrent && !isHttpArmed) {
                     if (code == 409) {
                         Log.e(TAG, "Slot is BUSY with another session (HTTP 409)")
                         delegate.onSlotBusy()
@@ -641,7 +658,8 @@ class Esp32ConnectionManager(
                         Log.e(TAG, "Slot is EXPIRED on ESP32 (HTTP $code). Enforcing lockdown.")
                         delegate.onSlotLockdown("Please activate device slot on ESP32 Portal.", 0, 0L)
                     } else {
-                        Log.w(TAG, "WebSocket connection failed (HTTP $code: $msg); relying on HTTP sync loop")
+                        Log.w(TAG, "WebSocket connection failed (HTTP $code: $msg)")
+                        delegate.onSlotBusy()
                     }
                 }
                 forceCloseWebSocketIfAttemptCurrent(webSocket, "WebSocket failure: $msg", attemptId)

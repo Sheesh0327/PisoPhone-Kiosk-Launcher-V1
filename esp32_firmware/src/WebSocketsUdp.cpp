@@ -435,10 +435,13 @@ void processWebSocketServer() {
     if (isWsConnected) {
         String boundDevId = wsSessionDeviceId;
         if (!wsClient.connected()) {
-            Serial.printf("[*] WS Client %s disconnected. Releasing slot.\n", boundDevId.c_str());
+            Serial.printf("[*] WS Client %s disconnected.\n", boundDevId.c_str());
             isWsConnected = false;
             wsSessionDeviceId = "";
-            releaseCoinSlot(boundDevId, CoinSlotOwnerType::PHONE, false);
+            // Only release if the session arming TTL is no longer active
+            if (!isCoinSlotArmed()) {
+                releaseCoinSlot(boundDevId, CoinSlotOwnerType::PHONE, false);
+            }
             return;
         }
         

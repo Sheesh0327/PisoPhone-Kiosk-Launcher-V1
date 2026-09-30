@@ -76,6 +76,7 @@ class KioskOverlayCoordinator(
                         isEsp32OnlineFlow = stateManager.isEsp32Online,
                         esp32MacAddressFlow = stateManager.esp32MacAddress,
                         isSlotBusyFlow = stateManager.isSlotBusy,
+                        isArmingInProgressFlow = stateManager.isArmingInProgress,
                         pricePerCoinFlow = stateManager.pricePerCoin,
                         minutesPerCoinFlow = stateManager.minutesPerCoin,
                         deviceIpFlow = stateManager.deviceIp,
@@ -102,13 +103,8 @@ class KioskOverlayCoordinator(
                                 }
                                 return@KioskOverlay
                             }
-                            if (stateManager.appState.value == 2) {
-                                stateManager.appState.value = 3
-                            } else {
-                                stateManager.appState.value = 1
-                            }
-                            stateManager.coinsInserted.value = 0
-                            stateManager.paymentTimeout.value = armingTimeoutSeconds
+                            if (stateManager.isArmingInProgress.value) return@KioskOverlay
+                            stateManager.isArmingInProgress.value = true
                             onArmSlot()
                         },
                         onDoneClick = { onFinishPayment() },

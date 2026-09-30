@@ -28,6 +28,7 @@ class KioskOverlay(
     private val isEsp32OnlineFlow: StateFlow<Boolean>,
     private val esp32MacAddressFlow: StateFlow<String> = kotlinx.coroutines.flow.MutableStateFlow(""),
     private val isSlotBusyFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
+    private val isArmingInProgressFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
     private val pricePerCoinFlow: StateFlow<Double>,
     private val minutesPerCoinFlow: StateFlow<Int>,
     private val deviceIpFlow: StateFlow<String> = kotlinx.coroutines.flow.MutableStateFlow("127.0.0.1"),
@@ -55,6 +56,7 @@ class KioskOverlay(
         isEsp32OnlineFlow = isEsp32OnlineFlow,
         esp32MacAddressFlow = esp32MacAddressFlow,
         isSlotBusyFlow = isSlotBusyFlow,
+        isArmingInProgressFlow = isArmingInProgressFlow,
         pricePerCoinFlow = pricePerCoinFlow,
         minutesPerCoinFlow = minutesPerCoinFlow,
         deviceIpFlow = deviceIpFlow,
@@ -127,6 +129,7 @@ class LockScreenOverlay(
     private val isEsp32OnlineFlow: StateFlow<Boolean>,
     private val esp32MacAddressFlow: StateFlow<String> = kotlinx.coroutines.flow.MutableStateFlow(""),
     private val isSlotBusyFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
+    private val isArmingInProgressFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
     private val pricePerCoinFlow: StateFlow<Double>,
     private val minutesPerCoinFlow: StateFlow<Int>,
     private val deviceIpFlow: StateFlow<String> = kotlinx.coroutines.flow.MutableStateFlow("127.0.0.1"),
@@ -245,6 +248,7 @@ class LockScreenOverlay(
             val coinsInserted by coinsInsertedFlow.collectAsState()
             val isEsp32Online by isEsp32OnlineFlow.collectAsState()
             val isSlotBusy by isSlotBusyFlow.collectAsState()
+            val isArmingInProgress by isArmingInProgressFlow.collectAsState()
             val themeIndex by themeIndexFlow.collectAsState()
             val pricePerCoin by pricePerCoinFlow.collectAsState()
             val minutesPerCoin by minutesPerCoinFlow.collectAsState()
@@ -304,6 +308,7 @@ class LockScreenOverlay(
                             onDoneClick = {},
                             isEsp32Online = isEsp32Online,
                             isSlotBusy = isSlotBusy,
+                            isArmingInProgress = isArmingInProgress,
                             pricePerCoin = pricePerCoin,
                             minutesPerCoin = minutesPerCoin,
                             deviceIp = deviceIp,
@@ -327,6 +332,7 @@ class LockScreenOverlay(
                             onDoneClick = onDoneClick,
                             isEsp32Online = isEsp32Online,
                             isSlotBusy = isSlotBusy,
+                            isArmingInProgress = isArmingInProgress,
                             pricePerCoin = pricePerCoin,
                             minutesPerCoin = minutesPerCoin,
                             deviceIp = deviceIp,
