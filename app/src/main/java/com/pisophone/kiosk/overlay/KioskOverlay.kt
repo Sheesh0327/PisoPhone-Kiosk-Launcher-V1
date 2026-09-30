@@ -263,7 +263,7 @@ class LockScreenOverlay(
                 } else if (appState == 1 || appState == 3 || coinsInserted > 0) {
                     BlockScreen(
                         onInsertCoin = onInsertCoinClick,
-                        isWaiting = isVisible,
+                        isWaiting = (appState == 1 || appState == 3),
                         coinsInserted = coinsInserted,
                         paymentTimeout = paymentTimeout,
                         onDoneClick = onDoneClick,

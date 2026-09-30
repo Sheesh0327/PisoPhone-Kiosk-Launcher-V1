@@ -85,13 +85,27 @@ class Esp32DiscoveryScanner(
 
             val devAlias = KioskSecurity.getDeviceAlias(context).ifBlank { android.os.Build.MODEL ?: "PisoPhone Terminal" }
             val encodedName = java.net.URLEncoder.encode(devAlias, "UTF-8")
-            val req = Request.Builder()
-                .url("http://$host:$port/identify?name=$encodedName")
-                .build()
+            val deviceId = KioskSecurity.getDeviceAlias(context).ifBlank { android.os.Build.MODEL ?: "PisoPhone" }
+            val ts = System.currentTimeMillis().toString()
+            val secret = KioskSecurity.getSharedSecret(context)
+            val reqSig = if (secret.isNotBlank()) KioskSecurity.generateTimestampSignature(deviceId, ts, secret) else ""
+
+            var url = "http://$host:$port/identify?name=$encodedName&device_id=$deviceId&ts=$ts"
+            if (reqSig.isNotBlank()) url += "&sig=$reqSig"
+
+            val req = Request.Builder().url(url).build()
             fastClient.newCall(req).execute().use { resp ->
                 if (resp.isSuccessful) {
                     val rawBody = resp.body?.string() ?: ""
-                    if (isEsp32MacMatching(rawBody)) {
+                    var deviceMac = ""
+                    var respSig = ""
+                    try {
+                        val json = JSONObject(rawBody)
+                        deviceMac = json.optString("mac", "").ifBlank { json.optString("esp32_mac", "") }
+                        respSig = json.optString("sig", "")
+                    } catch (_: Exception) {}
+
+                    if (validateEsp32Response(deviceMac, host, respSig, rawBody)) {
                         delegate.onEsp32Discovered(host, rawBody)
                         return true
                     }

@@ -296,10 +296,21 @@ void handleIdentify() {
     if (reqIp.length() > 0 && reqIp != "127.0.0.1" && reqIp != "0.0.0.0") {
         updateDeviceTelemetry(devId, reqIp, 0, 0, 100, false, 0, devName);
     }
-    int slotIdx = findSlotIndexForDevice(devId, reqIp);
+
+    String cleanMac = macAddressStr;
+    cleanMac.replace(":", "");
+    cleanMac.toUpperCase();
+    String sig = "";
+    if (sharedSecret.length() > 0) {
+        sig = calculateHMAC("DISCOVERY:" + cleanMac + ":" + reqIp, sharedSecret);
+    }
+
     String json = "{\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\",\"version\":\"3.0\",\"minutes\":" + String(minutesPerCoin) + ",\"price\":1.0";
     if (devName.length() > 0) {
         json += ",\"device_name\":\"" + devName + "\"";
+    }
+    if (sig.length() > 0) {
+        json += ",\"sig\":\"" + sig + "\"";
     }
     json += "}";
     webServer.send(200, "application/json", json);
