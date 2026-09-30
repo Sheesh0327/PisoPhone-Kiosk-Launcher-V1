@@ -45,6 +45,7 @@ bool pairDeviceToSlot(int slotNum, String devId, String ip, String name) {
 int findSlotIndexForDevice(String devId, String ip) {
     devId.trim();
     ip.trim();
+
     if (devId.length() > 0) {
         for (int i = 0; i < maxLicensedSlots; i++) {
             if (licenseSlots[i].deviceId.length() > 0 && licenseSlots[i].deviceId == devId) {
@@ -52,12 +53,33 @@ int findSlotIndexForDevice(String devId, String ip) {
             }
         }
     }
-    if (ip.length() > 0 && ip != "127.0.0.1") {
+    if (ip.length() > 0 && ip != "127.0.0.1" && ip != "0.0.0.0") {
         for (int i = 0; i < maxLicensedSlots; i++) {
             if (licenseSlots[i].ip.length() > 0 && licenseSlots[i].ip == ip) {
                 return i;
             }
         }
+    }
+
+    if (ip.length() > 0 && ip != "127.0.0.1" && ip != "0.0.0.0") {
+        String altDevId = "DEV_" + ip;
+        for (int i = 0; i < maxLicensedSlots; i++) {
+            if (licenseSlots[i].deviceId == altDevId || licenseSlots[i].deviceId == ip) {
+                return i;
+            }
+        }
+    }
+
+    int singleBoundIndex = -1;
+    int boundCount = 0;
+    for (int i = 0; i < maxLicensedSlots; i++) {
+        if (licenseSlots[i].active && (licenseSlots[i].deviceId.length() > 0 || licenseSlots[i].ip.length() > 0)) {
+            boundCount++;
+            singleBoundIndex = i;
+        }
+    }
+    if (boundCount == 1 && singleBoundIndex >= 0) {
+        return singleBoundIndex;
     }
 
     return -1;

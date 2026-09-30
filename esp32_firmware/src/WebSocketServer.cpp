@@ -242,6 +242,20 @@ void processWebSocketServer() {
                 newClient.stop();
                 return;
             }
+            if (wsSlotIdx >= 0) {
+                bool slotChanged = false;
+                if (licenseSlots[wsSlotIdx].ip != clientIp && clientIp.length() > 0 && clientIp != "127.0.0.1") {
+                    licenseSlots[wsSlotIdx].ip = clientIp;
+                    slotChanged = true;
+                }
+                if (licenseSlots[wsSlotIdx].deviceId.length() == 0 || licenseSlots[wsSlotIdx].deviceId.startsWith("DEV_")) {
+                    licenseSlots[wsSlotIdx].deviceId = reqDeviceId;
+                    slotChanged = true;
+                }
+                if (slotChanged) {
+                    saveSlotLicenses();
+                }
+            }
             bool wsIsActive = isSlotActive(wsSlotIdx);
             if (!wsIsActive) {
                 Serial.printf("[-] WS Mutex Rejected for %s: Slot Expired / Lockdown Active (Slot #%d)\n", 
