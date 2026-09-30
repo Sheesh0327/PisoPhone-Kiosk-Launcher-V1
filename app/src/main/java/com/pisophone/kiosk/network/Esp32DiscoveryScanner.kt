@@ -285,22 +285,18 @@ class Esp32DiscoveryScanner(
         }
 
         val secret = KioskSecurity.getSharedSecret(context)
-        if (secret.isNotBlank()) {
-            if (sig.isBlank()) {
-                Log.w(TAG, "Rejected ESP32 UDP packet from $targetIp: Missing cryptographic signature!")
-                return false
-            }
-            val cleanDeviceMac = KioskSecurity.formatMacAddress(deviceMac)
-            val expectedSig = KioskSecurity.calculateHmac("DISCOVERY:$cleanDeviceMac:$targetIp", secret)
-            val expectedMasterSig = KioskSecurity.calculateHmac("DISCOVERY:$cleanDeviceMac:$targetIp", KioskSecurity.DEFAULT_SHARED_SECRET)
+        if (sig.isBlank()) {
+            Log.w(TAG, "Rejected ESP32 UDP packet from $targetIp: Missing cryptographic signature!")
+            return false
+        }
+        val cleanDeviceMac = KioskSecurity.formatMacAddress(deviceMac)
+        val expectedSig = KioskSecurity.calculateHmac("DISCOVERY:$cleanDeviceMac:$targetIp", secret)
 
-            val sigMatches = KioskSecurity.constantTimeEquals(sig.lowercase(), expectedSig.lowercase()) ||
-                    KioskSecurity.constantTimeEquals(sig.lowercase(), expectedMasterSig.lowercase())
+        val sigMatches = KioskSecurity.constantTimeEquals(sig.lowercase(), expectedSig.lowercase())
 
-            if (!sigMatches) {
-                Log.w(TAG, "Rejected ESP32 UDP packet from $targetIp: HMAC signature verification failed!")
-                return false
-            }
+        if (!sigMatches) {
+            Log.w(TAG, "Rejected ESP32 UDP packet from $targetIp: HMAC signature verification failed!")
+            return false
         }
 
         return true

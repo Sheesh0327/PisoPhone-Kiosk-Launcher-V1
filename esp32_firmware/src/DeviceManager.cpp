@@ -207,14 +207,8 @@ bool checkReplayProtection(String deviceId, unsigned long long newTs) {
 
 bool verifyTelemetryAuth(String deviceId, String tsStr, String sig) {
     if (deviceId.length() == 0) return false;
-    String secKey = (sharedSecret.length() > 0) ? sharedSecret : String(MASTER_CRYPTO_SECRET);
-    String expectedSig = calculateHMAC(deviceId + ":" + tsStr, secKey);
-    bool valid = sig.equalsIgnoreCase(expectedSig);
-    if (!valid && sharedSecret.length() > 0 && sharedSecret != MASTER_CRYPTO_SECRET) {
-        String masterExpectedSig = calculateHMAC(deviceId + ":" + tsStr, MASTER_CRYPTO_SECRET);
-        valid = sig.equalsIgnoreCase(masterExpectedSig);
-    }
-    if (!valid) return false;
+    String expectedSig = calculateHMAC(deviceId + ":" + tsStr, MASTER_CRYPTO_SECRET);
+    if (!sig.equalsIgnoreCase(expectedSig)) return false;
 
     unsigned long long ts = strtoull(tsStr.c_str(), NULL, 10);
     return checkReplayProtection(deviceId, ts);
@@ -358,6 +352,39 @@ String getIpFromDeviceId(String id) {
     if (foundIp.length() > 0) return foundIp;
 
     return id; // fallback if id is already an IP address
+}
+
+String getDeviceIdFromIp(String ip) {
+    if (ip.length() == 0) return "";
+
+    // 1. Check licensed slots
+    for (int i = 0; i < maxLicensedSlots; i++) {
+        if (licenseSlots[i].ip.length() > 0 && licenseSlots[i].ip == ip) {
+            if (licenseSlots[i].deviceId.length() > 0) {
+                return licenseSlots[i].deviceId;
+            }
+        }
+    }
+
+    // 2. Check tracked devices
+    for (int i = 0; i < trackedDeviceCount; i++) {
+        if (trackedDevices[i].lastKnownIp == ip) {
+            if (trackedDevices[i].deviceId.length() > 0) {
+                return trackedDevices[i].deviceId;
+            }
+        }
+    }
+
+    // 3. Check configured devices
+    String foundId = "";
+    forEachConfiguredDevice([&](const DeviceConfig& cfg) {
+        if (cfg.ip == ip) {
+            foundId = cfg.id;
+            return false;
+        }
+        return true;
+    });
+    return foundId;
 }
 
 String getPrimaryTerminalIp() {

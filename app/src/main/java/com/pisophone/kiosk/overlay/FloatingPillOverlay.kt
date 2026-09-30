@@ -25,6 +25,7 @@ class FloatingPillOverlay(
     private val themeIndexFlow: StateFlow<Int>,
     private val isEsp32OnlineFlow: StateFlow<Boolean>,
     private val isSlotBusyFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
+    private val isArmingInProgressFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
     private val pricePerCoinFlow: StateFlow<Double>,
     private val minutesPerCoinFlow: StateFlow<Int>,
     private val batteryStatusFlow: StateFlow<BatteryStatus> = kotlinx.coroutines.flow.MutableStateFlow(BatteryStatus()),
@@ -123,6 +124,7 @@ class FloatingPillOverlay(
             val coinsInserted by coinsInsertedFlow.collectAsState()
             val isEsp32Online by isEsp32OnlineFlow.collectAsState()
             val isSlotBusy by isSlotBusyFlow.collectAsState()
+            val isArmingInProgress by isArmingInProgressFlow.collectAsState()
             val themeIndex by themeIndexFlow.collectAsState()
             val batteryStatus by batteryStatusFlow.collectAsState()
             val isArenaMode by isArenaModeFlow.collectAsState()
@@ -172,6 +174,7 @@ class FloatingPillOverlay(
                     onDoneClick = onDoneClick,
                     isEsp32Online = isEsp32Online,
                     isSlotBusy = isSlotBusy,
+                    isArmingInProgress = isArmingInProgress,
                     isWaiting = appState == 3,
                     themeIndex = themeIndex,
                     batteryStatus = batteryStatus,

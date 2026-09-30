@@ -215,7 +215,7 @@ fun BlockScreenRateTableCard(
 
         Spacer(modifier = Modifier.height(16.dp))
         
-        if (isWaiting && coinsInserted > 0) {
+        if (isWaiting && paymentTimeout > 0 && coinsInserted > 0) {
             Button(
                 onClick = onDoneClick,
                 modifier = Modifier
@@ -226,7 +226,7 @@ fun BlockScreenRateTableCard(
             ) {
                 Text("DONE (${paymentTimeout}s)", fontWeight = FontWeight.Bold, fontSize = 14.sp, letterSpacing = 1.sp)
             }
-        } else if (isWaiting) {
+        } else if (isWaiting && paymentTimeout > 0) {
             Button(
                 onClick = {},
                 modifier = Modifier
@@ -254,7 +254,7 @@ fun BlockScreenRateTableCard(
                     letterSpacing = 1.sp
                 )
             }
-        } else if (isArmingInProgress) {
+        } else if (isArmingInProgress || (isWaiting && paymentTimeout <= 0)) {
             Button(
                 onClick = {},
                 modifier = Modifier

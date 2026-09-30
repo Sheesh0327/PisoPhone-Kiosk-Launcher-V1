@@ -75,7 +75,7 @@ fun VaultBypassSection(
             Spacer(modifier = Modifier.width(4.dp))
             HelpInfoButton(
                 title = "Admin System Bypass & Quick Tools",
-                description = "Temporarily bypasses the kiosk lock screen overlay. Grants 5 minutes of unlocked maintenance time.",
+                description = "Temporarily bypasses the kiosk lock screen overlay or quickly adds/subtracts paid session time.",
                 onShowHelp = onShowHelp
             )
         }
@@ -114,6 +114,67 @@ fun VaultBypassSection(
             Icon(Icons.Filled.Lock, contentDescription = null, modifier = Modifier.size(15.dp))
             Spacer(modifier = Modifier.width(6.dp))
             Text("Lock Terminal", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+
+    Spacer(modifier = Modifier.height(8.dp))
+
+    // Quick Time Adjustments
+    Text("Quick Time Adjustments", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+    Spacer(modifier = Modifier.height(6.dp))
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Button(
+            onClick = { KioskService.triggerAdminTimeAdjust(context, 300) },
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7), contentColor = Color.White),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.weight(1f).height(34.dp),
+            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
+        ) {
+            Text("+5m", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        }
+
+        Button(
+            onClick = { KioskService.triggerAdminTimeAdjust(context, 900) },
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7), contentColor = Color.White),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.weight(1f).height(34.dp),
+            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
+        ) {
+            Text("+15m", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        }
+
+        Button(
+            onClick = { KioskService.triggerAdminTimeAdjust(context, 1800) },
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7), contentColor = Color.White),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.weight(1f).height(34.dp),
+            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
+        ) {
+            Text("+30m", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        }
+
+        Button(
+            onClick = { KioskService.triggerAdminTimeAdjust(context, -300) },
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB91C1C), contentColor = Color.White),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.weight(1f).height(34.dp),
+            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
+        ) {
+            Text("-5m", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        }
+
+        Button(
+            onClick = { KioskService.triggerAdminTimeAdjust(context, -900) },
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB91C1C), contentColor = Color.White),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.weight(1f).height(34.dp),
+            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
+        ) {
+            Text("-15m", fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
     }
 }

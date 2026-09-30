@@ -10,7 +10,8 @@
 #include <HTTPClient.h>
 
 void sendAddTime(int minutes, String targetIp, String txId) {
-    if (androidIps.length() == 0) return;
+    if (androidIps.length() == 0 && targetIp == "ALL") return;
+    bool sent = false;
     forEachConfiguredDevice([&](const DeviceConfig& cfg) {
         if (targetIp == "ALL" || targetIp == cfg.ip) {
             int slotIdx = findSlotIndexForDevice(cfg.id, cfg.ip);
@@ -19,13 +20,27 @@ void sendAddTime(int minutes, String targetIp, String txId) {
                 Serial.printf("[-] sendAddTime skipped for %s (Slot #%d): Device Expired / Uncredited\n",
                     cfg.ip.c_str(), (slotIdx >= 0) ? licenseSlots[slotIdx].slotNum : 0);
             } else {
-                String params = "minutes=" + String(minutes);
-                if (txId.length() > 0) params += "&tx_id=" + txId;
+                unsigned long long ts = (unsigned long long)getCurrentMasterTimeMs();
+                String effectiveTxId = (txId.length() > 0) ? txId : ("tx-adj-" + String(ts) + "-" + String(random(10000, 99999)));
+                int seconds = minutes * 60;
+                String params = "minutes=" + String(minutes) + "&seconds=" + String(seconds) + "&amount=0&tx_id=" + effectiveTxId;
+                if (cfg.id.length() > 0) params += "&device_id=" + cfg.id;
                 sendAuthenticated(cfg.ip, targetPort, "/add_time", "/challenge", params, 1000);
+                sent = true;
             }
         }
         return true;
     });
+
+    if (!sent && targetIp != "ALL" && targetIp.length() >= 7 && targetIp != "127.0.0.1") {
+        String devId = getDeviceIdFromIp(targetIp);
+        unsigned long long ts = (unsigned long long)getCurrentMasterTimeMs();
+        String effectiveTxId = (txId.length() > 0) ? txId : ("tx-adj-" + String(ts) + "-" + String(random(10000, 99999)));
+        int seconds = minutes * 60;
+        String params = "minutes=" + String(minutes) + "&seconds=" + String(seconds) + "&amount=0&tx_id=" + effectiveTxId;
+        if (devId.length() > 0) params += "&device_id=" + devId;
+        sendAuthenticated(targetIp, targetPort, "/add_time", "/challenge", params, 1000);
+    }
 }
 
 void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId) {

@@ -32,6 +32,7 @@ class KioskService : Service() {
         const val ACTION_ADMIN_BYPASS = "com.pisophone.kiosk.ADMIN_BYPASS"
         const val ACTION_TEST_TTS = "com.pisophone.kiosk.TEST_TTS"
         const val ACTION_LOCK_SESSION = "com.pisophone.kiosk.LOCK_SESSION"
+        const val ACTION_ADMIN_ADJUST_TIME = "com.pisophone.kiosk.ADMIN_ADJUST_TIME"
 
         @Volatile
         var isServiceRunning: Boolean = false
@@ -89,6 +90,19 @@ class KioskService : Service() {
             } else {
                 val intent = Intent(context, KioskService::class.java).apply {
                     action = ACTION_LOCK_SESSION
+                }
+                startServiceCompat(context, intent)
+            }
+        }
+
+        fun triggerAdminTimeAdjust(context: Context, deltaSeconds: Int) {
+            val instance = activeInstance
+            if (instance != null) {
+                instance.performAdminTimeAdjust(deltaSeconds)
+            } else {
+                val intent = Intent(context, KioskService::class.java).apply {
+                    action = ACTION_ADMIN_ADJUST_TIME
+                    putExtra("delta_seconds", deltaSeconds)
                 }
                 startServiceCompat(context, intent)
             }
@@ -163,6 +177,12 @@ class KioskService : Service() {
             ACTION_LOCK_SESSION -> {
                 performLockSession()
             }
+            ACTION_ADMIN_ADJUST_TIME -> {
+                val delta = intent.getIntExtra("delta_seconds", 0)
+                if (delta != 0) {
+                    performAdminTimeAdjust(delta)
+                }
+            }
             ACTION_TEST_TTS -> {
                 val text = intent.getStringExtra("text") ?: "PisoPhone voice system online and functional."
                 speakWarning(text)
@@ -191,6 +211,10 @@ class KioskService : Service() {
 
     fun performLockSession() {
         engine?.performLockSession()
+    }
+
+    fun performAdminTimeAdjust(deltaSeconds: Int) {
+        engine?.performAdminTimeAdjust(deltaSeconds)
     }
 
     fun speakWarning(text: String) {

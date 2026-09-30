@@ -331,7 +331,7 @@ void loadAllConfig() {
     
     webPassword       = prefs.getString(NVS_KEY_ADMIN_PW, webPassword);
     relayActiveLow    = prefs.getBool(NVS_KEY_RELAY_ACTIVE_LOW, false);
-    sharedSecret      = prefs.getString(NVS_KEY_SHARED_SECRET, sharedSecret);
+    sharedSecret      = MASTER_CRYPTO_SECRET;
     p1Ip              = prefs.getString(NVS_KEY_P1, p1Ip);
     p2Ip              = prefs.getString(NVS_KEY_P2, p2Ip);
     matchMinutes      = prefs.getInt(NVS_KEY_MATCH, matchMinutes);

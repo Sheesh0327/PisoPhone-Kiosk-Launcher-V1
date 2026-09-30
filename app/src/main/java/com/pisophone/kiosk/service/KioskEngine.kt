@@ -51,17 +51,27 @@ class KioskEngine(
         db = AppDatabase.getDatabase(context),
         context = context,
         onPaymentApplied = { txId, seconds, amount, snapshot ->
-            val pesoAmount = if (amount >= 1.0) amount.toInt() else 1
+            val isAdminAdjustment = (amount <= 0.0 || txId.startsWith("tx-adj"))
+            val pesoAmount = if (amount >= 1.0) amount.toInt() else 0
             // 1. Commit is finalized. Publish committed session state through serialized handler:
-            val targetState = if (stateManager.appState.value == 0) 1 else null
+            val targetState = if (isAdminAdjustment) {
+                2
+            } else if (stateManager.appState.value == 0) {
+                1
+            } else {
+                null
+            }
             val applied = stateManager.applySessionUpdate(snapshot, targetState)
             if (applied) {
-                stateManager.paymentTimeout.value = ARMING_TIMEOUT_SECONDS
-
-                if (stateManager.appState.value == 1 || stateManager.appState.value == 3) {
-                    stateManager.coinsInserted.value += pesoAmount
-                } else if (stateManager.appState.value == 2) {
-                    Log.d(TAG, "Coin credited directly to active session: +${seconds}s (₱$pesoAmount)")
+                if (isAdminAdjustment) {
+                    stateManager.paymentTimeout.value = 0
+                } else {
+                    stateManager.paymentTimeout.value = ARMING_TIMEOUT_SECONDS
+                    if (stateManager.appState.value == 1 || stateManager.appState.value == 3) {
+                        stateManager.coinsInserted.value += pesoAmount
+                    } else if (stateManager.appState.value == 2) {
+                        Log.d(TAG, "Coin credited directly to active session: +${seconds}s (₱$pesoAmount)")
+                    }
                 }
                 stateManager.saveState()
             }
@@ -72,7 +82,7 @@ class KioskEngine(
                         CoinEvent(
                             txId = txId,
                             secondsAdded = seconds,
-                            source = "Piso Coin (₱$pesoAmount)"
+                            source = if (isAdminAdjustment) "Admin Quick Adjust" else "Piso Coin (₱$pesoAmount)"
                         )
                     )
                     coinEventRepo.deleteOldEvents(500)
@@ -84,13 +94,21 @@ class KioskEngine(
             // 2. Play sound / update UI feedback ONLY for newly applied payment (separate from state publication)
             audioManager.playCoinSound()
             HardwareFeedback.triggerFlashlight(context, 150L)
+            val addedMins = seconds / 60
             Handler(Looper.getMainLooper()).post {
-                val addedMins = seconds / 60
-                Toast.makeText(context, "₱$pesoAmount coin accepted! (+${addedMins}m)", Toast.LENGTH_SHORT).show()
+                if (isAdminAdjustment) {
+                    Toast.makeText(context, "+${addedMins}m added by Admin!", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "₱$pesoAmount coin accepted! (+${addedMins}m)", Toast.LENGTH_SHORT).show()
+                }
             }
         },
         onSessionStateChanged = { snapshot ->
-            stateManager.applySessionUpdate(snapshot)
+            val targetState = if (snapshot.remainingSeconds <= 0 && (stateManager.appState.value == 2 || stateManager.appState.value == 3)) 0 else null
+            stateManager.applySessionUpdate(snapshot, targetState)
+            if (targetState == 0) {
+                stateManager.saveState()
+            }
         }
     )
 
@@ -358,6 +376,38 @@ class KioskEngine(
             targetAppState = 0
         )
         stateManager.saveState()
+    }
+
+    fun performAdminTimeAdjust(secondsDelta: Int) {
+        if (!KioskActivationManager.isAppAllowedToRun(context)) {
+            Log.w(TAG, "Admin time adjustment rejected: Device is not provisioned.")
+            Handler(Looper.getMainLooper()).post {
+                Toast.makeText(context, "⚠️ Adjustment Unavailable: Device requires provisioning.", Toast.LENGTH_LONG).show()
+            }
+            return
+        }
+        val ts = System.currentTimeMillis()
+        if (secondsDelta > 0) {
+            val txId = "tx-adj-$ts-${(10000..99999).random()}"
+            val res = paymentRepo.creditPaymentBlocking(txId, secondsDelta, 0.0)
+            Log.i(TAG, "Admin quick added $secondsDelta seconds: result=$res")
+        } else if (secondsDelta < 0) {
+            val positiveSeconds = Math.abs(secondsDelta)
+            val txId = "tx-adj-deduct-$ts-${(10000..99999).random()}"
+            val updated = paymentRepo.deductTimeBlocking(positiveSeconds, txId)
+            val targetState = if (updated.sessionTimeRemaining <= 0) 0 else null
+            stateManager.applySessionUpdate(
+                deadlineMs = updated.sessionExpiryDeadlineMs,
+                remainingSeconds = updated.sessionTimeRemaining,
+                revision = updated.revision,
+                targetAppState = targetState
+            )
+            stateManager.saveState()
+            Log.i(TAG, "Admin quick deducted $positiveSeconds seconds: remaining=${updated.sessionTimeRemaining}s")
+            Handler(Looper.getMainLooper()).post {
+                Toast.makeText(context, "${positiveSeconds / 60}m deducted by Admin!", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun startHealthMonitor() {

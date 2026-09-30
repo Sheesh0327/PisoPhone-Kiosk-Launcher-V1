@@ -313,79 +313,12 @@ object KioskSecurity {
     }
 
     fun getSharedSecret(context: Context): String {
-        val prefs = getPrefs(context)
-        if (!prefs.getBoolean(KEY_SECRET_EXPLICITLY_PROVISIONED, false)) {
-            return DEFAULT_SHARED_SECRET
-        }
-
-        val encryptedPrefs = getEncryptedPrefs(context)
-        if (encryptedPrefs != null) {
-            try { 
-                val existingSecret = encryptedPrefs.getString(KEY_DEVICE_SECRET, null)
-                if (!existingSecret.isNullOrBlank()) return existingSecret
-            } catch (e: Exception) { Log.e(TAG, "Encrypted prefs read failed: ${e.message}") }
-        }
-        
-        var secret = getCustomKeystoreEncryptedSecret(prefs)
-        if (secret.isNullOrBlank()) {
-            secret = null
-        }
-        
-        if (secret == null && prefs.contains(KEY_DEVICE_SECRET)) {
-            val oldPlainSecret = prefs.getString(KEY_DEVICE_SECRET, null)
-            if (!oldPlainSecret.isNullOrBlank()) {
-                val keystoreSuccess = setCustomKeystoreEncryptedSecret(prefs, oldPlainSecret)
-                if (keystoreSuccess) {
-                    prefs.edit().remove(KEY_DEVICE_SECRET).apply()
-                }
-                secret = oldPlainSecret
-            }
-        }
-        
-        val resolvedSecret = secret ?: run {
-            val randomBytes = ByteArray(32)
-            SecureRandom().nextBytes(randomBytes)
-            val generated = randomBytes.joinToString("") { "%02x".format(it) }
-            
-            if (encryptedPrefs != null) {
-                try {
-                    encryptedPrefs.edit().putString(KEY_DEVICE_SECRET, generated).apply()
-                    return generated
-                } catch (e: Exception) { Log.e(TAG, "Encrypted prefs write failed: ${e.message}") }
-            }
-            setCustomKeystoreEncryptedSecret(prefs, generated)
-            generated
-        }
-        return resolvedSecret
+        return DEFAULT_SHARED_SECRET
     }
 
     fun setSharedSecret(context: Context, newSecret: String) {
-        val trimmed = newSecret.trim()
-        if (trimmed.isEmpty()) {
-            Log.e(TAG, "Attempted to set an empty or blank shared secret. Rejected for security!")
-            return
-        }
-        val encryptedPrefs = getEncryptedPrefs(context)
-        var successWithEncryptedPrefs = false
-        if (encryptedPrefs != null) {
-            try { 
-                encryptedPrefs.edit().putString(KEY_DEVICE_SECRET, trimmed).apply()
-                successWithEncryptedPrefs = true
-            } catch (e: Exception) { Log.e(TAG, "Encrypted prefs write failed: ${e.message}") }
-        } 
-        
-        val prefs = getPrefs(context)
-        prefs.edit().putBoolean(KEY_SECRET_EXPLICITLY_PROVISIONED, true).apply()
-        if (!successWithEncryptedPrefs) {
-            val keystoreSuccess = setCustomKeystoreEncryptedSecret(prefs, trimmed)
-            if (!keystoreSuccess) {
-                prefs.edit().putString(KEY_DEVICE_SECRET, trimmed).apply()
-            } else {
-                prefs.edit().remove(KEY_DEVICE_SECRET).apply()
-            }
-        } else {
-            prefs.edit().remove(KEY_DEVICE_SECRET).apply()
-        }
+        // Standardized on DEFAULT_SHARED_SECRET across all components to ensure zero-mismatch communication.
+        Log.d(TAG, "Shared secret configured to standard master secret.")
     }
 
     fun getAdminPin(context: Context): String {

@@ -48,6 +48,7 @@ fun FloatingPill(
     onDoneClick: () -> Unit,
     isEsp32Online: Boolean,
     isSlotBusy: Boolean = false,
+    isArmingInProgress: Boolean = false,
     isWaiting: Boolean,
     themeIndex: Int = 0,
     batteryStatus: BatteryStatus = BatteryStatus(),
@@ -416,7 +417,7 @@ fun FloatingPill(
                         Text("HOME", fontWeight = FontWeight.Bold, fontSize = 10.sp)
                     }
 
-                    if (isWaiting) {
+                    if (isWaiting && paymentTimeout > 0) {
                         if (coinsInserted > 0) {
                             Button(
                                 onClick = {
@@ -442,8 +443,35 @@ fun FloatingPill(
                                 enabled = false,
                                 shape = RoundedCornerShape(10.dp)
                             ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(14.dp),
+                                    color = Primary,
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
                                 Text("${paymentTimeout}s WAITING FOR COIN...", fontWeight = FontWeight.Bold, fontSize = 11.sp)
                             }
+                        }
+                    } else if (isArmingInProgress || (isWaiting && paymentTimeout <= 0)) {
+                        Button(
+                            onClick = {},
+                            modifier = Modifier.fillMaxWidth().height(40.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = SurfaceVariant, 
+                                contentColor = Color.White,
+                                disabledContainerColor = SurfaceVariant,
+                                disabledContentColor = Color.White
+                            ),
+                            enabled = false,
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                color = Primary,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("ARMING COINSLOT...", fontWeight = FontWeight.Bold, fontSize = 11.sp)
                         }
                     } else {
                         val activeContainerColor = if (isSlotBusy) Color(0xFFDC3545) else if (isEsp32Online) Primary else SurfaceVariant

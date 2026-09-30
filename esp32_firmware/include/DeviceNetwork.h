@@ -6,6 +6,7 @@
 
 void sendAddTime(int minutes, String targetIp, String txId = "");
 void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId = "");
+void recordSessionCoinTx(const String& devId, const String& txId, int pulses, int seconds, double amount);
 int getDeviceTimeRemainingSeconds(String targetIp, String *errOut = nullptr);
 
 void sendCloudSnapshot();

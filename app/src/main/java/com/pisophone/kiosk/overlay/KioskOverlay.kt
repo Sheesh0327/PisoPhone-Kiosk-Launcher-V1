@@ -82,6 +82,7 @@ class KioskOverlay(
         themeIndexFlow = themeIndexFlow,
         isEsp32OnlineFlow = isEsp32OnlineFlow,
         isSlotBusyFlow = isSlotBusyFlow,
+        isArmingInProgressFlow = isArmingInProgressFlow,
         pricePerCoinFlow = pricePerCoinFlow,
         minutesPerCoinFlow = minutesPerCoinFlow,
         batteryStatusFlow = batteryStatusFlow,
