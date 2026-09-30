@@ -183,6 +183,10 @@ String getActiveCoinSessionId() {
     return activeSessionId;
 }
 
+unsigned long getCoinSlotArmedUntilMs() {
+    return (currentState == CoinSlotState::ARMED) ? sessionArmedUntil : 0;
+}
+
 CoinSlotOwnerType getActiveCoinOwnerType() {
     return activeOwnerType;
 }

@@ -5,6 +5,7 @@
 #include "HardwareManager.h"
 #include "Security.h"
 #include "WebServerModule.h"
+#include "WebServerApi.h"
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 
@@ -65,6 +66,8 @@ void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId) {
                       txId.c_str());
     }
 
+    recordSessionCoinTx(targetDev, txId, pulses, addedSeconds, (double)pulses);
+
     // Require an exact device-ID match before WebSocket delivery. Never transfer pending credit to a replacement phone automatically.
     String vPayload = "v1:" + targetDev + ":" + txId + ":" + String(pulses) + ":" + String(ts);
     String vSig = calculateHMAC(vPayload, sharedSecret);
@@ -73,7 +76,7 @@ void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId) {
         Serial.printf("[⚡] Pushing ₱%d (+%d mins / %d secs) over WebSocket to %s!\n", pulses, addedMinutes, addedSeconds, targetDev.c_str());
         String innerJson = "{\"seconds\":" + String(addedSeconds) + ",\"minutes\":" + String(addedMinutes) + ",\"amount\":" + String(pulses) + ",\"tx_id\":\"" + txId + "\",\"ts\":\"" + String(ts) + "\",\"device_id\":\"" + targetDev + "\",\"v_sig\":\"" + vSig + "\"}";
         String payload = aes_encrypt(innerJson, sharedSecret);
-        String json = "{\"event\":\"COIN_DETECTED\",\"payload\":\"" + payload + "\",\"seconds\":" + String(addedSeconds) + ",\"amount\":" + String(pulses) + ",\"tx_id\":\"" + txId + "\"}";
+        String json = "{\"event\":\"COIN_DETECTED\",\"device_id\":\"" + targetDev + "\",\"tx_id\":\"" + txId + "\",\"amount\":" + String(pulses) + ",\"seconds\":" + String(addedSeconds) + ",\"minutes\":" + String(addedMinutes) + ",\"ts\":\"" + String(ts) + "\",\"payload\":\"" + payload + "\"}";
         sendWsText(wsClient, json);
         refreshCoinSlotTtl(targetDev, CoinSlotOwnerType::PHONE, ARM_TTL);
     }

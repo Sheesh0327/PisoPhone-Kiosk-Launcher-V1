@@ -63,6 +63,11 @@ void processCoinSlotSession();
 bool isCoinSlotArmed();
 
 /**
+ * Returns the timestamp (millis) until which the current session is armed, or 0.
+ */
+unsigned long getCoinSlotArmedUntilMs();
+
+/**
  * Returns true if the slot is currently reserved or draining for a different session or owner.
  */
 bool isCoinSlotBusy(const String& sessionId, CoinSlotOwnerType ownerType = CoinSlotOwnerType::ANY);

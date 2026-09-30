@@ -5,6 +5,7 @@
 #include "Security.h"
 #include "HardwareManager.h"
 #include "DeviceManager.h"
+#include "CoinSlotManager.h"
 #include "DeviceNetwork.h"
 #include <WiFi.h>
 #include <WebServer.h>
@@ -333,4 +334,193 @@ void handleIdentify() {
     }
     json += "}";
     webServer.send(200, "application/json", json);
+}
+
+struct SessionCoinTx {
+    String devId;
+    String txId;
+    int pulses;
+    int seconds;
+    double amount;
+    unsigned long ts;
+    bool acknowledged;
+};
+
+static const int MAX_SESSION_TX = 32;
+static SessionCoinTx sessionTxList[MAX_SESSION_TX];
+static int sessionTxCount = 0;
+
+void recordSessionCoinTx(const String& devId, const String& txId, int pulses, int seconds, double amount) {
+    if (txId.length() == 0 || pulses <= 0) return;
+    for (int i = 0; i < sessionTxCount; i++) {
+        if (sessionTxList[i].txId == txId) {
+            return;
+        }
+    }
+    if (sessionTxCount < MAX_SESSION_TX) {
+        sessionTxList[sessionTxCount] = { devId, txId, pulses, seconds, amount, millis(), false };
+        sessionTxCount++;
+    } else {
+        for (int i = 0; i < MAX_SESSION_TX - 1; i++) {
+            sessionTxList[i] = sessionTxList[i + 1];
+        }
+        sessionTxList[MAX_SESSION_TX - 1] = { devId, txId, pulses, seconds, amount, millis(), false };
+    }
+}
+
+static void clearSessionCoinTx(const String& devId) {
+    if (devId.length() == 0) {
+        sessionTxCount = 0;
+        return;
+    }
+    int writeIdx = 0;
+    for (int i = 0; i < sessionTxCount; i++) {
+        if (sessionTxList[i].devId != devId) {
+            sessionTxList[writeIdx++] = sessionTxList[i];
+        }
+    }
+    sessionTxCount = writeIdx;
+}
+
+static void acknowledgeSessionCoinTx(const String& txId) {
+    for (int i = 0; i < sessionTxCount; i++) {
+        if (sessionTxList[i].txId == txId) {
+            sessionTxList[i].acknowledged = true;
+            return;
+        }
+    }
+}
+
+void handleApiCoinslotArm() {
+    String devId = webServer.hasArg("device_id") ? webServer.arg("device_id") : (webServer.hasArg("id") ? webServer.arg("id") : "");
+    devId.trim();
+    String reqIp = webServer.hasArg("ip") ? webServer.arg("ip") : "";
+    reqIp.trim();
+    if (reqIp.length() == 0 || reqIp == "127.0.0.1" || reqIp == "0.0.0.0") {
+        reqIp = webServer.client().remoteIP().toString();
+    }
+    int durationSec = webServer.hasArg("duration") ? webServer.arg("duration").toInt() : 45;
+    if (durationSec <= 0 || durationSec > 300) durationSec = 45;
+
+    if (devId.length() == 0 && reqIp.length() > 0 && reqIp != "127.0.0.1" && reqIp != "0.0.0.0") {
+        devId = "DEV_" + reqIp;
+    }
+
+    int slotIdx = findSlotIndexForDevice(devId, reqIp);
+    if (slotIdx < 0) {
+        updateDynamicDeviceList(devId, reqIp);
+        slotIdx = findSlotIndexForDevice(devId, reqIp);
+    }
+    if (slotIdx < 0) {
+        String json = "{\"success\":false,\"status\":\"unpaired\",\"error\":\"SLOT_NOT_PAIRED\",\"message\":\"Device is not paired to any slot on this ESP32.\"}";
+        webServer.send(423, "application/json", json);
+        return;
+    }
+
+    if (!isSlotActive(slotIdx)) {
+        String json = "{\"success\":false,\"status\":\"locked\",\"error\":\"SLOT_EXPIRED\",\"slot\":" + String(licenseSlots[slotIdx].slotNum) + ",\"message\":\"Device slot is expired or inactive.\"}";
+        webServer.send(423, "application/json", json);
+        return;
+    }
+
+    if (isCoinSlotBusy(devId, CoinSlotOwnerType::PHONE)) {
+        String holder = getActiveCoinSessionId();
+        String json = "{\"success\":false,\"status\":\"busy\",\"error\":\"SLOT_BUSY\",\"holder\":\"" + holder + "\",\"message\":\"Coin slot is currently in use by another device.\"}";
+        webServer.send(409, "application/json", json);
+        return;
+    }
+
+    unsigned long ttlMs = durationSec * 1000UL;
+    bool reserved = reserveCoinSlot(devId, CoinSlotOwnerType::PHONE, ttlMs,
+        [](const String& id, int pulses) {
+            triggerUniversalCoinEvent(pulses, id);
+        },
+        [](const String& id, const char* reason) {
+            Serial.printf("[⚡ COIN SLOT] Session ended for %s (%s)\n", id.c_str(), reason);
+        }
+    );
+
+    if (!reserved) {
+        webServer.send(500, "application/json", "{\"success\":false,\"status\":\"error\",\"error\":\"ARM_FAILED\"}");
+        return;
+    }
+
+    clearSessionCoinTx(devId);
+
+    int sNum = licenseSlots[slotIdx].slotNum;
+    String json = "{\"success\":true,\"status\":\"armed\",\"slot\":" + String(sNum) + ",\"duration\":" + String(durationSec) + ",\"minutes_per_coin\":" + String(minutesPerCoin) + ",\"price\":1.0}";
+    webServer.send(200, "application/json", json);
+}
+
+void handleApiCoinslotUnarm() {
+    String devId = webServer.hasArg("device_id") ? webServer.arg("device_id") : (webServer.hasArg("id") ? webServer.arg("id") : "");
+    devId.trim();
+    if (devId.length() == 0) {
+        devId = getActiveCoinSessionId();
+    }
+    
+    releaseCoinSlot(devId, CoinSlotOwnerType::PHONE, false, "CLIENT_DONE");
+    webServer.send(200, "application/json", "{\"success\":true,\"status\":\"idle\"}");
+}
+
+void handleApiCoinslotStatus() {
+    String devId = webServer.hasArg("device_id") ? webServer.arg("device_id") : (webServer.hasArg("id") ? webServer.arg("id") : "");
+    devId.trim();
+    if (devId.length() == 0) {
+        String reqIp = webServer.client().remoteIP().toString();
+        devId = getDeviceIdFromIp(reqIp);
+    }
+    
+    CoinSlotState st = getCoinSlotState();
+    String stateStr = (st == CoinSlotState::ARMED) ? "ARMED" : ((st == CoinSlotState::DRAINING) ? "DRAINING" : "IDLE");
+    String activeDev = getActiveCoinSessionId();
+    bool isArmed = isCoinSlotArmed();
+    
+    int remainingSec = 0;
+    unsigned long armedUntil = getCoinSlotArmedUntilMs();
+    if (isArmed && armedUntil > millis()) {
+        remainingSec = (int)((armedUntil - millis()) / 1000UL);
+    }
+
+    String json = "{";
+    json += "\"success\":true,";
+    json += "\"armed\":" + String(isArmed ? "true" : "false") + ",";
+    json += "\"state\":\"" + stateStr + "\",";
+    json += "\"holder\":\"" + activeDev + "\",";
+    json += "\"remaining_seconds\":" + String(remainingSec) + ",";
+    json += "\"minutes_per_coin\":" + String(minutesPerCoin) + ",";
+    json += "\"transactions\":[";
+    
+    bool first = true;
+    for (int i = 0; i < sessionTxCount; i++) {
+        if (devId.length() > 0 && sessionTxList[i].devId.length() > 0 && sessionTxList[i].devId != devId && activeDev != devId) continue;
+        if (!first) json += ",";
+        first = false;
+        json += "{";
+        json += "\"tx_id\":\"" + sessionTxList[i].txId + "\",";
+        json += "\"pulses\":" + String(sessionTxList[i].pulses) + ",";
+        json += "\"amount\":" + String(sessionTxList[i].amount, 2) + ",";
+        json += "\"seconds\":" + String(sessionTxList[i].seconds) + ",";
+        json += "\"minutes\":" + String(sessionTxList[i].seconds / 60) + ",";
+        json += "\"acknowledged\":" + String(sessionTxList[i].acknowledged ? "true" : "false") + ",";
+        json += "\"ts\":" + String(sessionTxList[i].ts);
+        json += "}";
+    }
+    json += "]}";
+    webServer.send(200, "application/json", json);
+}
+
+void handleApiCoinslotAck() {
+    String txId = webServer.hasArg("tx_id") ? webServer.arg("tx_id") : "";
+    txId.trim();
+    String devId = webServer.hasArg("device_id") ? webServer.arg("device_id") : "";
+    devId.trim();
+    
+    if (txId.length() > 0) {
+        acknowledgeSessionCoinTx(txId);
+        if (devId.length() > 0) {
+            acknowledgePhonePayment(devId, txId);
+        }
+    }
+    webServer.send(200, "application/json", "{\"success\":true,\"tx_id\":\"" + txId + "\"}");
 }

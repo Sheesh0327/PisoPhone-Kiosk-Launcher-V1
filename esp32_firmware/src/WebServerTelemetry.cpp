@@ -5,6 +5,7 @@
 #include "Security.h"
 #include "DeviceManager.h"
 #include "DeviceNetwork.h"
+#include "PaymentQueueManager.h"
 #include <WiFi.h>
 #include <WebServer.h>
 
@@ -23,6 +24,14 @@ void handleHeartbeat() {
 
     if (deviceId.length() == 0 && reqIp.length() > 0 && reqIp != "127.0.0.1" && reqIp != "0.0.0.0") {
         deviceId = "DEV_" + reqIp;
+    }
+
+    if (webServer.hasArg("ack_tx") && deviceId.length() > 0) {
+        String ackTx = webServer.arg("ack_tx");
+        ackTx.trim();
+        if (ackTx.length() > 0) {
+            acknowledgePhonePayment(deviceId, ackTx);
+        }
     }
 
     bool isAuth = verifyTelemetryAuth(deviceId, tsStr, sig);
@@ -99,6 +108,13 @@ void handleHeartbeat() {
     } else {
         json += ",\"arena_active\":false";
     }
+
+    String pendingCoinsJson = "";
+    int pendingCount = getPendingPhonePaymentsJson(deviceId, pendingCoinsJson);
+    if (pendingCount > 0) {
+        json += ",\"unclaimed_coins\":" + pendingCoinsJson;
+    }
+
     json += "}";
     webServer.send(200, "application/json", json);
 }

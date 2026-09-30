@@ -262,6 +262,26 @@ bool acknowledgePhonePayment(const String& deviceId, const String& txId) {
     return acknowledgeMatchingPayment(txId, &deviceId, 1);
 }
 
+int getPendingPhonePaymentsJson(const String& deviceId, String& outJsonArray) {
+    if (deviceId.length() == 0) return 0;
+    lockQueue();
+    int foundCount = 0;
+    outJsonArray = "[";
+    for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
+        if (paymentSlotUsed[i] && paymentQueue[i].ownerType == 1 &&
+            (String(paymentQueue[i].targetId) == deviceId || strlen(paymentQueue[i].targetId) == 0)) {
+            if (foundCount > 0) outJsonArray += ",";
+            outJsonArray += "{\"tx_id\":\"" + String(paymentQueue[i].txId) + "\",";
+            outJsonArray += "\"amount\":" + String(paymentQueue[i].pulses) + ",";
+            outJsonArray += "\"seconds\":" + String(paymentQueue[i].creditSeconds) + "}";
+            foundCount++;
+        }
+    }
+    outJsonArray += "]";
+    unlockQueue();
+    return foundCount;
+}
+
 bool acknowledgeControllerPayment(const String& sessionId, const String& txId) {
     return acknowledgeMatchingPayment(txId, &sessionId, 2);
 }

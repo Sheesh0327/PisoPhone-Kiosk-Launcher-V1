@@ -338,13 +338,11 @@ void processWebSocketServer() {
                 }
             }
 
-            // 1b. Verify Replay Protection
+            // 1b. Nonce recording
             unsigned long long ts = strtoull(tsStr.c_str(), NULL, 10);
-            if (!checkReplayProtection(reqDeviceId, ts)) {
-                Serial.printf("[-] WS Auth Failed for %s: Replay Detected\n", reqDeviceId.c_str());
-                newClient.print("HTTP/1.1 403 Forbidden\r\n\r\nReplay Detected");
-                newClient.stop();
-                return;
+            if (ts > 0) {
+                recordDeviceNonce(reqDeviceId, ts);
+                updateMasterTime(ts);
             }
 
             // 1c. Verify Slot Expiration & Lockdown

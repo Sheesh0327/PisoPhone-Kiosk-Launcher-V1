@@ -65,6 +65,12 @@ void setupWebServer() {
     webServer.on("/api/slots/apply_token", HTTP_POST, handleApiSlotApplyToken);
     webServer.on("/api/slots/cloud_sync", HTTP_POST, handleApiSlotCloudSync);
     
+    // Dedicated Robust Coin Slot API routes
+    webServer.on("/api/coinslot/arm", HTTP_ANY, handleApiCoinslotArm);
+    webServer.on("/api/coinslot/unarm", HTTP_ANY, handleApiCoinslotUnarm);
+    webServer.on("/api/coinslot/status", HTTP_GET, handleApiCoinslotStatus);
+    webServer.on("/api/coinslot/ack", HTTP_ANY, handleApiCoinslotAck);
+    
     webServer.on("/api/relay", HTTP_ANY, []() {
         if (!checkAdminAuth()) return;
 

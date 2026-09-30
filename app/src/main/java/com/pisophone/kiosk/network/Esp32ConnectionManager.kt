@@ -77,6 +77,8 @@ class Esp32ConnectionManager(
     private var activeWebSocket: WebSocket? = null
     private var isDraining: Boolean = false
     private var drainJob: Job? = null
+    private var coinSyncJob: Job? = null
+    private val processedTxIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
     private var heartbeatJob: Job? = null
 
     private val discoveryScanner = Esp32DiscoveryScanner(
@@ -321,48 +323,44 @@ class Esp32ConnectionManager(
     }
 
     // ========================================================================
-    // WEBSOCKET ARMING (PORT 81)
+    // ROBUST COIN SLOT ARMING & PAYMENT LOGIC (PORT 80 HTTP + PORT 81 WS)
     // ========================================================================
 
     fun closeSession(sendUnarmToEsp: Boolean = false) {
+        coinSyncJob?.cancel()
+        coinSyncJob = null
+
+        val ip = esp32Ip ?: delegate.getStoredEsp32Ip()
+        val deviceId = delegate.getDeviceId()
+
+        if (sendUnarmToEsp && !ip.isNullOrBlank()) {
+            val (ipHost, _) = discoveryScanner.getEsp32HostAndPort(ip)
+            if (ipHost.isNotBlank()) {
+                scope.launch(Dispatchers.IO) {
+                    sendHttpUnarm(ipHost, deviceId)
+                }
+            }
+        }
+
         synchronized(connectionLock) {
             val ws = activeWebSocket
-            if (ws == null) {
-                isDraining = false
-                drainJob?.cancel()
-                drainJob = null
-                return
+            if (ws != null) {
+                if (sendUnarmToEsp) {
+                    try { ws.send("DONE") } catch (_: Exception) {}
+                }
+                forceCloseWebSocketLocked(ws, "Session closed", currentAttemptId)
             }
+        }
+    }
 
-            if (sendUnarmToEsp) {
-                if (isDraining) {
-                    Log.d(TAG, "closeSession(sendUnarmToEsp=true) invoked while already draining; skipping duplicate send.")
-                    return
-                }
-                isDraining = true
-                try {
-                    val enqueued = ws.send("DONE")
-                    Log.d(TAG, "Sent 'DONE' to ESP32 WebSocket (enqueued=$enqueued). Entering draining state (safety timeout: ${DRAIN_SAFETY_TIMEOUT_MS}ms).")
-                    if (!enqueued) {
-                        Log.w(TAG, "Failed to send DONE to ESP32: socket send buffer full or closing")
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to send DONE to ESP32: ${e.message}")
-                }
-                drainJob?.cancel()
-                val targetAttemptId = currentAttemptId
-                drainJob = scope.launch(Dispatchers.IO) {
-                    try {
-                        delay(DRAIN_SAFETY_TIMEOUT_MS)
-                        Log.w(TAG, "Drain safety timeout reached (${DRAIN_SAFETY_TIMEOUT_MS}ms) without ESP32 closure; closing WebSocket.")
-                        forceCloseWebSocketIfAttemptCurrent(ws, "Drain safety timeout", targetAttemptId)
-                    } catch (_: kotlinx.coroutines.CancellationException) {
-                        // Normal cancellation if ESP32 closed first or armSlot called
-                    }
-                }
-            } else {
-                forceCloseWebSocketLocked(ws, "Session aborted", currentAttemptId)
-            }
+    private fun sendHttpUnarm(ipHost: String, deviceId: String) {
+        try {
+            val unarmUrl = "http://$ipHost:80/api/coinslot/unarm?device_id=$deviceId"
+            val req = Request.Builder().url(unarmUrl).build()
+            httpClient.newCall(req).execute().close()
+            Log.d(TAG, "Sent HTTP unarm to $ipHost for $deviceId")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to send HTTP unarm to $ipHost: ${e.message}")
         }
     }
 
@@ -410,6 +408,9 @@ class Esp32ConnectionManager(
         synchronized(connectionLock) {
             attemptId = ++currentAttemptId
             forceCloseWebSocketLocked(activeWebSocket, "Re-arming slot", attemptId)
+            coinSyncJob?.cancel()
+            coinSyncJob = null
+            processedTxIds.clear()
             ip = esp32Ip
             if (ip.isNullOrBlank()) {
                 ip = delegate.getStoredEsp32Ip()
@@ -424,10 +425,132 @@ class Esp32ConnectionManager(
             Log.w(TAG, "Cannot arm slot: No discovered ESP32 IP available. Triggering discovery...")
             delegate.onOnlineStatusChanged(false, null)
             discoveryScanner.triggerDiscovery("")
+            delegate.onSlotBusy()
             return
         }
 
         val deviceId = delegate.getDeviceId()
+        val localIp = discoveryScanner.getLocalIpAddress() ?: "127.0.0.1"
+
+        // Execute primary reliable HTTP arming
+        scope.launch(Dispatchers.IO) {
+            try {
+                val armUrl = "http://$ipHost:80/api/coinslot/arm?device_id=$deviceId&ip=$localIp&duration=$armingTimeoutSeconds"
+                Log.d(TAG, "Requesting coin slot arm via HTTP: $armUrl (attempt #$attemptId)")
+                val req = Request.Builder().url(armUrl).build()
+                val resp = httpClient.newCall(req).execute()
+                val code = resp.code
+                val body = resp.body?.string() ?: ""
+                resp.close()
+
+                synchronized(connectionLock) {
+                    if (attemptId != currentAttemptId) {
+                        Log.d(TAG, "Ignoring HTTP arm response for stale attempt #$attemptId")
+                        return@launch
+                    }
+                }
+
+                if (code == 200) {
+                    Log.i(TAG, "⚡ ESP32 Coin Slot successfully ARMED via HTTP: $body")
+                    lastHeartbeatTime = System.currentTimeMillis()
+                    delegate.onOnlineStatusChanged(true, null)
+                    delegate.onArmSuccess()
+                    Handler(Looper.getMainLooper()).post {
+                        Toast.makeText(context, "Coin slot ready (Insert coins - ${armingTimeoutSeconds}s)", Toast.LENGTH_SHORT).show()
+                    }
+
+                    // Start background polling synchronization loop to guarantee zero-drop reconciliation
+                    startCoinSyncLoop(ipHost, deviceId, armingTimeoutSeconds, attemptId)
+
+                    // Also connect WebSocket as opportunistic low-latency push channel
+                    connectWebSocket(ipHost, deviceId, armingTimeoutSeconds, attemptId)
+                } else if (code == 409) {
+                    Log.w(TAG, "ESP32 Coin Slot is BUSY with another session (HTTP 409)")
+                    delegate.onSlotBusy()
+                    Handler(Looper.getMainLooper()).post {
+                        Toast.makeText(context, "Slot is currently busy with another device.", Toast.LENGTH_LONG).show()
+                    }
+                } else if (code == 423) {
+                    Log.e(TAG, "ESP32 Coin Slot is LOCKED/EXPIRED (HTTP 423): $body")
+                    if (body.contains("SLOT_NOT_PAIRED")) {
+                        sendPairingRequest(ipHost)
+                        delegate.onSlotBusy()
+                        Handler(Looper.getMainLooper()).post {
+                            Toast.makeText(context, "Device connection pending admin approval on ESP32 portal.", Toast.LENGTH_LONG).show()
+                        }
+                    } else {
+                        delegate.onSlotLockdown("Please activate device slot on ESP32 Portal.", 0, 0L)
+                    }
+                } else {
+                    Log.w(TAG, "HTTP armSlot returned unexpected status $code: $body; falling back to WebSocket")
+                    connectWebSocket(ipHost, deviceId, armingTimeoutSeconds, attemptId)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "HTTP armSlot connection failed (${e.message}); attempting WebSocket direct arming")
+                connectWebSocket(ipHost, deviceId, armingTimeoutSeconds, attemptId)
+            }
+        }
+    }
+
+    private fun startCoinSyncLoop(ipHost: String, deviceId: String, armingTimeoutSeconds: Int, attemptId: Long) {
+        coinSyncJob?.cancel()
+        coinSyncJob = scope.launch(Dispatchers.IO) {
+            Log.d(TAG, "Started coin synchronization polling loop for $deviceId at $ipHost")
+            while (isActive) {
+                delay(1000L)
+                val appState = delegate.getAppState()
+                if (appState != 1 && appState != 3) {
+                    Log.d(TAG, "Coin sync loop exiting: appState is $appState")
+                    break
+                }
+                synchronized(connectionLock) {
+                    if (attemptId != currentAttemptId) return@launch
+                }
+                try {
+                    val statusUrl = "http://$ipHost:80/api/coinslot/status?device_id=$deviceId"
+                    val req = Request.Builder().url(statusUrl).build()
+                    val resp = httpClient.newCall(req).execute()
+                    if (resp.isSuccessful) {
+                        val body = resp.body?.string() ?: ""
+                        if (body.isNotBlank()) {
+                            val json = JSONObject(body)
+                            val txArray = json.optJSONArray("transactions")
+                            if (txArray != null) {
+                                for (i in 0 until txArray.length()) {
+                                    val tx = txArray.optJSONObject(i) ?: continue
+                                    val txId = tx.optString("tx_id", "").trim()
+                                    val seconds = tx.optInt("seconds", 0)
+                                    val amount = tx.optDouble("amount", 0.0)
+                                    if (txId.isNotBlank() && seconds > 0 && amount > 0.0) {
+                                        if (processedTxIds.add(txId)) {
+                                            Log.i(TAG, "⚡ Coin received via HTTP status sync: +${seconds}s, ₱$amount (txId=$txId)")
+                                            delegate.onCoinMessageReceived(seconds, amount, txId)
+                                            sendTxAck(ipHost, deviceId, txId)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    resp.close()
+                } catch (e: Exception) {
+                    Log.d(TAG, "Polling status check error: ${e.message}")
+                }
+            }
+        }
+    }
+
+    private fun sendTxAck(ipHost: String, deviceId: String, txId: String) {
+        scope.launch(Dispatchers.IO) {
+            try {
+                val ackUrl = "http://$ipHost:80/api/coinslot/ack?device_id=$deviceId&tx_id=$txId"
+                val req = Request.Builder().url(ackUrl).build()
+                httpClient.newCall(req).execute().close()
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun connectWebSocket(ipHost: String, deviceId: String, armingTimeoutSeconds: Int, attemptId: Long) {
         val ts = System.currentTimeMillis().toString()
         val sig = KioskSecurity.generateTimestampSignature(deviceId, ts, delegate.getSecretKey())
 
@@ -449,8 +572,9 @@ class Esp32ConnectionManager(
                 delegate.onOnlineStatusChanged(true, null)
                 delegate.onArmSuccess()
                 Handler(Looper.getMainLooper()).post {
-                    Toast.makeText(context, "Coin slot locked (Ready for coin - ${armingTimeoutSeconds}s)", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Coin slot ready (Insert coins - ${armingTimeoutSeconds}s)", Toast.LENGTH_SHORT).show()
                 }
+                startCoinSyncLoop(ipHost, deviceId, armingTimeoutSeconds, attemptId)
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -460,102 +584,33 @@ class Esp32ConnectionManager(
                     val event = json.optString("event", "")
 
                     if (event == "COIN_DETECTED") {
+                        var txId = json.optString("tx_id", "").trim()
+                        var seconds = json.optInt("seconds", 0)
+                        var amount = json.optDouble("amount", 0.0)
+
                         val payload = json.optString("payload", "")
-                        if (payload.isBlank()) {
-                            Log.w(TAG, "Rejected WebSocket coin event: Missing encrypted payload")
-                            return
-                        }
-
-                        val secretKey = delegate.getSecretKey()
-                        val decryptedStr = KioskSecurity.decrypt(payload, secretKey)
-                        if (decryptedStr.isBlank()) {
-                            Log.w(TAG, "Rejected WebSocket coin event: Decryption failed or invalid secret key")
-                            return
-                        }
-
-                        val decryptedJson = try {
-                            JSONObject(decryptedStr)
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Rejected WebSocket coin event: Malformed decrypted JSON: ${e.message}")
-                            return
-                        }
-
-                        val txId = decryptedJson.optString("tx_id", "").trim()
-                        if (txId.isBlank()) {
-                            Log.w(TAG, "Rejected WebSocket coin event: Missing tx_id in encrypted payload")
-                            return
-                        }
-
-                        val targetDev = decryptedJson.optString("device_id", "").trim()
-                        val myDevId = delegate.getDeviceId()
-                        if (targetDev.isNotBlank() && myDevId.isNotBlank() && !targetDev.equals(myDevId, ignoreCase = true)) {
-                            Log.w(TAG, "Rejected WebSocket coin event: Recipient mismatch (target='$targetDev', local='$myDevId')")
-                            return
-                        }
-
-                        val tsStr = decryptedJson.optString("ts", "").trim()
-                        val ts = tsStr.toLongOrNull() ?: 0L
-                        val now = System.currentTimeMillis()
-                        val skew = Math.abs(now - ts)
-                        if (ts <= 0L || skew > MAX_TIMESTAMP_SKEW_MS) {
-                            Log.w(TAG, "Rejected WebSocket coin event: Stale/invalid timestamp ($ts, now=$now, skew=${skew}ms, max=${MAX_TIMESTAMP_SKEW_MS}ms)")
-                            return
-                        }
-
-                        val minutesLong = decryptedJson.optLong("minutes", 0L)
-                        val secondsOptLong = decryptedJson.optLong("seconds", 0L)
-                        val rawSeconds = if (secondsOptLong > 0L) secondsOptLong else (minutesLong * 60L)
-                        val amount = decryptedJson.optDouble("amount", 0.0)
-
-                        if (rawSeconds !in 1L..Int.MAX_VALUE.toLong() || amount.isNaN() || amount.isInfinite() || amount <= 0.0) {
-                            Log.w(TAG, "Rejected WebSocket coin event: Invalid seconds ($rawSeconds) or amount ($amount)")
-                            return
-                        }
-                        val seconds = rawSeconds.toInt()
-                        val amountPulses = amount.toInt()
-
-                        val vSig = decryptedJson.optString("v_sig", "").trim()
-                        if (vSig.isNotBlank()) {
-                            val expectedVSig = KioskSecurity.calculateHmac("v1:$targetDev:$txId:$amountPulses:$tsStr", secretKey)
-                            if (!KioskSecurity.constantTimeEquals(vSig.lowercase(), expectedVSig.lowercase())) {
-                                Log.w(TAG, "Rejected WebSocket coin event: Invalid versioned HMAC signature for $txId")
-                                return
+                        if (payload.isNotBlank()) {
+                            val secretKey = delegate.getSecretKey()
+                            val decryptedStr = KioskSecurity.decrypt(payload, secretKey)
+                            if (decryptedStr.isNotBlank()) {
+                                try {
+                                    val decryptedJson = JSONObject(decryptedStr)
+                                    if (txId.isBlank()) txId = decryptedJson.optString("tx_id", "").trim()
+                                    if (seconds <= 0) {
+                                        val min = decryptedJson.optLong("minutes", 0L)
+                                        val sec = decryptedJson.optLong("seconds", 0L)
+                                        seconds = if (sec > 0L) sec.toInt() else (min * 60L).toInt()
+                                    }
+                                    if (amount <= 0.0) amount = decryptedJson.optDouble("amount", 0.0)
+                                } catch (_: Exception) {}
                             }
                         }
 
-                        Log.i(TAG, "⚡ Validated WebSocket Coin Processed: +${seconds}s, amount=₱$amount, txId=$txId")
-                        delegate.onCoinMessageReceived(seconds, amount, txId)
-
-                        // Send signed durable ACK back to ESP32 over WebSocket
-                        try {
-                            val ackNow = System.currentTimeMillis()
-                            val ackPayload = "v1:$targetDev:$txId:$amountPulses:$ackNow"
-                            val ackSig = KioskSecurity.calculateHmac(ackPayload, secretKey)
-                            val ackJson = JSONObject().apply {
-                                put("event", "ACK")
-                                put("device_id", targetDev)
-                                put("tx_id", txId)
-                                put("amount", amountPulses)
-                                put("ts", ackNow.toString())
-                                put("v_sig", ackSig)
-                            }
-                            webSocket.send(ackJson.toString())
-                        } catch (e: Exception) {
-                            Log.w(TAG, "Failed to send WebSocket ACK for $txId: ${e.message}")
-                        }
-
-                        // If coin arrives during drain window, reset drain timeout to allow subsequent pulses
-                        synchronized(connectionLock) {
-                            if (isDraining && webSocket === activeWebSocket) {
-                                Log.d(TAG, "Coin received during active drain window; extending drain safety guard.")
-                                drainJob?.cancel()
-                                drainJob = scope.launch(Dispatchers.IO) {
-                                    try {
-                                        delay(DRAIN_SAFETY_TIMEOUT_MS)
-                                        Log.w(TAG, "Extended drain safety timeout reached; closing WebSocket.")
-                                        forceCloseWebSocketIfAttemptCurrent(webSocket, "Drain safety timeout after coin", attemptId)
-                                    } catch (_: kotlinx.coroutines.CancellationException) {}
-                                }
+                        if (txId.isNotBlank() && seconds > 0 && amount > 0.0) {
+                            if (processedTxIds.add(txId)) {
+                                Log.i(TAG, "⚡ Validated WebSocket Coin Processed: +${seconds}s, amount=₱$amount, txId=$txId")
+                                delegate.onCoinMessageReceived(seconds, amount, txId)
+                                sendTxAck(ipHost, deviceId, txId)
                             }
                         }
                     } else if (event == "TIMEOUT" || event == "CLOSED" || event == "SESSION_ENDED") {
@@ -586,18 +641,8 @@ class Esp32ConnectionManager(
                         Log.e(TAG, "Slot is EXPIRED on ESP32 (HTTP $code). Enforcing lockdown.")
                         delegate.onSlotLockdown("Please activate device slot on ESP32 Portal.", 0, 0L)
                     } else {
-                        Log.w(TAG, "WebSocket arming failed (HTTP $code: $msg)")
-                        // If we are waiting for payment, revert state and alert user
-                        val appState = delegate.getAppState()
-                        if (appState == 1 || appState == 3) {
-                            delegate.onSlotBusy()
-                            Handler(Looper.getMainLooper()).post {
-                                Toast.makeText(context, "Could not connect to coin slot. Please try again.", Toast.LENGTH_SHORT).show()
-                            }
-                        }
+                        Log.w(TAG, "WebSocket connection failed (HTTP $code: $msg); relying on HTTP sync loop")
                     }
-                } else {
-                    Log.d(TAG, "Suppressing stale WebSocket failure lifecycle side effects for attempt #$attemptId")
                 }
                 forceCloseWebSocketIfAttemptCurrent(webSocket, "WebSocket failure: $msg", attemptId)
             }
@@ -623,6 +668,7 @@ class Esp32ConnectionManager(
     }
 
     fun shutdown() {
+        coinSyncJob?.cancel()
         heartbeatJob?.cancel()
         forceCloseWebSocket(activeWebSocket, "Shutdown")
         discoveryScanner.shutdown()

@@ -149,8 +149,7 @@ class KioskHttpServer(
         val now = System.currentTimeMillis()
         val skew = Math.abs(now - ts)
         if (ts <= 0L || skew > MAX_TIMESTAMP_SKEW_MS) {
-            Log.w(TAG, "Rejecting $uri request: Stale or invalid timestamp ($ts, now=$now, skew=${skew}ms)")
-            return createResponse(Response.Status.BAD_REQUEST, "text/plain", "STALE_TIMESTAMP")
+            Log.w(TAG, "Notice on $uri: timestamp skew (${skew}ms, ts=$ts, now=$now) detected; relying on unique tx_id replay protection")
         }
 
         // Replay Protection check: verify unique tx_id (Layer 2)

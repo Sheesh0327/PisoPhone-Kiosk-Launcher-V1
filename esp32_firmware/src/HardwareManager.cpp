@@ -93,18 +93,20 @@ void resetCoinDetectorStates() {
 }
 
 void setRelayHardware(bool active) {
-    pinMode(relayPin, OUTPUT);
     if (active) {
+        pinMode(relayPin, OUTPUT);
         digitalWrite(relayPin, relayActiveLow ? LOW : HIGH);
         if (!isRelayCurrentlyActive) {
             isRelayCurrentlyActive = true;
             Serial.printf("[⚡ RELAY] Coin slot powered ON (Pin %d, Mode=OUTPUT, ActiveLow=%s).\n", relayPin, relayActiveLow ? "true" : "false");
         }
     } else {
+        // At idle, set pin to high-impedance INPUT mode so sensitive 5V optocoupled relay modules won't false trigger
         digitalWrite(relayPin, relayActiveLow ? HIGH : LOW);
+        pinMode(relayPin, INPUT);
         if (isRelayCurrentlyActive) {
             isRelayCurrentlyActive = false;
-            Serial.printf("[⚡ RELAY] Coin slot powered down into standby (Pin %d, Mode=OUTPUT, ActiveLow=%s).\n", relayPin, relayActiveLow ? "true" : "false");
+            Serial.printf("[⚡ RELAY] Coin slot powered down into standby (Pin %d, Mode=INPUT, ActiveLow=%s).\n", relayPin, relayActiveLow ? "true" : "false");
         }
     }
 }
@@ -120,8 +122,9 @@ void processRelayState() {
     if (cur != lastAppliedRelayState) {
         lastAppliedRelayState = cur;
         setRelayHardware(shouldBeOn);
-        Serial.printf("[⚡ RELAY] Pin %d set to %s (ActiveLow=%s, SlotArmed=%s)\n",
-            relayPin, shouldBeOn ? "ON (POWERED)" : "OFF (STANDBY)",
+        Serial.printf("[⚡ RELAY] Pin %d set to %s (Mode=%s, ActiveLow=%s, SlotArmed=%s)\n",
+            relayPin, shouldBeOn ? "ON (POWERED)" : "OFF (STANDBY/INPUT)",
+            shouldBeOn ? "OUTPUT" : "INPUT",
             relayActiveLow ? "true" : "false", shouldBeOn ? "true" : "false");
     }
 }
