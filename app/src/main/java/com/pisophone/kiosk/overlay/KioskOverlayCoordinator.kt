@@ -7,6 +7,7 @@ import android.util.Log
 import android.widget.Toast
 import com.pisophone.kiosk.model.BatteryStatus
 import com.pisophone.kiosk.security.KioskActivationManager
+import com.pisophone.kiosk.security.KioskSecurity
 import com.pisophone.kiosk.service.KioskStateManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -85,13 +86,34 @@ class KioskOverlayCoordinator(
                         isSlotExpiredFlow = stateManager.isSlotExpired,
                         slotExpiryReasonFlow = stateManager.slotExpiryMessage,
                         onInsertCoinClick = {
-                            if (stateManager.appState.value == 4) return@KioskOverlay
+                            if (stateManager.appState.value == 4) {
+                                Handler(Looper.getMainLooper()).post {
+                                    Toast.makeText(
+                                        context.applicationContext,
+                                        "Device slot unlicensed. Please activate a slot in the ESP32 portal.",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                                return@KioskOverlay
+                            }
                             if (stateManager.isSlotExpired.value || KioskActivationManager.isSlotLockedDown(context)) {
                                 Log.w(TAG, "Coin insertion blocked: Device not activated on ESP32.")
                                 Handler(Looper.getMainLooper()).post {
                                     Toast.makeText(
                                         context.applicationContext,
                                         "Device not activated. Please activate this device in the ESP32 Kiosk Manager.",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                                return@KioskOverlay
+                            }
+                            val secret = KioskSecurity.getSharedSecret(context).trim()
+                            if (secret.isEmpty()) {
+                                Log.w(TAG, "Coin insertion blocked: Missing box secret key.")
+                                Handler(Looper.getMainLooper()).post {
+                                    Toast.makeText(
+                                        context.applicationContext,
+                                        "Payment setup required: Please configure Box Secret Key in Security Vault.",
                                         Toast.LENGTH_LONG
                                     ).show()
                                 }

@@ -82,6 +82,15 @@ int findSlotIndexForDevice(String devId, String ip) {
         return singleBoundIndex;
     }
 
+    // Auto-claim the first available active empty slot when no devices are bound yet
+    if (boundCount == 0) {
+        for (int i = 0; i < maxLicensedSlots; i++) {
+            if (licenseSlots[i].active) {
+                return i;
+            }
+        }
+    }
+
     return -1;
 }
 

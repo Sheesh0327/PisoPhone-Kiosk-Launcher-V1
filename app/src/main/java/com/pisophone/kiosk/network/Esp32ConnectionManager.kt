@@ -416,9 +416,12 @@ class Esp32ConnectionManager(
         val listener = object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 synchronized(connectionLock) {
-                    if (attemptId != currentAttemptId || webSocket !== activeWebSocket) {
+                    if (attemptId != currentAttemptId || (activeWebSocket != null && webSocket !== activeWebSocket)) {
                         try { webSocket.close(1000, "Obsolete attempt") } catch (_: Exception) {}
                         return
+                    }
+                    if (activeWebSocket == null) {
+                        activeWebSocket = webSocket
                     }
                 }
                 lastHeartbeatTime = System.currentTimeMillis()

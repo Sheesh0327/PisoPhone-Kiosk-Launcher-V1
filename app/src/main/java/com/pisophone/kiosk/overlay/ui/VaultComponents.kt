@@ -125,6 +125,8 @@ fun VaultEsp32HardwareSection(
 ) {
     var configuredIp by remember { mutableStateOf(KioskSecurity.getConfiguredEsp32Ip(context)) }
     var configuredMac by remember { mutableStateOf(KioskSecurity.getConfiguredEsp32Mac(context)) }
+    var configuredSecret by remember { mutableStateOf(KioskSecurity.getSharedSecret(context)) }
+    var secretVisible by remember { mutableStateOf(false) }
 
     Card(
         shape = RoundedCornerShape(12.dp),
@@ -155,12 +157,12 @@ fun VaultEsp32HardwareSection(
                     Spacer(modifier = Modifier.width(10.dp))
                     Column {
                         Text("ESP32 Master Box Configuration", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        Text("Manual IP & MAC Address settings", color = Color(0xFF94A3B8), fontSize = 10.sp)
+                        Text("Manual IP, MAC & Secret Key settings", color = Color(0xFF94A3B8), fontSize = 10.sp)
                     }
                 }
                 HelpInfoButton(
                     title = "ESP32 Hardware Configuration",
-                    description = "Manually configure the ESP32 Master Cabinet IP address and MAC address for hardware communication.",
+                    description = "Configure the ESP32 Master Cabinet IP address, MAC address, and Box Secret Key for hardware communication and arming authorization.",
                     onShowHelp = onShowHelp
                 )
             }
@@ -201,15 +203,53 @@ fun VaultEsp32HardwareSection(
                 modifier = Modifier.fillMaxWidth()
             )
 
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedTextField(
+                value = configuredSecret,
+                onValueChange = { configuredSecret = it },
+                label = { Text("Box Secret Key (256-bit Hex)", fontSize = 11.sp, color = Color(0xFF94A3B8)) },
+                placeholder = { Text("Paste secret key from ESP32 portal", fontSize = 11.sp, color = Color.Gray) },
+                singleLine = true,
+                visualTransformation = if (secretVisible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                trailingIcon = {
+                    IconButton(onClick = { secretVisible = !secretVisible }) {
+                        Icon(
+                            if (secretVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                            contentDescription = if (secretVisible) "Hide secret" else "Show secret",
+                            tint = Color(0xFF94A3B8),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                },
+                textStyle = TextStyle(color = Color.White, fontSize = 12.sp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color(0xFF6366F1),
+                    unfocusedBorderColor = Color(0xFF334155),
+                    focusedContainerColor = Color(0xFF0F172A),
+                    unfocusedContainerColor = Color(0xFF0F172A)
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+
             Spacer(modifier = Modifier.height(10.dp))
 
             Button(
                 onClick = {
                     val cleanMac = KioskSecurity.formatMacAddress(configuredMac)
                     val cleanIp = configuredIp.trim()
+                    val cleanSecret = configuredSecret.trim()
                     KioskSecurity.setConfiguredEsp32Ip(context, cleanIp)
                     KioskSecurity.setConfiguredEsp32Mac(context, cleanMac)
-                    KioskService.configureMasterBox(context, mac = cleanMac, ip = cleanIp)
+                    if (cleanSecret.isNotBlank()) {
+                        KioskSecurity.setSharedSecret(context, cleanSecret)
+                    }
+                    KioskService.configureMasterBox(
+                        context,
+                        mac = cleanMac,
+                        ip = cleanIp,
+                        secret = cleanSecret.ifBlank { null }
+                    )
                     Toast.makeText(context, "Hardware Box settings saved!", Toast.LENGTH_SHORT).show()
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5)),
