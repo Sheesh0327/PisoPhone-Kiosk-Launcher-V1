@@ -81,7 +81,8 @@ void setup() {
     });
     pinMode(HARDWARE_RESET_PIN, INPUT_PULLUP);
     setLedHardware(false);
-    // Initialize relay hardware (OUTPUT, held in safe disarmed state)
+    // Initialize relay hardware (INPUT by default - Armed-Only mode)
+    pinMode(relayPin, INPUT);
     setRelayHardware(false);
     Serial.printf("[+] Hardware Pins bound: Universal Multi-Coin Pin = GPIO %d, LED Pin = GPIO %d, Relay Pin = GPIO %d (ActiveLow=%s), Reset Pin = GPIO %d\n",
         universalCoinPin, ledPin, relayPin, relayActiveLow ? "true" : "false", HARDWARE_RESET_PIN);

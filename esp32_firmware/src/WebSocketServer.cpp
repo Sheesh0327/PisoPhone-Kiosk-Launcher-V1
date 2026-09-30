@@ -9,6 +9,10 @@
 #include "DeviceNetwork.h"
 #include <WiFi.h>
 
+// ============================================================================
+// URL PARAMETER EXTRACTION
+// ============================================================================
+
 String extractUrlParam(String url, String param) {
     int start = url.indexOf(param);
     if (start == -1) return "";
@@ -23,13 +27,17 @@ String extractUrlParam(String url, String param) {
     return url.substring(start, end);
 }
 
+// ============================================================================
+// RFC 6455 WEBSOCKET FRAME ENCODING & DECODING
+// ============================================================================
+
 void sendWsText(WiFiClient& client, String text) {
     if (!client.connected()) return;
     size_t len = text.length();
     uint8_t header[10];
     size_t headerLen = 0;
 
-    header[0] = 0x81; // FIN + text frame
+    header[0] = 0x81; // FIN + Text opcode
     if (len <= 125) {
         header[1] = (uint8_t)len;
         headerLen = 2;
@@ -54,7 +62,7 @@ void sendWsText(WiFiClient& client, String text) {
 void sendWsPong(WiFiClient& client, const uint8_t* payload, size_t len) {
     if (!client.connected()) return;
     uint8_t header[2];
-    header[0] = 0x8A; // FIN + Pong frame
+    header[0] = 0x8A; // FIN + Pong opcode
     header[1] = (uint8_t)(len & 0x7F);
     client.write(header, 2);
     if (len > 0 && payload != NULL) {
@@ -68,7 +76,7 @@ String readWsText(WiFiClient& client) {
     int b0 = client.read();
     if (b0 < 0) return "";
     int opcode = b0 & 0x0F;
-    if (opcode == 0x08) { // Connection Close
+    if (opcode == 0x08) { // Connection Close frame
         return "CLOSE";
     }
 
@@ -129,12 +137,12 @@ String readWsText(WiFiClient& client) {
         result += (char)b;
     }
 
-    if (opcode == 0x09) { // Ping frame -> Respond with Pong (0x8A)
+    if (opcode == 0x09) { // Ping -> send Pong
         sendWsPong(client, payloadBuf, (size_t)payloadLen);
         if (payloadBuf) free(payloadBuf);
         return "PING";
     }
-    if (opcode == 0x0A) { // Pong frame
+    if (opcode == 0x0A) { // Pong
         if (payloadBuf) free(payloadBuf);
         return "PONG";
     }
@@ -143,15 +151,19 @@ String readWsText(WiFiClient& client) {
     return result;
 }
 
+// ============================================================================
+// WEBSOCKET SERVER LISTENER & MUTEX ARMING LOGIC
+// ============================================================================
+
 void processWebSocketServer() {
     if (wsServer.hasClient()) {
         WiFiClient newClient = wsServer.available();
         if (newClient) {
             newClient.setTimeout(500);
-            
+
             String request = "";
             String secKey = "";
-            
+
             unsigned long hsStart = millis();
             while (newClient.connected() && (millis() - hsStart < 2000)) {
                 if (newClient.available()) {
@@ -164,13 +176,13 @@ void processWebSocketServer() {
                         secKey = line.substring(18);
                         secKey.trim();
                     }
-                    if (line.length() == 0) break; // Blank line signals end of headers
+                    if (line.length() == 0) break; // End of HTTP headers
                 } else {
                     delay(5);
                 }
             }
-            
-            // Extract URI Path from HTTP Request line (e.g., "GET /ws/coinslot?session_id=... HTTP/1.1")
+
+            // Extract URI Path from HTTP request line
             String reqPath = "";
             int firstSpace = request.indexOf(' ');
             if (firstSpace != -1) {
@@ -181,14 +193,13 @@ void processWebSocketServer() {
             }
             reqPath.trim();
 
-            // Strict Endpoint Routing:
-            // 1. Controller endpoints: /coinslot or /ws/coinslot (never registers to trackedDevices or pairing queue)
+            // 1. Controller Endpoint routing
             if (reqPath == "/coinslot" || reqPath == "/ws/coinslot") {
                 handleControllerWebSocketHandshake(newClient, request, secKey);
                 return;
             }
 
-            // 2. PisoPhone Terminal endpoints: must target /ws (or /ws/terminal)
+            // 2. Terminal Endpoint routing
             if (reqPath != "/ws" && reqPath != "/ws/terminal" && reqPath != "/") {
                 Serial.printf("[-] WS Rejected: Unknown endpoint '%s'\n", reqPath.c_str());
                 newClient.print("HTTP/1.1 404 Not Found\r\n\r\nInvalid WebSocket Endpoint");
@@ -202,13 +213,13 @@ void processWebSocketServer() {
             reqDeviceId.trim();
             tsStr.trim();
             sig.trim();
-            
+
             if (reqDeviceId.length() == 0 || tsStr.length() == 0 || sig.length() == 0 || secKey.length() == 0) {
                 newClient.print("HTTP/1.1 400 Bad Request\r\n\r\nMissing auth/WebSocket headers");
                 newClient.stop();
                 return;
             }
-            
+
             // 1. Verify HMAC Signature
             String expectedSig = calculateHMAC(reqDeviceId + ":" + tsStr, sharedSecret);
             if (!sig.equalsIgnoreCase(expectedSig)) {
@@ -264,7 +275,7 @@ void processWebSocketServer() {
                 newClient.stop();
                 return;
             }
-            
+
             // 2. Hardware Mutex Check (Single-Client Lock)
             if (isCoinSlotBusy(reqDeviceId, CoinSlotOwnerType::PHONE)) {
                 Serial.printf("[-] WS Mutex Rejected for %s: Slot BUSY with %s\n", reqDeviceId.c_str(), getActiveCoinSessionId().c_str());
@@ -272,29 +283,29 @@ void processWebSocketServer() {
                 newClient.stop();
                 return;
             }
-            
-            // Mutex passed, slot acquired. Save the nonce and synchronize master clock.
+
+            // Record nonce & sync time
             recordDeviceNonce(reqDeviceId, ts);
             if (ts > 0) updateMasterTime(ts);
-            
-            // 3. Complete RFC6455 Handshake
+
+            // 3. Complete RFC 6455 Handshake
             String acceptKey = computeSecWebSocketAccept(secKey);
             String response = "HTTP/1.1 101 Switching Protocols\r\n";
             response += "Upgrade: websocket\r\n";
             response += "Connection: Upgrade\r\n";
             response += "Sec-WebSocket-Accept: " + acceptKey + "\r\n\r\n";
-            
+
             newClient.print(response);
             newClient.flush();
             newClient.setNoDelay(true);
-            
+
             if (isWsConnected && wsClient.connected()) {
                 wsClient.stop();
             }
             wsClient = newClient;
             isWsConnected = true;
             wsSessionDeviceId = reqDeviceId;
-            
+
             bool reserved = reserveCoinSlot(reqDeviceId, CoinSlotOwnerType::PHONE, ARM_TTL,
                 [](const String& devId, int pulses) {
                     triggerUniversalCoinEvent(pulses, devId);
@@ -319,12 +330,12 @@ void processWebSocketServer() {
                 Serial.printf("[-] WS reservation failed for %s after handshake.\n", reqDeviceId.c_str());
                 return;
             }
-            
+
             Serial.printf("[⚡ WS Port 81] WebSocket ARMED securely for %s (TTL: %lu s)\n", reqDeviceId.c_str(), ARM_TTL / 1000);
             sendWsText(wsClient, "{\"event\":\"ARMED\"}");
         }
     }
-    
+
     // Process active WebSocket client frames or disconnection
     if (isWsConnected) {
         String boundDevId = wsSessionDeviceId;
@@ -335,7 +346,7 @@ void processWebSocketServer() {
             releaseCoinSlot(boundDevId, CoinSlotOwnerType::PHONE, false);
             return;
         }
-        
+
         if (wsClient.available()) {
             String frameText = readWsText(wsClient);
             if (frameText.length() > 0) {

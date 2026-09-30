@@ -2,15 +2,21 @@ package com.pisophone.kiosk.service
 
 import android.content.Context
 import android.content.Intent
+import android.os.SystemClock
 import android.util.Log
 import com.pisophone.kiosk.repository.PaymentRepository
-import com.pisophone.kiosk.system.KioskSystemMonitor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
+/**
+ * High-precision supervisor loop managing:
+ * 1. 15-second arming payment window countdown.
+ * 2. Monotonic rental session countdown and voice warnings.
+ * 3. Session checkpointing and automatic timeout lock enforcement.
+ */
 class KioskSessionSupervisor(
     private val context: Context,
     private val scope: CoroutineScope,
@@ -23,40 +29,53 @@ class KioskSessionSupervisor(
 ) {
     companion object {
         private const val TAG = "KioskSessionSupervisor"
+        private const val TICK_INTERVAL_MS = 1000L
+        private const val MAX_STALL_LAG_MS = 5000L
+        private const val CHECKPOINT_INTERVAL_SEC = 15
     }
 
     private var timerJob: Job? = null
+
     @Volatile
     private var lastTickMonotonicMs: Long = 0L
 
-    fun isStalled(maxLagMs: Long = 5000L): Boolean {
+    /**
+     * Checks if the supervisor timer loop has stalled due to OS throttling or thread suspension.
+     */
+    fun isStalled(maxLagMs: Long = MAX_STALL_LAG_MS): Boolean {
         val last = lastTickMonotonicMs
         if (last == 0L) return false
-        return (android.os.SystemClock.elapsedRealtime() - last) > maxLagMs
+        return (SystemClock.elapsedRealtime() - last) > maxLagMs
     }
 
+    /**
+     * Ensures the supervisor coroutine is actively executing, restarting it if stalled or cancelled.
+     */
     fun ensureRunning() {
         if (timerJob == null || timerJob?.isActive != true || isStalled()) {
-            Log.w(TAG, "Timer job inactive or stalled. Restarting supervisor loop.")
+            Log.w(TAG, "Supervisor loop inactive or stalled. Restarting ticker.")
             start()
         }
     }
 
+    /**
+     * Starts the 1 Hz monotonic supervisor loop.
+     */
     fun start() {
         timerJob?.cancel()
-        lastTickMonotonicMs = android.os.SystemClock.elapsedRealtime()
+        lastTickMonotonicMs = SystemClock.elapsedRealtime()
+
         timerJob = scope.launch {
             while (isActive) {
                 try {
-                    delay(1000)
-                    lastTickMonotonicMs = android.os.SystemClock.elapsedRealtime()
-                    
+                    delay(TICK_INTERVAL_MS)
+                    lastTickMonotonicMs = SystemClock.elapsedRealtime()
+
                     val curState = stateManager.appState.value
-                    // Session arming / waiting countdown
+
+                    // 1. Arming / Coin-drop waiting window
                     if (curState == 1 || curState == 3) {
-                        if (stateManager.isArming.value) {
-                            // Skip payment countdown/expiration while ARMING, while continuing any existing paid-play countdown
-                        } else {
+                        if (!stateManager.isArming.value) {
                             if (stateManager.paymentTimeout.value > 0) {
                                 stateManager.paymentTimeout.value -= 1
                             }
@@ -65,21 +84,17 @@ class KioskSessionSupervisor(
                                     onFinishPayment()
                                 } else {
                                     onCloseSession(true)
-                                    if (curState == 3) {
-                                        stateManager.appState.value = 2
-                                    } else {
-                                        stateManager.appState.value = 0
-                                    }
+                                    stateManager.appState.value = if (curState == 3) 2 else 0
                                     stateManager.saveState()
                                 }
                             }
                         }
                     }
-                    
-                    // Active session countdown
+
+                    // 2. Active paid rental session countdown
                     if (curState == 2 || curState == 3) {
                         val deadline = stateManager.sessionExpiryDeadlineMs.value
-                        val nowMonotonic = android.os.SystemClock.elapsedRealtime()
+                        val nowMonotonic = SystemClock.elapsedRealtime()
                         val remainingSec = if (deadline > 0L) {
                             maxOf(0, ((deadline - nowMonotonic) / 1000L).toInt())
                         } else {
@@ -100,20 +115,18 @@ class KioskSessionSupervisor(
                                 if (applied) {
                                     onSpeakWarning("Time expired")
                                     stateManager.saveState()
-                                    
+
                                     val startMain = Intent(Intent.ACTION_MAIN).apply {
                                         addCategory(Intent.CATEGORY_HOME)
-                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or 
-                                                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or 
+                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                                                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
                                                 Intent.FLAG_ACTIVITY_CLEAR_TOP
                                     }
                                     try {
                                         context.startActivity(startMain)
                                     } catch (e: Exception) {
-                                        Log.e(TAG, "Failed to start HOME activity: ${e.message}")
+                                        Log.e(TAG, "Failed bringing Home activity to front: ${e.message}")
                                     }
-                                } else {
-                                    Log.d(TAG, "Skipping stale expiration lock and announcement because newer revision is active")
                                 }
                             } else {
                                 stateManager.applySessionUpdate(
@@ -123,11 +136,13 @@ class KioskSessionSupervisor(
                                 )
                             }
                         } else {
-                            if (remainingSec % 15 == 0) {
+                            // Periodic state checkpointing
+                            if (remainingSec % CHECKPOINT_INTERVAL_SEC == 0) {
                                 paymentRepo.checkpointSessionBlocking(stateManager.sessionRevision.value)
                                 stateManager.saveState()
                             }
 
+                            // Progressive voice reminders
                             when (remainingSec) {
                                 300 -> onSpeakWarning("5 minutes time remaining")
                                 180 -> onSpeakWarning("3 minutes time remaining")
@@ -142,14 +157,18 @@ class KioskSessionSupervisor(
                         }
                     }
 
+                    // 3. Periodic hardware battery health checks
                     onCheckBatteryAlerts()
                 } catch (e: Exception) {
-                    Log.e(TAG, "Exception in timer loop: ${e.message}")
+                    Log.e(TAG, "Supervisor loop iteration error: ${e.message}")
                 }
             }
         }
     }
 
+    /**
+     * Stops the supervisor loop.
+     */
     fun stop() {
         timerJob?.cancel()
         timerJob = null

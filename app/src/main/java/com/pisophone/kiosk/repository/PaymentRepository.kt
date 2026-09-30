@@ -12,7 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 
 /**
- * Repository acting as the single payment-processing and session-balance authority.
+ * Authority managing transactional payment credits, ledger persistence, and monotonic rental clocks.
  */
 class PaymentRepository(
     private val db: AppDatabase,
@@ -43,6 +43,10 @@ class PaymentRepository(
 
     private val paymentDao = db.paymentDao()
 
+    /**
+     * Atomically credits a coin payment transaction into the local Room ledger.
+     * Prevents double-spending, enforces idempotency on duplicate txId, and extends the monotonic session deadline.
+     */
     suspend fun creditPayment(txId: String, seconds: Int, amount: Double): PaymentResult {
         var committedSnapshot: SessionSnapshot? = null
 
@@ -66,7 +70,7 @@ class PaymentRepository(
                 }
 
                 if (!isEligible()) {
-                    Log.w(TAG, "Payment rejected for $txId: Device/slot is not currently eligible.")
+                    Log.w(TAG, "Payment rejected for $txId: Device or slot is not eligible.")
                     return@withTransaction PaymentResult.NOT_ELIGIBLE
                 }
 
@@ -120,6 +124,9 @@ class PaymentRepository(
             creditPayment(txId, seconds, amount)
         }
 
+    /**
+     * Atomically deducts rental time from the active session.
+     */
     suspend fun deductTime(secondsDelta: Int, txId: String? = null): PaidSessionState {
         val updatedState = db.withTransaction {
             if (!txId.isNullOrBlank()) {
@@ -187,6 +194,9 @@ class PaymentRepository(
         deductTime(secondsDelta, txId)
     }
 
+    /**
+     * Immediately clears and expires the session balance.
+     */
     suspend fun expireSession(): PaidSessionState {
         val newState = db.withTransaction {
             val currentState = paymentDao.getSessionState()
@@ -210,6 +220,9 @@ class PaymentRepository(
         expireSession()
     }
 
+    /**
+     * Evaluates whether the monotonic deadline has passed, expiring the session if due.
+     */
     suspend fun expireSessionIfDue(): ExpiryResult {
         var didExpire = false
         val state = db.withTransaction {
@@ -255,6 +268,9 @@ class PaymentRepository(
         expireSessionIfDue()
     }
 
+    /**
+     * Overrides or adjusts total session time directly.
+     */
     suspend fun adjustSessionTime(durationSeconds: Int): PaidSessionState {
         val newState = db.withTransaction {
             val currentState = paymentDao.getSessionState()
@@ -284,6 +300,9 @@ class PaymentRepository(
 
     fun resetSessionBlocking(): PaidSessionState = expireSessionBlocking()
 
+    /**
+     * Checkpoints active elapsed time to database if revision matches.
+     */
     suspend fun checkpointSession(snapshotRevision: Long) {
         db.withTransaction {
             val current = paymentDao.getSessionState() ?: return@withTransaction
@@ -318,6 +337,9 @@ class PaymentRepository(
             checkpointSession(snapshotRevision)
         }
 
+    /**
+     * Restores session state from database, handling device reboots and monotonic clock offsets.
+     */
     fun restoreSessionState(ctx: Context? = context): RestoredSessionState = runBlocking(Dispatchers.IO) {
         if (ctx != null) {
             PaymentMigrationHelper.migrateAndInitialize(ctx, db)

@@ -92,18 +92,18 @@ void resetCoinDetectorStates() {
 }
 
 void setRelayHardware(bool active) {
-    pinMode(relayPin, OUTPUT);
     if (active) {
+        pinMode(relayPin, OUTPUT);
         digitalWrite(relayPin, relayActiveLow ? LOW : HIGH);
         if (!isRelayCurrentlyActive) {
             isRelayCurrentlyActive = true;
             Serial.printf("[⚡ RELAY] Coin slot powered ON (Pin %d, Mode=OUTPUT, ActiveLow=%s).\n", relayPin, relayActiveLow ? "true" : "false");
         }
     } else {
-        digitalWrite(relayPin, relayActiveLow ? HIGH : LOW);
+        pinMode(relayPin, INPUT);
         if (isRelayCurrentlyActive) {
             isRelayCurrentlyActive = false;
-            Serial.printf("[⚡ RELAY] Coin slot powered OFF (Pin %d, Mode=OUTPUT, ActiveLow=%s).\n", relayPin, relayActiveLow ? "true" : "false");
+            Serial.printf("[⚡ RELAY] Coin slot powered down into hi-Z standby (Pin %d, Mode=INPUT).\n", relayPin);
         }
     }
 }
