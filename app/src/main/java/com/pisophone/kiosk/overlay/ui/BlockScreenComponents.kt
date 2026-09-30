@@ -243,7 +243,7 @@ fun BlockScreenRateTableCard(
                 Icon(Icons.Filled.HourglassEmpty, contentDescription = null, tint = primaryColor)
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
-                    "${paymentTimeout}s WAITING FOR COIN...",
+                    if (paymentTimeout > 0) "${paymentTimeout}s WAITING FOR COIN..." else "ARMING COINSLOT...",
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp,
                     letterSpacing = 1.sp

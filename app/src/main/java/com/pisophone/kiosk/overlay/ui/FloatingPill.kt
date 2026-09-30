@@ -346,7 +346,7 @@ fun FloatingPill(
                                 enabled = false,
                                 shape = RoundedCornerShape(10.dp)
                             ) {
-                                Text("${paymentTimeout}s WAITING FOR COIN...", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                Text(if (paymentTimeout > 0) "${paymentTimeout}s WAITING FOR COIN..." else "ARMING COINSLOT...", fontWeight = FontWeight.Bold, fontSize = 11.sp)
                             }
                         }
                     } else {

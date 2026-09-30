@@ -1,6 +1,7 @@
 #include "CoinSlotManager.h"
 #include "PaymentQueueManager.h"
 #include "HardwareManager.h"
+#include "DeviceManager.h"
 #include "Config.h"
 
 // ============================================================================
@@ -160,10 +161,19 @@ bool isCoinSlotBusy(const String& sessionId, CoinSlotOwnerType ownerType) {
         }
     }
 
-    // If held by the SAME session and matching owner type, it is not busy to that session
-    if (sessionId.length() > 0 && activeSessionId == sessionId) {
-        if (ownerType == CoinSlotOwnerType::ANY || activeOwnerType == CoinSlotOwnerType::ANY || activeOwnerType == ownerType) {
-            return false;
+    // If held by the SAME session ID or same paired slot device, it is not busy to that session
+    if (sessionId.length() > 0) {
+        if (activeSessionId == sessionId) {
+            if (ownerType == CoinSlotOwnerType::ANY || activeOwnerType == CoinSlotOwnerType::ANY || activeOwnerType == ownerType) {
+                return false;
+            }
+        }
+        int activeSlot = findSlotIndexForDevice(activeSessionId, "");
+        int incomingSlot = findSlotIndexForDevice(sessionId, "");
+        if (activeSlot >= 0 && activeSlot == incomingSlot) {
+            if (ownerType == CoinSlotOwnerType::ANY || activeOwnerType == CoinSlotOwnerType::ANY || activeOwnerType == ownerType) {
+                return false;
+            }
         }
     }
     // Held by a different session or different owner type -> busy

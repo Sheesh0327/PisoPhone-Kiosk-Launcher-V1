@@ -34,6 +34,7 @@ interface Esp32ConnectionDelegate {
     fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?)
     fun onSlotBusy()
     fun onArmSuccess()
+    fun onArmFailed(reason: String) {}
     fun onSlotWarning(daysLeft: Int, expiresAt: Long, slotNum: Int, message: String)
     fun onSlotLockdown(reason: String, slotNum: Int, expiresAt: Long)
     fun onSlotRestored(slotNum: Int = 0)
@@ -318,6 +319,7 @@ class Esp32ConnectionManager(
         val secret = delegate.getSecretKey().trim()
         if (secret.isEmpty()) {
             Log.e(TAG, "Arming rejected: Missing or unreadable payment credentials. Payment setup required.")
+            delegate.onArmFailed("Missing secret key")
             Handler(Looper.getMainLooper()).post {
                 Toast.makeText(context, "Payment setup required: Please pair device with Box secret key.", Toast.LENGTH_LONG).show()
             }
@@ -357,6 +359,7 @@ class Esp32ConnectionManager(
                 } else {
                     Log.e(TAG, "Arming failed: Could not discover ESP32 IP within timeout for attempt #$attemptId.")
                     delegate.onOnlineStatusChanged(false, null)
+                    delegate.onArmFailed("ESP32 IP unreachable")
                     Handler(Looper.getMainLooper()).post {
                         Toast.makeText(context, "Cannot connect to ESP32. Please check Wi-Fi connection.", Toast.LENGTH_SHORT).show()
                     }
@@ -372,6 +375,7 @@ class Esp32ConnectionManager(
         val secret = delegate.getSecretKey().trim()
         if (secret.isEmpty()) {
             Log.e(TAG, "Arming rejected: Missing payment credentials for attempt #$attemptId. Payment setup required.")
+            delegate.onArmFailed("Missing secret key")
             Handler(Looper.getMainLooper()).post {
                 Toast.makeText(context, "Payment setup required: No valid box key provisioned.", Toast.LENGTH_LONG).show()
             }
@@ -398,10 +402,6 @@ class Esp32ConnectionManager(
                 }
                 lastHeartbeatTime = System.currentTimeMillis()
                 delegate.onOnlineStatusChanged(true, null)
-                delegate.onArmSuccess()
-                Handler(Looper.getMainLooper()).post {
-                    Toast.makeText(context, "Coin slot ready (${armingTimeoutSeconds}s)", Toast.LENGTH_SHORT).show()
-                }
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -431,6 +431,9 @@ class Esp32ConnectionManager(
                     } else if (event == "ARMED") {
                         Log.i(TAG, "⚡ ESP32 Coin Slot ARMED confirmed via WebSocket (attempt #$attemptId)")
                         delegate.onArmSuccess()
+                        Handler(Looper.getMainLooper()).post {
+                            Toast.makeText(context, "Coin slot ready (${armingTimeoutSeconds}s)", Toast.LENGTH_SHORT).show()
+                        }
                     } else if (event == "TIMEOUT" || event == "CLOSED" || event == "SESSION_ENDED") {
                         forceCloseWebSocketIfAttemptCurrent(webSocket, "ESP32 event: $event", attemptId)
                     }
@@ -448,18 +451,24 @@ class Esp32ConnectionManager(
                 val msg = t.message ?: ""
                 Log.e(TAG, "WebSocket failure (attempt #$attemptId, HTTP $code): $msg")
                 if (isCurrent) {
-                    if (code == 409) {
-                        delegate.onSlotBusy()
-                        Handler(Looper.getMainLooper()).post {
-                            Toast.makeText(context, "Slot is currently busy with another device.", Toast.LENGTH_LONG).show()
+                    val errorReason = when {
+                        code == 409 -> {
+                            delegate.onSlotBusy()
+                            "Slot is currently busy with another device."
                         }
-                    } else if (code == 403) {
-                        delegate.onOnlineStatusChanged(false, null)
-                        Handler(Looper.getMainLooper()).post {
-                            Toast.makeText(context, "Payment setup required: Box authentication failed (Secret key mismatch).", Toast.LENGTH_LONG).show()
+                        code == 403 -> {
+                            delegate.onOnlineStatusChanged(false, null)
+                            "Box authentication failed: Secret key mismatch."
                         }
-                    } else if (code == 423 || msg.contains("SLOT_EXPIRED", ignoreCase = true) || msg.contains("423", ignoreCase = true)) {
-                        delegate.onSlotLockdown("Please activate device slot on ESP32 Portal.", 0, 0L)
+                        code == 423 || msg.contains("SLOT_EXPIRED", ignoreCase = true) -> {
+                            delegate.onSlotLockdown("Please activate device slot on ESP32 Portal.", 0, 0L)
+                            "Device not activated on ESP32."
+                        }
+                        else -> "Cannot connect to ESP32 coin slot."
+                    }
+                    delegate.onArmFailed(errorReason)
+                    Handler(Looper.getMainLooper()).post {
+                        Toast.makeText(context, errorReason, Toast.LENGTH_LONG).show()
                     }
                 }
                 forceCloseWebSocketIfAttemptCurrent(webSocket, "WebSocket failure: $msg", attemptId)

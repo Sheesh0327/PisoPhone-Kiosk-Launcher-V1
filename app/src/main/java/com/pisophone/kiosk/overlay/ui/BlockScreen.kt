@@ -107,7 +107,11 @@ fun BlockScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             if (isWaiting) {
-                                Text("$paymentTimeout", color = primary, fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                                if (paymentTimeout > 0) {
+                                    Text("$paymentTimeout", color = primary, fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                                } else {
+                                    CircularProgressIndicator(color = primary, modifier = Modifier.size(36.dp), strokeWidth = 3.dp)
+                                }
                             } else {
                                 Icon(
                                     Icons.Filled.LockOpen,
