@@ -321,16 +321,6 @@ class KioskEngine(
         }
     }
 
-    @Synchronized
-    fun addTimeFromMaster(seconds: Int, source: String, txId: String?, amount: Double = 1.0): Boolean {
-        if (txId.isNullOrBlank()) {
-            Log.w(TAG, "Missing transaction ID for coin credit from $source")
-            return false
-        }
-        val result = creditPayment(txId, seconds, amount)
-        return result == PaymentResult.APPLIED || result == PaymentResult.ALREADY_APPLIED
-    }
-
     fun triggerCandidateDiscovery() {
         esp32Manager.triggerCandidateDiscovery(stateManager.deviceIp.value)
     }

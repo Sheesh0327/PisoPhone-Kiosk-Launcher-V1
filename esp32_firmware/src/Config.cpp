@@ -38,7 +38,6 @@ String androidIps    = "";
 String webPassword   = DEFAULT_ADMIN_PW;
 String sharedSecret  = MASTER_CRYPTO_SECRET;
 String macAddressStr = "";
-bool is_licensed     = false;
 int maxLicensedSlots = DEFAULT_MAX_SLOTS;
 
 int targetPort        = DEFAULT_PORT;
@@ -140,10 +139,6 @@ void updateMasterTime(uint64_t ts, const String& sourceId) {
     outlierSource = sourceId;
 }
 
-bool areDefaultCredentialsActive() {
-    return (webPassword == DEFAULT_ADMIN_PW || wifiPass == DEFAULT_PASS);
-}
-
 bool parseDeviceEntry(const String& rawEntry, DeviceConfig& out) {
     String entry = rawEntry;
     entry.trim();
@@ -230,7 +225,6 @@ void forEachConfiguredDevice(std::function<bool(const DeviceConfig&)> callback) 
 
 const char* const NVS_NAMESPACE       = "kiosk_cfg";
 const char* const NVS_KEY_MAX_SLOTS   = "max_slots";
-const char* const NVS_KEY_LICENSED    = "licensed";
 const char* const NVS_KEY_SLOTS_DATA  = "slots_data";
 const char* const NVS_KEY_IPS         = "ips";
 
@@ -266,7 +260,6 @@ void syncAndroidIpsFromSlots() {
 void saveSlotLicenses() {
     prefs.begin(NVS_NAMESPACE, false);
     prefs.putInt(NVS_KEY_MAX_SLOTS, maxLicensedSlots);
-    prefs.putBool(NVS_KEY_LICENSED, is_licensed);
     String raw = "";
     raw.reserve(maxLicensedSlots * 64); // Pre-allocate approx 64 bytes per slot
     for (int i = 0; i < maxLicensedSlots; i++) {
@@ -368,7 +361,6 @@ void loadAllConfig() {
 
     // 2. Open NVS for all kiosk configuration & lifetime vault revenue counters
     prefs.begin(NVS_NAMESPACE, false);
-    is_licensed       = prefs.getBool(NVS_KEY_LICENSED, (maxLicensedSlots > 1));
     wifiSsid          = prefs.getString(NVS_KEY_WIFI_SSID, wifiSsid);
     wifiPass          = prefs.getString(NVS_KEY_WIFI_PASS, wifiPass);
     universalCoinPin  = prefs.getInt(NVS_KEY_U_COIN_PIN, universalCoinPin);

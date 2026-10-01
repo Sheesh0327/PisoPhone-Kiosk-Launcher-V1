@@ -93,6 +93,8 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                     Toast.makeText(context, "Unauthorized: Valid Admin PIN or Secret required.", Toast.LENGTH_SHORT).show()
                     return
                 }
+                // Settings is not allowed in lock task mode for renters; open the admin window first.
+                com.pisophone.kiosk.security.AdminMaintenanceMode.begin(context, 900)
                 try {
                     val sIntent = Intent(android.provider.Settings.ACTION_SETTINGS).apply {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

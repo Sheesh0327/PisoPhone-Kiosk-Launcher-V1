@@ -94,6 +94,7 @@ object KioskRecoveryManager {
                 dpm.clearUserRestriction(componentName, UserManager.DISALLOW_DEBUGGING_FEATURES)
                 dpm.clearUserRestriction(componentName, UserManager.DISALLOW_FACTORY_RESET)
                 dpm.clearUserRestriction(componentName, UserManager.DISALLOW_SAFE_BOOT)
+                dpm.clearUserRestriction(componentName, UserManager.DISALLOW_CONFIG_WIFI)
             } catch (e: Exception) {
                 Log.w(TAG, "Error clearing restrictions during emergency exit: ${e.message}")
             }

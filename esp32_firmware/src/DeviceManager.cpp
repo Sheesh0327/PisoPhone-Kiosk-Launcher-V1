@@ -302,23 +302,6 @@ bool getTrackedChargingState(String ip, String devId) {
     return dev ? dev->isCharging : false;
 }
 
-// ============================================================================
-// IP RESOLUTION HELPERS
-// ============================================================================
-String getFirstKnownIp() {
-    for (int i = 0; i < maxLicensedSlots; i++) {
-        if (licenseSlots[i].ip.length() > 0 && licenseSlots[i].ip != "127.0.0.1") {
-            return licenseSlots[i].ip;
-        }
-    }
-    String firstIp = "";
-    forEachConfiguredDevice([&](const DeviceConfig& cfg) {
-        firstIp = cfg.ip;
-        return false;
-    });
-    return firstIp;
-}
-
 String getIpFromDeviceId(String id) {
     if (id.length() == 0) return "";
 
@@ -390,35 +373,4 @@ String getDeviceIdFromIp(String ip) {
         return true;
     });
     return foundId;
-}
-
-String getPrimaryTerminalIp() {
-    // 1. Current active session IP
-    String currentSession = getActiveCoinSessionId();
-    if (currentSession.length() > 0) {
-        String ip = getIpFromDeviceId(currentSession);
-        if (ip.length() > 0 && ip != "127.0.0.1") return ip;
-    }
-
-    // 2. Most recently seen licensed terminal
-    unsigned long bestSeen = 0;
-    String bestIp = "";
-    for (int i = 0; i < maxLicensedSlots; i++) {
-        if (licenseSlots[i].deviceId.length() > 0 && licenseSlots[i].ip.length() > 0 && licenseSlots[i].ip != "127.0.0.1") {
-            DeviceTelemetry* dev = findTrackedDevice(licenseSlots[i].ip, licenseSlots[i].deviceId);
-            if (dev && dev->lastSeenMs > bestSeen) {
-                bestSeen = dev->lastSeenMs;
-                bestIp = licenseSlots[i].ip;
-            }
-        }
-    }
-    if (bestIp.length() > 0 && (millis() - bestSeen < 120000)) return bestIp;
-
-    // 3. Any valid slot IP
-    for (int i = 0; i < maxLicensedSlots; i++) {
-        if (licenseSlots[i].ip.length() > 0 && licenseSlots[i].ip != "127.0.0.1") {
-            return licenseSlots[i].ip;
-        }
-    }
-    return "";
 }

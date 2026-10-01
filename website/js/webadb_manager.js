@@ -406,71 +406,6 @@
         }
 
         /**
-         * Generic APK Sideloader
-         * @param {Uint8Array} fileBytes The APK file content
-         * @param {string} originalFilename The name of the file (for logging only)
-         * @param {function} logCallback Function to output log messages
-         */
-        async sideloadApk(fileBytes, originalFilename = "sideload.apk", logCallback = console.log) {
-            if (!this.adb) throw new Error("Device not connected.");
-
-            // Validate PK Zip Magic Bytes
-            const isZipHeader = (
-                fileBytes && fileBytes.length >= 4 &&
-                fileBytes[0] === 0x50 && fileBytes[1] === 0x4B &&
-                fileBytes[2] === 0x03 && fileBytes[3] === 0x04
-            );
-            if (!isZipHeader || fileBytes.length < 100000) {
-                throw new Error(`The selected file '${originalFilename}' is not a valid Android APK package (Invalid PK Zip header or corrupted file).`);
-            }
-
-            const destPath = `/data/local/tmp/sideload_temp.apk`;
-
-            logCallback(`Step 1: Transferring ${originalFilename} to device...`);
-            try {
-                await this.shell(`rm -f ${destPath}`);
-            } catch (e) {}
-
-            await this.pushFile(fileBytes, destPath, logCallback);
-
-            const checkStat = await this.shell(`ls -l ${destPath}`);
-            logCallback(`Device storage verified: ${checkStat.trim()}`);
-
-            logCallback(`Step 2: Running Package Manager to install ${originalFilename} (this may take 30–60s for dex optimization)...`);
-            await this.shell(`chmod 777 ${destPath}`);
-            
-            let installRes = "";
-            let useFallback = false;
-            try {
-                installRes = await this.shell(`pm install -r -d -g ${destPath}`, INSTALL_TIMEOUT_MS);
-            } catch (err) {
-                logCallback(`⚠️ Initial pm install flags failed: ${err.message || err}. Attempting standard compatibility installation...`);
-                useFallback = true;
-            }
-
-            if (useFallback || installRes.includes("Failure") || installRes.includes("Error") || installRes.includes("Exception") || installRes.includes("Unknown option")) {
-                logCallback("⚠️ Premium installation flags rejected. Attempting standard installation fallback...");
-                try {
-                    installRes = await this.shell(`pm install -r ${destPath}`, INSTALL_TIMEOUT_MS);
-                } catch (fallbackErr) {
-                    throw new Error(`Installation failed: ${fallbackErr.message || fallbackErr}`);
-                }
-            }
-            logCallback(`Install output: ${installRes.trim()}`);
-
-            if (installRes.includes("Failure") || installRes.includes("Error") || installRes.includes("Exception")) {
-                throw new Error(`Installation failed: ${installRes.trim()}`);
-            }
-
-            logCallback(`✅ ${originalFilename} installed successfully!`);
-
-            // Clean up temporary APK
-            try { 
-                await this.shell(`rm -f ${destPath}`); 
-            } catch (e) {}
-        }
-
-        /**
          * Reads immutable hardware properties via ADB and computes the canonical Hardware Device ID
          * @param {function} logCallback Function to log progress
          * @returns {Promise<{deviceId: string, deviceModel: string, hardwareHash: string, rawHardwareString: string}>}
@@ -588,7 +523,6 @@
             // Hardware Verification & Registration against Cloudflare Database
             logCallback("Inspecting hardware identifier for license provisioning...");
             let deviceId = "UNKNOWN";
-            let serverLicenseData = null;
             try {
                 const hwInfo = await this.getHardwareInfo(logCallback);
                 deviceId = hwInfo.deviceId;
@@ -776,18 +710,6 @@
                 }
             } catch (e) {}
 
-            // If the device is already paid on Cloudflare database, push license key immediately
-            if (serverLicenseData && serverLicenseData.status === 'PAID' && serverLicenseData.licenseKey) {
-                logCallback("🌟 Syncing active Software License directly to device...");
-                try {
-                    await this.shell(`am broadcast -a ${PACKAGE_NAME}.ACTIVATE -n ${PACKAGE_NAME}/.receiver.KioskAdminActionReceiver --es key "${serverLicenseData.licenseKey}"`);
-                    await this.shell(`am broadcast -a ${PACKAGE_NAME}.ACTIVATE -p ${PACKAGE_NAME} --es key "${serverLicenseData.licenseKey}"`);
-                    await new Promise(r => setTimeout(r, 500));
-                } catch (e) {
-                    logCallback(`Note: License push broadcast: ${e.message}`);
-                }
-            }
-
             // Clean up temporary APK
             try { 
                 await this.shell(`rm -f ${DEVICE_TEMP_APK_PATH}`); 
@@ -798,123 +720,10 @@
         }
 
         /**
-         * Granular step: Restarts device cleanly
-         */
-        async rebootDevice(logCallback = console.log) {
-            if (!this.adb) throw new Error("Device not connected.");
-            logCallback("🔄 Sending reboot command to device...");
-            try {
-                if (typeof this.adb.reboot === "function") {
-                    await this.adb.reboot();
-                } else {
-                    await this.shell("svc power reboot || reboot || true");
-                }
-            } catch (e) {
-                try {
-                    await this.shell("reboot || true");
-                } catch (_) {}
-            }
-            logCallback("✅ Device reboot signal dispatched.");
-        }
-
-        /**
          * Alias for shell command execution
          */
         async runShell(command, timeoutMs = 12000) {
             return await this.shell(command, timeoutMs);
-        }
-
-        /**
-         * Granular step: Installs APK from device temp path or Uint8Array
-         */
-        async installApk(logCallback = console.log, destPath = DEVICE_TEMP_APK_PATH) {
-            if (!this.adb) throw new Error("Device not connected.");
-            logCallback("Installing APK via Android Package Manager...");
-            await this.shell(`chmod 777 ${destPath}`);
-            
-            let res = "";
-            let useFallback = false;
-            try {
-                res = await this.shell(`pm install -r -d -g ${destPath}`, INSTALL_TIMEOUT_MS);
-            } catch (err) {
-                // If timed out or errored, check if package was installed
-                const earlyCheck = await this.shell(`pm list packages ${PACKAGE_NAME}`, 4000).catch(() => "");
-                if (earlyCheck.includes(PACKAGE_NAME)) {
-                    res = "Success";
-                } else {
-                    logCallback(`⚠️ Initial pm install flags failed: ${err.message || err}. Attempting standard compatibility installation...`);
-                    useFallback = true;
-                }
-            }
-
-            if (useFallback || res.includes("Failure") || res.includes("Error") || res.includes("Exception") || res.includes("Unknown option")) {
-                const fallbackCheck = await this.shell(`pm list packages ${PACKAGE_NAME}`, 4000).catch(() => "");
-                if (fallbackCheck.includes(PACKAGE_NAME)) {
-                    res = "Success";
-                } else {
-                    logCallback("⚠️ Premium installation flags rejected. Attempting standard installation fallback...");
-                    try {
-                        res = await this.shell(`pm install -r ${destPath}`, INSTALL_TIMEOUT_MS);
-                    } catch (fallbackErr) {
-                        const finalVerify = await this.shell(`pm list packages ${PACKAGE_NAME}`, 4000).catch(() => "");
-                        if (!finalVerify.includes(PACKAGE_NAME)) {
-                            throw new Error(`Installation failed: ${fallbackErr.message || fallbackErr}`);
-                        }
-                        res = "Success";
-                    }
-                }
-            }
-            logCallback(`Install output: ${res.trim()}`);
-            if (res.includes("Failure") || res.includes("Error") || res.includes("Exception")) {
-                throw new Error(`APK installation failed: ${res.trim()}`);
-            }
-            logCallback("✅ Package installed successfully.");
-        }
-
-        /**
-         * Granular step: Sets Kiosk Device Owner
-         */
-        async setDeviceOwner(logCallback = console.log, receiverClass = `${PACKAGE_NAME}/${PACKAGE_NAME}.receiver.KioskDeviceAdminReceiver`) {
-            if (!this.adb) throw new Error("Device not connected.");
-            logCallback("Setting PisoPhone as Device Owner administrator...");
-            
-            // Check accounts first
-            try {
-                const accountsDump = await this.shell("dumpsys account");
-                const hasAccounts = /Account\s*\{/i.test(accountsDump) || /Accounts:\s*[1-9]/i.test(accountsDump);
-                if (hasAccounts) {
-                    throw new Error("Cannot set Device Owner: An active user account is logged in. Please remove all Google/app accounts in Android Settings > Accounts, or Factory Reset the device.");
-                }
-            } catch (accErr) {
-                if (accErr.message.includes("Cannot set Device Owner")) throw accErr;
-            }
-
-            const dpmResult = await this.shell(`dpm set-device-owner ${receiverClass}`);
-            logCallback(`Device Admin output: ${dpmResult.trim()}`);
-            if (dpmResult.includes("Exception") || dpmResult.includes("java.lang") || dpmResult.includes("Error") || dpmResult.includes("illegal state")) {
-                if (dpmResult.includes("accounts") || dpmResult.includes("already")) {
-                    throw new Error("Cannot set Device Owner: Device has existing accounts. Android requires 0 accounts for kiosk mode.");
-                }
-                throw new Error(`Device Owner setup failed: ${dpmResult.trim()}`);
-            }
-            logCallback("✅ Device Owner enrolled successfully.");
-        }
-
-        /**
-         * Granular step: Grants necessary kiosk permissions
-         */
-        async grantPermissions(logCallback = console.log, pkg = PACKAGE_NAME) {
-            if (!this.adb) throw new Error("Device not connected.");
-            logCallback("Configuring system permissions for 24/7 kiosk reliability...");
-            try {
-                await this.shell(`appops set ${pkg} SYSTEM_ALERT_WINDOW allow 2>/dev/null || true`);
-                await this.shell(`cmd overlay enable --user 0 ${pkg} 2>/dev/null || true`);
-                await this.shell(`pm grant ${pkg} android.permission.WRITE_SECURE_SETTINGS 2>/dev/null || true`);
-                await this.shell(`dumpsys deviceidle whitelist +${pkg} 2>/dev/null || true`);
-            } catch (e) {
-                logCallback(`Notice: Permission grant warning: ${e.message}`);
-            }
-            logCallback("✅ Permissions configured.");
         }
 
         /**
@@ -925,22 +734,6 @@
             logCallback("Launching PisoPhone application...");
             await this.shell(`am start -n ${mainActivity}`);
             logCallback("✅ App launched.");
-        }
-
-        /**
-         * Granular step: Deprovisions device and removes kiosk administrator
-         */
-        async deprovisionDevice(pin = "1234", logCallback = console.log) {
-            if (!this.adb) throw new Error("Device not connected.");
-            logCallback("Sending deprovision broadcast intent...");
-            try {
-                await this.shell(`am broadcast -a ${PACKAGE_NAME}.DEPROVISION -n ${PACKAGE_NAME}/.receiver.KioskAdminActionReceiver --es pin "${pin}"`);
-                await this.shell(`dpm remove-active-admin ${PACKAGE_NAME}/${PACKAGE_NAME}.receiver.KioskDeviceAdminReceiver 2>/dev/null || true`);
-                await this.shell(`pm uninstall ${PACKAGE_NAME} 2>/dev/null || true`);
-            } catch (e) {
-                logCallback(`Deprovision warning: ${e.message}`);
-            }
-            logCallback("✅ Deprovision commands sent.");
         }
 
         /**

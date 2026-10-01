@@ -26,12 +26,10 @@ void processControllerWebSocket();
 /**
  * Returns true if a controller WebSocket client is currently connected.
  */
-bool isControllerWsConnected();
 
 /**
  * Returns the session ID of the currently connected controller client.
  */
-String getControllerSessionId();
 
 /** Re-delivers a retained controller payment only to its original session. */
 bool sendControllerPaymentEvent(const String& sessionId, const String& txId, int pulses);

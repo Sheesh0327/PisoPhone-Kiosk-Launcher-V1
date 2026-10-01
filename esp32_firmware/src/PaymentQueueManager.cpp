@@ -163,13 +163,6 @@ bool canPerformRebootOrOta() {
     return true;
 }
 
-int getPendingPaymentCount() {
-    lockQueue();
-    int count = activePaymentCount;
-    unlockQueue();
-    return count;
-}
-
 bool enqueuePendingPayment(const String& txId, const String& targetId, int pulses,
                            CoinSlotOwnerType ownerType, int creditSeconds) {
     if (txId.length() == 0 || txId.length() >= sizeof(((PaymentRecord*)0)->txId) ||

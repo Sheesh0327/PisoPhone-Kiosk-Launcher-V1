@@ -119,10 +119,6 @@ void setRelayHardware(bool active) {
     }
 }
 
-bool isSlotArmed() {
-    return isCoinSlotArmed();
-}
-
 void processRelayState() {
     bool shouldBeOn = isCoinSlotArmed();
     static int lastAppliedRelayState = -1;

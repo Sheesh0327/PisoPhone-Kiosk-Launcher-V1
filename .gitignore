@@ -24,3 +24,8 @@ debug.keystore
 app/build/
 *.apk
 !website/update/
+
+# Build caches
+.pio/
+__pycache__/
+*.pyc

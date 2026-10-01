@@ -14,14 +14,6 @@ static String controllerSessionId = "";
 static bool controllerSessionEnding = false;
 static unsigned long controllerCloseAfterMs = 0;
 
-bool isControllerWsConnected() {
-    return controllerConnected && controllerClient.connected();
-}
-
-String getControllerSessionId() {
-    return controllerSessionId;
-}
-
 bool sendControllerPaymentEvent(const String& sessionId, const String& txId, int pulses) {
     if (!controllerConnected || controllerSessionEnding || !controllerClient.connected() ||
         controllerSessionId != sessionId || txId.length() == 0 || pulses <= 0) {

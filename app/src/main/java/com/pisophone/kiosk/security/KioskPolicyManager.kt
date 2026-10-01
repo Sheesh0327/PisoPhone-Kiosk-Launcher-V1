@@ -22,22 +22,6 @@ object KioskPolicyManager {
     private const val TAG = "KioskPolicyManager"
 
     /**
-     * Determines whether a package is a critical system dependency that should never be blocked.
-     */
-    fun isSystemPackageWhitelisted(packageName: String): Boolean {
-        return packageName == "com.android.systemui" ||
-                packageName == "com.android.settings" ||
-                packageName == "com.android.packageinstaller" ||
-                packageName == "com.google.android.packageinstaller" ||
-                packageName == "com.android.permissioncontroller" ||
-                packageName == "com.google.android.permissioncontroller" ||
-                packageName == "com.android.vending" ||
-                packageName == "com.google.android.gms" ||
-                packageName.startsWith("com.android.inputmethod") ||
-                packageName.startsWith("com.google.android.inputmethod")
-    }
-
-    /**
      * Packages renters must never reach: they allow changing device settings or installing apps.
      * Only allowed in lock task mode during an [AdminMaintenanceMode] window.
      */
