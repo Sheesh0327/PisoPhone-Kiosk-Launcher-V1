@@ -28,7 +28,6 @@ import com.pisophone.kiosk.util.DiagnosticsLog
 
 object KioskUpdateManager {
     private const val TAG = "KioskUpdate"
-    private val VERSION_INFO_URL = "${BuildConfig.UPDATE_BASE_URL}/app.json"
 
     /** What the website publishes next to the APK (written by the build workflow). */
     data class RemoteVersion(val versionCode: Int, val sha256: String)
@@ -86,7 +85,17 @@ object KioskUpdateManager {
     private val httpClient = OkHttpClient()
     private val scope = CoroutineScope(Dispatchers.IO)
 
-    fun startUpdate(context: Context, url: String) {
+    fun startUpdate(context: Context, url: String) =
+        startUpdateFrom(context, "${BuildConfig.UPDATE_BASE_URL}/app.json", url)
+
+    /** Temporary: installs whatever the working (beta) branch last published. Same checks as a normal update. */
+    fun startBetaInstall(context: Context) = startUpdateFrom(
+        context,
+        "${BuildConfig.BETA_UPDATE_BASE_URL}/app.json",
+        "${BuildConfig.BETA_UPDATE_BASE_URL}/app-release.apk"
+    )
+
+    private fun startUpdateFrom(context: Context, versionInfoUrl: String, url: String) {
         if (_updateState.value is UpdateState.Downloading || _updateState.value is UpdateState.Installing) {
             return
         }
@@ -101,7 +110,7 @@ object KioskUpdateManager {
                 }
 
                 val localCode = com.pisophone.kiosk.BuildConfig.VERSION_CODE
-                val remote = fetchRemoteVersion()
+                val remote = fetchRemoteVersion(versionInfoUrl)
                 if (!isUpdateAvailable(remote.versionCode, localCode)) {
                     _updateState.value = UpdateState.UpToDate(
                         "Already up to date (installed build $localCode, latest published ${remote.versionCode})."
@@ -132,8 +141,8 @@ object KioskUpdateManager {
         }
     }
 
-    private fun fetchRemoteVersion(): RemoteVersion {
-        val request = Request.Builder().url(VERSION_INFO_URL).header("Cache-Control", "no-cache").build()
+    private fun fetchRemoteVersion(versionInfoUrl: String): RemoteVersion {
+        val request = Request.Builder().url(versionInfoUrl).header("Cache-Control", "no-cache").build()
         httpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
                 throw IOException("Could not check the latest version: HTTP status ${response.code}")

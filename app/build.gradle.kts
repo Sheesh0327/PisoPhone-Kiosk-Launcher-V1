@@ -12,6 +12,9 @@ val appVersionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
 // of production. Local and main builds keep the production defaults.
 val updateBaseUrl = System.getenv("UPDATE_BASE_URL")?.takeIf { it.isNotBlank() }
   ?: "https://pisophone.pages.dev/update"
+// Temporary: where the "Install beta" button in the recovery hub looks (the working branch's folder).
+val betaUpdateBaseUrl = System.getenv("BETA_UPDATE_BASE_URL")?.takeIf { it.isNotBlank() }
+  ?: "https://claude-phase-1-execution-xjc.pisophone.pages.dev/update"
 val buildChannel = System.getenv("BUILD_CHANNEL")?.takeIf { it.isNotBlank() } ?: "stable"
 
 android {
@@ -25,6 +28,7 @@ android {
     versionCode = appVersionCode
     versionName = if (buildChannel == "stable") "1.0.$appVersionCode" else "1.0.$appVersionCode-dev"
     buildConfigField("String", "UPDATE_BASE_URL", "\"$updateBaseUrl\"")
+    buildConfigField("String", "BETA_UPDATE_BASE_URL", "\"$betaUpdateBaseUrl\"")
     buildConfigField("String", "BUILD_CHANNEL", "\"$buildChannel\"")
   }
 
