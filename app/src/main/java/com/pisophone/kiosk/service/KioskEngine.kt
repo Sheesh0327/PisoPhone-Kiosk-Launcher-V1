@@ -19,6 +19,7 @@ import com.pisophone.kiosk.security.KioskSecurity
 import com.pisophone.kiosk.server.KioskHttpServer
 import com.pisophone.kiosk.system.KioskSystemMonitor
 import com.pisophone.kiosk.system.KioskSystemMonitorDelegate
+import com.pisophone.kiosk.util.DiagnosticsLog
 import com.pisophone.kiosk.util.HardwareFeedback
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -429,6 +430,7 @@ class KioskEngine(
 
     fun performAdminBypass(durationSeconds: Int = 900) {
         Log.i(TAG, "Admin bypass granted for $durationSeconds seconds.")
+        DiagnosticsLog.add("ADMIN", "bypass for ${durationSeconds}s")
         AdminMaintenanceMode.begin(context, durationSeconds)
         // Repository keeps max(remaining, duration), so an existing paid balance is preserved.
         val updated = paymentRepo.adjustSessionTimeBlocking(durationSeconds)
@@ -451,6 +453,7 @@ class KioskEngine(
 
     fun performLockSession() {
         Log.i(TAG, "Lock session requested by admin.")
+        DiagnosticsLog.add("ADMIN", "lock session")
         val previousState = stateManager.appState.value
         val resetState = paymentRepo.resetSessionBlocking()
         stateManager.applySessionUpdate(

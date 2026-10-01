@@ -7,6 +7,7 @@ import com.pisophone.kiosk.repository.PaymentRepository
 import com.pisophone.kiosk.repository.PaymentResult
 import com.pisophone.kiosk.security.KioskActivationManager
 import com.pisophone.kiosk.security.KioskSecurity
+import com.pisophone.kiosk.util.DiagnosticsLog
 import com.pisophone.kiosk.util.HardwareFeedback
 
 /**
@@ -47,6 +48,9 @@ class KioskEsp32Coordinator(
     }
 
     override fun onOnlineStatusChanged(isOnline: Boolean, mac: String?) {
+        if (stateManager.isEsp32Online.value != isOnline) {
+            DiagnosticsLog.add("ESP32", if (isOnline) "link up" else "link down")
+        }
         stateManager.isEsp32Online.value = isOnline
         if (!mac.isNullOrBlank()) stateManager.esp32MacAddress.value = mac
     }
@@ -80,6 +84,7 @@ class KioskEsp32Coordinator(
 
         Log.d(TAG, "Received validated coin via WebSocket: seconds=$seconds, amount=₱$amount, tx_id=$txId")
         val result = onCreditPayment(txId, seconds, amount)
+        DiagnosticsLog.add("COIN", "tx $txId: ${seconds}s, amount $amount -> $result")
         when (result) {
             PaymentResult.APPLIED -> {
                 // paymentTimeout / appState are published by KioskEngine.onPaymentApplied.
@@ -110,6 +115,7 @@ class KioskEsp32Coordinator(
      *  - 0 / 4                 -> unchanged
      */
     override fun onSlotBusy() {
+        DiagnosticsLog.add("ARM", "slot busy (state ${stateManager.appState.value})")
         stateManager.isArmingInProgress.value = false
         onSlotBusyTriggered()
         val current = stateManager.appState.value
@@ -128,6 +134,7 @@ class KioskEsp32Coordinator(
     }
 
     override fun onArmSuccess() {
+        DiagnosticsLog.add("ARM", "armed (state ${stateManager.appState.value})")
         lastArmTimestampMs = System.currentTimeMillis()
         stateManager.isEsp32Online.value = true
         // Publish the arming window BEFORE flipping appState so the supervisor tick never
@@ -149,6 +156,7 @@ class KioskEsp32Coordinator(
     }
 
     override fun onSlotLockdown(reason: String, slotNum: Int, expiresAt: Long) {
+        DiagnosticsLog.add("SLOT", "lockdown on slot $slotNum: $reason")
         // Lockdown is a terminal failure for any in-flight arm attempt.
         stateManager.isArmingInProgress.value = false
 
@@ -178,6 +186,7 @@ class KioskEsp32Coordinator(
     }
 
     override fun onSlotRestored(slotNum: Int) {
+        DiagnosticsLog.add("SLOT", "restored slot $slotNum")
         if (slotNum > 0) {
             stateManager.slotNumber.value = slotNum
             KioskSecurity.setAssignedBoxSlot(context, slotNum)

@@ -1,6 +1,7 @@
 #include "WebServerModule.h"
 #include "CoinSlotManager.h"
 #include "PaymentQueueManager.h"
+#include "Diagnostics.h"
 #include "Config.h"
 #include "Security.h"
 #include "HardwareManager.h"
@@ -97,6 +98,7 @@ void setupWebServer() {
         webServer.send(200, "application/json", "{\"status\":\"ok\",\"relay_pin\":" + String(relayPin) + ",\"active_low\":" + String(relayActiveLow ? 1 : 0) + "}");
     });
     
+    webServer.on("/api/diagnostics", HTTP_GET, handleApiDiagnostics);
     webServer.on("/api/payments/clear", HTTP_POST, []() {
         if (!checkAdminAuth()) return;
         if (isCoinSlotBusy("")) {
@@ -142,16 +144,17 @@ void setupWebServer() {
             if (!canPerformRebootOrOta()) {
                 otaIsValidBinary = false;
                 otaErrorMsg = "OTA blocked: unpersisted transactions in RAM";
-                Serial.println("[OTA] Aborted: unpersisted transactions in RAM");
+                diagLog("[OTA] Aborted: unpersisted transactions in RAM");
                 return;
             }
 
-            Serial.printf("[OTA] Starting firmware flash: %s\n", upload.filename.c_str());
+            diagCount(DiagCounter::OtaAttempts);
+            diagLog("[OTA] Starting firmware flash: %s\n", upload.filename.c_str());
             
             if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
                 otaIsValidBinary = false;
                 otaErrorMsg = "Failed to begin flash partition write (Error: " + String(Update.getError()) + ")";
-                Serial.printf("[OTA] Error: %s\n", otaErrorMsg.c_str());
+                diagLog("[OTA] Error: %s\n", otaErrorMsg.c_str());
             }
         } else if (upload.status == UPLOAD_FILE_WRITE) {
             // The whole upload runs inside one handleClient() call, so loop() cannot feed the
@@ -163,7 +166,7 @@ void setupWebServer() {
                 if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
                     otaIsValidBinary = false;
                     otaErrorMsg = "Flash write failed at offset " + String(Update.progress()) + " (Error: " + String(Update.getError()) + ")";
-                    Serial.printf("[OTA] Error: %s\n", otaErrorMsg.c_str());
+                    diagLog("[OTA] Error: %s\n", otaErrorMsg.c_str());
                 } else {
                     Serial.print(".");
                 }
@@ -176,16 +179,16 @@ void setupWebServer() {
             if (otaIsValidBinary && !canPerformRebootOrOta()) {
                 otaIsValidBinary = false;
                 otaErrorMsg = "OTA blocked: unpersisted transactions in RAM";
-                Serial.println("[OTA] Aborted at finalize: unpersisted transactions in RAM");
+                diagLog("[OTA] Aborted at finalize: unpersisted transactions in RAM");
             }
             if (otaIsValidBinary) {
                 if (Update.end(true)) {
-                    Serial.printf("[OTA] Firmware flashing verified & completed successfully: %u bytes\n", upload.totalSize);
+                    diagLog("[OTA] Firmware flashing verified & completed successfully: %u bytes\n", upload.totalSize);
                     otaUpdateSuccess = true;
                 } else {
                     otaIsValidBinary = false;
                     otaErrorMsg = "Firmware verification failed after write (Error: " + String(Update.getError()) + ")";
-                    Serial.printf("[OTA] Error: %s\n", otaErrorMsg.c_str());
+                    diagLog("[OTA] Error: %s\n", otaErrorMsg.c_str());
                 }
             } else {
                 Update.abort();

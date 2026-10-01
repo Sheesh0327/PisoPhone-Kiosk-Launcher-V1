@@ -1,7 +1,8 @@
 #include "PaymentQueueManager.h"
 #include "ControllerWebSocket.h"
 #include "DeviceNetwork.h"
-#include "Config.h"
+#include "Config.h"#include "Diagnostics.h"
+
 #include <Preferences.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
@@ -155,6 +156,13 @@ bool hasUnpersistedPayments() {
     return unpersisted;
 }
 
+int getPendingPaymentCount() {
+    lockQueue();
+    int count = activePaymentCount;
+    unlockQueue();
+    return count;
+}
+
 bool canPerformRebootOrOta() {
     if (hasUnpersistedPayments()) {
         Serial.println("[PAY QUEUE] Reboot/OTA blocked: unpersisted transactions remain in RAM.");
@@ -214,12 +222,15 @@ bool enqueuePendingPayment(const String& txId, const String& targetId, int pulse
     firstSeenMs[freeIndex] = millis();
     activePaymentCount++;
 
+    diagCount(DiagCounter::PaymentsQueued);
+
     // Attempt durable NVS flash persistence
     if (!persistRecord(freeIndex, rec)) {
+        diagCount(DiagCounter::PersistFailures);
         paymentStorageReady = false;
         persistRetryCount[freeIndex] = 1;
         unlockQueue();
-        Serial.printf("[PAY QUEUE] NVS write failed for tx_id='%s'. Retained in RAM; persistence will retry with backoff.\n", txId.c_str());
+        diagLog("[PAY QUEUE] NVS write failed for tx_id='%s'. Retained in RAM; persistence will retry with backoff.\n", txId.c_str());
         return true;
     }
 
@@ -228,7 +239,7 @@ bool enqueuePendingPayment(const String& txId, const String& targetId, int pulse
     lastDispatchMs[freeIndex] = millis();
     unlockQueue();
 
-    Serial.printf("[PAY QUEUE] Persisted tx_id='%s' for '%s' (%d pulse(s)).\n",
+    diagLog("[PAY QUEUE] Persisted tx_id='%s' for '%s' (%d pulse(s)).\n",
                   txId.c_str(), targetId.c_str(), pulses);
     return true;
 }
@@ -259,7 +270,8 @@ static bool acknowledgeMatchingPayment(const String& txId, const String* session
 
     resetSlotLocked(foundIndex);
     unlockQueue();
-    Serial.printf("[PAY QUEUE] Acknowledged tx_id='%s'.\n", txId.c_str());
+    diagCount(DiagCounter::PaymentsAcked);
+    diagLog("[PAY QUEUE] Acknowledged tx_id='%s'.\n", txId.c_str());
     return true;
 }
 
@@ -346,10 +358,11 @@ static void evictExpiredPayments(unsigned long now) {
         }
         if (age < ttl) continue;
         if (paymentSlotPersisted[i] && !eraseRecord(i)) continue;
-        Serial.printf("[PAY QUEUE] Evicted unacknowledged tx_id='%s' for '%s' (%d pulse(s)) after %llu s.\n",
+        diagLog("[PAY QUEUE] Evicted unacknowledged tx_id='%s' for '%s' (%d pulse(s)) after %llu s.\n",
                       paymentQueue[i].txId, paymentQueue[i].targetId, paymentQueue[i].pulses,
                       age / 1000ULL);
         resetSlotLocked(i);
+        diagCount(DiagCounter::PaymentsEvicted);
     }
     unlockQueue();
 }
