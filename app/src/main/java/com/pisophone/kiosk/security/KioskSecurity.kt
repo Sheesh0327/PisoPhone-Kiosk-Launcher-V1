@@ -276,11 +276,6 @@ object KioskSecurity {
         return DEFAULT_SHARED_SECRET
     }
 
-    fun setSharedSecret(context: Context, newSecret: String) {
-        // Standardized on DEFAULT_SHARED_SECRET across all components to ensure zero-mismatch communication.
-        Log.d(TAG, "Shared secret configured to standard master secret.")
-    }
-
     fun getAdminPin(context: Context): String {
         val pin = getPrefs(context).getString(KEY_ADMIN_PIN, DEFAULT_PIN) ?: DEFAULT_PIN
         // Recover from AES decryption garbage corruption (wrong key matching 1/256 padding)
@@ -440,11 +435,6 @@ object KioskSecurity {
         slot: Int = -1,
         name: String? = null
     ): Boolean {
-        if (!secret.isNullOrBlank()) {
-            setSharedSecret(context, secret.trim())
-        } else if (secret != null) {
-            Log.e(TAG, "[-] Rejected direct provisioning with empty or blank secret key for security!")
-        }
         if (!mac.isNullOrBlank()) {
             val formattedMac = formatMacAddress(mac.trim())
             if (formattedMac.isNotBlank()) {
@@ -457,7 +447,7 @@ object KioskSecurity {
         } else if (!name.isNullOrBlank()) {
             setDeviceAlias(context, name.trim())
         }
-        Log.i(TAG, "[+] Successfully applied Direct Provisioning setup: MAC=$mac, Slot=$slot, SecretConfigured=${!secret.isNullOrBlank()}")
+        Log.i(TAG, "[+] Successfully applied Direct Provisioning setup: MAC=$mac, Slot=$slot")
         return true
     }
 }

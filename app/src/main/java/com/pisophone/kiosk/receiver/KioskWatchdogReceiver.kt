@@ -80,12 +80,6 @@ class KioskWatchdogReceiver : BroadcastReceiver() {
         val isOverlayHealthy = serviceInstance?.isOverlayHealthy() ?: false
 
         if (!isProcessRunning || !isHttpHealthy || !isOverlayHealthy) {
-            val isFullySetup = com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(context)
-            if (!isFullySetup) {
-                Log.d(TAG, "Device not yet fully setup/activated. Watchdog skipping KioskService start.")
-                return
-            }
-
             if (isProcessRunning && serviceInstance != null) {
                 if (!isHttpHealthy) {
                     Log.w(TAG, "KioskService is running but HTTP server is unhealthy. Repairing HTTP listener...")

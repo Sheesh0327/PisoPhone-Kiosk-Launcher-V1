@@ -26,11 +26,7 @@ class KioskActivationManagerUnitTest {
 
     @Test
     fun testFreshInstallSavesDeviceIdAndAllowsAppToRun() {
-        // App installs like normal, auto-saves device ID, and allows app to run
-        assertTrue(
-            "isAppAllowedToRun must return true on fresh install",
-            KioskActivationManager.isAppAllowedToRun(context)
-        )
+        // App installs like normal and auto-saves the device ID
         assertTrue(
             "Bound hardware ID must be automatically saved and non-empty",
             KioskActivationManager.getBoundHardwareId(context).isNotBlank()
@@ -42,10 +38,6 @@ class KioskActivationManagerUnitTest {
         val recorded = KioskActivationManager.recordDeviceIdentity(context)
         assertTrue("recordDeviceIdentity should succeed", recorded)
 
-        assertTrue(
-            "isAppAllowedToRun must be true after provisioning",
-            KioskActivationManager.isAppAllowedToRun(context)
-        )
         assertTrue(
             "Bound hardware ID must match current fingerprint",
             KioskActivationManager.getBoundHardwareId(context) == KioskActivationManager.getHardwareFingerprint(context)

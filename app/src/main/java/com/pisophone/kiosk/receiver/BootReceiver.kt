@@ -27,16 +27,11 @@ class BootReceiver : BroadcastReceiver() {
             Log.d(TAG, "Auto-starting Kiosk services post-boot/update...")
 
             // 1. Start Kiosk Foreground Service safely if allowed
-            val isFullySetup = com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(context)
-            if (isFullySetup) {
-                try {
-                    val serviceIntent = Intent(context, KioskService::class.java)
-                    context.startForegroundService(serviceIntent)
-                } catch (e: Throwable) {
-                    Log.e(TAG, "Foreground service start deferred/restricted on boot: ${e.message}")
-                }
-            } else {
-                Log.d(TAG, "Device not yet fully setup/activated. KioskService lock screen deferred.")
+            try {
+                val serviceIntent = Intent(context, KioskService::class.java)
+                context.startForegroundService(serviceIntent)
+            } catch (e: Throwable) {
+                Log.e(TAG, "Foreground service start deferred/restricted on boot: ${e.message}")
             }
 
             // 2. Schedule Watchdog

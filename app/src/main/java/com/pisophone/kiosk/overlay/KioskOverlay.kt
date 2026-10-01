@@ -218,16 +218,10 @@ class LockScreenOverlay(
 
         dispose()
 
-        val isFullySetup = com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(context)
-        if (!isFullySetup) {
-            android.util.Log.d("LockScreenOverlay", "Device not activated or fully setup. Lock screen overlay deferred.")
-            return false
-        }
-
         val newOverlay = ComposeOverlayView(context)
         overlayView = newOverlay
 
-        val initialVisible = isFullySetup && (appStateFlow.value == 0 || appStateFlow.value == 1)
+        val initialVisible = appStateFlow.value == 0 || appStateFlow.value == 1
         val baseFlags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or 
                         WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                         WindowManager.LayoutParams.FLAG_FULLSCREEN or
@@ -266,13 +260,7 @@ class LockScreenOverlay(
             val isArenaMode by isArenaModeFlow.collectAsState()
             val arenaPlayerRole by arenaPlayerRoleFlow.collectAsState()
             val arenaStakeMinutes by arenaStakeMinutesFlow.collectAsState()
-            val activationUpdateVersion by com.pisophone.kiosk.security.KioskActivationManager.activationUpdateVersion.collectAsState()
-            
-            val isSetupReady = remember(activationUpdateVersion) { 
-                com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(context)
-            }
-            
-            val isVisible = isSetupReady && (appState == 0 || appState == 1)
+            val isVisible = appState == 0 || appState == 1
 
             val unlockAlpha by androidx.compose.animation.core.animateFloatAsState(
                 targetValue = if (isVisible) 1f else 0f,
@@ -304,7 +292,7 @@ class LockScreenOverlay(
                             scaleY = unlockScale
                         )
                 ) {
-                    if (appState == 0 || appState == 4 || (appState == 2 && !isVisible)) {
+                    if (appState == 0 || (appState == 2 && !isVisible)) {
                         BlockScreen(
                             onInsertCoin = onInsertCoinClick,
                             isWaiting = false,
@@ -435,8 +423,7 @@ class LockScreenOverlay(
         if (!isViewAdded) return
         try {
             currentView.onResume()
-            val isFullySetup = com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(context)
-            val isVisible = isFullySetup && (appStateFlow.value == 0 || appStateFlow.value == 1)
+            val isVisible = appStateFlow.value == 0 || appStateFlow.value == 1
             updateWindowFlagsAndDimensions(isVisible)
             currentView.view.requestLayout()
             currentView.view.invalidate()

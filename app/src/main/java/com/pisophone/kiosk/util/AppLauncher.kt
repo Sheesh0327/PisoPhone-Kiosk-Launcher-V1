@@ -24,12 +24,6 @@ object AppLauncher {
     fun launchApp(context: Context, packageName: String, bypassKiosk: Boolean = false): Boolean {
         Log.i(TAG, "Attempting to launch app: $packageName (bypassKiosk=$bypassKiosk)")
         
-        if (!com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(context)) {
-            Log.w(TAG, "Launch app blocked: Device is not provisioned.")
-            Toast.makeText(context, "App launch blocked: Provisioning required.", Toast.LENGTH_SHORT).show()
-            return false
-        }
-
         if (bypassKiosk) {
             // Open the maintenance window synchronously: the bypass itself runs asynchronously
             // and ensureLockTaskAllowed() below must already see it.

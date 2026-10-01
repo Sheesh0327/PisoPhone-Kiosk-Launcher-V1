@@ -51,17 +51,12 @@ class MainActivity : ComponentActivity() {
     private var isDeviceOwner by mutableStateOf(false)
     private var strictPoliciesApplied = false
 
-    private fun isFullySetup(): Boolean {
-        return KioskActivationManager.isAppAllowedToRun(this)
-    }
-
     private fun checkDeviceOwner() {
         val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as? android.app.admin.DevicePolicyManager
         val isOwner = dpm?.isDeviceOwnerApp(packageName) == true
         isDeviceOwner = isOwner
-        val fullySetup = isFullySetup()
 
-        if (isOwner && fullySetup) {
+        if (isOwner) {
             lifecycleScope.launch(Dispatchers.IO) {
                 if (!strictPoliciesApplied) {
                     strictPoliciesApplied = true
@@ -80,9 +75,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        if (fullySetup) {
-            checkOverlayPermission()
-        }
+        checkOverlayPermission()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -124,7 +117,7 @@ class MainActivity : ComponentActivity() {
             applyKioskWindowFlags()
             hideSystemBars()
             dismissKeyguard()
-        } else if (isFullySetup()) {
+        } else {
             KioskSecurity.collapseStatusBar(this)
         }
     }
@@ -134,9 +127,7 @@ class MainActivity : ComponentActivity() {
         applyKioskWindowFlags()
         hideSystemBars()
         dismissKeyguard()
-        if (isFullySetup()) {
-            KioskSecurity.collapseStatusBar(this)
-        }
+        KioskSecurity.collapseStatusBar(this)
         checkOverlayPermission()
         loadApps()
         KioskWatchdogReceiver.scheduleWatchdog(this)
@@ -218,7 +209,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun dismissKeyguard() {
-        if (!isFullySetup()) return
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
                 val km = getSystemService(Context.KEYGUARD_SERVICE) as? android.app.KeyguardManager
@@ -236,7 +226,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun applyKioskWindowFlags() {
-        if (!isFullySetup()) return
         try {
             @Suppress("DEPRECATION")
             window.addFlags(
@@ -255,7 +244,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun hideSystemBars() {
-        if (!isFullySetup()) return
         try {
             WindowCompat.setDecorFitsSystemWindows(window, false)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -270,10 +258,6 @@ class MainActivity : ComponentActivity() {
     }
 
     fun tryEnableLockTaskMode() {
-        if (!isFullySetup()) {
-            isLockTaskActive = false
-            return
-        }
         try {
             val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as? android.app.admin.DevicePolicyManager
             val am = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
@@ -301,7 +285,7 @@ class MainActivity : ComponentActivity() {
 
     private fun checkOverlayPermission() {
         hasOverlayPermission = Settings.canDrawOverlays(this)
-        if (hasOverlayPermission && isFullySetup()) {
+        if (hasOverlayPermission) {
             try {
                 val intent = Intent(this, KioskService::class.java)
                 startForegroundService(intent)

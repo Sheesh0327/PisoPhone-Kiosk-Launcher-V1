@@ -20,7 +20,7 @@ class Esp32DiscoveryScannerUnitTest {
     private lateinit var context: Context
     private val testScope = TestScope()
     private val testMac = "AA:BB:CC:DD:EE:FF"
-    private val testSecret = "secretKey12345"
+    private val testSecret = KioskSecurity.DEFAULT_SHARED_SECRET
     private val testIp = "192.168.1.150"
 
     private val fakeDelegate = object : Esp32DiscoveryDelegate {
@@ -31,7 +31,6 @@ class Esp32DiscoveryScannerUnitTest {
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
         KioskSecurity.setConfiguredEsp32Mac(context, testMac)
-        KioskSecurity.setSharedSecret(context, testSecret)
     }
 
     @Test

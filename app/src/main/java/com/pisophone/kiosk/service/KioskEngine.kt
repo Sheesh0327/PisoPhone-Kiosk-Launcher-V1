@@ -231,7 +231,6 @@ class KioskEngine(
             try {
                 // 1. Restore state and initialize payment database
                 stateManager.restoreState()
-                paymentRepo.migrateAndInitialize(context)
                 isInitialized.set(true)
                 Log.i(TAG, "Initialization complete. Payment endpoints are now available.")
 
@@ -429,13 +428,6 @@ class KioskEngine(
     private fun isArmedState(state: Int): Boolean = state == 1 || state == 3
 
     fun performAdminBypass(durationSeconds: Int = 900) {
-        if (!KioskActivationManager.isAppAllowedToRun(context)) {
-            Log.w(TAG, "Admin bypass rejected: Device is not provisioned.")
-            Handler(Looper.getMainLooper()).post {
-                Toast.makeText(context, "⚠️ Bypass Unavailable: Device requires provisioning.", Toast.LENGTH_LONG).show()
-            }
-            return
-        }
         Log.i(TAG, "Admin bypass granted for $durationSeconds seconds.")
         AdminMaintenanceMode.begin(context, durationSeconds)
         // Repository keeps max(remaining, duration), so an existing paid balance is preserved.
@@ -474,13 +466,6 @@ class KioskEngine(
     }
 
     fun performAdminTimeAdjust(secondsDelta: Int) {
-        if (!KioskActivationManager.isAppAllowedToRun(context)) {
-            Log.w(TAG, "Admin time adjustment rejected: Device is not provisioned.")
-            Handler(Looper.getMainLooper()).post {
-                Toast.makeText(context, "⚠️ Adjustment Unavailable: Device requires provisioning.", Toast.LENGTH_LONG).show()
-            }
-            return
-        }
         val ts = System.currentTimeMillis()
         if (secondsDelta > 0) {
             val txId = "$ADMIN_TX_PREFIX$ts-${(10000..99999).random()}"
