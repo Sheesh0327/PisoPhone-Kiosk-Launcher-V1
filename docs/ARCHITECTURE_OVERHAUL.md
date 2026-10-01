@@ -11,8 +11,17 @@ Fixed owner decisions, not changed by this plan:
 Every phase below:
 - is self-contained: it builds, passes the unit tests and works on hardware on its own,
 - changes behaviour only where stated (refactors are behaviour-preserving),
-- has a hardware test list and a rollback (revert one commit/branch),
+- has a hardware test list and a rollback (revert the phase's commit),
 - is verified here only as far as this environment allows (Android unit tests in CI, JavaScript and Python by running them, firmware host tests where a phase adds them). Firmware cannot be compiled here, so each firmware phase is verified on your hardware.
+
+## Delivery model
+
+- `main` is production only. All feature and debugging work happens on one working branch, `claude/phase-1-execution-xjcooe`; it is merged to `main` when you approve.
+- Every push to the working branch that touches the app builds, signs and commits its APK and `app.json` to that branch's `website/update/`, so the phone can install each revision.
+  - Production (`main`): `https://pisophone.pages.dev/update`
+  - Working branch: `https://claude-phase-1-execution-xjc.pisophone.pages.dev/update` (Cloudflare branch alias: lowercase, non-alphanumerics to `-`, 28 characters). If the alias differs on your Pages project, set the repository variable `PAGES_PRODUCTION_HOST` or check the Pages deployment list.
+- A branch APK has version name `1.0.N-dev` and only checks its own branch's folder, so testing never reaches phones running the production build. To go back to production, install the production APK (same signing key, higher or lower version via the manual installer).
+- Firmware `.bin` files are still built by you; the branch publishes none.
 
 ## Findings
 

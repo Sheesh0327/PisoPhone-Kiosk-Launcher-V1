@@ -8,6 +8,12 @@ plugins {
 // versionCode is not higher. Local builds use 1.
 val appVersionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
 
+// CI sets these for branch (dev) builds so the APK checks its own branch's /update folder instead
+// of production. Local and main builds keep the production defaults.
+val updateBaseUrl = System.getenv("UPDATE_BASE_URL")?.takeIf { it.isNotBlank() }
+  ?: "https://pisophone.pages.dev/update"
+val buildChannel = System.getenv("BUILD_CHANNEL")?.takeIf { it.isNotBlank() } ?: "stable"
+
 android {
   namespace = "com.pisophone.kiosk"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
@@ -17,7 +23,9 @@ android {
     minSdk = 26
     targetSdk = 36
     versionCode = appVersionCode
-    versionName = "1.0.$appVersionCode"
+    versionName = if (buildChannel == "stable") "1.0.$appVersionCode" else "1.0.$appVersionCode-dev"
+    buildConfigField("String", "UPDATE_BASE_URL", "\"$updateBaseUrl\"")
+    buildConfigField("String", "BUILD_CHANNEL", "\"$buildChannel\"")
   }
 
   signingConfigs {

@@ -1,5 +1,7 @@
 package com.pisophone.kiosk.overlay.ui
 
+import com.pisophone.kiosk.BuildConfig
+
 import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.BorderStroke
@@ -173,7 +175,7 @@ fun SecurityVaultView(
                         is KioskUpdateManager.UpdateState.Idle -> {
                             Button(
                                 onClick = {
-                                    KioskUpdateManager.startUpdate(context, "https://pisophone.pages.dev/update/app-release.apk")
+                                    KioskUpdateManager.startUpdate(context, "${BuildConfig.UPDATE_BASE_URL}/app-release.apk")
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
                                 shape = RoundedCornerShape(8.dp),

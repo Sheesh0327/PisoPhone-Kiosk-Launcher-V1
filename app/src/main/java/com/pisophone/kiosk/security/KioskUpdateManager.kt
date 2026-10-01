@@ -1,5 +1,7 @@
 package com.pisophone.kiosk.security
 
+import com.pisophone.kiosk.BuildConfig
+
 import android.app.PendingIntent
 import android.app.admin.DevicePolicyManager
 import android.content.Context
@@ -26,7 +28,7 @@ import com.pisophone.kiosk.util.DiagnosticsLog
 
 object KioskUpdateManager {
     private const val TAG = "KioskUpdate"
-    private const val VERSION_INFO_URL = "https://pisophone.pages.dev/update/app.json"
+    private val VERSION_INFO_URL = "${BuildConfig.UPDATE_BASE_URL}/app.json"
 
     /** What the website publishes next to the APK (written by the build workflow). */
     data class RemoteVersion(val versionCode: Int, val sha256: String)
