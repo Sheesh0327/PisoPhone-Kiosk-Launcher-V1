@@ -275,6 +275,11 @@ fun SecurityVaultView(
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp), color = Color(0xFF334155))
 
+            // Section 2C: Diagnostics (recent events, copyable for support)
+            VaultDiagnosticsSection(context = context)
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp), color = Color(0xFF334155))
+
             // Section 3: Hidden Apps Vault
             VaultHiddenAppsSection(
                 context = context,

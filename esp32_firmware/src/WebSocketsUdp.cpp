@@ -8,6 +8,7 @@
 #include "Security.h"
 #include "DeviceManager.h"
 #include "DeviceNetwork.h"
+#include "Diagnostics.h"
 #include <ArduinoJson.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
@@ -419,7 +420,8 @@ void processWebSocketServer() {
                 return;
             }
             
-            Serial.printf("[⚡ WS Port 81] WebSocket ARMED securely for %s (TTL: %lu s)\n", reqDeviceId.c_str(), ARM_TTL / 1000);
+            diagCount(DiagCounter::WsConnects);
+            diagLog("[⚡ WS Port 81] WebSocket ARMED securely for %s (TTL: %lu s)\n", reqDeviceId.c_str(), ARM_TTL / 1000);
             sendWsText(wsClient, "{\"event\":\"ARMED\"}");
         }
     }
@@ -428,7 +430,7 @@ void processWebSocketServer() {
     if (isWsConnected) {
         String boundDevId = wsSessionDeviceId;
         if (!wsClient.connected()) {
-            Serial.printf("[*] WS Client %s disconnected.\n", boundDevId.c_str());
+            diagLog("[*] WS Client %s disconnected.\n", boundDevId.c_str());
             isWsConnected = false;
             wsSessionDeviceId = "";
             // Only release if the session arming TTL is no longer active

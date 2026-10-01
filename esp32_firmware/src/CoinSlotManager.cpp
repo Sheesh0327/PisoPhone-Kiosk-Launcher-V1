@@ -1,7 +1,8 @@
 #include "CoinSlotManager.h"
 #include "PaymentQueueManager.h"
 #include "HardwareManager.h"
-#include "Config.h"
+#include "Config.h"#include "Diagnostics.h"
+
 
 // ============================================================================
 // TIMING CONSTANTS
@@ -37,7 +38,7 @@ static void finalizeSessionRelease(const char* reason) {
     String endingSession = activeSessionId;
     CoinSessionEndCallback endCb = currentEndCallback;
 
-    Serial.printf("[🪙 COIN SLOT] Finalizing session '%s' (Reason: %s).\n", 
+    diagLog("[🪙 COIN SLOT] Finalizing session '%s' (Reason: %s).\n", 
                   endingSession.c_str(), reason);
 
     // Reset state before callback to prevent re-entrant issues
@@ -197,7 +198,7 @@ bool reserveCoinSlot(const String& sessionId, CoinSlotOwnerType ownerType, unsig
     if (sessionId.length() == 0) return false;
 
     if (isPaymentQueueFull() || !isPaymentStorageReady()) {
-        Serial.printf("[🪙 COIN SLOT] Reservation rejected for '%s': Storage unavailable or queue full!\n", sessionId.c_str());
+        diagLog("[🪙 COIN SLOT] Reservation rejected for '%s': Storage unavailable or queue full!\n", sessionId.c_str());
         return false;
     }
     
@@ -205,14 +206,14 @@ bool reserveCoinSlot(const String& sessionId, CoinSlotOwnerType ownerType, unsig
 
     // Reject reservations while draining
     if (currentState == CoinSlotState::DRAINING) {
-        Serial.printf("[🪙 COIN SLOT] Reservation rejected for '%s': Slot is currently DRAINING.\n", 
+        diagLog("[🪙 COIN SLOT] Reservation rejected for '%s': Slot is currently DRAINING.\n", 
                       sessionId.c_str());
         return false;
     }
 
     // If held by another session, reject reservation
     if (isCoinSlotBusy(sessionId, ownerType)) {
-        Serial.printf("[🪙 COIN SLOT] Reservation rejected for '%s': Slot busy with '%s' (State: %d)\n", 
+        diagLog("[🪙 COIN SLOT] Reservation rejected for '%s': Slot busy with '%s' (State: %d)\n", 
                       sessionId.c_str(), activeSessionId.c_str(), (int)currentState);
         return false;
     }
@@ -231,7 +232,7 @@ bool reserveCoinSlot(const String& sessionId, CoinSlotOwnerType ownerType, unsig
         if (onSessionEnd) currentEndCallback = onSessionEnd;
 
         setRelayHardware(true);
-        Serial.printf("[🪙 COIN SLOT] Session '%s' RECONNECTED & RE-ARMED (TTL: %lu ms, Preserved Pulses: %d)\n", 
+        diagLog("[🪙 COIN SLOT] Session '%s' RECONNECTED & RE-ARMED (TTL: %lu ms, Preserved Pulses: %d)\n", 
                       activeSessionId.c_str(), ttlMs, isrUniversalPulseCount);
         return true;
     }
@@ -251,11 +252,12 @@ bool reserveCoinSlot(const String& sessionId, CoinSlotOwnerType ownerType, unsig
     // Reset pulse detector states for fresh session
     sessionAccumulatedPulses = 0;
     resetCoinDetectorStates();
+    diagCount(DiagCounter::SlotReservations);
 
     // Arm hardware relay
     setRelayHardware(true);
 
-    Serial.printf("[🪙 COIN SLOT] Slot RESERVED & ARMED for '%s' (TTL: %lu ms)\n", 
+    diagLog("[🪙 COIN SLOT] Slot RESERVED & ARMED for '%s' (TTL: %lu ms)\n", 
                   activeSessionId.c_str(), ttlMs);
     return true;
 }
@@ -335,7 +337,9 @@ void processCoinSlotSession() {
 
         if (finalPulses > 0) {
             String deliveringSession = activeSessionId;
-            Serial.printf("[🪙 COIN SLOT] Detected %d pulse(s) for session '%s'. Delivering payment...\n", 
+            diagCount(DiagCounter::CoinEvents);
+            diagCount(DiagCounter::CoinPulses, (uint32_t)finalPulses);
+            diagLog("[🪙 COIN SLOT] Detected %d pulse(s) for session '%s'. Delivering payment...\n", 
                           finalPulses, deliveringSession.c_str());
 
             if (currentPaymentCallback) {
@@ -371,6 +375,8 @@ void processCoinSlotSession() {
             sessionAccumulatedPulses = 0;
             
             if (remainingPulses > 0) {
+                diagCount(DiagCounter::CoinEvents);
+                diagCount(DiagCounter::CoinPulses, (uint32_t)remainingPulses);
                 if (currentPaymentCallback) {
                     currentPaymentCallback(activeSessionId, remainingPulses);
                 } else if (globalPaymentCallback) {
@@ -391,7 +397,7 @@ void processCoinSlotSession() {
 
         if (ttlExpired || maxDurationExpired) {
             const char* reason = ttlExpired ? "TTL_EXPIRED" : "MAX_DURATION";
-            Serial.printf("[🪙 COIN SLOT] Session %s for '%s'. Checking in-flight pulses...\n",
+            diagLog("[🪙 COIN SLOT] Session %s for '%s'. Checking in-flight pulses...\n",
                            reason, activeSessionId.c_str());
 
             initiateSessionRelease(reason, false);

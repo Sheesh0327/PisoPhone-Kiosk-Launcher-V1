@@ -22,6 +22,7 @@ bool acknowledgeControllerPayment(const String& sessionId, const String& txId);
 bool isPaymentQueueFull();
 bool isPaymentStorageReady();
 bool hasUnpersistedPayments();
+int getPendingPaymentCount();
 bool canPerformRebootOrOta();
 bool acknowledgePhonePayment(const String& deviceId, const String& txId);
 int getPendingPhonePaymentsJson(const String& deviceId, String& outJsonArray);

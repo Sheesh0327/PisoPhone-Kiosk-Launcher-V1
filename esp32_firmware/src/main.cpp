@@ -14,6 +14,7 @@
 #include "SuperAdminManager.h"
 #include "PaymentQueueManager.h"
 #include "FirmwareVersion.h"
+#include "Diagnostics.h"
 
 #define WDT_TIMEOUT_SECONDS 15
 #define DAILY_MAINTENANCE_INTERVAL_MS 86400000UL // 24 Hours
@@ -46,7 +47,7 @@ static void startSetupAccessPoint() {
     applyWifiTxPower();
     if (WiFi.softAP(apSsid.c_str(), DEFAULT_PASS)) {
         setupApActive = true;
-        Serial.printf("[📶 SETUP AP] Wi-Fi unreachable. Setup AP '%s' active at http://%s\n",
+        diagLog("[📶 SETUP AP] Wi-Fi unreachable. Setup AP '%s' active at http://%s\n",
                       apSsid.c_str(), WiFi.softAPIP().toString().c_str());
     } else {
         WiFi.mode(WIFI_STA);
@@ -61,7 +62,7 @@ static void stopSetupAccessPoint() {
     WiFi.mode(WIFI_STA);
     applyWifiTxPower();
     setupApActive = false;
-    Serial.println("[📶 SETUP AP] Wi-Fi connected. Setup AP stopped.");
+    diagLog("[📶 SETUP AP] Wi-Fi connected. Setup AP stopped.");
 }
 
 static void initHardwareWatchdog() {
@@ -92,9 +93,9 @@ static void processSystemHealthAndAutoMaintenance() {
     // Never restart with a coin session open or a payment that only exists in RAM.
     if ((heapCritical || dailyWindowReached) && getCoinSlotState() == CoinSlotState::IDLE && !hasUnpersistedPayments()) {
         if (heapCritical) {
-            Serial.printf("⚠️ [HEALTH GUARD] Free heap low (%u bytes < %d bytes threshold). Initiating safety reboot...\n", freeHeap, MIN_SAFE_HEAP_BYTES);
+            diagLog("⚠️ [HEALTH GUARD] Free heap low (%u bytes < %d bytes threshold). Initiating safety reboot...\n", freeHeap, MIN_SAFE_HEAP_BYTES);
         } else {
-            Serial.printf("ℹ️ [HEALTH GUARD] 24-hour uptime maintenance window reached. Initiating scheduled reboot...\n");
+            diagLog("ℹ️ [HEALTH GUARD] 24-hour uptime maintenance window reached. Initiating scheduled reboot...\n");
         }
         flushRevenueNow();
         Serial.flush();
@@ -109,7 +110,9 @@ void setup() {
     while (!Serial && (millis() - start < 2500));
     delay(300);
 
-    Serial.printf("\n--- HARDWARE Master Kiosk Controller v%s ---\n", PISO_FW_VERSION);
+    diagInit();
+
+    diagLog("\n--- HARDWARE Master Kiosk Controller v%s ---\n", PISO_FW_VERSION);
 
     // Initialize Hardware Watchdog Early
     initHardwareWatchdog();
@@ -165,11 +168,11 @@ void setup() {
     if (WiFi.status() == WL_CONNECTED) {
         currentLedState = LED_STATE_CONNECTED;
         setLedHardware(true);
-        Serial.printf("\n[+] HARDWARE Online at %s\n", WiFi.localIP().toString().c_str());
+        diagLog("\n[+] HARDWARE Online at %s\n", WiFi.localIP().toString().c_str());
     } else {
         currentLedState = LED_STATE_FAILED;
         setLedHardware(false);
-        Serial.printf("\n[-] Wi-Fi Connection to \"%s\" Failed or Timed Out.\n", wifiSsid.c_str());
+        diagLog("\n[-] Wi-Fi Connection to \"%s\" Failed or Timed Out.\n", wifiSsid.c_str());
         Serial.println("[-] Waiting for Wi-Fi hotspot to become available...");
     }
 
@@ -232,7 +235,8 @@ void loop() {
             unsigned long retryMs = setupApActive ? 120000UL : 30000UL;
             if (wifiSsid.length() > 0 && (millis() - lastWifiCheckTime > retryMs)) {
                 lastWifiCheckTime = millis();
-                Serial.printf("\n[📶 WATCHDOG] Wi-Fi lost. Attempting reconnection to \"%s\"...\n", wifiSsid.c_str());
+                diagCount(DiagCounter::WifiReconnects);
+                diagLog("\n[📶 WATCHDOG] Wi-Fi lost. Attempting reconnection to \"%s\"...\n", wifiSsid.c_str());
                 WiFi.disconnect();
                 WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
                 udpServer.stop();

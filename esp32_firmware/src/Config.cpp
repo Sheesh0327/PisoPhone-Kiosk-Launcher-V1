@@ -3,6 +3,7 @@
 #include "HardwareManager.h"
 #include "SuperAdminManager.h"
 #include "PaymentQueueManager.h"
+#include "Diagnostics.h"
 
 // ============================================================================
 // HARDWARE CONSTANTS & PIN DEFAULTS DEFINITION
@@ -131,7 +132,7 @@ void updateMasterTime(uint64_t ts, const String& sourceId) {
         (uint64_t)(nowMs - outlierMillis) <= MASTER_CLOCK_WINDOW_MS) {
         uint64_t projected = outlierTimestamp + (uint64_t)(nowMs - outlierMillis);
         if (absDiff(ts, projected) <= MASTER_CLOCK_AGREE_MS) {
-            Serial.printf("[CLOCK] Master clock re-synced (%llu -> %llu) after agreement from '%s' and '%s'.\n",
+            diagLog("[CLOCK] Master clock re-synced (%llu -> %llu) after agreement from '%s' and '%s'.\n",
                           current, ts, outlierSource.c_str(), sourceId.c_str());
             lastMasterTimestamp = ts;
             lastMasterMillis = nowMs;
@@ -435,7 +436,7 @@ void processRevenuePersistence() {
 
 void factoryResetDefaults() {
     Serial.println("\n=======================================================");
-    Serial.println("[⚠️ FACTORY RESET] Restoring all settings to defaults...");
+    diagLog("[⚠️ FACTORY RESET] Restoring all settings to defaults...");
     Serial.println("=======================================================");
 
     prefs.begin(NVS_NAMESPACE, false);

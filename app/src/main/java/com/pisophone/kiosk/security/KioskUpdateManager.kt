@@ -22,6 +22,7 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
 import java.security.MessageDigest
+import com.pisophone.kiosk.util.DiagnosticsLog
 
 object KioskUpdateManager {
     private const val TAG = "KioskUpdate"
@@ -123,6 +124,7 @@ object KioskUpdateManager {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Update failed: ${e.message}", e)
+                DiagnosticsLog.add("UPDATE", "failed: ${e.message}")
                 _updateState.value = UpdateState.Error(e.message ?: "Unknown error")
             }
         }
@@ -272,10 +274,12 @@ object KioskUpdateManager {
     }
 
     fun onInstallSuccess() {
+        DiagnosticsLog.add("UPDATE", "install succeeded")
         _updateState.value = UpdateState.Success
     }
 
     fun onInstallError(message: String) {
+        DiagnosticsLog.add("UPDATE", "install failed: $message")
         _updateState.value = UpdateState.Error(message)
     }
 
