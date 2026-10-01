@@ -1,0 +1,4 @@
+# Binaries must never go through text or line-ending conversion: a mangled firmware image fails
+# the ESP32 bootloader's magic-byte check and breaks every OTA update.
+*.bin binary
+*.apk binary

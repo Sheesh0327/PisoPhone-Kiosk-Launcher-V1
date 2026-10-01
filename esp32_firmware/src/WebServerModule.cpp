@@ -14,6 +14,7 @@
 #include <ESPmDNS.h>
 #include <Update.h>
 #include "esp_wifi.h"
+#include <esp_task_wdt.h>
 
 WebServer webServer(80);
 WiFiServer wsServer(81);
@@ -96,6 +97,16 @@ void setupWebServer() {
         webServer.send(200, "application/json", "{\"status\":\"ok\",\"relay_pin\":" + String(relayPin) + ",\"active_low\":" + String(relayActiveLow ? 1 : 0) + "}");
     });
     
+    webServer.on("/api/payments/clear", HTTP_POST, []() {
+        if (!checkAdminAuth()) return;
+        if (isCoinSlotBusy("")) {
+            webServer.send(409, "application/json", "{\"status\":\"error\",\"message\":\"Coin slot is active or draining. Try again when idle.\"}");
+            return;
+        }
+        int cleared = clearPaymentQueue();
+        webServer.send(200, "application/json", "{\"status\":\"ok\",\"cleared\":" + String(cleared) + "}");
+    });
+
     // Port 80: Web OTA Firmware Update Endpoints
     webServer.on("/update", HTTP_GET, handleOtaForm);
     webServer.on("/update", HTTP_POST, []() {
@@ -104,9 +115,15 @@ void setupWebServer() {
         if (!otaIsValidBinary || Update.hasError() || !otaUpdateSuccess) {
             String errStr = otaErrorMsg.length() > 0 ? otaErrorMsg : ("Flash write failed (Error Code " + String(Update.getError()) + ")");
             webServer.send(400, "text/plain", errStr);
-        } else if (!canPerformRebootOrOta()) {
-            webServer.send(409, "text/plain", "BUSY: Unpersisted transactions in RAM");
         } else {
+            // The new image is already committed; give a coin that landed since the finalize
+            // check a moment to reach NVS before restarting.
+            unsigned long waitStart = millis();
+            while (hasUnpersistedPayments() && millis() - waitStart < 10000) {
+                processPendingPaymentRetries();
+                esp_task_wdt_reset();
+                delay(100);
+            }
             webServer.send(200, "text/plain", "SUCCESS");
             delay(1000);
             ESP.restart();
@@ -137,6 +154,9 @@ void setupWebServer() {
                 Serial.printf("[OTA] Error: %s\n", otaErrorMsg.c_str());
             }
         } else if (upload.status == UPLOAD_FILE_WRITE) {
+            // The whole upload runs inside one handleClient() call, so loop() cannot feed the
+            // 15 s task watchdog until it finishes; a slow upload would otherwise panic-reset.
+            esp_task_wdt_reset();
             if (!otaIsValidBinary) return;
 
             if (upload.currentSize > 0) {
@@ -149,7 +169,15 @@ void setupWebServer() {
                 }
             }
         } else if (upload.status == UPLOAD_FILE_END) {
+            esp_task_wdt_reset();
             Serial.println();
+            // Check before Update.end(): it switches the boot partition, so a refusal afterwards
+            // would still boot the new image on the next (e.g. scheduled) restart.
+            if (otaIsValidBinary && !canPerformRebootOrOta()) {
+                otaIsValidBinary = false;
+                otaErrorMsg = "OTA blocked: unpersisted transactions in RAM";
+                Serial.println("[OTA] Aborted at finalize: unpersisted transactions in RAM");
+            }
             if (otaIsValidBinary) {
                 if (Update.end(true)) {
                     Serial.printf("[OTA] Firmware flashing verified & completed successfully: %u bytes\n", upload.totalSize);

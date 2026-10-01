@@ -16,19 +16,64 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.json.JSONObject
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
+import java.security.MessageDigest
 
 object KioskUpdateManager {
     private const val TAG = "KioskUpdate"
+    private const val VERSION_INFO_URL = "https://pisophone.pages.dev/update/app.json"
+
+    /** What the website publishes next to the APK (written by the build workflow). */
+    data class RemoteVersion(val versionCode: Int, val sha256: String)
+
+    internal fun parseRemoteVersion(json: String): RemoteVersion? {
+        return try {
+            val obj = JSONObject(json)
+            val code = obj.optInt("versionCode", -1)
+            if (code <= 0) null else RemoteVersion(code, obj.optString("sha256", "").lowercase())
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /** Only a strictly higher versionCode is an update; installing the same build again does nothing useful. */
+    internal fun isUpdateAvailable(remoteVersionCode: Int, localVersionCode: Int): Boolean =
+        remoteVersionCode > localVersionCode
+
+    /** An APK is a ZIP archive. A hosting fallback page (HTML) or truncated body fails this at once. */
+    internal fun hasZipHeader(file: File): Boolean {
+        if (!file.isFile || file.length() < 4) return false
+        return try {
+            FileInputStream(file).use { input ->
+                val head = ByteArray(4)
+                input.read(head) == 4 && head[0] == 0x50.toByte() && head[1] == 0x4B.toByte() &&
+                    head[2] == 0x03.toByte() && head[3] == 0x04.toByte()
+            }
+        } catch (e: IOException) {
+            false
+        }
+    }
+
+    internal fun sha256Hex(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        FileInputStream(file).use { input ->
+            val buffer = ByteArray(65536)
+            var n: Int
+            while (input.read(buffer).also { n = it } != -1) digest.update(buffer, 0, n)
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
 
     sealed class UpdateState {
         object Idle : UpdateState()
         data class Downloading(val progress: Float) : UpdateState()
         object Installing : UpdateState()
         object Success : UpdateState()
+        data class UpToDate(val message: String) : UpdateState()
         data class Error(val message: String) : UpdateState()
     }
 
@@ -52,8 +97,23 @@ object KioskUpdateManager {
                     apkFile.delete()
                 }
 
+                val localCode = com.pisophone.kiosk.BuildConfig.VERSION_CODE
+                val remote = fetchRemoteVersion()
+                if (!isUpdateAvailable(remote.versionCode, localCode)) {
+                    _updateState.value = UpdateState.UpToDate(
+                        "Already up to date (installed build $localCode, latest published ${remote.versionCode})."
+                    )
+                    return@launch
+                }
+
                 downloadApk(url, apkFile) { progress ->
                     _updateState.value = UpdateState.Downloading(progress)
+                }
+                try {
+                    verifyDownloadedApk(context, apkFile, remote)
+                } catch (e: Exception) {
+                    apkFile.delete()
+                    throw e
                 }
 
                 _updateState.value = UpdateState.Installing
@@ -65,6 +125,42 @@ object KioskUpdateManager {
                 Log.e(TAG, "Update failed: ${e.message}", e)
                 _updateState.value = UpdateState.Error(e.message ?: "Unknown error")
             }
+        }
+    }
+
+    private fun fetchRemoteVersion(): RemoteVersion {
+        val request = Request.Builder().url(VERSION_INFO_URL).header("Cache-Control", "no-cache").build()
+        httpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IOException("Could not check the latest version: HTTP status ${response.code}")
+            }
+            val body = response.body?.string().orEmpty()
+            return parseRemoteVersion(body)
+                ?: throw IOException("Could not read the published version information.")
+        }
+    }
+
+    private fun verifyDownloadedApk(context: Context, apkFile: File, remote: RemoteVersion) {
+        if (!hasZipHeader(apkFile)) {
+            throw IOException("The downloaded file is not an APK (the server may have returned an error page).")
+        }
+        if (remote.sha256.isNotEmpty() && !sha256Hex(apkFile).equals(remote.sha256, ignoreCase = true)) {
+            throw IOException("The downloaded APK does not match the published checksum. Try again.")
+        }
+        @Suppress("DEPRECATION")
+        val info = context.packageManager.getPackageArchiveInfo(apkFile.absolutePath, 0)
+            ?: throw IOException("The downloaded file could not be read as an Android package.")
+        if (info.packageName != context.packageName) {
+            throw IOException("The downloaded APK is for a different app (${info.packageName}).")
+        }
+        val downloadedCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            info.longVersionCode.toInt()
+        } else {
+            @Suppress("DEPRECATION")
+            info.versionCode
+        }
+        if (!isUpdateAvailable(downloadedCode, com.pisophone.kiosk.BuildConfig.VERSION_CODE)) {
+            throw IOException("The downloaded APK (build $downloadedCode) is not newer than the installed one.")
         }
     }
 
@@ -136,11 +232,7 @@ object KioskUpdateManager {
             val intent = Intent(context, com.pisophone.kiosk.receiver.KioskDeviceAdminReceiver::class.java).apply {
                 action = "com.pisophone.kiosk.ACTION_INSTALL_COMPLETE"
             }
-            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
-            } else {
-                PendingIntent.FLAG_UPDATE_CURRENT
-            }
+            val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
             val pendingIntent = PendingIntent.getBroadcast(context, 0, intent, flags)
 
             session.commit(pendingIntent.intentSender)

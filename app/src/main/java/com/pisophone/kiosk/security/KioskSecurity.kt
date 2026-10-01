@@ -2,10 +2,8 @@
 package com.pisophone.kiosk.security
 
 import android.content.Context
-import android.content.Intent
 import android.content.SharedPreferences
 import android.media.AudioManager
-import android.os.BatteryManager
 import android.util.Log
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -13,20 +11,12 @@ import javax.crypto.Cipher
 import javax.crypto.Mac
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
-import android.util.Base64
-import java.security.KeyStore
-import javax.crypto.KeyGenerator
-import javax.crypto.SecretKey
-import javax.crypto.spec.GCMParameterSpec
 
 /**
  * Core security coordinator, configuration storage, and cryptographic authentication manager.
  * Specialized policy, recovery, and data clearing functions are modularized in:
  * - [KioskRecoveryManager]
  * - [KioskPolicyManager]
- * - [KioskDataCleaner]
  * - [KioskActivationManager]
  */
 object KioskSecurity {
@@ -42,7 +32,10 @@ object KioskSecurity {
     private const val KEY_CONFIGURED_ESP32_MAC = "configured_esp32_mac"
     private const val KEY_ASSIGNED_BOX_SLOT = "assigned_box_slot"
     private const val KEY_PROVISIONING_ADB_ALLOWED = "provisioning_adb_allowed"
-    private const val KEY_APK_UPDATE_URL = "apk_update_url"
+    private const val KEY_ADB_GRACE_START = "adb_provisioning_grace_start"
+    // WebADB keeps issuing commands (setup intent, broadcasts, reboot) for a few minutes after
+    // `dpm set-device-owner`, which is when policies are first applied.
+    private const val ADB_PROVISIONING_GRACE_MS = 15 * 60 * 1000L
     
     const val DEFAULT_SHARED_SECRET = "PISOPHONE_HMAC_MASTER_KEY"
     private const val KEY_SECRET_EXPLICITLY_PROVISIONED = "kiosk_secret_explicitly_provisioned"
@@ -64,9 +57,20 @@ object KioskSecurity {
         }
     }
 
+    /**
+     * Credential-encrypted prefs. NOT available before the user unlocks the device (Direct Boot),
+     * so anything that must be read consistently across locked/unlocked starts (e.g. boot count
+     * bookkeeping) must live in [getDirectBootPrefs] instead.
+     */
     fun getEncryptedPrefs(context: Context): SharedPreferences? {
         if (encryptedPrefsInstance != null) return encryptedPrefsInstance
-        
+
+        val userManager = context.getSystemService(Context.USER_SERVICE) as? android.os.UserManager
+        if (userManager != null && !userManager.isUserUnlocked) {
+            Log.w(TAG, "EncryptedSharedPreferences unavailable before user unlock (Direct Boot)")
+            return null
+        }
+
         return synchronized(this) {
             if (encryptedPrefsInstance != null) return encryptedPrefsInstance
             try {
@@ -89,16 +93,17 @@ object KioskSecurity {
         }
     }
 
+    /**
+     * Falls back to a separate device-protected file when encrypted prefs are unavailable, so the
+     * value read may differ between locked and unlocked starts. Do not use for state that must be
+     * consistent across process restarts in Direct Boot.
+     */
     fun getEncryptedPreferences(context: Context): SharedPreferences {
         return getEncryptedPrefs(context) ?: getDirectBootPrefs(context, "secure_kiosk_prefs")
     }
 
     fun getDirectBootPrefs(context: Context, name: String = PREFS_SECURITY_OLD): SharedPreferences {
-        val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-            context.createDeviceProtectedStorageContext()
-        } else {
-            context
-        }
+        val deviceContext = context.createDeviceProtectedStorageContext()
         return deviceContext.getSharedPreferences(name, Context.MODE_PRIVATE)
     }
 
@@ -151,14 +156,6 @@ object KioskSecurity {
         }
     }
 
-    fun getApkUpdateUrl(context: Context): String {
-        return "https://pisophone.pages.dev/update/app-release.apk"
-    }
-
-    fun setApkUpdateUrl(context: Context, url: String) {
-        getPrefs(context).edit().putString(KEY_APK_UPDATE_URL, url.trim()).apply()
-    }
-
     fun formatMacAddress(input: String?): String {
         if (input.isNullOrBlank()) return ""
         val clean = input.replace("[^a-fA-F0-9]".toRegex(), "").uppercase()
@@ -175,17 +172,38 @@ object KioskSecurity {
         return isExplicit && mac.isNotBlank()
     }
 
+    /**
+     * USB debugging is off for renters by default. It stays on during the provisioning grace
+     * window, or when an admin explicitly enabled it (vault PIN / ENABLE_ADB recovery).
+     */
     fun isAdbAllowed(context: Context): Boolean {
-        return getPrefs(context).getBoolean(KEY_PROVISIONING_ADB_ALLOWED, true)
+        val prefs = getPrefs(context)
+        if (prefs.contains(KEY_PROVISIONING_ADB_ALLOWED)) {
+            return prefs.getBoolean(KEY_PROVISIONING_ADB_ALLOWED, false)
+        }
+        return adbProvisioningGraceRemainingMs(context) > 0L
+    }
+
+    fun isAdbExplicitlyConfigured(context: Context): Boolean =
+        getPrefs(context).contains(KEY_PROVISIONING_ADB_ALLOWED)
+
+    /** Starts the grace window on first use (i.e. when policies are first applied). */
+    fun adbProvisioningGraceRemainingMs(context: Context): Long {
+        val prefs = getPrefs(context)
+        val now = System.currentTimeMillis()
+        var start = prefs.getLong(KEY_ADB_GRACE_START, 0L)
+        if (start <= 0L) {
+            start = now
+            prefs.edit().putLong(KEY_ADB_GRACE_START, start).commit()
+        }
+        val elapsed = now - start
+        if (elapsed < 0L) return 0L
+        return (ADB_PROVISIONING_GRACE_MS - elapsed).coerceAtLeast(0L)
     }
 
     fun setAdbAllowed(context: Context, allowed: Boolean) {
         getPrefs(context).edit().putBoolean(KEY_PROVISIONING_ADB_ALLOWED, allowed).apply()
         applyStrictKioskPolicies(context)
-    }
-
-    fun clearAppCacheAndData(context: Context): Boolean {
-        return KioskDataCleaner.clearAppCacheAndData(context)
     }
 
     fun getHiddenApps(context: Context): Set<String> {
@@ -199,9 +217,10 @@ object KioskSecurity {
                 .putStringSet(KEY_HIDDEN_APPS, defaultHidden)
                 .putBoolean(KEY_INITIALIZED_DEFAULT_HIDDEN, true)
                 .apply()
-            return defaultHidden
+            return defaultHidden + KioskPolicyManager.ADMIN_ONLY_PACKAGES
         }
-        return prefs.getStringSet(KEY_HIDDEN_APPS, emptySet()) ?: emptySet()
+        val stored = prefs.getStringSet(KEY_HIDDEN_APPS, emptySet()) ?: emptySet()
+        return stored + KioskPolicyManager.ADMIN_ONLY_PACKAGES
     }
 
     fun setHiddenApps(context: Context, hiddenApps: Set<String>) {
@@ -212,12 +231,12 @@ object KioskSecurity {
     }
 
     fun isAppHidden(context: Context, packageName: String): Boolean {
-        if (packageName == "com.android.vending") return false
+        if (KioskPolicyManager.isAdminOnlyPackage(packageName)) return true
         return getHiddenApps(context).contains(packageName)
     }
 
     fun toggleAppHidden(context: Context, packageName: String): Boolean {
-        if (packageName == "com.android.vending") return false
+        if (KioskPolicyManager.isAdminOnlyPackage(packageName)) return true
         val current = getHiddenApps(context).toMutableSet()
         val isNowHidden = if (current.contains(packageName)) {
             current.remove(packageName)
@@ -235,11 +254,7 @@ object KioskSecurity {
     }
 
     fun getHardwareId(context: Context): String {
-        val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-            context.createDeviceProtectedStorageContext()
-        } else {
-            context
-        }
+        val deviceContext = context.createDeviceProtectedStorageContext()
         val directPrefs = deviceContext.getSharedPreferences("kiosk_prefs", Context.MODE_PRIVATE)
         var savedUuid = directPrefs.getString("device_uuid", null)
         if (savedUuid.isNullOrBlank()) {
@@ -257,68 +272,8 @@ object KioskSecurity {
         getPrefs(context).edit().putString(KEY_DEVICE_ALIAS, alias.trim()).apply()
     }
 
-    private const val CUSTOM_KEYSTORE_ALIAS = "kiosk_custom_secret_key"
-    private const val KEY_CUSTOM_ENCRYPTED_SECRET = "custom_encrypted_device_secret"
-
-    private fun getCustomKeystoreEncryptedSecret(prefs: SharedPreferences): String? {
-        val encryptedBase64 = prefs.getString(KEY_CUSTOM_ENCRYPTED_SECRET, null) ?: return null
-        return try {
-            val parts = encryptedBase64.split(":")
-            if (parts.size != 2) return null
-            val iv = Base64.decode(parts[0], Base64.DEFAULT)
-            val cipherText = Base64.decode(parts[1], Base64.DEFAULT)
-            
-            val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-            val secretKey = keyStore.getKey(CUSTOM_KEYSTORE_ALIAS, null) as? SecretKey ?: return null
-            
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(128, iv))
-            val plainTextBytes = cipher.doFinal(cipherText)
-            String(plainTextBytes, Charsets.UTF_8)
-        } catch (e: Exception) {
-            Log.e(TAG, "Custom Keystore decryption failed: ${e.message}")
-            null
-        }
-    }
-
-    private fun setCustomKeystoreEncryptedSecret(prefs: SharedPreferences, secret: String): Boolean {
-        return try {
-            val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-            if (!keyStore.containsAlias(CUSTOM_KEYSTORE_ALIAS)) {
-                val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
-                val keySpec = KeyGenParameterSpec.Builder(
-                    CUSTOM_KEYSTORE_ALIAS,
-                    KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
-                )
-                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                    .setRandomizedEncryptionRequired(true)
-                    .build()
-                keyGenerator.init(keySpec)
-                keyGenerator.generateKey()
-            }
-            val secretKey = keyStore.getKey(CUSTOM_KEYSTORE_ALIAS, null) as SecretKey
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.ENCRYPT_MODE, secretKey)
-            val iv = cipher.iv
-            val cipherText = cipher.doFinal(secret.toByteArray(Charsets.UTF_8))
-            val ivBase64 = Base64.encodeToString(iv, Base64.NO_WRAP)
-            val cipherTextBase64 = Base64.encodeToString(cipherText, Base64.NO_WRAP)
-            prefs.edit().putString(KEY_CUSTOM_ENCRYPTED_SECRET, "$ivBase64:$cipherTextBase64").apply()
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Custom Keystore encryption failed: ${e.message}")
-            false
-        }
-    }
-
     fun getSharedSecret(context: Context): String {
         return DEFAULT_SHARED_SECRET
-    }
-
-    fun setSharedSecret(context: Context, newSecret: String) {
-        // Standardized on DEFAULT_SHARED_SECRET across all components to ensure zero-mismatch communication.
-        Log.d(TAG, "Shared secret configured to standard master secret.")
     }
 
     fun getAdminPin(context: Context): String {
@@ -416,66 +371,6 @@ object KioskSecurity {
         )
     }
 
-    // --- Battery Diagnostics ---
-
-    data class BatteryInfo(
-        val level: Int,
-        val scale: Int,
-        val percentage: Int,
-        val isCharging: Boolean,
-        val plugType: String,
-        val temperatureCelsius: Float,
-        val voltageMv: Int,
-        val health: String
-    )
-
-    fun getBatteryDiagnostics(context: Context): BatteryInfo {
-        val intentFilter = android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED)
-        val batteryStatus = context.registerReceiver(null, intentFilter)
-        
-        val level = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
-        val scale = batteryStatus?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
-        val pct = if (level >= 0 && scale > 0) (level * 100) / scale else 0
-
-        val status = batteryStatus?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
-        val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
-                status == BatteryManager.BATTERY_STATUS_FULL
-
-        val chargePlug = batteryStatus?.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1) ?: -1
-        val plugType = when (chargePlug) {
-            BatteryManager.BATTERY_PLUGGED_USB -> "USB"
-            BatteryManager.BATTERY_PLUGGED_AC -> "AC Wall"
-            BatteryManager.BATTERY_PLUGGED_WIRELESS -> "Wireless"
-            else -> "Battery"
-        }
-
-        val rawTemp = batteryStatus?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
-        val tempCelsius = rawTemp / 10.0f
-        val voltage = batteryStatus?.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0) ?: 0
-
-        val rawHealth = batteryStatus?.getIntExtra(BatteryManager.EXTRA_HEALTH, BatteryManager.BATTERY_HEALTH_UNKNOWN) ?: 0
-        val healthStr = when (rawHealth) {
-            BatteryManager.BATTERY_HEALTH_GOOD -> "Good"
-            BatteryManager.BATTERY_HEALTH_OVERHEAT -> "Overheat"
-            BatteryManager.BATTERY_HEALTH_DEAD -> "Dead"
-            BatteryManager.BATTERY_HEALTH_OVER_VOLTAGE -> "Over Voltage"
-            BatteryManager.BATTERY_HEALTH_UNSPECIFIED_FAILURE -> "Failure"
-            BatteryManager.BATTERY_HEALTH_COLD -> "Cold"
-            else -> "Unknown"
-        }
-
-        return BatteryInfo(
-            level = level,
-            scale = scale,
-            percentage = pct,
-            isCharging = isCharging,
-            plugType = plugType,
-            temperatureCelsius = tempCelsius,
-            voltageMv = voltage,
-            health = healthStr
-        )
-    }
-
     fun setMediaVolume(context: Context, volumePercent: Int) {
         try {
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -540,11 +435,6 @@ object KioskSecurity {
         slot: Int = -1,
         name: String? = null
     ): Boolean {
-        if (!secret.isNullOrBlank()) {
-            setSharedSecret(context, secret.trim())
-        } else if (secret != null) {
-            Log.e(TAG, "[-] Rejected direct provisioning with empty or blank secret key for security!")
-        }
         if (!mac.isNullOrBlank()) {
             val formattedMac = formatMacAddress(mac.trim())
             if (formattedMac.isNotBlank()) {
@@ -557,7 +447,7 @@ object KioskSecurity {
         } else if (!name.isNullOrBlank()) {
             setDeviceAlias(context, name.trim())
         }
-        Log.i(TAG, "[+] Successfully applied Direct Provisioning setup: MAC=$mac, Slot=$slot, SecretConfigured=${!secret.isNullOrBlank()}")
+        Log.i(TAG, "[+] Successfully applied Direct Provisioning setup: MAC=$mac, Slot=$slot")
         return true
     }
 }

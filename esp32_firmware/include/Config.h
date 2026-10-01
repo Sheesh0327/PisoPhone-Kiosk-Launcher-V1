@@ -31,7 +31,6 @@ extern const int DEFAULT_MINUTES_PER_COIN;
 // ============================================================================
 extern const char* const NVS_NAMESPACE;
 extern const char* const NVS_KEY_MAX_SLOTS;
-extern const char* const NVS_KEY_LICENSED;
 extern const char* const NVS_KEY_SLOTS_DATA;
 extern const char* const NVS_KEY_IPS;
 
@@ -108,7 +107,6 @@ extern String androidIps;
 extern String webPassword;
 extern String sharedSecret;
 extern String macAddressStr;
-extern bool is_licensed;
 extern int maxLicensedSlots;
 
 extern int targetPort;
@@ -152,13 +150,14 @@ void saveSlotLicenses();
 void syncAndroidIpsFromSlots();
 
 void processRevenuePersistence();
+void flushRevenueNow();
 
 void factoryResetDefaults();
-void updateMasterTime(uint64_t ts);
+void updateMasterTime(uint64_t ts, const String& sourceId = "");
 uint64_t getCurrentMasterTimeMs();
+String generateTxId(const char* prefix = "tx-");
 
 bool parseDeviceEntry(const String& entry, DeviceConfig& out);
 void forEachConfiguredDevice(std::function<bool(const DeviceConfig&)> callback);
-bool areDefaultCredentialsActive();
 
 #endif // CONFIG_H

@@ -67,7 +67,6 @@ bool applySlotToken(String token) {
                 licenseSlots[i].active = true;
             }
 
-            is_licensed = true;
             saveSlotLicenses();
             Serial.printf("[+] Successfully applied Slot License Token: Capacity expanded to %d slots!\n", maxLicensedSlots);
             return true;
@@ -155,70 +154,6 @@ String aes_encrypt(String plaintext, String secret) {
     }
     free(ciphertext);
     return hex_result;
-}
-
-String aes_decrypt(String encryptedHex, String secret) {
-    if (encryptedHex.length() < 32) return "";
-    
-    size_t total_bytes = encryptedHex.length() / 2;
-    uint8_t* data = (uint8_t*)malloc(total_bytes);
-    if (!data) return "";
-    for (size_t i = 0; i < total_bytes; i++) {
-        String part = encryptedHex.substring(i * 2, i * 2 + 2);
-        data[i] = (uint8_t)strtol(part.c_str(), NULL, 16);
-    }
-    
-    if (total_bytes < 17) {
-        free(data);
-        return "";
-    }
-    
-    uint8_t iv[16];
-    memcpy(iv, data, 16);
-    
-    size_t ciphertext_len = total_bytes - 16;
-    uint8_t* ciphertext = data + 16;
-    
-    uint8_t aes_key[32];
-    mbedtls_md_context_t sha_ctx;
-    mbedtls_md_init(&sha_ctx);
-    mbedtls_md_setup(&sha_ctx, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), 0);
-    mbedtls_md_starts(&sha_ctx);
-    mbedtls_md_update(&sha_ctx, (const unsigned char*)secret.c_str(), secret.length());
-    mbedtls_md_finish(&sha_ctx, aes_key);
-    mbedtls_md_free(&sha_ctx);
-    
-    mbedtls_aes_context aes_ctx;
-    mbedtls_aes_init(&aes_ctx);
-    mbedtls_aes_setkey_dec(&aes_ctx, aes_key, 256);
-    
-    uint8_t* decrypted = (uint8_t*)malloc(ciphertext_len);
-    if (!decrypted) {
-        mbedtls_aes_free(&aes_ctx);
-        free(data);
-        return "";
-    }
-    uint8_t iv_tmp[16];
-    memcpy(iv_tmp, iv, 16);
-    
-    mbedtls_aes_crypt_cbc(&aes_ctx, MBEDTLS_AES_DECRYPT, ciphertext_len, iv_tmp, ciphertext, decrypted);
-    mbedtls_aes_free(&aes_ctx);
-    free(data);
-    
-    uint8_t padding_len = decrypted[ciphertext_len - 1];
-    if (padding_len > ciphertext_len || padding_len > 16 || padding_len == 0) {
-        free(decrypted);
-        return "";
-    }
-    
-    size_t plaintext_len = ciphertext_len - padding_len;
-    String plaintext = "";
-    for (size_t i = 0; i < plaintext_len; i++) {
-        plaintext += (char)decrypted[i];
-    }
-    
-    free(decrypted);
-    return plaintext;
 }
 
 String computeSecWebSocketAccept(String key) {

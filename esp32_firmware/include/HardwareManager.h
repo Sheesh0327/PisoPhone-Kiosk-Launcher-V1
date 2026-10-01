@@ -16,7 +16,6 @@ void triggerLedBlink(int blinkCount = 2);
 void processLedBlink();
 
 void setRelayHardware(bool active);
-bool isSlotArmed();
 void processRelayState();
 
 void IRAM_ATTR universalCoinIsr();

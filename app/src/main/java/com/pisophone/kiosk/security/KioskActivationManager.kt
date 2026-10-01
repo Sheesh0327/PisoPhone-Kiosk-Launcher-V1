@@ -152,10 +152,6 @@ object KioskActivationManager {
         return true
     }
 
-    fun isAppAllowedToRun(context: Context): Boolean {
-        return true
-    }
-
     fun isSlotLockedDown(context: Context): Boolean {
         val prefs = getPrefs(context)
         return prefs.getBoolean(KEY_SLOT_EXPIRED, false)

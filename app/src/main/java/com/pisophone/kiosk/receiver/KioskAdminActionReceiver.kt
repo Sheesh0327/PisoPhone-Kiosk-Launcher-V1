@@ -93,6 +93,8 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                     Toast.makeText(context, "Unauthorized: Valid Admin PIN or Secret required.", Toast.LENGTH_SHORT).show()
                     return
                 }
+                // Settings is not allowed in lock task mode for renters; open the admin window first.
+                com.pisophone.kiosk.security.AdminMaintenanceMode.begin(context, 900)
                 try {
                     val sIntent = Intent(android.provider.Settings.ACTION_SETTINGS).apply {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -107,18 +109,13 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                     Toast.makeText(context, "Unauthorized: Valid Admin PIN required.", Toast.LENGTH_SHORT).show()
                     return
                 }
-                if (!com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(context)) {
-                    Log.w(TAG, "ADMIN_BYPASS rejected: Device is not provisioned.")
-                    Toast.makeText(context, "Bypass rejected: Device provisioning required.", Toast.LENGTH_SHORT).show()
-                    return
-                }
                 val duration = intent.getIntExtra("duration", 900)
                 Log.i(TAG, "Admin bypass command authenticated & received for $duration seconds.")
                 KioskService.triggerAdminBypass(context, duration)
             }
 
             ACTION_TEST_TTS -> {
-                if (com.pisophone.kiosk.security.KioskSecurity.isProvisioned(context) && !isAuthorized(context, intent)) {
+                if (!isPinAuthorized(context, intent)) {
                     Log.w(TAG, "Unauthorized attempt to trigger TEST_TTS rejected.")
                     return
                 }
@@ -127,18 +124,14 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                 KioskService.triggerTestTts(context, text)
             }
             ACTION_RESTART -> {
-                if (com.pisophone.kiosk.security.KioskSecurity.isProvisioned(context) && !isAuthorized(context, intent)) {
+                if (!isPinAuthorized(context, intent)) {
                     Log.w(TAG, "Unauthorized attempt to trigger RESTART rejected.")
                     return
                 }
                 Log.i(TAG, "Admin restart triggered via broadcast.")
                 try {
                     val serviceIntent = Intent(context, KioskService::class.java)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        context.startForegroundService(serviceIntent)
-                    } else {
-                        context.startService(serviceIntent)
-                    }
+                    context.startForegroundService(serviceIntent)
 
                     val mainIntent = Intent(context, MainActivity::class.java).apply {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -160,7 +153,7 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
             }
 
             ACTION_SCREEN_OFF, ACTION_LOCK_NOW -> {
-                if (com.pisophone.kiosk.security.KioskSecurity.isProvisioned(context) && !isAuthorized(context, intent)) {
+                if (!isPinAuthorized(context, intent)) {
                     Log.w(TAG, "Unauthorized attempt to trigger SCREEN_OFF / LOCK_NOW rejected.")
                     return
                 }
@@ -169,7 +162,7 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
             }
 
             ACTION_SCREEN_ON -> {
-                if (com.pisophone.kiosk.security.KioskSecurity.isProvisioned(context) && !isAuthorized(context, intent)) {
+                if (!isPinAuthorized(context, intent)) {
                     Log.w(TAG, "Unauthorized attempt to trigger SCREEN_ON rejected.")
                     return
                 }
@@ -188,7 +181,7 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
             }
 
             ACTION_SET_VOLUME -> {
-                if (com.pisophone.kiosk.security.KioskSecurity.isProvisioned(context) && !isAuthorized(context, intent)) {
+                if (!isPinAuthorized(context, intent)) {
                     Log.w(TAG, "Unauthorized attempt to trigger SET_VOLUME rejected.")
                     return
                 }
@@ -272,11 +265,7 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                     // Restart Kiosk Service and reload UI
                     try {
                         val serviceIntent = Intent(context, KioskService::class.java)
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            context.startForegroundService(serviceIntent)
-                        } else {
-                            context.startService(serviceIntent)
-                        }
+                        context.startForegroundService(serviceIntent)
                         val mainIntent = Intent(context, MainActivity::class.java).apply {
                             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                         }
@@ -338,6 +327,16 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                 }
             }
         }
+    }
+
+    /**
+     * PIN only. The shared secret is a compiled-in constant that anyone with the app can read, so
+     * it must not unlock commands that anyone on the phone could otherwise send to this exported
+     * receiver (restart, lock, screen on/off, volume, test announcement).
+     */
+    private fun isPinAuthorized(context: Context, intent: Intent): Boolean {
+        val pin = intent.getStringExtra("pin") ?: intent.getStringExtra("admin_pin")
+        return !pin.isNullOrBlank() && com.pisophone.kiosk.security.KioskSecurity.verifyAdminPin(context, pin.trim())
     }
 
     private fun isAuthorized(context: Context, intent: Intent): Boolean {

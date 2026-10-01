@@ -79,7 +79,7 @@ class AndroidKioskSystemController(
 
     override fun setScreenBrightness(brightness: Float) {
         val safeBrightness = brightness.coerceIn(0f, MAX_BRIGHTNESS)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.System.canWrite(appContext)) {
+        if (Settings.System.canWrite(appContext)) {
             try {
                 Settings.System.putInt(appContext.contentResolver, Settings.System.SCREEN_BRIGHTNESS, safeBrightness.toInt())
             } catch (e: Exception) {

@@ -51,7 +51,6 @@ void sendWsText(WiFiClient& client, String text) {
 
     client.write(header, headerLen);
     client.write((const uint8_t*)text.c_str(), len);
-    client.flush();
 }
 
 void sendWsPong(WiFiClient& client, const uint8_t* payload, size_t len) {
@@ -63,7 +62,6 @@ void sendWsPong(WiFiClient& client, const uint8_t* payload, size_t len) {
     if (len > 0 && payload != NULL) {
         client.write(payload, len);
     }
-    client.flush();
 }
 
 static bool readExactBytes(WiFiClient& client, uint8_t* buf, size_t count, unsigned long deadlineMs) {
@@ -342,7 +340,6 @@ void processWebSocketServer() {
             unsigned long long ts = strtoull(tsStr.c_str(), NULL, 10);
             if (ts > 0) {
                 recordDeviceNonce(reqDeviceId, ts);
-                updateMasterTime(ts);
             }
 
             // 1c. Verify Slot Expiration & Lockdown
@@ -353,7 +350,6 @@ void processWebSocketServer() {
                 Serial.printf("[-] WS Mutex Rejected for %s (%s): Device is not paired to any slot on this ESP32\n", 
                     reqDeviceId.c_str(), clientIp.c_str());
                 newClient.print("HTTP/1.1 423 Locked\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: 29\r\n\r\n{\"error\":\"SLOT_NOT_PAIRED\"}");
-                newClient.flush();
                 delay(10);
                 newClient.stop();
                 return;
@@ -363,7 +359,6 @@ void processWebSocketServer() {
                 Serial.printf("[-] WS Mutex Rejected for %s: Slot Expired / Lockdown Active (Slot #%d)\n", 
                     reqDeviceId.c_str(), licenseSlots[wsSlotIdx].slotNum);
                 newClient.print("HTTP/1.1 423 Locked\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: 26\r\n\r\n{\"error\":\"SLOT_EXPIRED\"}");
-                newClient.flush();
                 delay(10);
                 newClient.stop();
                 return;
@@ -373,7 +368,6 @@ void processWebSocketServer() {
             if (isCoinSlotBusy(reqDeviceId, CoinSlotOwnerType::PHONE)) {
                 Serial.printf("[-] WS Mutex Rejected for %s: Slot BUSY with %s\n", reqDeviceId.c_str(), getActiveCoinSessionId().c_str());
                 newClient.print("HTTP/1.1 409 Conflict\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: 23\r\n\r\n{\"event\":\"SLOT_BUSY\"}");
-                newClient.flush();
                 delay(10);
                 newClient.stop();
                 return;
@@ -381,7 +375,7 @@ void processWebSocketServer() {
             
             // Mutex passed, slot acquired. Save the nonce and synchronize master clock.
             recordDeviceNonce(reqDeviceId, ts);
-            if (ts > 0) updateMasterTime(ts);
+            if (ts > 0) updateMasterTime(ts, reqDeviceId);
             
             // 3. Complete RFC6455 Handshake
             String acceptKey = computeSecWebSocketAccept(secKey);
@@ -391,7 +385,6 @@ void processWebSocketServer() {
             response += "Sec-WebSocket-Accept: " + acceptKey + "\r\n\r\n";
             
             newClient.print(response);
-            newClient.flush();
             newClient.setNoDelay(true);
             
             if (isWsConnected && wsClient.connected()) {
@@ -448,7 +441,11 @@ void processWebSocketServer() {
         if (wsClient.available()) {
             String frameText = readWsText(wsClient);
             if (frameText.length() > 0) {
-                refreshCoinSlotTtl(boundDevId, CoinSlotOwnerType::PHONE, ARM_TTL);
+                // Pong replies come from the phone's WebSocket stack even when the app is
+                // abandoned, so they must not keep the slot armed.
+                if (frameText != "PING" && frameText != "PONG" && frameText != "CLOSE" && frameText != "DONE") {
+                    refreshCoinSlotTtl(boundDevId, CoinSlotOwnerType::PHONE, ARM_TTL);
+                }
 
                 StaticJsonDocument<256> ackDoc;
                 DeserializationError ackErr = deserializeJson(ackDoc, frameText);

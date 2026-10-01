@@ -39,6 +39,10 @@ import kotlinx.coroutines.withContext
 class MainActivity : ComponentActivity() {
     companion object {
         private const val TAG = "MainActivity"
+
+        /** Ask for the Doze exemption at most once per process to avoid nagging. */
+        @Volatile
+        private var batteryExemptionRequested = false
     }
 
     private var appsList by mutableStateOf<List<AppInfo>>(emptyList())
@@ -47,17 +51,12 @@ class MainActivity : ComponentActivity() {
     private var isDeviceOwner by mutableStateOf(false)
     private var strictPoliciesApplied = false
 
-    private fun isFullySetup(): Boolean {
-        return KioskActivationManager.isAppAllowedToRun(this)
-    }
-
     private fun checkDeviceOwner() {
         val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as? android.app.admin.DevicePolicyManager
         val isOwner = dpm?.isDeviceOwnerApp(packageName) == true
         isDeviceOwner = isOwner
-        val fullySetup = isFullySetup()
 
-        if (isOwner && fullySetup) {
+        if (isOwner) {
             lifecycleScope.launch(Dispatchers.IO) {
                 if (!strictPoliciesApplied) {
                     strictPoliciesApplied = true
@@ -69,12 +68,14 @@ class MainActivity : ComponentActivity() {
                 }
                 withContext(Dispatchers.Main) {
                     tryEnableLockTaskMode()
+                    if (!batteryExemptionRequested) {
+                        batteryExemptionRequested = true
+                        com.pisophone.kiosk.security.KioskPolicyManager.ensureBatteryOptimizationExemption(this@MainActivity)
+                    }
                 }
             }
         }
-        if (fullySetup) {
-            checkOverlayPermission()
-        }
+        checkOverlayPermission()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -116,7 +117,7 @@ class MainActivity : ComponentActivity() {
             applyKioskWindowFlags()
             hideSystemBars()
             dismissKeyguard()
-        } else if (isFullySetup()) {
+        } else {
             KioskSecurity.collapseStatusBar(this)
         }
     }
@@ -126,9 +127,7 @@ class MainActivity : ComponentActivity() {
         applyKioskWindowFlags()
         hideSystemBars()
         dismissKeyguard()
-        if (isFullySetup()) {
-            KioskSecurity.collapseStatusBar(this)
-        }
+        KioskSecurity.collapseStatusBar(this)
         checkOverlayPermission()
         loadApps()
         KioskWatchdogReceiver.scheduleWatchdog(this)
@@ -158,8 +157,18 @@ class MainActivity : ComponentActivity() {
             ?: intent.getStringExtra("name")
             ?: intent.getStringExtra("alias")
         val activate = intent.getBooleanExtra("activate", intent.hasExtra("setup_secret") || intent.hasExtra("secret") || intent.hasExtra("setup_mac"))
+        val hasProvisioningData = !secret.isNullOrBlank() || !mac.isNullOrBlank() || slot > 0
+        if (!hasProvisioningData && !activate) return
 
-        if (!secret.isNullOrBlank() || !mac.isNullOrBlank() || slot > 0) {
+        // MainActivity is exported, so any app could send these extras. Same rule as the
+        // CONFIGURE_ESP32 / ACTIVATE broadcasts: free only during the first-setup window,
+        // otherwise an admin PIN or the shared secret is required.
+        if (!isSetupIntentAuthorized(intent, secret)) {
+            Log.w(TAG, "Rejected unauthorized setup intent (MAC/slot/secret change).")
+            return
+        }
+
+        if (hasProvisioningData) {
             android.util.Log.i("MainActivity", "Direct Provisioning setup parameters received: MAC=$mac, Slot=$slot, SecretConfigured=${!secret.isNullOrBlank()}")
             KioskService.configureMasterBox(
                 context = this,
@@ -175,19 +184,31 @@ class MainActivity : ComponentActivity() {
             KioskActivationManager.setPairingCompleted(this, true)
             try {
                 val serviceIntent = Intent(this, KioskService::class.java)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(serviceIntent)
-                } else {
-                    startService(serviceIntent)
-                }
+                startForegroundService(serviceIntent)
             } catch (e: Exception) {
                 android.util.Log.w("MainActivity", "Failed to start KioskService on setup: ${e.message}")
             }
         }
     }
 
+    private fun isSetupIntentAuthorized(intent: Intent, secret: String?): Boolean {
+        val paired = KioskActivationManager.isPairingCompleted(this) || KioskSecurity.isProvisioned(this)
+        if (!paired) {
+            // The WebADB installer launches this activity right after install, before the
+            // service has opened the setup window.
+            KioskActivationManager.startSetupWindow(this)
+            if (KioskActivationManager.isSetupModeActive(this)) return true
+        }
+        val pin = intent.getStringExtra("pin") ?: intent.getStringExtra("admin_pin")
+        if (!pin.isNullOrBlank() && KioskSecurity.verifyAdminPin(this, pin.trim())) return true
+        if (!secret.isNullOrBlank() &&
+            KioskSecurity.constantTimeEquals(secret.trim(), KioskSecurity.getSharedSecret(this).trim())) {
+            return true
+        }
+        return false
+    }
+
     private fun dismissKeyguard() {
-        if (!isFullySetup()) return
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
                 val km = getSystemService(Context.KEYGUARD_SERVICE) as? android.app.KeyguardManager
@@ -205,7 +226,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun applyKioskWindowFlags() {
-        if (!isFullySetup()) return
         try {
             @Suppress("DEPRECATION")
             window.addFlags(
@@ -224,7 +244,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun hideSystemBars() {
-        if (!isFullySetup()) return
         try {
             WindowCompat.setDecorFitsSystemWindows(window, false)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -239,10 +258,6 @@ class MainActivity : ComponentActivity() {
     }
 
     fun tryEnableLockTaskMode() {
-        if (!isFullySetup()) {
-            isLockTaskActive = false
-            return
-        }
         try {
             val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as? android.app.admin.DevicePolicyManager
             val am = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
@@ -270,14 +285,10 @@ class MainActivity : ComponentActivity() {
 
     private fun checkOverlayPermission() {
         hasOverlayPermission = Settings.canDrawOverlays(this)
-        if (hasOverlayPermission && isFullySetup()) {
+        if (hasOverlayPermission) {
             try {
                 val intent = Intent(this, KioskService::class.java)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(intent)
-                } else {
-                    startService(intent)
-                }
+                startForegroundService(intent)
             } catch (e: Throwable) {
                 Log.w(TAG, "Failed to start KioskService from checkOverlayPermission: ${e.message}")
             }
@@ -308,13 +319,10 @@ class MainActivity : ComponentActivity() {
                     val pkgName = resolveInfo.activityInfo.packageName
                     if (pkgName == packageName) return@mapNotNull null
 
-                    if (pkgName != "com.android.vending" && (
-                        hiddenApps.contains(pkgName) ||
-                        pkgName == "com.android.settings" ||
+                    if (hiddenApps.contains(pkgName) ||
                         pkgName.startsWith("com.android.settings.") ||
-                        pkgName == "com.google.android.settings" ||
                         (pkgName.contains(".settings") && !pkgName.contains("game"))
-                    )) {
+                    ) {
                         return@mapNotNull null
                     }
 

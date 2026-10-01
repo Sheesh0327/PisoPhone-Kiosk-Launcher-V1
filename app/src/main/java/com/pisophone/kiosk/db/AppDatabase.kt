@@ -50,7 +50,7 @@ abstract class AppDatabase : RoomDatabase() {
 
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
-                val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) context.applicationContext.createDeviceProtectedStorageContext() else context.applicationContext
+                val deviceContext = context.applicationContext.createDeviceProtectedStorageContext()
                 val instance = Room.databaseBuilder(
                     deviceContext,
                     AppDatabase::class.java,

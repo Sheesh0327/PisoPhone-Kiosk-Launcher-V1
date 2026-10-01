@@ -38,11 +38,7 @@ class CrashReporter(private val context: Context) : Thread.UncaughtExceptionHand
                 val intent = Intent(context, MainActivity::class.java).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_CLEAR_TASK)
                 }
-                val flags = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                    android.app.PendingIntent.FLAG_CANCEL_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
-                } else {
-                    android.app.PendingIntent.FLAG_CANCEL_CURRENT
-                }
+                val flags = android.app.PendingIntent.FLAG_CANCEL_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
                 val pendingIntent = android.app.PendingIntent.getActivity(context, 9999, intent, flags)
                 val restartTime = SystemClock.elapsedRealtime() + 1000L
                 alarmManager?.set(android.app.AlarmManager.ELAPSED_REALTIME_WAKEUP, restartTime, pendingIntent)

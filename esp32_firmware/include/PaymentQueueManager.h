@@ -23,10 +23,10 @@ bool isPaymentQueueFull();
 bool isPaymentStorageReady();
 bool hasUnpersistedPayments();
 bool canPerformRebootOrOta();
-int getPendingPaymentCount();
 bool acknowledgePhonePayment(const String& deviceId, const String& txId);
 int getPendingPhonePaymentsJson(const String& deviceId, String& outJsonArray);
 void dispatchPendingControllerPayments(const String& sessionId);
 void processPendingPaymentRetries();
+int clearPaymentQueue();
 
 #endif // PAYMENT_QUEUE_MANAGER_H

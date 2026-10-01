@@ -12,6 +12,8 @@
 #include "DeviceNetwork.h"
 #include "WebServerModule.h"
 #include "SuperAdminManager.h"
+#include "PaymentQueueManager.h"
+#include "FirmwareVersion.h"
 
 #define WDT_TIMEOUT_SECONDS 15
 #define DAILY_MAINTENANCE_INTERVAL_MS 86400000UL // 24 Hours
@@ -20,6 +22,47 @@
 static unsigned long lastWifiCheckTime = 0;
 static unsigned long lastCloudSnapshotMs = 0;
 static unsigned long lastHealthCheckMs = 0;
+static unsigned long wifiDownSinceMs = 0;
+static bool setupApActive = false;
+
+// Without a reachable network the admin portal (and so the Wi-Fi settings) is unreachable, so
+// after this long offline the board also opens its own setup access point.
+static const unsigned long SETUP_AP_AFTER_MS = 180000UL;
+
+static void applyWifiTxPower() {
+#if CONFIG_IDF_TARGET_ESP32C3
+    // Common ESP32-C3 mini boards have a poorly matched antenna that fails to associate at full
+    // power; classic ESP32 boards keep the default.
+    WiFi.setTxPower(WIFI_POWER_8_5dBm);
+    esp_wifi_set_max_tx_power(34);
+#endif
+}
+
+static void startSetupAccessPoint() {
+    String suffix = macAddressStr;
+    suffix.replace(":", "");
+    String apSsid = "PisoPhone-Setup-" + suffix.substring(suffix.length() - 4);
+    WiFi.mode(WIFI_AP_STA);
+    applyWifiTxPower();
+    if (WiFi.softAP(apSsid.c_str(), DEFAULT_PASS)) {
+        setupApActive = true;
+        Serial.printf("[📶 SETUP AP] Wi-Fi unreachable. Setup AP '%s' active at http://%s\n",
+                      apSsid.c_str(), WiFi.softAPIP().toString().c_str());
+    } else {
+        WiFi.mode(WIFI_STA);
+        applyWifiTxPower();
+        wifiDownSinceMs = millis();
+        Serial.println("[📶 SETUP AP] Failed to start setup AP; will retry.");
+    }
+}
+
+static void stopSetupAccessPoint() {
+    WiFi.softAPdisconnect(true);
+    WiFi.mode(WIFI_STA);
+    applyWifiTxPower();
+    setupApActive = false;
+    Serial.println("[📶 SETUP AP] Wi-Fi connected. Setup AP stopped.");
+}
 
 static void initHardwareWatchdog() {
 #if defined(ESP_IDF_VERSION_MAJOR) && (ESP_IDF_VERSION_MAJOR >= 5)
@@ -46,12 +89,14 @@ static void processSystemHealthAndAutoMaintenance() {
     bool heapCritical = (freeHeap < MIN_SAFE_HEAP_BYTES);
     bool dailyWindowReached = (now > DAILY_MAINTENANCE_INTERVAL_MS);
 
-    if ((heapCritical || dailyWindowReached) && !isCoinSlotArmed()) {
+    // Never restart with a coin session open or a payment that only exists in RAM.
+    if ((heapCritical || dailyWindowReached) && getCoinSlotState() == CoinSlotState::IDLE && !hasUnpersistedPayments()) {
         if (heapCritical) {
             Serial.printf("⚠️ [HEALTH GUARD] Free heap low (%u bytes < %d bytes threshold). Initiating safety reboot...\n", freeHeap, MIN_SAFE_HEAP_BYTES);
         } else {
             Serial.printf("ℹ️ [HEALTH GUARD] 24-hour uptime maintenance window reached. Initiating scheduled reboot...\n");
         }
+        flushRevenueNow();
         Serial.flush();
         delay(100);
         ESP.restart();
@@ -64,7 +109,7 @@ void setup() {
     while (!Serial && (millis() - start < 2500));
     delay(300);
 
-    Serial.println("\n--- HARDWARE-C3 Master Kiosk Controller ---");
+    Serial.printf("\n--- HARDWARE Master Kiosk Controller v%s ---\n", PISO_FW_VERSION);
 
     // Initialize Hardware Watchdog Early
     initHardwareWatchdog();
@@ -98,8 +143,7 @@ void setup() {
     WiFi.disconnect(true, true);
     delay(100);
     WiFi.mode(WIFI_STA);
-    WiFi.setTxPower(WIFI_POWER_8_5dBm);
-    esp_wifi_set_max_tx_power(34);
+    applyWifiTxPower();
     esp_wifi_set_ps(WIFI_PS_NONE);
 
     WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
@@ -172,13 +216,21 @@ void loop() {
     // 7. Robust Non-Blocking Wi-Fi Reconnection Watchdog & LED Status Sync
     if (WiFi.status() == WL_CONNECTED) {
         currentLedState = LED_STATE_CONNECTED;
+        wifiDownSinceMs = 0;
+        if (setupApActive) stopSetupAccessPoint();
     } else {
+        if (wifiDownSinceMs == 0) wifiDownSinceMs = millis();
+        if (!setupApActive && millis() - wifiDownSinceMs >= SETUP_AP_AFTER_MS) {
+            startSetupAccessPoint();
+        }
         if (millis() - lastWifiCheckTime < 20000) {
             currentLedState = LED_STATE_CONNECTING;
         } else {
             currentLedState = LED_STATE_FAILED;
             
-            if (wifiSsid.length() > 0 && (millis() - lastWifiCheckTime > 30000)) {
+            // Reconnect scans hop channels and drop setup-AP clients, so retry less often then.
+            unsigned long retryMs = setupApActive ? 120000UL : 30000UL;
+            if (wifiSsid.length() > 0 && (millis() - lastWifiCheckTime > retryMs)) {
                 lastWifiCheckTime = millis();
                 Serial.printf("\n[📶 WATCHDOG] Wi-Fi lost. Attempting reconnection to \"%s\"...\n", wifiSsid.c_str());
                 WiFi.disconnect();

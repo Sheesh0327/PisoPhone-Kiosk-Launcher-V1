@@ -23,9 +23,7 @@ int getTrackedTimeRemaining(String ip, unsigned long maxAgeMs = 40000, String de
 int getTrackedBatteryLevel(String ip, String devId = "");
 bool getTrackedChargingState(String ip, String devId = "");
 
-String getFirstKnownIp();
 String getIpFromDeviceId(String id);
 String getDeviceIdFromIp(String ip);
-String getPrimaryTerminalIp();
 
 #endif // DEVICE_MANAGER_H

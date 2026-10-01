@@ -35,12 +35,8 @@ class KioskOverlayCoordinator(
     init {
         scope.launch {
             KioskActivationManager.activationUpdateVersion.collect {
-                val allowed = KioskActivationManager.isAppAllowedToRun(context)
                 Handler(Looper.getMainLooper()).post {
-                    if (!allowed) {
-                        overlay?.remove()
-                        overlay = null
-                    } else if (overlay == null) {
+                    if (overlay == null) {
                         setupOverlay()
                     }
                 }
@@ -49,18 +45,10 @@ class KioskOverlayCoordinator(
     }
 
     fun isOverlayHealthy(): Boolean {
-        val isFullySetup = KioskActivationManager.isAppAllowedToRun(context)
-        if (!isFullySetup) return true
         return overlay != null && overlay?.isAttached() == true
     }
 
     fun setupOverlay() {
-        val isFullySetup = KioskActivationManager.isAppAllowedToRun(context)
-        if (!isFullySetup) {
-            Log.d(TAG, "Device not activated or fully setup. Lock screen overlay deferred.")
-            return
-        }
-
         scope.launch(Dispatchers.Main) {
             if (overlay != null && overlay?.isAttached() == true) return@launch
 
@@ -91,7 +79,6 @@ class KioskOverlayCoordinator(
                         isArenaBannerVisibleFlow = stateManager.isArenaBannerVisible,
                         onDismissArenaBanner = { stateManager.dismissArenaBanner() },
                         onInsertCoinClick = {
-                            if (stateManager.appState.value == 4) return@KioskOverlay
                             if (stateManager.isSlotExpired.value || KioskActivationManager.isSlotLockedDown(context)) {
                                 Log.w(TAG, "Coin insertion blocked: Device not activated on ESP32.")
                                 Handler(Looper.getMainLooper()).post {

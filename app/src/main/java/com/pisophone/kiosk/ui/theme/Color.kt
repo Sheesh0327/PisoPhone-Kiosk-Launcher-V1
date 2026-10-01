@@ -24,14 +24,7 @@ val Tertiary = Color(0xFF38BDF8) // Sky 400
 val OnTertiary = Color(0xFF020617)
 
 // Semantic tokens
-val EmeraldAccent = Color(0xFF10B981)
-val EmeraldLight = Color(0xFF34D399)
-val EmeraldGlow = Color(0x2610B981)
-val EmeraldBorder = Color(0x4D10B981)
 
 val TextPrimary = Color(0xFFF8FAFC)
 val TextSecondary = Color(0xFF94A3B8)
-val TextMuted = Color(0xFF64748B)
 
-val CardBackground = Color(0xFF0F172A)
-val CardBorder = Color(0xFF1E293B)

@@ -1,7 +1,6 @@
 package com.pisophone.kiosk.service
 
 import android.content.Context
-import android.content.Intent
 import android.util.Log
 import com.pisophone.kiosk.repository.PaymentRepository
 import com.pisophone.kiosk.system.KioskSystemMonitor
@@ -19,11 +18,23 @@ class KioskSessionSupervisor(
     private val onSpeakWarning: (String) -> Unit,
     private val onFinishPayment: () -> Unit,
     private val onCloseSession: (Boolean) -> Unit,
-    private val onCheckBatteryAlerts: () -> Unit
+    private val onCheckBatteryAlerts: () -> Unit,
+    /** Centralized lock side effects (send customer app home, pause media, unarm if needed). */
+    private val onSessionExpired: (cancelArm: Boolean) -> Unit = {}
 ) {
     companion object {
         private const val TAG = "KioskSessionSupervisor"
+        private const val CHECKPOINT_INTERVAL_MS = 5_000L
+
+        /**
+         * State to enter when the paid balance runs out: an armed slot (1/3) stays armed in the
+         * locked-waiting state 1 so coins being inserted are not lost; otherwise fully locked (0).
+         */
+        fun lockedStateFor(current: Int): Int = if (current == 1 || current == 3) 1 else 0
     }
+
+    @Volatile
+    private var lastCheckpointMonotonicMs: Long = 0L
 
     private var timerJob: Job? = null
     @Volatile
@@ -62,7 +73,8 @@ class KioskSessionSupervisor(
                                 onFinishPayment()
                             } else {
                                 onCloseSession(true)
-                                if (curState == 3) {
+                                val hasPaidTime = stateManager.sessionTimeRemaining.value > 0
+                                if (curState == 3 || hasPaidTime) {
                                     stateManager.appState.value = 2
                                 } else {
                                     stateManager.appState.value = 0
@@ -87,27 +99,17 @@ class KioskSessionSupervisor(
                         if (remainingSec <= 0) {
                             val expiryResult = paymentRepo.expireSessionIfDueBlocking()
                             if (expiryResult.didExpire) {
+                                val stateBefore = stateManager.appState.value
                                 val applied = stateManager.applySessionUpdate(
                                     deadlineMs = expiryResult.sessionState.sessionExpiryDeadlineMs,
                                     remainingSeconds = expiryResult.sessionState.sessionTimeRemaining,
                                     revision = expiryResult.sessionState.revision,
-                                    targetAppState = 0
+                                    targetAppState = lockedStateFor(stateBefore)
                                 )
                                 if (applied) {
                                     onSpeakWarning("Time expired")
                                     stateManager.saveState()
-                                    
-                                    val startMain = Intent(Intent.ACTION_MAIN).apply {
-                                        addCategory(Intent.CATEGORY_HOME)
-                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or 
-                                                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or 
-                                                Intent.FLAG_ACTIVITY_CLEAR_TOP
-                                    }
-                                    try {
-                                        context.startActivity(startMain)
-                                    } catch (e: Exception) {
-                                        Log.e(TAG, "Failed to start HOME activity: ${e.message}")
-                                    }
+                                    onSessionExpired(false)
                                 } else {
                                     Log.d(TAG, "Skipping stale expiration lock and announcement because newer revision is active")
                                 }
@@ -119,7 +121,10 @@ class KioskSessionSupervisor(
                                 )
                             }
                         } else {
-                            if (remainingSec % 15 == 0) {
+                            // Time-based checkpoint: a modulo check on remainingSec silently skips
+                            // whenever a tick is late, leaving a stale balance for reboot recovery.
+                            if (nowMonotonic - lastCheckpointMonotonicMs >= CHECKPOINT_INTERVAL_MS) {
+                                lastCheckpointMonotonicMs = nowMonotonic
                                 paymentRepo.checkpointSessionBlocking(stateManager.sessionRevision.value)
                                 stateManager.saveState()
                             }

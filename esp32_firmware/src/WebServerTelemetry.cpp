@@ -68,7 +68,7 @@ void handleHeartbeat() {
         return;
     }
 
-    if (ts > 0) updateMasterTime(ts);
+    if (ts > 0) updateMasterTime(ts, deviceId);
     bool isActive = isSlotActive(slotIdx);
 
     String status = (!isActive) ? "slot_expired" : "ok";

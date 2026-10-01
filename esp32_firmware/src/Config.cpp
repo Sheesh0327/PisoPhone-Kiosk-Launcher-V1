@@ -2,6 +2,7 @@
 #include "DeviceManager.h"
 #include "HardwareManager.h"
 #include "SuperAdminManager.h"
+#include "PaymentQueueManager.h"
 
 // ============================================================================
 // HARDWARE CONSTANTS & PIN DEFAULTS DEFINITION
@@ -11,12 +12,18 @@ const char* DEFAULT_PASS        = "Admin@123";
 const char* DEFAULT_ADMIN_PW    = "admin";
 const char* MASTER_CRYPTO_SECRET = "PISOPHONE_HMAC_MASTER_KEY";
 
-const int   DEFAULT_UNIVERSAL_COIN_PIN = 3;
-const int   DEFAULT_LED_PIN            = 8;
+// Pin defaults are per board and come from -D flags in envs/*.ini (PISO_PIN_*). A wrong default
+// on a classic ESP32 (GPIO 6-11 are the flash bus) crashes at boot, so there is no fallback:
+// a new board environment must state its pins. Values saved in NVS still override these.
+#if !defined(PISO_PIN_COIN) || !defined(PISO_PIN_LED) || !defined(PISO_PIN_RELAY) || !defined(PISO_PIN_RESET)
+#error "Define PISO_PIN_COIN, PISO_PIN_LED, PISO_PIN_RELAY and PISO_PIN_RESET in the PlatformIO env build_flags."
+#endif
+const int   DEFAULT_UNIVERSAL_COIN_PIN = PISO_PIN_COIN;
+const int   DEFAULT_LED_PIN            = PISO_PIN_LED;
 const bool  DEFAULT_LED_ACTIVE_LOW     = false;
-const int   DEFAULT_RELAY_PIN          = 4;
+const int   DEFAULT_RELAY_PIN          = PISO_PIN_RELAY;
 const int   DEFAULT_PORT               = 8080;
-const int   HARDWARE_RESET_PIN         = 2;
+const int   HARDWARE_RESET_PIN         = PISO_PIN_RESET;
 const int   UDP_DISCOVERY_PORT         = 8888;
 const int   DEFAULT_MINUTES_PER_COIN   = 6;
 
@@ -37,7 +44,6 @@ String androidIps    = "";
 String webPassword   = DEFAULT_ADMIN_PW;
 String sharedSecret  = MASTER_CRYPTO_SECRET;
 String macAddressStr = "";
-bool is_licensed     = false;
 int maxLicensedSlots = DEFAULT_MAX_SLOTS;
 
 int targetPort        = DEFAULT_PORT;
@@ -81,15 +87,62 @@ uint64_t getCurrentMasterTimeMs() {
     return 0;
 }
 
-void updateMasterTime(uint64_t ts) {
-    if (ts > lastMasterTimestamp) {
-        lastMasterTimestamp = ts;
-        lastMasterMillis = millis();
+String generateTxId(const char* prefix) {
+    uint64_t ts = getCurrentMasterTimeMs();
+    if (ts > 0) {
+        return String(prefix) + String(ts) + "-" + String(random(10000, 99999));
     }
+    // Before any phone has synced the master clock every id would start with "tx-0-", leaving
+    // only the random suffix to tell payments apart. Use a per-boot tag plus a counter instead.
+    static uint32_t bootTag = 0;
+    static uint32_t counter = 0;
+    if (bootTag == 0) bootTag = (uint32_t)random(1, 0x7FFFFFFF);
+    counter++;
+    return String(prefix) + "b" + String(bootTag, HEX) + "-" + String(millis()) + "-" + String(counter);
 }
 
-bool areDefaultCredentialsActive() {
-    return (webPassword == DEFAULT_ADMIN_PW || wifiPass == DEFAULT_PASS);
+static const uint64_t MASTER_CLOCK_WINDOW_MS = 300000ULL;
+static const uint64_t MASTER_CLOCK_AGREE_MS = 30000ULL;
+static uint64_t outlierTimestamp = 0;
+static unsigned long outlierMillis = 0;
+static String outlierSource = "";
+
+static uint64_t absDiff(uint64_t a, uint64_t b) {
+    return a > b ? a - b : b - a;
+}
+
+void updateMasterTime(uint64_t ts, const String& sourceId) {
+    if (ts == 0) return;
+    unsigned long nowMs = millis();
+    uint64_t current = getCurrentMasterTimeMs();
+
+    if (current == 0 || absDiff(ts, current) <= MASTER_CLOCK_WINDOW_MS) {
+        if (ts > current) {
+            lastMasterTimestamp = ts;
+            lastMasterMillis = nowMs;
+        }
+        return;
+    }
+
+    // A single device with a wrong clock must not drag the master clock away from everyone
+    // else (which would make every other phone fail the replay window). Re-sync only when a
+    // second, different device independently reports the same outlier time.
+    if (outlierTimestamp > 0 && sourceId.length() > 0 && sourceId != outlierSource &&
+        (uint64_t)(nowMs - outlierMillis) <= MASTER_CLOCK_WINDOW_MS) {
+        uint64_t projected = outlierTimestamp + (uint64_t)(nowMs - outlierMillis);
+        if (absDiff(ts, projected) <= MASTER_CLOCK_AGREE_MS) {
+            Serial.printf("[CLOCK] Master clock re-synced (%llu -> %llu) after agreement from '%s' and '%s'.\n",
+                          current, ts, outlierSource.c_str(), sourceId.c_str());
+            lastMasterTimestamp = ts;
+            lastMasterMillis = nowMs;
+            outlierTimestamp = 0;
+            outlierSource = "";
+            return;
+        }
+    }
+    outlierTimestamp = ts;
+    outlierMillis = nowMs;
+    outlierSource = sourceId;
 }
 
 bool parseDeviceEntry(const String& rawEntry, DeviceConfig& out) {
@@ -178,7 +231,6 @@ void forEachConfiguredDevice(std::function<bool(const DeviceConfig&)> callback) 
 
 const char* const NVS_NAMESPACE       = "kiosk_cfg";
 const char* const NVS_KEY_MAX_SLOTS   = "max_slots";
-const char* const NVS_KEY_LICENSED    = "licensed";
 const char* const NVS_KEY_SLOTS_DATA  = "slots_data";
 const char* const NVS_KEY_IPS         = "ips";
 
@@ -214,7 +266,6 @@ void syncAndroidIpsFromSlots() {
 void saveSlotLicenses() {
     prefs.begin(NVS_NAMESPACE, false);
     prefs.putInt(NVS_KEY_MAX_SLOTS, maxLicensedSlots);
-    prefs.putBool(NVS_KEY_LICENSED, is_licensed);
     String raw = "";
     raw.reserve(maxLicensedSlots * 64); // Pre-allocate approx 64 bytes per slot
     for (int i = 0; i < maxLicensedSlots; i++) {
@@ -316,7 +367,6 @@ void loadAllConfig() {
 
     // 2. Open NVS for all kiosk configuration & lifetime vault revenue counters
     prefs.begin(NVS_NAMESPACE, false);
-    is_licensed       = prefs.getBool(NVS_KEY_LICENSED, (maxLicensedSlots > 1));
     wifiSsid          = prefs.getString(NVS_KEY_WIFI_SSID, wifiSsid);
     wifiPass          = prefs.getString(NVS_KEY_WIFI_PASS, wifiPass);
     universalCoinPin  = prefs.getInt(NVS_KEY_U_COIN_PIN, universalCoinPin);
@@ -362,16 +412,24 @@ void loadAllConfig() {
         wifiSsid.c_str(), targetPort, webPassword.c_str(), relayPin, totalCoinsLifetime, totalEarningsLifetime);
 }
 
+void flushRevenueNow() {
+    if (!revenueDirty && totalCoinsLifetime == lastSavedTotalCoins &&
+        totalEarningsLifetime == lastSavedTotalEarnings) {
+        return;
+    }
+    prefs.begin(NVS_NAMESPACE, false);
+    prefs.putULong(NVS_KEY_TOTAL_COINS, totalCoinsLifetime);
+    prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, totalEarningsLifetime);
+    prefs.end();
+    lastSavedTotalCoins = totalCoinsLifetime;
+    lastSavedTotalEarnings = totalEarningsLifetime;
+    revenueDirty = false;
+    Serial.println("[💰 VAULT] Revenue counters flushed to NVS flash.");
+}
+
 void processRevenuePersistence() {
     if (revenueDirty && (millis() - lastCoinChangeTime >= REVENUE_SAVE_DELAY_MS)) {
-        prefs.begin(NVS_NAMESPACE, false);
-        prefs.putULong(NVS_KEY_TOTAL_COINS, totalCoinsLifetime);
-        prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, totalEarningsLifetime);
-        prefs.end();
-        lastSavedTotalCoins = totalCoinsLifetime;
-        lastSavedTotalEarnings = totalEarningsLifetime;
-        revenueDirty = false;
-        Serial.println("[💰 VAULT] Revenue counters flushed to NVS flash (debounced idle save).");
+        flushRevenueNow();
     }
 }
 
@@ -383,6 +441,7 @@ void factoryResetDefaults() {
     prefs.begin(NVS_NAMESPACE, false);
     prefs.clear();
     prefs.end();
+    clearPaymentQueue();
 
     wifiSsid = DEFAULT_SSID;
     wifiPass = DEFAULT_PASS;

@@ -102,11 +102,6 @@ class FloatingPillOverlay(
             android.util.Log.w("FloatingPillOverlay", "Overlay permission not granted yet, deferring window attachment")
             return
         }
-        val isFullySetup = com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(context)
-        if (!isFullySetup) {
-            android.util.Log.d("FloatingPillOverlay", "Device not activated or fully setup. Floating pill overlay deferred.")
-            return
-        }
         val activeView = overlayView?.view
         if (isViewAdded && activeView != null && activeView.isAttachedToWindow) {
             return
@@ -131,12 +126,7 @@ class FloatingPillOverlay(
             val arenaRole by arenaPlayerRoleFlow.collectAsState()
             val arenaStake by arenaStakeMinutesFlow.collectAsState()
             val isArenaBannerVisible by isArenaBannerVisibleFlow.collectAsState()
-            val activationUpdateVersion by com.pisophone.kiosk.security.KioskActivationManager.activationUpdateVersion.collectAsState()
-            
-            val isSetupReady = remember(activationUpdateVersion) { 
-                com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(context)
-            }
-            val isVisible = isSetupReady && (appState == 2 || appState == 3 || isArenaBannerVisible)
+            val isVisible = appState == 2 || appState == 3 || isArenaBannerVisible
             
             LaunchedEffect(isVisible) {
                 if (isVisible) {
@@ -211,6 +201,8 @@ class FloatingPillOverlay(
             newOverlay.view.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
                 override fun onViewAttachedToWindow(v: View) {}
                 override fun onViewDetachedFromWindow(v: View) {
+                    // Identity check: ignore late detaches of a previous view instance.
+                    if (overlayView?.view !== v) return
                     android.util.Log.w("FloatingPillOverlay", "Floating pill overlay view detached from window.")
                     dispose()
                 }
@@ -270,9 +262,8 @@ class FloatingPillOverlay(
         if (!isViewAdded) return
         try {
             currentView.onResume()
-            val isFullySetup = com.pisophone.kiosk.security.KioskActivationManager.isAppAllowedToRun(context)
             val appState = appStateFlow.value
-            val isVisible = isFullySetup && (appState == 2 || appState == 3 || isArenaBannerVisibleFlow.value)
+            val isVisible = appState == 2 || appState == 3 || isArenaBannerVisibleFlow.value
             currentView.view.visibility = if (isVisible) View.VISIBLE else View.GONE
             windowManager.updateViewLayout(currentView.view, layoutParams)
             currentView.view.requestLayout()

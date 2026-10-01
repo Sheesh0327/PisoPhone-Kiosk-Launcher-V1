@@ -43,6 +43,63 @@ class KioskStateManager(private val context: Context) {
         initDeviceId()
     }
 
+    private var networkCallback: android.net.ConnectivityManager.NetworkCallback? = null
+
+    /** Re-reads the phone's IPv4 address; returns true if it changed. */
+    fun refreshDeviceIp(): Boolean {
+        val newIp = getLocalIpAddress()
+        if (newIp != deviceIp.value) {
+            Log.i(TAG, "Device IP changed: ${deviceIp.value} -> $newIp")
+            deviceIp.value = newIp
+            return true
+        }
+        return false
+    }
+
+    /**
+     * The IP used to be read once at construction, so a DHCP renewal or Wi-Fi reconnect left
+     * heartbeats / arm requests advertising a stale address. Track the default network instead.
+     */
+    @Synchronized
+    fun startNetworkMonitoring(onIpChanged: (String) -> Unit = {}) {
+        if (networkCallback != null) return
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager ?: return
+        val callback = object : android.net.ConnectivityManager.NetworkCallback() {
+            private fun update() {
+                if (refreshDeviceIp()) {
+                    try {
+                        onIpChanged(deviceIp.value)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "onIpChanged handler failed: ${e.message}")
+                    }
+                }
+            }
+
+            override fun onAvailable(network: android.net.Network) = update()
+            override fun onLinkPropertiesChanged(network: android.net.Network, linkProperties: android.net.LinkProperties) = update()
+            override fun onLost(network: android.net.Network) = update()
+        }
+        try {
+            cm.registerDefaultNetworkCallback(callback)
+            networkCallback = callback
+            refreshDeviceIp()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to register network callback: ${e.message}")
+        }
+    }
+
+    @Synchronized
+    fun stopNetworkMonitoring() {
+        val callback = networkCallback ?: return
+        networkCallback = null
+        try {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+            cm?.unregisterNetworkCallback(callback)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to unregister network callback: ${e.message}")
+        }
+    }
+
     private fun initDeviceId() {
         deviceId.value = com.pisophone.kiosk.security.KioskSecurity.getHardwareId(context)
     }
@@ -80,11 +137,7 @@ class KioskStateManager(private val context: Context) {
 
     fun saveState(txSet: Set<String> = emptySet()) {
         try {
-            val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-                context.createDeviceProtectedStorageContext()
-            } else {
-                context
-            }
+            val deviceContext = context.createDeviceProtectedStorageContext()
             val prefs = deviceContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             prefs.edit()
                 .putInt("app_state", appState.value)
@@ -101,11 +154,7 @@ class KioskStateManager(private val context: Context) {
 
     fun restoreState(): Set<String> {
         return try {
-            val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-                context.createDeviceProtectedStorageContext()
-            } else {
-                context
-            }
+            val deviceContext = context.createDeviceProtectedStorageContext()
             val prefs = deviceContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             val savedState = prefs.getInt("app_state", 0)
             

@@ -1,0 +1,16 @@
+# The ESP32 dashboard is served from http://<esp32-ip>/ and downloads firmware.json and the .bin
+# from this site, which the browser only allows with CORS headers.
+/update/firmware.json
+  Access-Control-Allow-Origin: *
+  Cache-Control: no-cache
+
+/update/firmware-esp32c3.bin
+  Access-Control-Allow-Origin: *
+  Cache-Control: no-cache
+
+/update/firmware-esp32.bin
+  Access-Control-Allow-Origin: *
+  Cache-Control: no-cache
+
+/update/app.json
+  Cache-Control: no-cache

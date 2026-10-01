@@ -14,14 +14,6 @@ static String controllerSessionId = "";
 static bool controllerSessionEnding = false;
 static unsigned long controllerCloseAfterMs = 0;
 
-bool isControllerWsConnected() {
-    return controllerConnected && controllerClient.connected();
-}
-
-String getControllerSessionId() {
-    return controllerSessionId;
-}
-
 bool sendControllerPaymentEvent(const String& sessionId, const String& txId, int pulses) {
     if (!controllerConnected || controllerSessionEnding || !controllerClient.connected() ||
         controllerSessionId != sessionId || txId.length() == 0 || pulses <= 0) {
@@ -90,7 +82,7 @@ bool handleControllerWebSocketHandshake(WiFiClient& client, const String& reques
         return false;
     }
     if (ts > lastControllerNonceTs) lastControllerNonceTs = ts;
-    if (ts > 0) updateMasterTime(ts);
+    if (ts > 0) updateMasterTime(ts, "ctrl:" + sessionId);
 
     // Allow the previous controller a short interval to acknowledge the final coin.
     if (controllerSessionEnding && controllerClient.connected()) {
@@ -117,7 +109,6 @@ bool handleControllerWebSocketHandshake(WiFiClient& client, const String& reques
     response += "Sec-WebSocket-Accept: " + acceptKey + "\r\n\r\n";
 
     client.print(response);
-    client.flush();
     client.setNoDelay(true);
 
     if (controllerConnected && controllerClient.connected()) {
@@ -133,8 +124,7 @@ bool handleControllerWebSocketHandshake(WiFiClient& client, const String& reques
     bool ok = reserveCoinSlot(sessionId, CoinSlotOwnerType::CONTROLLER, ARM_TTL,
         // onPayment Callback (Pure pulses, no PisoPhone pricing or routing)
         [](const String& sessId, int pulses) {
-            unsigned long long eventTs = (unsigned long long)getCurrentMasterTimeMs();
-            String txId = "tx-" + String(eventTs) + "-" + String(random(10000, 99999));
+            String txId = generateTxId("tx-");
             
             bool retained = enqueuePendingPayment(
                 txId, sessId, pulses, CoinSlotOwnerType::CONTROLLER);
@@ -157,7 +147,6 @@ bool handleControllerWebSocketHandshake(WiFiClient& client, const String& reques
                 Serial.printf("[⚡ CONTROLLER WS] Session ended for '%s' (Reason: %s)\n", 
                               sessId.c_str(), endReason.c_str());
                 sendWsText(controllerClient, json);
-                controllerClient.flush();
                 controllerSessionEnding = true;
                 controllerCloseAfterMs = millis() + 2000;
                 return;
@@ -206,7 +195,8 @@ void processControllerWebSocket() {
     if (controllerClient.available()) {
         String frameText = readWsText(controllerClient);
         if (frameText.length() > 0) {
-            if (!controllerSessionEnding && frameText != "CLOSE" && frameText != "DONE") {
+            if (!controllerSessionEnding && frameText != "CLOSE" && frameText != "DONE" &&
+                frameText != "PING" && frameText != "PONG") {
                 refreshCoinSlotTtl(boundSessionId, CoinSlotOwnerType::CONTROLLER, ARM_TTL);
             }
 

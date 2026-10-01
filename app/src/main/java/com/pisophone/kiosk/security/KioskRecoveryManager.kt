@@ -59,6 +59,7 @@ object KioskRecoveryManager {
         }
 
         // Launch Developer Options so user can directly inspect and verify USB Debugging toggle
+        AdminMaintenanceMode.begin(context, 900)
         try {
             val devIntent = Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -87,12 +88,11 @@ object KioskRecoveryManager {
             try {
                 dpm.setLockTaskPackages(componentName, emptyArray())
                 dpm.clearPackagePersistentPreferredActivities(componentName, context.packageName)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    dpm.setStatusBarDisabled(componentName, false)
-                }
+                dpm.setStatusBarDisabled(componentName, false)
                 dpm.clearUserRestriction(componentName, UserManager.DISALLOW_DEBUGGING_FEATURES)
                 dpm.clearUserRestriction(componentName, UserManager.DISALLOW_FACTORY_RESET)
                 dpm.clearUserRestriction(componentName, UserManager.DISALLOW_SAFE_BOOT)
+                dpm.clearUserRestriction(componentName, UserManager.DISALLOW_CONFIG_WIFI)
             } catch (e: Exception) {
                 Log.w(TAG, "Error clearing restrictions during emergency exit: ${e.message}")
             }
@@ -132,9 +132,7 @@ object KioskRecoveryManager {
                 try {
                     dpm.setLockTaskPackages(componentName, emptyArray())
                     dpm.clearPackagePersistentPreferredActivities(componentName, context.packageName)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        dpm.setStatusBarDisabled(componentName, false)
-                    }
+                    dpm.setStatusBarDisabled(componentName, false)
                     dpm.clearUserRestriction(componentName, UserManager.DISALLOW_FACTORY_RESET)
                     dpm.clearUserRestriction(componentName, UserManager.DISALLOW_SAFE_BOOT)
                     dpm.clearUserRestriction(componentName, UserManager.DISALLOW_DEBUGGING_FEATURES)

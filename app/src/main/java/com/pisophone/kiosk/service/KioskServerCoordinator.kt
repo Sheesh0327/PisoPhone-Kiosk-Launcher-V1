@@ -31,7 +31,10 @@ class KioskServerCoordinator(
     private val getAudioManager: () -> KioskAudioManager?,
     private val onCreditPayment: (txId: String, seconds: Int, amount: Double) -> PaymentResult,
     private val isReady: () -> Boolean = { true },
-    private val onEsp32IpDiscovered: ((String) -> Unit)? = null
+    /** Contact from an address that is not the known ESP32; must be verified, never trusted. */
+    private val onUnverifiedEsp32Contact: ((String) -> Unit)? = null,
+    /** Centralized lock side effects (unarm, send customer app home, pause media). */
+    private val onSessionLocked: (cancelArm: Boolean) -> Unit = {}
 ) : KioskServerDelegate {
 
     companion object {
@@ -44,14 +47,21 @@ class KioskServerCoordinator(
 
     override fun getDeviceId(): String = stateManager.deviceId.value.ifBlank { KioskSecurity.getHardwareId(context) }
 
+    @Volatile private var lastUnverifiedDiscoveryMs = 0L
+
     override fun onHeartbeat(clientIp: String?) {
-        stateManager.isEsp32Online.value = true
-        if (!clientIp.isNullOrEmpty() && clientIp != "127.0.0.1") {
-            if (stateManager.esp32Ip != clientIp) {
-                stateManager.esp32Ip = clientIp
-                stateManager.saveState()
-            }
-            onEsp32IpDiscovered?.invoke(clientIp)
+        if (clientIp.isNullOrEmpty() || clientIp == "127.0.0.1") return
+        if (stateManager.esp32Ip == clientIp) {
+            stateManager.isEsp32Online.value = true
+            return
+        }
+        // /ping, /heartbeat, /identify and /status are unauthenticated, so anyone on the LAN can
+        // call them: never re-point the ESP32 address from here. Let the signed (MAC + HMAC)
+        // discovery confirm where the box is instead, at most every 30 s.
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastUnverifiedDiscoveryMs >= 30_000L) {
+            lastUnverifiedDiscoveryMs = now
+            onUnverifiedEsp32Contact?.invoke(clientIp)
         }
     }
 
@@ -93,8 +103,11 @@ class KioskServerCoordinator(
     }
 
     override fun onDeductTime(seconds: Int, txId: String?) {
+        val previousState = stateManager.appState.value
         val updated = paymentRepo.deductTimeBlocking(seconds, txId)
-        val targetState = if (updated.sessionTimeRemaining <= 0) 0 else null
+        val sessionEnded = updated.sessionTimeRemaining <= 0 && (previousState == 2 || previousState == 3)
+        // Deducting to zero locks the phone but keeps an armed slot armed (3 -> 1).
+        val targetState = if (sessionEnded) KioskSessionSupervisor.lockedStateFor(previousState) else null
         val applied = stateManager.applySessionUpdate(
             deadlineMs = updated.sessionExpiryDeadlineMs,
             remainingSeconds = updated.sessionTimeRemaining,
@@ -104,9 +117,30 @@ class KioskServerCoordinator(
         if (applied) {
             stateManager.saveState()
         }
+        if (applied && sessionEnded) {
+            onSessionLocked(false)
+        }
         val displayMinutes = seconds / 60
         Handler(Looper.getMainLooper()).post {
             Toast.makeText(context, "$displayMinutes minutes deducted!", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /** Ends the paid session (blocking Room work — call off the main thread) and locks. */
+    private fun lockAndResetSession() {
+        val previousState = stateManager.appState.value
+        val resetState = paymentRepo.resetSessionBlocking()
+        stateManager.applySessionUpdate(
+            deadlineMs = resetState.sessionExpiryDeadlineMs,
+            remainingSeconds = resetState.sessionTimeRemaining,
+            revision = resetState.revision,
+            targetAppState = 0
+        )
+        stateManager.coinsInserted.value = 0
+        stateManager.paymentTimeout.value = 0
+        stateManager.saveState()
+        if (previousState != 0) {
+            onSessionLocked(previousState == 1 || previousState == 3)
         }
     }
 
@@ -136,6 +170,22 @@ class KioskServerCoordinator(
             KioskSecurity.setAssignedBoxSlot(context, slotNum)
             KioskSecurity.setDeviceAlias(context, "PisoPhone $slotNum")
         }
+        // Session-ending commands do blocking Room work: run them on the calling (HTTP worker)
+        // thread, never inside the main-thread Handler below.
+        when (action) {
+            "slot_lockdown" -> {
+                stateManager.isSlotExpired.value = true
+                lockAndResetSession()
+                KioskActivationManager.setSlotLockdown(
+                    context,
+                    locked = true,
+                    reason = "Device activation required.",
+                    slotNum = stateManager.slotNumber.value,
+                    expiryTs = 0L
+                )
+            }
+            "reset_time" -> lockAndResetSession()
+        }
         Handler(Looper.getMainLooper()).post {
             when (action) {
                 "arena_mode_activate_p1" -> {
@@ -163,34 +213,9 @@ class KioskServerCoordinator(
                     Toast.makeText(context, "⚔️ 1v1 Arena Mode Concluded", Toast.LENGTH_SHORT).show()
                 }
                 "slot_lockdown" -> {
-                    stateManager.isSlotExpired.value = true
-                    val expiredState = paymentRepo.expireSessionBlocking()
-                    stateManager.applySessionUpdate(
-                        deadlineMs = expiredState.sessionExpiryDeadlineMs,
-                        remainingSeconds = expiredState.sessionTimeRemaining,
-                        revision = expiredState.revision,
-                        targetAppState = 0
-                    )
-                    stateManager.saveState()
-                    KioskActivationManager.setSlotLockdown(
-                        context,
-                        locked = true,
-                        reason = "Device activation required.",
-                        slotNum = stateManager.slotNumber.value ?: 1,
-                        expiryTs = 0L
-                    )
                     Toast.makeText(context, "Device activation required.", Toast.LENGTH_LONG).show()
                 }
                 "reset_time" -> {
-                    val resetState = paymentRepo.resetSessionBlocking()
-                    stateManager.applySessionUpdate(
-                        deadlineMs = resetState.sessionExpiryDeadlineMs,
-                        remainingSeconds = resetState.sessionTimeRemaining,
-                        revision = resetState.revision,
-                        targetAppState = 0
-                    )
-                    stateManager.coinsInserted.value = 0
-                    stateManager.saveState()
                     Toast.makeText(context, "Session time reset.", Toast.LENGTH_SHORT).show()
                 }
                 "slot_restore", "slot_renew" -> {
