@@ -6,14 +6,32 @@ on:
       - main
     paths:
       - 'app/**'
+      - 'gradle/**'
+      - '*.gradle.kts'
+      - 'gradle.properties'
+      - '.github/workflows/build-apk.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'app/**'
+      - 'gradle/**'
+      - '*.gradle.kts'
+      - 'gradle.properties'
+      - '.github/workflows/build-apk.yml'
   workflow_dispatch:
 
 permissions:
   contents: write # Required to push the APK to the website directory
 
+# Two deploys must never run at once: each one commits to main and bumps the version.
+concurrency:
+  group: build-apk-${{ github.event_name == 'pull_request' && github.ref || 'main-deploy' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  build-and-deploy:
-    name: Build APK and Push to Website
+  unit-tests:
+    name: Unit tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -26,17 +44,52 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+      - name: Run unit tests
+        run: bash ./gradlew :app:testDebugUnitTest --no-daemon --no-configuration-cache --stacktrace
+
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-reports
+          path: app/build/reports/tests/
+
+  build-and-deploy:
+    name: Build APK and Push to Website
+    needs: unit-tests
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Verify signing secrets
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          missing=""
+          for name in KEYSTORE_BASE64 STORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing GitHub secret(s):$missing. A release APK signed with a different key cannot update installed phones, so the build is stopped."
+            exit 1
+          fi
 
       - name: Decode Production Keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "::error::Missing secret 'KEYSTORE_BASE64'. Please add KEYSTORE_BASE64 to your repository GitHub Secrets."
-            exit 1
-          fi
           echo -n "$KEYSTORE_BASE64" | tr -d '\r\n ' | base64 -d -i > /tmp/release-keystore.jks
           echo "Production keystore successfully decoded from GitHub Secrets."
 
@@ -46,33 +99,55 @@ jobs:
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew :app:assembleRelease --no-daemon --no-configuration-cache --stacktrace
+        # The runner's GITHUB_RUN_NUMBER becomes versionCode (see app/build.gradle.kts), so every
+        # build is newer than the one before it.
+        run: bash ./gradlew :app:assembleRelease --no-daemon --no-configuration-cache --stacktrace
 
       - name: Clean up Keystore
         if: always()
         run: rm -f /tmp/release-keystore.jks
 
-      - name: Push APK directly to website/update directory
+      - name: Publish APK and version info to website/update
         run: |
-          mkdir -p website/update
-          if [ -f "app/build/outputs/apk/release/app-release.apk" ]; then
-            cp app/build/outputs/apk/release/app-release.apk website/update/app-release.apk
-          else
-            echo "Error: No release APK found in app/build/outputs/apk/release/"
+          APK=app/build/outputs/apk/release/app-release.apk
+          if [ ! -f "$APK" ]; then
+            echo "::error::No release APK found at $APK"
             exit 1
           fi
-          
-          # Calculate file SHA-256 checksum for audit & logs
-          FILE_SHA256_HEX=$(sha256sum website/update/app-release.apk | awk '{print $1}')
-          echo "Generated APK SHA-256 (Hex): $FILE_SHA256_HEX"
-          
+          # An unsigned or badly signed APK cannot update installed phones; refuse to publish one.
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)
+          if [ -n "$APKSIGNER" ]; then
+            "$APKSIGNER" verify --print-certs "$APK"
+          else
+            echo "::warning::apksigner not found; skipping signature verification."
+          fi
+          mkdir -p website/update
+          cp "$APK" website/update/app-release.apk
+
+          SHA=$(sha256sum website/update/app-release.apk | awk '{print $1}')
+          SIZE=$(stat -c %s website/update/app-release.apk)
+          echo "Generated APK SHA-256: $SHA ($SIZE bytes)"
+
+          # Version info the in-app updater compares against; it is produced from the same
+          # run number that was baked into the APK as versionCode.
+          cat > website/update/app.json <<EOF
+          {
+            "versionCode": ${{ github.run_number }},
+            "versionName": "1.0.${{ github.run_number }}",
+            "sha256": "$SHA",
+            "size": $SIZE,
+            "releaseDate": "$(date -u +%Y-%m-%d)"
+          }
+          EOF
+
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add -f website/update/
-          # Only commit if there are changes to avoid failing the workflow
+          git add -f website/update/app-release.apk website/update/app.json
           if ! git diff --staged --quiet; then
-            git commit -m "chore: auto-update APK and firmware binaries in website/update directory [skip ci]"
-            git pull --rebase --autostash origin main || git pull --rebase --autostash origin ${GITHUB_REF_NAME:-main}
+            # No [skip ci] marker: Cloudflare Pages honours it and would never deploy this commit.
+            # This commit only touches website/update, which no workflow trigger matches, so it
+            # cannot start another build.
+            git commit -m "chore: publish APK build ${{ github.run_number }}"
+            git pull --rebase --autostash origin main
             git push
           fi
-

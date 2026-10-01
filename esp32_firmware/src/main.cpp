@@ -13,6 +13,7 @@
 #include "WebServerModule.h"
 #include "SuperAdminManager.h"
 #include "PaymentQueueManager.h"
+#include "FirmwareVersion.h"
 
 #define WDT_TIMEOUT_SECONDS 15
 #define DAILY_MAINTENANCE_INTERVAL_MS 86400000UL // 24 Hours
@@ -108,7 +109,7 @@ void setup() {
     while (!Serial && (millis() - start < 2500));
     delay(300);
 
-    Serial.println("\n--- HARDWARE-C3 Master Kiosk Controller ---");
+    Serial.printf("\n--- HARDWARE Master Kiosk Controller v%s ---\n", PISO_FW_VERSION);
 
     // Initialize Hardware Watchdog Early
     initHardwareWatchdog();

@@ -2,6 +2,7 @@
 import json
 import os
 import hashlib
+import re
 from datetime import datetime
 
 FIRMWARE_JSON_PATH = "website/update/firmware.json"
@@ -11,6 +12,17 @@ FIRMWARE_BIN_PATHS = {
     "esp32": "website/update/firmware-esp32.bin",
 }
 ESP_IMAGE_MAGIC = 0xE9
+FIRMWARE_VERSION_HEADER = "esp32_firmware/include/FirmwareVersion.h"
+
+
+def read_firmware_version():
+    """The version compiled into the firmware, so firmware.json and the device always agree."""
+    try:
+        with open(FIRMWARE_VERSION_HEADER, "r", encoding="utf-8") as f:
+            match = re.search(r'#define\s+PISO_FW_VERSION\s+"([^"]+)"', f.read())
+        return match.group(1) if match else None
+    except OSError:
+        return None
 
 def get_file_sha256(filepath):
     if not os.path.exists(filepath):
@@ -38,7 +50,7 @@ def main():
 
     # Update version string
     data["build"] = new_build
-    data["version"] = f"3.0.{new_build}"
+    data["version"] = read_firmware_version() or f"3.0.{new_build}"
     data["releaseDate"] = release_date
     
     # Record each chip's SHA256. A file that is not a valid ESP image (wrong first byte, e.g. one

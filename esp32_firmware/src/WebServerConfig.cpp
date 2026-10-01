@@ -1,5 +1,6 @@
 #include "WebServerConfig.h"
 #include "WebServerModule.h"
+#include "FirmwareVersion.h"
 #include "WebServerAuth.h"
 #include "PaymentQueueManager.h"
 #include "Config.h"
@@ -249,6 +250,7 @@ void handleOtaForm() {
         macAddressStr = String(macBuf);
     }
     html.replace("{MAC_ADDRESS}", macAddressStr);
+    html.replace("{FW_VERSION}", PISO_FW_VERSION);
 #if CONFIG_IDF_TARGET_ESP32C3
     html.replace("{CHIP_ID}", "esp32c3");
 #else

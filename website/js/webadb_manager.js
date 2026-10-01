@@ -61,6 +61,68 @@
     }
 
     // Eagerly preload WebADB bundle on script evaluation
+    // Single-quote a value for the device shell. Every URL-supplied value must go through this:
+    // a bare or double-quoted value lets "$(...)", backticks or ";" run commands as the adb shell.
+    function shellQuote(value) {
+        return "'" + String(value).replace(/'/g, "'\\''") + "'";
+    }
+
+    // Validate provisioning values (normally from the page URL) and return only well-formed ones.
+    // Throws on a malformed value instead of silently passing it on to the phone.
+    const MAX_SUPPORTED_SLOTS = 6;
+    function validateProvisioning(raw) {
+        const out = {};
+        const fail = (field, rule) => { throw new Error(`Invalid provisioning parameter "${field}": ${rule}`); };
+        if (raw.mac != null && raw.mac !== '') {
+            if (!/^[0-9A-Fa-f]{2}([:-]?[0-9A-Fa-f]{2}){5}$/.test(raw.mac)) fail('mac', 'expected 6 hex bytes like AA:BB:CC:DD:EE:FF');
+            out.mac = raw.mac.toUpperCase();
+        }
+        if (raw.slot != null && raw.slot !== '') {
+            if (!/^[0-9]{1,2}$/.test(String(raw.slot))) fail('slot', 'expected a number');
+            const n = parseInt(raw.slot, 10);
+            if (n < 1 || n > MAX_SUPPORTED_SLOTS) fail('slot', `expected 1-${MAX_SUPPORTED_SLOTS}`);
+            out.slot = n;
+        }
+        if (raw.name != null && raw.name !== '') {
+            if (!/^[A-Za-z0-9 _.\-]{1,40}$/.test(raw.name)) fail('name', 'letters, digits, space, _ . - only (max 40)');
+            out.name = raw.name;
+        }
+        if (raw.secret != null && raw.secret !== '') {
+            if (!/^[A-Za-z0-9_.+=\-]{1,128}$/.test(raw.secret)) fail('secret', 'unexpected characters');
+            out.secret = raw.secret;
+        }
+        return out;
+    }
+
+    function buildProvisioningExtras(prov) {
+        let extras = '';
+        if (prov.secret) extras += ` --es secret ${shellQuote(prov.secret)}`;
+        if (prov.mac) extras += ` --es mac ${shellQuote(prov.mac)} --es esp32_mac ${shellQuote(prov.mac)}`;
+        if (prov.slot) extras += ` --ei slot ${prov.slot}`;
+        if (prov.name) extras += ` --es name ${shellQuote(prov.name)}`;
+        return extras;
+    }
+
+    // Turn a pm install result into a message that names the real cause.
+    function describeInstallFailure(output) {
+        const text = (output || '').trim();
+        const m = text.match(/Failure\s*\[([A-Z_]+)(?::\s*([^\]]*))?\]/);
+        const code = m ? m[1] : '';
+        const detail = m && m[2] ? ` (${m[2].trim()})` : '';
+        const hints = {
+            INSTALL_FAILED_UPDATE_INCOMPATIBLE: 'A PisoPhone build signed with a different key is already installed. Uninstall it first (or factory reset the phone), then run setup again.',
+            INSTALL_FAILED_INSUFFICIENT_STORAGE: 'The phone is out of storage space. Free up space and retry.',
+            INSTALL_FAILED_OLDER_SDK: 'This Android version is too old. PisoPhone needs Android 8.0 or newer.',
+            INSTALL_FAILED_VERSION_DOWNGRADE: 'A newer PisoPhone version is already installed.',
+            INSTALL_PARSE_FAILED_NO_CERTIFICATES: 'The downloaded APK is not signed. Re-download it or contact support.',
+            INSTALL_PARSE_FAILED_NOT_APK: 'The downloaded file is not a valid APK (it may be an error page). Re-download it.',
+            INSTALL_FAILED_USER_RESTRICTED: 'Installation was blocked by the phone. Turn on "Install via USB" in Developer options (Xiaomi/Redmi/POCO) and retry.',
+            INSTALL_FAILED_VERIFICATION_FAILURE: 'Play Protect or a verifier blocked the install. Turn it off for this install and retry.'
+        };
+        if (code) return `Application installation failed: ${code}${detail}. ${hints[code] || ''}`.trim();
+        return `Application installation failed: ${text || 'no output from Package Manager'}`;
+    }
+
     let bundlePromise = null;
     try {
         bundlePromise = loadYumeChanModules().catch(err => {
@@ -295,11 +357,20 @@
 
                 logCallback("Authenticating with device (Accept prompt on phone screen)...");
                 console.log("[WebADB] Authenticating...");
-                const transport = await AdbDaemonTransport.authenticate({
-                    serial: webusbDevice.serial,
-                    connection: this.connection,
-                    credentialStore: this.credentialStore,
-                });
+                const AUTH_TIMEOUT_MS = 60000;
+                let authTimer;
+                const transport = await Promise.race([
+                    AdbDaemonTransport.authenticate({
+                        serial: webusbDevice.serial,
+                        connection: this.connection,
+                        credentialStore: this.credentialStore,
+                    }),
+                    new Promise((_, reject) => {
+                        authTimer = setTimeout(() => reject(new Error(
+                            "Timed out waiting for USB debugging authorization. Keep the phone screen on and unlocked, " +
+                            "tap \"Allow\" on the \"Allow USB debugging?\" prompt (tick \"Always allow\"), then try again.")), AUTH_TIMEOUT_MS);
+                    })
+                ]).finally(() => clearTimeout(authTimer));
 
                 this.adb = new Adb(transport);
                 logCallback("✅ WebUSB ADB session connected successfully!");
@@ -586,41 +657,34 @@
             logCallback("Step 3: Running Package Manager to install the application (this can take 30–60s for dex optimization)...");
             await this.shell(`chmod 777 ${DEVICE_TEMP_APK_PATH}`);
             
+            const updatedBefore = await this.getPackageUpdateTime();
             let installRes = "";
-            let useFallback = false;
+            let installErr = null;
             try {
                 installRes = await this.shell(`pm install -r -d -g ${DEVICE_TEMP_APK_PATH}`, INSTALL_TIMEOUT_MS);
             } catch (err) {
-                // If timed out or errored, verify if the package actually succeeded in installing
-                const earlyCheck = await this.shell(`pm list packages ${PACKAGE_NAME}`, 4000).catch(() => "");
-                if (earlyCheck.includes(PACKAGE_NAME)) {
-                    logCallback("✅ Package Manager confirmed application is installed.");
-                    installRes = "Success";
-                } else {
-                    logCallback(`⚠️ Initial pm install flags failed: ${err.message || err}. Attempting standard compatibility installation...`);
-                    useFallback = true;
-                }
+                installErr = err;
             }
 
-            if (useFallback || installRes.includes("Failure") || installRes.includes("Error") || installRes.includes("Exception") || installRes.includes("Unknown option")) {
-                // Double-check if package was actually installed before attempting fallback
-                const fallbackCheck = await this.shell(`pm list packages ${PACKAGE_NAME}`, 4000).catch(() => "");
-                if (fallbackCheck.includes(PACKAGE_NAME)) {
-                    logCallback("✅ Application is confirmed installed on device.");
+            if (installErr) {
+                // The shell call timed out, but Package Manager may still be finishing. Only a package
+                // whose update time actually changed counts: an older copy already on the phone must
+                // never be mistaken for a fresh install.
+                await new Promise(r => setTimeout(r, 3000));
+                const updatedAfter = await this.getPackageUpdateTime();
+                if (updatedAfter && updatedAfter !== updatedBefore) {
+                    logCallback("✅ Package Manager finished installing after the shell timed out.");
                     installRes = "Success";
                 } else {
-                    logCallback("⚠️ Premium installation flags rejected. Attempting standard installation fallback...");
-                    try {
-                        installRes = await this.shell(`pm install -r ${DEVICE_TEMP_APK_PATH}`, INSTALL_TIMEOUT_MS);
-                    } catch (fallbackErr) {
-                        // Final check if it succeeded despite shell timeout
-                        const finalVerify = await this.shell(`pm list packages ${PACKAGE_NAME}`, 4000).catch(() => "");
-                        if (!finalVerify.includes(PACKAGE_NAME)) {
-                            throw new Error(`Installation failed: ${fallbackErr.message || fallbackErr}`);
-                        }
-                        installRes = "Success";
-                    }
+                    throw new Error(`Installation did not complete: ${installErr.message || installErr}`);
                 }
+            } else if (/Unknown option|Unknown flag|Unrecognized option/i.test(installRes)) {
+                logCallback("⚠️ This Android build rejected the extra install flags. Retrying with a plain install...");
+                installRes = await this.shell(`pm install -r ${DEVICE_TEMP_APK_PATH}`, INSTALL_TIMEOUT_MS);
+            }
+
+            if (!/^\s*Success\b/m.test(installRes)) {
+                throw new Error(describeInstallFailure(installRes));
             }
             logCallback(`Install output: ${installRes.trim()}`);
 
@@ -632,29 +696,29 @@
 
             logCallback("✅ PisoPhone Launcher installed successfully!");
 
-            logCallback("Step 4: Pre-flight check: Verifying device account prerequisites...");
-            try {
-                const accountsDump = await this.shell("dumpsys account");
-                const hasAccounts = /Account\s*\{/i.test(accountsDump) || /Accounts:\s*[1-9]/i.test(accountsDump);
-                if (hasAccounts) {
-                    throw new Error("Cannot set Device Owner: An active user account (e.g. Google, WhatsApp, Samsung) is logged in. Android security policy strictly blocks Device Owner enrollment when accounts exist. Please go to Android Settings > Accounts and remove all accounts, or Factory Reset the device and skip account setup.");
+            if (await this.isOurDeviceOwner()) {
+                logCallback("PisoPhone is already the Device Owner on this phone. Skipping enrollment and re-applying setup.");
+            } else {
+                logCallback("Step 4: Pre-flight check: Verifying device account prerequisites...");
+                try {
+                    const accountsDump = await this.shell("dumpsys account");
+                    const hasAccounts = /Account\s*\{/i.test(accountsDump) || /Accounts:\s*[1-9]/i.test(accountsDump);
+                    if (hasAccounts) {
+                        throw new Error(this.describeDeviceOwnerFailure("accounts"));
+                    }
+                } catch (accErr) {
+                    if ((accErr.message || "").includes("Cannot set Device Owner")) {
+                        throw accErr;
+                    }
+                    // Continue if dumpsys is restricted
                 }
-            } catch (accErr) {
-                if (accErr.message.includes("Cannot set Device Owner")) {
-                    throw accErr;
-                }
-                // Continue if dumpsys is restricted
-            }
 
-            logCallback("Setting PisoPhone as Device Owner (Kiosk Administrator)...");
-            const dpmResult = await this.shell(`dpm set-device-owner ${PACKAGE_NAME}/${PACKAGE_NAME}.receiver.KioskDeviceAdminReceiver`);
-            logCallback(`Device Admin output: ${dpmResult.trim()}`);
-
-            if (dpmResult.includes("Exception") || dpmResult.includes("java.lang") || dpmResult.includes("Error") || dpmResult.includes("illegal state")) {
-                if (dpmResult.includes("accounts") || dpmResult.includes("already")) {
-                    throw new Error("Cannot set Device Owner: An account is logged into this device. Android requires 0 accounts for kiosk mode. Please remove all accounts in Settings > Accounts or Factory Reset and SKIP all account setups.");
+                logCallback("Setting PisoPhone as Device Owner (Kiosk Administrator)...");
+                const dpmResult = await this.shell(`dpm set-device-owner ${PACKAGE_NAME}/${PACKAGE_NAME}.receiver.KioskDeviceAdminReceiver`);
+                logCallback(`Device Admin output: ${dpmResult.trim()}`);
+                if (!/^\s*Success/im.test(dpmResult)) {
+                    throw new Error(this.describeDeviceOwnerFailure(dpmResult));
                 }
-                throw new Error(`Device Owner setup failed: ${dpmResult.trim()}`);
             }
 
             logCallback("Step 5: Securing device permissions and launching PisoPhone...");
@@ -671,20 +735,20 @@
                 await this.shell(`dumpsys deviceidle whitelist +${PACKAGE_NAME} 2>/dev/null || true`);
             } catch (e) {}
 
-            // Parse provisioning credentials if supplied via URL
+            // Parse provisioning credentials if supplied via URL. Values are validated and
+            // single-quoted so a crafted link cannot run commands on the phone.
             let provExtras = '';
             try {
                 const urlParams = new URLSearchParams(window.location.search);
-                const provSecret = urlParams.get('secret');
-                const provMac = urlParams.get('mac');
-                const provSlot = urlParams.get('slot');
-                const provName = urlParams.get('name');
-
-                if (provSecret) provExtras += ` --es secret "${provSecret}"`;
-                if (provMac) provExtras += ` --es mac "${provMac}" --es esp32_mac "${provMac}"`;
-                if (provSlot) provExtras += ` --ei slot ${provSlot}`;
-                if (provName) provExtras += ` --es name "${provName}"`;
-            } catch (e) {}
+                provExtras = buildProvisioningExtras(validateProvisioning({
+                    secret: urlParams.get('secret'),
+                    mac: urlParams.get('mac'),
+                    slot: urlParams.get('slot'),
+                    name: urlParams.get('name')
+                }));
+            } catch (e) {
+                throw new Error(`Setup link rejected: ${e.message}`);
+            }
 
             // Launch the main activity with provisioning params
             await this.shell(`am start -n ${PACKAGE_NAME}/.MainActivity -a ${PACKAGE_NAME}.SETUP_DIRECT${provExtras}`);
@@ -726,6 +790,46 @@
             return await this.shell(command, timeoutMs);
         }
 
+        /** Package Manager's last-update timestamp for the app, or "" if not installed. */
+        async getPackageUpdateTime() {
+            try {
+                const dump = await this.shell(`dumpsys package ${PACKAGE_NAME}`, 8000);
+                const m = dump.match(/lastUpdateTime=([^\r\n]+)/);
+                return m ? m[1].trim() : "";
+            } catch (e) {
+                return "";
+            }
+        }
+
+        /** True when PisoPhone itself is already the Device Owner (re-running setup on a set-up phone). */
+        async isOurDeviceOwner() {
+            const outputs = [];
+            for (const cmd of ["dpm list-owners", "dumpsys device_policy"]) {
+                try { outputs.push(await this.shell(cmd, 8000)); } catch (e) {}
+            }
+            return outputs.some(o => /device\s*owner[\s\S]{0,400}?com\.pisophone\.kiosk/i.test(o));
+        }
+
+        /** Explain why `dpm set-device-owner` failed, naming the actual cause. */
+        describeDeviceOwnerFailure(output) {
+            const text = String(output || "").trim();
+            if (/device owner (is )?already (set|provisioned)|already.*device owner/i.test(text)) {
+                return "Cannot set Device Owner: a different app is already the Device Owner of this phone. Factory reset the phone and skip all setup screens, then run setup again.";
+            }
+            if (/several users|multiple users|more than one user|users? on the device|secondary user/i.test(text)) {
+                return "Cannot set Device Owner: the phone has more than one user (for example a guest, work profile or Secure Folder). Remove the extra users in Settings > System > Multiple users, or factory reset, then retry.";
+            }
+            if (text === "accounts" || /accounts?\b/i.test(text)) {
+                return "Cannot set Device Owner: an account (Google, Samsung, Xiaomi, WhatsApp...) is signed in on this phone. Remove every account in Settings > Accounts, or factory reset and skip account setup.";
+            }
+            if (/MANAGE_DEVICE_ADMINS|SecurityException|permission/i.test(text)) {
+                return `Device Owner setup was blocked by the phone's security settings: ${text}\n` +
+                    "Xiaomi / Redmi / POCO: in Developer options turn on \"USB debugging (Security settings)\" (needs a SIM and Mi account) and turn off MIUI optimization.\n" +
+                    "Samsung: remove the Samsung account, turn off Auto Blocker, and make sure Secure Folder / work profiles are removed.";
+            }
+            return `Device Owner setup failed: ${text || "no output from the phone"}`;
+        }
+
         /**
          * Granular step: Launches PisoPhone Kiosk app
          */
@@ -750,4 +854,5 @@
 
     // Export globally for the UI
     window.webADB = new WebADBManager();
+    window.PisoProvisioning = { shellQuote, validateProvisioning, buildProvisioningExtras, describeInstallFailure };
 })();

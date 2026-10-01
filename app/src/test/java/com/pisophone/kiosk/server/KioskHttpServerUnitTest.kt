@@ -146,11 +146,20 @@ class KioskHttpServerUnitTest {
         val qNoTime = "tx_id=tx-303&amount=5.0&ts=$now"
         val resNoTime = server.serve(createSession("/coin", createEncryptedParams(qNoTime)))
         assertEquals("Missing time returns 400", 400, resNoTime.status.requestStatus)
+    }
 
-        // Stale timestamp (skew > 60s)
-        val qStale = "tx_id=tx-304&seconds=300&amount=5.0&ts=${now - 120_000L}"
-        val resStale = server.serve(createSession("/coin", createEncryptedParams(qStale)))
-        assertEquals("Stale timestamp returns 400", 400, resStale.status.requestStatus)
+    @Test
+    fun testStaleTimestampIsAcceptedBecauseTxIdGuardsReplays() {
+        // A paid coin must never be refused because the two clocks drifted or a retry arrived late.
+        // Replays are stopped by the unique tx_id, not by the timestamp.
+        simulatedPaymentResult = PaymentResult.APPLIED
+        val stale = System.currentTimeMillis() - 120_000L
+        val query = "tx_id=tx-304&seconds=300&amount=5.0&ts=$stale"
+
+        val response = server.serve(createSession("/coin", createEncryptedParams(query)))
+
+        assertEquals("Stale timestamp is still credited", 200, response.status.requestStatus)
+        assertEquals("tx-304", lastCreditedTxId)
     }
 
     @Test

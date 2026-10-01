@@ -23,7 +23,11 @@ debug.keystore
 # Build Outputs & APKs
 app/build/
 *.apk
+# The published release files must stay tracked; "!website/update/" alone does not re-include
+# files already matched by *.apk, which made the owner's commits delete the APK.
 !website/update/
+!website/update/*.apk
+!website/update/*.bin
 
 # Build caches
 .pio/

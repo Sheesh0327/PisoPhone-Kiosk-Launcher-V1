@@ -30,8 +30,12 @@ jobs:
       - name: Extract commit message
         id: commit_msg
         run: |
-          MSG=$(git log -1 --pretty=%B)
-          echo "COMMIT_MSG=$MSG" >> $GITHUB_ENV
+          # A multi-line value needs the delimiter form; "NAME=$MSG" breaks on the second line.
+          {
+            echo "COMMIT_MSG<<COMMIT_MSG_EOF"
+            git log -1 --pretty=%B
+            echo "COMMIT_MSG_EOF"
+          } >> "$GITHUB_ENV"
 
       - name: Update firmware.json
         run: |
@@ -43,7 +47,7 @@ jobs:
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add website/update/firmware.json
           if ! git diff --staged --quiet; then
-            git commit -m "chore: auto-update firmware.json version tracking [skip ci]"
+            git commit -m "chore: auto-update firmware.json version tracking"
             git pull --rebase --autostash origin main || git pull --rebase --autostash origin ${GITHUB_REF_NAME:-main}
             git push
           fi

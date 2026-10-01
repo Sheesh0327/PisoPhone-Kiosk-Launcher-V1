@@ -181,7 +181,7 @@ fun SecurityVaultView(
                             ) {
                                 Icon(Icons.Filled.SystemUpdateAlt, contentDescription = null, modifier = Modifier.size(14.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Download & Install Update", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("Check for Update & Install", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                         is KioskUpdateManager.UpdateState.Downloading -> {
@@ -225,6 +225,27 @@ fun SecurityVaultView(
                                 Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text("Update initiated successfully!", color = Color(0xFF10B981), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        is KioskUpdateManager.UpdateState.UpToDate -> {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(state.message, color = Color(0xFF10B981), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Button(
+                                    onClick = { KioskUpdateManager.resetState() },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155)),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth().height(32.dp)
+                                ) {
+                                    Text("OK", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                         is KioskUpdateManager.UpdateState.Error -> {

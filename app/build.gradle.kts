@@ -4,6 +4,10 @@ plugins {
   alias(libs.plugins.google.devtools.ksp)
 }
 
+// CI sets GITHUB_RUN_NUMBER, which only ever increases; an installed phone refuses an update whose
+// versionCode is not higher. Local builds use 1.
+val appVersionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+
 android {
   namespace = "com.pisophone.kiosk"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
@@ -12,8 +16,8 @@ android {
     applicationId = "com.pisophone.kiosk"
     minSdk = 26
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
+    versionCode = appVersionCode
+    versionName = "1.0.$appVersionCode"
   }
 
   signingConfigs {
@@ -92,4 +96,23 @@ dependencies {
   testImplementation(libs.robolectric)
   debugImplementation(libs.androidx.compose.ui.tooling)
   ksp(libs.androidx.room.compiler)
+}
+
+// In CI a release build must be signed with the production key. Without this check a missing
+// secret silently produces an unsigned or wrongly signed APK that installed phones reject.
+gradle.taskGraph.whenReady {
+  val buildsRelease = allTasks.any {
+    it.path.startsWith(":app:") && it.name.contains("Release") &&
+      (it.name.startsWith("assemble") || it.name.startsWith("bundle"))
+  }
+  if (buildsRelease && System.getenv("CI") == "true") {
+    val missing = listOf("KEYSTORE_PATH", "STORE_PASSWORD", "KEY_ALIAS", "KEY_PASSWORD")
+      .filter { System.getenv(it).isNullOrBlank() }
+    if (missing.isNotEmpty() || android.signingConfigs.findByName("release") == null) {
+      throw GradleException(
+        "Release signing is not configured (missing: ${missing.joinToString().ifEmpty { "keystore file" }}). " +
+          "Refusing to build an unsigned release APK in CI."
+      )
+    }
+  }
 }

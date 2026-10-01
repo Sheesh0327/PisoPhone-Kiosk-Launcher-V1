@@ -204,7 +204,9 @@
         // Parse incoming ESP32 parameters
         const urlParams = new URLSearchParams(window.location.search);
         const urlMac = urlParams.get('mac');
-        const urlIp = urlParams.get('ip');
+        // Only a plain IPv4 address is ever used as a redirect target; anything else is ignored.
+        const rawIp = urlParams.get('ip') || '';
+        const urlIp = /^(\d{1,3}\.){3}\d{1,3}$/.test(rawIp) && rawIp.split('.').every(n => parseInt(n, 10) <= 255) ? rawIp : null;
         const urlSlot = parseInt(urlParams.get('slot') || '1', 10);
         const urlSecret = urlParams.get('secret') || '';
         const urlName = urlParams.get('name') || `PisoPhone Slot ${urlSlot}`;
@@ -213,8 +215,19 @@
         const restrictedView = document.getElementById('restrictedView');
         const mainView = document.getElementById('mainView');
 
+        // Validate every value that will be sent to the phone's shell. A malformed link is rejected
+        // outright instead of being passed on.
+        let validatedProv = null;
+        try {
+            validatedProv = window.PisoProvisioning.validateProvisioning({
+                mac: urlMac, slot: String(urlSlot), name: urlName, secret: urlSecret
+            });
+        } catch (provErr) {
+            console.warn('Setup link rejected:', provErr.message);
+        }
+
         // Security Gate: Strict access verification (MAC is required for hardware pairing)
-        if (!urlMac || urlMac === '00:00:00:00:00:00') {
+        if (!urlMac || urlMac === '00:00:00:00:00:00' || !validatedProv) {
             restrictedView.classList.remove('hidden');
         } else {
             mainView.classList.remove('hidden');
@@ -338,11 +351,9 @@
                     // Step 4: Inject parameters into Android app (MAC-only, no dynamic IP)
                     logMessage("Step 4: Infusing hardware configuration parameters into Android...");
                     try {
-                        let bCastCmd = `am broadcast -a com.pisophone.kiosk.CONFIGURE_ESP32 -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es esp32_mac "${urlMac}" --ei slot ${urlSlot}`;
-                        if (urlSecret) bCastCmd += ` --es secret "${urlSecret}"`;
-                        if (urlName) bCastCmd += ` --es name "${urlName}"`;
-                        await window.webADB.runShell(bCastCmd);
-                        await window.webADB.runShell(`am broadcast -a com.pisophone.kiosk.ACTIVATE -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es key "PISOPHONE-BOX-ACTIVATED" --es esp32_mac "${urlMac}" --ei slot ${urlSlot}${urlSecret ? ' --es secret "' + urlSecret + '"' : ''}`);
+                        const provExtras = window.PisoProvisioning.buildProvisioningExtras(validatedProv);
+                        await window.webADB.runShell(`am broadcast -a com.pisophone.kiosk.CONFIGURE_ESP32 -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver${provExtras}`);
+                        await window.webADB.runShell(`am broadcast -a com.pisophone.kiosk.ACTIVATE -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es key 'PISOPHONE-BOX-ACTIVATED'${provExtras}`);
                     } catch (bErr) {
                         logMessage(`[!] Config broadcast notice: ${bErr.message}`);
                     }
@@ -419,7 +430,7 @@
 
                     // Step 2: Send Deprovision Intent
                     logMessage("Step 2: Sending deprovision broadcast intent with PIN...");
-                    let deprovOut = await window.webADB.shell(`am broadcast -a com.pisophone.kiosk.DEPROVISION -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es pin "${pin}"`);
+                    let deprovOut = await window.webADB.shell(`am broadcast -a com.pisophone.kiosk.DEPROVISION -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es pin ${window.PisoProvisioning.shellQuote(pin)}`);
                     logMessage(deprovOut.trim());
 
                     logMessage("Step 3: Waiting for admin policy release (3 seconds)...");
@@ -439,7 +450,7 @@
                     }
 
                     logMessage("\n✅ DEPROVISIONING COMPLETE! Device has been restored to stock Android.");
-                    logMessage("\n🔄 Redirecting back to ESP32 Box to finalize unpairing...");
+                    logMessage("\n🔄 Returning to the ESP32 Box to finalize unpairing...");
                     
                     logStatusBadge.textContent = 'Complete';
                     logStatusBadge.className = 'text-emerald-400 font-mono font-bold';
@@ -449,7 +460,13 @@
                     await window.webADB.disconnect();
 
                     setTimeout(() => {
-                        window.location.href = `http://${urlIp}/?action=unpair&slot=${urlSlot}`;
+                        if (urlIp) {
+                            window.location.href = `http://${urlIp}/?action=unpair&slot=${urlSlot}`;
+                        } else if (document.referrer && document.referrer.startsWith('http')) {
+                            window.location.href = `${document.referrer.split('?')[0]}?action=unpair&slot=${urlSlot}`;
+                        } else {
+                            logMessage("💡 Return to your ESP32 portal and unpair this slot there to finish.");
+                        }
                     }, 2500);
 
                 } catch (err) {
