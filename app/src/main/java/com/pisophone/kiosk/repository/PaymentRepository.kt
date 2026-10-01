@@ -473,7 +473,16 @@ class PaymentRepository(
         } else {
             -1
         }
-        val lastSavedBootCount = bootPrefs?.getInt(KEY_BOOT_COUNT, -1) ?: -1
+        val lastSavedBootCount = when {
+            bootPrefs == null -> -1
+            bootPrefs.contains(KEY_BOOT_COUNT) -> bootPrefs.getInt(KEY_BOOT_COUNT, -1)
+            // Upgrade: older releases kept the counter in the encrypted prefs store.
+            else -> try {
+                effectiveCtx?.let { KioskSecurity.getEncryptedPreferences(it).getInt(KEY_BOOT_COUNT, -1) } ?: -1
+            } catch (e: Exception) {
+                -1
+            }
+        }
         val isBootCountChanged = if (currentBootCount != -1) {
             val changed = lastSavedBootCount != -1 && currentBootCount != lastSavedBootCount
             bootPrefs?.edit()?.putInt(KEY_BOOT_COUNT, currentBootCount)?.commit()

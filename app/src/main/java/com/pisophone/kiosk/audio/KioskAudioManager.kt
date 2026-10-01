@@ -433,8 +433,19 @@ class KioskAudioManager(
             HardwareFeedback.triggerAlertFeedback(context)
             playSynthesizedTone(880, 160)
             val now = android.os.SystemClock.elapsedRealtime()
-            if (!isTtsInitializing && (lastTtsInitAttemptMs == 0L || now - lastTtsInitAttemptMs >= TTS_REINIT_BACKOFF_MS)) {
-                initTts()
+            if (!isTtsInitializing) {
+                val waitMs = if (lastTtsInitAttemptMs == 0L) 0L else TTS_REINIT_BACKOFF_MS - (now - lastTtsInitAttemptMs)
+                if (waitMs <= 0L) {
+                    initTts()
+                } else {
+                    // A failed engine never recovers on its own, so retry once the backoff ends.
+                    val retry = Runnable {
+                        delayedTtsRunnable = null
+                        if (!isTtsReady && !isTtsInitializing && pendingSpeechText != null) initTts()
+                    }
+                    delayedTtsRunnable = retry
+                    mainHandler.postDelayed(retry, waitMs)
+                }
             }
             return
         }

@@ -543,6 +543,31 @@ class PaymentRepositoryUnitTest {
     }
 
     @Test
+    fun testLegacyBootCountIsMigratedOnUpgrade() = runBlocking {
+        com.pisophone.kiosk.security.KioskSecurity.getEncryptedPreferences(context)
+            .edit().putInt(PaymentRepository.KEY_BOOT_COUNT, 1).commit()
+
+        val nowMonotonic = SystemClock.elapsedRealtime()
+        db.paymentDao().updateSessionState(
+            PaidSessionState(
+                id = 1,
+                sessionTimeRemaining = 600,
+                sessionExpiryDeadlineMs = nowMonotonic + 600_000L,
+                lastSavedElapsedRealtime = maxOf(1L, nowMonotonic - 5000L),
+                revision = 5L
+            )
+        )
+        android.provider.Settings.Global.putInt(context.contentResolver, android.provider.Settings.Global.BOOT_COUNT, 2)
+
+        val repository = PaymentRepository(db = db, context = context, isEligible = { true })
+        val restored = repository.restoreSessionState(context)
+
+        assertTrue("Reboot must be detected from the pre-upgrade boot counter", restored.isReboot)
+        assertEquals(600, restored.remainingSeconds)
+        assertEquals(2, PaymentRepository.bootStatePrefs(context).getInt(PaymentRepository.KEY_BOOT_COUNT, -1))
+    }
+
+    @Test
     fun testSameBootCountDoesNotTriggerFalseRebootAfterCrash() = runBlocking {
         val nowMonotonic = SystemClock.elapsedRealtime()
         android.provider.Settings.Global.putInt(context.contentResolver, android.provider.Settings.Global.BOOT_COUNT, 7)
