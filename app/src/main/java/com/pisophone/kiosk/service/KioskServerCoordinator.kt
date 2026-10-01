@@ -31,7 +31,8 @@ class KioskServerCoordinator(
     private val getAudioManager: () -> KioskAudioManager?,
     private val onCreditPayment: (txId: String, seconds: Int, amount: Double) -> PaymentResult,
     private val isReady: () -> Boolean = { true },
-    private val onEsp32IpDiscovered: ((String) -> Unit)? = null,
+    /** Contact from an address that is not the known ESP32; must be verified, never trusted. */
+    private val onUnverifiedEsp32Contact: ((String) -> Unit)? = null,
     /** Centralized lock side effects (unarm, send customer app home, pause media). */
     private val onSessionLocked: (cancelArm: Boolean) -> Unit = {}
 ) : KioskServerDelegate {
@@ -46,14 +47,21 @@ class KioskServerCoordinator(
 
     override fun getDeviceId(): String = stateManager.deviceId.value.ifBlank { KioskSecurity.getHardwareId(context) }
 
+    @Volatile private var lastUnverifiedDiscoveryMs = 0L
+
     override fun onHeartbeat(clientIp: String?) {
-        stateManager.isEsp32Online.value = true
-        if (!clientIp.isNullOrEmpty() && clientIp != "127.0.0.1") {
-            if (stateManager.esp32Ip != clientIp) {
-                stateManager.esp32Ip = clientIp
-                stateManager.saveState()
-            }
-            onEsp32IpDiscovered?.invoke(clientIp)
+        if (clientIp.isNullOrEmpty() || clientIp == "127.0.0.1") return
+        if (stateManager.esp32Ip == clientIp) {
+            stateManager.isEsp32Online.value = true
+            return
+        }
+        // /ping, /heartbeat, /identify and /status are unauthenticated, so anyone on the LAN can
+        // call them: never re-point the ESP32 address from here. Let the signed (MAC + HMAC)
+        // discovery confirm where the box is instead, at most every 30 s.
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastUnverifiedDiscoveryMs >= 30_000L) {
+            lastUnverifiedDiscoveryMs = now
+            onUnverifiedEsp32Contact?.invoke(clientIp)
         }
     }
 

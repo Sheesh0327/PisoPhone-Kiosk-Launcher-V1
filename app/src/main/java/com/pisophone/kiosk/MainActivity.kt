@@ -166,8 +166,18 @@ class MainActivity : ComponentActivity() {
             ?: intent.getStringExtra("name")
             ?: intent.getStringExtra("alias")
         val activate = intent.getBooleanExtra("activate", intent.hasExtra("setup_secret") || intent.hasExtra("secret") || intent.hasExtra("setup_mac"))
+        val hasProvisioningData = !secret.isNullOrBlank() || !mac.isNullOrBlank() || slot > 0
+        if (!hasProvisioningData && !activate) return
 
-        if (!secret.isNullOrBlank() || !mac.isNullOrBlank() || slot > 0) {
+        // MainActivity is exported, so any app could send these extras. Same rule as the
+        // CONFIGURE_ESP32 / ACTIVATE broadcasts: free only during the first-setup window,
+        // otherwise an admin PIN or the shared secret is required.
+        if (!isSetupIntentAuthorized(intent, secret)) {
+            Log.w(TAG, "Rejected unauthorized setup intent (MAC/slot/secret change).")
+            return
+        }
+
+        if (hasProvisioningData) {
             android.util.Log.i("MainActivity", "Direct Provisioning setup parameters received: MAC=$mac, Slot=$slot, SecretConfigured=${!secret.isNullOrBlank()}")
             KioskService.configureMasterBox(
                 context = this,
@@ -192,6 +202,23 @@ class MainActivity : ComponentActivity() {
                 android.util.Log.w("MainActivity", "Failed to start KioskService on setup: ${e.message}")
             }
         }
+    }
+
+    private fun isSetupIntentAuthorized(intent: Intent, secret: String?): Boolean {
+        val paired = KioskActivationManager.isPairingCompleted(this) || KioskSecurity.isProvisioned(this)
+        if (!paired) {
+            // The WebADB installer launches this activity right after install, before the
+            // service has opened the setup window.
+            KioskActivationManager.startSetupWindow(this)
+            if (KioskActivationManager.isSetupModeActive(this)) return true
+        }
+        val pin = intent.getStringExtra("pin") ?: intent.getStringExtra("admin_pin")
+        if (!pin.isNullOrBlank() && KioskSecurity.verifyAdminPin(this, pin.trim())) return true
+        if (!secret.isNullOrBlank() &&
+            KioskSecurity.constantTimeEquals(secret.trim(), KioskSecurity.getSharedSecret(this).trim())) {
+            return true
+        }
+        return false
     }
 
     private fun dismissKeyguard() {
@@ -316,13 +343,10 @@ class MainActivity : ComponentActivity() {
                     val pkgName = resolveInfo.activityInfo.packageName
                     if (pkgName == packageName) return@mapNotNull null
 
-                    if (pkgName != "com.android.vending" && (
-                        hiddenApps.contains(pkgName) ||
-                        pkgName == "com.android.settings" ||
+                    if (hiddenApps.contains(pkgName) ||
                         pkgName.startsWith("com.android.settings.") ||
-                        pkgName == "com.google.android.settings" ||
                         (pkgName.contains(".settings") && !pkgName.contains("game"))
-                    )) {
+                    ) {
                         return@mapNotNull null
                     }
 

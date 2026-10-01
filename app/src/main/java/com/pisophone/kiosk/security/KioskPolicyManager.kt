@@ -38,18 +38,29 @@ object KioskPolicyManager {
     }
 
     /**
+     * Packages renters must never reach: they allow changing device settings or installing apps.
+     * Only allowed in lock task mode during an [AdminMaintenanceMode] window.
+     */
+    val ADMIN_ONLY_PACKAGES = setOf(
+        "com.android.settings",
+        "com.google.android.settings",
+        "com.android.vending",
+        "com.android.packageinstaller",
+        "com.google.android.packageinstaller"
+    )
+
+    fun isAdminOnlyPackage(packageName: String): Boolean = packageName in ADMIN_ONLY_PACKAGES
+
+    /**
      * Computes the complete whitelist array for LockTask mode.
      */
     fun getAllowedLockTaskPackages(context: Context): Array<String> {
         val packages = mutableSetOf(
             context.packageName,
             "com.android.systemui",
-            "com.android.settings",
-            "com.android.packageinstaller",
-            "com.google.android.packageinstaller",
             "com.android.permissioncontroller",
             "com.google.android.permissioncontroller",
-            "com.android.vending",
+            // GMS core hosts sign-in / Play services dialogs that customer apps start in-task.
             "com.google.android.gms"
         )
 
@@ -60,7 +71,7 @@ object KioskPolicyManager {
             val apps = context.packageManager.queryIntentActivities(mainIntent, 0)
             for (app in apps) {
                 val pkg = app.activityInfo.packageName
-                if (!KioskSecurity.isAppHidden(context, pkg)) {
+                if (!KioskSecurity.isAppHidden(context, pkg) && !isAdminOnlyPackage(pkg)) {
                     packages.add(pkg)
                 }
             }
@@ -68,7 +79,39 @@ object KioskPolicyManager {
             Log.w(TAG, "Error querying launcher packages: ${e.message}")
         }
 
+        if (AdminMaintenanceMode.isActive(context)) {
+            packages.addAll(ADMIN_ONLY_PACKAGES)
+        }
+
         return packages.toTypedArray()
+    }
+
+    /**
+     * Applies only the policies that differ between renter mode and an admin maintenance
+     * window: the lock task allowlist and the Wi-Fi configuration restriction.
+     */
+    fun applyMaintenanceAccess(context: Context) {
+        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager ?: return
+        if (!dpm.isDeviceOwnerApp(context.packageName)) return
+        val componentName = ComponentName(context, KioskDeviceAdminReceiver::class.java)
+        try {
+            dpm.setLockTaskPackages(componentName, getAllowedLockTaskPackages(context))
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not update lock task packages: ${e.message}")
+        }
+        applyWifiConfigRestriction(context, dpm, componentName)
+    }
+
+    private fun applyWifiConfigRestriction(context: Context, dpm: DevicePolicyManager, componentName: ComponentName) {
+        try {
+            if (AdminMaintenanceMode.isActive(context)) {
+                dpm.clearUserRestriction(componentName, UserManager.DISALLOW_CONFIG_WIFI)
+            } else {
+                dpm.addUserRestriction(componentName, UserManager.DISALLOW_CONFIG_WIFI)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not update DISALLOW_CONFIG_WIFI: ${e.message}")
+        }
     }
 
     /**
@@ -165,6 +208,7 @@ object KioskPolicyManager {
                 } catch (e: Exception) {
                     Log.w(TAG, "Could not apply user restrictions: ${e.message}")
                 }
+                applyWifiConfigRestriction(context, dpm, componentName)
 
                 // 3. Set ADB global setting if permitted by device policy
                 try {
@@ -196,9 +240,11 @@ object KioskPolicyManager {
                     Log.w(TAG, "Could not set STAY_ON_WHILE_PLUGGED_IN: ${e.message}")
                 }
 
-                // 7. Whitelist all launcher packages and system dependencies
+                // 7. Whitelist launcher packages and system dependencies (admin-only packages
+                // only while an admin maintenance window is open).
                 val allowedPackages = getAllowedLockTaskPackages(context)
                 dpm.setLockTaskPackages(componentName, allowedPackages)
+                AdminMaintenanceMode.scheduleEnd(context)
 
                 // 8. Auto-grant runtime permissions silently
                 autoGrantAllPermissions(context)
@@ -215,6 +261,15 @@ object KioskPolicyManager {
                     } catch (e: Exception) {
                         Log.w(TAG, "Failed to disable status bar via DPM: ${e.message}")
                     }
+                }
+
+                // 10. ADB stays on only for the provisioning grace window; re-apply when it ends.
+                val graceMs = KioskSecurity.adbProvisioningGraceRemainingMs(context)
+                if (adbAllowed && graceMs > 0L && !KioskSecurity.isAdbExplicitlyConfigured(context)) {
+                    val appContext = context.applicationContext ?: context
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                        Thread { applyStrictKioskPolicies(appContext) }.start()
+                    }, graceMs + 1000L)
                 }
 
                 Log.i(TAG, "Strict Kiosk device policies successfully applied.")
@@ -262,6 +317,15 @@ object KioskPolicyManager {
     fun ensureBatteryOptimizationExemption(context: Context): Boolean {
         val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return false
         if (pm.isIgnoringBatteryOptimizations(context.packageName)) return true
+        // The request dialog belongs to Settings, which renters cannot open in lock task mode.
+        // WebADB provisioning whitelists the app via `dumpsys deviceidle` instead.
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
+        if (am != null && am.lockTaskModeState != android.app.ActivityManager.LOCK_TASK_MODE_NONE &&
+            dpm != null && !dpm.isLockTaskPermitted("com.android.settings")) {
+            Log.i(TAG, "Skipping battery-optimization request: Settings is not allowed in lock task mode.")
+            return false
+        }
         return try {
             val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
                 data = android.net.Uri.parse("package:${context.packageName}")

@@ -59,6 +59,7 @@ object KioskRecoveryManager {
         }
 
         // Launch Developer Options so user can directly inspect and verify USB Debugging toggle
+        AdminMaintenanceMode.begin(context, 900)
         try {
             val devIntent = Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)

@@ -10,6 +10,8 @@ import android.util.Log
 import android.widget.Toast
 import com.pisophone.kiosk.KioskService
 import com.pisophone.kiosk.receiver.KioskDeviceAdminReceiver
+import com.pisophone.kiosk.security.AdminMaintenanceMode
+import com.pisophone.kiosk.security.KioskPolicyManager
 
 object AppLauncher {
     private const val TAG = "AppLauncher"
@@ -29,11 +31,20 @@ object AppLauncher {
         }
 
         if (bypassKiosk) {
+            // Open the maintenance window synchronously: the bypass itself runs asynchronously
+            // and ensureLockTaskAllowed() below must already see it.
+            if (KioskPolicyManager.isAdminOnlyPackage(packageName)) {
+                AdminMaintenanceMode.begin(context, 900)
+            }
             try {
                 KioskService.triggerAdminBypass(context, 900)
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to trigger admin bypass: ${e.message}")
             }
+        } else if (KioskPolicyManager.isAdminOnlyPackage(packageName) && !AdminMaintenanceMode.isActive(context)) {
+            Log.w(TAG, "Launch of admin-only package $packageName blocked outside admin maintenance.")
+            Toast.makeText(context, "This app is available to the admin only.", Toast.LENGTH_SHORT).show()
+            return false
         }
 
         // 1. Dynamic Lock Task Whitelisting (FreeKiosk Reference pattern)
@@ -135,6 +146,10 @@ object AppLauncher {
      * Dynamically ensures that the target package is included in the LockTask whitelisted packages.
      */
     fun ensureLockTaskAllowed(context: Context, packageName: String) {
+        if (KioskPolicyManager.isAdminOnlyPackage(packageName) && !AdminMaintenanceMode.isActive(context)) {
+            Log.w(TAG, "Refusing to allowlist admin-only package $packageName outside admin maintenance.")
+            return
+        }
         try {
             val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager ?: return
             val adminComponent = ComponentName(context, KioskDeviceAdminReceiver::class.java)
@@ -144,14 +159,14 @@ object AppLauncher {
                     if (!current.contains(packageName)) {
                         current.add(packageName)
                         current.add(context.packageName)
-                        current.add("com.android.settings")
                         current.add("com.android.systemui")
                         dpm.setLockTaskPackages(adminComponent, current.toTypedArray())
                         Log.i(TAG, "Dynamically allowlisted $packageName in LockTask packages.")
                     }
                 } else {
-                    val packages = arrayOf(packageName, context.packageName, "com.android.settings", "com.android.systemui")
-                    dpm.setLockTaskPackages(adminComponent, packages)
+                    val packages = KioskPolicyManager.getAllowedLockTaskPackages(context).toMutableSet()
+                    packages.add(packageName)
+                    dpm.setLockTaskPackages(adminComponent, packages.toTypedArray())
                     Log.i(TAG, "Dynamically allowlisted $packageName in LockTask packages (legacy).")
                 }
             }
@@ -165,6 +180,7 @@ object AppLauncher {
      */
     fun launchSettings(context: Context) {
         try {
+            AdminMaintenanceMode.begin(context, 900)
             KioskService.triggerAdminBypass(context, 900)
             ensureLockTaskAllowed(context, "com.android.settings")
             ensureLockTaskAllowed(context, "com.google.android.settings")
@@ -183,6 +199,7 @@ object AppLauncher {
      */
     fun launchWifiSettings(context: Context) {
         try {
+            AdminMaintenanceMode.begin(context, 900)
             KioskService.triggerAdminBypass(context, 900)
             ensureLockTaskAllowed(context, "com.android.settings")
             ensureLockTaskAllowed(context, "com.google.android.settings")
@@ -215,6 +232,7 @@ object AppLauncher {
      * Launches Android Developer Options or falls back to system settings.
      */
     fun launchDeveloperSettings(context: Context) {
+        AdminMaintenanceMode.begin(context, 900)
         try {
             val devIntent = Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

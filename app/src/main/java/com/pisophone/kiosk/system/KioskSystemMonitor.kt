@@ -27,6 +27,8 @@ interface KioskSystemMonitorDelegate {
     fun onScreenSleep()
     fun onScreenWake()
     fun getAudioManager(): KioskAudioManager?
+    /** True while a customer is using the phone (paid time running). */
+    fun isSessionActive(): Boolean = false
 }
 
 class KioskSystemMonitor(
@@ -45,6 +47,8 @@ class KioskSystemMonitor(
 
     private var previousAlertState = BatteryAlertState.NONE
     private var lastBatteryVoiceReminderMs = 0L
+    // The high-battery reminder fires once per charge cycle; unplugging starts a new cycle.
+    @Volatile private var highBatteryAlertedThisCycle = false
 
     private var screenOffReceiver: BroadcastReceiver? = null
     private var batteryReceiver: BroadcastReceiver? = null
@@ -240,10 +244,14 @@ class KioskSystemMonitor(
             if (previousAlertState == BatteryAlertState.LOW_BATTERY_UNPLUGGED && isCharging) {
                 audioMgr.speakWarning("Charger connected. Battery charging.")
                 audioMgr.playSynthesizedTone(1046, 220) // High C6 confirmation chime
-            } else if (previousAlertState == BatteryAlertState.HIGH_BATTERY_PLUGGED && !isCharging) {
+            } else if (previousAlertState == BatteryAlertState.HIGH_BATTERY_PLUGGED && !isCharging &&
+                highBatteryAlertedThisCycle && !delegate.isSessionActive()) {
                 audioMgr.speakWarning("Charger disconnected. Battery protection active.")
                 audioMgr.playSynthesizedTone(784, 220) // G5 confirmation chime
             }
+        }
+        if (!isCharging) {
+            highBatteryAlertedThisCycle = false
         }
 
         previousAlertState = newAlertState
@@ -263,7 +271,10 @@ class KioskSystemMonitor(
                     audioMgr.speakWarning("Warning! Battery is very low at ${currentBattery.level} percent. Please connect the charger immediately to prevent shutdown.")
                 }
             } else if (currentBattery.alertState == BatteryAlertState.HIGH_BATTERY_PLUGGED) {
-                if (now - lastBatteryVoiceReminderMs >= 20000L) {
+                // Speaking mutes the customer's media and the alert feedback strobes, so never
+                // during a session; it waits until the session ends and then fires only once.
+                if (!highBatteryAlertedThisCycle && !delegate.isSessionActive()) {
+                    highBatteryAlertedThisCycle = true
                     lastBatteryVoiceReminderMs = now
                     audioMgr.playHighBatteryAttentionTone()
                     HardwareFeedback.triggerVibration(context, longArrayOf(0, 150, 80, 150))

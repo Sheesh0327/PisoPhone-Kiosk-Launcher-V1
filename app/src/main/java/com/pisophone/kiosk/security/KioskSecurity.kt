@@ -42,6 +42,10 @@ object KioskSecurity {
     private const val KEY_CONFIGURED_ESP32_MAC = "configured_esp32_mac"
     private const val KEY_ASSIGNED_BOX_SLOT = "assigned_box_slot"
     private const val KEY_PROVISIONING_ADB_ALLOWED = "provisioning_adb_allowed"
+    private const val KEY_ADB_GRACE_START = "adb_provisioning_grace_start"
+    // WebADB keeps issuing commands (setup intent, broadcasts, reboot) for a few minutes after
+    // `dpm set-device-owner`, which is when policies are first applied.
+    private const val ADB_PROVISIONING_GRACE_MS = 15 * 60 * 1000L
     private const val KEY_APK_UPDATE_URL = "apk_update_url"
     
     const val DEFAULT_SHARED_SECRET = "PISOPHONE_HMAC_MASTER_KEY"
@@ -191,8 +195,33 @@ object KioskSecurity {
         return isExplicit && mac.isNotBlank()
     }
 
+    /**
+     * USB debugging is off for renters by default. It stays on during the provisioning grace
+     * window, or when an admin explicitly enabled it (vault PIN / ENABLE_ADB recovery).
+     */
     fun isAdbAllowed(context: Context): Boolean {
-        return getPrefs(context).getBoolean(KEY_PROVISIONING_ADB_ALLOWED, true)
+        val prefs = getPrefs(context)
+        if (prefs.contains(KEY_PROVISIONING_ADB_ALLOWED)) {
+            return prefs.getBoolean(KEY_PROVISIONING_ADB_ALLOWED, false)
+        }
+        return adbProvisioningGraceRemainingMs(context) > 0L
+    }
+
+    fun isAdbExplicitlyConfigured(context: Context): Boolean =
+        getPrefs(context).contains(KEY_PROVISIONING_ADB_ALLOWED)
+
+    /** Starts the grace window on first use (i.e. when policies are first applied). */
+    fun adbProvisioningGraceRemainingMs(context: Context): Long {
+        val prefs = getPrefs(context)
+        val now = System.currentTimeMillis()
+        var start = prefs.getLong(KEY_ADB_GRACE_START, 0L)
+        if (start <= 0L) {
+            start = now
+            prefs.edit().putLong(KEY_ADB_GRACE_START, start).commit()
+        }
+        val elapsed = now - start
+        if (elapsed < 0L) return 0L
+        return (ADB_PROVISIONING_GRACE_MS - elapsed).coerceAtLeast(0L)
     }
 
     fun setAdbAllowed(context: Context, allowed: Boolean) {
@@ -215,9 +244,10 @@ object KioskSecurity {
                 .putStringSet(KEY_HIDDEN_APPS, defaultHidden)
                 .putBoolean(KEY_INITIALIZED_DEFAULT_HIDDEN, true)
                 .apply()
-            return defaultHidden
+            return defaultHidden + KioskPolicyManager.ADMIN_ONLY_PACKAGES
         }
-        return prefs.getStringSet(KEY_HIDDEN_APPS, emptySet()) ?: emptySet()
+        val stored = prefs.getStringSet(KEY_HIDDEN_APPS, emptySet()) ?: emptySet()
+        return stored + KioskPolicyManager.ADMIN_ONLY_PACKAGES
     }
 
     fun setHiddenApps(context: Context, hiddenApps: Set<String>) {
@@ -228,12 +258,12 @@ object KioskSecurity {
     }
 
     fun isAppHidden(context: Context, packageName: String): Boolean {
-        if (packageName == "com.android.vending") return false
+        if (KioskPolicyManager.isAdminOnlyPackage(packageName)) return true
         return getHiddenApps(context).contains(packageName)
     }
 
     fun toggleAppHidden(context: Context, packageName: String): Boolean {
-        if (packageName == "com.android.vending") return false
+        if (KioskPolicyManager.isAdminOnlyPackage(packageName)) return true
         val current = getHiddenApps(context).toMutableSet()
         val isNowHidden = if (current.contains(packageName)) {
             current.remove(packageName)

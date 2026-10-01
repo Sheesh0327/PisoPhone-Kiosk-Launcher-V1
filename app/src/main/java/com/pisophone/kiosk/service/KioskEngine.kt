@@ -13,6 +13,7 @@ import com.pisophone.kiosk.overlay.KioskOverlayCoordinator
 import com.pisophone.kiosk.repository.CoinEventRepository
 import com.pisophone.kiosk.repository.PaymentRepository
 import com.pisophone.kiosk.repository.PaymentResult
+import com.pisophone.kiosk.security.AdminMaintenanceMode
 import com.pisophone.kiosk.security.KioskActivationManager
 import com.pisophone.kiosk.security.KioskSecurity
 import com.pisophone.kiosk.server.KioskHttpServer
@@ -156,6 +157,7 @@ class KioskEngine(
             override fun onScreenSleep() { overlayCoordinator.onScreenSleep() }
             override fun onScreenWake() { overlayCoordinator.onScreenWake() }
             override fun getAudioManager(): KioskAudioManager = audioManager
+            override fun isSessionActive(): Boolean = stateManager.appState.value.let { it == 2 || it == 3 }
         }
     )
 
@@ -202,7 +204,7 @@ class KioskEngine(
             creditPayment(txId, seconds, amount)
         },
         isReady = { isInitialized.get() },
-        onEsp32IpDiscovered = { ip -> esp32Manager.setEsp32Ip(ip) },
+        onUnverifiedEsp32Contact = { _ -> esp32Manager.triggerCandidateDiscovery(stateManager.deviceIp.value) },
         onSessionLocked = { cancelArm -> onSessionLocked(cancelArm) }
     )
 
@@ -410,6 +412,12 @@ class KioskEngine(
             stateManager.paymentTimeout.value = 0
         }
         stateManager.isArmingInProgress.value = false
+        // Locking ends any admin maintenance window (Settings / Wi-Fi config access).
+        try {
+            AdminMaintenanceMode.end(context)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to close admin maintenance window on lock: ${e.message}")
+        }
         try {
             audioManager.pauseExternalMedia()
         } catch (e: Exception) {
@@ -439,6 +447,7 @@ class KioskEngine(
             return
         }
         Log.i(TAG, "Admin bypass granted for $durationSeconds seconds.")
+        AdminMaintenanceMode.begin(context, durationSeconds)
         // Repository keeps max(remaining, duration), so an existing paid balance is preserved.
         val updated = paymentRepo.adjustSessionTimeBlocking(durationSeconds)
         // Unlock, but keep an armed coin slot armed (1 -> 3, 3 stays 3).
