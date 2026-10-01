@@ -504,16 +504,16 @@ class PaymentRepositoryUnitTest {
         val restored = repository.restoreSessionState(context)
 
         assertTrue("Reboot must be detected", restored.isReboot)
-        val expectedRemaining = maxOf(0, savedRemaining - (nowMonotonic / 1000L).toInt())
-        assertEquals("Remaining time must equal saved time minus boot uptime", expectedRemaining, restored.remainingSeconds)
+        val expectedRemaining = savedRemaining
+        assertEquals("Remaining time must equal last checkpointed balance (boot uptime is not charged)", expectedRemaining, restored.remainingSeconds)
         assertEquals("Monotonic deadline must be now + remainingMs", nowMonotonic + (expectedRemaining * 1000L), restored.deadlineMs)
         assertEquals(11L, restored.revision)
     }
 
     @Test
     fun testBootCountChangeTriggersRebootRecovery() = runBlocking {
-        val encryptedPrefs = com.pisophone.kiosk.security.KioskSecurity.getEncryptedPreferences(context)
-        encryptedPrefs.edit().putInt(PaymentRepository.KEY_BOOT_COUNT, 1).commit()
+        val bootPrefs = PaymentRepository.bootStatePrefs(context)
+        bootPrefs.edit().putInt(PaymentRepository.KEY_BOOT_COUNT, 1).commit()
 
         val nowMonotonic = SystemClock.elapsedRealtime()
         // lastSavedElapsed is LESS than nowMonotonic so monotonic check alone would NOT detect reboot
@@ -537,10 +537,46 @@ class PaymentRepositoryUnitTest {
         val restored = repository.restoreSessionState(context)
 
         assertTrue("Reboot must be detected via BOOT_COUNT change", restored.isReboot)
-        val expectedRemaining = maxOf(0, savedRemaining - (nowMonotonic / 1000L).toInt())
-        assertEquals(expectedRemaining, restored.remainingSeconds)
+        assertEquals(savedRemaining, restored.remainingSeconds)
         assertEquals(6L, restored.revision)
-        assertEquals(2, encryptedPrefs.getInt(PaymentRepository.KEY_BOOT_COUNT, -1))
+        assertEquals(2, bootPrefs.getInt(PaymentRepository.KEY_BOOT_COUNT, -1))
+    }
+
+    @Test
+    fun testSameBootCountDoesNotTriggerFalseRebootAfterCrash() = runBlocking {
+        val nowMonotonic = SystemClock.elapsedRealtime()
+        android.provider.Settings.Global.putInt(context.contentResolver, android.provider.Settings.Global.BOOT_COUNT, 7)
+        PaymentRepository.bootStatePrefs(context).edit().putInt(PaymentRepository.KEY_BOOT_COUNT, 7).commit()
+
+        db.paymentDao().updateSessionState(
+            PaidSessionState(
+                id = 1,
+                sessionTimeRemaining = 600,
+                sessionExpiryDeadlineMs = nowMonotonic + 600_000L,
+                lastSavedElapsedRealtime = maxOf(1L, nowMonotonic - 1000L),
+                revision = 3L
+            )
+        )
+
+        val repository = PaymentRepository(db = db, context = context, isEligible = { true })
+        val restored = repository.restoreSessionState(context)
+
+        assertFalse("Process restart in the same boot must not be treated as reboot", restored.isReboot)
+        assertEquals("Original monotonic deadline must be kept", nowMonotonic + 600_000L, restored.deadlineMs)
+    }
+
+    @Test
+    fun testAdminBypassNeverShrinksExistingBalance() = runBlocking {
+        val repository = PaymentRepository(db = db, isEligible = { true })
+        assertEquals(PaymentResult.APPLIED, repository.creditPayment("tx-big", 3600, 50.0))
+
+        val bypassed = repository.adjustSessionTime(900)
+        assertTrue("Bypass must keep the larger paid balance", bypassed.sessionTimeRemaining >= 3590)
+
+        val emptyRepoState = repository.expireSession()
+        assertEquals(0, emptyRepoState.sessionTimeRemaining)
+        val fromZero = repository.adjustSessionTime(900)
+        assertEquals("Bypass from zero grants the requested duration", 900, fromZero.sessionTimeRemaining)
     }
 
     @Test

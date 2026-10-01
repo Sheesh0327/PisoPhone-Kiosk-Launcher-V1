@@ -211,6 +211,8 @@ class FloatingPillOverlay(
             newOverlay.view.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
                 override fun onViewAttachedToWindow(v: View) {}
                 override fun onViewDetachedFromWindow(v: View) {
+                    // Identity check: ignore late detaches of a previous view instance.
+                    if (overlayView?.view !== v) return
                     android.util.Log.w("FloatingPillOverlay", "Floating pill overlay view detached from window.")
                     dispose()
                 }

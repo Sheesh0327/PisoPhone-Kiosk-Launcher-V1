@@ -22,7 +22,9 @@ class KioskEsp32Coordinator(
     private val getRealTimeBatteryInfo: () -> Pair<Int, Boolean>,
     private val onCreditPayment: (txId: String, seconds: Int, amount: Double) -> PaymentResult,
     private val onSlotBusyTriggered: () -> Unit,
-    private val getAudioManager: (() -> com.pisophone.kiosk.audio.KioskAudioManager?)? = null
+    private val getAudioManager: (() -> com.pisophone.kiosk.audio.KioskAudioManager?)? = null,
+    /** Centralized lock side effects (unarm, send customer app home, pause media). */
+    private val onSessionLocked: (cancelArm: Boolean) -> Unit = {}
 ) : Esp32ConnectionDelegate {
 
     companion object {
@@ -70,18 +72,18 @@ class KioskEsp32Coordinator(
         stateManager.saveState()
     }
 
-    override fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?) {
+    override fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?): PaymentResult {
         if (txId.isNullOrBlank()) {
             Log.e(TAG, "Invalid coin message over WebSocket: missing transaction ID")
-            return
+            return PaymentResult.FAILED
         }
 
         Log.d(TAG, "Received validated coin via WebSocket: seconds=$seconds, amount=₱$amount, tx_id=$txId")
         val result = onCreditPayment(txId, seconds, amount)
         when (result) {
             PaymentResult.APPLIED -> {
+                // paymentTimeout / appState are published by KioskEngine.onPaymentApplied.
                 Log.i(TAG, "WebSocket coin applied: +${seconds}s, ₱$amount (txId=$txId)")
-                stateManager.paymentTimeout.value = armingTimeoutSeconds
             }
             PaymentResult.ALREADY_APPLIED -> {
                 Log.d(TAG, "WebSocket coin already applied: txId=$txId")
@@ -96,29 +98,48 @@ class KioskEsp32Coordinator(
                 Log.e(TAG, "WebSocket coin database failure: txId=$txId")
             }
         }
+        return result
     }
 
+    /**
+     * The arm request failed (slot busy, ESP32 unreachable, connection error).
+     * Never lock a paid session because an ADD TIME arm attempt failed:
+     *  - 2 (unlocked)          -> stays 2
+     *  - 3 (unlocked + armed)  -> 2
+     *  - 1 (locked + armed)    -> 0, unless the customer already has paid time, then 2
+     *  - 0 / 4                 -> unchanged
+     */
     override fun onSlotBusy() {
         stateManager.isArmingInProgress.value = false
         onSlotBusyTriggered()
-        if (stateManager.appState.value == 3) {
-            stateManager.appState.value = 2
-        } else {
-            stateManager.appState.value = 0
+        val current = stateManager.appState.value
+        val hasPaidTime = stateManager.sessionTimeRemaining.value > 0
+        val next = when (current) {
+            2, 3 -> 2
+            1 -> if (hasPaidTime) 2 else 0
+            else -> current
         }
+        if (next != current) {
+            stateManager.appState.value = next
+        }
+        stateManager.coinsInserted.value = 0
+        stateManager.paymentTimeout.value = 0
+        stateManager.saveState()
     }
 
     override fun onArmSuccess() {
         lastArmTimestampMs = System.currentTimeMillis()
         stateManager.isEsp32Online.value = true
-        stateManager.isArmingInProgress.value = false
+        // Publish the arming window BEFORE flipping appState so the supervisor tick never
+        // observes state 1/3 with a stale paymentTimeout of 0 (which would close the session).
+        stateManager.coinsInserted.value = 0
+        stateManager.paymentTimeout.value = armingTimeoutSeconds
         if (stateManager.appState.value == 2) {
             stateManager.appState.value = 3
         } else if (stateManager.appState.value == 0) {
             stateManager.appState.value = 1
         }
-        stateManager.coinsInserted.value = 0
-        stateManager.paymentTimeout.value = armingTimeoutSeconds
+        stateManager.isArmingInProgress.value = false
     }
 
     override fun onSlotWarning(daysLeft: Int, expiresAt: Long, slotNum: Int, message: String) {
@@ -128,16 +149,32 @@ class KioskEsp32Coordinator(
     }
 
     override fun onSlotLockdown(reason: String, slotNum: Int, expiresAt: Long) {
+        // Lockdown is a terminal failure for any in-flight arm attempt.
+        stateManager.isArmingInProgress.value = false
+
+        val previousState = stateManager.appState.value
+        val wasAlreadyLocked = stateManager.isSlotExpired.value
+        val hadActiveSession = previousState != 0 || stateManager.sessionTimeRemaining.value > 0
+
         stateManager.isSlotExpired.value = true
         stateManager.slotExpiryMessage.value = if (reason.isNotBlank()) reason else "Device activation required."
         stateManager.slotNumber.value = slotNum
         stateManager.slotWarningDaysLeft.value = 0
-        paymentRepo.expireSessionBlocking()
+        // Heartbeats keep reporting lockdown every few seconds; only hit the database on transition.
+        if (!wasAlreadyLocked || hadActiveSession) {
+            paymentRepo.expireSessionBlocking()
+        }
         stateManager.sessionTimeRemaining.value = 0
         stateManager.sessionExpiryDeadlineMs.value = 0L
+        stateManager.coinsInserted.value = 0
+        stateManager.paymentTimeout.value = 0
         stateManager.appState.value = 0
         stateManager.saveState()
         KioskActivationManager.setSlotLockdown(context, true, reason, slotNum, expiresAt)
+
+        if (previousState != 0) {
+            onSessionLocked(previousState == 1 || previousState == 3)
+        }
     }
 
     override fun onSlotRestored(slotNum: Int) {

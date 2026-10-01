@@ -27,10 +27,13 @@ class KioskAudioManager(
     companion object {
         private const val TAG = "KioskAudioManager"
         private const val SAFETY_UNMUTE_TIMEOUT_MS = 12000L
+        private const val TTS_REINIT_BACKOFF_MS = 30_000L
     }
 
     private var tts: TextToSpeech? = null
-    private var isTtsReady = false
+    @Volatile private var isTtsReady = false
+    @Volatile private var isTtsInitializing = false
+    @Volatile private var lastTtsInitAttemptMs = 0L
     private var pendingSpeechText: String? = null
     @Volatile private var isTtsActive = false
 
@@ -61,60 +64,103 @@ class KioskAudioManager(
         }
     }
 
+    @Synchronized
     private fun initTts() {
+        if (isTtsInitializing) return
+        // Never leak the previous engine: each TextToSpeech instance holds a service binding.
+        releaseTtsLocked()
+        isTtsInitializing = true
+        lastTtsInitAttemptMs = android.os.SystemClock.elapsedRealtime()
         try {
-            tts = TextToSpeech(context.applicationContext) { status ->
-                if (status == TextToSpeech.SUCCESS) {
-                    val result = tts?.setLanguage(Locale.US)
-                    if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                        tts?.setLanguage(Locale.getDefault())
-                    }
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                        val audioAttributes = AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_ALARM)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                            .build()
-                        tts?.setAudioAttributes(audioAttributes)
-                    }
-                    tts?.setSpeechRate(1.02f)
-                    tts?.setPitch(1.0f)
-
-                    tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                        override fun onStart(utteranceId: String?) {
-                            isTtsActive = true
-                        }
-
-                        override fun onDone(utteranceId: String?) {
-                            onTtsFinished()
-                        }
-
-                        @Deprecated("Deprecated in Java")
-                        override fun onError(utteranceId: String?) {
-                            onTtsFinished()
-                        }
-
-                        override fun onError(utteranceId: String?, errorCode: Int) {
-                            onTtsFinished()
-                        }
-
-                        override fun onStop(utteranceId: String?, interrupted: Boolean) {
-                            onTtsFinished()
-                        }
-                    })
-
-                    isTtsReady = true
-                    Log.i(TAG, "TextToSpeech initialized with USAGE_ALARM stream routing and hardware ducking.")
-
-                    pendingSpeechText?.let { pending ->
-                        pendingSpeechText = null
-                        speakWarning(pending)
-                    }
+            var created: TextToSpeech? = null
+            var syncStatus: Int? = null
+            created = TextToSpeech(context.applicationContext) { status ->
+                val engine = created
+                if (engine == null) {
+                    // TextToSpeech reports some failures synchronously from its constructor.
+                    syncStatus = status
                 } else {
-                    Log.w(TAG, "TextToSpeech init failed with status $status")
+                    onTtsInitResult(engine, status)
                 }
             }
+            tts = created
+            syncStatus?.let { onTtsInitResult(created, it) }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to initialize TTS: ${e.message}")
+            isTtsInitializing = false
+            releaseTtsLocked()
+        }
+    }
+
+    @Synchronized
+    private fun onTtsInitResult(engine: TextToSpeech?, status: Int) {
+        if (engine == null || engine !== tts) {
+            // Callback from an engine that has already been replaced/shut down.
+            try { engine?.shutdown() } catch (_: Exception) {}
+            return
+        }
+        isTtsInitializing = false
+        if (status == TextToSpeech.SUCCESS) {
+            val result = engine.setLanguage(Locale.US)
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                engine.setLanguage(Locale.getDefault())
+            }
+            val audioAttributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ALARM)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build()
+            engine.setAudioAttributes(audioAttributes)
+            engine.setSpeechRate(1.02f)
+            engine.setPitch(1.0f)
+
+            engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) {
+                    isTtsActive = true
+                }
+
+                override fun onDone(utteranceId: String?) {
+                    onTtsFinished()
+                }
+
+                @Deprecated("Deprecated in Java")
+                override fun onError(utteranceId: String?) {
+                    onTtsFinished()
+                }
+
+                override fun onError(utteranceId: String?, errorCode: Int) {
+                    onTtsFinished()
+                }
+
+                override fun onStop(utteranceId: String?, interrupted: Boolean) {
+                    onTtsFinished()
+                }
+            })
+
+            isTtsReady = true
+            Log.i(TAG, "TextToSpeech initialized with USAGE_ALARM stream routing and hardware ducking.")
+
+            pendingSpeechText?.let { pending ->
+                pendingSpeechText = null
+                mainHandler.post { speakWarning(pending) }
+            }
+        } else {
+            Log.w(TAG, "TextToSpeech init failed with status $status")
+            pendingSpeechText = null
+            releaseTtsLocked()
+            // Defensive: make sure media is never left muted by a failed engine.
+            onTtsFinished()
+        }
+    }
+
+    private fun releaseTtsLocked() {
+        val old = tts
+        tts = null
+        isTtsReady = false
+        if (old != null) {
+            try {
+                old.stop()
+                old.shutdown()
+            } catch (_: Exception) {}
         }
     }
 
@@ -380,16 +426,22 @@ class KioskAudioManager(
         delayedTtsRunnable?.let { mainHandler.removeCallbacks(it) }
         delayedTtsRunnable = null
 
-        // Mute media volume and maximize alarm volume immediately when warning is requested
-        muteMediaStreamForTts()
-
         if (!isTtsReady || tts == null) {
+            // Do NOT mute media here: if the engine never comes up, nothing would ever restore
+            // the volume. Give an audible cue now and speak once (if) the engine is ready.
             pendingSpeechText = text
-            initTts()
+            HardwareFeedback.triggerAlertFeedback(context)
+            playSynthesizedTone(880, 160)
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (!isTtsInitializing && (lastTtsInitAttemptMs == 0L || now - lastTtsInitAttemptMs >= TTS_REINIT_BACKOFF_MS)) {
+                initTts()
+            }
             return
         }
 
         HardwareFeedback.triggerAlertFeedback(context)
+        // Mute media / maximize alarm only once we are actually about to speak; the safety
+        // watchdog scheduled in onTtsStartedImmediate guarantees restoration.
         onTtsStartedImmediate()
 
         if (isTtsReady && tts != null) {
@@ -413,6 +465,46 @@ class KioskAudioManager(
         } else {
             playSynthesizedTone(880, 160)
             onTtsFinished()
+        }
+    }
+
+    /**
+     * Stops playback in the customer's app when the session locks: take permanent media audio
+     * focus (other players receive AUDIOFOCUS_LOSS and pause/stop), send a MEDIA_PAUSE key for
+     * players that ignore focus, then release focus so nothing resumes automatically.
+     */
+    fun pauseExternalMedia() {
+        val am = systemAudioManager ?: return
+        try {
+            val dispatchPause = {
+                try {
+                    am.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_MEDIA_PAUSE))
+                    am.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_MEDIA_PAUSE))
+                } catch (_: Exception) {}
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val attrs = AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build()
+                val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                    .setAudioAttributes(attrs)
+                    .setOnAudioFocusChangeListener { }
+                    .build()
+                am.requestAudioFocus(req)
+                dispatchPause()
+                am.abandonAudioFocusRequest(req)
+            } else {
+                val listener = AudioManager.OnAudioFocusChangeListener { }
+                @Suppress("DEPRECATION")
+                am.requestAudioFocus(listener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN)
+                dispatchPause()
+                @Suppress("DEPRECATION")
+                am.abandonAudioFocus(listener)
+            }
+            Log.i(TAG, "Paused customer media playback on session lock")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to pause customer media: ${e.message}")
         }
     }
 
@@ -600,10 +692,11 @@ class KioskAudioManager(
         stopWaitingMusic()
         restoreMediaStreamAfterTts()
         abandonTtsAudioFocus()
-        try {
-            tts?.stop()
-            tts?.shutdown()
-        } catch (_: Exception) {}
+        synchronized(this) {
+            pendingSpeechText = null
+            isTtsInitializing = false
+            releaseTtsLocked()
+        }
         try {
             coinAudioTrack?.release()
         } catch (_: Exception) {}

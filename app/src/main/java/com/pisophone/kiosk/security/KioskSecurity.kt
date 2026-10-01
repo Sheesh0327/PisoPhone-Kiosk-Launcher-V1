@@ -64,9 +64,20 @@ object KioskSecurity {
         }
     }
 
+    /**
+     * Credential-encrypted prefs. NOT available before the user unlocks the device (Direct Boot),
+     * so anything that must be read consistently across locked/unlocked starts (e.g. boot count
+     * bookkeeping) must live in [getDirectBootPrefs] instead.
+     */
     fun getEncryptedPrefs(context: Context): SharedPreferences? {
         if (encryptedPrefsInstance != null) return encryptedPrefsInstance
-        
+
+        val userManager = context.getSystemService(Context.USER_SERVICE) as? android.os.UserManager
+        if (userManager != null && !userManager.isUserUnlocked) {
+            Log.w(TAG, "EncryptedSharedPreferences unavailable before user unlock (Direct Boot)")
+            return null
+        }
+
         return synchronized(this) {
             if (encryptedPrefsInstance != null) return encryptedPrefsInstance
             try {
@@ -89,6 +100,11 @@ object KioskSecurity {
         }
     }
 
+    /**
+     * Falls back to a separate device-protected file when encrypted prefs are unavailable, so the
+     * value read may differ between locked and unlocked starts. Do not use for state that must be
+     * consistent across process restarts in Direct Boot.
+     */
     fun getEncryptedPreferences(context: Context): SharedPreferences {
         return getEncryptedPrefs(context) ?: getDirectBootPrefs(context, "secure_kiosk_prefs")
     }

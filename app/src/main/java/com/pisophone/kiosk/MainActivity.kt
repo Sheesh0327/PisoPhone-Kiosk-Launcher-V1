@@ -39,6 +39,10 @@ import kotlinx.coroutines.withContext
 class MainActivity : ComponentActivity() {
     companion object {
         private const val TAG = "MainActivity"
+
+        /** Ask for the Doze exemption at most once per process to avoid nagging. */
+        @Volatile
+        private var batteryExemptionRequested = false
     }
 
     private var appsList by mutableStateOf<List<AppInfo>>(emptyList())
@@ -69,6 +73,10 @@ class MainActivity : ComponentActivity() {
                 }
                 withContext(Dispatchers.Main) {
                     tryEnableLockTaskMode()
+                    if (!batteryExemptionRequested) {
+                        batteryExemptionRequested = true
+                        com.pisophone.kiosk.security.KioskPolicyManager.ensureBatteryOptimizationExemption(this@MainActivity)
+                    }
                 }
             }
         }

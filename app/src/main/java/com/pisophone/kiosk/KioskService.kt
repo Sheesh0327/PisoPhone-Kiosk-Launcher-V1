@@ -138,6 +138,7 @@ class KioskService : Service() {
     val stateManager: KioskStateManager by lazy { KioskStateManager(applicationContext) }
 
     private var multicastLock: WifiManager.MulticastLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onCreate() {
@@ -205,16 +206,19 @@ class KioskService : Service() {
         engine?.overlayCoordinator?.setupOverlay()
     }
 
+    // These are reached from Compose click handlers, broadcast receivers and onStartCommand,
+    // all on the main thread. The engine work is blocking Room I/O, so dispatch it to the
+    // engine's IO scope; state is published through StateFlows and toasts are posted to Main.
     fun performAdminBypass(durationSeconds: Int = 900) {
-        engine?.performAdminBypass(durationSeconds)
+        engine?.requestAdminBypass(durationSeconds)
     }
 
     fun performLockSession() {
-        engine?.performLockSession()
+        engine?.requestLockSession()
     }
 
     fun performAdminTimeAdjust(deltaSeconds: Int) {
-        engine?.performAdminTimeAdjust(deltaSeconds)
+        engine?.requestAdminTimeAdjust(deltaSeconds)
     }
 
     fun speakWarning(text: String) {
@@ -234,19 +238,34 @@ class KioskService : Service() {
                 setReferenceCounted(true)
                 acquire()
             }
+            // Keep the Wi-Fi radio fully awake while the screen is off so ESP32 heartbeats,
+            // arm requests and the local HTTP server (/add_time) are not dropped by Wi-Fi sleep.
+            // FULL_HIGH_PERF keeps Wi-Fi awake with the screen off but is a no-op from API 34,
+            // where FULL_LOW_LATENCY is the only remaining option.
+            @Suppress("DEPRECATION")
+            val wifiMode = if (Build.VERSION.SDK_INT >= 34) {
+                WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+            } else {
+                WifiManager.WIFI_MODE_FULL_HIGH_PERF
+            }
+            wifiLock = wifi?.createWifiLock(wifiMode, "pisophone:kiosk_wifi_lock")?.apply {
+                setReferenceCounted(false)
+                acquire()
+            }
             val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
             wakeLock = powerManager?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "pisophone:kiosk_service_wakelock")?.apply {
                 acquire()
             }
-            Log.d(TAG, "[+] Acquired MulticastLock and Partial WakeLock for reliable ESP32 networking.")
+            Log.d(TAG, "[+] Acquired MulticastLock, WifiLock and Partial WakeLock for reliable ESP32 networking.")
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to acquire MulticastLock or WakeLock: ${e.message}")
+            Log.w(TAG, "Failed to acquire MulticastLock, WifiLock or WakeLock: ${e.message}")
         }
     }
 
     private fun releaseLocks() {
         try {
             if (multicastLock?.isHeld == true) multicastLock?.release()
+            if (wifiLock?.isHeld == true) wifiLock?.release()
             if (wakeLock?.isHeld == true) wakeLock?.release()
         } catch (_: Exception) {}
     }

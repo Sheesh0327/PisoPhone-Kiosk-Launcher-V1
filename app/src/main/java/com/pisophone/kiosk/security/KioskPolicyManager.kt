@@ -203,6 +203,10 @@ object KioskPolicyManager {
                 // 8. Auto-grant runtime permissions silently
                 autoGrantAllPermissions(context)
 
+                // 8b. Pin this launcher as the persistent HOME activity so the system never shows
+                // a "choose launcher" dialog or falls back to the stock launcher.
+                setPersistentHomeActivity(context, dpm, componentName)
+
                 // 9. Disable Notification Shade and Status Bar Expansion
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     try {
@@ -219,6 +223,56 @@ object KioskPolicyManager {
             }
         } else {
             Log.w(TAG, "Cannot apply strict kiosk policies. App is NOT Device Owner.")
+        }
+    }
+
+    /**
+     * Registers [MainActivity] as the persistent preferred HOME activity (Device Owner only).
+     * Cleared again by [KioskRecoveryManager] via clearPackagePersistentPreferredActivities.
+     */
+    fun setPersistentHomeActivity(
+        context: Context,
+        dpm: DevicePolicyManager = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager,
+        admin: ComponentName = ComponentName(context, KioskDeviceAdminReceiver::class.java)
+    ) {
+        if (!dpm.isDeviceOwnerApp(context.packageName)) return
+        try {
+            val homeFilter = IntentFilter(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                addCategory(Intent.CATEGORY_DEFAULT)
+            }
+            dpm.addPersistentPreferredActivity(
+                admin,
+                homeFilter,
+                ComponentName(context, MainActivity::class.java)
+            )
+            Log.i(TAG, "Kiosk launcher pinned as persistent preferred HOME activity.")
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not set persistent preferred HOME activity: ${e.message}")
+        }
+    }
+
+    /**
+     * Doze / App Standby defers network access for non-exempt apps, which drops ESP32
+     * heartbeats and delays /add_time HTTP calls while the screen is off. Ask the user (admin
+     * during setup) to exempt the kiosk from battery optimizations. Must be called from a
+     * foreground Activity context. Returns true if already exempt.
+     */
+    @android.annotation.SuppressLint("BatteryLife")
+    fun ensureBatteryOptimizationExemption(context: Context): Boolean {
+        val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return false
+        if (pm.isIgnoringBatteryOptimizations(context.packageName)) return true
+        return try {
+            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                data = android.net.Uri.parse("package:${context.packageName}")
+                if (context !is android.app.Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            Log.i(TAG, "Requested battery-optimization exemption for reliable heartbeat/HTTP.")
+            false
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not request battery-optimization exemption: ${e.message}")
+            false
         }
     }
 

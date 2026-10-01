@@ -57,6 +57,17 @@ class PaymentRepository(
         const val KEY_MIGRATION_MARKER_PREFS = "legacy_paid_state_migrated_v3"
         const val KEY_BOOT_COUNT = "BOOT_COUNT"
         const val KEY_PENDING_TX = "pending_transaction_in_flight"
+
+        /**
+         * Device-protected (Direct Boot) storage for boot bookkeeping. Unlike the encrypted
+         * credential-protected prefs, this is readable before the user unlocks the device, so a
+         * service restart after a crash in the locked state no longer reads a mismatching value
+         * and mis-detects a "reboot".
+         */
+        const val BOOT_STATE_PREFS = "kiosk_boot_state"
+
+        fun bootStatePrefs(ctx: Context): android.content.SharedPreferences =
+            KioskSecurity.getDirectBootPrefs(ctx.applicationContext ?: ctx, BOOT_STATE_PREFS)
     }
 
     constructor(
@@ -300,8 +311,13 @@ class PaymentRepository(
         val newState = db.withTransaction {
             val currentState = paymentDao.getSessionState()
             val nowMonotonic = SystemClock.elapsedRealtime()
-            val newDeadline = if (durationSeconds > 0) nowMonotonic + (durationSeconds * 1000L) else 0L
-            val remaining = maxOf(0, durationSeconds)
+            // Never shrink a paid balance: an admin bypass guarantees AT LEAST durationSeconds,
+            // i.e. remaining = max(currentRemaining, durationSeconds).
+            val currentDeadline = currentState?.sessionExpiryDeadlineMs ?: 0L
+            val activeDeadline = if (currentDeadline > nowMonotonic) currentDeadline else 0L
+            val requestedDeadline = if (durationSeconds > 0) nowMonotonic + (durationSeconds * 1000L) else 0L
+            val newDeadline = maxOf(activeDeadline, requestedDeadline)
+            val remaining = if (newDeadline > nowMonotonic) ((newDeadline - nowMonotonic) / 1000L).toInt() else 0
             val newRevision = (currentState?.revision ?: 0L) + 1L
             val state = PaidSessionState(
                 id = 1,
@@ -443,7 +459,7 @@ class PaymentRepository(
         }
 
         val effectiveCtx = ctx ?: context
-        val encryptedPrefs = effectiveCtx?.let { KioskSecurity.getEncryptedPreferences(it) }
+        val bootPrefs = effectiveCtx?.let { bootStatePrefs(it) }
         val currentBootCount = if (effectiveCtx != null) {
             try {
                 android.provider.Settings.Global.getInt(
@@ -457,10 +473,10 @@ class PaymentRepository(
         } else {
             -1
         }
-        val lastSavedBootCount = encryptedPrefs?.getInt(KEY_BOOT_COUNT, -1) ?: -1
+        val lastSavedBootCount = bootPrefs?.getInt(KEY_BOOT_COUNT, -1) ?: -1
         val isBootCountChanged = if (currentBootCount != -1) {
             val changed = lastSavedBootCount != -1 && currentBootCount != lastSavedBootCount
-            encryptedPrefs?.edit()?.putInt(KEY_BOOT_COUNT, currentBootCount)?.commit()
+            bootPrefs?.edit()?.putInt(KEY_BOOT_COUNT, currentBootCount)?.commit()
             changed
         } else {
             false
@@ -483,7 +499,7 @@ class PaymentRepository(
             val rebootDetected = isBootCountChanged || monotonicRebootDetected
             if (currentBootCount == -1 && monotonicRebootDetected) {
                 val nextCount = (lastSavedBootCount.takeIf { it >= 0 } ?: 0) + 1
-                encryptedPrefs?.edit()?.putInt(KEY_BOOT_COUNT, nextCount)?.commit()
+                bootPrefs?.edit()?.putInt(KEY_BOOT_COUNT, nextCount)?.commit()
             }
 
             val effectiveRemainingSec: Int
@@ -491,9 +507,11 @@ class PaymentRepository(
             var updatedRevision = paidState.revision
 
             if (rebootDetected) {
-                // Recover active session using elapsed real time since boot, not wall clock
-                val elapsedBootSeconds = (nowMonotonic / 1000L).toInt()
-                effectiveRemainingSec = maxOf(0, savedTime - elapsedBootSeconds)
+                // Monotonic deadlines from the previous boot are meaningless now. Resume from the
+                // last checkpointed balance (written every few seconds while the session runs).
+                // Do NOT subtract uptime since boot: that time was spent booting with the kiosk
+                // locked, and on a false reboot detection it would wipe the customer's balance.
+                effectiveRemainingSec = maxOf(0, savedTime)
                 effectiveDeadline = if (effectiveRemainingSec > 0) nowMonotonic + (effectiveRemainingSec * 1000L) else 0L
                 updatedRevision += 1L
                 paymentDao.updateSessionState(

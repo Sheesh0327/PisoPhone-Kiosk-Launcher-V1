@@ -101,8 +101,12 @@ class KioskOverlay(
         return lockShown
     }
 
+    /**
+     * Healthy only when BOTH windows are attached: the lock screen (states 0/1) and the floating
+     * pill (states 2/3 — the only way for a customer to see time / add coins / finish).
+     */
     fun isAttached(): Boolean {
-        return lockScreenOverlay.isAttached()
+        return lockScreenOverlay.isAttached() && floatingPillOverlay.isAttached()
     }
     
     fun remove() {
@@ -358,6 +362,9 @@ class LockScreenOverlay(
             newOverlay.view.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
                 override fun onViewAttachedToWindow(v: View) {}
                 override fun onViewDetachedFromWindow(v: View) {
+                    // Only tear down if the detached view is still the current overlay; a late
+                    // detach of an old view must not dispose a freshly attached replacement.
+                    if (overlayView?.view !== v) return
                     android.util.Log.w("LockScreenOverlay", "Lock screen overlay detached from window automatically.")
                     dispose()
                 }
