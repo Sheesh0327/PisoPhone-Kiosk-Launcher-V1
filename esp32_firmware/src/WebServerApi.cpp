@@ -7,6 +7,7 @@
 #include "DeviceManager.h"
 #include "CoinSlotManager.h"
 #include "DeviceNetwork.h"
+#include "PaymentQueueManager.h"
 #include <WiFi.h>
 #include <WebServer.h>
 
