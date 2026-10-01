@@ -1,18 +1,13 @@
 name: Build and Deploy APK to Website
 
+# Every branch publishes its own APK to its own website/update folder:
+#   main          -> https://pisophone.pages.dev/update              (production channel)
+#   any other     -> https://<branch-alias>.pisophone.pages.dev/update  (dev channel, "-dev" versionName)
+# A dev APK only ever checks its own branch's folder, so testing a branch never touches production.
 on:
   push:
     branches:
-      - main
-    paths:
-      - 'app/**'
-      - 'gradle/**'
-      - '*.gradle.kts'
-      - 'gradle.properties'
-      - '.github/workflows/build-apk.yml'
-  pull_request:
-    branches:
-      - main
+      - '**'
     paths:
       - 'app/**'
       - 'gradle/**'
@@ -24,10 +19,11 @@ on:
 permissions:
   contents: write # Required to push the APK to the website directory
 
-# Two deploys must never run at once: each one commits to main and bumps the version.
+# One run per branch at a time (each deploy commits back to its branch); a newer push to a dev
+# branch supersedes an older unfinished run, but a production deploy is never cancelled midway.
 concurrency:
-  group: build-apk-${{ github.event_name == 'pull_request' && github.ref || 'main-deploy' }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   unit-tests:
@@ -57,11 +53,31 @@ jobs:
   build-and-deploy:
     name: Build APK and Push to Website
     needs: unit-tests
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Work out release channel
+        id: channel
+        env:
+          BRANCH: ${{ github.ref_name }}
+          PAGES_HOST: ${{ vars.PAGES_PRODUCTION_HOST }}
+        run: |
+          HOST="${PAGES_HOST:-pisophone.pages.dev}"
+          if [ "$BRANCH" = "main" ]; then
+            CHANNEL=stable
+            BASE="https://$HOST/update"
+          else
+            CHANNEL=dev
+            # Cloudflare Pages branch alias: lowercase, non-alphanumerics become '-', cut to 28 chars.
+            ALIAS=$(printf '%s' "$BRANCH" | tr 'A-Z' 'a-z' | sed 's/[^a-z0-9]/-/g' | cut -c1-28 | sed 's/^-*//; s/-*$//')
+            PROJECT="${HOST%%.*}"
+            BASE="https://$ALIAS.$PROJECT.pages.dev/update"
+          fi
+          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+          echo "Channel: $CHANNEL, update URL: $BASE"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -99,6 +115,8 @@ jobs:
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          BUILD_CHANNEL: ${{ steps.channel.outputs.channel }}
+          UPDATE_BASE_URL: ${{ steps.channel.outputs.base }}
         # The runner's GITHUB_RUN_NUMBER becomes versionCode (see app/build.gradle.kts), so every
         # build is newer than the one before it.
         run: bash ./gradlew :app:assembleRelease --no-daemon --no-configuration-cache --stacktrace
@@ -108,7 +126,11 @@ jobs:
         run: rm -f /tmp/release-keystore.jks
 
       - name: Publish APK and version info to website/update
+        env:
+          BRANCH: ${{ github.ref_name }}
         run: |
+          VERSION_NAME="1.0.${{ github.run_number }}"
+          if [ "${{ steps.channel.outputs.channel }}" != "stable" ]; then VERSION_NAME="$VERSION_NAME-dev"; fi
           APK=app/build/outputs/apk/release/app-release.apk
           if [ ! -f "$APK" ]; then
             echo "::error::No release APK found at $APK"
@@ -133,7 +155,8 @@ jobs:
           cat > website/update/app.json <<EOF
           {
             "versionCode": ${{ github.run_number }},
-            "versionName": "1.0.${{ github.run_number }}",
+            "versionName": "$VERSION_NAME",
+            "channel": "${{ steps.channel.outputs.channel }}",
             "sha256": "$SHA",
             "size": $SIZE,
             "releaseDate": "$(date -u +%Y-%m-%d)"
@@ -147,7 +170,7 @@ jobs:
             # No [skip ci] marker: Cloudflare Pages honours it and would never deploy this commit.
             # This commit only touches website/update, which no workflow trigger matches, so it
             # cannot start another build.
-            git commit -m "chore: publish APK build ${{ github.run_number }}"
-            git pull --rebase --autostash origin main
-            git push
+            git commit -m "chore: publish ${{ steps.channel.outputs.channel }} APK build ${{ github.run_number }}"
+            git pull --rebase --autostash origin "$BRANCH"
+            git push origin "HEAD:refs/heads/$BRANCH"
           fi

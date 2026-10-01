@@ -1,5 +1,7 @@
 package com.pisophone.kiosk.security
 
+import com.pisophone.kiosk.BuildConfig
+
 import android.app.PendingIntent
 import android.app.admin.DevicePolicyManager
 import android.content.Context
@@ -22,10 +24,10 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
 import java.security.MessageDigest
+import com.pisophone.kiosk.util.DiagnosticsLog
 
 object KioskUpdateManager {
     private const val TAG = "KioskUpdate"
-    private const val VERSION_INFO_URL = "https://pisophone.pages.dev/update/app.json"
 
     /** What the website publishes next to the APK (written by the build workflow). */
     data class RemoteVersion(val versionCode: Int, val sha256: String)
@@ -83,7 +85,17 @@ object KioskUpdateManager {
     private val httpClient = OkHttpClient()
     private val scope = CoroutineScope(Dispatchers.IO)
 
-    fun startUpdate(context: Context, url: String) {
+    fun startUpdate(context: Context, url: String) =
+        startUpdateFrom(context, "${BuildConfig.UPDATE_BASE_URL}/app.json", url)
+
+    /** Temporary: installs whatever the working (beta) branch last published. Same checks as a normal update. */
+    fun startBetaInstall(context: Context) = startUpdateFrom(
+        context,
+        "${BuildConfig.BETA_UPDATE_BASE_URL}/app.json",
+        "${BuildConfig.BETA_UPDATE_BASE_URL}/app-release.apk"
+    )
+
+    private fun startUpdateFrom(context: Context, versionInfoUrl: String, url: String) {
         if (_updateState.value is UpdateState.Downloading || _updateState.value is UpdateState.Installing) {
             return
         }
@@ -98,7 +110,7 @@ object KioskUpdateManager {
                 }
 
                 val localCode = com.pisophone.kiosk.BuildConfig.VERSION_CODE
-                val remote = fetchRemoteVersion()
+                val remote = fetchRemoteVersion(versionInfoUrl)
                 if (!isUpdateAvailable(remote.versionCode, localCode)) {
                     _updateState.value = UpdateState.UpToDate(
                         "Already up to date (installed build $localCode, latest published ${remote.versionCode})."
@@ -123,13 +135,14 @@ object KioskUpdateManager {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Update failed: ${e.message}", e)
+                DiagnosticsLog.add("UPDATE", "failed: ${e.message}")
                 _updateState.value = UpdateState.Error(e.message ?: "Unknown error")
             }
         }
     }
 
-    private fun fetchRemoteVersion(): RemoteVersion {
-        val request = Request.Builder().url(VERSION_INFO_URL).header("Cache-Control", "no-cache").build()
+    private fun fetchRemoteVersion(versionInfoUrl: String): RemoteVersion {
+        val request = Request.Builder().url(versionInfoUrl).header("Cache-Control", "no-cache").build()
         httpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
                 throw IOException("Could not check the latest version: HTTP status ${response.code}")
@@ -272,10 +285,12 @@ object KioskUpdateManager {
     }
 
     fun onInstallSuccess() {
+        DiagnosticsLog.add("UPDATE", "install succeeded")
         _updateState.value = UpdateState.Success
     }
 
     fun onInstallError(message: String) {
+        DiagnosticsLog.add("UPDATE", "install failed: $message")
         _updateState.value = UpdateState.Error(message)
     }
 
