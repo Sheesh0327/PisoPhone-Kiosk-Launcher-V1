@@ -4,8 +4,13 @@ import os
 import hashlib
 from datetime import datetime
 
-FIRMWARE_BIN_PATH = "website/update/firmware.bin"
 FIRMWARE_JSON_PATH = "website/update/firmware.json"
+# One image per chip family; an image built for one chip is rejected by the other.
+FIRMWARE_BIN_PATHS = {
+    "esp32c3": "website/update/firmware-esp32c3.bin",
+    "esp32": "website/update/firmware-esp32.bin",
+}
+ESP_IMAGE_MAGIC = 0xE9
 
 def get_file_sha256(filepath):
     if not os.path.exists(filepath):
@@ -36,10 +41,23 @@ def main():
     data["version"] = f"3.0.{new_build}"
     data["releaseDate"] = release_date
     
-    # Calculate SHA256 if binary exists
-    sha256 = get_file_sha256(FIRMWARE_BIN_PATH)
-    if sha256:
-        data["sha256"] = sha256
+    # Record each chip's SHA256. A file that is not a valid ESP image (wrong first byte, e.g. one
+    # mangled by git text conversion) is never published: its entry is cleared instead.
+    chips = data.setdefault("chips", {})
+    for chip, path in FIRMWARE_BIN_PATHS.items():
+        entry = chips.setdefault(chip, {"url": f"https://pisophone.pages.dev/update/{os.path.basename(path)}"})
+        if not os.path.exists(path):
+            entry["sha256"] = ""
+            continue
+        with open(path, "rb") as f:
+            first = f.read(1)
+        if first != bytes([ESP_IMAGE_MAGIC]):
+            print(f"Error: {path} does not start with 0x{ESP_IMAGE_MAGIC:02X}; refusing to publish it.")
+            entry["sha256"] = ""
+            continue
+        entry["sha256"] = get_file_sha256(path)
+    data.pop("url", None)
+    data.pop("sha256", None)
 
     # Update changelog if provided via env
     commit_msg = os.environ.get("COMMIT_MSG", "").strip()

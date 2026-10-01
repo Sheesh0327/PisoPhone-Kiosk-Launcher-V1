@@ -561,11 +561,7 @@ class PaymentRepository(
     }
 
     fun migrateAndInitialize(ctx: Context) = runBlocking(Dispatchers.IO) {
-        val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-            ctx.applicationContext.createDeviceProtectedStorageContext()
-        } else {
-            ctx.applicationContext
-        }
+        val deviceContext = ctx.applicationContext.createDeviceProtectedStorageContext()
         val prefs = deviceContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
         // Fast-path check

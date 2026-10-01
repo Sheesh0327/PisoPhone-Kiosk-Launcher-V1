@@ -5,7 +5,8 @@ on:
     branches:
       - main
     paths:
-      - 'website/update/firmware.bin'
+      - 'website/update/firmware-esp32c3.bin'
+      - 'website/update/firmware-esp32.bin'
   workflow_dispatch:
 
 permissions:

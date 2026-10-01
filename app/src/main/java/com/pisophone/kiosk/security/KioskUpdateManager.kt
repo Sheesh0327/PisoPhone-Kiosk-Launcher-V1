@@ -136,11 +136,7 @@ object KioskUpdateManager {
             val intent = Intent(context, com.pisophone.kiosk.receiver.KioskDeviceAdminReceiver::class.java).apply {
                 action = "com.pisophone.kiosk.ACTION_INSTALL_COMPLETE"
             }
-            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
-            } else {
-                PendingIntent.FLAG_UPDATE_CURRENT
-            }
+            val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
             val pendingIntent = PendingIntent.getBroadcast(context, 0, intent, flags)
 
             session.commit(pendingIntent.intentSender)

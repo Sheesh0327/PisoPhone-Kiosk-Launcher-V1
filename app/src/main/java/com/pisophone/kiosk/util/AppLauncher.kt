@@ -154,20 +154,13 @@ object AppLauncher {
             val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager ?: return
             val adminComponent = ComponentName(context, KioskDeviceAdminReceiver::class.java)
             if (dpm.isDeviceOwnerApp(context.packageName)) {
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                    val current = dpm.getLockTaskPackages(adminComponent)?.toMutableSet() ?: mutableSetOf()
-                    if (!current.contains(packageName)) {
-                        current.add(packageName)
-                        current.add(context.packageName)
-                        current.add("com.android.systemui")
-                        dpm.setLockTaskPackages(adminComponent, current.toTypedArray())
-                        Log.i(TAG, "Dynamically allowlisted $packageName in LockTask packages.")
-                    }
-                } else {
-                    val packages = KioskPolicyManager.getAllowedLockTaskPackages(context).toMutableSet()
-                    packages.add(packageName)
-                    dpm.setLockTaskPackages(adminComponent, packages.toTypedArray())
-                    Log.i(TAG, "Dynamically allowlisted $packageName in LockTask packages (legacy).")
+                val current = dpm.getLockTaskPackages(adminComponent)?.toMutableSet() ?: mutableSetOf()
+                if (!current.contains(packageName)) {
+                    current.add(packageName)
+                    current.add(context.packageName)
+                    current.add("com.android.systemui")
+                    dpm.setLockTaskPackages(adminComponent, current.toTypedArray())
+                    Log.i(TAG, "Dynamically allowlisted $packageName in LockTask packages.")
                 }
             }
         } catch (e: Exception) {

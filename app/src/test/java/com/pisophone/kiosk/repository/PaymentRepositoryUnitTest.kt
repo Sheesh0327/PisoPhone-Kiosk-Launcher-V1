@@ -28,11 +28,7 @@ class PaymentRepositoryUnitTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
-        val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-            context.createDeviceProtectedStorageContext()
-        } else {
-            context
-        }
+        val deviceContext = context.createDeviceProtectedStorageContext()
         deviceContext.getSharedPreferences(PaymentRepository.PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .clear()
@@ -46,11 +42,7 @@ class PaymentRepositoryUnitTest {
 
     @After
     fun tearDown() {
-        val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-            context.createDeviceProtectedStorageContext()
-        } else {
-            context
-        }
+        val deviceContext = context.createDeviceProtectedStorageContext()
         deviceContext.getSharedPreferences(PaymentRepository.PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .clear()
@@ -256,11 +248,7 @@ class PaymentRepositoryUnitTest {
 
     @Test
     fun testLegacyMigrationWithRealKeysAndSameBoot() = runBlocking {
-        val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-            context.createDeviceProtectedStorageContext()
-        } else {
-            context
-        }
+        val deviceContext = context.createDeviceProtectedStorageContext()
         val prefs = deviceContext.getSharedPreferences(PaymentRepository.PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
 
@@ -290,11 +278,7 @@ class PaymentRepositoryUnitTest {
 
     @Test
     fun testLegacyMigrationExpiredDeadlineRestoresZero() = runBlocking {
-        val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-            context.createDeviceProtectedStorageContext()
-        } else {
-            context
-        }
+        val deviceContext = context.createDeviceProtectedStorageContext()
         val prefs = deviceContext.getSharedPreferences(PaymentRepository.PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
 
@@ -323,11 +307,7 @@ class PaymentRepositoryUnitTest {
 
     @Test
     fun testLegacyMigrationAfterRebootRecoversUsingSavedRemainingTime() = runBlocking {
-        val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-            context.createDeviceProtectedStorageContext()
-        } else {
-            context
-        }
+        val deviceContext = context.createDeviceProtectedStorageContext()
         val prefs = deviceContext.getSharedPreferences(PaymentRepository.PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
 
@@ -353,11 +333,7 @@ class PaymentRepositoryUnitTest {
 
     @Test
     fun testAuthoritativeRoomStateNotOverwrittenByLegacyPrefs() = runBlocking {
-        val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-            context.createDeviceProtectedStorageContext()
-        } else {
-            context
-        }
+        val deviceContext = context.createDeviceProtectedStorageContext()
         val prefs = deviceContext.getSharedPreferences(PaymentRepository.PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit()
             .putInt("session_time_remaining", 1000)
@@ -386,11 +362,7 @@ class PaymentRepositoryUnitTest {
 
     @Test
     fun testRetryInitializationDoesNotDuplicateCreditOrOverwriteBalance() = runBlocking {
-        val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-            context.createDeviceProtectedStorageContext()
-        } else {
-            context
-        }
+        val deviceContext = context.createDeviceProtectedStorageContext()
         val prefs = deviceContext.getSharedPreferences(PaymentRepository.PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit()
             .putInt("session_time_remaining", 300)

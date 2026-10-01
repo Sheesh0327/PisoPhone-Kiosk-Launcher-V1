@@ -12,12 +12,18 @@ const char* DEFAULT_PASS        = "Admin@123";
 const char* DEFAULT_ADMIN_PW    = "admin";
 const char* MASTER_CRYPTO_SECRET = "PISOPHONE_HMAC_MASTER_KEY";
 
-const int   DEFAULT_UNIVERSAL_COIN_PIN = 3;
-const int   DEFAULT_LED_PIN            = 8;
+// Pin defaults are per board and come from -D flags in envs/*.ini (PISO_PIN_*). A wrong default
+// on a classic ESP32 (GPIO 6-11 are the flash bus) crashes at boot, so there is no fallback:
+// a new board environment must state its pins. Values saved in NVS still override these.
+#if !defined(PISO_PIN_COIN) || !defined(PISO_PIN_LED) || !defined(PISO_PIN_RELAY) || !defined(PISO_PIN_RESET)
+#error "Define PISO_PIN_COIN, PISO_PIN_LED, PISO_PIN_RELAY and PISO_PIN_RESET in the PlatformIO env build_flags."
+#endif
+const int   DEFAULT_UNIVERSAL_COIN_PIN = PISO_PIN_COIN;
+const int   DEFAULT_LED_PIN            = PISO_PIN_LED;
 const bool  DEFAULT_LED_ACTIVE_LOW     = false;
-const int   DEFAULT_RELAY_PIN          = 4;
+const int   DEFAULT_RELAY_PIN          = PISO_PIN_RELAY;
 const int   DEFAULT_PORT               = 8080;
-const int   HARDWARE_RESET_PIN         = 2;
+const int   HARDWARE_RESET_PIN         = PISO_PIN_RESET;
 const int   UDP_DISCOVERY_PORT         = 8888;
 const int   DEFAULT_MINUTES_PER_COIN   = 6;
 

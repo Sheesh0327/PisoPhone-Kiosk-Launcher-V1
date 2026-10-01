@@ -28,19 +28,11 @@ class KioskWatchdogReceiver : BroadcastReceiver() {
                 val intent = Intent(context, KioskWatchdogReceiver::class.java).apply {
                     action = ACTION_WATCHDOG_PING
                 }
-                val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                } else {
-                    PendingIntent.FLAG_UPDATE_CURRENT
-                }
+                val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 val pendingIntent = PendingIntent.getBroadcast(context, 1001, intent, flags)
 
                 val triggerAt = SystemClock.elapsedRealtime() + WATCHDOG_INTERVAL_MS
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    alarmManager.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME, triggerAt, pendingIntent)
-                } else {
-                    alarmManager.set(AlarmManager.ELAPSED_REALTIME, triggerAt, pendingIntent)
-                }
+                alarmManager.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME, triggerAt, pendingIntent)
                 Log.d(TAG, "Watchdog alarm scheduled for +${WATCHDOG_INTERVAL_MS / 1000}s")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to schedule watchdog: ${e.message}")
@@ -107,11 +99,7 @@ class KioskWatchdogReceiver : BroadcastReceiver() {
                 Log.w(TAG, "KioskService process is not running. Reviving foreground service immediately...")
                 val serviceIntent = Intent(context, KioskService::class.java)
                 try {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        context.startForegroundService(serviceIntent)
-                    } else {
-                        context.startService(serviceIntent)
-                    }
+                    context.startForegroundService(serviceIntent)
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to revive KioskService: ${e.message}")
                 }

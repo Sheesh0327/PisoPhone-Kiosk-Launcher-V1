@@ -249,5 +249,10 @@ void handleOtaForm() {
         macAddressStr = String(macBuf);
     }
     html.replace("{MAC_ADDRESS}", macAddressStr);
+#if CONFIG_IDF_TARGET_ESP32C3
+    html.replace("{CHIP_ID}", "esp32c3");
+#else
+    html.replace("{CHIP_ID}", "esp32");
+#endif
     webServer.send(200, "text/html; charset=utf-8", html);
 }

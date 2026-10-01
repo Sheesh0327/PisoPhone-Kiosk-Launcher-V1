@@ -238,13 +238,11 @@ object KioskPolicyManager {
                 setPersistentHomeActivity(context, dpm, componentName)
 
                 // 9. Disable Notification Shade and Status Bar Expansion
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    try {
-                        val disabled = dpm.setStatusBarDisabled(componentName, true)
-                        Log.i(TAG, "DevicePolicyManager.setStatusBarDisabled(true) executed: $disabled")
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Failed to disable status bar via DPM: ${e.message}")
-                    }
+                try {
+                    val disabled = dpm.setStatusBarDisabled(componentName, true)
+                    Log.i(TAG, "DevicePolicyManager.setStatusBarDisabled(true) executed: $disabled")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to disable status bar via DPM: ${e.message}")
                 }
 
                 // 10. ADB stays on only for the provisioning grace window; re-apply when it ends.
@@ -390,7 +388,7 @@ object KioskPolicyManager {
     fun setStatusBarDisabled(context: Context, disabled: Boolean): Boolean {
         val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager ?: return false
         val componentName = ComponentName(context, KioskDeviceAdminReceiver::class.java)
-        if (dpm.isDeviceOwnerApp(context.packageName) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        if (dpm.isDeviceOwnerApp(context.packageName)) {
             return try {
                 val res = dpm.setStatusBarDisabled(componentName, disabled)
                 Log.i(TAG, "setStatusBarDisabled($disabled) executed: $res")

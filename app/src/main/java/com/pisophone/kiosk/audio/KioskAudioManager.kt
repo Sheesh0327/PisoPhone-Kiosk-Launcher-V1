@@ -272,28 +272,19 @@ class KioskAudioManager(
 
     private fun requestTtsAudioFocus() {
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val playbackAttributes = AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ALARM)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .build()
+            val playbackAttributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ALARM)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build()
 
-                val focusReq = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
-                    .setAudioAttributes(playbackAttributes)
-                    .setAcceptsDelayedFocusGain(false)
-                    .setOnAudioFocusChangeListener { /* Managed synchronously */ }
-                    .build()
+            val focusReq = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                .setAudioAttributes(playbackAttributes)
+                .setAcceptsDelayedFocusGain(false)
+                .setOnAudioFocusChangeListener { /* Managed synchronously */ }
+                .build()
 
-                audioFocusRequest = focusReq
-                systemAudioManager?.requestAudioFocus(focusReq)
-            } else {
-                @Suppress("DEPRECATION")
-                systemAudioManager?.requestAudioFocus(
-                    null,
-                    AudioManager.STREAM_ALARM,
-                    AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
-                )
-            }
+            audioFocusRequest = focusReq
+            systemAudioManager?.requestAudioFocus(focusReq)
             Log.d(TAG, "Requested exclusive transient Audio Focus on STREAM_ALARM for TTS")
         } catch (e: Exception) {
             Log.w(TAG, "Error requesting audio focus: ${e.message}")
@@ -302,15 +293,10 @@ class KioskAudioManager(
 
     private fun abandonTtsAudioFocus() {
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                audioFocusRequest?.let { req ->
-                    systemAudioManager?.abandonAudioFocusRequest(req)
-                }
-                audioFocusRequest = null
-            } else {
-                @Suppress("DEPRECATION")
-                systemAudioManager?.abandonAudioFocus(null)
+            audioFocusRequest?.let { req ->
+                systemAudioManager?.abandonAudioFocusRequest(req)
             }
+            audioFocusRequest = null
             Log.d(TAG, "Released Audio Focus after TTS playback")
         } catch (e: Exception) {
             Log.w(TAG, "Error abandoning audio focus: ${e.message}")
@@ -493,26 +479,17 @@ class KioskAudioManager(
                     am.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_MEDIA_PAUSE))
                 } catch (_: Exception) {}
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val attrs = AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .build()
-                val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-                    .setAudioAttributes(attrs)
-                    .setOnAudioFocusChangeListener { }
-                    .build()
-                am.requestAudioFocus(req)
-                dispatchPause()
-                am.abandonAudioFocusRequest(req)
-            } else {
-                val listener = AudioManager.OnAudioFocusChangeListener { }
-                @Suppress("DEPRECATION")
-                am.requestAudioFocus(listener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN)
-                dispatchPause()
-                @Suppress("DEPRECATION")
-                am.abandonAudioFocus(listener)
-            }
+            val attrs = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .build()
+            val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(attrs)
+                .setOnAudioFocusChangeListener { }
+                .build()
+            am.requestAudioFocus(req)
+            dispatchPause()
+            am.abandonAudioFocusRequest(req)
             Log.i(TAG, "Paused customer media playback on session lock")
         } catch (e: Exception) {
             Log.w(TAG, "Failed to pause customer media: ${e.message}")

@@ -137,11 +137,7 @@ class KioskStateManager(private val context: Context) {
 
     fun saveState(txSet: Set<String> = emptySet()) {
         try {
-            val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-                context.createDeviceProtectedStorageContext()
-            } else {
-                context
-            }
+            val deviceContext = context.createDeviceProtectedStorageContext()
             val prefs = deviceContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             prefs.edit()
                 .putInt("app_state", appState.value)
@@ -158,11 +154,7 @@ class KioskStateManager(private val context: Context) {
 
     fun restoreState(): Set<String> {
         return try {
-            val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-                context.createDeviceProtectedStorageContext()
-            } else {
-                context
-            }
+            val deviceContext = context.createDeviceProtectedStorageContext()
             val prefs = deviceContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             val savedState = prefs.getInt("app_state", 0)
             

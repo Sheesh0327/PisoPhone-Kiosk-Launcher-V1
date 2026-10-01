@@ -168,24 +168,40 @@ void applyCoinSlotHardwareConfig() {
 }
 
 // ============================================================================
-// HARDWARE RESET PIN SUPERVISOR (GPIO 2 -> GND for 5 seconds)
+// HARDWARE RESET PIN SUPERVISOR (reset pin -> GND for 5 seconds)
 // ============================================================================
 static unsigned long resetPinLowStart = 0;
+// The pin may already be low at power-up (a strapping pin, a stuck BOOT button or a shorted
+// header), which must never count as a deliberate 5 s hold and wipe the config. The hold only
+// counts once the pin has been seen released (stably high) after boot.
+static const unsigned long RESET_PIN_RELEASED_STABLE_MS = 200;
+static bool resetPinArmed = false;
+static unsigned long resetPinHighSince = 0;
 
 void processHardwareResetPin() {
+    if (!resetPinArmed) {
+        if (digitalRead(HARDWARE_RESET_PIN) == HIGH) {
+            if (resetPinHighSince == 0) resetPinHighSince = millis();
+            if (millis() - resetPinHighSince >= RESET_PIN_RELEASED_STABLE_MS) resetPinArmed = true;
+        } else {
+            resetPinHighSince = 0;
+        }
+        return;
+    }
+
     if (digitalRead(HARDWARE_RESET_PIN) == LOW) {
         if (resetPinLowStart == 0) {
             resetPinLowStart = millis();
-            Serial.println("[⚠️] GPIO 2 connected to GND. Hold for 5 seconds to factory reset...");
+            Serial.printf("[⚠️] GPIO %d connected to GND. Hold for 5 seconds to factory reset...\n", HARDWARE_RESET_PIN);
         } else if (millis() - resetPinLowStart >= 5000) {
-            Serial.println("\n[⚠️ RESET] GPIO 2 held to GND for > 5 seconds! Triggering Factory Reset...");
+            Serial.printf("\n[⚠️ RESET] GPIO %d held to GND for > 5 seconds! Triggering Factory Reset...\n", HARDWARE_RESET_PIN);
             factoryResetDefaults();
             delay(1000);
             ESP.restart();
         }
     } else {
         if (resetPinLowStart != 0) {
-            Serial.println("[*] GPIO 2 released before 5 seconds. Reset cancelled.");
+            Serial.printf("[*] GPIO %d released before 5 seconds. Reset cancelled.\n", HARDWARE_RESET_PIN);
             resetPinLowStart = 0;
         }
     }

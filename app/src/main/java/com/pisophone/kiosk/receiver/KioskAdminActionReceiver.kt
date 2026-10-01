@@ -136,11 +136,7 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                 Log.i(TAG, "Admin restart triggered via broadcast.")
                 try {
                     val serviceIntent = Intent(context, KioskService::class.java)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        context.startForegroundService(serviceIntent)
-                    } else {
-                        context.startService(serviceIntent)
-                    }
+                    context.startForegroundService(serviceIntent)
 
                     val mainIntent = Intent(context, MainActivity::class.java).apply {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -274,11 +270,7 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                     // Restart Kiosk Service and reload UI
                     try {
                         val serviceIntent = Intent(context, KioskService::class.java)
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            context.startForegroundService(serviceIntent)
-                        } else {
-                            context.startService(serviceIntent)
-                        }
+                        context.startForegroundService(serviceIntent)
                         val mainIntent = Intent(context, MainActivity::class.java).apply {
                             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                         }

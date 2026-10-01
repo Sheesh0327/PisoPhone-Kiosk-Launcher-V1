@@ -88,9 +88,7 @@ object KioskRecoveryManager {
             try {
                 dpm.setLockTaskPackages(componentName, emptyArray())
                 dpm.clearPackagePersistentPreferredActivities(componentName, context.packageName)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    dpm.setStatusBarDisabled(componentName, false)
-                }
+                dpm.setStatusBarDisabled(componentName, false)
                 dpm.clearUserRestriction(componentName, UserManager.DISALLOW_DEBUGGING_FEATURES)
                 dpm.clearUserRestriction(componentName, UserManager.DISALLOW_FACTORY_RESET)
                 dpm.clearUserRestriction(componentName, UserManager.DISALLOW_SAFE_BOOT)
@@ -134,9 +132,7 @@ object KioskRecoveryManager {
                 try {
                     dpm.setLockTaskPackages(componentName, emptyArray())
                     dpm.clearPackagePersistentPreferredActivities(componentName, context.packageName)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        dpm.setStatusBarDisabled(componentName, false)
-                    }
+                    dpm.setStatusBarDisabled(componentName, false)
                     dpm.clearUserRestriction(componentName, UserManager.DISALLOW_FACTORY_RESET)
                     dpm.clearUserRestriction(componentName, UserManager.DISALLOW_SAFE_BOOT)
                     dpm.clearUserRestriction(componentName, UserManager.DISALLOW_DEBUGGING_FEATURES)

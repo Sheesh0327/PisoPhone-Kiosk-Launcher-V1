@@ -134,19 +134,26 @@ static const char OTA_FORM_HTML[] PROGMEM = R"HTML(
         box.innerHTML = text;
     };
 
+    // Which firmware file this board needs; filled in by the ESP32 when it serves this page.
+    const CHIP_ID = '{CHIP_ID}';
+
+    async function fetchChipFirmwareInfo() {
+        const res = await fetch('https://pisophone.pages.dev/update/firmware.json', { cache: 'no-store' });
+        if (!res.ok) throw new Error('firmware.json returned HTTP ' + res.status);
+        const data = await res.json();
+        const entry = data.chips && data.chips[CHIP_ID];
+        if (!entry || !entry.url) throw new Error('No firmware is published for chip "' + CHIP_ID + '" yet.');
+        return { data: data, entry: entry };
+    }
+
     window.checkCloudUpdate = async function() {
         const badge = document.getElementById('cloud_ver_badge');
         if (badge) badge.textContent = 'Checking...';
         try {
-            const res = await fetch('https://pisophone.pages.dev/update/firmware.json', { cache: 'no-store' });
-            if (res.ok) {
-                const data = await res.json();
-                if (badge) badge.textContent = 'Server v' + (data.version || '3.0.0');
-                showStatus('<b>🎉 Server Firmware Available:</b> v' + (data.version || '3.0.0') + '<br>' + (data.changelog || 'Latest build ready to install.'), 'info');
-            } else {
-                if (badge) badge.textContent = 'Server Ready';
-                showStatus('<b>Server Connected:</b> Update service is online and ready.', 'info');
-            }
+            const info = await fetchChipFirmwareInfo();
+            const data = info.data;
+            if (badge) badge.textContent = 'Server v' + (data.version || '3.0.0');
+            showStatus('<b>🎉 Server Firmware Available:</b> v' + (data.version || '3.0.0') + ' (' + CHIP_ID + ')<br>' + (data.changelog || 'Latest build ready to install.'), 'info');
         } catch(e) {
             if (badge) badge.textContent = 'Server Ready';
             showStatus('<b>Server Update Endpoint:</b> Ready to download latest system update.', 'info');
@@ -169,11 +176,18 @@ static const char OTA_FORM_HTML[] PROGMEM = R"HTML(
         showStatus('📥 Downloading latest system update from cloud server...', 'info');
         
         try {
-            const fwRes = await fetch('https://pisophone.pages.dev/update/firmware.bin', { cache: 'no-store' });
+            const info = await fetchChipFirmwareInfo();
+            const fwRes = await fetch(info.entry.url, { cache: 'no-store' });
             if (!fwRes.ok) {
                 throw new Error('Server returned HTTP ' + fwRes.status + ' when downloading update.');
             }
             const fwBlob = await fwRes.blob();
+            // Every ESP32 app image starts with magic byte 0xE9. Anything else is a corrupt file or
+            // an HTML error page, and must never reach the flash.
+            const magic = new Uint8Array(await fwBlob.slice(0, 1).arrayBuffer());
+            if (fwBlob.size < 100000 || magic[0] !== 0xE9) {
+                throw new Error('Downloaded file is not a valid ESP32 firmware image (' + fwBlob.size + ' bytes). Nothing was flashed.');
+            }
             
             showStatus('⚡ Download complete (' + (fwBlob.size/1024).toFixed(1) + ' KB). Preparing to flash HARDWARE partition...', 'info');
             

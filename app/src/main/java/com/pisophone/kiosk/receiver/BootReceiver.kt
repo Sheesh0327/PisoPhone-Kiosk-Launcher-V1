@@ -31,11 +31,7 @@ class BootReceiver : BroadcastReceiver() {
             if (isFullySetup) {
                 try {
                     val serviceIntent = Intent(context, KioskService::class.java)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        context.startForegroundService(serviceIntent)
-                    } else {
-                        context.startService(serviceIntent)
-                    }
+                    context.startForegroundService(serviceIntent)
                 } catch (e: Throwable) {
                     Log.e(TAG, "Foreground service start deferred/restricted on boot: ${e.message}")
                 }
@@ -54,7 +50,7 @@ class BootReceiver : BroadcastReceiver() {
             if (action == Intent.ACTION_MY_PACKAGE_REPLACED) {
                 try {
                     val userManager = context.getSystemService(Context.USER_SERVICE) as? UserManager
-                    val isUnlocked = Build.VERSION.SDK_INT < Build.VERSION_CODES.N || userManager?.isUserUnlocked == true
+                    val isUnlocked = userManager?.isUserUnlocked == true
                     if (isUnlocked) {
                         val launchIntent = Intent(context, MainActivity::class.java).apply {
                             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)

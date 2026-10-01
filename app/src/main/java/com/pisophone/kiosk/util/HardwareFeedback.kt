@@ -15,12 +15,7 @@ object HardwareFeedback {
     fun triggerVibration(context: Context, pattern: LongArray) {
         try {
             val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator ?: return
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1))
-            } else {
-                @Suppress("DEPRECATION")
-                vibrator.vibrate(pattern, -1)
-            }
+            vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1))
         } catch (e: Exception) {
             Log.w(TAG, "Failed to trigger vibration: ${e.message}")
         }
@@ -29,12 +24,7 @@ object HardwareFeedback {
     fun triggerShortHaptic(context: Context, durationMs: Long = 120L) {
         try {
             val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator ?: return
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
-            } else {
-                @Suppress("DEPRECATION")
-                vibrator.vibrate(durationMs)
-            }
+            vibrator.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
         } catch (e: Exception) {
             Log.w(TAG, "Failed to trigger short haptic: ${e.message}")
         }

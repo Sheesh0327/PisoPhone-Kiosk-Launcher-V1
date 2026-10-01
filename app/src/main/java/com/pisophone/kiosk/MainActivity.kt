@@ -193,11 +193,7 @@ class MainActivity : ComponentActivity() {
             KioskActivationManager.setPairingCompleted(this, true)
             try {
                 val serviceIntent = Intent(this, KioskService::class.java)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(serviceIntent)
-                } else {
-                    startService(serviceIntent)
-                }
+                startForegroundService(serviceIntent)
             } catch (e: Exception) {
                 android.util.Log.w("MainActivity", "Failed to start KioskService on setup: ${e.message}")
             }
@@ -308,11 +304,7 @@ class MainActivity : ComponentActivity() {
         if (hasOverlayPermission && isFullySetup()) {
             try {
                 val intent = Intent(this, KioskService::class.java)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(intent)
-                } else {
-                    startService(intent)
-                }
+                startForegroundService(intent)
             } catch (e: Throwable) {
                 Log.w(TAG, "Failed to start KioskService from checkOverlayPermission: ${e.message}")
             }

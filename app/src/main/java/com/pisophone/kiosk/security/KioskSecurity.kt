@@ -103,11 +103,7 @@ object KioskSecurity {
     }
 
     fun getDirectBootPrefs(context: Context, name: String = PREFS_SECURITY_OLD): SharedPreferences {
-        val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-            context.createDeviceProtectedStorageContext()
-        } else {
-            context
-        }
+        val deviceContext = context.createDeviceProtectedStorageContext()
         return deviceContext.getSharedPreferences(name, Context.MODE_PRIVATE)
     }
 
@@ -258,11 +254,7 @@ object KioskSecurity {
     }
 
     fun getHardwareId(context: Context): String {
-        val deviceContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-            context.createDeviceProtectedStorageContext()
-        } else {
-            context
-        }
+        val deviceContext = context.createDeviceProtectedStorageContext()
         val directPrefs = deviceContext.getSharedPreferences("kiosk_prefs", Context.MODE_PRIVATE)
         var savedUuid = directPrefs.getString("device_uuid", null)
         if (savedUuid.isNullOrBlank()) {
