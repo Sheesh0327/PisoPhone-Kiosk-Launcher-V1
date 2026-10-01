@@ -20,8 +20,7 @@ void sendAddTime(int minutes, String targetIp, String txId) {
                 Serial.printf("[-] sendAddTime skipped for %s (Slot #%d): Device Expired / Uncredited\n",
                     cfg.ip.c_str(), (slotIdx >= 0) ? licenseSlots[slotIdx].slotNum : 0);
             } else {
-                unsigned long long ts = (unsigned long long)getCurrentMasterTimeMs();
-                String effectiveTxId = (txId.length() > 0) ? txId : ("tx-adj-" + String(ts) + "-" + String(random(10000, 99999)));
+                String effectiveTxId = (txId.length() > 0) ? txId : generateTxId("tx-adj-");
                 int seconds = minutes * 60;
                 String params = "minutes=" + String(minutes) + "&seconds=" + String(seconds) + "&amount=0&tx_id=" + effectiveTxId;
                 if (cfg.id.length() > 0) params += "&device_id=" + cfg.id;
@@ -34,8 +33,7 @@ void sendAddTime(int minutes, String targetIp, String txId) {
 
     if (!sent && targetIp != "ALL" && targetIp.length() >= 7 && targetIp != "127.0.0.1") {
         String devId = getDeviceIdFromIp(targetIp);
-        unsigned long long ts = (unsigned long long)getCurrentMasterTimeMs();
-        String effectiveTxId = (txId.length() > 0) ? txId : ("tx-adj-" + String(ts) + "-" + String(random(10000, 99999)));
+        String effectiveTxId = (txId.length() > 0) ? txId : generateTxId("tx-adj-");
         int seconds = minutes * 60;
         String params = "minutes=" + String(minutes) + "&seconds=" + String(seconds) + "&amount=0&tx_id=" + effectiveTxId;
         if (devId.length() > 0) params += "&device_id=" + devId;
@@ -72,7 +70,7 @@ void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId) {
     triggerLedBlink(pulses > 1 ? 4 : 2);
 
     unsigned long long ts = (unsigned long long)getCurrentMasterTimeMs();
-    String txId = "tx-" + String(ts) + "-" + String(random(10000, 99999));
+    String txId = generateTxId("tx-");
 
     bool retained = enqueuePendingPayment(
         txId, targetDev, pulses, CoinSlotOwnerType::PHONE, addedSeconds);

@@ -3,6 +3,7 @@
 #include "Config.h"
 #include "DeviceManager.h"
 #include <WiFi.h>
+#include "hal/gpio_ll.h"
 
 // Forward declarations of WebSocket client from WebServerModule
 extern WiFiClient wsClient;
@@ -83,6 +84,10 @@ void processLedBlink() {
 // RELAY POWER CONTROLLER
 // ============================================================================
 static bool isRelayCurrentlyActive = false;
+// Powering the acceptor through the relay makes its output line glitch, which the ISR would
+// otherwise count as a coin. Pulses are ignored for a short window after power-on.
+static const unsigned long RELAY_POWER_ON_BLANKING_MS = 400;
+static volatile unsigned long relayPowerOnMs = 0;
 
 void resetCoinDetectorStates() {
     noInterrupts();
@@ -94,6 +99,9 @@ void resetCoinDetectorStates() {
 
 void setRelayHardware(bool active) {
     if (active) {
+        if (!isRelayCurrentlyActive) {
+            relayPowerOnMs = millis();
+        }
         pinMode(relayPin, OUTPUT);
         digitalWrite(relayPin, relayActiveLow ? LOW : HIGH);
         if (!isRelayCurrentlyActive) {
@@ -140,6 +148,9 @@ volatile unsigned long isrLastPulseTimeUs = 0;
 static const unsigned long U_MIN_PULSE_DEBOUNCE_US = 10000;
 
 void IRAM_ATTR universalCoinIsr() {
+    if (millis() - relayPowerOnMs < RELAY_POWER_ON_BLANKING_MS) return;
+    // A real pulse holds the line low for 20+ ms; an edge that is already high again is noise.
+    if (gpio_ll_get_level(&GPIO, (gpio_num_t)universalCoinPin) != 0) return;
     unsigned long nowUs = micros();
     unsigned long elapsedUs = nowUs - isrLastPulseTimeUs;
     if (elapsedUs >= U_MIN_PULSE_DEBOUNCE_US) {

@@ -32,7 +32,7 @@ void authWorkerTask(void *pvParameters) {
                 if (endPos == -1) endPos = finalParams.length();
                 currentTxId = finalParams.substring(txPos + 6, endPos);
             } else if (finalParams.indexOf("nonce=") == -1) {
-                currentTxId = "tx-" + String(currentMasterMs) + "-" + String(random(10000, 99999));
+                currentTxId = generateTxId("tx-");
                 finalParams += "&tx_id=" + currentTxId;
             }
 

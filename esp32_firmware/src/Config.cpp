@@ -2,6 +2,7 @@
 #include "DeviceManager.h"
 #include "HardwareManager.h"
 #include "SuperAdminManager.h"
+#include "PaymentQueueManager.h"
 
 // ============================================================================
 // HARDWARE CONSTANTS & PIN DEFAULTS DEFINITION
@@ -81,11 +82,62 @@ uint64_t getCurrentMasterTimeMs() {
     return 0;
 }
 
-void updateMasterTime(uint64_t ts) {
-    if (ts > lastMasterTimestamp) {
-        lastMasterTimestamp = ts;
-        lastMasterMillis = millis();
+String generateTxId(const char* prefix) {
+    uint64_t ts = getCurrentMasterTimeMs();
+    if (ts > 0) {
+        return String(prefix) + String(ts) + "-" + String(random(10000, 99999));
     }
+    // Before any phone has synced the master clock every id would start with "tx-0-", leaving
+    // only the random suffix to tell payments apart. Use a per-boot tag plus a counter instead.
+    static uint32_t bootTag = 0;
+    static uint32_t counter = 0;
+    if (bootTag == 0) bootTag = (uint32_t)random(1, 0x7FFFFFFF);
+    counter++;
+    return String(prefix) + "b" + String(bootTag, HEX) + "-" + String(millis()) + "-" + String(counter);
+}
+
+static const uint64_t MASTER_CLOCK_WINDOW_MS = 300000ULL;
+static const uint64_t MASTER_CLOCK_AGREE_MS = 30000ULL;
+static uint64_t outlierTimestamp = 0;
+static unsigned long outlierMillis = 0;
+static String outlierSource = "";
+
+static uint64_t absDiff(uint64_t a, uint64_t b) {
+    return a > b ? a - b : b - a;
+}
+
+void updateMasterTime(uint64_t ts, const String& sourceId) {
+    if (ts == 0) return;
+    unsigned long nowMs = millis();
+    uint64_t current = getCurrentMasterTimeMs();
+
+    if (current == 0 || absDiff(ts, current) <= MASTER_CLOCK_WINDOW_MS) {
+        if (ts > current) {
+            lastMasterTimestamp = ts;
+            lastMasterMillis = nowMs;
+        }
+        return;
+    }
+
+    // A single device with a wrong clock must not drag the master clock away from everyone
+    // else (which would make every other phone fail the replay window). Re-sync only when a
+    // second, different device independently reports the same outlier time.
+    if (outlierTimestamp > 0 && sourceId.length() > 0 && sourceId != outlierSource &&
+        (uint64_t)(nowMs - outlierMillis) <= MASTER_CLOCK_WINDOW_MS) {
+        uint64_t projected = outlierTimestamp + (uint64_t)(nowMs - outlierMillis);
+        if (absDiff(ts, projected) <= MASTER_CLOCK_AGREE_MS) {
+            Serial.printf("[CLOCK] Master clock re-synced (%llu -> %llu) after agreement from '%s' and '%s'.\n",
+                          current, ts, outlierSource.c_str(), sourceId.c_str());
+            lastMasterTimestamp = ts;
+            lastMasterMillis = nowMs;
+            outlierTimestamp = 0;
+            outlierSource = "";
+            return;
+        }
+    }
+    outlierTimestamp = ts;
+    outlierMillis = nowMs;
+    outlierSource = sourceId;
 }
 
 bool areDefaultCredentialsActive() {
@@ -362,16 +414,24 @@ void loadAllConfig() {
         wifiSsid.c_str(), targetPort, webPassword.c_str(), relayPin, totalCoinsLifetime, totalEarningsLifetime);
 }
 
+void flushRevenueNow() {
+    if (!revenueDirty && totalCoinsLifetime == lastSavedTotalCoins &&
+        totalEarningsLifetime == lastSavedTotalEarnings) {
+        return;
+    }
+    prefs.begin(NVS_NAMESPACE, false);
+    prefs.putULong(NVS_KEY_TOTAL_COINS, totalCoinsLifetime);
+    prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, totalEarningsLifetime);
+    prefs.end();
+    lastSavedTotalCoins = totalCoinsLifetime;
+    lastSavedTotalEarnings = totalEarningsLifetime;
+    revenueDirty = false;
+    Serial.println("[💰 VAULT] Revenue counters flushed to NVS flash.");
+}
+
 void processRevenuePersistence() {
     if (revenueDirty && (millis() - lastCoinChangeTime >= REVENUE_SAVE_DELAY_MS)) {
-        prefs.begin(NVS_NAMESPACE, false);
-        prefs.putULong(NVS_KEY_TOTAL_COINS, totalCoinsLifetime);
-        prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, totalEarningsLifetime);
-        prefs.end();
-        lastSavedTotalCoins = totalCoinsLifetime;
-        lastSavedTotalEarnings = totalEarningsLifetime;
-        revenueDirty = false;
-        Serial.println("[💰 VAULT] Revenue counters flushed to NVS flash (debounced idle save).");
+        flushRevenueNow();
     }
 }
 
@@ -383,6 +443,7 @@ void factoryResetDefaults() {
     prefs.begin(NVS_NAMESPACE, false);
     prefs.clear();
     prefs.end();
+    clearPaymentQueue();
 
     wifiSsid = DEFAULT_SSID;
     wifiPass = DEFAULT_PASS;

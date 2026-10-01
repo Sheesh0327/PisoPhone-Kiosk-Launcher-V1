@@ -9,6 +9,10 @@
 static const int MAX_PAYMENT_QUEUE_SIZE = 20;
 static const uint32_t PAYMENT_RECORD_MAGIC = 0x50415932UL; // "PAY2"
 static const unsigned long RETRY_INTERVAL_MS = 10000;
+// A record the target never acknowledges (phone unpaired, replaced or factory reset) would
+// otherwise be retried forever, and enough of them block all arming via isPaymentQueueFull().
+static const uint64_t PAYMENT_TTL_MS = 24ULL * 60ULL * 60ULL * 1000ULL;
+static const uint64_t PAYMENT_TTL_UNDER_PRESSURE_MS = 30ULL * 60ULL * 1000ULL;
 
 static PaymentRecord paymentQueue[MAX_PAYMENT_QUEUE_SIZE];
 static bool paymentSlotUsed[MAX_PAYMENT_QUEUE_SIZE] = {false};
@@ -16,6 +20,7 @@ static bool paymentSlotPersisted[MAX_PAYMENT_QUEUE_SIZE] = {false};
 static unsigned long lastPersistAttemptMs[MAX_PAYMENT_QUEUE_SIZE] = {0};
 static uint8_t persistRetryCount[MAX_PAYMENT_QUEUE_SIZE] = {0};
 static unsigned long lastDispatchMs[MAX_PAYMENT_QUEUE_SIZE] = {0};
+static unsigned long firstSeenMs[MAX_PAYMENT_QUEUE_SIZE] = {0};
 static int activePaymentCount = 0;
 static SemaphoreHandle_t paymentQueueMutex = nullptr;
 static bool paymentStorageReady = false;
@@ -50,6 +55,17 @@ static bool eraseRecord(int index) {
     return removed;
 }
 
+static void resetSlotLocked(int index) {
+    memset(&paymentQueue[index], 0, sizeof(PaymentRecord));
+    if (paymentSlotUsed[index]) activePaymentCount--;
+    paymentSlotUsed[index] = false;
+    paymentSlotPersisted[index] = false;
+    lastPersistAttemptMs[index] = 0;
+    persistRetryCount[index] = 0;
+    lastDispatchMs[index] = 0;
+    firstSeenMs[index] = 0;
+}
+
 static void lockQueue() {
     if (paymentQueueMutex != nullptr) xSemaphoreTake(paymentQueueMutex, portMAX_DELAY);
 }
@@ -73,6 +89,7 @@ void initPaymentQueue() {
     memset(lastPersistAttemptMs, 0, sizeof(lastPersistAttemptMs));
     memset(persistRetryCount, 0, sizeof(persistRetryCount));
     memset(lastDispatchMs, 0, sizeof(lastDispatchMs));
+    memset(firstSeenMs, 0, sizeof(firstSeenMs));
     activePaymentCount = 0;
     paymentStorageReady = false;
 
@@ -97,6 +114,7 @@ void initPaymentQueue() {
             paymentQueue[i] = rec;
             paymentSlotUsed[i] = true;
             paymentSlotPersisted[i] = true;
+            firstSeenMs[i] = millis();
             activePaymentCount++;
             Serial.printf("[PAY QUEUE] Restored tx_id='%s' for '%s'.\n", rec.txId, rec.targetId);
         } else {
@@ -200,6 +218,7 @@ bool enqueuePendingPayment(const String& txId, const String& targetId, int pulse
     lastPersistAttemptMs[freeIndex] = millis();
     persistRetryCount[freeIndex] = 0;
     lastDispatchMs[freeIndex] = 0;
+    firstSeenMs[freeIndex] = millis();
     activePaymentCount++;
 
     // Attempt durable NVS flash persistence
@@ -245,13 +264,7 @@ static bool acknowledgeMatchingPayment(const String& txId, const String* session
         return false;
     }
 
-    memset(&paymentQueue[foundIndex], 0, sizeof(PaymentRecord));
-    paymentSlotUsed[foundIndex] = false;
-    paymentSlotPersisted[foundIndex] = false;
-    lastPersistAttemptMs[foundIndex] = 0;
-    persistRetryCount[foundIndex] = 0;
-    lastDispatchMs[foundIndex] = 0;
-    activePaymentCount--;
+    resetSlotLocked(foundIndex);
     unlockQueue();
     Serial.printf("[PAY QUEUE] Acknowledged tx_id='%s'.\n", txId.c_str());
     return true;
@@ -307,8 +320,55 @@ void dispatchPendingControllerPayments(const String& sessionId) {
     }
 }
 
+int clearPaymentQueue() {
+    lockQueue();
+    int cleared = activePaymentCount;
+    for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
+        resetSlotLocked(i);
+    }
+    activePaymentCount = 0;
+    Preferences storage;
+    if (storage.begin("pay_queue", false)) {
+        storage.clear();
+        storage.end();
+        paymentStorageReady = true;
+    }
+    unlockQueue();
+    Serial.printf("[PAY QUEUE] Cleared %d pending payment(s).\n", cleared);
+    return cleared;
+}
+
+static void evictExpiredPayments(unsigned long now) {
+    uint64_t masterNow = getCurrentMasterTimeMs();
+    lockQueue();
+    uint64_t ttl = (activePaymentCount >= MAX_PAYMENT_QUEUE_SIZE - 2)
+        ? PAYMENT_TTL_UNDER_PRESSURE_MS : PAYMENT_TTL_MS;
+    for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
+        if (!paymentSlotUsed[i]) continue;
+        // Uptime age resets on reboot, so also use the master-clock age when both are known.
+        uint64_t age = (uint64_t)(now - firstSeenMs[i]);
+        uint64_t recTs = paymentQueue[i].timestamp;
+        if (masterNow > 0 && recTs > 0 && masterNow > recTs && masterNow - recTs > age) {
+            age = masterNow - recTs;
+        }
+        if (age < ttl) continue;
+        if (paymentSlotPersisted[i] && !eraseRecord(i)) continue;
+        Serial.printf("[PAY QUEUE] Evicted unacknowledged tx_id='%s' for '%s' (%d pulse(s)) after %llu s.\n",
+                      paymentQueue[i].txId, paymentQueue[i].targetId, paymentQueue[i].pulses,
+                      age / 1000ULL);
+        resetSlotLocked(i);
+    }
+    unlockQueue();
+}
+
 void processPendingPaymentRetries() {
     unsigned long now = millis();
+
+    static unsigned long lastEvictionCheckMs = 0;
+    if (now - lastEvictionCheckMs >= 60000UL) {
+        lastEvictionCheckMs = now;
+        evictExpiredPayments(now);
+    }
 
     // 1. Retry unpersisted records in RAM with exponential backoff
     for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {

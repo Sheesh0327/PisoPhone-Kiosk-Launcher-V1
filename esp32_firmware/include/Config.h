@@ -152,10 +152,12 @@ void saveSlotLicenses();
 void syncAndroidIpsFromSlots();
 
 void processRevenuePersistence();
+void flushRevenueNow();
 
 void factoryResetDefaults();
-void updateMasterTime(uint64_t ts);
+void updateMasterTime(uint64_t ts, const String& sourceId = "");
 uint64_t getCurrentMasterTimeMs();
+String generateTxId(const char* prefix = "tx-");
 
 bool parseDeviceEntry(const String& entry, DeviceConfig& out);
 void forEachConfiguredDevice(std::function<bool(const DeviceConfig&)> callback);

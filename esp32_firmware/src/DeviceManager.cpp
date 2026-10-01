@@ -351,7 +351,12 @@ String getIpFromDeviceId(String id) {
     });
     if (foundIp.length() > 0) return foundIp;
 
-    return id; // fallback if id is already an IP address
+    // Last resort: the id may itself be an address, either bare or as "DEV_<ip>" (unidentified
+    // devices). Anything else is not routable.
+    String candidate = id.startsWith("DEV_") ? id.substring(4) : id;
+    IPAddress parsed;
+    if (parsed.fromString(candidate)) return candidate;
+    return "";
 }
 
 String getDeviceIdFromIp(String ip) {
