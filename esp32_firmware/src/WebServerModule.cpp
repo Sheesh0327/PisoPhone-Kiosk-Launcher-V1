@@ -77,6 +77,14 @@ void setupWebServer() {
     webServer.on("/api/coinslot/status", HTTP_GET, handleApiCoinslotStatus);
     webServer.on("/api/coinslot/ack", HTTP_ANY, handleApiCoinslotAck);
 
+    // Network coin-slot gateway (router payment verification). Disabled until a key is configured.
+    webServer.on("/api/gateway/challenge", HTTP_GET, handleGatewayChallenge);
+    webServer.on("/api/gateway/arm", HTTP_ANY, handleGatewayArm);
+    webServer.on("/api/gateway/status", HTTP_ANY, handleGatewayStatus);
+    webServer.on("/api/gateway/release", HTTP_ANY, handleGatewayRelease);
+    webServer.on("/api/gateway/ack", HTTP_ANY, handleGatewayAck);
+    webServer.on("/api/gateway/config", HTTP_ANY, handleGatewayConfig);
+
     webServer.on("/api/relay", HTTP_ANY, []() {
         if (!checkAdminAuth()) return;
 

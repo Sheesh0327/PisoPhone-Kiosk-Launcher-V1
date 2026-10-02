@@ -18,6 +18,7 @@
 #include "WebServerModule.h"
 #include "SuperAdminManager.h"
 #include "SuperAdminCreds.h"
+#include "GatewayCoinslot.h"
 #include "PaymentQueueManager.h"
 #include "FirmwareVersion.h"
 #include "Diagnostics.h"
@@ -127,6 +128,7 @@ void setup() {
 
     // Load NVS Configuration & Lifetime Vault Revenue safely
     loadAllConfig();
+    gatewayInit();
     if (defaultCredentialsActive()) {
         diagLog("[AUTH] WARNING: default admin credentials are still active; change them in Settings.\n");
     }

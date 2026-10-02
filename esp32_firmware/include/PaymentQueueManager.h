@@ -11,7 +11,7 @@ struct PaymentRecord {
     char targetId[97];
     int pulses;
     int creditSeconds;
-    uint8_t ownerType; // 1 = PHONE, 2 = CONTROLLER
+    uint8_t ownerType; // 1 = PHONE, 2 = CONTROLLER, 3 = GATEWAY
     uint64_t timestamp;
 };
 
@@ -28,6 +28,10 @@ bool acknowledgePhonePayment(const String& deviceId, const String& txId);
 int getPendingPhonePaymentsJson(const String& deviceId, String& outJsonArray);
 void dispatchPendingControllerPayments(const String& sessionId);
 void processPendingPaymentRetries();
+// Network gateway (router) payments are not pushed anywhere: the gateway polls for them and
+// acknowledges once it has granted access. These two read and clear one gateway session's coins.
+int getPendingGatewayPulses(const String& targetId);
+int acknowledgeGatewayPayments(const String& targetId);
 int clearPaymentQueue();
 
 #endif // PAYMENT_QUEUE_MANAGER_H
