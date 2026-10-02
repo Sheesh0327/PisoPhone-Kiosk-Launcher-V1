@@ -125,9 +125,12 @@ jobs:
         if: always()
         run: rm -f /tmp/release-keystore.jks
 
-      - name: Publish APK and version info to website/update
+      - name: Publish APK and version info
         env:
           BRANCH: ${{ github.ref_name }}
+          RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          RELEASES_REPO: ${{ vars.RELEASES_REPO || 'Sheesh0327/PisoPhone-Releases' }}
+          KEEP_PAGES_APK: ${{ vars.KEEP_PAGES_APK }}
         run: |
           VERSION_NAME="1.0.${{ github.run_number }}"
           if [ "${{ steps.channel.outputs.channel }}" != "stable" ]; then VERSION_NAME="$VERSION_NAME-dev"; fi
@@ -144,28 +147,63 @@ jobs:
             echo "::warning::apksigner not found; skipping signature verification."
           fi
           mkdir -p website/update
-          cp "$APK" website/update/app-release.apk
 
-          SHA=$(sha256sum website/update/app-release.apk | awk '{print $1}')
-          SIZE=$(stat -c %s website/update/app-release.apk)
+          SHA=$(sha256sum "$APK" | awk '{print $1}')
+          SIZE=$(stat -c %s "$APK")
           echo "Generated APK SHA-256: $SHA ($SIZE bytes)"
+
+          # The APK goes to a separate PUBLIC releases repository (this repository is private, and phones
+          # cannot log in to download from it). Needs the RELEASES_TOKEN secret; see docs/RELEASES.md.
+          URL=""
+          if [ -n "$RELEASES_TOKEN" ]; then
+            CHANNEL="${{ steps.channel.outputs.channel }}"
+            TAG="app-$CHANNEL-${{ github.run_number }}"
+            ASSET="pisophone-$VERSION_NAME.apk"
+            cp "$APK" "/tmp/$ASSET"
+            PRE=""
+            if [ "$CHANNEL" != "stable" ]; then PRE="--prerelease"; fi
+            GH_TOKEN="$RELEASES_TOKEN" gh release create "$TAG" "/tmp/$ASSET" --repo "$RELEASES_REPO" \
+              --title "PisoPhone $VERSION_NAME" $PRE \
+              --notes "Built from $GITHUB_SHA on branch $BRANCH. SHA-256: $SHA"
+            URL="https://github.com/$RELEASES_REPO/releases/download/$TAG/$ASSET"
+            echo "Published release asset: $URL"
+            # Keep only the 20 newest dev builds.
+            GH_TOKEN="$RELEASES_TOKEN" gh release list --repo "$RELEASES_REPO" --limit 200 --json tagName,createdAt \
+              -q '[.[] | select(.tagName | startswith("app-dev-"))] | sort_by(.createdAt) | reverse | .[20:] | .[].tagName' \
+              | xargs -r -n1 env GH_TOKEN="$RELEASES_TOKEN" gh release delete --repo "$RELEASES_REPO" --cleanup-tag --yes || true
+          else
+            echo "::warning::RELEASES_TOKEN is not set: the APK is committed to website/update instead (see docs/RELEASES.md)."
+          fi
+
+          # Phones running a build from before the 'url' field existed still download website/update/app-release.apk,
+          # so it stays published until you set the repository variable KEEP_PAGES_APK to 'false'.
+          if [ -z "$URL" ] || [ "$KEEP_PAGES_APK" != "false" ]; then
+            cp "$APK" website/update/app-release.apk
+            git add -f website/update/app-release.apk
+          else
+            git rm -q -f --ignore-unmatch website/update/app-release.apk
+          fi
 
           # Version info the in-app updater compares against; it is produced from the same
           # run number that was baked into the APK as versionCode.
+          URL_LINE=""
+          if [ -n "$URL" ]; then URL_LINE="\"url\": \"$URL\","; fi
           cat > website/update/app.json <<EOF
           {
             "versionCode": ${{ github.run_number }},
             "versionName": "$VERSION_NAME",
             "channel": "${{ steps.channel.outputs.channel }}",
+            $URL_LINE
             "sha256": "$SHA",
             "size": $SIZE,
             "releaseDate": "$(date -u +%Y-%m-%d)"
           }
           EOF
+          python3 -m json.tool website/update/app.json > /dev/null
 
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add -f website/update/app-release.apk website/update/app.json
+          git add -f website/update/app.json
           if ! git diff --staged --quiet; then
             # No [skip ci] marker: Cloudflare Pages honours it and would never deploy this commit.
             # This commit only touches website/update, which no workflow trigger matches, so it
