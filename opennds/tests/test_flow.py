@@ -275,9 +275,9 @@ try:
     check("No coins detected" in p, "no coins, no access")
     set_box(busy=True, coins_at=[])
     p = page("hidE", MAC_C, "start", "hyper")
-    for _ in range(5):
+    for _ in range(40):  # the waiting page polls; once the window failed to arm it turns into the busy page
         if "Coin slot is busy" in p: break
-        time.sleep(0.5); p = page("hidE", MAC_C, "start", "hyper")
+        time.sleep(0.5); p = page("hidE", MAC_C, "wait", "hyper")
     check("Coin slot is busy" in p and 'content="5; url=' in p and "coinact=start" in p, "busy page retries start")
     p = page("hidF", MAC_C, port=9)
     check("offline" in p.lower(), "listener down: friendly offline page")

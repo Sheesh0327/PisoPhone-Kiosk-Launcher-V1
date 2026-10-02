@@ -196,7 +196,10 @@ choose_wait_page() {
 	case "$state" in
 		starting | armed) PAGE="wait"; REFRESH="2 wait"; coinplan=$(printf '%s' "$cst" | jget plan) ;;
 		done) PAGE="result" ;;
-		error) PAGE="error"; err=$(printf '%s' "$cst" | jget error) ;;
+		error)
+			err=$(printf '%s' "$cst" | jget error)
+			# The coin slot was in use when the window tried to arm: friendly page that retries by itself.
+			if [ "$err" = "SLOT_BUSY" ]; then PAGE="busy"; REFRESH="5 start"; else PAGE="error"; fi ;;
 		*) PAGE="welcome" ;;
 	esac
 }
@@ -299,7 +302,7 @@ b.onclick=on;
 try{if(A){ctx=window.__ctx||new A();window.__ctx=ctx;ctx.resume();setTimeout(function(){if(ctx.state==="running")b.style.display="none"},50)}}catch(e){}
 function poll(){var x=new XMLHttpRequest();x.open("GET",url);x.onload=function(){
 var d=new DOMParser().parseFromString(x.responseText,"text/html"),n=d.getElementById("wait");
-if(!n){location.reload();return}
+if(!n){location.replace(url);return}
 var w=document.getElementById("wait");w.innerHTML=n.innerHTML;
 var p=parseInt((d.getElementById("pes").textContent||"").replace(/[^0-9]/g,""),10)||0;
 if(p>pes)ding(p-pes);pes=p};x.send()}
