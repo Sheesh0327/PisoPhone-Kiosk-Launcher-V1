@@ -1,3 +1,6 @@
+// GPIO layer: coin acceptor interrupt (pulse counting), relay that powers the acceptor, status
+// LED and the hardware reset pin. The ISR only counts pulses; everything else runs from loop().
+
 #include "HardwareManager.h"
 #include "CoinSlotManager.h"
 #include "Config.h"
@@ -16,8 +19,8 @@ LedSystemState currentLedState = LED_STATE_CONNECTING;
 
 static unsigned long lastLedToggleTime = 0;
 static const unsigned long LED_RAPID_TOGGLE_MS = 100;
-static const unsigned long LED_SLOW_TOGGLE_MS  = 500;
-static const unsigned long LED_COIN_PULSE_MS   = 60;
+static const unsigned long LED_SLOW_TOGGLE_MS = 500;
+static const unsigned long LED_COIN_PULSE_MS = 60;
 static int ledBlinksRemaining = 0;
 static bool ledState = false;
 
@@ -55,28 +58,28 @@ void processLedBlink() {
 
     // 2. Wi-Fi Status LED Indicator Patterns
     switch (currentLedState) {
-        case LED_STATE_CONNECTING:
-            if (now - lastLedToggleTime >= LED_RAPID_TOGGLE_MS) {
-                lastLedToggleTime = now;
-                ledState = !ledState;
-                setLedHardware(ledState);
-            }
-            break;
+    case LED_STATE_CONNECTING:
+        if (now - lastLedToggleTime >= LED_RAPID_TOGGLE_MS) {
+            lastLedToggleTime = now;
+            ledState = !ledState;
+            setLedHardware(ledState);
+        }
+        break;
 
-        case LED_STATE_FAILED:
-            if (now - lastLedToggleTime >= LED_SLOW_TOGGLE_MS) {
-                lastLedToggleTime = now;
-                ledState = !ledState;
-                setLedHardware(ledState);
-            }
-            break;
+    case LED_STATE_FAILED:
+        if (now - lastLedToggleTime >= LED_SLOW_TOGGLE_MS) {
+            lastLedToggleTime = now;
+            ledState = !ledState;
+            setLedHardware(ledState);
+        }
+        break;
 
-        case LED_STATE_CONNECTED:
-            if (!ledState) {
-                setLedHardware(true);
-                ledState = true;
-            }
-            break;
+    case LED_STATE_CONNECTED:
+        if (!ledState) {
+            setLedHardware(true);
+            ledState = true;
+        }
+        break;
     }
 }
 
@@ -106,7 +109,8 @@ void setRelayHardware(bool active) {
         digitalWrite(relayPin, relayActiveLow ? LOW : HIGH);
         if (!isRelayCurrentlyActive) {
             isRelayCurrentlyActive = true;
-            Serial.printf("[⚡ RELAY] Coin slot powered ON (Pin %d, Mode=OUTPUT, ActiveLow=%s).\n", relayPin, relayActiveLow ? "true" : "false");
+            Serial.printf("[⚡ RELAY] Coin slot powered ON (Pin %d, Mode=OUTPUT, ActiveLow=%s).\n", relayPin,
+                          relayActiveLow ? "true" : "false");
         }
     } else {
         // At idle, set pin to high-impedance INPUT mode so sensitive 5V optocoupled relay modules won't false trigger
@@ -114,7 +118,8 @@ void setRelayHardware(bool active) {
         pinMode(relayPin, INPUT);
         if (isRelayCurrentlyActive) {
             isRelayCurrentlyActive = false;
-            Serial.printf("[⚡ RELAY] Coin slot powered down into standby (Pin %d, Mode=INPUT, ActiveLow=%s).\n", relayPin, relayActiveLow ? "true" : "false");
+            Serial.printf("[⚡ RELAY] Coin slot powered down into standby (Pin %d, Mode=INPUT, ActiveLow=%s).\n",
+                          relayPin, relayActiveLow ? "true" : "false");
         }
     }
 }
@@ -126,10 +131,9 @@ void processRelayState() {
     if (cur != lastAppliedRelayState) {
         lastAppliedRelayState = cur;
         setRelayHardware(shouldBeOn);
-        Serial.printf("[⚡ RELAY] Pin %d set to %s (Mode=%s, ActiveLow=%s, SlotArmed=%s)\n",
-            relayPin, shouldBeOn ? "ON (POWERED)" : "OFF (STANDBY/INPUT)",
-            shouldBeOn ? "OUTPUT" : "INPUT",
-            relayActiveLow ? "true" : "false", shouldBeOn ? "true" : "false");
+        Serial.printf("[⚡ RELAY] Pin %d set to %s (Mode=%s, ActiveLow=%s, SlotArmed=%s)\n", relayPin,
+                      shouldBeOn ? "ON (POWERED)" : "OFF (STANDBY/INPUT)", shouldBeOn ? "OUTPUT" : "INPUT",
+                      relayActiveLow ? "true" : "false", shouldBeOn ? "true" : "false");
     }
 }
 
@@ -158,7 +162,7 @@ void IRAM_ATTR universalCoinIsr() {
 
 void applyCoinSlotHardwareConfig() {
     detachInterrupt(digitalPinToInterrupt(universalCoinPin));
-    
+
     // Universal Multi-Coin Pulse Slot (Allan 124A/616A)
     pinMode(universalCoinPin, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(universalCoinPin), universalCoinIsr, FALLING);
@@ -194,7 +198,8 @@ void processHardwareResetPin() {
             resetPinLowStart = millis();
             Serial.printf("[⚠️] GPIO %d connected to GND. Hold for 5 seconds to factory reset...\n", HARDWARE_RESET_PIN);
         } else if (millis() - resetPinLowStart >= 5000) {
-            Serial.printf("\n[⚠️ RESET] GPIO %d held to GND for > 5 seconds! Triggering Factory Reset...\n", HARDWARE_RESET_PIN);
+            Serial.printf("\n[⚠️ RESET] GPIO %d held to GND for > 5 seconds! Triggering Factory Reset...\n",
+                          HARDWARE_RESET_PIN);
             factoryResetDefaults();
             delay(1000);
             ESP.restart();

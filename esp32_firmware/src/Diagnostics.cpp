@@ -28,26 +28,41 @@ static String diagResetHistory = "";
 
 static const char* resetReasonName(esp_reset_reason_t reason) {
     switch (reason) {
-        case ESP_RST_POWERON:   return "POWERON";
-        case ESP_RST_EXT:       return "EXT_PIN";
-        case ESP_RST_SW:        return "SOFTWARE";
-        case ESP_RST_PANIC:     return "PANIC";
-        case ESP_RST_INT_WDT:   return "INT_WDT";
-        case ESP_RST_TASK_WDT:  return "TASK_WDT";
-        case ESP_RST_WDT:       return "WDT";
-        case ESP_RST_DEEPSLEEP: return "DEEPSLEEP";
-        case ESP_RST_BROWNOUT:  return "BROWNOUT";
-        case ESP_RST_SDIO:      return "SDIO";
-        default:                return "UNKNOWN";
+    case ESP_RST_POWERON:
+        return "POWERON";
+    case ESP_RST_EXT:
+        return "EXT_PIN";
+    case ESP_RST_SW:
+        return "SOFTWARE";
+    case ESP_RST_PANIC:
+        return "PANIC";
+    case ESP_RST_INT_WDT:
+        return "INT_WDT";
+    case ESP_RST_TASK_WDT:
+        return "TASK_WDT";
+    case ESP_RST_WDT:
+        return "WDT";
+    case ESP_RST_DEEPSLEEP:
+        return "DEEPSLEEP";
+    case ESP_RST_BROWNOUT:
+        return "BROWNOUT";
+    case ESP_RST_SDIO:
+        return "SDIO";
+    default:
+        return "UNKNOWN";
     }
 }
 
 static const char* coinSlotStateName(CoinSlotState state) {
     switch (state) {
-        case CoinSlotState::IDLE:     return "IDLE";
-        case CoinSlotState::ARMED:    return "ARMED";
-        case CoinSlotState::DRAINING: return "DRAINING";
-        default:                      return "UNKNOWN";
+    case CoinSlotState::IDLE:
+        return "IDLE";
+    case CoinSlotState::ARMED:
+        return "ARMED";
+    case CoinSlotState::DRAINING:
+        return "DRAINING";
+    default:
+        return "UNKNOWN";
     }
 }
 
@@ -75,7 +90,8 @@ void diagInit() {
         diagResetHistory = history;
     }
 
-    diagLog("[DIAG] Boot #%u, reset reason: %s, firmware v%s", (unsigned)diagBootCount, diagResetReason, PISO_FW_VERSION);
+    diagLog("[DIAG] Boot #%u, reset reason: %s, firmware v%s", (unsigned)diagBootCount, diagResetReason,
+            PISO_FW_VERSION);
 }
 
 void diagLog(const char* fmt, ...) {
@@ -163,7 +179,7 @@ String diagBuildJson() {
     JsonArray log = doc.createNestedArray("log");
     if (diagMutex != nullptr) xSemaphoreTake(diagMutex, portMAX_DELAY);
     for (size_t i = 0; i < diagRing.size(); i++) {
-        log.add(String(diagRing.at(i)));  // copies the text, so later writes cannot change it
+        log.add(String(diagRing.at(i))); // copies the text, so later writes cannot change it
     }
     doc["log_total"] = diagRing.total();
     if (diagMutex != nullptr) xSemaphoreGive(diagMutex);

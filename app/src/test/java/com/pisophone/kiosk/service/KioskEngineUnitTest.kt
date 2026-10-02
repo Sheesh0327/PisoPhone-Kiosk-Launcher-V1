@@ -13,7 +13,6 @@ import org.robolectric.RobolectricTestRunner
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 class KioskEngineUnitTest {
-
     private lateinit var context: Context
     private lateinit var stateManager: KioskStateManager
     private lateinit var engine: KioskEngine

@@ -10,16 +10,12 @@
 typedef std::function<void(const String& sessionId, int pulses)> CoinPaymentCallback;
 typedef std::function<void(const String& sessionId, const char* reason)> CoinSessionEndCallback;
 
-enum class CoinSlotOwnerType {
-    ANY,
-    PHONE,
-    CONTROLLER
-};
+enum class CoinSlotOwnerType { ANY, PHONE, CONTROLLER };
 
 enum class CoinSlotState {
-    IDLE,       // No session, relay OFF, acceptor disabled
-    ARMED,      // Active session running, relay ON, accepting coins
-    DRAINING    // Session closing/timed-out, relay ON, waiting for in-flight pulses to finish
+    IDLE,    // No session, relay OFF, acceptor disabled
+    ARMED,   // Active session running, relay ON, accepting coins
+    DRAINING // Session closing/timed-out, relay ON, waiting for in-flight pulses to finish
 };
 
 // ============================================================================
@@ -37,14 +33,14 @@ void initCoinSlotManager();
  * - If already reserved by SAME sessionId & ownerType: refreshes TTL and preserves accumulated pulses.
  * - If reserved/draining for ANOTHER session or different ownerType: rejects request (returns false).
  */
-bool reserveCoinSlot(const String& sessionId, CoinSlotOwnerType ownerType, unsigned long ttlMs, 
-                     CoinPaymentCallback onPayment = nullptr, 
-                     CoinSessionEndCallback onSessionEnd = nullptr);
+bool reserveCoinSlot(const String& sessionId, CoinSlotOwnerType ownerType, unsigned long ttlMs,
+                     CoinPaymentCallback onPayment = nullptr, CoinSessionEndCallback onSessionEnd = nullptr);
 
 /**
  * Releases the coin slot reservation and de-energizes the acceptor relay.
  */
-void releaseCoinSlot(const String& sessionId, CoinSlotOwnerType ownerType = CoinSlotOwnerType::ANY, bool force = false, const char* reason = "RELEASED");
+void releaseCoinSlot(const String& sessionId, CoinSlotOwnerType ownerType = CoinSlotOwnerType::ANY, bool force = false,
+                     const char* reason = "RELEASED");
 
 /**
  * Extends/refreshes the active reservation TTL for the current session.

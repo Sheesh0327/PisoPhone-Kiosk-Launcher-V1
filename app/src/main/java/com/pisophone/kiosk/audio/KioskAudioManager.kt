@@ -21,7 +21,7 @@ import java.util.Locale
 
 class KioskAudioManager(
     private val context: Context,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
 ) {
     companion object {
         private const val TAG = "KioskAudioManager"
@@ -30,19 +30,27 @@ class KioskAudioManager(
     }
 
     private var tts: TextToSpeech? = null
+
     @Volatile private var isTtsReady = false
+
     @Volatile private var isTtsInitializing = false
+
     @Volatile private var lastTtsInitAttemptMs = 0L
     private var pendingSpeechText: String? = null
+
     @Volatile private var isTtsActive = false
 
     private val systemAudioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
     private var audioFocusRequest: AudioFocusRequest? = null
 
     private val volumeLock = Any()
+
     @Volatile private var preMuteMediaVolume: Int? = null
+
     @Volatile private var preMuteAlarmVolume: Int? = null
+
     @Volatile private var isMediaMutedForTts = false
+
     @Volatile private var isAlarmMaxedForTts = false
     private val mainHandler = Handler(Looper.getMainLooper())
     private var safetyUnmuteRunnable: Runnable? = null
@@ -50,6 +58,7 @@ class KioskAudioManager(
 
     private var coinAudioTrack: AudioTrack? = null
     private var waitingMusicTrack: AudioTrack? = null
+
     @Volatile private var isWaitingMusicDesired = false
     private var waitingMusicJob: Job? = null
     private val audioLock = Any()
@@ -354,10 +363,21 @@ class KioskAudioManager(
         val buffer = ShortArray(totalSamples)
 
         val notes = doubleArrayOf(
-            523.25, 659.25, 783.99, 1046.50, // C5, E5, G5, C6 (s 1-4)
-            880.00, 698.46, 783.99, 659.25,  // A5, F5, G5, E5 (s 5-8)
-            587.33, 659.25, 783.99, 880.00,  // D5, E5, G5, A5 (s 9-12)
-            987.77, 1046.50, 1174.66         // B5, C6, D6 (s 13-15 urgency)
+            523.25,
+            659.25,
+            783.99,
+            1046.50, // C5, E5, G5, C6 (s 1-4)
+            880.00,
+            698.46,
+            783.99,
+            659.25, // A5, F5, G5, E5 (s 5-8)
+            587.33,
+            659.25,
+            783.99,
+            880.00, // D5, E5, G5, A5 (s 9-12)
+            987.77,
+            1046.50,
+            1174.66, // B5, C6, D6 (s 13-15 urgency)
         )
 
         for (i in 0 until totalSamples) {
@@ -535,14 +555,14 @@ class KioskAudioManager(
                     AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_MEDIA)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build()
+                        .build(),
                 )
                 .setAudioFormat(
                     AudioFormat.Builder()
                         .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
                         .setSampleRate(sampleRate)
                         .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                        .build()
+                        .build(),
                 )
                 .setBufferSizeInBytes(buffer.size * 2)
                 .setTransferMode(AudioTrack.MODE_STATIC)
@@ -592,7 +612,7 @@ class KioskAudioManager(
 
                     track.write(buffer, 0, buffer.size)
                     track.setLoopPoints(0, buffer.size, -1) // Infinite looping until stopped
-                    
+
                     if (isWaitingMusicDesired && !isTtsActive) {
                         track.play()
                         waitingMusicTrack = track

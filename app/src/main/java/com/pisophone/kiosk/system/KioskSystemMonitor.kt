@@ -19,6 +19,7 @@ interface KioskSystemMonitorDelegate {
     fun onScreenSleep()
     fun onScreenWake()
     fun getAudioManager(): KioskAudioManager?
+
     /** True while a customer is using the phone (paid time running). */
     fun isSessionActive(): Boolean = false
 }
@@ -26,7 +27,7 @@ interface KioskSystemMonitorDelegate {
 class KioskSystemMonitor(
     private val context: Context,
     private val scope: CoroutineScope,
-    private val delegate: KioskSystemMonitorDelegate
+    private val delegate: KioskSystemMonitorDelegate,
 ) {
     companion object {
         private const val TAG = "KioskSystemMonitor"
@@ -39,6 +40,7 @@ class KioskSystemMonitor(
 
     private var previousAlertState = BatteryAlertState.NONE
     private var lastBatteryVoiceReminderMs = 0L
+
     // The high-battery reminder fires once per charge cycle; unplugging starts a new cycle.
     @Volatile private var highBatteryAlertedThisCycle = false
 
@@ -64,8 +66,8 @@ class KioskSystemMonitor(
                 else -> -1
             }
             val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
-                             status == BatteryManager.BATTERY_STATUS_FULL ||
-                             plugged > 0
+                status == BatteryManager.BATTERY_STATUS_FULL ||
+                plugged > 0
             return BatteryStatus(level = pct, isCharging = isCharging)
         } catch (_: Exception) {
             return BatteryStatus(level = -1, isCharging = false)
@@ -176,8 +178,8 @@ class KioskSystemMonitor(
             }
 
             val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
-                             status == BatteryManager.BATTERY_STATUS_FULL ||
-                             plugged > 0
+                status == BatteryManager.BATTERY_STATUS_FULL ||
+                plugged > 0
 
             if (pct >= 0) {
                 val alertsEnabled = KioskSecurity.isBatteryAlertsEnabled(context)
@@ -217,8 +219,8 @@ class KioskSystemMonitor(
             else -> _batteryStatus.value.level.coerceIn(0, 100)
         }
         val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
-                         status == BatteryManager.BATTERY_STATUS_FULL ||
-                         plugged > 0
+            status == BatteryManager.BATTERY_STATUS_FULL ||
+            plugged > 0
 
         val alertsEnabled = KioskSecurity.isBatteryAlertsEnabled(context)
         val lowThreshold = KioskSecurity.getLowBatteryThreshold(context)
@@ -236,8 +238,11 @@ class KioskSystemMonitor(
             if (previousAlertState == BatteryAlertState.LOW_BATTERY_UNPLUGGED && isCharging) {
                 audioMgr.speakWarning("Charger connected. Battery charging.")
                 audioMgr.playSynthesizedTone(1046, 220) // High C6 confirmation chime
-            } else if (previousAlertState == BatteryAlertState.HIGH_BATTERY_PLUGGED && !isCharging &&
-                highBatteryAlertedThisCycle && !delegate.isSessionActive()) {
+            } else if (previousAlertState == BatteryAlertState.HIGH_BATTERY_PLUGGED &&
+                !isCharging &&
+                highBatteryAlertedThisCycle &&
+                !delegate.isSessionActive()
+            ) {
                 audioMgr.speakWarning("Charger disconnected. Battery protection active.")
                 audioMgr.playSynthesizedTone(784, 220) // G5 confirmation chime
             }
@@ -256,24 +261,24 @@ class KioskSystemMonitor(
         val audioMgr = delegate.getAudioManager() ?: return
 
         if (currentBattery.alertState == BatteryAlertState.LOW_BATTERY_UNPLUGGED) {
-                if (now - lastBatteryVoiceReminderMs >= 15000L) {
-                    lastBatteryVoiceReminderMs = now
-                    audioMgr.playAnnoyingLowBatteryTone()
-                    HardwareFeedback.triggerVibration(context, longArrayOf(0, 200, 100, 200, 100, 400))
-                    audioMgr.speakWarning("Warning! Battery is very low at ${currentBattery.level} percent. Please connect the charger immediately to prevent shutdown.")
-                }
-            } else if (currentBattery.alertState == BatteryAlertState.HIGH_BATTERY_PLUGGED) {
-                // Speaking mutes the customer's media and the alert feedback strobes, so never
-                // during a session; it waits until the session ends and then fires only once.
-                if (!highBatteryAlertedThisCycle && !delegate.isSessionActive()) {
-                    highBatteryAlertedThisCycle = true
-                    lastBatteryVoiceReminderMs = now
-                    audioMgr.playHighBatteryAttentionTone()
-                    HardwareFeedback.triggerVibration(context, longArrayOf(0, 150, 80, 150))
-                    audioMgr.speakWarning("Attention! Battery has reached ${currentBattery.level} percent. Please disconnect the charger now to protect battery health.")
-                }
+            if (now - lastBatteryVoiceReminderMs >= 15000L) {
+                lastBatteryVoiceReminderMs = now
+                audioMgr.playAnnoyingLowBatteryTone()
+                HardwareFeedback.triggerVibration(context, longArrayOf(0, 200, 100, 200, 100, 400))
+                audioMgr.speakWarning("Warning! Battery is very low at ${currentBattery.level} percent. Please connect the charger immediately to prevent shutdown.")
+            }
+        } else if (currentBattery.alertState == BatteryAlertState.HIGH_BATTERY_PLUGGED) {
+            // Speaking mutes the customer's media and the alert feedback strobes, so never
+            // during a session; it waits until the session ends and then fires only once.
+            if (!highBatteryAlertedThisCycle && !delegate.isSessionActive()) {
+                highBatteryAlertedThisCycle = true
+                lastBatteryVoiceReminderMs = now
+                audioMgr.playHighBatteryAttentionTone()
+                HardwareFeedback.triggerVibration(context, longArrayOf(0, 150, 80, 150))
+                audioMgr.speakWarning("Attention! Battery has reached ${currentBattery.level} percent. Please disconnect the charger now to protect battery health.")
             }
         }
+    }
 
     fun shutdown() {
         unregisterScreenOffReceiver()

@@ -30,6 +30,7 @@ interface Esp32ConnectionDelegate {
     fun onEsp32Discovered(ip: String)
     fun onOnlineStatusChanged(isOnline: Boolean, mac: String?)
     fun onConfigSynced(price: Double?, minutes: Int?, alias: String?, adminPin: String? = null, slotNum: Int? = null)
+
     /**
      * Credits a coin reported by the ESP32. The returned [PaymentResult] decides whether the
      * transaction is acknowledged to the ESP32: only APPLIED / ALREADY_APPLIED are acked, so the
@@ -54,7 +55,7 @@ interface Esp32ConnectionDelegate {
 class Esp32ConnectionManager(
     private val context: Context,
     private val scope: CoroutineScope,
-    private val delegate: Esp32ConnectionDelegate
+    private val delegate: Esp32ConnectionDelegate,
 ) {
     companion object {
         private const val TAG = "Esp32ConnectionManager"
@@ -98,7 +99,7 @@ class Esp32ConnectionManager(
         isAlreadyBound = {
             val isOnline = (System.currentTimeMillis() - lastHeartbeatTime < HEARTBEAT_TIMEOUT_MS) && consecutiveHeartbeatFailures < 5
             isOnline && !esp32Ip.isNullOrBlank()
-        }
+        },
     )
 
     fun setEsp32Ip(ip: String?) {
@@ -116,9 +117,7 @@ class Esp32ConnectionManager(
         discoveryScanner.triggerDiscovery(localIp)
     }
 
-    fun probeEsp32Connection(ip: String): Boolean {
-        return discoveryScanner.probeEsp32Connection(ip)
-    }
+    fun probeEsp32Connection(ip: String): Boolean = discoveryScanner.probeEsp32Connection(ip)
 
     private fun handleEsp32Discovered(ip: String, rawResponseBody: String? = null) {
         val (ipHost, esp32Port) = discoveryScanner.getEsp32HostAndPort(ip)
@@ -178,7 +177,7 @@ class Esp32ConnectionManager(
             val myName = KioskSecurity.getDeviceAlias(context).takeIf { it.isNotBlank() } ?: "PisoPhone Terminal"
             val encodedName = java.net.URLEncoder.encode(myName, "UTF-8")
             val req = Request.Builder()
-                .url("http://$ipHost:${esp32Port}/identify?device_id=$deviceId&name=$encodedName&app=1&client=pisophone_app")
+                .url("http://$ipHost:$esp32Port/identify?device_id=$deviceId&name=$encodedName&app=1&client=pisophone_app")
                 .build()
             httpClient.newCall(req).execute().use { resp ->
                 if (resp.isSuccessful) {
@@ -216,7 +215,7 @@ class Esp32ConnectionManager(
                         val cleanIp = if (currentIp == "127.0.0.1" || currentIp.isBlank()) "" else currentIp
 
                         val req = Request.Builder()
-                            .url("http://$host:${esp32Port}/heartbeat?device_id=$deviceId&ip=$cleanIp&name=$encodedName&time=${delegate.getSessionTimeRemaining()}&state=${delegate.getAppState()}&battery=$curBat&charging=${if (isChg) 1 else 0}&ts=$ts&sig=$sig&source=app&app=1&client=pisophone_app")
+                            .url("http://$host:$esp32Port/heartbeat?device_id=$deviceId&ip=$cleanIp&name=$encodedName&time=${delegate.getSessionTimeRemaining()}&state=${delegate.getAppState()}&battery=$curBat&charging=${if (isChg) 1 else 0}&ts=$ts&sig=$sig&source=app&app=1&client=pisophone_app")
                             .build()
                         try {
                             httpClient.newCall(req).execute().use { response ->
@@ -224,77 +223,79 @@ class Esp32ConnectionManager(
                                 val body = response.body?.string() ?: ""
 
                                 if (response.isSuccessful || code == 403 || code == 423) {
-                                consecutiveHeartbeatFailures = 0
-                                lastHeartbeatTime = System.currentTimeMillis()
-                                if (body.isNotBlank()) {
-                                    try {
-                                        val json = JSONObject(body)
-                                        val slotNum = json.optInt("slot_num", json.optInt("slot", 0))
-                                        val isUnassigned = json.optString("status", "") == "unassigned" ||
+                                    consecutiveHeartbeatFailures = 0
+                                    lastHeartbeatTime = System.currentTimeMillis()
+                                    if (body.isNotBlank()) {
+                                        try {
+                                            val json = JSONObject(body)
+                                            val slotNum = json.optInt("slot_num", json.optInt("slot", 0))
+                                            val isUnassigned = json.optString("status", "") == "unassigned" ||
                                                 json.optString("slot_status", "") == "unassigned" ||
                                                 (!json.optBoolean("is_paired", true) && slotNum <= 0)
-                                        val isExpired = isUnassigned ||
+                                            val isExpired = isUnassigned ||
                                                 json.optBoolean("slot_expired", false) ||
                                                 json.optBoolean("lockdown", false) ||
                                                 json.optString("status", "") == "expired" ||
                                                 json.optString("slot_status", "") == "expired"
-                                        val expiresAt = json.optLong("expires_at", 0L)
-                                        if (isUnassigned) {
-                                            sendPairingRequest(targetIp)
-                                        }
-                                        val errorMsg = if (json.has("message") && json.optString("message").isNotBlank()) {
-                                            json.optString("message")
-                                        } else {
-                                            json.optString("error", "Please activate device slot on ESP32 Portal.")
-                                        }
-
-                                        if (isExpired) {
-                                            delegate.onSlotLockdown(errorMsg, slotNum, expiresAt)
-                                        } else {
-                                            delegate.onSlotRestored(slotNum)
-
-                                            val isWarning = json.optBoolean("slot_warning", false) ||
-                                                    json.optString("slot_status", "") == "warning"
-                                            val daysLeft = if (json.has("days_left")) json.optInt("days_left", -1) else -1
-                                            val warnMsg = json.optString("warning_message", "Slot license nearing expiration")
-                                            if (isWarning && daysLeft in 0..7) {
-                                                delegate.onSlotWarning(daysLeft, expiresAt, slotNum, warnMsg)
+                                            val expiresAt = json.optLong("expires_at", 0L)
+                                            if (isUnassigned) {
+                                                sendPairingRequest(targetIp)
                                             }
-                                        }
+                                            val errorMsg = if (json.has("message") && json.optString("message").isNotBlank()) {
+                                                json.optString("message")
+                                            } else {
+                                                json.optString("error", "Please activate device slot on ESP32 Portal.")
+                                            }
 
-                                        val mac = if (json.has("mac")) json.optString("mac", "") else null
-                                        val alias = if (json.has("device_name")) json.optString("device_name", "").trim() else null
-                                        val price = if (json.has("price")) json.optDouble("price", 5.0) else null
-                                        val minutes = if (json.has("minutes")) json.optInt("minutes", 30) else null
-                                        val encryptedPin = json.optString("admin_pin", "")
-                                        val decryptedPin = if (encryptedPin.isNotBlank()) {
-                                            val dec = KioskSecurity.decrypt(encryptedPin, delegate.getSecretKey()).trim()
-                                            if (dec.startsWith("PIN:")) dec.substring(4).trim().takeIf { it.isNotBlank() } else null
-                                        } else null
-                                        
-                                        Log.d(TAG, "[HEARTBEAT] JSON parsing successful. Setting online to true.")
-                                        delegate.onOnlineStatusChanged(true, mac)
-                                        delegate.onConfigSynced(price, minutes, alias, decryptedPin, slotNum)
+                                            if (isExpired) {
+                                                delegate.onSlotLockdown(errorMsg, slotNum, expiresAt)
+                                            } else {
+                                                delegate.onSlotRestored(slotNum)
 
-                                        if (json.has("arena_active")) {
-                                            val arenaActive = json.optBoolean("arena_active", false)
-                                            val arenaRole = json.optInt("arena_role", 0)
-                                            val arenaStake = json.optInt("arena_stake", 15)
-                                            delegate.onArenaModeSynced(arenaActive, arenaRole, arenaStake)
+                                                val isWarning = json.optBoolean("slot_warning", false) ||
+                                                    json.optString("slot_status", "") == "warning"
+                                                val daysLeft = if (json.has("days_left")) json.optInt("days_left", -1) else -1
+                                                val warnMsg = json.optString("warning_message", "Slot license nearing expiration")
+                                                if (isWarning && daysLeft in 0..7) {
+                                                    delegate.onSlotWarning(daysLeft, expiresAt, slotNum, warnMsg)
+                                                }
+                                            }
+
+                                            val mac = if (json.has("mac")) json.optString("mac", "") else null
+                                            val alias = if (json.has("device_name")) json.optString("device_name", "").trim() else null
+                                            val price = if (json.has("price")) json.optDouble("price", 5.0) else null
+                                            val minutes = if (json.has("minutes")) json.optInt("minutes", 30) else null
+                                            val encryptedPin = json.optString("admin_pin", "")
+                                            val decryptedPin = if (encryptedPin.isNotBlank()) {
+                                                val dec = KioskSecurity.decrypt(encryptedPin, delegate.getSecretKey()).trim()
+                                                if (dec.startsWith("PIN:")) dec.substring(4).trim().takeIf { it.isNotBlank() } else null
+                                            } else {
+                                                null
+                                            }
+
+                                            Log.d(TAG, "[HEARTBEAT] JSON parsing successful. Setting online to true.")
+                                            delegate.onOnlineStatusChanged(true, mac)
+                                            delegate.onConfigSynced(price, minutes, alias, decryptedPin, slotNum)
+
+                                            if (json.has("arena_active")) {
+                                                val arenaActive = json.optBoolean("arena_active", false)
+                                                val arenaRole = json.optInt("arena_role", 0)
+                                                val arenaStake = json.optInt("arena_stake", 15)
+                                                delegate.onArenaModeSynced(arenaActive, arenaRole, arenaStake)
+                                            }
+                                        } catch (e: Exception) {
+                                            Log.e(TAG, "[HEARTBEAT] Exception parsing JSON body: ${e.message}", e)
                                         }
-                                    } catch (e: Exception) {
-                                        Log.e(TAG, "[HEARTBEAT] Exception parsing JSON body: ${e.message}", e)
+                                    } else {
+                                        Log.d(TAG, "[HEARTBEAT] Body is blank. Setting online to true.")
+                                        delegate.onOnlineStatusChanged(true, null)
                                     }
                                 } else {
-                                    Log.d(TAG, "[HEARTBEAT] Body is blank. Setting online to true.")
-                                    delegate.onOnlineStatusChanged(true, null)
+                                    Log.w(TAG, "[HEARTBEAT] Unsuccessful HTTP code: $code")
+                                    consecutiveHeartbeatFailures++
+                                    checkOfflineThreshold(currentIp)
                                 }
-                            } else {
-                                Log.w(TAG, "[HEARTBEAT] Unsuccessful HTTP code: $code")
-                                consecutiveHeartbeatFailures++
-                                checkOfflineThreshold(currentIp)
                             }
-                        }
                         } catch (e: Exception) {
                             Log.e(TAG, "[HEARTBEAT] Exception during HTTP request: ${e.message}", e)
                             consecutiveHeartbeatFailures++
@@ -354,9 +355,12 @@ class Esp32ConnectionManager(
 
     private fun sendHttpUnarm(ipHost: String, deviceId: String) {
         try {
-            val ts = System.currentTimeMillis().toString()
-            val sig = KioskSecurity.signCoinslotRequest("unarm", deviceId, ts, "", delegate.getSecretKey())
-            val unarmUrl = "http://$ipHost:80/api/coinslot/unarm?device_id=$deviceId&ts=$ts&sig=$sig"
+            val unarmUrl = Esp32CoinslotRequests.signedUrl(
+                host = ipHost,
+                action = Esp32CoinslotRequests.ACTION_UNARM,
+                deviceId = deviceId,
+                secret = delegate.getSecretKey(),
+            )
             val req = Request.Builder().url(unarmUrl).build()
             httpClient.newCall(req).execute().close()
             Log.d(TAG, "Sent HTTP unarm to $ipHost for $deviceId")
@@ -472,9 +476,13 @@ class Esp32ConnectionManager(
         // Execute primary reliable HTTP arming
         var httpArmSuccess = false
         try {
-            val armTs = System.currentTimeMillis().toString()
-            val armSig = KioskSecurity.signCoinslotRequest("arm", deviceId, armTs, "", delegate.getSecretKey())
-            val armUrl = "http://$targetIpHost:80/api/coinslot/arm?device_id=$deviceId&ip=$localIp&duration=$armingTimeoutSeconds&ts=$armTs&sig=$armSig"
+            val armUrl = Esp32CoinslotRequests.signedUrl(
+                host = targetIpHost,
+                action = Esp32CoinslotRequests.ACTION_ARM,
+                deviceId = deviceId,
+                secret = delegate.getSecretKey(),
+                extraQuery = "ip=$localIp&duration=$armingTimeoutSeconds",
+            )
             Log.d(TAG, "Requesting coin slot arm via HTTP: $armUrl (attempt #$attemptId)")
             val req = Request.Builder().url(armUrl).build()
             val resp = httpClient.newCall(req).execute()
@@ -622,9 +630,13 @@ class Esp32ConnectionManager(
     private fun sendTxAck(ipHost: String, deviceId: String, txId: String) {
         scope.launch(Dispatchers.IO) {
             try {
-                val ackTs = System.currentTimeMillis().toString()
-                val ackSig = KioskSecurity.signCoinslotRequest("ack", deviceId, ackTs, txId, delegate.getSecretKey())
-                val ackUrl = "http://$ipHost:80/api/coinslot/ack?device_id=$deviceId&tx_id=$txId&ts=$ackTs&sig=$ackSig"
+                val ackUrl = Esp32CoinslotRequests.signedUrl(
+                    host = ipHost,
+                    action = Esp32CoinslotRequests.ACTION_ACK,
+                    deviceId = deviceId,
+                    secret = delegate.getSecretKey(),
+                    txId = txId,
+                )
                 val req = Request.Builder().url(ackUrl).build()
                 httpClient.newCall(req).execute().close()
             } catch (_: Exception) {}

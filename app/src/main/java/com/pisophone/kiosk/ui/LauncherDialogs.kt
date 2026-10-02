@@ -45,7 +45,7 @@ class LauncherThemeColors(
     val textSecondary: Color = Color(0xFF94A3B8),
     val textMuted: Color = Color(0xFF64748B),
     val border: Color = Color(0xFF1E293B),
-    val borderEmerald: Color = Color(0x4010B981)
+    val borderEmerald: Color = Color(0x4010B981),
 )
 
 @Composable
@@ -55,7 +55,7 @@ fun PinAppPickerModal(
     apps: List<AppInfo>,
     colors: LauncherThemeColors,
     onDismiss: () -> Unit,
-    onSlotPinned: () -> Unit
+    onSlotPinned: () -> Unit,
 ) {
     var pickerSearchQuery by remember { mutableStateOf("") }
     val pickerApps = remember(apps, pickerSearchQuery) {
@@ -69,14 +69,14 @@ fun PinAppPickerModal(
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0xDD020617))
                 .padding(20.dp),
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center,
         ) {
             Surface(
                 modifier = Modifier
@@ -85,40 +85,40 @@ fun PinAppPickerModal(
                     .clip(RoundedCornerShape(24.dp))
                     .border(1.dp, colors.borderEmerald, RoundedCornerShape(24.dp)),
                 color = colors.surface,
-                shadowElevation = 24.dp
+                shadowElevation = 24.dp,
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(20.dp)
+                        .padding(20.dp),
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column {
                             Text(
                                 text = "Pin App to Slot ${targetSlot + 1}",
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = colors.textPrimary
+                                color = colors.textPrimary,
                             )
                             Text(
                                 text = "Select an app or game for quick access",
                                 fontSize = 12.sp,
-                                color = colors.textSecondary
+                                color = colors.textSecondary,
                             )
                         }
 
                         IconButton(
                             onClick = onDismiss,
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier.size(32.dp),
                         ) {
                             Icon(
                                 Icons.Filled.Close,
                                 contentDescription = "Close",
-                                tint = colors.textSecondary
+                                tint = colors.textSecondary,
                             )
                         }
                     }
@@ -140,11 +140,11 @@ fun PinAppPickerModal(
                             focusedBorderColor = colors.primary,
                             unfocusedBorderColor = colors.border,
                             focusedTextColor = colors.textPrimary,
-                            unfocusedTextColor = colors.textPrimary
+                            unfocusedTextColor = colors.textPrimary,
                         ),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(46.dp)
+                            .height(46.dp),
                     )
 
                     Spacer(modifier = Modifier.height(14.dp))
@@ -155,7 +155,7 @@ fun PinAppPickerModal(
                             .fillMaxWidth()
                             .weight(1f),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         items(pickerApps, key = { it.packageName }) { app ->
                             Surface(
@@ -169,11 +169,11 @@ fun PinAppPickerModal(
                                     },
                                 color = colors.cardBg,
                                 shape = RoundedCornerShape(14.dp),
-                                border = BorderStroke(1.dp, colors.border)
+                                border = BorderStroke(1.dp, colors.border),
                             ) {
                                 Column(
                                     modifier = Modifier.padding(10.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
+                                    horizontalAlignment = Alignment.CenterHorizontally,
                                 ) {
                                     if (app.bitmap != null) {
                                         Image(
@@ -181,14 +181,14 @@ fun PinAppPickerModal(
                                             contentDescription = app.name,
                                             modifier = Modifier
                                                 .size(46.dp)
-                                                .clip(RoundedCornerShape(12.dp))
+                                                .clip(RoundedCornerShape(12.dp)),
                                         )
                                     } else {
                                         Icon(
                                             Icons.Filled.Apps,
                                             contentDescription = null,
                                             tint = colors.primary,
-                                            modifier = Modifier.size(46.dp)
+                                            modifier = Modifier.size(46.dp),
                                         )
                                     }
                                     Spacer(modifier = Modifier.height(6.dp))
@@ -199,7 +199,7 @@ fun PinAppPickerModal(
                                         fontWeight = FontWeight.Medium,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
-                                        textAlign = TextAlign.Center
+                                        textAlign = TextAlign.Center,
                                     )
                                 }
                             }
@@ -220,7 +220,7 @@ fun PinnedSlotOptionsModal(
     onDismiss: () -> Unit,
     onChangeApp: () -> Unit,
     onUnpin: () -> Unit,
-    onLaunch: () -> Unit
+    onLaunch: () -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -230,14 +230,14 @@ fun PinnedSlotOptionsModal(
                     Image(
                         bitmap = app.bitmap,
                         contentDescription = app.name,
-                        modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp))
+                        modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)),
                     )
                 }
                 Text(
                     text = "Slot ${slotIdx + 1}: ${app.name}",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
-                    color = colors.textPrimary
+                    color = colors.textPrimary,
                 )
             }
         },
@@ -245,7 +245,7 @@ fun PinnedSlotOptionsModal(
             Text(
                 text = "Manage this pinned slot:",
                 fontSize = 13.sp,
-                color = colors.textSecondary
+                color = colors.textSecondary,
             )
         },
         confirmButton = {
@@ -253,7 +253,7 @@ fun PinnedSlotOptionsModal(
                 Button(
                     onClick = onChangeApp,
                     colors = ButtonDefaults.buttonColors(containerColor = colors.cardBg, contentColor = colors.primaryLight),
-                    border = BorderStroke(1.dp, colors.border)
+                    border = BorderStroke(1.dp, colors.border),
                 ) {
                     Text("Change App", fontSize = 12.sp)
                 }
@@ -265,7 +265,7 @@ fun PinnedSlotOptionsModal(
                         onUnpin()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444).copy(alpha = 0.2f), contentColor = Color(0xFFF87171)),
-                    border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.4f))
+                    border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.4f)),
                 ) {
                     Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
@@ -281,7 +281,7 @@ fun PinnedSlotOptionsModal(
             }
         },
         containerColor = colors.surface,
-        shape = RoundedCornerShape(20.dp)
+        shape = RoundedCornerShape(20.dp),
     )
 }
 
@@ -291,7 +291,7 @@ fun PinAppToSlotModal(
     app: AppInfo,
     colors: LauncherThemeColors,
     onDismiss: () -> Unit,
-    onSlotSelected: (Int) -> Unit
+    onSlotSelected: (Int) -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -301,14 +301,14 @@ fun PinAppToSlotModal(
                     Image(
                         bitmap = app.bitmap,
                         contentDescription = app.name,
-                        modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp))
+                        modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)),
                     )
                 }
                 Text(
                     text = "Pin ${app.name}",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
-                    color = colors.textPrimary
+                    color = colors.textPrimary,
                 )
             }
         },
@@ -317,12 +317,12 @@ fun PinAppToSlotModal(
                 Text(
                     text = "Choose which slot to pin this app to:",
                     fontSize = 13.sp,
-                    color = colors.textSecondary
+                    color = colors.textSecondary,
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     for (i in 0 until 4) {
                         Button(
@@ -334,11 +334,11 @@ fun PinAppToSlotModal(
                             modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = colors.cardBg,
-                                contentColor = colors.primary
+                                contentColor = colors.primary,
                             ),
                             border = BorderStroke(1.dp, colors.borderEmerald),
                             shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(vertical = 8.dp)
+                            contentPadding = PaddingValues(vertical = 8.dp),
                         ) {
                             Text("Slot ${i + 1}", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
@@ -353,6 +353,6 @@ fun PinAppToSlotModal(
             }
         },
         containerColor = colors.surface,
-        shape = RoundedCornerShape(20.dp)
+        shape = RoundedCornerShape(20.dp),
     )
 }

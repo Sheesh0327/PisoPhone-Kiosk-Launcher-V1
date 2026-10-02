@@ -6,10 +6,8 @@ import kotlinx.coroutines.flow.Flow
 
 class CoinEventRepository(private val coinEventDao: CoinEventDao) {
     val allEvents: Flow<List<CoinEvent>> = coinEventDao.getAllEvents()
-    
-    suspend fun getLatestEvents(limit: Int = 100): List<CoinEvent> {
-        return coinEventDao.getLatestEvents(limit)
-    }
+
+    suspend fun getLatestEvents(limit: Int = 100): List<CoinEvent> = coinEventDao.getLatestEvents(limit)
 
     suspend fun insertEvent(event: CoinEvent) {
         coinEventDao.insertEvent(event)

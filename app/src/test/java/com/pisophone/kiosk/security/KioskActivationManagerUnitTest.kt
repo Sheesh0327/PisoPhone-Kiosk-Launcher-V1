@@ -11,7 +11,6 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class KioskActivationManagerUnitTest {
-
     private lateinit var context: Context
 
     @Before
@@ -29,7 +28,7 @@ class KioskActivationManagerUnitTest {
         // App installs like normal and auto-saves the device ID
         assertTrue(
             "Bound hardware ID must be automatically saved and non-empty",
-            KioskActivationManager.getBoundHardwareId(context).isNotBlank()
+            KioskActivationManager.getBoundHardwareId(context).isNotBlank(),
         )
     }
 
@@ -40,7 +39,7 @@ class KioskActivationManagerUnitTest {
 
         assertTrue(
             "Bound hardware ID must match current fingerprint",
-            KioskActivationManager.getBoundHardwareId(context) == KioskActivationManager.getHardwareFingerprint(context)
+            KioskActivationManager.getBoundHardwareId(context) == KioskActivationManager.getHardwareFingerprint(context),
         )
     }
 
@@ -49,14 +48,14 @@ class KioskActivationManagerUnitTest {
         // Before startSetupWindow, isSetupModeActive must be false (read-only check)
         assertFalse(
             "isSetupModeActive must be false before startSetupWindow is explicitly called",
-            KioskActivationManager.isSetupModeActive(context)
+            KioskActivationManager.isSetupModeActive(context),
         )
 
         // Calling startSetupWindow initializes the setup mode window
         KioskActivationManager.startSetupWindow(context)
         assertTrue(
             "isSetupModeActive must be true within the setup window duration",
-            KioskActivationManager.isSetupModeActive(context)
+            KioskActivationManager.isSetupModeActive(context),
         )
     }
 
@@ -64,7 +63,7 @@ class KioskActivationManagerUnitTest {
     fun testSlotLockdownManagement() {
         assertFalse(
             "Slot should not be locked down initially",
-            KioskActivationManager.isSlotLockedDown(context)
+            KioskActivationManager.isSlotLockedDown(context),
         )
 
         KioskActivationManager.setSlotLockdown(
@@ -72,12 +71,12 @@ class KioskActivationManagerUnitTest {
             locked = true,
             reason = "Slot 1 Expired",
             slotNum = 1,
-            expiryTs = 1700000000000L
+            expiryTs = 1700000000000L,
         )
 
         assertTrue(
             "Slot should be locked down after setting",
-            KioskActivationManager.isSlotLockedDown(context)
+            KioskActivationManager.isSlotLockedDown(context),
         )
 
         val (reason, slotNum, expiryTs) = KioskActivationManager.getSlotLockdownDetails(context)

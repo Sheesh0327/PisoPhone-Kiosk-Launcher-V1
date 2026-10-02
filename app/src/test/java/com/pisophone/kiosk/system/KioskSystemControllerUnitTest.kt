@@ -10,7 +10,6 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class KioskSystemControllerUnitTest {
-
     private lateinit var context: Context
     private lateinit var controller: AndroidKioskSystemController
 

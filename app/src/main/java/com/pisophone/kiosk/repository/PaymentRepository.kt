@@ -18,7 +18,7 @@ import kotlinx.coroutines.runBlocking
 data class SessionSnapshot(
     val deadlineMs: Long,
     val remainingSeconds: Int,
-    val revision: Long
+    val revision: Long,
 )
 
 /**
@@ -28,7 +28,7 @@ data class RestoredSessionState(
     val remainingSeconds: Int,
     val deadlineMs: Long,
     val isReboot: Boolean,
-    val revision: Long = 0L
+    val revision: Long = 0L,
 )
 
 /**
@@ -36,7 +36,7 @@ data class RestoredSessionState(
  */
 data class ExpiryResult(
     val didExpire: Boolean,
-    val sessionState: PaidSessionState
+    val sessionState: PaidSessionState,
 )
 
 /**
@@ -47,7 +47,7 @@ class PaymentRepository(
     private val context: Context? = null,
     private val isEligible: () -> Boolean = { true },
     private val onPaymentApplied: ((txId: String, seconds: Int, amount: Double, snapshot: SessionSnapshot) -> Unit)? = null,
-    private val onSessionStateChanged: ((snapshot: SessionSnapshot) -> Unit)? = null
+    private val onSessionStateChanged: ((snapshot: SessionSnapshot) -> Unit)? = null,
 ) {
     companion object {
         private const val TAG = "PaymentRepository"
@@ -71,13 +71,13 @@ class PaymentRepository(
         db: AppDatabase,
         context: Context,
         onPaymentApplied: ((txId: String, seconds: Int, amount: Double, snapshot: SessionSnapshot) -> Unit)? = null,
-        onSessionStateChanged: ((snapshot: SessionSnapshot) -> Unit)? = null
+        onSessionStateChanged: ((snapshot: SessionSnapshot) -> Unit)? = null,
     ) : this(
         db = db,
         context = context,
         isEligible = { true },
         onPaymentApplied = onPaymentApplied,
-        onSessionStateChanged = onSessionStateChanged
+        onSessionStateChanged = onSessionStateChanged,
     )
 
     private val paymentDao = db.paymentDao()
@@ -91,14 +91,14 @@ class PaymentRepository(
                 if (existing != null) {
                     val isLegacyPlaceholder = existing.secondsCredited == 0 && Math.abs(existing.amount - 0.0) < 0.0001
                     val isIdentical = (existing.secondsCredited == seconds && Math.abs(existing.amount - amount) < 0.0001) ||
-                            (existing.secondsCredited == seconds && Math.abs(existing.amount - 0.0) < 0.0001) ||
-                            isLegacyPlaceholder
+                        (existing.secondsCredited == seconds && Math.abs(existing.amount - 0.0) < 0.0001) ||
+                        isLegacyPlaceholder
                     if (isIdentical) {
                         return@withTransaction PaymentResult.ALREADY_APPLIED
                     } else {
                         Log.w(
                             TAG,
-                            "Transaction ID conflict for $txId: existing=(s=${existing.secondsCredited}, a=${existing.amount}) vs new=(s=$seconds, a=$amount)"
+                            "Transaction ID conflict for $txId: existing=(s=${existing.secondsCredited}, a=${existing.amount}) vs new=(s=$seconds, a=$amount)",
                         )
                         return@withTransaction PaymentResult.CONFLICT
                     }
@@ -124,14 +124,14 @@ class PaymentRepository(
                     txId = txId,
                     secondsCredited = seconds,
                     amount = amount,
-                    acceptanceTimestamp = System.currentTimeMillis()
+                    acceptanceTimestamp = System.currentTimeMillis(),
                 )
                 val newState = PaidSessionState(
                     id = 1,
                     sessionTimeRemaining = newSessionTime,
                     sessionExpiryDeadlineMs = newDeadline,
                     lastSavedElapsedRealtime = nowMonotonic,
-                    revision = newRevision
+                    revision = newRevision,
                 )
 
                 paymentDao.setMetadata(AppMetadata(KEY_PENDING_TX, "$txId:$seconds:$amount"))
@@ -171,7 +171,7 @@ class PaymentRepository(
                         sessionTimeRemaining = 0,
                         sessionExpiryDeadlineMs = 0L,
                         lastSavedElapsedRealtime = SystemClock.elapsedRealtime(),
-                        revision = 0L
+                        revision = 0L,
                     )
                     return@withTransaction currentState
                 }
@@ -203,7 +203,7 @@ class PaymentRepository(
                     txId = txId,
                     secondsCredited = -positiveSecondsLong.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
                     amount = 0.0,
-                    acceptanceTimestamp = System.currentTimeMillis()
+                    acceptanceTimestamp = System.currentTimeMillis(),
                 )
                 paymentDao.insertReceipt(receipt)
             }
@@ -213,13 +213,13 @@ class PaymentRepository(
                 sessionTimeRemaining = remaining,
                 sessionExpiryDeadlineMs = effectiveDeadline,
                 lastSavedElapsedRealtime = nowMonotonic,
-                revision = newRevision
+                revision = newRevision,
             )
             paymentDao.updateSessionState(newState)
             newState
         }
         onSessionStateChanged?.invoke(
-            SessionSnapshot(updatedState.sessionExpiryDeadlineMs, updatedState.sessionTimeRemaining, updatedState.revision)
+            SessionSnapshot(updatedState.sessionExpiryDeadlineMs, updatedState.sessionTimeRemaining, updatedState.revision),
         )
         return updatedState
     }
@@ -242,7 +242,7 @@ class PaymentRepository(
                 sessionTimeRemaining = 0,
                 sessionExpiryDeadlineMs = 0L,
                 lastSavedElapsedRealtime = nowMonotonic,
-                revision = newRevision
+                revision = newRevision,
             )
             paymentDao.updateSessionState(state)
             state
@@ -270,7 +270,7 @@ class PaymentRepository(
                     sessionTimeRemaining = 0,
                     sessionExpiryDeadlineMs = 0L,
                     lastSavedElapsedRealtime = nowMonotonic,
-                    revision = 0L
+                    revision = 0L,
                 )
                 return@withTransaction fallback
             }
@@ -284,7 +284,7 @@ class PaymentRepository(
                     sessionTimeRemaining = 0,
                     sessionExpiryDeadlineMs = 0L,
                     lastSavedElapsedRealtime = nowMonotonic,
-                    revision = newRevision
+                    revision = newRevision,
                 )
                 paymentDao.updateSessionState(clearedState)
                 clearedState
@@ -321,13 +321,13 @@ class PaymentRepository(
                 sessionTimeRemaining = remaining,
                 sessionExpiryDeadlineMs = newDeadline,
                 lastSavedElapsedRealtime = nowMonotonic,
-                revision = newRevision
+                revision = newRevision,
             )
             paymentDao.updateSessionState(state)
             state
         }
         onSessionStateChanged?.invoke(
-            SessionSnapshot(newState.sessionExpiryDeadlineMs, newState.sessionTimeRemaining, newState.revision)
+            SessionSnapshot(newState.sessionExpiryDeadlineMs, newState.sessionTimeRemaining, newState.revision),
         )
         return newState
     }
@@ -358,7 +358,7 @@ class PaymentRepository(
             }
             val updated = current.copy(
                 sessionTimeRemaining = remaining,
-                lastSavedElapsedRealtime = nowMonotonic
+                lastSavedElapsedRealtime = nowMonotonic,
             )
             paymentDao.updateSessionState(updated)
         }
@@ -395,8 +395,8 @@ class PaymentRepository(
                             txId = ev.txId,
                             secondsCredited = ev.secondsAdded,
                             amount = 0.0,
-                            acceptanceTimestamp = ev.timestamp
-                        )
+                            acceptanceTimestamp = ev.timestamp,
+                        ),
                     )
                 }
             }
@@ -428,8 +428,8 @@ class PaymentRepository(
                         sessionTimeRemaining = sanitizedRemaining,
                         sessionExpiryDeadlineMs = sanitizedDeadline,
                         lastSavedElapsedRealtime = nowMonotonic,
-                        revision = currentState.revision + 1L
-                    )
+                        revision = currentState.revision + 1L,
+                    ),
                 )
             }
         }
@@ -443,7 +443,7 @@ class PaymentRepository(
                 android.provider.Settings.Global.getInt(
                     effectiveCtx.contentResolver,
                     android.provider.Settings.Global.BOOT_COUNT,
-                    -1
+                    -1,
                 )
             } catch (e: Exception) {
                 -1
@@ -507,8 +507,8 @@ class PaymentRepository(
                         sessionTimeRemaining = effectiveRemainingSec,
                         sessionExpiryDeadlineMs = effectiveDeadline,
                         lastSavedElapsedRealtime = nowMonotonic,
-                        revision = updatedRevision
-                    )
+                        revision = updatedRevision,
+                    ),
                 )
             } else if (savedDeadline > nowMonotonic) {
                 effectiveDeadline = savedDeadline
@@ -523,8 +523,8 @@ class PaymentRepository(
                         sessionTimeRemaining = 0,
                         sessionExpiryDeadlineMs = 0L,
                         lastSavedElapsedRealtime = nowMonotonic,
-                        revision = updatedRevision
-                    )
+                        revision = updatedRevision,
+                    ),
                 )
             } else {
                 effectiveRemainingSec = maxOf(0, savedTime)
@@ -538,8 +538,5 @@ class PaymentRepository(
         RestoredSessionState(snapshot.remainingSeconds, snapshot.deadlineMs, isReboot, snapshot.revision)
     }
 
-    fun getSessionState(): PaidSessionState? {
-        return paymentDao.getSessionState()
-    }
+    fun getSessionState(): PaidSessionState? = paymentDao.getSessionState()
 }
-

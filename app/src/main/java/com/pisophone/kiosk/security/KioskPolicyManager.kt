@@ -30,7 +30,7 @@ object KioskPolicyManager {
         "com.google.android.settings",
         "com.android.vending",
         "com.android.packageinstaller",
-        "com.google.android.packageinstaller"
+        "com.google.android.packageinstaller",
     )
 
     fun isAdminOnlyPackage(packageName: String): Boolean = packageName in ADMIN_ONLY_PACKAGES
@@ -45,7 +45,7 @@ object KioskPolicyManager {
             "com.android.permissioncontroller",
             "com.google.android.permissioncontroller",
             // GMS core hosts sign-in / Play services dialogs that customer apps start in-task.
-            "com.google.android.gms"
+            "com.google.android.gms",
         )
 
         try {
@@ -121,7 +121,7 @@ object KioskPolicyManager {
             android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
             "android.permission.READ_MEDIA_IMAGES",
             "android.permission.READ_MEDIA_VIDEO",
-            "android.permission.READ_MEDIA_AUDIO"
+            "android.permission.READ_MEDIA_AUDIO",
         )
 
         val targetPackages = mutableSetOf(context.packageName)
@@ -146,7 +146,7 @@ object KioskPolicyManager {
                             componentName,
                             pkg,
                             permission,
-                            DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED
+                            DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED,
                         )
                     }
                 } catch (_: Exception) {}
@@ -204,7 +204,7 @@ object KioskPolicyManager {
                 // 4. Set Lock Task features to allow system dialogs and global actions
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                     val lockTaskFeatures = DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO or
-                            DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS
+                        DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS
                     dpm.setLockTaskFeatures(componentName, lockTaskFeatures)
                 }
 
@@ -216,9 +216,11 @@ object KioskPolicyManager {
                     dpm.setGlobalSetting(
                         componentName,
                         Settings.Global.STAY_ON_WHILE_PLUGGED_IN,
-                        (BatteryManager.BATTERY_PLUGGED_AC or
+                        (
+                            BatteryManager.BATTERY_PLUGGED_AC or
                                 BatteryManager.BATTERY_PLUGGED_USB or
-                                BatteryManager.BATTERY_PLUGGED_WIRELESS).toString()
+                                BatteryManager.BATTERY_PLUGGED_WIRELESS
+                        ).toString(),
                     )
                 } catch (e: Exception) {
                     Log.w(TAG, "Could not set STAY_ON_WHILE_PLUGGED_IN: ${e.message}")
@@ -270,7 +272,7 @@ object KioskPolicyManager {
     fun setPersistentHomeActivity(
         context: Context,
         dpm: DevicePolicyManager = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager,
-        admin: ComponentName = ComponentName(context, KioskDeviceAdminReceiver::class.java)
+        admin: ComponentName = ComponentName(context, KioskDeviceAdminReceiver::class.java),
     ) {
         if (!dpm.isDeviceOwnerApp(context.packageName)) return
         try {
@@ -281,7 +283,7 @@ object KioskPolicyManager {
             dpm.addPersistentPreferredActivity(
                 admin,
                 homeFilter,
-                ComponentName(context, MainActivity::class.java)
+                ComponentName(context, MainActivity::class.java),
             )
             Log.i(TAG, "Kiosk launcher pinned as persistent preferred HOME activity.")
         } catch (e: Exception) {
@@ -303,8 +305,11 @@ object KioskPolicyManager {
         // WebADB provisioning whitelists the app via `dumpsys deviceidle` instead.
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
         val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
-        if (am != null && am.lockTaskModeState != android.app.ActivityManager.LOCK_TASK_MODE_NONE &&
-            dpm != null && !dpm.isLockTaskPermitted("com.android.settings")) {
+        if (am != null &&
+            am.lockTaskModeState != android.app.ActivityManager.LOCK_TASK_MODE_NONE &&
+            dpm != null &&
+            !dpm.isLockTaskPermitted("com.android.settings")
+        ) {
             Log.i(TAG, "Skipping battery-optimization request: Settings is not allowed in lock task mode.")
             return false
         }
@@ -328,12 +333,13 @@ object KioskPolicyManager {
     fun wakeScreenUp(context: Context) {
         try {
             val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+
             @Suppress("DEPRECATION")
             val wakeLock = pm.newWakeLock(
                 PowerManager.FULL_WAKE_LOCK or
-                        PowerManager.ACQUIRE_CAUSES_WAKEUP or
-                        PowerManager.ON_AFTER_RELEASE,
-                "ArcadeOS:ScreenWakeLock"
+                    PowerManager.ACQUIRE_CAUSES_WAKEUP or
+                    PowerManager.ON_AFTER_RELEASE,
+                "ArcadeOS:ScreenWakeLock",
             )
             wakeLock.acquire(3000)
             Log.i(TAG, "WakeLock acquired to turn screen on.")
@@ -349,6 +355,7 @@ object KioskPolicyManager {
     fun dismissKeyguard(context: Context) {
         try {
             val km = context.getSystemService(Context.KEYGUARD_SERVICE) as? android.app.KeyguardManager
+
             @Suppress("DEPRECATION")
             val keyguardLock = km?.newKeyguardLock("ArcadeOS:KeyguardDismiss")
             keyguardLock?.disableKeyguard()

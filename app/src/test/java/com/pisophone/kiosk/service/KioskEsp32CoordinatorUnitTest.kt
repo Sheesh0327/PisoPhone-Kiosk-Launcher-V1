@@ -16,7 +16,6 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class KioskEsp32CoordinatorUnitTest {
-
     private lateinit var context: Context
     private lateinit var db: AppDatabase
     private lateinit var stateManager: KioskStateManager
@@ -41,7 +40,7 @@ class KioskEsp32CoordinatorUnitTest {
             getRealTimeBatteryInfo = { Pair(80, false) },
             onCreditPayment = { _, _, _ -> nextCreditResult },
             onSlotBusyTriggered = {},
-            onSessionLocked = { cancelArm -> lockEvents.add(cancelArm) }
+            onSessionLocked = { cancelArm -> lockEvents.add(cancelArm) },
         )
     }
 

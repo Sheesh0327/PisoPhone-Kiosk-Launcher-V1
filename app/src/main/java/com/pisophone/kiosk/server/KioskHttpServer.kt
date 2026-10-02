@@ -24,12 +24,17 @@ interface KioskServerDelegate {
     fun getCrashLog(): String?
 }
 
+/**
+ * HTTP server the ESP32 calls on the phone (add time, deduct time, status, config).
+ * Every request carries an encrypted payload and an HMAC signature made with the shared secret;
+ * requests are rate limited per client IP. Business logic is delegated through the delegate
+ * interface above, this class only authenticates and routes.
+ */
 class KioskHttpServer(
     private val context: Context,
     private val port: Int,
-    private val delegate: KioskServerDelegate
+    private val delegate: KioskServerDelegate,
 ) : NanoHTTPD(port) {
-
     companion object {
         private const val TAG = "KioskHttpServer"
         private const val RATE_LIMIT_WINDOW_MS = 60000L

@@ -17,7 +17,6 @@ import org.robolectric.RobolectricTestRunner
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 class KioskSessionSupervisorUnitTest {
-
     private lateinit var context: Context
     private lateinit var db: AppDatabase
     private lateinit var paymentRepo: PaymentRepository
@@ -49,7 +48,7 @@ class KioskSessionSupervisorUnitTest {
             onSpeakWarning = {},
             onFinishPayment = {},
             onCloseSession = {},
-            onCheckBatteryAlerts = {}
+            onCheckBatteryAlerts = {},
         )
 
         // Initially before start(), isStalled is false because lastTickMonotonicMs is 0
@@ -71,7 +70,7 @@ class KioskSessionSupervisorUnitTest {
             onSpeakWarning = {},
             onFinishPayment = {},
             onCloseSession = {},
-            onCheckBatteryAlerts = {}
+            onCheckBatteryAlerts = {},
         )
 
         // ensureRunning should start supervisor if not running

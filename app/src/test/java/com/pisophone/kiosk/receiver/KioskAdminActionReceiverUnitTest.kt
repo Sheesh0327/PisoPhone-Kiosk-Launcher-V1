@@ -13,7 +13,6 @@ import org.robolectric.Shadows.shadowOf
 
 @RunWith(RobolectricTestRunner::class)
 class KioskAdminActionReceiverUnitTest {
-
     private lateinit var context: Context
     private val receiver = KioskAdminActionReceiver()
 
@@ -61,10 +60,13 @@ class KioskAdminActionReceiverUnitTest {
 
     @Test
     fun adminBypassWithSharedSecretAndWrongPinIsIgnored() {
-        receiver.onReceive(context, bypass {
-            putExtra("pin", "9999")
-            putExtra("secret", com.pisophone.kiosk.security.KioskSecurity.DEFAULT_SHARED_SECRET)
-        })
+        receiver.onReceive(
+            context,
+            bypass {
+                putExtra("pin", "9999")
+                putExtra("secret", com.pisophone.kiosk.security.KioskSecurity.DEFAULT_SHARED_SECRET)
+            },
+        )
         assertNull(shadowOf(context as android.app.Application).nextStartedService)
     }
 

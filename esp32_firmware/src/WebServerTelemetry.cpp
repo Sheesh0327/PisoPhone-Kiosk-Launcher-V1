@@ -1,3 +1,6 @@
+// Phone-facing telemetry endpoints: the heartbeat that carries time, state and battery,
+// config retrieval, crash reports and the one-vs-one match qualification check.
+
 #include "InputSafety.h"
 #include "WebServerTelemetry.h"
 #include "WebServerModule.h"
@@ -11,17 +14,21 @@
 #include <WebServer.h>
 
 void handleHeartbeat() {
-    String deviceId = webServer.hasArg("device_id") ? webServer.arg("device_id") : (webServer.hasArg("id") ? webServer.arg("id") : "");
+    String deviceId = webServer.hasArg("device_id") ? webServer.arg("device_id")
+                                                    : (webServer.hasArg("id") ? webServer.arg("id") : "");
     String reqIp = webServer.hasArg("ip") ? webServer.arg("ip") : "";
-    if (reqIp.length() == 0 || reqIp == "127.0.0.1" || reqIp == "0.0.0.0") reqIp = webServer.client().remoteIP().toString();
+    if (reqIp.length() == 0 || reqIp == "127.0.0.1" || reqIp == "0.0.0.0")
+        reqIp = webServer.client().remoteIP().toString();
     String tsStr = webServer.hasArg("ts") ? webServer.arg("ts") : "0";
     String sig = webServer.hasArg("sig") ? webServer.arg("sig") : "";
     unsigned long long ts = strtoull(tsStr.c_str(), NULL, 10);
-    
-    int timeRem = webServer.hasArg("time") ? webServer.arg("time").toInt() : -1;  // -1 = not reported
+
+    int timeRem = webServer.hasArg("time") ? webServer.arg("time").toInt() : -1; // -1 = not reported
     int state = webServer.hasArg("state") ? webServer.arg("state").toInt() : 0;
     int battery = webServer.hasArg("battery") ? webServer.arg("battery").toInt() : -1;
-    bool charging = webServer.hasArg("charging") ? (webServer.arg("charging").toInt() == 1 || webServer.arg("charging") == "true") : false;
+    bool charging = webServer.hasArg("charging")
+                        ? (webServer.arg("charging").toInt() == 1 || webServer.arg("charging") == "true")
+                        : false;
 
     if (deviceId.length() == 0 && reqIp.length() > 0 && reqIp != "127.0.0.1" && reqIp != "0.0.0.0") {
         deviceId = "DEV_" + reqIp;
@@ -47,7 +54,8 @@ void handleHeartbeat() {
                     (webServer.hasArg("client") && webServer.arg("client") == "pisophone_app") ||
                     (webServer.hasArg("source") && webServer.arg("source") == "app");
 
-    bool fromApp = isAppReq || (isAuth && webServer.hasArg("battery") && webServer.hasArg("charging")) || (deviceId.length() > 0 && !deviceId.startsWith("DEV_"));
+    bool fromApp = isAppReq || (isAuth && webServer.hasArg("battery") && webServer.hasArg("charging")) ||
+                   (deviceId.length() > 0 && !deviceId.startsWith("DEV_"));
     String devName = webServer.hasArg("name") ? cleanName(webServer.arg("name")) : "";
     devName.trim();
 
@@ -62,7 +70,8 @@ void handleHeartbeat() {
         if (devName.length() == 0 || devName == deviceId) devName = "PisoPhone Terminal";
 
         String json = "{\"status\":\"unassigned\",\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\"";
-        json += ",\"slot_num\":0,\"is_paired\":false,\"slot_expired\":true,\"slot_status\":\"unassigned\",\"slot_warning\":false";
+        json +=
+            ",\"slot_num\":0,\"is_paired\":false,\"slot_expired\":true,\"slot_status\":\"unassigned\",\"slot_warning\":false";
         json += ",\"message\":\"Connected to ESP32: Awaiting Slot Assignment in Admin Portal.\"";
         json += ",\"device_name\":\"" + jsonEsc(devName) + "\"}";
         webServer.send(200, "application/json", json);
@@ -134,20 +143,31 @@ void handleCrashReport() {
 
 void handleCheckQualification() {
     if (!checkAuth()) return;
-    String p1 = webServer.hasArg("p1") ? webServer.arg("p1") : (webServer.hasArg("p1_ip") ? webServer.arg("p1_ip") : (webServer.hasArg(NVS_KEY_P1) ? webServer.arg(NVS_KEY_P1) : ""));
-    String p2 = webServer.hasArg("p2") ? webServer.arg("p2") : (webServer.hasArg("p2_ip") ? webServer.arg("p2_ip") : (webServer.hasArg(NVS_KEY_P2) ? webServer.arg(NVS_KEY_P2) : ""));
-    int mins = webServer.hasArg("minutes") ? webServer.arg("minutes").toInt() : (webServer.hasArg("match_minutes") ? webServer.arg("match_minutes").toInt() : 15);
+    String p1 = webServer.hasArg("p1")
+                    ? webServer.arg("p1")
+                    : (webServer.hasArg("p1_ip") ? webServer.arg("p1_ip")
+                                                 : (webServer.hasArg(NVS_KEY_P1) ? webServer.arg(NVS_KEY_P1) : ""));
+    String p2 = webServer.hasArg("p2")
+                    ? webServer.arg("p2")
+                    : (webServer.hasArg("p2_ip") ? webServer.arg("p2_ip")
+                                                 : (webServer.hasArg(NVS_KEY_P2) ? webServer.arg(NVS_KEY_P2) : ""));
+    int mins = webServer.hasArg("minutes")
+                   ? webServer.arg("minutes").toInt()
+                   : (webServer.hasArg("match_minutes") ? webServer.arg("match_minutes").toInt() : 15);
     if (mins <= 0) mins = 1;
 
     p1.trim();
     p2.trim();
 
     if (p1.length() == 0 || p2.length() == 0) {
-        webServer.send(200, "application/json", "{\"success\":false,\"error\":\"Please select both Player 1 and Player 2.\"}");
+        webServer.send(200, "application/json",
+                       "{\"success\":false,\"error\":\"Please select both Player 1 and Player 2.\"}");
         return;
     }
     if (p1 == p2) {
-        webServer.send(200, "application/json", "{\"success\":true,\"qualified\":false,\"error\":\"Player 1 and Player 2 cannot be the same device!\"}");
+        webServer.send(
+            200, "application/json",
+            "{\"success\":true,\"qualified\":false,\"error\":\"Player 1 and Player 2 cannot be the same device!\"}");
         return;
     }
 
@@ -166,11 +186,15 @@ void handleCheckQualification() {
     int p2S = (p2Sec >= 0) ? (p2Sec % 60) : 0;
 
     char p1FmtBuf[32], p2FmtBuf[32];
-    if (p1Sec >= 0) snprintf(p1FmtBuf, sizeof(p1FmtBuf), "%dm %ds", p1M, p1S);
-    else strncpy(p1FmtBuf, "Offline", sizeof(p1FmtBuf));
+    if (p1Sec >= 0)
+        snprintf(p1FmtBuf, sizeof(p1FmtBuf), "%dm %ds", p1M, p1S);
+    else
+        strncpy(p1FmtBuf, "Offline", sizeof(p1FmtBuf));
 
-    if (p2Sec >= 0) snprintf(p2FmtBuf, sizeof(p2FmtBuf), "%dm %ds", p2M, p2S);
-    else strncpy(p2FmtBuf, "Offline", sizeof(p2FmtBuf));
+    if (p2Sec >= 0)
+        snprintf(p2FmtBuf, sizeof(p2FmtBuf), "%dm %ds", p2M, p2S);
+    else
+        strncpy(p2FmtBuf, "Offline", sizeof(p2FmtBuf));
 
     char msgBuf[128];
     if (bothQualified) {
@@ -187,14 +211,12 @@ void handleCheckQualification() {
 
     char jsonBuf[512];
     snprintf(jsonBuf, sizeof(jsonBuf),
-        "{\"success\":true,\"qualified\":%s,\"stake_minutes\":%d,"
-        "\"p1_ip\":\"%s\",\"p1_seconds\":%d,\"p1_formatted\":\"%s\",\"p1_ok\":%s,\"p1_err\":\"%s\","
-        "\"p2_ip\":\"%s\",\"p2_seconds\":%d,\"p2_formatted\":\"%s\",\"p2_ok\":%s,\"p2_err\":\"%s\","
-        "\"message\":\"%s\"}",
-        bothQualified ? "true" : "false", mins,
-        p1.c_str(), p1Sec, p1FmtBuf, p1Ok ? "true" : "false", p1Err.c_str(),
-        p2.c_str(), p2Sec, p2FmtBuf, p2Ok ? "true" : "false", p2Err.c_str(),
-        msgBuf);
+             "{\"success\":true,\"qualified\":%s,\"stake_minutes\":%d,"
+             "\"p1_ip\":\"%s\",\"p1_seconds\":%d,\"p1_formatted\":\"%s\",\"p1_ok\":%s,\"p1_err\":\"%s\","
+             "\"p2_ip\":\"%s\",\"p2_seconds\":%d,\"p2_formatted\":\"%s\",\"p2_ok\":%s,\"p2_err\":\"%s\","
+             "\"message\":\"%s\"}",
+             bothQualified ? "true" : "false", mins, p1.c_str(), p1Sec, p1FmtBuf, p1Ok ? "true" : "false",
+             p1Err.c_str(), p2.c_str(), p2Sec, p2FmtBuf, p2Ok ? "true" : "false", p2Err.c_str(), msgBuf);
 
     webServer.send(200, "application/json", jsonBuf);
 }
@@ -206,7 +228,7 @@ void handleOneVsOne() {
     if (webServer.hasArg("match_minutes")) {
         matchMinutes = webServer.arg("match_minutes").toInt();
     }
-    
+
     prefs.begin(NVS_NAMESPACE, false);
     prefs.putString(NVS_KEY_P1, p1Ip);
     prefs.putString(NVS_KEY_P2, p2Ip);
@@ -224,33 +246,42 @@ void handleOneVsOne() {
         if (p2Ip.length() > 0) {
             sendAuthenticated(p2Ip, targetPort, "/trigger_action", "/challenge", "action=arena_mode_deactivate", 1000);
         }
-        matchStatusMsg = "<div style='background:#fef3c7;color:#92400e;padding:10px 14px;border-radius:6px;margin-bottom:10px;font-size:13px;'>⚔️ <b>1v1 Arena Mode Ended:</b> Match cancelled without transferring credits.</div>";
+        matchStatusMsg =
+            "<div style='background:#fef3c7;color:#92400e;padding:10px 14px;border-radius:6px;margin-bottom:10px;font-size:13px;'>⚔️ <b>1v1 Arena Mode Ended:</b> Match cancelled without transferring credits.</div>";
         redirectHome();
         return;
     }
 
     if (action == "activate") {
         if (p1Ip == "" || p2Ip == "") {
-            matchStatusMsg = "<div style='background:#ffebee;color:#c62828;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Activation Blocked:</b> Please select both Player 1 and Player 2!</div>";
+            matchStatusMsg =
+                "<div style='background:#ffebee;color:#c62828;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Activation Blocked:</b> Please select both Player 1 and Player 2!</div>";
             redirectHome();
             return;
         }
         if (p1Ip == p2Ip) {
-            matchStatusMsg = "<div style='background:#ffebee;color:#c62828;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Activation Blocked:</b> Player 1 and Player 2 cannot be the same device!</div>";
+            matchStatusMsg =
+                "<div style='background:#ffebee;color:#c62828;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Activation Blocked:</b> Player 1 and Player 2 cannot be the same device!</div>";
             redirectHome();
             return;
         }
         if (matchMinutes <= 0) {
-            matchStatusMsg = "<div style='background:#ffebee;color:#c62828;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Activation Blocked:</b> Stake minutes must be at least 1 minute!</div>";
+            matchStatusMsg =
+                "<div style='background:#ffebee;color:#c62828;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Activation Blocked:</b> Stake minutes must be at least 1 minute!</div>";
             redirectHome();
             return;
         }
 
         matchActive = true;
-        matchStatusMsg = "<div style='background:rgba(234,88,12,0.15);border:1px solid #f97316;color:#fdba74;padding:12px 16px;border-radius:8px;margin-bottom:12px;font-size:13px;line-height:1.5;'>⚔️ <b>1v1 Arena Mode Activated!</b><br>⚠️ <b>Warning:</b> Time credits are at stake (<b>" + String(matchMinutes) + " minutes</b>). The loser will forfeit their stake to the winner upon match completion.</div>";
-        
-        sendAuthenticated(p1Ip, targetPort, "/trigger_action", "/challenge", "action=arena_mode_activate_p1&role=1&stake=" + String(matchMinutes), 1000);
-        sendAuthenticated(p2Ip, targetPort, "/trigger_action", "/challenge", "action=arena_mode_activate_p2&role=2&stake=" + String(matchMinutes), 1000);
+        matchStatusMsg =
+            "<div style='background:rgba(234,88,12,0.15);border:1px solid #f97316;color:#fdba74;padding:12px 16px;border-radius:8px;margin-bottom:12px;font-size:13px;line-height:1.5;'>⚔️ <b>1v1 Arena Mode Activated!</b><br>⚠️ <b>Warning:</b> Time credits are at stake (<b>" +
+            String(matchMinutes) +
+            " minutes</b>). The loser will forfeit their stake to the winner upon match completion.</div>";
+
+        sendAuthenticated(p1Ip, targetPort, "/trigger_action", "/challenge",
+                          "action=arena_mode_activate_p1&role=1&stake=" + String(matchMinutes), 1000);
+        sendAuthenticated(p2Ip, targetPort, "/trigger_action", "/challenge",
+                          "action=arena_mode_activate_p2&role=2&stake=" + String(matchMinutes), 1000);
 
         redirectHome();
         return;
@@ -258,13 +289,15 @@ void handleOneVsOne() {
 
     if (winner != "" && p1Ip != "" && p2Ip != "") {
         if (p1Ip == p2Ip) {
-            matchStatusMsg = "<div style='background:#ffebee;color:#c62828;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Match Blocked:</b> Player 1 and Player 2 cannot be the same device!</div>";
+            matchStatusMsg =
+                "<div style='background:#ffebee;color:#c62828;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Match Blocked:</b> Player 1 and Player 2 cannot be the same device!</div>";
             redirectHome();
             return;
         }
 
         if (matchMinutes <= 0) {
-            matchStatusMsg = "<div style='background:#ffebee;color:#c62828;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Match Blocked:</b> Stake minutes must be at least 1 minute!</div>";
+            matchStatusMsg =
+                "<div style='background:#ffebee;color:#c62828;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Match Blocked:</b> Stake minutes must be at least 1 minute!</div>";
             redirectHome();
             return;
         }
@@ -278,7 +311,9 @@ void handleOneVsOne() {
             String detail = "";
             if (p1Sec < 0) detail += "<br>• <b>Player 1 (" + p1Ip + "):</b> " + p1Err;
             if (p2Sec < 0) detail += "<br>• <b>Player 2 (" + p2Ip + "):</b> " + p2Err;
-            matchStatusMsg = "<div style='background:#ffebee;color:#c62828;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Match Failed:</b> Unable to connect or verify time balance:" + detail + "</div>";
+            matchStatusMsg =
+                "<div style='background:#ffebee;color:#c62828;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Match Failed:</b> Unable to connect or verify time balance:" +
+                detail + "</div>";
             redirectHome();
             return;
         }
@@ -287,7 +322,10 @@ void handleOneVsOne() {
         int p2Mins = p2Sec / 60;
 
         if (p1Sec < reqStakeSeconds || p2Sec < reqStakeSeconds) {
-            matchStatusMsg = "<div style='background:#ffebee;color:#c62828;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Stake Denied:</b> Both devices must have at least " + String(matchMinutes) + "m of active time.<br>• Player 1 (" + p1Ip + "): <b>" + String(p1Mins) + "m remaining</b><br>• Player 2 (" + p2Ip + "): <b>" + String(p2Mins) + "m remaining</b></div>";
+            matchStatusMsg =
+                "<div style='background:#ffebee;color:#c62828;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Stake Denied:</b> Both devices must have at least " +
+                String(matchMinutes) + "m of active time.<br>• Player 1 (" + p1Ip + "): <b>" + String(p1Mins) +
+                "m remaining</b><br>• Player 2 (" + p2Ip + "): <b>" + String(p2Mins) + "m remaining</b></div>";
             redirectHome();
             return;
         }
@@ -298,12 +336,18 @@ void handleOneVsOne() {
             sendAddTime(matchMinutes, p1Ip);
             yield();
             sendAddTime(-matchMinutes, p2Ip);
-            matchStatusMsg = "<div style='background:#e8f5e9;color:#2e7d32;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>🏆 <b>Player 1 Won:</b> Transferred +" + String(matchMinutes) + "m to Player 1 (" + p1Ip + ") and deducted -" + String(matchMinutes) + "m from Player 2 (" + p2Ip + ").</div>";
+            matchStatusMsg =
+                "<div style='background:#e8f5e9;color:#2e7d32;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>🏆 <b>Player 1 Won:</b> Transferred +" +
+                String(matchMinutes) + "m to Player 1 (" + p1Ip + ") and deducted -" + String(matchMinutes) +
+                "m from Player 2 (" + p2Ip + ").</div>";
         } else if (winner == "p2" || winner == NVS_KEY_P2) {
             sendAddTime(matchMinutes, p2Ip);
             yield();
             sendAddTime(-matchMinutes, p1Ip);
-            matchStatusMsg = "<div style='background:#e8f5e9;color:#2e7d32;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>🏆 <b>Player 2 Won:</b> Transferred +" + String(matchMinutes) + "m to Player 2 (" + p2Ip + ") and deducted -" + String(matchMinutes) + "m from Player 1 (" + p1Ip + ").</div>";
+            matchStatusMsg =
+                "<div style='background:#e8f5e9;color:#2e7d32;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>🏆 <b>Player 2 Won:</b> Transferred +" +
+                String(matchMinutes) + "m to Player 2 (" + p2Ip + ") and deducted -" + String(matchMinutes) +
+                "m from Player 1 (" + p1Ip + ").</div>";
         }
 
         sendAuthenticated(p1Ip, targetPort, "/trigger_action", "/challenge", "action=arena_mode_deactivate", 1000);

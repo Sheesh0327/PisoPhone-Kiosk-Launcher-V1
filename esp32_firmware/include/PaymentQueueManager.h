@@ -16,8 +16,8 @@ struct PaymentRecord {
 };
 
 void initPaymentQueue();
-bool enqueuePendingPayment(const String& txId, const String& targetId, int pulses,
-                           CoinSlotOwnerType ownerType, int creditSeconds = 0);
+bool enqueuePendingPayment(const String& txId, const String& targetId, int pulses, CoinSlotOwnerType ownerType,
+                           int creditSeconds = 0);
 bool acknowledgeControllerPayment(const String& sessionId, const String& txId);
 bool isPaymentQueueFull();
 bool isPaymentStorageReady();

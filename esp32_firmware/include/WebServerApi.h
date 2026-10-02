@@ -15,11 +15,4 @@ void handleApiSlotCloudSync();
 void handleApiStatus();
 void handleIdentify();
 
-void handleApiCoinslotArm();
-void handleApiCoinslotUnarm();
-void handleApiCoinslotStatus();
-void handleApiCoinslotAck();
-
-void recordSessionCoinTx(const String& devId, const String& txId, int pulses, int seconds, double amount);
-
 #endif // WEB_SERVER_API_H

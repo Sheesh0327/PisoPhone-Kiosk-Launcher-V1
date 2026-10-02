@@ -20,7 +20,8 @@ enum class SessionState(val code: Int) {
     UNLOCKED(2),
 
     /** Paid time running and the slot is armed for more time. */
-    UNLOCKED_ARMED(3);
+    UNLOCKED_ARMED(3),
+    ;
 
     companion object {
         fun fromCode(code: Int): SessionState? = entries.firstOrNull { it.code == code }

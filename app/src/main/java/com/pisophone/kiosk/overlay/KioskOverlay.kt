@@ -1,8 +1,7 @@
 @file:Suppress("DEPRECATION")
+
 package com.pisophone.kiosk.overlay
 
-import com.pisophone.kiosk.service.SessionRules
-import com.pisophone.kiosk.service.SessionState
 import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Build
@@ -17,6 +16,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import com.pisophone.kiosk.ComposeOverlayView
 import com.pisophone.kiosk.model.BatteryStatus
 import com.pisophone.kiosk.overlay.ui.BlockScreen
+import com.pisophone.kiosk.service.SessionRules
+import com.pisophone.kiosk.service.SessionState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 
@@ -47,7 +48,7 @@ class KioskOverlay(
     private val onInsertCoinClick: () -> Unit,
     private val onDoneClick: () -> Unit,
     private val onThemeChange: () -> Unit,
-    private val onActivateClick: (String) -> Unit = {}
+    private val onActivateClick: (String) -> Unit = {},
 ) {
     private val lockScreenOverlay = LockScreenOverlay(
         context = context,
@@ -73,7 +74,7 @@ class KioskOverlay(
         onInsertCoinClick = onInsertCoinClick,
         onDoneClick = onDoneClick,
         onThemeChange = onThemeChange,
-        onActivateClick = onActivateClick
+        onActivateClick = onActivateClick,
     )
     private val floatingPillOverlay = FloatingPillOverlay(
         context = context,
@@ -94,9 +95,9 @@ class KioskOverlay(
         isArenaBannerVisibleFlow = isArenaBannerVisibleFlow,
         onDismissArenaBanner = onDismissArenaBanner,
         onInsertCoinClick = onInsertCoinClick,
-        onDoneClick = onDoneClick
+        onDoneClick = onDoneClick,
     )
-    
+
     fun show(): Boolean {
         val lockShown = lockScreenOverlay.show()
         floatingPillOverlay.show()
@@ -107,10 +108,8 @@ class KioskOverlay(
      * Healthy only when BOTH windows are attached: the lock screen (states 0/1) and the floating
      * pill (states 2/3 — the only way for a customer to see time / add coins / finish).
      */
-    fun isAttached(): Boolean {
-        return lockScreenOverlay.isAttached() && floatingPillOverlay.isAttached()
-    }
-    
+    fun isAttached(): Boolean = lockScreenOverlay.isAttached() && floatingPillOverlay.isAttached()
+
     fun remove() {
         lockScreenOverlay.remove()
         floatingPillOverlay.remove()
@@ -151,21 +150,21 @@ class LockScreenOverlay(
     private val onInsertCoinClick: () -> Unit,
     private val onDoneClick: () -> Unit,
     private val onThemeChange: () -> Unit,
-    private val onActivateClick: (String) -> Unit = {}
+    private val onActivateClick: (String) -> Unit = {},
 ) {
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private var overlayView: ComposeOverlayView? = null
     private var isViewAdded = false
-    
+
     private val layoutParams = WindowManager.LayoutParams(
         WindowManager.LayoutParams.MATCH_PARENT,
         WindowManager.LayoutParams.MATCH_PARENT,
         WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or 
-        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-        WindowManager.LayoutParams.FLAG_FULLSCREEN or
-        WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS or WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD,
-        PixelFormat.TRANSLUCENT
+        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+            WindowManager.LayoutParams.FLAG_FULLSCREEN or
+            WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS or WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD,
+        PixelFormat.TRANSLUCENT,
     ).apply {
         gravity = Gravity.FILL
         softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE
@@ -177,13 +176,13 @@ class LockScreenOverlay(
     private fun updateWindowFlagsAndDimensions(visible: Boolean) {
         val currentView = overlayView?.view ?: return
         if (!isViewAdded) return
-        val baseFlags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or 
-                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                        WindowManager.LayoutParams.FLAG_FULLSCREEN or
-                        WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS or 
-                        WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or 
-                        WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
-        
+        val baseFlags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+            WindowManager.LayoutParams.FLAG_FULLSCREEN or
+            WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS or
+            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+
         layoutParams.width = WindowManager.LayoutParams.MATCH_PARENT
         layoutParams.height = WindowManager.LayoutParams.MATCH_PARENT
 
@@ -191,9 +190,9 @@ class LockScreenOverlay(
             layoutParams.flags = baseFlags
             currentView.alpha = 1f
         } else {
-            layoutParams.flags = baseFlags or 
-                                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or 
-                                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+            layoutParams.flags = baseFlags or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
             currentView.alpha = 0f
         }
         try {
@@ -224,22 +223,22 @@ class LockScreenOverlay(
         overlayView = newOverlay
 
         val initialVisible = SessionRules.isLockScreenShown(appStateFlow.value)
-        val baseFlags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or 
-                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                        WindowManager.LayoutParams.FLAG_FULLSCREEN or
-                        WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS or 
-                        WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or 
-                        WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
-        
+        val baseFlags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+            WindowManager.LayoutParams.FLAG_FULLSCREEN or
+            WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS or
+            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+
         layoutParams.width = WindowManager.LayoutParams.MATCH_PARENT
         layoutParams.height = WindowManager.LayoutParams.MATCH_PARENT
         if (initialVisible) {
             layoutParams.flags = baseFlags
             newOverlay.view.alpha = 1f
         } else {
-            layoutParams.flags = baseFlags or 
-                                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or 
-                                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+            layoutParams.flags = baseFlags or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
             newOverlay.view.alpha = 0f
         }
 
@@ -267,12 +266,12 @@ class LockScreenOverlay(
             val unlockAlpha by androidx.compose.animation.core.animateFloatAsState(
                 targetValue = if (isVisible) 1f else 0f,
                 animationSpec = tween(durationMillis = 350, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                label = "unlockAlpha"
+                label = "unlockAlpha",
             )
             val unlockScale by androidx.compose.animation.core.animateFloatAsState(
                 targetValue = if (isVisible) 1f else 1.05f,
                 animationSpec = tween(durationMillis = 350, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                label = "unlockScale"
+                label = "unlockScale",
             )
 
             LaunchedEffect(isVisible) {
@@ -291,8 +290,8 @@ class LockScreenOverlay(
                         .graphicsLayer(
                             alpha = unlockAlpha,
                             scaleX = unlockScale,
-                            scaleY = unlockScale
-                        )
+                            scaleY = unlockScale,
+                        ),
                 ) {
                     if (appState == SessionState.LOCKED.code || (appState == SessionState.UNLOCKED.code && !isVisible)) {
                         BlockScreen(
@@ -316,7 +315,7 @@ class LockScreenOverlay(
                             slotExpiryReason = slotExpiryReason,
                             isArenaMode = isArenaMode,
                             arenaRole = arenaPlayerRole,
-                            arenaStakeMinutes = arenaStakeMinutes
+                            arenaStakeMinutes = arenaStakeMinutes,
                         )
                     } else if (SessionRules.isArmed(appState) || coinsInserted > 0) {
                         BlockScreen(
@@ -340,7 +339,7 @@ class LockScreenOverlay(
                             slotExpiryReason = slotExpiryReason,
                             isArenaMode = isArenaMode,
                             arenaRole = arenaPlayerRole,
-                            arenaStakeMinutes = arenaStakeMinutes
+                            arenaStakeMinutes = arenaStakeMinutes,
                         )
                     }
                 }
@@ -361,21 +360,21 @@ class LockScreenOverlay(
             })
             newOverlay.view.systemUiVisibility = (
                 View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                or View.SYSTEM_UI_FLAG_FULLSCREEN
-                or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
             )
             newOverlay.view.viewTreeObserver.addOnWindowFocusChangeListener { hasFocus ->
                 if (hasFocus) {
                     newOverlay.view.systemUiVisibility = (
                         View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                        or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                        or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                        or View.SYSTEM_UI_FLAG_FULLSCREEN
-                        or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                        or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                            or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                            or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                            or View.SYSTEM_UI_FLAG_FULLSCREEN
+                            or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                            or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                     )
                 } else {
                     com.pisophone.kiosk.security.KioskSecurity.collapseStatusBar(context)
@@ -390,7 +389,7 @@ class LockScreenOverlay(
         }
         return isViewAdded
     }
-    
+
     fun remove() {
         dispose()
     }

@@ -16,7 +16,6 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class CoinProcessorUnitTest {
-
     private lateinit var context: Context
     private lateinit var db: AppDatabase
     private lateinit var paymentRepo: PaymentRepository
@@ -42,7 +41,7 @@ class CoinProcessorUnitTest {
             context = context,
             paymentRepo = paymentRepo,
             onCreditsApplied = { _, _ -> creditsApplied++ },
-            onFeedbackTrigger = {}
+            onFeedbackTrigger = {},
         )
 
         val resNull = processor.processCoinCredit(seconds = 300, source = "test", txId = null)
@@ -65,7 +64,7 @@ class CoinProcessorUnitTest {
                 creditsApplied++
                 totalSeconds += sec
             },
-            onFeedbackTrigger = {}
+            onFeedbackTrigger = {},
         )
 
         val txId = "tx-unique-12345"
@@ -98,7 +97,7 @@ class CoinProcessorUnitTest {
             },
             onFeedbackTrigger = {
                 eventLog.add("PLAY_SOUND_AND_FEEDBACK")
-            }
+            },
         )
 
         val applied = processor.processCoinCredit(seconds = 300, source = "COIN", txId = txId, amount = 1.0)
@@ -106,7 +105,7 @@ class CoinProcessorUnitTest {
         assertEquals(
             "Order must strictly be: Commit in DB -> Publish state -> Play sound/UI feedback",
             listOf("COMMITTED_BEFORE_PUBLISH", "PUBLISH_STATE", "PLAY_SOUND_AND_FEEDBACK"),
-            eventLog
+            eventLog,
         )
 
         // Clear event log and replay same txId

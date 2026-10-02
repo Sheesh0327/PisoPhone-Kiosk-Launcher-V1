@@ -26,15 +26,20 @@ inline Result checkImageHeader(const uint8_t* buf, size_t len, uint16_t expected
 
 inline const char* describe(Result r) {
     switch (r) {
-        case OK: return "ok";
-        case TOO_SHORT: return "file too short to be firmware";
-        case BAD_MAGIC: return "not an ESP32 firmware image";
-        case BAD_SEGMENTS: return "corrupt firmware header";
-        case WRONG_CHIP: return "firmware is built for a different chip";
+    case OK:
+        return "ok";
+    case TOO_SHORT:
+        return "file too short to be firmware";
+    case BAD_MAGIC:
+        return "not an ESP32 firmware image";
+    case BAD_SEGMENTS:
+        return "corrupt firmware header";
+    case WRONG_CHIP:
+        return "firmware is built for a different chip";
     }
     return "unknown";
 }
 
-}  // namespace otacheck
+} // namespace otacheck
 
-#endif  // OTA_CHECK_H
+#endif // OTA_CHECK_H

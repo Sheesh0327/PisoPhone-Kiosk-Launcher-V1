@@ -32,7 +32,7 @@ fun VaultHiddenAppsSection(
     hiddenSet: Set<String>,
     onHiddenSetChange: (Set<String>) -> Unit,
     onClose: () -> Unit,
-    onShowHelp: (String, String) -> Unit
+    onShowHelp: (String, String) -> Unit,
 ) {
     var showAppPicker by remember { mutableStateOf(false) }
     var appSearchQuery by remember { mutableStateOf("") }
@@ -42,10 +42,13 @@ fun VaultHiddenAppsSection(
     }
 
     val filteredAllApps = remember(allInstalledApps, appSearchQuery) {
-        if (appSearchQuery.isBlank()) allInstalledApps
-        else allInstalledApps.filter { 
-            it.name.contains(appSearchQuery, ignoreCase = true) || 
-            it.packageName.contains(appSearchQuery, ignoreCase = true) 
+        if (appSearchQuery.isBlank()) {
+            allInstalledApps
+        } else {
+            allInstalledApps.filter {
+                it.name.contains(appSearchQuery, ignoreCase = true) ||
+                    it.packageName.contains(appSearchQuery, ignoreCase = true)
+            }
         }
     }
 
@@ -57,13 +60,13 @@ fun VaultHiddenAppsSection(
         focusedContainerColor = Color(0xFF1E293B),
         unfocusedContainerColor = Color(0xFF1E293B),
         focusedPlaceholderColor = Color.Gray,
-        unfocusedPlaceholderColor = Color.Gray
+        unfocusedPlaceholderColor = Color.Gray,
     )
 
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
             Text("Hidden Apps (Admin Access)", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -71,7 +74,7 @@ fun VaultHiddenAppsSection(
             HelpInfoButton(
                 title = "Hidden Apps (Admin Restricted Access)",
                 description = "Applications marked as hidden are completely concealed from the customer game launcher. Only technicians in this Security Vault can launch or manage them. Launching any hidden app automatically unlocks a maintenance session so the app can be used without lock screen obstruction.",
-                onShowHelp = onShowHelp
+                onShowHelp = onShowHelp,
             )
         }
         Spacer(modifier = Modifier.width(8.dp))
@@ -79,15 +82,15 @@ fun VaultHiddenAppsSection(
             onClick = { showAppPicker = !showAppPicker },
             colors = ButtonDefaults.buttonColors(
                 containerColor = if (showAppPicker) Color(0xFF475569) else Color(0xFF10B981),
-                contentColor = Color.White
+                contentColor = Color.White,
             ),
             shape = RoundedCornerShape(10.dp),
-            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
         ) {
             Icon(
                 if (showAppPicker) Icons.Filled.Close else Icons.Filled.Add,
                 contentDescription = null,
-                modifier = Modifier.size(14.dp)
+                modifier = Modifier.size(14.dp),
             )
             Spacer(modifier = Modifier.width(4.dp))
             Text(if (showAppPicker) "Done" else "Manage Apps", fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -101,12 +104,12 @@ fun VaultHiddenAppsSection(
             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-            border = BorderStroke(1.dp, Color(0xFF334155))
+            border = BorderStroke(1.dp, Color(0xFF334155)),
         ) {
             Column(modifier = Modifier.padding(10.dp)) {
                 Text("Select Apps to Hide from Launcher:", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(6.dp))
-                
+
                 OutlinedTextField(
                     value = appSearchQuery,
                     onValueChange = { appSearchQuery = it },
@@ -114,16 +117,16 @@ fun VaultHiddenAppsSection(
                     singleLine = true,
                     textStyle = TextStyle(color = Color.White, fontSize = 12.sp),
                     colors = vaultTextFieldColors,
-                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
                 )
-                
+
                 Spacer(modifier = Modifier.height(8.dp))
-                
+
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(max = 200.dp)
-                        .verticalScroll(rememberScrollState())
+                        .verticalScroll(rememberScrollState()),
                 ) {
                     filteredAllApps.forEach { app ->
                         val isHidden = hiddenSet.contains(app.packageName)
@@ -135,13 +138,13 @@ fun VaultHiddenAppsSection(
                                     onHiddenSetChange(KioskSecurity.getHiddenApps(context))
                                 }
                                 .padding(vertical = 6.dp, horizontal = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
                             if (app.bitmap != null) {
                                 Image(
                                     bitmap = app.bitmap,
                                     contentDescription = app.name,
-                                    modifier = Modifier.size(24.dp).clip(RoundedCornerShape(6.dp))
+                                    modifier = Modifier.size(24.dp).clip(RoundedCornerShape(6.dp)),
                                 )
                             } else {
                                 Icon(Icons.Filled.Apps, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(24.dp))
@@ -157,7 +160,7 @@ fun VaultHiddenAppsSection(
                                     KioskSecurity.toggleAppHidden(context, app.packageName)
                                     onHiddenSetChange(KioskSecurity.getHiddenApps(context))
                                 },
-                                colors = CheckboxDefaults.colors(checkedColor = Color(0xFF10B981), checkmarkColor = Color.Black)
+                                colors = CheckboxDefaults.colors(checkedColor = Color(0xFF10B981), checkmarkColor = Color.Black),
                             )
                         }
                         HorizontalDivider(color = Color(0xFF334155).copy(alpha = 0.5f))
@@ -174,7 +177,7 @@ fun VaultHiddenAppsSection(
                 .fillMaxWidth()
                 .background(Color(0xFF1E293B), RoundedCornerShape(12.dp))
                 .padding(14.dp),
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center,
         ) {
             Text("No apps hidden currently. Tap 'Manage Apps' above to hide apps.", color = Color(0xFFA6ADC8), fontSize = 11.sp)
         }
@@ -183,7 +186,7 @@ fun VaultHiddenAppsSection(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(Color(0xFF1E293B), RoundedCornerShape(12.dp))
-                .padding(8.dp)
+                .padding(8.dp),
         ) {
             hiddenAppsList.forEach { app ->
                 Row(
@@ -191,14 +194,14 @@ fun VaultHiddenAppsSection(
                         .fillMaxWidth()
                         .padding(vertical = 6.dp, horizontal = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                         if (app.bitmap != null) {
                             Image(
                                 bitmap = app.bitmap,
                                 contentDescription = app.name,
-                                modifier = Modifier.size(28.dp).clip(RoundedCornerShape(6.dp))
+                                modifier = Modifier.size(28.dp).clip(RoundedCornerShape(6.dp)),
                             )
                         } else {
                             Icon(Icons.Filled.Apps, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(28.dp))
@@ -221,7 +224,7 @@ fun VaultHiddenAppsSection(
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1), contentColor = Color.White),
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                            modifier = Modifier.height(30.dp)
+                            modifier = Modifier.height(30.dp),
                         ) {
                             Icon(Icons.Filled.RocketLaunch, contentDescription = "Launch", modifier = Modifier.size(12.dp))
                             Spacer(modifier = Modifier.width(4.dp))
@@ -235,7 +238,7 @@ fun VaultHiddenAppsSection(
                                 KioskSecurity.toggleAppHidden(context, app.packageName)
                                 onHiddenSetChange(KioskSecurity.getHiddenApps(context))
                             },
-                            modifier = Modifier.size(30.dp)
+                            modifier = Modifier.size(30.dp),
                         ) {
                             Icon(Icons.Filled.Close, contentDescription = "Unhide", tint = Color(0xFFFF5252), modifier = Modifier.size(14.dp))
                         }

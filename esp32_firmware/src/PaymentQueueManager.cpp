@@ -1,3 +1,8 @@
+// Durable queue of coin payments that the phone (or controller) has not acknowledged yet.
+// A coin is enqueued the moment it is detected, persisted to NVS, pushed to the target, and then
+// retried every 10 s until acknowledged or expired. Arming is refused while storage is unwritable or
+// the queue is nearly full, so a coin is never accepted that cannot be recorded.
+
 #include "PaymentQueueManager.h"
 #include "ControllerWebSocket.h"
 #include "DeviceNetwork.h"
@@ -34,8 +39,7 @@ static String recordKey(int index) {
 }
 
 static bool validRecord(const PaymentRecord& rec) {
-    return rec.magic == PAYMENT_RECORD_MAGIC && rec.txId[0] != '\0' &&
-           rec.targetId[0] != '\0' && rec.pulses > 0 &&
+    return rec.magic == PAYMENT_RECORD_MAGIC && rec.txId[0] != '\0' && rec.targetId[0] != '\0' && rec.pulses > 0 &&
            (rec.ownerType == 1 || rec.ownerType == 2);
 }
 
@@ -110,8 +114,7 @@ void initPaymentQueue() {
 
         PaymentRecord rec;
         memset(&rec, 0, sizeof(rec));
-        if (length == sizeof(rec) &&
-            storage.getBytes(key.c_str(), &rec, sizeof(rec)) == sizeof(rec) &&
+        if (length == sizeof(rec) && storage.getBytes(key.c_str(), &rec, sizeof(rec)) == sizeof(rec) &&
             validRecord(rec)) {
             paymentQueue[i] = rec;
             paymentSlotUsed[i] = true;
@@ -172,11 +175,10 @@ bool canPerformRebootOrOta() {
     return true;
 }
 
-bool enqueuePendingPayment(const String& txId, const String& targetId, int pulses,
-                           CoinSlotOwnerType ownerType, int creditSeconds) {
-    if (txId.length() == 0 || txId.length() >= sizeof(((PaymentRecord*)0)->txId) ||
-        targetId.length() == 0 || targetId.length() >= sizeof(((PaymentRecord*)0)->targetId) ||
-        pulses <= 0 ||
+bool enqueuePendingPayment(const String& txId, const String& targetId, int pulses, CoinSlotOwnerType ownerType,
+                           int creditSeconds) {
+    if (txId.length() == 0 || txId.length() >= sizeof(((PaymentRecord*)0)->txId) || targetId.length() == 0 ||
+        targetId.length() >= sizeof(((PaymentRecord*)0)->targetId) || pulses <= 0 ||
         (ownerType != CoinSlotOwnerType::PHONE && ownerType != CoinSlotOwnerType::CONTROLLER)) {
         Serial.println("[PAY QUEUE] Rejected invalid payment record.");
         return false;
@@ -231,7 +233,8 @@ bool enqueuePendingPayment(const String& txId, const String& targetId, int pulse
         paymentStorageReady = false;
         persistRetryCount[freeIndex] = 1;
         unlockQueue();
-        diagLog("[PAY QUEUE] NVS write failed for tx_id='%s'. Retained in RAM; persistence will retry with backoff.\n", txId.c_str());
+        diagLog("[PAY QUEUE] NVS write failed for tx_id='%s'. Retained in RAM; persistence will retry with backoff.\n",
+                txId.c_str());
         return true;
     }
 
@@ -240,13 +243,11 @@ bool enqueuePendingPayment(const String& txId, const String& targetId, int pulse
     lastDispatchMs[freeIndex] = millis();
     unlockQueue();
 
-    diagLog("[PAY QUEUE] Persisted tx_id='%s' for '%s' (%d pulse(s)).\n",
-                  txId.c_str(), targetId.c_str(), pulses);
+    diagLog("[PAY QUEUE] Persisted tx_id='%s' for '%s' (%d pulse(s)).\n", txId.c_str(), targetId.c_str(), pulses);
     return true;
 }
 
-static bool acknowledgeMatchingPayment(const String& txId, const String* sessionId,
-                                       uint8_t requiredOwnerType) {
+static bool acknowledgeMatchingPayment(const String& txId, const String* sessionId, uint8_t requiredOwnerType) {
     if (txId.length() == 0) return false;
 
     lockQueue();
@@ -347,8 +348,7 @@ int clearPaymentQueue() {
 static void evictExpiredPayments(unsigned long now) {
     uint64_t masterNow = getCurrentMasterTimeMs();
     lockQueue();
-    uint64_t ttl = (activePaymentCount >= MAX_PAYMENT_QUEUE_SIZE - 2)
-        ? PAYMENT_TTL_UNDER_PRESSURE_MS : PAYMENT_TTL_MS;
+    uint64_t ttl = (activePaymentCount >= MAX_PAYMENT_QUEUE_SIZE - 2) ? PAYMENT_TTL_UNDER_PRESSURE_MS : PAYMENT_TTL_MS;
     for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
         if (!paymentSlotUsed[i]) continue;
         // Uptime age resets on reboot, so also use the master-clock age when both are known.
@@ -360,8 +360,7 @@ static void evictExpiredPayments(unsigned long now) {
         if (age < ttl) continue;
         if (paymentSlotPersisted[i] && !eraseRecord(i)) continue;
         diagLog("[PAY QUEUE] Evicted unacknowledged tx_id='%s' for '%s' (%d pulse(s)) after %llu s.\n",
-                      paymentQueue[i].txId, paymentQueue[i].targetId, paymentQueue[i].pulses,
-                      age / 1000ULL);
+                paymentQueue[i].txId, paymentQueue[i].targetId, paymentQueue[i].pulses, age / 1000ULL);
         resetSlotLocked(i);
         diagCount(DiagCounter::PaymentsEvicted);
     }
@@ -403,7 +402,8 @@ static void probePaymentStorage(unsigned long now) {
         failedProbes = 0;
     } else if (++failedProbes == 1 || failedProbes % 60 == 0) {
         diagLog("[PAY QUEUE] Payment storage still unwritable (probe failure #%u); arming stays disabled. "
-                "Check NVS space.\n", (unsigned)failedProbes);
+                "Check NVS space.\n",
+                (unsigned)failedProbes);
     }
 }
 
@@ -437,8 +437,8 @@ void processPendingPaymentRetries() {
         unlockQueue();
 
         if (needPersist) {
-            Serial.printf("[PAY QUEUE] Retrying NVS persistence for tx_id='%s' (attempt %d)...\n",
-                          rec.txId, currentAttempt);
+            Serial.printf("[PAY QUEUE] Retrying NVS persistence for tx_id='%s' (attempt %d)...\n", rec.txId,
+                          currentAttempt);
             if (persistRecord(i, rec)) {
                 lockQueue();
                 paymentSlotPersisted[i] = true;
@@ -473,8 +473,7 @@ void processPendingPaymentRetries() {
         if (rec.ownerType == 2) {
             sendControllerPaymentEvent(String(rec.targetId), String(rec.txId), rec.pulses);
         } else if (rec.ownerType == 1) {
-            retryPhonePayment(String(rec.targetId), rec.pulses,
-                              rec.creditSeconds, String(rec.txId));
+            retryPhonePayment(String(rec.targetId), rec.pulses, rec.creditSeconds, String(rec.txId));
         }
     }
 }

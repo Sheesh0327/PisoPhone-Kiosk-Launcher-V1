@@ -1,12 +1,6 @@
 
 
 package com.pisophone.kiosk.ui
-import kotlinx.coroutines.isActive
-import com.pisophone.kiosk.ui.PinAppPickerModal
-import com.pisophone.kiosk.ui.PinnedSlotOptionsModal
-import com.pisophone.kiosk.ui.PinAppToSlotModal
-import com.pisophone.kiosk.ui.LauncherThemeColors
-
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -33,8 +27,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pisophone.kiosk.model.AppInfo
+import com.pisophone.kiosk.ui.LauncherThemeColors
+import com.pisophone.kiosk.ui.PinAppPickerModal
+import com.pisophone.kiosk.ui.PinAppToSlotModal
+import com.pisophone.kiosk.ui.PinnedSlotOptionsModal
 import com.pisophone.kiosk.util.PinnedSlotsManager
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -80,7 +79,7 @@ fun LauncherScreen(
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Bottom
+            verticalAlignment = Alignment.Bottom,
         ) {
             Text(
                 text = time,
@@ -94,7 +93,7 @@ fun LauncherScreen(
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
                 color = currentTheme.textSecondary,
-                modifier = Modifier.padding(bottom = 4.dp)
+                modifier = Modifier.padding(bottom = 4.dp),
             )
         }
     }
@@ -110,22 +109,22 @@ fun LauncherScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 12.dp)
+                .padding(horizontal = 20.dp, vertical = 12.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Bolt,
                         contentDescription = "PisoPhone",
                         tint = currentTheme.primary,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(24.dp),
                     )
                     Row {
                         Text(
@@ -133,30 +132,30 @@ fun LauncherScreen(
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Black,
                             letterSpacing = 1.sp,
-                            color = currentTheme.textPrimary
+                            color = currentTheme.textPrimary,
                         )
                         Text(
                             text = "PHONE",
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Black,
                             letterSpacing = 1.sp,
-                            color = currentTheme.primary
+                            color = currentTheme.primary,
                         )
                     }
                     Surface(
                         color = currentTheme.primary.copy(alpha = 0.12f),
                         shape = RoundedCornerShape(100.dp),
                         border = BorderStroke(1.dp, currentTheme.primary.copy(alpha = 0.3f)),
-                        modifier = Modifier.padding(start = 4.dp)
+                        modifier = Modifier.padding(start = 4.dp),
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                         ) {
                             Box(
                                 modifier = Modifier
                                     .size(6.dp)
-                                    .background(currentTheme.primary, CircleShape)
+                                    .background(currentTheme.primary, CircleShape),
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
@@ -164,7 +163,7 @@ fun LauncherScreen(
                                 color = currentTheme.primary,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                letterSpacing = 0.5.sp
+                                letterSpacing = 0.5.sp,
                             )
                         }
                     }
@@ -180,31 +179,31 @@ fun LauncherScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp)
+                .padding(horizontal = 16.dp, vertical = 10.dp),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.padding(bottom = 8.dp)
+                modifier = Modifier.padding(bottom = 8.dp),
             ) {
                 Icon(
                     imageVector = Icons.Filled.Star,
                     contentDescription = "Pinned Apps",
                     tint = Color(0xFFFBBF24),
-                    modifier = Modifier.size(14.dp)
+                    modifier = Modifier.size(14.dp),
                 )
                 Text(
                     text = "PINNED",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 0.8.sp,
-                    color = currentTheme.textSecondary
+                    color = currentTheme.textSecondary,
                 )
             }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 for (slotIndex in 0 until 4) {
                     val pkgName = pinnedSlots.getOrElse(slotIndex) { "" }
@@ -216,12 +215,12 @@ fun LauncherScreen(
                             .height(88.dp)
                             .clip(RoundedCornerShape(14.dp))
                             .background(
-                                if (pinnedApp != null) currentTheme.cardBg else currentTheme.surface.copy(alpha = 0.45f)
+                                if (pinnedApp != null) currentTheme.cardBg else currentTheme.surface.copy(alpha = 0.45f),
                             )
                             .border(
                                 width = if (pinnedApp != null) 1.2.dp else 1.dp,
                                 color = if (pinnedApp != null) currentTheme.borderEmerald else currentTheme.border.copy(alpha = 0.6f),
-                                shape = RoundedCornerShape(14.dp)
+                                shape = RoundedCornerShape(14.dp),
                             )
                             .combinedClickable(
                                 onClick = {
@@ -237,16 +236,16 @@ fun LauncherScreen(
                                     } else {
                                         slotToPinIndex = slotIndex
                                     }
-                                }
+                                },
                             )
                             .padding(4.dp),
-                        contentAlignment = Alignment.Center
+                        contentAlignment = Alignment.Center,
                     ) {
                         if (pinnedApp != null) {
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center,
-                                modifier = Modifier.fillMaxSize()
+                                modifier = Modifier.fillMaxSize(),
                             ) {
                                 if (pinnedApp.bitmap != null) {
                                     Image(
@@ -254,20 +253,20 @@ fun LauncherScreen(
                                         contentDescription = pinnedApp.name,
                                         modifier = Modifier
                                             .size(42.dp)
-                                            .clip(RoundedCornerShape(10.dp))
+                                            .clip(RoundedCornerShape(10.dp)),
                                     )
                                 } else {
                                     Box(
                                         modifier = Modifier
                                             .size(42.dp)
                                             .background(currentTheme.surface, RoundedCornerShape(10.dp)),
-                                        contentAlignment = Alignment.Center
+                                        contentAlignment = Alignment.Center,
                                     ) {
                                         Icon(
                                             Icons.Filled.SportsEsports,
                                             contentDescription = null,
                                             tint = currentTheme.primary,
-                                            modifier = Modifier.size(22.dp)
+                                            modifier = Modifier.size(22.dp),
                                         )
                                     }
                                 }
@@ -279,7 +278,7 @@ fun LauncherScreen(
                                     fontWeight = FontWeight.SemiBold,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
-                                    textAlign = TextAlign.Center
+                                    textAlign = TextAlign.Center,
                                 )
                             }
 
@@ -288,13 +287,13 @@ fun LauncherScreen(
                                     .align(Alignment.TopEnd)
                                     .size(13.dp)
                                     .background(Color(0xFF059669), CircleShape),
-                                contentAlignment = Alignment.Center
+                                contentAlignment = Alignment.Center,
                             ) {
                                 Icon(
                                     Icons.Filled.PushPin,
                                     contentDescription = "Pinned",
                                     tint = Color.White,
-                                    modifier = Modifier.size(8.dp)
+                                    modifier = Modifier.size(8.dp),
                                 )
                             }
                         } else {
@@ -303,13 +302,13 @@ fun LauncherScreen(
                                     .size(34.dp)
                                     .background(Color(0x1510B981), CircleShape)
                                     .border(1.dp, Color(0x3310B981), CircleShape),
-                                contentAlignment = Alignment.Center
+                                contentAlignment = Alignment.Center,
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.Add,
                                     contentDescription = "Add Pinned App",
                                     tint = currentTheme.primary.copy(alpha = 0.7f),
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(18.dp),
                                 )
                             }
                         }
@@ -324,7 +323,7 @@ fun LauncherScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp)
+                .padding(horizontal = 16.dp, vertical = 10.dp),
         ) {
             OutlinedTextField(
                 value = searchQuery,
@@ -333,7 +332,7 @@ fun LauncherScreen(
                     Text(
                         "Search games & apps...",
                         color = currentTheme.textMuted,
-                        fontSize = 13.sp
+                        fontSize = 13.sp,
                     )
                 },
                 leadingIcon = {
@@ -341,20 +340,20 @@ fun LauncherScreen(
                         imageVector = Icons.Filled.Search,
                         contentDescription = "Search",
                         tint = currentTheme.primary,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(20.dp),
                     )
                 },
                 trailingIcon = {
                     if (searchQuery.isNotEmpty()) {
                         IconButton(
                             onClick = { searchQuery = "" },
-                            modifier = Modifier.size(28.dp)
+                            modifier = Modifier.size(28.dp),
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.Close,
                                 contentDescription = "Clear",
                                 tint = currentTheme.textMuted,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(16.dp),
                             )
                         }
                     }
@@ -367,11 +366,11 @@ fun LauncherScreen(
                     focusedBorderColor = currentTheme.primary,
                     unfocusedBorderColor = currentTheme.border,
                     focusedTextColor = currentTheme.textPrimary,
-                    unfocusedTextColor = currentTheme.textPrimary
+                    unfocusedTextColor = currentTheme.textPrimary,
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(50.dp)
+                    .height(50.dp),
             )
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -379,30 +378,30 @@ fun LauncherScreen(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Apps,
                         contentDescription = null,
                         tint = currentTheme.primary,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(16.dp),
                     )
                     Text(
                         text = "ALL APPS",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 0.8.sp,
-                        color = currentTheme.textPrimary
+                        color = currentTheme.textPrimary,
                     )
                 }
                 Text(
                     text = "${filteredApps.size} apps available",
                     fontSize = 11.sp,
-                    color = currentTheme.textMuted
+                    color = currentTheme.textMuted,
                 )
             }
         }
@@ -413,20 +412,20 @@ fun LauncherScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                contentAlignment = Alignment.Center
+                contentAlignment = Alignment.Center,
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
                         Icons.Filled.Search,
                         contentDescription = null,
                         tint = currentTheme.textMuted,
-                        modifier = Modifier.size(40.dp)
+                        modifier = Modifier.size(40.dp),
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         "No apps match \"$searchQuery\"",
                         color = currentTheme.textSecondary,
-                        fontSize = 13.sp
+                        fontSize = 13.sp,
                     )
                 }
             }
@@ -439,7 +438,7 @@ fun LauncherScreen(
                     .padding(horizontal = 10.dp),
                 contentPadding = PaddingValues(top = 4.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(filteredApps, key = { it.packageName }) { app ->
                     Column(
@@ -449,10 +448,10 @@ fun LauncherScreen(
                                 onClick = { onAppClick(app) },
                                 onLongClick = {
                                     appToPinFromDrawer = app
-                                }
+                                },
                             )
                             .padding(vertical = 8.dp, horizontal = 4.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                        horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         if (app.bitmap != null) {
                             Image(
@@ -460,7 +459,7 @@ fun LauncherScreen(
                                 contentDescription = app.name,
                                 modifier = Modifier
                                     .size(54.dp)
-                                    .clip(RoundedCornerShape(14.dp))
+                                    .clip(RoundedCornerShape(14.dp)),
                             )
                         } else {
                             Box(
@@ -468,13 +467,13 @@ fun LauncherScreen(
                                     .size(54.dp)
                                     .background(currentTheme.surface, RoundedCornerShape(14.dp))
                                     .border(1.dp, currentTheme.border, RoundedCornerShape(14.dp)),
-                                contentAlignment = Alignment.Center
+                                contentAlignment = Alignment.Center,
                             ) {
                                 Icon(
                                     Icons.Filled.Apps,
                                     contentDescription = null,
                                     tint = currentTheme.primary,
-                                    modifier = Modifier.size(28.dp)
+                                    modifier = Modifier.size(28.dp),
                                 )
                             }
                         }
@@ -487,7 +486,7 @@ fun LauncherScreen(
                             fontWeight = FontWeight.Medium,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center
+                            textAlign = TextAlign.Center,
                         )
                     }
                 }
@@ -502,7 +501,7 @@ fun LauncherScreen(
             apps = apps,
             colors = currentTheme,
             onDismiss = { slotToPinIndex = null },
-            onSlotPinned = { pinnedSlots = PinnedSlotsManager.getPinnedSlots(context) }
+            onSlotPinned = { pinnedSlots = PinnedSlotsManager.getPinnedSlots(context) },
         )
     }
 
@@ -524,7 +523,7 @@ fun LauncherScreen(
             onLaunch = {
                 selectedPinnedSlotForOptions = null
                 onAppClick(app)
-            }
+            },
         )
     }
 
@@ -537,7 +536,7 @@ fun LauncherScreen(
             onSlotSelected = {
                 pinnedSlots = PinnedSlotsManager.getPinnedSlots(context)
                 appToPinFromDrawer = null
-            }
+            },
         )
     }
 }

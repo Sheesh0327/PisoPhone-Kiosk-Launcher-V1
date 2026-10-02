@@ -9,6 +9,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
+/**
+ * Ticks the paid session once per second: counts the remaining time down, persists a checkpoint
+ * so a crash or reboot restores the session, and locks the kiosk when time runs out
+ * (see [SessionRules.afterExpiry]). [isStalled] lets the watchdog detect a stuck loop.
+ */
 class KioskSessionSupervisor(
     private val context: Context,
     private val scope: CoroutineScope,
@@ -19,7 +24,7 @@ class KioskSessionSupervisor(
     private val onCloseSession: (Boolean) -> Unit,
     private val onCheckBatteryAlerts: () -> Unit,
     /** Centralized lock side effects (send customer app home, pause media, unarm if needed). */
-    private val onSessionExpired: (cancelArm: Boolean) -> Unit = {}
+    private val onSessionExpired: (cancelArm: Boolean) -> Unit = {},
 ) {
     companion object {
         private const val TAG = "KioskSessionSupervisor"
@@ -36,6 +41,7 @@ class KioskSessionSupervisor(
     private var lastCheckpointMonotonicMs: Long = 0L
 
     private var timerJob: Job? = null
+
     @Volatile
     private var lastTickMonotonicMs: Long = 0L
 
@@ -60,7 +66,7 @@ class KioskSessionSupervisor(
                 try {
                     delay(1000)
                     lastTickMonotonicMs = android.os.SystemClock.elapsedRealtime()
-                    
+
                     val curState = stateManager.appState.value
                     // Session arming / waiting countdown
                     if (SessionRules.isArmed(curState)) {
@@ -78,7 +84,7 @@ class KioskSessionSupervisor(
                             }
                         }
                     }
-                    
+
                     // Active session countdown
                     if (SessionRules.isUnlocked(curState)) {
                         val deadline = stateManager.sessionExpiryDeadlineMs.value
@@ -99,7 +105,7 @@ class KioskSessionSupervisor(
                                     deadlineMs = expiryResult.sessionState.sessionExpiryDeadlineMs,
                                     remainingSeconds = expiryResult.sessionState.sessionTimeRemaining,
                                     revision = expiryResult.sessionState.revision,
-                                    targetAppState = lockedStateFor(stateBefore)
+                                    targetAppState = lockedStateFor(stateBefore),
                                 )
                                 if (applied) {
                                     onSpeakWarning("Time expired")
@@ -112,7 +118,7 @@ class KioskSessionSupervisor(
                                 stateManager.applySessionUpdate(
                                     expiryResult.sessionState.sessionExpiryDeadlineMs,
                                     expiryResult.sessionState.sessionTimeRemaining,
-                                    expiryResult.sessionState.revision
+                                    expiryResult.sessionState.revision,
                                 )
                             }
                         } else {

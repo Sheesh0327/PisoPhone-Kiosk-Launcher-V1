@@ -1,3 +1,6 @@
+// WebSocket link to game controllers: handshake with credential check and delivery of payment
+// events to the controller that owns the coin slot.
+
 #include "ControllerWebSocket.h"
 #include "CoinSlotManager.h"
 #include "PaymentQueueManager.h"
@@ -20,8 +23,7 @@ bool sendControllerPaymentEvent(const String& sessionId, const String& txId, int
         return false;
     }
 
-    String json = "{\"event\":\"COIN_DETECTED\",\"session_id\":\"" + sessionId +
-                  "\",\"pulses\":" + String(pulses) +
+    String json = "{\"event\":\"COIN_DETECTED\",\"session_id\":\"" + sessionId + "\",\"pulses\":" + String(pulses) +
                   ",\"tx_id\":\"" + txId + "\"}";
     sendWsText(controllerClient, json);
     return controllerClient.connected();
@@ -38,7 +40,7 @@ bool handleControllerWebSocketHandshake(WiFiClient& client, const String& reques
     }
     String tsStr = extractUrlParam(request, "ts=");
     String sig = extractUrlParam(request, "sig=");
-    
+
     sessionId.trim();
     tsStr.trim();
     sig.trim();
@@ -46,7 +48,8 @@ bool handleControllerWebSocketHandshake(WiFiClient& client, const String& reques
     // 1. Parameter presence check
     if (sessionId.length() == 0 || tsStr.length() == 0 || sig.length() == 0 || secKey.length() == 0) {
         Serial.println("[-] Controller WS: Missing session_id/device_id, ts, sig, or secKey");
-        client.print("HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"error\":\"MISSING_AUTH_PARAMS\"}");
+        client.print(
+            "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"error\":\"MISSING_AUTH_PARAMS\"}");
         client.stop();
         return false;
     }
@@ -58,7 +61,8 @@ bool handleControllerWebSocketHandshake(WiFiClient& client, const String& reques
 
     if (!sig.equalsIgnoreCase(expectedSig)) {
         Serial.printf("[-] Controller WS Auth Failed for session '%s': Signature Mismatch\n", sessionId.c_str());
-        client.print("HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\n\r\n{\"error\":\"INVALID_SIGNATURE\"}");
+        client.print(
+            "HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\n\r\n{\"error\":\"INVALID_SIGNATURE\"}");
         client.stop();
         return false;
     }
@@ -70,13 +74,15 @@ bool handleControllerWebSocketHandshake(WiFiClient& client, const String& reques
     if (currentMasterTs > 300000ULL) {
         if (ts < (currentMasterTs - 300000ULL) || ts > (currentMasterTs + 300000ULL)) {
             Serial.printf("[-] Controller WS Auth Failed: Timestamp out of master window (ts=%llu)\n", ts);
-            client.print("HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\n\r\n{\"error\":\"TIMESTAMP_OUT_OF_WINDOW\"}");
+            client.print(
+                "HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\n\r\n{\"error\":\"TIMESTAMP_OUT_OF_WINDOW\"}");
             client.stop();
             return false;
         }
     }
     if (lastControllerNonceTs > 30000ULL && ts + 30000ULL < lastControllerNonceTs) {
-        Serial.printf("[-] Controller WS Auth Failed for session '%s': Replay Detected (ts=%llu)\n", sessionId.c_str(), ts);
+        Serial.printf("[-] Controller WS Auth Failed for session '%s': Replay Detected (ts=%llu)\n", sessionId.c_str(),
+                      ts);
         client.print("HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\n\r\n{\"error\":\"REPLAY_DETECTED\"}");
         client.stop();
         return false;
@@ -86,7 +92,8 @@ bool handleControllerWebSocketHandshake(WiFiClient& client, const String& reques
 
     // Allow the previous controller a short interval to acknowledge the final coin.
     if (controllerSessionEnding && controllerClient.connected()) {
-        client.print("HTTP/1.1 409 Conflict\r\nContent-Type: application/json\r\n\r\n{\"event\":\"BUSY\",\"reason\":\"FINAL_ACK_PENDING\"}");
+        client.print(
+            "HTTP/1.1 409 Conflict\r\nContent-Type: application/json\r\n\r\n{\"event\":\"BUSY\",\"reason\":\"FINAL_ACK_PENDING\"}");
         client.stop();
         return false;
     }
@@ -94,9 +101,11 @@ bool handleControllerWebSocketHandshake(WiFiClient& client, const String& reques
     // 4. Shared Single-Session Mutex Check (CoinSlotManager)
     if (isCoinSlotBusy(sessionId, CoinSlotOwnerType::CONTROLLER)) {
         String activeOwner = getActiveCoinSessionId();
-        Serial.printf("[-] Controller WS Mutex Rejected for '%s': Slot BUSY with '%s'\n", 
-                      sessionId.c_str(), activeOwner.c_str());
-        client.print("HTTP/1.1 409 Conflict\r\nContent-Type: application/json\r\n\r\n{\"event\":\"BUSY\",\"session_id\":\"" + sessionId + "\",\"busy_with\":\"" + activeOwner + "\"}");
+        Serial.printf("[-] Controller WS Mutex Rejected for '%s': Slot BUSY with '%s'\n", sessionId.c_str(),
+                      activeOwner.c_str());
+        client.print(
+            "HTTP/1.1 409 Conflict\r\nContent-Type: application/json\r\n\r\n{\"event\":\"BUSY\",\"session_id\":\"" +
+            sessionId + "\",\"busy_with\":\"" + activeOwner + "\"}");
         client.stop();
         return false;
     }
@@ -121,31 +130,30 @@ bool handleControllerWebSocketHandshake(WiFiClient& client, const String& reques
     controllerCloseAfterMs = 0;
 
     // 6. Reserve Coin Slot and bind session-isolated callbacks
-    bool ok = reserveCoinSlot(sessionId, CoinSlotOwnerType::CONTROLLER, ARM_TTL,
+    bool ok = reserveCoinSlot(
+        sessionId, CoinSlotOwnerType::CONTROLLER, ARM_TTL,
         // onPayment Callback (Pure pulses, no PisoPhone pricing or routing)
         [](const String& sessId, int pulses) {
             String txId = generateTxId("tx-");
-            
-            bool retained = enqueuePendingPayment(
-                txId, sessId, pulses, CoinSlotOwnerType::CONTROLLER);
+
+            bool retained = enqueuePendingPayment(txId, sessId, pulses, CoinSlotOwnerType::CONTROLLER);
             if (!retained) {
-                Serial.printf("[CONTROLLER WS] CRITICAL: Could not retain tx_id='%s'.\n",
-                              txId.c_str());
+                Serial.printf("[CONTROLLER WS] CRITICAL: Could not retain tx_id='%s'.\n", txId.c_str());
             }
 
             if (sendControllerPaymentEvent(sessId, txId, pulses)) {
-                Serial.printf("[⚡ CONTROLLER WS] Dispatching %d pulse(s) to session '%s' (tx_id=%s)\n", 
-                              pulses, sessId.c_str(), txId.c_str());
+                Serial.printf("[⚡ CONTROLLER WS] Dispatching %d pulse(s) to session '%s' (tx_id=%s)\n", pulses,
+                              sessId.c_str(), txId.c_str());
             }
         },
         // onSessionEnd Callback (Session ended/timeout/released/drained)
         [](const String& sessId, const char* reason) {
             if (controllerConnected && controllerClient.connected()) {
                 String endReason = (reason != nullptr && strlen(reason) > 0) ? String(reason) : "RELEASED";
-                String json = "{\"event\":\"SESSION_ENDED\",\"session_id\":\"" + sessId + 
-                              "\",\"reason\":\"" + endReason + "\"}";
-                Serial.printf("[⚡ CONTROLLER WS] Session ended for '%s' (Reason: %s)\n", 
-                              sessId.c_str(), endReason.c_str());
+                String json =
+                    "{\"event\":\"SESSION_ENDED\",\"session_id\":\"" + sessId + "\",\"reason\":\"" + endReason + "\"}";
+                Serial.printf("[⚡ CONTROLLER WS] Session ended for '%s' (Reason: %s)\n", sessId.c_str(),
+                              endReason.c_str());
                 sendWsText(controllerClient, json);
                 controllerSessionEnding = true;
                 controllerCloseAfterMs = millis() + 2000;
@@ -155,8 +163,7 @@ bool handleControllerWebSocketHandshake(WiFiClient& client, const String& reques
             controllerSessionId = "";
             controllerSessionEnding = false;
             controllerCloseAfterMs = 0;
-        }
-    );
+        });
 
     if (!ok) {
         Serial.printf("[-] Controller WS failed to reserve slot for '%s'\n", sessionId.c_str());
@@ -169,8 +176,8 @@ bool handleControllerWebSocketHandshake(WiFiClient& client, const String& reques
         return false;
     }
 
-    Serial.printf("[⚡ CONTROLLER WS] ARMED successfully for session '%s' (TTL: %lu s)\n", 
-                  sessionId.c_str(), ARM_TTL / 1000);
+    Serial.printf("[⚡ CONTROLLER WS] ARMED successfully for session '%s' (TTL: %lu s)\n", sessionId.c_str(),
+                  ARM_TTL / 1000);
     sendWsText(controllerClient, "{\"event\":\"ARMED\",\"session_id\":\"" + sessionId + "\"}");
     dispatchPendingControllerPayments(sessionId);
     return true;
@@ -195,8 +202,8 @@ void processControllerWebSocket() {
     if (controllerClient.available()) {
         String frameText = readWsText(controllerClient);
         if (frameText.length() > 0) {
-            if (!controllerSessionEnding && frameText != "CLOSE" && frameText != "DONE" &&
-                frameText != "PING" && frameText != "PONG") {
+            if (!controllerSessionEnding && frameText != "CLOSE" && frameText != "DONE" && frameText != "PING" &&
+                frameText != "PONG") {
                 refreshCoinSlotTtl(boundSessionId, CoinSlotOwnerType::CONTROLLER, ARM_TTL);
             }
 
@@ -205,10 +212,8 @@ void processControllerWebSocket() {
             if (!ackError && String(ackDoc["event"] | "") == "ACK") {
                 String ackSessionId = String(ackDoc["session_id"] | "");
                 String ackTxId = String(ackDoc["tx_id"] | "");
-                if (ackSessionId == boundSessionId &&
-                    acknowledgeControllerPayment(boundSessionId, ackTxId)) {
-                    Serial.printf("[CONTROLLER WS] Durable ACK accepted for tx_id='%s'.\n",
-                                  ackTxId.c_str());
+                if (ackSessionId == boundSessionId && acknowledgeControllerPayment(boundSessionId, ackTxId)) {
+                    Serial.printf("[CONTROLLER WS] Durable ACK accepted for tx_id='%s'.\n", ackTxId.c_str());
                 } else {
                     Serial.println("[CONTROLLER WS] Rejected unmatched payment ACK.");
                 }
@@ -225,7 +230,7 @@ void processControllerWebSocket() {
             return;
         }
         if (frameText == "DONE" || frameText == "CLOSE") {
-            Serial.printf("[⚡ CONTROLLER WS] '%s' received for '%s'. Releasing slot and draining.\n", 
+            Serial.printf("[⚡ CONTROLLER WS] '%s' received for '%s'. Releasing slot and draining.\n",
                           frameText.c_str(), boundSessionId.c_str());
             controllerSessionEnding = true;
             controllerCloseAfterMs = millis() + 500;

@@ -1,3 +1,6 @@
+// Admin portal page and settings endpoints: render the dashboard, save configuration, reboot,
+// factory reset, vault reset and the firmware update form.
+
 #include "InputSafety.h"
 #include "WebServerConfig.h"
 #include "WebServerModule.h"
@@ -27,10 +30,11 @@ void handlePortalRoot() {
         uint8_t mac[6];
         esp_read_mac(mac, ESP_MAC_WIFI_STA);
         char macBuf[18];
-        snprintf(macBuf, sizeof(macBuf), "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        snprintf(macBuf, sizeof(macBuf), "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4],
+                 mac[5]);
         macAddressStr = String(macBuf);
     }
-    
+
     // Check for redirection-based pairing action from the HTTPS Installer
     if (webServer.hasArg("action") && webServer.arg("action") == "pair") {
         int slot = webServer.hasArg("slot") ? webServer.arg("slot").toInt() : 0;
@@ -76,7 +80,7 @@ void handlePortalRoot() {
             }
         }
     }
-    
+
     streamPortalHtml();
 }
 
@@ -153,15 +157,30 @@ void handleSave() {
     }
 
     prefs.begin(NVS_NAMESPACE, false);
-    if (webServer.hasArg(NVS_KEY_WIFI_SSID)) { wifiSsid = webServer.arg(NVS_KEY_WIFI_SSID); prefs.putString(NVS_KEY_WIFI_SSID, wifiSsid); }
-    if (webServer.hasArg(NVS_KEY_WIFI_PASS)) { wifiPass = webServer.arg(NVS_KEY_WIFI_PASS); prefs.putString(NVS_KEY_WIFI_PASS, wifiPass); }
-    if (webServer.hasArg(NVS_KEY_U_COIN_PIN)) { universalCoinPin = webServer.arg(NVS_KEY_U_COIN_PIN).toInt(); prefs.putInt(NVS_KEY_U_COIN_PIN, universalCoinPin); }
-    if (webServer.hasArg(NVS_KEY_LED_PIN))    { ledPin  = webServer.arg(NVS_KEY_LED_PIN).toInt();  prefs.putInt(NVS_KEY_LED_PIN, ledPin); }
+    if (webServer.hasArg(NVS_KEY_WIFI_SSID)) {
+        wifiSsid = webServer.arg(NVS_KEY_WIFI_SSID);
+        prefs.putString(NVS_KEY_WIFI_SSID, wifiSsid);
+    }
+    if (webServer.hasArg(NVS_KEY_WIFI_PASS)) {
+        wifiPass = webServer.arg(NVS_KEY_WIFI_PASS);
+        prefs.putString(NVS_KEY_WIFI_PASS, wifiPass);
+    }
+    if (webServer.hasArg(NVS_KEY_U_COIN_PIN)) {
+        universalCoinPin = webServer.arg(NVS_KEY_U_COIN_PIN).toInt();
+        prefs.putInt(NVS_KEY_U_COIN_PIN, universalCoinPin);
+    }
+    if (webServer.hasArg(NVS_KEY_LED_PIN)) {
+        ledPin = webServer.arg(NVS_KEY_LED_PIN).toInt();
+        prefs.putInt(NVS_KEY_LED_PIN, ledPin);
+    }
     if (webServer.hasArg(NVS_KEY_LED_ACTIVE_LOW)) {
         ledActiveLow = (webServer.arg(NVS_KEY_LED_ACTIVE_LOW) == "1");
         prefs.putBool(NVS_KEY_LED_ACTIVE_LOW, ledActiveLow);
     }
-    if (webServer.hasArg(NVS_KEY_RELAY_PIN))  { relayPin = webServer.arg(NVS_KEY_RELAY_PIN).toInt(); prefs.putInt(NVS_KEY_RELAY_PIN, relayPin); }
+    if (webServer.hasArg(NVS_KEY_RELAY_PIN)) {
+        relayPin = webServer.arg(NVS_KEY_RELAY_PIN).toInt();
+        prefs.putInt(NVS_KEY_RELAY_PIN, relayPin);
+    }
     if (webServer.hasArg("ips")) {
         String rawIps = webServer.arg("ips");
         rawIps.trim();
@@ -183,7 +202,8 @@ void handleSave() {
             for (int i = 0; i < trackedDeviceCount; i++) {
                 bool keep = false;
                 forEachConfiguredDevice([&](const DeviceConfig& cCfg) {
-                    if ((cCfg.id.length() > 0 && cCfg.id == trackedDevices[i].deviceId) || cCfg.ip == trackedDevices[i].lastKnownIp) {
+                    if ((cCfg.id.length() > 0 && cCfg.id == trackedDevices[i].deviceId) ||
+                        cCfg.ip == trackedDevices[i].lastKnownIp) {
                         keep = true;
                         return false;
                     }
@@ -199,8 +219,14 @@ void handleSave() {
             trackedDeviceCount = newCount;
         }
     }
-    if (webServer.hasArg(NVS_KEY_PORT))       { targetPort = webServer.arg(NVS_KEY_PORT).toInt(); prefs.putInt(NVS_KEY_PORT, targetPort); }
-    if (webServer.hasArg(NVS_KEY_ADMIN_PW))   { webPassword = webServer.arg(NVS_KEY_ADMIN_PW); prefs.putString(NVS_KEY_ADMIN_PW, webPassword); }
+    if (webServer.hasArg(NVS_KEY_PORT)) {
+        targetPort = webServer.arg(NVS_KEY_PORT).toInt();
+        prefs.putInt(NVS_KEY_PORT, targetPort);
+    }
+    if (webServer.hasArg(NVS_KEY_ADMIN_PW)) {
+        webPassword = webServer.arg(NVS_KEY_ADMIN_PW);
+        prefs.putString(NVS_KEY_ADMIN_PW, webPassword);
+    }
     if (webServer.hasArg("minutes_per_coin")) {
         int m = webServer.arg("minutes_per_coin").toInt();
         if (m >= 1) {
@@ -209,7 +235,8 @@ void handleSave() {
         }
     }
     if (webServer.hasArg(NVS_KEY_RELAY_ACTIVE_LOW)) {
-        relayActiveLow = (webServer.arg(NVS_KEY_RELAY_ACTIVE_LOW) == "1" || webServer.arg(NVS_KEY_RELAY_ACTIVE_LOW) == "true");
+        relayActiveLow =
+            (webServer.arg(NVS_KEY_RELAY_ACTIVE_LOW) == "1" || webServer.arg(NVS_KEY_RELAY_ACTIVE_LOW) == "true");
         prefs.putBool(NVS_KEY_RELAY_ACTIVE_LOW, relayActiveLow);
     }
     if (webServer.hasArg(NVS_KEY_SHARED_SECRET)) {
@@ -248,7 +275,8 @@ void handleOtaForm() {
         uint8_t mac[6];
         esp_read_mac(mac, ESP_MAC_WIFI_STA);
         char macBuf[18];
-        snprintf(macBuf, sizeof(macBuf), "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        snprintf(macBuf, sizeof(macBuf), "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4],
+                 mac[5]);
         macAddressStr = String(macBuf);
     }
     html.replace("{MAC_ADDRESS}", macAddressStr);

@@ -19,12 +19,10 @@ object KioskRecoveryManager {
     /**
      * Checks if USB Debugging (ADB) is currently enabled in global settings.
      */
-    fun isUsbDebuggingEnabled(context: Context): Boolean {
-        return try {
-            Settings.Global.getInt(context.contentResolver, Settings.Global.ADB_ENABLED, 0) == 1
-        } catch (e: Exception) {
-            false
-        }
+    fun isUsbDebuggingEnabled(context: Context): Boolean = try {
+        Settings.Global.getInt(context.contentResolver, Settings.Global.ADB_ENABLED, 0) == 1
+    } catch (e: Exception) {
+        false
     }
 
     /**
@@ -119,47 +117,45 @@ object KioskRecoveryManager {
      * Emergency De-provision / Remove Device Owner.
      * Safely releases the device so developer can uninstall or manage freely without bricking.
      */
-    fun emergencyClearDeviceOwner(context: Context): Boolean {
-        return try {
-            // Stop service
-            context.stopService(Intent(context, com.pisophone.kiosk.KioskService::class.java))
+    fun emergencyClearDeviceOwner(context: Context): Boolean = try {
+        // Stop service
+        context.stopService(Intent(context, com.pisophone.kiosk.KioskService::class.java))
 
-            val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-            val componentName = ComponentName(context, KioskDeviceAdminReceiver::class.java)
+        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+        val componentName = ComponentName(context, KioskDeviceAdminReceiver::class.java)
 
-            if (dpm.isDeviceOwnerApp(context.packageName)) {
-                try {
-                    dpm.setLockTaskPackages(componentName, emptyArray())
-                    dpm.clearPackagePersistentPreferredActivities(componentName, context.packageName)
-                    dpm.setStatusBarDisabled(componentName, false)
-                    dpm.clearUserRestriction(componentName, UserManager.DISALLOW_FACTORY_RESET)
-                    dpm.clearUserRestriction(componentName, UserManager.DISALLOW_SAFE_BOOT)
-                    dpm.clearUserRestriction(componentName, UserManager.DISALLOW_DEBUGGING_FEATURES)
-                    dpm.setGlobalSetting(componentName, Settings.Global.ADB_ENABLED, "1")
-                } catch (e: Exception) {
-                    Log.w(TAG, "Error cleaning up policies before de-provision: ${e.message}")
-                }
-                dpm.clearDeviceOwnerApp(context.packageName)
-                Log.i(TAG, "Device Owner successfully cleared!")
-            }
-
-            if (dpm.isAdminActive(componentName)) {
-                dpm.removeActiveAdmin(componentName)
-                Log.i(TAG, "Device Admin removed!")
-            }
-
+        if (dpm.isDeviceOwnerApp(context.packageName)) {
             try {
-                val intent = Intent(Settings.ACTION_SETTINGS).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                context.startActivity(intent)
-            } catch (_: Exception) {}
-
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to clear Device Owner: ${e.message}")
-            false
+                dpm.setLockTaskPackages(componentName, emptyArray())
+                dpm.clearPackagePersistentPreferredActivities(componentName, context.packageName)
+                dpm.setStatusBarDisabled(componentName, false)
+                dpm.clearUserRestriction(componentName, UserManager.DISALLOW_FACTORY_RESET)
+                dpm.clearUserRestriction(componentName, UserManager.DISALLOW_SAFE_BOOT)
+                dpm.clearUserRestriction(componentName, UserManager.DISALLOW_DEBUGGING_FEATURES)
+                dpm.setGlobalSetting(componentName, Settings.Global.ADB_ENABLED, "1")
+            } catch (e: Exception) {
+                Log.w(TAG, "Error cleaning up policies before de-provision: ${e.message}")
+            }
+            dpm.clearDeviceOwnerApp(context.packageName)
+            Log.i(TAG, "Device Owner successfully cleared!")
         }
+
+        if (dpm.isAdminActive(componentName)) {
+            dpm.removeActiveAdmin(componentName)
+            Log.i(TAG, "Device Admin removed!")
+        }
+
+        try {
+            val intent = Intent(Settings.ACTION_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        } catch (_: Exception) {}
+
+        true
+    } catch (e: Exception) {
+        Log.e(TAG, "Failed to clear Device Owner: ${e.message}")
+        false
     }
 
     /**

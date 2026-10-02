@@ -3,11 +3,11 @@ package com.pisophone.kiosk.model
 enum class BatteryAlertState {
     NONE,
     LOW_BATTERY_UNPLUGGED,
-    HIGH_BATTERY_PLUGGED
+    HIGH_BATTERY_PLUGGED,
 }
 
 data class BatteryStatus(
     val level: Int = -1,
     val isCharging: Boolean = false,
-    val alertState: BatteryAlertState = BatteryAlertState.NONE
+    val alertState: BatteryAlertState = BatteryAlertState.NONE,
 )

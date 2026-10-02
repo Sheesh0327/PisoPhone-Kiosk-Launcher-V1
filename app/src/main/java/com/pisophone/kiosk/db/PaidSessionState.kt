@@ -9,5 +9,5 @@ data class PaidSessionState(
     val sessionTimeRemaining: Int,
     val sessionExpiryDeadlineMs: Long,
     val lastSavedElapsedRealtime: Long,
-    val revision: Long = 0L
+    val revision: Long = 0L,
 )

@@ -1,3 +1,6 @@
+// Persistent configuration (NVS): defaults, loading and saving of pins, Wi-Fi, passwords,
+// slots and revenue counters, plus the locked accessor for the shared secret.
+
 #include "Config.h"
 #include "DeviceManager.h"
 #include "HardwareManager.h"
@@ -10,9 +13,9 @@
 // ============================================================================
 // HARDWARE CONSTANTS & PIN DEFAULTS DEFINITION
 // ============================================================================
-const char* DEFAULT_SSID        = "AdminSetup";
-const char* DEFAULT_PASS        = "Admin@123";
-const char* DEFAULT_ADMIN_PW    = "admin";
+const char* DEFAULT_SSID = "AdminSetup";
+const char* DEFAULT_PASS = "Admin@123";
+const char* DEFAULT_ADMIN_PW = "admin";
 const char* MASTER_CRYPTO_SECRET = "PISOPHONE_HMAC_MASTER_KEY";
 
 // Pin defaults are per board and come from -D flags in envs/*.ini (PISO_PIN_*). A wrong default
@@ -21,14 +24,14 @@ const char* MASTER_CRYPTO_SECRET = "PISOPHONE_HMAC_MASTER_KEY";
 #if !defined(PISO_PIN_COIN) || !defined(PISO_PIN_LED) || !defined(PISO_PIN_RELAY) || !defined(PISO_PIN_RESET)
 #error "Define PISO_PIN_COIN, PISO_PIN_LED, PISO_PIN_RELAY and PISO_PIN_RESET in the PlatformIO env build_flags."
 #endif
-const int   DEFAULT_UNIVERSAL_COIN_PIN = PISO_PIN_COIN;
-const int   DEFAULT_LED_PIN            = PISO_PIN_LED;
-const bool  DEFAULT_LED_ACTIVE_LOW     = false;
-const int   DEFAULT_RELAY_PIN          = PISO_PIN_RELAY;
-const int   DEFAULT_PORT               = 8080;
-const int   HARDWARE_RESET_PIN         = PISO_PIN_RESET;
-const int   UDP_DISCOVERY_PORT         = 8888;
-const int   DEFAULT_MINUTES_PER_COIN   = 6;
+const int DEFAULT_UNIVERSAL_COIN_PIN = PISO_PIN_COIN;
+const int DEFAULT_LED_PIN = PISO_PIN_LED;
+const bool DEFAULT_LED_ACTIVE_LOW = false;
+const int DEFAULT_RELAY_PIN = PISO_PIN_RELAY;
+const int DEFAULT_PORT = 8080;
+const int HARDWARE_RESET_PIN = PISO_PIN_RESET;
+const int UDP_DISCOVERY_PORT = 8888;
+const int DEFAULT_MINUTES_PER_COIN = 6;
 
 // ============================================================================
 // GLOBAL VARIABLES DEFINITION
@@ -36,15 +39,15 @@ const int   DEFAULT_MINUTES_PER_COIN   = 6;
 Preferences prefs;
 
 int universalCoinPin = DEFAULT_UNIVERSAL_COIN_PIN;
-int ledPin           = DEFAULT_LED_PIN;
-bool ledActiveLow    = DEFAULT_LED_ACTIVE_LOW;
-int relayPin         = DEFAULT_RELAY_PIN;
-bool relayActiveLow  = false;
+int ledPin = DEFAULT_LED_PIN;
+bool ledActiveLow = DEFAULT_LED_ACTIVE_LOW;
+int relayPin = DEFAULT_RELAY_PIN;
+bool relayActiveLow = false;
 
-String wifiSsid      = DEFAULT_SSID;
-String wifiPass      = DEFAULT_PASS;
-String androidIps    = "";
-String webPassword   = DEFAULT_ADMIN_PW;
+String wifiSsid = DEFAULT_SSID;
+String wifiPass = DEFAULT_PASS;
+String androidIps = "";
+String webPassword = DEFAULT_ADMIN_PW;
 // The auth worker task reads the secret while the main loop can change it (settings save, factory
 // reset). Every access goes through these accessors so a String is never reallocated mid-read.
 static String sharedSecretValue = MASTER_CRYPTO_SECRET;
@@ -66,8 +69,8 @@ void setSharedSecret(const String& value) {
 String macAddressStr = "";
 int maxLicensedSlots = DEFAULT_MAX_SLOTS;
 
-int targetPort        = DEFAULT_PORT;
-int minutesPerCoin    = DEFAULT_MINUTES_PER_COIN;
+int targetPort = DEFAULT_PORT;
+int minutesPerCoin = DEFAULT_MINUTES_PER_COIN;
 
 const unsigned long ARM_TTL = 20000;
 const unsigned long MAX_SESSION_DURATION = 120000;
@@ -82,9 +85,9 @@ String quickTimeStatusMsg = "";
 // Credit Vault
 // Revenue & Audit
 uint32_t totalCoinsLifetime = 0;
-uint32_t totalCoinsSession  = 0;
+uint32_t totalCoinsSession = 0;
 float totalEarningsLifetime = 0.0f;
-float totalEarningsSession  = 0.0f;
+float totalEarningsSession = 0.0f;
 uint32_t lastSavedTotalCoins = 0;
 float lastSavedTotalEarnings = 0.0f;
 bool revenueDirty = false;
@@ -151,8 +154,8 @@ void updateMasterTime(uint64_t ts, const String& sourceId) {
         (uint64_t)(nowMs - outlierMillis) <= MASTER_CLOCK_WINDOW_MS) {
         uint64_t projected = outlierTimestamp + (uint64_t)(nowMs - outlierMillis);
         if (absDiff(ts, projected) <= MASTER_CLOCK_AGREE_MS) {
-            diagLog("[CLOCK] Master clock re-synced (%llu -> %llu) after agreement from '%s' and '%s'.\n",
-                          current, ts, outlierSource.c_str(), sourceId.c_str());
+            diagLog("[CLOCK] Master clock re-synced (%llu -> %llu) after agreement from '%s' and '%s'.\n", current, ts,
+                    outlierSource.c_str(), sourceId.c_str());
             lastMasterTimestamp = ts;
             lastMasterMillis = nowMs;
             outlierTimestamp = 0;
@@ -180,7 +183,9 @@ bool parseDeviceEntry(const String& rawEntry, DeviceConfig& out) {
         String p1 = entry.substring(0, pipe1);
         String p2 = entry.substring(pipe1 + 1, pipe2);
         String p3 = entry.substring(pipe2 + 1);
-        p1.trim(); p2.trim(); p3.trim();
+        p1.trim();
+        p2.trim();
+        p3.trim();
 
         if (p1.indexOf('.') != -1 && p2.indexOf('.') == -1) {
             out.ip = p1;
@@ -194,7 +199,8 @@ bool parseDeviceEntry(const String& rawEntry, DeviceConfig& out) {
     } else if (pipe1 != -1) {
         String p1 = entry.substring(0, pipe1);
         String p2 = entry.substring(pipe1 + 1);
-        p1.trim(); p2.trim();
+        p1.trim();
+        p2.trim();
 
         if (p2.indexOf('.') != -1) {
             out.id = p1;
@@ -249,27 +255,27 @@ void forEachConfiguredDevice(std::function<bool(const DeviceConfig&)> callback) 
     }
 }
 
-const char* const NVS_NAMESPACE       = "kiosk_cfg";
-const char* const NVS_KEY_MAX_SLOTS   = "max_slots";
-const char* const NVS_KEY_SLOTS_DATA  = "slots_data";
-const char* const NVS_KEY_IPS         = "ips";
+const char* const NVS_NAMESPACE = "kiosk_cfg";
+const char* const NVS_KEY_MAX_SLOTS = "max_slots";
+const char* const NVS_KEY_SLOTS_DATA = "slots_data";
+const char* const NVS_KEY_IPS = "ips";
 
-const char* const NVS_KEY_WIFI_SSID        = "wifi_ssid";
-const char* const NVS_KEY_WIFI_PASS        = "wifi_pass";
-const char* const NVS_KEY_U_COIN_PIN       = "u_coin_pin";
-const char* const NVS_KEY_LED_PIN          = "led_pin";
-const char* const NVS_KEY_LED_ACTIVE_LOW   = "led_act_low";
-const char* const NVS_KEY_RELAY_PIN        = "relay_pin";
+const char* const NVS_KEY_WIFI_SSID = "wifi_ssid";
+const char* const NVS_KEY_WIFI_PASS = "wifi_pass";
+const char* const NVS_KEY_U_COIN_PIN = "u_coin_pin";
+const char* const NVS_KEY_LED_PIN = "led_pin";
+const char* const NVS_KEY_LED_ACTIVE_LOW = "led_act_low";
+const char* const NVS_KEY_RELAY_PIN = "relay_pin";
 const char* const NVS_KEY_RELAY_ACTIVE_LOW = "relay_act_low";
-const char* const NVS_KEY_PORT             = "target_port";
-const char* const NVS_KEY_MINS_PER_COIN    = "mins_per_coin";
-const char* const NVS_KEY_ADMIN_PW         = "admin_pw";
-const char* const NVS_KEY_SHARED_SECRET    = "shared_secret";
-const char* const NVS_KEY_P1               = "p1_ip";
-const char* const NVS_KEY_P2               = "p2_ip";
-const char* const NVS_KEY_MATCH            = "match_minutes";
-const char* const NVS_KEY_TOTAL_COINS      = "total_coins";
-const char* const NVS_KEY_TOTAL_EARNINGS   = "total_earnings";
+const char* const NVS_KEY_PORT = "target_port";
+const char* const NVS_KEY_MINS_PER_COIN = "mins_per_coin";
+const char* const NVS_KEY_ADMIN_PW = "admin_pw";
+const char* const NVS_KEY_SHARED_SECRET = "shared_secret";
+const char* const NVS_KEY_P1 = "p1_ip";
+const char* const NVS_KEY_P2 = "p2_ip";
+const char* const NVS_KEY_MATCH = "match_minutes";
+const char* const NVS_KEY_TOTAL_COINS = "total_coins";
+const char* const NVS_KEY_TOTAL_EARNINGS = "total_earnings";
 
 void syncAndroidIpsFromSlots() {
     String newIps = "";
@@ -290,11 +296,8 @@ void saveSlotLicenses() {
     raw.reserve(maxLicensedSlots * 64); // Pre-allocate approx 64 bytes per slot
     for (int i = 0; i < maxLicensedSlots; i++) {
         if (i > 0) raw += ";";
-        raw += String(licenseSlots[i].slotNum) + "|" +
-               licenseSlots[i].deviceId + "|" +
-               licenseSlots[i].ip + "|" +
-               licenseSlots[i].name + "|" +
-               (licenseSlots[i].active ? "1" : "0");
+        raw += String(licenseSlots[i].slotNum) + "|" + licenseSlots[i].deviceId + "|" + licenseSlots[i].ip + "|" +
+               licenseSlots[i].name + "|" + (licenseSlots[i].active ? "1" : "0");
     }
     prefs.putString(NVS_KEY_SLOTS_DATA, raw);
     syncAndroidIpsFromSlots();
@@ -339,7 +342,7 @@ void loadSlotLicenses() {
                         licenseSlots[idx].deviceId = item.substring(p1 + 1, p2);
                         licenseSlots[idx].ip = item.substring(p2 + 1, p3);
                         licenseSlots[idx].name = item.substring(p3 + 1, (p4 != -1) ? p4 : item.length());
-                        
+
                         if (p4 != -1) {
                             licenseSlots[idx].active = (idx < maxLicensedSlots) && (item.substring(p4 + 1) == "1");
                         } else {
@@ -363,24 +366,24 @@ void loadAllConfig() {
 
     // 2. Open NVS for all kiosk configuration & lifetime vault revenue counters
     prefs.begin(NVS_NAMESPACE, false);
-    wifiSsid          = prefs.getString(NVS_KEY_WIFI_SSID, wifiSsid);
-    wifiPass          = prefs.getString(NVS_KEY_WIFI_PASS, wifiPass);
-    universalCoinPin  = prefs.getInt(NVS_KEY_U_COIN_PIN, universalCoinPin);
-    ledPin            = prefs.getInt(NVS_KEY_LED_PIN, ledPin);
-    ledActiveLow      = prefs.getBool(NVS_KEY_LED_ACTIVE_LOW, DEFAULT_LED_ACTIVE_LOW);
-    relayPin          = prefs.getInt(NVS_KEY_RELAY_PIN, relayPin);
-    
-    targetPort        = prefs.getInt(NVS_KEY_PORT, targetPort);
+    wifiSsid = prefs.getString(NVS_KEY_WIFI_SSID, wifiSsid);
+    wifiPass = prefs.getString(NVS_KEY_WIFI_PASS, wifiPass);
+    universalCoinPin = prefs.getInt(NVS_KEY_U_COIN_PIN, universalCoinPin);
+    ledPin = prefs.getInt(NVS_KEY_LED_PIN, ledPin);
+    ledActiveLow = prefs.getBool(NVS_KEY_LED_ACTIVE_LOW, DEFAULT_LED_ACTIVE_LOW);
+    relayPin = prefs.getInt(NVS_KEY_RELAY_PIN, relayPin);
+
+    targetPort = prefs.getInt(NVS_KEY_PORT, targetPort);
     if (targetPort <= 0) targetPort = 8080;
-    minutesPerCoin    = prefs.getInt(NVS_KEY_MINS_PER_COIN, DEFAULT_MINUTES_PER_COIN);
+    minutesPerCoin = prefs.getInt(NVS_KEY_MINS_PER_COIN, DEFAULT_MINUTES_PER_COIN);
     if (minutesPerCoin < 1) minutesPerCoin = 1;
-    
-    webPassword       = prefs.getString(NVS_KEY_ADMIN_PW, webPassword);
-    relayActiveLow    = prefs.getBool(NVS_KEY_RELAY_ACTIVE_LOW, false);
+
+    webPassword = prefs.getString(NVS_KEY_ADMIN_PW, webPassword);
+    relayActiveLow = prefs.getBool(NVS_KEY_RELAY_ACTIVE_LOW, false);
     setSharedSecret(MASTER_CRYPTO_SECRET);
-    p1Ip              = prefs.getString(NVS_KEY_P1, p1Ip);
-    p2Ip              = prefs.getString(NVS_KEY_P2, p2Ip);
-    matchMinutes      = prefs.getInt(NVS_KEY_MATCH, matchMinutes);
+    p1Ip = prefs.getString(NVS_KEY_P1, p1Ip);
+    p2Ip = prefs.getString(NVS_KEY_P2, p2Ip);
+    matchMinutes = prefs.getInt(NVS_KEY_MATCH, matchMinutes);
 
     // Lifetime vault revenue counters
     totalCoinsLifetime = prefs.getULong(NVS_KEY_TOTAL_COINS, 0);
@@ -404,13 +407,13 @@ void loadAllConfig() {
     });
     androidIps = bootCleanIps;
 
-    Serial.printf("[💾 CONFIG] Loaded NVS Config: SSID='%s', Port=%d, AdminPW='%s', RelayPin=%d, TotalCoins=%u, TotalEarnings=₱%.2f\n",
+    Serial.printf(
+        "[💾 CONFIG] Loaded NVS Config: SSID='%s', Port=%d, AdminPW='%s', RelayPin=%d, TotalCoins=%u, TotalEarnings=₱%.2f\n",
         wifiSsid.c_str(), targetPort, webPassword.c_str(), relayPin, totalCoinsLifetime, totalEarningsLifetime);
 }
 
 void flushRevenueNow() {
-    if (!revenueDirty && totalCoinsLifetime == lastSavedTotalCoins &&
-        totalEarningsLifetime == lastSavedTotalEarnings) {
+    if (!revenueDirty && totalCoinsLifetime == lastSavedTotalCoins && totalEarningsLifetime == lastSavedTotalEarnings) {
         return;
     }
     prefs.begin(NVS_NAMESPACE, false);

@@ -1,3 +1,8 @@
+// Firmware entry point: setup() brings up storage, Wi-Fi, hardware and the web/WebSocket servers;
+// loop() then runs short, non-blocking steps in a fixed order (watchdog, health, revenue persistence,
+// super-admin sync, coin-slot session, payment retries, web server, WebSocket, UDP discovery).
+// Nothing in loop() may block for long: the coin pulse counter and the 15 s watchdog depend on it.
+
 #include <Arduino.h>
 #include <WiFi.h>
 #include <Preferences.h>
@@ -20,7 +25,7 @@
 
 #define WDT_TIMEOUT_SECONDS 15
 #define DAILY_MAINTENANCE_INTERVAL_MS 86400000UL // 24 Hours
-#define MIN_SAFE_HEAP_BYTES 15000                 // 15 KB Critical Heap Limit
+#define MIN_SAFE_HEAP_BYTES 15000                // 15 KB Critical Heap Limit
 
 static unsigned long lastWifiCheckTime = 0;
 static unsigned long lastCloudSnapshotMs = 0;
@@ -49,8 +54,8 @@ static void startSetupAccessPoint() {
     applyWifiTxPower();
     if (WiFi.softAP(apSsid.c_str(), DEFAULT_PASS)) {
         setupApActive = true;
-        diagLog("[📶 SETUP AP] Wi-Fi unreachable. Setup AP '%s' active at http://%s\n",
-                      apSsid.c_str(), WiFi.softAPIP().toString().c_str());
+        diagLog("[📶 SETUP AP] Wi-Fi unreachable. Setup AP '%s' active at http://%s\n", apSsid.c_str(),
+                WiFi.softAPIP().toString().c_str());
     } else {
         WiFi.mode(WIFI_STA);
         applyWifiTxPower();
@@ -70,17 +75,15 @@ static void stopSetupAccessPoint() {
 static void initHardwareWatchdog() {
 #if defined(ESP_IDF_VERSION_MAJOR) && (ESP_IDF_VERSION_MAJOR >= 5)
     esp_task_wdt_config_t wdt_config = {
-        .timeout_ms = WDT_TIMEOUT_SECONDS * 1000,
-        .idle_core_mask = (1 << 0),
-        .trigger_panic = true
-    };
+        .timeout_ms = WDT_TIMEOUT_SECONDS * 1000, .idle_core_mask = (1 << 0), .trigger_panic = true};
     esp_task_wdt_init(&wdt_config);
     esp_task_wdt_add(NULL);
 #else
     esp_task_wdt_init(WDT_TIMEOUT_SECONDS, true);
     esp_task_wdt_add(NULL);
 #endif
-    Serial.printf("[+] Hardware Task Watchdog (esp_task_wdt) initialized (%ds timeout, panic reset enabled)\n", WDT_TIMEOUT_SECONDS);
+    Serial.printf("[+] Hardware Task Watchdog (esp_task_wdt) initialized (%ds timeout, panic reset enabled)\n",
+                  WDT_TIMEOUT_SECONDS);
 }
 
 static void processSystemHealthAndAutoMaintenance() {
@@ -93,9 +96,11 @@ static void processSystemHealthAndAutoMaintenance() {
     bool dailyWindowReached = (now > DAILY_MAINTENANCE_INTERVAL_MS);
 
     // Never restart with a coin session open or a payment that only exists in RAM.
-    if ((heapCritical || dailyWindowReached) && getCoinSlotState() == CoinSlotState::IDLE && !hasUnpersistedPayments()) {
+    if ((heapCritical || dailyWindowReached) && getCoinSlotState() == CoinSlotState::IDLE &&
+        !hasUnpersistedPayments()) {
         if (heapCritical) {
-            diagLog("⚠️ [HEALTH GUARD] Free heap low (%u bytes < %d bytes threshold). Initiating safety reboot...\n", freeHeap, MIN_SAFE_HEAP_BYTES);
+            diagLog("⚠️ [HEALTH GUARD] Free heap low (%u bytes < %d bytes threshold). Initiating safety reboot...\n",
+                    freeHeap, MIN_SAFE_HEAP_BYTES);
         } else {
             diagLog("ℹ️ [HEALTH GUARD] 24-hour uptime maintenance window reached. Initiating scheduled reboot...\n");
         }
@@ -109,7 +114,8 @@ static void processSystemHealthAndAutoMaintenance() {
 void setup() {
     Serial.begin(115200);
     unsigned long start = millis();
-    while (!Serial && (millis() - start < 2500));
+    while (!Serial && (millis() - start < 2500))
+        ;
     delay(300);
 
     diagInit();
@@ -129,21 +135,22 @@ void setup() {
     // Initialize Dynamic Hardware Pins & Hardware Reset Pin (GPIO 2)
     applyCoinSlotHardwareConfig();
     initCoinSlotManager();
-    setGlobalCoinPaymentCallback([](const String& sessionId, int pulses) {
-        triggerUniversalCoinEvent(pulses, sessionId);
-    });
+    setGlobalCoinPaymentCallback(
+        [](const String& sessionId, int pulses) { triggerUniversalCoinEvent(pulses, sessionId); });
     pinMode(HARDWARE_RESET_PIN, INPUT_PULLUP);
     setLedHardware(false);
     // Initialize relay hardware (OFF by default - Armed-Only mode)
     setRelayHardware(false);
-    Serial.printf("[+] Hardware Pins bound: Universal Multi-Coin Pin = GPIO %d, LED Pin = GPIO %d, Relay Pin = GPIO %d (ActiveLow=%s), Reset Pin = GPIO %d\n",
+    Serial.printf(
+        "[+] Hardware Pins bound: Universal Multi-Coin Pin = GPIO %d, LED Pin = GPIO %d, Relay Pin = GPIO %d (ActiveLow=%s), Reset Pin = GPIO %d\n",
         universalCoinPin, ledPin, relayPin, relayActiveLow ? "true" : "false", HARDWARE_RESET_PIN);
 
     // Immediately read hardware factory MAC address from eFuse
     uint8_t macInit[6];
     esp_read_mac(macInit, ESP_MAC_WIFI_STA);
     char macBufInit[18];
-    snprintf(macBufInit, sizeof(macBufInit), "%02X:%02X:%02X:%02X:%02X:%02X", macInit[0], macInit[1], macInit[2], macInit[3], macInit[4], macInit[5]);
+    snprintf(macBufInit, sizeof(macBufInit), "%02X:%02X:%02X:%02X:%02X:%02X", macInit[0], macInit[1], macInit[2],
+             macInit[3], macInit[4], macInit[5]);
     macAddressStr = String(macBufInit);
     Serial.printf("[+] Hardware MAC Address: %s\n", macAddressStr.c_str());
 
@@ -212,16 +219,16 @@ void loop() {
     // 3. Handle Port 80 HTTP Requests
     webServer.handleClient();
     yield();
-    
+
     // 4. Handle Port 81 WebSocket Client & Frames
     processWebSocketServer();
-    
+
     // 5. Handle Port 8888 UDP Broadcast Discovery
     processUdpDiscovery();
-    
+
     // 6. Handle USB Serial CLI commands
     processSerialCli();
-    
+
     // 7. Robust Non-Blocking Wi-Fi Reconnection Watchdog & LED Status Sync
     if (WiFi.status() == WL_CONNECTED) {
         currentLedState = LED_STATE_CONNECTED;
@@ -236,7 +243,7 @@ void loop() {
             currentLedState = LED_STATE_CONNECTING;
         } else {
             currentLedState = LED_STATE_FAILED;
-            
+
             // Reconnect scans hop channels and drop setup-AP clients, so retry less often then.
             unsigned long retryMs = setupApActive ? 120000UL : 30000UL;
             if (wifiSsid.length() > 0 && (millis() - lastWifiCheckTime > retryMs)) {
@@ -251,7 +258,7 @@ void loop() {
         }
     }
     processLedBlink();
-    
+
     // Periodic Cloud Snapshot Sync (Every 15 mins if connected)
     if (lastCloudSnapshotMs == 0) lastCloudSnapshotMs = millis();
     if (WiFi.status() == WL_CONNECTED && (millis() - lastCloudSnapshotMs > 900000)) {

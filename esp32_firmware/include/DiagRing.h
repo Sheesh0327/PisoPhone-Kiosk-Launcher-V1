@@ -9,14 +9,14 @@
 #include <stdio.h>
 #include <string.h>
 
-template <size_t Lines, size_t LineLen>
-class DiagRing {
+template <size_t Lines, size_t LineLen> class DiagRing {
 public:
     // Stores "<seconds>.<millis> <message>", truncated to the line size on a UTF-8 boundary, with
     // leading and trailing line breaks removed.
     void push(unsigned long uptimeMs, const char* message) {
         const char* msg = message ? message : "";
-        while (*msg == '\n' || *msg == '\r') msg++;
+        while (*msg == '\n' || *msg == '\r')
+            msg++;
         char* slot = lines_[head_];
         int n = snprintf(slot, LineLen, "%lu.%03lu %s", uptimeMs / 1000UL, uptimeMs % 1000UL, msg);
         size_t len = n < 0 ? 0 : (size_t)n;
@@ -24,7 +24,8 @@ public:
             len = LineLen - 1;
             len = trimPartialUtf8(slot, len);
         }
-        while (len > 0 && (slot[len - 1] == '\n' || slot[len - 1] == '\r')) len--;
+        while (len > 0 && (slot[len - 1] == '\n' || slot[len - 1] == '\r'))
+            len--;
         slot[len] = '\0';
         head_ = (head_ + 1) % Lines;
         total_++;
@@ -42,7 +43,8 @@ public:
     void clear() {
         head_ = 0;
         total_ = 0;
-        for (size_t i = 0; i < Lines; i++) lines_[i][0] = '\0';
+        for (size_t i = 0; i < Lines; i++)
+            lines_[i][0] = '\0';
     }
 
 private:
@@ -50,7 +52,8 @@ private:
     // (a broken sequence would make the whole JSON response invalid).
     static size_t trimPartialUtf8(const char* s, size_t len) {
         size_t p = len;
-        while (p > 0 && ((unsigned char)s[p - 1] & 0xC0) == 0x80) p--;  // continuation bytes
+        while (p > 0 && ((unsigned char)s[p - 1] & 0xC0) == 0x80)
+            p--; // continuation bytes
         if (p == 0) return len;
         unsigned char lead = (unsigned char)s[p - 1];
         size_t need = lead >= 0xF0 ? 4 : lead >= 0xE0 ? 3 : lead >= 0xC0 ? 2 : 1;

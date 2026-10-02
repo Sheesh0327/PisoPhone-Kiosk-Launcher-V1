@@ -61,11 +61,11 @@ struct DeviceConfig {
 };
 
 struct LicenseSlot {
-    int slotNum;        // 1 to 12
-    String deviceId;    // Canonical hardware ID (e.g., "HW-A1B2C3D4")
-    String ip;          // Terminal local DHCP IP (e.g., "192.168.1.50")
-    String name;        // Display label (e.g., "PisoPhone 1")
-    bool active;        // Whether slot is valid/licensed
+    int slotNum;     // 1 to 12
+    String deviceId; // Canonical hardware ID (e.g., "HW-A1B2C3D4")
+    String ip;       // Terminal local DHCP IP (e.g., "192.168.1.50")
+    String name;     // Display label (e.g., "PisoPhone 1")
+    bool active;     // Whether slot is valid/licensed
 };
 
 struct DeviceTelemetry {
@@ -79,7 +79,8 @@ struct DeviceTelemetry {
     unsigned long lastSeenMs;
     unsigned long timeReportedMs; // when timeRemainingSeconds was last reported by the phone
     unsigned long long lastNonceTs;
-    bool isApp; // True ONLY if request comes from the PisoPhone app (filters out external script coinslot access requests)
+    bool
+        isApp; // True ONLY if request comes from the PisoPhone app (filters out external script coinslot access requests)
 };
 
 struct AuthRequest {

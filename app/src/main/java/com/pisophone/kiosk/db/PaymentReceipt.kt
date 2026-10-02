@@ -6,12 +6,12 @@ import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "payment_receipts",
-    indices = [Index(value = ["txId"], unique = true)]
+    indices = [Index(value = ["txId"], unique = true)],
 )
 data class PaymentReceipt(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val txId: String,
     val secondsCredited: Int,
     val amount: Double,
-    val acceptanceTimestamp: Long = System.currentTimeMillis()
+    val acceptanceTimestamp: Long = System.currentTimeMillis(),
 )

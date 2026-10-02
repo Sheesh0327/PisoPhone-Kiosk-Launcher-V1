@@ -10,11 +10,11 @@
 #define PISO_CRED_URL "https://pisophone.pages.dev/update/credentials.json"
 #endif
 
-void superAdminCredsLoad();                       // call once at boot, after prefs are usable
-bool superAdminCredsManaged();                    // true once a signed hash has been accepted
+void superAdminCredsLoad();    // call once at boot, after prefs are usable
+bool superAdminCredsManaged(); // true once a signed hash has been accepted
 uint32_t superAdminCredsVersion();
 bool superAdminPasswordOk(const String& candidate);
-bool superAdminBasicAuthOk();                     // HTTP Basic "superadmin:<password>" header
-void superAdminSyncLoop();                        // call from loop(); downloads/applies updates
+bool superAdminBasicAuthOk(); // HTTP Basic "superadmin:<password>" header
+void superAdminSyncLoop();    // call from loop(); downloads/applies updates
 
 #endif

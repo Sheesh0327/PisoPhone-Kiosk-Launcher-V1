@@ -5,6 +5,13 @@ import android.util.Log
 import com.pisophone.kiosk.security.KioskSecurity
 import kotlinx.coroutines.flow.MutableStateFlow
 
+/**
+ * Single source of truth for the UI-visible kiosk state, exposed as StateFlows.
+ *
+ * `appState` follows the session state machine in [SessionRules] (0 locked, 1 armed-locked,
+ * 2 unlocked, 3 unlocked-armed, 4 unlicensed). Other classes change it only through
+ * SessionRules transitions so the numbers never get computed ad hoc.
+ */
 class KioskStateManager(private val context: Context) {
     companion object {
         private const val TAG = "KioskStateManager"
@@ -106,7 +113,7 @@ class KioskStateManager(private val context: Context) {
     @Synchronized
     fun applySessionUpdate(
         snapshot: com.pisophone.kiosk.repository.SessionSnapshot,
-        targetAppState: Int? = null
+        targetAppState: Int? = null,
     ): Boolean {
         if (snapshot.revision < sessionRevision.value) {
             Log.d(TAG, "Ignoring stale session update: incoming rev ${snapshot.revision} < current rev ${sessionRevision.value}")
@@ -126,13 +133,11 @@ class KioskStateManager(private val context: Context) {
         deadlineMs: Long,
         remainingSeconds: Int,
         revision: Long,
-        targetAppState: Int? = null
-    ): Boolean {
-        return applySessionUpdate(
-            com.pisophone.kiosk.repository.SessionSnapshot(deadlineMs, remainingSeconds, revision),
-            targetAppState
-        )
-    }
+        targetAppState: Int? = null,
+    ): Boolean = applySessionUpdate(
+        com.pisophone.kiosk.repository.SessionSnapshot(deadlineMs, remainingSeconds, revision),
+        targetAppState,
+    )
 
     fun saveState(txSet: Set<String> = emptySet()) {
         try {
@@ -151,60 +156,58 @@ class KioskStateManager(private val context: Context) {
         }
     }
 
-    fun restoreState(): Set<String> {
-        return try {
-            val deviceContext = context.createDeviceProtectedStorageContext()
-            val prefs = deviceContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val savedState = prefs.getInt("app_state", 0)
-            
-            // Read authoritative paid balance through PaymentRepository
-            val paymentRepo = com.pisophone.kiosk.repository.PaymentRepository(
-                db = com.pisophone.kiosk.db.AppDatabase.getDatabase(context),
-                context = context
-            )
-            val restored = paymentRepo.restoreSessionState()
+    fun restoreState(): Set<String> = try {
+        val deviceContext = context.createDeviceProtectedStorageContext()
+        val prefs = deviceContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val savedState = prefs.getInt("app_state", 0)
 
-            pricePerCoin.value = prefs.getFloat("price_per_coin", 5.0f).toDouble()
-            minutesPerCoin.value = prefs.getInt("minutes_per_coin", 30)
-            esp32Ip = null
+        // Read authoritative paid balance through PaymentRepository
+        val paymentRepo = com.pisophone.kiosk.repository.PaymentRepository(
+            db = com.pisophone.kiosk.db.AppDatabase.getDatabase(context),
+            context = context,
+        )
+        val restored = paymentRepo.restoreSessionState()
 
-            val savedTxSet = prefs.getStringSet("processed_tx_ids", emptySet()) ?: emptySet()
+        pricePerCoin.value = prefs.getFloat("price_per_coin", 5.0f).toDouble()
+        minutesPerCoin.value = prefs.getInt("minutes_per_coin", 30)
+        esp32Ip = null
 
-            val effectiveRemainingSec = restored.remainingSeconds
-            val effectiveDeadline = restored.deadlineMs
-            sessionRevision.value = restored.revision
+        val savedTxSet = prefs.getStringSet("processed_tx_ids", emptySet()) ?: emptySet()
 
-            if (effectiveRemainingSec > 0) {
-                sessionTimeRemaining.value = effectiveRemainingSec
-                sessionExpiryDeadlineMs.value = effectiveDeadline
-                appState.value = if (SessionRules.isArmed(savedState)) SessionState.UNLOCKED_ARMED.code else SessionState.UNLOCKED.code
-                Log.d(TAG, "Restored active session: ${effectiveRemainingSec}s remaining (Monotonic deadline: $effectiveDeadline, isReboot=${restored.isReboot}, rev=${restored.revision})")
-            } else {
-                appState.value = 0
-                sessionTimeRemaining.value = 0
-                sessionExpiryDeadlineMs.value = 0L
-            }
-            
-            coinsInserted.value = 0
-            val (reason, slotNum, _) = com.pisophone.kiosk.security.KioskActivationManager.getSlotLockdownDetails(context)
-            val isLocked = com.pisophone.kiosk.security.KioskActivationManager.isSlotLockedDown(context)
-            isSlotExpired.value = isLocked
-            slotExpiryMessage.value = reason
-            slotNumber.value = slotNum
+        val effectiveRemainingSec = restored.remainingSeconds
+        val effectiveDeadline = restored.deadlineMs
+        sessionRevision.value = restored.revision
 
-            if (isLocked) {
-                appState.value = 0
-                sessionTimeRemaining.value = 0
-                sessionExpiryDeadlineMs.value = 0L
-                paymentRepo.expireSessionBlocking()
-            }
-
-            saveState(savedTxSet)
-            savedTxSet
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to restore state: ${e.message}")
-            emptySet()
+        if (effectiveRemainingSec > 0) {
+            sessionTimeRemaining.value = effectiveRemainingSec
+            sessionExpiryDeadlineMs.value = effectiveDeadline
+            appState.value = if (SessionRules.isArmed(savedState)) SessionState.UNLOCKED_ARMED.code else SessionState.UNLOCKED.code
+            Log.d(TAG, "Restored active session: ${effectiveRemainingSec}s remaining (Monotonic deadline: $effectiveDeadline, isReboot=${restored.isReboot}, rev=${restored.revision})")
+        } else {
+            appState.value = 0
+            sessionTimeRemaining.value = 0
+            sessionExpiryDeadlineMs.value = 0L
         }
+
+        coinsInserted.value = 0
+        val (reason, slotNum, _) = com.pisophone.kiosk.security.KioskActivationManager.getSlotLockdownDetails(context)
+        val isLocked = com.pisophone.kiosk.security.KioskActivationManager.isSlotLockedDown(context)
+        isSlotExpired.value = isLocked
+        slotExpiryMessage.value = reason
+        slotNumber.value = slotNum
+
+        if (isLocked) {
+            appState.value = 0
+            sessionTimeRemaining.value = 0
+            sessionExpiryDeadlineMs.value = 0L
+            paymentRepo.expireSessionBlocking()
+        }
+
+        saveState(savedTxSet)
+        savedTxSet
+    } catch (e: Exception) {
+        Log.e(TAG, "Failed to restore state: ${e.message}")
+        emptySet()
     }
 
     fun getLocalIpAddress(): String {

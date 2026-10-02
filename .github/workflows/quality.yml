@@ -1,0 +1,55 @@
+name: Code quality
+
+# Style and logic checks that do not need the Android toolchain or an ESP32 board:
+#   - ktlint for the Android app (rules in .editorconfig)
+#   - clang-format for the firmware (rules in esp32_firmware/.clang-format)
+#   - the firmware's host tests (diagnostics ring, input safety, OTA header check, credential crypto)
+on:
+  push:
+    branches:
+      - '**'
+    paths:
+      - 'app/**'
+      - 'esp32_firmware/**'
+      - 'scripts/**'
+      - '.editorconfig'
+      - '.github/workflows/quality.yml'
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  kotlin-style:
+    name: ktlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Install ktlint
+        run: |
+          curl -sSL -o ktlint https://github.com/pinterest/ktlint/releases/download/1.5.0/ktlint
+          chmod +x ktlint
+      - name: Check Kotlin style
+        run: ./ktlint --relative "app/src/**/*.kt" "*.kts" "app/*.kts"
+
+  firmware-style-and-tests:
+    name: Firmware format and host tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q libmbedtls-dev
+          pip install clang-format cryptography
+      - name: Check C++ formatting
+        working-directory: esp32_firmware
+        run: |
+          FILES=$(ls src/*.cpp include/*.h host_tests/*.cpp | grep -vE "include/(WebDashboard|SuperAdminTemplate)")
+          clang-format --dry-run --Werror $FILES
+      - name: Run host tests
+        run: sh esp32_firmware/host_tests/run.sh

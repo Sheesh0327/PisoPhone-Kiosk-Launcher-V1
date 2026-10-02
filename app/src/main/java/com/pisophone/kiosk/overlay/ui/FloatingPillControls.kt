@@ -24,11 +24,11 @@ import java.util.Locale
 fun FloatingPillStatusChips(
     batteryPct: Int,
     ramStats: Pair<Long, Long>,
-    outlineColor: Color
+    outlineColor: Color,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         // Battery Chip
         Box(
@@ -37,7 +37,7 @@ fun FloatingPillStatusChips(
                 .background(Color(0xFF0F172A), RoundedCornerShape(8.dp))
                 .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
                 .padding(vertical = 4.dp),
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center,
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Filled.BatteryFull, contentDescription = null, tint = outlineColor, modifier = Modifier.size(13.dp))
@@ -54,7 +54,7 @@ fun FloatingPillStatusChips(
                 .background(Color(0xFF0F172A), RoundedCornerShape(8.dp))
                 .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
                 .padding(vertical = 4.dp),
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center,
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Filled.Memory, contentDescription = null, tint = Color(0xFF00FF88), modifier = Modifier.size(13.dp))
@@ -70,7 +70,7 @@ fun FloatingPillStatusChips(
                 .background(Color(0xFF0F172A), RoundedCornerShape(8.dp))
                 .border(1.dp, outlineColor.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
                 .padding(vertical = 4.dp),
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center,
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Filled.Bolt, contentDescription = null, tint = Color(0xFFFFD600), modifier = Modifier.size(13.dp))
@@ -85,7 +85,7 @@ fun FloatingPillStatusChips(
 fun FloatingPillBrightnessControl(
     currentBrightness: Float,
     maxBrightness: Float,
-    onBrightnessChange: (Float) -> Unit
+    onBrightnessChange: (Float) -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -93,14 +93,20 @@ fun FloatingPillBrightnessControl(
             .background(Color(0xFF0B132B).copy(alpha = 0.7f), RoundedCornerShape(10.dp))
             .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(10.dp))
             .padding(horizontal = 10.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         val brightnessPct = ((currentBrightness / maxBrightness) * 100).toInt()
         Icon(
-            if (brightnessPct > 60) Icons.Filled.BrightnessHigh else if (brightnessPct > 25) Icons.Filled.BrightnessMedium else Icons.Filled.BrightnessLow,
+            if (brightnessPct > 60) {
+                Icons.Filled.BrightnessHigh
+            } else if (brightnessPct > 25) {
+                Icons.Filled.BrightnessMedium
+            } else {
+                Icons.Filled.BrightnessLow
+            },
             contentDescription = null,
             tint = Color(0xFFFFB800),
-            modifier = Modifier.size(15.dp)
+            modifier = Modifier.size(15.dp),
         )
         Spacer(modifier = Modifier.width(6.dp))
         Slider(
@@ -110,19 +116,19 @@ fun FloatingPillBrightnessControl(
             colors = SliderDefaults.colors(
                 thumbColor = Color(0xFFFFB800),
                 activeTrackColor = Color(0xFFFFB800),
-                inactiveTrackColor = Color(0xFF334155)
+                inactiveTrackColor = Color(0xFF334155),
             ),
             modifier = Modifier
                 .weight(1f)
-                .height(24.dp)
+                .height(24.dp),
         )
         Spacer(modifier = Modifier.width(6.dp))
         Text(
-            "$brightnessPct%", 
-            color = Color(0xFFFFB800), 
-            fontSize = 11.sp, 
+            "$brightnessPct%",
+            color = Color(0xFFFFB800),
+            fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace
+            fontFamily = FontFamily.Monospace,
         )
     }
 }
@@ -132,7 +138,7 @@ fun FloatingPillVolumeControl(
     currentVolume: Int,
     maxVolume: Int,
     outlineColor: Color,
-    onVolumeChange: (Int) -> Unit
+    onVolumeChange: (Int) -> Unit,
 ) {
     var isMuted by remember { mutableStateOf(currentVolume == 0) }
     var preMuteVolume by remember { mutableIntStateOf(if (currentVolume > 0) currentVolume else (maxVolume / 2)) }
@@ -143,7 +149,7 @@ fun FloatingPillVolumeControl(
             .background(Color(0xFF0B132B).copy(alpha = 0.7f), RoundedCornerShape(10.dp))
             .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(10.dp))
             .padding(horizontal = 10.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         val safeMax = if (maxVolume > 0) maxVolume else 1
         val volumePct = ((currentVolume.toFloat() / safeMax) * 100).toInt().coerceIn(0, 100)
@@ -163,7 +169,7 @@ fun FloatingPillVolumeControl(
                         onVolumeChange(restored)
                         isMuted = false
                     }
-                }
+                },
         )
         Spacer(modifier = Modifier.width(6.dp))
         Slider(
@@ -177,19 +183,19 @@ fun FloatingPillVolumeControl(
             colors = SliderDefaults.colors(
                 thumbColor = outlineColor,
                 activeTrackColor = outlineColor,
-                inactiveTrackColor = Color(0xFF334155)
+                inactiveTrackColor = Color(0xFF334155),
             ),
             modifier = Modifier
                 .weight(1f)
-                .height(24.dp)
+                .height(24.dp),
         )
         Spacer(modifier = Modifier.width(6.dp))
         Text(
-            "$volumePct%", 
-            color = outlineColor, 
-            fontSize = 11.sp, 
+            "$volumePct%",
+            color = outlineColor,
+            fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace
+            fontFamily = FontFamily.Monospace,
         )
     }
 }
@@ -197,7 +203,7 @@ fun FloatingPillVolumeControl(
 @Composable
 fun FloatingPillRamCleaner(
     ramStats: Pair<Long, Long>,
-    onBoostClick: () -> Unit
+    onBoostClick: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -206,7 +212,7 @@ fun FloatingPillRamCleaner(
             .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(10.dp))
             .padding(horizontal = 8.dp, vertical = 5.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Filled.CleaningServices, contentDescription = null, tint = Color(0xFF00FF88), modifier = Modifier.size(13.dp))
@@ -217,7 +223,7 @@ fun FloatingPillRamCleaner(
                 "${String.format(Locale.US, "%.1f", ramStats.first / 1024.0)} / ${String.format(Locale.US, "%.1f", ramStats.second / 1024.0)} GB",
                 color = Color(0xFFA6ADC8),
                 fontSize = 10.sp,
-                fontFamily = FontFamily.Monospace
+                fontFamily = FontFamily.Monospace,
             )
         }
 
@@ -226,10 +232,10 @@ fun FloatingPillRamCleaner(
             modifier = Modifier.height(26.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = Color(0xFF00FF88),
-                contentColor = Color.Black
+                contentColor = Color.Black,
             ),
             shape = RoundedCornerShape(6.dp),
-            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
         ) {
             Icon(Icons.Filled.RocketLaunch, contentDescription = null, modifier = Modifier.size(11.dp), tint = Color.Black)
             Spacer(modifier = Modifier.width(4.dp))

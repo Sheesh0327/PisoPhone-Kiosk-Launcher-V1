@@ -1,8 +1,7 @@
 @file:Suppress("DEPRECATION")
+
 package com.pisophone.kiosk.overlay
 
-import com.pisophone.kiosk.service.SessionRules
-import com.pisophone.kiosk.service.SessionState
 import android.content.Context
 import android.graphics.PixelFormat
 import android.view.Gravity
@@ -13,6 +12,8 @@ import androidx.compose.runtime.*
 import com.pisophone.kiosk.ComposeOverlayView
 import com.pisophone.kiosk.model.BatteryStatus
 import com.pisophone.kiosk.overlay.ui.FloatingPill
+import com.pisophone.kiosk.service.SessionRules
+import com.pisophone.kiosk.service.SessionState
 import kotlinx.coroutines.flow.StateFlow
 
 class FloatingPillOverlay(
@@ -34,21 +35,21 @@ class FloatingPillOverlay(
     private val isArenaBannerVisibleFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
     private val onDismissArenaBanner: () -> Unit = {},
     private val onInsertCoinClick: () -> Unit,
-    private val onDoneClick: () -> Unit
+    private val onDoneClick: () -> Unit,
 ) {
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private var overlayView: ComposeOverlayView? = null
     private var isViewAdded = false
-    
+
     private val layoutParams = WindowManager.LayoutParams(
         WindowManager.LayoutParams.WRAP_CONTENT,
         WindowManager.LayoutParams.WRAP_CONTENT,
         WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or 
-        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or 
-        WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or 
-        WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD,
-        PixelFormat.TRANSLUCENT
+        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD,
+        PixelFormat.TRANSLUCENT,
     ).apply {
         gravity = Gravity.TOP or Gravity.START
         x = 20
@@ -126,7 +127,7 @@ class FloatingPillOverlay(
             val arenaStake by arenaStakeMinutesFlow.collectAsState()
             val isArenaBannerVisible by isArenaBannerVisibleFlow.collectAsState()
             val isVisible = SessionRules.isUnlocked(appState) || isArenaBannerVisible
-            
+
             LaunchedEffect(isVisible) {
                 if (isVisible) {
                     newOverlay.view.visibility = View.VISIBLE
@@ -190,7 +191,7 @@ class FloatingPillOverlay(
                         } catch (e: Exception) {
                             android.util.Log.e("FloatingPillOverlay", "Failed to update layout: ${e.message}")
                         }
-                    }
+                    },
                 )
             }
         }
@@ -210,11 +211,11 @@ class FloatingPillOverlay(
                 if (hasFocus) {
                     newOverlay.view.systemUiVisibility = (
                         View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                        or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                        or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                        or View.SYSTEM_UI_FLAG_FULLSCREEN
-                        or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                        or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                            or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                            or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                            or View.SYSTEM_UI_FLAG_FULLSCREEN
+                            or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                            or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                     )
                 }
             }
@@ -226,7 +227,7 @@ class FloatingPillOverlay(
             dispose()
         }
     }
-    
+
     fun remove() {
         dispose()
     }

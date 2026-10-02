@@ -1,4 +1,5 @@
 @file:Suppress("DEPRECATION")
+
 package com.pisophone.kiosk.receiver
 
 import android.app.admin.DevicePolicyManager
@@ -22,7 +23,6 @@ import com.pisophone.kiosk.MainActivity
  *    adb shell am broadcast -a com.pisophone.kiosk.RESTART
  */
 class KioskAdminActionReceiver : BroadcastReceiver() {
-
     companion object {
         const val ACTION_DEPROVISION = "com.pisophone.kiosk.DEPROVISION"
         const val ACTION_ENABLE_ADB = "com.pisophone.kiosk.ENABLE_ADB"
@@ -284,15 +284,15 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                     return
                 }
                 Log.w(TAG, "Deprovisioning request authenticated & received. Removing Device Owner and clearing lockdown.")
-                
+
                 try {
                     // 1. Stop background Kiosk Service
                     context.stopService(Intent(context, KioskService::class.java))
-                    
+
                     // 2. Clear Device Policy & Lock Task mode
                     val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
                     val adminComponent = ComponentName(context, KioskDeviceAdminReceiver::class.java)
-                    
+
                     if (dpm.isDeviceOwnerApp(context.packageName)) {
                         try {
                             dpm.setLockTaskPackages(adminComponent, emptyArray())
@@ -308,7 +308,7 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                         dpm.clearDeviceOwnerApp(context.packageName)
                         Log.i(TAG, "Device Owner successfully cleared!")
                     }
-                    
+
                     if (dpm.isAdminActive(adminComponent)) {
                         dpm.removeActiveAdmin(adminComponent)
                         Log.i(TAG, "Active Admin removed!")
@@ -317,9 +317,8 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                     Toast.makeText(
                         context,
                         "PisoPhone Deprovisioned! Device Owner removed.",
-                        Toast.LENGTH_LONG
+                        Toast.LENGTH_LONG,
                     ).show()
-
                 } catch (e: Exception) {
                     Log.e(TAG, "Error during deprovisioning: ${e.message}", e)
                     Toast.makeText(context, "Deprovision error: ${e.message}", Toast.LENGTH_LONG).show()

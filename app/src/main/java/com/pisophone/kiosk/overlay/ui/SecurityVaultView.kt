@@ -1,7 +1,5 @@
 package com.pisophone.kiosk.overlay.ui
 
-import com.pisophone.kiosk.BuildConfig
-
 import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.BorderStroke
@@ -23,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
+import com.pisophone.kiosk.BuildConfig
 import com.pisophone.kiosk.model.AppInfo
 import com.pisophone.kiosk.security.KioskSecurity
 import com.pisophone.kiosk.security.KioskUpdateManager
@@ -31,7 +30,7 @@ import com.pisophone.kiosk.security.KioskUpdateManager
 fun SecurityVaultView(
     context: Context,
     onClose: () -> Unit,
-    onOpenRecoveryHub: (() -> Unit)? = null
+    onOpenRecoveryHub: (() -> Unit)? = null,
 ) {
     var activeHelpDialog by remember { mutableStateOf<Pair<String, String>?>(null) }
     var showRecoveryHub by remember { mutableStateOf(false) }
@@ -46,13 +45,16 @@ fun SecurityVaultView(
         val resolveInfos = pm.queryIntentActivities(intent, 0)
         resolveInfos.mapNotNull { resolveInfo ->
             val pkgName = resolveInfo.activityInfo.packageName
-            if (pkgName == context.packageName) null
-            else AppInfo(
-                name = resolveInfo.loadLabel(pm).toString(),
-                packageName = pkgName,
-                icon = resolveInfo.activityInfo.loadIcon(pm),
-                bitmap = try { resolveInfo.activityInfo.loadIcon(pm).toBitmap().asImageBitmap() } catch (e: Exception) { null }
-            )
+            if (pkgName == context.packageName) {
+                null
+            } else {
+                AppInfo(
+                    name = resolveInfo.loadLabel(pm).toString(),
+                    packageName = pkgName,
+                    icon = resolveInfo.activityInfo.loadIcon(pm),
+                    bitmap = try { resolveInfo.activityInfo.loadIcon(pm).toBitmap().asImageBitmap() } catch (e: Exception) { null },
+                )
+            }
         }.sortedBy { it.name }
     }
 
@@ -61,19 +63,19 @@ fun SecurityVaultView(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(8.dp)
+                .padding(8.dp),
         ) {
             // Vault Header
             Row(
                 modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.clickable(
                         indication = null,
-                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                     ) {
                         vaultTitleTapCount++
                         if (vaultTitleTapCount >= 7) {
@@ -84,7 +86,7 @@ fun SecurityVaultView(
                                 showRecoveryHub = true
                             }
                         }
-                    }
+                    },
                 ) {
                     Icon(Icons.Filled.Lock, contentDescription = null, tint = Color(0xFF6366F1), modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(8.dp))
@@ -108,7 +110,7 @@ fun SecurityVaultView(
                     } else {
                         showRecoveryHub = true
                     }
-                }
+                },
             )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp), color = Color(0xFF334155))
@@ -116,7 +118,7 @@ fun SecurityVaultView(
             // Section 2: Auto-Clear Cache & Battery TTS Voice Reminders
             VaultSleepAndBatterySection(
                 context = context,
-                onShowHelp = { t, d -> activeHelpDialog = Pair(t, d) }
+                onShowHelp = { t, d -> activeHelpDialog = Pair(t, d) },
             )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp), color = Color(0xFF334155))
@@ -136,24 +138,24 @@ fun SecurityVaultView(
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B).copy(alpha = 0.6f)),
                 border = BorderStroke(1.dp, Color(0xFF334155).copy(alpha = 0.6f)),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
                     ) {
                         Box(
                             modifier = Modifier
                                 .size(28.dp)
                                 .background(Color(0xFF0EA5E9).copy(alpha = 0.2f), RoundedCornerShape(8.dp)),
-                            contentAlignment = Alignment.Center
+                            contentAlignment = Alignment.Center,
                         ) {
                             Icon(
                                 Icons.Filled.CloudDownload,
                                 contentDescription = null,
                                 tint = Color(0xFF38BDF8),
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(16.dp),
                             )
                         }
                         Spacer(modifier = Modifier.width(10.dp))
@@ -164,7 +166,7 @@ fun SecurityVaultView(
                         HelpInfoButton(
                             title = "Direct App Update",
                             description = "Directly downloads and installs the latest secure application update APK.",
-                            onShowHelp = { t, d -> activeHelpDialog = Pair(t, d) }
+                            onShowHelp = { t, d -> activeHelpDialog = Pair(t, d) },
                         )
                     }
 
@@ -179,7 +181,7 @@ fun SecurityVaultView(
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
                                 shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.fillMaxWidth().height(36.dp)
+                                modifier = Modifier.fillMaxWidth().height(36.dp),
                             ) {
                                 Icon(Icons.Filled.SystemUpdateAlt, contentDescription = null, modifier = Modifier.size(14.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
@@ -191,7 +193,7 @@ fun SecurityVaultView(
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Text("Downloading update...", color = Color(0xFF38BDF8), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                     Text("${(state.progress * 100).toInt()}%", color = Color.White, fontSize = 11.sp)
@@ -201,19 +203,19 @@ fun SecurityVaultView(
                                     progress = { state.progress },
                                     color = Color(0xFF38BDF8),
                                     trackColor = Color(0xFF334155),
-                                    modifier = Modifier.fillMaxWidth().height(4.dp)
+                                    modifier = Modifier.fillMaxWidth().height(4.dp),
                                 )
                             }
                         }
                         is KioskUpdateManager.UpdateState.Installing -> {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(16.dp),
                                     color = Color(0xFFF59E0B),
-                                    strokeWidth = 2.dp
+                                    strokeWidth = 2.dp,
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text("Installing APK update package...", color = Color(0xFFF59E0B), fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -222,7 +224,7 @@ fun SecurityVaultView(
                         is KioskUpdateManager.UpdateState.Success -> {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
@@ -233,7 +235,7 @@ fun SecurityVaultView(
                             Column(modifier = Modifier.fillMaxWidth()) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
@@ -244,7 +246,7 @@ fun SecurityVaultView(
                                     onClick = { KioskUpdateManager.resetState() },
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155)),
                                     shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.fillMaxWidth().height(32.dp)
+                                    modifier = Modifier.fillMaxWidth().height(32.dp),
                                 ) {
                                     Text("OK", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 }
@@ -254,7 +256,7 @@ fun SecurityVaultView(
                             Column(modifier = Modifier.fillMaxWidth()) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Icon(Icons.Filled.Error, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
@@ -265,7 +267,7 @@ fun SecurityVaultView(
                                     onClick = { KioskUpdateManager.resetState() },
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155)),
                                     shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.fillMaxWidth().height(32.dp)
+                                    modifier = Modifier.fillMaxWidth().height(32.dp),
                                 ) {
                                     Text("Retry", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 }
@@ -289,7 +291,7 @@ fun SecurityVaultView(
                 hiddenSet = hiddenSet,
                 onHiddenSetChange = { hiddenSet = it },
                 onClose = onClose,
-                onShowHelp = { t, d -> activeHelpDialog = Pair(t, d) }
+                onShowHelp = { t, d -> activeHelpDialog = Pair(t, d) },
             )
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -300,7 +302,7 @@ fun SecurityVaultView(
                     onClick = onClose,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1), contentColor = Color.White),
                     shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.height(44.dp)
+                    modifier = Modifier.height(44.dp),
                 ) {
                     Text("Exit Admin Console", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 }
@@ -314,7 +316,7 @@ fun SecurityVaultView(
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.85f))
                     .clickable { activeHelpDialog = null },
-                contentAlignment = Alignment.Center
+                contentAlignment = Alignment.Center,
             ) {
                 Card(
                     modifier = Modifier
@@ -323,7 +325,7 @@ fun SecurityVaultView(
                         .clickable(enabled = false) {},
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                    border = BorderStroke(1.dp, Color(0xFF6366F1).copy(alpha = 0.5f))
+                    border = BorderStroke(1.dp, Color(0xFF6366F1).copy(alpha = 0.5f)),
                 ) {
                     Column(modifier = Modifier.padding(18.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -331,14 +333,14 @@ fun SecurityVaultView(
                                 Icons.Filled.Info,
                                 contentDescription = null,
                                 tint = Color(0xFF6366F1),
-                                modifier = Modifier.size(22.dp)
+                                modifier = Modifier.size(22.dp),
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = helpTitle,
                                 color = Color.White,
                                 fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
                             )
                         }
                         Spacer(modifier = Modifier.height(12.dp))
@@ -346,14 +348,14 @@ fun SecurityVaultView(
                             text = helpDesc,
                             color = Color(0xFFCBD5E1),
                             fontSize = 13.sp,
-                            lineHeight = 18.sp
+                            lineHeight = 18.sp,
                         )
                         Spacer(modifier = Modifier.height(18.dp))
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                             Button(
                                 onClick = { activeHelpDialog = null },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1), contentColor = Color.White),
-                                shape = RoundedCornerShape(8.dp)
+                                shape = RoundedCornerShape(8.dp),
                             ) {
                                 Text("Got it", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
@@ -366,7 +368,7 @@ fun SecurityVaultView(
         if (showRecoveryHub) {
             EmergencyRecoveryDialog(
                 context = context,
-                onClose = { showRecoveryHub = false }
+                onClose = { showRecoveryHub = false },
             )
         }
     }

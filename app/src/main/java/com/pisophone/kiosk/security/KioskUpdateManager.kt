@@ -1,7 +1,5 @@
 package com.pisophone.kiosk.security
 
-import com.pisophone.kiosk.BuildConfig
-
 import android.app.PendingIntent
 import android.app.admin.DevicePolicyManager
 import android.content.Context
@@ -10,6 +8,8 @@ import android.content.pm.PackageInstaller
 import android.os.Build
 import android.util.Log
 import androidx.core.content.FileProvider
+import com.pisophone.kiosk.BuildConfig
+import com.pisophone.kiosk.util.DiagnosticsLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,7 +23,6 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
 import java.security.MessageDigest
-import com.pisophone.kiosk.util.DiagnosticsLog
 
 object KioskUpdateManager {
     private const val TAG = "KioskUpdate"
@@ -32,14 +31,12 @@ object KioskUpdateManager {
     /** What the website publishes next to the APK (written by the build workflow). */
     data class RemoteVersion(val versionCode: Int, val sha256: String)
 
-    internal fun parseRemoteVersion(json: String): RemoteVersion? {
-        return try {
-            val obj = JSONObject(json)
-            val code = obj.optInt("versionCode", -1)
-            if (code <= 0) null else RemoteVersion(code, obj.optString("sha256", "").lowercase())
-        } catch (e: Exception) {
-            null
-        }
+    internal fun parseRemoteVersion(json: String): RemoteVersion? = try {
+        val obj = JSONObject(json)
+        val code = obj.optInt("versionCode", -1)
+        if (code <= 0) null else RemoteVersion(code, obj.optString("sha256", "").lowercase())
+    } catch (e: Exception) {
+        null
     }
 
     /** Only a strictly higher versionCode is an update; installing the same build again does nothing useful. */
@@ -52,8 +49,11 @@ object KioskUpdateManager {
         return try {
             FileInputStream(file).use { input ->
                 val head = ByteArray(4)
-                input.read(head) == 4 && head[0] == 0x50.toByte() && head[1] == 0x4B.toByte() &&
-                    head[2] == 0x03.toByte() && head[3] == 0x04.toByte()
+                input.read(head) == 4 &&
+                    head[0] == 0x50.toByte() &&
+                    head[1] == 0x4B.toByte() &&
+                    head[2] == 0x03.toByte() &&
+                    head[3] == 0x04.toByte()
             }
         } catch (e: IOException) {
             false
@@ -103,7 +103,7 @@ object KioskUpdateManager {
                 val remote = fetchRemoteVersion()
                 if (!isUpdateAvailable(remote.versionCode, localCode)) {
                     _updateState.value = UpdateState.UpToDate(
-                        "Already up to date (installed build $localCode, latest published ${remote.versionCode})."
+                        "Already up to date (installed build $localCode, latest published ${remote.versionCode}).",
                     )
                     return@launch
                 }
@@ -176,7 +176,7 @@ object KioskUpdateManager {
 
             val body = response.body ?: throw IOException("Empty response body")
             val totalBytes = body.contentLength()
-            
+
             body.byteStream().use { inputStream ->
                 FileOutputStream(targetFile).use { outputStream ->
                     val buffer = ByteArray(8192)
@@ -217,7 +217,7 @@ object KioskUpdateManager {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
             }
-            
+
             val sessionId = packageInstaller.createSession(params)
             session = packageInstaller.openSession(sessionId)
 
@@ -258,20 +258,18 @@ object KioskUpdateManager {
         }
     }
 
-    private fun installStandard(context: Context, apkFile: File): Boolean {
-        return try {
-            val authority = "${context.packageName}.fileprovider"
-            val uri = FileProvider.getUriForFile(context, authority, apkFile)
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, "application/vnd.android.package-archive")
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
-            }
-            context.startActivity(intent)
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Standard install failed: ${e.message}", e)
-            false
+    private fun installStandard(context: Context, apkFile: File): Boolean = try {
+        val authority = "${context.packageName}.fileprovider"
+        val uri = FileProvider.getUriForFile(context, authority, apkFile)
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
         }
+        context.startActivity(intent)
+        true
+    } catch (e: Exception) {
+        Log.e(TAG, "Standard install failed: ${e.message}", e)
+        false
     }
 
     fun onInstallSuccess() {

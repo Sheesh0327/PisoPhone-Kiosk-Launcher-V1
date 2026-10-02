@@ -12,7 +12,6 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class KioskLockdownUnitTest {
-
     private lateinit var context: Context
 
     @Before

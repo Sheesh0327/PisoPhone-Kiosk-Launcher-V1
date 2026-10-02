@@ -28,7 +28,7 @@ class Esp32DiscoveryScanner(
     private val context: Context,
     private val scope: CoroutineScope,
     private val delegate: Esp32DiscoveryDelegate,
-    private val isAlreadyBound: () -> Boolean
+    private val isAlreadyBound: () -> Boolean,
 ) {
     companion object {
         private const val TAG = "Esp32DiscoveryScanner"
@@ -356,7 +356,8 @@ class Esp32DiscoveryScanner(
                             if (name.contains("wlan") ||
                                 name.contains("eth") ||
                                 name.contains("ap") ||
-                                name.contains("rndis")) {
+                                name.contains("rndis")
+                            ) {
                                 return ip
                             }
                             if (fallbackIp.isBlank()) fallbackIp = ip

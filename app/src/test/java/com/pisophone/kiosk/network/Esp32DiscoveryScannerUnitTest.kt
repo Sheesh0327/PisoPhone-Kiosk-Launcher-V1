@@ -16,7 +16,6 @@ import org.robolectric.RobolectricTestRunner
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 class Esp32DiscoveryScannerUnitTest {
-
     private lateinit var context: Context
     private val testScope = TestScope()
     private val testMac = "AA:BB:CC:DD:EE:FF"
@@ -39,7 +38,7 @@ class Esp32DiscoveryScannerUnitTest {
             context = context,
             scope = testScope,
             delegate = fakeDelegate,
-            isAlreadyBound = { false }
+            isAlreadyBound = { false },
         )
 
         val sig = KioskSecurity.calculateHmac("DISCOVERY:$testMac:$testIp", testSecret)
@@ -58,7 +57,7 @@ class Esp32DiscoveryScannerUnitTest {
             context = context,
             scope = testScope,
             delegate = fakeDelegate,
-            isAlreadyBound = { false }
+            isAlreadyBound = { false },
         )
 
         val otherMac = "11:22:33:44:55:66"
@@ -78,7 +77,7 @@ class Esp32DiscoveryScannerUnitTest {
             context = context,
             scope = testScope,
             delegate = fakeDelegate,
-            isAlreadyBound = { false }
+            isAlreadyBound = { false },
         )
 
         val badSig = "invalid_signature_12345"
@@ -97,7 +96,7 @@ class Esp32DiscoveryScannerUnitTest {
             context = context,
             scope = testScope,
             delegate = fakeDelegate,
-            isAlreadyBound = { false }
+            isAlreadyBound = { false },
         )
 
         val json = JSONObject().apply {

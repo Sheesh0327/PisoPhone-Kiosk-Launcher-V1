@@ -1,3 +1,6 @@
+// Outbound payment and time delivery to phones: turns a detected coin into a queued payment,
+// pushes it over WebSocket and HTTP, and re-sends queued payments on request.
+
 #include "DeviceNetwork.h"
 #include "PaymentQueueManager.h"
 #include "CoinSlotManager.h"
@@ -6,6 +9,7 @@
 #include "Security.h"
 #include "WebServerModule.h"
 #include "WebServerApi.h"
+#include "WebServerCoinslot.h"
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 
@@ -18,11 +22,12 @@ void sendAddTime(int minutes, String targetIp, String txId) {
             bool isActive = isSlotActive(slotIdx);
             if (!isActive) {
                 Serial.printf("[-] sendAddTime skipped for %s (Slot #%d): Device Expired / Uncredited\n",
-                    cfg.ip.c_str(), (slotIdx >= 0) ? licenseSlots[slotIdx].slotNum : 0);
+                              cfg.ip.c_str(), (slotIdx >= 0) ? licenseSlots[slotIdx].slotNum : 0);
             } else {
                 String effectiveTxId = (txId.length() > 0) ? txId : generateTxId("tx-adj-");
                 int seconds = minutes * 60;
-                String params = "minutes=" + String(minutes) + "&seconds=" + String(seconds) + "&amount=0&tx_id=" + effectiveTxId;
+                String params =
+                    "minutes=" + String(minutes) + "&seconds=" + String(seconds) + "&amount=0&tx_id=" + effectiveTxId;
                 if (cfg.id.length() > 0) params += "&device_id=" + cfg.id;
                 sendAuthenticated(cfg.ip, targetPort, "/add_time", "/challenge", params, 1000);
                 sent = true;
@@ -35,7 +40,8 @@ void sendAddTime(int minutes, String targetIp, String txId) {
         String devId = getDeviceIdFromIp(targetIp);
         String effectiveTxId = (txId.length() > 0) ? txId : generateTxId("tx-adj-");
         int seconds = minutes * 60;
-        String params = "minutes=" + String(minutes) + "&seconds=" + String(seconds) + "&amount=0&tx_id=" + effectiveTxId;
+        String params =
+            "minutes=" + String(minutes) + "&seconds=" + String(seconds) + "&amount=0&tx_id=" + effectiveTxId;
         if (devId.length() > 0) params += "&device_id=" + devId;
         sendAuthenticated(targetIp, targetPort, "/add_time", "/challenge", params, 1000);
     }
@@ -43,7 +49,8 @@ void sendAddTime(int minutes, String targetIp, String txId) {
 
 void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId) {
     if (pulses <= 0) return;
-    Serial.printf("[⚡ UNIVERSAL COIN] %d total pulses accumulated on GPIO %d (₱%d PHP)\n", pulses, universalCoinPin, pulses);
+    Serial.printf("[⚡ UNIVERSAL COIN] %d total pulses accumulated on GPIO %d (₱%d PHP)\n", pulses, universalCoinPin,
+                  pulses);
 
     String targetDev = targetDeviceId;
     if (targetDev.length() == 0) {
@@ -72,11 +79,9 @@ void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId) {
     unsigned long long ts = (unsigned long long)getCurrentMasterTimeMs();
     String txId = generateTxId("tx-");
 
-    bool retained = enqueuePendingPayment(
-        txId, targetDev, pulses, CoinSlotOwnerType::PHONE, addedSeconds);
+    bool retained = enqueuePendingPayment(txId, targetDev, pulses, CoinSlotOwnerType::PHONE, addedSeconds);
     if (!retained) {
-        Serial.printf("[UNIVERSAL COIN] CRITICAL: Could not retain tx_id='%s'.\n",
-                      txId.c_str());
+        Serial.printf("[UNIVERSAL COIN] CRITICAL: Could not retain tx_id='%s'.\n", txId.c_str());
     }
 
     recordSessionCoinTx(targetDev, txId, pulses, addedSeconds, (double)pulses);
@@ -86,20 +91,31 @@ void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId) {
     String vSig = calculateHMAC(vPayload, getSharedSecret());
 
     if (isWsConnected && wsClient.connected() && targetDev.length() > 0 && wsSessionDeviceId == targetDev) {
-        Serial.printf("[⚡] Pushing ₱%d (+%d mins / %d secs) over WebSocket to %s!\n", pulses, addedMinutes, addedSeconds, targetDev.c_str());
-        String innerJson = "{\"seconds\":" + String(addedSeconds) + ",\"minutes\":" + String(addedMinutes) + ",\"amount\":" + String(pulses) + ",\"tx_id\":\"" + txId + "\",\"ts\":\"" + String(ts) + "\",\"device_id\":\"" + targetDev + "\",\"v_sig\":\"" + vSig + "\"}";
+        Serial.printf("[⚡] Pushing ₱%d (+%d mins / %d secs) over WebSocket to %s!\n", pulses, addedMinutes,
+                      addedSeconds, targetDev.c_str());
+        String innerJson = "{\"seconds\":" + String(addedSeconds) + ",\"minutes\":" + String(addedMinutes) +
+                           ",\"amount\":" + String(pulses) + ",\"tx_id\":\"" + txId + "\",\"ts\":\"" + String(ts) +
+                           "\",\"device_id\":\"" + targetDev + "\",\"v_sig\":\"" + vSig + "\"}";
         String payload = aes_encrypt(innerJson, getSharedSecret());
-        String json = "{\"event\":\"COIN_DETECTED\",\"device_id\":\"" + targetDev + "\",\"tx_id\":\"" + txId + "\",\"amount\":" + String(pulses) + ",\"seconds\":" + String(addedSeconds) + ",\"minutes\":" + String(addedMinutes) + ",\"ts\":\"" + String(ts) + "\",\"payload\":\"" + payload + "\"}";
+        String json = "{\"event\":\"COIN_DETECTED\",\"device_id\":\"" + targetDev + "\",\"tx_id\":\"" + txId +
+                      "\",\"amount\":" + String(pulses) + ",\"seconds\":" + String(addedSeconds) +
+                      ",\"minutes\":" + String(addedMinutes) + ",\"ts\":\"" + String(ts) + "\",\"payload\":\"" +
+                      payload + "\"}";
         sendWsText(wsClient, json);
         refreshCoinSlotTtl(targetDev, CoinSlotOwnerType::PHONE, ARM_TTL);
     }
 
     if (targetIp.length() > 0 && targetIp != "127.0.0.1") {
         Serial.printf("[⚡] Routing universal coin to IP: %s (Device: %s)\n", targetIp.c_str(), targetDev.c_str());
-        sendAuthenticated(targetIp, targetPort, "/add_time", "/challenge", "minutes=" + String(addedMinutes) + "&seconds=" + String(addedSeconds) + "&amount=" + String(pulses) + "&tx_id=" + txId + "&device_id=" + targetDev + "&ts=" + String(ts) + "&v_sig=" + vSig, 1000);
+        sendAuthenticated(targetIp, targetPort, "/add_time", "/challenge",
+                          "minutes=" + String(addedMinutes) + "&seconds=" + String(addedSeconds) +
+                              "&amount=" + String(pulses) + "&tx_id=" + txId + "&device_id=" + targetDev +
+                              "&ts=" + String(ts) + "&v_sig=" + vSig,
+                          1000);
         if (targetDev.length() > 0) refreshCoinSlotTtl(targetDev, CoinSlotOwnerType::PHONE, ARM_TTL);
     } else {
-        Serial.printf("[⚡] Device '%s' currently offline/unreachable; retained in queue for retry.\n", targetDev.c_str());
+        Serial.printf("[⚡] Device '%s' currently offline/unreachable; retained in queue for retry.\n",
+                      targetDev.c_str());
     }
 }
 
@@ -116,33 +132,25 @@ void sendCloudSnapshot() {
     // Retiring outbound telemetry to Cloudflare Worker. Strictly Pages-only now.
 }
 
-bool retryPhonePayment(const String& targetDeviceId, int pulses, int creditSeconds,
-                       const String& txId) {
+bool retryPhonePayment(const String& targetDeviceId, int pulses, int creditSeconds, const String& txId) {
     if (targetDeviceId.length() == 0) return false;
 
     String targetIp = getIpFromDeviceId(targetDeviceId);
     if (targetIp.length() == 0 || targetIp == "127.0.0.1") return false;
 
-    int safeSeconds = creditSeconds > 0
-        ? creditSeconds
-        : pulses * max(minutesPerCoin, 1) * 60;
+    int safeSeconds = creditSeconds > 0 ? creditSeconds : pulses * max(minutesPerCoin, 1) * 60;
     uint64_t retryTs = getCurrentMasterTimeMs();
     String vPayload = "v1:" + targetDeviceId + ":" + txId + ":" + String(pulses) + ":" + String(retryTs);
     String vSig = calculateHMAC(vPayload, getSharedSecret());
-    String params = "minutes=" + String(safeSeconds / 60) +
-                    "&seconds=" + String(safeSeconds) +
-                    "&amount=" + String(pulses) +
-                    "&tx_id=" + txId +
-                    "&device_id=" + targetDeviceId +
-                    "&ts=" + String(retryTs) +
-                    "&v_sig=" + vSig;
-    return sendAuthenticated(targetIp, targetPort, "/add_time", "/challenge",
-                             params, 1000);
+    String params = "minutes=" + String(safeSeconds / 60) + "&seconds=" + String(safeSeconds) +
+                    "&amount=" + String(pulses) + "&tx_id=" + txId + "&device_id=" + targetDeviceId +
+                    "&ts=" + String(retryTs) + "&v_sig=" + vSig;
+    return sendAuthenticated(targetIp, targetPort, "/add_time", "/challenge", params, 1000);
 }
 
 bool sendAuthenticated(String ip, int port, String actionPath, String challengePath, String params, int timeoutMs) {
     if (WiFi.status() != WL_CONNECTED || authQueue == NULL || ip.length() == 0) return false;
-    
+
     AuthRequest req;
     memset(&req, 0, sizeof(AuthRequest));
     strncpy(req.ip, ip.c_str(), sizeof(req.ip) - 1);
@@ -151,16 +159,15 @@ bool sendAuthenticated(String ip, int port, String actionPath, String challengeP
     strncpy(req.challengePath, challengePath.c_str(), sizeof(req.challengePath) - 1);
     strncpy(req.params, params.c_str(), sizeof(req.params) - 1);
     req.timeoutMs = timeoutMs;
-    
+
     if (xQueueSend(authQueue, &req, 0) != pdTRUE) {
-        Serial.printf("[AUTH QUEUE] Queue full; could not schedule %s for %s.\n",
-                      actionPath.c_str(), ip.c_str());
+        Serial.printf("[AUTH QUEUE] Queue full; could not schedule %s for %s.\n", actionPath.c_str(), ip.c_str());
         return false;
     }
     return true;
 }
 
-String urlEncode(const String &str) {
+String urlEncode(const String& str) {
     String encoded = "";
     for (size_t i = 0; i < str.length(); i++) {
         char c = str.charAt(i);

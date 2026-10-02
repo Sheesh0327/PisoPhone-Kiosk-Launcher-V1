@@ -47,7 +47,7 @@ object HardwareFeedback {
                     val handler = Handler(Looper.getMainLooper())
                     val intervalMs = 150L
                     val endTime = System.currentTimeMillis() + durationMs
-                    
+
                     val strobeRunnable = object : Runnable {
                         var state = false
                         override fun run() {
