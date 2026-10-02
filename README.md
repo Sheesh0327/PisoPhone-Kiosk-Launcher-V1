@@ -244,8 +244,7 @@ The repository is organized into distinct functional modules:
 │   ├── worker/           # Cloudflare Worker code for licensing
 │   └── installer/        # Browser-based device installer
 └── docs/                 # Engineering and Deployment Documentation
-    ├── esp32_flash_encryption_guide.md  # Production flash encryption lockdown
-    ├── esp32_security_lockdown.md       # Hardware anti-tamper security guidelines
+    ├── PROVISIONING_SOLD_UNIT.md        # Secure boot + flash encryption for units you sell
     └── github_actions_setup.md          # CI/CD automated build instructions
 ```
 

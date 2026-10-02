@@ -120,6 +120,34 @@ box it uses and whether it answers. No firewall change is needed: the router sta
 Limit: the discovery answer is not signed, so another device on the modem's network could point the router at
 itself. Set `GW_BOX_MAC` and, where the modem allows it, reserve the address; set `GW_DISCOVER=0` to turn discovery off.
 
+### Layout B: the box and the rental phones are behind this router
+Use this when you control the network. Customers get their own Wi-Fi (`guest`, gated by openNDS); the box and
+the phones share a separate password-protected Wi-Fi or wired port (`kiosk`) that openNDS does not touch.
+Neither side can reach the other; both reach the internet. A customer can then never reach the box or a phone.
+
+1. Generate the settings and read them (nothing is changed yet; needs OpenWrt 21.02 or newer):
+```
+scp opennds/layout_b.sh root@<router-ip>:/root/
+KIOSK_KEY='<kiosk wifi password>' BOX_MAC=AA:BB:CC:DD:EE:FF sh /root/layout_b.sh > /tmp/layout_b.uci
+cat /tmp/layout_b.uci
+```
+Optional settings: `RADIO` (default `radio0`), `KIOSK_SSID`, `GUEST_SSID`, `BOX_IP` (default `192.168.20.10`),
+`KIOSK_PORTS="lan3 lan4"` for wired kiosk ports.
+2. Apply, then reload (your `lan` network is not touched, so you can still reach the router there):
+```
+uci batch < /tmp/layout_b.uci && uci commit && /etc/init.d/network reload && /etc/init.d/firewall reload
+/etc/init.d/opennds restart
+```
+3. Join the box and every rental phone to the **kiosk** Wi-Fi (or plug the box into a kiosk port), and set in
+   `/etc/coinslot.conf`: `GW_BOX=192.168.20.10`, `GW_BOX_MAC=<box MAC>`, `DISCOVER_IFACE=br-kiosk`. Restart the service (step 8).
+4. Give customers the **guest** Wi-Fi name. Turn off any old customer SSID on `lan`.
+5. Check: from a phone on the guest Wi-Fi `ping 192.168.20.10` must fail; from the box's network the portal must still
+   take coins; `/usr/bin/coinslot-listener.sh box` must say the box answers.
+
+If you only have one Wi-Fi and cannot split it: the weaker fallback is to list the box and every rental phone as
+`trustedmac` in openNDS so they skip the portal. Customers then share the network with the box and the phones, so
+the box's and phones' own protections (signed requests, per-box secret) are all that stands between them.
+
 ## 9. Check each piece
 ```
 curl http://127.0.0.1:8099/info                       # expect {"first":30,"idle":15,"max":115,...}
