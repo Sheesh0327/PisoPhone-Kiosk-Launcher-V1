@@ -14,6 +14,8 @@
 3. If payments stop after a phone reboot, collect `adb logcat -s KioskSecurity`. The phone's box secret and PIN are
    Keystore-wrapped with a plain fallback; if the Keystore key is lost the phone reads them as unset: re-provision it.
 
+The full checklist and issue log are in `docs/REAL_WORLD_TESTING.md`.
+
 Keys are not needed for this test (see `docs/KEYS.md`); boxes then still accept the old license keys and OTA is off, so flash by USB.
 
 ## CI
