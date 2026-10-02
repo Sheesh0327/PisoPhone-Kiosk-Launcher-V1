@@ -63,7 +63,7 @@ if [ -z "$NO_PKG" ]; then
 	opkg install socat openssl-util curl || die "could not install socat/openssl-util/curl"
 fi
 [ -n "$ROOT" ] || [ -f /usr/lib/opennds/libopennds.sh ] || die "openNDS (libopennds.sh) not found: install opennds first"
-for tool in sha256sum awk sed od grep date find; do  # busybox provides these on OpenWrt; the theme and listener use them
+for tool in sha256sum awk sed grep date; do  # busybox provides these on OpenWrt; the theme and listener use them
 	command -v "$tool" >/dev/null 2>&1 || die "required tool missing: $tool"
 done
 command -v curl >/dev/null 2>&1 || die "curl is required"
@@ -72,7 +72,8 @@ command -v openssl >/dev/null 2>&1 || die "openssl is required"
 # --- key: 256 random bits (64 hex characters) -----------------------------------------------------------
 if [ -z "$KEY" ] || [ "$NEWKEY" = 1 ]; then
 	KEY=$(openssl rand -hex 32 2>/dev/null) || KEY=""
-	[ "${#KEY}" -eq 64 ] || KEY=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
+	# Fallback if openssl cannot generate it: hex-encode 32 random bytes (od is optional on OpenWrt).
+	[ "${#KEY}" -eq 64 ] || { command -v od >/dev/null 2>&1 && KEY=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'); }
 	[ "${#KEY}" -eq 64 ] || die "could not generate a key"
 	KEY_IS_NEW=1
 fi
