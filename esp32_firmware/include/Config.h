@@ -48,7 +48,6 @@ extern const char* const NVS_KEY_P1;
 extern const char* const NVS_KEY_P2;
 extern const char* const NVS_KEY_MATCH;
 extern const char* const NVS_KEY_TOTAL_COINS;
-extern const char* const NVS_KEY_TOTAL_EARNINGS; // legacy float pesos, read once for migration
 extern const char* const NVS_KEY_TOTAL_CENTAVOS;
 
 // ============================================================================
@@ -109,14 +108,15 @@ extern String androidIps;
 extern String webPassword;
 extern String setupApPass;                 // password of the setup access point, unique per box
 extern bool adminPwChanged;                // false until the operator replaces the generated admin password
-void provisionFirstBootCredentials();      // makes unique passwords when none exist; prints them while setup is pending
+void runConfigMigrations();                // brings saved settings to this firmware's format (ConfigMigration.h)
+void loadCredentials();                    // reads the admin and setup-AP passwords (the migrations make them)
 String getSharedSecret();                  // the key box<->phone traffic uses right now
 void setSharedSecret(const String& value); // sets this box's own secret (see SecretMode.h)
 String getBoxSecret();                     // this box's own secret, whatever mode the box is in
 String getLegacyLicenseSecret();           // old shared key, only to check old-style license keys
 bool isLegacyKeyMode();                    // true until the operator switches the box to its own key
 void switchToOwnKey();                     // leaves legacy mode for good
-void provisionSecretMode();                // decides legacy/own key and makes the box secret on first start
+void loadSecretMode();                     // reads the box secret and legacy-mode flag
 extern String macAddressStr;
 extern int maxLicensedSlots;
 

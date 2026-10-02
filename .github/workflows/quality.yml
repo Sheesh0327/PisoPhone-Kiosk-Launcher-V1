@@ -11,6 +11,7 @@ on:
       - '**'
     paths:
       - 'app/**'
+      - 'protocol/**'
       - 'esp32_firmware/**'
       - 'scripts/**'
       - 'opennds/**'
@@ -61,6 +62,10 @@ jobs:
         run: |
           FILES=$(ls src/*.cpp include/*.h host_tests/*.cpp | grep -vE "include/(WebDashboard|SuperAdminTemplate|WebAssets)")
           clang-format --dry-run --Werror $FILES
+      - name: Check protocol test vectors are reproducible
+        run: |
+          python3 protocol/gen_vectors.py
+          git diff --exit-code protocol
       - name: Check generated web assets are up to date
         run: python3 scripts/embed_web.py --check
       - name: Run host tests

@@ -4,6 +4,7 @@
 #include "Security.h"
 #include "Config.h"
 #include "LicenseCrypto.h"
+#include "ProtocolCrypto.h"
 #include "LicensePubKey.h"
 #include "esp_mac.h"
 #include "mbedtls/md.h"
@@ -24,23 +25,7 @@ static String sha256Hex(const String& in) {
 }
 
 String calculateHMAC(String challenge, String secret) {
-    mbedtls_md_context_t ctx;
-    mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
-    mbedtls_md_init(&ctx);
-    mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(md_type), 1);
-    mbedtls_md_hmac_starts(&ctx, (const unsigned char*)secret.c_str(), secret.length());
-    mbedtls_md_hmac_update(&ctx, (const unsigned char*)challenge.c_str(), challenge.length());
-    unsigned char hmacResult[32];
-    mbedtls_md_hmac_finish(&ctx, hmacResult);
-    mbedtls_md_free(&ctx);
-
-    String hex = "";
-    for (int i = 0; i < 32; i++) {
-        char buf[3];
-        sprintf(buf, "%02x", hmacResult[i]);
-        hex += buf;
-    }
-    return hex;
+    return String(protocol::hmacHex(challenge.c_str(), secret.c_str()).c_str());
 }
 
 static void grantSlots(int s) {
@@ -142,60 +127,9 @@ String getBoxMachineCode() {
 }
 
 String aes_encrypt(String plaintext, String secret) {
-    uint8_t aes_key[32];
-    mbedtls_md_context_t sha_ctx;
-    mbedtls_md_init(&sha_ctx);
-    mbedtls_md_setup(&sha_ctx, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), 0);
-    mbedtls_md_starts(&sha_ctx);
-    mbedtls_md_update(&sha_ctx, (const unsigned char*)secret.c_str(), secret.length());
-    mbedtls_md_finish(&sha_ctx, aes_key);
-    mbedtls_md_free(&sha_ctx);
-
     uint8_t iv[16];
-    for (int i = 0; i < 16; i += 4) {
-        uint32_t r = esp_random();
-        memcpy(iv + i, &r, 4);
-    }
-
-    size_t plaintext_len = plaintext.length();
-    size_t padding_len = 16 - (plaintext_len % 16);
-    size_t padded_len = plaintext_len + padding_len;
-    uint8_t* padded_input = (uint8_t*)malloc(padded_len);
-    if (!padded_input) return "";
-    memcpy(padded_input, plaintext.c_str(), plaintext_len);
-    for (size_t i = plaintext_len; i < padded_len; i++) {
-        padded_input[i] = (uint8_t)padding_len;
-    }
-
-    mbedtls_aes_context aes_ctx;
-    mbedtls_aes_init(&aes_ctx);
-    mbedtls_aes_setkey_enc(&aes_ctx, aes_key, 256);
-
-    uint8_t* ciphertext = (uint8_t*)malloc(padded_len);
-    if (!ciphertext) {
-        free(padded_input);
-        mbedtls_aes_free(&aes_ctx);
-        return "";
-    }
-    uint8_t iv_tmp[16];
-    memcpy(iv_tmp, iv, 16);
-
-    mbedtls_aes_crypt_cbc(&aes_ctx, MBEDTLS_AES_ENCRYPT, padded_len, iv_tmp, padded_input, ciphertext);
-    mbedtls_aes_free(&aes_ctx);
-    free(padded_input);
-
-    String hex_result = "";
-    char hex_char[3];
-    for (int i = 0; i < 16; i++) {
-        sprintf(hex_char, "%02x", iv[i]);
-        hex_result += hex_char;
-    }
-    for (size_t i = 0; i < padded_len; i++) {
-        sprintf(hex_char, "%02x", ciphertext[i]);
-        hex_result += hex_char;
-    }
-    free(ciphertext);
-    return hex_result;
+    esp_fill_random(iv, sizeof(iv));
+    return String(protocol::encryptHex(plaintext.c_str(), secret.c_str(), iv).c_str());
 }
 
 String computeSecWebSocketAccept(String key) {

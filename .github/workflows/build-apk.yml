@@ -10,6 +10,7 @@ on:
       - '**'
     paths:
       - 'app/**'
+      - 'protocol/**'
       - 'gradle/**'
       - '*.gradle.kts'
       - 'gradle.properties'

@@ -11,6 +11,7 @@
 #include "CredGen.h"
 #include "SecretMode.h"
 #include "TxId.h"
+#include "ConfigMigration.h"
 #include <esp_random.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
@@ -298,17 +299,16 @@ const char* const NVS_KEY_RELAY_PIN = "relay_pin";
 const char* const NVS_KEY_RELAY_ACTIVE_LOW = "relay_act_low";
 const char* const NVS_KEY_PORT = "target_port";
 const char* const NVS_KEY_MINS_PER_COIN = "mins_per_coin";
-const char* const NVS_KEY_ADMIN_PW = "admin_pw";
-const char* const NVS_KEY_ADMIN_PW_CHANGED = "pw_chg";
-const char* const NVS_KEY_SETUP_AP_PASS = "ap_pass";
-const char* const NVS_KEY_SHARED_SECRET = "shared_secret";
-const char* const NVS_KEY_LEGACY_KEY = "sec_legacy";
+const char* const NVS_KEY_ADMIN_PW = cfgmig::K_ADMIN_PW;
+const char* const NVS_KEY_ADMIN_PW_CHANGED = cfgmig::K_ADMIN_PW_CHANGED;
+const char* const NVS_KEY_SETUP_AP_PASS = cfgmig::K_SETUP_AP_PASS;
+const char* const NVS_KEY_SHARED_SECRET = cfgmig::K_SHARED_SECRET;
+const char* const NVS_KEY_LEGACY_KEY = cfgmig::K_LEGACY_KEY;
 const char* const NVS_KEY_P1 = "p1_ip";
 const char* const NVS_KEY_P2 = "p2_ip";
 const char* const NVS_KEY_MATCH = "match_minutes";
 const char* const NVS_KEY_TOTAL_COINS = "total_coins";
-const char* const NVS_KEY_TOTAL_EARNINGS = "total_earnings";
-const char* const NVS_KEY_TOTAL_CENTAVOS = "earn_c";
+const char* const NVS_KEY_TOTAL_CENTAVOS = cfgmig::K_TOTAL_CENTAVOS;
 
 void syncAndroidIpsFromSlots() {
     String newIps = "";
@@ -396,20 +396,41 @@ static void fillRandomBytes(uint8_t* buf, size_t len) {
     esp_fill_random(buf, len);
 }
 
-// Gives the box its own secret (random, 32 characters) the first time it starts and decides whether it
-// stays on the old shared key (an upgrade of a box already in the field) or uses its own key straight away.
-void provisionSecretMode() {
+// Settings storage for the migrations: a thin wrapper over an open Preferences namespace.
+struct PrefsStore {
+    bool isKey(const char* k) { return prefs.isKey(k); }
+    std::string getString(const char* k, const std::string& d) { return prefs.getString(k, d.c_str()).c_str(); }
+    void putString(const char* k, const std::string& v) { prefs.putString(k, v.c_str()); }
+    bool getBool(const char* k, bool d) { return prefs.getBool(k, d); }
+    void putBool(const char* k, bool v) { prefs.putBool(k, v); }
+    uint32_t getUInt(const char* k, uint32_t d) { return prefs.getULong(k, d); }
+    void putUInt(const char* k, uint32_t v) { prefs.putULong(k, v); }
+    float getFloat(const char* k, float d) { return prefs.getFloat(k, d); }
+    void remove(const char* k) { prefs.remove(k); }
+};
+
+// Brings the saved settings up to this firmware's format (ConfigMigration.h). Runs before anything reads them.
+void runConfigMigrations() {
+    cfgmig::Env env;
+    env.fillRandom = fillRandomBytes;
+    env.legacySecret = LEGACY_CRYPTO_SECRET;
+    prefs.begin(NVS_NAMESPACE, false);
+    PrefsStore store;
+    cfgmig::Result r = cfgmig::runAll(store, env);
+    prefs.end();
+    if (r.storeIsNewer) {
+        Serial.printf("[💾 CONFIG] Settings are from a newer firmware (format %u > %u); leaving them untouched.\n",
+                      (unsigned)r.from, (unsigned)cfgmig::CURRENT_VERSION);
+    } else if (r.ranAny) {
+        Serial.printf("[💾 CONFIG] Settings format %u -> %u\n", (unsigned)r.from, (unsigned)r.to);
+    }
+}
+
+// Reads the box's secret and whether it is still in legacy mode (the values exist after the migrations).
+void loadSecretMode() {
     prefs.begin(NVS_NAMESPACE, false);
     String secret = prefs.getString(NVS_KEY_SHARED_SECRET, "");
-    // The old shared key can end up in NVS if a settings form saved it back; it is public, so never use it as an own key.
-    if (!secretmode::validSecret(secret.c_str()) || secret == LEGACY_CRYPTO_SECRET) {
-        secret = credgen::password(32, fillRandomBytes).c_str();
-        prefs.putString(NVS_KEY_SHARED_SECRET, secret);
-    }
-    bool hasFlag = prefs.isKey(NVS_KEY_LEGACY_KEY);
-    bool flagValue = hasFlag && prefs.getBool(NVS_KEY_LEGACY_KEY, false);
-    bool legacy = secretmode::startInLegacyMode(hasFlag, flagValue, prefs.isKey(NVS_KEY_WIFI_SSID));
-    if (!hasFlag) prefs.putBool(NVS_KEY_LEGACY_KEY, legacy);
+    bool legacy = prefs.getBool(NVS_KEY_LEGACY_KEY, false);
     prefs.end();
 
     xSemaphoreTake(sharedSecretMutex, portMAX_DELAY);
@@ -432,28 +453,12 @@ void switchToOwnKey() {
     diagLog("[🔐 KEY] Switched to this box's own key. Re-provision each phone with the new secret.");
 }
 
-// Every box gets its own setup-AP and admin passwords the first time it starts (and after a factory
-// reset), so no two boxes share a password. Boxes already in the field keep the password they have.
-void provisionFirstBootCredentials() {
+// Reads the admin and setup-AP passwords. Every box has its own, made by the migrations the first time it starts
+// (and after a factory reset); boxes already in the field keep the password they have.
+void loadCredentials() {
     prefs.begin(NVS_NAMESPACE, false);
-    if (!prefs.isKey(NVS_KEY_ADMIN_PW)) {
-        webPassword = credgen::password(12, fillRandomBytes).c_str();
-        adminPwChanged = false;
-        prefs.putString(NVS_KEY_ADMIN_PW, webPassword);
-        prefs.putBool(NVS_KEY_ADMIN_PW_CHANGED, false);
-    } else {
-        webPassword = prefs.getString(NVS_KEY_ADMIN_PW, "");
-        if (prefs.isKey(NVS_KEY_ADMIN_PW_CHANGED)) {
-            adminPwChanged = prefs.getBool(NVS_KEY_ADMIN_PW_CHANGED, false);
-        } else {
-            // Upgrade from firmware without the flag: any password other than the old factory one was chosen by the operator.
-            adminPwChanged = (webPassword != "admin");
-            prefs.putBool(NVS_KEY_ADMIN_PW_CHANGED, adminPwChanged);
-        }
-    }
-    if (!prefs.isKey(NVS_KEY_SETUP_AP_PASS)) {
-        prefs.putString(NVS_KEY_SETUP_AP_PASS, credgen::password(10, fillRandomBytes).c_str());
-    }
+    webPassword = prefs.getString(NVS_KEY_ADMIN_PW, "");
+    adminPwChanged = prefs.getBool(NVS_KEY_ADMIN_PW_CHANGED, false);
     setupApPass = prefs.getString(NVS_KEY_SETUP_AP_PASS, "");
     prefs.end();
 
@@ -469,11 +474,12 @@ void provisionFirstBootCredentials() {
 
 void loadAllConfig() {
     // 1. Load slot licenses and terminal allocations safely
-    provisionSecretMode(); // first: it checks whether this box was already set up
+    runConfigMigrations(); // first: brings stored settings to this firmware's format
+    loadSecretMode();
     initTxIdBootCounter();
     loadSlotLicenses();
     loadSuperAdminConfig();
-    provisionFirstBootCredentials();
+    loadCredentials();
 
     // 2. Open NVS for all kiosk configuration & lifetime vault revenue counters
     prefs.begin(NVS_NAMESPACE, false);
@@ -497,14 +503,7 @@ void loadAllConfig() {
 
     // Lifetime vault revenue counters
     totalCoinsLifetime = prefs.getULong(NVS_KEY_TOTAL_COINS, 0);
-    // Earnings are whole centavos. Earlier firmware stored float pesos; convert that once and drop the old key.
-    if (prefs.isKey(NVS_KEY_TOTAL_CENTAVOS)) {
-        totalCentavosLifetime = prefs.getULong(NVS_KEY_TOTAL_CENTAVOS, 0);
-    } else {
-        totalCentavosLifetime = money::centavosFromLegacyPesos(prefs.getFloat(NVS_KEY_TOTAL_EARNINGS, 0.0f));
-        prefs.putULong(NVS_KEY_TOTAL_CENTAVOS, totalCentavosLifetime);
-    }
-    prefs.remove(NVS_KEY_TOTAL_EARNINGS);
+    totalCentavosLifetime = prefs.getULong(NVS_KEY_TOTAL_CENTAVOS, 0);
 
     lastSavedTotalCoins = totalCoinsLifetime;
     lastSavedTotalCentavos = totalCentavosLifetime;
@@ -559,8 +558,9 @@ void factoryResetDefaults() {
     prefs.clear();
     prefs.end();
     clearPaymentQueue();
-    provisionSecretMode();
-    provisionFirstBootCredentials(); // fresh unique passwords, printed on the serial console
+    runConfigMigrations(); // a cleared box gets a fresh secret and new passwords (printed on the serial console)
+    loadSecretMode();
+    loadCredentials();
 
     wifiSsid = "";
     wifiPass = "";
