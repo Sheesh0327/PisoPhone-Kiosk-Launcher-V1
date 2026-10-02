@@ -1,8 +1,8 @@
 {
-  "versionCode": 270,
-  "versionName": "1.0.270",
-  "channel": "stable",
-  "sha256": "11efae8151ddc73dcf03e6c0f1d42fd6f066b147ccecd2e8664c41401515c563",
-  "size": 1734922,
+  "versionCode": 274,
+  "versionName": "1.0.274-dev",
+  "channel": "dev",
+  "sha256": "e49b5f9898429d7868fb8ceafdd4ad5045b51f1b3da560b2246cd17cb9045c35",
+  "size": 1735194,
   "releaseDate": "2026-10-02"
 }
