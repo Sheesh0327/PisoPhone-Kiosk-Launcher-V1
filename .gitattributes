@@ -8,3 +8,4 @@ opennds/*.sh text eol=lf
 opennds/*.init text eol=lf
 opennds/*.conf text eol=lf
 scripts/*.sh text eol=lf
+opennds/tests/*.sh text eol=lf

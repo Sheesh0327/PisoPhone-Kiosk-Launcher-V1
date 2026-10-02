@@ -13,7 +13,7 @@ phone browser --> openNDS portal --> theme_coinslot.sh --(127.0.0.1)--> coinslot
 | file | what it is |
 |---|---|
 | `theme_coinslot.sh` | the ThemeSpec (page sequence); everything else is done by openNDS' own `libopennds.sh` |
-| `coinslot-listener.sh` | coin-slot manager: a small local listener (socat) plus a background worker that holds each customer's coin window |
+| `coinslot-listener.sh` | coin-slot manager: local listener (socat), coin window worker, rates, top-up, vouchers, fair-use watcher, revenue report |
 | `coinslot.conf` | reference copy of the settings file (INSTRUCTIONS.md writes the real one to /etc/coinslot.conf) |
 | `coinslot.init` | OpenWrt service script |
 | `INSTRUCTIONS.md` | step-by-step copy/paste setup (there is no installer script) |
@@ -23,12 +23,22 @@ phone browser --> openNDS portal --> theme_coinslot.sh --(127.0.0.1)--> coinslot
 Follow `INSTRUCTIONS.md`: every step is a copy/paste command.
 
 ## What the customer sees
-1. **Welcome**: rate ("1 coin = 10 minutes") and **Insert coin**.
-2. **Insert coin(s) now**: live count and countdown (page reloads itself every 2 s). **Connect now** or let the
-   window end.
-3. **Thank you**: "2 coin(s) = 20 minutes" and **Connect**. Pressing it grants exactly that session length.
-4. If nobody pays within the window: "No coins were detected", nothing is granted.
-5. If someone else is paying: "The coin slot is busy", the page retries every 5 s (one physical slot, one customer at a time).
+Everything is one small page (about 4 KB, inline CSS, no images or downloads), bilingual English/Tagalog.
+1. **Welcome**: rates for both plans on top, an **Insert Coin** button in the middle. The customer picks a plan first.
+   - **HyperSpeed**: no speed limit. 5 pesos = 30 min, 10 = 1 hr, 20 = 2 hrs (1-4 pesos at 6 min each). Slowed
+     intermittently after 5 GB (fair use).
+   - **Endurance**: capped at 5 Mbit/s down and 2 Mbit/s up. 1 peso = 15 min, 5 = 3 hrs, 10 = 8 hrs, 20 = 24 hrs.
+   - Coins add up: the best combination of tiers is used, e.g. Endurance 17 pesos = 10 + 5 + 1 + 1 = 11 hrs 30 min.
+2. **Insert coin(s) now**: running pesos and time earned, a countdown bar that restarts with every coin
+   (30 s to start, 15 s after each coin, 115 s at most), **Connect now**.
+3. **Thank you**: the time earned, **Connect**. Then a **voucher code** to restore the time on any device.
+4. **Status page** (a connected customer opening the portal address): live time left, plan, data used, voucher code and
+   **Add time**. Coins added while connected extend the session (same plan); a different plan is refused until the
+   current time ends, so the speed rules never mix.
+5. **Voucher**: enter a code on any device to continue; the time moves to that device. A returning device that still
+   has paid time is offered it on the welcome page.
+6. If nobody pays: "No coins detected", nothing is granted. If the slot is in use: "Coin slot is busy" and the page retries.
+   If the manager or box is down: a friendly offline notice.
 
 ## Safety properties
 - The minutes are decided on the router by the listener from coins the box counted, never taken from the browser.
@@ -46,4 +56,10 @@ Follow `INSTRUCTIONS.md`: every step is a copy/paste command.
 - One customer pays at a time. A customer who closes the page mid-window keeps their counted coins for ~2 hours
   (state is in RAM; a router reboot loses the record, and the coins then stay on the box until it discards them after 24 h).
 - Coins that arrive on the box while a phone rental session holds the slot belong to that phone, not to Wi-Fi.
-- Wi-Fi time uses openNDS' `sessiontimeout` (minutes). Rate/quota limits can be added in `landing_page()` if you want them.
+- Time uses openNDS' `sessiontimeout`; Endurance caps use its per-client rate limits.
+- Top-up and fair-use throttling re-grant time with `ndsctl deauth` then `ndsctl auth` (openNDS only applies new limits
+  to a de-authenticated client), so the client reconnects for a moment. Both rely on this openNDS behaviour, which was
+  read from its source but has not been run on your router: check them first on a real phone.
+- HyperSpeed fair use is judged per session by the router's traffic counters (every minute); the slowdown is
+  5 minutes on, 2 minutes off, until the paid time ends.
+- Phones that randomise their MAC address are not recognised as returning devices; the voucher code covers that.

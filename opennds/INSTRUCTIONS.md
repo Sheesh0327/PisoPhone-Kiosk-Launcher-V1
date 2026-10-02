@@ -64,16 +64,17 @@ Run this in the same session as step 4 so `$KEY` is filled in. Paste the whole b
 cat > /etc/coinslot.conf << EOT
 GW_BOX=<box-ip>
 GW_KEY=$KEY
-WIFI_MINUTES_PER_COIN=10
-COIN_WINDOW_SECONDS=60
-LISTEN_PORT=8099
-STATE_DIR=/tmp/coinslot
 EOT
 chmod 600 /etc/coinslot.conf
 cat /etc/coinslot.conf
 ```
 Check the printed file shows your real box IP and a 64-character key (not the text `$KEY`). If you opened a new
 session and lost `$KEY`, repeat step 4 to make a new one.
+
+Rates, speed caps, the coin window and the fair-use limit all have the defaults you asked for built in
+(HyperSpeed 5=30 min, 10=1 hr, 20=2 hrs; Endurance 1=15 min, 5=3 hrs, 10=8 hrs, 20=24 hrs at 5 Mbit/s down and
+2 Mbit/s up; HyperSpeed slowed after 5 GB). To change any of them, add the matching line from `coinslot.conf`
+(it lists every setting) to `/etc/coinslot.conf` and restart the service (step 8).
 
 ## 7. Tell openNDS to use the theme
 ```
@@ -94,12 +95,23 @@ uci commit opennds
 
 ## 9. Check each piece
 ```
-curl http://127.0.0.1:8099/info                       # expect {"rate":10,"window":60}
+curl http://127.0.0.1:8099/info                       # expect {"first":30,"idle":15,"max":115,...}
+/usr/bin/coinslot-listener.sh minutes endurance 17    # expect 690 (11 hrs 30 min)
 curl http://<box-ip>/api/gateway/challenge            # expect {"nonce":"..."}
 uci show opennds | grep -E "login_option|themespec"   # expect both lines
 ndsctl status                                         # openNDS is running
 ```
 Then join the Wi-Fi with a phone and watch: `logread -f -e opennds -e coinslot`
+
+## Day to day
+```
+/usr/bin/coinslot-listener.sh report 7       # revenue for the last 7 days, per day and plan
+logread -e coinslot                          # what the manager is doing
+ls /etc/coinslot.d/vouchers                  # active voucher codes (paid sessions)
+```
+Customers see a voucher code after paying. It restores their remaining time on any device (a phone that
+randomises its MAC address, a second device, or after a router restart) and it moves the time: the previous device
+is disconnected.
 
 ## Changing settings later
 Edit `/etc/coinslot.conf` and run `/etc/init.d/coinslot restart`. To rotate the key, repeat steps 4 and 6, then restart.
@@ -109,5 +121,7 @@ Edit `/etc/coinslot.conf` and run `/etc/init.d/coinslot restart`. To rotate the 
 |---|---|
 | `Permission denied` or `not found` on a script | step 2 (line endings), then the `chmod` lines in step 5 |
 | `/info` gives nothing | `/etc/init.d/coinslot start`, then `logread -e coinslot`; check `socat` is installed |
+| portal shows "Coin payment is offline" | the listener is not running or cannot reach the box: `curl http://127.0.0.1:8099/info`, then `curl http://<box-ip>/api/gateway/challenge` |
+| top-up or throttle does nothing | `ndsctl status` works? `logread -e opennds`; the manager re-grants time with `ndsctl deauth` then `ndsctl auth` |
 | challenge gives `GATEWAY_DISABLED` | the key was not set on the box: repeat step 4 |
 | portal page does not appear | `ndsctl status`, `logread -e opennds`; confirm step 7 with `uci show` |

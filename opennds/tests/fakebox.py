@@ -1,7 +1,7 @@
 """Fake ESP32 gateway API for tests: verifies the same HMAC and nonce rules as the firmware.
 
 Behaviour is driven by a JSON control file (path in FAKEBOX_CTL) that tests rewrite:
-  {"busy": false, "coins_at": [2, 4]}   # seconds after arm at which a coin arrives
+  {"busy": false, "coins_at": [2, 4]}   # seconds after arm at which each coin (1 peso) arrives
 The action log is appended to FAKEBOX_LOG (one action per line)."""
 import hashlib, hmac, json, os, sys, time
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -51,7 +51,8 @@ class H(BaseHTTPRequestHandler):
         if action == "arm":
             if c.get("busy"):
                 return self.send(409, {"success": False, "error": "SLOT_BUSY"})
-            s.update(armed_at=time.time(), released=False)
+            if s["armed_at"] is None or s["released"]:  # a new window; re-arming a live one keeps its coins
+                s.update(armed_at=time.time(), released=False, acked=0)
         if action == "release":
             s["released"], s["rel_at"] = True, time.time()
         pulses = 0

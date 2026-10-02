@@ -1,42 +1,115 @@
 #!/bin/sh
-# Coin-slot manager for OpenNDS. One file, three modes (POSIX sh: busybox ash on OpenWrt):
+# Coin-slot manager for OpenNDS (POSIX sh: busybox ash on OpenWrt). One file, several modes:
 #
-#   coinslot-listener.sh serve              run the local listener (socat, 127.0.0.1 only)
+#   coinslot-listener.sh serve              local HTTP listener (socat, 127.0.0.1 only)
 #   coinslot-listener.sh handle             one HTTP request on stdin/stdout (started by socat)
-#   coinslot-listener.sh worker <sid> <s>   hold one customer's coin window (started by the listener)
+#   coinslot-listener.sh worker <sid> <p>   hold one customer's coin window (started by the listener)
+#   coinslot-listener.sh fairuse            fair-use watcher loop (HyperSpeed throttle after FAIR_USE_GB)
+#   coinslot-listener.sh report [days]      revenue per day and plan
+#   coinslot-listener.sh minutes <plan> <pesos>   what an amount buys (handy for checking your rates)
 #
-# Why a background worker: an OpenNDS ThemeSpec runs once per page load, but the customer needs
-# 30-60 seconds to insert coins. The worker arms the box's coin slot, keeps counting, and writes
-# progress to a state file; the theme page just reads that file every couple of seconds.
+# What it does for the portal theme (theme_coinslot.sh):
+#   * coin window: arms the box's coin slot, counts coins, extends the wait after every coin;
+#   * rates: turns pesos into minutes for the HyperSpeed and Endurance plans (best combination of tiers);
+#   * grants: decides minutes and speed caps itself (the browser never supplies them), re-grants time for
+#     top-ups and for fair-use throttling by de-authenticating and re-authenticating through ndsctl;
+#   * vouchers: every paid session gets a short code that restores the remaining time on any device;
+#   * bookkeeping: acknowledges coins on the box only after access was granted, logs revenue.
 #
-# Local API (GET, answers JSON). <sid> is 32 hex chars derived from the client's OpenNDS id.
-#   /info                 {"rate":10,"window":60}
-#   /start?sid=           start (or resume) a coin window         -> status
-#   /status?sid=          current progress                        -> status
-#   /finish?sid=          stop accepting now, count what arrived  -> status
-#   /claim?sid=           coins ready to be turned into time      -> {"pulses":n,"minutes":m}
-#   /confirm?sid=         access was granted: acknowledge coins on the box and close the session
-# status = {"state":"none|starting|armed|done|error","pulses":n,"remaining":s,"claimed":bool,"error":"CODE"}
+# Local API (GET, JSON unless noted). <sid> = 32 hex chars derived from the client's OpenNDS id, <mac> = client MAC.
+#   /info                             settings the portal shows
+#   /tiers?plan=hyper|endurance       text lines "pesos minutes" (what the portal prints as rates)
+#   /start?sid&plan&mac               start a coin window (refuses PLAN_MISMATCH while another plan has time left)
+#   /status?sid                       progress: state, pesos, minutes, remaining seconds
+#   /finish?sid                       stop accepting now and count what arrived
+#   /claim?sid&mac                    what can be granted now (coins, voucher or resume), without changing anything
+#   /confirm?sid&mac                  access was granted by openNDS: record it, acknowledge the coins, issue the voucher
+#   /apply?sid&mac                    top-up for a connected client: re-grant now, then record it
+#   /voucher?sid&mac&code             prepare a grant from a voucher code
+#   /resume?sid&mac                   prepare a grant for a returning device that still has paid time
+#   /me?mac                           account status for the status page
 CONF="${COINSLOT_CONF:-/etc/coinslot.conf}"
 [ -r "$CONF" ] && . "$CONF"
+
 GW_BOX="${GW_BOX:-192.168.1.10}"
-WIFI_MINUTES_PER_COIN="${WIFI_MINUTES_PER_COIN:-10}"
-COIN_WINDOW_SECONDS="${COIN_WINDOW_SECONDS:-60}"
 LISTEN_PORT="${LISTEN_PORT:-8099}"
 STATE_DIR="${STATE_DIR:-/tmp/coinslot}"
+DATA_DIR="${DATA_DIR:-/etc/coinslot.d}"
+NDSCTL="${NDSCTL:-ndsctl}"
+
+# Coin window: first wait, wait after each coin, and a hard cap (the box itself caps a session at 120 s).
+COIN_FIRST_WAIT_SECONDS="${COIN_FIRST_WAIT_SECONDS:-30}"
+COIN_IDLE_WAIT_SECONDS="${COIN_IDLE_WAIT_SECONDS:-15}"
+COIN_MAX_SECONDS="${COIN_MAX_SECONDS:-115}"
+
+# Plans. Tiers are "pesos:minutes". The best combination of tiers is used for any amount, e.g. Endurance
+# 17 pesos = 10 + 5 + 1 + 1 = 8 h + 3 h + 30 min. HyperSpeed pesos that fit no tier (1-4) are paid pro rata.
+HYPER_TIERS="${HYPER_TIERS:-5:30 10:60 20:120}"
+HYPER_PRORATA_MIN="${HYPER_PRORATA_MIN:-6}"
+ENDURANCE_TIERS="${ENDURANCE_TIERS:-1:15 5:180 10:480 20:1440}"
+ENDURANCE_DOWN_KBPS="${ENDURANCE_DOWN_KBPS:-5000}"   # 5 Mbit/s
+ENDURANCE_UP_KBPS="${ENDURANCE_UP_KBPS:-2000}"       # 2 Mbit/s
+
+# Fair use (HyperSpeed only): after FAIR_USE_GB of traffic the connection is slowed for FAIR_THROTTLE_MINUTES,
+# then released for FAIR_FULL_MINUTES, and so on until the session ends.
+FAIR_USE_GB="${FAIR_USE_GB:-5}"
+FAIR_THROTTLE_DOWN_KBPS="${FAIR_THROTTLE_DOWN_KBPS:-2000}"
+FAIR_THROTTLE_UP_KBPS="${FAIR_THROTTLE_UP_KBPS:-1000}"
+FAIR_THROTTLE_MINUTES="${FAIR_THROTTLE_MINUTES:-5}"
+FAIR_FULL_MINUTES="${FAIR_FULL_MINUTES:-2}"
+
 SELF="$0"
+BASE="http://$GW_BOX/api/gateway"
 
 # ---------------------------------------------------------------------------
-# Talking to the box (see docs/overhaul/gateway-coinslot-api.md)
+# Small helpers
 # ---------------------------------------------------------------------------
-BASE="http://$GW_BOX/api/gateway"
+now() { date +%s; }
+jget() { sed -n 's/.*"'"$1"'" *: *"\{0,1\}\([^",}]*\).*/\1/p'; }
+
 if command -v curl >/dev/null 2>&1; then
   http() { curl -sS -m 8 "$1" 2>/dev/null; }          # no -f: error answers carry a JSON body
 else
   http() { wget -qO- -T 8 "$1" 2>/dev/null; }
 fi
-jget() { sed -n 's/.*"'"$1"'" *: *"\{0,1\}\([^",}]*\).*/\1/p'; }
 
+valid_sid() { case "$1" in "" | *[!0-9a-f]*) return 1 ;; esac; [ "${#1}" -eq 32 ]; }
+valid_plan() { case "$1" in hyper | endurance) return 0 ;; esac; return 1; }
+valid_mac() { case "$1" in "" | *[!0-9a-fA-F:]*) return 1 ;; esac; [ "${#1}" -eq 17 ]; }
+norm_mac() { printf '%s' "$1" | tr 'A-F' 'a-f'; }                 # aa:bb:cc:dd:ee:ff (what ndsctl uses)
+mac_key() { printf '%s' "$1" | tr 'A-F' 'a-f' | tr -d ':'; }      # aabbccddeeff (file names)
+valid_code() { case "$1" in "" | *[!A-HJ-NP-Z2-9]*) return 1 ;; esac; [ "${#1}" -eq 8 ]; }
+
+# ---------------------------------------------------------------------------
+# Rates
+# ---------------------------------------------------------------------------
+tiers_for() {
+  case "$1" in
+    hyper) printf '%s' "$HYPER_TIERS"; [ -n "$HYPER_PRORATA_MIN" ] && printf ' 1:%s' "$HYPER_PRORATA_MIN" ;;
+    endurance) printf '%s' "$ENDURANCE_TIERS" ;;
+  esac
+}
+
+# minutes_for <plan> <pesos>: most minutes obtainable for that many pesos (unbounded knapsack over the tiers).
+minutes_for() {
+  awk -v n="$2" -v tiers="$(tiers_for "$1")" 'BEGIN {
+    nt = split(tiers, t, " ")
+    for (i = 1; i <= nt; i++) { split(t[i], p, ":"); c[i] = p[1] + 0; m[i] = p[2] + 0 }
+    b[0] = 0
+    for (x = 1; x <= n; x++) {
+      b[x] = 0
+      for (i = 1; i <= nt; i++) if (c[i] > 0 && c[i] <= x && b[x - c[i]] + m[i] > b[x]) b[x] = b[x - c[i]] + m[i]
+    }
+    print b[n] + 0
+  }'
+}
+
+plan_up() { case "$1" in endurance) echo "$ENDURANCE_UP_KBPS" ;; *) echo 0 ;; esac; }
+plan_down() { case "$1" in endurance) echo "$ENDURANCE_DOWN_KBPS" ;; *) echo 0 ;; esac; }
+
+# ---------------------------------------------------------------------------
+# The box (gateway API, see docs/overhaul/gateway-coinslot-api.md)
+# ---------------------------------------------------------------------------
 # call <sid> <action> [extra query]: fetch a one-time nonce, sign, send; prints the box's JSON.
 call() {
   _sid="$1"; _action="$2"; _extra="$3"
@@ -47,37 +120,88 @@ call() {
 }
 
 # ---------------------------------------------------------------------------
-# Per-customer state: $STATE_DIR/<sid>/{state,stop,pid,claimed,ackpending}
+# openNDS (ndsctl)
 # ---------------------------------------------------------------------------
-valid_sid() { case "$1" in ""|*[!0-9a-f]*) return 1 ;; esac; [ "${#1}" -eq 32 ]; }
+nds_field() { sed -n 's/.*"'"$1"'":"\([^"]*\)".*/\1/p' | head -n 1; }
+nds_json() { "$NDSCTL" json "$1" 2>/dev/null; }
+nds_state() { nds_json "$1" | nds_field state; }                       # Authenticated | Preauthenticated | (empty)
+nds_session_end() { nds_json "$1" | nds_field session_end; }
+nds_counters_kb() {                                                     # download+upload this session, in kB
+  _j=$(nds_json "$1")
+  _d=$(printf '%s' "$_j" | nds_field download_this_session); _u=$(printf '%s' "$_j" | nds_field upload_this_session)
+  echo $(( ${_d:-0} + ${_u:-0} ))
+}
+# nds_auth <mac> <minutes> <up kbps> <down kbps>: only works for a de-authenticated (pre-authenticated) client.
+nds_auth() {
+  _out=$("$NDSCTL" auth "$1" "$2" "$3" "$4" 0 0 2>&1)
+  case "$_out" in *Failed*) return 1 ;; *authenticated*) return 0 ;; esac
+  return 1
+}
+nds_regrant() { "$NDSCTL" deauth "$1" >/dev/null 2>&1; nds_auth "$@"; }
 
-# write_state <dir> <state> <pulses> <remaining> <error>   (atomic: write a temp file, then rename)
-write_state() {
-  printf 'STATE=%s\nPULSES=%s\nREMAINING=%s\nERROR=%s\n' "$2" "$3" "$4" "$5" > "$1/state.tmp" && mv "$1/state.tmp" "$1/state"
+# ---------------------------------------------------------------------------
+# Vouchers: the durable record of paid time ($DATA_DIR/vouchers/<CODE>: PLAN EXPIRES MAC CREATED PESOS)
+# ---------------------------------------------------------------------------
+VOUCHER_DIR() { echo "$DATA_DIR/vouchers"; }
+
+new_code() {
+  while :; do
+    _c=$(head -c 256 /dev/urandom | tr -dc 'A-HJ-NP-Z2-9' | cut -c1-8)
+    [ "${#_c}" -eq 8 ] && [ ! -e "$(VOUCHER_DIR)/$_c" ] && { echo "$_c"; return; }
+  done
 }
 
-# read_state <dir>: sets STATE PULSES REMAINING ERROR (state "none" if the customer has no session)
-read_state() {
+# load_voucher <code>: sets PLAN EXPIRES MAC CREATED PESOS, returns 1 when unknown.
+load_voucher() {
+  PLAN=""; EXPIRES=0; MAC=""; CREATED=0; PESOS=0
+  valid_code "$1" && [ -r "$(VOUCHER_DIR)/$1" ] || return 1
+  . "$(VOUCHER_DIR)/$1"
+}
+
+save_voucher() {  # save_voucher <code> <plan> <expires> <mackey> <created> <pesos>
+  mkdir -p "$(VOUCHER_DIR)"
+  printf 'PLAN=%s\nEXPIRES=%s\nMAC=%s\nCREATED=%s\nPESOS=%s\n' "$2" "$3" "$4" "$5" "$6" > "$(VOUCHER_DIR)/$1.tmp" &&
+    mv "$(VOUCHER_DIR)/$1.tmp" "$(VOUCHER_DIR)/$1"
+}
+
+# voucher_by_mac <mackey>: code of the unexpired voucher bound to that device, if any.
+voucher_by_mac() {
+  _now=$(now)
+  for _f in "$(VOUCHER_DIR)"/*; do
+    [ -f "$_f" ] || continue
+    case "$_f" in *.tmp) continue ;; esac
+    if grep -q "^MAC=$1\$" "$_f"; then
+      load_voucher "$(basename "$_f")" && [ "$EXPIRES" -gt "$_now" ] && { basename "$_f"; return 0; }
+    fi
+  done
+  return 1
+}
+
+# ---------------------------------------------------------------------------
+# Per-customer state: $STATE_DIR/<sid>/{state,plan,mac,stop,pid,claimed,grant,ackpending}
+# ---------------------------------------------------------------------------
+write_state() {  # write_state <dir> <state> <pulses> <remaining> <error>   (atomic)
+  printf 'STATE=%s\nPULSES=%s\nREMAINING=%s\nERROR=%s\n' "$2" "$3" "$4" "$5" > "$1/state.tmp" && mv "$1/state.tmp" "$1/state"
+}
+read_state() {  # sets STATE PULSES REMAINING ERROR ("none" if the customer has no session)
   STATE=none; PULSES=0; REMAINING=0; ERROR=""
   [ -r "$1/state" ] && . "$1/state"
 }
-
-worker_running() {
-  [ -r "$1/pid" ] && kill -0 "$(cat "$1/pid")" 2>/dev/null
-}
+worker_running() { [ -r "$1/pid" ] && kill -0 "$(cat "$1/pid")" 2>/dev/null; }
 
 status_json() {  # status_json <dir>
   read_state "$1"
-  claimed=false; [ -e "$1/claimed" ] && claimed=true
-  printf '{"state":"%s","pulses":%s,"remaining":%s,"claimed":%s,"error":"%s"}' \
-    "$STATE" "${PULSES:-0}" "${REMAINING:-0}" "$claimed" "$ERROR"
+  _plan=$(cat "$1/plan" 2>/dev/null); _claimed=false; [ -e "$1/claimed" ] && _claimed=true
+  _min=0; [ -n "$_plan" ] && [ "${PULSES:-0}" -gt 0 ] && _min=$(minutes_for "$_plan" "$PULSES")
+  printf '{"state":"%s","pulses":%s,"minutes":%s,"plan":"%s","remaining":%s,"claimed":%s,"error":"%s"}' \
+    "$STATE" "${PULSES:-0}" "$_min" "$_plan" "${REMAINING:-0}" "$_claimed" "$ERROR"
 }
 
 # ---------------------------------------------------------------------------
-# Worker: arm, count, always disarm
+# Worker: arm, count (waiting longer after every coin), always disarm
 # ---------------------------------------------------------------------------
 do_worker() {
-  sid="$1"; window="$2"; dir="$STATE_DIR/$sid"
+  sid="$1"; dir="$STATE_DIR/$sid"
   echo $$ > "$dir/pid"
   armed=0
   release() {
@@ -88,28 +212,37 @@ do_worker() {
   trap 'release; write_state "$dir" done "${pulses:-0}" 0 ""; exit 0' INT TERM HUP
   pulses=0
 
-  answer=$(call "$sid" arm "&duration=$window")
+  started=$(now)
+  cap=$(( started + COIN_MAX_SECONDS ))
+  deadline=$(( started + COIN_FIRST_WAIT_SECONDS ))
+  answer=$(call "$sid" arm "&duration=$(( COIN_FIRST_WAIT_SECONDS + 3 ))")
   if [ "$(printf '%s' "$answer" | jget success)" != "true" ]; then
     err=$(printf '%s' "$answer" | jget error)
     write_state "$dir" error 0 0 "${err:-NO_ANSWER}"
     return 1
   fi
   armed=1
-  end=$(( $(date +%s) + window ))
-  write_state "$dir" armed "$(printf '%s' "$answer" | jget pulses)" "$window" ""
+  pulses=$(printf '%s' "$answer" | jget pulses); pulses="${pulses:-0}"
+  last="$pulses"
+  write_state "$dir" armed "$pulses" "$(( deadline - $(now) ))" ""
 
-  while [ "$(date +%s)" -lt "$end" ] && [ ! -e "$dir/stop" ]; do
+  while [ "$(now)" -lt "$deadline" ] && [ ! -e "$dir/stop" ]; do
     sleep 1
     st=$(call "$sid" status) || continue                  # a missed poll must not end the window early
     [ "$(printf '%s' "$st" | jget success)" = "true" ] || continue
     pulses=$(printf '%s' "$st" | jget pulses)
-    write_state "$dir" armed "$pulses" "$(( end - $(date +%s) ))" ""
-    [ "$(printf '%s' "$st" | jget state)" = "armed" ] || break   # the box ended it (its own session cap)
+    if [ "$pulses" -gt "$last" ]; then                    # a coin: restart the short wait, within the hard cap
+      last="$pulses"
+      deadline=$(( $(now) + COIN_IDLE_WAIT_SECONDS ))
+      [ "$deadline" -gt "$cap" ] && deadline="$cap"
+      call "$sid" arm "&duration=$(( deadline - $(now) + 3 ))" >/dev/null
+    fi
+    write_state "$dir" armed "$pulses" "$(( deadline - $(now) ))" ""
+    [ "$(printf '%s' "$st" | jget state)" = "armed" ] || break   # the box ended it
   done
 
   release
-  # In-flight coins: the box reports "idle" once it has drained.
-  i=0
+  i=0   # in-flight coins: the box reports "idle" once it has drained
   while [ "$i" -lt 30 ]; do
     st=$(call "$sid" status) && {
       pulses=$(printf '%s' "$st" | jget pulses)
@@ -121,34 +254,219 @@ do_worker() {
 }
 
 # ---------------------------------------------------------------------------
+# Grants
+# ---------------------------------------------------------------------------
+# build_grant <sid> <mac>: works out what can be granted right now. Sets
+#   G_KIND coins|voucher|resume   G_PLAN   G_PULSES   G_NEW_MIN   G_LEFT_MIN (time kept from before)
+#   G_TOTAL_MIN   G_MODE auth|topup   G_CODE (existing voucher of this device)   G_UP   G_DOWN
+# Returns 1 when there is nothing to grant.
+build_grant() {
+  _dir="$STATE_DIR/$1"; _mac="$2"; _mk=$(mac_key "$2")
+  G_KIND=""; G_PLAN=""; G_PULSES=0; G_NEW_MIN=0; G_LEFT_MIN=0; G_TOTAL_MIN=0; G_MODE=auth; G_CODE=""; G_OLDMAC=""
+  read_state "$_dir"
+  if [ "$STATE" = "done" ] && [ "${PULSES:-0}" -gt 0 ] && [ ! -e "$_dir/claimed" ]; then
+    G_KIND=coins; G_PLAN=$(cat "$_dir/plan" 2>/dev/null); G_PULSES="$PULSES"
+    valid_plan "$G_PLAN" || return 1
+    G_NEW_MIN=$(minutes_for "$G_PLAN" "$G_PULSES")
+    _code=$(voucher_by_mac "$_mk") && G_CODE="$_code"
+    if [ "$(nds_state "$_mac")" = "Authenticated" ]; then                 # connected: this is a top-up
+      G_MODE=topup
+      _end=$(nds_session_end "$_mac"); _n=$(now)
+      case "$_end" in "" | null | *[!0-9]*) _end=0 ;; esac
+      [ "$_end" -gt "$_n" ] && G_LEFT_MIN=$(( (_end - _n + 59) / 60 ))
+    elif [ -n "$G_CODE" ]; then                                           # time left from an earlier session
+      load_voucher "$G_CODE"
+      [ "$PLAN" = "$G_PLAN" ] && G_LEFT_MIN=$(( (EXPIRES - $(now) + 59) / 60 ))
+    fi
+    G_TOTAL_MIN=$(( G_NEW_MIN + G_LEFT_MIN ))
+  elif [ -r "$_dir/grant" ] && [ ! -e "$_dir/claimed" ]; then
+    . "$_dir/grant"           # KIND PLAN MINUTES CODE OLDMAC
+    G_KIND="$KIND"; G_PLAN="$PLAN"; G_TOTAL_MIN="$MINUTES"; G_CODE="$CODE"; G_OLDMAC="$OLDMAC"
+    valid_plan "$G_PLAN" || return 1
+  else
+    return 1
+  fi
+  G_UP=$(plan_up "$G_PLAN"); G_DOWN=$(plan_down "$G_PLAN")
+  return 0
+}
+
+grant_json() {
+  printf '{"kind":"%s","pulses":%s,"minutes":%s,"added":%s,"plan":"%s","mode":"%s","voucher":"%s","up":%s,"down":%s}' \
+    "$G_KIND" "$G_PULSES" "$G_TOTAL_MIN" "$G_NEW_MIN" "$G_PLAN" "$G_MODE" "$G_CODE" "$G_UP" "$G_DOWN"
+}
+
+# The grant is worked out when the customer taps Connect (/claim) and remembered, because by the time openNDS
+# has authenticated the client and /confirm runs, the client already looks "connected": recomputing then would
+# mistake a new session for a top-up and count the fresh time twice.
+save_pending() {
+  printf 'G_KIND=%s\nG_PLAN=%s\nG_PULSES=%s\nG_NEW_MIN=%s\nG_LEFT_MIN=%s\nG_TOTAL_MIN=%s\nG_MODE=%s\nG_CODE=%s\nG_OLDMAC=%s\nG_UP=%s\nG_DOWN=%s\n' \
+    "$G_KIND" "$G_PLAN" "$G_PULSES" "$G_NEW_MIN" "$G_LEFT_MIN" "$G_TOTAL_MIN" "$G_MODE" "$G_CODE" "$G_OLDMAC" "$G_UP" "$G_DOWN" > "$1/pending.tmp" &&
+    mv "$1/pending.tmp" "$1/pending"
+}
+load_pending() { [ -r "$1/pending" ] && [ ! -e "$1/claimed" ] && . "$1/pending"; }
+
+# finalize <sid> <mac>: record a grant that openNDS has accepted (call build_grant first, under the sid lock).
+finalize() {
+  _dir="$STATE_DIR/$1"; _mac="$2"; _mk=$(mac_key "$2"); _n=$(now)
+  _code="$G_CODE"; _created="$_n"; _pesos=0
+  if [ -n "$_code" ] && load_voucher "$_code"; then _created="$CREATED"; _pesos="$PESOS"; else _code=$(new_code); fi
+  _pesos=$(( _pesos + G_PULSES ))
+  _expires=$(( _n + G_TOTAL_MIN * 60 ))
+  save_voucher "$_code" "$G_PLAN" "$_expires" "$_mk" "$_created" "$_pesos"
+  : > "$_dir/claimed"; rm -f "$_dir/pending"
+  if [ "$G_KIND" = "coins" ]; then
+    mkdir -p "$DATA_DIR"
+    echo "$_n,$G_PLAN,$G_PULSES,$G_NEW_MIN,$([ "$G_MODE" = topup ] && echo topup || echo new)" >> "$DATA_DIR/revenue.csv"
+    : > "$_dir/ackpending"
+    for _ in 1 2 3; do call "$1" ack >/dev/null && { rm -f "$_dir/ackpending"; break; }; sleep 1; done
+  elif [ -n "$G_OLDMAC" ] && [ "$G_OLDMAC" != "$_mk" ]; then
+    _old=$(printf '%s' "$G_OLDMAC" | sed 's/\(..\)\(..\)\(..\)\(..\)\(..\)\(..\)/\1:\2:\3:\4:\5:\6/')
+    [ "$(nds_state "$_old")" = "Authenticated" ] && "$NDSCTL" deauth "$_old" >/dev/null 2>&1   # the time moves to this device
+  fi
+  fair_init "$_mk"
+  G_CODE="$_code"
+  G_EXPIRES="$_expires"
+}
+
+# ---------------------------------------------------------------------------
+# Fair use (HyperSpeed): $STATE_DIR/fair/<mackey>: USED_KB OFFSET_KB PHASE PHASE_SINCE
+# ---------------------------------------------------------------------------
+fair_file() { echo "$STATE_DIR/fair/$1"; }
+fair_init() { [ -e "$(fair_file "$1")" ] || { mkdir -p "$STATE_DIR/fair"; printf 'USED_KB=0\nOFFSET_KB=0\nPHASE=normal\nPHASE_SINCE=0\n' > "$(fair_file "$1")"; }; }
+fair_save() { printf 'USED_KB=%s\nOFFSET_KB=%s\nPHASE=%s\nPHASE_SINCE=%s\n' "$2" "$3" "$4" "$5" > "$(fair_file "$1").tmp" && mv "$(fair_file "$1").tmp" "$(fair_file "$1")"; }
+
+# fair_flip <mac> <used kb> <phase> <down kbps> <up kbps>: re-grant the rest of the session with new speed caps.
+fair_flip() {
+  _mac="$1"; _used="$2"; _phase="$3"
+  _end=$(nds_session_end "$_mac"); _n=$(now)
+  case "$_end" in "" | null | *[!0-9]*) return 1 ;; esac
+  _min=$(( (_end - _n + 59) / 60 ))
+  [ "$_min" -ge 1 ] || return 1
+  nds_regrant "$_mac" "$_min" "$5" "$4" || return 1
+  fair_save "$(mac_key "$_mac")" "$_used" "$(nds_counters_kb "$_mac")" "$_phase" "$_n"   # counters restart or not: remember the reading
+}
+
+# One pass over all connected clients.
+fair_tick() {
+  _limit="${FAIR_USE_KB:-$(( FAIR_USE_GB * 1024 * 1024 ))}"   # FAIR_USE_KB is a test hook
+  "$NDSCTL" json 2>/dev/null | awk -F'"' '
+    /"mac":/ { mac = $4 } /"state":/ { st = $4 } /"download_this_session":/ { dl = $4 }
+    /"upload_this_session":/ { print mac, st, dl, $4 }' | while read -r mac st dl ul; do
+    [ "$st" = "Authenticated" ] || continue
+    mk=$(mac_key "$mac")
+    code=$(voucher_by_mac "$mk") || continue
+    load_voucher "$code"; [ "$PLAN" = "hyper" ] || continue
+    fair_init "$mk"; . "$(fair_file "$mk")"
+    cur=$(( ${dl:-0} + ${ul:-0} ))
+    [ "$cur" -ge "$OFFSET_KB" ] || OFFSET_KB=0
+    total=$(( USED_KB + cur - OFFSET_KB ))
+    n=$(now)
+    if [ "$total" -lt "$_limit" ]; then fair_save "$mk" "$total" "$OFFSET_KB" "$PHASE" "$PHASE_SINCE"; USED_KB="$total"; continue; fi
+    if [ "$PHASE" = "normal" ] && [ $(( n - PHASE_SINCE )) -ge $(( FAIR_FULL_MINUTES * 60 )) ]; then
+      fair_flip "$mac" "$total" throttled "$FAIR_THROTTLE_DOWN_KBPS" "$FAIR_THROTTLE_UP_KBPS"
+    elif [ "$PHASE" = "throttled" ] && [ $(( n - PHASE_SINCE )) -ge $(( FAIR_THROTTLE_MINUTES * 60 )) ]; then
+      fair_flip "$mac" "$total" normal 0 0
+    else
+      fair_save "$mk" "$total" "$OFFSET_KB" "$PHASE" "$PHASE_SINCE"
+    fi
+  done
+}
+
+do_fairuse() {
+  mkdir -p "$STATE_DIR/fair"
+  while :; do
+    fair_tick
+    find "$(VOUCHER_DIR)" -type f -mtime +2 -exec rm -f {} + 2>/dev/null   # long-expired vouchers
+    sleep 60
+  done
+}
+
+# ---------------------------------------------------------------------------
+# Revenue report
+# ---------------------------------------------------------------------------
+do_report() {
+  _days="${1:-7}"
+  [ -r "$DATA_DIR/revenue.csv" ] || { echo "No payments recorded yet."; return 0; }
+  _tz=$(date +%z); _sign=1; case "$_tz" in -*) _sign=-1 ;; esac
+  _h=${_tz#?}; _hh=${_h%??}; _mm=${_h#??}; _off=$(( _sign * ( ${_hh#0} * 3600 + ${_mm#0} * 60 ) ))
+  awk -F, -v off="$_off" -v days="$_days" -v now="$(now)" '
+    function civil(z,   era, doe, yoe, y, doy, mp, d, m) {   # days since 1970-01-01 -> y-m-d
+      z += 719468; era = int(z / 146097); doe = z - era * 146097
+      yoe = int((doe - int(doe/1460) + int(doe/36524) - int(doe/146096)) / 365); y = yoe + era * 400
+      doy = doe - (365*yoe + int(yoe/4) - int(yoe/100)); mp = int((5*doy + 2) / 153)
+      d = doy - int((153*mp + 2) / 5) + 1; m = mp < 10 ? mp + 3 : mp - 9; if (m <= 2) y++
+      return sprintf("%04d-%02d-%02d", y, m, d)
+    }
+    $1 >= now - days * 86400 { day = civil(int(($1 + off) / 86400)); k = day "," $2; p[k] += $3; n[k]++; tot += $3 }
+    END { for (k in p) { split(k, a, ","); printf "%s  %-10s  PHP %-6d  %d payment(s)\n", a[1], a[2], p[k], n[k] | "sort"; }
+          close("sort"); printf "Total last %d day(s): PHP %d\n", days, tot }' "$DATA_DIR/revenue.csv"
+}
+
+# ---------------------------------------------------------------------------
 # HTTP handler (one request per connection)
 # ---------------------------------------------------------------------------
-reply() {  # reply <status line> <json>
-  printf 'HTTP/1.1 %s\r\nContent-Type: application/json\r\nCache-Control: no-store\r\nConnection: close\r\nContent-Length: %s\r\n\r\n%s' \
-    "$1" "${#2}" "$2"
+reply() {  # reply <status line> <body> [content type]
+  printf 'HTTP/1.1 %s\r\nContent-Type: %s\r\nCache-Control: no-store\r\nConnection: close\r\nContent-Length: %s\r\n\r\n%s' \
+    "$1" "${3:-application/json}" "${#2}" "$2"
+}
+err_json() { printf '{"error":"%s"}' "$1"; }
+
+qget() {  # qget <name>: value of a query parameter (already restricted to safe characters by the callers)
+  for _p in $(printf '%s' "$QUERY" | tr '&' ' '); do
+    case "$_p" in "$1"=*) printf '%s' "${_p#"$1"=}"; return ;; esac
+  done
 }
 
 do_handle() {
   read -r method target _
   while read -r line; do [ -z "${line%$(printf '\r')}" ] && break; done     # skip the headers
-  [ "$method" = "GET" ] || { reply "405 Method Not Allowed" '{"error":"METHOD"}'; return; }
+  [ "$method" = "GET" ] || { reply "405 Method Not Allowed" "$(err_json METHOD)"; return; }
 
-  path="${target%%\?*}"; query=""
-  case "$target" in *\?*) query="${target#*\?}" ;; esac
-  sid=""
-  for pair in $(printf '%s' "$query" | tr '&' ' '); do
-    case "$pair" in sid=*) sid="${pair#sid=}" ;; esac
-  done
+  path="${target%%\?*}"; QUERY=""
+  case "$target" in *\?*) QUERY="${target#*\?}" ;; esac
 
-  if [ "$path" = "/info" ]; then
-    reply "200 OK" "{\"rate\":$WIFI_MINUTES_PER_COIN,\"window\":$COIN_WINDOW_SECONDS}"
-    return
-  fi
-  valid_sid "$sid" || { reply "400 Bad Request" '{"error":"INVALID_SID"}'; return; }
+  case "$path" in
+    /info)
+      reply "200 OK" "{\"first\":$COIN_FIRST_WAIT_SECONDS,\"idle\":$COIN_IDLE_WAIT_SECONDS,\"max\":$COIN_MAX_SECONDS,\"fair_gb\":$FAIR_USE_GB,\"e_down\":$ENDURANCE_DOWN_KBPS,\"e_up\":$ENDURANCE_UP_KBPS}"
+      return ;;
+    /tiers)
+      plan=$(qget plan); valid_plan "$plan" || { reply "400 Bad Request" "$(err_json INVALID_PLAN)"; return; }
+      out=""
+      for t in $(case "$plan" in hyper) echo "$HYPER_TIERS" ;; endurance) echo "$ENDURANCE_TIERS" ;; esac); do
+        out="$out${t%%:*} ${t##*:}
+"
+      done
+      reply "200 OK" "$out" "text/plain"
+      return ;;
+    /report)
+      d=$(qget days); case "$d" in "" | *[!0-9]*) d=7 ;; esac
+      reply "200 OK" "$(do_report "$d")" "text/plain"
+      return ;;
+    /me)
+      mac=$(qget mac); valid_mac "$mac" || { reply "400 Bad Request" "$(err_json INVALID_MAC)"; return; }
+      mac=$(norm_mac "$mac"); mk=$(mac_key "$mac"); n=$(now)
+      state=$(nds_state "$mac"); active=false; remaining=0; plan=""; code=""; throttled=false; usedmb=0
+      if code=$(voucher_by_mac "$mk"); then
+        load_voucher "$code"; plan="$PLAN"; remaining=$(( EXPIRES - n ))
+        if [ -r "$(fair_file "$mk")" ]; then
+          . "$(fair_file "$mk")"; [ "$PHASE" = "throttled" ] && throttled=true
+          cur=$(nds_counters_kb "$mac"); usedmb=$(( (USED_KB + cur - OFFSET_KB) / 1024 ))
+        fi
+      else code=""; fi
+      [ "$state" = "Authenticated" ] && active=true
+      reply "200 OK" "{\"active\":$active,\"plan\":\"$plan\",\"remaining\":$remaining,\"voucher\":\"$code\",\"throttled\":$throttled,\"used_mb\":$usedmb,\"fair_mb\":$(( FAIR_USE_GB * 1024 ))}"
+      return ;;
+  esac
+
+  sid=$(qget sid)
+  valid_sid "$sid" || { reply "400 Bad Request" "$(err_json INVALID_SID)"; return; }
   dir="$STATE_DIR/$sid"
+  mac=$(qget mac)
+  if [ -n "$mac" ]; then valid_mac "$mac" || { reply "400 Bad Request" "$(err_json INVALID_MAC)"; return; }; mac=$(norm_mac "$mac"); fi
 
   case "$path" in
     /start)
+      plan=$(qget plan); valid_plan "$plan" || { reply "400 Bad Request" "$(err_json INVALID_PLAN)"; return; }
       mkdir -p "$dir"
       if worker_running "$dir"; then reply "200 OK" "$(status_json "$dir")"; return; fi
       read_state "$dir"
@@ -156,15 +474,20 @@ do_handle() {
       if [ "$STATE" = "done" ] && [ "${PULSES:-0}" -gt 0 ] && [ ! -e "$dir/claimed" ]; then
         reply "200 OK" "$(status_json "$dir")"; return
       fi
+      # Time left on another plan must not be mixed with this plan's speed rules.
+      if [ -n "$mac" ] && code=$(voucher_by_mac "$(mac_key "$mac")") && load_voucher "$code" && [ "$PLAN" != "$plan" ]; then
+        reply "200 OK" "{\"state\":\"error\",\"error\":\"PLAN_MISMATCH\",\"plan\":\"$PLAN\",\"remaining\":$(( EXPIRES - $(now) ))}"; return
+      fi
       if [ -e "$dir/ackpending" ]; then          # an earlier grant could not be acknowledged on the box
         if call "$sid" ack >/dev/null && rm -f "$dir/ackpending"; then :; else
-          reply "503 Service Unavailable" '{"state":"error","pulses":0,"remaining":0,"claimed":false,"error":"ACK_PENDING"}'; return
+          reply "200 OK" '{"state":"error","error":"ACK_PENDING"}'; return
         fi
       fi
-      rm -f "$dir/stop" "$dir/claimed" "$dir/state"
-      write_state "$dir" starting 0 "$COIN_WINDOW_SECONDS" ""
+      rm -f "$dir/stop" "$dir/claimed" "$dir/state" "$dir/grant" "$dir/pending"
+      printf '%s' "$plan" > "$dir/plan"
+      write_state "$dir" starting 0 "$COIN_FIRST_WAIT_SECONDS" ""
       # The worker must not inherit the socket (it would hold the connection open): detach its fds.
-      ( "$SELF" worker "$sid" "$COIN_WINDOW_SECONDS" </dev/null >/dev/null 2>&1 & )
+      ( "$SELF" worker "$sid" </dev/null >/dev/null 2>&1 & )
       reply "200 OK" "$(status_json "$dir")" ;;
     /status)
       reply "200 OK" "$(status_json "$dir")" ;;
@@ -172,30 +495,62 @@ do_handle() {
       worker_running "$dir" && : > "$dir/stop"
       reply "200 OK" "$(status_json "$dir")" ;;
     /claim)
-      read_state "$dir"
-      if [ "$STATE" = "done" ] && [ ! -e "$dir/claimed" ] && [ "${PULSES:-0}" -gt 0 ]; then
-        reply "200 OK" "{\"pulses\":$PULSES,\"minutes\":$(( PULSES * WIFI_MINUTES_PER_COIN ))}"
-      else
-        reply "200 OK" '{"pulses":0,"minutes":0}'
-      fi ;;
-    /confirm)
-      read_state "$dir"
-      if [ "$STATE" = "done" ] && [ ! -e "$dir/claimed" ] && [ "${PULSES:-0}" -gt 0 ]; then
-        : > "$dir/claimed"
-        : > "$dir/ackpending"
-        for _ in 1 2 3; do call "$sid" ack >/dev/null && { rm -f "$dir/ackpending"; break; }; sleep 1; done
+      [ -n "$mac" ] || { reply "400 Bad Request" "$(err_json INVALID_MAC)"; return; }
+      if build_grant "$sid" "$mac"; then save_pending "$dir"; reply "200 OK" "$(grant_json)"
+      else reply "200 OK" '{"kind":"","pulses":0,"minutes":0,"added":0,"plan":"","mode":"auth","voucher":"","up":0,"down":0}'; fi ;;
+    /confirm | /apply)
+      [ -n "$mac" ] || { reply "400 Bad Request" "$(err_json INVALID_MAC)"; return; }
+      mkdir -p "$dir"
+      mkdir "$dir/lock" 2>/dev/null || { reply "409 Conflict" "$(err_json BUSY)"; return; }
+      trap 'rmdir "$dir/lock" 2>/dev/null' EXIT
+      if ! load_pending "$dir" && ! build_grant "$sid" "$mac"; then reply "200 OK" "$(err_json NOTHING_TO_GRANT)"; return; fi
+      if [ "$path" = "/apply" ]; then
+        [ "$G_MODE" = "topup" ] || { reply "200 OK" "$(err_json NOT_CONNECTED)"; return; }
+        nds_regrant "$mac" "$G_TOTAL_MIN" "$G_UP" "$G_DOWN" || { reply "200 OK" "$(err_json REGRANT_FAILED)"; return; }
+        [ "$G_PLAN" = "hyper" ] && { fair_init "$(mac_key "$mac")"; . "$(fair_file "$(mac_key "$mac")")"; fair_save "$(mac_key "$mac")" "$USED_KB" "$(nds_counters_kb "$mac")" normal 0; }
       fi
-      reply "200 OK" "$(status_json "$dir")" ;;
-    *) reply "404 Not Found" '{"error":"NOT_FOUND"}' ;;
+      finalize "$sid" "$mac"
+      reply "200 OK" "{\"success\":true,\"voucher\":\"$G_CODE\",\"minutes\":$G_TOTAL_MIN,\"plan\":\"$G_PLAN\",\"expires\":$G_EXPIRES,\"mode\":\"$G_MODE\"}" ;;
+    /voucher)
+      [ -n "$mac" ] || { reply "400 Bad Request" "$(err_json INVALID_MAC)"; return; }
+      code=$(qget code | tr 'a-z' 'A-Z')
+      # Guess protection: after 10 wrong codes in 10 minutes, no more tries for 10 minutes.
+      mkdir -p "$STATE_DIR"; fails="$STATE_DIR/voucher-fails"; n=$(now)
+      if [ -r "$fails" ]; then
+        recent=$(awk -v t=$(( n - 600 )) '$1 > t' "$fails" | wc -l)
+        [ "$recent" -ge 10 ] && { reply "200 OK" "$(err_json TOO_MANY_TRIES)"; return; }
+      fi
+      if ! load_voucher "$code" || [ "$EXPIRES" -le "$n" ]; then
+        echo "$n" >> "$fails"
+        reply "200 OK" "$(err_json INVALID_CODE)"; return
+      fi
+      [ "$(nds_state "$mac")" = "Authenticated" ] && { reply "200 OK" "$(err_json ALREADY_CONNECTED)"; return; }
+      mkdir -p "$dir"; rm -f "$dir/claimed" "$dir/pending"
+      printf 'KIND=voucher\nPLAN=%s\nMINUTES=%s\nCODE=%s\nOLDMAC=%s\n' "$PLAN" "$(( (EXPIRES - n + 59) / 60 ))" "$code" "$MAC" > "$dir/grant"
+      build_grant "$sid" "$mac" && reply "200 OK" "$(grant_json)" || reply "200 OK" "$(err_json INVALID_CODE)" ;;
+    /resume)
+      [ -n "$mac" ] || { reply "400 Bad Request" "$(err_json INVALID_MAC)"; return; }
+      [ "$(nds_state "$mac")" = "Authenticated" ] && { reply "200 OK" '{"minutes":0}'; return; }
+      if code=$(voucher_by_mac "$(mac_key "$mac")"); then
+        load_voucher "$code"; mkdir -p "$dir"; rm -f "$dir/claimed" "$dir/pending"
+        printf 'KIND=resume\nPLAN=%s\nMINUTES=%s\nCODE=%s\nOLDMAC=\n' "$PLAN" "$(( (EXPIRES - $(now) + 59) / 60 ))" "$code" > "$dir/grant"
+        build_grant "$sid" "$mac" && { reply "200 OK" "$(grant_json)"; return; }
+      fi
+      reply "200 OK" '{"minutes":0}' ;;
+    *) reply "404 Not Found" "$(err_json NOT_FOUND)" ;;
   esac
 }
 
 case "$1" in
   serve)
-    mkdir -p "$STATE_DIR" && chmod 700 "$STATE_DIR"
-    find "$STATE_DIR" -mindepth 1 -maxdepth 1 -type d -mmin +120 -exec rm -rf {} + 2>/dev/null   # forget old sessions
+    mkdir -p "$STATE_DIR" "$DATA_DIR/vouchers" && chmod 700 "$STATE_DIR"
+    find "$STATE_DIR" -mindepth 1 -maxdepth 1 -type d -name '[0-9a-f]*' -mmin +120 -exec rm -rf {} + 2>/dev/null   # forget old sessions
     exec socat "TCP-LISTEN:$LISTEN_PORT,bind=127.0.0.1,reuseaddr,fork" "EXEC:$SELF handle" ;;
   handle) do_handle ;;
-  worker) valid_sid "$2" && do_worker "$2" "$3" ;;
-  *) echo "usage: $0 serve | handle | worker <sid> <seconds>" >&2; exit 2 ;;
+  worker) valid_sid "$2" && do_worker "$2" ;;
+  fairuse) do_fairuse ;;
+  fairuse-once) fair_tick ;;
+  minutes) minutes_for "$2" "$3" ;;
+  report) do_report "$2" ;;
+  *) echo "usage: $0 serve | handle | worker <sid> | fairuse | report [days] | minutes <plan> <pesos>" >&2; exit 2 ;;
 esac
