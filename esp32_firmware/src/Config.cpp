@@ -351,30 +351,6 @@ void loadSlotLicenses() {
             startIdx = semi + 1;
             slotIdx++;
         }
-    } else {
-        // Fallback: If slots_data is empty, check legacy "ips" key so existing devices aren't lost
-        String legacyIps = prefs.getString(NVS_KEY_IPS, "");
-        if (legacyIps.length() > 0) {
-            int startIdx = 0;
-            int sIdx = 0;
-            while (startIdx < legacyIps.length() && sIdx < maxLicensedSlots) {
-                int comma = legacyIps.indexOf(',', startIdx);
-                if (comma == -1) comma = legacyIps.length();
-                String entry = legacyIps.substring(startIdx, comma);
-                entry.trim();
-                if (entry.length() > 0) {
-                    DeviceConfig cfg;
-                    if (parseDeviceEntry(entry, cfg)) {
-                        licenseSlots[sIdx].deviceId = cfg.id;
-                        licenseSlots[sIdx].ip = cfg.ip;
-                        licenseSlots[sIdx].name = cfg.name;
-                        licenseSlots[sIdx].active = true;
-                        sIdx++;
-                    }
-                }
-                startIdx = comma + 1;
-            }
-        }
     }
     prefs.end();
     syncAndroidIpsFromSlots();

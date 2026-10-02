@@ -86,14 +86,6 @@ class Esp32DiscoveryScanner(
         }
     }
 
-    fun startUdpListener() {
-        synchronized(lock) {
-            if (!isStopped) {
-                startUdpListenerLocked()
-            }
-        }
-    }
-
     private fun startUdpListenerLocked() {
         if (udpListenerJob?.isActive == true) return
         udpListenerJob = scope.launch(Dispatchers.IO) {
@@ -346,12 +338,6 @@ class Esp32DiscoveryScanner(
                 multicastLock?.release()
             }
         } catch (_: Exception) {}
-    }
-
-    private fun releaseMulticastLock() {
-        synchronized(lock) {
-            releaseMulticastLockLocked()
-        }
     }
 
     fun getLocalIpAddress(): String {

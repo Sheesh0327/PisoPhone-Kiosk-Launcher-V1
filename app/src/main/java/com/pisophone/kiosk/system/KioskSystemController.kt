@@ -3,11 +3,9 @@ package com.pisophone.kiosk.system
 import android.app.ActivityManager
 import android.content.Context
 import android.media.AudioManager
-import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import com.pisophone.kiosk.util.HardwareFeedback
-import java.util.Locale
 
 /**
  * Clean abstraction decoupling UI composables from Android system service calls.

@@ -66,10 +66,6 @@ class KioskService : Service() {
             }
         }
 
-        fun triggerEsp32Rescan(context: Context) {
-            activeInstance?.triggerCandidateDiscovery()
-        }
-
         fun triggerAdminBypass(context: Context, durationSeconds: Int = 900) {
             val instance = activeInstance
             if (instance != null) {

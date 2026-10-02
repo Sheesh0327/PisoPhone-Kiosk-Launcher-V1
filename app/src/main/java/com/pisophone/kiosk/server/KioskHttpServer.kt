@@ -3,12 +3,9 @@ package com.pisophone.kiosk.server
 import android.content.Context
 import android.util.Log
 import com.pisophone.kiosk.repository.PaymentResult
-import com.pisophone.kiosk.security.KioskActivationManager
 import com.pisophone.kiosk.security.KioskSecurity
 import fi.iki.elonen.NanoHTTPD
 import org.json.JSONObject
-import java.io.File
-import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 interface KioskServerDelegate {

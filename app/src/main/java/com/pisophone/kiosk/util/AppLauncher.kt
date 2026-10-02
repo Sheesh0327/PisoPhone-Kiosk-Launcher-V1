@@ -182,25 +182,6 @@ object AppLauncher {
     }
 
     /**
-     * Launches Android Wi-Fi Settings with automatic admin bypass.
-     */
-    fun launchWifiSettings(context: Context) {
-        try {
-            AdminMaintenanceMode.begin(context, 900)
-            KioskService.triggerAdminBypass(context, 900)
-            ensureLockTaskAllowed(context, "com.android.settings")
-            ensureLockTaskAllowed(context, "com.google.android.settings")
-            val intent = Intent(Settings.ACTION_WIFI_SETTINGS).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            }
-            context.startActivity(intent)
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to open Wi-Fi settings, falling back to general settings: ${e.message}")
-            launchSettings(context)
-        }
-    }
-
-    /**
      * Launches the Home screen / Kiosk Launcher.
      */
     fun launchHome(context: Context) {

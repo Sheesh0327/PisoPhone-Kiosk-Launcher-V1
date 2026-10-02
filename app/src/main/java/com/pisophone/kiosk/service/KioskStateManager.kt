@@ -4,7 +4,6 @@ import android.content.Context
 import android.util.Log
 import com.pisophone.kiosk.security.KioskSecurity
 import kotlinx.coroutines.flow.MutableStateFlow
-import java.util.UUID
 
 class KioskStateManager(private val context: Context) {
     companion object {

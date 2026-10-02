@@ -6,7 +6,6 @@ import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.util.Log
 import android.widget.Toast
 import com.pisophone.kiosk.KioskService
@@ -51,7 +50,7 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
         Log.d(TAG, "Received admin action: $action")
 
         when (action) {
-            ACTION_ENABLE_ADB, "com.pisophone.kiosk.ACTION_ENABLE_ADB" -> {
+            ACTION_ENABLE_ADB -> {
                 if (!isAuthorized(context, intent)) {
                     Log.w(TAG, "Unauthorized attempt to trigger ENABLE_ADB rejected.")
                     Toast.makeText(context, "Unauthorized: Valid Admin PIN or Secret required.", Toast.LENGTH_SHORT).show()
@@ -64,7 +63,7 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                 setResultCode(if (success) android.app.Activity.RESULT_OK else android.app.Activity.RESULT_CANCELED)
             }
 
-            ACTION_EMERGENCY_RECOVERY, "com.pisophone.kiosk.ACTION_EMERGENCY_RECOVERY" -> {
+            ACTION_EMERGENCY_RECOVERY -> {
                 if (!isAuthorized(context, intent)) {
                     Log.w(TAG, "Unauthorized attempt to trigger EMERGENCY_RECOVERY rejected.")
                     Toast.makeText(context, "Unauthorized: Valid Admin PIN or Secret required.", Toast.LENGTH_SHORT).show()
@@ -78,7 +77,7 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                 setResultCode(android.app.Activity.RESULT_OK)
             }
 
-            ACTION_EXIT_KIOSK, "com.pisophone.kiosk.ACTION_EXIT_KIOSK" -> {
+            ACTION_EXIT_KIOSK -> {
                 if (!isAuthorized(context, intent)) {
                     Log.w(TAG, "Unauthorized attempt to trigger EXIT_KIOSK rejected.")
                     return
@@ -87,7 +86,7 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                 com.pisophone.kiosk.security.KioskSecurity.emergencyExitKiosk(context)
             }
 
-            ACTION_OPEN_SETTINGS, "com.pisophone.kiosk.ACTION_OPEN_SETTINGS" -> {
+            ACTION_OPEN_SETTINGS -> {
                 if (!isAuthorized(context, intent)) {
                     Log.w(TAG, "Unauthorized attempt to trigger OPEN_SETTINGS rejected.")
                     Toast.makeText(context, "Unauthorized: Valid Admin PIN or Secret required.", Toast.LENGTH_SHORT).show()
@@ -207,7 +206,7 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                 setResultExtras(extras)
             }
 
-            ACTION_CONFIGURE_ESP32, "com.pisophone.kiosk.ACTION_CONFIGURE_ESP32" -> {
+            ACTION_CONFIGURE_ESP32 -> {
                 val isPaired = com.pisophone.kiosk.security.KioskActivationManager.isPairingCompleted(context) || com.pisophone.kiosk.security.KioskSecurity.isProvisioned(context)
                 val isSetupActive = com.pisophone.kiosk.security.KioskActivationManager.isSetupModeActive(context)
                 if ((isPaired || !isSetupActive) && !isAuthorized(context, intent)) {

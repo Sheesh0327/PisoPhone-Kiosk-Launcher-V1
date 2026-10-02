@@ -7,7 +7,6 @@ import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
-import android.net.Uri
 import android.os.Build
 import android.util.Log
 import androidx.core.content.FileProvider

@@ -1,9 +1,6 @@
 package com.pisophone.kiosk.overlay.ui
 
-import android.content.Context
 import android.content.res.Configuration
-import android.net.Uri
-import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable

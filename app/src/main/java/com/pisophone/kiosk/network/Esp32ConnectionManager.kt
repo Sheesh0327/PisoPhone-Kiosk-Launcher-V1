@@ -101,18 +101,11 @@ class Esp32ConnectionManager(
         }
     )
 
-    fun getEsp32Ip(): String? = esp32Ip
-
     fun setEsp32Ip(ip: String?) {
         esp32Ip = ip
         if (!ip.isNullOrBlank()) {
             sendPairingRequest(ip)
         }
-    }
-
-    fun markHeartbeatReceived() {
-        lastHeartbeatTime = System.currentTimeMillis()
-        delegate.onOnlineStatusChanged(true, null)
     }
 
     // ========================================================================

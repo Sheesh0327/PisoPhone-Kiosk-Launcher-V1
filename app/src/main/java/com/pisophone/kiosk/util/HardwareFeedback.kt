@@ -2,7 +2,6 @@ package com.pisophone.kiosk.util
 
 import android.content.Context
 import android.hardware.camera2.CameraManager
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.VibrationEffect

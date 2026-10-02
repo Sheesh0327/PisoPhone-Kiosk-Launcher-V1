@@ -1,11 +1,6 @@
 package com.pisophone.kiosk
 
 import android.content.Context
-import android.graphics.PixelFormat
-import android.os.Bundle
-import android.view.Gravity
-import android.view.View
-import android.view.WindowManager
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy

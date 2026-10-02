@@ -10,9 +10,6 @@ import android.view.View
 import android.view.WindowManager
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import com.pisophone.kiosk.ComposeOverlayView
 import com.pisophone.kiosk.model.BatteryStatus
 import com.pisophone.kiosk.overlay.ui.FloatingPill
