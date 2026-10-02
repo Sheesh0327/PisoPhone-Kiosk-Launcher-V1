@@ -339,4 +339,28 @@ class KioskHttpServerUnitTest {
         }
         assertEquals(listOf("arena_mode_deactivate", "arena_mode_activate_p1", "slot_lockdown"), triggeredActions)
     }
+
+    @Test
+    fun aCapturedSignedActionCannotBeReplayed() {
+        val now = System.currentTimeMillis()
+        val captured = createEncryptedParams("action=slot_lockdown&ts=$now")
+        assertEquals("OK", readResponseBody(server.serve(createSession("/trigger_action", captured))))
+        val again = server.serve(createSession("/trigger_action", captured))
+        assertEquals(200, again.status.requestStatus)
+        assertEquals("OK:DUPLICATE", readResponseBody(again))
+        assertEquals("the action ran once", listOf("slot_lockdown"), triggeredActions)
+    }
+
+    @Test
+    fun aRepeatedPaymentIsStillAnsweredByTheLedger() {
+        simulatedPaymentResult = PaymentResult.ALREADY_APPLIED
+        val now = System.currentTimeMillis()
+        val params = createEncryptedParams("tx_id=tx-200&seconds=300&amount=5.0&ts=$now")
+        repeat(2) {
+            val response = server.serve(createSession("/coin", params))
+            assertEquals(200, response.status.requestStatus)
+            assertEquals("ALREADY_PROCESSED", readResponseBody(response))
+        }
+        assertEquals("both repeats reach the idempotent ledger so the box can clear its retry queue", 2, creditPaymentCallCount)
+    }
 }

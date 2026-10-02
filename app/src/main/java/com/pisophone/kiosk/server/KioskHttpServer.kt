@@ -61,6 +61,7 @@ class KioskHttpServer(
     }
 
     private val rateLimits = ConcurrentHashMap<String, MutableList<Long>>()
+    private val replayGuard = ReplayGuard()
 
     private fun parseQueryString(queryString: String): Map<String, String> {
         val result = mutableMapOf<String, String>()
@@ -106,35 +107,6 @@ class KioskHttpServer(
         // Everything that reads state, changes state or reports a heartbeat needs the signed envelope below.
         if (uri == "/ping" || uri == "/challenge" || uri == "/heartbeat_challenge") {
             return createResponse(Response.Status.OK, "text/plain", "OK")
-        }
-
-        val clientIp = session.headers["remote-addr"] ?: session.headers["http-client-ip"]
-            delegate.onHeartbeat(clientIp)
-            return createResponse(Response.Status.OK, "text/plain", "OK")
-        }
-
-        if (uri == "/identify" || uri == "/status") {
-            val clientIp = session.headers["remote-addr"] ?: session.headers["http-client-ip"]
-            delegate.onHeartbeat(clientIp)
-            val json = delegate.getStatusJson()
-            return createResponse(Response.Status.OK, "application/json", json.toString())
-        }
-
-        if (uri == "/challenge" || uri == "/heartbeat_challenge") {
-            return createResponse(Response.Status.OK, "text/plain", "OK")
-        }
-
-        if (uri == "/get_time") {
-            return createResponse(Response.Status.OK, "text/plain", delegate.getSessionTimeRemaining().toString())
-        }
-
-        if (uri == "/state") {
-            return createResponse(Response.Status.OK, "text/plain", delegate.getAppState().toString())
-        }
-
-        if (uri == "/audit") {
-            val auditJson = delegate.getAuditEventsJson()
-            return createResponse(Response.Status.OK, "application/json", auditJson)
         }
 
         val clientIp = session.headers["remote-addr"] ?: session.headers["http-client-ip"] ?: "unknown"
@@ -187,6 +159,13 @@ class KioskHttpServer(
                 Log.w(TAG, "Rejecting coin credit: Missing tx_id in payload")
                 return createResponse(Response.Status.BAD_REQUEST, "text/plain", "MISSING_TX_ID")
             }
+        }
+
+        // A signed message is accepted once. Payments are exempt: the box repeats them until acknowledged and
+        // they are already idempotent by tx_id. A repeat of anything else is acknowledged but not executed again.
+        if (uri != "/add_time" && uri != "/coin" && !replayGuard.firstSeen(hmac.trim().lowercase())) {
+            Log.w(TAG, "Ignoring repeated signed request to $uri")
+            return createResponse(Response.Status.OK, "text/plain", "OK:DUPLICATE")
         }
 
         return when (uri) {
