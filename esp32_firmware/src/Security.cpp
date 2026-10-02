@@ -94,7 +94,7 @@ bool applySlotToken(String token) {
     }
     if (cleanMac.length() == 0) return false;
 
-    String secKey = (getSharedSecret().length() > 0) ? getSharedSecret() : String(MASTER_CRYPTO_SECRET);
+    String secKey = getLegacyLicenseSecret();
 
     // Canonical Single Verification Path: Match target slot count (1..MAX_SUPPORTED_SLOTS)
     for (int s = 1; s <= MAX_SUPPORTED_SLOTS; s++) {

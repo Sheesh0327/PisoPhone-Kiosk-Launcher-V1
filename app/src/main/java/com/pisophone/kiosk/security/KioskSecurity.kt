@@ -39,7 +39,14 @@ object KioskSecurity {
     // `dpm set-device-owner`, which is when policies are first applied.
     private const val ADB_PROVISIONING_GRACE_MS = 15 * 60 * 1000L
 
+    /**
+     * DEPRECATED shared key of builds before per-box secrets. Only used while this phone has not been
+     * provisioned with its box's own secret (a box upgraded in the field stays on it until the operator
+     * switches it). Never use it to authorize anything. Remove once all boxes are on their own key.
+     */
     const val DEFAULT_SHARED_SECRET = "PISOPHONE_HMAC_MASTER_KEY"
+    private const val KEY_BOX_SECRET = "box_shared_secret"
+    private val BOX_SECRET_REGEX = Regex("^[A-Za-z0-9_.+=-]{16,128}$")
     private const val KEY_SECRET_EXPLICITLY_PROVISIONED = "kiosk_secret_explicitly_provisioned"
     private const val TAG = "KioskSecurity"
     private const val KEY_DEVICE_SECRET = "device_crypto_secret"
@@ -49,6 +56,12 @@ object KioskSecurity {
 
     @Volatile
     private var encryptedPrefsInstance: SharedPreferences? = null
+
+    /** Drops the cached preference handles so a test starts from a clean app data directory. */
+    internal fun resetCachesForTests() {
+        prefsInstance = null
+        encryptedPrefsInstance = null
+    }
 
     private fun getPrefs(context: Context): SharedPreferences = prefsInstance ?: synchronized(this) {
         prefsInstance ?: buildPrefs(context.applicationContext).also {
@@ -253,7 +266,25 @@ object KioskSecurity {
         getPrefs(context).edit().putString(KEY_DEVICE_ALIAS, alias.trim()).apply()
     }
 
-    fun getSharedSecret(context: Context): String = DEFAULT_SHARED_SECRET
+    /** The key used for box traffic: this phone's box secret, or the deprecated shared key when none was provisioned. */
+    fun getSharedSecret(context: Context): String {
+        val stored = getPrefs(context).getString(KEY_BOX_SECRET, "") ?: ""
+        return if (isValidBoxSecret(stored)) stored else DEFAULT_SHARED_SECRET
+    }
+
+    /** True while this phone still talks to its box with the old, publicly known shared key. */
+    fun usesLegacySharedSecret(context: Context): Boolean = getSharedSecret(context) == DEFAULT_SHARED_SECRET
+
+    /** Same rule as the box firmware (SecretMode.h) and the provisioning website. */
+    fun isValidBoxSecret(secret: String): Boolean = BOX_SECRET_REGEX.matches(secret) && secret != DEFAULT_SHARED_SECRET
+
+    /** Stores the secret that belongs to this phone's box (provisioning). Returns false when it is not acceptable. */
+    fun setBoxSecret(context: Context, secret: String): Boolean {
+        val trimmed = secret.trim()
+        if (!isValidBoxSecret(trimmed)) return false
+        getPrefs(context).edit().putString(KEY_BOX_SECRET, trimmed).apply()
+        return true
+    }
 
     /** True until an admin PIN exists. There is no factory PIN: it arrives from the box (its admin password) when paired. */
     fun isAdminPinUnset(context: Context): Boolean = getAdminPin(context).isEmpty()
@@ -427,6 +458,13 @@ object KioskSecurity {
             val formattedMac = formatMacAddress(mac.trim())
             if (formattedMac.isNotBlank()) {
                 setConfiguredEsp32Mac(context, formattedMac)
+            }
+        }
+        if (!secret.isNullOrBlank()) {
+            if (setBoxSecret(context, secret)) {
+                Log.i(TAG, "[+] Box secret stored; this phone no longer uses the shared key.")
+            } else {
+                Log.w(TAG, "Ignored a provisioning secret that is not valid (16-128 characters of A-Z a-z 0-9 _ . + = -).")
             }
         }
         if (slot > 0) {

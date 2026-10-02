@@ -3,6 +3,7 @@
 
 #include "InputSafety.h"
 #include "WebServerConfig.h"
+#include "SecretMode.h"
 #include "WebServerModule.h"
 #include "FirmwareVersion.h"
 #include "WebServerAuth.h"
@@ -245,8 +246,11 @@ void handleSave() {
         prefs.putBool(NVS_KEY_RELAY_ACTIVE_LOW, relayActiveLow);
     }
     if (webServer.hasArg(NVS_KEY_SHARED_SECRET)) {
-        setSharedSecret(webServer.arg(NVS_KEY_SHARED_SECRET));
-        prefs.putString(NVS_KEY_SHARED_SECRET, getSharedSecret());
+        String newSecret = webServer.arg(NVS_KEY_SHARED_SECRET);
+        if (secretmode::validSecret(newSecret.c_str()) && newSecret != getLegacyLicenseSecret()) {
+            setSharedSecret(newSecret);
+            prefs.putString(NVS_KEY_SHARED_SECRET, newSecret);
+        }
     }
     prefs.end();
 

@@ -70,6 +70,7 @@ void setupWebServer() {
     webServer.on("/api/slots/unpair", HTTP_ANY, handleApiSlotUnpair);
     webServer.on("/api/slots/apply_token", HTTP_POST, handleApiSlotApplyToken);
     webServer.on("/api/slots/cloud_sync", HTTP_POST, handleApiSlotCloudSync);
+    webServer.on("/api/security/switch_key", HTTP_POST, handleApiSecuritySwitchKey);
 
     // Dedicated Robust Coin Slot API routes
     webServer.on("/api/coinslot/arm", HTTP_ANY, handleApiCoinslotArm);

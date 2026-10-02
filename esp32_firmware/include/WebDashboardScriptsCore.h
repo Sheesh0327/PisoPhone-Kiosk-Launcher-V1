@@ -180,6 +180,21 @@ window.fetchDeviceStatus = function() {
                 credBanner.remove();
             }
 
+            let keyBanner = document.getElementById('legacy_key_banner');
+            if (data.legacy_key) {
+                if (!keyBanner) {
+                    keyBanner = document.createElement('div');
+                    keyBanner.id = 'legacy_key_banner';
+                    keyBanner.style.cssText = 'background:#92400e;color:#fff;padding:10px 14px;font-size:13px;font-weight:700;text-align:center;';
+                    keyBanner.innerHTML = 'This box still uses the old shared key. ' +
+                        '<button type="button" style="margin-left:8px;padding:4px 10px;border-radius:6px;border:0;font-weight:700;cursor:pointer;" ' +
+                        'onclick="switchToOwnKey()">Switch to this box\'s own key</button>';
+                    document.body.insertBefore(keyBanner, document.body.firstChild);
+                }
+            } else if (keyBanner) {
+                keyBanner.remove();
+            }
+
             const container = document.getElementById('live_devices_container');
             if (!container) return;
             

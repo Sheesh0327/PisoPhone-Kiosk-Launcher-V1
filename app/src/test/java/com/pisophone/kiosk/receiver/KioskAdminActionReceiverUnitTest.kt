@@ -20,6 +20,7 @@ class KioskAdminActionReceiverUnitTest {
 
     @Before
     fun setUp() {
+        com.pisophone.kiosk.security.KioskSecurity.resetCachesForTests()
         context = ApplicationProvider.getApplicationContext()
     }
 

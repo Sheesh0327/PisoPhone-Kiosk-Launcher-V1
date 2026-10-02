@@ -242,6 +242,21 @@ window.submitSlotToken = function() {
         });
 };
 
+window.switchToOwnKey = function() {
+    if (!confirm("Switch this box to its own key?\n\nEvery phone paired with this box will stop working until it is provisioned again with this box's new secret (use Install & Provision on each phone).")) return;
+    fetch('/api/security/switch_key', { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                alert('Done. Now provision each phone again with Install & Provision.');
+                location.reload();
+            } else {
+                alert('Could not switch the key.');
+            }
+        })
+        .catch(err => alert('Network error: ' + err.message));
+};
+
 window.unpairSlot = function(slot) {
     if (!confirm('Unpair Slot #' + slot + '? This will free the seat slot on this ESP32. The coin slot will no longer accept coins for this device until paired again.')) return;
     fetch('/api/slots/unpair?slot=' + slot, { method: 'POST' })

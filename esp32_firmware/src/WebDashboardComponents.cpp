@@ -164,7 +164,8 @@ String renderLicenseSlotsHtml() {
 
     html += "<div style=\"display: flex; align-items: center; gap: 10px; flex-wrap: wrap;\">";
     html +=
-        "<a href=\"https://pisophone.pages.dev/?mac=" + macAddressStr + "&secret=" + getSharedSecret() +
+        "<a href=\"https://pisophone.pages.dev/?mac=" + macAddressStr +
+        "&secret=" + (isLegacyKeyMode() ? String("") : getBoxSecret()) +
         "\" target=\"_self\" style=\"font-size: 12px; font-weight: 700; padding: 8px 16px; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: #ffffff; border-radius: 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25); transition: transform 0.15s ease;\">";
     html += "<span style=\"font-size: 14px;\">📥</span> Install & Provision</a>";
     html +=

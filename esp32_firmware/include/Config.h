@@ -8,7 +8,6 @@
 // ============================================================================
 // HARDWARE CONSTANTS & PIN DEFAULTS
 // ============================================================================
-extern const char* MASTER_CRYPTO_SECRET;
 
 extern const int DEFAULT_UNIVERSAL_COIN_PIN;
 extern const int DEFAULT_LED_PIN;
@@ -44,6 +43,7 @@ extern const char* const NVS_KEY_ADMIN_PW;
 extern const char* const NVS_KEY_ADMIN_PW_CHANGED;
 extern const char* const NVS_KEY_SETUP_AP_PASS;
 extern const char* const NVS_KEY_SHARED_SECRET;
+extern const char* const NVS_KEY_LEGACY_KEY;
 extern const char* const NVS_KEY_P1;
 extern const char* const NVS_KEY_P2;
 extern const char* const NVS_KEY_MATCH;
@@ -107,11 +107,16 @@ extern String wifiSsid;
 extern String wifiPass;
 extern String androidIps;
 extern String webPassword;
-extern String setupApPass;            // password of the setup access point, unique per box
-extern bool adminPwChanged;           // false until the operator replaces the generated admin password
-void provisionFirstBootCredentials(); // makes unique passwords when none exist; prints them while setup is pending
-String getSharedSecret();
-void setSharedSecret(const String& value);
+extern String setupApPass;                 // password of the setup access point, unique per box
+extern bool adminPwChanged;                // false until the operator replaces the generated admin password
+void provisionFirstBootCredentials();      // makes unique passwords when none exist; prints them while setup is pending
+String getSharedSecret();                  // the key box<->phone traffic uses right now
+void setSharedSecret(const String& value); // sets this box's own secret (see SecretMode.h)
+String getBoxSecret();                     // this box's own secret, whatever mode the box is in
+String getLegacyLicenseSecret();           // old shared key, only to check old-style license keys
+bool isLegacyKeyMode();                    // true until the operator switches the box to its own key
+void switchToOwnKey();                     // leaves legacy mode for good
+void provisionSecretMode();                // decides legacy/own key and makes the box secret on first start
 extern String macAddressStr;
 extern int maxLicensedSlots;
 

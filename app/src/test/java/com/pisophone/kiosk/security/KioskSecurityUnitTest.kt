@@ -1,15 +1,22 @@
 package com.pisophone.kiosk.security
 
+import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class KioskSecurityUnitTest {
+    @Before
+    fun cleanState() {
+        KioskSecurity.resetCachesForTests()
+    }
+
     @Test
     fun testAesEncryptionDecryptionRoundTrip() {
         val secret = "test_super_secret_key_12345"
@@ -98,5 +105,34 @@ class KioskSecurityUnitTest {
             KioskSecurity.signCoinslotRequest("arm", "dev1", "1700000000000", "", "secret123"),
             KioskSecurity.signCoinslotRequest("unarm", "dev1", "1700000000000", "", "secret123"),
         )
+    }
+
+    @Test
+    fun phoneUsesTheLegacyKeyUntilItIsGivenABoxSecret() {
+        val context: android.content.Context = ApplicationProvider.getApplicationContext()
+        assertTrue(KioskSecurity.usesLegacySharedSecret(context))
+        assertEquals(KioskSecurity.DEFAULT_SHARED_SECRET, KioskSecurity.getSharedSecret(context))
+
+        assertTrue(KioskSecurity.setBoxSecret(context, "Abcd2345Efgh6789Jkmn"))
+        assertFalse(KioskSecurity.usesLegacySharedSecret(context))
+        assertEquals("Abcd2345Efgh6789Jkmn", KioskSecurity.getSharedSecret(context))
+    }
+
+    @Test
+    fun boxSecretMustBeLongEnoughAndNeverTheSharedKey() {
+        val context: android.content.Context = ApplicationProvider.getApplicationContext()
+        assertFalse(KioskSecurity.setBoxSecret(context, "short"))
+        assertFalse(KioskSecurity.setBoxSecret(context, "has a space in it 12345"))
+        assertFalse(KioskSecurity.setBoxSecret(context, KioskSecurity.DEFAULT_SHARED_SECRET))
+        assertTrue(KioskSecurity.usesLegacySharedSecret(context))
+    }
+
+    @Test
+    fun provisioningStoresTheSecretAndIgnoresAnInvalidOne() {
+        val context: android.content.Context = ApplicationProvider.getApplicationContext()
+        KioskSecurity.applyDirectProvisioning(context, secret = "bad", mac = "AA:BB:CC:DD:EE:FF")
+        assertTrue(KioskSecurity.usesLegacySharedSecret(context))
+        KioskSecurity.applyDirectProvisioning(context, secret = "Abcd2345Efgh6789Jkmn", mac = "AA:BB:CC:DD:EE:FF")
+        assertEquals("Abcd2345Efgh6789Jkmn", KioskSecurity.getSharedSecret(context))
     }
 }

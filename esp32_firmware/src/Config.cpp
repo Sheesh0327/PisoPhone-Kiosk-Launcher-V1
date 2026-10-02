@@ -9,6 +9,7 @@
 #include "Diagnostics.h"
 #include "Money.h"
 #include "CredGen.h"
+#include "SecretMode.h"
 #include <esp_random.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
@@ -16,7 +17,9 @@
 // ============================================================================
 // HARDWARE CONSTANTS & PIN DEFAULTS DEFINITION
 // ============================================================================
-const char* MASTER_CRYPTO_SECRET = "PISOPHONE_HMAC_MASTER_KEY";
+// DEPRECATED shared key of firmware before per-box secrets. Only used while a box is in legacy mode and
+// to check old-style license keys. Remove with the legacy path once every phone is re-provisioned.
+static const char* LEGACY_CRYPTO_SECRET = "PISOPHONE_HMAC_MASTER_KEY";
 
 // Pin defaults are per board and come from -D flags in envs/*.ini (PISO_PIN_*). A wrong default
 // on a classic ESP32 (GPIO 6-11 are the flash bus) crashes at boot, so there is no fallback:
@@ -52,15 +55,34 @@ String setupApPass = "";
 bool adminPwChanged = false;
 // The auth worker task reads the secret while the main loop can change it (settings save, factory
 // reset). Every access goes through these accessors so a String is never reallocated mid-read.
-static String sharedSecretValue = MASTER_CRYPTO_SECRET;
+static String sharedSecretValue = "";
+static bool legacyKeyMode = false;
 static StaticSemaphore_t sharedSecretMutexBuf;
 static SemaphoreHandle_t sharedSecretMutex = xSemaphoreCreateMutexStatic(&sharedSecretMutexBuf);
 
 String getSharedSecret() {
     xSemaphoreTake(sharedSecretMutex, portMAX_DELAY);
+    String copy = legacyKeyMode ? String(LEGACY_CRYPTO_SECRET) : sharedSecretValue;
+    xSemaphoreGive(sharedSecretMutex);
+    return copy;
+}
+
+String getBoxSecret() {
+    xSemaphoreTake(sharedSecretMutex, portMAX_DELAY);
     String copy = sharedSecretValue;
     xSemaphoreGive(sharedSecretMutex);
     return copy;
+}
+
+String getLegacyLicenseSecret() {
+    return String(LEGACY_CRYPTO_SECRET);
+}
+
+bool isLegacyKeyMode() {
+    xSemaphoreTake(sharedSecretMutex, portMAX_DELAY);
+    bool legacy = legacyKeyMode;
+    xSemaphoreGive(sharedSecretMutex);
+    return legacy;
 }
 
 void setSharedSecret(const String& value) {
@@ -275,6 +297,7 @@ const char* const NVS_KEY_ADMIN_PW = "admin_pw";
 const char* const NVS_KEY_ADMIN_PW_CHANGED = "pw_chg";
 const char* const NVS_KEY_SETUP_AP_PASS = "ap_pass";
 const char* const NVS_KEY_SHARED_SECRET = "shared_secret";
+const char* const NVS_KEY_LEGACY_KEY = "sec_legacy";
 const char* const NVS_KEY_P1 = "p1_ip";
 const char* const NVS_KEY_P2 = "p2_ip";
 const char* const NVS_KEY_MATCH = "match_minutes";
@@ -368,6 +391,42 @@ static void fillRandomBytes(uint8_t* buf, size_t len) {
     esp_fill_random(buf, len);
 }
 
+// Gives the box its own secret (random, 32 characters) the first time it starts and decides whether it
+// stays on the old shared key (an upgrade of a box already in the field) or uses its own key straight away.
+void provisionSecretMode() {
+    prefs.begin(NVS_NAMESPACE, false);
+    String secret = prefs.getString(NVS_KEY_SHARED_SECRET, "");
+    // The old shared key can end up in NVS if a settings form saved it back; it is public, so never use it as an own key.
+    if (!secretmode::validSecret(secret.c_str()) || secret == LEGACY_CRYPTO_SECRET) {
+        secret = credgen::password(32, fillRandomBytes).c_str();
+        prefs.putString(NVS_KEY_SHARED_SECRET, secret);
+    }
+    bool hasFlag = prefs.isKey(NVS_KEY_LEGACY_KEY);
+    bool flagValue = hasFlag && prefs.getBool(NVS_KEY_LEGACY_KEY, false);
+    bool legacy = secretmode::startInLegacyMode(hasFlag, flagValue, prefs.isKey(NVS_KEY_WIFI_SSID));
+    if (!hasFlag) prefs.putBool(NVS_KEY_LEGACY_KEY, legacy);
+    prefs.end();
+
+    xSemaphoreTake(sharedSecretMutex, portMAX_DELAY);
+    sharedSecretValue = secret;
+    legacyKeyMode = legacy;
+    xSemaphoreGive(sharedSecretMutex);
+    if (legacy) {
+        Serial.println(
+            "[🔐 KEY] Legacy mode: still using the old shared key. Switch to this box's own key in the dashboard.");
+    }
+}
+
+void switchToOwnKey() {
+    prefs.begin(NVS_NAMESPACE, false);
+    prefs.putBool(NVS_KEY_LEGACY_KEY, false);
+    prefs.end();
+    xSemaphoreTake(sharedSecretMutex, portMAX_DELAY);
+    legacyKeyMode = false;
+    xSemaphoreGive(sharedSecretMutex);
+    diagLog("[🔐 KEY] Switched to this box's own key. Re-provision each phone with the new secret.");
+}
+
 // Every box gets its own setup-AP and admin passwords the first time it starts (and after a factory
 // reset), so no two boxes share a password. Boxes already in the field keep the password they have.
 void provisionFirstBootCredentials() {
@@ -405,6 +464,7 @@ void provisionFirstBootCredentials() {
 
 void loadAllConfig() {
     // 1. Load slot licenses and terminal allocations safely
+    provisionSecretMode(); // first: it checks whether this box was already set up
     loadSlotLicenses();
     loadSuperAdminConfig();
     provisionFirstBootCredentials();
@@ -425,7 +485,6 @@ void loadAllConfig() {
 
     webPassword = prefs.getString(NVS_KEY_ADMIN_PW, webPassword);
     relayActiveLow = prefs.getBool(NVS_KEY_RELAY_ACTIVE_LOW, false);
-    setSharedSecret(MASTER_CRYPTO_SECRET);
     p1Ip = prefs.getString(NVS_KEY_P1, p1Ip);
     p2Ip = prefs.getString(NVS_KEY_P2, p2Ip);
     matchMinutes = prefs.getInt(NVS_KEY_MATCH, matchMinutes);
@@ -494,6 +553,7 @@ void factoryResetDefaults() {
     prefs.clear();
     prefs.end();
     clearPaymentQueue();
+    provisionSecretMode();
     provisionFirstBootCredentials(); // fresh unique passwords, printed on the serial console
 
     wifiSsid = "";
@@ -505,7 +565,6 @@ void factoryResetDefaults() {
     androidIps = "";
     targetPort = DEFAULT_PORT;
     minutesPerCoin = DEFAULT_MINUTES_PER_COIN;
-    setSharedSecret(MASTER_CRYPTO_SECRET);
     p1Ip = "";
     p2Ip = "";
     matchMinutes = 15;

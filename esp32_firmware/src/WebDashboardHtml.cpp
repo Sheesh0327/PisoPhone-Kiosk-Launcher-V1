@@ -47,7 +47,8 @@ static String getPlaceholderValue(const String& tag) {
 
     if (tag == "MAC_ADDRESS") return macAddressStr;
     if (tag == "BOX_CODE") return getBoxMachineCode();
-    if (tag == "SHARED_SECRET") return getSharedSecret();
+    // In legacy mode phones still use the old key, so provisioning links carry no secret until the box is switched.
+    if (tag == "SHARED_SECRET") return isLegacyKeyMode() ? String("") : getBoxSecret();
     if (tag == "DEVICE_SLOTS_MANAGER") return renderLicenseSlotsHtml();
     if (tag == "MAX_SLOTS") return String(maxLicensedSlots);
     if (tag == "MAX_SUPPORTED_SLOTS") return String(MAX_SUPPORTED_SLOTS);

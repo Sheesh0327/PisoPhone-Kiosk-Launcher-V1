@@ -517,7 +517,7 @@ void processWebSocketServer() {
 void sendUdpDiscoveryResponse(IPAddress targetIp, uint16_t targetPort) {
     if (WiFi.status() != WL_CONNECTED) return;
 
-    String secKey = (getSharedSecret().length() > 0) ? getSharedSecret() : String(MASTER_CRYPTO_SECRET);
+    String secKey = getSharedSecret();
     String ipStr = WiFi.localIP().toString();
     String sig = calculateHMAC("DISCOVERY:" + macAddressStr + ":" + ipStr, secKey);
 
