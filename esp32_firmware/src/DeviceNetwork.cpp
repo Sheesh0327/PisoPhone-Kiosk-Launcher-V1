@@ -47,6 +47,17 @@ void sendAddTime(int minutes, String targetIp, String txId) {
     }
 }
 
+void recordCoinRevenue(int pulses) {
+    if (pulses <= 0) return;
+    totalCoinsLifetime += pulses;
+    totalCoinsSession += pulses;
+    totalEarningsLifetime += (float)pulses;
+    totalEarningsSession += (float)pulses;
+
+    revenueDirty = true;
+    lastCoinChangeTime = millis();
+}
+
 void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId) {
     if (pulses <= 0) return;
     Serial.printf("[⚡ UNIVERSAL COIN] %d total pulses accumulated on GPIO %d (₱%d PHP)\n", pulses, universalCoinPin,
@@ -66,13 +77,7 @@ void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId) {
     int addedMinutes = pulses * rate;
     int addedSeconds = addedMinutes * 60;
 
-    totalCoinsLifetime += pulses;
-    totalCoinsSession += pulses;
-    totalEarningsLifetime += (float)pulses;
-    totalEarningsSession += (float)pulses;
-
-    revenueDirty = true;
-    lastCoinChangeTime = millis();
+    recordCoinRevenue(pulses);
 
     triggerLedBlink(pulses > 1 ? 4 : 2);
 

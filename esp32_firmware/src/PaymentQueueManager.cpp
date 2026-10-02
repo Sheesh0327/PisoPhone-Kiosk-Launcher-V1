@@ -40,7 +40,7 @@ static String recordKey(int index) {
 
 static bool validRecord(const PaymentRecord& rec) {
     return rec.magic == PAYMENT_RECORD_MAGIC && rec.txId[0] != '\0' && rec.targetId[0] != '\0' && rec.pulses > 0 &&
-           (rec.ownerType == 1 || rec.ownerType == 2);
+           (rec.ownerType == 1 || rec.ownerType == 2 || rec.ownerType == 3);
 }
 
 static bool persistRecord(int index, const PaymentRecord& rec) {
@@ -179,7 +179,8 @@ bool enqueuePendingPayment(const String& txId, const String& targetId, int pulse
                            int creditSeconds) {
     if (txId.length() == 0 || txId.length() >= sizeof(((PaymentRecord*)0)->txId) || targetId.length() == 0 ||
         targetId.length() >= sizeof(((PaymentRecord*)0)->targetId) || pulses <= 0 ||
-        (ownerType != CoinSlotOwnerType::PHONE && ownerType != CoinSlotOwnerType::CONTROLLER)) {
+        (ownerType != CoinSlotOwnerType::PHONE && ownerType != CoinSlotOwnerType::CONTROLLER &&
+         ownerType != CoinSlotOwnerType::GATEWAY)) {
         Serial.println("[PAY QUEUE] Rejected invalid payment record.");
         return false;
     }
@@ -212,7 +213,7 @@ bool enqueuePendingPayment(const String& txId, const String& targetId, int pulse
     strncpy(rec.targetId, targetId.c_str(), sizeof(rec.targetId) - 1);
     rec.pulses = pulses;
     rec.creditSeconds = creditSeconds;
-    rec.ownerType = ownerType == CoinSlotOwnerType::CONTROLLER ? 2 : 1;
+    rec.ownerType = ownerType == CoinSlotOwnerType::CONTROLLER ? 2 : (ownerType == CoinSlotOwnerType::GATEWAY ? 3 : 1);
     rec.timestamp = getCurrentMasterTimeMs();
 
     // Retain in RAM under all conditions (never lose in-flight transactions or change tx_id)
@@ -325,6 +326,36 @@ void dispatchPendingControllerPayments(const String& sessionId) {
             sendControllerPaymentEvent(sessionId, String(rec.txId), rec.pulses);
         }
     }
+}
+
+int getPendingGatewayPulses(const String& targetId) {
+    if (targetId.length() == 0) return 0;
+    lockQueue();
+    int total = 0;
+    for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
+        if (paymentSlotUsed[i] && paymentQueue[i].ownerType == 3 && String(paymentQueue[i].targetId) == targetId) {
+            total += paymentQueue[i].pulses;
+        }
+    }
+    unlockQueue();
+    return total;
+}
+
+int acknowledgeGatewayPayments(const String& targetId) {
+    if (targetId.length() == 0) return 0;
+    int pulses = 0;
+    lockQueue();
+    for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
+        if (!paymentSlotUsed[i] || paymentQueue[i].ownerType != 3 || String(paymentQueue[i].targetId) != targetId) {
+            continue;
+        }
+        if (!eraseRecord(i)) continue; // keep it queued if flash refuses; the gateway can ack again
+        pulses += paymentQueue[i].pulses;
+        resetSlotLocked(i);
+        diagCount(DiagCounter::PaymentsAcked);
+    }
+    unlockQueue();
+    return pulses;
 }
 
 int clearPaymentQueue() {

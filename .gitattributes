@@ -2,3 +2,10 @@
 # the ESP32 bootloader's magic-byte check and breaks every OTA update.
 *.bin binary
 *.apk binary
+
+# Router scripts must keep Unix line endings: a carriage return in a shebang line or a script breaks it on OpenWrt.
+opennds/*.sh text eol=lf
+opennds/*.init text eol=lf
+opennds/*.conf text eol=lf
+scripts/*.sh text eol=lf
+opennds/tests/*.sh text eol=lf

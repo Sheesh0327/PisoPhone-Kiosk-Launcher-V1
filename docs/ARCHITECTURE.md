@@ -63,6 +63,8 @@ restores the session) and locks the phone when time reaches zero.
 | Firmware entry and loop | `esp32_firmware/src/main.cpp` |
 | Coin slot state machine | `CoinSlotManager.cpp`, `HardwareManager.cpp` |
 | Payment queue | `PaymentQueueManager.cpp` |
+| OpenNDS Wi-Fi payments | `opennds/` (theme, listener, installer, tests) |
+| Network gateway (router payment check) | `GatewayCoinslot.cpp` (logic), `WebServerGateway.cpp` (HTTP), `include/GatewayAuth.h` (auth), docs in `docs/overhaul/gateway-coinslot-api.md` |
 | Web API | `WebServerModule.cpp` (routes), `WebServerApi.cpp`, `WebServerCoinslot.cpp`, `WebServerTelemetry.cpp`, `WebServerConfig.cpp` |
 | Auth and crypto | `WebServerAuth.cpp`, `Security.cpp`, `SuperAdminCreds.cpp`, `include/CredCrypto.h` |
 | Pure, PC-testable logic | `include/InputSafety.h`, `OtaCheck.h`, `DiagRing.h`, `CredCrypto.h` (tests in `host_tests/`) |

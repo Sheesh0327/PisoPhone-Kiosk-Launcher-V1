@@ -11,6 +11,7 @@
 #include "WebServerConfig.h"
 #include "WebServerApi.h"
 #include "WebServerCoinslot.h"
+#include "WebServerGateway.h"
 #include "WebServerTelemetry.h"
 #include "WebSocketsUdp.h"
 

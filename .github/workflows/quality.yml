@@ -12,6 +12,7 @@ on:
       - 'app/**'
       - 'esp32_firmware/**'
       - 'scripts/**'
+      - 'opennds/**'
       - '.editorconfig'
       - '.github/workflows/quality.yml'
   pull_request:
@@ -53,3 +54,11 @@ jobs:
           clang-format --dry-run --Werror $FILES
       - name: Run host tests
         run: sh esp32_firmware/host_tests/run.sh
+
+  opennds-integration:
+    name: OpenNDS integration test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run end-to-end test with a fake box
+        run: python3 opennds/tests/test_flow.py

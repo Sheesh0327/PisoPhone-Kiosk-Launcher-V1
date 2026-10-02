@@ -10,7 +10,7 @@
 typedef std::function<void(const String& sessionId, int pulses)> CoinPaymentCallback;
 typedef std::function<void(const String& sessionId, const char* reason)> CoinSessionEndCallback;
 
-enum class CoinSlotOwnerType { ANY, PHONE, CONTROLLER };
+enum class CoinSlotOwnerType { ANY, PHONE, CONTROLLER, GATEWAY };
 
 enum class CoinSlotState {
     IDLE,    // No session, relay OFF, acceptor disabled
