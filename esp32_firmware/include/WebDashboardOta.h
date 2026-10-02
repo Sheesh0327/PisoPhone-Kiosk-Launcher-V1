@@ -92,6 +92,10 @@ static const char OTA_FORM_HTML[] PROGMEM = R"HTML(
                 Select a local <b>firmware.bin</b> compiled binary from your machine to flash manually.
             </p>
             <input type="file" id="local_file_input" accept=".bin" style="margin: 0 0 12px 0;">
+            <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 8px 0;">
+                Also select its signed manifest (<b>firmware.bin.manifest.json</b> from <code>sign_firmware.py</code>). Controllers with a signing key refuse an image without it.
+            </p>
+            <input type="file" id="local_manifest_input" accept=".json" style="margin: 0 0 12px 0;">
             <button type="button" id="local_upload_btn" style="background: var(--primary);" onclick="uploadLocalFirmware()">📤 Upload and Flash</button>
         </div>
 
@@ -194,6 +198,16 @@ static const char OTA_FORM_HTML[] PROGMEM = R"HTML(
     }
 
 
+    // The controller only flashes an image that matches a manifest signed with the owner's key. Send it first.
+    async function postOtaManifest(m) {
+        const body = new URLSearchParams();
+        ['chip', 'version', 'sha256', 'size', 'sig'].forEach(function(k) { body.append(k, String(m[k] === undefined ? '' : m[k])); });
+        const res = await fetch('/api/ota/manifest', { method: 'POST', body: body });
+        let msg = '';
+        try { msg = (await res.json()).message || ''; } catch (e) { /* not JSON */ }
+        if (!res.ok) throw new Error(msg || ('The controller refused the update manifest (HTTP ' + res.status + ').'));
+    }
+
     async function fetchChipFirmwareInfo() {
         const res = await fetch('https://pisophone.pages.dev/update/firmware.json', { cache: 'no-store' });
         if (!res.ok) throw new Error('firmware.json returned HTTP ' + res.status);
@@ -270,6 +284,9 @@ static const char OTA_FORM_HTML[] PROGMEM = R"HTML(
                 throw new Error('Checksum mismatch: the download is corrupt or not the published build. Nothing was flashed.');
             }
             
+            showStatus('🔏 Checking the signed manifest...', 'info');
+            await postOtaManifest({ chip: CHIP_ID, version: info.data.version, sha256: expectedSha, size: fwBlob.size, sig: info.entry.sig || '' });
+
             showStatus('⚡ Download complete (' + (fwBlob.size/1024).toFixed(1) + ' KB). Preparing to flash HARDWARE partition...', 'info');
             
             const formData = new FormData();
@@ -316,7 +333,7 @@ static const char OTA_FORM_HTML[] PROGMEM = R"HTML(
         }
     };
 
-    window.uploadLocalFirmware = function() {
+    window.uploadLocalFirmware = async function() {
         const fileInput = document.getElementById('local_file_input');
         const uploadBtn = document.getElementById('local_upload_btn');
         const progressWrapper = document.getElementById('progress_wrapper');
@@ -337,6 +354,18 @@ static const char OTA_FORM_HTML[] PROGMEM = R"HTML(
         progressBar.style.background = '#4f46e5';
 
         showStatus('⚡ Preparing to flash local HARDWARE partition...', 'info');
+
+        const manifestInput = document.getElementById('local_manifest_input');
+        if (manifestInput && manifestInput.files && manifestInput.files.length > 0) {
+            try {
+                await postOtaManifest(JSON.parse(await manifestInput.files[0].text()));
+            } catch (e) {
+                progressBar.style.background = '#ef4444';
+                showStatus('<b>❌ Manifest refused:</b> ' + e.message, 'error');
+                if (uploadBtn) uploadBtn.disabled = false;
+                return;
+            }
+        }
 
         const formData = new FormData();
         formData.append('update', file, 'firmware.bin');

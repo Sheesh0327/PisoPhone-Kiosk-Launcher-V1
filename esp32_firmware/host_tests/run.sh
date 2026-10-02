@@ -7,6 +7,7 @@ OUT="${TMPDIR:-/tmp}/piso_host_tests"
 mkdir -p "$OUT"
 python3 gen_cred_fixture.py "$OUT/cred_fixture.h"
 python3 gen_license_fixture.py "$OUT/license_fixture.h"
+python3 gen_fw_fixture.py "$OUT/fw_fixture.h"
 for t in *_test.cpp; do
     g++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -I"$OUT" -o "$OUT/${t%.cpp}" "$t" -lmbedcrypto
     "$OUT/${t%.cpp}"

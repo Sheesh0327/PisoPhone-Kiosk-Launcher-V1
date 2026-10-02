@@ -10,6 +10,7 @@
 #include "Money.h"
 #include "CredGen.h"
 #include "SecretMode.h"
+#include "TxId.h"
 #include <esp_random.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
@@ -134,18 +135,22 @@ uint64_t getCurrentMasterTimeMs() {
     return 0;
 }
 
+// Ids come from a boot counter kept in flash, a per-boot sequence number and random salt (TxId.h), so they never
+// repeat between reboots and do not depend on the phone clock having been synced.
+static uint32_t txBootCount = 0;
+static uint32_t txSeq = 0;
+
+static void initTxIdBootCounter() {
+    Preferences counter;
+    if (!counter.begin("tx_ctr", false)) return;
+    txBootCount = counter.getULong("boots", 0) + 1;
+    counter.putULong("boots", txBootCount);
+    counter.end();
+}
+
 String generateTxId(const char* prefix) {
-    uint64_t ts = getCurrentMasterTimeMs();
-    if (ts > 0) {
-        return String(prefix) + String(ts) + "-" + String(random(10000, 99999));
-    }
-    // Before any phone has synced the master clock every id would start with "tx-0-", leaving
-    // only the random suffix to tell payments apart. Use a per-boot tag plus a counter instead.
-    static uint32_t bootTag = 0;
-    static uint32_t counter = 0;
-    if (bootTag == 0) bootTag = (uint32_t)random(1, 0x7FFFFFFF);
-    counter++;
-    return String(prefix) + "b" + String(bootTag, HEX) + "-" + String(millis()) + "-" + String(counter);
+    uint32_t seq = __atomic_add_fetch(&txSeq, 1, __ATOMIC_RELAXED);
+    return String(txid::make(prefix, txBootCount, seq, esp_random()).c_str());
 }
 
 static const uint64_t MASTER_CLOCK_WINDOW_MS = 300000ULL;
@@ -465,6 +470,7 @@ void provisionFirstBootCredentials() {
 void loadAllConfig() {
     // 1. Load slot licenses and terminal allocations safely
     provisionSecretMode(); // first: it checks whether this box was already set up
+    initTxIdBootCounter();
     loadSlotLicenses();
     loadSuperAdminConfig();
     provisionFirstBootCredentials();

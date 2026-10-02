@@ -8,6 +8,7 @@
 #include <Preferences.h>
 #include <ESPmDNS.h>
 #include <esp_task_wdt.h>
+#include <esp_ota_ops.h>
 #include "esp_wifi.h"
 #include "Config.h"
 #include "Security.h"
@@ -195,9 +196,20 @@ void setup() {
     lastWifiCheckTime = millis();
 }
 
+// A freshly flashed image that survives a minute of normal running is confirmed, so a bootloader built
+// with app rollback would not revert it. With the stock Arduino bootloader this call does nothing.
+static void confirmRunningImageWhenStable() {
+    static bool confirmed = false;
+    if (confirmed || millis() < 60000UL) return;
+    confirmed = true;
+    esp_err_t r = esp_ota_mark_app_valid_cancel_rollback();
+    Serial.printf("[OTA] Running image confirmed (%s)\n", esp_err_to_name(r));
+}
+
 void loop() {
     // Feed Hardware Watchdog Timer
     esp_task_wdt_reset();
+    confirmRunningImageWhenStable();
 
     // Memory and Uptime Health Maintenance Check
     processSystemHealthAndAutoMaintenance();

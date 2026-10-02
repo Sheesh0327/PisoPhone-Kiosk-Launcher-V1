@@ -6,6 +6,7 @@
 #include "PaymentQueueManager.h"
 #include "Diagnostics.h"
 #include "OtaCheck.h"
+#include "OtaSecurity.h"
 #include "WebServerAuth.h"
 #include "Config.h"
 #include "Security.h"
@@ -132,6 +133,7 @@ void setupWebServer() {
 
     // Port 80: Web OTA Firmware Update Endpoints
     webServer.on("/update", HTTP_GET, handleOtaForm);
+    webServer.on("/api/ota/manifest", HTTP_POST, handleApiOtaManifest);
     webServer.on(
         "/update", HTTP_POST,
         []() {
@@ -177,6 +179,15 @@ void setupWebServer() {
                 diagCount(DiagCounter::OtaAttempts);
                 diagLog("[OTA] Starting firmware flash: %s\n", upload.filename.c_str());
 
+                // Refuse before anything is written to flash when the image is not covered by a signed manifest.
+                String signErr;
+                if (!otaStartImage(signErr)) {
+                    otaIsValidBinary = false;
+                    otaErrorMsg = signErr;
+                    diagLog("[OTA] %s\n", otaErrorMsg.c_str());
+                    return;
+                }
+
                 if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
                     otaIsValidBinary = false;
                     otaErrorMsg = "Failed to begin flash partition write (Error: " + String(Update.getError()) + ")";
@@ -206,6 +217,13 @@ void setupWebServer() {
                 }
 
                 if (upload.currentSize > 0) {
+                    String signErr;
+                    if (!otaFeedImage(upload.buf, upload.currentSize, signErr)) {
+                        otaIsValidBinary = false;
+                        otaErrorMsg = signErr;
+                        diagLog("[OTA] %s\n", otaErrorMsg.c_str());
+                        return;
+                    }
                     if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
                         otaIsValidBinary = false;
                         otaErrorMsg = "Flash write failed at offset " + String(Update.progress()) +
@@ -226,6 +244,14 @@ void setupWebServer() {
                     diagLog("[OTA] Aborted at finalize: unpersisted transactions in RAM");
                 }
                 if (otaIsValidBinary) {
+                    String signErr;
+                    if (!otaFinishImage(signErr)) {
+                        otaIsValidBinary = false;
+                        otaErrorMsg = signErr;
+                        diagLog("[OTA] %s\n", otaErrorMsg.c_str());
+                    }
+                }
+                if (otaIsValidBinary) {
                     if (Update.end(true)) {
                         diagLog("[OTA] Firmware flashing verified & completed successfully: %u bytes\n",
                                 upload.totalSize);
@@ -241,6 +267,7 @@ void setupWebServer() {
                 }
             } else if (upload.status == UPLOAD_FILE_ABORTED) {
                 Update.abort();
+                otaAbortImage();
                 otaIsValidBinary = false;
                 otaErrorMsg = "Upload connection was aborted prematurely.";
                 Serial.println("[OTA] Upload aborted by client.");

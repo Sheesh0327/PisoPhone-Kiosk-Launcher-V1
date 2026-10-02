@@ -101,6 +101,30 @@ class PaymentRepositoryUnitTest {
     }
 
     @Test
+    fun testRedeliveryStormCreditsEachCoinExactlyOnce() = runBlocking {
+        var applied = 0
+        val repository = PaymentRepository(
+            db = db,
+            isEligible = { isEligibleState },
+            onPaymentApplied = { _, _, _, _ -> applied++ },
+        )
+
+        // The box retries every unacknowledged coin, so the phone sees each tx_id many times, interleaved.
+        val results = mutableListOf<PaymentResult>()
+        repeat(5) {
+            results += repository.creditPayment(txId = "tx-b7-1-0000000a", seconds = 600, amount = 5.0)
+            results += repository.creditPayment(txId = "tx-b7-2-0000000b", seconds = 120, amount = 1.0)
+        }
+
+        assertEquals(2, results.count { it == PaymentResult.APPLIED })
+        assertEquals(8, results.count { it == PaymentResult.ALREADY_APPLIED })
+        assertEquals("Each coin must trigger the credit callback once", 2, applied)
+        val remaining = repository.getSessionState()?.sessionTimeRemaining ?: 0
+        // 600 s + 120 s credited once each (a little may have elapsed while the test ran)
+        assertTrue("Balance must be about 720 s, was $remaining", remaining in 700..720)
+    }
+
+    @Test
     fun testConflictingValuesReturnConflict() = runBlocking {
         val repository = PaymentRepository(
             db = db,
