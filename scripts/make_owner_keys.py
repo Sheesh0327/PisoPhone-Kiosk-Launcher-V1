@@ -27,7 +27,8 @@ DEFAULT_KEY = os.path.join(os.path.expanduser("~"), "pisophone_license_key.pem")
 
 
 def inside_repo(path):
-    real, root = os.path.realpath(path), os.path.realpath(ROOT)
+    real = os.path.normcase(os.path.realpath(path))
+    root = os.path.normcase(os.path.realpath(ROOT))
     return real == root or real.startswith(root + os.sep)
 
 
@@ -72,7 +73,8 @@ Next: git add esp32_firmware/include/LicensePubKey.h && git commit -m "Install o
         return
 
     if inside_repo(a.path):
-        sys.exit(f"Refusing: {a.path} is inside the repository. Pick a folder outside it.")
+        sys.exit(f"Refusing: {a.path} is inside the repository ({ROOT}). Pick a folder outside it, "
+                 f"for example: python scripts/make_owner_keys.py C:\\keys\\pisophone_license_key.pem")
     if os.path.exists(a.path):
         sys.exit(f"Refusing: {a.path} already exists. Move it away first; replacing it makes every issued license invalid.")
     key, pem = make_key()
