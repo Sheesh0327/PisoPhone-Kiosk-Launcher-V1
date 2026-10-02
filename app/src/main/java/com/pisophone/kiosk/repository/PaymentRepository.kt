@@ -299,10 +299,6 @@ class PaymentRepository(
         return ExpiryResult(didExpire = didExpire, sessionState = state)
     }
 
-    fun expireSessionIfDueBlocking(): ExpiryResult = blockingIo {
-        expireSessionIfDue()
-    }
-
     suspend fun adjustSessionTime(durationSeconds: Int): PaidSessionState {
         val newState = db.withTransaction {
             val currentState = paymentDao.getSessionState()
@@ -361,10 +357,6 @@ class PaymentRepository(
             )
             paymentDao.updateSessionState(updated)
         }
-    }
-
-    fun checkpointSessionBlocking(snapshotRevision: Long) = blockingIo {
-        checkpointSession(snapshotRevision)
     }
 
     suspend fun recoverUncommittedTransactions(nowMonotonic: Long = SystemClock.elapsedRealtime()) {

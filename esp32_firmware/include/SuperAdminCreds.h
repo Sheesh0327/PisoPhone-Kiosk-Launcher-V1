@@ -12,7 +12,6 @@
 
 void superAdminCredsLoad();    // call once at boot, after prefs are usable
 bool superAdminCredsManaged(); // true once a signed hash has been accepted
-uint32_t superAdminCredsVersion();
 bool superAdminPasswordOk(const String& candidate);
 bool superAdminBasicAuthOk(); // HTTP Basic "superadmin:<password>" header
 void superAdminSyncLoop();    // call from loop(); downloads/applies updates

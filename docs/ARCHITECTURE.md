@@ -22,7 +22,7 @@ Three parts work together: the **Android kiosk app** on each rental phone, the *
    (`PaymentQueueManager.enqueuePendingPayment`, persisted in NVS) *before* anything else.
 4. **Deliver.** The box pushes the payment to the phone over WebSocket and HTTP. Both carry the
    transaction id and a signature.
-5. **Credit.** The phone (`CoinProcessor` -> `PaymentRepository`) adds time exactly once per
+5. **Credit.** The phone (`KioskEngine` -> `PaymentRepository`) adds time exactly once per
    transaction id, then acknowledges (`/api/coinslot/ack`). The ack is only sent when crediting
    succeeded, so a failure leaves the payment queued.
 6. **Retry/expire.** Until acknowledged the box retries every 10 s; very old unacknowledged

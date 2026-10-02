@@ -87,10 +87,6 @@ void superAdminCredsLoad() {
 bool superAdminCredsManaged() {
     return credVersion > 0;
 }
-uint32_t superAdminCredsVersion() {
-    return credVersion;
-}
-
 bool superAdminPasswordOk(const String& candidate) {
     lockCreds();
     uint32_t ver = credVersion, iter = credIterations;
