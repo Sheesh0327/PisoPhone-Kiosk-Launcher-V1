@@ -61,7 +61,14 @@ object KioskSecurity {
     internal fun resetCachesForTests() {
         prefsInstance = null
         encryptedPrefsInstance = null
+        cachedBoxSecret = null
+        secretVault = SecretVault(KeystoreCipher())
     }
+
+    /** Wraps the box secret with an Android Keystore key (SecretVault); replaced in tests. */
+    @Volatile internal var secretVault: SecretVault = SecretVault(KeystoreCipher())
+
+    @Volatile private var cachedBoxSecret: String? = null
 
     private fun getPrefs(context: Context): SharedPreferences = prefsInstance ?: synchronized(this) {
         prefsInstance ?: buildPrefs(context.applicationContext).also {
@@ -268,8 +275,17 @@ object KioskSecurity {
 
     /** The key used for box traffic: this phone's box secret, or the deprecated shared key when none was provisioned. */
     fun getSharedSecret(context: Context): String {
-        val stored = getPrefs(context).getString(KEY_BOX_SECRET, "") ?: ""
-        return if (isValidBoxSecret(stored)) stored else DEFAULT_SHARED_SECRET
+        cachedBoxSecret?.let { return it }
+        val prefs = getPrefs(context)
+        val opened = secretVault.open(prefs.getString(KEY_BOX_SECRET, "") ?: "")
+        if (!isValidBoxSecret(opened.value)) return DEFAULT_SHARED_SECRET
+        if (opened.wasPlain) {
+            // Upgrade an old plain value to the Keystore-wrapped form; seal() falls back to plain if wrapping fails.
+            val sealed = secretVault.seal(opened.value)
+            if (sealed != opened.value) prefs.edit().putString(KEY_BOX_SECRET, sealed).apply()
+        }
+        cachedBoxSecret = opened.value
+        return opened.value
     }
 
     /** True while this phone still talks to its box with the old, publicly known shared key. */
@@ -282,7 +298,8 @@ object KioskSecurity {
     fun setBoxSecret(context: Context, secret: String): Boolean {
         val trimmed = secret.trim()
         if (!isValidBoxSecret(trimmed)) return false
-        getPrefs(context).edit().putString(KEY_BOX_SECRET, trimmed).apply()
+        getPrefs(context).edit().putString(KEY_BOX_SECRET, secretVault.seal(trimmed)).apply()
+        cachedBoxSecret = trimmed
         return true
     }
 
