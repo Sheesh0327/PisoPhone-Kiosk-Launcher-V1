@@ -3,6 +3,7 @@
 #include "WebServerModule.h"
 #include "WebServerAuth.h"
 #include "Config.h"
+#include "SuperAdminCreds.h"
 #include "Security.h"
 #include "HardwareManager.h"
 #include "DeviceManager.h"
@@ -220,6 +221,7 @@ void handleApiStatus() {
     }
 
     String json = "{";
+    json += "\"super_admin_managed\":" + String(superAdminCredsManaged() ? "true" : "false") + ",";
     json += "\"default_credentials\":" + String(defaultCredentialsActive() ? "true" : "false") + ",";
     json += "\"wifi\":{";
     json += "\"rssi\":" + String(rssi) + ",";

@@ -9,6 +9,7 @@
 #include "InputSafety.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include "SuperAdminCreds.h"
 
 void authWorkerTask(void *pvParameters) {
     AuthRequest req;
@@ -181,7 +182,8 @@ void authWorkerTask(void *pvParameters) {
 static inputsafety::LoginThrottle loginThrottle;
 
 bool defaultCredentialsActive() {
-    return webPassword == DEFAULT_ADMIN_PW || superAdminPassword == DEFAULT_SUPER_ADMIN_PW;
+    return webPassword == DEFAULT_ADMIN_PW ||
+           (!superAdminCredsManaged() && superAdminPassword == DEFAULT_SUPER_ADMIN_PW);
 }
 
 // Checks Basic-auth admin credentials with per-client throttling: five wrong passwords lock that
@@ -199,7 +201,7 @@ static bool adminCredentialsOk(bool& lockedOut) {
         webServer.send(429, "text/plain", "Too many failed logins. Try again later.");
         return false;
     }
-    if (webServer.authenticate("superadmin", superAdminPassword.c_str()) ||
+    if (superAdminBasicAuthOk() ||
         webServer.authenticate("admin", webPassword.c_str())) {
         loginThrottle.recordSuccess(client);
         return true;

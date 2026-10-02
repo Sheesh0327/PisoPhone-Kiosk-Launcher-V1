@@ -3,6 +3,7 @@
 #include "Config.h"
 #include "WebServerModule.h"
 #include "WebServerAuth.h"
+#include "SuperAdminCreds.h"
 #include <WebServer.h>
 #include <Preferences.h>
 
@@ -22,6 +23,7 @@ void loadSuperAdminConfig() {
         vendorRevenueSplitPercent = DEFAULT_VENDOR_SPLIT_PERCENT;
     }
     prefs.end();
+    superAdminCredsLoad();
     
     isVaultUnmasked = false;
     unmaskExpiryTimestamp = 0;
@@ -33,14 +35,11 @@ void loadSuperAdminConfig() {
 bool authenticateSuperAdmin() {
     if (webServer.hasArg("super_admin_pw")) {
         String entered = webServer.arg("super_admin_pw");
-        if (entered == superAdminPassword) {
+        if (superAdminPasswordOk(entered)) {
             return true;
         }
     }
-    if (webServer.authenticate("superadmin", superAdminPassword.c_str())) {
-        return true;
-    }
-    return false;
+    return superAdminBasicAuthOk();
 }
 
 void processSuperAdminLoop() {
@@ -173,13 +172,18 @@ void handleSuperAdminChangePassword() {
     bool authorized = authenticateSuperAdmin();
     if (!authorized && webServer.hasArg("current_pw")) {
         String cur = webServer.arg("current_pw");
-        authorized = (cur == superAdminPassword);
+        authorized = superAdminPasswordOk(cur);
     }
     if (!authorized) {
         webServer.send(401, "application/json", "{\"status\":\"error\",\"message\":\"Unauthorized: Current password invalid.\"}");
         return;
     }
     
+    if (superAdminCredsManaged()) {
+        webServer.send(403, "application/json", "{\"status\":\"error\",\"message\":\"The super admin password is managed remotely. Publish a new one from the website.\"}");
+        return;
+    }
+
     if (webServer.hasArg("new_pw")) {
         String newPw = webServer.arg("new_pw");
         newPw.trim();

@@ -5,6 +5,7 @@
 #include "WebServerAuth.h"
 #include "PaymentQueueManager.h"
 #include "Config.h"
+#include "SuperAdminCreds.h"
 #include "Security.h"
 #include "HardwareManager.h"
 #include "DeviceManager.h"
@@ -117,7 +118,7 @@ void handleResetVault() {
     if (!checkAdminAuth()) return;
     if (webServer.hasArg("reset_pw")) {
         String enteredPw = webServer.arg("reset_pw");
-        if (enteredPw == superAdminPassword || webServer.authenticate("superadmin", superAdminPassword.c_str())) {
+        if (superAdminPasswordOk(enteredPw) || superAdminBasicAuthOk()) {
             totalCoinsLifetime = 0;
             totalCoinsSession = 0;
             totalEarningsLifetime = 0.0f;
