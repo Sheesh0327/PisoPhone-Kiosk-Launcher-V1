@@ -1,7 +1,8 @@
 #include "PaymentQueueManager.h"
 #include "ControllerWebSocket.h"
 #include "DeviceNetwork.h"
-#include "Config.h"#include "Diagnostics.h"
+#include "Config.h"
+#include "Diagnostics.h"
 
 #include <Preferences.h>
 #include <freertos/FreeRTOS.h>
