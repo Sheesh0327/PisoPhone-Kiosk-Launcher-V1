@@ -40,6 +40,8 @@ Assumed defaults (no answer was given; each one is a cheap change if the owner d
 | S9 (flag) | partly | no-op flash-encryption flag removed; provisioning doc still to write |
 | S10 | done | `Money.h`, integer centavos, one-time NVS migration from the old float key (`earn_c`) |
 | S2 | done (firmware + script) | Signed `PISOLIC1.<MAC>.<slots>.<sig>` token (issued/expiry/serial fields left out: not needed for lifetime slot licenses). `scripts/generate_license.py keygen/issue`. Until `LicensePubKey.h` holds a real key the box still accepts the deprecated shared-secret keys, so existing boxes keep working; **owner must run `keygen`, rebuild and flash to close the hole**. Old-key branch is removed in S4. |
+| S8 | done (firmware, phone, website field) | Box generates unique setup-AP and admin passwords on first boot / factory reset (`CredGen.h`), prints them on serial until the admin password is changed; no-Wi-Fi box opens its setup AP at once; deployed boxes keep their password. Built-in super-admin password `superadmin123` removed (no login until the signed credentials are installed). Phone has no factory PIN; PIN comes from the box. A first-run PIN wizard is still to do. |
+| P5 | partly | `scripts/check_security_rules.sh` + CI job: private keys, master-secret allow-list, factory passwords, `setInsecure`, `runBlocking` ratchet (max 10). Android lint security checks and branch protection still to do. |
 
 ## 1. Findings summary (what is wrong today)
 

@@ -68,8 +68,8 @@ bool applySlotToken(String token) {
     // Signed license (checked against the owner's public key). Once a key is built in, this is the only way in.
     if (LICENSE_PUBKEY_LEN > 0) {
         uint32_t slots = 0;
-        auto r = licensecrypto::checkToken(token.c_str(), macAddressStr.c_str(), LICENSE_PUBKEY_DER,
-                                           LICENSE_PUBKEY_LEN, MAX_SUPPORTED_SLOTS, slots);
+        auto r = licensecrypto::checkToken(token.c_str(), macAddressStr.c_str(), LICENSE_PUBKEY_DER, LICENSE_PUBKEY_LEN,
+                                           MAX_SUPPORTED_SLOTS, slots);
         if (r == licensecrypto::LicenseCheck::Ok) {
             grantSlots((int)slots);
             return true;

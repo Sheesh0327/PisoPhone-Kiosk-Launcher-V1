@@ -41,7 +41,6 @@ object KioskSecurity {
 
     const val DEFAULT_SHARED_SECRET = "PISOPHONE_HMAC_MASTER_KEY"
     private const val KEY_SECRET_EXPLICITLY_PROVISIONED = "kiosk_secret_explicitly_provisioned"
-    private const val DEFAULT_PIN = "1234"
     private const val TAG = "KioskSecurity"
     private const val KEY_DEVICE_SECRET = "device_crypto_secret"
 
@@ -256,15 +255,16 @@ object KioskSecurity {
 
     fun getSharedSecret(context: Context): String = DEFAULT_SHARED_SECRET
 
-    /** True while the factory PIN is still in use (shown as a warning in the admin vault). */
-    fun isAdminPinDefault(context: Context): Boolean = getAdminPin(context) == DEFAULT_PIN
+    /** True until an admin PIN exists. There is no factory PIN: it arrives from the box (its admin password) when paired. */
+    fun isAdminPinUnset(context: Context): Boolean = getAdminPin(context).isEmpty()
 
+    /** The stored admin PIN, or "" when none has been set yet (which never matches any entered PIN). */
     fun getAdminPin(context: Context): String {
-        val pin = getPrefs(context).getString(KEY_ADMIN_PIN, DEFAULT_PIN) ?: DEFAULT_PIN
-        // Recover from AES decryption garbage corruption (wrong key matching 1/256 padding)
+        val pin = getPrefs(context).getString(KEY_ADMIN_PIN, "") ?: ""
+        // Treat AES decryption garbage (wrong key matching 1/256 padding) as "no PIN" rather than a usable one
         if (pin.any { it < ' ' || it > '~' }) {
-            setAdminPin(context, DEFAULT_PIN)
-            return DEFAULT_PIN
+            getPrefs(context).edit().remove(KEY_ADMIN_PIN).apply()
+            return ""
         }
         return pin
     }
@@ -275,6 +275,7 @@ object KioskSecurity {
 
     fun verifyAdminPin(context: Context, enteredPin: String): Boolean {
         val storedPin = getAdminPin(context)
+        if (storedPin.isEmpty()) return false
         return constantTimeEquals(enteredPin.trim(), storedPin)
     }
 

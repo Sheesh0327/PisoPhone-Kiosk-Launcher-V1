@@ -3,7 +3,8 @@ name: Code quality
 # Style and logic checks that do not need the Android toolchain or an ESP32 board:
 #   - ktlint for the Android app (rules in .editorconfig)
 #   - clang-format for the firmware (rules in esp32_firmware/.clang-format)
-#   - the firmware's host tests (diagnostics ring, input safety, OTA header check, credential crypto)
+#   - the firmware's host tests (diagnostics ring, input safety, OTA header check, credential, license and money code)
+#   - repository security rules (scripts/check_security_rules.sh)
 on:
   push:
     branches:
@@ -21,6 +22,14 @@ permissions:
   contents: read
 
 jobs:
+  security-rules:
+    name: Security rules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check repository security rules
+        run: sh scripts/check_security_rules.sh
+
   kotlin-style:
     name: ktlint
     runs-on: ubuntu-latest

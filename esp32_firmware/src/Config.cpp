@@ -8,15 +8,14 @@
 #include "PaymentQueueManager.h"
 #include "Diagnostics.h"
 #include "Money.h"
+#include "CredGen.h"
+#include <esp_random.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
 // ============================================================================
 // HARDWARE CONSTANTS & PIN DEFAULTS DEFINITION
 // ============================================================================
-const char* DEFAULT_SSID = "AdminSetup";
-const char* DEFAULT_PASS = "Admin@123";
-const char* DEFAULT_ADMIN_PW = "admin";
 const char* MASTER_CRYPTO_SECRET = "PISOPHONE_HMAC_MASTER_KEY";
 
 // Pin defaults are per board and come from -D flags in envs/*.ini (PISO_PIN_*). A wrong default
@@ -45,10 +44,12 @@ bool ledActiveLow = DEFAULT_LED_ACTIVE_LOW;
 int relayPin = DEFAULT_RELAY_PIN;
 bool relayActiveLow = false;
 
-String wifiSsid = DEFAULT_SSID;
-String wifiPass = DEFAULT_PASS;
+String wifiSsid = ""; // empty until the operator sets Wi-Fi: the box then opens its setup access point
+String wifiPass = "";
 String androidIps = "";
-String webPassword = DEFAULT_ADMIN_PW;
+String webPassword = "";
+String setupApPass = "";
+bool adminPwChanged = false;
 // The auth worker task reads the secret while the main loop can change it (settings save, factory
 // reset). Every access goes through these accessors so a String is never reallocated mid-read.
 static String sharedSecretValue = MASTER_CRYPTO_SECRET;
@@ -271,6 +272,8 @@ const char* const NVS_KEY_RELAY_ACTIVE_LOW = "relay_act_low";
 const char* const NVS_KEY_PORT = "target_port";
 const char* const NVS_KEY_MINS_PER_COIN = "mins_per_coin";
 const char* const NVS_KEY_ADMIN_PW = "admin_pw";
+const char* const NVS_KEY_ADMIN_PW_CHANGED = "pw_chg";
+const char* const NVS_KEY_SETUP_AP_PASS = "ap_pass";
 const char* const NVS_KEY_SHARED_SECRET = "shared_secret";
 const char* const NVS_KEY_P1 = "p1_ip";
 const char* const NVS_KEY_P2 = "p2_ip";
@@ -361,10 +364,50 @@ void loadSlotLicenses() {
     syncAndroidIpsFromSlots();
 }
 
+static void fillRandomBytes(uint8_t* buf, size_t len) {
+    esp_fill_random(buf, len);
+}
+
+// Every box gets its own setup-AP and admin passwords the first time it starts (and after a factory
+// reset), so no two boxes share a password. Boxes already in the field keep the password they have.
+void provisionFirstBootCredentials() {
+    prefs.begin(NVS_NAMESPACE, false);
+    if (!prefs.isKey(NVS_KEY_ADMIN_PW)) {
+        webPassword = credgen::password(12, fillRandomBytes).c_str();
+        adminPwChanged = false;
+        prefs.putString(NVS_KEY_ADMIN_PW, webPassword);
+        prefs.putBool(NVS_KEY_ADMIN_PW_CHANGED, false);
+    } else {
+        webPassword = prefs.getString(NVS_KEY_ADMIN_PW, "");
+        if (prefs.isKey(NVS_KEY_ADMIN_PW_CHANGED)) {
+            adminPwChanged = prefs.getBool(NVS_KEY_ADMIN_PW_CHANGED, false);
+        } else {
+            // Upgrade from firmware without the flag: any password other than the old factory one was chosen by the operator.
+            adminPwChanged = (webPassword != "admin");
+            prefs.putBool(NVS_KEY_ADMIN_PW_CHANGED, adminPwChanged);
+        }
+    }
+    if (!prefs.isKey(NVS_KEY_SETUP_AP_PASS)) {
+        prefs.putString(NVS_KEY_SETUP_AP_PASS, credgen::password(10, fillRandomBytes).c_str());
+    }
+    setupApPass = prefs.getString(NVS_KEY_SETUP_AP_PASS, "");
+    prefs.end();
+
+    if (!adminPwChanged) {
+        // Shown only until the operator changes the admin password. Needed to reach a box that has never been set up.
+        Serial.println("\n================ FIRST-TIME SETUP CREDENTIALS ================");
+        Serial.printf(" Setup Wi-Fi   : PisoPhone-Setup-xxxx   password: %s\n", setupApPass.c_str());
+        Serial.printf(" Admin login   : admin / %s\n", webPassword.c_str());
+        Serial.println(" Change the admin password in Settings; coins stay blocked until you do.");
+        Serial.println("==============================================================\n");
+    }
+}
+
 void loadAllConfig() {
     // 1. Load slot licenses and terminal allocations safely
     loadSlotLicenses();
     loadSuperAdminConfig();
+    provisionFirstBootCredentials();
 
     // 2. Open NVS for all kiosk configuration & lifetime vault revenue counters
     prefs.begin(NVS_NAMESPACE, false);
@@ -418,9 +461,8 @@ void loadAllConfig() {
 
     char earnings[24];
     money::formatPesos(totalCentavosLifetime, earnings, sizeof(earnings));
-    Serial.printf(
-        "[💾 CONFIG] Loaded NVS Config: SSID='%s', Port=%d, AdminPW='%s', RelayPin=%d, TotalCoins=%u, TotalEarnings=₱%s\n",
-        wifiSsid.c_str(), targetPort, webPassword.c_str(), relayPin, totalCoinsLifetime, earnings);
+    Serial.printf("[💾 CONFIG] Loaded NVS Config: SSID='%s', Port=%d, RelayPin=%d, TotalCoins=%u, TotalEarnings=₱%s\n",
+                  wifiSsid.c_str(), targetPort, relayPin, totalCoinsLifetime, earnings);
 }
 
 void flushRevenueNow() {
@@ -452,9 +494,10 @@ void factoryResetDefaults() {
     prefs.clear();
     prefs.end();
     clearPaymentQueue();
+    provisionFirstBootCredentials(); // fresh unique passwords, printed on the serial console
 
-    wifiSsid = DEFAULT_SSID;
-    wifiPass = DEFAULT_PASS;
+    wifiSsid = "";
+    wifiPass = "";
     universalCoinPin = DEFAULT_UNIVERSAL_COIN_PIN;
     ledPin = DEFAULT_LED_PIN;
     ledActiveLow = DEFAULT_LED_ACTIVE_LOW;
@@ -462,7 +505,6 @@ void factoryResetDefaults() {
     androidIps = "";
     targetPort = DEFAULT_PORT;
     minutesPerCoin = DEFAULT_MINUTES_PER_COIN;
-    webPassword = DEFAULT_ADMIN_PW;
     setSharedSecret(MASTER_CRYPTO_SECRET);
     p1Ip = "";
     p2Ip = "";
@@ -492,9 +534,7 @@ void factoryResetDefaults() {
     }
 
     Serial.println("[✅ FACTORY RESET COMPLETE]");
-    Serial.println(" -> Wi-Fi SSID : AdminSetup");
-    Serial.println(" -> Wi-Fi Pass : Admin@123");
-    Serial.println(" -> Admin Pass : admin");
+    Serial.println(" -> Wi-Fi      : not set (the box opens its setup access point)");
     Serial.println(" -> Port       : 8080");
     Serial.println("=======================================================\n");
 }

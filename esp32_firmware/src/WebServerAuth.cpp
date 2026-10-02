@@ -193,10 +193,10 @@ void authWorkerTask(void* pvParameters) {
 static inputsafety::LoginThrottle loginThrottle;
 
 bool defaultCredentialsActive() {
-    // Only the operator-controlled admin password counts. The super-admin password cannot be
+    // True until the operator replaces the admin password that was generated for this box. Only the operator-controlled admin password counts. The super-admin password cannot be
     // changed on the box (it is published from the website), so counting it kept this warning on
     // permanently even after the operator had changed their password.
-    return webPassword == DEFAULT_ADMIN_PW;
+    return !adminPwChanged;
 }
 
 // Checks Basic-auth admin credentials with per-client throttling: five wrong passwords lock that

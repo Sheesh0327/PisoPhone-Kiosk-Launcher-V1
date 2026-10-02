@@ -8,9 +8,6 @@
 // ============================================================================
 // HARDWARE CONSTANTS & PIN DEFAULTS
 // ============================================================================
-extern const char* DEFAULT_SSID;
-extern const char* DEFAULT_PASS;
-extern const char* DEFAULT_ADMIN_PW;
 extern const char* MASTER_CRYPTO_SECRET;
 
 extern const int DEFAULT_UNIVERSAL_COIN_PIN;
@@ -44,6 +41,8 @@ extern const char* const NVS_KEY_RELAY_ACTIVE_LOW;
 extern const char* const NVS_KEY_PORT;
 extern const char* const NVS_KEY_MINS_PER_COIN;
 extern const char* const NVS_KEY_ADMIN_PW;
+extern const char* const NVS_KEY_ADMIN_PW_CHANGED;
+extern const char* const NVS_KEY_SETUP_AP_PASS;
 extern const char* const NVS_KEY_SHARED_SECRET;
 extern const char* const NVS_KEY_P1;
 extern const char* const NVS_KEY_P2;
@@ -108,6 +107,9 @@ extern String wifiSsid;
 extern String wifiPass;
 extern String androidIps;
 extern String webPassword;
+extern String setupApPass;            // password of the setup access point, unique per box
+extern bool adminPwChanged;           // false until the operator replaces the generated admin password
+void provisionFirstBootCredentials(); // makes unique passwords when none exist; prints them while setup is pending
 String getSharedSecret();
 void setSharedSecret(const String& value);
 extern String macAddressStr;

@@ -53,7 +53,7 @@ static void startSetupAccessPoint() {
     String apSsid = "PisoPhone-Setup-" + suffix.substring(suffix.length() - 4);
     WiFi.mode(WIFI_AP_STA);
     applyWifiTxPower();
-    if (WiFi.softAP(apSsid.c_str(), DEFAULT_PASS)) {
+    if (WiFi.softAP(apSsid.c_str(), setupApPass.c_str())) {
         setupApActive = true;
         diagLog("[📶 SETUP AP] Wi-Fi unreachable. Setup AP '%s' active at http://%s\n", apSsid.c_str(),
                 WiFi.softAPIP().toString().c_str());
@@ -130,7 +130,7 @@ void setup() {
     loadAllConfig();
     gatewayInit();
     if (defaultCredentialsActive()) {
-        diagLog("[AUTH] WARNING: default admin credentials are still active; change them in Settings.\n");
+        diagLog("[AUTH] WARNING: the generated admin password has not been changed yet; change it in Settings.\n");
     }
     lastWifiCheckTime = millis();
 
@@ -238,7 +238,8 @@ void loop() {
         if (setupApActive) stopSetupAccessPoint();
     } else {
         if (wifiDownSinceMs == 0) wifiDownSinceMs = millis();
-        if (!setupApActive && millis() - wifiDownSinceMs >= SETUP_AP_AFTER_MS) {
+        // A box with no Wi-Fi configured opens its setup AP straight away; otherwise after a while offline.
+        if (!setupApActive && (wifiSsid.length() == 0 || millis() - wifiDownSinceMs >= SETUP_AP_AFTER_MS)) {
             startSetupAccessPoint();
         }
         if (millis() - lastWifiCheckTime < 20000) {

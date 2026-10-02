@@ -72,8 +72,8 @@ The kiosk integrates a multi-layered security and hardware authorization archite
 - The secret is displayed once during the mandatory initial provisioning flow so the technician can pair it with the corresponding ESP32 coin controller.
 
 ### 2. Mandatory First-Run Provisioning
-- The kiosk enforces changing the default Admin PIN away from `1234` before any normal kiosk operations can proceed.
-- The ESP32 captive portal similarly blocks coin processing and arming until default Wi-Fi and admin credentials (`Admin@123` / `admin`) are changed.
+- The phone has no factory PIN: it stays locked to PIN entry until it is paired with its box, which provides the admin password as the PIN.
+- Each ESP32 box generates its own setup Wi-Fi password and admin password on first start (printed on the USB serial console), and blocks coin processing until the operator changes the admin password.
 
 ### 3. Hardware Lock & Activation
 - Unlicensed hardware is locked down until authorized via `HardwareLockManager`.
@@ -165,7 +165,7 @@ To prevent players from sending fake coin packets using network sniffing apps:
 - **Hardware Fallback Factory Reset (GPIO 2):**
   - **Ground Pin for 5 Seconds:** Shorting **GPIO 2 to Ground (GND) for 5 seconds** wipes NVS storage and restores all settings to default values at any time (no complex APs or unstable timers).
   - **Visual Confirmation:** Status LED rapidly strobes 10 times to confirm factory reset.
-  - **Default Reverted Values:** SSID: `AdminSetup`, Password: `Admin@123`, Admin Web Password: `admin`, Port: `8080`.
+  - **After a reset:** Wi-Fi is cleared (the box opens its own setup access point), new random setup and admin passwords are generated and printed on the serial console, Port: `8080`.
 - **Hardware Debounced Coin Pin:** Accurately reads pulses from standard arcade multi-coin selectors.
 - **5-Second Watchdog Heartbeat:** Reports real-time hardware online/offline status to the Android UI.
 

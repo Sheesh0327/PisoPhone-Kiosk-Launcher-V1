@@ -6,7 +6,7 @@
 
 /**
  * Handles incoming Controller WebSocket handshake on port 81.
- * Authenticates via HMAC with controller credential (sharedSecret/webPassword/DEFAULT_ADMIN_PW),
+ * Authenticates via HMAC with controller credential (sharedSecret/webPassword),
  * validates replay timestamp, checks CoinSlotManager single-session mutex, and arms slot.
  *
  * @param client Incoming TCP client connection.

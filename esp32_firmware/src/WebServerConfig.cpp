@@ -224,8 +224,13 @@ void handleSave() {
         prefs.putInt(NVS_KEY_PORT, targetPort);
     }
     if (webServer.hasArg(NVS_KEY_ADMIN_PW)) {
-        webPassword = webServer.arg(NVS_KEY_ADMIN_PW);
-        prefs.putString(NVS_KEY_ADMIN_PW, webPassword);
+        String newPw = webServer.arg(NVS_KEY_ADMIN_PW);
+        if (newPw != webPassword) {
+            webPassword = newPw;
+            adminPwChanged = true;
+            prefs.putString(NVS_KEY_ADMIN_PW, webPassword);
+            prefs.putBool(NVS_KEY_ADMIN_PW_CHANGED, true);
+        }
     }
     if (webServer.hasArg("minutes_per_coin")) {
         int m = webServer.arg("minutes_per_coin").toInt();

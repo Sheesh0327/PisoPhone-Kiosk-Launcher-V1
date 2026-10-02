@@ -392,7 +392,7 @@ fun EmergencyRecoveryDialog(
                             ) {
                                 SelectionContainer {
                                     Text(
-                                        text = "adb shell am broadcast -a com.pisophone.kiosk.ENABLE_ADB --es pin 1234",
+                                        text = "adb shell am broadcast -a com.pisophone.kiosk.ENABLE_ADB --es pin <admin password>",
                                         color = Color(0xFF38BDF8),
                                         fontSize = 10.sp,
                                         fontFamily = FontFamily.Monospace,

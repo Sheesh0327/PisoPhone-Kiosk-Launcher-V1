@@ -6,7 +6,8 @@
 // ============================================================================
 // VENDOR SUPER ADMIN CONSTANTS & GLOBALS
 // ============================================================================
-#define DEFAULT_SUPER_ADMIN_PW "superadmin123"
+// No built-in super-admin password: it only exists once the signed credentials file is installed (SuperAdminCreds.cpp).
+#define DEFAULT_SUPER_ADMIN_PW ""
 #define DEFAULT_VENDOR_SPLIT_PERCENT 50
 #define VAULT_UNMASK_TIMEOUT_SECONDS 300UL
 

@@ -3,8 +3,10 @@ package com.pisophone.kiosk.receiver
 import android.content.Context
 import android.content.Intent
 import androidx.test.core.app.ApplicationProvider
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -44,6 +46,7 @@ class KioskAdminActionReceiverUnitTest {
 
     @Test
     fun restartWithCorrectPinRestartsTheService() {
+        com.pisophone.kiosk.security.KioskSecurity.setAdminPin(context, "test-pin-4821")
         val pin = com.pisophone.kiosk.security.KioskSecurity.getAdminPin(context)
         receiver.onReceive(context, restart { putExtra("pin", pin) })
         assertNotNull(shadowOf(context as android.app.Application).nextStartedService)
@@ -72,8 +75,19 @@ class KioskAdminActionReceiverUnitTest {
 
     @Test
     fun adminBypassWithCorrectPinStartsTheService() {
+        com.pisophone.kiosk.security.KioskSecurity.setAdminPin(context, "test-pin-4821")
         val pin = com.pisophone.kiosk.security.KioskSecurity.getAdminPin(context)
         receiver.onReceive(context, bypass { putExtra("pin", pin) })
         assertNotNull(shadowOf(context as android.app.Application).nextStartedService)
+    }
+
+    @Test
+    fun noPinIsSetOnAFreshInstallAndNoPinUnlocksIt() {
+        assertTrue(com.pisophone.kiosk.security.KioskSecurity.isAdminPinUnset(context))
+        // neither an empty PIN nor the old factory PIN gets in
+        assertFalse(com.pisophone.kiosk.security.KioskSecurity.verifyAdminPin(context, ""))
+        assertFalse(com.pisophone.kiosk.security.KioskSecurity.verifyAdminPin(context, "1234"))
+        receiver.onReceive(context, restart { putExtra("pin", "1234") })
+        assertNull(shadowOf(context as android.app.Application).nextStartedService)
     }
 }
