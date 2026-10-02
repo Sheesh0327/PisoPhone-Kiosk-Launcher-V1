@@ -1,6 +1,8 @@
 @file:Suppress("DEPRECATION")
 package com.pisophone.kiosk.overlay
 
+import com.pisophone.kiosk.service.SessionRules
+import com.pisophone.kiosk.service.SessionState
 import android.content.Context
 import android.graphics.PixelFormat
 import android.view.Gravity
@@ -126,7 +128,7 @@ class FloatingPillOverlay(
             val arenaRole by arenaPlayerRoleFlow.collectAsState()
             val arenaStake by arenaStakeMinutesFlow.collectAsState()
             val isArenaBannerVisible by isArenaBannerVisibleFlow.collectAsState()
-            val isVisible = appState == 2 || appState == 3 || isArenaBannerVisible
+            val isVisible = SessionRules.isUnlocked(appState) || isArenaBannerVisible
             
             LaunchedEffect(isVisible) {
                 if (isVisible) {
@@ -165,7 +167,7 @@ class FloatingPillOverlay(
                     isEsp32Online = isEsp32Online,
                     isSlotBusy = isSlotBusy,
                     isArmingInProgress = isArmingInProgress,
-                    isWaiting = appState == 3,
+                    isWaiting = appState == SessionState.UNLOCKED_ARMED.code,
                     themeIndex = themeIndex,
                     batteryStatus = batteryStatus,
                     isArenaMode = isArenaMode,
@@ -263,7 +265,7 @@ class FloatingPillOverlay(
         try {
             currentView.onResume()
             val appState = appStateFlow.value
-            val isVisible = appState == 2 || appState == 3 || isArenaBannerVisibleFlow.value
+            val isVisible = SessionRules.isUnlocked(appState) || isArenaBannerVisibleFlow.value
             currentView.view.visibility = if (isVisible) View.VISIBLE else View.GONE
             windowManager.updateViewLayout(currentView.view, layoutParams)
             currentView.view.requestLayout()

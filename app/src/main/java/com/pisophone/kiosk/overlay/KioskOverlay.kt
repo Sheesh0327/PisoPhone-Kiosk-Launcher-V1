@@ -1,6 +1,8 @@
 @file:Suppress("DEPRECATION")
 package com.pisophone.kiosk.overlay
 
+import com.pisophone.kiosk.service.SessionRules
+import com.pisophone.kiosk.service.SessionState
 import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Build
@@ -221,7 +223,7 @@ class LockScreenOverlay(
         val newOverlay = ComposeOverlayView(context)
         overlayView = newOverlay
 
-        val initialVisible = appStateFlow.value == 0 || appStateFlow.value == 1
+        val initialVisible = SessionRules.isLockScreenShown(appStateFlow.value)
         val baseFlags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or 
                         WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                         WindowManager.LayoutParams.FLAG_FULLSCREEN or
@@ -260,7 +262,7 @@ class LockScreenOverlay(
             val isArenaMode by isArenaModeFlow.collectAsState()
             val arenaPlayerRole by arenaPlayerRoleFlow.collectAsState()
             val arenaStakeMinutes by arenaStakeMinutesFlow.collectAsState()
-            val isVisible = appState == 0 || appState == 1
+            val isVisible = SessionRules.isLockScreenShown(appState)
 
             val unlockAlpha by androidx.compose.animation.core.animateFloatAsState(
                 targetValue = if (isVisible) 1f else 0f,
@@ -292,7 +294,7 @@ class LockScreenOverlay(
                             scaleY = unlockScale
                         )
                 ) {
-                    if (appState == 0 || (appState == 2 && !isVisible)) {
+                    if (appState == SessionState.LOCKED.code || (appState == SessionState.UNLOCKED.code && !isVisible)) {
                         BlockScreen(
                             onInsertCoin = onInsertCoinClick,
                             isWaiting = false,
@@ -316,7 +318,7 @@ class LockScreenOverlay(
                             arenaRole = arenaPlayerRole,
                             arenaStakeMinutes = arenaStakeMinutes
                         )
-                    } else if (appState == 1 || appState == 3 || coinsInserted > 0) {
+                    } else if (SessionRules.isArmed(appState) || coinsInserted > 0) {
                         BlockScreen(
                             onInsertCoin = onInsertCoinClick,
                             isWaiting = isVisible,
@@ -423,7 +425,7 @@ class LockScreenOverlay(
         if (!isViewAdded) return
         try {
             currentView.onResume()
-            val isVisible = appStateFlow.value == 0 || appStateFlow.value == 1
+            val isVisible = SessionRules.isLockScreenShown(appStateFlow.value)
             updateWindowFlagsAndDimensions(isVisible)
             currentView.view.requestLayout()
             currentView.view.invalidate()

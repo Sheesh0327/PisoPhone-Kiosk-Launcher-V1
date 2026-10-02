@@ -105,9 +105,8 @@ class KioskServerCoordinator(
     override fun onDeductTime(seconds: Int, txId: String?) {
         val previousState = stateManager.appState.value
         val updated = paymentRepo.deductTimeBlocking(seconds, txId)
-        val sessionEnded = updated.sessionTimeRemaining <= 0 && (previousState == 2 || previousState == 3)
-        // Deducting to zero locks the phone but keeps an armed slot armed (3 -> 1).
-        val targetState = if (sessionEnded) KioskSessionSupervisor.lockedStateFor(previousState) else null
+        val targetState = SessionRules.afterDeduct(previousState, updated.sessionTimeRemaining)
+        val sessionEnded = targetState != null
         val applied = stateManager.applySessionUpdate(
             deadlineMs = updated.sessionExpiryDeadlineMs,
             remainingSeconds = updated.sessionTimeRemaining,
@@ -134,13 +133,13 @@ class KioskServerCoordinator(
             deadlineMs = resetState.sessionExpiryDeadlineMs,
             remainingSeconds = resetState.sessionTimeRemaining,
             revision = resetState.revision,
-            targetAppState = 0
+            targetAppState = SessionRules.hardLocked()
         )
         stateManager.coinsInserted.value = 0
         stateManager.paymentTimeout.value = 0
         stateManager.saveState()
         if (previousState != 0) {
-            onSessionLocked(previousState == 1 || previousState == 3)
+            onSessionLocked(SessionRules.isArmed(previousState))
         }
     }
 

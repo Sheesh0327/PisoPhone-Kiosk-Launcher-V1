@@ -561,7 +561,7 @@ class Esp32ConnectionManager(
             while (isActive) {
                 delay(1000L)
                 val appState = delegate.getAppState()
-                if (appState != 1 && appState != 3) {
+                if (!com.pisophone.kiosk.service.SessionRules.isArmed(appState)) {
                     Log.d(TAG, "Coin sync loop exiting: appState is $appState")
                     break
                 }

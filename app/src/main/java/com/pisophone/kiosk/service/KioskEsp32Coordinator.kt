@@ -120,11 +120,7 @@ class KioskEsp32Coordinator(
         onSlotBusyTriggered()
         val current = stateManager.appState.value
         val hasPaidTime = stateManager.sessionTimeRemaining.value > 0
-        val next = when (current) {
-            2, 3 -> 2
-            1 -> if (hasPaidTime) 2 else 0
-            else -> current
-        }
+        val next = SessionRules.afterArmFailure(current, hasPaidTime)
         if (next != current) {
             stateManager.appState.value = next
         }
@@ -141,11 +137,7 @@ class KioskEsp32Coordinator(
         // observes state 1/3 with a stale paymentTimeout of 0 (which would close the session).
         stateManager.coinsInserted.value = 0
         stateManager.paymentTimeout.value = armingTimeoutSeconds
-        if (stateManager.appState.value == 2) {
-            stateManager.appState.value = 3
-        } else if (stateManager.appState.value == 0) {
-            stateManager.appState.value = 1
-        }
+        stateManager.appState.value = SessionRules.afterArmSuccess(stateManager.appState.value)
         stateManager.isArmingInProgress.value = false
     }
 
@@ -176,12 +168,12 @@ class KioskEsp32Coordinator(
         stateManager.sessionExpiryDeadlineMs.value = 0L
         stateManager.coinsInserted.value = 0
         stateManager.paymentTimeout.value = 0
-        stateManager.appState.value = 0
+        stateManager.appState.value = SessionRules.hardLocked()
         stateManager.saveState()
         KioskActivationManager.setSlotLockdown(context, true, reason, slotNum, expiresAt)
 
         if (previousState != 0) {
-            onSessionLocked(previousState == 1 || previousState == 3)
+            onSessionLocked(SessionRules.isArmed(previousState))
         }
     }
 
