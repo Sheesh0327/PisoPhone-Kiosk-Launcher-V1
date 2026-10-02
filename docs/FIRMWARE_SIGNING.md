@@ -36,7 +36,7 @@ random bits (`TxId.h`). They no longer depend on the phone clock, and two coins 
 
 ## Keeping the owner key in a GitHub secret
 
-`sh scripts/make_owner_keys.sh --github-secret` (run on your own computer) prints the private key once as one base64
+`python3 scripts/make_owner_keys.py --github-secret` (run on your own computer) prints the private key once as one base64
 line for the repository secret `OWNER_SIGNING_KEY_B64`, writes only the public key into the firmware header, and
 leaves no key file behind. Things to know:
 

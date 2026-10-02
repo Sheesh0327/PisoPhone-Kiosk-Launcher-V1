@@ -16,7 +16,7 @@ real build. Use your own shop, one box and one or two phones, not a customer sit
   the old deprecated license keys. Skipping the keys is fine for this test; it just leaves that hole open.
 - Updates: without the firmware-signing key the box refuses OTA, so flash by USB for now.
 
-When you are ready for the keys, run `sh scripts/make_owner_keys.sh` **on your own computer** (one key signs both
+When you are ready for the keys, run `python3 scripts/make_owner_keys.py` **on your own computer** (one key signs both
 licenses and firmware; it prints the next steps).
 
 ## 3. Test order (stop at the first failure and look at the serial log, 115200 baud)

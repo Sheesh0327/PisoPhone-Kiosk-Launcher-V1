@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+"""
+Creates YOUR signing key (one key signs licenses and firmware updates). Run it on YOUR computer, never in CI or a
+cloud session: the private key must exist only on machines you control. Needs: pip install cryptography
+
+  python3 scripts/make_owner_keys.py                    key saved to ~/pisophone_license_key.pem
+  python3 scripts/make_owner_keys.py /path/key.pem      key saved elsewhere (not inside this repository)
+  python3 scripts/make_owner_keys.py --github-secret    nothing saved: prints the key ONCE as one base64 line to paste
+                                                        into the repository secret OWNER_SIGNING_KEY_B64
+
+It refuses to overwrite an existing key, writes only the PUBLIC key into esp32_firmware/include/LicensePubKey.h,
+and proves the key works by signing a test license. GitHub secrets cannot be read back: also keep one offline copy.
+"""
+
+import argparse
+import base64
+import os
+import stat
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+sys.path.insert(0, HERE)
+import generate_license as gl  # noqa: E402
+
+DEFAULT_KEY = os.path.join(os.path.expanduser("~"), "pisophone_license_key.pem")
+
+
+def inside_repo(path):
+    real, root = os.path.realpath(path), os.path.realpath(ROOT)
+    return real == root or real.startswith(root + os.sep)
+
+
+def make_key():
+    hashes, serialization, ec = gl._crypto()
+    key = ec.generate_private_key(ec.SECP256R1())
+    pem = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
+    return key, pem
+
+
+def self_test(key):
+    token = gl.make_token(key, "AA:BB:CC:DD:EE:FF", 1)
+    if not token.startswith("PISOLIC1."):
+        sys.exit("Self-test FAILED: the key did not produce a license.")
+    print("Self-test passed (signed a test license).")
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("path", nargs="?", default=DEFAULT_KEY, help="where to save the private key")
+    ap.add_argument("--github-secret", action="store_true", help="print the key once instead of saving it")
+    ap.add_argument("--header", default=os.environ.get("PUBKEY_HEADER", gl.PUBKEY_HEADER),
+                    help="firmware header that receives the public key")
+    a = ap.parse_args()
+
+    if a.github_secret:
+        key, pem = make_key()
+        gl.write_pubkey_header(key.public_key(), a.header)
+        self_test(key)
+        b64 = base64.b64encode(pem).decode()
+        print(f"""
+Public key written to {a.header} (commit this file).
+
+PRIVATE KEY, shown once. In GitHub: Settings > Secrets and variables > Actions > New repository secret,
+name  OWNER_SIGNING_KEY_B64   value (the whole line):
+
+{b64}
+
+Also save that line in a password manager NOW: GitHub secrets cannot be read back and nothing was saved on this
+computer. Then clear your terminal scrollback.
+Next: git add esp32_firmware/include/LicensePubKey.h && git commit -m "Install owner public key", then rebuild and flash the boxes.""")
+        return
+
+    if inside_repo(a.path):
+        sys.exit(f"Refusing: {a.path} is inside the repository. Pick a folder outside it.")
+    if os.path.exists(a.path):
+        sys.exit(f"Refusing: {a.path} already exists. Move it away first; replacing it makes every issued license invalid.")
+    key, pem = make_key()
+    fd = os.open(a.path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, stat.S_IRUSR | stat.S_IWUSR)
+    with os.fdopen(fd, "wb") as f:
+        f.write(pem)
+    gl.write_pubkey_header(key.public_key(), a.header)
+    print(f"Private key written to {a.path}")
+    print(f"Public key written to {a.header}")
+    self_test(key)
+    print(f"""
+Done. Next steps:
+  1. BACK UP {a.path} now, in two separate offline places (a USB stick in a drawer, a password manager attachment).
+     Lose it and no box can ever take a new license or update; leak it and anyone can forge both.
+  2. Commit ONLY the public key:   git add esp32_firmware/include/LicensePubKey.h && git commit -m "Install owner public key"
+  3. Rebuild and flash every box:  cd esp32_firmware && pio run -e esp32-c3-dev -t upload
+  4. Issue a license:              python3 scripts/generate_license.py issue --private {a.path} --code <box request code> --slots N
+  5. Sign a firmware build:        python3 scripts/sign_firmware.py --private {a.path} --chip esp32c3 --image <firmware.bin>""")
+
+
+if __name__ == "__main__":
+    main()
