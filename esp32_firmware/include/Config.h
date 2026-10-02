@@ -77,6 +77,7 @@ struct DeviceTelemetry {
     int batteryLevel;
     bool isCharging;
     unsigned long lastSeenMs;
+    unsigned long timeReportedMs; // when timeRemainingSeconds was last reported by the phone
     unsigned long long lastNonceTs;
     bool isApp; // True ONLY if request comes from the PisoPhone app (filters out external script coinslot access requests)
 };

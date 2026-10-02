@@ -18,7 +18,7 @@ void handleHeartbeat() {
     String sig = webServer.hasArg("sig") ? webServer.arg("sig") : "";
     unsigned long long ts = strtoull(tsStr.c_str(), NULL, 10);
     
-    int timeRem = webServer.hasArg("time") ? webServer.arg("time").toInt() : 0;
+    int timeRem = webServer.hasArg("time") ? webServer.arg("time").toInt() : -1;  // -1 = not reported
     int state = webServer.hasArg("state") ? webServer.arg("state").toInt() : 0;
     int battery = webServer.hasArg("battery") ? webServer.arg("battery").toInt() : -1;
     bool charging = webServer.hasArg("charging") ? (webServer.arg("charging").toInt() == 1 || webServer.arg("charging") == "true") : false;

@@ -10,6 +10,7 @@
 #include "CoinSlotManager.h"
 #include "DeviceNetwork.h"
 #include "PaymentQueueManager.h"
+#include "Diagnostics.h"
 #include <WiFi.h>
 #include <WebServer.h>
 
@@ -484,7 +485,12 @@ void handleApiCoinslotArm() {
     );
 
     if (!reserved) {
-        webServer.send(500, "application/json", "{\"success\":false,\"status\":\"error\",\"error\":\"ARM_FAILED\"}");
+        // Say why: a storage fault or a full payment queue looks identical to the phone otherwise.
+        const char* why = !isPaymentStorageReady() ? "STORAGE_UNAVAILABLE"
+                        : (isPaymentQueueFull() ? "QUEUE_FULL" : "ARM_FAILED");
+        diagLog("[API] Arm refused for '%s': %s (pending payments: %d)\n",
+                devId.c_str(), why, getPendingPaymentCount());
+        webServer.send(500, "application/json", String("{\"success\":false,\"status\":\"error\",\"error\":\"") + why + "\"}");
         return;
     }
 
