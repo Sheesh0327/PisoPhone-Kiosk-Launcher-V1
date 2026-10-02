@@ -3,11 +3,25 @@
 
 #include "Security.h"
 #include "Config.h"
+#include "LicenseCrypto.h"
+#include "LicensePubKey.h"
 #include "esp_mac.h"
 #include "mbedtls/md.h"
 #include "mbedtls/sha1.h"
 #include "mbedtls/base64.h"
 #include "mbedtls/aes.h"
+
+static String sha256Hex(const String& in) {
+    unsigned char out[32];
+    mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), (const unsigned char*)in.c_str(), in.length(), out);
+    String hex;
+    for (int i = 0; i < 32; i++) {
+        char b[3];
+        snprintf(b, sizeof(b), "%02x", out[i]);
+        hex += b;
+    }
+    return hex;
+}
 
 String calculateHMAC(String challenge, String secret) {
     mbedtls_md_context_t ctx;
@@ -29,9 +43,17 @@ String calculateHMAC(String challenge, String secret) {
     return hex;
 }
 
+static void grantSlots(int s) {
+    maxLicensedSlots = min(max(maxLicensedSlots, s), MAX_SUPPORTED_SLOTS);
+    for (int i = 0; i < maxLicensedSlots; i++) {
+        licenseSlots[i].active = true;
+    }
+    saveSlotLicenses();
+    Serial.printf("[+] Slot license applied: capacity is now %d slots\n", maxLicensedSlots);
+}
+
 bool applySlotToken(String token) {
     token.trim();
-    token.toUpperCase();
     if (token.length() == 0) return false;
 
     if (macAddressStr.length() == 0) {
@@ -42,6 +64,24 @@ bool applySlotToken(String token) {
                  mac[5]);
         macAddressStr = String(macBuf);
     }
+
+    // Signed license (checked against the owner's public key). Once a key is built in, this is the only way in.
+    if (LICENSE_PUBKEY_LEN > 0) {
+        uint32_t slots = 0;
+        auto r = licensecrypto::checkToken(token.c_str(), macAddressStr.c_str(), LICENSE_PUBKEY_DER,
+                                           LICENSE_PUBKEY_LEN, MAX_SUPPORTED_SLOTS, slots);
+        if (r == licensecrypto::LicenseCheck::Ok) {
+            grantSlots((int)slots);
+            return true;
+        }
+        Serial.printf("[-] License rejected (code %d)\n", (int)r);
+        return false;
+    }
+
+    // DEPRECATED: no public key built in yet, so the old shared-secret keys still work.
+    // Remove once every box has been flashed with a LicensePubKey.h from `generate_license.py keygen`.
+    Serial.println("[!] No license public key in this firmware: accepting the deprecated shared-secret key.");
+    token.toUpperCase();
 
     String myMac = macAddressStr;
     myMac.trim();
@@ -68,14 +108,7 @@ bool applySlotToken(String token) {
 
         if (token.equalsIgnoreCase(shortSig) || token.equalsIgnoreCase(fullToken) ||
             token.equalsIgnoreCase(fullTokenLong) || token.equalsIgnoreCase(expectedSig)) {
-            maxLicensedSlots = min(max(maxLicensedSlots, s), MAX_SUPPORTED_SLOTS);
-            for (int i = 0; i < maxLicensedSlots; i++) {
-                licenseSlots[i].active = true;
-            }
-
-            saveSlotLicenses();
-            Serial.printf("[+] Successfully applied Slot License Token: Capacity expanded to %d slots!\n",
-                          maxLicensedSlots);
+            grantSlots(s);
             return true;
         }
     }
@@ -101,9 +134,9 @@ String getBoxMachineCode() {
         if (myMac[i] != ':') cleanMac += myMac[i];
     }
     if (cleanMac.length() == 0) cleanMac = "000000000000";
-    String secKey = (getSharedSecret().length() > 0) ? getSharedSecret() : String(MASTER_CRYPTO_SECRET);
+    // Typing-mistake check only; it is not a secret.
     String payload = "BOXREQ:" + cleanMac + ":" + String(maxLicensedSlots) + ":" + String(MAX_SUPPORTED_SLOTS);
-    String sig = calculateHMAC(payload, secKey).substring(0, 4);
+    String sig = sha256Hex(payload).substring(0, 4);
     sig.toUpperCase();
     return "PISO-" + cleanMac + "-" + String(maxLicensedSlots) + "-" + String(MAX_SUPPORTED_SLOTS) + "-" + sig;
 }

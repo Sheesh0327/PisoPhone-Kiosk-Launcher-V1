@@ -91,13 +91,13 @@ void handleReboot() {
         webServer.send(409, "text/plain", "BUSY: Unpersisted transactions in RAM");
         return;
     }
-    if (revenueDirty || totalCoinsLifetime != lastSavedTotalCoins || totalEarningsLifetime != lastSavedTotalEarnings) {
+    if (revenueDirty || totalCoinsLifetime != lastSavedTotalCoins || totalCentavosLifetime != lastSavedTotalCentavos) {
         prefs.begin(NVS_NAMESPACE, false);
         prefs.putULong(NVS_KEY_TOTAL_COINS, totalCoinsLifetime);
-        prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, totalEarningsLifetime);
+        prefs.putULong(NVS_KEY_TOTAL_CENTAVOS, totalCentavosLifetime);
         prefs.end();
         lastSavedTotalCoins = totalCoinsLifetime;
-        lastSavedTotalEarnings = totalEarningsLifetime;
+        lastSavedTotalCentavos = totalCentavosLifetime;
         revenueDirty = false;
     }
     webServer.send(200, "text/plain", "REBOOTING");
@@ -125,13 +125,13 @@ void handleResetVault() {
         if (superAdminPasswordOk(enteredPw) || superAdminBasicAuthOk()) {
             totalCoinsLifetime = 0;
             totalCoinsSession = 0;
-            totalEarningsLifetime = 0.0f;
-            totalEarningsSession = 0.0f;
+            totalCentavosLifetime = 0;
+            totalCentavosSession = 0;
             lastSavedTotalCoins = 0;
-            lastSavedTotalEarnings = 0.0f;
+            lastSavedTotalCentavos = 0;
             prefs.begin(NVS_NAMESPACE, false);
             prefs.putULong(NVS_KEY_TOTAL_COINS, 0);
-            prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, 0.0f);
+            prefs.putULong(NVS_KEY_TOTAL_CENTAVOS, 0);
             prefs.end();
             Serial.println("[👑 VAULT] Lifetime revenue counter reset to 0 by Super Admin (Vendor).");
         } else {
@@ -145,13 +145,13 @@ void handleSave() {
     if (!checkAdminAuth()) return;
 
     // Immediately flush any dirty revenue to NVS flash on manual save
-    if (revenueDirty || totalCoinsLifetime != lastSavedTotalCoins || totalEarningsLifetime != lastSavedTotalEarnings) {
+    if (revenueDirty || totalCoinsLifetime != lastSavedTotalCoins || totalCentavosLifetime != lastSavedTotalCentavos) {
         prefs.begin(NVS_NAMESPACE, false);
         prefs.putULong(NVS_KEY_TOTAL_COINS, totalCoinsLifetime);
-        prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, totalEarningsLifetime);
+        prefs.putULong(NVS_KEY_TOTAL_CENTAVOS, totalCentavosLifetime);
         prefs.end();
         lastSavedTotalCoins = totalCoinsLifetime;
-        lastSavedTotalEarnings = totalEarningsLifetime;
+        lastSavedTotalCentavos = totalCentavosLifetime;
         revenueDirty = false;
         Serial.println("[💰 VAULT] Revenue counters flushed to NVS flash on config save.");
     }

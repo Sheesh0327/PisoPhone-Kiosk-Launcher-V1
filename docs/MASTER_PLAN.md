@@ -32,6 +32,15 @@ Assumed defaults (no answer was given; each one is a cheap change if the owner d
 
 ---
 
+## Progress log
+
+| Item | Status | Notes |
+|---|---|---|
+| S1 | done | `erase_flash` removed; `esp32-c3-factory-erase` env added |
+| S9 (flag) | partly | no-op flash-encryption flag removed; provisioning doc still to write |
+| S10 | done | `Money.h`, integer centavos, one-time NVS migration from the old float key (`earn_c`) |
+| S2 | done (firmware + script) | Signed `PISOLIC1.<MAC>.<slots>.<sig>` token (issued/expiry/serial fields left out: not needed for lifetime slot licenses). `scripts/generate_license.py keygen/issue`. Until `LicensePubKey.h` holds a real key the box still accepts the deprecated shared-secret keys, so existing boxes keep working; **owner must run `keygen`, rebuild and flash to close the hole**. Old-key branch is removed in S4. |
+
 ## 1. Findings summary (what is wrong today)
 
 Severity: **C** = critical (money or security), **H** = high (reliability), **M** = maintainability, **L** = polish.

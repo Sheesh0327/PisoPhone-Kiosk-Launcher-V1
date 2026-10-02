@@ -7,6 +7,7 @@
 #include "SuperAdminManager.h"
 #include "PaymentQueueManager.h"
 #include "Diagnostics.h"
+#include "Money.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
@@ -86,10 +87,10 @@ String quickTimeStatusMsg = "";
 // Revenue & Audit
 uint32_t totalCoinsLifetime = 0;
 uint32_t totalCoinsSession = 0;
-float totalEarningsLifetime = 0.0f;
-float totalEarningsSession = 0.0f;
+uint32_t totalCentavosLifetime = 0;
+uint32_t totalCentavosSession = 0;
 uint32_t lastSavedTotalCoins = 0;
-float lastSavedTotalEarnings = 0.0f;
+uint32_t lastSavedTotalCentavos = 0;
 bool revenueDirty = false;
 unsigned long lastCoinChangeTime = 0;
 const unsigned long REVENUE_SAVE_DELAY_MS = 5000;
@@ -276,6 +277,7 @@ const char* const NVS_KEY_P2 = "p2_ip";
 const char* const NVS_KEY_MATCH = "match_minutes";
 const char* const NVS_KEY_TOTAL_COINS = "total_coins";
 const char* const NVS_KEY_TOTAL_EARNINGS = "total_earnings";
+const char* const NVS_KEY_TOTAL_CENTAVOS = "earn_c";
 
 void syncAndroidIpsFromSlots() {
     String newIps = "";
@@ -387,12 +389,19 @@ void loadAllConfig() {
 
     // Lifetime vault revenue counters
     totalCoinsLifetime = prefs.getULong(NVS_KEY_TOTAL_COINS, 0);
-    totalEarningsLifetime = prefs.getFloat(NVS_KEY_TOTAL_EARNINGS, 0.0f);
+    // Earnings are whole centavos. Earlier firmware stored float pesos; convert that once and drop the old key.
+    if (prefs.isKey(NVS_KEY_TOTAL_CENTAVOS)) {
+        totalCentavosLifetime = prefs.getULong(NVS_KEY_TOTAL_CENTAVOS, 0);
+    } else {
+        totalCentavosLifetime = money::centavosFromLegacyPesos(prefs.getFloat(NVS_KEY_TOTAL_EARNINGS, 0.0f));
+        prefs.putULong(NVS_KEY_TOTAL_CENTAVOS, totalCentavosLifetime);
+    }
+    prefs.remove(NVS_KEY_TOTAL_EARNINGS);
 
     lastSavedTotalCoins = totalCoinsLifetime;
-    lastSavedTotalEarnings = totalEarningsLifetime;
+    lastSavedTotalCentavos = totalCentavosLifetime;
     totalCoinsSession = 0;
-    totalEarningsSession = 0.0f;
+    totalCentavosSession = 0;
     revenueDirty = false;
 
     prefs.end();
@@ -407,21 +416,23 @@ void loadAllConfig() {
     });
     androidIps = bootCleanIps;
 
+    char earnings[24];
+    money::formatPesos(totalCentavosLifetime, earnings, sizeof(earnings));
     Serial.printf(
-        "[💾 CONFIG] Loaded NVS Config: SSID='%s', Port=%d, AdminPW='%s', RelayPin=%d, TotalCoins=%u, TotalEarnings=₱%.2f\n",
-        wifiSsid.c_str(), targetPort, webPassword.c_str(), relayPin, totalCoinsLifetime, totalEarningsLifetime);
+        "[💾 CONFIG] Loaded NVS Config: SSID='%s', Port=%d, AdminPW='%s', RelayPin=%d, TotalCoins=%u, TotalEarnings=₱%s\n",
+        wifiSsid.c_str(), targetPort, webPassword.c_str(), relayPin, totalCoinsLifetime, earnings);
 }
 
 void flushRevenueNow() {
-    if (!revenueDirty && totalCoinsLifetime == lastSavedTotalCoins && totalEarningsLifetime == lastSavedTotalEarnings) {
+    if (!revenueDirty && totalCoinsLifetime == lastSavedTotalCoins && totalCentavosLifetime == lastSavedTotalCentavos) {
         return;
     }
     prefs.begin(NVS_NAMESPACE, false);
     prefs.putULong(NVS_KEY_TOTAL_COINS, totalCoinsLifetime);
-    prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, totalEarningsLifetime);
+    prefs.putULong(NVS_KEY_TOTAL_CENTAVOS, totalCentavosLifetime);
     prefs.end();
     lastSavedTotalCoins = totalCoinsLifetime;
-    lastSavedTotalEarnings = totalEarningsLifetime;
+    lastSavedTotalCentavos = totalCentavosLifetime;
     revenueDirty = false;
     Serial.println("[💰 VAULT] Revenue counters flushed to NVS flash.");
 }
@@ -468,10 +479,10 @@ void factoryResetDefaults() {
 
     totalCoinsLifetime = 0;
     totalCoinsSession = 0;
-    totalEarningsLifetime = 0.0f;
-    totalEarningsSession = 0.0f;
+    totalCentavosLifetime = 0;
+    totalCentavosSession = 0;
     lastSavedTotalCoins = 0;
-    lastSavedTotalEarnings = 0.0f;
+    lastSavedTotalCentavos = 0;
 
     for (int i = 0; i < 10; i++) {
         setLedHardware(true);

@@ -49,7 +49,8 @@ extern const char* const NVS_KEY_P1;
 extern const char* const NVS_KEY_P2;
 extern const char* const NVS_KEY_MATCH;
 extern const char* const NVS_KEY_TOTAL_COINS;
-extern const char* const NVS_KEY_TOTAL_EARNINGS;
+extern const char* const NVS_KEY_TOTAL_EARNINGS; // legacy float pesos, read once for migration
+extern const char* const NVS_KEY_TOTAL_CENTAVOS;
 
 // ============================================================================
 // DATA STRUCTURES
@@ -128,10 +129,10 @@ extern String quickTimeStatusMsg;
 // Revenue & Audit
 extern uint32_t totalCoinsLifetime;
 extern uint32_t totalCoinsSession;
-extern float totalEarningsLifetime;
-extern float totalEarningsSession;
+extern uint32_t totalCentavosLifetime;
+extern uint32_t totalCentavosSession;
 extern uint32_t lastSavedTotalCoins;
-extern float lastSavedTotalEarnings;
+extern uint32_t lastSavedTotalCentavos;
 extern bool revenueDirty;
 extern unsigned long lastCoinChangeTime;
 extern const unsigned long REVENUE_SAVE_DELAY_MS;

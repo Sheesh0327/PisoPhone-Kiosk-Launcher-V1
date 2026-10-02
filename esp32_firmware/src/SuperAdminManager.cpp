@@ -7,6 +7,7 @@
 #include "WebServerModule.h"
 #include "WebServerAuth.h"
 #include "SuperAdminCreds.h"
+#include "Money.h"
 #include <WebServer.h>
 #include <Preferences.h>
 
@@ -55,14 +56,14 @@ void processSuperAdminLoop() {
 
             totalCoinsLifetime = 0;
             totalCoinsSession = 0;
-            totalEarningsLifetime = 0.0f;
-            totalEarningsSession = 0.0f;
+            totalCentavosLifetime = 0;
+            totalCentavosSession = 0;
             lastSavedTotalCoins = 0;
-            lastSavedTotalEarnings = 0.0f;
+            lastSavedTotalCentavos = 0;
 
             prefs.begin(NVS_NAMESPACE, false);
             prefs.putULong(NVS_KEY_TOTAL_COINS, 0);
-            prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, 0.0f);
+            prefs.putULong(NVS_KEY_TOTAL_CENTAVOS, 0);
             prefs.end();
 
             isVaultUnmasked = false;
@@ -118,7 +119,9 @@ void handleSuperAdminUnmask() {
     json += "\"timeout_seconds\":" + String(VAULT_UNMASK_TIMEOUT_SECONDS) + ",";
     json += "\"total_coins\":" + String(totalCoinsLifetime) + ",";
     json += "\"session_coins\":" + String(totalCoinsSession) + ",";
-    json += "\"total_earnings\":" + String(totalEarningsLifetime, 2) + ",";
+    char earnings[24];
+    money::formatPesos(totalCentavosLifetime, earnings, sizeof(earnings));
+    json += "\"total_earnings\":" + String(earnings) + ",";
     json += "\"vendor_split\":" + String(vendorRevenueSplitPercent);
     json += "}";
 
@@ -134,14 +137,14 @@ void handleSuperAdminResetVault() {
 
     totalCoinsLifetime = 0;
     totalCoinsSession = 0;
-    totalEarningsLifetime = 0.0f;
-    totalEarningsSession = 0.0f;
+    totalCentavosLifetime = 0;
+    totalCentavosSession = 0;
     lastSavedTotalCoins = 0;
-    lastSavedTotalEarnings = 0.0f;
+    lastSavedTotalCentavos = 0;
 
     prefs.begin(NVS_NAMESPACE, false);
     prefs.putULong(NVS_KEY_TOTAL_COINS, 0);
-    prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, 0.0f);
+    prefs.putULong(NVS_KEY_TOTAL_CENTAVOS, 0);
     prefs.end();
 
     isVaultUnmasked = false;
