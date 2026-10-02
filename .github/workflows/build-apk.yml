@@ -54,6 +54,9 @@ jobs:
   build-and-deploy:
     name: Build APK and Push to Website
     needs: unit-tests
+    # Dependabot runs get no repository secrets (no signing key), and its branches must never publish an APK.
+    # Its pull requests are still checked by the unit tests above and by the Code quality workflow.
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
