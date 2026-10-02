@@ -135,4 +135,34 @@ class KioskSecurityUnitTest {
         KioskSecurity.applyDirectProvisioning(context, secret = "Abcd2345Efgh6789Jkmn", mac = "AA:BB:CC:DD:EE:FF")
         assertEquals("Abcd2345Efgh6789Jkmn", KioskSecurity.getSharedSecret(context))
     }
+
+    @Test
+    fun wrongPinsLockTheRemoteChannelButNotTheScreen() {
+        val context: android.content.Context = ApplicationProvider.getApplicationContext()
+        KioskSecurity.setAdminPin(context, "right-pin-93")
+        val t0 = 1_000_000L
+        repeat(5) {
+            assertEquals(KioskSecurity.PinCheck.WRONG, KioskSecurity.verifyAdminPinThrottled(context, "nope", "remote", t0))
+        }
+        // locked: even the right PIN is refused for a minute
+        assertEquals(KioskSecurity.PinCheck.LOCKED, KioskSecurity.verifyAdminPinThrottled(context, "right-pin-93", "remote", t0 + 30_000))
+        // the person at the screen is not affected by a flood of remote guesses
+        assertEquals(KioskSecurity.PinCheck.OK, KioskSecurity.verifyAdminPinThrottled(context, "right-pin-93", "local", t0 + 30_000))
+        // after the lock the right PIN works again and clears the count
+        assertEquals(KioskSecurity.PinCheck.OK, KioskSecurity.verifyAdminPinThrottled(context, "right-pin-93", "remote", t0 + 61_000))
+        repeat(4) {
+            assertEquals(KioskSecurity.PinCheck.WRONG, KioskSecurity.verifyAdminPinThrottled(context, "nope", "remote", t0 + 62_000))
+        }
+        assertEquals(KioskSecurity.PinCheck.OK, KioskSecurity.verifyAdminPinThrottled(context, "right-pin-93", "remote", t0 + 62_000))
+    }
+
+    @Test
+    fun noPinSetMeansNothingToGuess() {
+        val context: android.content.Context = ApplicationProvider.getApplicationContext()
+        repeat(10) {
+            assertEquals(KioskSecurity.PinCheck.WRONG, KioskSecurity.verifyAdminPinThrottled(context, "x", "remote", 5L))
+        }
+        KioskSecurity.setAdminPin(context, "abc-123-xyz")
+        assertEquals(KioskSecurity.PinCheck.OK, KioskSecurity.verifyAdminPinThrottled(context, "abc-123-xyz", "remote", 5L))
+    }
 }

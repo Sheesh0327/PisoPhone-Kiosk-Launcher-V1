@@ -80,7 +80,7 @@ class KioskServerCoordinator(
     override fun getSessionTimeRemaining(): Int = stateManager.sessionTimeRemaining.value
     override fun getAppState(): Int = stateManager.appState.value
 
-    override fun getAuditEventsJson(): String = kotlinx.coroutines.runBlocking {
+    override fun getAuditEventsJson(): String = com.pisophone.kiosk.util.blockingIo {
         val events = coinEventRepo.getLatestEvents(100)
         val jsonArray = JSONArray()
         for (event in events) {

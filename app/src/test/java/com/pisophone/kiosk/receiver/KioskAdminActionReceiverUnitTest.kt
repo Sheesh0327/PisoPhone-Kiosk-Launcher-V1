@@ -91,4 +91,13 @@ class KioskAdminActionReceiverUnitTest {
         receiver.onReceive(context, restart { putExtra("pin", "1234") })
         assertNull(shadowOf(context as android.app.Application).nextStartedService)
     }
+
+    @Test
+    fun guessingThePinByBroadcastIsLockedOutEvenForTheRightPin() {
+        com.pisophone.kiosk.security.KioskSecurity.setAdminPin(context, "right-pin-93")
+        repeat(5) { receiver.onReceive(context, restart { putExtra("pin", "guess") }) }
+        assertNull(shadowOf(context as android.app.Application).nextStartedService)
+        receiver.onReceive(context, restart { putExtra("pin", "right-pin-93") })
+        assertNull("the lock must hold against the correct PIN too", shadowOf(context as android.app.Application).nextStartedService)
+    }
 }

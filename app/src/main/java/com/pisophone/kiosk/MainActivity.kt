@@ -203,7 +203,7 @@ class MainActivity : ComponentActivity() {
             if (KioskActivationManager.isSetupModeActive(this)) return true
         }
         val pin = intent.getStringExtra("pin") ?: intent.getStringExtra("admin_pin")
-        if (!pin.isNullOrBlank() && KioskSecurity.verifyAdminPin(this, pin.trim())) return true
+        if (!pin.isNullOrBlank() && KioskSecurity.verifyAdminPinRemote(this, pin.trim())) return true
         // The box secret only signs traffic with the box; it never authorizes configuration changes.
         return false
     }

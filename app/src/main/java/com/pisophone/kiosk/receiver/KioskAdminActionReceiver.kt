@@ -334,7 +334,7 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
      */
     private fun isPinAuthorized(context: Context, intent: Intent): Boolean {
         val pin = intent.getStringExtra("pin") ?: intent.getStringExtra("admin_pin")
-        return !pin.isNullOrBlank() && com.pisophone.kiosk.security.KioskSecurity.verifyAdminPin(context, pin.trim())
+        return !pin.isNullOrBlank() && com.pisophone.kiosk.security.KioskSecurity.verifyAdminPinRemote(context, pin.trim())
     }
 
     /**

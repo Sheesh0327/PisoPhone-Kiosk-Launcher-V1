@@ -32,7 +32,7 @@ if grep -rn $EXCLUDE 'setInsecure' $CODE_DIRS | grep -v 'piso-allow-insecure'; t
 fi
 
 # 5. runBlocking on app code blocks threads and risks ANRs. The count may only go down (plan R2).
-MAX_RUN_BLOCKING=10
+MAX_RUN_BLOCKING=2
 n=$(grep -rn 'runBlocking' app/src/main 2>/dev/null | wc -l | tr -d ' ')
 if [ "$n" -gt "$MAX_RUN_BLOCKING" ]; then
     bad "runBlocking count is $n, above the allowed $MAX_RUN_BLOCKING"

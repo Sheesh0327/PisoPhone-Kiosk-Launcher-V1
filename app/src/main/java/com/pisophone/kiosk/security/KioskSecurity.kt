@@ -304,11 +304,46 @@ object KioskSecurity {
         getPrefs(context).edit().putString(KEY_ADMIN_PIN, newPin.trim()).apply()
     }
 
-    fun verifyAdminPin(context: Context, enteredPin: String): Boolean {
+    enum class PinCheck { OK, WRONG, LOCKED }
+
+    private val pinThrottle = PinThrottle()
+
+    /**
+     * Checks an admin PIN and slows down guessing: five wrong tries in a row lock that channel for a minute,
+     * doubling up to 15 minutes ([PinThrottle]). "local" is the on-screen PIN entry; "remote" is anything
+     * that arrives by broadcast or intent, which another app on the phone could try in a loop, so a flood of
+     * wrong remote tries never locks the person standing at the screen out.
+     */
+    @Synchronized
+    fun verifyAdminPinThrottled(
+        context: Context,
+        enteredPin: String,
+        channel: String,
+        nowMs: Long = System.currentTimeMillis(),
+    ): PinCheck {
         val storedPin = getAdminPin(context)
-        if (storedPin.isEmpty()) return false
-        return constantTimeEquals(enteredPin.trim(), storedPin)
+        if (storedPin.isEmpty()) return PinCheck.WRONG // no PIN yet: nothing to guess, nothing to count
+        val prefs = getPrefs(context)
+        val failuresKey = "pin_failures_$channel"
+        val lockKey = "pin_locked_until_$channel"
+        val state = PinThrottle.State(prefs.getInt(failuresKey, 0), prefs.getLong(lockKey, 0L))
+        if (pinThrottle.remainingLockMs(state, nowMs) > 0L) return PinCheck.LOCKED
+
+        val ok = constantTimeEquals(enteredPin.trim(), storedPin)
+        val next = if (ok) pinThrottle.onSuccess() else pinThrottle.onFailure(state, nowMs)
+        if (next != state) {
+            prefs.edit().putInt(failuresKey, next.failures).putLong(lockKey, next.lockedUntilMs).apply()
+        }
+        return if (ok) PinCheck.OK else PinCheck.WRONG
     }
+
+    /** On-screen PIN entry. */
+    fun verifyAdminPin(context: Context, enteredPin: String): Boolean =
+        verifyAdminPinThrottled(context, enteredPin, "local") == PinCheck.OK
+
+    /** PIN received by broadcast or intent from outside the screen (adb provisioning, other apps). */
+    fun verifyAdminPinRemote(context: Context, enteredPin: String): Boolean =
+        verifyAdminPinThrottled(context, enteredPin, "remote") == PinCheck.OK
 
     fun calculateHmac(data: String, key: String): String {
         val mac = Mac.getInstance("HmacSHA256")

@@ -479,8 +479,8 @@ class KioskEngine(
     }
 
     private fun startHealthMonitor() {
-        // Runs on the engine's IO scope: expiry uses blocking Room calls (runBlocking) that must
-        // never execute on the main thread. Only overlay window work hops to Main.
+        // Runs on the engine's IO scope; expiry calls the suspend database functions. Only overlay window
+        // work hops to Main.
         scope.launch(Dispatchers.IO) {
             var consecutiveUnhealthy = 0
             while (isActive) {
@@ -492,7 +492,7 @@ class KioskEngine(
                         val deadline = stateManager.sessionExpiryDeadlineMs.value
                         val nowMonotonic = android.os.SystemClock.elapsedRealtime()
                         if (deadline > 0L && nowMonotonic >= deadline) {
-                            val expiryResult = paymentRepo.expireSessionIfDueBlocking()
+                            val expiryResult = paymentRepo.expireSessionIfDue()
                             if (expiryResult.didExpire) {
                                 val applied = stateManager.applySessionUpdate(
                                     deadlineMs = expiryResult.sessionState.sessionExpiryDeadlineMs,
