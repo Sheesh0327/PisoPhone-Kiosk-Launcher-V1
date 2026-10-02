@@ -1,9 +1,9 @@
 {
-  "versionCode": 301,
-  "versionName": "1.0.301-dev",
+  "versionCode": 302,
+  "versionName": "1.0.302-dev",
   "channel": "dev",
   
-  "sha256": "83d8a9303994d36fd57250af65f24d78eef6a041ed914b8db1edeb397f62f080",
+  "sha256": "f3259711b89d926faf411ea8ea06c5c98a1ff0a014fb57cddc186b3ce460ad9e",
   "size": 1722410,
   "releaseDate": "2026-10-02"
 }
