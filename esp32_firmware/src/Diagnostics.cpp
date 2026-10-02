@@ -25,6 +25,7 @@ static uint32_t diagCounters[(size_t)DiagCounter::Count] = {0};
 static const char* diagResetReason = "UNKNOWN";
 static uint32_t diagBootCount = 0;
 static String diagResetHistory = "";
+static String diagRestartCause = ""; // set by diagNoteRestartReason() before the previous restart, "" if none
 
 static const char* resetReasonName(esp_reset_reason_t reason) {
     switch (reason) {
@@ -84,14 +85,24 @@ void diagInit() {
                 break;
             }
         }
+        diagRestartCause = store.getString("why", "");
+        store.remove("why");
         store.putUInt("boots", diagBootCount);
         store.putString("hist", history);
         store.end();
         diagResetHistory = history;
     }
 
-    diagLog("[DIAG] Boot #%u, reset reason: %s, firmware v%s", (unsigned)diagBootCount, diagResetReason,
-            PISO_FW_VERSION);
+    diagLog("[DIAG] Boot #%u, reset reason: %s%s%s, firmware v%s", (unsigned)diagBootCount, diagResetReason,
+            diagRestartCause.length() ? " / cause: " : "", diagRestartCause.c_str(), PISO_FW_VERSION);
+}
+
+void diagNoteRestartReason(const char* why) {
+    Preferences store;
+    if (store.begin(DIAG_NVS_NAMESPACE, false)) {
+        store.putString("why", why ? why : "");
+        store.end();
+    }
 }
 
 void diagLog(const char* fmt, ...) {
@@ -146,6 +157,7 @@ String diagBuildJson() {
     reset["reason"] = diagResetReason;
     reset["boots"] = diagBootCount;
     reset["history"] = diagResetHistory;
+    reset["cause"] = diagRestartCause;
 
     doc["clock_synced"] = getCurrentMasterTimeMs() > 0;
 

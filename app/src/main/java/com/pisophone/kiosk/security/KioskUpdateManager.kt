@@ -28,15 +28,43 @@ object KioskUpdateManager {
     private const val TAG = "KioskUpdate"
     private val VERSION_INFO_URL = "${BuildConfig.UPDATE_BASE_URL}/app.json"
 
-    /** What the website publishes next to the APK (written by the build workflow). */
-    data class RemoteVersion(val versionCode: Int, val sha256: String)
+    /**
+     * What the website publishes next to the APK (written by the build workflow). [url] is where the APK
+     * itself lives (a release asset); without it the APK next to app.json is used.
+     */
+    data class RemoteVersion(val versionCode: Int, val sha256: String, val url: String = "")
 
     internal fun parseRemoteVersion(json: String): RemoteVersion? = try {
         val obj = JSONObject(json)
         val code = obj.optInt("versionCode", -1)
-        if (code <= 0) null else RemoteVersion(code, obj.optString("sha256", "").lowercase())
+        if (code <= 0) {
+            null
+        } else {
+            RemoteVersion(code, obj.optString("sha256", "").lowercase(), obj.optString("url", "").trim())
+        }
     } catch (e: Exception) {
         null
+    }
+
+    /** A published checksum is mandatory: 64 hex characters. Without one the download cannot be verified. */
+    internal fun isValidSha256(value: String): Boolean = value.length == 64 && value.all { it in '0'..'9' || it in 'a'..'f' }
+
+    /** The APK is only ever fetched over HTTPS. */
+    internal fun isAllowedDownloadUrl(url: String): Boolean = url.startsWith("https://") && url.length > 12
+
+    /** SHA-256 of each certificate that signed the package; the same set means the same publisher. */
+    internal fun signingCertDigests(info: android.content.pm.PackageInfo): Set<String> {
+        val signatures: Array<android.content.pm.Signature> = (
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                info.signingInfo?.apkContentsSigners
+            } else {
+                @Suppress("DEPRECATION")
+                info.signatures
+            }
+            ) ?: return emptySet()
+        return signatures.map { sig ->
+            MessageDigest.getInstance("SHA-256").digest(sig.toByteArray()).joinToString("") { "%02x".format(it) }
+        }.toSet()
     }
 
     /** Only a strictly higher versionCode is an update; installing the same build again does nothing useful. */
@@ -108,7 +136,11 @@ object KioskUpdateManager {
                     return@launch
                 }
 
-                downloadApk(url, apkFile) { progress ->
+                val downloadUrl = remote.url.ifEmpty { url }
+                if (!isAllowedDownloadUrl(downloadUrl)) {
+                    throw IOException("Refusing to download an update from a non-HTTPS address.")
+                }
+                downloadApk(downloadUrl, apkFile) { progress ->
                     _updateState.value = UpdateState.Downloading(progress)
                 }
                 try {
@@ -147,14 +179,30 @@ object KioskUpdateManager {
         if (!hasZipHeader(apkFile)) {
             throw IOException("The downloaded file is not an APK (the server may have returned an error page).")
         }
-        if (remote.sha256.isNotEmpty() && !sha256Hex(apkFile).equals(remote.sha256, ignoreCase = true)) {
+        if (!isValidSha256(remote.sha256)) {
+            throw IOException("The published version information has no checksum, so the download cannot be verified.")
+        }
+        if (!sha256Hex(apkFile).equals(remote.sha256, ignoreCase = true)) {
             throw IOException("The downloaded APK does not match the published checksum. Try again.")
         }
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES
+        } else {
+            @Suppress("DEPRECATION")
+            android.content.pm.PackageManager.GET_SIGNATURES
+        }
         @Suppress("DEPRECATION")
-        val info = context.packageManager.getPackageArchiveInfo(apkFile.absolutePath, 0)
+        val info = context.packageManager.getPackageArchiveInfo(apkFile.absolutePath, flags)
             ?: throw IOException("The downloaded file could not be read as an Android package.")
         if (info.packageName != context.packageName) {
             throw IOException("The downloaded APK is for a different app (${info.packageName}).")
+        }
+        // Android would refuse to install over a different publisher anyway; checking first gives a clear error.
+        val installed = context.packageManager.getPackageInfo(context.packageName, flags)
+        val wanted = signingCertDigests(installed)
+        val offered = signingCertDigests(info)
+        if (wanted.isNotEmpty() && offered != wanted) {
+            throw IOException("The downloaded APK is signed by a different publisher than the installed app.")
         }
         val downloadedCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             info.longVersionCode.toInt()

@@ -24,10 +24,9 @@
 #include "FirmwareVersion.h"
 #include "Diagnostics.h"
 #include "WebServerAuth.h"
+#include "HealthPolicy.h"
 
 #define WDT_TIMEOUT_SECONDS 15
-#define DAILY_MAINTENANCE_INTERVAL_MS 86400000UL // 24 Hours
-#define MIN_SAFE_HEAP_BYTES 15000                // 15 KB Critical Heap Limit
 
 static unsigned long lastWifiCheckTime = 0;
 static unsigned long lastCloudSnapshotMs = 0;
@@ -88,29 +87,37 @@ static void initHardwareWatchdog() {
                   WDT_TIMEOUT_SECONDS);
 }
 
+static health::Monitor healthMonitor;
+
+// Looks at memory every 10 s and restarts only when HealthPolicy.h says it is needed and safe (see that file).
 static void processSystemHealthAndAutoMaintenance() {
     unsigned long now = millis();
-    if (now - lastHealthCheckMs < 10000) return; // Check every 10 seconds
+    if (now - lastHealthCheckMs < 10000) return;
     lastHealthCheckMs = now;
 
     uint32_t freeHeap = ESP.getFreeHeap();
-    bool heapCritical = (freeHeap < MIN_SAFE_HEAP_BYTES);
-    bool dailyWindowReached = (now > DAILY_MAINTENANCE_INTERVAL_MS);
+    uint32_t largestBlock = ESP.getMaxAllocHeap();
+
+    // A line every 15 minutes makes a slow leak visible in the diagnostics log long before it matters.
+    static unsigned long lastSampleMs = 0;
+    if (lastSampleMs == 0 || now - lastSampleMs >= 15UL * 60UL * 1000UL) {
+        lastSampleMs = now;
+        diagLog("[HEALTH] up %lus heap free=%u min=%u largest=%u\n", now / 1000UL, (unsigned)freeHeap,
+                (unsigned)ESP.getMinFreeHeap(), (unsigned)largestBlock);
+    }
 
     // Never restart with a coin session open or a payment that only exists in RAM.
-    if ((heapCritical || dailyWindowReached) && getCoinSlotState() == CoinSlotState::IDLE &&
-        !hasUnpersistedPayments()) {
-        if (heapCritical) {
-            diagLog("⚠️ [HEALTH GUARD] Free heap low (%u bytes < %d bytes threshold). Initiating safety reboot...\n",
-                    freeHeap, MIN_SAFE_HEAP_BYTES);
-        } else {
-            diagLog("ℹ️ [HEALTH GUARD] 24-hour uptime maintenance window reached. Initiating scheduled reboot...\n");
-        }
-        flushRevenueNow();
-        Serial.flush();
-        delay(100);
-        ESP.restart();
-    }
+    bool safe = getCoinSlotState() == CoinSlotState::IDLE && !hasUnpersistedPayments();
+    health::Action action = healthMonitor.evaluate(now, freeHeap, largestBlock, now, getCurrentMasterTimeMs(), safe);
+    if (action == health::Action::None) return;
+
+    diagLog("[HEALTH GUARD] Restarting (%s): heap free=%u largest=%u, up %lus\n", health::actionName(action),
+            (unsigned)freeHeap, (unsigned)largestBlock, now / 1000UL);
+    diagNoteRestartReason(health::actionName(action));
+    flushRevenueNow();
+    Serial.flush();
+    delay(100);
+    ESP.restart();
 }
 
 void setup() {

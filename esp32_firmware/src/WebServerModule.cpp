@@ -157,6 +157,7 @@ void setupWebServer() {
                 }
                 webServer.send(200, "text/plain", "SUCCESS");
                 delay(1000);
+                diagNoteRestartReason("firmware-update");
                 ESP.restart();
             }
         },

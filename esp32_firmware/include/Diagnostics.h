@@ -29,6 +29,10 @@ void diagLog(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 
 void diagCount(DiagCounter counter, uint32_t amount = 1);
 
+// Saves why the board is about to restart; the next boot shows it in the diagnostics (reset.cause).
+// Call right before ESP.restart().
+void diagNoteRestartReason(const char* why);
+
 String diagBuildJson();
 void handleApiDiagnostics();
 

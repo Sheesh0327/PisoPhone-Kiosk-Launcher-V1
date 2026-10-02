@@ -3,6 +3,7 @@
 
 #include "InputSafety.h"
 #include "WebServerConfig.h"
+#include "Diagnostics.h"
 #include "SecretMode.h"
 #include "WebAssetServer.h"
 #include "WebServerModule.h"
@@ -104,6 +105,7 @@ void handleReboot() {
     }
     webServer.send(200, "text/plain", "REBOOTING");
     delay(500);
+    diagNoteRestartReason("admin-reboot");
     ESP.restart();
 }
 
@@ -117,6 +119,7 @@ void handleFactoryReset() {
     factoryResetDefaults();
     webServer.send(200, "text/plain", "OK");
     delay(1000);
+    diagNoteRestartReason("factory-reset");
     ESP.restart();
 }
 

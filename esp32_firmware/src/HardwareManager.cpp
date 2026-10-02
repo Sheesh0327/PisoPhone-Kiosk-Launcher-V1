@@ -1,6 +1,7 @@
 // GPIO layer: coin acceptor interrupt (pulse counting), relay that powers the acceptor, status
 // LED and the hardware reset pin. The ISR only counts pulses; everything else runs from loop().
 
+#include "Diagnostics.h"
 #include "HardwareManager.h"
 #include "CoinSlotManager.h"
 #include "Config.h"
@@ -202,6 +203,7 @@ void processHardwareResetPin() {
                           HARDWARE_RESET_PIN);
             factoryResetDefaults();
             delay(1000);
+            diagNoteRestartReason("factory-reset-button");
             ESP.restart();
         }
     } else {
