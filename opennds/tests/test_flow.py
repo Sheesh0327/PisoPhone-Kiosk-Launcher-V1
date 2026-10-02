@@ -53,7 +53,7 @@ def calls():
 conf = f"{tmp}/coinslot.conf"
 open(conf, "w").write(
     f"GW_BOX=127.0.0.1:{BOX_PORT}\nGW_KEY={KEY}\nSTATE_DIR={STATE}\nDATA_DIR={DATA}\nNDSCTL={HERE}/fake_ndsctl.sh\n"
-    "COIN_FIRST_WAIT_SECONDS=4\nCOIN_IDLE_WAIT_SECONDS=3\nCOIN_MAX_SECONDS=12\n"
+    "ENDURANCE_BURST_SECONDS=3\nCOIN_FIRST_WAIT_SECONDS=4\nCOIN_IDLE_WAIT_SECONDS=3\nCOIN_MAX_SECONDS=12\n"
     "FAIR_USE_KB=1000\nFAIR_THROTTLE_DOWN_KBPS=2000\nFAIR_THROTTLE_UP_KBPS=1000\nFAIR_THROTTLE_MINUTES=5\nFAIR_FULL_MINUTES=2\n")
 env = dict(os.environ, FAKEBOX_CTL=CTL, FAKEBOX_LOG=LOG, FAKEBOX_KEY=KEY, COINSLOT_CONF=conf, FAKE_NDS_DIR=NDS,
            NDSCTL=f"{HERE}/fake_ndsctl.sh")
@@ -130,12 +130,16 @@ try:
     check("11 hrs 30 min" in p and "&#8369;17" in p, "result: P17 Endurance = 11 hrs 30 min")
     check("AUTHCALL" not in p, "no access before Connect")
     p = page("hidA", MAC_A, "connect", "endurance", landing="yes")
-    check("AUTHCALL sessiontimeout=690 quotas=690 2000 5000 0 0" in p, "Endurance caps 2 Mbps up / 5 Mbps down in the grant: " + p[-400:])
+    check("AUTHCALL sessiontimeout=690 quotas=690 0 0 0 0" in p, "Endurance starts with an uncapped burst: " + p[-400:])
     code = code_from(p)
     check(code is not None, "voucher code shown after paying")
     check(any(l.startswith("ack ") and sid_of("hidA") in l for l in open(LOG).read().split("\n")), "coins acknowledged on the box after access")
     check("endurance,17,690,new" in open(f"{DATA}/revenue.csv").read(), "revenue logged")
     check(nds_get(MAC_A)["STATE"] == "Authenticated", "client is authenticated")
+    check(nds_get(MAC_A)["DOWNRATE"] == "0" and "BURSTED=1" in open(f"{DATA}/vouchers/{code}").read(), "inside the burst there are no caps; voucher remembers the burst")
+    time.sleep(5)  # burst of 3 s, then the capper re-grants with the Endurance caps
+    check(nds_get(MAC_A)["UPRATE"] == "2000" and nds_get(MAC_A)["DOWNRATE"] == "5000", "after the burst: 2 Mbit/s up, 5 Mbit/s down")
+    check(nds_get(MAC_A)["STATE"] == "Authenticated", "still connected after capping")
 
     # ---- other customers cannot take these coins ------------------------------------------------------------------
     set_box(busy=False, coins_at=[0.5] * 2)
@@ -172,6 +176,30 @@ try:
     nds_client(MAC_B)  # B drops off
     p = page("hidB", MAC_B)
     check("Time left on your voucher" in p, "returning device is offered its remaining time")
+    p = page("hidB", MAC_B, "connect", "endurance", landing="yes")
+    check("quotas=" in p and re.search(r"quotas=\d+ 2000 5000 0 0", p), "reconnecting does not give a second burst: " + (re.search(r"quotas=[^-]*", p) or [""])[0])
+
+    # ---- pause once (Endurance, 10+ pesos paid) ------------------------------------------------------------------------
+    p = page("hidB", MAC_B, statusvar="authenticated")
+    check("Pause my time (once)" in p, "pause offered for a 10+ peso Endurance session")
+    p = page("hidB", MAC_B, "pausecheck", statusvar="authenticated")
+    check("only <b>once</b>" in p and "Yes, pause my time" in p, "pause asks for confirmation")
+    p = page("hidB", MAC_B, "pause", statusvar="authenticated")
+    check("Time paused" in p, "pause done: " + re.sub(r"\s+", " ", p)[-300:])
+    check(any(c == "deauth aa:bb:cc:00:00:02" for c in calls()), "the device is disconnected while paused")
+    v = open(f"{DATA}/vouchers/{code}").read()
+    check("PAUSED=1" in v and "PAUSE_USED=1" in v, "voucher records the pause")
+    nds_client(MAC_B)
+    p = page("hidB", MAC_B)
+    check("Your paused time is ready" in p and "Resume" in p, "paused time offered for resume")
+    p = page("hidB2", MAC_B, "start", "hyper")
+    check("still have Endurance time" in p, "no plan switching while paused time exists")
+    p = page("hidB", MAC_B, "connect", "endurance", landing="yes")
+    check(re.search(r"quotas=7[12]\d 2000 5000 0 0", p) is not None, "resume restores the frozen time with Endurance caps: " + (re.search(r"quotas=[^-]*", p) or [""])[0])
+    p = page("hidB", MAC_B, statusvar="authenticated")
+    check("Pause my time" not in p, "the pause is offered only once")
+    p = page("hidB", MAC_B, "pause", statusvar="authenticated")
+    check("already used your one pause" in p, "a second pause is refused")
 
     # ---- HyperSpeed: no caps, then fair use -------------------------------------------------------------------------
     nds_client(MAC_C)
@@ -199,9 +227,22 @@ try:
 
     # ---- Endurance is never fair-use throttled -------------------------------------------------------------------------
     before = len(calls())
-    nds_client(MAC_B, STATE="Authenticated", SESSION_END=int(time.time()) + 3000, DL=9999999, UL=9999999)
+    nds_client(MAC_B, STATE="Authenticated", SESSION_END=int(time.time()) + 3000, DL=9999999, UL=9999999, UPRATE=2000, DOWNRATE=5000)
     listener("fairuse-once")
-    check(not any("00:02" in c and c.startswith("auth") for c in calls()[before:]), "Endurance clients are not throttled")
+    check(not any("00:02" in c and c.startswith("auth") for c in calls()[before:]), "Endurance clients are not fair-use throttled")
+    nds_client(MAC_B, STATE="Authenticated", SESSION_END=int(time.time()) + 3000, UPRATE=0, DOWNRATE=0)
+    listener("fairuse-once")
+    check(any(re.match(r"auth aa:bb:cc:00:00:02 \d+ 2000 5000 0 0", c) for c in calls()[before:]), "safety net: an uncapped Endurance session is capped after its burst")
+
+    # ---- small Endurance purchases cannot pause ------------------------------------------------------------------------
+    MAC_D = "aa:bb:cc:00:00:04"
+    nds_client(MAC_D)
+    pay("hidD1", MAC_D, "endurance", 5)
+    page("hidD1", MAC_D, "connect", "endurance", landing="yes")
+    p = page("hidD1", MAC_D, statusvar="authenticated")
+    check("Pause my time" not in p, "no pause for Endurance purchases under 10 pesos")
+    p = page("hidD1", MAC_D, "pause", statusvar="authenticated")
+    check("only available" in p, "pause refused for a 5 peso Endurance session")
 
     # ---- zero coins, busy slot, offline -----------------------------------------------------------------------------
     nds_client(MAC_C)
@@ -231,6 +272,49 @@ try:
         time.sleep(0.5)
     took = time.time() - t0
     check(st["pulses"] == 1 and 5.0 <= took <= 12.0, f"window extended after a coin (took {took:.1f}s, pulses {st['pulses']})")
+
+    # ---- browser: the waiting page updates itself and plays a coin sound (headless Chrome; skipped if none) ---------------
+    import shutil, threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from urllib.parse import parse_qs, urlparse
+    chrome = os.environ.get("CHROME") or next((c for c in [shutil.which(x) for x in ("google-chrome", "chromium", "chromium-browser")] + glob.glob("/opt/pw-browsers/chromium-*/chrome-linux/chrome") if c), None)
+    if chrome:
+        nds_client("aa:bb:cc:00:00:09")
+        set_box(busy=False, coins_at=[])
+        hits = {"wait": 0}
+
+        class Portal(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                q = {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()}
+                act = q.get("coinact", "")
+                html = page("hidJS", "aa:bb:cc:00:00:09", act, q.get("coinplan", ""))
+                if act == "wait":  # the first reload still shows 0 pesos; later polls show that 2 coins arrived
+                    hits["wait"] += 1
+                    if hits["wait"] > 1:
+                        html = html.replace('id="pes">&#8369;0<', 'id="pes">&#8369;2<')
+                body = html.encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.end_headers()
+                try:
+                    self.wfile.write(body)
+                except BrokenPipeError:  # Chrome abandons requests when it exits
+                    pass
+
+        srv = ThreadingHTTPServer(("127.0.0.1", 18100), Portal)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        r = subprocess.run([chrome, "--headless=new", "--no-sandbox", "--disable-gpu", "--autoplay-policy=no-user-gesture-required",
+                            "--virtual-time-budget=7000", "--dump-dom",
+                            "http://127.0.0.1:18100/opennds_preauth/?fas=ABC&coinact=start&coinplan=endurance"],
+                           capture_output=True, text=True, timeout=90)
+        srv.shutdown()
+        check('id="pes">\u20b12<' in r.stdout, "waiting page updated its coin count by itself")
+        check('data-dings="1"' in r.stdout, "a new coin played the coin sound once")
+    else:
+        print("skipped: no Chrome/Chromium found for the browser test")
 
     # ---- reports and hardening ---------------------------------------------------------------------------------------
     rep = listener("report", "7")

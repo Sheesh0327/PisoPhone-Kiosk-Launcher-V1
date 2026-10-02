@@ -53,6 +53,7 @@ header() {
 	refreshtag=""
 	if [ -n "$REFRESH" ]; then
 		refreshtag="<meta http-equiv=\"refresh\" content=\"${REFRESH%% *}; url=/opennds_preauth/?fas=$(fas_urlsafe)&coinact=${REFRESH##* }&coinplan=$coinplan\">"
+		[ "$PAGE" = "wait" ] && refreshtag="<noscript>$refreshtag</noscript>"   # with scripts on, the wait page updates itself
 	fi
 	cat << HTML
 <!DOCTYPE html>
@@ -93,6 +94,7 @@ button{font:inherit}
 .bar i{display:block;height:100%;background:var(--h)}
 .code{font:700 28px/1.2 ui-monospace,Menlo,Consolas,monospace;letter-spacing:3px;text-align:center;background:var(--card);border:2px dashed var(--line);border-radius:12px;padding:12px;margin:12px 0}
 .msg{background:var(--card);border-left:4px solid var(--bad);border-radius:8px;padding:12px 14px;margin:12px 0}
+.snd{display:block;margin:10px auto 0;padding:7px 14px;border:1px solid var(--line);border-radius:20px;background:transparent;color:var(--mut);font-size:13px;cursor:pointer}
 a{color:var(--mut)}
 input[type=text]{width:100%;padding:13px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--fg);font:600 20px ui-monospace,Menlo,Consolas,monospace;text-align:center;text-transform:uppercase;letter-spacing:3px}
 .foot{text-align:center;font-size:12px;color:var(--mut);margin-top:22px}
@@ -129,7 +131,7 @@ choose_page() {
 	sid=$(coinslot_sid); mac="$clientmac"
 	info=$(coinslot /info)
 	if [ -z "$info" ]; then PAGE="unavailable"; return; fi
-	infoidle=$(printf '%s' "$info" | jget idle); infofirst=$(printf '%s' "$info" | jget first)
+	infoidle=$(printf '%s' "$info" | jget idle); infofirst=$(printf '%s' "$info" | jget first); pausehours=$(printf '%s' "$info" | jget pause_hours)
 	case "$coinplan" in endurance) ;; *) coinplan="hyper" ;; esac
 
 	if [ "$status" = "authenticated" ] && [ -z "$coinact" ]; then PAGE="status"; return; fi
@@ -156,6 +158,10 @@ choose_page() {
 			else
 				PAGE="counting"; REFRESH="2 finish"
 			fi ;;
+		pausecheck) PAGE="pausecheck" ;;
+		pause)
+			pres=$(coinslot "/pause?mac=$mac")
+			if [ "$(printf '%s' "$pres" | jget success)" = "true" ]; then PAGE="paused"; else PAGE="pauseerr"; perr=$(printf '%s' "$pres" | jget error); fi ;;
 		vform) PAGE="voucherform" ;;
 		voucher)
 			vgrant=$(coinslot "/voucher?sid=$sid&mac=$mac&code=$vcode")
@@ -197,6 +203,9 @@ generate_splash_sequence() {
 		result) page_result ;;
 		status) page_status ;;
 		voucherform) page_voucherform ;;
+		pausecheck) page_pausecheck ;;
+		paused) page_paused ;;
+		pauseerr) page_pauseerr ;;
 		unavailable) page_unavailable ;;
 		*) page_welcome ;;
 	esac
@@ -213,7 +222,7 @@ tier_rows() {
 page_welcome() {
 	hchk=""; echk=""; [ "$coinplan" = "endurance" ] && echk="checked" || hchk="checked"
 	edown=$(($(printf '%s' "$info" | jget e_down) / 1000)); eup=$(($(printf '%s' "$info" | jget e_up) / 1000))
-	fair=$(printf '%s' "$info" | jget fair_gb)
+	fair=$(printf '%s' "$info" | jget fair_gb); burst=$(printf '%s' "$info" | jget burst); pausepesos=$(printf '%s' "$info" | jget pause_pesos)
 	cat << HTML
 <p class="sub">Wi-Fi rates &middot; Presyo ng Wi-Fi</p>
 <form action="/opennds_preauth/" method="get"><input type="hidden" name="fas" value="$fas">
@@ -224,7 +233,7 @@ page_welcome() {
 $(tier_rows hyper)
 </span></label>
 <label class="plan e"><input type="radio" name="coinplan" value="endurance" $echk>
-<span class="card"><b>&#9203; Endurance</b><small>Up to $edown Mbps down / $eup Mbps up &middot; Mas matagal</small>
+<span class="card"><b>&#9203; Endurance</b><small>Up to $edown Mbps down / $eup Mbps up &middot; Mas matagal<br>$burst s full-speed boost at the start &middot; Pause once on &#8369;$pausepesos+</small>
 $(tier_rows endurance)
 </span></label>
 </div>
@@ -239,14 +248,42 @@ page_wait() {
 	pesos=$(printf '%s' "$cst" | jget pulses); mins=$(printf '%s' "$cst" | jget minutes); left=$(printf '%s' "$cst" | jget remaining)
 	total="$infofirst"; [ "${pesos:-0}" -gt 0 ] && total="$infoidle"
 	pct=$(( ${left:-0} * 100 / ${total:-30} )); [ "$pct" -gt 100 ] && pct=100; [ "$pct" -lt 0 ] && pct=0
+	echo "<p class=\"sub\">$(plan_name "$coinplan") &middot; Insert coin(s) now &middot; Maglagay ng barya</p>"
+	echo '<div id="wait">'
 	cat << HTML
-<p class="sub">$(plan_name "$coinplan") &middot; Insert coin(s) now &middot; Maglagay ng barya</p>
-<div class="big">&#8369;${pesos:-0}</div>
-<p class="mut">= $(fmt_min "${mins:-0}") of Wi-Fi</p>
-<div class="bar"><i style="width:${pct}%"></i></div>
-<p class="mut">${left:-0}s left &middot; the timer restarts with every coin</p>
+<div class="big" id="pes">&#8369;${pesos:-0}</div>
+<p class="mut">= <span id="mins">$(fmt_min "${mins:-0}")</span> of Wi-Fi</p>
+<div class="bar"><i id="bar" style="width:${pct}%"></i></div>
+<p class="mut"><span id="left">${left:-0}</span>s left &middot; the timer restarts with every coin</p>
 HTML
 	if [ "${pesos:-0}" -gt 0 ]; then action_button "Connect now" finish; else action_button "Cancel" finish alt; fi
+	echo '</div>'
+	# Live updates and a coin sound (Web Audio: no sound files to download). Browsers only allow sound after a tap, so a
+	# small button turns it on. Without scripts the page falls back to a plain reload (see header()).
+	waiturl="/opennds_preauth/?fas=$(fas_urlsafe)&coinact=wait&coinplan=$coinplan"
+	cat << HTML
+<button class="snd" id="snd" type="button">&#128276; Tap for coin sound</button>
+<script>
+(function(){
+var url="$waiturl",pes=${pesos:-0},ctx=null,b=document.getElementById("snd");
+function tone(f,t,d){var o=ctx.createOscillator(),g=ctx.createGain();o.type="triangle";o.frequency.value=f;
+g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.35,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+d);
+o.connect(g);g.connect(ctx.destination);o.start(t);o.stop(t+d+.05)}
+function ding(n){if(!ctx||ctx.state!=="running")return;var t=ctx.currentTime;n=Math.min(n,4);document.body.setAttribute("data-dings",(+document.body.getAttribute("data-dings")||0)+1);
+for(var i=0;i<n;i++){tone(988,t+i*.22,.12);tone(1319,t+i*.22+.1,.3)}}
+function on(){var A=window.AudioContext||window.webkitAudioContext;if(!A)return;ctx=ctx||new A();ctx.resume();
+b.style.display="none";ding(1)}
+b.onclick=on;
+try{var A=window.AudioContext||window.webkitAudioContext;if(A){ctx=new A();setTimeout(function(){if(ctx.state==="running")b.style.display="none"},50)}}catch(e){}
+function poll(){var x=new XMLHttpRequest();x.open("GET",url);x.onload=function(){
+var d=new DOMParser().parseFromString(x.responseText,"text/html"),n=d.getElementById("wait");
+if(!n){location.reload();return}
+var w=document.getElementById("wait");w.innerHTML=n.innerHTML;
+var p=parseInt((d.getElementById("pes").textContent||"").replace(/[^0-9]/g,""),10)||0;
+if(p>pes)ding(p-pes);pes=p};x.send()}
+setInterval(poll,2000)})();
+</script>
+HTML
 }
 
 page_counting() {
@@ -298,9 +335,10 @@ page_result() {
 		return
 	fi
 	label="Connect"; [ "$cmode" = "topup" ] && label="Add time"
+	cpaused=$(printf '%s' "$claim" | jget paused); [ "$cpaused" = "1" ] && label="Resume"
 	case "$kind" in
 		coins) what="&#8369;$cpes = $(fmt_min "$cadd")"; [ "$cmin" -gt "$cadd" ] && what="$what + $(fmt_min $((cmin - cadd))) you still had" ;;
-		*) what="Time left on your voucher" ;;
+		*) what="Time left on your voucher"; [ "$cpaused" = "1" ] && what="Your paused time is ready" ;;
 	esac
 	cat << HTML
 <p class="sub">$(plan_name "$cplan") &middot; Thank you! &middot; Salamat!</p>
@@ -314,7 +352,7 @@ HTML
 page_status() {
 	me=$(coinslot "/me?mac=$mac")
 	left=$(printf '%s' "$me" | jget remaining); splan=$(printf '%s' "$me" | jget plan); code=$(printf '%s' "$me" | jget voucher)
-	thr=$(printf '%s' "$me" | jget throttled); used=$(printf '%s' "$me" | jget used_mb)
+	thr=$(printf '%s' "$me" | jget throttled); used=$(printf '%s' "$me" | jget used_mb); canpause=$(printf '%s' "$me" | jget can_pause)
 	[ "${left:-0}" -lt 0 ] && left=0
 	coinplan="${splan:-hyper}"
 	cat << HTML
@@ -326,6 +364,7 @@ HTML
 	[ "$splan" = "hyper" ] && echo "<p class=\"mut\">Data used: ${used:-0} MB</p>"
 	[ -n "$code" ] && echo "<p class=\"mut\">Your voucher code (use it to reconnect any device):</p><div class=\"code\">$code</div>"
 	action_button "Add time &middot; Dagdagan" start
+	[ "$canpause" = "true" ] && action_button "Pause my time (once)" pausecheck alt
 	cat << HTML
 <script>var s=${left:-0},e=document.getElementById("t");setInterval(function(){if(s>0)s--;var h=Math.floor(s/3600),m=Math.floor(s%3600/60);e.textContent=(h?h+" hr ":"")+m+" min "+(s%60)+" s"},1000)</script>
 HTML
@@ -371,12 +410,44 @@ landing_page() {
 <p class="mut">Save your voucher code. It restores your time on any device:</p>
 <div class="code">$code</div>
 <a class="btn alt" style="text-decoration:none;text-align:center" href="http://$gatewayfqdn/?$randquery">Continue</a>
+<script>try{var A=window.AudioContext||window.webkitAudioContext,c=new A();c.resume();setTimeout(function(){if(c.state==="running"){[523,659,784,1047].forEach(function(f,i){var o=c.createOscillator(),g=c.createGain(),t=c.currentTime+i*.12;o.type="triangle";o.frequency.value=f;g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.3,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+.3);o.connect(g);g.connect(c.destination);o.start(t);o.stop(t+.35)})}},60)}catch(e){}</script>
 HTML
 	else
 		echo '<div class="msg"><b>We could not start your session.</b><br>Your coins are safe. Tap Try again; if it keeps failing, ask the attendant.</div>'
 		coinplan="${cplan:-hyper}"; action_button "Try again" start alt
 	fi
 	footer
+}
+
+page_pausecheck() {
+	me=$(coinslot "/me?mac=$mac"); left=$(printf '%s' "$me" | jget remaining)
+	cat << HTML
+<p class="sub">Pause your time &middot; I-pause ang oras</p>
+<div class="big">$(fmt_min $(( ${left:-0} / 60 )))</div>
+<p class="mut">would be saved. You can pause only <b>once</b> and must resume within $(( ${pausehours:-72} )) hours. Your device disconnects until you resume.</p>
+HTML
+	action_button "Yes, pause my time" pause
+	action_button "Keep using Wi-Fi" "" alt
+}
+
+page_paused() {
+	pleft=$(printf '%s' "$pres" | jget left); pcode=$(printf '%s' "$pres" | jget voucher)
+	cat << HTML
+<p class="sub">Time paused &middot; Naka-pause ang oras</p>
+<div class="big">$(fmt_min $(( (${pleft:-0} + 59) / 60 )))</div>
+<p class="mut">saved. To continue, join this Wi-Fi again and tap <b>Resume</b> (or use your voucher code on any device):</p>
+<div class="code">$pcode</div>
+HTML
+}
+
+page_pauseerr() {
+	case "$perr" in
+		ALREADY_USED) m="You already used your one pause." ;;
+		NOT_ELIGIBLE) m="Pause is only available for Endurance time of &#8369;10 or more." ;;
+		*) m="Could not pause right now. Please try again." ;;
+	esac
+	echo "<div class=\"msg\"><b>$m</b></div>"
+	action_button "Back" "" alt
 }
 
 display_terms() {

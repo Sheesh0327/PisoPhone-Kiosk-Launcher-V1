@@ -8,7 +8,8 @@ load() { STATE=""; SESSION_END=0; DL=0; UL=0; UPRATE=0; DOWNRATE=0; [ -r "$D/$1"
 save() { printf 'STATE=%s\nSESSION_END=%s\nDL=%s\nUL=%s\nUPRATE=%s\nDOWNRATE=%s\n' "$STATE" "$SESSION_END" "$DL" "$UL" "$UPRATE" "$DOWNRATE" > "$D/$1"; }
 client_json() {  # client_json <mackey> <mac>
   load "$1"
-  printf '  "mac":"%s",\n  "session_start":"0",\n  "session_end":"%s",\n  "last_active":"0",\n  "token":"t",\n  "state":"%s",\n  "custom":"none",\n  "download_this_session":"%s",\n  "download_session_avg":"0.00",\n  "upload_this_session":"%s",\n  "upload_session_avg":"0.00"\n' "$2" "$SESSION_END" "$STATE" "$DL" "$UL"
+  _dr="$DOWNRATE"; [ "$_dr" = 0 ] && _dr=null
+  printf '  "mac":"%s",\n  "session_start":"0",\n  "session_end":"%s",\n  "last_active":"0",\n  "token":"t",\n  "state":"%s",\n  "custom":"none",\n  "download_rate_limit_threshold":"%s",\n  "download_this_session":"%s",\n  "download_session_avg":"0.00",\n  "upload_this_session":"%s",\n  "upload_session_avg":"0.00"\n' "$2" "$SESSION_END" "$STATE" "$_dr" "$DL" "$UL"
 }
 echo "$*" >> "$D/calls.log"
 case "$1" in
