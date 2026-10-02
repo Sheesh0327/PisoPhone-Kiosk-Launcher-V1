@@ -36,5 +36,5 @@ Keystore key itself is lost the phone treats the secret as not set: re-provision
 Report it with `adb logcat -s KioskSecurity`.
 
 ## 5. Left for later hardening sessions (not needed to see it work)
-Per-phone key exchange and AES-GCM; removing the phone's HTTP port; NVS encryption on sold units; admin PIN in the
-Keystore; `esp_http_server`; splitting the large Android classes; sold-unit eFuse practice; HIL bench and 72 h soak.
+Per-phone key exchange and AES-GCM; removing the phone's HTTP port; NVS encryption on sold units;
+`esp_http_server`; splitting the large Android classes; sold-unit eFuse practice; HIL bench and 72 h soak.
