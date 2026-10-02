@@ -102,11 +102,30 @@ only sustained heavy use is limited. This applies to all clients; HyperSpeed has
 ```
 (`restart` can print "Command failed: Not found" when openNDS was not running; `stop` then `start` avoids that.)
 
+### Layout A: the box is on the modem's network, not behind this router
+The router reaches the box through its WAN port, so the box's address comes from the modem and may change. Two
+things keep this working:
+
+1. Reserve the box's address in the modem if it lets you (DHCP reservation). Many ISP modems do not.
+2. If the box stops answering at `GW_BOX`, the listener asks for it itself: it broadcasts the box's own discovery
+   probe (UDP 8888) and remembers the answer in `/tmp/coinslot/box_addr`, at most once every 30 seconds. Add to
+   `/etc/coinslot.conf`:
+```
+GW_BOX_MAC=AA:BB:CC:DD:EE:FF   # the box's MAC (shown on its dashboard); only that box is accepted
+DISCOVER_IFACE=wan             # the interface facing the modem; leave out if it works without
+```
+Needs `socat` (already installed in step 3). Check with `/usr/bin/coinslot-listener.sh box`: it prints which
+box it uses and whether it answers. No firewall change is needed: the router starts every connection to the box.
+
+Limit: the discovery answer is not signed, so another device on the modem's network could point the router at
+itself. Set `GW_BOX_MAC` and, where the modem allows it, reserve the address; set `GW_DISCOVER=0` to turn discovery off.
+
 ## 9. Check each piece
 ```
 curl http://127.0.0.1:8099/info                       # expect {"first":30,"idle":15,"max":115,...}
 /usr/bin/coinslot-listener.sh minutes endurance 17    # expect 690 (11 hrs 30 min)
 curl http://<box-ip>/api/gateway/challenge            # expect {"nonce":"..."}
+/usr/bin/coinslot-listener.sh box                     # expect: box <ip> answers
 uci show opennds | grep -E "login_option|themespec|bursting"   # expect the login/theme lines and both bursting lines
 ndsctl status                                         # openNDS is running
 ```
