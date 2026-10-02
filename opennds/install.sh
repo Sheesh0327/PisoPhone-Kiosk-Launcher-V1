@@ -53,6 +53,12 @@ if [ -z "$NO_PKG" ]; then
 		echo "openNDS is not installed: installing it (with its own dependencies)..."
 		opkg install opennds || die "could not install opennds"
 	fi
+	# openNDS serves its portal through libmicrohttpd. The opennds package normally depends on it, but an
+	# openNDS installed by hand may not have it, so make sure one variant is present.
+	if ! opkg list-installed 2>/dev/null | grep -q '^libmicrohttpd'; then
+		echo "libmicrohttpd (openNDS web server library) is missing: installing it..."
+		opkg install libmicrohttpd-no-ssl || opkg install libmicrohttpd || die "could not install libmicrohttpd"
+	fi
 	echo "Installing packages (socat, openssl-util, curl)..."
 	opkg install socat openssl-util curl || die "could not install socat/openssl-util/curl"
 fi
