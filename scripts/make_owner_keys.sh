@@ -7,9 +7,21 @@
 #
 # It refuses to overwrite an existing key, keeps the key out of the repository, writes the PUBLIC key into
 # esp32_firmware/include/LicensePubKey.h, and proves the key works by signing and checking a test license.
+#
+# GitHub-secret mode (key never saved as a file on your computer):
+#   sh scripts/make_owner_keys.sh --github-secret
+# prints the private key ONCE as a single base64 line to paste into the repository secret OWNER_SIGNING_KEY_B64.
+# GitHub secrets cannot be read back, so also keep one offline copy of that line (password manager).
 set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-KEY="${1:-$HOME/pisophone_license_key.pem}"
+MODE=file
+if [ "$1" = "--github-secret" ]; then MODE=secret; shift; fi
+if [ "$MODE" = secret ]; then
+  TMPDIR_KEY="$(mktemp -d)"; chmod 700 "$TMPDIR_KEY"; trap 'rm -rf "$TMPDIR_KEY"' EXIT
+  KEY="$TMPDIR_KEY/key.pem"
+else
+  KEY="${1:-$HOME/pisophone_license_key.pem}"
+fi
 HEADER="${PUBKEY_HEADER:-$ROOT/esp32_firmware/include/LicensePubKey.h}"
 
 case "$(cd "$(dirname "$KEY")" 2>/dev/null && pwd)/$(basename "$KEY")" in
@@ -24,6 +36,24 @@ chmod 600 "$KEY"
 # Self-test: sign a license for a dummy box and make sure a token is produced.
 TOKEN=$(python3 "$ROOT/scripts/generate_license.py" issue --private "$KEY" --mac AA:BB:CC:DD:EE:FF --slots 1 | tail -n 1)
 case "$TOKEN" in PISOLIC1.*) echo "Self-test passed (signed a test license)." ;; *) echo "Self-test FAILED" >&2; exit 1 ;; esac
+
+if [ "$MODE" = secret ]; then
+  B64=$(python3 -c "import base64,sys;print(base64.b64encode(open(sys.argv[1],'rb').read()).decode())" "$KEY")
+  cat <<EOT
+
+Public key written to $HEADER (commit this file).
+
+PRIVATE KEY, shown once. In GitHub: Settings > Secrets and variables > Actions > New repository secret,
+name  OWNER_SIGNING_KEY_B64   value (the whole line):
+
+$B64
+
+Also save that line in a password manager NOW: GitHub secrets cannot be read back, and the key is deleted from
+this computer when the script ends. Then clear your terminal scrollback.
+Next: git add esp32_firmware/include/LicensePubKey.h && git commit -m "Install owner public key", then rebuild and flash the boxes.
+EOT
+  exit 0
+fi
 
 cat <<EOT
 

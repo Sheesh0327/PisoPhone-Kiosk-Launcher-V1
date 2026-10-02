@@ -33,3 +33,17 @@ Coin transaction ids are now `tx-b<boot>-<n>-<random>`: a boot counter kept in f
 random bits (`TxId.h`). They no longer depend on the phone clock, and two coins never share an id, so the phone's
 "already credited" check can never swallow a new coin. The phone and the box already keep the payment durably
 (box: flash queue retried until acknowledged; phone: one database transaction for receipt plus time).
+
+## Keeping the owner key in a GitHub secret
+
+`sh scripts/make_owner_keys.sh --github-secret` (run on your own computer) prints the private key once as one base64
+line for the repository secret `OWNER_SIGNING_KEY_B64`, writes only the public key into the firmware header, and
+leaves no key file behind. Things to know:
+
+- GitHub secrets **cannot be read back**. Keep the same line in a password manager too; lose both and no box can take
+  a new license or update.
+- Any workflow that can read the secret can sign anything. Use it only in workflows that run on your own branch
+  (`push` or `workflow_dispatch`), never on `pull_request` from forks, and prefer a protected Environment so the
+  secret is released only to `main`. Do not echo it; write it to a temp file, sign, then delete the file.
+- In a workflow: `echo "$OWNER_SIGNING_KEY_B64" | base64 -d > "$RUNNER_TEMP/key.pem"`, then
+  `python3 scripts/sign_firmware.py --private "$RUNNER_TEMP/key.pem" ...`, then `rm -f "$RUNNER_TEMP/key.pem"`.
