@@ -126,6 +126,7 @@ void handleGetConfig() {
 }
 
 void handleCrashReport() {
+    if (!checkAdminAuth()) return;
     String body = webServer.arg("plain");
     Serial.printf("\n[⚠️ CRASH REPORT FROM CLIENT]\n%s\n", body.c_str());
     webServer.send(200, "text/plain", "OK");

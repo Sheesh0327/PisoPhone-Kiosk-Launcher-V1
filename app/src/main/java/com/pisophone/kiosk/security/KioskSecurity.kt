@@ -310,6 +310,16 @@ object KioskSecurity {
         return calculateHmac("$deviceId:$ts", secret)
     }
 
+    /**
+     * Signature for the ESP32 coin-slot calls (arm / unarm / ack). Binds the action, device,
+     * timestamp and (for ack) the transaction id so a captured request cannot be reused for another
+     * action or payment. Must match coinslotSignature() in esp32_firmware WebServerApi.cpp.
+     */
+    fun signCoinslotRequest(action: String, deviceId: String, ts: String, txId: String, secret: String): String {
+        val payload = "v1:$action:$deviceId:$ts" + if (txId.isNotEmpty()) ":$txId" else ""
+        return calculateHmac(payload, secret)
+    }
+
     fun getAesKeySpec(secret: String): SecretKeySpec {
         val md = MessageDigest.getInstance("SHA-256")
         val keyBytes = md.digest(secret.toByteArray(Charsets.UTF_8))

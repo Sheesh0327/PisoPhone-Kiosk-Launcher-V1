@@ -18,3 +18,14 @@ Android and firmware. Rebuild the firmware with `pio run` and sideload the APK f
 
 ## Rollback
 Revert the Phase 4 commit; no stored data changed.
+
+## Follow-up: signed coin-slot calls, backups, crash report
+- `/api/coinslot/arm|unarm|ack` now carry `ts` + `sig` (HMAC of the shared secret over
+  `v1:<action>:<device>:<ts>[:<tx>]`). A wrong signature is always refused. Unsigned calls from
+  old app builds are still served and counted in diagnostics (`[AUTH] Unsigned ...`) while
+  `PISO_REQUIRE_SIGNED_COINSLOT` is 0. Once every phone runs the new app, build with
+  `-DPISO_REQUIRE_SIGNED_COINSLOT=1`. Replays are limited to the +/-5 minute window.
+- `/crash_report` requires admin Basic auth (the app never used it).
+- `allowBackup` is off, so app data can no longer be pulled with adb/cloud backup.
+- Hardware test: pay a coin with the new app and new firmware (arm, coin, ack all succeed). With
+  curl, send `/api/coinslot/ack` with a bad `sig`: expect 403 and a `[AUTH] Rejected` log line.
