@@ -139,7 +139,7 @@ plan_up() { case "$1" in endurance) echo "$ENDURANCE_UP_KBPS" ;; *) echo 0 ;; es
 plan_down() { case "$1" in endurance) echo "$ENDURANCE_DOWN_KBPS" ;; *) echo 0 ;; esac; }
 
 # ---------------------------------------------------------------------------
-# The box (gateway API, see docs/overhaul/gateway-coinslot-api.md)
+# The box (gateway API, see docs/api/gateway-coinslot.md)
 # ---------------------------------------------------------------------------
 # call <sid> <action> [extra query]: fetch a one-time nonce, sign, send; prints the box's JSON.
 box_addr() { cat "$STATE_DIR/box_addr" 2>/dev/null || printf '%s' "$GW_BOX"; }

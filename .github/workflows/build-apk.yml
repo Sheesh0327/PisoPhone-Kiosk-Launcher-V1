@@ -157,7 +157,7 @@ jobs:
           echo "Generated APK SHA-256: $SHA ($SIZE bytes)"
 
           # The APK goes to a separate PUBLIC releases repository (this repository is private, and phones
-          # cannot log in to download from it). Needs the RELEASES_TOKEN secret; see docs/RELEASES.md.
+          # cannot log in to download from it). Needs the RELEASES_TOKEN secret; see docs/DEPLOY.md.
           URL=""
           if [ -n "$RELEASES_TOKEN" ]; then
             CHANNEL="${{ steps.channel.outputs.channel }}"
@@ -176,7 +176,7 @@ jobs:
               -q '[.[] | select(.tagName | startswith("app-dev-"))] | sort_by(.createdAt) | reverse | .[20:] | .[].tagName' \
               | xargs -r -n1 env GH_TOKEN="$RELEASES_TOKEN" gh release delete --repo "$RELEASES_REPO" --cleanup-tag --yes || true
           else
-            echo "::warning::RELEASES_TOKEN is not set: the APK is committed to website/update instead (see docs/RELEASES.md)."
+            echo "::warning::RELEASES_TOKEN is not set: the APK is committed to website/update instead (see docs/DEPLOY.md)."
           fi
 
           # Phones running a build from before the 'url' field existed still download website/update/app-release.apk,
