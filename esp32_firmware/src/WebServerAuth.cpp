@@ -1,3 +1,7 @@
+// HTTP authentication for the web server. Admin pages use Basic auth (operator "admin" or
+// "superadmin") with per-client lockout after repeated failures; phone telemetry uses signed requests.
+// Also hosts the background AuthWorker task that sends encrypted, signed commands to phones.
+
 #include "WebServerAuth.h"
 #include "PaymentQueueManager.h"
 #include "WebServerModule.h"

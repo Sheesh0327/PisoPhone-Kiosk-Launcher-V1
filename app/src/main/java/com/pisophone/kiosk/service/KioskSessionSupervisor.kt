@@ -9,6 +9,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
+/**
+ * Ticks the paid session once per second: counts the remaining time down, persists a checkpoint
+ * so a crash or reboot restores the session, and locks the kiosk when time runs out
+ * (see [SessionRules.afterExpiry]). [isStalled] lets the watchdog detect a stuck loop.
+ */
 class KioskSessionSupervisor(
     private val context: Context,
     private val scope: CoroutineScope,

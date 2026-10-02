@@ -1,3 +1,6 @@
+// WebSocket link to game controllers: handshake with credential check and delivery of payment
+// events to the controller that owns the coin slot.
+
 #include "ControllerWebSocket.h"
 #include "CoinSlotManager.h"
 #include "PaymentQueueManager.h"

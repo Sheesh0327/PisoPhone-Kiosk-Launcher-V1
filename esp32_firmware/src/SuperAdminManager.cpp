@@ -1,3 +1,6 @@
+// Super-admin features: vault unmask with a 5-minute auto-reset, revenue split and vault reset.
+// The password itself is managed remotely (SuperAdminCreds.cpp); there is no local change option.
+
 #include "SuperAdminManager.h"
 #include "SuperAdminTemplate.h"
 #include "Config.h"

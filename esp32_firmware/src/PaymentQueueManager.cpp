@@ -1,3 +1,8 @@
+// Durable queue of coin payments that the phone (or controller) has not acknowledged yet.
+// A coin is enqueued the moment it is detected, persisted to NVS, pushed to the target, and then
+// retried every 10 s until acknowledged or expired. Arming is refused while storage is unwritable or
+// the queue is nearly full, so a coin is never accepted that cannot be recorded.
+
 #include "PaymentQueueManager.h"
 #include "ControllerWebSocket.h"
 #include "DeviceNetwork.h"

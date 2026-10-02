@@ -1,3 +1,6 @@
+// GPIO layer: coin acceptor interrupt (pulse counting), relay that powers the acceptor, status
+// LED and the hardware reset pin. The ISR only counts pulses; everything else runs from loop().
+
 #include "HardwareManager.h"
 #include "CoinSlotManager.h"
 #include "Config.h"

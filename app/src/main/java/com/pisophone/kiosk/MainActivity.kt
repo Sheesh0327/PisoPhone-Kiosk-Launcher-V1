@@ -33,6 +33,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/**
+ * The kiosk launcher activity. Keeps the device in lock-task mode, handles first-time setup
+ * intents (authorised by the shared secret or the setup window), hides system bars and hosts the
+ * Compose launcher screen. Runs as the HOME app, so it is also what the customer sees when a
+ * paid session ends.
+ */
 class MainActivity : ComponentActivity() {
     companion object {
         private const val TAG = "MainActivity"

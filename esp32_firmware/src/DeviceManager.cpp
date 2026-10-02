@@ -1,3 +1,7 @@
+// Tracks phones the box knows about: licensed slots, live telemetry (time left, battery, state)
+// and replay protection for signed requests. Telemetry is only updated by heartbeats for time/state;
+// other calls (identify, pair_request) must not overwrite it.
+
 #include "InputSafety.h"
 #include "DeviceManager.h"
 #include "CoinSlotManager.h"

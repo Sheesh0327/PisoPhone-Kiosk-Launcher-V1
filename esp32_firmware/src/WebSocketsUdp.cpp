@@ -1,3 +1,6 @@
+// WebSocket server for phones (slot arming and encrypted coin events), UDP discovery responses
+// so phones can find the box, and the serial command line used during bring-up.
+
 #include "WebSocketsUdp.h"
 #include "CoinSlotManager.h"
 #include "ControllerWebSocket.h"

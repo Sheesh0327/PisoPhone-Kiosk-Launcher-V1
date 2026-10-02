@@ -1,3 +1,6 @@
+// Persistent configuration (NVS): defaults, loading and saving of pins, Wi-Fi, passwords,
+// slots and revenue counters, plus the locked accessor for the shared secret.
+
 #include "Config.h"
 #include "DeviceManager.h"
 #include "HardwareManager.h"

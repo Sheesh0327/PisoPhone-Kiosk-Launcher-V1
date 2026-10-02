@@ -1,3 +1,6 @@
+// Creates the HTTP server, registers every route and maps each one to its handler.
+// Authentication is decided inside the handlers (see WebServerAuth.cpp), not here.
+
 #include "WebServerModule.h"
 #include "CoinSlotManager.h"
 #include "PaymentQueueManager.h"

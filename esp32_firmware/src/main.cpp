@@ -1,3 +1,8 @@
+// Firmware entry point: setup() brings up storage, Wi-Fi, hardware and the web/WebSocket servers;
+// loop() then runs short, non-blocking steps in a fixed order (watchdog, health, revenue persistence,
+// super-admin sync, coin-slot session, payment retries, web server, WebSocket, UDP discovery).
+// Nothing in loop() may block for long: the coin pulse counter and the 15 s watchdog depend on it.
+
 #include <Arduino.h>
 #include <WiFi.h>
 #include <Preferences.h>

@@ -1,3 +1,6 @@
+// Cryptographic helpers: HMAC signing, AES payload encryption, slot token verification,
+// the box machine code and the WebSocket handshake accept key.
+
 #include "Security.h"
 #include "Config.h"
 #include "esp_mac.h"

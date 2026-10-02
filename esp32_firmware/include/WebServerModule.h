@@ -10,6 +10,7 @@
 #include "WebServerAuth.h"
 #include "WebServerConfig.h"
 #include "WebServerApi.h"
+#include "WebServerCoinslot.h"
 #include "WebServerTelemetry.h"
 #include "WebSocketsUdp.h"
 

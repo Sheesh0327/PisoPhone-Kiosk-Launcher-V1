@@ -355,9 +355,12 @@ class Esp32ConnectionManager(
 
     private fun sendHttpUnarm(ipHost: String, deviceId: String) {
         try {
-            val ts = System.currentTimeMillis().toString()
-            val sig = KioskSecurity.signCoinslotRequest("unarm", deviceId, ts, "", delegate.getSecretKey())
-            val unarmUrl = "http://$ipHost:80/api/coinslot/unarm?device_id=$deviceId&ts=$ts&sig=$sig"
+            val unarmUrl = Esp32CoinslotRequests.signedUrl(
+                host = ipHost,
+                action = Esp32CoinslotRequests.ACTION_UNARM,
+                deviceId = deviceId,
+                secret = delegate.getSecretKey(),
+            )
             val req = Request.Builder().url(unarmUrl).build()
             httpClient.newCall(req).execute().close()
             Log.d(TAG, "Sent HTTP unarm to $ipHost for $deviceId")
@@ -473,9 +476,13 @@ class Esp32ConnectionManager(
         // Execute primary reliable HTTP arming
         var httpArmSuccess = false
         try {
-            val armTs = System.currentTimeMillis().toString()
-            val armSig = KioskSecurity.signCoinslotRequest("arm", deviceId, armTs, "", delegate.getSecretKey())
-            val armUrl = "http://$targetIpHost:80/api/coinslot/arm?device_id=$deviceId&ip=$localIp&duration=$armingTimeoutSeconds&ts=$armTs&sig=$armSig"
+            val armUrl = Esp32CoinslotRequests.signedUrl(
+                host = targetIpHost,
+                action = Esp32CoinslotRequests.ACTION_ARM,
+                deviceId = deviceId,
+                secret = delegate.getSecretKey(),
+                extraQuery = "ip=$localIp&duration=$armingTimeoutSeconds",
+            )
             Log.d(TAG, "Requesting coin slot arm via HTTP: $armUrl (attempt #$attemptId)")
             val req = Request.Builder().url(armUrl).build()
             val resp = httpClient.newCall(req).execute()
@@ -623,9 +630,13 @@ class Esp32ConnectionManager(
     private fun sendTxAck(ipHost: String, deviceId: String, txId: String) {
         scope.launch(Dispatchers.IO) {
             try {
-                val ackTs = System.currentTimeMillis().toString()
-                val ackSig = KioskSecurity.signCoinslotRequest("ack", deviceId, ackTs, txId, delegate.getSecretKey())
-                val ackUrl = "http://$ipHost:80/api/coinslot/ack?device_id=$deviceId&tx_id=$txId&ts=$ackTs&sig=$ackSig"
+                val ackUrl = Esp32CoinslotRequests.signedUrl(
+                    host = ipHost,
+                    action = Esp32CoinslotRequests.ACTION_ACK,
+                    deviceId = deviceId,
+                    secret = delegate.getSecretKey(),
+                    txId = txId,
+                )
                 val req = Request.Builder().url(ackUrl).build()
                 httpClient.newCall(req).execute().close()
             } catch (_: Exception) {}

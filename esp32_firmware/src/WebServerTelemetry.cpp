@@ -1,3 +1,6 @@
+// Phone-facing telemetry endpoints: the heartbeat that carries time, state and battery,
+// config retrieval, crash reports and the one-vs-one match qualification check.
+
 #include "InputSafety.h"
 #include "WebServerTelemetry.h"
 #include "WebServerModule.h"

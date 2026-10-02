@@ -5,6 +5,13 @@ import android.util.Log
 import com.pisophone.kiosk.security.KioskSecurity
 import kotlinx.coroutines.flow.MutableStateFlow
 
+/**
+ * Single source of truth for the UI-visible kiosk state, exposed as StateFlows.
+ *
+ * `appState` follows the session state machine in [SessionRules] (0 locked, 1 armed-locked,
+ * 2 unlocked, 3 unlocked-armed, 4 unlicensed). Other classes change it only through
+ * SessionRules transitions so the numbers never get computed ad hoc.
+ */
 class KioskStateManager(private val context: Context) {
     companion object {
         private const val TAG = "KioskStateManager"

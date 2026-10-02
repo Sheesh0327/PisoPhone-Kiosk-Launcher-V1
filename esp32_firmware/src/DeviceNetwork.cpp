@@ -1,3 +1,6 @@
+// Outbound payment and time delivery to phones: turns a detected coin into a queued payment,
+// pushes it over WebSocket and HTTP, and re-sends queued payments on request.
+
 #include "DeviceNetwork.h"
 #include "PaymentQueueManager.h"
 #include "CoinSlotManager.h"
@@ -6,6 +9,7 @@
 #include "Security.h"
 #include "WebServerModule.h"
 #include "WebServerApi.h"
+#include "WebServerCoinslot.h"
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 
