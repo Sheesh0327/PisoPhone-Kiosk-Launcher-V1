@@ -14,7 +14,7 @@ Firmware only. Build with `pio run` and flash as usual; the Android app is uncha
 1. Open the dashboard: it loads as before. With default passwords a red banner shows at the top. Change the admin password in Settings and the super-admin password; after both change, the banner disappears at the next refresh.
 2. Pair/identify a phone as usual; slots, battery and time still update.
 3. From a browser or `curl`, call `/api/status` with a wrong password five times: the sixth attempt, even with the right password, returns 429; after about a minute the right password works again. (`curl -u admin:wrong http://<ip>/api/status`)
-4. Send a heartbeat or identify with `name=A"B<script>x</script>`: the dashboard shows `AB` + `scriptx/script` text style cleaned name (no quote, no angle brackets), and `/api/status` stays valid JSON (paste it into a JSON validator).
+4. Send a heartbeat or identify with `name=A"B<script>x</script>`: the name shows as `ABscriptx/script` (quote and angle brackets removed, nothing runs), and `/api/status` stays valid JSON (paste it into a JSON validator).
 5. A coin test still works end to end (arm, insert coin, ack), and `/api/diagnostics` shows `[AUTH] Failed admin login` entries from step 3.
 
 ## Rollback
