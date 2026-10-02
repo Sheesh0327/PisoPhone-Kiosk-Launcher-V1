@@ -49,4 +49,29 @@ class KioskAdminActionReceiverUnitTest {
         receiver.onReceive(context, restart { putExtra("pin", pin) })
         assertNotNull(shadowOf(context as android.app.Application).nextStartedService)
     }
+
+    private fun bypass(extras: Intent.() -> Unit = {}): Intent =
+        Intent(KioskAdminActionReceiver.ACTION_ADMIN_BYPASS).apply(extras)
+
+    @Test
+    fun adminBypassWithSharedSecretAloneIsIgnored() {
+        receiver.onReceive(context, bypass { putExtra("secret", com.pisophone.kiosk.security.KioskSecurity.DEFAULT_SHARED_SECRET) })
+        assertNull(shadowOf(context as android.app.Application).nextStartedService)
+    }
+
+    @Test
+    fun adminBypassWithSharedSecretAndWrongPinIsIgnored() {
+        receiver.onReceive(context, bypass {
+            putExtra("pin", "9999")
+            putExtra("secret", com.pisophone.kiosk.security.KioskSecurity.DEFAULT_SHARED_SECRET)
+        })
+        assertNull(shadowOf(context as android.app.Application).nextStartedService)
+    }
+
+    @Test
+    fun adminBypassWithCorrectPinStartsTheService() {
+        val pin = com.pisophone.kiosk.security.KioskSecurity.getAdminPin(context)
+        receiver.onReceive(context, bypass { putExtra("pin", pin) })
+        assertNotNull(shadowOf(context as android.app.Application).nextStartedService)
+    }
 }

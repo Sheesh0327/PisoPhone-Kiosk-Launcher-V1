@@ -212,8 +212,8 @@ void handleSave() {
         prefs.putBool(NVS_KEY_RELAY_ACTIVE_LOW, relayActiveLow);
     }
     if (webServer.hasArg(NVS_KEY_SHARED_SECRET)) {
-        sharedSecret = webServer.arg(NVS_KEY_SHARED_SECRET);
-        prefs.putString(NVS_KEY_SHARED_SECRET, sharedSecret);
+        setSharedSecret(webServer.arg(NVS_KEY_SHARED_SECRET));
+        prefs.putString(NVS_KEY_SHARED_SECRET, getSharedSecret());
     }
     prefs.end();
 

@@ -83,12 +83,12 @@ void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId) {
 
     // Require an exact device-ID match before WebSocket delivery. Never transfer pending credit to a replacement phone automatically.
     String vPayload = "v1:" + targetDev + ":" + txId + ":" + String(pulses) + ":" + String(ts);
-    String vSig = calculateHMAC(vPayload, sharedSecret);
+    String vSig = calculateHMAC(vPayload, getSharedSecret());
 
     if (isWsConnected && wsClient.connected() && targetDev.length() > 0 && wsSessionDeviceId == targetDev) {
         Serial.printf("[⚡] Pushing ₱%d (+%d mins / %d secs) over WebSocket to %s!\n", pulses, addedMinutes, addedSeconds, targetDev.c_str());
         String innerJson = "{\"seconds\":" + String(addedSeconds) + ",\"minutes\":" + String(addedMinutes) + ",\"amount\":" + String(pulses) + ",\"tx_id\":\"" + txId + "\",\"ts\":\"" + String(ts) + "\",\"device_id\":\"" + targetDev + "\",\"v_sig\":\"" + vSig + "\"}";
-        String payload = aes_encrypt(innerJson, sharedSecret);
+        String payload = aes_encrypt(innerJson, getSharedSecret());
         String json = "{\"event\":\"COIN_DETECTED\",\"device_id\":\"" + targetDev + "\",\"tx_id\":\"" + txId + "\",\"amount\":" + String(pulses) + ",\"seconds\":" + String(addedSeconds) + ",\"minutes\":" + String(addedMinutes) + ",\"ts\":\"" + String(ts) + "\",\"payload\":\"" + payload + "\"}";
         sendWsText(wsClient, json);
         refreshCoinSlotTtl(targetDev, CoinSlotOwnerType::PHONE, ARM_TTL);
@@ -128,7 +128,7 @@ bool retryPhonePayment(const String& targetDeviceId, int pulses, int creditSecon
         : pulses * max(minutesPerCoin, 1) * 60;
     uint64_t retryTs = getCurrentMasterTimeMs();
     String vPayload = "v1:" + targetDeviceId + ":" + txId + ":" + String(pulses) + ":" + String(retryTs);
-    String vSig = calculateHMAC(vPayload, sharedSecret);
+    String vSig = calculateHMAC(vPayload, getSharedSecret());
     String params = "minutes=" + String(safeSeconds / 60) +
                     "&seconds=" + String(safeSeconds) +
                     "&amount=" + String(pulses) +

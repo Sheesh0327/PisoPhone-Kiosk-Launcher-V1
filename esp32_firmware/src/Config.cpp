@@ -4,6 +4,8 @@
 #include "SuperAdminManager.h"
 #include "PaymentQueueManager.h"
 #include "Diagnostics.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 // ============================================================================
 // HARDWARE CONSTANTS & PIN DEFAULTS DEFINITION
@@ -43,7 +45,24 @@ String wifiSsid      = DEFAULT_SSID;
 String wifiPass      = DEFAULT_PASS;
 String androidIps    = "";
 String webPassword   = DEFAULT_ADMIN_PW;
-String sharedSecret  = MASTER_CRYPTO_SECRET;
+// The auth worker task reads the secret while the main loop can change it (settings save, factory
+// reset). Every access goes through these accessors so a String is never reallocated mid-read.
+static String sharedSecretValue = MASTER_CRYPTO_SECRET;
+static StaticSemaphore_t sharedSecretMutexBuf;
+static SemaphoreHandle_t sharedSecretMutex = xSemaphoreCreateMutexStatic(&sharedSecretMutexBuf);
+
+String getSharedSecret() {
+    xSemaphoreTake(sharedSecretMutex, portMAX_DELAY);
+    String copy = sharedSecretValue;
+    xSemaphoreGive(sharedSecretMutex);
+    return copy;
+}
+
+void setSharedSecret(const String& value) {
+    xSemaphoreTake(sharedSecretMutex, portMAX_DELAY);
+    sharedSecretValue = value;
+    xSemaphoreGive(sharedSecretMutex);
+}
 String macAddressStr = "";
 int maxLicensedSlots = DEFAULT_MAX_SLOTS;
 
@@ -382,7 +401,7 @@ void loadAllConfig() {
     
     webPassword       = prefs.getString(NVS_KEY_ADMIN_PW, webPassword);
     relayActiveLow    = prefs.getBool(NVS_KEY_RELAY_ACTIVE_LOW, false);
-    sharedSecret      = MASTER_CRYPTO_SECRET;
+    setSharedSecret(MASTER_CRYPTO_SECRET);
     p1Ip              = prefs.getString(NVS_KEY_P1, p1Ip);
     p2Ip              = prefs.getString(NVS_KEY_P2, p2Ip);
     matchMinutes      = prefs.getInt(NVS_KEY_MATCH, matchMinutes);
@@ -454,7 +473,7 @@ void factoryResetDefaults() {
     targetPort = DEFAULT_PORT;
     minutesPerCoin = DEFAULT_MINUTES_PER_COIN;
     webPassword = DEFAULT_ADMIN_PW;
-    sharedSecret = MASTER_CRYPTO_SECRET;
+    setSharedSecret(MASTER_CRYPTO_SECRET);
     p1Ip = "";
     p2Ip = "";
     matchMinutes = 15;

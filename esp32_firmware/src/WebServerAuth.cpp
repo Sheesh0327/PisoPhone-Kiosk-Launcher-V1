@@ -65,7 +65,7 @@ void authWorkerTask(void *pvParameters) {
             // Ensure versioned signature on all /add_time requests
             if (String(req.actionPath) == "/add_time" && finalParams.indexOf("v_sig=") == -1 && currentDevId.length() > 0) {
                 String vPayload = "v1:" + currentDevId + ":" + currentTxId + ":" + currentAmount + ":" + currentTs;
-                String vSig = calculateHMAC(vPayload, sharedSecret);
+                String vSig = calculateHMAC(vPayload, getSharedSecret());
                 finalParams += "&v_sig=" + vSig;
             }
 
@@ -87,8 +87,8 @@ void authWorkerTask(void *pvParameters) {
                 http.setReuse(false);
 
                 String actionUrl = "http://" + ip + ":" + String(req.port) + String(req.actionPath);
-                String encryptedPayload = aes_encrypt(finalParams, sharedSecret);
-                String hmacSig = calculateHMAC(encryptedPayload, sharedSecret);
+                String encryptedPayload = aes_encrypt(finalParams, getSharedSecret());
+                String hmacSig = calculateHMAC(encryptedPayload, getSharedSecret());
                 actionUrl += "?payload=" + encryptedPayload + "&hmac=" + hmacSig;
 
                 if (http.begin(client, actionUrl)) {
@@ -127,7 +127,7 @@ void authWorkerTask(void *pvParameters) {
                                         if (tsEnd == -1) tsEnd = respBody.length();
                                         String ackTs = respBody.substring(tsPosIdx + 3, tsEnd);
 
-                                        String expectedSig = calculateHMAC("v1:" + currentDevId + ":" + currentTxId + ":" + currentAmount + ":" + ackTs, sharedSecret);
+                                        String expectedSig = calculateHMAC("v1:" + currentDevId + ":" + currentTxId + ":" + currentAmount + ":" + ackTs, getSharedSecret());
                                         if (ackSig.equalsIgnoreCase(expectedSig)) {
                                             ackValid = true;
                                         } else {

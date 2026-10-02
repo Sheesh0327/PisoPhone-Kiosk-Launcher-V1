@@ -339,16 +339,9 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
         return !pin.isNullOrBlank() && com.pisophone.kiosk.security.KioskSecurity.verifyAdminPin(context, pin.trim())
     }
 
-    private fun isAuthorized(context: Context, intent: Intent): Boolean {
-        val pin = intent.getStringExtra("pin") ?: intent.getStringExtra("admin_pin")
-        val secret = intent.getStringExtra("secret") ?: intent.getStringExtra("key")
-        
-        if (!pin.isNullOrBlank() && com.pisophone.kiosk.security.KioskSecurity.verifyAdminPin(context, pin.trim())) {
-            return true
-        }
-        if (!secret.isNullOrBlank() && secret.trim() == com.pisophone.kiosk.security.KioskSecurity.getSharedSecret(context).trim()) {
-            return true
-        }
-        return false
-    }
+    /**
+     * Administrative broadcasts require the admin PIN. The shared secret is baked into every APK
+     * and is only used to sign ESP32 traffic, so it must never unlock admin actions.
+     */
+    private fun isAuthorized(context: Context, intent: Intent): Boolean = isPinAuthorized(context, intent)
 }

@@ -276,6 +276,9 @@ object KioskSecurity {
         return DEFAULT_SHARED_SECRET
     }
 
+    /** True while the factory PIN is still in use (shown as a warning in the admin vault). */
+    fun isAdminPinDefault(context: Context): Boolean = getAdminPin(context) == DEFAULT_PIN
+
     fun getAdminPin(context: Context): String {
         val pin = getPrefs(context).getString(KEY_ADMIN_PIN, DEFAULT_PIN) ?: DEFAULT_PIN
         // Recover from AES decryption garbage corruption (wrong key matching 1/256 padding)

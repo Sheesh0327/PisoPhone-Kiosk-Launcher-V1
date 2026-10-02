@@ -2,6 +2,7 @@
 #include "CoinSlotManager.h"
 #include "PaymentQueueManager.h"
 #include "Diagnostics.h"
+#include "OtaCheck.h"
 #include "WebServerAuth.h"
 #include "Config.h"
 #include "Security.h"
@@ -162,6 +163,22 @@ void setupWebServer() {
             // 15 s task watchdog until it finishes; a slow upload would otherwise panic-reset.
             esp_task_wdt_reset();
             if (!otaIsValidBinary) return;
+
+            if (!otaFirstChunkReceived && upload.currentSize > 0) {
+                otaFirstChunkReceived = true;
+#if CONFIG_IDF_TARGET_ESP32C3
+                const uint16_t expectedChip = otacheck::CHIP_ESP32_C3;
+#else
+                const uint16_t expectedChip = otacheck::CHIP_ESP32;
+#endif
+                otacheck::Result headerCheck = otacheck::checkImageHeader(upload.buf, upload.currentSize, expectedChip);
+                if (headerCheck != otacheck::OK) {
+                    otaIsValidBinary = false;
+                    otaErrorMsg = String("OTA rejected: ") + otacheck::describe(headerCheck);
+                    diagLog("[OTA] %s\n", otaErrorMsg.c_str());
+                    return;
+                }
+            }
 
             if (upload.currentSize > 0) {
                 if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {

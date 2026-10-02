@@ -105,7 +105,8 @@ extern String wifiSsid;
 extern String wifiPass;
 extern String androidIps;
 extern String webPassword;
-extern String sharedSecret;
+String getSharedSecret();
+void setSharedSecret(const String& value);
 extern String macAddressStr;
 extern int maxLicensedSlots;
 

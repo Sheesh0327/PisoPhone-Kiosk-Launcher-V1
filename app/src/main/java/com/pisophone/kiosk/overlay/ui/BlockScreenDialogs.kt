@@ -93,7 +93,7 @@ fun AdminAuthenticationDialog(
                         .focusRequester(pinFocusRequester)
                 )
                 if (pinError) {
-                    Text("Invalid password. Default is 1234", color = Color(0xFFFF6B6B), fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                    Text("Invalid password.", color = Color(0xFFFF6B6B), fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
                 }
                 Spacer(modifier = Modifier.height(16.dp))
                 OutlinedButton(

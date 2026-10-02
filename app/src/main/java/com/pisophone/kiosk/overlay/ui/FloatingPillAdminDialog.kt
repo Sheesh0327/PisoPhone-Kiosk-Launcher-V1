@@ -88,7 +88,7 @@ fun FloatingPillAdminAuthCard(
                 modifier = Modifier.fillMaxWidth().focusRequester(pinFocusRequester)
             )
             if (pinError) {
-                Text("Invalid password. Default is 1234", color = Color(0xFFFF6B6B), fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+                Text("Invalid password.", color = Color(0xFFFF6B6B), fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
             }
             Spacer(modifier = Modifier.height(12.dp))
             Row(

@@ -81,7 +81,7 @@ void handleHeartbeat() {
     }
     String json = "{\"status\":\"" + status + "\",\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\"";
     if (slotIdx >= 0) {
-        String encPin = aes_encrypt("PIN:" + webPassword, sharedSecret);
+        String encPin = aes_encrypt("PIN:" + webPassword, getSharedSecret());
         json += ",\"admin_pin\":\"" + jsonEsc(encPin) + "\"";
     }
     if (devName.length() > 0) {
