@@ -94,4 +94,49 @@ class SecretVaultUnitTest {
         assertEquals(secret, KioskSecurity.getSharedSecret(context))
         assertEquals(secret, prefs.getString("box_shared_secret", ""))
     }
+
+    private val vaultPrefs
+        get() = context.createDeviceProtectedStorageContext().getSharedPreferences("kiosk_security_vault", Context.MODE_PRIVATE)
+
+    @Test
+    fun theAdminPinIsStoredWrappedAndReadsBack() {
+        KioskSecurity.setAdminPin(context, " 482916 ")
+        val raw = vaultPrefs.getString("admin_access_pin", "") ?: ""
+        assertTrue("stored value is wrapped: $raw", raw.startsWith(SecretVault.PREFIX))
+        assertFalse(raw.contains("482916"))
+        KioskSecurity.resetCachesForTests()
+        KioskSecurity.secretVault = SecretVault(fake)
+        assertEquals("482916", KioskSecurity.getAdminPin(context))
+        assertEquals(KioskSecurity.PinCheck.OK, KioskSecurity.verifyAdminPinThrottled(context, "482916", "local"))
+        assertEquals(KioskSecurity.PinCheck.WRONG, KioskSecurity.verifyAdminPinThrottled(context, "000000", "local"))
+    }
+
+    @Test
+    fun anOldPlainPinIsUpgradedAndStillWorks() {
+        vaultPrefs.edit().putString("admin_access_pin", "482916").commit()
+        assertEquals("482916", KioskSecurity.getAdminPin(context))
+        assertTrue(vaultPrefs.getString("admin_access_pin", "")!!.startsWith(SecretVault.PREFIX))
+    }
+
+    @Test
+    fun theAdminPinSurvivesABrokenKeystore() {
+        fake.failEncrypt = true
+        KioskSecurity.setAdminPin(context, "482916")
+        assertEquals("482916", vaultPrefs.getString("admin_access_pin", ""))
+        KioskSecurity.resetCachesForTests()
+        KioskSecurity.secretVault = SecretVault(fake)
+        assertEquals("482916", KioskSecurity.getAdminPin(context))
+    }
+
+    @Test
+    fun aWrappedPinWhoseKeyIsGoneReadsAsNotSetAndIsKept() {
+        KioskSecurity.setAdminPin(context, "482916")
+        val raw = vaultPrefs.getString("admin_access_pin", "")
+        KioskSecurity.resetCachesForTests()
+        fake.failDecrypt = true
+        KioskSecurity.secretVault = SecretVault(fake)
+        assertTrue(KioskSecurity.isAdminPinUnset(context))
+        assertEquals("nothing can match, so nobody gets in", KioskSecurity.PinCheck.WRONG, KioskSecurity.verifyAdminPinThrottled(context, "482916", "local"))
+        assertEquals("the stored blob is not deleted", raw, vaultPrefs.getString("admin_access_pin", ""))
+    }
 }

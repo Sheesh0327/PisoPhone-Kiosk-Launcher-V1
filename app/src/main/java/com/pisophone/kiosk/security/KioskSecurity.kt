@@ -308,17 +308,26 @@ object KioskSecurity {
 
     /** The stored admin PIN, or "" when none has been set yet (which never matches any entered PIN). */
     fun getAdminPin(context: Context): String {
-        val pin = getPrefs(context).getString(KEY_ADMIN_PIN, "") ?: ""
+        val prefs = getPrefs(context)
+        val opened = secretVault.open(prefs.getString(KEY_ADMIN_PIN, "") ?: "")
+        val pin = opened.value
         // Treat AES decryption garbage (wrong key matching 1/256 padding) as "no PIN" rather than a usable one
         if (pin.any { it < ' ' || it > '~' }) {
-            getPrefs(context).edit().remove(KEY_ADMIN_PIN).apply()
+            prefs.edit().remove(KEY_ADMIN_PIN).apply()
             return ""
+        }
+        if (pin.isEmpty()) return "" // none stored, or a wrapped PIN whose key is gone (the box pushes it again)
+        if (opened.wasPlain) {
+            // Upgrade an old plain PIN to the Keystore-wrapped form; seal() falls back to plain if wrapping fails.
+            val sealed = secretVault.seal(pin)
+            if (sealed != pin) prefs.edit().putString(KEY_ADMIN_PIN, sealed).apply()
         }
         return pin
     }
 
     fun setAdminPin(context: Context, newPin: String) {
-        getPrefs(context).edit().putString(KEY_ADMIN_PIN, newPin.trim()).apply()
+        val pin = newPin.trim()
+        getPrefs(context).edit().putString(KEY_ADMIN_PIN, secretVault.seal(pin)).apply()
     }
 
     enum class PinCheck { OK, WRONG, LOCKED }
