@@ -1,0 +1,24 @@
+# Dependency updates arrive as pull requests, so CI (unit tests, ktlint, release build) checks each one before it
+# is merged. Kotlin, the Compose BOM, KSP and AGP depend on each other: merge those together, not one by one.
+version: 2
+updates:
+  - package-ecosystem: gradle
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      kotlin-toolchain:
+        patterns:
+          - "org.jetbrains.kotlin*"
+          - "com.google.devtools.ksp*"
+          - "androidx.compose*"
+      androidx:
+        patterns:
+          - "androidx.*"
+        exclude-patterns:
+          - "androidx.compose*"
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly

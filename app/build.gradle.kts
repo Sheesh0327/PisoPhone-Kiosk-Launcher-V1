@@ -96,7 +96,6 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.okhttp)
-    implementation("org.json:json:20231013")
     implementation("org.nanohttpd:nanohttpd:2.3.1")
     testImplementation(libs.androidx.core)
     testImplementation(libs.junit)

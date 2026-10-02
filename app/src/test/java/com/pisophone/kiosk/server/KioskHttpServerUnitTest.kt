@@ -21,6 +21,7 @@ class KioskHttpServerUnitTest {
     private var lastCreditedSeconds: Int? = null
     private var lastCreditedAmount: Double? = null
     private var creditPaymentCallCount: Int = 0
+    private val triggeredActions = mutableListOf<String>()
 
     private val fakeDelegate = object : KioskServerDelegate {
         override fun getSecretKey(): String = testSecret
@@ -38,7 +39,9 @@ class KioskHttpServerUnitTest {
         }
         override fun onDeductTime(seconds: Int, txId: String?) {}
         override fun onConfigUpdated(price: Double?, minutes: Int?, deviceName: String?, adminPin: String?, slotNum: Int?) {}
-        override fun onTriggerAction(action: String, slotNum: Int?, extra: Map<String, String>?) {}
+        override fun onTriggerAction(action: String, slotNum: Int?, extra: Map<String, String>?) {
+            triggeredActions += action
+        }
         override fun getCrashLog(): String? = null
     }
 
@@ -50,6 +53,7 @@ class KioskHttpServerUnitTest {
         context = androidx.test.core.app.ApplicationProvider.getApplicationContext()
         server = KioskHttpServer(context = context, port = 8080, delegate = fakeDelegate)
         creditPaymentCallCount = 0
+        triggeredActions.clear()
         lastCreditedTxId = null
         lastCreditedSeconds = null
         lastCreditedAmount = null
@@ -289,5 +293,50 @@ class KioskHttpServerUnitTest {
         assertTrue("Body must contain device_id=$myDeviceId", body.contains("device_id=$myDeviceId"))
         assertTrue("Body must contain v_sig=", body.contains("v_sig="))
         assertEquals("Delegate called once", 1, creditPaymentCallCount)
+    }
+
+    @Test
+    fun onlyPingAndChallengeAreAnsweredWithoutASignature() {
+        assertEquals(200, server.serve(createSession("/ping", emptyMap())).status.requestStatus)
+        assertEquals(200, server.serve(createSession("/challenge", emptyMap())).status.requestStatus)
+        for (path in listOf("/identify", "/status", "/heartbeat", "/get_time", "/state", "/audit", "/crash", "/config")) {
+            val response = server.serve(createSession(path, emptyMap()))
+            assertEquals("$path must need a signed request", 401, response.status.requestStatus)
+        }
+    }
+
+    @Test
+    fun signedStatusRoutesStillWork() {
+        val now = System.currentTimeMillis()
+        val response = server.serve(createSession("/audit", createEncryptedParams("ts=$now")))
+        assertEquals(200, response.status.requestStatus)
+        assertEquals("[]", readResponseBody(response))
+        assertEquals("300", readResponseBody(server.serve(createSession("/get_time", createEncryptedParams("ts=$now")))))
+    }
+
+    @Test
+    fun destructiveActionsAreNeverReachableOverTheNetwork() {
+        val now = System.currentTimeMillis()
+        for (action in listOf("factory_reset", "deprovision", "exit_kiosk", "enable_adb", "emergency_recovery", "recovery")) {
+            val response = server.serve(createSession("/trigger_action", createEncryptedParams("action=$action&ts=$now")))
+            assertEquals("$action must be refused", 403, response.status.requestStatus)
+        }
+        assertTrue("no refused action may reach the delegate", triggeredActions.isEmpty())
+        // the old dedicated recovery routes no longer exist
+        for (path in listOf("/emergency_adb", "/recovery")) {
+            val response = server.serve(createSession(path, createEncryptedParams("ts=$now")))
+            assertEquals("$path must not exist", 404, response.status.requestStatus)
+        }
+        assertTrue(triggeredActions.isEmpty())
+    }
+
+    @Test
+    fun theActionsTheBoxSendsStillWork() {
+        val now = System.currentTimeMillis()
+        for (action in listOf("arena_mode_deactivate", "arena_mode_activate_p1", "slot_lockdown")) {
+            val response = server.serve(createSession("/trigger_action", createEncryptedParams("action=$action&ts=$now")))
+            assertEquals("$action must be accepted", 200, response.status.requestStatus)
+        }
+        assertEquals(listOf("arena_mode_deactivate", "arena_mode_activate_p1", "slot_lockdown"), triggeredActions)
     }
 }
