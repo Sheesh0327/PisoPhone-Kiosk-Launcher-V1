@@ -92,7 +92,7 @@ jobs:
           python3 opennds/tests/test_ipk.py
           python3 opennds/package/build_ipk.py --version 1.0.0-r${{ github.run_number }} --out dist
       - name: Keep the router package from this run
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: opennds-coinslot-ipk
           path: dist/*.ipk
