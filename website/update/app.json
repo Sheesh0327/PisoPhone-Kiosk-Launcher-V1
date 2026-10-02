@@ -1,8 +1,9 @@
 {
-  "versionCode": 278,
-  "versionName": "1.0.278-dev",
+  "versionCode": 280,
+  "versionName": "1.0.280-dev",
   "channel": "dev",
-  "sha256": "9bdb87c2f51016789c292ca46a2fb100fbc3e2658715ec595020edc4cc873d04",
-  "size": 1735194,
+  
+  "sha256": "fd06407dcb85dc5d968528af4fb85a425fe93755a2e4b5f962acea81179d2c9d",
+  "size": 1735190,
   "releaseDate": "2026-10-02"
 }
