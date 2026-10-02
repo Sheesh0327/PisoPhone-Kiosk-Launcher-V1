@@ -7,6 +7,7 @@
 #include "DeviceManager.h"
 #include "HardwareManager.h"
 #include "Security.h"
+#include "Money.h"
 #include "WebServerModule.h"
 #include "WebServerApi.h"
 #include "WebServerCoinslot.h"
@@ -51,8 +52,8 @@ void recordCoinRevenue(int pulses) {
     if (pulses <= 0) return;
     totalCoinsLifetime += pulses;
     totalCoinsSession += pulses;
-    totalEarningsLifetime += (float)pulses;
-    totalEarningsSession += (float)pulses;
+    totalCentavosLifetime = money::saturatingAdd(totalCentavosLifetime, money::centavosFromPulses(pulses));
+    totalCentavosSession = money::saturatingAdd(totalCentavosSession, money::centavosFromPulses(pulses));
 
     revenueDirty = true;
     lastCoinChangeTime = millis();

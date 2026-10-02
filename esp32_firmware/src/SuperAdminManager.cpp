@@ -2,11 +2,13 @@
 // The password itself is managed remotely (SuperAdminCreds.cpp); there is no local change option.
 
 #include "SuperAdminManager.h"
-#include "SuperAdminTemplate.h"
 #include "Config.h"
 #include "WebServerModule.h"
 #include "WebServerAuth.h"
 #include "SuperAdminCreds.h"
+#include "Money.h"
+#include "PaymentQueueManager.h"
+#include "Diagnostics.h"
 #include <WebServer.h>
 #include <Preferences.h>
 
@@ -55,14 +57,14 @@ void processSuperAdminLoop() {
 
             totalCoinsLifetime = 0;
             totalCoinsSession = 0;
-            totalEarningsLifetime = 0.0f;
-            totalEarningsSession = 0.0f;
+            totalCentavosLifetime = 0;
+            totalCentavosSession = 0;
             lastSavedTotalCoins = 0;
-            lastSavedTotalEarnings = 0.0f;
+            lastSavedTotalCentavos = 0;
 
             prefs.begin(NVS_NAMESPACE, false);
             prefs.putULong(NVS_KEY_TOTAL_COINS, 0);
-            prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, 0.0f);
+            prefs.putULong(NVS_KEY_TOTAL_CENTAVOS, 0);
             prefs.end();
 
             isVaultUnmasked = false;
@@ -118,7 +120,9 @@ void handleSuperAdminUnmask() {
     json += "\"timeout_seconds\":" + String(VAULT_UNMASK_TIMEOUT_SECONDS) + ",";
     json += "\"total_coins\":" + String(totalCoinsLifetime) + ",";
     json += "\"session_coins\":" + String(totalCoinsSession) + ",";
-    json += "\"total_earnings\":" + String(totalEarningsLifetime, 2) + ",";
+    char earnings[24];
+    money::formatPesos(totalCentavosLifetime, earnings, sizeof(earnings));
+    json += "\"total_earnings\":" + String(earnings) + ",";
     json += "\"vendor_split\":" + String(vendorRevenueSplitPercent);
     json += "}";
 
@@ -134,14 +138,14 @@ void handleSuperAdminResetVault() {
 
     totalCoinsLifetime = 0;
     totalCoinsSession = 0;
-    totalEarningsLifetime = 0.0f;
-    totalEarningsSession = 0.0f;
+    totalCentavosLifetime = 0;
+    totalCentavosSession = 0;
     lastSavedTotalCoins = 0;
-    lastSavedTotalEarnings = 0.0f;
+    lastSavedTotalCentavos = 0;
 
     prefs.begin(NVS_NAMESPACE, false);
     prefs.putULong(NVS_KEY_TOTAL_COINS, 0);
-    prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, 0.0f);
+    prefs.putULong(NVS_KEY_TOTAL_CENTAVOS, 0);
     prefs.end();
 
     isVaultUnmasked = false;
@@ -174,10 +178,22 @@ void handleSuperAdminSaveSplit() {
     webServer.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Invalid split percentage (0-100).\"}");
 }
 
-String renderSuperAdminTabHtml() {
-    return String(FPSTR(SUPER_ADMIN_HTML));
-}
-
-String renderSuperAdminScripts() {
-    return String(FPSTR(SUPER_ADMIN_JS));
+// Owner-only full wipe, including the license, lifetime revenue and vendor split. The dashboard's operator
+// factory reset keeps those (OwnerData.h).
+void handleSuperAdminFactoryReset() {
+    if (!authenticateSuperAdmin()) {
+        webServer.send(401, "application/json",
+                       "{\"status\":\"error\",\"message\":\"Unauthorized: Super Admin access required.\"}");
+        return;
+    }
+    if (!canPerformRebootOrOta()) {
+        webServer.send(409, "application/json",
+                       "{\"status\":\"error\",\"message\":\"BUSY: Unpersisted transactions in RAM\"}");
+        return;
+    }
+    webServer.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Full wipe, rebooting\"}");
+    delay(500);
+    factoryResetDefaults(true);
+    diagNoteRestartReason("superadmin-factory-reset");
+    ESP.restart();
 }

@@ -12,12 +12,8 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
     <title>HARDWARE Admin Console</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
-    <style>
-{PORTAL_STYLES}
-    </style>
-    <script>
-{PORTAL_SCRIPTS_CORE}
-    </script>
+    <link rel="stylesheet" href="/assets/portal.css?v={ASSET_V_PORTAL_CSS}">
+    <script src="/assets/portal-core.js?v={ASSET_V_PORTAL_CORE}"></script>
 </head>
 <body>
     <div class="app-container">
@@ -322,10 +318,9 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
 
 {PORTAL_MODALS}
 
-    <script>
-{PORTAL_SCRIPTS_MODALS}
-{SUPER_ADMIN_SCRIPTS}
-    </script>
+    <script>window.PISO_CFG = { mac: "{MAC_ADDRESS}", secret: "{SHARED_SECRET}" };</script>
+    <script src="/assets/portal-modals.js?v={ASSET_V_PORTAL_MODALS}"></script>
+    <script src="/assets/superadmin.js?v={ASSET_V_SUPERADMIN}"></script>
 </body>
 </html>
 )HTML";

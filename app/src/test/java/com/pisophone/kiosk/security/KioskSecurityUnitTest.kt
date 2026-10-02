@@ -1,15 +1,22 @@
 package com.pisophone.kiosk.security
 
+import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class KioskSecurityUnitTest {
+    @Before
+    fun cleanState() {
+        KioskSecurity.resetCachesForTests()
+    }
+
     @Test
     fun testAesEncryptionDecryptionRoundTrip() {
         val secret = "test_super_secret_key_12345"
@@ -98,5 +105,64 @@ class KioskSecurityUnitTest {
             KioskSecurity.signCoinslotRequest("arm", "dev1", "1700000000000", "", "secret123"),
             KioskSecurity.signCoinslotRequest("unarm", "dev1", "1700000000000", "", "secret123"),
         )
+    }
+
+    @Test
+    fun phoneUsesTheLegacyKeyUntilItIsGivenABoxSecret() {
+        val context: android.content.Context = ApplicationProvider.getApplicationContext()
+        assertTrue(KioskSecurity.usesLegacySharedSecret(context))
+        assertEquals(KioskSecurity.DEFAULT_SHARED_SECRET, KioskSecurity.getSharedSecret(context))
+
+        assertTrue(KioskSecurity.setBoxSecret(context, "Abcd2345Efgh6789Jkmn"))
+        assertFalse(KioskSecurity.usesLegacySharedSecret(context))
+        assertEquals("Abcd2345Efgh6789Jkmn", KioskSecurity.getSharedSecret(context))
+    }
+
+    @Test
+    fun boxSecretMustBeLongEnoughAndNeverTheSharedKey() {
+        val context: android.content.Context = ApplicationProvider.getApplicationContext()
+        assertFalse(KioskSecurity.setBoxSecret(context, "short"))
+        assertFalse(KioskSecurity.setBoxSecret(context, "has a space in it 12345"))
+        assertFalse(KioskSecurity.setBoxSecret(context, KioskSecurity.DEFAULT_SHARED_SECRET))
+        assertTrue(KioskSecurity.usesLegacySharedSecret(context))
+    }
+
+    @Test
+    fun provisioningStoresTheSecretAndIgnoresAnInvalidOne() {
+        val context: android.content.Context = ApplicationProvider.getApplicationContext()
+        KioskSecurity.applyDirectProvisioning(context, secret = "bad", mac = "AA:BB:CC:DD:EE:FF")
+        assertTrue(KioskSecurity.usesLegacySharedSecret(context))
+        KioskSecurity.applyDirectProvisioning(context, secret = "Abcd2345Efgh6789Jkmn", mac = "AA:BB:CC:DD:EE:FF")
+        assertEquals("Abcd2345Efgh6789Jkmn", KioskSecurity.getSharedSecret(context))
+    }
+
+    @Test
+    fun wrongPinsLockTheRemoteChannelButNotTheScreen() {
+        val context: android.content.Context = ApplicationProvider.getApplicationContext()
+        KioskSecurity.setAdminPin(context, "right-pin-93")
+        val t0 = 1_000_000L
+        repeat(5) {
+            assertEquals(KioskSecurity.PinCheck.WRONG, KioskSecurity.verifyAdminPinThrottled(context, "nope", "remote", t0))
+        }
+        // locked: even the right PIN is refused for a minute
+        assertEquals(KioskSecurity.PinCheck.LOCKED, KioskSecurity.verifyAdminPinThrottled(context, "right-pin-93", "remote", t0 + 30_000))
+        // the person at the screen is not affected by a flood of remote guesses
+        assertEquals(KioskSecurity.PinCheck.OK, KioskSecurity.verifyAdminPinThrottled(context, "right-pin-93", "local", t0 + 30_000))
+        // after the lock the right PIN works again and clears the count
+        assertEquals(KioskSecurity.PinCheck.OK, KioskSecurity.verifyAdminPinThrottled(context, "right-pin-93", "remote", t0 + 61_000))
+        repeat(4) {
+            assertEquals(KioskSecurity.PinCheck.WRONG, KioskSecurity.verifyAdminPinThrottled(context, "nope", "remote", t0 + 62_000))
+        }
+        assertEquals(KioskSecurity.PinCheck.OK, KioskSecurity.verifyAdminPinThrottled(context, "right-pin-93", "remote", t0 + 62_000))
+    }
+
+    @Test
+    fun noPinSetMeansNothingToGuess() {
+        val context: android.content.Context = ApplicationProvider.getApplicationContext()
+        repeat(10) {
+            assertEquals(KioskSecurity.PinCheck.WRONG, KioskSecurity.verifyAdminPinThrottled(context, "x", "remote", 5L))
+        }
+        KioskSecurity.setAdminPin(context, "abc-123-xyz")
+        assertEquals(KioskSecurity.PinCheck.OK, KioskSecurity.verifyAdminPinThrottled(context, "abc-123-xyz", "remote", 5L))
     }
 }

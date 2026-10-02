@@ -104,8 +104,8 @@ bool superAdminPasswordOk(const String& candidate) {
     unlockCreds();
 
     if (ver == 0) {
-        // Not remotely managed yet: legacy plaintext password (default or set locally).
-        return candidate.length() > 0 && candidate == superAdminPassword;
+        // Not remotely managed yet: only a locally stored password counts; there is no default.
+        return candidate.length() > 0 && superAdminPassword.length() > 0 && candidate == superAdminPassword;
     }
     if (cacheHit) return true;
     if (!credcrypto::passwordMatches(candidate.c_str(), salt.c_str(), iter, hash.c_str())) return false;
@@ -141,7 +141,7 @@ static void syncTask(void*) {
     do {
         WiFiClientSecure client;
         // Transport security is not what protects this file; the ECDSA signature is.
-        client.setInsecure();
+        client.setInsecure(); // piso-allow-insecure: the credentials file is verified by its ECDSA signature
         HTTPClient http;
         http.setConnectTimeout(8000);
         http.setTimeout(8000);

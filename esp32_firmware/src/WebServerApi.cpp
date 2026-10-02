@@ -207,6 +207,16 @@ void handleApiSlotApplyToken() {
     }
 }
 
+// Moves a box that was upgraded from the old shared key onto its own key. Phones must then be
+// re-provisioned with the box secret (the dashboard's Install & Provision link carries it).
+void handleApiSecuritySwitchKey() {
+    if (!checkAdminAuth()) return;
+    bool wasLegacy = isLegacyKeyMode();
+    if (wasLegacy) switchToOwnKey();
+    webServer.send(200, "application/json",
+                   String("{\"success\":true,\"was_legacy\":") + (wasLegacy ? "true" : "false") + "}");
+}
+
 void handleApiSlotCloudSync() {
     if (!checkAdminAuth()) return;
     sendCloudSnapshot();
@@ -243,6 +253,7 @@ void handleApiStatus() {
     String json = "{";
     json += "\"super_admin_managed\":" + String(superAdminCredsManaged() ? "true" : "false") + ",";
     json += "\"default_credentials\":" + String(defaultCredentialsActive() ? "true" : "false") + ",";
+    json += "\"legacy_key\":" + String(isLegacyKeyMode() ? "true" : "false") + ",";
     json += "\"wifi\":{";
     json += "\"rssi\":" + String(rssi) + ",";
     json += "\"quality\":" + String(quality) + ",";

@@ -193,10 +193,10 @@ void authWorkerTask(void* pvParameters) {
 static inputsafety::LoginThrottle loginThrottle;
 
 bool defaultCredentialsActive() {
-    // Only the operator-controlled admin password counts. The super-admin password cannot be
+    // True until the operator replaces the admin password that was generated for this box. Only the operator-controlled admin password counts. The super-admin password cannot be
     // changed on the box (it is published from the website), so counting it kept this warning on
     // permanently even after the operator had changed their password.
-    return webPassword == DEFAULT_ADMIN_PW;
+    return !adminPwChanged;
 }
 
 // Checks Basic-auth admin credentials with per-client throttling: five wrong passwords lock that
@@ -265,13 +265,13 @@ void handleLogout() {
     if (isVaultUnmasked) {
         totalCoinsLifetime = 0;
         totalCoinsSession = 0;
-        totalEarningsLifetime = 0.0f;
-        totalEarningsSession = 0.0f;
+        totalCentavosLifetime = 0;
+        totalCentavosSession = 0;
         lastSavedTotalCoins = 0;
-        lastSavedTotalEarnings = 0.0f;
+        lastSavedTotalCentavos = 0;
         prefs.begin(NVS_NAMESPACE, false);
         prefs.putULong(NVS_KEY_TOTAL_COINS, 0);
-        prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, 0.0f);
+        prefs.putULong(NVS_KEY_TOTAL_CENTAVOS, 0);
         prefs.end();
         isVaultUnmasked = false;
         unmaskExpiryTimestamp = 0;

@@ -35,7 +35,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * The kiosk launcher activity. Keeps the device in lock-task mode, handles first-time setup
- * intents (authorised by the shared secret or the setup window), hides system bars and hosts the
+ * intents (authorised by the setup window or the admin PIN), hides system bars and hosts the
  * Compose launcher screen. Runs as the HOME app, so it is also what the customer sees when a
  * paid session ends.
  */
@@ -165,8 +165,8 @@ class MainActivity : ComponentActivity() {
 
         // MainActivity is exported, so any app could send these extras. Same rule as the
         // CONFIGURE_ESP32 / ACTIVATE broadcasts: free only during the first-setup window,
-        // otherwise an admin PIN or the shared secret is required.
-        if (!isSetupIntentAuthorized(intent, secret)) {
+        // otherwise the admin PIN is required.
+        if (!isSetupIntentAuthorized(intent)) {
             Log.w(TAG, "Rejected unauthorized setup intent (MAC/slot/secret change).")
             return
         }
@@ -194,7 +194,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun isSetupIntentAuthorized(intent: Intent, secret: String?): Boolean {
+    private fun isSetupIntentAuthorized(intent: Intent): Boolean {
         val paired = KioskActivationManager.isPairingCompleted(this) || KioskSecurity.isProvisioned(this)
         if (!paired) {
             // The WebADB installer launches this activity right after install, before the
@@ -203,12 +203,8 @@ class MainActivity : ComponentActivity() {
             if (KioskActivationManager.isSetupModeActive(this)) return true
         }
         val pin = intent.getStringExtra("pin") ?: intent.getStringExtra("admin_pin")
-        if (!pin.isNullOrBlank() && KioskSecurity.verifyAdminPin(this, pin.trim())) return true
-        if (!secret.isNullOrBlank() &&
-            KioskSecurity.constantTimeEquals(secret.trim(), KioskSecurity.getSharedSecret(this).trim())
-        ) {
-            return true
-        }
+        if (!pin.isNullOrBlank() && KioskSecurity.verifyAdminPinRemote(this, pin.trim())) return true
+        // The box secret only signs traffic with the box; it never authorizes configuration changes.
         return false
     }
 

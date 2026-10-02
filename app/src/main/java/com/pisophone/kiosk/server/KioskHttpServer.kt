@@ -25,8 +25,9 @@ interface KioskServerDelegate {
 }
 
 /**
- * HTTP server the ESP32 calls on the phone (add time, deduct time, status, config).
- * Every request carries an encrypted payload and an HMAC signature made with the shared secret;
+ * HTTP server the ESP32 calls on the phone (add time, deduct time, config, a few harmless actions).
+ * Apart from /ping and /challenge (fixed "OK"), every request carries an encrypted payload and an HMAC signature
+ * made with the box secret; destructive actions are not reachable here at all;
  * requests are rate limited per client IP. Business logic is delegated through the delegate
  * interface above, this class only authenticates and routes.
  */
@@ -40,9 +41,27 @@ class KioskHttpServer(
         private const val RATE_LIMIT_WINDOW_MS = 60000L
         private const val MAX_REQUESTS_PER_WINDOW = 60
         private const val MAX_TIMESTAMP_SKEW_MS = 60000L
+
+        /** Actions the ESP32 box sends to a phone. Anything else arriving over the network is refused. */
+        internal val NETWORK_ACTIONS = setOf(
+            "arena_mode_activate_p1",
+            "arena_mode_activate_p2",
+            "arena_mode_activate",
+            "arena_mode_deactivate",
+            "arena_mode_end",
+            "slot_lockdown",
+            "slot_restore",
+            "slot_renew",
+            "reset_time",
+            "identify",
+            "vibrate",
+            "sound",
+            "flash",
+        )
     }
 
     private val rateLimits = ConcurrentHashMap<String, MutableList<Long>>()
+    private val replayGuard = ReplayGuard()
 
     private fun parseQueryString(queryString: String): Map<String, String> {
         val result = mutableMapOf<String, String>()
@@ -84,35 +103,10 @@ class KioskHttpServer(
         val uri = session.uri
         val params = session.parameters.mapValues { it.value.firstOrNull() ?: "" }
 
-        // Public status & heartbeat endpoints (no prior AES decryption required)
-        if (uri == "/heartbeat" || uri == "/ping") {
-            val clientIp = session.headers["remote-addr"] ?: session.headers["http-client-ip"]
-            delegate.onHeartbeat(clientIp)
+        // The only unauthenticated routes: liveness probes that return a fixed answer and touch nothing.
+        // Everything that reads state, changes state or reports a heartbeat needs the signed envelope below.
+        if (uri == "/ping" || uri == "/challenge" || uri == "/heartbeat_challenge") {
             return createResponse(Response.Status.OK, "text/plain", "OK")
-        }
-
-        if (uri == "/identify" || uri == "/status") {
-            val clientIp = session.headers["remote-addr"] ?: session.headers["http-client-ip"]
-            delegate.onHeartbeat(clientIp)
-            val json = delegate.getStatusJson()
-            return createResponse(Response.Status.OK, "application/json", json.toString())
-        }
-
-        if (uri == "/challenge" || uri == "/heartbeat_challenge") {
-            return createResponse(Response.Status.OK, "text/plain", "OK")
-        }
-
-        if (uri == "/get_time") {
-            return createResponse(Response.Status.OK, "text/plain", delegate.getSessionTimeRemaining().toString())
-        }
-
-        if (uri == "/state") {
-            return createResponse(Response.Status.OK, "text/plain", delegate.getAppState().toString())
-        }
-
-        if (uri == "/audit") {
-            val auditJson = delegate.getAuditEventsJson()
-            return createResponse(Response.Status.OK, "application/json", auditJson)
         }
 
         val clientIp = session.headers["remote-addr"] ?: session.headers["http-client-ip"] ?: "unknown"
@@ -167,7 +161,27 @@ class KioskHttpServer(
             }
         }
 
+        // A signed message is accepted once. Payments are exempt: the box repeats them until acknowledged and
+        // they are already idempotent by tx_id. A repeat of anything else is acknowledged but not executed again.
+        if (uri != "/add_time" && uri != "/coin" && !replayGuard.firstSeen(hmac.trim().lowercase())) {
+            Log.w(TAG, "Ignoring repeated signed request to $uri")
+            return createResponse(Response.Status.OK, "text/plain", "OK:DUPLICATE")
+        }
+
         return when (uri) {
+            "/heartbeat" -> {
+                val remoteIp = session.headers["remote-addr"] ?: session.headers["http-client-ip"]
+                delegate.onHeartbeat(remoteIp)
+                createResponse(Response.Status.OK, "text/plain", "OK")
+            }
+            "/identify", "/status" -> {
+                val remoteIp = session.headers["remote-addr"] ?: session.headers["http-client-ip"]
+                delegate.onHeartbeat(remoteIp)
+                createResponse(Response.Status.OK, "application/json", delegate.getStatusJson().toString())
+            }
+            "/get_time" -> createResponse(Response.Status.OK, "text/plain", delegate.getSessionTimeRemaining().toString())
+            "/state" -> createResponse(Response.Status.OK, "text/plain", delegate.getAppState().toString())
+            "/audit" -> createResponse(Response.Status.OK, "application/json", delegate.getAuditEventsJson())
             "/add_time", "/coin" -> {
                 val targetDev = decryptedParams["device_id"]?.trim() ?: ""
                 val myDeviceId = delegate.getDeviceId().ifBlank { KioskSecurity.getHardwareId(context) }
@@ -278,17 +292,16 @@ class KioskHttpServer(
             }
             "/trigger_action" -> {
                 val actionType = decryptedParams["action"] ?: ""
+                // The box only ever sends the actions below. Destructive ones (factory reset, removing device
+                // owner, exiting the kiosk, enabling USB debugging) are never reachable over the network:
+                // they need the admin PIN on the phone itself or through the PIN-protected broadcast.
+                if (actionType !in NETWORK_ACTIONS) {
+                    Log.w(TAG, "Rejected network action '$actionType'")
+                    return createResponse(Response.Status.FORBIDDEN, "text/plain", "NOT_ALLOWED_OVER_NETWORK")
+                }
                 val slot = decryptedParams["slot"]?.toIntOrNull() ?: decryptedParams["slot_num"]?.toIntOrNull()
                 delegate.onTriggerAction(actionType, slot, decryptedParams)
                 createResponse(Response.Status.OK, "text/plain", "OK")
-            }
-            "/emergency_adb" -> {
-                delegate.onTriggerAction("enable_adb", null, null)
-                createResponse(Response.Status.OK, "text/plain", "RECOVERY_TRIGGERED")
-            }
-            "/recovery" -> {
-                delegate.onTriggerAction("emergency_recovery", null, null)
-                createResponse(Response.Status.OK, "text/plain", "RECOVERY_TRIGGERED")
             }
             "/crash" -> {
                 val crashText = delegate.getCrashLog()

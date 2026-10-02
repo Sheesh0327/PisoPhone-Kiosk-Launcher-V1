@@ -98,7 +98,7 @@ class KioskSessionSupervisor(
                         stateManager.sessionTimeRemaining.value = remainingSec
 
                         if (remainingSec <= 0) {
-                            val expiryResult = paymentRepo.expireSessionIfDueBlocking()
+                            val expiryResult = paymentRepo.expireSessionIfDue()
                             if (expiryResult.didExpire) {
                                 val stateBefore = stateManager.appState.value
                                 val applied = stateManager.applySessionUpdate(
@@ -126,7 +126,7 @@ class KioskSessionSupervisor(
                             // whenever a tick is late, leaving a stale balance for reboot recovery.
                             if (nowMonotonic - lastCheckpointMonotonicMs >= CHECKPOINT_INTERVAL_MS) {
                                 lastCheckpointMonotonicMs = nowMonotonic
-                                paymentRepo.checkpointSessionBlocking(stateManager.sessionRevision.value)
+                                paymentRepo.checkpointSession(stateManager.sessionRevision.value)
                                 stateManager.saveState()
                             }
 

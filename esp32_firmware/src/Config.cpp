@@ -2,21 +2,27 @@
 // slots and revenue counters, plus the locked accessor for the shared secret.
 
 #include "Config.h"
+#include "OwnerData.h"
 #include "DeviceManager.h"
 #include "HardwareManager.h"
 #include "SuperAdminManager.h"
 #include "PaymentQueueManager.h"
 #include "Diagnostics.h"
+#include "Money.h"
+#include "CredGen.h"
+#include "SecretMode.h"
+#include "TxId.h"
+#include "ConfigMigration.h"
+#include <esp_random.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
 // ============================================================================
 // HARDWARE CONSTANTS & PIN DEFAULTS DEFINITION
 // ============================================================================
-const char* DEFAULT_SSID = "AdminSetup";
-const char* DEFAULT_PASS = "Admin@123";
-const char* DEFAULT_ADMIN_PW = "admin";
-const char* MASTER_CRYPTO_SECRET = "PISOPHONE_HMAC_MASTER_KEY";
+// DEPRECATED shared key of firmware before per-box secrets. Only used while a box is in legacy mode and
+// to check old-style license keys. Remove with the legacy path once every phone is re-provisioned.
+static const char* LEGACY_CRYPTO_SECRET = "PISOPHONE_HMAC_MASTER_KEY";
 
 // Pin defaults are per board and come from -D flags in envs/*.ini (PISO_PIN_*). A wrong default
 // on a classic ESP32 (GPIO 6-11 are the flash bus) crashes at boot, so there is no fallback:
@@ -44,21 +50,42 @@ bool ledActiveLow = DEFAULT_LED_ACTIVE_LOW;
 int relayPin = DEFAULT_RELAY_PIN;
 bool relayActiveLow = false;
 
-String wifiSsid = DEFAULT_SSID;
-String wifiPass = DEFAULT_PASS;
+String wifiSsid = ""; // empty until the operator sets Wi-Fi: the box then opens its setup access point
+String wifiPass = "";
 String androidIps = "";
-String webPassword = DEFAULT_ADMIN_PW;
+String webPassword = "";
+String setupApPass = "";
+bool adminPwChanged = false;
 // The auth worker task reads the secret while the main loop can change it (settings save, factory
 // reset). Every access goes through these accessors so a String is never reallocated mid-read.
-static String sharedSecretValue = MASTER_CRYPTO_SECRET;
+static String sharedSecretValue = "";
+static bool legacyKeyMode = false;
 static StaticSemaphore_t sharedSecretMutexBuf;
 static SemaphoreHandle_t sharedSecretMutex = xSemaphoreCreateMutexStatic(&sharedSecretMutexBuf);
 
 String getSharedSecret() {
     xSemaphoreTake(sharedSecretMutex, portMAX_DELAY);
+    String copy = legacyKeyMode ? String(LEGACY_CRYPTO_SECRET) : sharedSecretValue;
+    xSemaphoreGive(sharedSecretMutex);
+    return copy;
+}
+
+String getBoxSecret() {
+    xSemaphoreTake(sharedSecretMutex, portMAX_DELAY);
     String copy = sharedSecretValue;
     xSemaphoreGive(sharedSecretMutex);
     return copy;
+}
+
+String getLegacyLicenseSecret() {
+    return String(LEGACY_CRYPTO_SECRET);
+}
+
+bool isLegacyKeyMode() {
+    xSemaphoreTake(sharedSecretMutex, portMAX_DELAY);
+    bool legacy = legacyKeyMode;
+    xSemaphoreGive(sharedSecretMutex);
+    return legacy;
 }
 
 void setSharedSecret(const String& value) {
@@ -86,10 +113,10 @@ String quickTimeStatusMsg = "";
 // Revenue & Audit
 uint32_t totalCoinsLifetime = 0;
 uint32_t totalCoinsSession = 0;
-float totalEarningsLifetime = 0.0f;
-float totalEarningsSession = 0.0f;
+uint32_t totalCentavosLifetime = 0;
+uint32_t totalCentavosSession = 0;
 uint32_t lastSavedTotalCoins = 0;
-float lastSavedTotalEarnings = 0.0f;
+uint32_t lastSavedTotalCentavos = 0;
 bool revenueDirty = false;
 unsigned long lastCoinChangeTime = 0;
 const unsigned long REVENUE_SAVE_DELAY_MS = 5000;
@@ -110,18 +137,22 @@ uint64_t getCurrentMasterTimeMs() {
     return 0;
 }
 
+// Ids come from a boot counter kept in flash, a per-boot sequence number and random salt (TxId.h), so they never
+// repeat between reboots and do not depend on the phone clock having been synced.
+static uint32_t txBootCount = 0;
+static uint32_t txSeq = 0;
+
+static void initTxIdBootCounter() {
+    Preferences counter;
+    if (!counter.begin("tx_ctr", false)) return;
+    txBootCount = counter.getULong("boots", 0) + 1;
+    counter.putULong("boots", txBootCount);
+    counter.end();
+}
+
 String generateTxId(const char* prefix) {
-    uint64_t ts = getCurrentMasterTimeMs();
-    if (ts > 0) {
-        return String(prefix) + String(ts) + "-" + String(random(10000, 99999));
-    }
-    // Before any phone has synced the master clock every id would start with "tx-0-", leaving
-    // only the random suffix to tell payments apart. Use a per-boot tag plus a counter instead.
-    static uint32_t bootTag = 0;
-    static uint32_t counter = 0;
-    if (bootTag == 0) bootTag = (uint32_t)random(1, 0x7FFFFFFF);
-    counter++;
-    return String(prefix) + "b" + String(bootTag, HEX) + "-" + String(millis()) + "-" + String(counter);
+    uint32_t seq = __atomic_add_fetch(&txSeq, 1, __ATOMIC_RELAXED);
+    return String(txid::make(prefix, txBootCount, seq, esp_random()).c_str());
 }
 
 static const uint64_t MASTER_CLOCK_WINDOW_MS = 300000ULL;
@@ -269,13 +300,16 @@ const char* const NVS_KEY_RELAY_PIN = "relay_pin";
 const char* const NVS_KEY_RELAY_ACTIVE_LOW = "relay_act_low";
 const char* const NVS_KEY_PORT = "target_port";
 const char* const NVS_KEY_MINS_PER_COIN = "mins_per_coin";
-const char* const NVS_KEY_ADMIN_PW = "admin_pw";
-const char* const NVS_KEY_SHARED_SECRET = "shared_secret";
+const char* const NVS_KEY_ADMIN_PW = cfgmig::K_ADMIN_PW;
+const char* const NVS_KEY_ADMIN_PW_CHANGED = cfgmig::K_ADMIN_PW_CHANGED;
+const char* const NVS_KEY_SETUP_AP_PASS = cfgmig::K_SETUP_AP_PASS;
+const char* const NVS_KEY_SHARED_SECRET = cfgmig::K_SHARED_SECRET;
+const char* const NVS_KEY_LEGACY_KEY = cfgmig::K_LEGACY_KEY;
 const char* const NVS_KEY_P1 = "p1_ip";
 const char* const NVS_KEY_P2 = "p2_ip";
 const char* const NVS_KEY_MATCH = "match_minutes";
 const char* const NVS_KEY_TOTAL_COINS = "total_coins";
-const char* const NVS_KEY_TOTAL_EARNINGS = "total_earnings";
+const char* const NVS_KEY_TOTAL_CENTAVOS = cfgmig::K_TOTAL_CENTAVOS;
 
 void syncAndroidIpsFromSlots() {
     String newIps = "";
@@ -359,10 +393,96 @@ void loadSlotLicenses() {
     syncAndroidIpsFromSlots();
 }
 
+static void fillRandomBytes(uint8_t* buf, size_t len) {
+    esp_fill_random(buf, len);
+}
+
+// Settings storage for the migrations: a thin wrapper over an open Preferences namespace.
+struct PrefsStore {
+    bool isKey(const char* k) { return prefs.isKey(k); }
+    std::string getString(const char* k, const std::string& d) { return prefs.getString(k, d.c_str()).c_str(); }
+    void putString(const char* k, const std::string& v) { prefs.putString(k, v.c_str()); }
+    bool getBool(const char* k, bool d) { return prefs.getBool(k, d); }
+    void putBool(const char* k, bool v) { prefs.putBool(k, v); }
+    uint32_t getUInt(const char* k, uint32_t d) { return prefs.getULong(k, d); }
+    void putUInt(const char* k, uint32_t v) { prefs.putULong(k, v); }
+    int32_t getInt(const char* k, int32_t d) { return prefs.getInt(k, d); }
+    void putInt(const char* k, int32_t v) { prefs.putInt(k, v); }
+    float getFloat(const char* k, float d) { return prefs.getFloat(k, d); }
+    void remove(const char* k) { prefs.remove(k); }
+};
+
+// Brings the saved settings up to this firmware's format (ConfigMigration.h). Runs before anything reads them.
+void runConfigMigrations() {
+    cfgmig::Env env;
+    env.fillRandom = fillRandomBytes;
+    env.legacySecret = LEGACY_CRYPTO_SECRET;
+    prefs.begin(NVS_NAMESPACE, false);
+    PrefsStore store;
+    cfgmig::Result r = cfgmig::runAll(store, env);
+    prefs.end();
+    if (r.storeIsNewer) {
+        Serial.printf("[💾 CONFIG] Settings are from a newer firmware (format %u > %u); leaving them untouched.\n",
+                      (unsigned)r.from, (unsigned)cfgmig::CURRENT_VERSION);
+    } else if (r.ranAny) {
+        Serial.printf("[💾 CONFIG] Settings format %u -> %u\n", (unsigned)r.from, (unsigned)r.to);
+    }
+}
+
+// Reads the box's secret and whether it is still in legacy mode (the values exist after the migrations).
+void loadSecretMode() {
+    prefs.begin(NVS_NAMESPACE, false);
+    String secret = prefs.getString(NVS_KEY_SHARED_SECRET, "");
+    bool legacy = prefs.getBool(NVS_KEY_LEGACY_KEY, false);
+    prefs.end();
+
+    xSemaphoreTake(sharedSecretMutex, portMAX_DELAY);
+    sharedSecretValue = secret;
+    legacyKeyMode = legacy;
+    xSemaphoreGive(sharedSecretMutex);
+    if (legacy) {
+        Serial.println(
+            "[🔐 KEY] Legacy mode: still using the old shared key. Switch to this box's own key in the dashboard.");
+    }
+}
+
+void switchToOwnKey() {
+    prefs.begin(NVS_NAMESPACE, false);
+    prefs.putBool(NVS_KEY_LEGACY_KEY, false);
+    prefs.end();
+    xSemaphoreTake(sharedSecretMutex, portMAX_DELAY);
+    legacyKeyMode = false;
+    xSemaphoreGive(sharedSecretMutex);
+    diagLog("[🔐 KEY] Switched to this box's own key. Re-provision each phone with the new secret.");
+}
+
+// Reads the admin and setup-AP passwords. Every box has its own, made by the migrations the first time it starts
+// (and after a factory reset); boxes already in the field keep the password they have.
+void loadCredentials() {
+    prefs.begin(NVS_NAMESPACE, false);
+    webPassword = prefs.getString(NVS_KEY_ADMIN_PW, "");
+    adminPwChanged = prefs.getBool(NVS_KEY_ADMIN_PW_CHANGED, false);
+    setupApPass = prefs.getString(NVS_KEY_SETUP_AP_PASS, "");
+    prefs.end();
+
+    if (!adminPwChanged) {
+        // Shown only until the operator changes the admin password. Needed to reach a box that has never been set up.
+        Serial.println("\n================ FIRST-TIME SETUP CREDENTIALS ================");
+        Serial.printf(" Setup Wi-Fi   : PisoPhone-Setup-xxxx   password: %s\n", setupApPass.c_str());
+        Serial.printf(" Admin login   : admin / %s\n", webPassword.c_str());
+        Serial.println(" Change the admin password in Settings; coins stay blocked until you do.");
+        Serial.println("==============================================================\n");
+    }
+}
+
 void loadAllConfig() {
     // 1. Load slot licenses and terminal allocations safely
+    runConfigMigrations(); // first: brings stored settings to this firmware's format
+    loadSecretMode();
+    initTxIdBootCounter();
     loadSlotLicenses();
     loadSuperAdminConfig();
+    loadCredentials();
 
     // 2. Open NVS for all kiosk configuration & lifetime vault revenue counters
     prefs.begin(NVS_NAMESPACE, false);
@@ -380,19 +500,18 @@ void loadAllConfig() {
 
     webPassword = prefs.getString(NVS_KEY_ADMIN_PW, webPassword);
     relayActiveLow = prefs.getBool(NVS_KEY_RELAY_ACTIVE_LOW, false);
-    setSharedSecret(MASTER_CRYPTO_SECRET);
     p1Ip = prefs.getString(NVS_KEY_P1, p1Ip);
     p2Ip = prefs.getString(NVS_KEY_P2, p2Ip);
     matchMinutes = prefs.getInt(NVS_KEY_MATCH, matchMinutes);
 
     // Lifetime vault revenue counters
     totalCoinsLifetime = prefs.getULong(NVS_KEY_TOTAL_COINS, 0);
-    totalEarningsLifetime = prefs.getFloat(NVS_KEY_TOTAL_EARNINGS, 0.0f);
+    totalCentavosLifetime = prefs.getULong(NVS_KEY_TOTAL_CENTAVOS, 0);
 
     lastSavedTotalCoins = totalCoinsLifetime;
-    lastSavedTotalEarnings = totalEarningsLifetime;
+    lastSavedTotalCentavos = totalCentavosLifetime;
     totalCoinsSession = 0;
-    totalEarningsSession = 0.0f;
+    totalCentavosSession = 0;
     revenueDirty = false;
 
     prefs.end();
@@ -407,21 +526,22 @@ void loadAllConfig() {
     });
     androidIps = bootCleanIps;
 
-    Serial.printf(
-        "[💾 CONFIG] Loaded NVS Config: SSID='%s', Port=%d, AdminPW='%s', RelayPin=%d, TotalCoins=%u, TotalEarnings=₱%.2f\n",
-        wifiSsid.c_str(), targetPort, webPassword.c_str(), relayPin, totalCoinsLifetime, totalEarningsLifetime);
+    char earnings[24];
+    money::formatPesos(totalCentavosLifetime, earnings, sizeof(earnings));
+    Serial.printf("[💾 CONFIG] Loaded NVS Config: SSID='%s', Port=%d, RelayPin=%d, TotalCoins=%u, TotalEarnings=₱%s\n",
+                  wifiSsid.c_str(), targetPort, relayPin, totalCoinsLifetime, earnings);
 }
 
 void flushRevenueNow() {
-    if (!revenueDirty && totalCoinsLifetime == lastSavedTotalCoins && totalEarningsLifetime == lastSavedTotalEarnings) {
+    if (!revenueDirty && totalCoinsLifetime == lastSavedTotalCoins && totalCentavosLifetime == lastSavedTotalCentavos) {
         return;
     }
     prefs.begin(NVS_NAMESPACE, false);
     prefs.putULong(NVS_KEY_TOTAL_COINS, totalCoinsLifetime);
-    prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, totalEarningsLifetime);
+    prefs.putULong(NVS_KEY_TOTAL_CENTAVOS, totalCentavosLifetime);
     prefs.end();
     lastSavedTotalCoins = totalCoinsLifetime;
-    lastSavedTotalEarnings = totalEarningsLifetime;
+    lastSavedTotalCentavos = totalCentavosLifetime;
     revenueDirty = false;
     Serial.println("[💰 VAULT] Revenue counters flushed to NVS flash.");
 }
@@ -432,18 +552,26 @@ void processRevenuePersistence() {
     }
 }
 
-void factoryResetDefaults() {
+void factoryResetDefaults(bool ownerWipe) {
     Serial.println("\n=======================================================");
-    diagLog("[⚠️ FACTORY RESET] Restoring all settings to defaults...");
+    diagLog(ownerWipe ? "[⚠️ FACTORY RESET] Owner wipe: erasing everything including the license and revenue..."
+                      : "[⚠️ FACTORY RESET] Restoring operator settings to defaults (license and revenue are kept)...");
     Serial.println("=======================================================");
 
     prefs.begin(NVS_NAMESPACE, false);
+    PrefsStore keepStore;
+    ownerdata::Snapshot owner = ownerdata::capture(keepStore);
     prefs.clear();
+    if (!ownerWipe) ownerdata::restore(keepStore, owner); // an operator can never reset the license or the revenue
     prefs.end();
-    clearPaymentQueue();
+    if (ownerWipe)
+        clearPaymentQueue(); // an operator reset keeps unacknowledged payments: that money was already collected
+    runConfigMigrations();   // a cleared box gets a fresh secret and new passwords (printed on the serial console)
+    loadSecretMode();
+    loadCredentials();
 
-    wifiSsid = DEFAULT_SSID;
-    wifiPass = DEFAULT_PASS;
+    wifiSsid = "";
+    wifiPass = "";
     universalCoinPin = DEFAULT_UNIVERSAL_COIN_PIN;
     ledPin = DEFAULT_LED_PIN;
     ledActiveLow = DEFAULT_LED_ACTIVE_LOW;
@@ -451,27 +579,27 @@ void factoryResetDefaults() {
     androidIps = "";
     targetPort = DEFAULT_PORT;
     minutesPerCoin = DEFAULT_MINUTES_PER_COIN;
-    webPassword = DEFAULT_ADMIN_PW;
-    setSharedSecret(MASTER_CRYPTO_SECRET);
     p1Ip = "";
     p2Ip = "";
     matchMinutes = 15;
-    maxLicensedSlots = DEFAULT_MAX_SLOTS;
+    const bool keepOwner = !ownerWipe;
+    maxLicensedSlots = (keepOwner && owner.hasMaxSlots) ? (int)owner.maxSlots : DEFAULT_MAX_SLOTS;
     for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
         licenseSlots[i].slotNum = i + 1;
         licenseSlots[i].deviceId = "";
         licenseSlots[i].ip = "";
         licenseSlots[i].name = "PisoPhone " + String(i + 1);
-        licenseSlots[i].active = (i < DEFAULT_MAX_SLOTS);
+        licenseSlots[i].active = (i < maxLicensedSlots);
     }
     saveSlotLicenses();
 
-    totalCoinsLifetime = 0;
+    totalCoinsLifetime = (keepOwner && owner.hasCoins) ? owner.coins : 0;
     totalCoinsSession = 0;
-    totalEarningsLifetime = 0.0f;
-    totalEarningsSession = 0.0f;
-    lastSavedTotalCoins = 0;
-    lastSavedTotalEarnings = 0.0f;
+    totalCentavosLifetime = (keepOwner && owner.hasCentavos) ? owner.centavos : 0;
+    totalCentavosSession = 0;
+    lastSavedTotalCoins = totalCoinsLifetime;
+    lastSavedTotalCentavos = totalCentavosLifetime;
+    if (ownerWipe) vendorRevenueSplitPercent = DEFAULT_VENDOR_SPLIT_PERCENT;
 
     for (int i = 0; i < 10; i++) {
         setLedHardware(true);
@@ -481,9 +609,7 @@ void factoryResetDefaults() {
     }
 
     Serial.println("[✅ FACTORY RESET COMPLETE]");
-    Serial.println(" -> Wi-Fi SSID : AdminSetup");
-    Serial.println(" -> Wi-Fi Pass : Admin@123");
-    Serial.println(" -> Admin Pass : admin");
+    Serial.println(" -> Wi-Fi      : not set (the box opens its setup access point)");
     Serial.println(" -> Port       : 8080");
     Serial.println("=======================================================\n");
 }

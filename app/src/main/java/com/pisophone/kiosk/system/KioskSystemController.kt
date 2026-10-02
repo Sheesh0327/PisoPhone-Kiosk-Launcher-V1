@@ -94,12 +94,8 @@ class AndroidKioskSystemController(
     override fun optimizeMemory(): Long {
         val beforeUsed = getMemoryStats().first
         return try {
-            val runningApps = activityManager?.runningAppProcesses ?: emptyList()
-            for (proc in runningApps) {
-                if (proc.processName != appContext.packageName) {
-                    activityManager?.killBackgroundProcesses(proc.processName)
-                }
-            }
+            // No killBackgroundProcesses(): modern Android restarts killed processes straight away,
+            // so it freed nothing and needed an extra permission.
             System.gc()
             val afterUsed = getMemoryStats().first
             (beforeUsed - afterUsed).coerceAtLeast(160L)

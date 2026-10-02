@@ -60,7 +60,7 @@ const char PORTAL_MODALS_HTML[] PROGMEM = R"HTML(
             <h3 style="margin: 0; font-size: 18px; font-weight: 700;">🔑 Upgrade Hardware Capacity</h3>
             <button type="button" onclick="closeTokenModal()" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-muted);">&times;</button>
         </div>
-        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">Copy your <strong>Box Request Code</strong> below and send it to your vendor/provider to receive an 8-character license key.</p>
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">Copy your <strong>Box Request Code</strong> below and send it to your vendor/provider to receive a signed license key.</p>
         <div style="background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; margin-bottom: 14px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                 <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Box Request Code</span>
@@ -74,7 +74,7 @@ const char PORTAL_MODALS_HTML[] PROGMEM = R"HTML(
         </div>
         <div class="form-group">
             <label style="font-size: 12px; font-weight: 700;">License Key / Slot Token</label>
-            <textarea id="token_input" rows="2" placeholder="Paste 8-character license key (e.g. A1B2C3D4) or PISOSLOT token..." style="width: 100%; font-family: monospace; font-size: 13px; padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg); color: var(--text-main);"></textarea>
+            <textarea id="token_input" rows="2" placeholder="Paste the license key (starts with PISOLIC1.)" style="width: 100%; font-family: monospace; font-size: 13px; padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg); color: var(--text-main);"></textarea>
         </div>
         <div id="token_error" style="display: none; color: var(--danger); font-size: 12px; margin-bottom: 12px; font-weight: 600;"></div>
         <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;">

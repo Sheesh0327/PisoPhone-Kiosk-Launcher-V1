@@ -9,8 +9,7 @@ import com.pisophone.kiosk.db.AppMetadata
 import com.pisophone.kiosk.db.PaidSessionState
 import com.pisophone.kiosk.db.PaymentReceipt
 import com.pisophone.kiosk.security.KioskSecurity
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
+import com.pisophone.kiosk.util.blockingIo
 
 /**
  * Immutable snapshot of active paid session state.
@@ -157,7 +156,7 @@ class PaymentRepository(
     }
 
     fun creditPaymentBlocking(txId: String, seconds: Int, amount: Double): PaymentResult =
-        runBlocking(Dispatchers.IO) {
+        blockingIo {
             creditPayment(txId, seconds, amount)
         }
 
@@ -224,7 +223,7 @@ class PaymentRepository(
         return updatedState
     }
 
-    fun deductTimeBlocking(secondsDelta: Int, txId: String? = null): PaidSessionState = runBlocking(Dispatchers.IO) {
+    fun deductTimeBlocking(secondsDelta: Int, txId: String? = null): PaidSessionState = blockingIo {
         deductTime(secondsDelta, txId)
     }
 
@@ -251,7 +250,7 @@ class PaymentRepository(
         return newState
     }
 
-    fun expireSessionBlocking(): PaidSessionState = runBlocking(Dispatchers.IO) {
+    fun expireSessionBlocking(): PaidSessionState = blockingIo {
         expireSession()
     }
 
@@ -300,7 +299,7 @@ class PaymentRepository(
         return ExpiryResult(didExpire = didExpire, sessionState = state)
     }
 
-    fun expireSessionIfDueBlocking(): ExpiryResult = runBlocking(Dispatchers.IO) {
+    fun expireSessionIfDueBlocking(): ExpiryResult = blockingIo {
         expireSessionIfDue()
     }
 
@@ -332,7 +331,7 @@ class PaymentRepository(
         return newState
     }
 
-    fun adjustSessionTimeBlocking(durationSeconds: Int): PaidSessionState = runBlocking(Dispatchers.IO) {
+    fun adjustSessionTimeBlocking(durationSeconds: Int): PaidSessionState = blockingIo {
         adjustSessionTime(durationSeconds)
     }
 
@@ -364,7 +363,7 @@ class PaymentRepository(
         }
     }
 
-    fun checkpointSessionBlocking(snapshotRevision: Long) = runBlocking(Dispatchers.IO) {
+    fun checkpointSessionBlocking(snapshotRevision: Long) = blockingIo {
         checkpointSession(snapshotRevision)
     }
 
@@ -435,7 +434,7 @@ class PaymentRepository(
         }
     }
 
-    fun restoreSessionState(ctx: Context? = context): RestoredSessionState = runBlocking(Dispatchers.IO) {
+    fun restoreSessionState(ctx: Context? = context): RestoredSessionState = blockingIo {
         val effectiveCtx = ctx ?: context
         val bootPrefs = effectiveCtx?.let { bootStatePrefs(it) }
         val currentBootCount = if (effectiveCtx != null) {

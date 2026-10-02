@@ -14,10 +14,12 @@ phone browser --> openNDS portal --> theme_coinslot.sh --(127.0.0.1)--> coinslot
 |---|---|
 | `theme_coinslot.sh` | the ThemeSpec (page sequence); everything else is done by openNDS' own `libopennds.sh` |
 | `coinslot-listener.sh` | coin-slot manager: local listener (socat), coin window worker, rates, top-up, vouchers, fair-use watcher, revenue report |
-| `coinslot.conf` | reference copy of the settings file (INSTRUCTIONS.md writes the real one to /etc/coinslot.conf) |
+| `coinslot.conf` | reference list of every setting (the package keeps them in UCI, `/etc/config/coinslot`; the old `/etc/coinslot.conf` still works) |
 | `coinslot.init` | OpenWrt service script |
+| `package/` | builds the `opennds-coinslot` .ipk (`build_ipk.py`) and holds the default UCI config |
+| `layout_b.sh` | prints the `uci` commands for the guest/kiosk split network (Layout B) |
 | `INSTRUCTIONS.md` | step-by-step copy/paste setup (there is no installer script) |
-| `tests/` | end-to-end test with a fake box (`python3 opennds/tests/test_flow.py`) |
+| `tests/` | end-to-end test with a fake box (`test_flow.py`), plus `test_uci_config.py`, `test_ipk.py`, `test_layout_b.py` |
 
 ## Install (OpenWrt with openNDS)
 Follow `INSTRUCTIONS.md`: every step is a copy/paste command.

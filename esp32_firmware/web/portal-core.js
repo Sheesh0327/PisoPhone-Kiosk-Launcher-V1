@@ -1,9 +1,3 @@
-#ifndef WEB_DASHBOARD_SCRIPTS_CORE_H
-#define WEB_DASHBOARD_SCRIPTS_CORE_H
-
-#include <Arduino.h>
-
-const char PORTAL_JS_CORE[] PROGMEM = R"JS(
 function escHtml(v) {
     return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
@@ -178,6 +172,42 @@ window.fetchDeviceStatus = function() {
                 }
             } else if (credBanner) {
                 credBanner.remove();
+            }
+
+            let keyBanner = document.getElementById('legacy_key_banner');
+            if (data.legacy_key) {
+                if (!keyBanner) {
+                    keyBanner = document.createElement('div');
+                    keyBanner.id = 'legacy_key_banner';
+                    keyBanner.style.cssText = 'background:#92400e;color:#fff;padding:10px 14px;font-size:13px;font-weight:700;text-align:center;';
+                    keyBanner.innerHTML = 'This box still uses the old shared key. ' +
+                        '<button type="button" style="margin-left:8px;padding:4px 10px;border-radius:6px;border:0;font-weight:700;cursor:pointer;" ' +
+                        'onclick="switchToOwnKey()">Switch to this box\'s own key</button>';
+                    document.body.insertBefore(keyBanner, document.body.firstChild);
+                }
+            } else if (keyBanner) {
+                keyBanner.remove();
+            }
+
+            // First-run checklist: shown until the box is safe and in use, then it disappears by itself.
+            const steps = [
+                { done: !data.default_credentials, text: 'Choose your own admin password (Settings).' },
+                { done: !!(data.wifi && data.wifi.connected), text: 'Connect the box to your Wi-Fi (Settings).' },
+                { done: !data.legacy_key, text: "Switch the box to its own key (button above)." },
+                { done: devices.some(function (d) { return d.isBound; }), text: 'Pair at least one rental phone (Install & Provision).' }
+            ];
+            let setupCard = document.getElementById('setup_checklist');
+            if (steps.every(function (st) { return st.done; })) {
+                if (setupCard) setupCard.remove();
+            } else {
+                if (!setupCard) {
+                    setupCard = document.createElement('div');
+                    setupCard.id = 'setup_checklist';
+                    setupCard.style.cssText = 'background:#1e293b;color:#e2e8f0;padding:12px 16px;font-size:13px;line-height:1.7;border-bottom:2px solid #38bdf8;';
+                    document.body.insertBefore(setupCard, document.body.firstChild);
+                }
+                setupCard.innerHTML = '<strong>Getting started</strong> (' + devices.length + ' licensed slot' + (devices.length === 1 ? '' : 's') + ')<br>' +
+                    steps.map(function (st) { return (st.done ? '\u2705 ' : '\u2B1C ') + st.text; }).join('<br>');
             }
 
             const container = document.getElementById('live_devices_container');
@@ -467,6 +497,3 @@ window.toggle1v1MatchBox = function() {
         }
     }
 };
-)JS";
-
-#endif // WEB_DASHBOARD_SCRIPTS_CORE_H

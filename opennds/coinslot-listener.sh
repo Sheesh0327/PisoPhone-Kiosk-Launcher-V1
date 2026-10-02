@@ -5,6 +5,7 @@
 #   coinslot-listener.sh handle             one HTTP request on stdin/stdout (started by socat)
 #   coinslot-listener.sh worker <sid> <p>   hold one customer's coin window (started by the listener)
 #   coinslot-listener.sh fairuse            fair-use watcher loop (HyperSpeed throttle after FAIR_USE_GB)
+#   coinslot-listener.sh box                which box this router uses and whether it answers (finds it if it moved)
 #   coinslot-listener.sh report [days]      revenue per day and plan
 #   coinslot-listener.sh minutes <plan> <pesos>   what an amount buys (handy for checking your rates)
 #
@@ -31,7 +32,22 @@
 #   /me?mac                           account status for the status page
 #   /pause?mac                        pause a connected Endurance session once (needs PAUSE_MIN_PESOS paid)
 CONF="${COINSLOT_CONF:-/etc/coinslot.conf}"
+UCI="${UCI:-uci}"
+# Settings come from UCI (/etc/config/coinslot, section "main", lower-case option names: gw_box, gw_key, ...), which
+# LuCI and `uci` tooling understand. The old /etc/coinslot.conf is still read first, so an unmigrated box keeps
+# working; any option set in UCI wins. `coinslot-listener.sh migrate` copies the old file into UCI.
+SETTINGS="GW_BOX GW_KEY GW_DISCOVER GW_BOX_MAC DISCOVER_PORT DISCOVER_IFACE DISCOVER_COOLDOWN LISTEN_PORT STATE_DIR DATA_DIR
+  COIN_FIRST_WAIT_SECONDS COIN_IDLE_WAIT_SECONDS COIN_MAX_SECONDS HYPER_TIERS HYPER_PRORATA_MIN ENDURANCE_TIERS
+  ENDURANCE_DOWN_KBPS ENDURANCE_UP_KBPS PAUSE_MIN_PESOS PAUSE_MAX_HOURS FAIR_USE_GB FAIR_THROTTLE_DOWN_KBPS
+  FAIR_THROTTLE_UP_KBPS FAIR_THROTTLE_MINUTES FAIR_FULL_MINUTES"
 [ -r "$CONF" ] && . "$CONF"
+if command -v "$UCI" >/dev/null 2>&1; then
+  for _name in $SETTINGS; do
+    _opt=$(printf '%s' "$_name" | tr 'A-Z' 'a-z')
+    _val=$("$UCI" -q get "coinslot.main.$_opt" 2>/dev/null) || continue
+    [ -n "$_val" ] && export "$_name=$_val"        # only the known names above are ever read, never arbitrary ones
+  done
+fi
 
 GW_BOX="${GW_BOX:-192.168.1.10}"
 LISTEN_PORT="${LISTEN_PORT:-8099}"
@@ -65,8 +81,16 @@ FAIR_THROTTLE_UP_KBPS="${FAIR_THROTTLE_UP_KBPS:-1000}"
 FAIR_THROTTLE_MINUTES="${FAIR_THROTTLE_MINUTES:-5}"
 FAIR_FULL_MINUTES="${FAIR_FULL_MINUTES:-2}"
 
+# Finding the box when it moves (layout A: the box gets its address from the modem, not from this router).
+# GW_BOX stays the first choice; if the box does not answer, the listener asks for it on the LAN and remembers
+# the answer in $STATE_DIR/box_addr. GW_DISCOVER=0 turns this off; GW_BOX_MAC (optional) only accepts that box.
+GW_DISCOVER="${GW_DISCOVER:-1}"
+GW_BOX_MAC="${GW_BOX_MAC:-}"
+DISCOVER_PORT="${DISCOVER_PORT:-8888}"
+DISCOVER_IFACE="${DISCOVER_IFACE:-}"      # e.g. wan or eth1; empty = let the routing table choose
+DISCOVER_COOLDOWN="${DISCOVER_COOLDOWN:-30}"
+
 SELF="$0"
-BASE="http://$GW_BOX/api/gateway"
 
 # ---------------------------------------------------------------------------
 # Small helpers
@@ -118,12 +142,64 @@ plan_down() { case "$1" in endurance) echo "$ENDURANCE_DOWN_KBPS" ;; *) echo 0 ;
 # The box (gateway API, see docs/overhaul/gateway-coinslot-api.md)
 # ---------------------------------------------------------------------------
 # call <sid> <action> [extra query]: fetch a one-time nonce, sign, send; prints the box's JSON.
+box_addr() { cat "$STATE_DIR/box_addr" 2>/dev/null || printf '%s' "$GW_BOX"; }
+box_base() { printf 'http://%s/api/gateway' "$(box_addr)"; }
+
+# discover_box: broadcast the box's own discovery probe, accept one valid answer, remember where it came from.
+# DISCOVER_CMD is only for tests: it prints what a box would answer.
+discover_box() {
+  [ "$GW_DISCOVER" = 1 ] || return 1
+  mkdir -p "$STATE_DIR"
+  _last=$(cat "$STATE_DIR/box_probe" 2>/dev/null || echo 0)
+  [ $(( $(now) - _last )) -ge "$DISCOVER_COOLDOWN" ] || return 1     # at most one probe per cooldown
+  now > "$STATE_DIR/box_probe"
+  if [ -n "$DISCOVER_CMD" ]; then _reply=$(eval "$DISCOVER_CMD" 2>/dev/null)
+  else
+    _opt=""; [ -n "$DISCOVER_IFACE" ] && _opt=",so-bindtodevice=$DISCOVER_IFACE"
+    _reply=$(printf '{"type":"PISOPHONE_DISCOVER"}' | socat -T3 - "UDP4-DATAGRAM:255.255.255.255:$DISCOVER_PORT,broadcast$_opt" 2>/dev/null)
+  fi
+  [ "$(printf '%s' "$_reply" | jget type)" = PISOPHONE_ESP32_RESPONSE ] || return 1
+  _ip=$(printf '%s' "$_reply" | jget ip)
+  _mac=$(printf '%s' "$_reply" | jget mac)
+  case "$_ip" in "" | *[!0-9.]*) return 1 ;; esac
+  [ "$(printf '%s' "$_ip" | awk -F. 'NF==4 && $1<256 && $2<256 && $3<256 && $4<256 {print "ok"}')" = ok ] || return 1
+  if [ -n "$GW_BOX_MAC" ] && [ "$(mac_key "$_mac")" != "$(mac_key "$GW_BOX_MAC")" ]; then return 1; fi
+  _port=$(printf '%s' "$_reply" | jget port)
+  case "$_port" in "" | 80 | *[!0-9]*) ;; *) _ip="$_ip:$_port" ;; esac
+  printf '%s' "$_ip" > "$STATE_DIR/box_addr"
+  return 0
+}
+
 call() {
   _sid="$1"; _action="$2"; _extra="$3"
-  _nonce=$(http "$BASE/challenge" | jget nonce)
+  _nonce=$(http "$(box_base)/challenge" | jget nonce)
+  if [ -z "$_nonce" ] && discover_box; then _nonce=$(http "$(box_base)/challenge" | jget nonce); fi
   [ -n "$_nonce" ] || { echo '{"success":false,"error":"NO_NONCE"}'; return 1; }
+  BASE=$(box_base)
   _sig=$(printf 'gw1:%s:%s:%s' "$_action" "$_sid" "$_nonce" | openssl dgst -sha256 -hmac "$GW_KEY" | awk '{print $NF}')
   http "$BASE/$_action?session=$_sid&nonce=$_nonce&sig=$_sig$_extra"
+}
+
+# do_box: which box does this router use, and does it answer? (also the operator's quick check)
+do_box() {
+  if [ -n "$(http "$(box_base)/challenge" | jget nonce)" ] || { discover_box && [ -n "$(http "$(box_base)/challenge" | jget nonce)" ]; }; then
+    echo "box $(box_addr) answers"
+  else
+    echo "box $(box_addr) does not answer"; return 1
+  fi
+}
+
+# do_migrate: copy every setting of the old /etc/coinslot.conf into UCI, then keep the old file as .migrated.
+do_migrate() {
+  [ -r "$CONF" ] || { echo "no $CONF: nothing to migrate"; return 0; }
+  command -v "$UCI" >/dev/null 2>&1 || { echo "uci not found" >&2; return 1; }
+  [ -e /etc/config/coinslot ] || [ -n "$COINSLOT_UCI_TEST" ] || : > /etc/config/coinslot
+  "$UCI" -q get coinslot.main >/dev/null 2>&1 || "$UCI" set coinslot.main=coinslot
+  for _name in $SETTINGS; do
+    _v=$( ( . "$CONF"; eval "printf '%s' \"\${$_name}\"" ) )
+    [ -n "$_v" ] && "$UCI" set "coinslot.main.$(printf '%s' "$_name" | tr 'A-Z' 'a-z')=$_v"
+  done
+  "$UCI" commit coinslot && mv "$CONF" "$CONF.migrated" && echo "settings moved to UCI; old file kept as $CONF.migrated"
 }
 
 # ---------------------------------------------------------------------------
@@ -618,6 +694,8 @@ case "$1" in
   handle) do_handle ;;
   worker) valid_sid "$2" && do_worker "$2" ;;
   fairuse) do_fairuse ;;
+  box) do_box ;;
+  migrate) do_migrate ;;
   fairuse-once) fair_tick ;;
   purge) purge_vouchers ;;
   minutes) minutes_for "$2" "$3" ;;

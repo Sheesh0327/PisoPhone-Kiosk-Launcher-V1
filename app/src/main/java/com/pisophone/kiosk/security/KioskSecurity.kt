@@ -39,9 +39,15 @@ object KioskSecurity {
     // `dpm set-device-owner`, which is when policies are first applied.
     private const val ADB_PROVISIONING_GRACE_MS = 15 * 60 * 1000L
 
+    /**
+     * DEPRECATED shared key of builds before per-box secrets. Only used while this phone has not been
+     * provisioned with its box's own secret (a box upgraded in the field stays on it until the operator
+     * switches it). Never use it to authorize anything. Remove once all boxes are on their own key.
+     */
     const val DEFAULT_SHARED_SECRET = "PISOPHONE_HMAC_MASTER_KEY"
+    private const val KEY_BOX_SECRET = "box_shared_secret"
+    private val BOX_SECRET_REGEX = Regex("^[A-Za-z0-9_.+=-]{16,128}$")
     private const val KEY_SECRET_EXPLICITLY_PROVISIONED = "kiosk_secret_explicitly_provisioned"
-    private const val DEFAULT_PIN = "1234"
     private const val TAG = "KioskSecurity"
     private const val KEY_DEVICE_SECRET = "device_crypto_secret"
 
@@ -50,6 +56,19 @@ object KioskSecurity {
 
     @Volatile
     private var encryptedPrefsInstance: SharedPreferences? = null
+
+    /** Drops the cached preference handles so a test starts from a clean app data directory. */
+    internal fun resetCachesForTests() {
+        prefsInstance = null
+        encryptedPrefsInstance = null
+        cachedBoxSecret = null
+        secretVault = SecretVault(KeystoreCipher())
+    }
+
+    /** Wraps the box secret with an Android Keystore key (SecretVault); replaced in tests. */
+    @Volatile internal var secretVault: SecretVault = SecretVault(KeystoreCipher())
+
+    @Volatile private var cachedBoxSecret: String? = null
 
     private fun getPrefs(context: Context): SharedPreferences = prefsInstance ?: synchronized(this) {
         prefsInstance ?: buildPrefs(context.applicationContext).also {
@@ -254,29 +273,103 @@ object KioskSecurity {
         getPrefs(context).edit().putString(KEY_DEVICE_ALIAS, alias.trim()).apply()
     }
 
-    fun getSharedSecret(context: Context): String = DEFAULT_SHARED_SECRET
+    /** The key used for box traffic: this phone's box secret, or the deprecated shared key when none was provisioned. */
+    fun getSharedSecret(context: Context): String {
+        cachedBoxSecret?.let { return it }
+        val prefs = getPrefs(context)
+        val opened = secretVault.open(prefs.getString(KEY_BOX_SECRET, "") ?: "")
+        if (!isValidBoxSecret(opened.value)) return DEFAULT_SHARED_SECRET
+        if (opened.wasPlain) {
+            // Upgrade an old plain value to the Keystore-wrapped form; seal() falls back to plain if wrapping fails.
+            val sealed = secretVault.seal(opened.value)
+            if (sealed != opened.value) prefs.edit().putString(KEY_BOX_SECRET, sealed).apply()
+        }
+        cachedBoxSecret = opened.value
+        return opened.value
+    }
 
-    /** True while the factory PIN is still in use (shown as a warning in the admin vault). */
-    fun isAdminPinDefault(context: Context): Boolean = getAdminPin(context) == DEFAULT_PIN
+    /** True while this phone still talks to its box with the old, publicly known shared key. */
+    fun usesLegacySharedSecret(context: Context): Boolean = getSharedSecret(context) == DEFAULT_SHARED_SECRET
 
+    /** Same rule as the box firmware (SecretMode.h) and the provisioning website. */
+    fun isValidBoxSecret(secret: String): Boolean = BOX_SECRET_REGEX.matches(secret) && secret != DEFAULT_SHARED_SECRET
+
+    /** Stores the secret that belongs to this phone's box (provisioning). Returns false when it is not acceptable. */
+    fun setBoxSecret(context: Context, secret: String): Boolean {
+        val trimmed = secret.trim()
+        if (!isValidBoxSecret(trimmed)) return false
+        getPrefs(context).edit().putString(KEY_BOX_SECRET, secretVault.seal(trimmed)).apply()
+        cachedBoxSecret = trimmed
+        return true
+    }
+
+    /** True until an admin PIN exists. There is no factory PIN: it arrives from the box (its admin password) when paired. */
+    fun isAdminPinUnset(context: Context): Boolean = getAdminPin(context).isEmpty()
+
+    /** The stored admin PIN, or "" when none has been set yet (which never matches any entered PIN). */
     fun getAdminPin(context: Context): String {
-        val pin = getPrefs(context).getString(KEY_ADMIN_PIN, DEFAULT_PIN) ?: DEFAULT_PIN
-        // Recover from AES decryption garbage corruption (wrong key matching 1/256 padding)
+        val prefs = getPrefs(context)
+        val opened = secretVault.open(prefs.getString(KEY_ADMIN_PIN, "") ?: "")
+        val pin = opened.value
+        // Treat AES decryption garbage (wrong key matching 1/256 padding) as "no PIN" rather than a usable one
         if (pin.any { it < ' ' || it > '~' }) {
-            setAdminPin(context, DEFAULT_PIN)
-            return DEFAULT_PIN
+            prefs.edit().remove(KEY_ADMIN_PIN).apply()
+            return ""
+        }
+        if (pin.isEmpty()) return "" // none stored, or a wrapped PIN whose key is gone (the box pushes it again)
+        if (opened.wasPlain) {
+            // Upgrade an old plain PIN to the Keystore-wrapped form; seal() falls back to plain if wrapping fails.
+            val sealed = secretVault.seal(pin)
+            if (sealed != pin) prefs.edit().putString(KEY_ADMIN_PIN, sealed).apply()
         }
         return pin
     }
 
     fun setAdminPin(context: Context, newPin: String) {
-        getPrefs(context).edit().putString(KEY_ADMIN_PIN, newPin.trim()).apply()
+        val pin = newPin.trim()
+        getPrefs(context).edit().putString(KEY_ADMIN_PIN, secretVault.seal(pin)).apply()
     }
 
-    fun verifyAdminPin(context: Context, enteredPin: String): Boolean {
+    enum class PinCheck { OK, WRONG, LOCKED }
+
+    private val pinThrottle = PinThrottle()
+
+    /**
+     * Checks an admin PIN and slows down guessing: five wrong tries in a row lock that channel for a minute,
+     * doubling up to 15 minutes ([PinThrottle]). "local" is the on-screen PIN entry; "remote" is anything
+     * that arrives by broadcast or intent, which another app on the phone could try in a loop, so a flood of
+     * wrong remote tries never locks the person standing at the screen out.
+     */
+    @Synchronized
+    fun verifyAdminPinThrottled(
+        context: Context,
+        enteredPin: String,
+        channel: String,
+        nowMs: Long = System.currentTimeMillis(),
+    ): PinCheck {
         val storedPin = getAdminPin(context)
-        return constantTimeEquals(enteredPin.trim(), storedPin)
+        if (storedPin.isEmpty()) return PinCheck.WRONG // no PIN yet: nothing to guess, nothing to count
+        val prefs = getPrefs(context)
+        val failuresKey = "pin_failures_$channel"
+        val lockKey = "pin_locked_until_$channel"
+        val state = PinThrottle.State(prefs.getInt(failuresKey, 0), prefs.getLong(lockKey, 0L))
+        if (pinThrottle.remainingLockMs(state, nowMs) > 0L) return PinCheck.LOCKED
+
+        val ok = constantTimeEquals(enteredPin.trim(), storedPin)
+        val next = if (ok) pinThrottle.onSuccess() else pinThrottle.onFailure(state, nowMs)
+        if (next != state) {
+            prefs.edit().putInt(failuresKey, next.failures).putLong(lockKey, next.lockedUntilMs).apply()
+        }
+        return if (ok) PinCheck.OK else PinCheck.WRONG
     }
+
+    /** On-screen PIN entry. */
+    fun verifyAdminPin(context: Context, enteredPin: String): Boolean =
+        verifyAdminPinThrottled(context, enteredPin, "local") == PinCheck.OK
+
+    /** PIN received by broadcast or intent from outside the screen (adb provisioning, other apps). */
+    fun verifyAdminPinRemote(context: Context, enteredPin: String): Boolean =
+        verifyAdminPinThrottled(context, enteredPin, "remote") == PinCheck.OK
 
     fun calculateHmac(data: String, key: String): String {
         val mac = Mac.getInstance("HmacSHA256")
@@ -426,6 +519,13 @@ object KioskSecurity {
             val formattedMac = formatMacAddress(mac.trim())
             if (formattedMac.isNotBlank()) {
                 setConfiguredEsp32Mac(context, formattedMac)
+            }
+        }
+        if (!secret.isNullOrBlank()) {
+            if (setBoxSecret(context, secret)) {
+                Log.i(TAG, "[+] Box secret stored; this phone no longer uses the shared key.")
+            } else {
+                Log.w(TAG, "Ignored a provisioning secret that is not valid (16-128 characters of A-Z a-z 0-9 _ . + = -).")
             }
         }
         if (slot > 0) {

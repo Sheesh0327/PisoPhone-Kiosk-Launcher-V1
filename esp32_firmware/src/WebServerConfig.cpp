@@ -3,6 +3,9 @@
 
 #include "InputSafety.h"
 #include "WebServerConfig.h"
+#include "Diagnostics.h"
+#include "SecretMode.h"
+#include "WebAssetServer.h"
 #include "WebServerModule.h"
 #include "FirmwareVersion.h"
 #include "WebServerAuth.h"
@@ -91,17 +94,18 @@ void handleReboot() {
         webServer.send(409, "text/plain", "BUSY: Unpersisted transactions in RAM");
         return;
     }
-    if (revenueDirty || totalCoinsLifetime != lastSavedTotalCoins || totalEarningsLifetime != lastSavedTotalEarnings) {
+    if (revenueDirty || totalCoinsLifetime != lastSavedTotalCoins || totalCentavosLifetime != lastSavedTotalCentavos) {
         prefs.begin(NVS_NAMESPACE, false);
         prefs.putULong(NVS_KEY_TOTAL_COINS, totalCoinsLifetime);
-        prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, totalEarningsLifetime);
+        prefs.putULong(NVS_KEY_TOTAL_CENTAVOS, totalCentavosLifetime);
         prefs.end();
         lastSavedTotalCoins = totalCoinsLifetime;
-        lastSavedTotalEarnings = totalEarningsLifetime;
+        lastSavedTotalCentavos = totalCentavosLifetime;
         revenueDirty = false;
     }
     webServer.send(200, "text/plain", "REBOOTING");
     delay(500);
+    diagNoteRestartReason("admin-reboot");
     ESP.restart();
 }
 
@@ -115,6 +119,7 @@ void handleFactoryReset() {
     factoryResetDefaults();
     webServer.send(200, "text/plain", "OK");
     delay(1000);
+    diagNoteRestartReason("factory-reset");
     ESP.restart();
 }
 
@@ -125,13 +130,13 @@ void handleResetVault() {
         if (superAdminPasswordOk(enteredPw) || superAdminBasicAuthOk()) {
             totalCoinsLifetime = 0;
             totalCoinsSession = 0;
-            totalEarningsLifetime = 0.0f;
-            totalEarningsSession = 0.0f;
+            totalCentavosLifetime = 0;
+            totalCentavosSession = 0;
             lastSavedTotalCoins = 0;
-            lastSavedTotalEarnings = 0.0f;
+            lastSavedTotalCentavos = 0;
             prefs.begin(NVS_NAMESPACE, false);
             prefs.putULong(NVS_KEY_TOTAL_COINS, 0);
-            prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, 0.0f);
+            prefs.putULong(NVS_KEY_TOTAL_CENTAVOS, 0);
             prefs.end();
             Serial.println("[👑 VAULT] Lifetime revenue counter reset to 0 by Super Admin (Vendor).");
         } else {
@@ -145,13 +150,13 @@ void handleSave() {
     if (!checkAdminAuth()) return;
 
     // Immediately flush any dirty revenue to NVS flash on manual save
-    if (revenueDirty || totalCoinsLifetime != lastSavedTotalCoins || totalEarningsLifetime != lastSavedTotalEarnings) {
+    if (revenueDirty || totalCoinsLifetime != lastSavedTotalCoins || totalCentavosLifetime != lastSavedTotalCentavos) {
         prefs.begin(NVS_NAMESPACE, false);
         prefs.putULong(NVS_KEY_TOTAL_COINS, totalCoinsLifetime);
-        prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, totalEarningsLifetime);
+        prefs.putULong(NVS_KEY_TOTAL_CENTAVOS, totalCentavosLifetime);
         prefs.end();
         lastSavedTotalCoins = totalCoinsLifetime;
-        lastSavedTotalEarnings = totalEarningsLifetime;
+        lastSavedTotalCentavos = totalCentavosLifetime;
         revenueDirty = false;
         Serial.println("[💰 VAULT] Revenue counters flushed to NVS flash on config save.");
     }
@@ -224,8 +229,13 @@ void handleSave() {
         prefs.putInt(NVS_KEY_PORT, targetPort);
     }
     if (webServer.hasArg(NVS_KEY_ADMIN_PW)) {
-        webPassword = webServer.arg(NVS_KEY_ADMIN_PW);
-        prefs.putString(NVS_KEY_ADMIN_PW, webPassword);
+        String newPw = webServer.arg(NVS_KEY_ADMIN_PW);
+        if (newPw != webPassword) {
+            webPassword = newPw;
+            adminPwChanged = true;
+            prefs.putString(NVS_KEY_ADMIN_PW, webPassword);
+            prefs.putBool(NVS_KEY_ADMIN_PW_CHANGED, true);
+        }
     }
     if (webServer.hasArg("minutes_per_coin")) {
         int m = webServer.arg("minutes_per_coin").toInt();
@@ -240,8 +250,11 @@ void handleSave() {
         prefs.putBool(NVS_KEY_RELAY_ACTIVE_LOW, relayActiveLow);
     }
     if (webServer.hasArg(NVS_KEY_SHARED_SECRET)) {
-        setSharedSecret(webServer.arg(NVS_KEY_SHARED_SECRET));
-        prefs.putString(NVS_KEY_SHARED_SECRET, getSharedSecret());
+        String newSecret = webServer.arg(NVS_KEY_SHARED_SECRET);
+        if (secretmode::validSecret(newSecret.c_str()) && newSecret != getLegacyLicenseSecret()) {
+            setSharedSecret(newSecret);
+            prefs.putString(NVS_KEY_SHARED_SECRET, newSecret);
+        }
     }
     prefs.end();
 
@@ -281,6 +294,7 @@ void handleOtaForm() {
     }
     html.replace("{MAC_ADDRESS}", macAddressStr);
     html.replace("{FW_VERSION}", PISO_FW_VERSION);
+    html.replace("{ASSET_V_OTA}", webAssetVersion("ota.js"));
 #if CONFIG_IDF_TARGET_ESP32C3
     html.replace("{CHIP_ID}", "esp32c3");
 #else

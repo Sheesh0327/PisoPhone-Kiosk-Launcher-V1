@@ -1,0 +1,7 @@
+# PisoPhone coin-slot settings. Edit with `uci set coinslot.main.<option>=<value>; uci commit coinslot`
+# (lower-case versions of the names in coinslot.conf), then `/etc/init.d/coinslot restart`.
+# This file holds the box key, so it is installed owner-only (mode 600).
+
+config coinslot 'main'
+	option gw_box '192.168.1.10'
+	option gw_key ''

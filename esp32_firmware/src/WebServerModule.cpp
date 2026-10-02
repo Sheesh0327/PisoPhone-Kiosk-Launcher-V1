@@ -6,6 +6,8 @@
 #include "PaymentQueueManager.h"
 #include "Diagnostics.h"
 #include "OtaCheck.h"
+#include "OtaSecurity.h"
+#include "WebAssetServer.h"
 #include "WebServerAuth.h"
 #include "Config.h"
 #include "Security.h"
@@ -57,6 +59,7 @@ void setupWebServer() {
     webServer.on("/api/superadmin/unmask", HTTP_POST, handleSuperAdminUnmask);
     webServer.on("/api/superadmin/reset_vault", HTTP_POST, handleSuperAdminResetVault);
     webServer.on("/api/superadmin/save_split", HTTP_POST, handleSuperAdminSaveSplit);
+    webServer.on("/api/superadmin/factory_reset", HTTP_POST, handleSuperAdminFactoryReset);
     webServer.on("/api/status", HTTP_GET, handleApiStatus);
     webServer.on("/check_qualification", HTTP_GET, handleCheckQualification);
     webServer.on("/identify", HTTP_GET, handleIdentify);
@@ -70,6 +73,7 @@ void setupWebServer() {
     webServer.on("/api/slots/unpair", HTTP_ANY, handleApiSlotUnpair);
     webServer.on("/api/slots/apply_token", HTTP_POST, handleApiSlotApplyToken);
     webServer.on("/api/slots/cloud_sync", HTTP_POST, handleApiSlotCloudSync);
+    webServer.on("/api/security/switch_key", HTTP_POST, handleApiSecuritySwitchKey);
 
     // Dedicated Robust Coin Slot API routes
     webServer.on("/api/coinslot/arm", HTTP_ANY, handleApiCoinslotArm);
@@ -130,7 +134,9 @@ void setupWebServer() {
     });
 
     // Port 80: Web OTA Firmware Update Endpoints
+    registerWebAssetRoutes();
     webServer.on("/update", HTTP_GET, handleOtaForm);
+    webServer.on("/api/ota/manifest", HTTP_POST, handleApiOtaManifest);
     webServer.on(
         "/update", HTTP_POST,
         []() {
@@ -152,6 +158,7 @@ void setupWebServer() {
                 }
                 webServer.send(200, "text/plain", "SUCCESS");
                 delay(1000);
+                diagNoteRestartReason("firmware-update");
                 ESP.restart();
             }
         },
@@ -175,6 +182,15 @@ void setupWebServer() {
 
                 diagCount(DiagCounter::OtaAttempts);
                 diagLog("[OTA] Starting firmware flash: %s\n", upload.filename.c_str());
+
+                // Refuse before anything is written to flash when the image is not covered by a signed manifest.
+                String signErr;
+                if (!otaStartImage(signErr)) {
+                    otaIsValidBinary = false;
+                    otaErrorMsg = signErr;
+                    diagLog("[OTA] %s\n", otaErrorMsg.c_str());
+                    return;
+                }
 
                 if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
                     otaIsValidBinary = false;
@@ -205,6 +221,13 @@ void setupWebServer() {
                 }
 
                 if (upload.currentSize > 0) {
+                    String signErr;
+                    if (!otaFeedImage(upload.buf, upload.currentSize, signErr)) {
+                        otaIsValidBinary = false;
+                        otaErrorMsg = signErr;
+                        diagLog("[OTA] %s\n", otaErrorMsg.c_str());
+                        return;
+                    }
                     if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
                         otaIsValidBinary = false;
                         otaErrorMsg = "Flash write failed at offset " + String(Update.progress()) +
@@ -225,6 +248,14 @@ void setupWebServer() {
                     diagLog("[OTA] Aborted at finalize: unpersisted transactions in RAM");
                 }
                 if (otaIsValidBinary) {
+                    String signErr;
+                    if (!otaFinishImage(signErr)) {
+                        otaIsValidBinary = false;
+                        otaErrorMsg = signErr;
+                        diagLog("[OTA] %s\n", otaErrorMsg.c_str());
+                    }
+                }
+                if (otaIsValidBinary) {
                     if (Update.end(true)) {
                         diagLog("[OTA] Firmware flashing verified & completed successfully: %u bytes\n",
                                 upload.totalSize);
@@ -240,6 +271,7 @@ void setupWebServer() {
                 }
             } else if (upload.status == UPLOAD_FILE_ABORTED) {
                 Update.abort();
+                otaAbortImage();
                 otaIsValidBinary = false;
                 otaErrorMsg = "Upload connection was aborted prematurely.";
                 Serial.println("[OTA] Upload aborted by client.");

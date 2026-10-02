@@ -10,8 +10,4 @@ void sendWsText(WiFiClient& client, String text);
 String readWsText(WiFiClient& client);
 void processWebSocketServer();
 
-void sendUdpDiscoveryResponse(IPAddress targetIp, uint16_t targetPort);
-void processUdpDiscovery();
-void processSerialCli();
-
 #endif // WEBSOCKETS_UDP_H

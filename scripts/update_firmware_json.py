@@ -33,6 +33,25 @@ def get_file_sha256(filepath):
             sha256_hash.update(byte_block)
     return sha256_hash.hexdigest()
 
+def attach_signature(entry, image_path, version):
+    """Copies size and signature from <image>.manifest.json (made by scripts/sign_firmware.py) into the entry,
+    but only when the manifest describes exactly this image and version; otherwise the entry carries no
+    signature and boxes with a signing key will refuse it."""
+    entry.pop("sig", None)
+    entry.pop("size", None)
+    manifest_path = image_path + ".manifest.json"
+    if not os.path.exists(manifest_path):
+        print(f"Warning: {manifest_path} not found; {image_path} is published without a signature.")
+        return
+    with open(manifest_path, "r", encoding="utf-8") as f:
+        m = json.load(f)
+    if m.get("sha256") != entry["sha256"] or m.get("version") != version:
+        print(f"Warning: {manifest_path} does not match the image/version {version}; not publishing its signature.")
+        return
+    entry["size"] = m["size"]
+    entry["sig"] = m["sig"]
+
+
 def main():
     if not os.path.exists(FIRMWARE_JSON_PATH):
         print(f"Error: {FIRMWARE_JSON_PATH} does not exist.")
@@ -68,6 +87,7 @@ def main():
             entry["sha256"] = ""
             continue
         entry["sha256"] = get_file_sha256(path)
+        attach_signature(entry, path, data["version"])
     data.pop("url", None)
     data.pop("sha256", None)
 

@@ -58,4 +58,31 @@ class KioskUpdateManagerUnitTest {
             KioskUpdateManager.sha256Hex(f),
         )
     }
+
+    @Test
+    fun parsesTheDownloadUrlWhenPublished() {
+        val v = KioskUpdateManager.parseRemoteVersion(
+            """{"versionCode": 7, "sha256": "ab", "url": " https://example.test/app.apk "}""",
+        )
+        assertEquals("https://example.test/app.apk", v!!.url)
+        assertEquals("", KioskUpdateManager.parseRemoteVersion("""{"versionCode": 7}""")!!.url)
+    }
+
+    @Test
+    fun aChecksumIsMandatoryAndMustBeHex() {
+        val good = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        assertTrue(KioskUpdateManager.isValidSha256(good))
+        assertFalse(KioskUpdateManager.isValidSha256(""))
+        assertFalse(KioskUpdateManager.isValidSha256(good.substring(1)))
+        assertFalse(KioskUpdateManager.isValidSha256(good.uppercase()))
+        assertFalse(KioskUpdateManager.isValidSha256("g".repeat(64)))
+    }
+
+    @Test
+    fun onlyHttpsDownloadsAreAllowed() {
+        assertTrue(KioskUpdateManager.isAllowedDownloadUrl("https://example.test/app.apk"))
+        assertFalse(KioskUpdateManager.isAllowedDownloadUrl("http://example.test/app.apk"))
+        assertFalse(KioskUpdateManager.isAllowedDownloadUrl("file:///sdcard/app.apk"))
+        assertFalse(KioskUpdateManager.isAllowedDownloadUrl(""))
+    }
 }

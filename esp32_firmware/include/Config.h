@@ -8,10 +8,6 @@
 // ============================================================================
 // HARDWARE CONSTANTS & PIN DEFAULTS
 // ============================================================================
-extern const char* DEFAULT_SSID;
-extern const char* DEFAULT_PASS;
-extern const char* DEFAULT_ADMIN_PW;
-extern const char* MASTER_CRYPTO_SECRET;
 
 extern const int DEFAULT_UNIVERSAL_COIN_PIN;
 extern const int DEFAULT_LED_PIN;
@@ -44,12 +40,15 @@ extern const char* const NVS_KEY_RELAY_ACTIVE_LOW;
 extern const char* const NVS_KEY_PORT;
 extern const char* const NVS_KEY_MINS_PER_COIN;
 extern const char* const NVS_KEY_ADMIN_PW;
+extern const char* const NVS_KEY_ADMIN_PW_CHANGED;
+extern const char* const NVS_KEY_SETUP_AP_PASS;
 extern const char* const NVS_KEY_SHARED_SECRET;
+extern const char* const NVS_KEY_LEGACY_KEY;
 extern const char* const NVS_KEY_P1;
 extern const char* const NVS_KEY_P2;
 extern const char* const NVS_KEY_MATCH;
 extern const char* const NVS_KEY_TOTAL_COINS;
-extern const char* const NVS_KEY_TOTAL_EARNINGS;
+extern const char* const NVS_KEY_TOTAL_CENTAVOS;
 
 // ============================================================================
 // DATA STRUCTURES
@@ -107,8 +106,17 @@ extern String wifiSsid;
 extern String wifiPass;
 extern String androidIps;
 extern String webPassword;
-String getSharedSecret();
-void setSharedSecret(const String& value);
+extern String setupApPass;                 // password of the setup access point, unique per box
+extern bool adminPwChanged;                // false until the operator replaces the generated admin password
+void runConfigMigrations();                // brings saved settings to this firmware's format (ConfigMigration.h)
+void loadCredentials();                    // reads the admin and setup-AP passwords (the migrations make them)
+String getSharedSecret();                  // the key box<->phone traffic uses right now
+void setSharedSecret(const String& value); // sets this box's own secret (see SecretMode.h)
+String getBoxSecret();                     // this box's own secret, whatever mode the box is in
+String getLegacyLicenseSecret();           // old shared key, only to check old-style license keys
+bool isLegacyKeyMode();                    // true until the operator switches the box to its own key
+void switchToOwnKey();                     // leaves legacy mode for good
+void loadSecretMode();                     // reads the box secret and legacy-mode flag
 extern String macAddressStr;
 extern int maxLicensedSlots;
 
@@ -128,10 +136,10 @@ extern String quickTimeStatusMsg;
 // Revenue & Audit
 extern uint32_t totalCoinsLifetime;
 extern uint32_t totalCoinsSession;
-extern float totalEarningsLifetime;
-extern float totalEarningsSession;
+extern uint32_t totalCentavosLifetime;
+extern uint32_t totalCentavosSession;
 extern uint32_t lastSavedTotalCoins;
-extern float lastSavedTotalEarnings;
+extern uint32_t lastSavedTotalCentavos;
 extern bool revenueDirty;
 extern unsigned long lastCoinChangeTime;
 extern const unsigned long REVENUE_SAVE_DELAY_MS;
@@ -155,7 +163,9 @@ void syncAndroidIpsFromSlots();
 void processRevenuePersistence();
 void flushRevenueNow();
 
-void factoryResetDefaults();
+// Operator reset (default): keeps the license, lifetime revenue, vendor split and super-admin credentials (OwnerData.h).
+// ownerWipe = true (super-admin request only) erases those as well.
+void factoryResetDefaults(bool ownerWipe = false);
 void updateMasterTime(uint64_t ts, const String& sourceId = "");
 uint64_t getCurrentMasterTimeMs();
 String generateTxId(const char* prefix = "tx-");

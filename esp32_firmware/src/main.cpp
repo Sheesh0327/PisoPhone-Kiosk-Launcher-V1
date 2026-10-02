@@ -8,6 +8,7 @@
 #include <Preferences.h>
 #include <ESPmDNS.h>
 #include <esp_task_wdt.h>
+#include <esp_ota_ops.h>
 #include "esp_wifi.h"
 #include "Config.h"
 #include "Security.h"
@@ -23,10 +24,9 @@
 #include "FirmwareVersion.h"
 #include "Diagnostics.h"
 #include "WebServerAuth.h"
+#include "HealthPolicy.h"
 
 #define WDT_TIMEOUT_SECONDS 15
-#define DAILY_MAINTENANCE_INTERVAL_MS 86400000UL // 24 Hours
-#define MIN_SAFE_HEAP_BYTES 15000                // 15 KB Critical Heap Limit
 
 static unsigned long lastWifiCheckTime = 0;
 static unsigned long lastCloudSnapshotMs = 0;
@@ -53,7 +53,7 @@ static void startSetupAccessPoint() {
     String apSsid = "PisoPhone-Setup-" + suffix.substring(suffix.length() - 4);
     WiFi.mode(WIFI_AP_STA);
     applyWifiTxPower();
-    if (WiFi.softAP(apSsid.c_str(), DEFAULT_PASS)) {
+    if (WiFi.softAP(apSsid.c_str(), setupApPass.c_str())) {
         setupApActive = true;
         diagLog("[📶 SETUP AP] Wi-Fi unreachable. Setup AP '%s' active at http://%s\n", apSsid.c_str(),
                 WiFi.softAPIP().toString().c_str());
@@ -87,29 +87,37 @@ static void initHardwareWatchdog() {
                   WDT_TIMEOUT_SECONDS);
 }
 
+static health::Monitor healthMonitor;
+
+// Looks at memory every 10 s and restarts only when HealthPolicy.h says it is needed and safe (see that file).
 static void processSystemHealthAndAutoMaintenance() {
     unsigned long now = millis();
-    if (now - lastHealthCheckMs < 10000) return; // Check every 10 seconds
+    if (now - lastHealthCheckMs < 10000) return;
     lastHealthCheckMs = now;
 
     uint32_t freeHeap = ESP.getFreeHeap();
-    bool heapCritical = (freeHeap < MIN_SAFE_HEAP_BYTES);
-    bool dailyWindowReached = (now > DAILY_MAINTENANCE_INTERVAL_MS);
+    uint32_t largestBlock = ESP.getMaxAllocHeap();
+
+    // A line every 15 minutes makes a slow leak visible in the diagnostics log long before it matters.
+    static unsigned long lastSampleMs = 0;
+    if (lastSampleMs == 0 || now - lastSampleMs >= 15UL * 60UL * 1000UL) {
+        lastSampleMs = now;
+        diagLog("[HEALTH] up %lus heap free=%u min=%u largest=%u\n", now / 1000UL, (unsigned)freeHeap,
+                (unsigned)ESP.getMinFreeHeap(), (unsigned)largestBlock);
+    }
 
     // Never restart with a coin session open or a payment that only exists in RAM.
-    if ((heapCritical || dailyWindowReached) && getCoinSlotState() == CoinSlotState::IDLE &&
-        !hasUnpersistedPayments()) {
-        if (heapCritical) {
-            diagLog("⚠️ [HEALTH GUARD] Free heap low (%u bytes < %d bytes threshold). Initiating safety reboot...\n",
-                    freeHeap, MIN_SAFE_HEAP_BYTES);
-        } else {
-            diagLog("ℹ️ [HEALTH GUARD] 24-hour uptime maintenance window reached. Initiating scheduled reboot...\n");
-        }
-        flushRevenueNow();
-        Serial.flush();
-        delay(100);
-        ESP.restart();
-    }
+    bool safe = getCoinSlotState() == CoinSlotState::IDLE && !hasUnpersistedPayments();
+    health::Action action = healthMonitor.evaluate(now, freeHeap, largestBlock, now, getCurrentMasterTimeMs(), safe);
+    if (action == health::Action::None) return;
+
+    diagLog("[HEALTH GUARD] Restarting (%s): heap free=%u largest=%u, up %lus\n", health::actionName(action),
+            (unsigned)freeHeap, (unsigned)largestBlock, now / 1000UL);
+    diagNoteRestartReason(health::actionName(action));
+    flushRevenueNow();
+    Serial.flush();
+    delay(100);
+    ESP.restart();
 }
 
 void setup() {
@@ -130,7 +138,7 @@ void setup() {
     loadAllConfig();
     gatewayInit();
     if (defaultCredentialsActive()) {
-        diagLog("[AUTH] WARNING: default admin credentials are still active; change them in Settings.\n");
+        diagLog("[AUTH] WARNING: the generated admin password has not been changed yet; change it in Settings.\n");
     }
     lastWifiCheckTime = millis();
 
@@ -195,9 +203,20 @@ void setup() {
     lastWifiCheckTime = millis();
 }
 
+// A freshly flashed image that survives a minute of normal running is confirmed, so a bootloader built
+// with app rollback would not revert it. With the stock Arduino bootloader this call does nothing.
+static void confirmRunningImageWhenStable() {
+    static bool confirmed = false;
+    if (confirmed || millis() < 60000UL) return;
+    confirmed = true;
+    esp_err_t r = esp_ota_mark_app_valid_cancel_rollback();
+    Serial.printf("[OTA] Running image confirmed (%s)\n", esp_err_to_name(r));
+}
+
 void loop() {
     // Feed Hardware Watchdog Timer
     esp_task_wdt_reset();
+    confirmRunningImageWhenStable();
 
     // Memory and Uptime Health Maintenance Check
     processSystemHealthAndAutoMaintenance();
@@ -238,7 +257,8 @@ void loop() {
         if (setupApActive) stopSetupAccessPoint();
     } else {
         if (wifiDownSinceMs == 0) wifiDownSinceMs = millis();
-        if (!setupApActive && millis() - wifiDownSinceMs >= SETUP_AP_AFTER_MS) {
+        // A box with no Wi-Fi configured opens its setup AP straight away; otherwise after a while offline.
+        if (!setupApActive && (wifiSsid.length() == 0 || millis() - wifiDownSinceMs >= SETUP_AP_AFTER_MS)) {
             startSetupAccessPoint();
         }
         if (millis() - lastWifiCheckTime < 20000) {

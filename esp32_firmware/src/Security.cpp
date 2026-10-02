@@ -3,35 +3,42 @@
 
 #include "Security.h"
 #include "Config.h"
+#include "LicenseCrypto.h"
+#include "ProtocolCrypto.h"
+#include "LicensePubKey.h"
 #include "esp_mac.h"
 #include "mbedtls/md.h"
 #include "mbedtls/sha1.h"
 #include "mbedtls/base64.h"
 #include "mbedtls/aes.h"
 
-String calculateHMAC(String challenge, String secret) {
-    mbedtls_md_context_t ctx;
-    mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
-    mbedtls_md_init(&ctx);
-    mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(md_type), 1);
-    mbedtls_md_hmac_starts(&ctx, (const unsigned char*)secret.c_str(), secret.length());
-    mbedtls_md_hmac_update(&ctx, (const unsigned char*)challenge.c_str(), challenge.length());
-    unsigned char hmacResult[32];
-    mbedtls_md_hmac_finish(&ctx, hmacResult);
-    mbedtls_md_free(&ctx);
-
-    String hex = "";
+static String sha256Hex(const String& in) {
+    unsigned char out[32];
+    mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), (const unsigned char*)in.c_str(), in.length(), out);
+    String hex;
     for (int i = 0; i < 32; i++) {
-        char buf[3];
-        sprintf(buf, "%02x", hmacResult[i]);
-        hex += buf;
+        char b[3];
+        snprintf(b, sizeof(b), "%02x", out[i]);
+        hex += b;
     }
     return hex;
 }
 
+String calculateHMAC(String challenge, String secret) {
+    return String(protocol::hmacHex(challenge.c_str(), secret.c_str()).c_str());
+}
+
+static void grantSlots(int s) {
+    maxLicensedSlots = min(max(maxLicensedSlots, s), MAX_SUPPORTED_SLOTS);
+    for (int i = 0; i < maxLicensedSlots; i++) {
+        licenseSlots[i].active = true;
+    }
+    saveSlotLicenses();
+    Serial.printf("[+] Slot license applied: capacity is now %d slots\n", maxLicensedSlots);
+}
+
 bool applySlotToken(String token) {
     token.trim();
-    token.toUpperCase();
     if (token.length() == 0) return false;
 
     if (macAddressStr.length() == 0) {
@@ -42,6 +49,24 @@ bool applySlotToken(String token) {
                  mac[5]);
         macAddressStr = String(macBuf);
     }
+
+    // Signed license (checked against the owner's public key). Once a key is built in, this is the only way in.
+    if (LICENSE_PUBKEY_LEN > 0) {
+        uint32_t slots = 0;
+        auto r = licensecrypto::checkToken(token.c_str(), macAddressStr.c_str(), LICENSE_PUBKEY_DER, LICENSE_PUBKEY_LEN,
+                                           MAX_SUPPORTED_SLOTS, slots);
+        if (r == licensecrypto::LicenseCheck::Ok) {
+            grantSlots((int)slots);
+            return true;
+        }
+        Serial.printf("[-] License rejected (code %d)\n", (int)r);
+        return false;
+    }
+
+    // DEPRECATED: no public key built in yet, so the old shared-secret keys still work.
+    // Remove once every box has been flashed with a LicensePubKey.h from `generate_license.py keygen`.
+    Serial.println("[!] No license public key in this firmware: accepting the deprecated shared-secret key.");
+    token.toUpperCase();
 
     String myMac = macAddressStr;
     myMac.trim();
@@ -54,7 +79,7 @@ bool applySlotToken(String token) {
     }
     if (cleanMac.length() == 0) return false;
 
-    String secKey = (getSharedSecret().length() > 0) ? getSharedSecret() : String(MASTER_CRYPTO_SECRET);
+    String secKey = getLegacyLicenseSecret();
 
     // Canonical Single Verification Path: Match target slot count (1..MAX_SUPPORTED_SLOTS)
     for (int s = 1; s <= MAX_SUPPORTED_SLOTS; s++) {
@@ -68,14 +93,7 @@ bool applySlotToken(String token) {
 
         if (token.equalsIgnoreCase(shortSig) || token.equalsIgnoreCase(fullToken) ||
             token.equalsIgnoreCase(fullTokenLong) || token.equalsIgnoreCase(expectedSig)) {
-            maxLicensedSlots = min(max(maxLicensedSlots, s), MAX_SUPPORTED_SLOTS);
-            for (int i = 0; i < maxLicensedSlots; i++) {
-                licenseSlots[i].active = true;
-            }
-
-            saveSlotLicenses();
-            Serial.printf("[+] Successfully applied Slot License Token: Capacity expanded to %d slots!\n",
-                          maxLicensedSlots);
+            grantSlots(s);
             return true;
         }
     }
@@ -101,68 +119,17 @@ String getBoxMachineCode() {
         if (myMac[i] != ':') cleanMac += myMac[i];
     }
     if (cleanMac.length() == 0) cleanMac = "000000000000";
-    String secKey = (getSharedSecret().length() > 0) ? getSharedSecret() : String(MASTER_CRYPTO_SECRET);
+    // Typing-mistake check only; it is not a secret.
     String payload = "BOXREQ:" + cleanMac + ":" + String(maxLicensedSlots) + ":" + String(MAX_SUPPORTED_SLOTS);
-    String sig = calculateHMAC(payload, secKey).substring(0, 4);
+    String sig = sha256Hex(payload).substring(0, 4);
     sig.toUpperCase();
     return "PISO-" + cleanMac + "-" + String(maxLicensedSlots) + "-" + String(MAX_SUPPORTED_SLOTS) + "-" + sig;
 }
 
 String aes_encrypt(String plaintext, String secret) {
-    uint8_t aes_key[32];
-    mbedtls_md_context_t sha_ctx;
-    mbedtls_md_init(&sha_ctx);
-    mbedtls_md_setup(&sha_ctx, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), 0);
-    mbedtls_md_starts(&sha_ctx);
-    mbedtls_md_update(&sha_ctx, (const unsigned char*)secret.c_str(), secret.length());
-    mbedtls_md_finish(&sha_ctx, aes_key);
-    mbedtls_md_free(&sha_ctx);
-
     uint8_t iv[16];
-    for (int i = 0; i < 16; i += 4) {
-        uint32_t r = esp_random();
-        memcpy(iv + i, &r, 4);
-    }
-
-    size_t plaintext_len = plaintext.length();
-    size_t padding_len = 16 - (plaintext_len % 16);
-    size_t padded_len = plaintext_len + padding_len;
-    uint8_t* padded_input = (uint8_t*)malloc(padded_len);
-    if (!padded_input) return "";
-    memcpy(padded_input, plaintext.c_str(), plaintext_len);
-    for (size_t i = plaintext_len; i < padded_len; i++) {
-        padded_input[i] = (uint8_t)padding_len;
-    }
-
-    mbedtls_aes_context aes_ctx;
-    mbedtls_aes_init(&aes_ctx);
-    mbedtls_aes_setkey_enc(&aes_ctx, aes_key, 256);
-
-    uint8_t* ciphertext = (uint8_t*)malloc(padded_len);
-    if (!ciphertext) {
-        free(padded_input);
-        mbedtls_aes_free(&aes_ctx);
-        return "";
-    }
-    uint8_t iv_tmp[16];
-    memcpy(iv_tmp, iv, 16);
-
-    mbedtls_aes_crypt_cbc(&aes_ctx, MBEDTLS_AES_ENCRYPT, padded_len, iv_tmp, padded_input, ciphertext);
-    mbedtls_aes_free(&aes_ctx);
-    free(padded_input);
-
-    String hex_result = "";
-    char hex_char[3];
-    for (int i = 0; i < 16; i++) {
-        sprintf(hex_char, "%02x", iv[i]);
-        hex_result += hex_char;
-    }
-    for (size_t i = 0; i < padded_len; i++) {
-        sprintf(hex_char, "%02x", ciphertext[i]);
-        hex_result += hex_char;
-    }
-    free(ciphertext);
-    return hex_result;
+    esp_fill_random(iv, sizeof(iv));
+    return String(protocol::encryptHex(plaintext.c_str(), secret.c_str(), iv).c_str());
 }
 
 String computeSecWebSocketAccept(String key) {

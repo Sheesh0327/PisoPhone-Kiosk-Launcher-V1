@@ -12,6 +12,7 @@ void handleApiSlotPairRequest();
 void handleApiSlotUnpair();
 void handleApiSlotApplyToken();
 void handleApiSlotCloudSync();
+void handleApiSecuritySwitchKey();
 void handleApiStatus();
 void handleIdentify();
 

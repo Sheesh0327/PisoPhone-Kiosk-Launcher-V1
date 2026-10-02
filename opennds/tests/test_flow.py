@@ -341,6 +341,37 @@ try:
     else:
         print("skipped: no Chrome/Chromium found for the browser test")
 
+    # ---- finding the box when it moved (layout A) --------------------------------------------------------------------
+    def box_cmd(extra, state):
+        c = f"{tmp}/moved.conf"
+        open(c, "w").write(open(conf).read().replace(f"GW_BOX=127.0.0.1:{BOX_PORT}", "GW_BOX=127.0.0.1:1") + extra + f"STATE_DIR={state}\n")
+        e = dict(env, COINSLOT_CONF=c)
+        r = subprocess.run(["sh", LISTENER, "box"], env=e, capture_output=True, text=True)
+        return r.returncode, r.stdout.strip()
+    good = '{"type":"PISOPHONE_ESP32_RESPONSE","mac":"AA:BB:CC:DD:EE:01","ip":"%s","port":%d}'
+    rc, out = box_cmd("DISCOVER_CMD='echo nothing'\n", f"{tmp}/s1")
+    check(rc != 0 and "does not answer" in out, "unreachable box with no discovery answer is reported: " + out)
+    open(f"{tmp}/fakereply", "w").write(good % ("127.0.0.1;rm", BOX_PORT))
+    rc, out = box_cmd(f"DISCOVER_CMD='cat {tmp}/fakereply'\n", f"{tmp}/s2")
+    check(rc != 0, "a discovery answer that is not a plain IPv4 address is refused")
+    open(f"{tmp}/fakereply", "w").write(good % ("127.0.0.1", BOX_PORT))
+    rc, out = box_cmd(f"DISCOVER_CMD='cat {tmp}/fakereply'\nGW_BOX_MAC=11:22:33:44:55:66\n", f"{tmp}/s3")
+    check(rc != 0 and not os.path.exists(f"{tmp}/s3/box_addr"), "a box with the wrong MAC is not adopted")
+    rc, out = box_cmd(f"DISCOVER_CMD='cat {tmp}/fakereply'\nGW_BOX_MAC=aa:bb:cc:dd:ee:01\n", f"{tmp}/s4")
+    check(rc == 0 and f"127.0.0.1:{BOX_PORT}" in out, "a moved box with the right MAC is found and used: " + out)
+
+    # ---- router flash wear: DATA_DIR (flash on a router) is written only when money or a voucher changes -------------
+    def snapshot():
+        return {os.path.join(r, f): os.stat(os.path.join(r, f)).st_mtime_ns for r, _, fs in os.walk(DATA) for f in fs}
+    before = snapshot()
+    for _ in range(5):
+        get(f"/status?sid={'c' * 32}")
+        get("/info")
+        get("/tiers?plan=hyper")
+        get(f"/me?mac={MAC_A}")
+        get(f"/claim?sid={'c' * 32}&mac={MAC_A}")
+    check(snapshot() == before, "polling and status pages never write to the flash-backed data directory")
+
     # ---- reports and hardening ---------------------------------------------------------------------------------------
     rep = listener("report", "7")
     check("endurance" in rep and "hyper" in rep and "Total last 7 day(s): PHP" in rep, "revenue report: " + rep.replace("\n", " | "))

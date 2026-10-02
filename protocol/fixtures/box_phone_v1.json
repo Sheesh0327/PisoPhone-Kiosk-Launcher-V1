@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "encrypt": [
+    {
+      "name": "short",
+      "secret": "Abcd2345Efgh6789Jkmn",
+      "iv": "000102030405060708090a0b0c0d0e0f",
+      "plaintext": "minutes=30&amount=5&tx_id=tx-b1-1-0000abcd&ts=1760000000000",
+      "ciphertext": "000102030405060708090a0b0c0d0e0f9233785acd7a73b0721e8079b0b996c1e4b7e57492b99a113cab416558765115a221278f9029495fee7d1c3e07ebb876cc2e884e14a1bdee32fb98d60f3b6a01"
+    },
+    {
+      "name": "block-aligned",
+      "secret": "Abcd2345Efgh6789Jkmn",
+      "iv": "030a11181f262d343b424950575e656c",
+      "plaintext": "0123456789abcdef",
+      "ciphertext": "030a11181f262d343b424950575e656c4ea32a5072874a0bd5db5575cb8d2076cd40166481b720d37e193d5629d026e2"
+    },
+    {
+      "name": "empty-ish",
+      "secret": "x7Yq-9_zK.m+3=Rt8UvW4nBp",
+      "iv": "000102030405060708090a0b0c0d0e0f",
+      "plaintext": "x",
+      "ciphertext": "000102030405060708090a0b0c0d0e0f9df50efba7ad0749cd4413be6b67caa0"
+    },
+    {
+      "name": "pin",
+      "secret": "x7Yq-9_zK.m+3=Rt8UvW4nBp",
+      "iv": "030a11181f262d343b424950575e656c",
+      "plaintext": "PIN:hX7kQ2mNp4Rt",
+      "ciphertext": "030a11181f262d343b424950575e656c3545a50c35a3e54424399192f633d07ca8996ec295cfcbdc65dd2080d1f8e7fd"
+    },
+    {
+      "name": "long",
+      "secret": "Abcd2345Efgh6789Jkmn",
+      "iv": "000102030405060708090a0b0c0d0e0f",
+      "plaintext": "action=set_config&name=PisoPhone%201&name=PisoPhone%201&name=PisoPhone%201&name=PisoPhone%201&name=PisoPhone%201&name=PisoPhone%201&name=PisoPhone%201&name=PisoPhone%201&end=1",
+      "ciphertext": "000102030405060708090a0b0c0d0e0f4018c954854c2725c44ae0c158d0070e9de688a8790071298283c732d69a787f9020bb4ee176fb6bc0f9435c50aff733337d36224f80ad018a5bb32f0a1c7d83ed6e0684554cf8c28b55687155109e3066a5a71dbdae1b232964012e1240939f9afd8c33b0596dcf72983d64b193fa2584c56108a48838458a9f6db040dd8c409b08fea852ef48420920b36d9feb939c3d2f0b8fedad1d6bde3f32f591d2b895b991b530089bad8044564221c9073f92"
+    }
+  ],
+  "hmac": [
+    {
+      "name": "payload-hmac",
+      "secret": "Abcd2345Efgh6789Jkmn",
+      "message": "000102030405060708090a0b0c0d0e0f9233785acd7a73b0721e8079b0b996c1e4b7e57492b99a113cab416558765115a221278f9029495fee7d1c3e07ebb876cc2e884e14a1bdee32fb98d60f3b6a01",
+      "hmac": "e620e69deadfb7f9a6f3c826535d5308434db5a484c8fd0ac3bc7f7a5c35e7b6"
+    },
+    {
+      "name": "discovery",
+      "secret": "Abcd2345Efgh6789Jkmn",
+      "message": "DISCOVERY:AA:BB:CC:DD:EE:FF:192.168.1.50",
+      "hmac": "1513217a00c6ebc253b0cea861fc7a4b15865e2436bcea37b9e4662843733dd2"
+    },
+    {
+      "name": "heartbeat-timestamp",
+      "secret": "x7Yq-9_zK.m+3=Rt8UvW4nBp",
+      "message": "dev-1234:1760000000000",
+      "hmac": "9a8c045d0aa5fd375bc49a2be827d456d51785bec629ba9816257630c12ff738"
+    },
+    {
+      "name": "coin-ack",
+      "secret": "Abcd2345Efgh6789Jkmn",
+      "message": "v1:dev-1234:tx-b1-1-0000abcd:5:1760000000000",
+      "hmac": "b327e6e767e6a359eaccbf2f6a599a8dbfb69d8dab16ea8c92b815ce7751f1d7"
+    }
+  ]
+}

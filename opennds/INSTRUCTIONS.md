@@ -8,7 +8,26 @@ Steps 2 onwards run on the router over SSH (`ssh root@<router-ip>`).
   reservation so it never changes) and its admin password.
 - The router has internet access (for `opkg`).
 
-## 1. Copy the files to the router
+## Quick install with the package (recommended)
+Build or download `opennds-coinslot_<version>_all.ipk` (`python3 opennds/package/build_ipk.py --version 1.0.0`, or the
+file attached to the CI run), then on the PC and the router:
+```
+scp dist/opennds-coinslot_1.0.0_all.ipk root@<router-ip>:/tmp/
+ssh root@<router-ip>
+opkg update && opkg install /tmp/opennds-coinslot_1.0.0_all.ipk     # also installs opennds, socat, openssl-util, curl
+```
+It copies the files, fixes line endings and permissions, enables the service and moves an old
+`/etc/coinslot.conf` into UCI. Then do step 4 (make the key), and store the settings in UCI instead of step 6:
+```
+uci set coinslot.main.gw_box='<box-ip>'
+uci set coinslot.main.gw_key="$KEY"
+uci commit coinslot
+```
+Continue with step 7 (openNDS theme) and step 8 (start). Every setting is a lower-case UCI option
+(`uci set coinslot.main.hyper_tiers='5:30 10:60 20:120'`, `gw_box_mac`, `discover_iface`, ...); the manual steps 1, 2, 3 and 5 below
+are only needed without the package. `coinslot-listener.sh migrate` moves an old settings file into UCI by hand.
+
+## 1. Copy the files to the router (manual install, without the package)
 From the PC that has this folder (Windows PowerShell, macOS or Linux terminal), replace `<router-ip>`:
 
 ```
@@ -57,7 +76,7 @@ chmod +x /usr/bin/coinslot-listener.sh
 chmod +x /etc/init.d/coinslot
 ```
 
-## 6. Write the settings file (holds the key, so owner-only)
+## 6. Write the settings file (holds the key, so owner-only; the package uses UCI instead, see above)
 Run this in the same session as step 4 so `$KEY` is filled in. Paste the whole block at once:
 
 ```
@@ -102,11 +121,58 @@ only sustained heavy use is limited. This applies to all clients; HyperSpeed has
 ```
 (`restart` can print "Command failed: Not found" when openNDS was not running; `stop` then `start` avoids that.)
 
+### Layout A: the box is on the modem's network, not behind this router
+The router reaches the box through its WAN port, so the box's address comes from the modem and may change. Two
+things keep this working:
+
+1. Reserve the box's address in the modem if it lets you (DHCP reservation). Many ISP modems do not.
+2. If the box stops answering at `GW_BOX`, the listener asks for it itself: it broadcasts the box's own discovery
+   probe (UDP 8888) and remembers the answer in `/tmp/coinslot/box_addr`, at most once every 30 seconds. Add to
+   `/etc/coinslot.conf`:
+```
+GW_BOX_MAC=AA:BB:CC:DD:EE:FF   # the box's MAC (shown on its dashboard); only that box is accepted
+DISCOVER_IFACE=wan             # the interface facing the modem; leave out if it works without
+```
+Needs `socat` (already installed in step 3). Check with `/usr/bin/coinslot-listener.sh box`: it prints which
+box it uses and whether it answers. No firewall change is needed: the router starts every connection to the box.
+
+Limit: the discovery answer is not signed, so another device on the modem's network could point the router at
+itself. Set `GW_BOX_MAC` and, where the modem allows it, reserve the address; set `GW_DISCOVER=0` to turn discovery off.
+
+### Layout B: the box and the rental phones are behind this router
+Use this when you control the network. Customers get their own Wi-Fi (`guest`, gated by openNDS); the box and
+the phones share a separate password-protected Wi-Fi or wired port (`kiosk`) that openNDS does not touch.
+Neither side can reach the other; both reach the internet. A customer can then never reach the box or a phone.
+
+1. Generate the settings and read them (nothing is changed yet; needs OpenWrt 21.02 or newer):
+```
+scp opennds/layout_b.sh root@<router-ip>:/root/
+KIOSK_KEY='<kiosk wifi password>' BOX_MAC=AA:BB:CC:DD:EE:FF sh /root/layout_b.sh > /tmp/layout_b.uci
+cat /tmp/layout_b.uci
+```
+Optional settings: `RADIO` (default `radio0`), `KIOSK_SSID`, `GUEST_SSID`, `BOX_IP` (default `192.168.20.10`),
+`KIOSK_PORTS="lan3 lan4"` for wired kiosk ports.
+2. Apply, then reload (your `lan` network is not touched, so you can still reach the router there):
+```
+uci batch < /tmp/layout_b.uci && uci commit && /etc/init.d/network reload && /etc/init.d/firewall reload
+/etc/init.d/opennds restart
+```
+3. Join the box and every rental phone to the **kiosk** Wi-Fi (or plug the box into a kiosk port), and set in
+   `/etc/coinslot.conf`: `GW_BOX=192.168.20.10`, `GW_BOX_MAC=<box MAC>`, `DISCOVER_IFACE=br-kiosk`. Restart the service (step 8).
+4. Give customers the **guest** Wi-Fi name. Turn off any old customer SSID on `lan`.
+5. Check: from a phone on the guest Wi-Fi `ping 192.168.20.10` must fail; from the box's network the portal must still
+   take coins; `/usr/bin/coinslot-listener.sh box` must say the box answers.
+
+If you only have one Wi-Fi and cannot split it: the weaker fallback is to list the box and every rental phone as
+`trustedmac` in openNDS so they skip the portal. Customers then share the network with the box and the phones, so
+the box's and phones' own protections (signed requests, per-box secret) are all that stands between them.
+
 ## 9. Check each piece
 ```
 curl http://127.0.0.1:8099/info                       # expect {"first":30,"idle":15,"max":115,...}
 /usr/bin/coinslot-listener.sh minutes endurance 17    # expect 690 (11 hrs 30 min)
 curl http://<box-ip>/api/gateway/challenge            # expect {"nonce":"..."}
+/usr/bin/coinslot-listener.sh box                     # expect: box <ip> answers
 uci show opennds | grep -E "login_option|themespec|bursting"   # expect the login/theme lines and both bursting lines
 ndsctl status                                         # openNDS is running
 ```

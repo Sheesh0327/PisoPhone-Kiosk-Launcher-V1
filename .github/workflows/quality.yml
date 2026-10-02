@@ -3,16 +3,19 @@ name: Code quality
 # Style and logic checks that do not need the Android toolchain or an ESP32 board:
 #   - ktlint for the Android app (rules in .editorconfig)
 #   - clang-format for the firmware (rules in esp32_firmware/.clang-format)
-#   - the firmware's host tests (diagnostics ring, input safety, OTA header check, credential crypto)
+#   - the firmware's host tests (diagnostics ring, input safety, OTA header check, credential, license and money code)
+#   - repository security rules (scripts/check_security_rules.sh)
 on:
   push:
     branches:
       - '**'
     paths:
       - 'app/**'
+      - 'protocol/**'
       - 'esp32_firmware/**'
       - 'scripts/**'
       - 'opennds/**'
+      - 'website/js/**'
       - '.editorconfig'
       - '.github/workflows/quality.yml'
   pull_request:
@@ -21,6 +24,16 @@ permissions:
   contents: read
 
 jobs:
+  security-rules:
+    name: Security rules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check repository security rules
+        run: sh scripts/check_security_rules.sh
+      - name: Check vendored files match their record
+        run: python3 scripts/check_vendored.py
+
   kotlin-style:
     name: ktlint
     runs-on: ubuntu-latest
@@ -50,10 +63,18 @@ jobs:
       - name: Check C++ formatting
         working-directory: esp32_firmware
         run: |
-          FILES=$(ls src/*.cpp include/*.h host_tests/*.cpp | grep -vE "include/(WebDashboard|SuperAdminTemplate)")
+          FILES=$(ls src/*.cpp include/*.h host_tests/*.cpp | grep -vE "include/(WebDashboard|SuperAdminTemplate|WebAssets)")
           clang-format --dry-run --Werror $FILES
+      - name: Check protocol test vectors are reproducible
+        run: |
+          python3 protocol/gen_vectors.py
+          git diff --exit-code protocol
+      - name: Check generated web assets are up to date
+        run: python3 scripts/embed_web.py --check
       - name: Run host tests
         run: sh esp32_firmware/host_tests/run.sh
+      - name: Test the sold-unit checker
+        run: python3 scripts/tests/test_sold_unit_check.py
 
   opennds-integration:
     name: OpenNDS integration test
@@ -62,3 +83,16 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run end-to-end test with a fake box
         run: python3 opennds/tests/test_flow.py
+      - name: Check the Layout B router configuration
+        run: python3 opennds/tests/test_layout_b.py
+      - name: Check UCI settings and migration
+        run: python3 opennds/tests/test_uci_config.py
+      - name: Build and check the router package
+        run: |
+          python3 opennds/tests/test_ipk.py
+          python3 opennds/package/build_ipk.py --version 1.0.0-r${{ github.run_number }} --out dist
+      - name: Keep the router package from this run
+        uses: actions/upload-artifact@v4
+        with:
+          name: opennds-coinslot-ipk
+          path: dist/*.ipk
