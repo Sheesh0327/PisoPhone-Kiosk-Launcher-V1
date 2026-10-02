@@ -276,6 +276,9 @@ object KioskSecurity {
         return DEFAULT_SHARED_SECRET
     }
 
+    /** True while the factory PIN is still in use (shown as a warning in the admin vault). */
+    fun isAdminPinDefault(context: Context): Boolean = getAdminPin(context) == DEFAULT_PIN
+
     fun getAdminPin(context: Context): String {
         val pin = getPrefs(context).getString(KEY_ADMIN_PIN, DEFAULT_PIN) ?: DEFAULT_PIN
         // Recover from AES decryption garbage corruption (wrong key matching 1/256 padding)
@@ -305,6 +308,16 @@ object KioskSecurity {
 
     fun generateTimestampSignature(deviceId: String, ts: String, secret: String): String {
         return calculateHmac("$deviceId:$ts", secret)
+    }
+
+    /**
+     * Signature for the ESP32 coin-slot calls (arm / unarm / ack). Binds the action, device,
+     * timestamp and (for ack) the transaction id so a captured request cannot be reused for another
+     * action or payment. Must match coinslotSignature() in esp32_firmware WebServerApi.cpp.
+     */
+    fun signCoinslotRequest(action: String, deviceId: String, ts: String, txId: String, secret: String): String {
+        val payload = "v1:$action:$deviceId:$ts" + if (txId.isNotEmpty()) ":$txId" else ""
+        return calculateHmac(payload, secret)
     }
 
     fun getAesKeySpec(secret: String): SecretKeySpec {

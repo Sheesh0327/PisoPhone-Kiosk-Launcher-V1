@@ -30,7 +30,7 @@ class KioskSessionSupervisor(
          * State to enter when the paid balance runs out: an armed slot (1/3) stays armed in the
          * locked-waiting state 1 so coins being inserted are not lost; otherwise fully locked (0).
          */
-        fun lockedStateFor(current: Int): Int = if (current == 1 || current == 3) 1 else 0
+        fun lockedStateFor(current: Int): Int = SessionRules.afterExpiry(current)
     }
 
     @Volatile
@@ -64,7 +64,7 @@ class KioskSessionSupervisor(
                     
                     val curState = stateManager.appState.value
                     // Session arming / waiting countdown
-                    if (curState == 1 || curState == 3) {
+                    if (SessionRules.isArmed(curState)) {
                         if (stateManager.paymentTimeout.value > 0) {
                             stateManager.paymentTimeout.value -= 1
                         }
@@ -74,18 +74,14 @@ class KioskSessionSupervisor(
                             } else {
                                 onCloseSession(true)
                                 val hasPaidTime = stateManager.sessionTimeRemaining.value > 0
-                                if (curState == 3 || hasPaidTime) {
-                                    stateManager.appState.value = 2
-                                } else {
-                                    stateManager.appState.value = 0
-                                }
+                                stateManager.appState.value = SessionRules.afterArmTimeoutNoCoin(curState, hasPaidTime)
                                 stateManager.saveState()
                             }
                         }
                     }
                     
                     // Active session countdown
-                    if (curState == 2 || curState == 3) {
+                    if (SessionRules.isUnlocked(curState)) {
                         val deadline = stateManager.sessionExpiryDeadlineMs.value
                         val nowMonotonic = android.os.SystemClock.elapsedRealtime()
                         val remainingSec = if (deadline > 0L) {

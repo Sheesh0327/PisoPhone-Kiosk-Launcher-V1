@@ -368,8 +368,48 @@ static void evictExpiredPayments(unsigned long now) {
     unlockQueue();
 }
 
+// paymentStorageReady drops to false when an NVS write fails. It used to be restored only when a
+// still-queued record later persisted, so if that record was acknowledged or evicted first the
+// flag stayed false for good and every arm request was refused until a reboot. This probes the
+// storage with a tiny write and restores the flag as soon as flash accepts writes again.
+static void probePaymentStorage(unsigned long now) {
+    static unsigned long lastProbeMs = 0;
+    static uint32_t failedProbes = 0;
+    if (now - lastProbeMs < 5000UL) return;
+
+    lockQueue();
+    bool needProbe = !paymentStorageReady;
+    for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE && needProbe; i++) {
+        // Records that are still waiting for persistence recover the flag themselves.
+        if (paymentSlotUsed[i] && !paymentSlotPersisted[i]) needProbe = false;
+    }
+    unlockQueue();
+    if (!needProbe) return;
+    lastProbeMs = now;
+
+    Preferences storage;
+    bool ok = storage.begin("pay_queue", false);
+    if (ok) {
+        ok = storage.putUInt("probe", (uint32_t)now) > 0;
+        if (ok) storage.remove("probe");
+        storage.end();
+    }
+    if (ok) {
+        lockQueue();
+        paymentStorageReady = true;
+        unlockQueue();
+        diagLog("[PAY QUEUE] Payment storage recovered after %u failed probe(s); arming re-enabled.\n",
+                (unsigned)failedProbes);
+        failedProbes = 0;
+    } else if (++failedProbes == 1 || failedProbes % 60 == 0) {
+        diagLog("[PAY QUEUE] Payment storage still unwritable (probe failure #%u); arming stays disabled. "
+                "Check NVS space.\n", (unsigned)failedProbes);
+    }
+}
+
 void processPendingPaymentRetries() {
     unsigned long now = millis();
+    probePaymentStorage(now);
 
     static unsigned long lastEvictionCheckMs = 0;
     if (now - lastEvictionCheckMs >= 60000UL) {

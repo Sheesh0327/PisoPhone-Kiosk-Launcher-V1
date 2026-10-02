@@ -88,42 +88,25 @@ Hardware test: dashboard works as before; a device name with `"` and `<` shows c
 
 Hardware test: full rental flow (arm, coin, expire, admin add/deduct, busy slot, reboot mid-session).
 
-### Phase 4: Firmware pure core with host tests (F5, F11)
-- extract the pulse accumulator, master clock, tx-id generator and the payment-queue core (behind a small storage interface) into `lib/piso_core`,
-- add a `native` PlatformIO environment, so `pio test -e native` runs on your PC with no hardware,
-- the board build uses the same code.
+### Phase 4: Production hardening (replaces the original phases 4 to 9)
 
-Hardware test: all four boards still arm, pay and ack; `pio test -e native` is green.
+After Phases 1 to 3 the remaining original phases were reviewed against what a production box actually needs. They are compressed into this one phase; the rest is deferred.
 
-### Phase 5: Firmware ownership and concurrency (F6)
-- one owner per piece of shared state, with locked accessors,
-- the auth worker receives copies, not live globals.
+Included:
+1. **Admin broadcasts need the PIN.** Every admin broadcast (`ADMIN_BYPASS`, `ENABLE_ADB`, `DEPROVISION`, `EXIT_KIOSK`, `OPEN_SETTINGS`, `EMERGENCY_RECOVERY`, and the rest) accepts only the admin PIN; the shared secret that is baked into every APK no longer unlocks them.
+2. **Default credentials are visible and not hinted.** The "default is 1234" hint is gone from the login dialogs and the admin vault warns while the default PIN is active (the firmware dashboard already shows a banner).
+3. **Concurrency fix, targeted.** The shared secret, the only global the background auth task shares with the main loop, is read and written through a locked accessor, and the auth task works on a copy. No wider restructuring.
+4. **OTA upload check.** The uploaded file's image header must be an ESP32 image for the chip the board uses; wrong-chip or non-firmware files are refused before anything is written.
+5. **Payment queue host tests (not done yet).** The queue is tied to Arduino types, so testing it on a PC needs it split from storage first. It stays on the list; it is the one item that is real work and best done after a pilot shows whether the queue misbehaves.
 
-Hardware test: a soak run (several hours with coins and phone reconnects) with no resets (Phase 1 diagnostics show reset reasons).
+Hardware test: see `docs/overhaul/phase-4-hardening.md`.
 
-### Phase 6: Android decomposition (F7)
-- split `KioskSecurity` into config, crypto and policy,
-- move the Room access that still uses `runBlocking` onto coroutines,
-- one composition root.
-
-Hardware test: same flows as Phase 3; the app starts cleanly after a reboot and a package update.
-
-### Phase 7: Protocol v2 (F8)
-- versioned envelope, AES-GCM, HKDF key separation, canonical encoding,
-- phone and ESP32 negotiate and fall back to v1, so a mixed fleet keeps working during rollout.
-
-Hardware test: new phone with old ESP32, old phone with new ESP32, and both new; coins credited exactly once in each.
-
-### Phase 8: Signed OTA (F9)
-- an offline signing script and a public key compiled into the firmware,
-- the device verifies the signature before committing the update; a bad or unsigned image is rejected.
-
-Hardware test: a signed image installs; a tampered image and an unsigned one are rejected and the old firmware still boots.
-
-### Phase 9: Config schema (F10)
-- one versioned, validated config structure for firmware settings with migrations.
-
-Hardware test: upgrade from the current firmware keeps Wi-Fi, slots, pins and revenue totals.
+### Deferred (not needed for a pilot)
+- Android decomposition (`KioskSecurity` split, composition root): maintainability only.
+- Protocol v2 (AES-GCM, key separation, negotiation): the current construction is sound.
+- Full signed OTA: OTA already needs the admin password; the header check above covers the practical risk.
+- Config schema with migrations: only needed when an update changes stored settings.
+- Moving the firmware core into a PC-testable library: only the payment-queue part matters (item 5).
 
 ## What I cannot verify here
 

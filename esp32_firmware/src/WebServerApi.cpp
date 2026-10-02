@@ -3,12 +3,14 @@
 #include "WebServerModule.h"
 #include "WebServerAuth.h"
 #include "Config.h"
+#include "SuperAdminCreds.h"
 #include "Security.h"
 #include "HardwareManager.h"
 #include "DeviceManager.h"
 #include "CoinSlotManager.h"
 #include "DeviceNetwork.h"
 #include "PaymentQueueManager.h"
+#include "Diagnostics.h"
 #include <WiFi.h>
 #include <WebServer.h>
 
@@ -220,6 +222,7 @@ void handleApiStatus() {
     }
 
     String json = "{";
+    json += "\"super_admin_managed\":" + String(superAdminCredsManaged() ? "true" : "false") + ",";
     json += "\"default_credentials\":" + String(defaultCredentialsActive() ? "true" : "false") + ",";
     json += "\"wifi\":{";
     json += "\"rssi\":" + String(rssi) + ",";
@@ -394,9 +397,47 @@ static void acknowledgeSessionCoinTx(const String& txId) {
     }
 }
 
+// Coin-slot calls from the phone carry ts + sig = HMAC(shared secret, "v1:<action>:<device>:<ts>[:<tx>]").
+// A present-but-wrong signature is always refused. While PISO_REQUIRE_SIGNED_COINSLOT is 0 (the
+// transition release) unsigned calls from older app builds are still served and counted in the
+// diagnostics; set it to 1 once every phone runs the signing app.
+#ifndef PISO_REQUIRE_SIGNED_COINSLOT
+#define PISO_REQUIRE_SIGNED_COINSLOT 0
+#endif
+static bool coinslotRequestAuthorized(const char* action, const String& rawDevId, const String& txId) {
+    bool hasSig = webServer.hasArg("sig") && webServer.hasArg("ts");
+    if (!hasSig) {
+#if PISO_REQUIRE_SIGNED_COINSLOT
+        webServer.send(403, "application/json", "{\"success\":false,\"error\":\"SIGNATURE_REQUIRED\"}");
+        return false;
+#else
+        static uint32_t unsignedCount = 0;
+        if ((unsignedCount++ % 50) == 0) {
+            diagLog("[AUTH] Unsigned /api/coinslot/%s call served (#%u); update the phone app.\n",
+                    action, (unsigned)unsignedCount);
+        }
+        return true;
+#endif
+    }
+    String ts = webServer.arg("ts");
+    String sig = webServer.arg("sig");
+    String payload = "v1:" + String(action) + ":" + rawDevId + ":" + ts;
+    if (txId.length() > 0) payload += ":" + txId;
+    bool ok = rawDevId.length() > 0 &&
+              sig.equalsIgnoreCase(calculateHMAC(payload, getSharedSecret())) &&
+              checkReplayProtection(rawDevId, strtoull(ts.c_str(), NULL, 10));
+    if (!ok) {
+        diagLog("[AUTH] Rejected /api/coinslot/%s: bad signature or stale timestamp from %s\n",
+                action, webServer.client().remoteIP().toString().c_str());
+        webServer.send(403, "application/json", "{\"success\":false,\"error\":\"AUTH_FAILED\"}");
+    }
+    return ok;
+}
+
 void handleApiCoinslotArm() {
     String devId = webServer.hasArg("device_id") ? webServer.arg("device_id") : (webServer.hasArg("id") ? webServer.arg("id") : "");
     devId.trim();
+    if (!coinslotRequestAuthorized("arm", devId, "")) return;
     String reqIp = webServer.hasArg("ip") ? webServer.arg("ip") : "";
     reqIp.trim();
     if (reqIp.length() == 0 || reqIp == "127.0.0.1" || reqIp == "0.0.0.0") {
@@ -444,7 +485,12 @@ void handleApiCoinslotArm() {
     );
 
     if (!reserved) {
-        webServer.send(500, "application/json", "{\"success\":false,\"status\":\"error\",\"error\":\"ARM_FAILED\"}");
+        // Say why: a storage fault or a full payment queue looks identical to the phone otherwise.
+        const char* why = !isPaymentStorageReady() ? "STORAGE_UNAVAILABLE"
+                        : (isPaymentQueueFull() ? "QUEUE_FULL" : "ARM_FAILED");
+        diagLog("[API] Arm refused for '%s': %s (pending payments: %d)\n",
+                devId.c_str(), why, getPendingPaymentCount());
+        webServer.send(500, "application/json", String("{\"success\":false,\"status\":\"error\",\"error\":\"") + why + "\"}");
         return;
     }
 
@@ -458,6 +504,7 @@ void handleApiCoinslotArm() {
 void handleApiCoinslotUnarm() {
     String devId = webServer.hasArg("device_id") ? webServer.arg("device_id") : (webServer.hasArg("id") ? webServer.arg("id") : "");
     devId.trim();
+    if (!coinslotRequestAuthorized("unarm", devId, "")) return;
     if (devId.length() == 0) {
         devId = getActiveCoinSessionId();
     }
@@ -518,6 +565,7 @@ void handleApiCoinslotAck() {
     txId.trim();
     String devId = webServer.hasArg("device_id") ? webServer.arg("device_id") : "";
     devId.trim();
+    if (!coinslotRequestAuthorized("ack", devId, txId)) return;
     
     if (txId.length() > 0) {
         acknowledgeSessionCoinTx(txId);

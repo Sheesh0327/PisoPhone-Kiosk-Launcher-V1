@@ -178,7 +178,7 @@ class KioskStateManager(private val context: Context) {
             if (effectiveRemainingSec > 0) {
                 sessionTimeRemaining.value = effectiveRemainingSec
                 sessionExpiryDeadlineMs.value = effectiveDeadline
-                appState.value = if (savedState == 1 || savedState == 3) 3 else 2
+                appState.value = if (SessionRules.isArmed(savedState)) SessionState.UNLOCKED_ARMED.code else SessionState.UNLOCKED.code
                 Log.d(TAG, "Restored active session: ${effectiveRemainingSec}s remaining (Monotonic deadline: $effectiveDeadline, isReboot=${restored.isReboot}, rev=${restored.revision})")
             } else {
                 appState.value = 0

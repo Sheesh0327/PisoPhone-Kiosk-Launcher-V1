@@ -33,3 +33,7 @@ app/build/
 .pio/
 __pycache__/
 *.pyc
+
+# Super-admin signing keys must never be committed
+*.key
+*.pem

@@ -327,8 +327,8 @@ void processWebSocketServer() {
             }
             
             // 1. Verify HMAC Signature
-            if (sharedSecret.length() > 0) {
-                String expectedSig = calculateHMAC(reqDeviceId + ":" + tsStr, sharedSecret);
+            if (getSharedSecret().length() > 0) {
+                String expectedSig = calculateHMAC(reqDeviceId + ":" + tsStr, getSharedSecret());
                 if (!sig.equalsIgnoreCase(expectedSig)) {
                     Serial.printf("[-] WS Auth Failed for %s: Signature Mismatch\n", reqDeviceId.c_str());
                     newClient.print("HTTP/1.1 403 Forbidden\r\n\r\nInvalid Signature");
@@ -461,7 +461,7 @@ void processWebSocketServer() {
                     if (ackDevId.length() > 0 && ackTxId.length() > 0 && ackDevId == boundDevId) {
                         bool sigValid = true;
                         if (ackSig.length() > 0 && ackTs.length() > 0) {
-                            String expectedSig = calculateHMAC("v1:" + ackDevId + ":" + ackTxId + ":" + ackPulses + ":" + ackTs, sharedSecret);
+                            String expectedSig = calculateHMAC("v1:" + ackDevId + ":" + ackTxId + ":" + ackPulses + ":" + ackTs, getSharedSecret());
                             if (!ackSig.equalsIgnoreCase(expectedSig)) {
                                 sigValid = false;
                                 Serial.printf("[⚡ WS Port 81] Rejected ACK for '%s': Invalid signature\n", ackTxId.c_str());
@@ -507,7 +507,7 @@ void processWebSocketServer() {
 void sendUdpDiscoveryResponse(IPAddress targetIp, uint16_t targetPort) {
     if (WiFi.status() != WL_CONNECTED) return;
 
-    String secKey = (sharedSecret.length() > 0) ? sharedSecret : String(MASTER_CRYPTO_SECRET);
+    String secKey = (getSharedSecret().length() > 0) ? getSharedSecret() : String(MASTER_CRYPTO_SECRET);
     String ipStr = WiFi.localIP().toString();
     String sig = calculateHMAC("DISCOVERY:" + macAddressStr + ":" + ipStr, secKey);
 

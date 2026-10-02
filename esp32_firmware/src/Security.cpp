@@ -49,7 +49,7 @@ bool applySlotToken(String token) {
     }
     if (cleanMac.length() == 0) return false;
 
-    String secKey = (sharedSecret.length() > 0) ? sharedSecret : String(MASTER_CRYPTO_SECRET);
+    String secKey = (getSharedSecret().length() > 0) ? getSharedSecret() : String(MASTER_CRYPTO_SECRET);
 
     // Canonical Single Verification Path: Match target slot count (1..MAX_SUPPORTED_SLOTS)
     for (int s = 1; s <= MAX_SUPPORTED_SLOTS; s++) {
@@ -92,7 +92,7 @@ String getBoxMachineCode() {
         if (myMac[i] != ':') cleanMac += myMac[i];
     }
     if (cleanMac.length() == 0) cleanMac = "000000000000";
-    String secKey = (sharedSecret.length() > 0) ? sharedSecret : String(MASTER_CRYPTO_SECRET);
+    String secKey = (getSharedSecret().length() > 0) ? getSharedSecret() : String(MASTER_CRYPTO_SECRET);
     String payload = "BOXREQ:" + cleanMac + ":" + String(maxLicensedSlots) + ":" + String(MAX_SUPPORTED_SLOTS);
     String sig = calculateHMAC(payload, secKey).substring(0, 4);
     sig.toUpperCase();

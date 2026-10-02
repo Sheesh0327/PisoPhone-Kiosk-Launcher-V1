@@ -65,15 +65,9 @@ class KioskEngine(
             val currentState = stateManager.appState.value
             // 1. Commit is finalized. Publish committed session state through serialized handler:
             val targetState: Int? = if (isCoin) {
-                if (currentState == 0) 1 else null
+                SessionRules.afterCoinCredit(currentState)
             } else {
-                // Non-coin credit unlocks the phone but must NOT drop an armed slot:
-                // 0 -> 2, 1 (locked+armed) -> 3 (unlocked+armed), 2/3 unchanged.
-                when (currentState) {
-                    0 -> 2
-                    1 -> 3
-                    else -> null
-                }
+                SessionRules.afterNonCoinCredit(currentState)
             }
             if (isCoin) {
                 // Publish the arming window BEFORE appState flips to 1 so a supervisor tick in
@@ -83,9 +77,9 @@ class KioskEngine(
             val applied = stateManager.applySessionUpdate(snapshot, targetState)
             if (applied) {
                 if (isCoin) {
-                    if (stateManager.appState.value == 1 || stateManager.appState.value == 3) {
+                    if (SessionRules.isArmed(stateManager.appState.value)) {
                         stateManager.coinsInserted.value += pesoAmount
-                    } else if (stateManager.appState.value == 2) {
+                    } else if (stateManager.appState.value == SessionState.UNLOCKED.code) {
                         Log.d(TAG, "Coin credited directly to active session: +${seconds}s (₱$pesoAmount)")
                     }
                 }
@@ -127,11 +121,7 @@ class KioskEngine(
         },
         onSessionStateChanged = { snapshot ->
             val current = stateManager.appState.value
-            val targetState = if (snapshot.remainingSeconds <= 0 && (current == 2 || current == 3)) {
-                KioskSessionSupervisor.lockedStateFor(current)
-            } else {
-                null
-            }
+            val targetState = SessionRules.afterDeduct(current, snapshot.remainingSeconds)
             stateManager.applySessionUpdate(snapshot, targetState)
             if (targetState != null) {
                 stateManager.saveState()
@@ -158,7 +148,7 @@ class KioskEngine(
             override fun onScreenSleep() { overlayCoordinator.onScreenSleep() }
             override fun onScreenWake() { overlayCoordinator.onScreenWake() }
             override fun getAudioManager(): KioskAudioManager = audioManager
-            override fun isSessionActive(): Boolean = stateManager.appState.value.let { it == 2 || it == 3 }
+            override fun isSessionActive(): Boolean = SessionRules.isUnlocked(stateManager.appState.value)
         }
     )
 
@@ -273,7 +263,7 @@ class KioskEngine(
 
         scope.launch {
             stateManager.appState.collect { state ->
-                if (state == 1 || state == 3) {
+                if (SessionRules.isArmed(state)) {
                     audioManager.startWaitingMusic()
                 } else {
                     audioManager.stopWaitingMusic()
@@ -354,15 +344,9 @@ class KioskEngine(
 
     fun finishPayment() {
         closeSession(sendUnarmToEsp = true)
-        if (stateManager.coinsInserted.value > 0) {
-            stateManager.appState.value = 2
-        } else {
-            if (stateManager.appState.value == 3) {
-                stateManager.appState.value = 2
-            } else {
-                stateManager.appState.value = 0
-            }
-        }
+        stateManager.appState.value = SessionRules.afterFinishPayment(
+            stateManager.appState.value, stateManager.coinsInserted.value
+        )
         stateManager.coinsInserted.value = 0
         stateManager.saveState()
     }
@@ -426,7 +410,7 @@ class KioskEngine(
         }
     }
 
-    private fun isArmedState(state: Int): Boolean = state == 1 || state == 3
+    private fun isArmedState(state: Int): Boolean = SessionRules.isArmed(state)
 
     fun performAdminBypass(durationSeconds: Int = 900) {
         Log.i(TAG, "Admin bypass granted for $durationSeconds seconds.")
@@ -435,10 +419,7 @@ class KioskEngine(
         // Repository keeps max(remaining, duration), so an existing paid balance is preserved.
         val updated = paymentRepo.adjustSessionTimeBlocking(durationSeconds)
         // Unlock, but keep an armed coin slot armed (1 -> 3, 3 stays 3).
-        val targetState = when (stateManager.appState.value) {
-            1, 3 -> 3
-            else -> 2
-        }
+        val targetState = SessionRules.afterAdminBypass(stateManager.appState.value)
         stateManager.applySessionUpdate(
             deadlineMs = updated.sessionExpiryDeadlineMs,
             remainingSeconds = updated.sessionTimeRemaining,
@@ -460,7 +441,7 @@ class KioskEngine(
             deadlineMs = resetState.sessionExpiryDeadlineMs,
             remainingSeconds = resetState.sessionTimeRemaining,
             revision = resetState.revision,
-            targetAppState = 0
+            targetAppState = SessionRules.hardLocked()
         )
         stateManager.coinsInserted.value = 0
         stateManager.paymentTimeout.value = 0
@@ -479,9 +460,8 @@ class KioskEngine(
             val txId = "${ADMIN_TX_PREFIX}deduct-$ts-${(10000..99999).random()}"
             val previousState = stateManager.appState.value
             val updated = paymentRepo.deductTimeBlocking(positiveSeconds, txId)
-            val sessionEnded = updated.sessionTimeRemaining <= 0 && (previousState == 2 || previousState == 3)
-            // Deducting to zero locks the phone but keeps an armed slot armed (3 -> 1).
-            val targetState = if (sessionEnded) KioskSessionSupervisor.lockedStateFor(previousState) else null
+            val targetState = SessionRules.afterDeduct(previousState, updated.sessionTimeRemaining)
+            val sessionEnded = targetState != null
             stateManager.applySessionUpdate(
                 deadlineMs = updated.sessionExpiryDeadlineMs,
                 remainingSeconds = updated.sessionTimeRemaining,
@@ -509,7 +489,7 @@ class KioskEngine(
                 try {
                     supervisor.ensureRunning()
                     val appState = stateManager.appState.value
-                    if (appState == 2 || appState == 3) {
+                    if (SessionRules.isUnlocked(appState)) {
                         val deadline = stateManager.sessionExpiryDeadlineMs.value
                         val nowMonotonic = android.os.SystemClock.elapsedRealtime()
                         if (deadline > 0L && nowMonotonic >= deadline) {

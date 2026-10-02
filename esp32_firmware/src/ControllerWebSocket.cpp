@@ -28,7 +28,7 @@ bool sendControllerPaymentEvent(const String& sessionId, const String& txId, int
 }
 
 static String getControllerCredential() {
-    return (sharedSecret.length() > 0) ? sharedSecret : String(MASTER_CRYPTO_SECRET);
+    return (getSharedSecret().length() > 0) ? getSharedSecret() : String(MASTER_CRYPTO_SECRET);
 }
 
 bool handleControllerWebSocketHandshake(WiFiClient& client, const String& request, const String& secKey) {

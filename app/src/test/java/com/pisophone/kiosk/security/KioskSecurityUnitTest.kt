@@ -81,4 +81,23 @@ class KioskSecurityUnitTest {
         assertEquals("", KioskSecurity.formatMacAddress(""))
         assertEquals("", KioskSecurity.formatMacAddress(null))
     }
+
+    @Test
+    fun testCoinslotRequestSignatureMatchesFirmwareFormat() {
+        // Expected values computed independently with Python hmac/sha256 over the firmware's
+        // "v1:<action>:<device>:<ts>[:<tx>]" payload.
+        assertEquals(
+            "e08e6c51e0d791208efe56de6838e81125fe3bbd52783e278949c35019716006",
+            KioskSecurity.signCoinslotRequest("arm", "dev1", "1700000000000", "", "secret123")
+        )
+        assertEquals(
+            "5134caa51edc4292a5b7be46ff376dbc7acb2426168cb8e5c772827ff2f8f38c",
+            KioskSecurity.signCoinslotRequest("ack", "dev1", "1700000000000", "tx-9", "secret123")
+        )
+        // An arm signature is not valid for unarm or for a different device.
+        assertNotEquals(
+            KioskSecurity.signCoinslotRequest("arm", "dev1", "1700000000000", "", "secret123"),
+            KioskSecurity.signCoinslotRequest("unarm", "dev1", "1700000000000", "", "secret123")
+        )
+    }
 }

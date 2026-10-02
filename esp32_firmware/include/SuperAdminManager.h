@@ -25,7 +25,6 @@ void handleSuperAdminAuth();
 void handleSuperAdminUnmask();
 void handleSuperAdminResetVault();
 void handleSuperAdminSaveSplit();
-void handleSuperAdminChangePassword();
 
 // ============================================================================
 // UI RENDERING HELPERS

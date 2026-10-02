@@ -230,6 +230,7 @@ void recordDeviceNonce(String deviceId, unsigned long long ts) {
         newDev.lastKnownIp = "";
         newDev.deviceName = "";
         newDev.timeRemainingSeconds = -1;
+        newDev.timeReportedMs = 0;
         newDev.state = 0;
         newDev.batteryLevel = -1;
         newDev.isCharging = false;
@@ -258,10 +259,18 @@ void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int st
         if (deviceId.length() > 0) dev->deviceId = deviceId;
         if (ip.length() > 0) dev->lastKnownIp = ip;
         if (name.length() > 0) dev->deviceName = name;
-        dev->timeRemainingSeconds = timeRemaining;
-        dev->state = state;
-        if (validBattery >= 0) dev->batteryLevel = validBattery;
-        dev->isCharging = charging;
+        // Only a heartbeat reports time/state/charging. identify and pair_request pass -1 for
+        // time and 0/false for the rest; applying those wiped the countdown to 0:00 (while the
+        // battery, guarded below, survived) until the next heartbeat arrived.
+        if (timeRemaining >= 0) {
+            dev->timeRemainingSeconds = timeRemaining;
+            dev->timeReportedMs = millis();
+            dev->state = state;
+        }
+        if (validBattery >= 0) {
+            dev->batteryLevel = validBattery;
+            dev->isCharging = charging;
+        }
         dev->lastSeenMs = millis();
         if (ts > dev->lastNonceTs) dev->lastNonceTs = ts;
         if (isApp) dev->isApp = true;
@@ -274,6 +283,7 @@ void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int st
         newDev.lastKnownIp = ip;
         newDev.deviceName = (name.length() > 0) ? name : "PisoPhone Terminal";
         newDev.timeRemainingSeconds = timeRemaining;
+        newDev.timeReportedMs = (timeRemaining >= 0) ? millis() : 0;
         newDev.state = state;
         newDev.batteryLevel = validBattery;
         newDev.isCharging = charging;
@@ -288,8 +298,8 @@ int getTrackedTimeRemaining(String ip, unsigned long maxAgeMs, String devId) {
     if (!dev || dev->lastSeenMs == 0) return -1;
     if (millis() - dev->lastSeenMs > maxAgeMs) return -1;
 
-    if (dev->timeRemainingSeconds < 0) return 0;
-    unsigned long elapsedSec = (millis() - dev->lastSeenMs) / 1000;
+    if (dev->timeRemainingSeconds < 0 || dev->timeReportedMs == 0) return 0;
+    unsigned long elapsedSec = (millis() - dev->timeReportedMs) / 1000;
     int remaining = dev->timeRemainingSeconds - (int)elapsedSec;
     return (remaining > 0) ? remaining : 0;
 }
