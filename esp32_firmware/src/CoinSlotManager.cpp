@@ -1,7 +1,8 @@
 #include "CoinSlotManager.h"
 #include "PaymentQueueManager.h"
 #include "HardwareManager.h"
-#include "Config.h"#include "Diagnostics.h"
+#include "Config.h"
+#include "Diagnostics.h"
 
 
 // ============================================================================
