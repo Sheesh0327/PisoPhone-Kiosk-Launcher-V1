@@ -1,3 +1,4 @@
+#include "InputSafety.h"
 #include "WebServerApi.h"
 #include "WebServerModule.h"
 #include "WebServerAuth.h"
@@ -97,9 +98,9 @@ void handleApiSlots() {
 
         json += "{";
         json += "\"slotNum\":" + String(licenseSlots[i].slotNum) + ",";
-        json += "\"deviceId\":\"" + licenseSlots[i].deviceId + "\",";
-        json += "\"ip\":\"" + licenseSlots[i].ip + "\",";
-        json += "\"name\":\"" + licenseSlots[i].name + "\",";
+        json += "\"deviceId\":\"" + jsonEsc(licenseSlots[i].deviceId) + "\",";
+        json += "\"ip\":\"" + jsonEsc(licenseSlots[i].ip) + "\",";
+        json += "\"name\":\"" + jsonEsc(licenseSlots[i].name) + "\",";
         json += "\"active\":" + String(licenseSlots[i].active ? "true" : "false") + ",";
         json += "\"isBound\":" + String(licenseSlots[i].deviceId.length() > 0 ? "true" : "false") + ",";
         json += "\"expStatus\":" + String(expStatus) + ",";
@@ -115,7 +116,7 @@ void handleApiSlotPair() {
     int slot = webServer.hasArg("slot") ? webServer.arg("slot").toInt() : 0;
     String id = webServer.hasArg("id") ? webServer.arg("id") : "";
     String ip = webServer.hasArg("ip") ? webServer.arg("ip") : "";
-    String name = webServer.hasArg("name") ? webServer.arg("name") : "";
+    String name = webServer.hasArg("name") ? cleanName(webServer.arg("name")) : "";
 
     if (slot < 1 || slot > maxLicensedSlots || id.length() == 0) {
         webServer.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid slot or device ID\"}");
@@ -139,7 +140,7 @@ void handleApiSlotPairRequest() {
     }
     String devId = webServer.hasArg("device_id") ? webServer.arg("device_id") : (webServer.hasArg("id") ? webServer.arg("id") : "");
     devId.trim();
-    String devName = webServer.hasArg("name") ? webServer.arg("name") : "PisoPhone Terminal";
+    String devName = webServer.hasArg("name") ? cleanName(webServer.arg("name")) : "PisoPhone Terminal";
     devName.trim();
     int battery = webServer.hasArg("battery") ? webServer.arg("battery").toInt() : -1;
     bool charging = webServer.hasArg("charging") ? (webServer.arg("charging").toInt() == 1 || webServer.arg("charging") == "true") : false;
@@ -219,12 +220,13 @@ void handleApiStatus() {
     }
 
     String json = "{";
+    json += "\"default_credentials\":" + String(defaultCredentialsActive() ? "true" : "false") + ",";
     json += "\"wifi\":{";
     json += "\"rssi\":" + String(rssi) + ",";
     json += "\"quality\":" + String(quality) + ",";
     json += "\"status\":\"" + qualityStatus + "\",";
-    json += "\"ssid\":\"" + String(wifiSsid) + "\",";
-    json += "\"ip\":\"" + WiFi.localIP().toString() + "\",";
+    json += "\"ssid\":\"" + jsonEsc(wifiSsid) + "\",";
+    json += "\"ip\":\"" + jsonEsc(WiFi.localIP().toString()) + "\",";
     json += "\"connected\":" + String(isConnected ? "true" : "false");
     json += "},";
     json += "\"devices\":[";
@@ -258,9 +260,9 @@ void handleApiStatus() {
         json += "{";
         json += "\"slotNum\":" + String(sNum) + ",";
         json += "\"isBound\":" + String(isBound ? "true" : "false") + ",";
-        json += "\"id\":\"" + devId + "\",";
-        json += "\"ip\":\"" + ip + "\",";
-        json += "\"name\":\"" + name + "\",";
+        json += "\"id\":\"" + jsonEsc(devId) + "\",";
+        json += "\"ip\":\"" + jsonEsc(ip) + "\",";
+        json += "\"name\":\"" + jsonEsc(name) + "\",";
         json += "\"time\":" + String(rem) + ",";
         json += "\"online\":" + String(online ? "true" : "false") + ",";
         json += "\"battery\":" + String(bat) + ",";
@@ -296,9 +298,9 @@ void handleApiStatus() {
         if (dName.length() == 0 || dName == dId) dName = "PisoPhone Terminal";
         
         json += "{";
-        json += "\"id\":\"" + dId + "\",";
-        json += "\"ip\":\"" + trackedDevices[i].lastKnownIp + "\",";
-        json += "\"name\":\"" + dName + "\",";
+        json += "\"id\":\"" + jsonEsc(dId) + "\",";
+        json += "\"ip\":\"" + jsonEsc(trackedDevices[i].lastKnownIp) + "\",";
+        json += "\"name\":\"" + jsonEsc(dName) + "\",";
         json += "\"battery\":" + String(trackedDevices[i].batteryLevel) + ",";
         json += "\"charging\":" + String(trackedDevices[i].isCharging ? "true" : "false") + ",";
         json += "\"online\":" + String(isOnline ? "true" : "false");
@@ -316,7 +318,7 @@ void handleIdentify() {
     }
     String devId = webServer.hasArg("device_id") ? webServer.arg("device_id") : (webServer.hasArg("id") ? webServer.arg("id") : "");
     devId.trim();
-    String devName = webServer.hasArg("name") ? webServer.arg("name") : "";
+    String devName = webServer.hasArg("name") ? cleanName(webServer.arg("name")) : "";
     devName.trim();
     bool isApp = (webServer.hasArg("app") || webServer.hasArg("client") || webServer.hasArg("source") || devId.length() > 0);
 
@@ -331,7 +333,7 @@ void handleIdentify() {
     int slotIdx = findSlotIndexForDevice(devId, reqIp);
     String json = "{\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\",\"version\":\"3.0\",\"minutes\":" + String(minutesPerCoin) + ",\"price\":1.0";
     if (dName.length() > 0) {
-        json += ",\"device_name\":\"" + dName + "\"";
+        json += ",\"device_name\":\"" + jsonEsc(dName) + "\"";
     }
     json += "}";
     webServer.send(200, "application/json", json);
@@ -426,7 +428,7 @@ void handleApiCoinslotArm() {
 
     if (isCoinSlotBusy(devId, CoinSlotOwnerType::PHONE)) {
         String holder = getActiveCoinSessionId();
-        String json = "{\"success\":false,\"status\":\"busy\",\"error\":\"SLOT_BUSY\",\"holder\":\"" + holder + "\",\"message\":\"Coin slot is currently in use by another device.\"}";
+        String json = "{\"success\":false,\"status\":\"busy\",\"error\":\"SLOT_BUSY\",\"holder\":\"" + jsonEsc(holder) + "\",\"message\":\"Coin slot is currently in use by another device.\"}";
         webServer.send(409, "application/json", json);
         return;
     }
@@ -487,7 +489,7 @@ void handleApiCoinslotStatus() {
     json += "\"success\":true,";
     json += "\"armed\":" + String(isArmed ? "true" : "false") + ",";
     json += "\"state\":\"" + stateStr + "\",";
-    json += "\"holder\":\"" + activeDev + "\",";
+    json += "\"holder\":\"" + jsonEsc(activeDev) + "\",";
     json += "\"remaining_seconds\":" + String(remainingSec) + ",";
     json += "\"minutes_per_coin\":" + String(minutesPerCoin) + ",";
     json += "\"transactions\":[";
@@ -498,7 +500,7 @@ void handleApiCoinslotStatus() {
         if (!first) json += ",";
         first = false;
         json += "{";
-        json += "\"tx_id\":\"" + sessionTxList[i].txId + "\",";
+        json += "\"tx_id\":\"" + jsonEsc(sessionTxList[i].txId) + "\",";
         json += "\"pulses\":" + String(sessionTxList[i].pulses) + ",";
         json += "\"amount\":" + String(sessionTxList[i].amount, 2) + ",";
         json += "\"seconds\":" + String(sessionTxList[i].seconds) + ",";
@@ -523,5 +525,5 @@ void handleApiCoinslotAck() {
             acknowledgePhonePayment(devId, txId);
         }
     }
-    webServer.send(200, "application/json", "{\"success\":true,\"tx_id\":\"" + txId + "\"}");
+    webServer.send(200, "application/json", "{\"success\":true,\"tx_id\":\"" + jsonEsc(txId) + "\"}");
 }

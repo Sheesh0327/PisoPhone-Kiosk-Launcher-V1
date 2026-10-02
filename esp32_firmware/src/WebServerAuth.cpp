@@ -5,6 +5,8 @@
 #include "Security.h"
 #include "DeviceManager.h"
 #include "SuperAdminManager.h"
+#include "Diagnostics.h"
+#include "InputSafety.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
 
@@ -176,25 +178,56 @@ void authWorkerTask(void *pvParameters) {
     }
 }
 
+static inputsafety::LoginThrottle loginThrottle;
+
+bool defaultCredentialsActive() {
+    return webPassword == DEFAULT_ADMIN_PW || superAdminPassword == DEFAULT_SUPER_ADMIN_PW;
+}
+
+// Checks Basic-auth admin credentials with per-client throttling: five wrong passwords lock that
+// client out for a minute. A request without an Authorization header is only the browser's first
+// probe and is not counted. Returns true when authenticated; otherwise the caller still has to
+// answer (unless a lockout response was already sent, see lockedOut).
+static bool adminCredentialsOk(bool& lockedOut) {
+    lockedOut = false;
+    uint32_t client = (uint32_t)webServer.client().remoteIP();
+    unsigned long now = millis();
+    unsigned long waitMs = loginThrottle.lockedForMs(client, now);
+    if (waitMs > 0) {
+        lockedOut = true;
+        webServer.sendHeader("Retry-After", String((waitMs + 999) / 1000));
+        webServer.send(429, "text/plain", "Too many failed logins. Try again later.");
+        return false;
+    }
+    if (webServer.authenticate("superadmin", superAdminPassword.c_str()) ||
+        webServer.authenticate("admin", webPassword.c_str())) {
+        loginThrottle.recordSuccess(client);
+        return true;
+    }
+    if (webServer.hasHeader("Authorization")) {
+        loginThrottle.recordFailure(client, now);
+        diagLog("[AUTH] Failed admin login from %s\n", webServer.client().remoteIP().toString().c_str());
+        delay(250);  // slows guessing without stalling the coin loop for long
+    }
+    return false;
+}
+
 bool checkAdminAuth() {
     // Strictly require administrator credentials.
     // Phone or controller telemetry signatures MUST NOT grant administrative access.
-    if (webServer.authenticate("superadmin", superAdminPassword.c_str())) {
-        return true;
+    bool lockedOut = false;
+    if (adminCredentialsOk(lockedOut)) return true;
+    if (!lockedOut) {
+        webServer.requestAuthentication(BASIC_AUTH, "HARDWARE Admin Login", "Unauthorized: Admin credentials required.");
     }
-    if (webServer.authenticate("admin", webPassword.c_str())) {
-        return true;
-    }
-    webServer.requestAuthentication(BASIC_AUTH, "HARDWARE Admin Login", "Unauthorized: Admin credentials required.");
     return false;
 }
 
 bool checkAuth() {
     // Check admin credentials first
-    if (webServer.authenticate("superadmin", superAdminPassword.c_str()) ||
-        webServer.authenticate("admin", webPassword.c_str())) {
-        return true;
-    }
+    bool lockedOut = false;
+    if (adminCredentialsOk(lockedOut)) return true;
+    if (lockedOut) return false;
     // Device telemetry signatures are ONLY accepted for telemetry / device status checks
     if (webServer.hasArg("device_id") && webServer.hasArg("ts") && webServer.hasArg("sig")) {
         String devId = webServer.arg("device_id");

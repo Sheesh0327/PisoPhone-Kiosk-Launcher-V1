@@ -1,3 +1,4 @@
+#include "InputSafety.h"
 #include "WebServerConfig.h"
 #include "WebServerModule.h"
 #include "FirmwareVersion.h"
@@ -34,7 +35,7 @@ void handlePortalRoot() {
         int slot = webServer.hasArg("slot") ? webServer.arg("slot").toInt() : 0;
         String id = webServer.hasArg("id") ? webServer.arg("id") : "";
         String ip = webServer.hasArg("ip") ? webServer.arg("ip") : "";
-        String name = webServer.hasArg("name") ? webServer.arg("name") : ("PisoPhone " + String(slot));
+        String name = webServer.hasArg("name") ? cleanName(webServer.arg("name")) : ("PisoPhone " + String(slot));
 
         if (slot >= 1 && slot <= maxLicensedSlots && id.length() > 0) {
             bool res = pairDeviceToSlot(slot, id, ip, name);

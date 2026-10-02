@@ -1,3 +1,4 @@
+#include "InputSafety.h"
 #include "WebServerTelemetry.h"
 #include "WebServerModule.h"
 #include "WebServerAuth.h"
@@ -47,7 +48,7 @@ void handleHeartbeat() {
                     (webServer.hasArg("source") && webServer.arg("source") == "app");
 
     bool fromApp = isAppReq || (isAuth && webServer.hasArg("battery") && webServer.hasArg("charging")) || (deviceId.length() > 0 && !deviceId.startsWith("DEV_"));
-    String devName = webServer.hasArg("name") ? webServer.arg("name") : "";
+    String devName = webServer.hasArg("name") ? cleanName(webServer.arg("name")) : "";
     devName.trim();
 
     if (deviceId.length() > 0 || reqIp.length() > 0) {
@@ -63,7 +64,7 @@ void handleHeartbeat() {
         String json = "{\"status\":\"unassigned\",\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\"";
         json += ",\"slot_num\":0,\"is_paired\":false,\"slot_expired\":true,\"slot_status\":\"unassigned\",\"slot_warning\":false";
         json += ",\"message\":\"Connected to ESP32: Awaiting Slot Assignment in Admin Portal.\"";
-        json += ",\"device_name\":\"" + devName + "\"}";
+        json += ",\"device_name\":\"" + jsonEsc(devName) + "\"}";
         webServer.send(200, "application/json", json);
         return;
     }
@@ -81,10 +82,10 @@ void handleHeartbeat() {
     String json = "{\"status\":\"" + status + "\",\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\"";
     if (slotIdx >= 0) {
         String encPin = aes_encrypt("PIN:" + webPassword, sharedSecret);
-        json += ",\"admin_pin\":\"" + encPin + "\"";
+        json += ",\"admin_pin\":\"" + jsonEsc(encPin) + "\"";
     }
     if (devName.length() > 0) {
-        json += ",\"device_name\":\"" + devName + "\"";
+        json += ",\"device_name\":\"" + jsonEsc(devName) + "\"";
     }
     if (slotIdx >= 0) {
         json += ",\"slot_num\":" + String(licenseSlots[slotIdx].slotNum);
