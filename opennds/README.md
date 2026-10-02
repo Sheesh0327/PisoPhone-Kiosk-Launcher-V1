@@ -14,22 +14,13 @@ phone browser --> openNDS portal --> theme_coinslot.sh --(127.0.0.1)--> coinslot
 |---|---|
 | `theme_coinslot.sh` | the ThemeSpec (page sequence); everything else is done by openNDS' own `libopennds.sh` |
 | `coinslot-listener.sh` | coin-slot manager: a small local listener (socat) plus a background worker that holds each customer's coin window |
-| `coinslot.conf` | settings: box address, key, minutes per coin, coin window |
-| `coinslot.init`, `install.sh` | OpenWrt service and one-step installer |
+| `coinslot.conf` | reference copy of the settings file (INSTRUCTIONS.md writes the real one to /etc/coinslot.conf) |
+| `coinslot.init` | OpenWrt service script |
+| `INSTRUCTIONS.md` | step-by-step copy/paste setup (there is no installer script) |
 | `tests/` | end-to-end test with a fake box (`python3 opennds/tests/test_flow.py`) |
 
 ## Install (OpenWrt with openNDS)
-Copy this folder to the router and run one command:
-
-    sh install.sh --box 192.168.1.10 [--admin-pass <box admin password>] [--rate 10] [--window 60]
-
-It does everything: installs openNDS (if missing) and socat/openssl-util/curl, generates a 256-bit random gateway key, sets that key on the box
-through its admin login (it asks for the password if you leave out `--admin-pass`), writes `/etc/coinslot.conf` (mode 600),
-installs the theme and listener, points openNDS at the theme, enables and starts the services, and checks that the listener
-and the box's gateway API both answer. Give the box a DHCP reservation so `--box` stays valid.
-
-Re-running keeps the existing key and settings; pass new `--box/--rate/--window` values to change them, or `--new-key` to
-rotate the key (the box is updated too). Then connect a phone to the Wi-Fi: the portal appears.
+Follow `INSTRUCTIONS.md`: every step is a copy/paste command.
 
 ## What the customer sees
 1. **Welcome**: rate ("1 coin = 10 minutes") and **Insert coin**.
