@@ -76,6 +76,26 @@ jobs:
       - name: Test the sold-unit checker
         run: python3 scripts/tests/test_sold_unit_check.py
 
+  firmware-build:
+    name: Firmware build (${{ matrix.env }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [esp32-c3-dev, esp32dev-dev]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+          key: pio-${{ matrix.env }}-${{ hashFiles('esp32_firmware/platformio.ini', 'esp32_firmware/envs/*.ini') }}
+      - name: Install PlatformIO
+        run: pip install platformio
+      - name: Compile
+        working-directory: esp32_firmware
+        run: pio run -e ${{ matrix.env }}
+
   opennds-integration:
     name: OpenNDS integration test
     runs-on: ubuntu-latest
