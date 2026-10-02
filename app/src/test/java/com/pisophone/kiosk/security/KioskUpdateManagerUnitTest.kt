@@ -13,14 +13,13 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class KioskUpdateManagerUnitTest {
-
     @get:Rule
     val tmp = TemporaryFolder()
 
     @Test
     fun parsesPublishedVersionInfo() {
         val v = KioskUpdateManager.parseRemoteVersion(
-            """{"versionCode": 42, "versionName": "1.0.42", "sha256": "ABCDEF"}"""
+            """{"versionCode": 42, "versionName": "1.0.42", "sha256": "ABCDEF"}""",
         )
         assertNotNull(v)
         assertEquals(42, v!!.versionCode)
@@ -56,7 +55,7 @@ class KioskUpdateManagerUnitTest {
         val f = tmp.newFile("x.bin").apply { writeText("abc") }
         assertEquals(
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
-            KioskUpdateManager.sha256Hex(f)
+            KioskUpdateManager.sha256Hex(f),
         )
     }
 }

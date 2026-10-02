@@ -47,14 +47,14 @@ class KioskService : Service() {
             mac: String,
             slot: Int = -1,
             secret: String? = null,
-            name: String? = null
+            name: String? = null,
         ) {
             KioskSecurity.applyDirectProvisioning(
                 context = context,
                 secret = secret,
                 mac = mac,
                 slot = slot,
-                name = name
+                name = name,
             )
             KioskActivationManager.setPairingCompleted(context, true)
             val cleanMac = KioskSecurity.formatMacAddress(mac)
@@ -266,7 +266,7 @@ class KioskService : Service() {
         val channel = NotificationChannel(
             CHANNEL_ID,
             "Kiosk Service",
-            NotificationManager.IMPORTANCE_LOW
+            NotificationManager.IMPORTANCE_LOW,
         )
         val manager = getSystemService(NotificationManager::class.java)
         manager?.createNotificationChannel(channel)

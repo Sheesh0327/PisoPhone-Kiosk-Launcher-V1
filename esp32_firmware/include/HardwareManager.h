@@ -3,11 +3,7 @@
 
 #include <Arduino.h>
 
-enum LedSystemState {
-    LED_STATE_CONNECTING,
-    LED_STATE_FAILED,
-    LED_STATE_CONNECTED
-};
+enum LedSystemState { LED_STATE_CONNECTING, LED_STATE_FAILED, LED_STATE_CONNECTED };
 
 extern LedSystemState currentLedState;
 

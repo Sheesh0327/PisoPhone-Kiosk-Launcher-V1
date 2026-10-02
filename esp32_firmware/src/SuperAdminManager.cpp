@@ -24,12 +24,12 @@ void loadSuperAdminConfig() {
     }
     prefs.end();
     superAdminCredsLoad();
-    
+
     isVaultUnmasked = false;
     unmaskExpiryTimestamp = 0;
-    
-    Serial.printf("[👑 SUPER ADMIN] Loaded: Split=%d%% Vendor, Password=%s\n", 
-                  vendorRevenueSplitPercent, (superAdminPassword.length() > 0 ? "Set" : "Default"));
+
+    Serial.printf("[👑 SUPER ADMIN] Loaded: Split=%d%% Vendor, Password=%s\n", vendorRevenueSplitPercent,
+                  (superAdminPassword.length() > 0 ? "Set" : "Default"));
 }
 
 bool authenticateSuperAdmin() {
@@ -49,19 +49,19 @@ void processSuperAdminLoop() {
             Serial.println("[👑 SUPER ADMIN] 5-Minute Unmask Timeout Expired!");
             Serial.println("[💰 VAULT] Auto-resetting lifetime vault counters to 0.");
             Serial.println("=======================================================");
-            
+
             totalCoinsLifetime = 0;
             totalCoinsSession = 0;
             totalEarningsLifetime = 0.0f;
             totalEarningsSession = 0.0f;
             lastSavedTotalCoins = 0;
             lastSavedTotalEarnings = 0.0f;
-            
+
             prefs.begin(NVS_NAMESPACE, false);
             prefs.putULong(NVS_KEY_TOTAL_COINS, 0);
             prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, 0.0f);
             prefs.end();
-            
+
             isVaultUnmasked = false;
             unmaskExpiryTimestamp = 0;
         }
@@ -70,17 +70,18 @@ void processSuperAdminLoop() {
 
 void handleSuperAdminAuth() {
     if (!authenticateSuperAdmin()) {
-        webServer.send(401, "application/json", "{\"status\":\"error\",\"message\":\"Unauthorized: Invalid Super Admin password.\"}");
+        webServer.send(401, "application/json",
+                       "{\"status\":\"error\",\"message\":\"Unauthorized: Invalid Super Admin password.\"}");
         return;
     }
-    
+
     unsigned long remainingSec = 0;
     if (isVaultUnmasked && millis() < unmaskExpiryTimestamp) {
         remainingSec = (unmaskExpiryTimestamp - millis()) / 1000;
     } else {
         isVaultUnmasked = false;
     }
-    
+
     String json = "{";
     json += "\"status\":\"ok\",";
     json += "\"is_super_admin\":true,";
@@ -91,22 +92,23 @@ void handleSuperAdminAuth() {
     json += "\"total_coins\":" + String(totalCoinsLifetime) + ",";
     json += "\"session_coins\":" + String(totalCoinsSession);
     json += "}";
-    
+
     webServer.send(200, "application/json", json);
 }
 
 void handleSuperAdminUnmask() {
     if (!authenticateSuperAdmin()) {
-        webServer.send(401, "application/json", "{\"status\":\"error\",\"message\":\"Unauthorized Super Admin request.\"}");
+        webServer.send(401, "application/json",
+                       "{\"status\":\"error\",\"message\":\"Unauthorized Super Admin request.\"}");
         return;
     }
-    
+
     isVaultUnmasked = true;
     unmaskExpiryTimestamp = millis() + (VAULT_UNMASK_TIMEOUT_SECONDS * 1000UL);
-    
-    Serial.printf("[👑 SUPER ADMIN] Coin vault unmasked! 5-Minute auto-reset timer armed (Expires in %u s).\n", 
+
+    Serial.printf("[👑 SUPER ADMIN] Coin vault unmasked! 5-Minute auto-reset timer armed (Expires in %u s).\n",
                   VAULT_UNMASK_TIMEOUT_SECONDS);
-    
+
     String json = "{";
     json += "\"status\":\"ok\",";
     json += "\"message\":\"Vault unmasked. Auto-reset timer initiated.\",";
@@ -116,33 +118,35 @@ void handleSuperAdminUnmask() {
     json += "\"total_earnings\":" + String(totalEarningsLifetime, 2) + ",";
     json += "\"vendor_split\":" + String(vendorRevenueSplitPercent);
     json += "}";
-    
+
     webServer.send(200, "application/json", json);
 }
 
 void handleSuperAdminResetVault() {
     if (!authenticateSuperAdmin()) {
-        webServer.send(401, "application/json", "{\"status\":\"error\",\"message\":\"Unauthorized: Super Admin access required.\"}");
+        webServer.send(401, "application/json",
+                       "{\"status\":\"error\",\"message\":\"Unauthorized: Super Admin access required.\"}");
         return;
     }
-    
+
     totalCoinsLifetime = 0;
     totalCoinsSession = 0;
     totalEarningsLifetime = 0.0f;
     totalEarningsSession = 0.0f;
     lastSavedTotalCoins = 0;
     lastSavedTotalEarnings = 0.0f;
-    
+
     prefs.begin(NVS_NAMESPACE, false);
     prefs.putULong(NVS_KEY_TOTAL_COINS, 0);
     prefs.putFloat(NVS_KEY_TOTAL_EARNINGS, 0.0f);
     prefs.end();
-    
+
     isVaultUnmasked = false;
     unmaskExpiryTimestamp = 0;
-    
+
     Serial.println("[👑 SUPER ADMIN] Manual vault reset completed by Vendor.");
-    webServer.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Vault counters successfully reset to 0.\"}");
+    webServer.send(200, "application/json",
+                   "{\"status\":\"ok\",\"message\":\"Vault counters successfully reset to 0.\"}");
 }
 
 void handleSuperAdminSaveSplit() {
@@ -150,7 +154,7 @@ void handleSuperAdminSaveSplit() {
         webServer.send(401, "application/json", "{\"status\":\"error\",\"message\":\"Unauthorized.\"}");
         return;
     }
-    
+
     if (webServer.hasArg("vendor_split")) {
         int split = webServer.arg("vendor_split").toInt();
         if (split >= 0 && split <= 100) {
@@ -159,7 +163,8 @@ void handleSuperAdminSaveSplit() {
             prefs.putInt("vendor_split", vendorRevenueSplitPercent);
             prefs.end();
             Serial.printf("[👑 SUPER ADMIN] Vendor revenue split updated to %d%%.\n", vendorRevenueSplitPercent);
-            webServer.send(200, "application/json", "{\"status\":\"ok\",\"vendor_split\":" + String(vendorRevenueSplitPercent) + "}");
+            webServer.send(200, "application/json",
+                           "{\"status\":\"ok\",\"vendor_split\":" + String(vendorRevenueSplitPercent) + "}");
             return;
         }
     }

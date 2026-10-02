@@ -10,7 +10,6 @@ import java.util.concurrent.CountDownLatch
 import kotlin.concurrent.thread
 
 class DiagnosticsLogUnitTest {
-
     @Before
     fun setUp() {
         DiagnosticsLog.clear()

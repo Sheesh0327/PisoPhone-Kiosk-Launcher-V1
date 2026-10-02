@@ -17,5 +17,5 @@ enum class PaymentResult {
     NOT_ELIGIBLE,
 
     /** Database or internal transaction error; transaction was rolled back. */
-    FAILED
+    FAILED,
 }

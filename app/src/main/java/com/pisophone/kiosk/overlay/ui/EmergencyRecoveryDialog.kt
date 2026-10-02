@@ -33,7 +33,7 @@ import com.pisophone.kiosk.util.AppLauncher
 @Composable
 fun EmergencyRecoveryDialog(
     context: Context = LocalContext.current,
-    onClose: () -> Unit
+    onClose: () -> Unit,
 ) {
     var isDeviceOwner by remember { mutableStateOf(KioskPolicyManager.isDeviceOwner(context)) }
     var isAdbEnabled by remember { mutableStateOf(KioskSecurity.isUsbDebuggingEnabled(context)) }
@@ -54,7 +54,7 @@ fun EmergencyRecoveryDialog(
             .background(Color.Black.copy(alpha = 0.88f))
             .clickable { onClose() }
             .padding(horizontal = 8.dp, vertical = 12.dp),
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.Center,
     ) {
         Card(
             modifier = Modifier
@@ -64,34 +64,34 @@ fun EmergencyRecoveryDialog(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
             elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-            border = BorderStroke(1.dp, Color(0xFF334155))
+            border = BorderStroke(1.dp, Color(0xFF334155)),
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 16.dp, vertical = 14.dp)
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
             ) {
                 // Responsive Header
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Row(
                         modifier = Modifier.weight(1f),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Box(
                             modifier = Modifier
                                 .size(38.dp)
                                 .background(Color(0xFF334155), CircleShape),
-                            contentAlignment = Alignment.Center
+                            contentAlignment = Alignment.Center,
                         ) {
                             Icon(
                                 Icons.Filled.Warning,
                                 contentDescription = "Recovery Hub",
                                 tint = Color(0xFFF87171),
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(20.dp),
                             )
                         }
                         Spacer(modifier = Modifier.width(10.dp))
@@ -102,21 +102,21 @@ fun EmergencyRecoveryDialog(
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                overflow = TextOverflow.Ellipsis,
                             )
                             Text(
                                 text = "Emergency Maintenance & ADB",
                                 color = Color(0xFF94A3B8),
                                 fontSize = 11.sp,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
                     }
 
                     IconButton(
                         onClick = onClose,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(36.dp),
                     ) {
                         Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color.White)
                     }
@@ -129,14 +129,14 @@ fun EmergencyRecoveryDialog(
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .verticalScroll(rememberScrollState())
+                        .verticalScroll(rememberScrollState()),
                 ) {
                     // Diagnostic Status Matrix with fluid layout
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
                         shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, Color(0xFF1E293B))
+                        border = BorderStroke(1.dp, Color(0xFF1E293B)),
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Text(
@@ -145,7 +145,7 @@ fun EmergencyRecoveryDialog(
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
-                                letterSpacing = 0.5.sp
+                                letterSpacing = 0.5.sp,
                             )
                             Spacer(modifier = Modifier.height(10.dp))
 
@@ -156,28 +156,28 @@ fun EmergencyRecoveryDialog(
                                     .background(Color(0xFF1E293B).copy(alpha = 0.6f), RoundedCornerShape(8.dp))
                                     .padding(horizontal = 10.dp, vertical = 8.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                                     Text("USB Debugging (ADB)", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                                     Text(
                                         if (isAdbEnabled) "Hardware USB bridge active" else "USB debug policy disabled",
                                         color = Color(0xFF94A3B8),
-                                        fontSize = 10.sp
+                                        fontSize = 10.sp,
                                     )
                                 }
                                 Surface(
                                     color = if (isAdbEnabled) Color(0xFF065F46) else Color(0xFF7F1D1D),
-                                    shape = RoundedCornerShape(6.dp)
+                                    shape = RoundedCornerShape(6.dp),
                                 ) {
                                     Row(
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                                        verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         Box(
                                             modifier = Modifier
                                                 .size(6.dp)
-                                                .background(if (isAdbEnabled) Color(0xFF34D399) else Color(0xFFF87171), CircleShape)
+                                                .background(if (isAdbEnabled) Color(0xFF34D399) else Color(0xFFF87171), CircleShape),
                                         )
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
@@ -185,7 +185,7 @@ fun EmergencyRecoveryDialog(
                                             color = if (isAdbEnabled) Color(0xFF34D399) else Color(0xFFF87171),
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 10.sp,
-                                            fontFamily = FontFamily.Monospace
+                                            fontFamily = FontFamily.Monospace,
                                         )
                                     }
                                 }
@@ -200,28 +200,28 @@ fun EmergencyRecoveryDialog(
                                     .background(Color(0xFF1E293B).copy(alpha = 0.6f), RoundedCornerShape(8.dp))
                                     .padding(horizontal = 10.dp, vertical = 8.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                                     Text("Device Owner Mode", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                                     Text(
                                         if (isDeviceOwner) "Kiosk system lockdown enabled" else "Standard unmanaged user mode",
                                         color = Color(0xFF94A3B8),
-                                        fontSize = 10.sp
+                                        fontSize = 10.sp,
                                     )
                                 }
                                 Surface(
                                     color = if (isDeviceOwner) Color(0xFF065F46) else Color(0xFF78350F),
-                                    shape = RoundedCornerShape(6.dp)
+                                    shape = RoundedCornerShape(6.dp),
                                 ) {
                                     Row(
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                                        verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         Box(
                                             modifier = Modifier
                                                 .size(6.dp)
-                                                .background(if (isDeviceOwner) Color(0xFF34D399) else Color(0xFFFBBF24), CircleShape)
+                                                .background(if (isDeviceOwner) Color(0xFF34D399) else Color(0xFFFBBF24), CircleShape),
                                         )
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
@@ -229,7 +229,7 @@ fun EmergencyRecoveryDialog(
                                             color = if (isDeviceOwner) Color(0xFF34D399) else Color(0xFFFBBF24),
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 10.sp,
-                                            fontFamily = FontFamily.Monospace
+                                            fontFamily = FontFamily.Monospace,
                                         )
                                     }
                                 }
@@ -245,7 +245,7 @@ fun EmergencyRecoveryDialog(
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace,
-                        letterSpacing = 0.5.sp
+                        letterSpacing = 0.5.sp,
                     )
                     Spacer(modifier = Modifier.height(10.dp))
 
@@ -261,7 +261,7 @@ fun EmergencyRecoveryDialog(
                             KioskSecurity.emergencyEnableUsbDebugging(context)
                             refreshStatus()
                             Toast.makeText(context, "USB Debugging Re-Enabled", Toast.LENGTH_SHORT).show()
-                        }
+                        },
                     )
 
                     Spacer(modifier = Modifier.height(8.dp))
@@ -278,7 +278,7 @@ fun EmergencyRecoveryDialog(
                             KioskSecurity.emergencyExitKiosk(context)
                             onClose()
                             Toast.makeText(context, "Exited Kiosk Lockdown", Toast.LENGTH_SHORT).show()
-                        }
+                        },
                     )
 
                     Spacer(modifier = Modifier.height(8.dp))
@@ -294,7 +294,7 @@ fun EmergencyRecoveryDialog(
                         borderColor = Color(0xFF334155),
                         onClick = {
                             AppLauncher.launchDeveloperSettings(context)
-                        }
+                        },
                     )
 
                     Spacer(modifier = Modifier.height(14.dp))
@@ -309,14 +309,14 @@ fun EmergencyRecoveryDialog(
                             containerColor = Color(0xFF450A0A).copy(alpha = 0.5f),
                             contentColor = Color(0xFFFCA5A5),
                             borderColor = Color(0xFFEF4444).copy(alpha = 0.4f),
-                            onClick = { showConfirmDeprovision = true }
+                            onClick = { showConfirmDeprovision = true },
                         )
                     } else {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(containerColor = Color(0xFF450A0A)),
                             shape = RoundedCornerShape(10.dp),
-                            border = BorderStroke(1.dp, Color(0xFFEF4444))
+                            border = BorderStroke(1.dp, Color(0xFFEF4444)),
                         ) {
                             Column(modifier = Modifier.padding(14.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -326,7 +326,7 @@ fun EmergencyRecoveryDialog(
                                         text = "CONFIRM DE-PROVISION",
                                         color = Color(0xFFF87171),
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp
+                                        fontSize = 12.sp,
                                     )
                                 }
                                 Spacer(modifier = Modifier.height(6.dp))
@@ -334,13 +334,13 @@ fun EmergencyRecoveryDialog(
                                     text = "This completely removes Device Owner lockdown so you can uninstall the app without factory resetting. Proceed?",
                                     color = Color(0xFFE2E8F0),
                                     fontSize = 12.sp,
-                                    lineHeight = 16.sp
+                                    lineHeight = 16.sp,
                                 )
                                 Spacer(modifier = Modifier.height(12.dp))
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.End,
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     TextButton(onClick = { showConfirmDeprovision = false }) {
                                         Text("Cancel", color = Color(0xFF94A3B8), fontSize = 12.sp)
@@ -355,7 +355,7 @@ fun EmergencyRecoveryDialog(
                                             Toast.makeText(context, "✅ Device Owner successfully removed!", Toast.LENGTH_LONG).show()
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626), contentColor = Color.White),
-                                        shape = RoundedCornerShape(8.dp)
+                                        shape = RoundedCornerShape(8.dp),
                                     ) {
                                         Text("Yes, De-provision", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                     }
@@ -371,7 +371,7 @@ fun EmergencyRecoveryDialog(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
                         shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, Color(0xFF1E293B))
+                        border = BorderStroke(1.dp, Color(0xFF1E293B)),
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -388,7 +388,7 @@ fun EmergencyRecoveryDialog(
                                     .fillMaxWidth()
                                     .background(Color(0xFF020617), RoundedCornerShape(6.dp))
                                     .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(6.dp))
-                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
                             ) {
                                 SelectionContainer {
                                     Text(
@@ -396,7 +396,7 @@ fun EmergencyRecoveryDialog(
                                         color = Color(0xFF38BDF8),
                                         fontSize = 10.sp,
                                         fontFamily = FontFamily.Monospace,
-                                        lineHeight = 15.sp
+                                        lineHeight = 15.sp,
                                     )
                                 }
                             }
@@ -410,7 +410,7 @@ fun EmergencyRecoveryDialog(
                                     .fillMaxWidth()
                                     .background(Color(0xFF020617), RoundedCornerShape(6.dp))
                                     .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(6.dp))
-                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
                             ) {
                                 SelectionContainer {
                                     Text(
@@ -418,7 +418,7 @@ fun EmergencyRecoveryDialog(
                                         color = Color(0xFFFCA5A5),
                                         fontSize = 10.sp,
                                         fontFamily = FontFamily.Monospace,
-                                        lineHeight = 15.sp
+                                        lineHeight = 15.sp,
                                     )
                                 }
                             }
@@ -438,7 +438,7 @@ fun EmergencyRecoveryDialog(
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(44.dp)
+                            .height(44.dp),
                     ) {
                         Text("Exit Recovery Hub", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
@@ -457,7 +457,7 @@ private fun RecoveryActionButton(
     containerColor: Color,
     contentColor: Color,
     borderColor: Color? = null,
-    onClick: () -> Unit
+    onClick: () -> Unit,
 ) {
     Button(
         onClick = onClick,
@@ -466,21 +466,21 @@ private fun RecoveryActionButton(
             .heightIn(min = 52.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = containerColor,
-            contentColor = contentColor
+            contentColor = contentColor,
         ),
         border = borderColor?.let { BorderStroke(1.dp, it) },
         shape = RoundedCornerShape(10.dp),
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 modifier = Modifier
                     .size(32.dp)
                     .background(Color.Black.copy(alpha = 0.25f), CircleShape),
-                contentAlignment = Alignment.Center
+                contentAlignment = Alignment.Center,
             ) {
                 Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = iconTint)
             }
@@ -491,13 +491,13 @@ private fun RecoveryActionButton(
                     fontWeight = FontWeight.Bold,
                     fontSize = 12.sp,
                     color = contentColor,
-                    lineHeight = 16.sp
+                    lineHeight = 16.sp,
                 )
                 Text(
                     text = subtitle,
                     fontSize = 10.sp,
                     color = contentColor.copy(alpha = 0.75f),
-                    lineHeight = 14.sp
+                    lineHeight = 14.sp,
                 )
             }
             Spacer(modifier = Modifier.width(6.dp))
@@ -505,7 +505,7 @@ private fun RecoveryActionButton(
                 Icons.Filled.ChevronRight,
                 contentDescription = null,
                 modifier = Modifier.size(16.dp),
-                tint = contentColor.copy(alpha = 0.5f)
+                tint = contentColor.copy(alpha = 0.5f),
             )
         }
     }

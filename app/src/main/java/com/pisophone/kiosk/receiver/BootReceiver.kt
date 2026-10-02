@@ -21,8 +21,8 @@ class BootReceiver : BroadcastReceiver() {
             action == Intent.ACTION_LOCKED_BOOT_COMPLETED ||
             action == Intent.ACTION_MY_PACKAGE_REPLACED ||
             action == "android.intent.action.QUICKBOOT_POWERON" ||
-            action == "com.htc.intent.action.QUICKBOOT_POWERON") {
-            
+            action == "com.htc.intent.action.QUICKBOOT_POWERON"
+        ) {
             Log.d(TAG, "Auto-starting Kiosk services post-boot/update...")
 
             // 1. Start Kiosk Foreground Service safely if allowed

@@ -24,7 +24,7 @@ class KioskOverlayCoordinator(
     private val batteryStatusFlow: StateFlow<BatteryStatus>,
     private val armingTimeoutSeconds: Int,
     private val onArmSlot: () -> Unit,
-    private val onFinishPayment: () -> Unit
+    private val onFinishPayment: () -> Unit,
 ) {
     companion object {
         private const val TAG = "KioskOverlayCoordinator"
@@ -44,9 +44,7 @@ class KioskOverlayCoordinator(
         }
     }
 
-    fun isOverlayHealthy(): Boolean {
-        return overlay != null && overlay?.isAttached() == true
-    }
+    fun isOverlayHealthy(): Boolean = overlay != null && overlay?.isAttached() == true
 
     fun setupOverlay() {
         scope.launch(Dispatchers.Main) {
@@ -85,7 +83,7 @@ class KioskOverlayCoordinator(
                                     Toast.makeText(
                                         context.applicationContext,
                                         "Device not activated. Please activate this device in the ESP32 Kiosk Manager.",
-                                        Toast.LENGTH_LONG
+                                        Toast.LENGTH_LONG,
                                     ).show()
                                 }
                                 return@KioskOverlay
@@ -97,7 +95,7 @@ class KioskOverlayCoordinator(
                         onDoneClick = { onFinishPayment() },
                         onThemeChange = {
                             stateManager.themeIndex.value = (stateManager.themeIndex.value + 1) % 3
-                        }
+                        },
                     )
                 } catch (e: Exception) {
                     Log.e(TAG, "Error constructing KioskOverlay: ${e.message}", e)

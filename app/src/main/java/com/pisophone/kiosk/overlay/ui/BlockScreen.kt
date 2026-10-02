@@ -1,11 +1,6 @@
 
 
 package com.pisophone.kiosk.overlay.ui
-import com.pisophone.kiosk.overlay.ui.AdminAuthenticationDialog
-import com.pisophone.kiosk.overlay.ui.SecurityVaultView
-import com.pisophone.kiosk.overlay.ui.EmergencyRecoveryDialog
-import com.pisophone.kiosk.overlay.ui.BatteryAlertBanner
-
 import android.content.res.Configuration
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -32,6 +27,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pisophone.kiosk.model.BatteryAlertState
 import com.pisophone.kiosk.model.BatteryStatus
+import com.pisophone.kiosk.overlay.ui.AdminAuthenticationDialog
+import com.pisophone.kiosk.overlay.ui.BatteryAlertBanner
+import com.pisophone.kiosk.overlay.ui.EmergencyRecoveryDialog
+import com.pisophone.kiosk.overlay.ui.SecurityVaultView
 
 @Composable
 fun BlockScreen(
@@ -57,7 +56,7 @@ fun BlockScreen(
     isArenaMode: Boolean = false,
     arenaRole: Int = 0,
     arenaStakeMinutes: Int = 15,
-    modifier: Modifier = Modifier.fillMaxSize()
+    modifier: Modifier = Modifier.fillMaxSize(),
 ) {
     data class OverlayTheme(
         val name: String,
@@ -66,7 +65,7 @@ fun BlockScreen(
         val onPrimary: Color,
         val surface: Color,
         val border: Color,
-        val secondary: Color
+        val secondary: Color,
     )
 
     val themes = listOf(
@@ -77,7 +76,7 @@ fun BlockScreen(
             onPrimary = Color(0xFF020617),
             surface = Color(0xFF0F172A),
             border = Color(0xFF1E293B),
-            secondary = Color(0xFF34D399)
+            secondary = Color(0xFF34D399),
         ),
         OverlayTheme(
             name = "ULTRA VIOLET",
@@ -86,7 +85,7 @@ fun BlockScreen(
             onPrimary = Color(0xFFFFFFFF),
             surface = Color(0xFF221140),
             border = Color(0xFFB026FF),
-            secondary = Color(0xFFFFB800)
+            secondary = Color(0xFFFFB800),
         ),
         OverlayTheme(
             name = "MATRIX LIME",
@@ -95,7 +94,7 @@ fun BlockScreen(
             onPrimary = Color(0xFF000000),
             surface = Color(0xFF0C2B1D),
             border = Color(0xFF00FF88),
-            secondary = Color(0xFF00F5D4)
+            secondary = Color(0xFF00F5D4),
         ),
         OverlayTheme(
             name = "SOLAR FLARE",
@@ -104,7 +103,7 @@ fun BlockScreen(
             onPrimary = Color(0xFF000000),
             surface = Color(0xFF2A140B),
             border = Color(0xFFFF6600),
-            secondary = Color(0xFFFFD600)
+            secondary = Color(0xFFFFD600),
         ),
         OverlayTheme(
             name = "CRIMSON NOVA",
@@ -113,7 +112,7 @@ fun BlockScreen(
             onPrimary = Color(0xFFFFFFFF),
             surface = Color(0xFF2C111C),
             border = Color(0xFFFF2A5F),
-            secondary = Color(0xFFFF6488)
+            secondary = Color(0xFFFF6488),
         ),
         OverlayTheme(
             name = "ELECTRIC SUNSET",
@@ -122,7 +121,7 @@ fun BlockScreen(
             onPrimary = Color(0xFFFFFFFF),
             surface = Color(0xFF2D1027),
             border = Color(0xFFFF007F),
-            secondary = Color(0xFFFF66B2)
+            secondary = Color(0xFFFF66B2),
         ),
         OverlayTheme(
             name = "ARCTIC FROST",
@@ -131,7 +130,7 @@ fun BlockScreen(
             onPrimary = Color(0xFF000000),
             surface = Color(0xFF16273B),
             border = Color(0xFF38BDF8),
-            secondary = Color(0xFF7DD3FC)
+            secondary = Color(0xFF7DD3FC),
         ),
         OverlayTheme(
             name = "NEON MATRIX",
@@ -140,8 +139,8 @@ fun BlockScreen(
             onPrimary = Color(0xFF000000),
             surface = Color(0xFF0F2A16),
             border = Color(0xFF00FF66),
-            secondary = Color(0xFF66FF99)
-        )
+            secondary = Color(0xFF66FF99),
+        ),
     )
 
     val currentTheme = themes[themeIndex % themes.size]
@@ -164,12 +163,12 @@ fun BlockScreen(
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     Box(
-        modifier = modifier.background(Background)
+        modifier = modifier.background(Background),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .systemBarsPadding()
+                .systemBarsPadding(),
         ) {
             // Top Bar
             BlockScreenTimeHeader(batteryStatus = batteryStatus, themeTextPrimary = TextPrimary)
@@ -187,8 +186,20 @@ fun BlockScreen(
             }
 
             if (isArenaMode) {
-                val roleName = if (arenaRole == 1) "Player 1" else if (arenaRole == 2) "Player 2" else "Participant"
-                val roleBadge = if (arenaRole == 1) "P1" else if (arenaRole == 2) "P2" else "1v1"
+                val roleName = if (arenaRole == 1) {
+                    "Player 1"
+                } else if (arenaRole == 2) {
+                    "Player 2"
+                } else {
+                    "Participant"
+                }
+                val roleBadge = if (arenaRole == 1) {
+                    "P1"
+                } else if (arenaRole == 2) {
+                    "P2"
+                } else {
+                    "1v1"
+                }
                 val roleColor = if (arenaRole == 1) Color(0xFF38BDF8) else Color(0xFFFF5252)
                 Card(
                     modifier = Modifier
@@ -196,14 +207,14 @@ fun BlockScreen(
                         .padding(horizontal = 16.dp, vertical = 6.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1035)),
-                    border = BorderStroke(1.5.dp, Color(0xFF8B5CF6))
+                    border = BorderStroke(1.5.dp, Color(0xFF8B5CF6)),
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 14.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         Text("⚔️", fontSize = 20.sp)
                         Column(modifier = Modifier.weight(1f)) {
@@ -211,26 +222,26 @@ fun BlockScreen(
                                 text = "1V1 ARENA DUEL ACTIVE",
                                 color = Color(0xFFA78BFA),
                                 fontSize = 11.sp,
-                                fontWeight = FontWeight.Black
+                                fontWeight = FontWeight.Black,
                             )
                             Text(
                                 text = "You are $roleName • ${arenaStakeMinutes}m Stake",
                                 color = Color.White,
                                 fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
                             )
                         }
                         Surface(
                             shape = RoundedCornerShape(6.dp),
                             color = roleColor.copy(alpha = 0.2f),
-                            border = BorderStroke(1.dp, roleColor.copy(alpha = 0.8f))
+                            border = BorderStroke(1.dp, roleColor.copy(alpha = 0.8f)),
                         ) {
                             Text(
                                 text = roleBadge,
                                 color = roleColor,
                                 fontWeight = FontWeight.Black,
                                 fontSize = 12.sp,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                             )
                         }
                     }
@@ -240,18 +251,18 @@ fun BlockScreen(
             // Scrollable Content
             BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 val isWide = maxWidth > 600.dp || isLandscape
-                
+
                 val mainContent: @Composable (Modifier) -> Unit = { mod ->
                     Column(
                         modifier = mod,
-                        horizontalAlignment = Alignment.CenterHorizontally
+                        horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Box(
                             modifier = Modifier
                                 .size(80.dp)
                                 .background(Primary.copy(alpha = 0.12f), CircleShape)
                                 .border(1.5.dp, Primary.copy(alpha = 0.4f), CircleShape),
-                            contentAlignment = Alignment.Center
+                            contentAlignment = Alignment.Center,
                         ) {
                             if (isWaiting && paymentTimeout > 0) {
                                 Text("$paymentTimeout", color = Primary, fontSize = 32.sp, fontWeight = FontWeight.Bold)
@@ -259,18 +270,18 @@ fun BlockScreen(
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(36.dp),
                                     color = Primary,
-                                    strokeWidth = 3.dp
+                                    strokeWidth = 3.dp,
                                 )
                             } else {
                                 Icon(
                                     Icons.Filled.LockOpen,
                                     contentDescription = null,
                                     tint = Primary,
-                                    modifier = Modifier.size(40.dp)
+                                    modifier = Modifier.size(40.dp),
                                 )
                             }
                         }
-                        
+
                         Spacer(modifier = Modifier.height(16.dp))
 
                         DeviceTitleBadge(deviceIp, slotNumber, Primary, TextPrimary, TextTertiary, SurfaceVariant)
@@ -283,7 +294,7 @@ fun BlockScreen(
                             lineHeight = 20.sp,
                             modifier = Modifier
                                 .padding(horizontal = 16.dp)
-                                .padding(bottom = 16.dp)
+                                .padding(bottom = 16.dp),
                         )
 
                         BlockScreenRateTableCard(
@@ -308,43 +319,43 @@ fun BlockScreen(
                             textTertiaryColor = TextTertiary,
                             successColor = Success,
                             onDoneClick = onDoneClick,
-                            onInsertCoin = onInsertCoin
+                            onInsertCoin = onInsertCoin,
                         )
                     }
                 }
-                
+
                 val bottomSection: @Composable (Modifier) -> Unit = { mod ->
                     Column(modifier = mod) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(Surface, RoundedCornerShape(28.dp))
-                                .padding(20.dp)
+                                .padding(20.dp),
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Box(
                                         modifier = Modifier
                                             .size(10.dp)
-                                            .background(if (isEsp32Online) Success else Color.Red, CircleShape)
+                                            .background(if (isEsp32Online) Success else Color.Red, CircleShape),
                                     )
                                     Spacer(modifier = Modifier.width(10.dp))
                                     Column {
                                         Text(
-                                            if (isEsp32Online) "HARDWARE CONTROLLER CONNECTED" else "HARDWARE CONTROLLER OFFLINE", 
-                                            color = TextPrimary, 
-                                            fontSize = 11.sp, 
-                                            fontWeight = FontWeight.Bold, 
-                                            letterSpacing = 0.5.sp
+                                            if (isEsp32Online) "HARDWARE CONTROLLER CONNECTED" else "HARDWARE CONTROLLER OFFLINE",
+                                            color = TextPrimary,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            letterSpacing = 0.5.sp,
                                         )
                                         Text(
-                                            if (isEsp32Online) "Autonomous Discovery & Interlock Synchronized" else "Searching for ESP32 on network...", 
-                                            color = TextTertiary, 
-                                            fontSize = 10.sp
+                                            if (isEsp32Online) "Autonomous Discovery & Interlock Synchronized" else "Searching for ESP32 on network...",
+                                            color = TextTertiary,
+                                            fontSize = 10.sp,
                                         )
                                     }
                                 }
@@ -357,14 +368,14 @@ fun BlockScreen(
                                 .padding(top = 24.dp)
                                 .alpha(0.6f),
                             horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            IconButton(onClick = onThemeChange) { 
-                                Icon(Icons.Filled.Palette, contentDescription = "Change Theme", tint = TextPrimary) 
+                            IconButton(onClick = onThemeChange) {
+                                Icon(Icons.Filled.Palette, contentDescription = "Change Theme", tint = TextPrimary)
                             }
                             Spacer(modifier = Modifier.width(16.dp))
-                            IconButton(onClick = { showPinDialog = true }) { 
-                                Icon(Icons.Filled.AdminPanelSettings, contentDescription = "Security Vault", tint = TextPrimary) 
+                            IconButton(onClick = { showPinDialog = true }) {
+                                Icon(Icons.Filled.AdminPanelSettings, contentDescription = "Security Vault", tint = TextPrimary)
                             }
                         }
                     }
@@ -376,13 +387,13 @@ fun BlockScreen(
                             .fillMaxSize()
                             .padding(horizontal = 24.dp),
                         horizontalArrangement = Arrangement.spacedBy(24.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(
                             modifier = Modifier
                                 .weight(1f)
                                 .verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.Center
+                            verticalArrangement = Arrangement.Center,
                         ) {
                             mainContent(Modifier.padding(top = 16.dp))
                         }
@@ -390,7 +401,7 @@ fun BlockScreen(
                             modifier = Modifier
                                 .weight(1f)
                                 .verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.Center
+                            verticalArrangement = Arrangement.Center,
                         ) {
                             bottomSection(Modifier.fillMaxWidth())
                         }
@@ -399,17 +410,17 @@ fun BlockScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
+                            .verticalScroll(rememberScrollState()),
                     ) {
                         mainContent(
                             Modifier
                                 .padding(horizontal = 24.dp)
-                                .padding(top = 16.dp)
+                                .padding(top = 16.dp),
                         )
                         bottomSection(
                             Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 24.dp, vertical = 16.dp)
+                                .padding(horizontal = 24.dp, vertical = 16.dp),
                         )
                     }
                 }
@@ -431,7 +442,7 @@ fun BlockScreen(
                     onOpenEmergencyRecovery = {
                         showPinDialog = false
                         showEmergencyRecoveryDialog = true
-                    }
+                    },
                 )
             }
 
@@ -441,7 +452,7 @@ fun BlockScreen(
                         .fillMaxSize()
                         .background(Color.Black.copy(alpha = 0.75f))
                         .clickable(enabled = false) {},
-                    contentAlignment = Alignment.Center
+                    contentAlignment = Alignment.Center,
                 ) {
                     Card(
                         modifier = Modifier
@@ -449,7 +460,7 @@ fun BlockScreen(
                             .fillMaxHeight(0.92f)
                             .padding(12.dp),
                         shape = RoundedCornerShape(18.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A))
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
                     ) {
                         Box(modifier = Modifier.padding(12.dp)) {
                             SecurityVaultView(
@@ -458,7 +469,7 @@ fun BlockScreen(
                                 onOpenRecoveryHub = {
                                     showSecurityDialog = false
                                     showEmergencyRecoveryDialog = true
-                                }
+                                },
                             )
                         }
                     }
@@ -468,7 +479,7 @@ fun BlockScreen(
             if (showEmergencyRecoveryDialog) {
                 EmergencyRecoveryDialog(
                     context = context,
-                    onClose = { showEmergencyRecoveryDialog = false }
+                    onClose = { showEmergencyRecoveryDialog = false },
                 )
             }
         }

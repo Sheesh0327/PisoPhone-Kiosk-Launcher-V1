@@ -1,4 +1,5 @@
 @file:Suppress("DEPRECATION")
+
 package com.pisophone.kiosk.security
 
 import android.content.Context
@@ -21,7 +22,7 @@ import javax.crypto.spec.SecretKeySpec
  */
 object KioskSecurity {
     private const val PREFS_SECURITY_OLD = "kiosk_security_vault"
-    
+
     private const val KEY_ADMIN_PIN = "admin_access_pin"
     private const val KEY_DEVICE_ALIAS = "device_alias"
     private const val KEY_HIDDEN_APPS = "hidden_apps_set"
@@ -33,10 +34,11 @@ object KioskSecurity {
     private const val KEY_ASSIGNED_BOX_SLOT = "assigned_box_slot"
     private const val KEY_PROVISIONING_ADB_ALLOWED = "provisioning_adb_allowed"
     private const val KEY_ADB_GRACE_START = "adb_provisioning_grace_start"
+
     // WebADB keeps issuing commands (setup intent, broadcasts, reboot) for a few minutes after
     // `dpm set-device-owner`, which is when policies are first applied.
     private const val ADB_PROVISIONING_GRACE_MS = 15 * 60 * 1000L
-    
+
     const val DEFAULT_SHARED_SECRET = "PISOPHONE_HMAC_MASTER_KEY"
     private const val KEY_SECRET_EXPLICITLY_PROVISIONED = "kiosk_secret_explicitly_provisioned"
     private const val DEFAULT_PIN = "1234"
@@ -49,11 +51,9 @@ object KioskSecurity {
     @Volatile
     private var encryptedPrefsInstance: SharedPreferences? = null
 
-    private fun getPrefs(context: Context): SharedPreferences {
-        return prefsInstance ?: synchronized(this) {
-            prefsInstance ?: buildPrefs(context.applicationContext).also { 
-                prefsInstance = it 
-            }
+    private fun getPrefs(context: Context): SharedPreferences = prefsInstance ?: synchronized(this) {
+        prefsInstance ?: buildPrefs(context.applicationContext).also {
+            prefsInstance = it
         }
     }
 
@@ -77,13 +77,13 @@ object KioskSecurity {
                 val masterKey = androidx.security.crypto.MasterKey.Builder(context)
                     .setKeyScheme(androidx.security.crypto.MasterKey.KeyScheme.AES256_GCM)
                     .build()
-                    
+
                 encryptedPrefsInstance = androidx.security.crypto.EncryptedSharedPreferences.create(
                     context,
                     "secret_prefs",
                     masterKey,
                     androidx.security.crypto.EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                    androidx.security.crypto.EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+                    androidx.security.crypto.EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
                 )
                 encryptedPrefsInstance
             } catch (e: Exception) {
@@ -98,57 +98,41 @@ object KioskSecurity {
      * value read may differ between locked and unlocked starts. Do not use for state that must be
      * consistent across process restarts in Direct Boot.
      */
-    fun getEncryptedPreferences(context: Context): SharedPreferences {
-        return getEncryptedPrefs(context) ?: getDirectBootPrefs(context, "secure_kiosk_prefs")
-    }
+    fun getEncryptedPreferences(context: Context): SharedPreferences = getEncryptedPrefs(context) ?: getDirectBootPrefs(context, "secure_kiosk_prefs")
 
     fun getDirectBootPrefs(context: Context, name: String = PREFS_SECURITY_OLD): SharedPreferences {
         val deviceContext = context.createDeviceProtectedStorageContext()
         return deviceContext.getSharedPreferences(name, Context.MODE_PRIVATE)
     }
 
-    private fun buildPrefs(context: Context): SharedPreferences {
-        return getDirectBootPrefs(context, PREFS_SECURITY_OLD)
-    }
+    private fun buildPrefs(context: Context): SharedPreferences = getDirectBootPrefs(context, PREFS_SECURITY_OLD)
 
-
-
-    fun isBatteryAlertsEnabled(context: Context): Boolean {
-        return getPrefs(context).getBoolean(KEY_BATTERY_ALERTS_ENABLED, true)
-    }
+    fun isBatteryAlertsEnabled(context: Context): Boolean = getPrefs(context).getBoolean(KEY_BATTERY_ALERTS_ENABLED, true)
 
     fun setBatteryAlertsEnabled(context: Context, enabled: Boolean) {
         getPrefs(context).edit().putBoolean(KEY_BATTERY_ALERTS_ENABLED, enabled).apply()
     }
 
-    fun getLowBatteryThreshold(context: Context): Int {
-        return getPrefs(context).getInt(KEY_LOW_BATTERY_THRESHOLD, 20)
-    }
+    fun getLowBatteryThreshold(context: Context): Int = getPrefs(context).getInt(KEY_LOW_BATTERY_THRESHOLD, 20)
 
     fun setLowBatteryThreshold(context: Context, threshold: Int) {
         getPrefs(context).edit().putInt(KEY_LOW_BATTERY_THRESHOLD, threshold.coerceIn(5, 50)).apply()
     }
 
-    fun getHighBatteryThreshold(context: Context): Int {
-        return getPrefs(context).getInt(KEY_HIGH_BATTERY_THRESHOLD, 80)
-    }
+    fun getHighBatteryThreshold(context: Context): Int = getPrefs(context).getInt(KEY_HIGH_BATTERY_THRESHOLD, 80)
 
     fun setHighBatteryThreshold(context: Context, threshold: Int) {
         getPrefs(context).edit().putInt(KEY_HIGH_BATTERY_THRESHOLD, threshold.coerceIn(50, 100)).apply()
     }
 
-    fun getConfiguredEsp32Mac(context: Context): String {
-        return getPrefs(context).getString(KEY_CONFIGURED_ESP32_MAC, "") ?: ""
-    }
+    fun getConfiguredEsp32Mac(context: Context): String = getPrefs(context).getString(KEY_CONFIGURED_ESP32_MAC, "") ?: ""
 
     fun setConfiguredEsp32Mac(context: Context, mac: String) {
         val clean = formatMacAddress(mac)
         getPrefs(context).edit().putString(KEY_CONFIGURED_ESP32_MAC, clean).apply()
     }
 
-    fun getAssignedBoxSlot(context: Context): Int {
-        return getPrefs(context).getInt(KEY_ASSIGNED_BOX_SLOT, 1)
-    }
+    fun getAssignedBoxSlot(context: Context): Int = getPrefs(context).getInt(KEY_ASSIGNED_BOX_SLOT, 1)
 
     fun setAssignedBoxSlot(context: Context, slot: Int) {
         if (slot > 0) {
@@ -211,7 +195,7 @@ object KioskSecurity {
         if (!prefs.contains(KEY_INITIALIZED_DEFAULT_HIDDEN)) {
             val defaultHidden = setOf(
                 "com.android.settings",
-                "com.google.android.settings"
+                "com.google.android.settings",
             )
             prefs.edit()
                 .putStringSet(KEY_HIDDEN_APPS, defaultHidden)
@@ -249,9 +233,7 @@ object KioskSecurity {
         return isNowHidden
     }
 
-    fun getDeviceAlias(context: Context): String {
-        return getPrefs(context).getString(KEY_DEVICE_ALIAS, "") ?: ""
-    }
+    fun getDeviceAlias(context: Context): String = getPrefs(context).getString(KEY_DEVICE_ALIAS, "") ?: ""
 
     fun getHardwareId(context: Context): String {
         val deviceContext = context.createDeviceProtectedStorageContext()
@@ -272,9 +254,7 @@ object KioskSecurity {
         getPrefs(context).edit().putString(KEY_DEVICE_ALIAS, alias.trim()).apply()
     }
 
-    fun getSharedSecret(context: Context): String {
-        return DEFAULT_SHARED_SECRET
-    }
+    fun getSharedSecret(context: Context): String = DEFAULT_SHARED_SECRET
 
     /** True while the factory PIN is still in use (shown as a warning in the admin vault). */
     fun isAdminPinDefault(context: Context): Boolean = getAdminPin(context) == DEFAULT_PIN
@@ -306,9 +286,7 @@ object KioskSecurity {
         return hmacBytes.joinToString("") { "%02x".format(it) }
     }
 
-    fun generateTimestampSignature(deviceId: String, ts: String, secret: String): String {
-        return calculateHmac("$deviceId:$ts", secret)
-    }
+    fun generateTimestampSignature(deviceId: String, ts: String, secret: String): String = calculateHmac("$deviceId:$ts", secret)
 
     /**
      * Signature for the ESP32 coin-slot calls (arm / unarm / ack). Binds the action, device,
@@ -326,9 +304,7 @@ object KioskSecurity {
         return SecretKeySpec(keyBytes, "AES")
     }
 
-    fun bytesToHex(bytes: ByteArray): String {
-        return bytes.joinToString("") { "%02x".format(it) }
-    }
+    fun bytesToHex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it) }
 
     fun hexToBytes(hex: String): ByteArray {
         val len = hex.length
@@ -377,12 +353,10 @@ object KioskSecurity {
         }
     }
 
-    fun constantTimeEquals(a: String, b: String): Boolean {
-        return MessageDigest.isEqual(
-            a.toByteArray(Charsets.UTF_8),
-            b.toByteArray(Charsets.UTF_8)
-        )
-    }
+    fun constantTimeEquals(a: String, b: String): Boolean = MessageDigest.isEqual(
+        a.toByteArray(Charsets.UTF_8),
+        b.toByteArray(Charsets.UTF_8),
+    )
 
     fun setMediaVolume(context: Context, volumePercent: Int) {
         try {
@@ -446,7 +420,7 @@ object KioskSecurity {
         secret: String? = null,
         mac: String? = null,
         slot: Int = -1,
-        name: String? = null
+        name: String? = null,
     ): Boolean {
         if (!mac.isNullOrBlank()) {
             val formattedMac = formatMacAddress(mac.trim())

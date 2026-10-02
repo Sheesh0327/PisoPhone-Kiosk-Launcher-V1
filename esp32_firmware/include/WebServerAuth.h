@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 
-void authWorkerTask(void *pvParameters);
+void authWorkerTask(void* pvParameters);
 bool checkAuth();
 bool checkAdminAuth();
 bool defaultCredentialsActive();

@@ -23,7 +23,7 @@ import com.pisophone.kiosk.model.BatteryStatus
 @Composable
 fun BatteryAlertBanner(
     batteryStatus: BatteryStatus,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     if (batteryStatus.alertState == BatteryAlertState.NONE) return
 
@@ -39,34 +39,34 @@ fun BatteryAlertBanner(
             .padding(horizontal = 10.dp, vertical = 4.dp),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = bgColor),
-        border = BorderStroke(2.dp, borderColor)
+        border = BorderStroke(2.dp, borderColor),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 modifier = Modifier
                     .size(36.dp)
                     .clip(CircleShape)
                     .background(if (isLowBattery) Color(0xFFFF2222).copy(alpha = 0.25f) else Color(0xFFFFB800).copy(alpha = 0.25f)),
-                contentAlignment = Alignment.Center
+                contentAlignment = Alignment.Center,
             ) {
                 if (isLowBattery) {
                     Icon(
                         Icons.Filled.BatteryFull,
                         contentDescription = "Low Battery",
                         tint = Color(0xFFFF3333),
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(22.dp),
                     )
                 } else {
                     Icon(
                         Icons.Filled.Bolt,
                         contentDescription = "Disconnect Charger",
                         tint = Color(0xFFFFB800),
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(22.dp),
                     )
                 }
             }
@@ -79,18 +79,19 @@ fun BatteryAlertBanner(
                     color = titleColor,
                     fontWeight = FontWeight.ExtraBold,
                     fontSize = 12.sp,
-                    letterSpacing = 0.5.sp
+                    letterSpacing = 0.5.sp,
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = if (isLowBattery) 
-                        "Battery is below the threshold! Connect charger now to avoid shutdown." 
-                    else 
-                        "Battery reached the threshold! Please disconnect charger cable to preserve battery health.",
+                    text = if (isLowBattery) {
+                        "Battery is below the threshold! Connect charger now to avoid shutdown."
+                    } else {
+                        "Battery reached the threshold! Please disconnect charger cable to preserve battery health."
+                    },
                     color = Color(0xFFF1F5F9),
                     fontSize = 10.sp,
                     lineHeight = 13.sp,
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.Medium,
                 )
             }
         }

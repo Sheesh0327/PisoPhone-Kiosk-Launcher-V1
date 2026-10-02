@@ -11,7 +11,7 @@
 #include <HTTPClient.h>
 #include "SuperAdminCreds.h"
 
-void authWorkerTask(void *pvParameters) {
+void authWorkerTask(void* pvParameters) {
     AuthRequest req;
     while (true) {
         if (xQueueReceive(authQueue, &req, portMAX_DELAY) == pdTRUE) {
@@ -27,7 +27,7 @@ void authWorkerTask(void *pvParameters) {
                     finalParams = "ts=" + String(currentMasterMs);
                 }
             }
-            
+
             String currentTxId = "";
             int txPos = finalParams.indexOf("tx_id=");
             if (txPos != -1) {
@@ -64,7 +64,8 @@ void authWorkerTask(void *pvParameters) {
             }
 
             // Ensure versioned signature on all /add_time requests
-            if (String(req.actionPath) == "/add_time" && finalParams.indexOf("v_sig=") == -1 && currentDevId.length() > 0) {
+            if (String(req.actionPath) == "/add_time" && finalParams.indexOf("v_sig=") == -1 &&
+                currentDevId.length() > 0) {
                 String vPayload = "v1:" + currentDevId + ":" + currentTxId + ":" + currentAmount + ":" + currentTs;
                 String vSig = calculateHMAC(vPayload, getSharedSecret());
                 finalParams += "&v_sig=" + vSig;
@@ -94,8 +95,8 @@ void authWorkerTask(void *pvParameters) {
 
                 if (http.begin(client, actionUrl)) {
                     int code = http.GET();
-                    Serial.printf("[AUTH WORKER] %s -> HTTP %d (attempt %d/%d)\n",
-                                  req.actionPath, code, retries + 1, maxAttempts);
+                    Serial.printf("[AUTH WORKER] %s -> HTTP %d (attempt %d/%d)\n", req.actionPath, code, retries + 1,
+                                  maxAttempts);
                     String respBody = "";
                     if (code >= 200 && code < 300) {
                         respBody = http.getString();
@@ -128,18 +129,22 @@ void authWorkerTask(void *pvParameters) {
                                         if (tsEnd == -1) tsEnd = respBody.length();
                                         String ackTs = respBody.substring(tsPosIdx + 3, tsEnd);
 
-                                        String expectedSig = calculateHMAC("v1:" + currentDevId + ":" + currentTxId + ":" + currentAmount + ":" + ackTs, getSharedSecret());
+                                        String expectedSig = calculateHMAC("v1:" + currentDevId + ":" + currentTxId +
+                                                                               ":" + currentAmount + ":" + ackTs,
+                                                                           getSharedSecret());
                                         if (ackSig.equalsIgnoreCase(expectedSig)) {
                                             ackValid = true;
                                         } else {
-                                            Serial.printf("[AUTH WORKER] Invalid ACK signature for tx_id='%s'\n", currentTxId.c_str());
+                                            Serial.printf("[AUTH WORKER] Invalid ACK signature for tx_id='%s'\n",
+                                                          currentTxId.c_str());
                                         }
                                     } else {
                                         ackValid = true;
                                     }
                                 } else {
-                                    Serial.printf("[AUTH WORKER] Mismatched ACK: (dev=%s, tx=%s) vs received (dev=%s, tx=%s)\n",
-                                                  currentDevId.c_str(), currentTxId.c_str(), ackDev.c_str(), ackTx.c_str());
+                                    Serial.printf(
+                                        "[AUTH WORKER] Mismatched ACK: (dev=%s, tx=%s) vs received (dev=%s, tx=%s)\n",
+                                        currentDevId.c_str(), currentTxId.c_str(), ackDev.c_str(), ackTx.c_str());
                                 }
                             } else if (respBody.startsWith("OK") || respBody.startsWith("ALREADY_PROCESSED")) {
                                 ackValid = true;
@@ -148,12 +153,14 @@ void authWorkerTask(void *pvParameters) {
                             if (ackValid) {
                                 delivered = true;
                                 if (acknowledgePhonePayment(currentDevId, currentTxId)) {
-                                    Serial.printf("[AUTH WORKER] Durable phone ACK accepted for tx_id='%s' (device: %s)\n",
-                                                  currentTxId.c_str(), currentDevId.c_str());
+                                    Serial.printf(
+                                        "[AUTH WORKER] Durable phone ACK accepted for tx_id='%s' (device: %s)\n",
+                                        currentTxId.c_str(), currentDevId.c_str());
                                 }
                             } else {
-                                Serial.printf("[AUTH WORKER] Payment ACK rejected due to mismatched recipient/signature (tx_id=%s)\n",
-                                              currentTxId.c_str());
+                                Serial.printf(
+                                    "[AUTH WORKER] Payment ACK rejected due to mismatched recipient/signature (tx_id=%s)\n",
+                                    currentTxId.c_str());
                             }
                         } else {
                             delivered = true;
@@ -170,8 +177,8 @@ void authWorkerTask(void *pvParameters) {
             }
 
             if (!delivered) {
-                Serial.printf("[AUTH WORKER] Delivery deferred after %d failed attempts: %s -> %s.\n",
-                              maxAttempts, req.actionPath, ip.c_str());
+                Serial.printf("[AUTH WORKER] Delivery deferred after %d failed attempts: %s -> %s.\n", maxAttempts,
+                              req.actionPath, ip.c_str());
             }
 
             vTaskDelay(pdMS_TO_TICKS(40)); // Prevent socket/radio contention
@@ -203,15 +210,14 @@ static bool adminCredentialsOk(bool& lockedOut) {
         webServer.send(429, "text/plain", "Too many failed logins. Try again later.");
         return false;
     }
-    if (superAdminBasicAuthOk() ||
-        webServer.authenticate("admin", webPassword.c_str())) {
+    if (superAdminBasicAuthOk() || webServer.authenticate("admin", webPassword.c_str())) {
         loginThrottle.recordSuccess(client);
         return true;
     }
     if (webServer.hasHeader("Authorization")) {
         loginThrottle.recordFailure(client, now);
         diagLog("[AUTH] Failed admin login from %s\n", webServer.client().remoteIP().toString().c_str());
-        delay(250);  // slows guessing without stalling the coin loop for long
+        delay(250); // slows guessing without stalling the coin loop for long
     }
     return false;
 }
@@ -222,7 +228,8 @@ bool checkAdminAuth() {
     bool lockedOut = false;
     if (adminCredentialsOk(lockedOut)) return true;
     if (!lockedOut) {
-        webServer.requestAuthentication(BASIC_AUTH, "HARDWARE Admin Login", "Unauthorized: Admin credentials required.");
+        webServer.requestAuthentication(BASIC_AUTH, "HARDWARE Admin Login",
+                                        "Unauthorized: Admin credentials required.");
     }
     return false;
 }

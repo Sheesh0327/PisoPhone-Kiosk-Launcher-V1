@@ -38,7 +38,7 @@ fun AdminAuthenticationDialog(
     textSecondaryColor: Color,
     onDismiss: () -> Unit,
     onUnlockSuccess: (String) -> Unit,
-    onOpenEmergencyRecovery: () -> Unit
+    onOpenEmergencyRecovery: () -> Unit,
 ) {
     var enteredPin by remember { mutableStateOf("") }
     var pinError by remember { mutableStateOf(false) }
@@ -56,14 +56,14 @@ fun AdminAuthenticationDialog(
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.6f))
             .clickable(enabled = false) {},
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.Center,
     ) {
         Card(
             modifier = Modifier
                 .fillMaxWidth(0.9f)
                 .padding(16.dp),
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = surfaceColor)
+            colors = CardDefaults.cardColors(containerColor = surfaceColor),
         ) {
             Column(modifier = Modifier.padding(24.dp)) {
                 Text("Admin Authentication", fontWeight = FontWeight.Bold, color = textPrimaryColor, fontSize = 20.sp)
@@ -82,11 +82,11 @@ fun AdminAuthenticationDialog(
                         focusedTextColor = textPrimaryColor,
                         unfocusedTextColor = textPrimaryColor,
                         focusedBorderColor = primaryColor,
-                        unfocusedBorderColor = borderColor
+                        unfocusedBorderColor = borderColor,
                     ),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .focusRequester(pinFocusRequester)
+                        .focusRequester(pinFocusRequester),
                 )
                 if (pinError) {
                     Text("Invalid password.", color = Color(0xFFFF6B6B), fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
@@ -104,7 +104,7 @@ fun AdminAuthenticationDialog(
                         .fillMaxWidth()
                         .height(38.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF4444)),
-                    shape = RoundedCornerShape(8.dp)
+                    shape = RoundedCornerShape(8.dp),
                 ) {
                     Icon(Icons.Filled.Warning, contentDescription = null, modifier = Modifier.size(15.dp), tint = Color(0xFFFF4444))
                     Spacer(modifier = Modifier.width(6.dp))

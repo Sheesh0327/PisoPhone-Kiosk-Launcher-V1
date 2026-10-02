@@ -23,7 +23,7 @@ object AppLauncher {
      */
     fun launchApp(context: Context, packageName: String, bypassKiosk: Boolean = false): Boolean {
         Log.i(TAG, "Attempting to launch app: $packageName (bypassKiosk=$bypassKiosk)")
-        
+
         if (bypassKiosk) {
             // Open the maintenance window synchronously: the bypass itself runs asynchronously
             // and ensureLockTaskAllowed() below must already see it.
@@ -101,7 +101,7 @@ object AppLauncher {
             try {
                 @Suppress("DEPRECATION")
                 val pkgInfo = pm.getPackageInfo(packageName, PackageManager.GET_ACTIVITIES)
-                val exportedActivity = pkgInfo.activities?.firstOrNull { it.exported } 
+                val exportedActivity = pkgInfo.activities?.firstOrNull { it.exported }
                     ?: pkgInfo.activities?.firstOrNull()
                 if (exportedActivity != null) {
                     intent = Intent().apply {
@@ -118,8 +118,8 @@ object AppLauncher {
             try {
                 intent.addFlags(
                     Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED or
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP
+                        Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP,
                 )
                 context.startActivity(intent)
                 Log.i(TAG, "Successfully started activity for package: $packageName")

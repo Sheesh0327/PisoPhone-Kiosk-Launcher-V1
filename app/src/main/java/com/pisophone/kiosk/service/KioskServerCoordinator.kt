@@ -34,9 +34,8 @@ class KioskServerCoordinator(
     /** Contact from an address that is not the known ESP32; must be verified, never trusted. */
     private val onUnverifiedEsp32Contact: ((String) -> Unit)? = null,
     /** Centralized lock side effects (unarm, send customer app home, pause media). */
-    private val onSessionLocked: (cancelArm: Boolean) -> Unit = {}
+    private val onSessionLocked: (cancelArm: Boolean) -> Unit = {},
 ) : KioskServerDelegate {
-
     companion object {
         private const val TAG = "KioskServerCoordinator"
     }
@@ -81,26 +80,22 @@ class KioskServerCoordinator(
     override fun getSessionTimeRemaining(): Int = stateManager.sessionTimeRemaining.value
     override fun getAppState(): Int = stateManager.appState.value
 
-    override fun getAuditEventsJson(): String {
-        return kotlinx.coroutines.runBlocking {
-            val events = coinEventRepo.getLatestEvents(100)
-            val jsonArray = JSONArray()
-            for (event in events) {
-                val obj = JSONObject()
-                obj.put("id", event.id)
-                obj.put("txId", event.txId)
-                obj.put("secondsAdded", event.secondsAdded)
-                obj.put("source", event.source)
-                obj.put("timestamp", event.timestamp)
-                jsonArray.put(obj)
-            }
-            jsonArray.toString()
+    override fun getAuditEventsJson(): String = kotlinx.coroutines.runBlocking {
+        val events = coinEventRepo.getLatestEvents(100)
+        val jsonArray = JSONArray()
+        for (event in events) {
+            val obj = JSONObject()
+            obj.put("id", event.id)
+            obj.put("txId", event.txId)
+            obj.put("secondsAdded", event.secondsAdded)
+            obj.put("source", event.source)
+            obj.put("timestamp", event.timestamp)
+            jsonArray.put(obj)
         }
+        jsonArray.toString()
     }
 
-    override fun creditPayment(txId: String, seconds: Int, amount: Double): PaymentResult {
-        return onCreditPayment(txId, seconds, amount)
-    }
+    override fun creditPayment(txId: String, seconds: Int, amount: Double): PaymentResult = onCreditPayment(txId, seconds, amount)
 
     override fun onDeductTime(seconds: Int, txId: String?) {
         val previousState = stateManager.appState.value
@@ -111,7 +106,7 @@ class KioskServerCoordinator(
             deadlineMs = updated.sessionExpiryDeadlineMs,
             remainingSeconds = updated.sessionTimeRemaining,
             revision = updated.revision,
-            targetAppState = targetState
+            targetAppState = targetState,
         )
         if (applied) {
             stateManager.saveState()
@@ -133,7 +128,7 @@ class KioskServerCoordinator(
             deadlineMs = resetState.sessionExpiryDeadlineMs,
             remainingSeconds = resetState.sessionTimeRemaining,
             revision = resetState.revision,
-            targetAppState = SessionRules.hardLocked()
+            targetAppState = SessionRules.hardLocked(),
         )
         stateManager.coinsInserted.value = 0
         stateManager.paymentTimeout.value = 0
@@ -180,7 +175,7 @@ class KioskServerCoordinator(
                     locked = true,
                     reason = "Device activation required.",
                     slotNum = stateManager.slotNumber.value,
-                    expiryTs = 0L
+                    expiryTs = 0L,
                 )
             }
             "reset_time" -> lockAndResetSession()
@@ -224,7 +219,7 @@ class KioskServerCoordinator(
                     KioskActivationManager.setSlotLockdown(
                         context,
                         false,
-                        slotNum = stateManager.slotNumber.value ?: 1
+                        slotNum = stateManager.slotNumber.value ?: 1,
                     )
                     stateManager.saveState()
                     Toast.makeText(context, "Device activated.", Toast.LENGTH_SHORT).show()
@@ -259,13 +254,11 @@ class KioskServerCoordinator(
         }
     }
 
-    override fun getCrashLog(): String? {
-        return try {
-            val logDir = context.getExternalFilesDir(null) ?: context.filesDir
-            val file = File(logDir, "crash.log")
-            if (file.exists()) file.readText() else null
-        } catch (_: Exception) {
-            null
-        }
+    override fun getCrashLog(): String? = try {
+        val logDir = context.getExternalFilesDir(null) ?: context.filesDir
+        val file = File(logDir, "crash.log")
+        if (file.exists()) file.readText() else null
+    } catch (_: Exception) {
+        null
     }
 }

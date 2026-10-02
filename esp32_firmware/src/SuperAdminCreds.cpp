@@ -14,16 +14,16 @@
 #include <freertos/task.h>
 #include <mbedtls/md.h>
 
-static const char* K_VER  = "sa_ver";
+static const char* K_VER = "sa_ver";
 static const char* K_ITER = "sa_iter";
 static const char* K_SALT = "sa_salt";
 static const char* K_HASH = "sa_hash";
 
 static const unsigned long FIRST_SYNC_DELAY_MS = 60UL * 1000UL;
-static const unsigned long SYNC_INTERVAL_MS    = 60UL * 60UL * 1000UL;
-static const unsigned long RETRY_INTERVAL_MS   = 10UL * 60UL * 1000UL;
-static const uint32_t MIN_HEAP_FOR_TLS         = 60000;
-static const size_t MAX_BODY_BYTES             = 1024;
+static const unsigned long SYNC_INTERVAL_MS = 60UL * 60UL * 1000UL;
+static const unsigned long RETRY_INTERVAL_MS = 10UL * 60UL * 1000UL;
+static const uint32_t MIN_HEAP_FOR_TLS = 60000;
+static const size_t MAX_BODY_BYTES = 1024;
 
 // Credentials currently in force. Guarded by credMutex because the web server and the sync
 // task both touch them.
@@ -32,7 +32,7 @@ static uint32_t credVersion = 0;
 static uint32_t credIterations = 0;
 static String credSaltHex;
 static String credHashHex;
-static uint8_t cachedOkDigest[32];   // sha256(version || password) of the last accepted password
+static uint8_t cachedOkDigest[32]; // sha256(version || password) of the last accepted password
 static bool cachedOkValid = false;
 
 // Result handed from the download task to loop(), which owns flash writes.
@@ -46,13 +46,17 @@ static unsigned long nextSyncAtMs = 0;
 static bool scheduleStarted = false;
 static bool keyWarned = false;
 
-static void lockCreds()   { if (credMutex) xSemaphoreTake(credMutex, portMAX_DELAY); }
-static void unlockCreds() { if (credMutex) xSemaphoreGive(credMutex); }
+static void lockCreds() {
+    if (credMutex) xSemaphoreTake(credMutex, portMAX_DELAY);
+}
+static void unlockCreds() {
+    if (credMutex) xSemaphoreGive(credMutex);
+}
 
 static void passwordDigest(uint32_t version, const String& pw, uint8_t out[32]) {
     String material = String(version) + ":" + pw;
-    mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
-               (const unsigned char*)material.c_str(), material.length(), out);
+    mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), (const unsigned char*)material.c_str(), material.length(),
+               out);
 }
 
 void superAdminCredsLoad() {
@@ -65,17 +69,27 @@ void superAdminCredsLoad() {
     prefs.end();
     lockCreds();
     if (ver > 0 && iter > 0 && salt.length() > 0 && hash.length() > 0) {
-        credVersion = ver; credIterations = iter; credSaltHex = salt; credHashHex = hash;
+        credVersion = ver;
+        credIterations = iter;
+        credSaltHex = salt;
+        credHashHex = hash;
     } else {
-        credVersion = 0; credIterations = 0; credSaltHex = ""; credHashHex = "";
+        credVersion = 0;
+        credIterations = 0;
+        credSaltHex = "";
+        credHashHex = "";
     }
     cachedOkValid = false;
     unlockCreds();
     if (ver > 0) diagLog("[CRED] Super-admin password is remotely managed (version %u).\n", (unsigned)ver);
 }
 
-bool superAdminCredsManaged() { return credVersion > 0; }
-uint32_t superAdminCredsVersion() { return credVersion; }
+bool superAdminCredsManaged() {
+    return credVersion > 0;
+}
+uint32_t superAdminCredsVersion() {
+    return credVersion;
+}
 
 bool superAdminPasswordOk(const String& candidate) {
     lockCreds();
@@ -112,7 +126,8 @@ bool superAdminBasicAuthOk() {
     if (!credcrypto::base64Decode(header.substring(6).c_str(), raw)) return false;
     String decoded;
     decoded.reserve(raw.size());
-    for (uint8_t b : raw) decoded += (char)b;
+    for (uint8_t b : raw)
+        decoded += (char)b;
     int colon = decoded.indexOf(':');
     if (colon < 0 || decoded.substring(0, colon) != "superadmin") return false;
     return superAdminPasswordOk(decoded.substring(colon + 1));
@@ -133,14 +148,21 @@ static void syncTask(void*) {
         http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
         if (!http.begin(client, PISO_CRED_URL)) break;
         int code = http.GET();
-        if (code == 404) { lastSyncOk = true; http.end(); break; }  // nothing published yet
+        if (code == 404) {
+            lastSyncOk = true;
+            http.end();
+            break;
+        } // nothing published yet
         if (code != 200) {
             diagLog("[CRED] Download failed: HTTP %d\n", code);
             http.end();
             break;
         }
         int len = http.getSize();
-        if (len > (int)MAX_BODY_BYTES) { http.end(); break; }
+        if (len > (int)MAX_BODY_BYTES) {
+            http.end();
+            break;
+        }
         String body = http.getString();
         http.end();
         if (body.length() == 0 || body.length() > MAX_BODY_BYTES) break;
@@ -157,14 +179,14 @@ static void syncTask(void*) {
         c.hashHex = (const char*)(doc["hash"] | "");
         std::string sig = (const char*)(doc["sig"] | "");
 
-        credcrypto::CredCheck r = credcrypto::checkCredentials(
-            c, sig, SUPER_ADMIN_PUBKEY_DER, SUPER_ADMIN_PUBKEY_LEN, credVersion);
+        credcrypto::CredCheck r =
+            credcrypto::checkCredentials(c, sig, SUPER_ADMIN_PUBKEY_DER, SUPER_ADMIN_PUBKEY_LEN, credVersion);
         if (r == credcrypto::CredCheck::Ok) {
             pendingCreds = c;
             pendingReady = true;
             lastSyncOk = true;
         } else if (r == credcrypto::CredCheck::NotNewer) {
-            lastSyncOk = true;  // already up to date
+            lastSyncOk = true; // already up to date
         } else if (r == credcrypto::CredCheck::BadSignature) {
             diagLog("[CRED] REJECTED credentials.json: signature does not match the built-in key.\n");
         } else {
@@ -185,13 +207,15 @@ static void applyPending() {
     prefs.putUInt(K_ITER, c.iterations);
     prefs.putString(K_SALT, c.saltHex.c_str());
     prefs.putString(K_HASH, c.hashHex.c_str());
-    prefs.putUInt(K_VER, c.version);          // written last: marks the set as complete
-    prefs.remove("super_admin_pw");           // the plaintext password is no longer kept
+    prefs.putUInt(K_VER, c.version); // written last: marks the set as complete
+    prefs.remove("super_admin_pw");  // the plaintext password is no longer kept
     prefs.end();
 
     lockCreds();
-    credVersion = c.version; credIterations = c.iterations;
-    credSaltHex = c.saltHex.c_str(); credHashHex = c.hashHex.c_str();
+    credVersion = c.version;
+    credIterations = c.iterations;
+    credSaltHex = c.saltHex.c_str();
+    credHashHex = c.hashHex.c_str();
     cachedOkValid = false;
     unlockCreds();
     superAdminPassword = "";
@@ -215,7 +239,7 @@ void superAdminSyncLoop() {
         return;
     }
     if (WiFi.status() != WL_CONNECTED) {
-        scheduleStarted = false;   // restart the short first-sync delay after each reconnect
+        scheduleStarted = false; // restart the short first-sync delay after each reconnect
         return;
     }
     if (!scheduleStarted) {

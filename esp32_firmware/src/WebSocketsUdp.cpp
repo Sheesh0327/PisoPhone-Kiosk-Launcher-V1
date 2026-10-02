@@ -172,7 +172,8 @@ String readWsText(WiFiClient& client) {
 
         // Enforce maximum buffer limit
         if (payloadLen > MAX_WS_MESSAGE_SIZE || (assembledText.length() + payloadLen > MAX_WS_MESSAGE_SIZE)) {
-            Serial.printf("[WS] Payload length %llu exceeds safe limit %u. Dropping.\n", payloadLen, (unsigned int)MAX_WS_MESSAGE_SIZE);
+            Serial.printf("[WS] Payload length %llu exceeds safe limit %u. Dropping.\n", payloadLen,
+                          (unsigned int)MAX_WS_MESSAGE_SIZE);
             client.stop();
             return "";
         }
@@ -265,10 +266,10 @@ void processWebSocketServer() {
         WiFiClient newClient = wsServer.available();
         if (newClient) {
             newClient.setTimeout(500);
-            
+
             String request = "";
             String secKey = "";
-            
+
             unsigned long hsStart = millis();
             while (newClient.connected() && (millis() - hsStart < 2000)) {
                 if (newClient.available()) {
@@ -286,13 +287,14 @@ void processWebSocketServer() {
                     delay(5);
                 }
             }
-            
+
             // Extract URI Path from HTTP Request line (e.g., "GET /ws/coinslot?session_id=... HTTP/1.1")
             String reqPath = "";
             int firstSpace = request.indexOf(' ');
             if (firstSpace != -1) {
                 int secondSpace = request.indexOf(' ', firstSpace + 1);
-                String fullUri = (secondSpace != -1) ? request.substring(firstSpace + 1, secondSpace) : request.substring(firstSpace + 1);
+                String fullUri = (secondSpace != -1) ? request.substring(firstSpace + 1, secondSpace)
+                                                     : request.substring(firstSpace + 1);
                 int qMark = fullUri.indexOf('?');
                 reqPath = (qMark != -1) ? fullUri.substring(0, qMark) : fullUri;
             }
@@ -319,13 +321,13 @@ void processWebSocketServer() {
             reqDeviceId.trim();
             tsStr.trim();
             sig.trim();
-            
+
             if (reqDeviceId.length() == 0 || tsStr.length() == 0 || sig.length() == 0 || secKey.length() == 0) {
                 newClient.print("HTTP/1.1 400 Bad Request\r\n\r\nMissing auth/WebSocket headers");
                 newClient.stop();
                 return;
             }
-            
+
             // 1. Verify HMAC Signature
             if (getSharedSecret().length() > 0) {
                 String expectedSig = calculateHMAC(reqDeviceId + ":" + tsStr, getSharedSecret());
@@ -348,57 +350,60 @@ void processWebSocketServer() {
             int wsSlotIdx = findSlotIndexForDevice(reqDeviceId, clientIp);
             if (wsSlotIdx < 0) {
                 updateDynamicDeviceList(reqDeviceId, clientIp);
-                Serial.printf("[-] WS Mutex Rejected for %s (%s): Device is not paired to any slot on this ESP32\n", 
-                    reqDeviceId.c_str(), clientIp.c_str());
-                newClient.print("HTTP/1.1 423 Locked\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: 29\r\n\r\n{\"error\":\"SLOT_NOT_PAIRED\"}");
+                Serial.printf("[-] WS Mutex Rejected for %s (%s): Device is not paired to any slot on this ESP32\n",
+                              reqDeviceId.c_str(), clientIp.c_str());
+                newClient.print(
+                    "HTTP/1.1 423 Locked\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: 29\r\n\r\n{\"error\":\"SLOT_NOT_PAIRED\"}");
                 delay(10);
                 newClient.stop();
                 return;
             }
             bool wsIsActive = isSlotActive(wsSlotIdx);
             if (!wsIsActive) {
-                Serial.printf("[-] WS Mutex Rejected for %s: Slot Expired / Lockdown Active (Slot #%d)\n", 
-                    reqDeviceId.c_str(), licenseSlots[wsSlotIdx].slotNum);
-                newClient.print("HTTP/1.1 423 Locked\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: 26\r\n\r\n{\"error\":\"SLOT_EXPIRED\"}");
+                Serial.printf("[-] WS Mutex Rejected for %s: Slot Expired / Lockdown Active (Slot #%d)\n",
+                              reqDeviceId.c_str(), licenseSlots[wsSlotIdx].slotNum);
+                newClient.print(
+                    "HTTP/1.1 423 Locked\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: 26\r\n\r\n{\"error\":\"SLOT_EXPIRED\"}");
                 delay(10);
                 newClient.stop();
                 return;
             }
-            
+
             // 2. Hardware Mutex Check (Single-Client Lock)
             if (isCoinSlotBusy(reqDeviceId, CoinSlotOwnerType::PHONE)) {
-                Serial.printf("[-] WS Mutex Rejected for %s: Slot BUSY with %s\n", reqDeviceId.c_str(), getActiveCoinSessionId().c_str());
-                newClient.print("HTTP/1.1 409 Conflict\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: 23\r\n\r\n{\"event\":\"SLOT_BUSY\"}");
+                Serial.printf("[-] WS Mutex Rejected for %s: Slot BUSY with %s\n", reqDeviceId.c_str(),
+                              getActiveCoinSessionId().c_str());
+                newClient.print(
+                    "HTTP/1.1 409 Conflict\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: 23\r\n\r\n{\"event\":\"SLOT_BUSY\"}");
                 delay(10);
                 newClient.stop();
                 return;
             }
-            
+
             // Mutex passed, slot acquired. Save the nonce and synchronize master clock.
             recordDeviceNonce(reqDeviceId, ts);
             if (ts > 0) updateMasterTime(ts, reqDeviceId);
-            
+
             // 3. Complete RFC6455 Handshake
             String acceptKey = computeSecWebSocketAccept(secKey);
             String response = "HTTP/1.1 101 Switching Protocols\r\n";
             response += "Upgrade: websocket\r\n";
             response += "Connection: Upgrade\r\n";
             response += "Sec-WebSocket-Accept: " + acceptKey + "\r\n\r\n";
-            
+
             newClient.print(response);
             newClient.setNoDelay(true);
-            
+
             if (isWsConnected && wsClient.connected()) {
                 wsClient.stop();
             }
             wsClient = newClient;
             isWsConnected = true;
             wsSessionDeviceId = reqDeviceId;
-            
-            bool reserved = reserveCoinSlot(reqDeviceId, CoinSlotOwnerType::PHONE, ARM_TTL,
-                [](const String& devId, int pulses) {
-                    triggerUniversalCoinEvent(pulses, devId);
-                },
+
+            bool reserved = reserveCoinSlot(
+                reqDeviceId, CoinSlotOwnerType::PHONE, ARM_TTL,
+                [](const String& devId, int pulses) { triggerUniversalCoinEvent(pulses, devId); },
                 [](const String& devId, const char* reason) {
                     if (isWsConnected && wsClient.connected()) {
                         if (strcmp(reason, "TTL_EXPIRED") == 0 || strcmp(reason, "MAX_DURATION") == 0) {
@@ -408,8 +413,7 @@ void processWebSocketServer() {
                     }
                     isWsConnected = false;
                     wsSessionDeviceId = "";
-                }
-            );
+                });
 
             if (!reserved) {
                 sendWsText(wsClient, "{\"event\":\"ERROR\",\"reason\":\"SLOT_UNAVAILABLE\"}");
@@ -419,13 +423,14 @@ void processWebSocketServer() {
                 Serial.printf("[-] WS reservation failed for %s after handshake.\n", reqDeviceId.c_str());
                 return;
             }
-            
+
             diagCount(DiagCounter::WsConnects);
-            diagLog("[⚡ WS Port 81] WebSocket ARMED securely for %s (TTL: %lu s)\n", reqDeviceId.c_str(), ARM_TTL / 1000);
+            diagLog("[⚡ WS Port 81] WebSocket ARMED securely for %s (TTL: %lu s)\n", reqDeviceId.c_str(),
+                    ARM_TTL / 1000);
             sendWsText(wsClient, "{\"event\":\"ARMED\"}");
         }
     }
-    
+
     // Process active WebSocket client frames or disconnection
     if (isWsConnected) {
         String boundDevId = wsSessionDeviceId;
@@ -439,7 +444,7 @@ void processWebSocketServer() {
             }
             return;
         }
-        
+
         if (wsClient.available()) {
             String frameText = readWsText(wsClient);
             if (frameText.length() > 0) {
@@ -461,10 +466,12 @@ void processWebSocketServer() {
                     if (ackDevId.length() > 0 && ackTxId.length() > 0 && ackDevId == boundDevId) {
                         bool sigValid = true;
                         if (ackSig.length() > 0 && ackTs.length() > 0) {
-                            String expectedSig = calculateHMAC("v1:" + ackDevId + ":" + ackTxId + ":" + ackPulses + ":" + ackTs, getSharedSecret());
+                            String expectedSig = calculateHMAC(
+                                "v1:" + ackDevId + ":" + ackTxId + ":" + ackPulses + ":" + ackTs, getSharedSecret());
                             if (!ackSig.equalsIgnoreCase(expectedSig)) {
                                 sigValid = false;
-                                Serial.printf("[⚡ WS Port 81] Rejected ACK for '%s': Invalid signature\n", ackTxId.c_str());
+                                Serial.printf("[⚡ WS Port 81] Rejected ACK for '%s': Invalid signature\n",
+                                              ackTxId.c_str());
                             }
                         }
                         if (sigValid && acknowledgePhonePayment(ackDevId, ackTxId)) {
@@ -513,16 +520,27 @@ void sendUdpDiscoveryResponse(IPAddress targetIp, uint16_t targetPort) {
 
     String resp = "{\"type\":\"PISOPHONE_ESP32_RESPONSE\","
                   "\"device\":\"PISOPHONE_MASTER\","
-                  "\"mac\":\"" + macAddressStr + "\","
-                  "\"ip\":\"" + ipStr + "\","
-                  "\"sig\":\"" + sig + "\","
+                  "\"mac\":\"" +
+                  macAddressStr +
+                  "\","
+                  "\"ip\":\"" +
+                  ipStr +
+                  "\","
+                  "\"sig\":\"" +
+                  sig +
+                  "\","
                   "\"port\":80,"
                   "\"ws_port\":81,"
                   "\"device_name\":\"PisoPhone Master\","
-                  "\"slots\":" + String(maxLicensedSlots) + ","
-                  "\"minutes\":" + String(minutesPerCoin) + ","
+                  "\"slots\":" +
+                  String(maxLicensedSlots) +
+                  ","
+                  "\"minutes\":" +
+                  String(minutesPerCoin) +
+                  ","
                   "\"price\":1.0,"
-                  "\"uptime\":" + String(millis() / 1000) + "}";
+                  "\"uptime\":" +
+                  String(millis() / 1000) + "}";
 
     // 1. Direct unicast response to client
     if (targetIp != IPAddress(0, 0, 0, 0) && targetPort > 0) {
@@ -562,9 +580,11 @@ void processUdpDiscovery() {
                         String curMac = macAddressStr;
                         curMac.toUpperCase();
                         String cleanReq = "";
-                        for (size_t i = 0; i < reqMac.length(); i++) if (reqMac[i] != ':') cleanReq += reqMac[i];
+                        for (size_t i = 0; i < reqMac.length(); i++)
+                            if (reqMac[i] != ':') cleanReq += reqMac[i];
                         String cleanCur = "";
-                        for (size_t i = 0; i < curMac.length(); i++) if (curMac[i] != ':') cleanCur += curMac[i];
+                        for (size_t i = 0; i < curMac.length(); i++)
+                            if (curMac[i] != ':') cleanCur += curMac[i];
                         if (cleanReq != cleanCur) {
                             return; // Probe targeted another box MAC
                         }

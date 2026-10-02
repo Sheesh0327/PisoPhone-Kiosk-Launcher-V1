@@ -35,7 +35,7 @@ import com.pisophone.kiosk.security.KioskSecurity
 @Composable
 fun VaultSleepAndBatterySection(
     context: Context,
-    onShowHelp: (String, String) -> Unit
+    onShowHelp: (String, String) -> Unit,
 ) {
     var isBatteryExpanded by remember { mutableStateOf(false) }
 
@@ -52,7 +52,7 @@ fun VaultSleepAndBatterySection(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B).copy(alpha = 0.6f)),
         border = BorderStroke(1.dp, if (isBatteryExpanded) Color(0xFF10B981).copy(alpha = 0.5f) else Color(0xFF334155).copy(alpha = 0.6f)),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             // Clickable Title Header (collapsed by default, click to expand/collapse)
@@ -63,7 +63,7 @@ fun VaultSleepAndBatterySection(
                     .clickable { isBatteryExpanded = !isBatteryExpanded }
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                     Box(
@@ -71,13 +71,13 @@ fun VaultSleepAndBatterySection(
                             .size(28.dp)
                             .clip(RoundedCornerShape(8.dp))
                             .background(Color(0xFF10B981).copy(alpha = 0.2f)),
-                        contentAlignment = Alignment.Center
+                        contentAlignment = Alignment.Center,
                     ) {
                         Icon(
                             Icons.Filled.BatteryChargingFull,
                             contentDescription = null,
                             tint = Color(0xFF34D399),
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(16.dp),
                         )
                     }
                     Spacer(modifier = Modifier.width(10.dp))
@@ -87,20 +87,20 @@ fun VaultSleepAndBatterySection(
                                 "Battery Health & TTS Reminders",
                                 color = Color.White,
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             HelpInfoButton(
                                 title = "Battery Health & TTS Reminders",
                                 description = "Monitors device battery status. Uses Text-to-Speech (TTS) voice announcements and alert tones to remind staff when the battery is low (plug charger) or full (disconnect charger) to prevent battery swelling.",
-                                onShowHelp = onShowHelp
+                                onShowHelp = onShowHelp,
                             )
                         }
                         Text(
                             text = if (batteryAlertsEnabled) "Active · Protection range $lowBatteryThresh% - $highBatteryThresh%" else "Disabled · Tap to configure",
                             color = if (batteryAlertsEnabled) Color(0xFF34D399) else Color(0xFF94A3B8),
                             fontSize = 10.sp,
-                            fontWeight = FontWeight.Medium
+                            fontWeight = FontWeight.Medium,
                         )
                     }
                 }
@@ -108,7 +108,7 @@ fun VaultSleepAndBatterySection(
                     imageVector = if (isBatteryExpanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
                     contentDescription = if (isBatteryExpanded) "Collapse" else "Expand",
                     tint = Color(0xFF94A3B8),
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(20.dp),
                 )
             }
 
@@ -116,25 +116,25 @@ fun VaultSleepAndBatterySection(
             AnimatedVisibility(
                 visible = isBatteryExpanded,
                 enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut()
+                exit = shrinkVertically() + fadeOut(),
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 12.dp, end = 12.dp, bottom = 12.dp)
+                        .padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
                 ) {
                     HorizontalDivider(color = Color(0xFF334155).copy(alpha = 0.7f), modifier = Modifier.padding(bottom = 10.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
                             "Enable Battery Voice Alerts",
                             color = Color(0xFFE2E8F0),
                             fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.SemiBold,
                         )
                         Switch(
                             checked = batteryAlertsEnabled,
@@ -147,9 +147,9 @@ fun VaultSleepAndBatterySection(
                                 checkedThumbColor = Color.White,
                                 checkedTrackColor = Color(0xFF10B981),
                                 uncheckedThumbColor = Color.Gray,
-                                uncheckedTrackColor = Color(0xFF334155)
+                                uncheckedTrackColor = Color(0xFF334155),
                             ),
-                            modifier = Modifier.height(28.dp)
+                            modifier = Modifier.height(28.dp),
                         )
                     }
 
@@ -161,7 +161,7 @@ fun VaultSleepAndBatterySection(
                             HelpInfoButton(
                                 title = "Battery Protection Range",
                                 description = "Triggers voice reminders to plug in when battery hits the lower threshold, and to unplug when it reaches the upper threshold. Protects lithium battery lifespan.",
-                                onShowHelp = onShowHelp
+                                onShowHelp = onShowHelp,
                             )
                         }
                         Spacer(modifier = Modifier.height(4.dp))
@@ -187,12 +187,12 @@ fun VaultSleepAndBatterySection(
                                 colors = SliderDefaults.colors(
                                     thumbColor = Color(0xFF6366F1),
                                     activeTrackColor = Color(0xFF6366F1),
-                                    inactiveTrackColor = Color(0xFF334155)
-                                )
+                                    inactiveTrackColor = Color(0xFF334155),
+                                ),
                             )
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
                                 Text("Lower: ${sliderPosition.start.toInt()}% (Plug In)", color = Color(0xFFEF4444), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 Text("Upper: ${sliderPosition.endInclusive.toInt()}% (Unplug)", color = Color(0xFFF59E0B), fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -209,7 +209,7 @@ fun VaultSleepAndBatterySection(
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1), contentColor = Color.White),
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.fillMaxWidth().height(34.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                         ) {
                             Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))

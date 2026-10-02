@@ -43,7 +43,7 @@ class KioskWatchdogReceiver : BroadcastReceiver() {
         Log.d(TAG, "Watchdog ping received. Inspecting KioskService health...")
         val pendingResult = goAsync()
         val appContext = context.applicationContext
-        
+
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 ensureKioskServiceRunningAsync(appContext)
@@ -57,7 +57,7 @@ class KioskWatchdogReceiver : BroadcastReceiver() {
     private fun ensureKioskServiceRunningAsync(context: Context) {
         val serviceInstance = KioskService.activeInstance
         val isProcessRunning = KioskService.isServiceRunning || isServiceRunning(context, KioskService::class.java)
-        
+
         // 1. Local App Loopback Health Check
         val isHttpHealthy = try {
             val url = URL("http://127.0.0.1:8080/challenge")

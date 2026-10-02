@@ -25,9 +25,8 @@ class KioskEsp32Coordinator(
     private val onSlotBusyTriggered: () -> Unit,
     private val getAudioManager: (() -> com.pisophone.kiosk.audio.KioskAudioManager?)? = null,
     /** Centralized lock side effects (unarm, send customer app home, pause media). */
-    private val onSessionLocked: (cancelArm: Boolean) -> Unit = {}
+    private val onSessionLocked: (cancelArm: Boolean) -> Unit = {},
 ) : Esp32ConnectionDelegate {
-
     companion object {
         private const val TAG = "KioskEsp32Coordinator"
     }
@@ -199,7 +198,13 @@ class KioskEsp32Coordinator(
             if (!wasActive) {
                 stateManager.setArenaMode(active = true, role = role, stake = stake, showBanner = true)
                 HardwareFeedback.triggerVibration(context, longArrayOf(0, 200, 100, 200, 100, 400))
-                val roleStr = if (role == 1) "Player 1" else if (role == 2) "Player 2" else "Participant"
+                val roleStr = if (role == 1) {
+                    "Player 1"
+                } else if (role == 2) {
+                    "Player 2"
+                } else {
+                    "Participant"
+                }
                 getAudioManager?.invoke()?.speakWarning("Arena Mode activated. You are $roleStr.")
             } else {
                 stateManager.setArenaMode(active = true, role = role, stake = stake, showBanner = false)

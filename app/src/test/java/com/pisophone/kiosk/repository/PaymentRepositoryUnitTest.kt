@@ -20,7 +20,6 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class PaymentRepositoryUnitTest {
-
     private lateinit var context: Context
     private lateinit var db: AppDatabase
     private var isEligibleState = true
@@ -56,7 +55,7 @@ class PaymentRepositoryUnitTest {
         val repository = PaymentRepository(
             db = db,
             isEligible = { isEligibleState },
-            onPaymentApplied = { _, _, _, _ -> appliedCount++ }
+            onPaymentApplied = { _, _, _, _ -> appliedCount++ },
         )
 
         val txId = "tx-1001"
@@ -83,7 +82,7 @@ class PaymentRepositoryUnitTest {
         val repository = PaymentRepository(
             db = db,
             isEligible = { isEligibleState },
-            onPaymentApplied = { _, _, _, _ -> appliedCount++ }
+            onPaymentApplied = { _, _, _, _ -> appliedCount++ },
         )
 
         val txId = "tx-1002"
@@ -105,7 +104,7 @@ class PaymentRepositoryUnitTest {
     fun testConflictingValuesReturnConflict() = runBlocking {
         val repository = PaymentRepository(
             db = db,
-            isEligible = { isEligibleState }
+            isEligible = { isEligibleState },
         )
 
         val txId = "tx-1003"
@@ -124,7 +123,7 @@ class PaymentRepositoryUnitTest {
         isEligibleState = false
         val repository = PaymentRepository(
             db = db,
-            isEligible = { isEligibleState }
+            isEligible = { isEligibleState },
         )
 
         val txId = "tx-1004"
@@ -178,7 +177,7 @@ class PaymentRepositoryUnitTest {
             sessionTimeRemaining = 0,
             sessionExpiryDeadlineMs = now - 5000L,
             lastSavedElapsedRealtime = now - 6000L,
-            revision = 1L
+            revision = 1L,
         )
         db.paymentDao().updateSessionState(expiredState)
 
@@ -259,7 +258,7 @@ class PaymentRepositoryUnitTest {
             deadlineMs = initialSession.sessionExpiryDeadlineMs,
             remainingSeconds = initialSession.sessionTimeRemaining,
             revision = initialSession.revision,
-            targetAppState = 2 // Unlocked
+            targetAppState = 2, // Unlocked
         )
         assertEquals(2, stateManager.appState.value)
 
@@ -285,7 +284,7 @@ class PaymentRepositoryUnitTest {
             deadlineMs = paymentState.sessionExpiryDeadlineMs,
             remainingSeconds = paymentState.sessionTimeRemaining,
             revision = paymentState.revision,
-            targetAppState = 2
+            targetAppState = 2,
         )
         assertTrue("Payment update must be applied", appliedPayment)
         assertEquals(3L, stateManager.sessionRevision.value)
@@ -299,7 +298,7 @@ class PaymentRepositoryUnitTest {
             deadlineMs = delayedExpiryState.sessionExpiryDeadlineMs,
             remainingSeconds = delayedExpiryState.sessionTimeRemaining,
             revision = delayedExpiryState.revision,
-            targetAppState = 0
+            targetAppState = 0,
         )
         if (appliedExpiry) {
             announcedWarning = true
@@ -327,8 +326,8 @@ class PaymentRepositoryUnitTest {
                 sessionTimeRemaining = savedRemaining,
                 sessionExpiryDeadlineMs = prevBootElapsed + 300_000L,
                 lastSavedElapsedRealtime = prevBootElapsed,
-                revision = 10L
-            )
+                revision = 10L,
+            ),
         )
 
         val repository = PaymentRepository(db = db, context = context, isEligible = { true })
@@ -357,8 +356,8 @@ class PaymentRepositoryUnitTest {
                 sessionTimeRemaining = savedRemaining,
                 sessionExpiryDeadlineMs = nowMonotonic + 600_000L,
                 lastSavedElapsedRealtime = lastSavedElapsed,
-                revision = 5L
-            )
+                revision = 5L,
+            ),
         )
 
         // Simulate new boot count by updating Settings.Global.BOOT_COUNT or synthetic boot count
@@ -385,8 +384,8 @@ class PaymentRepositoryUnitTest {
                 sessionTimeRemaining = 600,
                 sessionExpiryDeadlineMs = nowMonotonic + 600_000L,
                 lastSavedElapsedRealtime = maxOf(1L, nowMonotonic - 5000L),
-                revision = 5L
-            )
+                revision = 5L,
+            ),
         )
         android.provider.Settings.Global.putInt(context.contentResolver, android.provider.Settings.Global.BOOT_COUNT, 2)
 
@@ -410,8 +409,8 @@ class PaymentRepositoryUnitTest {
                 sessionTimeRemaining = 600,
                 sessionExpiryDeadlineMs = nowMonotonic + 600_000L,
                 lastSavedElapsedRealtime = maxOf(1L, nowMonotonic - 1000L),
-                revision = 3L
-            )
+                revision = 3L,
+            ),
         )
 
         val repository = PaymentRepository(db = db, context = context, isEligible = { true })
@@ -444,8 +443,8 @@ class PaymentRepositoryUnitTest {
                 sessionTimeRemaining = -10,
                 sessionExpiryDeadlineMs = -500L,
                 lastSavedElapsedRealtime = 1000L,
-                revision = 1L
-            )
+                revision = 1L,
+            ),
         )
 
         val repository = PaymentRepository(db = db, context = context, isEligible = { true })
@@ -462,5 +461,3 @@ class PaymentRepositoryUnitTest {
         assertEquals(2L, sanitizedState.revision)
     }
 }
-
-

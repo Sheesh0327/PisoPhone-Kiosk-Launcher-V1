@@ -14,7 +14,6 @@ import org.robolectric.RobolectricTestRunner
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 class Esp32ConnectionManagerUnitTest {
-
     private lateinit var context: Context
     private val testScope = TestScope()
 

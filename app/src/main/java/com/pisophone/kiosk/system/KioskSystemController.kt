@@ -25,9 +25,8 @@ interface KioskSystemController {
  * Concrete Android implementation for system audio, display, memory, and haptics.
  */
 class AndroidKioskSystemController(
-    context: Context
+    context: Context,
 ) : KioskSystemController {
-
     private val appContext = context.applicationContext
     private val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
     private val activityManager = appContext.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
@@ -38,23 +37,19 @@ class AndroidKioskSystemController(
         const val DEFAULT_BRIGHTNESS = 150f
     }
 
-    override fun getStreamVolume(): Int {
-        return try {
-            audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
-        } catch (e: Exception) {
-            Log.w(TAG, "Error getting stream volume: ${e.message}")
-            0
-        }
+    override fun getStreamVolume(): Int = try {
+        audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
+    } catch (e: Exception) {
+        Log.w(TAG, "Error getting stream volume: ${e.message}")
+        0
     }
 
-    override fun getStreamMaxVolume(): Int {
-        return try {
-            val max = audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 15
-            if (max <= 0) 15 else max
-        } catch (e: Exception) {
-            Log.w(TAG, "Error getting max stream volume: ${e.message}")
-            15
-        }
+    override fun getStreamMaxVolume(): Int = try {
+        val max = audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 15
+        if (max <= 0) 15 else max
+    } catch (e: Exception) {
+        Log.w(TAG, "Error getting max stream volume: ${e.message}")
+        15
     }
 
     override fun setStreamVolume(volume: Int) {
@@ -67,12 +62,10 @@ class AndroidKioskSystemController(
         }
     }
 
-    override fun getScreenBrightness(): Float {
-        return try {
-            Settings.System.getInt(appContext.contentResolver, Settings.System.SCREEN_BRIGHTNESS).toFloat()
-        } catch (_: Exception) {
-            DEFAULT_BRIGHTNESS
-        }
+    override fun getScreenBrightness(): Float = try {
+        Settings.System.getInt(appContext.contentResolver, Settings.System.SCREEN_BRIGHTNESS).toFloat()
+    } catch (_: Exception) {
+        DEFAULT_BRIGHTNESS
     }
 
     override fun setScreenBrightness(brightness: Float) {
@@ -86,18 +79,16 @@ class AndroidKioskSystemController(
         }
     }
 
-    override fun getMemoryStats(): Pair<Long, Long> {
-        return try {
-            val memInfo = ActivityManager.MemoryInfo()
-            activityManager?.getMemoryInfo(memInfo)
-            val totalMb = memInfo.totalMem / (1024 * 1024)
-            val availMb = memInfo.availMem / (1024 * 1024)
-            val usedMb = (totalMb - availMb).coerceAtLeast(0L)
-            Pair(usedMb, totalMb)
-        } catch (e: Exception) {
-            Log.w(TAG, "Error reading memory info: ${e.message}")
-            Pair(0L, 0L)
-        }
+    override fun getMemoryStats(): Pair<Long, Long> = try {
+        val memInfo = ActivityManager.MemoryInfo()
+        activityManager?.getMemoryInfo(memInfo)
+        val totalMb = memInfo.totalMem / (1024 * 1024)
+        val availMb = memInfo.availMem / (1024 * 1024)
+        val usedMb = (totalMb - availMb).coerceAtLeast(0L)
+        Pair(usedMb, totalMb)
+    } catch (e: Exception) {
+        Log.w(TAG, "Error reading memory info: ${e.message}")
+        Pair(0L, 0L)
     }
 
     override fun optimizeMemory(): Long {

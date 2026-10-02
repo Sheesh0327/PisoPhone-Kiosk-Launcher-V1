@@ -27,9 +27,8 @@ interface KioskServerDelegate {
 class KioskHttpServer(
     private val context: Context,
     private val port: Int,
-    private val delegate: KioskServerDelegate
+    private val delegate: KioskServerDelegate,
 ) : NanoHTTPD(port) {
-
     companion object {
         private const val TAG = "KioskHttpServer"
         private const val RATE_LIMIT_WINDOW_MS = 60000L

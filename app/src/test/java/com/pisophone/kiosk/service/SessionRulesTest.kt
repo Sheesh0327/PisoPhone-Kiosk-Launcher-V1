@@ -115,7 +115,13 @@ class SessionRulesTest {
     fun finishingPaymentUnlocksWhenCoinsWereInsertedOrTimeWasRunning() {
         for (coins in listOf(0, 5)) {
             for (s in allStates) {
-                val old = if (coins > 0) 2 else if (s == 3) 2 else 0
+                val old = if (coins > 0) {
+                    2
+                } else if (s == 3) {
+                    2
+                } else {
+                    0
+                }
                 assertEquals("finish $s coins=$coins", old, SessionRules.afterFinishPayment(s, coins))
             }
         }

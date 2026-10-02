@@ -101,7 +101,7 @@ class MainActivity : ComponentActivity() {
                         apps = appsList,
                         onAppClick = { appInfo ->
                             AppLauncher.launchApp(this@MainActivity, appInfo.packageName)
-                        }
+                        },
                     )
                 }
             }
@@ -172,7 +172,7 @@ class MainActivity : ComponentActivity() {
                 mac = mac ?: "",
                 slot = slot,
                 secret = secret,
-                name = name
+                name = name,
             )
         }
 
@@ -199,7 +199,8 @@ class MainActivity : ComponentActivity() {
         val pin = intent.getStringExtra("pin") ?: intent.getStringExtra("admin_pin")
         if (!pin.isNullOrBlank() && KioskSecurity.verifyAdminPin(this, pin.trim())) return true
         if (!secret.isNullOrBlank() &&
-            KioskSecurity.constantTimeEquals(secret.trim(), KioskSecurity.getSharedSecret(this).trim())) {
+            KioskSecurity.constantTimeEquals(secret.trim(), KioskSecurity.getSharedSecret(this).trim())
+        ) {
             return true
         }
         return false
@@ -209,12 +210,15 @@ class MainActivity : ComponentActivity() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
                 val km = getSystemService(Context.KEYGUARD_SERVICE) as? android.app.KeyguardManager
-                km?.requestDismissKeyguard(this, object : android.app.KeyguardManager.KeyguardDismissCallback() {
-                    override fun onDismissSucceeded() {
-                        super.onDismissSucceeded()
-                        hideSystemBars()
-                    }
-                })
+                km?.requestDismissKeyguard(
+                    this,
+                    object : android.app.KeyguardManager.KeyguardDismissCallback() {
+                        override fun onDismissSucceeded() {
+                            super.onDismissSucceeded()
+                            hideSystemBars()
+                        }
+                    },
+                )
             }
             KioskSecurity.dismissKeyguard(this)
         } catch (e: Exception) {
@@ -293,13 +297,13 @@ class MainActivity : ComponentActivity() {
                     addCategory(Intent.CATEGORY_LAUNCHER)
                 }
             val resolveInfoList = pm.queryIntentActivities(intent, 0)
-            
+
             // Optimization: Skip heavy bitmap rendering if app list hasn't changed
             if (appsList.isNotEmpty() && resolveInfoList.size == lastKnownAppCount) {
                 return@launch
             }
             lastKnownAppCount = resolveInfoList.size
-            
+
             val hiddenApps = KioskSecurity.getHiddenApps(this@MainActivity)
 
             val apps =
@@ -339,8 +343,8 @@ class MainActivity : ComponentActivity() {
                         bitmap = imgBitmap,
                     )
                 }
-                .distinctBy { it.packageName }
-                .sortedBy { it.name.lowercase() }
+                    .distinctBy { it.packageName }
+                    .sortedBy { it.name.lowercase() }
 
             withContext(Dispatchers.Main) {
                 appsList = apps

@@ -35,7 +35,7 @@ class KioskDeviceAdminReceiver : DeviceAdminReceiver() {
     override fun onEnabled(context: Context, intent: Intent) {
         super.onEnabled(context, intent)
         Log.d("KioskDeviceAdmin", "Device Administrator Enabled")
-        
+
         val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
         val componentName = android.content.ComponentName(context, KioskDeviceAdminReceiver::class.java)
         try {

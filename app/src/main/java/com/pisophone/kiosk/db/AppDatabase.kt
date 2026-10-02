@@ -48,19 +48,17 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        fun getDatabase(context: Context): AppDatabase {
-            return INSTANCE ?: synchronized(this) {
-                val deviceContext = context.applicationContext.createDeviceProtectedStorageContext()
-                val instance = Room.databaseBuilder(
-                    deviceContext,
-                    AppDatabase::class.java,
-                    "kiosk_audit_database"
-                )
+        fun getDatabase(context: Context): AppDatabase = INSTANCE ?: synchronized(this) {
+            val deviceContext = context.applicationContext.createDeviceProtectedStorageContext()
+            val instance = Room.databaseBuilder(
+                deviceContext,
+                AppDatabase::class.java,
+                "kiosk_audit_database",
+            )
                 .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_1_3, MIGRATION_3_4)
                 .build()
-                INSTANCE = instance
-                instance
-            }
+            INSTANCE = instance
+            instance
         }
     }
 }

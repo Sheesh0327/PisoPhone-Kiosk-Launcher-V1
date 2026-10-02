@@ -27,4 +27,3 @@ val OnTertiary = Color(0xFF020617)
 
 val TextPrimary = Color(0xFFF8FAFC)
 val TextSecondary = Color(0xFF94A3B8)
-

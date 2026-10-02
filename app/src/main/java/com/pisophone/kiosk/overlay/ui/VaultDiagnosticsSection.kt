@@ -59,7 +59,7 @@ fun VaultDiagnosticsSection(context: Context) {
             modifier = Modifier
                 .fillMaxWidth()
                 .background(Color(0xFF0F172A), RoundedCornerShape(8.dp))
-                .padding(8.dp)
+                .padding(8.dp),
         ) {
             if (lines.isEmpty()) {
                 Text("No events recorded yet.", color = Color(0xFFA6ADC8), fontSize = 10.sp)
@@ -76,7 +76,7 @@ fun VaultDiagnosticsSection(context: Context) {
                 onClick = { lines = DiagnosticsLog.snapshot() },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155)),
                 shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.weight(1f).height(32.dp)
+                modifier = Modifier.weight(1f).height(32.dp),
             ) {
                 Text("Refresh", fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
@@ -89,7 +89,7 @@ fun VaultDiagnosticsSection(context: Context) {
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
                 shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.weight(1f).height(32.dp)
+                modifier = Modifier.weight(1f).height(32.dp),
             ) {
                 Text("Copy", fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }

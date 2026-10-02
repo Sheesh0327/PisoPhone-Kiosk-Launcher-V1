@@ -31,7 +31,7 @@ fun FloatingPillAdminAuthCard(
     primaryColor: Color,
     onPrimaryColor: Color,
     onDismiss: () -> Unit,
-    onUnlockSuccess: () -> Unit
+    onUnlockSuccess: () -> Unit,
 ) {
     var enteredPin by remember { mutableStateOf("") }
     var pinError by remember { mutableStateOf(false) }
@@ -49,11 +49,11 @@ fun FloatingPillAdminAuthCard(
             .fillMaxSize()
             .background(Color(0xFF0F172A).copy(alpha = 0.97f), RoundedCornerShape(18.dp))
             .padding(12.dp),
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.Center,
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Filled.AdminPanelSettings, contentDescription = null, tint = outlineColor, modifier = Modifier.size(18.dp))
@@ -65,7 +65,7 @@ fun FloatingPillAdminAuthCard(
             Spacer(modifier = Modifier.height(8.dp))
             OutlinedTextField(
                 value = enteredPin,
-                onValueChange = { 
+                onValueChange = {
                     if (it.length <= 32) {
                         enteredPin = it
                         pinError = false
@@ -83,9 +83,9 @@ fun FloatingPillAdminAuthCard(
                     focusedBorderColor = Color(0xFF6366F1),
                     unfocusedBorderColor = Color(0xFF475569),
                     focusedContainerColor = Color(0xFF1E293B),
-                    unfocusedContainerColor = Color(0xFF1E293B)
+                    unfocusedContainerColor = Color(0xFF1E293B),
                 ),
-                modifier = Modifier.fillMaxWidth().focusRequester(pinFocusRequester)
+                modifier = Modifier.fillMaxWidth().focusRequester(pinFocusRequester),
             )
             if (pinError) {
                 Text("Invalid password.", color = Color(0xFFFF6B6B), fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
@@ -93,7 +93,7 @@ fun FloatingPillAdminAuthCard(
             Spacer(modifier = Modifier.height(12.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
+                horizontalArrangement = Arrangement.End,
             ) {
                 TextButton(onClick = onDismiss) {
                     Text("Cancel", color = Color(0xFFA6ADC8), fontSize = 12.sp)
@@ -107,7 +107,7 @@ fun FloatingPillAdminAuthCard(
                             pinError = true
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = primaryColor, contentColor = onPrimaryColor)
+                    colors = ButtonDefaults.buttonColors(containerColor = primaryColor, contentColor = onPrimaryColor),
                 ) {
                     Text("Unlock", fontSize = 12.sp)
                 }

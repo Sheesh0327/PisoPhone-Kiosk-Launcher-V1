@@ -47,14 +47,13 @@ bool pairDeviceToSlot(int slotNum, String devId, String ip, String name) {
     licenseSlots[targetIdx].active = true;
 
     saveSlotLicenses();
-    Serial.printf("[+] Paired device %s (%s) to Slot #%d -> '%s'\n", devId.c_str(), ip.c_str(), slotNum, slotName.c_str());
+    Serial.printf("[+] Paired device %s (%s) to Slot #%d -> '%s'\n", devId.c_str(), ip.c_str(), slotNum,
+                  slotName.c_str());
 
     // Actively push config to device on pairing
     if (ip.length() > 0 && ip != "127.0.0.1") {
-        String pushParams = "device_name=" + urlEncode(slotName) + 
-                            "&slot=" + String(slotNum) + 
-                            "&slot_num=" + String(slotNum) +
-                            "&admin_pin=" + webPassword;
+        String pushParams = "device_name=" + urlEncode(slotName) + "&slot=" + String(slotNum) +
+                            "&slot_num=" + String(slotNum) + "&admin_pin=" + webPassword;
         sendAuthenticated(ip, targetPort, "/config", "/challenge", pushParams, 1000);
     }
     return true;
@@ -89,8 +88,8 @@ bool unpairSlot(int slotNum) {
     Serial.printf("[+] Unpairing Slot #%d (was %s / %s).\n", slotNum, prevDevId.c_str(), prevIp.c_str());
 
     String activeDev = getActiveCoinSessionId();
-    if (getActiveCoinOwnerType() == CoinSlotOwnerType::PHONE &&
-        activeDev.length() > 0 && (activeDev == prevDevId || activeDev == prevIp)) {
+    if (getActiveCoinOwnerType() == CoinSlotOwnerType::PHONE && activeDev.length() > 0 &&
+        (activeDev == prevDevId || activeDev == prevIp)) {
         if (isWsConnected && wsClient.connected()) {
             sendWsText(wsClient, "{\"event\":\"UNPAIRED\"}");
             wsClient.stop();
@@ -105,7 +104,7 @@ bool unpairSlot(int slotNum) {
     saveSlotLicenses();
 
     if (prevIp.length() > 0 && prevIp != "127.0.0.1") {
-        sendAuthenticated(prevIp, targetPort, "/trigger_action", "/challenge", 
+        sendAuthenticated(prevIp, targetPort, "/trigger_action", "/challenge",
                           "action=slot_lockdown&slot_num=" + String(slotNum) + "&slot=" + String(slotNum), 1000);
     }
     return true;
@@ -243,8 +242,8 @@ void recordDeviceNonce(String deviceId, unsigned long long ts) {
 // ============================================================================
 // TELEMETRY & DEVICE STATE TRACKING
 // ============================================================================
-void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int state, 
-                           int battery, bool charging, unsigned long long ts, bool isApp, String name) {
+void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int state, int battery, bool charging,
+                           unsigned long long ts, bool isApp, String name) {
     ip.trim();
     if (ip == "127.0.0.1") ip = "";
     if (ip.length() > 0) {

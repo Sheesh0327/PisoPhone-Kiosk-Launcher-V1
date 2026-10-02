@@ -6,11 +6,21 @@
 using namespace otacheck;
 
 static int checks = 0;
-#define CHECK(c) do { checks++; if (!(c)) { printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #c); return 1; } } while (0)
+#define CHECK(c)                                                                                                       \
+    do {                                                                                                               \
+        checks++;                                                                                                      \
+        if (!(c)) {                                                                                                    \
+            printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #c);                                                        \
+            return 1;                                                                                                  \
+        }                                                                                                              \
+    } while (0)
 
 static void header(uint8_t* h, uint8_t segs, uint16_t chip) {
     memset(h, 0, 24);
-    h[0] = 0xE9; h[1] = segs; h[12] = chip & 0xFF; h[13] = chip >> 8;
+    h[0] = 0xE9;
+    h[1] = segs;
+    h[12] = chip & 0xFF;
+    h[13] = chip >> 8;
 }
 
 int main() {

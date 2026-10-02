@@ -37,7 +37,7 @@ import kotlinx.coroutines.withContext
  */
 class KioskEngine(
     private val context: Context,
-    val stateManager: KioskStateManager
+    val stateManager: KioskStateManager,
 ) {
     companion object {
         private const val TAG = "KioskEngine"
@@ -51,7 +51,7 @@ class KioskEngine(
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private val coinEventRepo: CoinEventRepository = CoinEventRepository(
-        AppDatabase.getDatabase(context).coinEventDao()
+        AppDatabase.getDatabase(context).coinEventDao(),
     )
     val paymentRepo: PaymentRepository = PaymentRepository(
         db = AppDatabase.getDatabase(context),
@@ -96,8 +96,8 @@ class KioskEngine(
                                 isAdminAdjustment -> "Admin Quick Adjust"
                                 !isCoin -> "Master Time Credit"
                                 else -> "Piso Coin (₱$pesoAmount)"
-                            }
-                        )
+                            },
+                        ),
                     )
                     coinEventRepo.deleteOldEvents(500)
                 } catch (e: Exception) {
@@ -126,7 +126,7 @@ class KioskEngine(
             if (targetState != null) {
                 stateManager.saveState()
             }
-        }
+        },
     )
 
     private val isInitialized = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -149,7 +149,7 @@ class KioskEngine(
             override fun onScreenWake() { overlayCoordinator.onScreenWake() }
             override fun getAudioManager(): KioskAudioManager = audioManager
             override fun isSessionActive(): Boolean = SessionRules.isUnlocked(stateManager.appState.value)
-        }
+        },
     )
 
     val overlayCoordinator: KioskOverlayCoordinator = KioskOverlayCoordinator(
@@ -159,7 +159,7 @@ class KioskEngine(
         batteryStatusFlow = systemMonitor.batteryStatus,
         armingTimeoutSeconds = ARMING_TIMEOUT_SECONDS,
         onArmSlot = { armSlot() },
-        onFinishPayment = { finishPayment() }
+        onFinishPayment = { finishPayment() },
     )
 
     private val esp32Coordinator = KioskEsp32Coordinator(
@@ -174,13 +174,13 @@ class KioskEngine(
         },
         onSlotBusyTriggered = { triggerSlotBusy() },
         getAudioManager = { audioManager },
-        onSessionLocked = { cancelArm -> onSessionLocked(cancelArm) }
+        onSessionLocked = { cancelArm -> onSessionLocked(cancelArm) },
     )
 
     private val esp32Manager = Esp32ConnectionManager(
         context = context,
         scope = scope,
-        delegate = esp32Coordinator
+        delegate = esp32Coordinator,
     )
 
     private val serverCoordinator = KioskServerCoordinator(
@@ -196,7 +196,7 @@ class KioskEngine(
         },
         isReady = { isInitialized.get() },
         onUnverifiedEsp32Contact = { _ -> esp32Manager.triggerCandidateDiscovery(stateManager.deviceIp.value) },
-        onSessionLocked = { cancelArm -> onSessionLocked(cancelArm) }
+        onSessionLocked = { cancelArm -> onSessionLocked(cancelArm) },
     )
 
     private val supervisor = KioskSessionSupervisor(
@@ -208,7 +208,7 @@ class KioskEngine(
         onFinishPayment = { finishPayment() },
         onCloseSession = { closeSession(it) },
         onCheckBatteryAlerts = { systemMonitor.checkPeriodicBatteryAlerts() },
-        onSessionExpired = { cancelArm -> onSessionLocked(cancelArm) }
+        onSessionExpired = { cancelArm -> onSessionLocked(cancelArm) },
     )
 
     private var nanoServer: KioskHttpServer? = null
@@ -294,21 +294,19 @@ class KioskEngine(
         }
     }
 
-    private fun checkHttpLoopbackHealth(): Boolean {
-        return try {
-            val url = java.net.URL("http://127.0.0.1:$SERVER_PORT/ping")
-            val connection = url.openConnection() as java.net.HttpURLConnection
-            connection.connectTimeout = 1500
-            connection.readTimeout = 1500
-            connection.requestMethod = "GET"
-            try {
-                connection.responseCode == 200
-            } finally {
-                connection.disconnect()
-            }
-        } catch (_: Exception) {
-            false
+    private fun checkHttpLoopbackHealth(): Boolean = try {
+        val url = java.net.URL("http://127.0.0.1:$SERVER_PORT/ping")
+        val connection = url.openConnection() as java.net.HttpURLConnection
+        connection.connectTimeout = 1500
+        connection.readTimeout = 1500
+        connection.requestMethod = "GET"
+        try {
+            connection.responseCode == 200
+        } finally {
+            connection.disconnect()
         }
+    } catch (_: Exception) {
+        false
     }
 
     fun triggerCandidateDiscovery() {
@@ -345,7 +343,8 @@ class KioskEngine(
     fun finishPayment() {
         closeSession(sendUnarmToEsp = true)
         stateManager.appState.value = SessionRules.afterFinishPayment(
-            stateManager.appState.value, stateManager.coinsInserted.value
+            stateManager.appState.value,
+            stateManager.coinsInserted.value,
         )
         stateManager.coinsInserted.value = 0
         stateManager.saveState()
@@ -400,8 +399,8 @@ class KioskEngine(
         val startMain = android.content.Intent(android.content.Intent.ACTION_MAIN).apply {
             addCategory(android.content.Intent.CATEGORY_HOME)
             flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
-                    android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                    android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
+                android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         try {
             context.startActivity(startMain)
@@ -424,7 +423,7 @@ class KioskEngine(
             deadlineMs = updated.sessionExpiryDeadlineMs,
             remainingSeconds = updated.sessionTimeRemaining,
             revision = updated.revision,
-            targetAppState = targetState
+            targetAppState = targetState,
         )
         stateManager.saveState()
         Handler(Looper.getMainLooper()).post {
@@ -441,7 +440,7 @@ class KioskEngine(
             deadlineMs = resetState.sessionExpiryDeadlineMs,
             remainingSeconds = resetState.sessionTimeRemaining,
             revision = resetState.revision,
-            targetAppState = SessionRules.hardLocked()
+            targetAppState = SessionRules.hardLocked(),
         )
         stateManager.coinsInserted.value = 0
         stateManager.paymentTimeout.value = 0
@@ -466,7 +465,7 @@ class KioskEngine(
                 deadlineMs = updated.sessionExpiryDeadlineMs,
                 remainingSeconds = updated.sessionTimeRemaining,
                 revision = updated.revision,
-                targetAppState = targetState
+                targetAppState = targetState,
             )
             stateManager.saveState()
             if (sessionEnded) {
@@ -499,7 +498,7 @@ class KioskEngine(
                                     deadlineMs = expiryResult.sessionState.sessionExpiryDeadlineMs,
                                     remainingSeconds = expiryResult.sessionState.sessionTimeRemaining,
                                     revision = expiryResult.sessionState.revision,
-                                    targetAppState = KioskSessionSupervisor.lockedStateFor(appState)
+                                    targetAppState = KioskSessionSupervisor.lockedStateFor(appState),
                                 )
                                 if (applied) {
                                     Log.w(TAG, "Health monitor: Session deadline expired ($deadline <= $nowMonotonic). Forcing lock state.")
@@ -512,7 +511,7 @@ class KioskEngine(
                                 stateManager.applySessionUpdate(
                                     expiryResult.sessionState.sessionExpiryDeadlineMs,
                                     expiryResult.sessionState.sessionTimeRemaining,
-                                    expiryResult.sessionState.revision
+                                    expiryResult.sessionState.revision,
                                 )
                             }
                         }

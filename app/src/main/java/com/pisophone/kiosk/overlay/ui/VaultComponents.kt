@@ -23,24 +23,24 @@ import com.pisophone.kiosk.KioskService
 fun HelpInfoButton(
     title: String,
     description: String,
-    onShowHelp: (String, String) -> Unit
+    onShowHelp: (String, String) -> Unit,
 ) {
     IconButton(
         onClick = { onShowHelp(title, description) },
-        modifier = Modifier.size(24.dp)
+        modifier = Modifier.size(24.dp),
     ) {
         Box(
             modifier = Modifier
                 .size(16.dp)
                 .clip(CircleShape)
                 .background(Color(0xFF334155)),
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center,
         ) {
             Text(
                 text = "?",
                 color = Color(0xFF94A3B8),
                 fontSize = 11.sp,
-                fontWeight = FontWeight.Black
+                fontWeight = FontWeight.Black,
             )
         }
     }
@@ -51,12 +51,12 @@ fun VaultBypassSection(
     context: Context,
     onClose: () -> Unit,
     onShowHelp: (String, String) -> Unit,
-    onOpenRecoveryHub: () -> Unit
+    onOpenRecoveryHub: () -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Admin System Bypass & Quick Tools", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -64,7 +64,7 @@ fun VaultBypassSection(
             HelpInfoButton(
                 title = "Admin System Bypass & Quick Tools",
                 description = "Temporarily bypasses the kiosk lock screen overlay or quickly adds/subtracts paid session time.",
-                onShowHelp = onShowHelp
+                onShowHelp = onShowHelp,
             )
         }
     }
@@ -72,7 +72,7 @@ fun VaultBypassSection(
 
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Button(
             onClick = {
@@ -82,7 +82,7 @@ fun VaultBypassSection(
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981), contentColor = Color.White),
             shape = RoundedCornerShape(10.dp),
             modifier = Modifier.weight(1f).height(38.dp),
-            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
+            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
         ) {
             Icon(Icons.Filled.LockOpen, contentDescription = null, modifier = Modifier.size(15.dp))
             Spacer(modifier = Modifier.width(6.dp))
@@ -97,7 +97,7 @@ fun VaultBypassSection(
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626), contentColor = Color.White),
             shape = RoundedCornerShape(10.dp),
             modifier = Modifier.weight(1f).height(38.dp),
-            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
+            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
         ) {
             Icon(Icons.Filled.Lock, contentDescription = null, modifier = Modifier.size(15.dp))
             Spacer(modifier = Modifier.width(6.dp))
@@ -113,14 +113,14 @@ fun VaultBypassSection(
 
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Button(
             onClick = { KioskService.triggerAdminTimeAdjust(context, 300) },
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7), contentColor = Color.White),
             shape = RoundedCornerShape(8.dp),
             modifier = Modifier.weight(1f).height(34.dp),
-            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
+            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
         ) {
             Text("+5m", fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
@@ -130,7 +130,7 @@ fun VaultBypassSection(
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7), contentColor = Color.White),
             shape = RoundedCornerShape(8.dp),
             modifier = Modifier.weight(1f).height(34.dp),
-            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
+            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
         ) {
             Text("+15m", fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
@@ -140,7 +140,7 @@ fun VaultBypassSection(
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7), contentColor = Color.White),
             shape = RoundedCornerShape(8.dp),
             modifier = Modifier.weight(1f).height(34.dp),
-            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
+            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
         ) {
             Text("+30m", fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
@@ -150,7 +150,7 @@ fun VaultBypassSection(
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB91C1C), contentColor = Color.White),
             shape = RoundedCornerShape(8.dp),
             modifier = Modifier.weight(1f).height(34.dp),
-            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
+            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
         ) {
             Text("-5m", fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
@@ -160,10 +160,9 @@ fun VaultBypassSection(
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB91C1C), contentColor = Color.White),
             shape = RoundedCornerShape(8.dp),
             modifier = Modifier.weight(1f).height(34.dp),
-            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
+            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
         ) {
             Text("-15m", fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
-

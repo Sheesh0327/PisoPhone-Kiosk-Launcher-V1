@@ -15,7 +15,6 @@ import java.io.InputStream
 
 @RunWith(RobolectricTestRunner::class)
 class KioskHttpServerUnitTest {
-
     private val testSecret = "0123456789abcdef0123456789abcdef"
     private var simulatedPaymentResult: PaymentResult = PaymentResult.APPLIED
     private var lastCreditedTxId: String? = null
@@ -59,22 +58,20 @@ class KioskHttpServerUnitTest {
     private fun createSession(
         uri: String,
         params: Map<String, String>,
-        headers: Map<String, String> = mapOf("remote-addr" to "192.168.4.2")
-    ): NanoHTTPD.IHTTPSession {
-        return object : NanoHTTPD.IHTTPSession {
-            override fun execute() {}
-            override fun getCookies(): NanoHTTPD.CookieHandler? = null
-            override fun getHeaders(): Map<String, String> = headers
-            override fun getInputStream(): InputStream = ByteArrayInputStream(ByteArray(0))
-            override fun getMethod(): NanoHTTPD.Method = NanoHTTPD.Method.POST
-            override fun getParms(): Map<String, String> = params
-            override fun getParameters(): Map<String, List<String>> = params.mapValues { listOf(it.value) }
-            override fun getQueryParameterString(): String = ""
-            override fun getUri(): String = uri
-            override fun parseBody(files: MutableMap<String, String>?) {}
-            override fun getRemoteIpAddress(): String = headers["remote-addr"] ?: "127.0.0.1"
-            override fun getRemoteHostName(): String = "test-host"
-        }
+        headers: Map<String, String> = mapOf("remote-addr" to "192.168.4.2"),
+    ): NanoHTTPD.IHTTPSession = object : NanoHTTPD.IHTTPSession {
+        override fun execute() {}
+        override fun getCookies(): NanoHTTPD.CookieHandler? = null
+        override fun getHeaders(): Map<String, String> = headers
+        override fun getInputStream(): InputStream = ByteArrayInputStream(ByteArray(0))
+        override fun getMethod(): NanoHTTPD.Method = NanoHTTPD.Method.POST
+        override fun getParms(): Map<String, String> = params
+        override fun getParameters(): Map<String, List<String>> = params.mapValues { listOf(it.value) }
+        override fun getQueryParameterString(): String = ""
+        override fun getUri(): String = uri
+        override fun parseBody(files: MutableMap<String, String>?) {}
+        override fun getRemoteIpAddress(): String = headers["remote-addr"] ?: "127.0.0.1"
+        override fun getRemoteHostName(): String = "test-host"
     }
 
     private fun createEncryptedParams(query: String): Map<String, String> {
@@ -82,13 +79,11 @@ class KioskHttpServerUnitTest {
         val hmac = KioskSecurity.calculateHmac(encryptedPayload, testSecret)
         return mapOf(
             "payload" to encryptedPayload,
-            "hmac" to hmac
+            "hmac" to hmac,
         )
     }
 
-    private fun readResponseBody(response: NanoHTTPD.Response): String {
-        return response.data?.readBytes()?.toString(Charsets.UTF_8) ?: ""
-    }
+    private fun readResponseBody(response: NanoHTTPD.Response): String = response.data?.readBytes()?.toString(Charsets.UTF_8) ?: ""
 
     @Test
     fun testAppliedReturns200Ok() {

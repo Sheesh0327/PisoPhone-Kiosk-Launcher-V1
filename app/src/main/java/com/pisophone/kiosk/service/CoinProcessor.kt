@@ -13,7 +13,7 @@ class CoinProcessor(
     private val context: Context,
     private val paymentRepo: PaymentRepository,
     private val onCreditsApplied: ((Int, Int) -> Unit)? = null,
-    private val onFeedbackTrigger: (() -> Unit)? = null
+    private val onFeedbackTrigger: (() -> Unit)? = null,
 ) {
     companion object {
         private const val TAG = "CoinProcessor"
@@ -33,7 +33,7 @@ class CoinProcessor(
         source: String,
         txId: String?,
         amount: Double = 1.0,
-        isStartupPhase: Boolean = false
+        isStartupPhase: Boolean = false,
     ): Boolean {
         if (txId.isNullOrBlank()) {
             Log.w(TAG, "Rejecting coin credit: Missing mandatory transaction ID.")
@@ -58,7 +58,8 @@ class CoinProcessor(
             }
             PaymentResult.CONFLICT,
             PaymentResult.NOT_ELIGIBLE,
-            PaymentResult.FAILED -> {
+            PaymentResult.FAILED,
+            -> {
                 false
             }
         }

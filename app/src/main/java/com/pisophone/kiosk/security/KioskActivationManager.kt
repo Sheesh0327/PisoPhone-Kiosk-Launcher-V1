@@ -58,7 +58,7 @@ object KioskActivationManager {
             Build.HARDWARE ?: "",
             Build.MANUFACTURER ?: "",
             Build.MODEL ?: "",
-            Build.PRODUCT ?: ""
+            Build.PRODUCT ?: "",
         ).joinToString("|")
 
         val computed = try {
@@ -99,9 +99,7 @@ object KioskActivationManager {
         }
     }
 
-    private fun getPrefs(context: Context): SharedPreferences {
-        return KioskSecurity.getDirectBootPrefs(context, PREFS_NAME)
-    }
+    private fun getPrefs(context: Context): SharedPreferences = KioskSecurity.getDirectBootPrefs(context, PREFS_NAME)
 
     fun recordDeviceIdentity(context: Context): Boolean {
         val prefs = getPrefs(context)

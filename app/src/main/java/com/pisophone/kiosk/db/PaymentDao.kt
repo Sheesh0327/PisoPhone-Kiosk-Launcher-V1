@@ -18,7 +18,7 @@ interface PaymentDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun updateSessionState(state: PaidSessionState)
-    
+
     @Query("SELECT * FROM paid_session_state WHERE id = 1")
     fun getSessionState(): PaidSessionState?
 

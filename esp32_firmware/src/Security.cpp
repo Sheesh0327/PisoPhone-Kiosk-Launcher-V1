@@ -11,12 +11,12 @@ String calculateHMAC(String challenge, String secret) {
     mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
     mbedtls_md_init(&ctx);
     mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(md_type), 1);
-    mbedtls_md_hmac_starts(&ctx, (const unsigned char*) secret.c_str(), secret.length());
-    mbedtls_md_hmac_update(&ctx, (const unsigned char*) challenge.c_str(), challenge.length());
+    mbedtls_md_hmac_starts(&ctx, (const unsigned char*)secret.c_str(), secret.length());
+    mbedtls_md_hmac_update(&ctx, (const unsigned char*)challenge.c_str(), challenge.length());
     unsigned char hmacResult[32];
     mbedtls_md_hmac_finish(&ctx, hmacResult);
     mbedtls_md_free(&ctx);
-    
+
     String hex = "";
     for (int i = 0; i < 32; i++) {
         char buf[3];
@@ -35,12 +35,14 @@ bool applySlotToken(String token) {
         uint8_t mac[6];
         esp_read_mac(mac, ESP_MAC_WIFI_STA);
         char macBuf[18];
-        snprintf(macBuf, sizeof(macBuf), "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        snprintf(macBuf, sizeof(macBuf), "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4],
+                 mac[5]);
         macAddressStr = String(macBuf);
     }
 
     String myMac = macAddressStr;
-    myMac.trim(); myMac.toUpperCase();
+    myMac.trim();
+    myMac.toUpperCase();
 
     // Canonical Clean MAC (12 hex chars)
     String cleanMac = "";
@@ -61,14 +63,16 @@ bool applySlotToken(String token) {
         String fullToken = "PISOSLOT." + cleanMac + "." + String(s) + "." + shortSig;
         String fullTokenLong = "PISOSLOT." + cleanMac + "." + String(s) + "." + expectedSig;
 
-        if (token.equalsIgnoreCase(shortSig) || token.equalsIgnoreCase(fullToken) || token.equalsIgnoreCase(fullTokenLong) || token.equalsIgnoreCase(expectedSig)) {
+        if (token.equalsIgnoreCase(shortSig) || token.equalsIgnoreCase(fullToken) ||
+            token.equalsIgnoreCase(fullTokenLong) || token.equalsIgnoreCase(expectedSig)) {
             maxLicensedSlots = min(max(maxLicensedSlots, s), MAX_SUPPORTED_SLOTS);
             for (int i = 0; i < maxLicensedSlots; i++) {
                 licenseSlots[i].active = true;
             }
 
             saveSlotLicenses();
-            Serial.printf("[+] Successfully applied Slot License Token: Capacity expanded to %d slots!\n", maxLicensedSlots);
+            Serial.printf("[+] Successfully applied Slot License Token: Capacity expanded to %d slots!\n",
+                          maxLicensedSlots);
             return true;
         }
     }
@@ -82,11 +86,13 @@ String getBoxMachineCode() {
         uint8_t mac[6];
         esp_read_mac(mac, ESP_MAC_WIFI_STA);
         char macBuf[18];
-        snprintf(macBuf, sizeof(macBuf), "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        snprintf(macBuf, sizeof(macBuf), "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4],
+                 mac[5]);
         macAddressStr = String(macBuf);
     }
     String myMac = macAddressStr;
-    myMac.trim(); myMac.toUpperCase();
+    myMac.trim();
+    myMac.toUpperCase();
     String cleanMac = "";
     for (size_t i = 0; i < myMac.length(); i++) {
         if (myMac[i] != ':') cleanMac += myMac[i];
@@ -161,7 +167,7 @@ String computeSecWebSocketAccept(String key) {
     String concat = key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
     unsigned char sha1Result[20];
     mbedtls_sha1((const unsigned char*)concat.c_str(), concat.length(), sha1Result);
-    
+
     unsigned char base64Result[36];
     size_t outLen = 0;
     mbedtls_base64_encode(base64Result, sizeof(base64Result), &outLen, sha1Result, 20);

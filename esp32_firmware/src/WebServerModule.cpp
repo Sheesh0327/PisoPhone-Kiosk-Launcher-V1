@@ -67,19 +67,21 @@ void setupWebServer() {
     webServer.on("/api/slots/unpair", HTTP_ANY, handleApiSlotUnpair);
     webServer.on("/api/slots/apply_token", HTTP_POST, handleApiSlotApplyToken);
     webServer.on("/api/slots/cloud_sync", HTTP_POST, handleApiSlotCloudSync);
-    
+
     // Dedicated Robust Coin Slot API routes
     webServer.on("/api/coinslot/arm", HTTP_ANY, handleApiCoinslotArm);
     webServer.on("/api/coinslot/unarm", HTTP_ANY, handleApiCoinslotUnarm);
     webServer.on("/api/coinslot/status", HTTP_GET, handleApiCoinslotStatus);
     webServer.on("/api/coinslot/ack", HTTP_ANY, handleApiCoinslotAck);
-    
+
     webServer.on("/api/relay", HTTP_ANY, []() {
         if (!checkAdminAuth()) return;
 
         // Reject manual relay or polarity changes during an active or draining payment session
         if (isCoinSlotBusy("")) {
-            webServer.send(409, "application/json", "{\"status\":\"error\",\"message\":\"Coin slot is currently active or draining. Manual relay override rejected.\"}");
+            webServer.send(
+                409, "application/json",
+                "{\"status\":\"error\",\"message\":\"Coin slot is currently active or draining. Manual relay override rejected.\"}");
             return;
         }
 
@@ -93,17 +95,23 @@ void setupWebServer() {
         if (webServer.hasArg("state")) {
             bool state = (webServer.arg("state") == "1" || webServer.arg("state") == "true");
             setRelayHardware(state);
-            webServer.send(200, "application/json", "{\"status\":\"ok\",\"relay_pin\":" + String(relayPin) + ",\"state\":" + String(state ? 1 : 0) + ",\"active_low\":" + String(relayActiveLow ? 1 : 0) + "}");
+            webServer.send(200, "application/json",
+                           "{\"status\":\"ok\",\"relay_pin\":" + String(relayPin) + ",\"state\":" +
+                               String(state ? 1 : 0) + ",\"active_low\":" + String(relayActiveLow ? 1 : 0) + "}");
             return;
         }
-        webServer.send(200, "application/json", "{\"status\":\"ok\",\"relay_pin\":" + String(relayPin) + ",\"active_low\":" + String(relayActiveLow ? 1 : 0) + "}");
+        webServer.send(200, "application/json",
+                       "{\"status\":\"ok\",\"relay_pin\":" + String(relayPin) +
+                           ",\"active_low\":" + String(relayActiveLow ? 1 : 0) + "}");
     });
-    
+
     webServer.on("/api/diagnostics", HTTP_GET, handleApiDiagnostics);
     webServer.on("/api/payments/clear", HTTP_POST, []() {
         if (!checkAdminAuth()) return;
         if (isCoinSlotBusy("")) {
-            webServer.send(409, "application/json", "{\"status\":\"error\",\"message\":\"Coin slot is active or draining. Try again when idle.\"}");
+            webServer.send(
+                409, "application/json",
+                "{\"status\":\"error\",\"message\":\"Coin slot is active or draining. Try again when idle.\"}");
             return;
         }
         int cleared = clearPaymentQueue();
@@ -112,111 +120,120 @@ void setupWebServer() {
 
     // Port 80: Web OTA Firmware Update Endpoints
     webServer.on("/update", HTTP_GET, handleOtaForm);
-    webServer.on("/update", HTTP_POST, []() {
-        if (!checkAdminAuth()) return;
-        webServer.sendHeader("Connection", "close");
-        if (!otaIsValidBinary || Update.hasError() || !otaUpdateSuccess) {
-            String errStr = otaErrorMsg.length() > 0 ? otaErrorMsg : ("Flash write failed (Error Code " + String(Update.getError()) + ")");
-            webServer.send(400, "text/plain", errStr);
-        } else {
-            // The new image is already committed; give a coin that landed since the finalize
-            // check a moment to reach NVS before restarting.
-            unsigned long waitStart = millis();
-            while (hasUnpersistedPayments() && millis() - waitStart < 10000) {
-                processPendingPaymentRetries();
-                esp_task_wdt_reset();
-                delay(100);
+    webServer.on(
+        "/update", HTTP_POST,
+        []() {
+            if (!checkAdminAuth()) return;
+            webServer.sendHeader("Connection", "close");
+            if (!otaIsValidBinary || Update.hasError() || !otaUpdateSuccess) {
+                String errStr = otaErrorMsg.length() > 0
+                                    ? otaErrorMsg
+                                    : ("Flash write failed (Error Code " + String(Update.getError()) + ")");
+                webServer.send(400, "text/plain", errStr);
+            } else {
+                // The new image is already committed; give a coin that landed since the finalize
+                // check a moment to reach NVS before restarting.
+                unsigned long waitStart = millis();
+                while (hasUnpersistedPayments() && millis() - waitStart < 10000) {
+                    processPendingPaymentRetries();
+                    esp_task_wdt_reset();
+                    delay(100);
+                }
+                webServer.send(200, "text/plain", "SUCCESS");
+                delay(1000);
+                ESP.restart();
             }
-            webServer.send(200, "text/plain", "SUCCESS");
-            delay(1000);
-            ESP.restart();
-        }
-    }, []() {
-        if (!checkAdminAuth()) return;
-        HTTPUpload& upload = webServer.upload();
-        
-        if (upload.status == UPLOAD_FILE_START) {
-            otaUpdateSuccess = false;
-            otaFirstChunkReceived = false;
-            otaIsValidBinary = true;
-            otaErrorMsg = "";
-            Update.clearError();
-            
-            if (!canPerformRebootOrOta()) {
-                otaIsValidBinary = false;
-                otaErrorMsg = "OTA blocked: unpersisted transactions in RAM";
-                diagLog("[OTA] Aborted: unpersisted transactions in RAM");
-                return;
-            }
+        },
+        []() {
+            if (!checkAdminAuth()) return;
+            HTTPUpload& upload = webServer.upload();
 
-            diagCount(DiagCounter::OtaAttempts);
-            diagLog("[OTA] Starting firmware flash: %s\n", upload.filename.c_str());
-            
-            if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
-                otaIsValidBinary = false;
-                otaErrorMsg = "Failed to begin flash partition write (Error: " + String(Update.getError()) + ")";
-                diagLog("[OTA] Error: %s\n", otaErrorMsg.c_str());
-            }
-        } else if (upload.status == UPLOAD_FILE_WRITE) {
-            // The whole upload runs inside one handleClient() call, so loop() cannot feed the
-            // 15 s task watchdog until it finishes; a slow upload would otherwise panic-reset.
-            esp_task_wdt_reset();
-            if (!otaIsValidBinary) return;
+            if (upload.status == UPLOAD_FILE_START) {
+                otaUpdateSuccess = false;
+                otaFirstChunkReceived = false;
+                otaIsValidBinary = true;
+                otaErrorMsg = "";
+                Update.clearError();
 
-            if (!otaFirstChunkReceived && upload.currentSize > 0) {
-                otaFirstChunkReceived = true;
-#if CONFIG_IDF_TARGET_ESP32C3
-                const uint16_t expectedChip = otacheck::CHIP_ESP32_C3;
-#else
-                const uint16_t expectedChip = otacheck::CHIP_ESP32;
-#endif
-                otacheck::Result headerCheck = otacheck::checkImageHeader(upload.buf, upload.currentSize, expectedChip);
-                if (headerCheck != otacheck::OK) {
+                if (!canPerformRebootOrOta()) {
                     otaIsValidBinary = false;
-                    otaErrorMsg = String("OTA rejected: ") + otacheck::describe(headerCheck);
-                    diagLog("[OTA] %s\n", otaErrorMsg.c_str());
+                    otaErrorMsg = "OTA blocked: unpersisted transactions in RAM";
+                    diagLog("[OTA] Aborted: unpersisted transactions in RAM");
                     return;
                 }
-            }
 
-            if (upload.currentSize > 0) {
-                if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+                diagCount(DiagCounter::OtaAttempts);
+                diagLog("[OTA] Starting firmware flash: %s\n", upload.filename.c_str());
+
+                if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
                     otaIsValidBinary = false;
-                    otaErrorMsg = "Flash write failed at offset " + String(Update.progress()) + " (Error: " + String(Update.getError()) + ")";
-                    diagLog("[OTA] Error: %s\n", otaErrorMsg.c_str());
-                } else {
-                    Serial.print(".");
-                }
-            }
-        } else if (upload.status == UPLOAD_FILE_END) {
-            esp_task_wdt_reset();
-            Serial.println();
-            // Check before Update.end(): it switches the boot partition, so a refusal afterwards
-            // would still boot the new image on the next (e.g. scheduled) restart.
-            if (otaIsValidBinary && !canPerformRebootOrOta()) {
-                otaIsValidBinary = false;
-                otaErrorMsg = "OTA blocked: unpersisted transactions in RAM";
-                diagLog("[OTA] Aborted at finalize: unpersisted transactions in RAM");
-            }
-            if (otaIsValidBinary) {
-                if (Update.end(true)) {
-                    diagLog("[OTA] Firmware flashing verified & completed successfully: %u bytes\n", upload.totalSize);
-                    otaUpdateSuccess = true;
-                } else {
-                    otaIsValidBinary = false;
-                    otaErrorMsg = "Firmware verification failed after write (Error: " + String(Update.getError()) + ")";
+                    otaErrorMsg = "Failed to begin flash partition write (Error: " + String(Update.getError()) + ")";
                     diagLog("[OTA] Error: %s\n", otaErrorMsg.c_str());
                 }
-            } else {
+            } else if (upload.status == UPLOAD_FILE_WRITE) {
+                // The whole upload runs inside one handleClient() call, so loop() cannot feed the
+                // 15 s task watchdog until it finishes; a slow upload would otherwise panic-reset.
+                esp_task_wdt_reset();
+                if (!otaIsValidBinary) return;
+
+                if (!otaFirstChunkReceived && upload.currentSize > 0) {
+                    otaFirstChunkReceived = true;
+#if CONFIG_IDF_TARGET_ESP32C3
+                    const uint16_t expectedChip = otacheck::CHIP_ESP32_C3;
+#else
+                    const uint16_t expectedChip = otacheck::CHIP_ESP32;
+#endif
+                    otacheck::Result headerCheck =
+                        otacheck::checkImageHeader(upload.buf, upload.currentSize, expectedChip);
+                    if (headerCheck != otacheck::OK) {
+                        otaIsValidBinary = false;
+                        otaErrorMsg = String("OTA rejected: ") + otacheck::describe(headerCheck);
+                        diagLog("[OTA] %s\n", otaErrorMsg.c_str());
+                        return;
+                    }
+                }
+
+                if (upload.currentSize > 0) {
+                    if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+                        otaIsValidBinary = false;
+                        otaErrorMsg = "Flash write failed at offset " + String(Update.progress()) +
+                                      " (Error: " + String(Update.getError()) + ")";
+                        diagLog("[OTA] Error: %s\n", otaErrorMsg.c_str());
+                    } else {
+                        Serial.print(".");
+                    }
+                }
+            } else if (upload.status == UPLOAD_FILE_END) {
+                esp_task_wdt_reset();
+                Serial.println();
+                // Check before Update.end(): it switches the boot partition, so a refusal afterwards
+                // would still boot the new image on the next (e.g. scheduled) restart.
+                if (otaIsValidBinary && !canPerformRebootOrOta()) {
+                    otaIsValidBinary = false;
+                    otaErrorMsg = "OTA blocked: unpersisted transactions in RAM";
+                    diagLog("[OTA] Aborted at finalize: unpersisted transactions in RAM");
+                }
+                if (otaIsValidBinary) {
+                    if (Update.end(true)) {
+                        diagLog("[OTA] Firmware flashing verified & completed successfully: %u bytes\n",
+                                upload.totalSize);
+                        otaUpdateSuccess = true;
+                    } else {
+                        otaIsValidBinary = false;
+                        otaErrorMsg =
+                            "Firmware verification failed after write (Error: " + String(Update.getError()) + ")";
+                        diagLog("[OTA] Error: %s\n", otaErrorMsg.c_str());
+                    }
+                } else {
+                    Update.abort();
+                }
+            } else if (upload.status == UPLOAD_FILE_ABORTED) {
                 Update.abort();
+                otaIsValidBinary = false;
+                otaErrorMsg = "Upload connection was aborted prematurely.";
+                Serial.println("[OTA] Upload aborted by client.");
             }
-        } else if (upload.status == UPLOAD_FILE_ABORTED) {
-            Update.abort();
-            otaIsValidBinary = false;
-            otaErrorMsg = "Upload connection was aborted prematurely.";
-            Serial.println("[OTA] Upload aborted by client.");
-        }
-    });
+        });
     // Needed so the login throttle can tell a wrong password from the browser's first probe.
     static const char* kCollectedHeaders[] = {"Authorization"};
     webServer.collectHeaders(kCollectedHeaders, 1);

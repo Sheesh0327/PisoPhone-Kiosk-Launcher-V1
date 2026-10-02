@@ -58,12 +58,12 @@ fun FloatingPill(
     onRequestFocus: (Boolean) -> Unit = {},
     onRequestFullScreen: (Boolean) -> Unit = {},
     onBrightnessChange: (Float) -> Unit = {},
-    onDrag: (Float, Float) -> Unit
+    onDrag: (Float, Float) -> Unit,
 ) {
     val context = LocalContext.current
     val controller = systemController ?: remember(context) { AndroidKioskSystemController(context) }
     var expanded by remember { mutableStateOf(false) }
-    
+
     LaunchedEffect(isWaiting) {
         if (isWaiting) {
             expanded = true
@@ -76,9 +76,9 @@ fun FloatingPill(
             onDismissArenaBanner()
         }
     }
-    
+
     val coroutineScope = rememberCoroutineScope()
-    
+
     var showUnlockedPinDialog by remember { mutableStateOf(false) }
     var showUnlockedSecurityDialog by remember { mutableStateOf(false) }
 
@@ -87,11 +87,11 @@ fun FloatingPill(
         onRequestFocus(needActive)
         onRequestFullScreen(needActive)
     }
-    
+
     val minutes = timeRemaining / 60
     val seconds = timeRemaining % 60
     val timeStr = String.format(Locale.US, "%02d:%02d", minutes, seconds)
-    
+
     val isFlashing = timeRemaining in 1..59
     val timerTextColor by if (isFlashing) {
         rememberUpdatedState(Color(0xFFFF3333))
@@ -107,7 +107,7 @@ fun FloatingPill(
         Pair(Color(0xFF2C111C), Color(0xFFFF2A5F)),
         Pair(Color(0xFF2D1027), Color(0xFFFF007F)),
         Pair(Color(0xFF16273B), Color(0xFF38BDF8)),
-        Pair(Color(0xFF0F2A16), Color(0xFF00FF66))
+        Pair(Color(0xFF0F2A16), Color(0xFF00FF66)),
     )
     val currentTheme = themes[themeIndex % themes.size]
     val Surface = currentTheme.first
@@ -164,7 +164,7 @@ fun FloatingPill(
                 .fillMaxSize()
                 .background(Color.Black.copy(alpha = 0.75f))
                 .clickable(enabled = false) {},
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center,
         ) {
             if (showUnlockedPinDialog) {
                 Card(
@@ -173,7 +173,7 @@ fun FloatingPill(
                         .widthIn(max = 420.dp)
                         .padding(16.dp),
                     shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A))
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
                 ) {
                     Box(modifier = Modifier.padding(16.dp)) {
                         FloatingPillAdminAuthCard(
@@ -185,7 +185,7 @@ fun FloatingPill(
                             onUnlockSuccess = {
                                 showUnlockedPinDialog = false
                                 showUnlockedSecurityDialog = true
-                            }
+                            },
                         )
                     }
                 }
@@ -196,12 +196,12 @@ fun FloatingPill(
                         .fillMaxHeight(0.92f)
                         .padding(12.dp),
                     shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A))
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
                 ) {
                     Box(modifier = Modifier.padding(12.dp)) {
                         SecurityVaultView(
                             context = context,
-                            onClose = { showUnlockedSecurityDialog = false }
+                            onClose = { showUnlockedSecurityDialog = false },
                         )
                     }
                 }
@@ -211,7 +211,7 @@ fun FloatingPill(
         Box(
             modifier = Modifier
                 .width(if (isLandscape) 340.dp else 300.dp)
-                .then(dragModifier)
+                .then(dragModifier),
         ) {
             ArenaModeBanner(
                 visible = true,
@@ -219,7 +219,7 @@ fun FloatingPill(
                 stakeMinutes = arenaStakeMinutes,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onDismissArenaBanner() }
+                    .clickable { onDismissArenaBanner() },
             )
         }
     } else if (expanded) {
@@ -229,7 +229,7 @@ fun FloatingPill(
                 .heightIn(max = maxOverlayHeight)
                 .background(if (isArenaMode) Color(0xFF1E1035).copy(alpha = 0.98f) else Surface.copy(alpha = 0.96f), RoundedCornerShape(18.dp))
                 .border(if (isArenaMode) 2.dp else 1.5.dp, if (isArenaMode) Color(0xFF8B5CF6) else Outline.copy(alpha = 0.75f), RoundedCornerShape(18.dp))
-                .padding(12.dp)
+                .padding(12.dp),
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 if (isArenaMode) {
@@ -239,26 +239,34 @@ fun FloatingPill(
                             .padding(bottom = 8.dp),
                         shape = RoundedCornerShape(10.dp),
                         colors = CardDefaults.cardColors(containerColor = Color(0xFF2E1065)),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFA78BFA))
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFA78BFA)),
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 10.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Text(
                                 text = "⚔️ 1V1 ARENA ACTIVE",
                                 color = Color(0xFFA78BFA),
                                 fontSize = 11.sp,
-                                fontWeight = FontWeight.Black
+                                fontWeight = FontWeight.Black,
                             )
                             Text(
-                                text = (if (arenaRole == 1) "PLAYER 1" else if (arenaRole == 2) "PLAYER 2" else "PARTICIPANT") + " • ${arenaStakeMinutes}m STAKE",
+                                text = (
+                                    if (arenaRole == 1) {
+                                        "PLAYER 1"
+                                    } else if (arenaRole == 2) {
+                                        "PLAYER 2"
+                                    } else {
+                                        "PARTICIPANT"
+                                    }
+                                ) + " • ${arenaStakeMinutes}m STAKE",
                                 color = Color(0xFFFFB703),
                                 fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
                             )
                         }
                     }
@@ -276,12 +284,12 @@ fun FloatingPill(
                         .then(dragModifier)
                         .background(Color(0xFF0F172A).copy(alpha = 0.85f), RoundedCornerShape(10.dp))
                         .border(1.dp, Outline.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(
                             verticalArrangement = Arrangement.spacedBy(2.dp),
-                            modifier = Modifier.padding(end = 6.dp)
+                            modifier = Modifier.padding(end = 6.dp),
                         ) {
                             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Box(modifier = Modifier.size(3.dp).background(Outline, CircleShape))
@@ -305,7 +313,7 @@ fun FloatingPill(
                             color = Outline,
                             fontWeight = FontWeight.ExtraBold,
                             fontSize = 11.sp,
-                            letterSpacing = 1.sp
+                            letterSpacing = 1.sp,
                         )
                     }
 
@@ -329,28 +337,28 @@ fun FloatingPill(
                                             }
                                             tryAwaitRelease()
                                             job.cancel()
-                                        }
+                                        },
                                     )
                                 }
-                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                                .padding(horizontal = 4.dp, vertical = 2.dp),
                         ) {
                             Text(
                                 text = timeStr,
                                 color = timerTextColor,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
-                                fontSize = 18.sp
+                                fontSize = 18.sp,
                             )
                         }
                         Spacer(modifier = Modifier.width(6.dp))
                         IconButton(
-                            onClick = { 
+                            onClick = {
                                 if (isWaiting) {
                                     onDoneClick()
                                 }
-                                expanded = false 
-                            }, 
-                            modifier = Modifier.size(24.dp)
+                                expanded = false
+                            },
+                            modifier = Modifier.size(24.dp),
                         ) {
                             Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color.White, modifier = Modifier.size(16.dp))
                         }
@@ -366,18 +374,18 @@ fun FloatingPill(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f, fill = false)
-                        .verticalScroll(scrollState)
+                        .verticalScroll(scrollState),
                 ) {
                     FloatingPillStatusChips(
                         batteryPct = batteryPct,
                         ramStats = ramStats,
-                        outlineColor = Outline
+                        outlineColor = Outline,
                     )
 
                     FloatingPillBrightnessControl(
                         currentBrightness = currentBrightness,
                         maxBrightness = maxBrightness,
-                        onBrightnessChange = { applyBrightness(it) }
+                        onBrightnessChange = { applyBrightness(it) },
                     )
 
                     FloatingPillVolumeControl(
@@ -387,7 +395,7 @@ fun FloatingPill(
                         onVolumeChange = {
                             currentVolume = it
                             controller.setStreamVolume(it)
-                        }
+                        },
                     )
 
                     FloatingPillRamCleaner(
@@ -396,18 +404,18 @@ fun FloatingPill(
                             val freed = controller.optimizeMemory()
                             refreshRam()
                             android.widget.Toast.makeText(context, "⚡ Turbo Boost: Freed ${freed}MB RAM", android.widget.Toast.LENGTH_SHORT).show()
-                        }
+                        },
                     )
 
                     Button(
-                        onClick = { 
+                        onClick = {
                             expanded = false
                             AppLauncher.launchHome(context)
                         },
                         modifier = Modifier.fillMaxWidth().height(36.dp).padding(vertical = 4.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E293B), contentColor = Color.White),
                         shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(0.dp)
+                        contentPadding = PaddingValues(0.dp),
                     ) {
                         Icon(Icons.Filled.Home, contentDescription = null, modifier = Modifier.size(14.dp))
                         Spacer(modifier = Modifier.width(4.dp))
@@ -423,7 +431,7 @@ fun FloatingPill(
                                 },
                                 modifier = Modifier.fillMaxWidth().height(40.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB2F2BB), contentColor = Color(0xFF00501E)),
-                                shape = RoundedCornerShape(10.dp)
+                                shape = RoundedCornerShape(10.dp),
                             ) {
                                 Text("DONE (${paymentTimeout}s) • $coinsInserted COIN(S)", fontWeight = FontWeight.Bold, fontSize = 11.sp)
                             }
@@ -432,18 +440,18 @@ fun FloatingPill(
                                 onClick = {},
                                 modifier = Modifier.fillMaxWidth().height(40.dp),
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = SurfaceVariant, 
+                                    containerColor = SurfaceVariant,
                                     contentColor = Color.White,
                                     disabledContainerColor = SurfaceVariant,
-                                    disabledContentColor = Color.White
+                                    disabledContentColor = Color.White,
                                 ),
                                 enabled = false,
-                                shape = RoundedCornerShape(10.dp)
+                                shape = RoundedCornerShape(10.dp),
                             ) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(14.dp),
                                     color = Primary,
-                                    strokeWidth = 2.dp
+                                    strokeWidth = 2.dp,
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text("${paymentTimeout}s WAITING FOR COIN...", fontWeight = FontWeight.Bold, fontSize = 11.sp)
@@ -454,37 +462,55 @@ fun FloatingPill(
                             onClick = {},
                             modifier = Modifier.fillMaxWidth().height(40.dp),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = SurfaceVariant, 
+                                containerColor = SurfaceVariant,
                                 contentColor = Color.White,
                                 disabledContainerColor = SurfaceVariant,
-                                disabledContentColor = Color.White
+                                disabledContentColor = Color.White,
                             ),
                             enabled = false,
-                            shape = RoundedCornerShape(10.dp)
+                            shape = RoundedCornerShape(10.dp),
                         ) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(14.dp),
                                 color = Primary,
-                                strokeWidth = 2.dp
+                                strokeWidth = 2.dp,
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("ARMING COINSLOT...", fontWeight = FontWeight.Bold, fontSize = 11.sp)
                         }
                     } else {
-                        val activeContainerColor = if (isSlotBusy) Color(0xFFDC3545) else if (isEsp32Online) Primary else SurfaceVariant
-                        val activeContentColor = if (isSlotBusy) Color.White else if (isEsp32Online) OnPrimary else TextTertiary
-                        val activeText = if (isSlotBusy) "COINSLOT BUSY" else if (isEsp32Online) "ADD TIME (DROP COIN)" else "ESP32 OFFLINE"
+                        val activeContainerColor = if (isSlotBusy) {
+                            Color(0xFFDC3545)
+                        } else if (isEsp32Online) {
+                            Primary
+                        } else {
+                            SurfaceVariant
+                        }
+                        val activeContentColor = if (isSlotBusy) {
+                            Color.White
+                        } else if (isEsp32Online) {
+                            OnPrimary
+                        } else {
+                            TextTertiary
+                        }
+                        val activeText = if (isSlotBusy) {
+                            "COINSLOT BUSY"
+                        } else if (isEsp32Online) {
+                            "ADD TIME (DROP COIN)"
+                        } else {
+                            "ESP32 OFFLINE"
+                        }
                         Button(
                             onClick = { onInsertCoinClick() },
                             modifier = Modifier.fillMaxWidth().height(40.dp),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = activeContainerColor, 
+                                containerColor = activeContainerColor,
                                 contentColor = activeContentColor,
                                 disabledContainerColor = activeContainerColor,
-                                disabledContentColor = activeContainerColor
+                                disabledContentColor = activeContainerColor,
                             ),
                             shape = RoundedCornerShape(10.dp),
-                            enabled = isEsp32Online && !isSlotBusy
+                            enabled = isEsp32Online && !isSlotBusy,
                         ) {
                             if (isSlotBusy) {
                                 Icon(Icons.Filled.Lock, contentDescription = null, modifier = Modifier.size(15.dp), tint = Color.White)
@@ -541,28 +567,34 @@ fun FloatingPill(
                             }
                             tryAwaitRelease()
                             job.cancel()
-                        }
+                        },
                     )
                 }
                 .padding(horizontal = 8.dp),
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center,
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
             ) {
                 if (isArenaMode) {
                     Surface(
                         shape = RoundedCornerShape(4.dp),
                         color = Color(0xFF8B5CF6),
-                        modifier = Modifier.padding(end = 2.dp)
+                        modifier = Modifier.padding(end = 2.dp),
                     ) {
                         Text(
-                            text = if (arenaRole == 1) "⚔️ P1" else if (arenaRole == 2) "⚔️ P2" else "⚔️ 1v1",
+                            text = if (arenaRole == 1) {
+                                "⚔️ P1"
+                            } else if (arenaRole == 2) {
+                                "⚔️ P2"
+                            } else {
+                                "⚔️ 1v1"
+                            },
                             color = Color.White,
                             fontWeight = FontWeight.Black,
                             fontSize = 9.sp,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
                         )
                     }
                 } else if (hasBatteryAlert) {
@@ -570,13 +602,13 @@ fun FloatingPill(
                         if (isLowBattery) Icons.Filled.BatteryFull else Icons.Filled.Bolt,
                         contentDescription = "Battery Alert",
                         tint = if (isLowBattery) Color(0xFFFF3333) else Color(0xFFFFB800),
-                        modifier = Modifier.size(13.dp)
+                        modifier = Modifier.size(13.dp),
                     )
                 } else {
                     Box(
                         modifier = Modifier
                             .size(6.dp)
-                            .background(if (isEsp32Online) Outline else Color(0xFFFF5252), CircleShape)
+                            .background(if (isEsp32Online) Outline else Color(0xFFFF5252), CircleShape),
                     )
                 }
                 Text(
@@ -584,7 +616,7 @@ fun FloatingPill(
                     color = timerTextColor,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
-                    fontSize = 12.sp
+                    fontSize = 12.sp,
                 )
             }
         }
