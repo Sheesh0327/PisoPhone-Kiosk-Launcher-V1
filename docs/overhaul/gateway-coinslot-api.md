@@ -40,7 +40,9 @@ another gateway session holds the slot), `503 STORAGE_UNAVAILABLE`, `503 GATEWAY
    so a router crash cannot lose a payment; they are discarded after 24 hours.
 
 A session lasts at most 120 seconds in total, and re-arming the same session keeps its coins.
-Test from a PC with `scripts/gateway_client.py`. Shell equivalent of the signing step:
+Test from a PC with `scripts/gateway_client.py`. Its `run` action does the whole flow: it arms, stays open
+counting coins until `--duration` seconds pass (or Ctrl+C), always releases the slot (retrying if a request
+fails), waits for in-flight coins, prints the total and, with `--ack`, clears them from the box. Shell equivalent of the signing step:
 `printf 'gw1:arm:%s:%s' "$SESSION" "$NONCE" | openssl dgst -sha256 -hmac "$KEY" | awk '{print $NF}'`.
 
 ## Notes
