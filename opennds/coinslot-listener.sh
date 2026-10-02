@@ -19,7 +19,8 @@
 # Local API (GET, JSON unless noted). <sid> = 32 hex chars derived from the client's OpenNDS id, <mac> = client MAC.
 #   /info                             settings the portal shows
 #   /tiers?plan=hyper|endurance       text lines "pesos minutes" (what the portal prints as rates)
-#   /start?sid&plan&mac               start a coin window (refuses PLAN_MISMATCH while another plan has time left)
+#   /start?sid&plan&mac[&forfeit=1]   start a coin window. While another plan has time left it answers PLAN_MISMATCH,
+#                                     unless forfeit=1: the customer then gives that time up when (and only if) they pay
 #   /status?sid                       progress: state, pesos, minutes, remaining seconds
 #   /finish?sid                       stop accepting now and count what arrived
 #   /claim?sid&mac                    what can be granted now (coins, voucher or resume), without changing anything
@@ -51,9 +52,8 @@ ENDURANCE_TIERS="${ENDURANCE_TIERS:-1:15 5:180 10:480 20:1440}"
 ENDURANCE_DOWN_KBPS="${ENDURANCE_DOWN_KBPS:-5000}"   # 5 Mbit/s
 ENDURANCE_UP_KBPS="${ENDURANCE_UP_KBPS:-2000}"       # 2 Mbit/s
 
-# Endurance extras: the first ENDURANCE_BURST_SECONDS of a new session run uncapped so the caps are not felt at
-# first; a session that has paid at least PAUSE_MIN_PESOS can be paused once (kept for PAUSE_MAX_HOURS).
-ENDURANCE_BURST_SECONDS="${ENDURANCE_BURST_SECONDS:-30}"
+# Pause: an Endurance session that has paid at least PAUSE_MIN_PESOS can be paused once (kept for PAUSE_MAX_HOURS).
+# Bursting (no cap until a client's speed stays above its limit for ~30 s) is openNDS' own feature, see INSTRUCTIONS.md.
 PAUSE_MIN_PESOS="${PAUSE_MIN_PESOS:-10}"
 PAUSE_MAX_HOURS="${PAUSE_MAX_HOURS:-72}"
 
@@ -158,18 +158,18 @@ new_code() {
   done
 }
 
-# load_voucher <code>: sets PLAN EXPIRES MAC CREATED PESOS BURSTED PAUSED PAUSE_LEFT PAUSE_UNTIL PAUSE_USED
+# load_voucher <code>: sets PLAN EXPIRES MAC CREATED PESOS PAUSED PAUSE_LEFT PAUSE_UNTIL PAUSE_USED
 # (defaults when unknown, return 1).
 load_voucher() {
-  PLAN=""; EXPIRES=0; MAC=""; CREATED=0; PESOS=0; BURSTED=0; PAUSED=0; PAUSE_LEFT=0; PAUSE_UNTIL=0; PAUSE_USED=0
+  PLAN=""; EXPIRES=0; MAC=""; CREATED=0; PESOS=0; PAUSED=0; PAUSE_LEFT=0; PAUSE_UNTIL=0; PAUSE_USED=0
   valid_code "$1" && [ -r "$(VOUCHER_DIR)/$1" ] || return 1
   . "$(VOUCHER_DIR)/$1"
 }
 
 save_voucher() {  # save_voucher <code>: writes the voucher variables set by load_voucher
   mkdir -p "$(VOUCHER_DIR)"
-  printf 'PLAN=%s\nEXPIRES=%s\nMAC=%s\nCREATED=%s\nPESOS=%s\nBURSTED=%s\nPAUSED=%s\nPAUSE_LEFT=%s\nPAUSE_UNTIL=%s\nPAUSE_USED=%s\n' \
-    "$PLAN" "$EXPIRES" "$MAC" "$CREATED" "$PESOS" "$BURSTED" "$PAUSED" "$PAUSE_LEFT" "$PAUSE_UNTIL" "$PAUSE_USED" > "$(VOUCHER_DIR)/$1.tmp" &&
+  printf 'PLAN=%s\nEXPIRES=%s\nMAC=%s\nCREATED=%s\nPESOS=%s\nPAUSED=%s\nPAUSE_LEFT=%s\nPAUSE_UNTIL=%s\nPAUSE_USED=%s\n' \
+    "$PLAN" "$EXPIRES" "$MAC" "$CREATED" "$PESOS" "$PAUSED" "$PAUSE_LEFT" "$PAUSE_UNTIL" "$PAUSE_USED" > "$(VOUCHER_DIR)/$1.tmp" &&
     mv "$(VOUCHER_DIR)/$1.tmp" "$(VOUCHER_DIR)/$1"
 }
 
@@ -198,10 +198,6 @@ voucher_by_mac() {
 can_pause() {  # after load_voucher: eligible for the one-time pause?
   [ "$PLAN" = "endurance" ] && [ "$PESOS" -ge "$PAUSE_MIN_PESOS" ] && [ "$PAUSE_USED" != 1 ] && [ "$PAUSED" != 1 ]
 }
-
-# Burst: $STATE_DIR/burst/<mackey> holds the epoch until which a new Endurance session runs uncapped.
-burst_file() { echo "$STATE_DIR/burst/$1"; }
-burst_active() { [ -r "$(burst_file "$1")" ] && [ "$(cat "$(burst_file "$1")")" -gt "$(now)" ]; }
 
 # ---------------------------------------------------------------------------
 # Per-customer state: $STATE_DIR/<sid>/{state,plan,mac,stop,pid,claimed,grant,ackpending}
@@ -288,7 +284,7 @@ do_worker() {
 # Returns 1 when there is nothing to grant.
 build_grant() {
   _dir="$STATE_DIR/$1"; _mac="$2"; _mk=$(mac_key "$2")
-  G_PAUSED=0; G_BURST=0
+  G_PAUSED=0; G_FORFEIT=0; G_OLDCODE=""
   G_KIND=""; G_PLAN=""; G_PULSES=0; G_NEW_MIN=0; G_LEFT_MIN=0; G_TOTAL_MIN=0; G_MODE=auth; G_CODE=""; G_OLDMAC=""
   read_state "$_dir"
   if [ "$STATE" = "done" ] && [ "${PULSES:-0}" -gt 0 ] && [ ! -e "$_dir/claimed" ]; then
@@ -296,11 +292,13 @@ build_grant() {
     valid_plan "$G_PLAN" || return 1
     G_NEW_MIN=$(minutes_for "$G_PLAN" "$G_PULSES")
     _code=$(voucher_by_mac "$_mk") && G_CODE="$_code"
+    # Switching plan: the customer agreed to give up the time left on the other plan (it is dropped when they pay).
+    if [ -r "$_dir/forfeit" ]; then G_FORFEIT=1; G_OLDCODE=$(cat "$_dir/forfeit"); G_CODE=""; fi
     if [ "$(nds_state "$_mac")" = "Authenticated" ]; then                 # connected: this is a top-up
       G_MODE=topup
       _end=$(nds_session_end "$_mac"); _n=$(now)
       case "$_end" in "" | null | *[!0-9]*) _end=0 ;; esac
-      [ "$_end" -gt "$_n" ] && G_LEFT_MIN=$(( (_end - _n + 59) / 60 ))
+      [ "$_end" -gt "$_n" ] && [ "$G_FORFEIT" != 1 ] && G_LEFT_MIN=$(( (_end - _n + 59) / 60 ))
     elif [ -n "$G_CODE" ]; then                                           # time left from an earlier session
       load_voucher "$G_CODE"
       voucher_live && [ "$PLAN" = "$G_PLAN" ] && G_LEFT_MIN=$(( (V_LEFT + 59) / 60 ))
@@ -314,28 +312,20 @@ build_grant() {
     return 1
   fi
   G_UP=$(plan_up "$G_PLAN"); G_DOWN=$(plan_down "$G_PLAN")
-  # Endurance burst: a brand-new paid session starts uncapped (once per voucher); a top-up during the burst keeps it.
-  if [ "$G_PLAN" = "endurance" ] && [ "$ENDURANCE_BURST_SECONDS" -gt 0 ]; then
-    if [ "$G_KIND" = "coins" ] && [ "$G_MODE" = "auth" ]; then
-      if [ -z "$G_CODE" ] || { load_voucher "$G_CODE"; [ "$BURSTED" != 1 ]; }; then G_BURST=1; G_UP=0; G_DOWN=0; fi
-    elif [ "$G_MODE" = "topup" ] && burst_active "$_mk"; then
-      G_UP=0; G_DOWN=0
-    fi
-  fi
   return 0
 }
 
 grant_json() {
-  printf '{"kind":"%s","pulses":%s,"minutes":%s,"added":%s,"plan":"%s","mode":"%s","voucher":"%s","up":%s,"down":%s,"paused":%s,"burst":%s}' \
-    "$G_KIND" "$G_PULSES" "$G_TOTAL_MIN" "$G_NEW_MIN" "$G_PLAN" "$G_MODE" "$G_CODE" "$G_UP" "$G_DOWN" "$G_PAUSED" "$G_BURST"
+  printf '{"kind":"%s","pulses":%s,"minutes":%s,"added":%s,"plan":"%s","mode":"%s","voucher":"%s","up":%s,"down":%s,"paused":%s,"forfeit":%s}' \
+    "$G_KIND" "$G_PULSES" "$G_TOTAL_MIN" "$G_NEW_MIN" "$G_PLAN" "$G_MODE" "$G_CODE" "$G_UP" "$G_DOWN" "$G_PAUSED" "$G_FORFEIT"
 }
 
 # The grant is worked out when the customer taps Connect (/claim) and remembered, because by the time openNDS
 # has authenticated the client and /confirm runs, the client already looks "connected": recomputing then would
 # mistake a new session for a top-up and count the fresh time twice.
 save_pending() {
-  printf 'G_KIND=%s\nG_PLAN=%s\nG_PULSES=%s\nG_NEW_MIN=%s\nG_LEFT_MIN=%s\nG_TOTAL_MIN=%s\nG_MODE=%s\nG_CODE=%s\nG_OLDMAC=%s\nG_UP=%s\nG_DOWN=%s\nG_PAUSED=%s\nG_BURST=%s\n' \
-    "$G_KIND" "$G_PLAN" "$G_PULSES" "$G_NEW_MIN" "$G_LEFT_MIN" "$G_TOTAL_MIN" "$G_MODE" "$G_CODE" "$G_OLDMAC" "$G_UP" "$G_DOWN" "$G_PAUSED" "$G_BURST" > "$1/pending.tmp" &&
+  printf 'G_KIND=%s\nG_PLAN=%s\nG_PULSES=%s\nG_NEW_MIN=%s\nG_LEFT_MIN=%s\nG_TOTAL_MIN=%s\nG_MODE=%s\nG_CODE=%s\nG_OLDMAC=%s\nG_UP=%s\nG_DOWN=%s\nG_PAUSED=%s\nG_FORFEIT=%s\nG_OLDCODE=%s\n' \
+    "$G_KIND" "$G_PLAN" "$G_PULSES" "$G_NEW_MIN" "$G_LEFT_MIN" "$G_TOTAL_MIN" "$G_MODE" "$G_CODE" "$G_OLDMAC" "$G_UP" "$G_DOWN" "$G_PAUSED" "$G_FORFEIT" "$G_OLDCODE" > "$1/pending.tmp" &&
     mv "$1/pending.tmp" "$1/pending"
 }
 load_pending() { [ -r "$1/pending" ] && [ ! -e "$1/claimed" ] && . "$1/pending"; }
@@ -348,12 +338,17 @@ finalize() {
   _expires=$(( _n + G_TOTAL_MIN * 60 ))
   PLAN="$G_PLAN"; MAC="$_mk"; PESOS=$(( PESOS + G_PULSES )); EXPIRES="$_expires"
   PAUSED=0                                         # granting time always ends a pause
-  [ "$G_BURST" = 1 ] && BURSTED=1
   save_voucher "$_code"
-  : > "$_dir/claimed"; rm -f "$_dir/pending"
+  : > "$_dir/claimed"; rm -f "$_dir/pending" "$_dir/forfeit"
+  _kind=new; [ "$G_MODE" = topup ] && _kind=topup
+  if [ "$G_FORFEIT" = 1 ]; then              # the old plan's time (and its voucher) is gone
+    _kind=switch
+    [ -n "$G_OLDCODE" ] && rm -f "$(VOUCHER_DIR)/$G_OLDCODE"
+    [ "$G_MODE" = topup ] || rm -f "$(fair_file "$_mk")"
+  fi
   if [ "$G_KIND" = "coins" ]; then
     mkdir -p "$DATA_DIR"
-    echo "$_n,$G_PLAN,$G_PULSES,$G_NEW_MIN,$([ "$G_MODE" = topup ] && echo topup || echo new)" >> "$DATA_DIR/revenue.csv"
+    echo "$_n,$G_PLAN,$G_PULSES,$G_NEW_MIN,$_kind" >> "$DATA_DIR/revenue.csv"
     : > "$_dir/ackpending"
     for _ in 1 2 3; do call "$1" ack >/dev/null && { rm -f "$_dir/ackpending"; break; }; sleep 1; done
   elif [ -n "$G_OLDMAC" ] && [ "$G_OLDMAC" != "$_mk" ]; then
@@ -361,31 +356,8 @@ finalize() {
     [ "$(nds_state "$_old")" = "Authenticated" ] && "$NDSCTL" deauth "$_old" >/dev/null 2>&1   # the time moves to this device
   fi
   fair_init "$_mk"
-  [ "$G_BURST" = 1 ] && burst_start "$_mac"
   G_CODE="$_code"
   G_EXPIRES="$_expires"
-}
-
-# burst_start <mac>: the session runs uncapped for ENDURANCE_BURST_SECONDS, then a background job applies the caps.
-burst_start() {
-  mkdir -p "$STATE_DIR/burst"
-  echo $(( $(now) + ENDURANCE_BURST_SECONDS )) > "$(burst_file "$(mac_key "$1")")"
-  ( sleep "$ENDURANCE_BURST_SECONDS"; "$SELF" burstcap "$1" ) </dev/null >/dev/null 2>&1 &
-}
-
-# cap_session <mac>: put the Endurance speed caps on a connected client (re-grants the rest of its session).
-cap_session() {
-  _end=$(nds_session_end "$1"); _n=$(now)
-  case "$_end" in "" | null | *[!0-9]*) return 1 ;; esac
-  _min=$(( (_end - _n + 59) / 60 ))
-  [ "$_min" -ge 1 ] || return 1
-  nds_regrant "$1" "$_min" "$ENDURANCE_UP_KBPS" "$ENDURANCE_DOWN_KBPS"
-}
-
-burst_cap() {  # runs once after the burst: cap the session if it is still connected
-  rm -f "$(burst_file "$(mac_key "$1")")"
-  [ "$(nds_state "$1")" = "Authenticated" ] || return 0
-  _c=$(voucher_by_mac "$(mac_key "$1")") && load_voucher "$_c" && [ "$PLAN" = "endurance" ] && cap_session "$1"
 }
 
 # ---------------------------------------------------------------------------
@@ -411,16 +383,11 @@ fair_tick() {
   _limit="${FAIR_USE_KB:-$(( FAIR_USE_GB * 1024 * 1024 ))}"   # FAIR_USE_KB is a test hook
   "$NDSCTL" json 2>/dev/null | awk -F'"' '
     /"mac":/ { mac = $4 } /"state":/ { st = $4 } /"download_this_session":/ { dl = $4 }
-    /"download_rate_limit_threshold":/ { dr = $4 }
-    /"upload_this_session":/ { print mac, st, dl, $4, dr }' | while read -r mac st dl ul dr; do
+    /"upload_this_session":/ { print mac, st, dl, $4 }' | while read -r mac st dl ul; do
     [ "$st" = "Authenticated" ] || continue
     mk=$(mac_key "$mac")
     code=$(voucher_by_mac "$mk") || continue
     load_voucher "$code"
-    if [ "$PLAN" = "endurance" ]; then          # safety net: an Endurance session must not stay uncapped after its burst
-      [ "$dr" = "null" ] && ! burst_active "$mk" && cap_session "$mac"
-      continue
-    fi
     [ "$PLAN" = "hyper" ] || continue
     fair_init "$mk"; . "$(fair_file "$mk")"
     cur=$(( ${dl:-0} + ${ul:-0} ))
@@ -504,7 +471,7 @@ do_handle() {
 
   case "$path" in
     /info)
-      reply "200 OK" "{\"first\":$COIN_FIRST_WAIT_SECONDS,\"idle\":$COIN_IDLE_WAIT_SECONDS,\"max\":$COIN_MAX_SECONDS,\"fair_gb\":$FAIR_USE_GB,\"e_down\":$ENDURANCE_DOWN_KBPS,\"e_up\":$ENDURANCE_UP_KBPS,\"burst\":$ENDURANCE_BURST_SECONDS,\"pause_pesos\":$PAUSE_MIN_PESOS,\"pause_hours\":$PAUSE_MAX_HOURS}"
+      reply "200 OK" "{\"first\":$COIN_FIRST_WAIT_SECONDS,\"idle\":$COIN_IDLE_WAIT_SECONDS,\"max\":$COIN_MAX_SECONDS,\"fair_gb\":$FAIR_USE_GB,\"e_down\":$ENDURANCE_DOWN_KBPS,\"e_up\":$ENDURANCE_UP_KBPS,\"pause_pesos\":$PAUSE_MIN_PESOS,\"pause_hours\":$PAUSE_MAX_HOURS}"
       return ;;
     /tiers)
       plan=$(qget plan); valid_plan "$plan" || { reply "400 Bad Request" "$(err_json INVALID_PLAN)"; return; }
@@ -548,7 +515,6 @@ do_handle() {
       left=$(( end - n )); [ "$left" -gt 0 ] || { reply "200 OK" "$(err_json NO_SESSION)"; return; }
       PAUSED=1; PAUSE_LEFT="$left"; PAUSE_UNTIL=$(( n + PAUSE_MAX_HOURS * 3600 )); PAUSE_USED=1; EXPIRES="$n"
       save_voucher "$code"
-      rm -f "$(burst_file "$mk")"
       "$NDSCTL" deauth "$mac" >/dev/null 2>&1
       reply "200 OK" "{\"success\":true,\"left\":$left,\"until\":$PAUSE_UNTIL,\"voucher\":\"$code\"}"
       return ;;
@@ -571,16 +537,22 @@ do_handle() {
         reply "200 OK" "$(status_json "$dir")"; return
       fi
       # Time left on another plan must not be mixed with this plan's speed rules.
+      # Time left on another plan: refuse, unless the customer chose to switch and give that time up (forfeit=1).
+      forfeitcode=""
       if [ -n "$mac" ] && code=$(voucher_by_mac "$(mac_key "$mac")") && load_voucher "$code" && [ "$PLAN" != "$plan" ]; then
-        voucher_live
-        reply "200 OK" "{\"state\":\"error\",\"error\":\"PLAN_MISMATCH\",\"plan\":\"$PLAN\",\"remaining\":$V_LEFT}"; return
+        if [ "$(qget forfeit)" = "1" ]; then forfeitcode="$code"
+        else
+          voucher_live
+          reply "200 OK" "{\"state\":\"error\",\"error\":\"PLAN_MISMATCH\",\"plan\":\"$PLAN\",\"remaining\":$V_LEFT}"; return
+        fi
       fi
       if [ -e "$dir/ackpending" ]; then          # an earlier grant could not be acknowledged on the box
         if call "$sid" ack >/dev/null && rm -f "$dir/ackpending"; then :; else
           reply "200 OK" '{"state":"error","error":"ACK_PENDING"}'; return
         fi
       fi
-      rm -f "$dir/stop" "$dir/claimed" "$dir/state" "$dir/grant" "$dir/pending"
+      rm -f "$dir/stop" "$dir/claimed" "$dir/state" "$dir/grant" "$dir/pending" "$dir/forfeit"
+      [ -n "$forfeitcode" ] && printf '%s' "$forfeitcode" > "$dir/forfeit"
       printf '%s' "$plan" > "$dir/plan"
       write_state "$dir" starting 0 "$COIN_FIRST_WAIT_SECONDS" ""
       # The worker must not inherit the socket (it would hold the connection open): detach its fds.
@@ -604,7 +576,7 @@ do_handle() {
       if [ "$path" = "/apply" ]; then
         [ "$G_MODE" = "topup" ] || { reply "200 OK" "$(err_json NOT_CONNECTED)"; return; }
         nds_regrant "$mac" "$G_TOTAL_MIN" "$G_UP" "$G_DOWN" || { reply "200 OK" "$(err_json REGRANT_FAILED)"; return; }
-        [ "$G_PLAN" = "hyper" ] && { fair_init "$(mac_key "$mac")"; . "$(fair_file "$(mac_key "$mac")")"; fair_save "$(mac_key "$mac")" "$USED_KB" "$(nds_counters_kb "$mac")" normal 0; }
+        [ "$G_PLAN" = "hyper" ] && { fair_init "$(mac_key "$mac")"; . "$(fair_file "$(mac_key "$mac")")"; [ "$G_FORFEIT" = 1 ] && USED_KB=0; fair_save "$(mac_key "$mac")" "$USED_KB" "$(nds_counters_kb "$mac")" normal 0; }
       fi
       finalize "$sid" "$mac"
       reply "200 OK" "{\"success\":true,\"voucher\":\"$G_CODE\",\"minutes\":$G_TOTAL_MIN,\"plan\":\"$G_PLAN\",\"expires\":$G_EXPIRES,\"mode\":\"$G_MODE\"}" ;;
@@ -647,7 +619,6 @@ case "$1" in
   worker) valid_sid "$2" && do_worker "$2" ;;
   fairuse) do_fairuse ;;
   fairuse-once) fair_tick ;;
-  burstcap) burst_cap "$2" ;;
   purge) purge_vouchers ;;
   minutes) minutes_for "$2" "$3" ;;
   report) do_report "$2" ;;

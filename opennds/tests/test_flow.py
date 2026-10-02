@@ -53,7 +53,7 @@ def calls():
 conf = f"{tmp}/coinslot.conf"
 open(conf, "w").write(
     f"GW_BOX=127.0.0.1:{BOX_PORT}\nGW_KEY={KEY}\nSTATE_DIR={STATE}\nDATA_DIR={DATA}\nNDSCTL={HERE}/fake_ndsctl.sh\n"
-    "ENDURANCE_BURST_SECONDS=3\nCOIN_FIRST_WAIT_SECONDS=4\nCOIN_IDLE_WAIT_SECONDS=3\nCOIN_MAX_SECONDS=12\n"
+    "COIN_FIRST_WAIT_SECONDS=4\nCOIN_IDLE_WAIT_SECONDS=3\nCOIN_MAX_SECONDS=12\n"
     "FAIR_USE_KB=1000\nFAIR_THROTTLE_DOWN_KBPS=2000\nFAIR_THROTTLE_UP_KBPS=1000\nFAIR_THROTTLE_MINUTES=5\nFAIR_FULL_MINUTES=2\n")
 env = dict(os.environ, FAKEBOX_CTL=CTL, FAKEBOX_LOG=LOG, FAKEBOX_KEY=KEY, COINSLOT_CONF=conf, FAKE_NDS_DIR=NDS,
            NDSCTL=f"{HERE}/fake_ndsctl.sh")
@@ -63,9 +63,9 @@ procs = [subprocess.Popen([sys.executable, f"{HERE}/fakebox.py", str(BOX_PORT)],
 time.sleep(1.0)
 
 
-def page(hid, mac, coinact="", plan="", landing="", port=LISTEN_PORT, auth_ok="1", vcode="", statusvar="", terms=""):
+def page(hid, mac, coinact="", plan="", landing="", port=LISTEN_PORT, auth_ok="1", vcode="", statusvar="", terms="", forfeit=""):
     e = dict(env, HID=hid, MAC=mac, COINACT=coinact, COINPLAN=plan, LANDING=landing, PORT=str(port), AUTH_OK=auth_ok,
-             VCODE=vcode, STATUSVAR=statusvar, TERMS=terms)
+             VCODE=vcode, STATUSVAR=statusvar, TERMS=terms, FORFEIT=forfeit)
     return subprocess.run(["bash", f"{HERE}/theme_harness.sh", THEME], env=e, capture_output=True, text=True, timeout=90).stdout
 
 
@@ -130,16 +130,13 @@ try:
     check("11 hrs 30 min" in p and "&#8369;17" in p, "result: P17 Endurance = 11 hrs 30 min")
     check("AUTHCALL" not in p, "no access before Connect")
     p = page("hidA", MAC_A, "connect", "endurance", landing="yes")
-    check("AUTHCALL sessiontimeout=690 quotas=690 0 0 0 0" in p, "Endurance starts with an uncapped burst: " + p[-400:])
+    check("AUTHCALL sessiontimeout=690 quotas=690 2000 5000 0 0" in p, "Endurance grant carries 2 Mbit/s up / 5 Mbit/s down (bursting is openNDS' own): " + p[-400:])
     code = code_from(p)
     check(code is not None, "voucher code shown after paying")
     check(any(l.startswith("ack ") and sid_of("hidA") in l for l in open(LOG).read().split("\n")), "coins acknowledged on the box after access")
     check("endurance,17,690,new" in open(f"{DATA}/revenue.csv").read(), "revenue logged")
     check(nds_get(MAC_A)["STATE"] == "Authenticated", "client is authenticated")
-    check(nds_get(MAC_A)["DOWNRATE"] == "0" and "BURSTED=1" in open(f"{DATA}/vouchers/{code}").read(), "inside the burst there are no caps; voucher remembers the burst")
-    time.sleep(5)  # burst of 3 s, then the capper re-grants with the Endurance caps
-    check(nds_get(MAC_A)["UPRATE"] == "2000" and nds_get(MAC_A)["DOWNRATE"] == "5000", "after the burst: 2 Mbit/s up, 5 Mbit/s down")
-    check(nds_get(MAC_A)["STATE"] == "Authenticated", "still connected after capping")
+    check(nds_get(MAC_A)["UPRATE"] == "2000" and nds_get(MAC_A)["DOWNRATE"] == "5000", "client holds the Endurance caps")
 
     # ---- other customers cannot take these coins ------------------------------------------------------------------
     set_box(busy=False, coins_at=[0.5] * 2)
@@ -153,7 +150,7 @@ try:
     p = page("hidA", MAC_A, statusvar="authenticated")
     check("You are connected" in p and "11 hr" in p and code in p and "Add time" in p, "status page: time left, voucher, top-up button")
     p = page("hidA2", MAC_A, "start", "hyper", statusvar="authenticated")
-    check("still have Endurance time" in p, "other plan refused while time is left")
+    check("still have Endurance time" in p and "Switch to HyperSpeed" in p and "forfeited" in p, "other plan: warned, with add-time and switch options")
     p = pay("hidA3", MAC_A, "endurance", 2)
     check("&#8369;2 = 30 min + 11 hrs" in p and "Add time" in p, "top-up result keeps the remaining time: " + re.sub(r"\s+", " ", p)[-500:])
     p = page("hidA3", MAC_A, "connect", "endurance", landing="yes", statusvar="authenticated")
@@ -177,7 +174,7 @@ try:
     p = page("hidB", MAC_B)
     check("Time left on your voucher" in p, "returning device is offered its remaining time")
     p = page("hidB", MAC_B, "connect", "endurance", landing="yes")
-    check("quotas=" in p and re.search(r"quotas=\d+ 2000 5000 0 0", p), "reconnecting does not give a second burst: " + (re.search(r"quotas=[^-]*", p) or [""])[0])
+    check("quotas=" in p and re.search(r"quotas=\d+ 2000 5000 0 0", p), "reconnecting keeps the Endurance caps: " + (re.search(r"quotas=[^-]*", p) or [""])[0])
 
     # ---- pause once (Endurance, 10+ pesos paid) ------------------------------------------------------------------------
     p = page("hidB", MAC_B, statusvar="authenticated")
@@ -193,7 +190,7 @@ try:
     p = page("hidB", MAC_B)
     check("Your paused time is ready" in p and "Resume" in p, "paused time offered for resume")
     p = page("hidB2", MAC_B, "start", "hyper")
-    check("still have Endurance time" in p, "no plan switching while paused time exists")
+    check("still have Endurance time" in p and "Switch to HyperSpeed" in p, "paused time also warns before switching")
     p = page("hidB", MAC_B, "connect", "endurance", landing="yes")
     check(re.search(r"quotas=7[12]\d 2000 5000 0 0", p) is not None, "resume restores the frozen time with Endurance caps: " + (re.search(r"quotas=[^-]*", p) or [""])[0])
     p = page("hidB", MAC_B, statusvar="authenticated")
@@ -230,9 +227,32 @@ try:
     nds_client(MAC_B, STATE="Authenticated", SESSION_END=int(time.time()) + 3000, DL=9999999, UL=9999999, UPRATE=2000, DOWNRATE=5000)
     listener("fairuse-once")
     check(not any("00:02" in c and c.startswith("auth") for c in calls()[before:]), "Endurance clients are not fair-use throttled")
-    nds_client(MAC_B, STATE="Authenticated", SESSION_END=int(time.time()) + 3000, UPRATE=0, DOWNRATE=0)
-    listener("fairuse-once")
-    check(any(re.match(r"auth aa:bb:cc:00:00:02 \d+ 2000 5000 0 0", c) for c in calls()[before:]), "safety net: an uncapped Endurance session is capped after its burst")
+
+    # ---- switching plan by forfeiting the remaining time ---------------------------------------------------------------
+    nds_client(MAC_B, STATE="Authenticated", SESSION_END=int(time.time()) + 40000, UPRATE=2000, DOWNRATE=5000)
+    old_code = re.search(r"PLAN=endurance", open(f"{DATA}/vouchers/{code}").read()) and code
+    # cancelling costs nothing: no coins -> the Endurance voucher stays
+    set_box(busy=False, coins_at=[])
+    page("hidS0", MAC_B, "start", "hyper", forfeit="yes"); time.sleep(1.5)
+    for _ in range(25):
+        p = page("hidS0", MAC_B, "finish", "hyper", forfeit="yes")
+        if "No coins detected" in p: break
+        time.sleep(1)
+    check("No coins detected" in p and os.path.exists(f"{DATA}/vouchers/{code}"), "tapping switch and paying nothing forfeits nothing")
+    set_box(busy=False, coins_at=[0.5] * 10)
+    page("hidS", MAC_B, "start", "hyper", forfeit="yes"); time.sleep(1.6)
+    p = page("hidS", MAC_B, "finish", "hyper", forfeit="yes")
+    for _ in range(25):
+        if "Thank you" in p: break
+        time.sleep(1); p = page("hidS", MAC_B, "finish", "hyper", forfeit="yes")
+    check("1 hr" in p and "replaced by this one" in p and "1 hr 12" not in p, "switch result: only the new plan's time (the old time is forfeited): " + re.sub(r"\s+", " ", p)[-400:])
+    check(os.path.exists(f"{DATA}/vouchers/{code}"), "old voucher still exists until the switch is paid and applied")
+    p = page("hidS", MAC_B, "connect", "hyper", landing="yes", statusvar="authenticated")
+    new_code = code_from(p)
+    check(new_code and new_code != code, "switching issues a new voucher code")
+    check(not os.path.exists(f"{DATA}/vouchers/{code}"), "the old plan's voucher is deleted")
+    check(any(re.match(r"auth aa:bb:cc:00:00:02 60 0 0 0 0", c) for c in calls()), "re-granted with exactly the new plan's time and no caps: " + str([c for c in calls() if c.startswith("auth") and "00:02" in c][-2:]))
+    check("hyper,10,60,switch" in open(f"{DATA}/revenue.csv").read(), "switch logged")
 
     # ---- small Endurance purchases cannot pause ------------------------------------------------------------------------
     MAC_D = "aa:bb:cc:00:00:04"
@@ -281,7 +301,7 @@ try:
     if chrome:
         nds_client("aa:bb:cc:00:00:09")
         set_box(busy=False, coins_at=[])
-        hits = {"wait": 0}
+        hits = {"wait": 0, "start_mode": None}
 
         class Portal(BaseHTTPRequestHandler):
             def log_message(self, *a):
@@ -291,6 +311,10 @@ try:
                 q = {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()}
                 act = q.get("coinact", "")
                 html = page("hidJS", "aa:bb:cc:00:00:09", act, q.get("coinplan", ""))
+                if act == "":  # the welcome page: tap Insert Coin a moment after loading, like a customer would
+                    html = html.replace("</body>", '<script>setTimeout(function(){document.querySelector(".coin").click()},300)</script></body>')
+                if act == "start":
+                    hits["start_mode"] = self.headers.get("Sec-Fetch-Mode")
                 if act == "wait":  # the first reload still shows 0 pesos; later polls show that 2 coins arrived
                     hits["wait"] += 1
                     if hits["wait"] > 1:
@@ -308,11 +332,12 @@ try:
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         r = subprocess.run([chrome, "--headless=new", "--no-sandbox", "--disable-gpu", "--autoplay-policy=no-user-gesture-required",
                             "--virtual-time-budget=7000", "--dump-dom",
-                            "http://127.0.0.1:18100/opennds_preauth/?fas=ABC&coinact=start&coinplan=endurance"],
+                            "http://127.0.0.1:18100/opennds_preauth/?fas=ABC"],
                            capture_output=True, text=True, timeout=90)
         srv.shutdown()
         check('id="pes">\u20b12<' in r.stdout, "waiting page updated its coin count by itself")
         check('data-dings="1"' in r.stdout, "a new coin played the coin sound once")
+        check(hits["start_mode"] not in (None, "navigate"), f"Insert Coin started the window without leaving the page (request mode {hits['start_mode']})")
     else:
         print("skipped: no Chrome/Chromium found for the browser test")
 

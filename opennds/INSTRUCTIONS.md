@@ -80,8 +80,17 @@ Rates, speed caps, the coin window and the fair-use limit all have the defaults 
 ```
 uci set opennds.@opennds[0].login_option_enabled='3'
 uci set opennds.@opennds[0].themespec_path='/usr/lib/opennds/theme_coinslot.sh'
+
+# Bursting (openNDS' own feature): a client is not speed-limited until its speed stays above its cap for a whole
+# check window (ratecheckwindow x checkinterval = 2 x 15 s = about 30 s); the cap is lifted again when it drops below.
+uci set opennds.@opennds[0].download_unrestricted_bursting='1'
+uci set opennds.@opennds[0].upload_unrestricted_bursting='1'
+uci set opennds.@opennds[0].checkinterval='15'
+uci set opennds.@opennds[0].ratecheckwindow='2'
 uci commit opennds
 ```
+Endurance customers (5 Mbit/s down, 2 Mbit/s up) therefore do not feel the caps during short bursts such as loading a page;
+only sustained heavy use is limited. This applies to all clients; HyperSpeed has no cap, so it only softens the fair-use slowdown.
 
 ## 8. Start everything
 ```
@@ -98,7 +107,7 @@ uci commit opennds
 curl http://127.0.0.1:8099/info                       # expect {"first":30,"idle":15,"max":115,...}
 /usr/bin/coinslot-listener.sh minutes endurance 17    # expect 690 (11 hrs 30 min)
 curl http://<box-ip>/api/gateway/challenge            # expect {"nonce":"..."}
-uci show opennds | grep -E "login_option|themespec"   # expect both lines
+uci show opennds | grep -E "login_option|themespec|bursting"   # expect the login/theme lines and both bursting lines
 ndsctl status                                         # openNDS is running
 ```
 Then join the Wi-Fi with a phone and watch: `logread -f -e opennds -e coinslot`

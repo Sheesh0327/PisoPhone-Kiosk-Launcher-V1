@@ -27,15 +27,17 @@ Everything is one small page (about 4 KB, inline CSS, no images or downloads), b
 1. **Welcome**: rates for both plans on top, an **Insert Coin** button in the middle. The customer picks a plan first.
    - **HyperSpeed**: no speed limit. 5 pesos = 30 min, 10 = 1 hr, 20 = 2 hrs (1-4 pesos at 6 min each). Slowed
      intermittently after 5 GB (fair use).
-   - **Endurance**: capped at 5 Mbit/s down and 2 Mbit/s up, but the first 30 seconds of a new session run uncapped
-     (burst) so the caps are not felt at first. 1 peso = 15 min, 5 = 3 hrs, 10 = 8 hrs, 20 = 24 hrs. A session that
+   - **Endurance**: capped at 5 Mbit/s down and 2 Mbit/s up, with openNDS' native bursting on (no cap until a
+     client's speed stays above its limit for about 30 s), so short bursts never feel the cap. 1 peso = 15 min, 5 = 3 hrs, 10 = 8 hrs, 20 = 24 hrs. A session that
      paid 10 pesos or more can be **paused once** (status page): the remaining time is frozen for up to 72 hours and
      restored with **Resume** on this device or with the voucher code.
    - Coins add up: the best combination of tiers is used, e.g. Endurance 17 pesos = 10 + 5 + 1 + 1 = 11 hrs 30 min.
 2. **Insert coin(s) now**: running pesos and time earned, a countdown bar that restarts with every coin
    (30 s to start, 15 s after each coin, 115 s at most), **Connect now**. The page updates itself and plays a short
-   coin "ding" for every coin (Web Audio, nothing to download). Browsers only allow sound after a tap, so a small
-   "Tap for coin sound" button appears first; a connect jingle plays when the browser allows it.
+   coin "ding" for every coin (Web Audio, nothing to download). Browsers only allow sound after a tap on the same
+   page, so the **Insert Coin** tap itself unlocks it: the script starts the coin window without leaving the page
+   and the waiting view replaces the welcome view. Without scripts it submits normally and the waiting page shows a
+   small "Tap for coin sound" button; a connect jingle plays when the browser allows it.
 3. **Thank you**: the time earned, **Connect**. Then a **voucher code** to restore the time on any device.
 4. **Status page** (a connected customer opening the portal address): live time left, plan, data used, voucher code and
    **Add time**. Coins added while connected extend the session (same plan); a different plan is refused until the
@@ -61,9 +63,8 @@ Everything is one small page (about 4 KB, inline CSS, no images or downloads), b
 - One customer pays at a time. A customer who closes the page mid-window keeps their counted coins for ~2 hours
   (state is in RAM; a router reboot loses the record, and the coins then stay on the box until it discards them after 24 h).
 - Coins that arrive on the box while a phone rental session holds the slot belong to that phone, not to Wi-Fi.
-- The burst and the pause also use the disconnect-then-reconnect re-grant (a one-second blip when the burst ends or a
-  paused session resumes). Pause is applied by the manager; a watcher also re-applies Endurance caps if a session is
-  ever found uncapped after its burst.
+- Bursting is openNDS' own (`download_unrestricted_bursting`, window = `ratecheckwindow` x `checkinterval`), read from its
+  source but not run on your router. Pause and plan switching re-grant time with deauth then auth (a brief reconnect).
 - Time uses openNDS' `sessiontimeout`; Endurance caps use its per-client rate limits.
 - Top-up and fair-use throttling re-grant time with `ndsctl deauth` then `ndsctl auth` (openNDS only applies new limits
   to a de-authenticated client), so the client reconnects for a moment. Both rely on this openNDS behaviour, which was

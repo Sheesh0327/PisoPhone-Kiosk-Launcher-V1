@@ -6,7 +6,7 @@
 THEME="$1"
 gatewayname="TestSpot"; gatewayurl="http%3a%2f%2f192.168.1.1%3a2050"; version="test"; client_zone="Zone: br-lan"
 originurl="http%3a%2f%2fexample.com"; gatewayfqdn="status.client"; mountpoint=$(mktemp -d); mkdir -p "$mountpoint/ndscids"; : > "$mountpoint/ndscids/ndsinfo"
-fas="${FAS:-ABC+/=}"; hid="$HID"; clientmac="$MAC"; coinact="$COINACT"; coinplan="$COINPLAN"; vcode="$VCODE"
+fas="${FAS:-ABC+/=}"; hid="$HID"; clientmac="$MAC"; coinact="$COINACT"; coinplan="$COINPLAN"; vcode="$VCODE"; coinforfeit="$FORFEIT"
 landing="$LANDING"; terms="$TERMS"; status="$STATUSVAR"
 configure_log_location() { :; }
 auth_log() {

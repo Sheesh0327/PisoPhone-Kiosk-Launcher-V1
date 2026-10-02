@@ -52,7 +52,7 @@ header() {
 	if [ "$landing" != "yes" ] && [ "$terms" != "yes" ]; then choose_page; fi
 	refreshtag=""
 	if [ -n "$REFRESH" ]; then
-		refreshtag="<meta http-equiv=\"refresh\" content=\"${REFRESH%% *}; url=/opennds_preauth/?fas=$(fas_urlsafe)&coinact=${REFRESH##* }&coinplan=$coinplan\">"
+		refreshtag="<meta http-equiv=\"refresh\" content=\"${REFRESH%% *}; url=/opennds_preauth/?fas=$(fas_urlsafe)&coinact=${REFRESH##* }&coinplan=$coinplan&coinforfeit=$coinforfeit\">"
 		[ "$PAGE" = "wait" ] && refreshtag="<noscript>$refreshtag</noscript>"   # with scripts on, the wait page updates itself
 	fi
 	cat << HTML
@@ -122,6 +122,16 @@ action_button() {
 HTML
 }
 
+# Start a coin window for a given plan; $3 = "forfeit" also confirms giving up the time left on the other plan.
+plan_button() {
+	_f=""; [ "$3" = "forfeit" ] && _f="<input type=\"hidden\" name=\"coinforfeit\" value=\"yes\">"
+	cat << HTML
+<form action="/opennds_preauth/" method="get"><input type="hidden" name="fas" value="$fas">
+<input type="hidden" name="coinact" value="start"><input type="hidden" name="coinplan" value="$2">$_f
+<button class="btn $4" type="submit">$1</button></form>
+HTML
+}
+
 # ---------------------------------------------------------------------------
 # Deciding what to show (runs from header(), before any page content)
 # ---------------------------------------------------------------------------
@@ -138,7 +148,8 @@ choose_page() {
 
 	case "$coinact" in
 		start)
-			answer=$(coinslot "/start?sid=$sid&plan=$coinplan&mac=$mac")
+			forfeitq=""; [ "$coinforfeit" = "yes" ] && forfeitq="&forfeit=1"
+			answer=$(coinslot "/start?sid=$sid&plan=$coinplan&mac=$mac$forfeitq")
 			if [ "$(printf '%s' "$answer" | jget state)" = "error" ]; then
 				err=$(printf '%s' "$answer" | jget error)
 				case "$err" in
@@ -222,10 +233,10 @@ tier_rows() {
 page_welcome() {
 	hchk=""; echk=""; [ "$coinplan" = "endurance" ] && echk="checked" || hchk="checked"
 	edown=$(($(printf '%s' "$info" | jget e_down) / 1000)); eup=$(($(printf '%s' "$info" | jget e_up) / 1000))
-	fair=$(printf '%s' "$info" | jget fair_gb); burst=$(printf '%s' "$info" | jget burst); pausepesos=$(printf '%s' "$info" | jget pause_pesos)
+	fair=$(printf '%s' "$info" | jget fair_gb); pausepesos=$(printf '%s' "$info" | jget pause_pesos)
 	cat << HTML
 <p class="sub">Wi-Fi rates &middot; Presyo ng Wi-Fi</p>
-<form action="/opennds_preauth/" method="get"><input type="hidden" name="fas" value="$fas">
+<form id="coinform" action="/opennds_preauth/" method="get"><input type="hidden" name="fas" value="$fas">
 <input type="hidden" name="coinact" value="start">
 <div class="plans">
 <label class="plan h"><input type="radio" name="coinplan" value="hyper" $hchk>
@@ -233,7 +244,7 @@ page_welcome() {
 $(tier_rows hyper)
 </span></label>
 <label class="plan e"><input type="radio" name="coinplan" value="endurance" $echk>
-<span class="card"><b>&#9203; Endurance</b><small>Up to $edown Mbps down / $eup Mbps up &middot; Mas matagal<br>$burst s full-speed boost at the start &middot; Pause once on &#8369;$pausepesos+</small>
+<span class="card"><b>&#9203; Endurance</b><small>Up to $edown Mbps down / $eup Mbps up &middot; Mas matagal<br>Pause once on &#8369;$pausepesos+ &middot; I-pause isang beses</small>
 $(tier_rows endurance)
 </span></label>
 </div>
@@ -241,6 +252,17 @@ $(tier_rows endurance)
 </form>
 <p class="note">Coins add up &middot; Nag-iipon ang oras. HyperSpeed may slow down after $fair GB (fair use).</p>
 <p class="note"><a href="/opennds_preauth/?fas=$(fas_urlsafe)&coinact=vform">I have a voucher code &middot; May voucher ako</a></p>
+<script>
+/* Insert Coin also unlocks sound: browsers only allow audio after a tap, and the tap must happen on the page that later
+   plays it. So the tap starts the coin window without leaving the page (the waiting view replaces this one and reuses
+   the unlocked audio). Without scripts the form simply submits and the waiting page offers a "tap for sound" button. */
+(function(){var f=document.getElementById("coinform"),A=window.AudioContext||window.webkitAudioContext;
+if(!f||!A||!window.fetch||!window.URLSearchParams||!window.FormData)return;
+f.addEventListener("submit",function(e){e.preventDefault();
+try{var c=window.__ctx=window.__ctx||new A();c.resume();var o=c.createOscillator(),g=c.createGain();g.gain.value=.04;o.frequency.value=880;o.connect(g);g.connect(c.destination);o.start();o.stop(c.currentTime+.05)}catch(x){}
+fetch(f.action+"?"+new URLSearchParams(new FormData(f)).toString(),{cache:"no-store"}).then(function(r){return r.text()})
+.then(function(t){document.open();document.write(t);document.close()}).catch(function(){f.submit()})})})();
+</script>
 HTML
 }
 
@@ -265,16 +287,16 @@ HTML
 <button class="snd" id="snd" type="button">&#128276; Tap for coin sound</button>
 <script>
 (function(){
-var url="$waiturl",pes=${pesos:-0},ctx=null,b=document.getElementById("snd");
+var url="$waiturl",pes=${pesos:-0},ctx=null,b=document.getElementById("snd"),A=window.AudioContext||window.webkitAudioContext;
 function tone(f,t,d){var o=ctx.createOscillator(),g=ctx.createGain();o.type="triangle";o.frequency.value=f;
 g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.35,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+d);
 o.connect(g);g.connect(ctx.destination);o.start(t);o.stop(t+d+.05)}
 function ding(n){if(!ctx||ctx.state!=="running")return;var t=ctx.currentTime;n=Math.min(n,4);document.body.setAttribute("data-dings",(+document.body.getAttribute("data-dings")||0)+1);
 for(var i=0;i<n;i++){tone(988,t+i*.22,.12);tone(1319,t+i*.22+.1,.3)}}
-function on(){var A=window.AudioContext||window.webkitAudioContext;if(!A)return;ctx=ctx||new A();ctx.resume();
+function on(){if(!A)return;ctx=ctx||window.__ctx||new A();window.__ctx=ctx;ctx.resume();
 b.style.display="none";ding(1)}
 b.onclick=on;
-try{var A=window.AudioContext||window.webkitAudioContext;if(A){ctx=new A();setTimeout(function(){if(ctx.state==="running")b.style.display="none"},50)}}catch(e){}
+try{if(A){ctx=window.__ctx||new A();window.__ctx=ctx;ctx.resume();setTimeout(function(){if(ctx.state==="running")b.style.display="none"},50)}}catch(e){}
 function poll(){var x=new XMLHttpRequest();x.open("GET",url);x.onload=function(){
 var d=new DOMParser().parseFromString(x.responseText,"text/html"),n=d.getElementById("wait");
 if(!n){location.reload();return}
@@ -295,11 +317,13 @@ page_busy() {
 }
 
 page_mismatch() {
+	newplan="$coinplan"
 	cat << HTML
-<div class="msg"><b>You still have $(plan_name "$otherplan") time ($(fmt_min $(( ${otherleft:-0} / 60 ))) left).</b><br>
-Add time with the same plan, or wait until it ends to switch plans.</div>
+<div class="msg"><b>You still have $(plan_name "$otherplan") time ($(fmt_min $(( ${otherleft:-0} / 60 )))).</b><br>
+Add more $(plan_name "$otherplan") time, or switch to $(plan_name "$newplan"). <b>If you switch, the time you have left is forfeited</b> as soon as you pay.</div>
 HTML
-	coinplan="$otherplan"; action_button "Add $(plan_name "$otherplan") time" start
+	plan_button "Add $(plan_name "$otherplan") time" "$otherplan" "" ""
+	plan_button "Switch to $(plan_name "$newplan") &middot; lose my time" "$newplan" forfeit "alt"
 }
 
 page_error() {
@@ -345,6 +369,7 @@ page_result() {
 <div class="big">$(fmt_min "$cmin")</div>
 <p class="mut">$what</p>
 HTML
+	[ "$(printf '%s' "$claim" | jget forfeit)" = "1" ] && echo '<p class="mut">Your previous time on the other plan is replaced by this one.</p>'
 	coinplan="$cplan"; action_button "$label" connect "" landing
 }
 
@@ -482,7 +507,7 @@ ndscustomfiles=""
 ndsparamlist="$ndsparamlist $ndscustomparams $ndscustomimages $ndscustomfiles"
 
 # Extra form variables used by this theme (names kept distinct: the parser matches them as substrings).
-additionalthemevars="coinact coinplan vcode"
+additionalthemevars="coinact coinplan coinforfeit vcode"
 fasvarlist="$fasvarlist $additionalthemevars"
 
 userinfo="$title"
