@@ -28,7 +28,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pisophone.kiosk.security.KioskPolicyManager
 import com.pisophone.kiosk.security.KioskSecurity
-import com.pisophone.kiosk.security.KioskUpdateManager
 import com.pisophone.kiosk.util.AppLauncher
 
 @Composable
@@ -39,8 +38,6 @@ fun EmergencyRecoveryDialog(
     var isDeviceOwner by remember { mutableStateOf(KioskPolicyManager.isDeviceOwner(context)) }
     var isAdbEnabled by remember { mutableStateOf(KioskSecurity.isUsbDebuggingEnabled(context)) }
     var showConfirmDeprovision by remember { mutableStateOf(false) }
-
-    val betaState by KioskUpdateManager.updateState.collectAsState()
 
     val refreshStatus = {
         isDeviceOwner = KioskPolicyManager.isDeviceOwner(context)
@@ -299,33 +296,6 @@ fun EmergencyRecoveryDialog(
                             AppLauncher.launchDeveloperSettings(context)
                         }
                     )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Temporary: install the beta branch build (new features and fixes under test).
-                    RecoveryActionButton(
-                        icon = Icons.Filled.SystemUpdateAlt,
-                        iconTint = Color(0xFFA78BFA),
-                        title = "Install Beta",
-                        subtitle = "Downloads the beta branch build from its /update folder",
-                        containerColor = Color(0xFF1E293B),
-                        contentColor = Color(0xFFE2E8F0),
-                        borderColor = Color(0xFFA78BFA),
-                        onClick = {
-                            KioskUpdateManager.startBetaInstall(context)
-                            Toast.makeText(context, "Checking beta build...", Toast.LENGTH_SHORT).show()
-                        }
-                    )
-                    val betaStatus = when (val st = betaState) {
-                        is KioskUpdateManager.UpdateState.Downloading -> "Downloading ${(st.progress * 100).toInt()}%"
-                        is KioskUpdateManager.UpdateState.Installing -> "Installing..."
-                        is KioskUpdateManager.UpdateState.UpToDate -> st.message
-                        is KioskUpdateManager.UpdateState.Error -> "Failed: ${st.message}"
-                        else -> null
-                    }
-                    if (betaStatus != null) {
-                        Text(betaStatus, color = Color(0xFFA78BFA), fontSize = 10.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(top = 4.dp))
-                    }
 
                     Spacer(modifier = Modifier.height(14.dp))
 

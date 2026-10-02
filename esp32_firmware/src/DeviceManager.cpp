@@ -1,3 +1,4 @@
+#include "InputSafety.h"
 #include "DeviceManager.h"
 #include "CoinSlotManager.h"
 #include "HardwareManager.h"
@@ -41,16 +42,16 @@ bool pairDeviceToSlot(int slotNum, String devId, String ip, String name) {
 
     licenseSlots[targetIdx].deviceId = devId;
     if (ip.length() > 0) licenseSlots[targetIdx].ip = ip;
-    String cleanName = "PisoPhone " + String(slotNum);
-    licenseSlots[targetIdx].name = cleanName;
+    String slotName = "PisoPhone " + String(slotNum);
+    licenseSlots[targetIdx].name = slotName;
     licenseSlots[targetIdx].active = true;
 
     saveSlotLicenses();
-    Serial.printf("[+] Paired device %s (%s) to Slot #%d -> '%s'\n", devId.c_str(), ip.c_str(), slotNum, cleanName.c_str());
+    Serial.printf("[+] Paired device %s (%s) to Slot #%d -> '%s'\n", devId.c_str(), ip.c_str(), slotNum, slotName.c_str());
 
     // Actively push config to device on pairing
     if (ip.length() > 0 && ip != "127.0.0.1") {
-        String pushParams = "device_name=" + urlEncode(cleanName) + 
+        String pushParams = "device_name=" + urlEncode(slotName) + 
                             "&slot=" + String(slotNum) + 
                             "&slot_num=" + String(slotNum) +
                             "&admin_pin=" + webPassword;
@@ -249,6 +250,7 @@ void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int st
         updateDynamicDeviceList(deviceId, ip);
     }
 
+    name = cleanName(name);
     int validBattery = (battery >= 0 && battery <= 100) ? battery : -1;
     DeviceTelemetry* dev = findTrackedDevice(ip, deviceId);
 

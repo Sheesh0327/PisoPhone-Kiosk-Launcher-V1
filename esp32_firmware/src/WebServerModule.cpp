@@ -2,6 +2,7 @@
 #include "CoinSlotManager.h"
 #include "PaymentQueueManager.h"
 #include "Diagnostics.h"
+#include "WebServerAuth.h"
 #include "Config.h"
 #include "Security.h"
 #include "HardwareManager.h"
@@ -200,6 +201,9 @@ void setupWebServer() {
             Serial.println("[OTA] Upload aborted by client.");
         }
     });
+    // Needed so the login throttle can tell a wrong password from the browser's first probe.
+    static const char* kCollectedHeaders[] = {"Authorization"};
+    webServer.collectHeaders(kCollectedHeaders, 1);
     webServer.begin();
 
     // Port 81: Real-time WebSocket Server

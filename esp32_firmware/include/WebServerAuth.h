@@ -6,6 +6,7 @@
 void authWorkerTask(void *pvParameters);
 bool checkAuth();
 bool checkAdminAuth();
+bool defaultCredentialsActive();
 void redirectHome();
 void handleLogout();
 

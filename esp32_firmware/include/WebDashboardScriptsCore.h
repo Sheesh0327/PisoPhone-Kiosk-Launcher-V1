@@ -4,6 +4,10 @@
 #include <Arduino.h>
 
 const char PORTAL_JS_CORE[] PROGMEM = R"JS(
+function escHtml(v) {
+    return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 // Apply saved theme immediately to prevent flashing
 (function() {
     const savedTheme = localStorage.getItem('kiosk_theme') || 'light';
@@ -163,6 +167,19 @@ window.fetchDeviceStatus = function() {
                 if (ipDisp && wifi.ip) ipDisp.textContent = wifi.ip;
             }
 
+            let credBanner = document.getElementById('default_cred_banner');
+            if (data.default_credentials) {
+                if (!credBanner) {
+                    credBanner = document.createElement('div');
+                    credBanner.id = 'default_cred_banner';
+                    credBanner.style.cssText = 'background:#991b1b;color:#fff;padding:10px 14px;font-size:13px;font-weight:700;text-align:center;';
+                    credBanner.textContent = 'Warning: a default admin password is still active. Change it in Settings before going live.';
+                    document.body.insertBefore(credBanner, document.body.firstChild);
+                }
+            } else if (credBanner) {
+                credBanner.remove();
+            }
+
             const container = document.getElementById('live_devices_container');
             if (!container) return;
             
@@ -223,7 +240,7 @@ window.fetchDeviceStatus = function() {
                         '</div>';
 
                 unassigned.forEach((uDev) => {
-                    const uName = uDev.name || 'PisoPhone Terminal';
+                    const uName = escHtml(uDev.name || 'PisoPhone Terminal');
                     const uBat = (typeof uDev.battery === 'number' && uDev.battery >= 0) ? uDev.battery : 100;
                     const uChg = !!uDev.charging;
                     const uBatText = (uChg ? '⚡ ' : '🔋 ') + uBat + '%';
@@ -250,7 +267,7 @@ window.fetchDeviceStatus = function() {
                 });
             }
             devices.forEach((dev) => {
-                const name = (dev.name && dev.name !== dev.id && !dev.name.startsWith('Terminal') && (!dev.id || !dev.name.includes(dev.id))) ? dev.name : ('PisoPhone ' + dev.slotNum);
+                const name = escHtml((dev.name && dev.name !== dev.id && !dev.name.startsWith('Terminal') && (!dev.id || !dev.name.includes(dev.id))) ? dev.name : ('PisoPhone ' + dev.slotNum));
                 const hasBat = (typeof dev.battery === 'number' && dev.battery >= 0);
                 const battery = hasBat ? dev.battery : -1;
                 const isCharging = !!dev.charging;

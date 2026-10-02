@@ -15,6 +15,7 @@
 #include "PaymentQueueManager.h"
 #include "FirmwareVersion.h"
 #include "Diagnostics.h"
+#include "WebServerAuth.h"
 
 #define WDT_TIMEOUT_SECONDS 15
 #define DAILY_MAINTENANCE_INTERVAL_MS 86400000UL // 24 Hours
@@ -119,6 +120,9 @@ void setup() {
 
     // Load NVS Configuration & Lifetime Vault Revenue safely
     loadAllConfig();
+    if (defaultCredentialsActive()) {
+        diagLog("[AUTH] WARNING: default admin credentials are still active; change them in Settings.\n");
+    }
     lastWifiCheckTime = millis();
 
     // Initialize Dynamic Hardware Pins & Hardware Reset Pin (GPIO 2)

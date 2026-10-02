@@ -135,7 +135,7 @@ window.occupySlot = function(slot) {
                    '</div>';
 
         unassigned.forEach(uDev => {
-            const uName = uDev.name || 'PisoPhone Terminal';
+            const uName = escHtml(uDev.name || 'PisoPhone Terminal');
             html += '<div style="background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">' +
                     '<div>' +
                         '<div style="font-size: 13px; font-weight: 700; color: var(--text-main);">' + uName + '</div>' +
@@ -292,7 +292,7 @@ window.openSlotActivationModal = function(sNum, name, ip, devId, expInfo, expSta
         if (!isBound && window.unassignedDevices && window.unassignedDevices.length > 0) {
             let phtml = '<div style="font-size: 11px; font-weight: 700; color: #f59e0b; margin-bottom: 6px; text-transform: uppercase;">🟡 Connecting Terminal(s) Ready to Pair:</div>';
             window.unassignedDevices.forEach(uDev => {
-                const uName = uDev.name || 'PisoPhone Terminal';
+                const uName = escHtml(uDev.name || 'PisoPhone Terminal');
                 phtml += '<button type="button" onclick="closeSlotActivationModal(); confirmConnection(\'' + uDev.id + '\', \'' + uDev.ip + '\', ' + sNum + ', \'' + uName.replace(/'/g, "\\'") + '\')" style="width: 100%; margin-bottom: 6px; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #ffffff; border: none; border-radius: 10px; padding: 10px 14px; font-weight: 700; font-size: 12px; cursor: pointer; text-align: left; display: flex; justify-content: space-between; align-items: center;">' +
                          '<div><div>⚡ Pair ' + uName + '</div><div style="font-size: 10px; opacity: 0.9; font-weight: 400;">IP: ' + uDev.ip + ' • HW: ' + uDev.id + '</div></div>' +
                          '<span style="background: rgba(255,255,255,0.25); padding: 2px 8px; border-radius: 6px; font-size: 11px;">Select</span>' +
