@@ -189,6 +189,27 @@ window.fetchDeviceStatus = function() {
                 keyBanner.remove();
             }
 
+            // First-run checklist: shown until the box is safe and in use, then it disappears by itself.
+            const steps = [
+                { done: !data.default_credentials, text: 'Choose your own admin password (Settings).' },
+                { done: !!(data.wifi && data.wifi.connected), text: 'Connect the box to your Wi-Fi (Settings).' },
+                { done: !data.legacy_key, text: "Switch the box to its own key (button above)." },
+                { done: devices.some(function (d) { return d.isBound; }), text: 'Pair at least one rental phone (Install & Provision).' }
+            ];
+            let setupCard = document.getElementById('setup_checklist');
+            if (steps.every(function (st) { return st.done; })) {
+                if (setupCard) setupCard.remove();
+            } else {
+                if (!setupCard) {
+                    setupCard = document.createElement('div');
+                    setupCard.id = 'setup_checklist';
+                    setupCard.style.cssText = 'background:#1e293b;color:#e2e8f0;padding:12px 16px;font-size:13px;line-height:1.7;border-bottom:2px solid #38bdf8;';
+                    document.body.insertBefore(setupCard, document.body.firstChild);
+                }
+                setupCard.innerHTML = '<strong>Getting started</strong> (' + devices.length + ' licensed slot' + (devices.length === 1 ? '' : 's') + ')<br>' +
+                    steps.map(function (st) { return (st.done ? '\u2705 ' : '\u2B1C ') + st.text; }).join('<br>');
+            }
+
             const container = document.getElementById('live_devices_container');
             if (!container) return;
             

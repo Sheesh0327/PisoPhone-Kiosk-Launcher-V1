@@ -15,6 +15,7 @@ on:
       - 'esp32_firmware/**'
       - 'scripts/**'
       - 'opennds/**'
+      - 'website/js/**'
       - '.editorconfig'
       - '.github/workflows/quality.yml'
   pull_request:
@@ -30,6 +31,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check repository security rules
         run: sh scripts/check_security_rules.sh
+      - name: Check vendored files match their record
+        run: python3 scripts/check_vendored.py
 
   kotlin-style:
     name: ktlint
@@ -82,3 +85,14 @@ jobs:
         run: python3 opennds/tests/test_flow.py
       - name: Check the Layout B router configuration
         run: python3 opennds/tests/test_layout_b.py
+      - name: Check UCI settings and migration
+        run: python3 opennds/tests/test_uci_config.py
+      - name: Build and check the router package
+        run: |
+          python3 opennds/tests/test_ipk.py
+          python3 opennds/package/build_ipk.py --version 1.0.0-r${{ github.run_number }} --out dist
+      - name: Keep the router package from this run
+        uses: actions/upload-artifact@v4
+        with:
+          name: opennds-coinslot-ipk
+          path: dist/*.ipk

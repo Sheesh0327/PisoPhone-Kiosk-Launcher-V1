@@ -8,7 +8,26 @@ Steps 2 onwards run on the router over SSH (`ssh root@<router-ip>`).
   reservation so it never changes) and its admin password.
 - The router has internet access (for `opkg`).
 
-## 1. Copy the files to the router
+## Quick install with the package (recommended)
+Build or download `opennds-coinslot_<version>_all.ipk` (`python3 opennds/package/build_ipk.py --version 1.0.0`, or the
+file attached to the CI run), then on the PC and the router:
+```
+scp dist/opennds-coinslot_1.0.0_all.ipk root@<router-ip>:/tmp/
+ssh root@<router-ip>
+opkg update && opkg install /tmp/opennds-coinslot_1.0.0_all.ipk     # also installs opennds, socat, openssl-util, curl
+```
+It copies the files, fixes line endings and permissions, enables the service and moves an old
+`/etc/coinslot.conf` into UCI. Then do step 4 (make the key), and store the settings in UCI instead of step 6:
+```
+uci set coinslot.main.gw_box='<box-ip>'
+uci set coinslot.main.gw_key="$KEY"
+uci commit coinslot
+```
+Continue with step 7 (openNDS theme) and step 8 (start). Every setting is a lower-case UCI option
+(`uci set coinslot.main.hyper_tiers='5:30 10:60 20:120'`, `gw_box_mac`, `discover_iface`, ...); the manual steps 1, 2, 3 and 5 below
+are only needed without the package. `coinslot-listener.sh migrate` moves an old settings file into UCI by hand.
+
+## 1. Copy the files to the router (manual install, without the package)
 From the PC that has this folder (Windows PowerShell, macOS or Linux terminal), replace `<router-ip>`:
 
 ```
@@ -57,7 +76,7 @@ chmod +x /usr/bin/coinslot-listener.sh
 chmod +x /etc/init.d/coinslot
 ```
 
-## 6. Write the settings file (holds the key, so owner-only)
+## 6. Write the settings file (holds the key, so owner-only; the package uses UCI instead, see above)
 Run this in the same session as step 4 so `$KEY` is filled in. Paste the whole block at once:
 
 ```

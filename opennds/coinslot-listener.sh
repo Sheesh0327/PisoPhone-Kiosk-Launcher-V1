@@ -32,7 +32,22 @@
 #   /me?mac                           account status for the status page
 #   /pause?mac                        pause a connected Endurance session once (needs PAUSE_MIN_PESOS paid)
 CONF="${COINSLOT_CONF:-/etc/coinslot.conf}"
+UCI="${UCI:-uci}"
+# Settings come from UCI (/etc/config/coinslot, section "main", lower-case option names: gw_box, gw_key, ...), which
+# LuCI and `uci` tooling understand. The old /etc/coinslot.conf is still read first, so an unmigrated box keeps
+# working; any option set in UCI wins. `coinslot-listener.sh migrate` copies the old file into UCI.
+SETTINGS="GW_BOX GW_KEY GW_DISCOVER GW_BOX_MAC DISCOVER_PORT DISCOVER_IFACE DISCOVER_COOLDOWN LISTEN_PORT STATE_DIR DATA_DIR
+  COIN_FIRST_WAIT_SECONDS COIN_IDLE_WAIT_SECONDS COIN_MAX_SECONDS HYPER_TIERS HYPER_PRORATA_MIN ENDURANCE_TIERS
+  ENDURANCE_DOWN_KBPS ENDURANCE_UP_KBPS PAUSE_MIN_PESOS PAUSE_MAX_HOURS FAIR_USE_GB FAIR_THROTTLE_DOWN_KBPS
+  FAIR_THROTTLE_UP_KBPS FAIR_THROTTLE_MINUTES FAIR_FULL_MINUTES"
 [ -r "$CONF" ] && . "$CONF"
+if command -v "$UCI" >/dev/null 2>&1; then
+  for _name in $SETTINGS; do
+    _opt=$(printf '%s' "$_name" | tr 'A-Z' 'a-z')
+    _val=$("$UCI" -q get "coinslot.main.$_opt" 2>/dev/null) || continue
+    [ -n "$_val" ] && export "$_name=$_val"        # only the known names above are ever read, never arbitrary ones
+  done
+fi
 
 GW_BOX="${GW_BOX:-192.168.1.10}"
 LISTEN_PORT="${LISTEN_PORT:-8099}"
@@ -172,6 +187,19 @@ do_box() {
   else
     echo "box $(box_addr) does not answer"; return 1
   fi
+}
+
+# do_migrate: copy every setting of the old /etc/coinslot.conf into UCI, then keep the old file as .migrated.
+do_migrate() {
+  [ -r "$CONF" ] || { echo "no $CONF: nothing to migrate"; return 0; }
+  command -v "$UCI" >/dev/null 2>&1 || { echo "uci not found" >&2; return 1; }
+  [ -e /etc/config/coinslot ] || [ -n "$COINSLOT_UCI_TEST" ] || : > /etc/config/coinslot
+  "$UCI" -q get coinslot.main >/dev/null 2>&1 || "$UCI" set coinslot.main=coinslot
+  for _name in $SETTINGS; do
+    _v=$( ( . "$CONF"; eval "printf '%s' \"\${$_name}\"" ) )
+    [ -n "$_v" ] && "$UCI" set "coinslot.main.$(printf '%s' "$_name" | tr 'A-Z' 'a-z')=$_v"
+  done
+  "$UCI" commit coinslot && mv "$CONF" "$CONF.migrated" && echo "settings moved to UCI; old file kept as $CONF.migrated"
 }
 
 # ---------------------------------------------------------------------------
@@ -667,6 +695,7 @@ case "$1" in
   worker) valid_sid "$2" && do_worker "$2" ;;
   fairuse) do_fairuse ;;
   box) do_box ;;
+  migrate) do_migrate ;;
   fairuse-once) fair_tick ;;
   purge) purge_vouchers ;;
   minutes) minutes_for "$2" "$3" ;;

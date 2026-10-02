@@ -360,6 +360,18 @@ try:
     rc, out = box_cmd(f"DISCOVER_CMD='cat {tmp}/fakereply'\nGW_BOX_MAC=aa:bb:cc:dd:ee:01\n", f"{tmp}/s4")
     check(rc == 0 and f"127.0.0.1:{BOX_PORT}" in out, "a moved box with the right MAC is found and used: " + out)
 
+    # ---- router flash wear: DATA_DIR (flash on a router) is written only when money or a voucher changes -------------
+    def snapshot():
+        return {os.path.join(r, f): os.stat(os.path.join(r, f)).st_mtime_ns for r, _, fs in os.walk(DATA) for f in fs}
+    before = snapshot()
+    for _ in range(5):
+        get(f"/status?sid={'c' * 32}")
+        get("/info")
+        get("/tiers?plan=hyper")
+        get(f"/me?mac={MAC_A}")
+        get(f"/claim?sid={'c' * 32}&mac={MAC_A}")
+    check(snapshot() == before, "polling and status pages never write to the flash-backed data directory")
+
     # ---- reports and hardening ---------------------------------------------------------------------------------------
     rep = listener("report", "7")
     check("endurance" in rep and "hyper" in rep and "Total last 7 day(s): PHP" in rep, "revenue report: " + rep.replace("\n", " | "))

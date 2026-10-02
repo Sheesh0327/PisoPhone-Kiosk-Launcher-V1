@@ -23,6 +23,7 @@ void loadSuperAdminConfig();
 void processSuperAdminLoop();
 bool authenticateSuperAdmin();
 void handleSuperAdminAuth();
+void handleSuperAdminFactoryReset();
 void handleSuperAdminUnmask();
 void handleSuperAdminResetVault();
 void handleSuperAdminSaveSplit();

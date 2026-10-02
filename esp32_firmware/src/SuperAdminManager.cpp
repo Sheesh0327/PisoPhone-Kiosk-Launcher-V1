@@ -7,6 +7,8 @@
 #include "WebServerAuth.h"
 #include "SuperAdminCreds.h"
 #include "Money.h"
+#include "PaymentQueueManager.h"
+#include "Diagnostics.h"
 #include <WebServer.h>
 #include <Preferences.h>
 
@@ -174,4 +176,24 @@ void handleSuperAdminSaveSplit() {
         }
     }
     webServer.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Invalid split percentage (0-100).\"}");
+}
+
+// Owner-only full wipe, including the license, lifetime revenue and vendor split. The dashboard's operator
+// factory reset keeps those (OwnerData.h).
+void handleSuperAdminFactoryReset() {
+    if (!authenticateSuperAdmin()) {
+        webServer.send(401, "application/json",
+                       "{\"status\":\"error\",\"message\":\"Unauthorized: Super Admin access required.\"}");
+        return;
+    }
+    if (!canPerformRebootOrOta()) {
+        webServer.send(409, "application/json",
+                       "{\"status\":\"error\",\"message\":\"BUSY: Unpersisted transactions in RAM\"}");
+        return;
+    }
+    webServer.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Full wipe, rebooting\"}");
+    delay(500);
+    factoryResetDefaults(true);
+    diagNoteRestartReason("superadmin-factory-reset");
+    ESP.restart();
 }

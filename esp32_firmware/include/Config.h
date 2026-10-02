@@ -163,7 +163,9 @@ void syncAndroidIpsFromSlots();
 void processRevenuePersistence();
 void flushRevenueNow();
 
-void factoryResetDefaults();
+// Operator reset (default): keeps the license, lifetime revenue, vendor split and super-admin credentials (OwnerData.h).
+// ownerWipe = true (super-admin request only) erases those as well.
+void factoryResetDefaults(bool ownerWipe = false);
 void updateMasterTime(uint64_t ts, const String& sourceId = "");
 uint64_t getCurrentMasterTimeMs();
 String generateTxId(const char* prefix = "tx-");

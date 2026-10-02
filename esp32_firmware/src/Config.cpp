@@ -2,6 +2,7 @@
 // slots and revenue counters, plus the locked accessor for the shared secret.
 
 #include "Config.h"
+#include "OwnerData.h"
 #include "DeviceManager.h"
 #include "HardwareManager.h"
 #include "SuperAdminManager.h"
@@ -405,6 +406,8 @@ struct PrefsStore {
     void putBool(const char* k, bool v) { prefs.putBool(k, v); }
     uint32_t getUInt(const char* k, uint32_t d) { return prefs.getULong(k, d); }
     void putUInt(const char* k, uint32_t v) { prefs.putULong(k, v); }
+    int32_t getInt(const char* k, int32_t d) { return prefs.getInt(k, d); }
+    void putInt(const char* k, int32_t v) { prefs.putInt(k, v); }
     float getFloat(const char* k, float d) { return prefs.getFloat(k, d); }
     void remove(const char* k) { prefs.remove(k); }
 };
@@ -549,13 +552,17 @@ void processRevenuePersistence() {
     }
 }
 
-void factoryResetDefaults() {
+void factoryResetDefaults(bool ownerWipe) {
     Serial.println("\n=======================================================");
-    diagLog("[⚠️ FACTORY RESET] Restoring all settings to defaults...");
+    diagLog(ownerWipe ? "[⚠️ FACTORY RESET] Owner wipe: erasing everything including the license and revenue..."
+                      : "[⚠️ FACTORY RESET] Restoring operator settings to defaults (license and revenue are kept)...");
     Serial.println("=======================================================");
 
     prefs.begin(NVS_NAMESPACE, false);
+    PrefsStore keepStore;
+    ownerdata::Snapshot owner = ownerdata::capture(keepStore);
     prefs.clear();
+    if (!ownerWipe) ownerdata::restore(keepStore, owner); // an operator can never reset the license or the revenue
     prefs.end();
     clearPaymentQueue();
     runConfigMigrations(); // a cleared box gets a fresh secret and new passwords (printed on the serial console)
@@ -574,22 +581,24 @@ void factoryResetDefaults() {
     p1Ip = "";
     p2Ip = "";
     matchMinutes = 15;
-    maxLicensedSlots = DEFAULT_MAX_SLOTS;
+    const bool keepOwner = !ownerWipe;
+    maxLicensedSlots = (keepOwner && owner.hasMaxSlots) ? (int)owner.maxSlots : DEFAULT_MAX_SLOTS;
     for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
         licenseSlots[i].slotNum = i + 1;
         licenseSlots[i].deviceId = "";
         licenseSlots[i].ip = "";
         licenseSlots[i].name = "PisoPhone " + String(i + 1);
-        licenseSlots[i].active = (i < DEFAULT_MAX_SLOTS);
+        licenseSlots[i].active = (i < maxLicensedSlots);
     }
     saveSlotLicenses();
 
-    totalCoinsLifetime = 0;
+    totalCoinsLifetime = (keepOwner && owner.hasCoins) ? owner.coins : 0;
     totalCoinsSession = 0;
-    totalCentavosLifetime = 0;
+    totalCentavosLifetime = (keepOwner && owner.hasCentavos) ? owner.centavos : 0;
     totalCentavosSession = 0;
-    lastSavedTotalCoins = 0;
-    lastSavedTotalCentavos = 0;
+    lastSavedTotalCoins = totalCoinsLifetime;
+    lastSavedTotalCentavos = totalCentavosLifetime;
+    if (ownerWipe) vendorRevenueSplitPercent = DEFAULT_VENDOR_SPLIT_PERCENT;
 
     for (int i = 0; i < 10; i++) {
         setLedHardware(true);
