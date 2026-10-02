@@ -431,7 +431,7 @@ const char SUPER_ADMIN_JS[] PROGMEM = R"JS(
 
         function changeSuperAdminPassword() {
             const cur = document.getElementById('sa_current_pw').value;
-            const nw = document.getElementById('sa_new_pw').value;
+            const nw = document.getElementById('sa_new_pw').value.trim();
             if (!cur || !nw) { alert('Please fill in both password fields.'); return; }
             
             fetch('/api/superadmin/change_pw', {

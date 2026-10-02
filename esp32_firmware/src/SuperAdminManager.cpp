@@ -168,7 +168,14 @@ void handleSuperAdminSaveSplit() {
 }
 
 void handleSuperAdminChangePassword() {
-    if (!authenticateSuperAdmin()) {
+    // The dashboard sends the current password as "current_pw"; other
+    // super-admin calls use "super_admin_pw" or HTTP Basic auth.
+    bool authorized = authenticateSuperAdmin();
+    if (!authorized && webServer.hasArg("current_pw")) {
+        String cur = webServer.arg("current_pw");
+        authorized = (cur == superAdminPassword);
+    }
+    if (!authorized) {
         webServer.send(401, "application/json", "{\"status\":\"error\",\"message\":\"Unauthorized: Current password invalid.\"}");
         return;
     }
