@@ -2,7 +2,6 @@
 // The password itself is managed remotely (SuperAdminCreds.cpp); there is no local change option.
 
 #include "SuperAdminManager.h"
-#include "SuperAdminTemplate.h"
 #include "Config.h"
 #include "WebServerModule.h"
 #include "WebServerAuth.h"
@@ -175,12 +174,4 @@ void handleSuperAdminSaveSplit() {
         }
     }
     webServer.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Invalid split percentage (0-100).\"}");
-}
-
-String renderSuperAdminTabHtml() {
-    return String(FPSTR(SUPER_ADMIN_HTML));
-}
-
-String renderSuperAdminScripts() {
-    return String(FPSTR(SUPER_ADMIN_JS));
 }

@@ -30,7 +30,5 @@ void handleSuperAdminSaveSplit();
 // ============================================================================
 // UI RENDERING HELPERS
 // ============================================================================
-String renderSuperAdminTabHtml();
-String renderSuperAdminScripts();
 
 #endif // SUPER_ADMIN_MANAGER_H

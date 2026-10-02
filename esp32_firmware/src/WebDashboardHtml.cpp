@@ -1,6 +1,6 @@
 #include "WebDashboardHtml.h"
-#include "WebDashboardStyles.h"
-#include "WebDashboardScripts.h"
+#include "WebAssetServer.h"
+#include "SuperAdminTemplate.h"
 #include "WebDashboardModals.h"
 #include "WebDashboardTemplate.h"
 #include "SuperAdminManager.h"
@@ -53,8 +53,10 @@ static String getPlaceholderValue(const String& tag) {
     if (tag == "MAX_SLOTS") return String(maxLicensedSlots);
     if (tag == "MAX_SUPPORTED_SLOTS") return String(MAX_SUPPORTED_SLOTS);
     if (tag == "SLOT_OPTIONS") return renderSlotOptions();
-    if (tag == "SUPER_ADMIN_TAB") return renderSuperAdminTabHtml();
-    if (tag == "SUPER_ADMIN_SCRIPTS") return renderSuperAdminScripts();
+    if (tag == "ASSET_V_PORTAL_CSS") return webAssetVersion("portal.css");
+    if (tag == "ASSET_V_PORTAL_CORE") return webAssetVersion("portal-core.js");
+    if (tag == "ASSET_V_PORTAL_MODALS") return webAssetVersion("portal-modals.js");
+    if (tag == "ASSET_V_SUPERADMIN") return webAssetVersion("superadmin.js");
 
     if (tag == "WIFI_RSSI") {
         if (WiFi.status() == WL_CONNECTED) {
@@ -194,12 +196,9 @@ static void streamProgmemContent(const char* p) {
                     chunkLen = 0;
                 }
 
-                if (isTagMatch(tagStart, "PORTAL_STYLES")) {
-                    webServer.sendContent_P(PORTAL_CSS);
-                } else if (isTagMatch(tagStart, "PORTAL_SCRIPTS_CORE")) {
-                    streamProgmemContent(PORTAL_JS_CORE);
-                } else if (isTagMatch(tagStart, "PORTAL_SCRIPTS_MODALS")) {
-                    streamProgmemContent(PORTAL_JS_MODALS);
+                if (isTagMatch(tagStart, "SUPER_ADMIN_TAB")) {
+                    // Straight from flash: no 25 KB String copy on the heap.
+                    webServer.sendContent_P(SUPER_ADMIN_HTML);
                 } else if (isTagMatch(tagStart, "PORTAL_MODALS")) {
                     streamProgmemContent(PORTAL_MODALS_HTML);
                 } else {

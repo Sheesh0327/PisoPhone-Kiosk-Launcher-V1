@@ -1,9 +1,3 @@
-#ifndef WEB_DASHBOARD_SCRIPTS_CORE_H
-#define WEB_DASHBOARD_SCRIPTS_CORE_H
-
-#include <Arduino.h>
-
-const char PORTAL_JS_CORE[] PROGMEM = R"JS(
 function escHtml(v) {
     return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
@@ -482,6 +476,3 @@ window.toggle1v1MatchBox = function() {
         }
     }
 };
-)JS";
-
-#endif // WEB_DASHBOARD_SCRIPTS_CORE_H

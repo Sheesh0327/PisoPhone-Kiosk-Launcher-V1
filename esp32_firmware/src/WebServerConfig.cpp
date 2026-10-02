@@ -4,6 +4,7 @@
 #include "InputSafety.h"
 #include "WebServerConfig.h"
 #include "SecretMode.h"
+#include "WebAssetServer.h"
 #include "WebServerModule.h"
 #include "FirmwareVersion.h"
 #include "WebServerAuth.h"
@@ -290,6 +291,7 @@ void handleOtaForm() {
     }
     html.replace("{MAC_ADDRESS}", macAddressStr);
     html.replace("{FW_VERSION}", PISO_FW_VERSION);
+    html.replace("{ASSET_V_OTA}", webAssetVersion("ota.js"));
 #if CONFIG_IDF_TARGET_ESP32C3
     html.replace("{CHIP_ID}", "esp32c3");
 #else

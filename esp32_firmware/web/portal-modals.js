@@ -1,11 +1,6 @@
-#ifndef WEB_DASHBOARD_SCRIPTS_MODALS_H
-#define WEB_DASHBOARD_SCRIPTS_MODALS_H
-
-#include <Arduino.h>
-
-const char PORTAL_JS_MODALS[] PROGMEM = R"JS(
-const ESP32_MAC = "{MAC_ADDRESS}";
-const ESP32_SECRET = "{SHARED_SECRET}";
+// Per-box values come from the page itself (window.PISO_CFG), so this file is the same for every box and can be cached.
+const ESP32_MAC = (window.PISO_CFG && window.PISO_CFG.mac) || "";
+const ESP32_SECRET = (window.PISO_CFG && window.PISO_CFG.secret) || "";
 const ESP32_HOST = window.location.hostname;
 let activeSlotNum = 1;
 let localApkBytes = null;
@@ -91,7 +86,7 @@ window.showSelectSlotModalForDevice = function(devId, devIp, devName) {
 };
 
 window.copyMacToClipboard = function(mac) {
-    const val = (mac && mac !== '{MAC_ADDRESS}') ? mac : ESP32_MAC;
+    const val = mac ? mac : ESP32_MAC;
     if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(val).then(() => {
             alert('Copied MAC Address: ' + val);
@@ -461,6 +456,3 @@ document.addEventListener('DOMContentLoaded', function() {
             .catch(err => alert('Unpair auto-action network error: ' + err.message));
     }
 });
-)JS";
-
-#endif // WEB_DASHBOARD_SCRIPTS_MODALS_H

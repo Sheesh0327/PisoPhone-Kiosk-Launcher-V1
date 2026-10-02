@@ -14,6 +14,8 @@
 #include "WebServerGateway.h"
 #include "WebServerTelemetry.h"
 #include "WebSocketsUdp.h"
+#include "Discovery.h"
+#include "SerialCli.h"
 
 extern WebServer webServer;
 extern WiFiServer wsServer;

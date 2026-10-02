@@ -59,8 +59,10 @@ jobs:
       - name: Check C++ formatting
         working-directory: esp32_firmware
         run: |
-          FILES=$(ls src/*.cpp include/*.h host_tests/*.cpp | grep -vE "include/(WebDashboard|SuperAdminTemplate)")
+          FILES=$(ls src/*.cpp include/*.h host_tests/*.cpp | grep -vE "include/(WebDashboard|SuperAdminTemplate|WebAssets)")
           clang-format --dry-run --Werror $FILES
+      - name: Check generated web assets are up to date
+        run: python3 scripts/embed_web.py --check
       - name: Run host tests
         run: sh esp32_firmware/host_tests/run.sh
 

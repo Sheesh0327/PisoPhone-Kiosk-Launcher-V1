@@ -7,6 +7,7 @@
 #include "Diagnostics.h"
 #include "OtaCheck.h"
 #include "OtaSecurity.h"
+#include "WebAssetServer.h"
 #include "WebServerAuth.h"
 #include "Config.h"
 #include "Security.h"
@@ -132,6 +133,7 @@ void setupWebServer() {
     });
 
     // Port 80: Web OTA Firmware Update Endpoints
+    registerWebAssetRoutes();
     webServer.on("/update", HTTP_GET, handleOtaForm);
     webServer.on("/api/ota/manifest", HTTP_POST, handleApiOtaManifest);
     webServer.on(
