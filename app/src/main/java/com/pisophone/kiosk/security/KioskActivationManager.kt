@@ -185,14 +185,4 @@ object KioskActivationManager {
         }
         return bound
     }
-
-    fun getBoundDeviceName(context: Context): String {
-        val prefs = getPrefs(context)
-        var name = prefs.getString(KEY_BOUND_DEVICE_NAME, null)
-        if (name.isNullOrBlank()) {
-            name = getHardwareDescription()
-            recordDeviceIdentity(context)
-        }
-        return name
-    }
 }

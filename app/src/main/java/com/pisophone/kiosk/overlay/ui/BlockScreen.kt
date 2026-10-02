@@ -1,13 +1,11 @@
 
 
 package com.pisophone.kiosk.overlay.ui
-import kotlinx.coroutines.isActive
 import com.pisophone.kiosk.overlay.ui.AdminAuthenticationDialog
 import com.pisophone.kiosk.overlay.ui.SecurityVaultView
 import com.pisophone.kiosk.overlay.ui.EmergencyRecoveryDialog
 import com.pisophone.kiosk.overlay.ui.BatteryAlertBanner
 
-import android.content.Context
 import android.content.res.Configuration
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -34,9 +32,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pisophone.kiosk.model.BatteryAlertState
 import com.pisophone.kiosk.model.BatteryStatus
-import com.pisophone.kiosk.security.KioskActivationManager
-import com.pisophone.kiosk.security.KioskSecurity
-import kotlinx.coroutines.delay
 
 @Composable
 fun BlockScreen(

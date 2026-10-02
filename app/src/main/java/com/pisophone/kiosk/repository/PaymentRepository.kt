@@ -8,7 +8,6 @@ import com.pisophone.kiosk.db.AppDatabase
 import com.pisophone.kiosk.db.AppMetadata
 import com.pisophone.kiosk.db.PaidSessionState
 import com.pisophone.kiosk.db.PaymentReceipt
-import com.pisophone.kiosk.security.KioskActivationManager
 import com.pisophone.kiosk.security.KioskSecurity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -369,16 +368,6 @@ class PaymentRepository(
         checkpointSession(snapshotRevision)
     }
 
-    // Overload for backward compatibility
-    suspend fun checkpointSession(remainingSec: Int, deadlineMs: Long, snapshotRevision: Long = 0L) {
-        checkpointSession(snapshotRevision)
-    }
-
-    fun checkpointSessionBlocking(remainingSec: Int, deadlineMs: Long, snapshotRevision: Long = 0L) =
-        runBlocking(Dispatchers.IO) {
-            checkpointSession(snapshotRevision)
-        }
-
     suspend fun recoverUncommittedTransactions(nowMonotonic: Long = SystemClock.elapsedRealtime()) {
         // 1. Recover / clear incomplete pending transaction marker
         val pendingTx = paymentDao.getMetadata(KEY_PENDING_TX)
@@ -445,11 +434,6 @@ class PaymentRepository(
             }
         }
     }
-
-    fun recoverUncommittedTransactionsBlocking(nowMonotonic: Long = SystemClock.elapsedRealtime()) =
-        runBlocking(Dispatchers.IO) {
-            recoverUncommittedTransactions(nowMonotonic)
-        }
 
     fun restoreSessionState(ctx: Context? = context): RestoredSessionState = runBlocking(Dispatchers.IO) {
         val effectiveCtx = ctx ?: context

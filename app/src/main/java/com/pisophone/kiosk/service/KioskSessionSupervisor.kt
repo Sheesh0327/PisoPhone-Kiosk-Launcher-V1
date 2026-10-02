@@ -3,7 +3,6 @@ package com.pisophone.kiosk.service
 import android.content.Context
 import android.util.Log
 import com.pisophone.kiosk.repository.PaymentRepository
-import com.pisophone.kiosk.system.KioskSystemMonitor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay

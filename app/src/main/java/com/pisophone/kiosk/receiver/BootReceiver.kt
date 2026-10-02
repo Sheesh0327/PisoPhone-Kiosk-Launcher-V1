@@ -3,7 +3,6 @@ package com.pisophone.kiosk.receiver
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.os.UserManager
 import android.util.Log
 import com.pisophone.kiosk.KioskService

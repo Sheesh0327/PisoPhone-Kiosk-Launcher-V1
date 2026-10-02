@@ -77,13 +77,9 @@
             <intent-filter>
                 <action android:name="com.pisophone.kiosk.DEPROVISION" />
                 <action android:name="com.pisophone.kiosk.ENABLE_ADB" />
-                <action android:name="com.pisophone.kiosk.ACTION_ENABLE_ADB" />
                 <action android:name="com.pisophone.kiosk.EMERGENCY_RECOVERY" />
-                <action android:name="com.pisophone.kiosk.ACTION_EMERGENCY_RECOVERY" />
                 <action android:name="com.pisophone.kiosk.EXIT_KIOSK" />
-                <action android:name="com.pisophone.kiosk.ACTION_EXIT_KIOSK" />
                 <action android:name="com.pisophone.kiosk.OPEN_SETTINGS" />
-                <action android:name="com.pisophone.kiosk.ACTION_OPEN_SETTINGS" />
                 <action android:name="com.pisophone.kiosk.RESTART" />
                 <action android:name="com.pisophone.kiosk.SCREEN_OFF" />
                 <action android:name="com.pisophone.kiosk.SCREEN_ON" />

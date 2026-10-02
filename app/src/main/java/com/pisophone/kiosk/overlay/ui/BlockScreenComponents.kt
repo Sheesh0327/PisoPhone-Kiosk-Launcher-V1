@@ -3,7 +3,6 @@
 package com.pisophone.kiosk.overlay.ui
 import kotlinx.coroutines.isActive
 
-import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*

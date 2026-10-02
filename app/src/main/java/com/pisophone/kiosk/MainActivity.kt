@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -13,7 +12,6 @@ import android.util.Log
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -25,7 +23,6 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import com.pisophone.kiosk.model.AppInfo
-import com.pisophone.kiosk.receiver.KioskAdminActionReceiver
 import com.pisophone.kiosk.receiver.KioskWatchdogReceiver
 import com.pisophone.kiosk.security.KioskActivationManager
 import com.pisophone.kiosk.security.KioskSecurity
@@ -269,15 +266,6 @@ class MainActivity : ComponentActivity() {
             } else {
                 isLockTaskActive = false
             }
-        } catch (e: Exception) {
-            isLockTaskActive = false
-        }
-    }
-
-    fun stopLockTaskMode() {
-        try {
-            stopLockTask()
-            isLockTaskActive = false
         } catch (e: Exception) {
             isLockTaskActive = false
         }

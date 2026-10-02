@@ -37,3 +37,5 @@ __pycache__/
 # Super-admin signing keys must never be committed
 *.key
 *.pem
+__pycache__/
+*.pyc
