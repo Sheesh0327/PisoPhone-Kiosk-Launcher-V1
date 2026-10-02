@@ -3,7 +3,7 @@
 #
 #   sh install.sh --box 192.168.1.10 [--admin-pass <box admin password>] [--rate 10] [--window 60] [--new-key]
 #
-# It does everything: installs packages, generates a high-entropy gateway key, stores that key ON THE BOX
+# It does everything: installs openNDS if it is missing, installs packages, generates a high-entropy gateway key, stores that key ON THE BOX
 # (through its admin login) and in /etc/coinslot.conf, installs the theme and the listener, switches openNDS
 # to the theme, enables and starts the services, and checks the router can reach the box through the gateway API.
 # Re-running keeps your existing key and settings unless you pass --new-key (or new --box/--rate/--window values).
@@ -30,7 +30,6 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 die() { echo "ERROR: $*" >&2; exit 1; }
 
 [ "$(id -u)" = 0 ] || [ -n "$ROOT" ] || die "run as root"
-[ -n "$ROOT" ] || [ -f /usr/lib/opennds/libopennds.sh ] || die "openNDS (libopennds.sh) not found: install opennds first"
 
 # Settings already on this router are the defaults for a re-run.
 if [ -r "$CONF" ]; then
@@ -49,9 +48,18 @@ case "$WINDOW" in "" | *[!0-9]*) die "--window must be a whole number of seconds
 
 # --- packages -------------------------------------------------------------------------------------------
 if [ -z "$NO_PKG" ]; then
+	opkg update >/dev/null || die "opkg update failed (does the router have internet access?)"
+	if [ ! -f /usr/lib/opennds/libopennds.sh ]; then
+		echo "openNDS is not installed: installing it (with its own dependencies)..."
+		opkg install opennds || die "could not install opennds"
+	fi
 	echo "Installing packages (socat, openssl-util, curl)..."
-	opkg update >/dev/null && opkg install socat openssl-util curl
+	opkg install socat openssl-util curl || die "could not install socat/openssl-util/curl"
 fi
+[ -n "$ROOT" ] || [ -f /usr/lib/opennds/libopennds.sh ] || die "openNDS (libopennds.sh) not found: install opennds first"
+for tool in sha256sum awk sed od grep date find; do  # busybox provides these on OpenWrt; the theme and listener use them
+	command -v "$tool" >/dev/null 2>&1 || die "required tool missing: $tool"
+done
 command -v curl >/dev/null 2>&1 || die "curl is required"
 command -v openssl >/dev/null 2>&1 || die "openssl is required"
 
