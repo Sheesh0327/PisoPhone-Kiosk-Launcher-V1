@@ -54,7 +54,6 @@ void setupWebServer() {
     webServer.on("/api/superadmin/unmask", HTTP_POST, handleSuperAdminUnmask);
     webServer.on("/api/superadmin/reset_vault", HTTP_POST, handleSuperAdminResetVault);
     webServer.on("/api/superadmin/save_split", HTTP_POST, handleSuperAdminSaveSplit);
-    webServer.on("/api/superadmin/change_pw", HTTP_POST, handleSuperAdminChangePassword);
     webServer.on("/api/status", HTTP_GET, handleApiStatus);
     webServer.on("/check_qualification", HTTP_GET, handleCheckQualification);
     webServer.on("/identify", HTTP_GET, handleIdentify);

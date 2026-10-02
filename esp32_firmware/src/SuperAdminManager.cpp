@@ -166,43 +166,6 @@ void handleSuperAdminSaveSplit() {
     webServer.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Invalid split percentage (0-100).\"}");
 }
 
-void handleSuperAdminChangePassword() {
-    // The dashboard sends the current password as "current_pw"; other
-    // super-admin calls use "super_admin_pw" or HTTP Basic auth.
-    bool authorized = authenticateSuperAdmin();
-    if (!authorized && webServer.hasArg("current_pw")) {
-        String cur = webServer.arg("current_pw");
-        authorized = superAdminPasswordOk(cur);
-    }
-    if (!authorized) {
-        webServer.send(401, "application/json", "{\"status\":\"error\",\"message\":\"Unauthorized: Current password invalid.\"}");
-        return;
-    }
-    
-    if (superAdminCredsManaged()) {
-        webServer.send(403, "application/json", "{\"status\":\"error\",\"message\":\"The super admin password is managed remotely. Publish a new one from the website.\"}");
-        return;
-    }
-
-    if (webServer.hasArg("new_pw")) {
-        String newPw = webServer.arg("new_pw");
-        newPw.trim();
-        if (newPw.length() >= 4) {
-            superAdminPassword = newPw;
-            prefs.begin(NVS_NAMESPACE, false);
-            prefs.putString("super_admin_pw", superAdminPassword);
-            prefs.end();
-            Serial.println("[👑 SUPER ADMIN] Super Admin password successfully updated.");
-            webServer.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Super Admin password updated.\"}");
-            return;
-        } else {
-            webServer.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Password must be at least 4 characters.\"}");
-            return;
-        }
-    }
-    webServer.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Missing new_pw argument.\"}");
-}
-
 String renderSuperAdminTabHtml() {
     return String(FPSTR(SUPER_ADMIN_HTML));
 }

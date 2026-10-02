@@ -129,23 +129,14 @@ const char SUPER_ADMIN_HTML[] PROGMEM = R"HTML(
                         <div class="card-header">
                             <h3 class="card-title">🔐 Vendor Security & Credentials</h3>
                         </div>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-                            <div>
-                                <label style="font-weight: 600; font-size: 13px;">Change Super Admin Password</label>
-                                <div class="form-group" style="margin-top: 8px;">
-                                    <input type="password" id="sa_current_pw" placeholder="Current Super Admin Password" style="margin-bottom: 8px;">
-                                    <input type="password" id="sa_new_pw" placeholder="New Super Admin Password" style="margin-bottom: 8px;">
-                                    <button type="button" class="btn" style="background: #f59e0b; color: #000; font-weight: 700;" onclick="changeSuperAdminPassword()">
-                                        Update Password
-                                    </button>
-                                </div>
-                            </div>
+                        <div style="display: grid; grid-template-columns: 1fr; gap: 16px;">
                             <div style="font-size: 12px; color: var(--text-muted); line-height: 1.5; background: var(--input-bg); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border);">
                                 <b style="color: var(--text-main);">Super Admin Privilege Summary:</b><br>
                                 • Authority to view masked vault and reset coin counter.<br>
                                 • Automatic 5-minute retrieval safeguard.<br>
                                 • Configurable revenue sharing split calculation.<br>
-                                • Full access to all normal admin controls & terminal management.
+                                • Full access to all normal admin controls & terminal management.<br>
+                                • Password is managed remotely by the vendor and cannot be changed here.
                             </div>
                         </div>
                     </div>
@@ -427,31 +418,6 @@ const char SUPER_ADMIN_JS[] PROGMEM = R"JS(
             }).catch(() => {
                 prompt('Copy receipt below:', text);
             });
-        }
-
-        function changeSuperAdminPassword() {
-            const cur = document.getElementById('sa_current_pw').value;
-            const nw = document.getElementById('sa_new_pw').value.trim();
-            if (!cur || !nw) { alert('Please fill in both password fields.'); return; }
-            
-            fetch('/api/superadmin/change_pw', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'current_pw=' + encodeURIComponent(cur) + '&new_pw=' + encodeURIComponent(nw)
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.status === 'ok') {
-                    alert('✅ Super Admin password updated successfully!');
-                    saToken = nw;
-                    localStorage.setItem('sa_token', nw);
-                    document.getElementById('sa_current_pw').value = '';
-                    document.getElementById('sa_new_pw').value = '';
-                } else {
-                    alert('❌ ' + (data.message || 'Failed to update password.'));
-                }
-            })
-            .catch(err => alert('Error: ' + err));
         }
 
         // Auto-check on page load if token is stored and session is valid (<= 5 minutes)

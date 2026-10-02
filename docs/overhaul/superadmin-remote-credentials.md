@@ -13,8 +13,7 @@ managed from the website. Operator **admin** passwords stay per box and are unaf
 - Each ESP32 with internet checks 1 minute after connecting, then hourly (10 minutes after a
   failure). On acceptance it stores the hash, deletes the old plaintext password and clears its
   login cache. A rejected file is logged in diagnostics (`[CRED] REJECTED ...`).
-- Once managed, the dashboard's "change super admin password" is refused (403); change it from
-  the website instead. Boxes that have never synced keep their local/default password.
+- The dashboard has no password-change option for the super admin; the website is the only way.
 
 ## One-time setup
 1. `pip install cryptography`
@@ -37,7 +36,7 @@ after Wi-Fi connects.
 3. Serial/diagnostics shows `[CRED] Super-admin password updated remotely to version 1`.
    Old default password is now rejected; the new one works. `/api/status` shows
    `"super_admin_managed":true`.
-4. Reboot: still works (stored in flash). Dashboard "change password" returns the managed message.
+4. Reboot: still works (stored in flash). The dashboard has no change-password control.
 5. Publish v2: box switches to the new password. Re-publish the v1 file: ignored (not newer).
 6. Edit one character of `hash` in the JSON without re-signing: log shows REJECTED.
 
