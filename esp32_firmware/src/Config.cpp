@@ -564,8 +564,9 @@ void factoryResetDefaults(bool ownerWipe) {
     prefs.clear();
     if (!ownerWipe) ownerdata::restore(keepStore, owner); // an operator can never reset the license or the revenue
     prefs.end();
-    if (ownerWipe) clearPaymentQueue(); // an operator reset keeps unacknowledged payments: that money was already collected
-    runConfigMigrations(); // a cleared box gets a fresh secret and new passwords (printed on the serial console)
+    if (ownerWipe)
+        clearPaymentQueue(); // an operator reset keeps unacknowledged payments: that money was already collected
+    runConfigMigrations();   // a cleared box gets a fresh secret and new passwords (printed on the serial console)
     loadSecretMode();
     loadCredentials();
 

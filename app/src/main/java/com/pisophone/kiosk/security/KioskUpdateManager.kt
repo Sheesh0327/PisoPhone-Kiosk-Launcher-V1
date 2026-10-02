@@ -54,14 +54,13 @@ object KioskUpdateManager {
 
     /** SHA-256 of each certificate that signed the package; the same set means the same publisher. */
     internal fun signingCertDigests(info: android.content.pm.PackageInfo): Set<String> {
-        val signatures: Array<android.content.pm.Signature> = (
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                info.signingInfo?.apkContentsSigners
-            } else {
-                @Suppress("DEPRECATION")
-                info.signatures
-            }
-            ) ?: return emptySet()
+        val found: Array<android.content.pm.Signature>? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            info.signingInfo?.apkContentsSigners
+        } else {
+            @Suppress("DEPRECATION")
+            info.signatures
+        }
+        val signatures = found ?: return emptySet()
         return signatures.map { sig ->
             MessageDigest.getInstance("SHA-256").digest(sig.toByteArray()).joinToString("") { "%02x".format(it) }
         }.toSet()
@@ -191,6 +190,7 @@ object KioskUpdateManager {
             @Suppress("DEPRECATION")
             android.content.pm.PackageManager.GET_SIGNATURES
         }
+
         @Suppress("DEPRECATION")
         val info = context.packageManager.getPackageArchiveInfo(apkFile.absolutePath, flags)
             ?: throw IOException("The downloaded file could not be read as an Android package.")
