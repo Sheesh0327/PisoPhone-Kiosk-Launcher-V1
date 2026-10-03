@@ -227,3 +227,20 @@ Edit `/etc/coinslot.conf` and run `/etc/init.d/coinslot restart`. To rotate the 
 | top-up or throttle does nothing | `ndsctl status` works? `logread -e opennds`; the manager re-grants time with `ndsctl deauth` then `ndsctl auth` |
 | challenge gives `GATEWAY_DISABLED` | the key was not set on the box: repeat step 4 |
 | portal page does not appear | `ndsctl status`, `logread -e opennds`; confirm step 7 with `uci show` |
+
+## Faster: the MicroPython edition (experimental, optional)
+
+`coinslot-fast.sh` does the same job as `coinslot-listener.sh` in one resident MicroPython process: no per-request
+process starts, pushes the moment something changes, and a WebSocket endpoint (`/ws`) for the start and finish commands.
+It is **not enabled by default and is not part of the package**; the shell edition stays the supported one.
+
+Try it only on a test router:
+
+1. `opkg install micropython` and check `micropython -c "import hashlib; hashlib.sha1; print('ok')"` prints `ok`.
+2. In `/etc/init.d/coinslot` change the service command from `coinslot-listener.sh` to `coinslot-fast.sh serve`
+   (one process serves both the API port and the stream port).
+3. To go back, change the command back and restart the service. State files are the same in both editions.
+
+Known problem: the integration test suite run against this edition (`LISTENER_IMPL=fast python3 tests/test_flow.py`)
+fails intermittently. Sockets sometimes break with `EBADF` while the process's standard input (descriptor 0) has been
+closed and reused; the cause is still being traced. Do not use it on a router that takes real payments yet.

@@ -4,7 +4,7 @@ Behaviour is driven by a JSON control file (path in FAKEBOX_CTL) that tests rewr
   {"busy": false, "coins_at": [2, 4]}   # seconds after arm at which each coin (1 peso) arrives
 The action log is appended to FAKEBOX_LOG (one action per line)."""
 import hashlib, hmac, json, os, sys, time
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 KEY = os.environ.get("FAKEBOX_KEY", "test-gateway-key-123456")
@@ -73,4 +73,4 @@ class H(BaseHTTPRequestHandler):
                                    x["armed_at"] and not x["released"] for x in sessions.values())})
 
 
-HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
+ThreadingHTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
