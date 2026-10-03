@@ -101,10 +101,13 @@ Collect logs as you go: box serial output at 115200 baud (`pio device monitor`),
 One row per problem. Keep it factual: what you did, what you expected, what happened. Attach evidence (serial or logcat text,
 a photo of the dashboard, the time it happened) and say how often it happens. Set **Status** to `open`, `fixed`, or `wontfix`.
 
-| ID | Checklist item | Severity (blocker / bug / polish) | What I did | Expected | Actual | Evidence (file or paste) | Frequency | Status |
-|---|---|---|---|---|---|---|---|---|
-| 1 | | | | | | | | open |
-| 2 | | | | | | | | open |
+**Automatic GitHub issues:** leave `GitHub #` empty. When you push the file, a workflow opens a GitHub issue for every `open` row that
+has a checklist item or an actual result, and writes its number (`#12`) into that cell. Setting a row to `fixed` or `wontfix` and
+pushing closes its issue. Avoid `|` characters inside cells.
+
+| ID | Checklist item | Severity (blocker / bug / polish) | What I did | Expected | Actual | Evidence (file or paste) | Frequency | Status | GitHub # |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | | | | | | | | open | |
 
 ## Notes and ideas (not bugs)
 -
