@@ -574,26 +574,23 @@ class Esp32ConnectionManager(
                     if (attemptId != currentAttemptId) return@launch
                 }
                 try {
-                    val statusUrl = "http://$ipHost:80/api/coinslot/status?device_id=$deviceId"
+                    // Signed: the box lists coins only to the phone they belong to, and only on a signed request.
+                    val statusUrl = Esp32CoinslotRequests.signedUrl(
+                        host = ipHost,
+                        action = Esp32CoinslotRequests.ACTION_STATUS,
+                        deviceId = deviceId,
+                        secret = delegate.getSecretKey(),
+                    )
                     val req = Request.Builder().url(statusUrl).build()
                     val resp = httpClient.newCall(req).execute()
                     if (resp.isSuccessful) {
                         val body = resp.body?.string() ?: ""
                         if (body.isNotBlank()) {
                             val json = JSONObject(body)
-                            val txArray = json.optJSONArray("transactions")
-                            if (txArray != null) {
-                                for (i in 0 until txArray.length()) {
-                                    val tx = txArray.optJSONObject(i) ?: continue
-                                    val txId = tx.optString("tx_id", "").trim()
-                                    val seconds = tx.optInt("seconds", 0)
-                                    val amount = tx.optDouble("amount", 0.0)
-                                    if (txId.isNotBlank() && seconds > 0 && amount > 0.0) {
-                                        if (processedTxIds.add(txId)) {
-                                            Log.i(TAG, "⚡ Coin received via HTTP status sync: +${seconds}s, ₱$amount (txId=$txId)")
-                                            handleCoinAndAck(ipHost, deviceId, txId, seconds, amount)
-                                        }
-                                    }
+                            for (coin in CoinStatusParser.ownedCoins(json, deviceId)) {
+                                if (processedTxIds.add(coin.txId)) {
+                                    Log.i(TAG, "⚡ Coin received via HTTP status sync: +${coin.seconds}s, ₱${coin.amount} (txId=${coin.txId})")
+                                    handleCoinAndAck(ipHost, deviceId, coin.txId, coin.seconds, coin.amount)
                                 }
                             }
                         }
