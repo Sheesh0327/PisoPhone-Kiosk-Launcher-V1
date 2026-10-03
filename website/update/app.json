@@ -1,9 +1,9 @@
 {
-  "versionCode": 312,
-  "versionName": "1.0.312-dev",
-  "channel": "dev",
+  "versionCode": 306,
+  "versionName": "1.0.306",
+  "channel": "stable",
   
-  "sha256": "7bc35634a1cffd7c4891b0ff5739ff7d289c5b1f32c0b1563ef40d7a45ca1f69",
-  "size": 1738794,
+  "sha256": "85b261cf7d1491a5301c905d6c36771c931c38ac1b0b86b1f52dfb67d27d7aa1",
+  "size": 1722406,
   "releaseDate": "2026-10-03"
 }
