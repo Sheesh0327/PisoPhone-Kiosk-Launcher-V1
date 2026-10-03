@@ -86,6 +86,8 @@ jobs:
         run: sudo apt-get install -y -q socat
       - name: Run end-to-end test with a fake box
         run: python3 opennds/tests/test_flow.py
+      - name: Check the shell-only request signing against a reference
+        run: python3 opennds/tests/test_hmac.py
       - name: Check the Layout B router configuration
         run: python3 opennds/tests/test_layout_b.py
       - name: Check UCI settings and migration

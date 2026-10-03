@@ -213,13 +213,48 @@ discover_box() {
   return 0
 }
 
+# HMAC-SHA256 with only the shell's printf and sha256sum: starting openssl takes about 0.6 s on the router, and every
+# box poll is signed. hmac_init checks the result against a known value and keeps openssl as the fallback.
+HMAC_MODE=""
+hmac_pads() {  # hmac_pads <key>: sets IPAD_F and OPAD_F (printf formats of the key block xor 0x36 / 0x5c)
+  _k="$1"; _n=0; _kb=""
+  if [ "${#_k}" -gt 64 ]; then                           # a long key is hashed first
+    _hx=$(printf '%s' "$_k" | sha256sum); _hx="${_hx%% *}"
+    while [ -n "$_hx" ]; do _kb="$_kb $(( 0x${_hx%"${_hx#??}"} ))"; _hx="${_hx#??}"; _n=$((_n + 1)); done
+  else
+    while [ -n "$_k" ]; do _c="${_k%"${_k#?}"}"; _k="${_k#?}"; _kb="$_kb $(printf '%d' "'$_c")"; _n=$((_n + 1)); done
+  fi
+  IPAD_F=""; OPAD_F=""; _i=0
+  set -- $_kb
+  while [ "$_i" -lt 64 ]; do
+    _b=0; if [ "$_i" -lt "$_n" ]; then _b="$1"; shift; fi
+    _x=$(( _b ^ 54 )); IPAD_F="$IPAD_F\\$(( _x >> 6 ))$(( (_x >> 3) & 7 ))$(( _x & 7 ))"
+    _x=$(( _b ^ 92 )); OPAD_F="$OPAD_F\\$(( _x >> 6 ))$(( (_x >> 3) & 7 ))$(( _x & 7 ))"
+    _i=$((_i + 1))
+  done
+}
+hmac_hex() {  # hmac_hex <message>: hex digest (needs hmac_pads first)
+  _in=$( { printf "$IPAD_F"; printf '%s' "$1"; } | sha256sum ); _h="${_in%% *}"; HF=""
+  while [ -n "$_h" ]; do _x=$(( 0x${_h%"${_h#??}"} )); HF="$HF\\$(( _x >> 6 ))$(( (_x >> 3) & 7 ))$(( _x & 7 ))"; _h="${_h#??}"; done
+  _out=$( { printf "$OPAD_F"; printf "$HF"; } | sha256sum ); printf '%s' "${_out%% *}"
+}
+hmac_init() {
+  HMAC_MODE=openssl
+  hmac_pads key
+  [ "$(hmac_hex 'The quick brown fox jumps over the lazy dog')" = f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8 ] || return 0
+  hmac_pads "$GW_KEY"; HMAC_MODE=shell
+}
+
 call() {
   _sid="$1"; _action="$2"; _extra="$3"
   _nonce=$(http "$(box_base)/challenge" | jget nonce)
   if [ -z "$_nonce" ] && discover_box; then _nonce=$(http "$(box_base)/challenge" | jget nonce); fi
   [ -n "$_nonce" ] || { echo '{"success":false,"error":"NO_NONCE"}'; return 1; }
   BASE=$(box_base)
-  _sig=$(printf 'gw1:%s:%s:%s' "$_action" "$_sid" "$_nonce" | openssl dgst -sha256 -hmac "$GW_KEY" | awk '{print $NF}')
+  [ -n "$HMAC_MODE" ] || hmac_init
+  _msg="gw1:$_action:$_sid:$_nonce"
+  if [ "$HMAC_MODE" = shell ]; then _sig=$(hmac_hex "$_msg")
+  else _sig=$(printf '%s' "$_msg" | openssl dgst -sha256 -hmac "$GW_KEY" | awk '{print $NF}'); fi
   http "$BASE/$_action?session=$_sid&nonce=$_nonce&sig=$_sig$_extra"
 }
 
@@ -873,6 +908,7 @@ case "$1" in
   worker) valid_sid "$2" && do_worker "$2" ;;
   fairuse) do_fairuse ;;
   box) do_box ;;
+  hmac) hmac_init; echo "$HMAC_MODE"; [ "$HMAC_MODE" = shell ] && hmac_hex "$2"; echo ;;       # for tests: signs with GW_KEY
   migrate) do_migrate ;;
   fairuse-once) fair_tick ;;
   purge) purge_vouchers ;;
