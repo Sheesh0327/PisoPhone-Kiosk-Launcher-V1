@@ -169,7 +169,21 @@ try:
     check('value="hyper" checked' in p, "HyperSpeed preselected")
     check("refresh" not in p.lower(), "welcome does not auto-refresh")
     check(len(p) < 7500, f"welcome page is small ({len(p)} bytes)")
-    check("function instant()" in p and 'id="lleft"' in p, "Insert Coin shows the waiting screen at once, before the router answers")
+    check("function instant()" in p and "Do not insert coins yet" in p and 'id="lleft"' not in p,
+          "Insert Coin shows a waiting screen at once that does not invite coins before the slot is armed")
+    # the real waiting page: no countdown and no "insert now" until the box has armed the slot
+    sw = sid_of("hidW")
+    os.makedirs(f"{STATE}/{sw}", exist_ok=True)
+    open(f"{STATE}/{sw}/plan", "w").write("hyper")
+    open(f"{STATE}/{sw}/state", "w").write("STATE=starting\nPULSES=0\nREMAINING=30\nERROR=\n")
+    p = page("hidW", MAC_A, "wait", "hyper")
+    check("Getting the coin slot ready" in p and 'id="cd" style="display:none"' in p and "Insert coin(s) now" not in p.split("<script>")[0],
+          "waiting page says 'getting ready' and hides the countdown while the slot is still arming")
+    open(f"{STATE}/{sw}/state", "w").write("STATE=armed\nPULSES=0\nREMAINING=30\nERROR=\n")
+    p = page("hidW", MAC_A, "wait", "hyper")
+    check("Insert coin(s) now" in p.split("<script>")[0] and 'id="cd" style="display:none"' not in p,
+          "waiting page invites coins and shows the countdown once the slot is armed")
+    shutil_rm = __import__("shutil").rmtree; shutil_rm(f"{STATE}/{sw}")
 
     # ---- Endurance: 17 pesos accumulate to 11 hrs 30 min -----------------------------------------------------------
     p = pay("hidA", MAC_A, "endurance", 17)
