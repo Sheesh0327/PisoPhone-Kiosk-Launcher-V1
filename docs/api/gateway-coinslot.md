@@ -25,7 +25,7 @@ valid for one request and 30 seconds. Sign each request:
 | `POST /api/gateway/release` | stop accepting (in-flight coins are still counted) | | status object |
 | `POST /api/gateway/ack` | the coins were used; remove them from the box | | `{"acknowledged_pulses": n}` |
 
-Status object: `{"success":true,"session":"..","state":"armed|draining|idle","armed_remaining":s,"pulses":n,"minutes_per_coin":m}`.
+Status object: `{"success":true,"session":"..","state":"armed|draining|idle","armed_remaining":s,"pulses":n,"minutes_per_coin":m,"slot_free":true|false}`. `slot_free` is true when nobody holds the coin slot, so a gateway can tell a waiting customer the moment it is available.
 `pulses` is the coins received for that session and not yet acknowledged (1 pulse = 1 coin); multiply by
 `minutes_per_coin` for time.
 

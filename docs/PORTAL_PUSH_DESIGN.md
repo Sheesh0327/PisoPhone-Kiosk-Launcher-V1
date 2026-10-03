@@ -1,41 +1,30 @@
-# Design proposal: live coin updates on the portal (for review, not built yet)
+# Portal live updates: how they work
 
-**Goal:** the coin amount and countdown update the moment a coin is detected, without the customer's phone reaching the box and
-without the browser deciding who gets the time. Phase 1 (instant waiting screen on tap) is already in the theme.
+The portal feels instant because the router pushes changes to the customer's page instead of the page asking again and again.
+Setup steps: `opennds/INSTRUCTIONS.md` ("Instant updates"). Everything here is optional: without it the portal still works with refreshes.
 
-## Today
-coin -> box -> router worker polls the box **every 1 s** -> state file -> the page asks the router **every 2 s** (each ask re-runs the theme
-script). A coin therefore shows after about 0.5-3 s.
+## What happens when someone taps Insert Coin
+1. The page swaps to the waiting screen immediately (no server round trip) and the request that arms the slot runs in the background.
+2. The router's worker for that one customer asks the box for coins every `COIN_POLL_SECONDS` (default 0.1; needs
+   `coreutils-sleep`, otherwise 1 s). Nobody else polls; an idle router polls nothing. In practice the rate is bounded by one
+   round trip to the box (challenge + signed status), and the box reports a coin only after its 280 ms pulse gap.
+3. The page listens to a Server-Sent Events stream on the router (`STREAM_PORT`, default 8100). Each change of the worker's state
+   is pushed: coin count, minutes, countdown, end of window. If the stream cannot be reached the page falls back to the old
+   2 s refresh.
 
-## Phase 2: router pushes to the browser (Server-Sent Events)
-- New endpoint on the router, e.g. `GET /events?sid=<sid>`, answered with `text/event-stream`. The worker's state changes (`pulses`,
-  `minutes`, `remaining`, `state`) are written as events; the page updates its numbers from them and keeps today's 2 s poll as the fallback
-  if the stream drops.
-- Why SSE and not WebSocket: the data only flows router -> browser; SSE is plain HTTP, reconnects by itself and needs no handshake code in
-  `socat`/`ash`.
-- **Security rules (must hold before it is built):**
-  1. The stream must be reachable by not-yet-authenticated customers, so one extra TCP port (e.g. 8100) is opened in the **guest zone input**
-     firewall rule only. `layout_b.sh` and `INSTRUCTIONS.md` get the matching rule. The listener's existing `127.0.0.1:8099` API stays private.
-  2. `sid` is already a hash of the client's secret openNDS id and cannot be guessed; the stream also checks that the request comes from the
-     MAC that owns that `sid`, and answers nothing else (no other paths).
-  3. At most one stream per `sid`, at most N (default 40) streams in total, an idle limit equal to the coin window (115 s), and no request
-     body or query beyond `sid`. Over the limit: close and let the browser fall back to polling.
-  4. Read-only: the stream can never start, finish or change a session.
-- **Cost:** each open stream is one small process on the router for up to two minutes. Fine for dozens of simultaneous customers.
+## A busy coin slot is pushed, never retried
+- The page shows "slot is busy" and listens to its place in line. Nothing reloads.
+- Customers wait in a first-come line (`$STATE_DIR/queue`). Only the first is checked against the box (`slot_free` in the gateway status).
+- The moment the slot is free the first customer is pushed "ready" and has `QUEUE_CLAIM_SECONDS` (30) to tap Start; a newcomer cannot
+  start ahead of the line. If they do not tap, the claim passes to the next. A closed page leaves the line within 6 s.
+- A box with older firmware (no `slot_free`) makes the page fall back to retrying every 5 s.
 
-## Phase 3: the router hears coins from the box immediately
-- Add a WebSocket path on the box for the gateway (router) only, e.g. `/api/gateway/events`, authenticated like the gateway API today:
-  nonce from `/api/gateway/challenge`, signature with the gateway key (`GW_KEY`), one connection at a time. The box pushes `coin` and
-  `session_ended` events; the worker keeps its 1 s poll as the fallback and as the reconciliation step (the box's payment queue and the
-  acknowledgement flow are unchanged, so no coin can be lost or credited twice).
-- Never the shared master key, never browser-supplied device addresses or tokens (the weaknesses of the pasted Gemini version).
-- Needs a firmware change on the box and a `websocat`-style client or a small socat/openssl handshake on the router; check the package
-  is available for your OpenWrt version first.
+## Security rules (all enforced in `coinslot-listener.sh stream-handle`)
+1. Its own port, opened for the guest zone only (`layout_b.sh` prints the rule; the local `127.0.0.1:8099` API stays private).
+2. A stream is only given to the device that started that session: the secret `sid` plus the MAC the router sees for the connecting address.
+3. Bounded: `STREAM_MAX_CLIENTS` connections at once (socat `max-children`), `STREAM_MAX_SECONDS` each, nothing but `/stream` is answered.
+4. Read-only: it reports a session's own state or place in line; it never arms, grants, finishes or changes anything.
 
-## Test plan
-Router test with a fake box (existing `opennds/tests`): stream sends an event within 200 ms of a coin; falls back to polling when the
-stream is closed; refuses a wrong MAC, an unknown `sid`, and the 41st connection. On hardware: coin to screen under 300 ms; 40 phones
-connected; unplug the router's WAN and the portal still works.
-
-## Decision needed
-Phase 2 opens a port to unauthenticated Wi-Fi clients. Approve (or change) the four security rules above before it is built.
+## Not built (deliberately)
+- A push connection from the box itself (WebSocket/TCP): it would save only the poll round trip and costs firmware work on the ESP32.
+- Pushing to the customer's page from the browser's side of the box: the customer's phone never talks to the box.

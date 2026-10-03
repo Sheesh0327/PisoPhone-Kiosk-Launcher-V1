@@ -27,6 +27,7 @@ struct GatewayStatus {
     int armedRemainingSec; // seconds left while armed, otherwise 0
     int pulses;            // coins received and not yet acknowledged for this session
     int minutesPerCoin;    // the box's coin-to-time rate, for the gateway to convert pulses
+    bool slotFree;         // nobody (phone, controller or any gateway session) holds the coin slot right now
 };
 
 void gatewayInit();                    // load the key from flash; call once after loadAllConfig()
