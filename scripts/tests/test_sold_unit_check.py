@@ -27,7 +27,6 @@ class T(unittest.TestCase):
     def test_flash_verdicts(self):
         self.assertEqual(s.flash_verdict(b"\xe9" + bytes(100))[0], "PLAINTEXT")
         self.assertEqual(s.flash_verdict(b"hello wifi_pass=abc" * 50)[0], "PLAINTEXT")
-        rnd = bytes((i * 167 + (i >> 3) * 31 + 13) % 256 for i in range(8192))
         self.assertEqual(s.flash_verdict(os.urandom(8192))[0], "CIPHERTEXT")
         self.assertEqual(s.flash_verdict(os.urandom(8192), "secret")[0], "CIPHERTEXT")
         self.assertEqual(s.flash_verdict(os.urandom(100) + b"secret" + os.urandom(100), "secret")[0], "PLAINTEXT")
