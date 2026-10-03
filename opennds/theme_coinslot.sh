@@ -259,12 +259,22 @@ $(tier_rows endurance)
 /* Insert Coin also unlocks sound: browsers only allow audio after a tap, and the tap must happen on the page that later
    plays it. So the tap starts the coin window without leaving the page (the waiting view replaces this one and reuses
    the unlocked audio). Without scripts the form simply submits and the waiting page offers a "tap for sound" button. */
-(function(){var f=document.getElementById("coinform"),A=window.AudioContext||window.webkitAudioContext;
+(function(){var f=document.getElementById("coinform"),A=window.AudioContext||window.webkitAudioContext,first=${infofirst:-30};
 if(!f||!A||!window.fetch||!window.URLSearchParams||!window.FormData)return;
+/* Show the waiting screen at once (same look as the real one); the router's answer replaces it a moment later, or shows
+   the busy / error page instead. */
+function instant(){var r=f.querySelector("input[name=coinplan]:checked"),nm=r&&r.value==="endurance"?"Endurance":"HyperSpeed",
+sub=f.previousElementSibling,d=document.createElement("div"),n=document.querySelectorAll(".note"),i;
+if(sub)sub.textContent=nm+" \u00b7 Insert coin(s) now \u00b7 Maglagay ng barya";
+f.style.display="none";for(i=0;i<n.length;i++)n[i].style.display="none";
+d.innerHTML='<div class="big">&#8369;0</div><p class="mut">= <span>0 min</span> of Wi-Fi</p><div class="bar"><i style="width:100%"></i></div><p class="mut"><span id="lleft">'+first+'</span>s left &middot; the timer restarts with every coin</p>';
+f.parentNode.insertBefore(d,f.nextSibling);
+var t=first,e=document.getElementById("lleft");setInterval(function(){if(t>0)t--;e.textContent=t},1000)}
 f.addEventListener("submit",function(e){e.preventDefault();
 try{var c=window.__ctx=window.__ctx||new A();c.resume();var o=c.createOscillator(),g=c.createGain();g.gain.value=.04;o.frequency.value=880;o.connect(g);g.connect(c.destination);o.start();o.stop(c.currentTime+.05)}catch(x){}
-fetch(f.action+"?"+new URLSearchParams(new FormData(f)).toString(),{cache:"no-store"}).then(function(r){return r.text()})
-.then(function(t){document.open();document.write(t);document.close()}).catch(function(){f.submit()})})})();
+var url=f.action+"?"+new URLSearchParams(new FormData(f)).toString();instant();
+fetch(url,{cache:"no-store"}).then(function(r){return r.text()})
+.then(function(t){document.open();document.write(t);document.close()}).catch(function(){location.href=url})})})();
 </script>
 HTML
 }

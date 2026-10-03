@@ -123,7 +123,8 @@ try:
     check("up to 5 Mbps down / 2 Mbps up" in p.lower() or "Up to 5 Mbps down / 2 Mbps up" in p, "Endurance speed caps shown")
     check('value="hyper" checked' in p, "HyperSpeed preselected")
     check("refresh" not in p.lower(), "welcome does not auto-refresh")
-    check(len(p) < 6500, f"welcome page is small ({len(p)} bytes)")
+    check(len(p) < 7500, f"welcome page is small ({len(p)} bytes)")
+    check("function instant()" in p and 'id="lleft"' in p, "Insert Coin shows the waiting screen at once, before the router answers")
 
     # ---- Endurance: 17 pesos accumulate to 11 hrs 30 min -----------------------------------------------------------
     p = pay("hidA", MAC_A, "endurance", 17)

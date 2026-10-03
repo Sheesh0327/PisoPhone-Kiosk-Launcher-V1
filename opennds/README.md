@@ -25,7 +25,7 @@ phone browser --> openNDS portal --> theme_coinslot.sh --(127.0.0.1)--> coinslot
 Follow `INSTRUCTIONS.md`: every step is a copy/paste command.
 
 ## What the customer sees
-Everything is one small page (about 4 KB, inline CSS, no images or downloads), bilingual English/Tagalog.
+Everything is one small page (about 7 KB, inline CSS, no images or downloads), bilingual English/Tagalog.
 1. **Welcome**: rates for both plans on top, an **Insert Coin** button in the middle. The customer picks a plan first.
    - **HyperSpeed**: no speed limit. 5 pesos = 30 min, 10 = 1 hr, 20 = 2 hrs (1-4 pesos at 6 min each). Slowed
      intermittently after 5 GB (fair use).
