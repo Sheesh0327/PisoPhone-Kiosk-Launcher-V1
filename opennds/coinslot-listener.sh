@@ -45,11 +45,20 @@ SETTINGS="GW_BOX GW_KEY GW_DISCOVER GW_BOX_MAC DISCOVER_PORT DISCOVER_IFACE DISC
   FAIR_THROTTLE_UP_KBPS FAIR_THROTTLE_MINUTES FAIR_FULL_MINUTES"
 [ -r "$CONF" ] && . "$CONF"
 if command -v "$UCI" >/dev/null 2>&1; then
-  for _name in $SETTINGS; do
-    _opt=$(printf '%s' "$_name" | tr 'A-Z' 'a-z')
-    _val=$("$UCI" -q get "coinslot.main.$_opt" 2>/dev/null) || continue
-    [ -n "$_val" ] && export "$_name=$_val"        # only the known names above are ever read, never arbitrary ones
+  # One `uci show` and one awk for all settings (every request starts this script, and forks are slow on a router).
+  # Only the known names above are ever read, never arbitrary ones.
+  # (A value containing an apostrophe is skipped: set it in the old coinslot.conf instead.)
+  _uci=$("$UCI" -q show coinslot.main 2>/dev/null | awk -F"'" 'NF == 3 && /^coinslot\.main\.[a-z_0-9]+=/ {
+    k = $1; sub(/^coinslot\.main\./, "", k); sub(/=$/, "", k); print toupper(k) "\t" $2 }')
+  _known=" $(echo $SETTINGS) "
+  _nl='
+'
+  _oifs="$IFS"; IFS="$_nl"
+  for _line in $_uci; do
+    _name="${_line%%	*}"; _val="${_line#*	}"
+    case "$_known" in *" $_name "*) [ -n "$_val" ] && export "$_name=$_val" ;; esac
   done
+  IFS="$_oifs"
 fi
 
 GW_BOX="${GW_BOX:-192.168.1.10}"
