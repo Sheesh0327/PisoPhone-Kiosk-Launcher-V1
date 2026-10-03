@@ -25,10 +25,14 @@ class T(unittest.TestCase):
         self.assertTrue(s.fuse_report(s.parse_summary(SUMMARY), False))
 
     def test_flash_verdicts(self):
+        def noise(n):
+            # Random bytes that never start with the image header (a 1-in-256 chance otherwise).
+            return bytes([0x01]) + os.urandom(n - 1)
+
         self.assertEqual(s.flash_verdict(b"\xe9" + bytes(100))[0], "PLAINTEXT")
         self.assertEqual(s.flash_verdict(b"hello wifi_pass=abc" * 50)[0], "PLAINTEXT")
-        self.assertEqual(s.flash_verdict(os.urandom(8192))[0], "CIPHERTEXT")
-        self.assertEqual(s.flash_verdict(os.urandom(8192), "secret")[0], "CIPHERTEXT")
+        self.assertEqual(s.flash_verdict(noise(8192))[0], "CIPHERTEXT")
+        self.assertEqual(s.flash_verdict(noise(8192), "secret")[0], "CIPHERTEXT")
         self.assertEqual(s.flash_verdict(os.urandom(100) + b"secret" + os.urandom(100), "secret")[0], "PLAINTEXT")
 
 
