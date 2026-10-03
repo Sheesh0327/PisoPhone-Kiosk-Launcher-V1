@@ -31,7 +31,7 @@ are only needed without the package. `coinslot-listener.sh migrate` moves an old
 From the PC that has this folder (Windows PowerShell, macOS or Linux terminal), replace `<router-ip>`:
 
 ```
-scp opennds/theme_coinslot.sh opennds/coinslot-listener.sh opennds/coinslot.init root@<router-ip>:/root/
+scp opennds/theme_coinslot.sh opennds/coinslot_status.sh opennds/coinslot-listener.sh opennds/coinslot.init root@<router-ip>:/root/
 ```
 
 Then log in to the router: `ssh root@<router-ip>`.
@@ -39,7 +39,7 @@ Then log in to the router: `ssh root@<router-ip>`.
 ## 2. Fix line endings (needed if the files ever touched Windows)
 ```
 cd /root
-sed -i 's/\r$//' theme_coinslot.sh coinslot-listener.sh coinslot.init
+sed -i 's/\r$//' theme_coinslot.sh coinslot_status.sh coinslot-listener.sh coinslot.init
 ```
 Skipping this on Windows-copied files gives "Permission denied" or "not found" even though the files exist.
 
@@ -63,15 +63,17 @@ box for a minute). Keep the terminal open: `$KEY` is used in step 6.
 | file | destination | mode |
 |---|---|---|
 | `theme_coinslot.sh` | `/usr/lib/opennds/theme_coinslot.sh` | executable |
+| `coinslot_status.sh` | `/usr/lib/opennds/coinslot_status.sh` | executable |
 | `coinslot-listener.sh` | `/usr/bin/coinslot-listener.sh` | executable |
 | `coinslot.init` | `/etc/init.d/coinslot` | executable |
 
 ```
 cp /root/theme_coinslot.sh /usr/lib/opennds/theme_coinslot.sh
+cp /root/coinslot_status.sh /usr/lib/opennds/coinslot_status.sh
 cp /root/coinslot-listener.sh /usr/bin/coinslot-listener.sh
 cp /root/coinslot.init /etc/init.d/coinslot
 
-chmod +x /usr/lib/opennds/theme_coinslot.sh
+chmod +x /usr/lib/opennds/theme_coinslot.sh /usr/lib/opennds/coinslot_status.sh
 chmod +x /usr/bin/coinslot-listener.sh
 chmod +x /etc/init.d/coinslot
 ```
@@ -99,6 +101,7 @@ Rates, speed caps, the coin window and the fair-use limit all have the defaults 
 ```
 uci set opennds.@opennds[0].login_option_enabled='3'
 uci set opennds.@opennds[0].themespec_path='/usr/lib/opennds/theme_coinslot.sh'
+uci set opennds.@opennds[0].statuspath='/usr/lib/opennds/coinslot_status.sh'   # the page a connected customer sees at http://<router>/
 
 # Bursting (openNDS' own feature): a client is not speed-limited until its speed stays above its cap for a whole
 # check window (ratecheckwindow x checkinterval = 2 x 15 s = about 30 s); the cap is lifted again when it drops below.
@@ -197,7 +200,7 @@ curl http://127.0.0.1:8099/info                       # expect {"first":30,"idle
 /usr/bin/coinslot-listener.sh minutes endurance 17    # expect 690 (11 hrs 30 min)
 curl http://<box-ip>/api/gateway/challenge            # expect {"nonce":"..."}
 /usr/bin/coinslot-listener.sh box                     # expect: box <ip> answers
-uci show opennds | grep -E "login_option|themespec|bursting"   # expect the login/theme lines and both bursting lines
+uci show opennds | grep -E "login_option|themespec|statuspath|bursting"   # expect the login/theme/status lines and both bursting lines
 ndsctl status                                         # openNDS is running
 ```
 Then join the Wi-Fi with a phone and watch: `logread -f -e opennds -e coinslot`

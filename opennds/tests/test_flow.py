@@ -492,6 +492,36 @@ try:
     else:
         print("skipped: no Chrome/Chromium found for the browser test")
 
+    # ---- status page for connected customers (openNDS "statuspath") -------------------------------------------------------
+    STATUS = f"{ROOT}/coinslot_status.sh"
+    MAC_S = "aa:bb:cc:00:00:0a"
+    nds_client(MAC_S)
+    p = pay("hidST", MAC_S, "hyper", 2)
+    page("hidST", MAC_S, "connect", "hyper", landing="yes")
+    open(f"{NDS}/ip_10.9.9.9", "w").write(MAC_S)
+    nds_client("aa:bb:cc:00:00:0b")                   # a client that is not connected
+    open(f"{NDS}/ip_10.9.9.8", "w").write("aa:bb:cc:00:00:0b")
+
+    def status_page(*args, **kw):
+        return subprocess.run(["sh", STATUS, *args], env={**env, "COINSLOT_URL": f"http://127.0.0.1:{LISTEN_PORT}", **kw}, capture_output=True, text=True, timeout=30)
+    r = status_page("status", "10.9.9.9")
+    check(r.returncode == 0 and "You are connected" in r.stdout and "time left" in r.stdout, "status page shows a connected customer")
+    check(code_from(r.stdout.replace('class="code">', 'class="code">')) is not None, "status page shows the voucher code")
+    check("HyperSpeed" in r.stdout and "Data used" in r.stdout, "status page shows plan and data used")
+    check('href="http://192.168.1.1:2050/opennds_auth/"' in r.stdout, "status page links to the portal for more time")
+    check("Logout" not in r.stdout and "opennds_deny" not in r.stdout, "no logout button (paid time keeps running)")
+    check("<b>" not in r.stdout.split("<h1>")[1].split("</h1>")[0] and "Test&lt;Spot" in r.stdout, "gateway name is escaped")
+    r = status_page("status", "10.9.9.9", COINSLOT_URL="http://127.0.0.1:9")
+    check(r.returncode == 0 and "time left" in r.stdout, "status page still works when the coin-slot manager is down")
+    r = status_page("status", "10.9.9.8")
+    check("not connected" in r.stdout and "/login" in r.stdout, "status page for a device that is not connected")
+    r = status_page("err511", "10.9.9.8")
+    check("Continue" in r.stdout and 'href="http://192.168.1.1:2050/login"' in r.stdout, "login-needed page offers Continue")
+    check(status_page("status", "10.0;rm").returncode != 0 and status_page("nonsense", "10.9.9.9").returncode != 0, "bad input is refused")
+    theme_src = open(THEME).read()
+    css = [l for l in open(STATUS).read().split("<style>\n")[1].split("</style>")[0].split("\n") if l]
+    check(all(l in theme_src for l in css), "status page styles are copies of the portal's (no drift)")
+
     # ---- finding the box when it moved (layout A) --------------------------------------------------------------------
     def box_cmd(extra, state):
         c = f"{tmp}/moved.conf"
