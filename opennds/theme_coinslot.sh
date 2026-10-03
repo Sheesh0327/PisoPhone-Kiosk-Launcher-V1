@@ -106,6 +106,12 @@ input[type=text]{width:100%;padding:13px;border-radius:12px;border:1px solid var
 </style>
 </head><body><div class="w">
 <h1>$gatewayname</h1>
+<script>
+/* Any tap that leaves the page shows it was received, and a second tap while the first is still loading is ignored. */
+document.addEventListener("submit",function(e){var f=e.target,b=f.querySelector&&f.querySelector("button[type=submit]");
+if(f.__t&&Date.now()-f.__t<8000){e.preventDefault();return}f.__t=Date.now();if(b&&f.id!=="coinform"){b.textContent="Please wait \u00b7 Sandali lang";b.style.opacity=".6"}},true);
+window.addEventListener("pageshow",function(e){if(e.persisted)location.reload()});
+</script>
 HTML
 }
 
@@ -324,11 +330,20 @@ function on(){if(!A)return;ctx=ctx||window.__ctx||new A();window.__ctx=ctx;ctx.r
 b.style.display="none";ding(1)}
 b.onclick=on;
 try{if(A){ctx=window.__ctx||new A();window.__ctx=ctx;ctx.resume();setTimeout(function(){if(ctx.state==="running")b.style.display="none"},50)}}catch(e){}
+/* Update fields in place and only when they changed: replacing the panel (or the button's text) would swallow a tap
+   that is in progress. */
+function put(id,t){var e=document.getElementById(id);if(e&&e.textContent!==t)e.textContent=t}
 function poll(){var x=new XMLHttpRequest();x.open("GET",url);x.onload=function(){
 var d=new DOMParser().parseFromString(x.responseText,"text/html"),n=d.getElementById("wait");
-if(!n){location.replace(url);return}
-var w=document.getElementById("wait");w.innerHTML=n.innerHTML;
-var p=parseInt((d.getElementById("pes").textContent||"").replace(/[^0-9]/g,""),10)||0;
+if(!n||!d.getElementById("pes")){location.replace(url);return}
+var g=function(i){var e=d.getElementById(i);return e?e.textContent:""},cd=document.getElementById("cd"),dc=d.getElementById("cd"),sb=document.getElementById("sub"),ds=d.getElementById("sub"),
+btn=document.querySelector("#wait button.btn"),db=d.querySelector("#wait button.btn");
+put("pes",g("pes"));put("mins",g("mins"));put("left",g("left"));
+var bar=document.getElementById("bar"),db2=d.getElementById("bar");if(bar&&db2&&bar.style.width!==db2.style.width)bar.style.width=db2.style.width;
+if(cd&&dc&&cd.style.display!==dc.style.display)cd.style.display=dc.style.display;
+if(sb&&ds&&sb.innerHTML!==ds.innerHTML)sb.innerHTML=ds.innerHTML;
+if(btn&&db&&!btn.form.__t&&btn.textContent!==db.textContent){btn.textContent=db.textContent;btn.className=db.className}
+var p=parseInt(g("pes").replace(/[^0-9]/g,""),10)||0;
 if(p>pes){ding(p-pes);say(p+(p===1?" peso":" pesos"))}pes=p};x.send()}
 function say(t){try{if(window.speechSynthesis){speechSynthesis.cancel();var u=new SpeechSynthesisUtterance(t);u.lang="en-US";speechSynthesis.speak(u)}}catch(e){}}
 function fmt(m){if(m<60)return m+" min";var h=Math.floor(m/60),r=m%60;return h+(h>1?" hrs":" hr")+(r?" "+r+" min":"")}
@@ -336,16 +351,16 @@ function show(j){if(j.state==="done"||j.state==="error"||j.state==="none"){locat
 var sb=document.getElementById("sub"),cd=document.getElementById("cd");
 if(j.state==="armed"&&cd&&cd.style.display==="none"){cd.style.display="";if(sb)sb.innerHTML="$(plan_name "$coinplan") &middot; Insert coin(s) now &middot; Maglagay ng barya";try{navigator.vibrate&&navigator.vibrate(80)}catch(e){}say("Insert coin now")}
 var p=+j.pulses||0,t=p>0?$infoidle:$infofirst,e=document.getElementById("pes"),btn=document.querySelector("#wait button.btn");
-if(!e)return;e.textContent="\u20b1"+p;document.getElementById("mins").textContent=fmt(+j.minutes||0);
-document.getElementById("left").textContent=Math.max(+j.remaining||0,0);
-document.getElementById("bar").style.width=Math.max(0,Math.min(100,100*(+j.remaining||0)/t))+"%";
-if(btn){btn.textContent=p>0?"Connect now":"Cancel";btn.className=p>0?"btn":"btn alt"}
+if(!e)return;put("pes","\u20b1"+p);put("mins",fmt(+j.minutes||0));put("left",""+Math.max(+j.remaining||0,0));
+var w=Math.max(0,Math.min(100,100*(+j.remaining||0)/t))+"%",bar=document.getElementById("bar");if(bar&&bar.style.width!==w)bar.style.width=w;
+var want=p>0?"Connect now":"Cancel";if(btn&&!btn.form.__t&&btn.textContent!==want){btn.textContent=want;btn.className=p>0?"btn":"btn alt"}
 if(p>pes){ding(p-pes);say(p+(p===1?" peso":" pesos"))}pes=p}
-var sp=${infostream:-0},es=null,got=false;
+var sp=${infostream:-0},es=null,got=false,polling=false;
+function fallback(){if(es){es.close();es=null}if(!polling){polling=true;setInterval(poll,2000)}}
 if(window.EventSource&&sp){try{es=new EventSource("http://"+location.hostname+":"+sp+"/stream?sid=$sid&mode=wait");
 es.addEventListener("status",function(m){got=true;try{show(JSON.parse(m.data))}catch(e){}});
-es.onerror=function(){if(!got){es.close();es=null;setInterval(poll,2000)}}}catch(e){es=null}}
-if(!es)setInterval(poll,2000)})();
+es.onerror=function(){if(!got||es.readyState===2)fallback()}}catch(e){es=null}}
+if(!es)fallback()})();
 </script>
 HTML
 }
