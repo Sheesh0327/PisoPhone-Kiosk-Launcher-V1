@@ -28,7 +28,7 @@ check(set(outer) == {"./debian-binary", "./control.tar.gz", "./data.tar.gz"}, "o
 check(outer["./debian-binary"][1] == b"2.0\n", "debian-binary")
 data = members(outer["./data.tar.gz"][1])
 ctl = members(outer["./control.tar.gz"][1])
-want = {"./usr/bin/coinslot-listener.sh": 0o755, "./usr/lib/opennds/theme_coinslot.sh": 0o755,
+want = {"./usr/bin/coinslot-listener.sh": 0o755, "./usr/lib/opennds/theme_coinslot.sh": 0o755, "./usr/lib/opennds/coinslot_status.sh": 0o755,
         "./etc/init.d/coinslot": 0o755, "./etc/config/coinslot": 0o600}
 for name, mode in want.items():
     check(name in data and data[name][0].mode == mode, f"{name} present with mode {oct(mode)}")

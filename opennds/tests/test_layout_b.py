@@ -39,7 +39,10 @@ check(not any(s in ("kiosk", "guest") and d in ("kiosk", "guest") for s, d in fo
 for z in ("kiosk", "guest"):
     check(sets.get(f"firewall.{z}.forward") == "REJECT" and sets.get(f"firewall.{z}.input") == "REJECT", f"{z} zone rejects input and forward by default")
 rule_ports = [sets[k] for k in sets if k.startswith("firewall.") and k.endswith(".dest_port")]
-check(all(set(p.split()) <= {"53", "67"} for p in rule_ports), "only DNS and DHCP are opened to the router: " + str(rule_ports))
+check(all(set(p.split()) <= {"53", "67", "8100"} for p in rule_ports), "only DNS, DHCP and the live-update port are opened to the router: " + str(rule_ports))
+check(sets.get("firewall.guest_stream.src") == "guest" and sets.get("firewall.guest_stream.dest_port") == "8100", "guests reach only the live-update port, and only from the guest zone")
+check("add_list opennds.@opennds[0].users_to_router='allow tcp port 8100'" in out, "openNDS lets not-yet-paid guests reach the live-update port")
+check(sets.get("firewall.kiosk_stream.src") is None and "kiosk_stream" not in out, "the kiosk side gets no live-update rule")
 check("wan" not in sets.get("firewall.kiosk.network", ""), "kiosk zone is not the wan")
 check("network.lan" not in out, "the existing lan is not touched")
 check(run(KIOSK_KEY="short").returncode != 0, "a short Wi-Fi password is refused")

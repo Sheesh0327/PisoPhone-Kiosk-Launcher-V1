@@ -112,6 +112,7 @@ GatewayStatus gatewayStatus(const String& session) {
     }
     st.pulses = getPendingGatewayPulses(slotId);
     st.minutesPerCoin = minutesPerCoin;
+    st.slotFree = getCoinSlotState() == CoinSlotState::IDLE;
     return st;
 }
 

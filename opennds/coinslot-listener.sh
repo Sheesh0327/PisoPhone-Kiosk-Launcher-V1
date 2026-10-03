@@ -4,6 +4,8 @@
 #   coinslot-listener.sh serve              local HTTP listener (socat, 127.0.0.1 only)
 #   coinslot-listener.sh handle             one HTTP request on stdin/stdout (started by socat)
 #   coinslot-listener.sh worker <sid> <p>   hold one customer's coin window (started by the listener)
+#   coinslot-listener.sh stream             live-update listener (socat, guest network): coin counts and "slot is free" pushed to the portal
+#   coinslot-listener.sh stream-handle      one live-update connection (started by socat)
 #   coinslot-listener.sh fairuse            fair-use watcher loop (HyperSpeed throttle after FAIR_USE_GB)
 #   coinslot-listener.sh box                which box this router uses and whether it answers (finds it if it moved)
 #   coinslot-listener.sh report [days]      revenue per day and plan
@@ -37,16 +39,26 @@ UCI="${UCI:-uci}"
 # LuCI and `uci` tooling understand. The old /etc/coinslot.conf is still read first, so an unmigrated box keeps
 # working; any option set in UCI wins. `coinslot-listener.sh migrate` copies the old file into UCI.
 SETTINGS="GW_BOX GW_KEY GW_DISCOVER GW_BOX_MAC DISCOVER_PORT DISCOVER_IFACE DISCOVER_COOLDOWN LISTEN_PORT STATE_DIR DATA_DIR
-  COIN_FIRST_WAIT_SECONDS COIN_IDLE_WAIT_SECONDS COIN_MAX_SECONDS HYPER_TIERS HYPER_PRORATA_MIN ENDURANCE_TIERS
+  COIN_FIRST_WAIT_SECONDS COIN_IDLE_WAIT_SECONDS COIN_MAX_SECONDS COIN_POLL_SECONDS STREAM_PORT STREAM_BIND
+  STREAM_MAX_CLIENTS STREAM_MAX_SECONDS QUEUE_CLAIM_SECONDS HYPER_TIERS HYPER_PRORATA_MIN ENDURANCE_TIERS
   ENDURANCE_DOWN_KBPS ENDURANCE_UP_KBPS PAUSE_MIN_PESOS PAUSE_MAX_HOURS FAIR_USE_GB FAIR_THROTTLE_DOWN_KBPS
   FAIR_THROTTLE_UP_KBPS FAIR_THROTTLE_MINUTES FAIR_FULL_MINUTES"
 [ -r "$CONF" ] && . "$CONF"
 if command -v "$UCI" >/dev/null 2>&1; then
-  for _name in $SETTINGS; do
-    _opt=$(printf '%s' "$_name" | tr 'A-Z' 'a-z')
-    _val=$("$UCI" -q get "coinslot.main.$_opt" 2>/dev/null) || continue
-    [ -n "$_val" ] && export "$_name=$_val"        # only the known names above are ever read, never arbitrary ones
+  # One `uci show` and one awk for all settings (every request starts this script, and forks are slow on a router).
+  # Only the known names above are ever read, never arbitrary ones.
+  # (A value containing an apostrophe is skipped: set it in the old coinslot.conf instead.)
+  _uci=$("$UCI" -q show coinslot.main 2>/dev/null | awk -F"'" 'NF == 3 && /^coinslot\.main\.[a-z_0-9]+=/ {
+    k = $1; sub(/^coinslot\.main\./, "", k); sub(/=$/, "", k); print toupper(k) "\t" $2 }')
+  _known=" $(echo $SETTINGS) "
+  _nl='
+'
+  _oifs="$IFS"; IFS="$_nl"
+  for _line in $_uci; do
+    _name="${_line%%	*}"; _val="${_line#*	}"
+    case "$_known" in *" $_name "*) [ -n "$_val" ] && export "$_name=$_val" ;; esac
   done
+  IFS="$_oifs"
 fi
 
 GW_BOX="${GW_BOX:-192.168.1.10}"
@@ -59,6 +71,18 @@ NDSCTL="${NDSCTL:-ndsctl}"
 COIN_FIRST_WAIT_SECONDS="${COIN_FIRST_WAIT_SECONDS:-30}"
 COIN_IDLE_WAIT_SECONDS="${COIN_IDLE_WAIT_SECONDS:-15}"
 COIN_MAX_SECONDS="${COIN_MAX_SECONDS:-115}"
+# How often the worker asks the box for new coins while one customer's window is open (only then; an idle router polls
+# nothing). Fractions need `sleep` that accepts them (opkg install coreutils-sleep); BusyBox sleep falls back to 1 s.
+COIN_POLL_SECONDS="${COIN_POLL_SECONDS:-0.1}"
+
+# Live updates (Server-Sent Events) for the portal page, on their own port so the guest network can reach only this.
+# Each connection can see only its own session, from the device that started it. Bounded: STREAM_MAX_CLIENTS at once,
+# STREAM_MAX_SECONDS each. A customer waiting for a busy slot gets QUEUE_CLAIM_SECONDS to tap Start once it is free.
+STREAM_PORT="${STREAM_PORT:-8100}"
+STREAM_BIND="${STREAM_BIND:-0.0.0.0}"
+STREAM_MAX_CLIENTS="${STREAM_MAX_CLIENTS:-8}"
+STREAM_MAX_SECONDS="${STREAM_MAX_SECONDS:-600}"
+QUEUE_CLAIM_SECONDS="${QUEUE_CLAIM_SECONDS:-30}"
 
 # Plans. Tiers are "pesos:minutes". The best combination of tiers is used for any amount, e.g. Endurance
 # 17 pesos = 10 + 5 + 1 + 1 = 8 h + 3 h + 30 min. HyperSpeed pesos that fit no tier (1-4) are paid pro rata.
@@ -92,13 +116,32 @@ DISCOVER_COOLDOWN="${DISCOVER_COOLDOWN:-30}"
 
 SELF="$0"
 
+# nap <seconds>: sleep that may be fractional. nap_init (workers and live streams only) checks once whether this
+# `sleep` can: BusyBox sleep cannot, and then everything polls once a second.
+NAP_FRAC=0
+nap_init() {
+  case "$COIN_POLL_SECONDS" in "" | *[!0-9.]*) COIN_POLL_SECONDS=1 ;; esac
+  if sleep 0.01 2>/dev/null; then NAP_FRAC=1; else COIN_POLL_SECONDS=1; fi
+}
+nap() { if [ "$NAP_FRAC" = 1 ]; then sleep "$1"; else sleep 1; fi; }
+
 # ---------------------------------------------------------------------------
 # Small helpers
 # ---------------------------------------------------------------------------
 now() { date +%s; }
 jget() { sed -n 's/.*"'"$1"'" *: *"\{0,1\}\([^",}]*\).*/\1/p'; }
 
-if command -v curl >/dev/null 2>&1; then
+# http <url>: GET a plain http:// URL and print the body (error answers carry a JSON body too). socat (needed anyway)
+# starts in milliseconds; curl and wget take about half a second just to start on the router (TLS library), which made
+# every box call and every portal page slow.
+if command -v socat >/dev/null 2>&1; then
+  http() {
+    _h="${1#http://}"; _p="/${_h#*/}"; _h="${_h%%/*}"
+    case "$_h" in *:*) ;; *) _h="$_h:80" ;; esac
+    printf 'GET %s HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n' "$_p" "${_h%%:*}" |
+      socat -t8 -T8 - "TCP:$_h,shut-none" 2>/dev/null | tr -d '\r' | sed '1,/^$/d'
+  }
+elif command -v curl >/dev/null 2>&1; then
   http() { curl -sS -m 8 "$1" 2>/dev/null; }          # no -f: error answers carry a JSON body
 else
   http() { wget -qO- -T 8 "$1" 2>/dev/null; }
@@ -170,13 +213,48 @@ discover_box() {
   return 0
 }
 
+# HMAC-SHA256 with only the shell's printf and sha256sum: starting openssl takes about 0.6 s on the router, and every
+# box poll is signed. hmac_init checks the result against a known value and keeps openssl as the fallback.
+HMAC_MODE=""
+hmac_pads() {  # hmac_pads <key>: sets IPAD_F and OPAD_F (printf formats of the key block xor 0x36 / 0x5c)
+  _k="$1"; _n=0; _kb=""
+  if [ "${#_k}" -gt 64 ]; then                           # a long key is hashed first
+    _hx=$(printf '%s' "$_k" | sha256sum); _hx="${_hx%% *}"
+    while [ -n "$_hx" ]; do _kb="$_kb $(( 0x${_hx%"${_hx#??}"} ))"; _hx="${_hx#??}"; _n=$((_n + 1)); done
+  else
+    while [ -n "$_k" ]; do _c="${_k%"${_k#?}"}"; _k="${_k#?}"; _kb="$_kb $(printf '%d' "'$_c")"; _n=$((_n + 1)); done
+  fi
+  IPAD_F=""; OPAD_F=""; _i=0
+  set -- $_kb
+  while [ "$_i" -lt 64 ]; do
+    _b=0; if [ "$_i" -lt "$_n" ]; then _b="$1"; shift; fi
+    _x=$(( _b ^ 54 )); IPAD_F="$IPAD_F\\$(( _x >> 6 ))$(( (_x >> 3) & 7 ))$(( _x & 7 ))"
+    _x=$(( _b ^ 92 )); OPAD_F="$OPAD_F\\$(( _x >> 6 ))$(( (_x >> 3) & 7 ))$(( _x & 7 ))"
+    _i=$((_i + 1))
+  done
+}
+hmac_hex() {  # hmac_hex <message>: hex digest (needs hmac_pads first)
+  _in=$( { printf "$IPAD_F"; printf '%s' "$1"; } | sha256sum ); _h="${_in%% *}"; HF=""
+  while [ -n "$_h" ]; do _x=$(( 0x${_h%"${_h#??}"} )); HF="$HF\\$(( _x >> 6 ))$(( (_x >> 3) & 7 ))$(( _x & 7 ))"; _h="${_h#??}"; done
+  _out=$( { printf "$OPAD_F"; printf "$HF"; } | sha256sum ); printf '%s' "${_out%% *}"
+}
+hmac_init() {
+  HMAC_MODE=openssl
+  hmac_pads key
+  [ "$(hmac_hex 'The quick brown fox jumps over the lazy dog')" = f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8 ] || return 0
+  hmac_pads "$GW_KEY"; HMAC_MODE=shell
+}
+
 call() {
   _sid="$1"; _action="$2"; _extra="$3"
   _nonce=$(http "$(box_base)/challenge" | jget nonce)
   if [ -z "$_nonce" ] && discover_box; then _nonce=$(http "$(box_base)/challenge" | jget nonce); fi
   [ -n "$_nonce" ] || { echo '{"success":false,"error":"NO_NONCE"}'; return 1; }
   BASE=$(box_base)
-  _sig=$(printf 'gw1:%s:%s:%s' "$_action" "$_sid" "$_nonce" | openssl dgst -sha256 -hmac "$GW_KEY" | awk '{print $NF}')
+  [ -n "$HMAC_MODE" ] || hmac_init
+  _msg="gw1:$_action:$_sid:$_nonce"
+  if [ "$HMAC_MODE" = shell ]; then _sig=$(hmac_hex "$_msg")
+  else _sig=$(printf '%s' "$_msg" | openssl dgst -sha256 -hmac "$GW_KEY" | awk '{print $NF}'); fi
   http "$BASE/$_action?session=$_sid&nonce=$_nonce&sig=$_sig$_extra"
 }
 
@@ -300,6 +378,7 @@ status_json() {  # status_json <dir>
 # ---------------------------------------------------------------------------
 do_worker() {
   sid="$1"; dir="$STATE_DIR/$sid"
+  nap_init
   echo $$ > "$dir/pid"
   armed=0
   release() {
@@ -321,11 +400,11 @@ do_worker() {
   fi
   armed=1
   pulses=$(printf '%s' "$answer" | jget pulses); pulses="${pulses:-0}"
-  last="$pulses"
+  last="$pulses"; shown=""
   write_state "$dir" armed "$pulses" "$(( deadline - $(now) ))" ""
 
   while [ "$(now)" -lt "$deadline" ] && [ ! -e "$dir/stop" ]; do
-    sleep 1
+    nap "$COIN_POLL_SECONDS"
     st=$(call "$sid" status) || continue                  # a missed poll must not end the window early
     [ "$(printf '%s' "$st" | jget success)" = "true" ] || continue
     pulses=$(printf '%s' "$st" | jget pulses)
@@ -335,18 +414,19 @@ do_worker() {
       [ "$deadline" -gt "$cap" ] && deadline="$cap"
       call "$sid" arm "&duration=$(( deadline - $(now) + 3 ))" >/dev/null
     fi
-    write_state "$dir" armed "$pulses" "$(( deadline - $(now) ))" ""
+    rem=$(( deadline - $(now) ))
+    [ "$pulses/$rem" = "$shown" ] || { write_state "$dir" armed "$pulses" "$rem" ""; shown="$pulses/$rem"; }   # only on change
     [ "$(printf '%s' "$st" | jget state)" = "armed" ] || break   # the box ended it
   done
 
   release
-  i=0   # in-flight coins: the box reports "idle" once it has drained
-  while [ "$i" -lt 30 ]; do
+  drain_end=$(( $(now) + 30 ))   # in-flight coins: the box reports "idle" once it has drained
+  while [ "$(now)" -lt "$drain_end" ]; do
     st=$(call "$sid" status) && {
       pulses=$(printf '%s' "$st" | jget pulses)
       [ "$(printf '%s' "$st" | jget state)" = "idle" ] && break
     }
-    i=$((i + 1)); sleep 1
+    nap "$COIN_POLL_SECONDS"
   done
   write_state "$dir" done "${pulses:-0}" 0 ""
 }
@@ -547,7 +627,7 @@ do_handle() {
 
   case "$path" in
     /info)
-      reply "200 OK" "{\"first\":$COIN_FIRST_WAIT_SECONDS,\"idle\":$COIN_IDLE_WAIT_SECONDS,\"max\":$COIN_MAX_SECONDS,\"fair_gb\":$FAIR_USE_GB,\"e_down\":$ENDURANCE_DOWN_KBPS,\"e_up\":$ENDURANCE_UP_KBPS,\"pause_pesos\":$PAUSE_MIN_PESOS,\"pause_hours\":$PAUSE_MAX_HOURS}"
+      reply "200 OK" "{\"first\":$COIN_FIRST_WAIT_SECONDS,\"idle\":$COIN_IDLE_WAIT_SECONDS,\"max\":$COIN_MAX_SECONDS,\"fair_gb\":$FAIR_USE_GB,\"e_down\":$ENDURANCE_DOWN_KBPS,\"e_up\":$ENDURANCE_UP_KBPS,\"pause_pesos\":$PAUSE_MIN_PESOS,\"pause_hours\":$PAUSE_MAX_HOURS,\"stream_port\":$STREAM_PORT}"
       return ;;
     /tiers)
       plan=$(qget plan); valid_plan "$plan" || { reply "400 Bad Request" "$(err_json INVALID_PLAN)"; return; }
@@ -606,6 +686,7 @@ do_handle() {
     /start)
       plan=$(qget plan); valid_plan "$plan" || { reply "400 Bad Request" "$(err_json INVALID_PLAN)"; return; }
       mkdir -p "$dir"
+      [ -n "$mac" ] && printf '%s' "$mac" > "$dir/mac"     # the live stream only talks to this device
       if worker_running "$dir"; then reply "200 OK" "$(status_json "$dir")"; return; fi
       read_state "$dir"
       # Coins of a finished window that have not been turned into access yet are never discarded.
@@ -627,6 +708,7 @@ do_handle() {
           reply "200 OK" '{"state":"error","error":"ACK_PENDING"}'; return
         fi
       fi
+      q_gate "$sid" || { reply "200 OK" '{"state":"error","error":"SLOT_BUSY"}'; return; }   # someone is queued ahead
       rm -f "$dir/stop" "$dir/claimed" "$dir/state" "$dir/grant" "$dir/pending" "$dir/forfeit"
       [ -n "$forfeitcode" ] && printf '%s' "$forfeitcode" > "$dir/forfeit"
       printf '%s' "$plan" > "$dir/plan"
@@ -686,19 +768,151 @@ do_handle() {
   esac
 }
 
+
+# ---------------------------------------------------------------------------
+# Waiting line for a busy coin slot: $STATE_DIR/queue/<uptime centiseconds>_<sid>. The customer's open live stream keeps
+# its ticket fresh; a ticket nobody refreshed for 6 s is dropped. Only the first in line is told "ready".
+# ---------------------------------------------------------------------------
+q_seq() {
+  read -r _up _ < /proc/uptime 2>/dev/null; _up="${_up%.*}${_up#*.}"
+  case "$_up" in "" | *[!0-9]*) _up=$(( $(now) * 100 )) ;; esac
+  while case "$_up" in 0?*) true ;; *) false ;; esac; do _up="${_up#0}"; done
+  printf '%012d' "$_up"
+}
+q_prune() {  # q_prune <now>
+  for _f in "$STATE_DIR/queue"/*; do
+    [ -f "$_f" ] || continue
+    read -r _ts _ < "$_f"
+    case "$_ts" in "" | *[!0-9]*) continue ;; esac
+    [ $(( $1 - _ts )) -gt 6 ] && rm -f "$_f"
+  done
+}
+q_pos() {  # q_pos <sid>: place in line, 0 if absent
+  _i=0
+  for _f in "$STATE_DIR/queue"/*; do
+    [ -f "$_f" ] || continue
+    _i=$((_i + 1))
+    case "$_f" in *_"$1") echo "$_i"; return ;; esac
+  done
+  echo 0
+}
+# q_gate <sid>: may this customer start now? Not while somebody else is first in line; starting leaves the line.
+q_gate() {
+  [ -d "$STATE_DIR/queue" ] || return 0
+  q_prune "$(now)"
+  for _f in "$STATE_DIR/queue"/*; do
+    [ -f "$_f" ] || continue
+    case "$_f" in *_"$1") rm -f "$_f"; return 0 ;; esac
+    return 1
+  done
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Live updates for the portal page (Server-Sent Events). Read-only: it reports this customer's own coin window, or
+# their place in the waiting line; it never arms, grants or changes anything.
+# ---------------------------------------------------------------------------
+sse() { printf 'event: %s\ndata: %s\n\n' "$1" "$2"; }
+peer_mac() {  # peer_mac <ip>: MAC the router has for that guest address
+  case "$1" in "" | *[!0-9.]*) return ;; esac
+  awk -v ip="$1" '$1 == ip { print tolower($4) }' "${ARP_FILE:-/proc/net/arp}"
+}
+
+stream_wait() {
+  _ticks=$(( STREAM_MAX_SECONDS * TPS )); _t=0; _quiet=0; _prev=""
+  while [ "$_t" -lt "$_ticks" ]; do
+    read_state "$dir"
+    _cur="$STATE|$PULSES|$REMAINING|$ERROR"
+    if [ "$_cur" != "$_prev" ]; then
+      _prev="$_cur"; _quiet=0
+      sse status "$(status_json "$dir")"
+      case "$STATE" in done | error | none) return ;; esac
+    elif [ "$_quiet" -ge $(( 5 * TPS )) ]; then printf ': ping\n\n'; _quiet=0
+    fi
+    nap "$COIN_POLL_SECONDS"; _t=$((_t + 1)); _quiet=$((_quiet + 1))
+  done
+}
+
+stream_queue() {
+  mkdir -p "$STATE_DIR/queue"
+  _t=""
+  for _f in "$STATE_DIR/queue"/*_"$sid"; do [ -f "$_f" ] && _t="$_f"; done
+  [ -n "$_t" ] || _t="$STATE_DIR/queue/$(q_seq)_$sid"
+  _readyat=0; _last=""; _end=$(( $(now) + STREAM_MAX_SECONDS ))
+  : >> "$_t"
+  while :; do
+    _n=$(now)
+    [ "$_n" -lt "$_end" ] || { rm -f "$_t"; return; }
+    if [ ! -e "$_t" ]; then
+      read_state "$dir"
+      case "$STATE" in starting | armed) sse started '{}'; return ;; esac    # taken by /start: the customer is in
+      [ "$_readyat" = 0 ] || { sse expired '{}'; return; }
+      _t="$STATE_DIR/queue/$(q_seq)_$sid"                                   # dropped by mistake: back in line
+    fi
+    printf '%s %s\n' "$_n" "$_readyat" > "$_t"
+    q_prune "$_n"
+    _pos=$(q_pos "$sid")
+    if [ "$_readyat" = 0 ]; then
+      if [ "$_pos" = 1 ]; then
+        _st=$(call "$sid" status)
+        case "$(printf '%s' "$_st" | jget slot_free)" in
+          true) _readyat="$_n"; sse ready "{\"claim\":$QUEUE_CLAIM_SECONDS}"; _last=ready ;;
+          false) ;;
+          *) if [ "$(printf '%s' "$_st" | jget success)" = true ]; then       # an older box cannot say: page falls back
+               rm -f "$_t"; sse unsupported '{}'; return
+             fi ;;
+        esac
+      fi
+      if [ "$_last" != "$_pos" ] && [ "$_last" != ready ]; then _last="$_pos"; sse queue "{\"pos\":$_pos}"; fi
+    elif [ $(( _n - _readyat )) -ge "$QUEUE_CLAIM_SECONDS" ]; then
+      rm -f "$_t"; sse expired '{}'; return
+    fi
+    printf ': ping\n\n'                                                     # also notices a closed page
+    nap 0.3
+  done
+}
+
+do_stream() {
+  nap_init
+  TPS=1; [ "$NAP_FRAC" = 1 ] && TPS=10
+  read -r method target _
+  while read -r line; do [ -z "${line%$(printf '\r')}" ] && break; done
+  [ "$method" = "GET" ] || { reply "405 Method Not Allowed" "$(err_json METHOD)"; return; }
+  path="${target%%\?*}"; QUERY=""
+  case "$target" in *\?*) QUERY="${target#*\?}" ;; esac
+  [ "$path" = "/stream" ] || { reply "404 Not Found" "$(err_json NOT_FOUND)"; return; }
+  sid=$(qget sid)
+  valid_sid "$sid" || { reply "400 Bad Request" "$(err_json INVALID_SID)"; return; }
+  dir="$STATE_DIR/$sid"
+  # Only the device that started this session (same MAC the router sees for the connecting address) may listen.
+  _owner=$(cat "$dir/mac" 2>/dev/null); _peer=$(peer_mac "$SOCAT_PEERADDR")
+  [ -n "$_owner" ] && [ "$_owner" = "$_peer" ] || { reply "403 Forbidden" "$(err_json FORBIDDEN)"; return; }
+  printf 'HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-store\r\nConnection: close\r\nAccess-Control-Allow-Origin: *\r\n\r\n'
+  printf 'retry: 3000\n\n'
+  case "$(qget mode)" in
+    queue) stream_queue ;;
+    *) stream_wait ;;
+  esac
+}
+
 case "$1" in
   serve)
     mkdir -p "$STATE_DIR" "$DATA_DIR/vouchers" && chmod 700 "$STATE_DIR"
     find "$STATE_DIR" -mindepth 1 -maxdepth 1 -type d -name '[0-9a-f]*' -mmin +120 -exec rm -rf {} + 2>/dev/null   # forget old sessions
     exec socat "TCP-LISTEN:$LISTEN_PORT,bind=127.0.0.1,reuseaddr,fork" "EXEC:$SELF handle" ;;
+  stream)
+    mkdir -p "$STATE_DIR" && chmod 700 "$STATE_DIR"
+    exec socat "TCP-LISTEN:$STREAM_PORT,bind=$STREAM_BIND,reuseaddr,fork,max-children=$STREAM_MAX_CLIENTS" "EXEC:$SELF stream-handle" ;;
+  stream-handle) do_stream ;;
   handle) do_handle ;;
   worker) valid_sid "$2" && do_worker "$2" ;;
   fairuse) do_fairuse ;;
   box) do_box ;;
+  hmac) hmac_init; echo "$HMAC_MODE"; [ "$HMAC_MODE" = shell ] && hmac_hex "$2"; echo ;;       # for tests: signs with GW_KEY
   migrate) do_migrate ;;
   fairuse-once) fair_tick ;;
   purge) purge_vouchers ;;
   minutes) minutes_for "$2" "$3" ;;
   report) do_report "$2" ;;
-  *) echo "usage: $0 serve | handle | worker <sid> | fairuse | report [days] | minutes <plan> <pesos>" >&2; exit 2 ;;
+  *) echo "usage: $0 serve | stream | handle | worker <sid> | fairuse | report [days] | minutes <plan> <pesos>" >&2; exit 2 ;;
 esac
