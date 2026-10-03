@@ -52,7 +52,7 @@ class H(BaseHTTPRequestHandler):
             if c.get("busy"):
                 return self.send(409, {"success": False, "error": "SLOT_BUSY"})
             if s["armed_at"] is None or s["released"]:  # a new window; re-arming a live one keeps its coins
-                s.update(armed_at=time.time(), released=False, acked=0)
+                s.update(armed_at=time.time() + c.get("settle_ms", 0) / 1000.0, released=False, acked=0, settle_until=time.time() + c.get("settle_ms", 0) / 1000.0)
         if action == "release":
             s["released"], s["rel_at"] = True, time.time()
         pulses = 0
@@ -67,6 +67,7 @@ class H(BaseHTTPRequestHandler):
             state = "draining"
         return self.send(200, {"success": True, "session": sid, "state": state, "armed_remaining": 0,
                                "pulses": max(pulses, 0), "minutes_per_coin": 6,
+                               "ready_in_ms": max(0, int((s.get("settle_until", 0) - time.time()) * 1000)),
                                "slot_free": not c.get("busy") and not any(
                                    x["armed_at"] and not x["released"] for x in sessions.values())})
 

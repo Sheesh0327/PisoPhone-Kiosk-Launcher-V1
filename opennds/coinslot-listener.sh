@@ -402,6 +402,16 @@ do_worker() {
     return 1
   fi
   armed=1
+  # The box ignores coin pulses while the acceptor settles after power-on (ready_in_ms): the customer is invited to
+  # insert coins, and the countdown starts, only after that.
+  settle=$(printf '%s' "$answer" | jget ready_in_ms)
+  case "$settle" in "" | *[!0-9]*) settle=0 ;; esac
+  if [ "$settle" -gt 0 ]; then
+    nap "$(( settle / 1000 )).$(printf '%03d' $(( settle % 1000 )))"
+    deadline=$(( $(now) + COIN_FIRST_WAIT_SECONDS ))
+    cap=$(( $(now) + COIN_MAX_SECONDS ))
+    call "$sid" arm "&duration=$(( COIN_FIRST_WAIT_SECONDS + 3 ))" > /dev/null    # the box's own timer starts from here too
+  fi
   pulses=$(printf '%s' "$answer" | jget pulses); pulses="${pulses:-0}"
   last="$pulses"; shown=""
   write_state "$dir" armed "$pulses" "$(( deadline - $(now) ))" ""
