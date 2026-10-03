@@ -93,12 +93,8 @@ fun FloatingPill(
     val seconds = timeRemaining % 60
     val timeStr = String.format(Locale.US, "%02d:%02d", minutes, seconds)
 
-    val isFlashing = timeRemaining in 1..59
-    val timerTextColor by if (isFlashing) {
-        rememberUpdatedState(Color(0xFFFF3333))
-    } else {
-        rememberUpdatedState(Color.White)
-    }
+    val timeLevel = TimeLevel.of(timeRemaining)
+    val timerTextColor by rememberUpdatedState(timeLevel.color ?: Color.White)
 
     val themes = listOf(
         Pair(Color(0xFF0F172A), Color(0xFF10B981)),
@@ -571,6 +567,7 @@ fun FloatingPill(
         val pillBorderColor = when {
             isLowBattery -> Color(0xFFFF2222)
             hasBatteryAlert -> Color(0xFFFFB800)
+            timeLevel != TimeLevel.OK -> timeLevel.color!!
             isArenaMode -> Color(0xFF8B5CF6)
             else -> Outline.copy(alpha = 0.75f)
         }
