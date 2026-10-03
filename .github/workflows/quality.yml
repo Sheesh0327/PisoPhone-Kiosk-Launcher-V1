@@ -82,6 +82,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install socat (the router uses it for every call, so the test must too)
+        run: sudo apt-get install -y -q socat
       - name: Run end-to-end test with a fake box
         run: python3 opennds/tests/test_flow.py
       - name: Check the Layout B router configuration

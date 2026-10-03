@@ -131,7 +131,17 @@ nap() { if [ "$NAP_FRAC" = 1 ]; then sleep "$1"; else sleep 1; fi; }
 now() { date +%s; }
 jget() { sed -n 's/.*"'"$1"'" *: *"\{0,1\}\([^",}]*\).*/\1/p'; }
 
-if command -v curl >/dev/null 2>&1; then
+# http <url>: GET a plain http:// URL and print the body (error answers carry a JSON body too). socat (needed anyway)
+# starts in milliseconds; curl and wget take about half a second just to start on the router (TLS library), which made
+# every box call and every portal page slow.
+if command -v socat >/dev/null 2>&1; then
+  http() {
+    _h="${1#http://}"; _p="/${_h#*/}"; _h="${_h%%/*}"
+    case "$_h" in *:*) ;; *) _h="$_h:80" ;; esac
+    printf 'GET %s HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n' "$_p" "${_h%%:*}" |
+      socat -t8 -T8 - "TCP:$_h,shut-none" 2>/dev/null | tr -d '\r' | sed '1,/^$/d'
+  }
+elif command -v curl >/dev/null 2>&1; then
   http() { curl -sS -m 8 "$1" 2>/dev/null; }          # no -f: error answers carry a JSON body
 else
   http() { wget -qO- -T 8 "$1" 2>/dev/null; }

@@ -21,10 +21,15 @@ COINSLOT_URL="${COINSLOT_URL:-http://127.0.0.1:8099}"
 # Listener access and small helpers
 # ---------------------------------------------------------------------------
 coinslot() {  # coinslot <path>: JSON/text answer, empty if the listener is not running
-	if command -v curl >/dev/null 2>&1; then
-		curl -sS -m 10 "$COINSLOT_URL$1" 2>/dev/null
+	# socat starts in milliseconds; curl/wget take about half a second just to start on the router (TLS library).
+	if command -v socat > /dev/null 2>&1; then
+		_h="${COINSLOT_URL#http://}"
+		printf 'GET %s HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n' "$1" "${_h%%:*}" |
+			socat -t10 -T10 - "TCP:$_h,shut-none" 2> /dev/null | tr -d '\r' | sed '1,/^$/d'
+	elif command -v curl > /dev/null 2>&1; then
+		curl -sS -m 10 "$COINSLOT_URL$1" 2> /dev/null
 	else
-		wget -qO- -T 10 "$COINSLOT_URL$1" 2>/dev/null
+		wget -qO- -T 10 "$COINSLOT_URL$1" 2> /dev/null
 	fi
 }
 jget() { sed -n 's/.*"'"$1"'" *: *"\{0,1\}\([^",}]*\).*/\1/p'; }
