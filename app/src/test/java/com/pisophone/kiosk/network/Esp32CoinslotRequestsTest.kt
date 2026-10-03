@@ -24,6 +24,19 @@ class Esp32CoinslotRequestsTest {
     }
 
     @Test
+    fun statusUrlIsSignedLikeTheOtherCalls() {
+        val url = Esp32CoinslotRequests.signedUrl(
+            host = "192.168.1.10",
+            action = Esp32CoinslotRequests.ACTION_STATUS,
+            deviceId = "dev1",
+            secret = "secret123",
+            nowMs = 1700000000000L,
+        )
+        assertTrue(url.startsWith("http://192.168.1.10:80/api/coinslot/status?device_id=dev1&ts=1700000000000&sig="))
+        assertEquals(64, url.substringAfter("&sig=").length)
+    }
+
+    @Test
     fun ackUrlSignsTheTransactionId() {
         val url = Esp32CoinslotRequests.signedUrl(
             host = "192.168.1.10",

@@ -169,6 +169,7 @@ try:
     check('value="hyper" checked' in p, "HyperSpeed preselected")
     check("refresh" not in p.lower(), "welcome does not auto-refresh")
     check(len(p) < 7500, f"welcome page is small ({len(p)} bytes)")
+    check("Please wait" in p and "__t" in p, "every form shows it was tapped and ignores a second tap while loading")
     check("function instant()" in p and "Do not insert coins yet" in p and 'id="lleft"' not in p,
           "Insert Coin shows a waiting screen at once that does not invite coins before the slot is armed")
     # the real waiting page: no countdown and no "insert now" until the box has armed the slot
@@ -177,11 +178,11 @@ try:
     open(f"{STATE}/{sw}/plan", "w").write("hyper")
     open(f"{STATE}/{sw}/state", "w").write("STATE=starting\nPULSES=0\nREMAINING=30\nERROR=\n")
     p = page("hidW", MAC_A, "wait", "hyper")
-    check("Getting the coin slot ready" in p and 'id="cd" style="display:none"' in p and "Insert coin(s) now" not in p.split("<script>")[0],
+    check("Getting the coin slot ready" in p and 'id="cd" style="display:none"' in p and "Insert coin(s) now" not in p.split('id="wait"')[1].split("<script>")[0],
           "waiting page says 'getting ready' and hides the countdown while the slot is still arming")
     open(f"{STATE}/{sw}/state", "w").write("STATE=armed\nPULSES=0\nREMAINING=30\nERROR=\n")
     p = page("hidW", MAC_A, "wait", "hyper")
-    check("Insert coin(s) now" in p.split("<script>")[0] and 'id="cd" style="display:none"' not in p,
+    check("Insert coin(s) now" in p.split('id="wait"')[1].split("<script>")[0] and 'id="cd" style="display:none"' not in p,
           "waiting page invites coins and shows the countdown once the slot is armed")
     shutil.rmtree(f"{STATE}/{sw}")
 
@@ -353,6 +354,28 @@ try:
     took = time.time() - t0
     check(st["pulses"] == 1 and 5.0 <= took <= 12.0, f"window extended after a coin (took {took:.1f}s, pulses {st['pulses']})")
 
+    # ---- acceptor settling: the customer is not invited to pay (state stays "starting") until the box says it is ready ----
+    set_box(busy=False, coins_at=[0.4, 1.5], settle_ms=900)   # the first coin falls inside the settling window and is ignored
+    sT = sid_of("hidSettle")
+    t0 = time.time()
+    get(f"/start?sid={sT}&plan=hyper&mac={MAC_C}")
+    time.sleep(0.5)
+    early = json.loads(get(f"/status?sid={sT}")[1])
+    check(early["state"] == "starting", f"still 'getting ready' while the acceptor settles ({early['state']} at {time.time() - t0:.1f}s)")
+    for _ in range(30):
+        st = json.loads(get(f"/status?sid={sT}")[1])
+        if st["state"] == "armed":
+            break
+        time.sleep(0.2)
+    check(st["state"] == "armed" and time.time() - t0 >= 0.85, f"armed only after the settling time ({time.time() - t0:.1f}s)")
+    check(st["remaining"] >= 3, f"the countdown starts when the slot is ready ({st['remaining']}s of 4)")
+    for _ in range(40):
+        st = json.loads(get(f"/status?sid={sT}")[1])
+        if st["state"] == "done":
+            break
+        time.sleep(0.5)
+    check(st["pulses"] == 1, f"a coin inside the settling window is ignored and one after it is counted ({st['pulses']})")
+
     # ---- live updates (Server-Sent Events) ----------------------------------------------------------------------------
     # coins reach the page as they arrive, not on a 2 s refresh
     nds_client(MAC_A)
@@ -435,14 +458,14 @@ try:
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
     from urllib.parse import parse_qs, urlparse
     chrome = os.environ.get("CHROME") or next((c for c in [shutil.which(x) for x in ("google-chrome", "chromium", "chromium-browser")] + glob.glob("/opt/pw-browsers/chromium-*/chrome-linux/chrome") if c), None)
-    def browser_run(stream_port, coins):
+    def browser_run(stream_port, coins, driver=None):
         """Tap Insert Coin in headless Chrome against the real theme; returns (dumped DOM, request counts)."""
         c = open(conf).read()
         open(conf, "w").write(re.sub(r"STREAM_PORT=\d+", f"STREAM_PORT={stream_port}", c))
         nds_client("aa:bb:cc:00:00:09")
         set_box(busy=False, coins_at=coins)
         open(ARP, "w").write("IP address HW type Flags HW address Mask Device\n127.0.0.1 0x1 0x2 aa:bb:cc:00:00:09 * lo\n")
-        hits = {"wait": 0, "start_mode": None}
+        hits = {"wait": 0, "start_mode": None, "finish": 0}
 
         class Portal(BaseHTTPRequestHandler):
             def log_message(self, *a):
@@ -451,11 +474,13 @@ try:
             def do_GET(self):
                 q = {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()}
                 act = q.get("coinact", "")
-                html = page(f"hidJS{stream_port}", "aa:bb:cc:00:00:09", act, q.get("coinplan", ""))
+                html = page(f"hidJS{stream_port}{len(coins)}{id(driver)}", "aa:bb:cc:00:00:09", act, q.get("coinplan", ""))
                 if act == "":  # the welcome page: tap Insert Coin a moment after loading, like a customer would
                     html = html.replace("</body>", '<script>setTimeout(function(){document.querySelector(".coin").click()},300)</script></body>')
                 if act == "start":
                     hits["start_mode"] = self.headers.get("Sec-Fetch-Mode")
+                if act == "finish":
+                    hits["finish"] += 1
                 if act == "wait":  # the first reload still shows 0 pesos; later polls show that 2 coins arrived
                     hits["wait"] += 1
                     if hits["wait"] > 1:
@@ -471,6 +496,13 @@ try:
 
         srv = ThreadingHTTPServer(("127.0.0.1", 18120), Portal)
         threading.Thread(target=srv.serve_forever, daemon=True).start()
+        if driver is not None:   # real-time browser session (Playwright) instead of Chrome's virtual-time dump
+            try:
+                dom = driver("http://127.0.0.1:18120/opennds_preauth/?fas=ABC")
+            finally:
+                srv.shutdown()
+                srv.server_close()
+            return dom, hits
         r = subprocess.run([chrome, "--headless=new", "--no-sandbox", "--disable-gpu", "--autoplay-policy=no-user-gesture-required",
                             "--virtual-time-budget=5000", "--dump-dom",
                             "http://127.0.0.1:18120/opennds_preauth/?fas=ABC"],
@@ -485,6 +517,48 @@ try:
         check('id="pes">\u20b12<' in dom, "waiting page updated its coin count by itself (fallback polling)")
         check('data-dings="1"' in dom, "a new coin played the coin sound once")
         check(hits["start_mode"] not in (None, "navigate"), f"Insert Coin started the window without leaving the page (request mode {hits['start_mode']})")
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            sync_playwright = None
+            print("skipped: playwright not installed (real-time tap tests)")
+
+        def tap_connect(url):
+            """A customer taps Insert Coin, waits until coins show, then taps Connect now (real time, so the live stream runs)."""
+            with sync_playwright() as pw:
+                br = pw.chromium.launch(executable_path=chrome, args=["--no-sandbox"])
+                pg = br.new_page()
+                pg.goto(url)
+                try:
+                    pg.wait_for_function("(document.getElementById('pes')||{}).textContent && /[1-9]/.test(document.getElementById('pes').textContent)", timeout=15000)
+                    pg.wait_for_timeout(500)
+                    pg.click("#wait button.btn", timeout=5000)
+                    pg.wait_for_timeout(2500)
+                except Exception as e:
+                    print("tap_connect:", str(e)[:200])
+                dom = pg.content()
+                br.close()
+                return dom
+
+        def keeps_button(url):
+            """The same Connect button element must stay in the page while coins arrive and the page refreshes."""
+            with sync_playwright() as pw:
+                br = pw.chromium.launch(executable_path=chrome, args=["--no-sandbox"])
+                pg = br.new_page()
+                pg.goto(url)
+                pg.wait_for_selector("#wait button.btn", timeout=15000)
+                pg.evaluate("window.__b = document.querySelector('#wait button.btn')")
+                pg.wait_for_timeout(5500)   # several refreshes and coins
+                same = pg.evaluate("window.__b === document.querySelector('#wait button.btn') && document.body.contains(window.__b)")
+                br.close()
+                return str(same)
+
+        if sync_playwright:
+            for label, port in (("live stream", STREAM_PORT), ("polling fallback", 18130)):
+                dom, hits = browser_run(port, [0.8, 1.2, 1.6], driver=tap_connect)
+                check(hits["finish"] >= 1, f"tapping Connect now sends the finish request, {label} (seen: {hits['finish']})")
+                dom, hits = browser_run(port, [0.8, 1.2, 1.6, 3.0, 4.5], driver=keeps_button)
+                check(dom == "True", f"the Connect button is never replaced while the page updates, {label}")
         # With the stream: the page follows the window to its end through the pushed events, with no polling of the portal.
         dom, hits = browser_run(STREAM_PORT, [0.8, 1.2])
         check("Connect" in dom and "&#8369;2" not in dom and hits["wait"] == 1, f"live stream carried the page to the result without polling (portal wait requests: {hits['wait']})")

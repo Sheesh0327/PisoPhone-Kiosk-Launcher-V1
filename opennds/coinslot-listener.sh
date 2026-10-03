@@ -129,6 +129,8 @@ nap() { if [ "$NAP_FRAC" = 1 ]; then sleep "$1"; else sleep 1; fi; }
 # Small helpers
 # ---------------------------------------------------------------------------
 now() { date +%s; }
+# logmsg <text>: a line in the router log (logread -e coinslot), so a customer who got stuck can be traced afterwards.
+logmsg() { logger -t coinslot -- "$*" 2>/dev/null; }
 jget() { sed -n 's/.*"'"$1"'" *: *"\{0,1\}\([^",}]*\).*/\1/p'; }
 
 # http <url>: GET a plain http:// URL and print the body (error answers carry a JSON body too). socat (needed anyway)
@@ -396,9 +398,25 @@ do_worker() {
   if [ "$(printf '%s' "$answer" | jget success)" != "true" ]; then
     err=$(printf '%s' "$answer" | jget error)
     write_state "$dir" error 0 0 "${err:-NO_ANSWER}"
+    logmsg "window ${sid%????????????????????????} could not arm: ${err:-NO_ANSWER}"
     return 1
   fi
   armed=1
+  # The box ignores coin pulses while the acceptor settles after power-on (ready_in_ms): the customer is invited to
+  # insert coins, and the countdown starts, only after that.
+  settle=$(printf '%s' "$answer" | jget ready_in_ms)
+  case "$settle" in "" | *[!0-9]*) settle=0 ;; esac
+  if [ "$settle" -gt 5000 ]; then                         # not a settling time this software knows: do not wait on it
+    release
+    write_state "$dir" error 0 0 "BAD_SETTLE_TIME"
+    return 1
+  fi
+  if [ "$settle" -gt 0 ]; then
+    nap "$(( settle / 1000 )).$(printf '%03d' $(( settle % 1000 )))"
+    deadline=$(( $(now) + COIN_FIRST_WAIT_SECONDS ))
+    cap=$(( $(now) + COIN_MAX_SECONDS ))
+    call "$sid" arm "&duration=$(( COIN_FIRST_WAIT_SECONDS + 3 ))" > /dev/null    # the box's own timer starts from here too
+  fi
   pulses=$(printf '%s' "$answer" | jget pulses); pulses="${pulses:-0}"
   last="$pulses"; shown=""
   write_state "$dir" armed "$pulses" "$(( deadline - $(now) ))" ""
@@ -714,29 +732,32 @@ do_handle() {
       printf '%s' "$plan" > "$dir/plan"
       write_state "$dir" starting 0 "$COIN_FIRST_WAIT_SECONDS" ""
       # The worker must not inherit the socket (it would hold the connection open): detach its fds.
+      logmsg "start ${sid%????????????????????????} plan=$plan"
       ( "$SELF" worker "$sid" </dev/null >/dev/null 2>&1 & )
       reply "200 OK" "$(status_json "$dir")" ;;
     /status)
       reply "200 OK" "$(status_json "$dir")" ;;
     /finish)
       worker_running "$dir" && : > "$dir/stop"
+      logmsg "finish ${sid%????????????????????????}"
       reply "200 OK" "$(status_json "$dir")" ;;
     /claim)
       [ -n "$mac" ] || { reply "400 Bad Request" "$(err_json INVALID_MAC)"; return; }
-      if build_grant "$sid" "$mac"; then save_pending "$dir"; reply "200 OK" "$(grant_json)"
-      else reply "200 OK" '{"kind":"","pulses":0,"minutes":0,"added":0,"plan":"","mode":"auth","voucher":"","up":0,"down":0}'; fi ;;
+      if build_grant "$sid" "$mac"; then save_pending "$dir"; logmsg "claim ${sid%????????????????????????} $mac ${G_TOTAL_MIN}min mode=$G_MODE"; reply "200 OK" "$(grant_json)"
+      else logmsg "claim ${sid%????????????????????????} $mac: nothing to grant"; reply "200 OK" '{"kind":"","pulses":0,"minutes":0,"added":0,"plan":"","mode":"auth","voucher":"","up":0,"down":0}'; fi ;;
     /confirm | /apply)
       [ -n "$mac" ] || { reply "400 Bad Request" "$(err_json INVALID_MAC)"; return; }
       mkdir -p "$dir"
       mkdir "$dir/lock" 2>/dev/null || { reply "409 Conflict" "$(err_json BUSY)"; return; }
       trap 'rmdir "$dir/lock" 2>/dev/null' EXIT
-      if ! load_pending "$dir" && ! build_grant "$sid" "$mac"; then reply "200 OK" "$(err_json NOTHING_TO_GRANT)"; return; fi
+      if ! load_pending "$dir" && ! build_grant "$sid" "$mac"; then logmsg "confirm ${sid%????????????????????????} $mac: nothing to grant"; reply "200 OK" "$(err_json NOTHING_TO_GRANT)"; return; fi
       if [ "$path" = "/apply" ]; then
         [ "$G_MODE" = "topup" ] || { reply "200 OK" "$(err_json NOT_CONNECTED)"; return; }
-        nds_regrant "$mac" "$G_TOTAL_MIN" "$G_UP" "$G_DOWN" || { reply "200 OK" "$(err_json REGRANT_FAILED)"; return; }
+        nds_regrant "$mac" "$G_TOTAL_MIN" "$G_UP" "$G_DOWN" || { logmsg "top-up ${sid%????????????????????????} $mac: openNDS refused the re-grant"; reply "200 OK" "$(err_json REGRANT_FAILED)"; return; }
         [ "$G_PLAN" = "hyper" ] && { fair_init "$(mac_key "$mac")"; . "$(fair_file "$(mac_key "$mac")")"; [ "$G_FORFEIT" = 1 ] && USED_KB=0; fair_save "$(mac_key "$mac")" "$USED_KB" "$(nds_counters_kb "$mac")" normal 0; }
       fi
       finalize "$sid" "$mac"
+      logmsg "granted ${sid%????????????????????????} $mac ${G_TOTAL_MIN}min plan=$G_PLAN mode=$G_MODE"
       reply "200 OK" "{\"success\":true,\"voucher\":\"$G_CODE\",\"minutes\":$G_TOTAL_MIN,\"plan\":\"$G_PLAN\",\"expires\":$G_EXPIRES,\"mode\":\"$G_MODE\"}" ;;
     /voucher)
       [ -n "$mac" ] || { reply "400 Bad Request" "$(err_json INVALID_MAC)"; return; }

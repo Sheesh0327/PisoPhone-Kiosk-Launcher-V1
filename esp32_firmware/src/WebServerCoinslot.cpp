@@ -11,6 +11,7 @@
 // arm/unarm/ack carry a signature, see coinslotRequestAuthorized().
 #include "InputSafety.h"
 #include "WebServerCoinslot.h"
+#include "CoinTxVisibility.h"
 #include "WebServerModule.h"
 #include "WebServerAuth.h"
 #include "Config.h"
@@ -36,11 +37,24 @@ struct SessionCoinTx {
 };
 
 static const int MAX_SESSION_TX = 32;
+static const unsigned long SESSION_TX_MAX_AGE_MS =
+    15UL * 60UL * 1000UL; // the durable payment queue keeps retrying; this list is only a fast path
 static SessionCoinTx sessionTxList[MAX_SESSION_TX];
 static int sessionTxCount = 0;
 
+static void purgeOldSessionCoinTx() {
+    int writeIdx = 0;
+    for (int i = 0; i < sessionTxCount; i++) {
+        if (!sessionTxList[i].acknowledged && millis() - sessionTxList[i].ts < SESSION_TX_MAX_AGE_MS) {
+            sessionTxList[writeIdx++] = sessionTxList[i];
+        }
+    }
+    sessionTxCount = writeIdx;
+}
+
 void recordSessionCoinTx(const String& devId, const String& txId, int pulses, int seconds, double amount) {
     if (txId.length() == 0 || pulses <= 0) return;
+    purgeOldSessionCoinTx();
     for (int i = 0; i < sessionTxCount; i++) {
         if (sessionTxList[i].txId == txId) {
             return;
@@ -87,6 +101,17 @@ static void acknowledgeSessionCoinTx(const String& txId) {
 #ifndef PISO_REQUIRE_SIGNED_COINSLOT
 #define PISO_REQUIRE_SIGNED_COINSLOT 0
 #endif
+// True only for a request carrying a correct, fresh signature for this action, device and transaction.
+static bool coinslotSignatureValid(const char* action, const String& rawDevId, const String& txId) {
+    if (!(webServer.hasArg("sig") && webServer.hasArg("ts"))) return false;
+    String ts = webServer.arg("ts");
+    String sig = webServer.arg("sig");
+    String payload = "v1:" + String(action) + ":" + rawDevId + ":" + ts;
+    if (txId.length() > 0) payload += ":" + txId;
+    return rawDevId.length() > 0 && sig.equalsIgnoreCase(calculateHMAC(payload, getSharedSecret())) &&
+           checkReplayProtection(rawDevId, strtoull(ts.c_str(), NULL, 10));
+}
+
 static bool coinslotRequestAuthorized(const char* action, const String& rawDevId, const String& txId) {
     bool hasSig = webServer.hasArg("sig") && webServer.hasArg("ts");
     if (!hasSig) {
@@ -102,12 +127,7 @@ static bool coinslotRequestAuthorized(const char* action, const String& rawDevId
         return true;
 #endif
     }
-    String ts = webServer.arg("ts");
-    String sig = webServer.arg("sig");
-    String payload = "v1:" + String(action) + ":" + rawDevId + ":" + ts;
-    if (txId.length() > 0) payload += ":" + txId;
-    bool ok = rawDevId.length() > 0 && sig.equalsIgnoreCase(calculateHMAC(payload, getSharedSecret())) &&
-              checkReplayProtection(rawDevId, strtoull(ts.c_str(), NULL, 10));
+    bool ok = coinslotSignatureValid(action, rawDevId, txId);
     if (!ok) {
         diagLog("[AUTH] Rejected /api/coinslot/%s: bad signature or stale timestamp from %s\n", action,
                 webServer.client().remoteIP().toString().c_str());
@@ -184,7 +204,7 @@ void handleApiCoinslotArm() {
     int sNum = licenseSlots[slotIdx].slotNum;
     String json = "{\"success\":true,\"status\":\"armed\",\"slot\":" + String(sNum) +
                   ",\"duration\":" + String(durationSec) + ",\"minutes_per_coin\":" + String(minutesPerCoin) +
-                  ",\"price\":1.0}";
+                  ",\"price\":1.0,\"settle_ms\":" + String(getCoinSlotSettleRemainingMs()) + "}";
     webServer.send(200, "application/json", json);
 }
 
@@ -230,14 +250,17 @@ void handleApiCoinslotStatus() {
     json += "\"minutes_per_coin\":" + String(minutesPerCoin) + ",";
     json += "\"transactions\":[";
 
+    // Coins are listed only to the phone they belong to, on a signed request (see coinTxVisibleTo). An unsigned or
+    // other phone's request gets the slot state but no transactions; the phone still receives its coins by push.
+    purgeOldSessionCoinTx(); // expired entries are dropped before anything is listed
+    bool signedOk = coinslotSignatureValid("status", devId, "");
     bool first = true;
     for (int i = 0; i < sessionTxCount; i++) {
-        if (devId.length() > 0 && sessionTxList[i].devId.length() > 0 && sessionTxList[i].devId != devId &&
-            activeDev != devId)
-            continue;
+        if (!coinTxVisibleTo(sessionTxList[i].devId, devId, signedOk, sessionTxList[i].acknowledged)) continue;
         if (!first) json += ",";
         first = false;
         json += "{";
+        json += "\"device_id\":\"" + jsonEsc(sessionTxList[i].devId) + "\",";
         json += "\"tx_id\":\"" + jsonEsc(sessionTxList[i].txId) + "\",";
         json += "\"pulses\":" + String(sessionTxList[i].pulses) + ",";
         json += "\"amount\":" + String(sessionTxList[i].amount, 2) + ",";

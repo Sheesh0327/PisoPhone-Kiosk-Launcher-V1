@@ -3,7 +3,7 @@ package com.pisophone.kiosk.network
 import com.pisophone.kiosk.security.KioskSecurity
 
 /**
- * Builds the signed coin-slot URLs (`/api/coinslot/arm`, `unarm`, `ack`) the ESP32 expects.
+ * Builds the signed coin-slot URLs (`/api/coinslot/arm`, `unarm`, `ack`, `status`) the ESP32 expects.
  *
  * The three coin-slot calls (arm, unarm, ack) share one format so the signing rule lives in a
  * single place: `sig = HMAC(secret, "v1:<action>:<deviceId>:<ts>[:<txId>]")`, mirrored by
@@ -13,10 +13,11 @@ object Esp32CoinslotRequests {
     const val ACTION_ARM = "arm"
     const val ACTION_UNARM = "unarm"
     const val ACTION_ACK = "ack"
+    const val ACTION_STATUS = "status"
 
     /**
      * @param host ESP32 host name or IP (without port)
-     * @param action one of [ACTION_ARM], [ACTION_UNARM], [ACTION_ACK]
+     * @param action one of [ACTION_ARM], [ACTION_UNARM], [ACTION_ACK], [ACTION_STATUS]
      * @param txId transaction being acknowledged; only used by [ACTION_ACK], and part of the signature
      * @param extraQuery additional, unsigned query parameters such as `ip=...&duration=...`
      * @param nowMs timestamp in epoch milliseconds (injectable for tests)

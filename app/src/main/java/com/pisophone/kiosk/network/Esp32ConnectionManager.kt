@@ -63,6 +63,8 @@ class Esp32ConnectionManager(
         private const val HEARTBEAT_TIMEOUT_MS = 45000L
         private const val MAX_TIMESTAMP_SKEW_MS = 60000L
         private const val DRAIN_SAFETY_TIMEOUT_MS = 15000L
+        private const val MAX_SETTLE_WAIT_MS = 3000L // never wait longer than this for the acceptor to settle
+        private const val DEFAULT_SETTLE_WAIT_MS = 1000L // the box's settling period when it does not say
     }
 
     private val okHttpClient = OkHttpClient.Builder()
@@ -500,6 +502,17 @@ class Esp32ConnectionManager(
                 Log.i(TAG, "⚡ ESP32 Coin Slot successfully ARMED via HTTP: $body")
                 lastHeartbeatTime = System.currentTimeMillis()
                 delegate.onOnlineStatusChanged(true, null)
+                // Powering the acceptor can cause a stray pulse, so the box ignores pulses while it settles. Do not invite
+                // coins until then, or a coin dropped in right away would be ignored.
+                val settleMs = try { JSONObject(body).optLong("settle_ms", 0L) } catch (_: Exception) { 0L }
+                if (settleMs > MAX_SETTLE_WAIT_MS) {
+                    // An unsupported settling time: do not report the slot ready while the box would still ignore coins.
+                    Log.w(TAG, "ESP32 reported an unsupported settling time ($settleMs ms); not reporting the slot as ready")
+                    delegate.onSlotBusy()
+                    return
+                }
+                if (settleMs > 0L) Thread.sleep(settleMs)
+                if (!isAttemptCurrent(attemptId)) return
                 delegate.onArmSuccess()
                 Handler(Looper.getMainLooper()).post {
                     Toast.makeText(context, "Coin slot ready (Insert coins - ${armingTimeoutSeconds}s)", Toast.LENGTH_SHORT).show()
@@ -574,26 +587,23 @@ class Esp32ConnectionManager(
                     if (attemptId != currentAttemptId) return@launch
                 }
                 try {
-                    val statusUrl = "http://$ipHost:80/api/coinslot/status?device_id=$deviceId"
+                    // Signed: the box lists coins only to the phone they belong to, and only on a signed request.
+                    val statusUrl = Esp32CoinslotRequests.signedUrl(
+                        host = ipHost,
+                        action = Esp32CoinslotRequests.ACTION_STATUS,
+                        deviceId = deviceId,
+                        secret = delegate.getSecretKey(),
+                    )
                     val req = Request.Builder().url(statusUrl).build()
                     val resp = httpClient.newCall(req).execute()
                     if (resp.isSuccessful) {
                         val body = resp.body?.string() ?: ""
                         if (body.isNotBlank()) {
                             val json = JSONObject(body)
-                            val txArray = json.optJSONArray("transactions")
-                            if (txArray != null) {
-                                for (i in 0 until txArray.length()) {
-                                    val tx = txArray.optJSONObject(i) ?: continue
-                                    val txId = tx.optString("tx_id", "").trim()
-                                    val seconds = tx.optInt("seconds", 0)
-                                    val amount = tx.optDouble("amount", 0.0)
-                                    if (txId.isNotBlank() && seconds > 0 && amount > 0.0) {
-                                        if (processedTxIds.add(txId)) {
-                                            Log.i(TAG, "⚡ Coin received via HTTP status sync: +${seconds}s, ₱$amount (txId=$txId)")
-                                            handleCoinAndAck(ipHost, deviceId, txId, seconds, amount)
-                                        }
-                                    }
+                            for (coin in CoinStatusParser.ownedCoins(json, deviceId)) {
+                                if (processedTxIds.add(coin.txId)) {
+                                    Log.i(TAG, "⚡ Coin received via HTTP status sync: +${coin.seconds}s, ₱${coin.amount} (txId=${coin.txId})")
+                                    handleCoinAndAck(ipHost, deviceId, coin.txId, coin.seconds, coin.amount)
                                 }
                             }
                         }
@@ -664,11 +674,16 @@ class Esp32ConnectionManager(
                 lastHeartbeatTime = System.currentTimeMillis()
                 delegate.onOnlineStatusChanged(true, null)
                 if (!isHttpArmed) {
-                    delegate.onArmSuccess()
-                    Handler(Looper.getMainLooper()).post {
-                        Toast.makeText(context, "Coin slot ready (Insert coins - ${armingTimeoutSeconds}s)", Toast.LENGTH_SHORT).show()
+                    // The box answers a WebSocket arm without a settle time: wait the standard settling period.
+                    scope.launch(Dispatchers.IO) {
+                        delay(DEFAULT_SETTLE_WAIT_MS)
+                        if (!isAttemptCurrent(attemptId)) return@launch
+                        delegate.onArmSuccess()
+                        Handler(Looper.getMainLooper()).post {
+                            Toast.makeText(context, "Coin slot ready (Insert coins - ${armingTimeoutSeconds}s)", Toast.LENGTH_SHORT).show()
+                        }
+                        startCoinSyncLoop(ipHost, deviceId, armingTimeoutSeconds, attemptId)
                     }
-                    startCoinSyncLoop(ipHost, deviceId, armingTimeoutSeconds, attemptId)
                 }
             }
 
