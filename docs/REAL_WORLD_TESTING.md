@@ -50,9 +50,13 @@ Logs: box serial at 115200 baud (`pio device monitor`); router `logread -e coins
 - [ ] **L2** 72 hours: same
 
 ## Issue log
-| ID | Checklist item | Severity (blocker / bug / polish) | What I did | Expected | Actual | Evidence | Frequency | Status |
-|---|---|---|---|---|---|---|---|---|
-| 1 | | | | | | | | open |
+
+**Automatic GitHub issues:** leave `GitHub #` empty. When you push this file, a workflow opens a GitHub issue for every `open` row and writes its
+number (`#12`) into that cell; setting a row to `fixed` or `wontfix` closes it. Avoid `|` characters inside cells.
+
+| ID | Checklist item | Severity (blocker / bug / polish) | What I did | Expected | Actual | Evidence | Frequency | Status | GitHub # |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | | | | | | | | open | |
 
 ## Baseline summary
 | Date | Passed | Failed | Not tested | Open blockers | Verdict |
