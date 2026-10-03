@@ -58,6 +58,12 @@ def now():
 
 
 def read_text(path):
+    # Never open() a file that may not exist: in some MicroPython builds a failed open() leaves a half-made file object
+    # whose garbage collection closes file descriptor 0, and sockets then reuse that number and break each other.
+    try:
+        os.stat(path)
+    except OSError:
+        return None
     try:
         with open(path) as f:
             return f.read()
