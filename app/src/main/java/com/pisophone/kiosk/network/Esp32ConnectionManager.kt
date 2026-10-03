@@ -63,6 +63,8 @@ class Esp32ConnectionManager(
         private const val HEARTBEAT_TIMEOUT_MS = 45000L
         private const val MAX_TIMESTAMP_SKEW_MS = 60000L
         private const val DRAIN_SAFETY_TIMEOUT_MS = 15000L
+        private const val MAX_SETTLE_WAIT_MS = 3000L // never wait longer than this for the acceptor to settle
+        private const val DEFAULT_SETTLE_WAIT_MS = 1000L // the box's settling period when it does not say
     }
 
     private val okHttpClient = OkHttpClient.Builder()
@@ -500,6 +502,11 @@ class Esp32ConnectionManager(
                 Log.i(TAG, "⚡ ESP32 Coin Slot successfully ARMED via HTTP: $body")
                 lastHeartbeatTime = System.currentTimeMillis()
                 delegate.onOnlineStatusChanged(true, null)
+                // Powering the acceptor can cause a stray pulse, so the box ignores pulses while it settles. Do not invite
+                // coins until then, or a coin dropped in right away would be ignored.
+                val settleMs = try { JSONObject(body).optLong("settle_ms", 0L) } catch (_: Exception) { 0L }
+                if (settleMs > 0L) Thread.sleep(settleMs.coerceAtMost(MAX_SETTLE_WAIT_MS))
+                if (!isAttemptCurrent(attemptId)) return
                 delegate.onArmSuccess()
                 Handler(Looper.getMainLooper()).post {
                     Toast.makeText(context, "Coin slot ready (Insert coins - ${armingTimeoutSeconds}s)", Toast.LENGTH_SHORT).show()
@@ -661,11 +668,16 @@ class Esp32ConnectionManager(
                 lastHeartbeatTime = System.currentTimeMillis()
                 delegate.onOnlineStatusChanged(true, null)
                 if (!isHttpArmed) {
-                    delegate.onArmSuccess()
-                    Handler(Looper.getMainLooper()).post {
-                        Toast.makeText(context, "Coin slot ready (Insert coins - ${armingTimeoutSeconds}s)", Toast.LENGTH_SHORT).show()
+                    // The box answers a WebSocket arm without a settle time: wait the standard settling period.
+                    scope.launch(Dispatchers.IO) {
+                        delay(DEFAULT_SETTLE_WAIT_MS)
+                        if (!isAttemptCurrent(attemptId)) return@launch
+                        delegate.onArmSuccess()
+                        Handler(Looper.getMainLooper()).post {
+                            Toast.makeText(context, "Coin slot ready (Insert coins - ${armingTimeoutSeconds}s)", Toast.LENGTH_SHORT).show()
+                        }
+                        startCoinSyncLoop(ipHost, deviceId, armingTimeoutSeconds, attemptId)
                     }
-                    startCoinSyncLoop(ipHost, deviceId, armingTimeoutSeconds, attemptId)
                 }
             }
 
