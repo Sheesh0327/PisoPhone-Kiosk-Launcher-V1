@@ -86,7 +86,7 @@ jobs:
         env: [esp32-c3-dev, esp32dev-dev, esp32-c3-production-encrypted, esp32dev-production-encrypted]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.platformio
