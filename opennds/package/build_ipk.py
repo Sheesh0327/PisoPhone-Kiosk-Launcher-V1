@@ -21,6 +21,7 @@ SRC = os.path.dirname(HERE)
 FILES = [
     ("usr/bin/coinslot-listener.sh", "coinslot-listener.sh", 0o755),
     ("usr/lib/opennds/theme_coinslot.sh", "theme_coinslot.sh", 0o755),
+    ("usr/lib/opennds/coinslot_status.sh", "coinslot_status.sh", 0o755),
     ("etc/init.d/coinslot", "coinslot.init", 0o755),
     ("etc/config/coinslot", "package/coinslot.uci", 0o600),
 ]

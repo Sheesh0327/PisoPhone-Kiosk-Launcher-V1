@@ -13,6 +13,7 @@ phone browser --> openNDS portal --> theme_coinslot.sh --(127.0.0.1)--> coinslot
 | file | what it is |
 |---|---|
 | `theme_coinslot.sh` | the ThemeSpec (page sequence); everything else is done by openNDS' own `libopennds.sh` |
+| `coinslot_status.sh` | the status page a connected customer sees (replaces openNDS' default `client_params.sh` through `statuspath`) |
 | `coinslot-listener.sh` | coin-slot manager: local listener (socat), coin window worker, rates, top-up, vouchers, fair-use watcher, revenue report |
 | `coinslot.conf` | reference list of every setting (the package keeps them in UCI, `/etc/config/coinslot`; the old `/etc/coinslot.conf` still works) |
 | `coinslot.init` | OpenWrt service script |

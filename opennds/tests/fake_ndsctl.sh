@@ -9,8 +9,10 @@ save() { printf 'STATE=%s\nSESSION_END=%s\nDL=%s\nUL=%s\nUPRATE=%s\nDOWNRATE=%s\
 client_json() {  # client_json <mackey> <mac>
   load "$1"
   _dr="$DOWNRATE"; [ "$_dr" = 0 ] && _dr=null
-  printf '  "mac":"%s",\n  "session_start":"0",\n  "session_end":"%s",\n  "last_active":"0",\n  "token":"t",\n  "state":"%s",\n  "custom":"none",\n  "download_rate_limit_threshold":"%s",\n  "download_this_session":"%s",\n  "download_session_avg":"0.00",\n  "upload_this_session":"%s",\n  "upload_session_avg":"0.00"\n' "$2" "$SESSION_END" "$STATE" "$_dr" "$DL" "$UL"
+  printf '  "gatewayname":"Test%%3CSpot","gatewayaddress":"192.168.1.1:2050",\n  "mac":"%s",\n  "session_start":"0",\n  "session_end":"%s",\n  "last_active":"0",\n  "token":"t",\n  "state":"%s",\n  "custom":"none",\n  "download_rate_limit_threshold":"%s",\n  "download_this_session":"%s",\n  "download_session_avg":"0.00",\n  "upload_this_session":"%s",\n  "upload_session_avg":"0.00"\n' "$2" "$SESSION_END" "$STATE" "$_dr" "$DL" "$UL"
 }
+# the status page asks by client IP: $D/ip_<ip> names the MAC (tests create it)
+if [ "$1" = json ] && [ -r "$D/ip_$2" ]; then set -- json "$(cat "$D/ip_$2")"; fi
 echo "$*" >> "$D/calls.log"
 case "$1" in
   json)
