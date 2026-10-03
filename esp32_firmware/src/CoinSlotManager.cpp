@@ -1,4 +1,5 @@
 #include "CoinSlotManager.h"
+#include "CoinSettle.h"
 #include "PaymentQueueManager.h"
 #include "HardwareManager.h"
 #include "Config.h"
@@ -24,7 +25,8 @@ static unsigned long sessionStartTimeMs = 0;
 static unsigned long drainDeadlineMs = 0;
 static unsigned long maxDrainDeadlineMs = 0; // Hard maximum deadline for draining
 static String pendingEndReason = "";
-static int sessionAccumulatedPulses = 0; // Buffer for pulses accumulated across consecutive bursts
+static unsigned long ignorePulsesUntilMs = 0; // settling window after the relay powers on (see CoinSettle.h)
+static int sessionAccumulatedPulses = 0;      // Buffer for pulses accumulated across consecutive bursts
 
 static CoinPaymentCallback currentPaymentCallback = nullptr;
 static CoinSessionEndCallback currentEndCallback = nullptr;
@@ -52,6 +54,7 @@ static void finalizeSessionRelease(const char* reason) {
     pendingEndReason = "";
     currentPaymentCallback = nullptr;
     currentEndCallback = nullptr;
+    ignorePulsesUntilMs = 0;
 
     // Disarm physical relay
     setRelayHardware(false);
@@ -188,6 +191,10 @@ String getActiveCoinSessionId() {
     return activeSessionId;
 }
 
+unsigned long getCoinSlotSettleRemainingMs() {
+    return coinSettleRemainingMs(millis(), ignorePulsesUntilMs);
+}
+
 unsigned long getCoinSlotArmedUntilMs() {
     return (currentState == CoinSlotState::ARMED) ? sessionArmedUntil : 0;
 }
@@ -257,8 +264,9 @@ bool reserveCoinSlot(const String& sessionId, CoinSlotOwnerType ownerType, unsig
     resetCoinDetectorStates();
     diagCount(DiagCounter::SlotReservations);
 
-    // Arm hardware relay
+    // Arm hardware relay. Powering the acceptor can produce a stray pulse: ignore pulses while it settles.
     setRelayHardware(true);
+    ignorePulsesUntilMs = millis() + PISO_COIN_SETTLE_MS;
 
     diagLog("[🪙 COIN SLOT] Slot RESERVED & ARMED for '%s' (TTL: %lu ms)\n", activeSessionId.c_str(), ttlMs);
     return true;
@@ -306,6 +314,15 @@ void processCoinSlotSession() {
     isrUniversalPulseCount = 0;
     lastPulseTime = isrLastPulseTimeMs;
     interrupts();
+
+    // 2b. Settling window: pulses right after the relay powers on are stray, not coins. Drop them, and drop the rest of
+    // a train that began inside the window.
+    if (newPulses > 0 && coinSettleActive(now, ignorePulsesUntilMs)) {
+        ignorePulsesUntilMs = coinSettleExtend(ignorePulsesUntilMs, lastPulseTime, INTER_PULSE_TIMEOUT_MS);
+        diagLog("[🪙 COIN SLOT] Ignored %d stray pulse(s) while the acceptor settled after power-on.\n", newPulses);
+        newPulses = 0;
+        sessionAccumulatedPulses = 0;
+    }
 
     // 3. Strict Isolation: If no active or draining session, discard any spurious pulses
     if (currentState == CoinSlotState::IDLE || activeSessionId.length() == 0) {

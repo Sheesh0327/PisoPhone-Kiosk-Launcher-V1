@@ -204,7 +204,7 @@ void handleApiCoinslotArm() {
     int sNum = licenseSlots[slotIdx].slotNum;
     String json = "{\"success\":true,\"status\":\"armed\",\"slot\":" + String(sNum) +
                   ",\"duration\":" + String(durationSec) + ",\"minutes_per_coin\":" + String(minutesPerCoin) +
-                  ",\"price\":1.0}";
+                  ",\"price\":1.0,\"settle_ms\":" + String(getCoinSlotSettleRemainingMs()) + "}";
     webServer.send(200, "application/json", json);
 }
 

@@ -23,11 +23,12 @@ static const int GATEWAY_MAX_ARM_SECONDS = 120; // CoinSlotManager caps any sess
 enum class GatewayArmResult { Ok, Busy, StorageUnavailable, InvalidSession };
 
 struct GatewayStatus {
-    String state;          // "armed", "draining" or "idle"
-    int armedRemainingSec; // seconds left while armed, otherwise 0
-    int pulses;            // coins received and not yet acknowledged for this session
-    int minutesPerCoin;    // the box's coin-to-time rate, for the gateway to convert pulses
-    bool slotFree;         // nobody (phone, controller or any gateway session) holds the coin slot right now
+    String state;            // "armed", "draining" or "idle"
+    int armedRemainingSec;   // seconds left while armed, otherwise 0
+    int pulses;              // coins received and not yet acknowledged for this session
+    int minutesPerCoin;      // the box's coin-to-time rate, for the gateway to convert pulses
+    unsigned long readyInMs; // while the acceptor settles after power-on, coins are not counted yet
+    bool slotFree;           // nobody (phone, controller or any gateway session) holds the coin slot right now
 };
 
 void gatewayInit();                    // load the key from flash; call once after loadAllConfig()

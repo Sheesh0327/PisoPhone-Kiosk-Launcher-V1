@@ -67,8 +67,8 @@ static String statusJson(const String& session) {
     GatewayStatus st = gatewayStatus(session);
     return String("{\"success\":true,\"session\":\"") + jsonEsc(session) + "\",\"state\":\"" + st.state +
            "\",\"armed_remaining\":" + String(st.armedRemainingSec) + ",\"pulses\":" + String(st.pulses) +
-           ",\"minutes_per_coin\":" + String(st.minutesPerCoin) + ",\"slot_free\":" + (st.slotFree ? "true" : "false") +
-           "}";
+           ",\"minutes_per_coin\":" + String(st.minutesPerCoin) + ",\"ready_in_ms\":" + String(st.readyInMs) +
+           ",\"slot_free\":" + (st.slotFree ? "true" : "false") + "}";
 }
 
 void handleGatewayArm() {

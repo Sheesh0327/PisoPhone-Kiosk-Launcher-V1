@@ -63,6 +63,9 @@ bool isCoinSlotArmed();
  */
 unsigned long getCoinSlotArmedUntilMs();
 
+/** Milliseconds until pulses are counted after the relay powered the acceptor on (0 when settled). */
+unsigned long getCoinSlotSettleRemainingMs();
+
 /**
  * Returns true if the slot is currently reserved or draining for a different session or owner.
  */
