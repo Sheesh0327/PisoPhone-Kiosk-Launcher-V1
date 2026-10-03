@@ -19,6 +19,7 @@ import com.pisophone.kiosk.security.KioskSecurity
 import com.pisophone.kiosk.server.KioskHttpServer
 import com.pisophone.kiosk.system.KioskSystemMonitor
 import com.pisophone.kiosk.system.KioskSystemMonitorDelegate
+import com.pisophone.kiosk.util.CoinSpeech
 import com.pisophone.kiosk.util.DiagnosticsLog
 import com.pisophone.kiosk.util.HardwareFeedback
 import kotlinx.coroutines.CoroutineScope
@@ -109,6 +110,7 @@ class KioskEngine(
             audioManager.playCoinSound()
             HardwareFeedback.triggerFlashlight(context, 150L)
             val addedMins = seconds / 60
+            if (isCoin) speakCoinConfirmation(CoinSpeech.confirmation(pesoAmount, seconds))
             Handler(Looper.getMainLooper()).post {
                 if (isAdminAdjustment) {
                     Toast.makeText(context, "+${addedMins}m added by Admin!", Toast.LENGTH_SHORT).show()
@@ -352,6 +354,11 @@ class KioskEngine(
 
     fun speakWarning(text: String) {
         audioManager.speakWarning(text)
+    }
+
+    /** Spoken confirmation of a coin, without the flash and vibration of a warning. */
+    private fun speakCoinConfirmation(text: String) {
+        audioManager.speakWarning(text, alert = false)
     }
 
     // ------------------------------------------------------------------------

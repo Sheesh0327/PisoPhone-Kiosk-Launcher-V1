@@ -30,6 +30,7 @@ import com.pisophone.kiosk.model.BatteryStatus
 import com.pisophone.kiosk.security.KioskSecurity
 import com.pisophone.kiosk.system.AndroidKioskSystemController
 import com.pisophone.kiosk.system.KioskSystemController
+import com.pisophone.kiosk.util.AppCloser
 import com.pisophone.kiosk.util.AppLauncher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -92,12 +93,8 @@ fun FloatingPill(
     val seconds = timeRemaining % 60
     val timeStr = String.format(Locale.US, "%02d:%02d", minutes, seconds)
 
-    val isFlashing = timeRemaining in 1..59
-    val timerTextColor by if (isFlashing) {
-        rememberUpdatedState(Color(0xFFFF3333))
-    } else {
-        rememberUpdatedState(Color.White)
-    }
+    val timeLevel = TimeLevel.of(timeRemaining)
+    val timerTextColor by rememberUpdatedState(timeLevel.color ?: Color.White)
 
     val themes = listOf(
         Pair(Color(0xFF0F172A), Color(0xFF10B981)),
@@ -407,19 +404,57 @@ fun FloatingPill(
                         },
                     )
 
-                    Button(
-                        onClick = {
-                            expanded = false
-                            AppLauncher.launchHome(context)
-                        },
-                        modifier = Modifier.fillMaxWidth().height(36.dp).padding(vertical = 4.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E293B), contentColor = Color.White),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(0.dp),
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        Icon(Icons.Filled.Home, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("HOME", fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                        Button(
+                            onClick = {
+                                expanded = false
+                                AppLauncher.launchHome(context)
+                            },
+                            modifier = Modifier.weight(1f).height(36.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E293B), contentColor = Color.White),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(0.dp),
+                        ) {
+                            Icon(Icons.Filled.Home, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("HOME", fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                        }
+                        // Two taps on purpose: closing drops what the customer has not saved.
+                        var confirmClose by remember { mutableStateOf(false) }
+                        LaunchedEffect(confirmClose) {
+                            if (confirmClose) {
+                                delay(4000L)
+                                confirmClose = false
+                            }
+                        }
+                        Button(
+                            onClick = {
+                                if (!confirmClose) {
+                                    confirmClose = true
+                                } else {
+                                    confirmClose = false
+                                    expanded = false
+                                    coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                        AppCloser.closeCustomerApps(context)
+                                    }
+                                    android.widget.Toast.makeText(context, "Apps closed. You can open them again.", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.weight(1f).height(36.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (confirmClose) Color(0xFFDC3545) else Color(0xFF1E293B),
+                                contentColor = Color.White,
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(0.dp),
+                        ) {
+                            Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(if (confirmClose) "TAP AGAIN" else "CLOSE APP", fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                        }
                     }
 
                     if (isWaiting && paymentTimeout > 0) {
@@ -532,6 +567,7 @@ fun FloatingPill(
         val pillBorderColor = when {
             isLowBattery -> Color(0xFFFF2222)
             hasBatteryAlert -> Color(0xFFFFB800)
+            timeLevel != TimeLevel.OK -> timeLevel.color!!
             isArenaMode -> Color(0xFF8B5CF6)
             else -> Outline.copy(alpha = 0.75f)
         }

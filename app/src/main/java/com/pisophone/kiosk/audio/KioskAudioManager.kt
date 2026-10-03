@@ -426,10 +426,16 @@ class KioskAudioManager(
         return buffer
     }
 
-    fun speakWarning(text: String) {
+    /**
+     * Speaks [text] loudly. [alert] adds the flash, vibration and fallback beep that warnings need;
+     * a plain confirmation passes false and is simply skipped while the speech engine is not ready.
+     */
+    fun speakWarning(text: String, alert: Boolean = true) {
         // Cancel any pending delayed speech
         delayedTtsRunnable?.let { mainHandler.removeCallbacks(it) }
         delayedTtsRunnable = null
+
+        if (!alert && (!isTtsReady || tts == null)) return
 
         if (!isTtsReady || tts == null) {
             // Do NOT mute media here: if the engine never comes up, nothing would ever restore
@@ -455,7 +461,7 @@ class KioskAudioManager(
             return
         }
 
-        HardwareFeedback.triggerAlertFeedback(context)
+        if (alert) HardwareFeedback.triggerAlertFeedback(context)
         // Mute media / maximize alarm only once we are actually about to speak; the safety
         // watchdog scheduled in onTtsStartedImmediate guarantees restoration.
         onTtsStartedImmediate()

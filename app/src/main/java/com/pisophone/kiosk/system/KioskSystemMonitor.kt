@@ -31,6 +31,7 @@ class KioskSystemMonitor(
 ) {
     companion object {
         private const val TAG = "KioskSystemMonitor"
+        private const val HIGH_BATTERY_REMINDER_MS = 60_000L
     }
 
     private val _batteryStatus: MutableStateFlow<BatteryStatus> by lazy {
@@ -43,6 +44,7 @@ class KioskSystemMonitor(
 
     // The high-battery reminder fires once per charge cycle; unplugging starts a new cycle.
     @Volatile private var highBatteryAlertedThisCycle = false
+    private var lastHighBatteryReminderMs = 0L
 
     private var screenOffReceiver: BroadcastReceiver? = null
     private var batteryReceiver: BroadcastReceiver? = null
@@ -268,11 +270,15 @@ class KioskSystemMonitor(
                 audioMgr.speakWarning("Warning! Battery is very low at ${currentBattery.level} percent. Please connect the charger immediately to prevent shutdown.")
             }
         } else if (currentBattery.alertState == BatteryAlertState.HIGH_BATTERY_PLUGGED) {
-            // Speaking mutes the customer's media and the alert feedback strobes, so never
-            // during a session; it waits until the session ends and then fires only once.
-            if (!highBatteryAlertedThisCycle && !delegate.isSessionActive()) {
+            // Announce as soon as the limit is reached, even mid-session: a charger left in is the
+            // problem this alert exists for. Mid-session it is said once, because speaking mutes
+            // the customer's media; while idle it repeats until the charger is unplugged.
+            val sessionActive = delegate.isSessionActive()
+            val due = !highBatteryAlertedThisCycle ||
+                (!sessionActive && now - lastHighBatteryReminderMs >= HIGH_BATTERY_REMINDER_MS)
+            if (due) {
                 highBatteryAlertedThisCycle = true
-                lastBatteryVoiceReminderMs = now
+                lastHighBatteryReminderMs = now
                 audioMgr.playHighBatteryAttentionTone()
                 HardwareFeedback.triggerVibration(context, longArrayOf(0, 150, 80, 150))
                 audioMgr.speakWarning("Attention! Battery has reached ${currentBattery.level} percent. Please disconnect the charger now to protect battery health.")
