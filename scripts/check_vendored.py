@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Fails if a vendored file changed without its record in website/js/VENDORED.md being updated."""
-import hashlib, os, re, sys
+import hashlib, os, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RECORD = os.path.join(ROOT, "website", "js", "VENDORED.md")
