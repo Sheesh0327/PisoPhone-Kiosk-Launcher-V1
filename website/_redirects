@@ -1,5 +1,3 @@
-/apk/latest.apk /update/app-release.apk 302
-/app-release.apk /update/app-release.apk 302
 /firmware-esp32c3.bin /update/firmware-esp32c3.bin 302
 /firmware-esp32.bin /update/firmware-esp32.bin 302
 /esp32/firmware-esp32c3.bin /update/firmware-esp32c3.bin 302

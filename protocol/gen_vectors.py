@@ -3,7 +3,7 @@
 Writes protocol/fixtures/box_phone_v1.json: known-answer vectors for the box<->phone message format.
 
 Both implementations must reproduce them: the firmware (esp32_firmware/host_tests/protocol_contract_test.cpp)
-and the phone (app/src/test/.../ProtocolContractTest.kt). They are made here with Python's `cryptography` library,
+and the phone app (on the pisophone branches). They are made here with Python's `cryptography` library,
 independent of either implementation, and committed, so a change to one side that breaks the other fails a test.
 
 Format (version 1):

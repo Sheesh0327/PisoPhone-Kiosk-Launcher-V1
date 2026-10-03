@@ -1,53 +1,41 @@
-# PisoPhone: coin-operated phone rental kiosk
+# PisoWiFi: coin-operated Wi-Fi with an ESP32 coin box and OpenNDS
 
-Customers insert coins into an ESP32 box; the box credits time to a locked-down Android phone (the kiosk), and can also
-sell Wi-Fi time through an OpenWrt/openNDS router. Three parts plus a router add-on:
+*Branch `pisowifi`: the Wi-Fi product only (no phone-rental app). See **Branches** below.*
+
+Customers join the shop Wi-Fi, see the openNDS portal, insert coins into the ESP32 box and get internet time. The router asks the
+box for the coins over a signed gateway API, then grants the minutes through openNDS.
 
 | Folder | What it is |
 |---|---|
-| `app/` | Android kiosk launcher (Kotlin, Compose, Room): locks the phone, counts paid time, talks to the box. |
-| `esp32_firmware/` | Coin-box firmware (Arduino/PlatformIO, ESP32-C3 and ESP32): coin pulses, durable payment queue, admin dashboard, signed OTA. |
-| `website/` | Installer/provisioning page (WebUSB ADB) and the update feed (`website/update`). |
-| `opennds/` | Router add-on: coin-slot listener, portal theme, `.ipk` package, Layout B network setup. |
-| `protocol/`, `scripts/` | Shared test vectors; owner tools (keys, licenses, firmware signing, checks). |
+| `esp32_firmware/` | Coin-box firmware (Arduino/PlatformIO, ESP32-C3 and ESP32): coin pulses, gateway API, admin dashboard, signed OTA. |
+| `opennds/` | Router side: portal theme (`theme_coinslot.sh`), coin-slot listener, `.ipk` package, Layout B network setup. |
+| `website/` | Firmware update feed for the box dashboard (`website/update`). |
+| `protocol/`, `scripts/` | Test vectors; owner tools (keys, licenses, firmware signing, gateway test client). |
 
 ```
-coins -> ESP32 box <-- Wi-Fi (signed + encrypted) --> phone kiosk app
-              |                                           |
-        admin dashboard                       locks/unlocks the phone
+customer phone --Wi-Fi--> openNDS portal (router) --signed gateway API--> ESP32 box (coin slot)
 ```
-
-## How it stays safe
-Each box has its own secret (provisioned to its phones, wrapped in the Android Keystore). Payments are kept in a flash queue on the
-box until the phone acknowledges them, and the phone credits each transaction id exactly once. Licenses and firmware updates are
-signed with your offline owner key. Details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/KEYS.md`](docs/KEYS.md).
+How it works: [`opennds/README.md`](opennds/README.md). Gateway API: [`docs/api/gateway-coinslot.md`](docs/api/gateway-coinslot.md).
 
 ## Build and test
 ```bash
-# Android (JDK 17)
-./gradlew :app:testDebugUnitTest :app:assembleRelease      # release needs the signing secrets, see docs/DEPLOY.md
-
-# Firmware (PlatformIO)
 cd esp32_firmware
-sh host_tests/run.sh                                        # pure-logic tests, no board needed
-pio run -e esp32-c3-dev                                     # also esp32dev-dev and the two *-production-encrypted envs
-pio run -e esp32-c3-dev -t upload
-
-# Router add-on
-python3 opennds/tests/test_flow.py
+sh host_tests/run.sh                 # pure-logic tests, no board needed
+pio run -e esp32-c3-dev -t upload    # also esp32dev-dev and the two *-production-encrypted envs
+python3 opennds/tests/test_flow.py   # router flow against a fake box (from the repo root)
+python3 opennds/package/build_ipk.py --version 1.0.0   # router package
 ```
-CI (`.github/workflows/`) runs all of this on every push; style is ktlint (Kotlin) and clang-format (`esp32_firmware/.clang-format`).
+CI (`.github/workflows/quality.yml`) runs all of this on every push.
 
 ## Documentation
 | Doc | For |
 |---|---|
-| [`docs/DEPLOY.md`](docs/DEPLOY.md) | First run, CI, where APKs and firmware are published |
-| [`docs/REAL_WORLD_TESTING.md`](docs/REAL_WORLD_TESTING.md) | Hardware test checklist and issue log |
-| [`docs/KEYS.md`](docs/KEYS.md) | Owner key, licenses, signed firmware, per-box secrets and migration |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | How a coin becomes time; who talks to whom; where code lives |
-| [`docs/PROVISIONING_SOLD_UNIT.md`](docs/PROVISIONING_SOLD_UNIT.md) | Secure boot and flash encryption for boxes you sell |
-| [`docs/api/`](docs/api) | Router gateway API and super-admin credential format |
 | [`opennds/INSTRUCTIONS.md`](opennds/INSTRUCTIONS.md) | Router setup (package install, Layout A and B) |
+| [`docs/DEPLOY.md`](docs/DEPLOY.md) | First run, CI, publishing firmware |
+| [`docs/REAL_WORLD_TESTING.md`](docs/REAL_WORLD_TESTING.md) | Hardware test checklist and issue log |
+| [`docs/KEYS.md`](docs/KEYS.md) | Owner key, licenses, signed firmware |
+| [`docs/PROVISIONING_SOLD_UNIT.md`](docs/PROVISIONING_SOLD_UNIT.md) | Secure boot and flash encryption for boxes you sell |
+| [`docs/api/`](docs/api) | Gateway API and super-admin credential format |
 
 ## Branches
 | Branch | Contains | Purpose |

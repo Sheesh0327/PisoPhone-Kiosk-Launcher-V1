@@ -1,4 +1,4 @@
-# Keys: owner key, licenses, signed firmware, per-box secrets
+# Keys: owner key, licenses, signed firmware
 
 ## Owner key (one key signs licenses and firmware)
 Run on **your own computer**, never in CI or a cloud session (`pip install cryptography` first):
@@ -23,13 +23,5 @@ A box with a public key built in only flashes images you signed.
    `scripts/update_firmware_json.py`) publishes size and signature in `firmware.json`. Manual update: choose both files on the box's update page.
 The box checks the signature, chip and that the version is newer (a downgrade needs `allow_downgrade=1` and the super-admin password), hashes the
 upload against the signed hash and size, accepts one upload per manifest within 15 minutes, and confirms the new image after a minute of normal running.
-
-## Per-box secrets
-Each box makes its own random secret on first start; the dashboard's **Install & Provision** link hands it to the phone. The old key
-`PISOPHONE_HMAC_MASTER_KEY` was public, so anyone could forge credits.
-A box upgraded from older firmware that already has Wi-Fi saved starts in **legacy mode** (orange banner): it keeps the old key so nothing breaks.
-To migrate a site: update the app on every phone; flash the box; make sure each phone has its admin PIN (the box admin password); click
-**Switch to this box's own key** (irreversible; a factory reset makes a fresh key); re-provision each phone. Do it when the shop is quiet.
-Once every box is migrated, delete `LEGACY_CRYPTO_SECRET` and `DEFAULT_SHARED_SECRET` and empty the allow-list in `scripts/check_security_rules.sh`.
 
 For units you sell, see `docs/PROVISIONING_SOLD_UNIT.md`.

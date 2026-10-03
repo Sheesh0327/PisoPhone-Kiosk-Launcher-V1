@@ -1,34 +1,6 @@
-# Dependency updates arrive as pull requests, so CI (unit tests, ktlint, release build) checks each one before it
-# is merged. Kotlin, the Compose BOM, KSP and AGP depend on each other: merge those together, not one by one.
+# GitHub Actions updates arrive as pull requests that CI checks before they are merged.
 version: 2
 updates:
-  - package-ecosystem: gradle
-    directory: "/"
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 3
-    ignore:
-      # Major jumps, and minor jumps of the Kotlin toolchain (Kotlin/KSP/Compose must move together), need code
-      # changes and a device test: do those by hand. Patch updates still arrive.
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "org.jetbrains.kotlin*"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
-      - dependency-name: "com.google.devtools.ksp*"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
-      - dependency-name: "androidx.compose*"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
-    groups:
-      kotlin-toolchain:
-        patterns:
-          - "org.jetbrains.kotlin*"
-          - "com.google.devtools.ksp*"
-          - "androidx.compose*"
-      androidx:
-        patterns:
-          - "androidx.*"
-        exclude-patterns:
-          - "androidx.compose*"
   - package-ecosystem: github-actions
     directory: "/"
     schedule:

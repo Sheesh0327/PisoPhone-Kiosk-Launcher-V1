@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.." || exit 1
 fail=0
 bad() { echo "RULE VIOLATION: $1"; fail=1; }
 
-CODE_DIRS="app esp32_firmware website scripts opennds .github"
+CODE_DIRS="esp32_firmware website scripts opennds .github"
 # website/js/yume-chan-bundle.js is a vendored third-party bundle; it is never scanned.
 EXCLUDE='--exclude-dir=.git --exclude-dir=build --exclude-dir=__pycache__ --exclude=yume-chan-bundle.js --exclude=check_security_rules.sh'
 
@@ -31,14 +31,6 @@ if grep -rn $EXCLUDE 'setInsecure' $CODE_DIRS | grep -v 'piso-allow-insecure'; t
     bad "setInsecure() without a 'piso-allow-insecure: <reason>' marker on the same line"
 fi
 
-# 5. runBlocking on app code blocks threads and risks ANRs. The count may only go down.
-MAX_RUN_BLOCKING=2
-n=$(grep -rn 'runBlocking' app/src/main 2>/dev/null | wc -l | tr -d ' ')
-if [ "$n" -gt "$MAX_RUN_BLOCKING" ]; then
-    bad "runBlocking count is $n, above the allowed $MAX_RUN_BLOCKING"
-elif [ "$n" -lt "$MAX_RUN_BLOCKING" ]; then
-    echo "note: runBlocking count is $n; lower MAX_RUN_BLOCKING in scripts/check_security_rules.sh to $n"
-fi
 
 [ "$fail" -eq 0 ] && echo "security rules: all passed"
 exit "$fail"

@@ -1,7 +1,6 @@
 name: Code quality
 
-# Style and logic checks that do not need the Android toolchain or an ESP32 board:
-#   - ktlint for the Android app (rules in .editorconfig)
+# Style, logic and build checks for the firmware and the router add-on:
 #   - clang-format for the firmware (rules in esp32_firmware/.clang-format)
 #   - the firmware's host tests (diagnostics ring, input safety, OTA header check, credential, license and money code)
 #   - repository security rules (scripts/check_security_rules.sh)
@@ -10,12 +9,10 @@ on:
     branches:
       - '**'
     paths:
-      - 'app/**'
       - 'protocol/**'
       - 'esp32_firmware/**'
       - 'scripts/**'
       - 'opennds/**'
-      - 'website/js/**'
       - '.editorconfig'
       - '.github/workflows/quality.yml'
   pull_request:
@@ -31,24 +28,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check repository security rules
         run: sh scripts/check_security_rules.sh
-      - name: Check vendored files match their record
-        run: python3 scripts/check_vendored.py
 
-  kotlin-style:
-    name: ktlint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-      - name: Install ktlint
-        run: |
-          curl -sSL -o ktlint https://github.com/pinterest/ktlint/releases/download/1.5.0/ktlint
-          chmod +x ktlint
-      - name: Check Kotlin style
-        run: ./ktlint --relative "app/src/**/*.kt" "*.kts" "app/*.kts"
 
   firmware-style-and-tests:
     name: Firmware format and host tests
