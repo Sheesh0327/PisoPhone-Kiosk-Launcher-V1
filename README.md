@@ -48,3 +48,15 @@ CI (`.github/workflows/`) runs all of this on every push; style is ktlint (Kotli
 | [`docs/PROVISIONING_SOLD_UNIT.md`](docs/PROVISIONING_SOLD_UNIT.md) | Secure boot and flash encryption for boxes you sell |
 | [`docs/api/`](docs/api) | Router gateway API and super-admin credential format |
 | [`opennds/INSTRUCTIONS.md`](opennds/INSTRUCTIONS.md) | Router setup (package install, Layout A and B) |
+
+## Branches
+| Branch | Contains | Purpose |
+|---|---|---|
+| `main` | Everything: PisoPhone + PisoWiFi (OpenNDS) | Production. Only receives tested code from `beta`. |
+| `beta` | Everything | Testing and bug fixing; all shared fixes land here first. |
+| `pisophone` / `pisophone-beta` | Phone rental only (app, ESP32 firmware, provisioning website) | Stable / testing builds of the phone product. |
+| `pisowifi` / `pisowifi-beta` | Piso Wi-Fi only (ESP32 firmware, OpenNDS theme and listener) | Stable / testing builds of the Wi-Fi product. |
+
+Flow: fix and test on a `*-beta` branch (checklist: `docs/REAL_WORLD_TESTING.md`), then merge it into its stable branch. Fixes to
+shared parts (firmware, keys, CI) go to `beta` first and are merged into `pisophone-beta` and `pisowifi-beta`; the files each product
+does not ship were removed once and stay removed on merge. The ESP32 firmware is shared and still contains both features.
