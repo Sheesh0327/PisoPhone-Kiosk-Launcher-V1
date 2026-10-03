@@ -10,7 +10,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 THEME, LISTENER = f"{ROOT}/theme_coinslot.sh", f"{ROOT}/coinslot-listener.sh"
 KEY = "test-gateway-key-123456"
-BOX_PORT, LISTEN_PORT = 18090, 18099
+QUEUE_CLAIM = 5
+BOX_PORT, LISTEN_PORT, STREAM_PORT = 18090, 18099, 18110
 tmp = tempfile.mkdtemp()
 CTL, LOG, STATE, DATA, NDS = f"{tmp}/ctl.json", f"{tmp}/box.log", f"{tmp}/state", f"{tmp}/data", f"{tmp}/nds"
 os.makedirs(NDS)
@@ -53,12 +54,16 @@ def calls():
 conf = f"{tmp}/coinslot.conf"
 open(conf, "w").write(
     f"GW_BOX=127.0.0.1:{BOX_PORT}\nGW_KEY={KEY}\nSTATE_DIR={STATE}\nDATA_DIR={DATA}\nNDSCTL={HERE}/fake_ndsctl.sh\n"
-    "COIN_FIRST_WAIT_SECONDS=4\nCOIN_IDLE_WAIT_SECONDS=3\nCOIN_MAX_SECONDS=12\n"
+    f"COIN_FIRST_WAIT_SECONDS=4\nCOIN_IDLE_WAIT_SECONDS=3\nCOIN_MAX_SECONDS=12\nQUEUE_CLAIM_SECONDS=5\nSTREAM_PORT={STREAM_PORT}\n"
     "FAIR_USE_KB=1000\nFAIR_THROTTLE_DOWN_KBPS=2000\nFAIR_THROTTLE_UP_KBPS=1000\nFAIR_THROTTLE_MINUTES=5\nFAIR_FULL_MINUTES=2\n")
 env = dict(os.environ, FAKEBOX_CTL=CTL, FAKEBOX_LOG=LOG, FAKEBOX_KEY=KEY, COINSLOT_CONF=conf, FAKE_NDS_DIR=NDS,
            NDSCTL=f"{HERE}/fake_ndsctl.sh")
+ARP = f"{tmp}/arp"
+open(ARP, "w").write(f"IP address       HW type     Flags       HW address            Mask     Device\n127.0.0.1  0x1  0x2  {MAC_A}  *  lo\n")
+env["ARP_FILE"] = ARP
 set_box(busy=False, coins_at=[])
-procs = [subprocess.Popen([sys.executable, f"{HERE}/fakebox.py", str(BOX_PORT)], env=env),
+procs = [subprocess.Popen([sys.executable, f"{HERE}/fake_socat.py", str(STREAM_PORT), LISTENER, "stream-handle"], env=env),
+         subprocess.Popen([sys.executable, f"{HERE}/fakebox.py", str(BOX_PORT)], env=env),
          subprocess.Popen([sys.executable, f"{HERE}/fake_socat.py", str(LISTEN_PORT), LISTENER], env=env)]
 time.sleep(1.0)
 
@@ -67,6 +72,46 @@ def page(hid, mac, coinact="", plan="", landing="", port=LISTEN_PORT, auth_ok="1
     e = dict(env, HID=hid, MAC=mac, COINACT=coinact, COINPLAN=plan, LANDING=landing, PORT=str(port), AUTH_OK=auth_ok,
              VCODE=vcode, STATUSVAR=statusvar, TERMS=terms, FORFEIT=forfeit)
     return subprocess.run(["bash", f"{HERE}/theme_harness.sh", THEME], env=e, capture_output=True, text=True, timeout=90).stdout
+
+
+class Stream:
+    """A Server-Sent Events client: collects (seconds since open, event, data) in the background."""
+    def __init__(self, sid, mode):
+        import socket, threading
+        self.t0, self.events, self.head = time.time(), [], b""
+        self.sock = socket.create_connection(("127.0.0.1", STREAM_PORT), timeout=30)
+        self.sock.sendall(f"GET /stream?sid={sid}&mode={mode} HTTP/1.1\r\nHost: x\r\n\r\n".encode())
+        threading.Thread(target=self._read, daemon=True).start()
+
+    def _read(self):
+        buf = b""
+        try:
+            while True:
+                d = self.sock.recv(4096)
+                if not d:
+                    break
+                buf += d
+                if not self.head and b"\r\n\r\n" in buf:
+                    self.head, buf = buf.split(b"\r\n\r\n", 1)
+                while b"\n\n" in buf and self.head:
+                    block, buf = buf.split(b"\n\n", 1)
+                    ev = dict(l.split(": ", 1) for l in block.decode().split("\n") if ": " in l and not l.startswith(":"))
+                    if "event" in ev:
+                        self.events.append((time.time() - self.t0, ev["event"], ev.get("data", "")))
+        except OSError:
+            pass
+
+    def wait(self, event, timeout=10):
+        end = time.time() + timeout
+        while time.time() < end:
+            for e in self.events:
+                if e[1] == event:
+                    return e
+            time.sleep(0.05)
+        return None
+
+    def close(self):
+        self.sock.close()
 
 
 def listener(*args):
@@ -294,14 +339,96 @@ try:
     took = time.time() - t0
     check(st["pulses"] == 1 and 5.0 <= took <= 12.0, f"window extended after a coin (took {took:.1f}s, pulses {st['pulses']})")
 
+    # ---- live updates (Server-Sent Events) ----------------------------------------------------------------------------
+    # coins reach the page as they arrive, not on a 2 s refresh
+    nds_client(MAC_A)
+    set_box(busy=False, coins_at=[1.0, 2.0])
+    sS = sid_of("hidS")
+    get(f"/start?sid={sS}&plan=hyper&mac={MAC_A}")
+    t_start = time.time()
+    ss = Stream(sS, "wait")
+    check(b"200 OK" in ss.head or ss.wait("status", 3) is not None, "stream opens for the device that started the session")
+    check(b"text/event-stream" in ss.head, "stream is text/event-stream")
+    e1 = ss.wait("status", 3)
+    first = [e for e in ss.events if e[1] == "status" and json.loads(e[2])["pulses"] >= 1]
+    for _ in range(60):
+        first = [e for e in ss.events if e[1] == "status" and json.loads(e[2])["pulses"] >= 1]
+        if first: break
+        time.sleep(0.05)
+    check(bool(first), "stream reports the first coin")
+    if first:
+        lag = (ss.t0 + first[0][0]) - (t_start + 1.0)
+        check(lag < 1.6, f"first coin pushed within 1.6 s of arriving (lag {lag:.2f}s)")
+    for _ in range(200):
+        if any(json.loads(e[2])["state"] == "done" for e in ss.events if e[1] == "status"): break
+        time.sleep(0.1)
+    check(any(json.loads(e[2])["state"] == "done" for e in ss.events if e[1] == "status"), "stream ends with the finished window")
+    ss.close()
+
+    # only the owner's device, only a known session, only the stream path
+    sS2 = sid_of("hidS2")
+    get(f"/start?sid={sS2}&plan=hyper&mac={MAC_B}")                     # started by another device than 127.0.0.1's MAC
+    bad = Stream(sS2, "wait"); time.sleep(0.6)
+    check(b"403" in bad.head, "stream refused for a session that belongs to another device")
+    bad = Stream("e" * 32, "wait"); time.sleep(0.6)
+    check(b"403" in bad.head, "stream refused for an unknown session")
+    bad = Stream("zz", "wait"); time.sleep(0.6)
+    check(b"400" in bad.head, "stream refuses a malformed session id")
+    import socket as _s
+    c = _s.create_connection(("127.0.0.1", STREAM_PORT)); c.sendall(b"GET /status?sid=" + sS.encode() + b" HTTP/1.1\r\n\r\n"); time.sleep(0.5)
+    check(b"404" in c.recv(4096), "stream port serves nothing but /stream"); c.close()
+
+    # a busy slot is pushed, never polled: waiting line in order, ready for the first only, nobody jumps the line
+    set_box(busy=True, coins_at=[])
+    q1, q2, q3 = sid_of("hidQ1"), sid_of("hidQ2"), sid_of("hidQ3")
+    for q in (q1, q2):
+        get(f"/start?sid={q}&plan=hyper&mac={MAC_A}")
+    time.sleep(1.5)
+    s1 = Stream(q1, "queue"); time.sleep(0.3)
+    s2 = Stream(q2, "queue")
+    ev = s1.wait("queue", 3); check(ev is not None and json.loads(ev[2])["pos"] == 1, "first in line is told position 1")
+    ev = s2.wait("queue", 3); check(ev is not None and json.loads(ev[2])["pos"] == 2, "second in line is told position 2")
+    time.sleep(1.0)
+    check(s1.wait("ready", 0.1) is None, "nobody is told ready while the slot is busy")
+    get(f"/start?sid={q3}&plan=hyper&mac={MAC_A}")
+    check(json.loads(get(f"/start?sid={q3}&plan=hyper&mac={MAC_A}")[1]).get("error") == "SLOT_BUSY", "a newcomer cannot jump the waiting line")
+    t_free = time.time()
+    set_box(busy=False, coins_at=[])
+    ev = s1.wait("ready", 5)
+    check(ev is not None and time.time() - t_free < 2.0, "first in line is told the moment the slot frees")
+    check(s2.wait("ready", 0.8) is None, "second in line is not told while the first holds the claim")
+    check(json.loads(get(f"/start?sid={q2}&plan=hyper&mac={MAC_A}")[1]).get("error") == "SLOT_BUSY", "second in line cannot start ahead of the first")
+    set_box(busy=False, coins_at=[0.5])
+    r = json.loads(get(f"/start?sid={q1}&plan=hyper&mac={MAC_A}")[1])
+    check(r.get("state") in ("starting", "armed"), "the customer who was told ready can start")
+    check(s1.wait("started", 3) is not None, "their stream ends with started")
+    # q2 is now first, the slot is held by q1: no ready until q1 finishes
+    check(s2.wait("ready", 1.5) is None, "next in line waits while the slot is in use")
+    get(f"/finish?sid={q1}")
+    ev = s2.wait("ready", 8); check(ev is not None, "next in line is told when the previous customer is done")
+    s1.close()
+    # a ready customer who does not tap loses the claim
+    for _ in range(40):
+        st = json.loads(get(f"/status?sid={q1}")[1])["state"]
+        if st == "done": break
+        time.sleep(0.25)
+    check(s2.wait("expired", QUEUE_CLAIM + 3) is not None, "an unclaimed ready slot is released after the claim window")
+    s2.close()
+    time.sleep(0.5)
+    check(not glob.glob(f"{STATE}/queue/*"), "the waiting line is empty afterwards")
+
     # ---- browser: the waiting page updates itself and plays a coin sound (headless Chrome; skipped if none) ---------------
     import shutil, threading
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
     from urllib.parse import parse_qs, urlparse
     chrome = os.environ.get("CHROME") or next((c for c in [shutil.which(x) for x in ("google-chrome", "chromium", "chromium-browser")] + glob.glob("/opt/pw-browsers/chromium-*/chrome-linux/chrome") if c), None)
-    if chrome:
+    def browser_run(stream_port, coins):
+        """Tap Insert Coin in headless Chrome against the real theme; returns (dumped DOM, request counts)."""
+        c = open(conf).read()
+        open(conf, "w").write(re.sub(r"STREAM_PORT=\d+", f"STREAM_PORT={stream_port}", c))
         nds_client("aa:bb:cc:00:00:09")
-        set_box(busy=False, coins_at=[])
+        set_box(busy=False, coins_at=coins)
+        open(ARP, "w").write(f"IP address HW type Flags HW address Mask Device\n127.0.0.1 0x1 0x2 aa:bb:cc:00:00:09 * lo\n")
         hits = {"wait": 0, "start_mode": None}
 
         class Portal(BaseHTTPRequestHandler):
@@ -311,7 +438,7 @@ try:
             def do_GET(self):
                 q = {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()}
                 act = q.get("coinact", "")
-                html = page("hidJS", "aa:bb:cc:00:00:09", act, q.get("coinplan", ""))
+                html = page(f"hidJS{stream_port}", "aa:bb:cc:00:00:09", act, q.get("coinplan", ""))
                 if act == "":  # the welcome page: tap Insert Coin a moment after loading, like a customer would
                     html = html.replace("</body>", '<script>setTimeout(function(){document.querySelector(".coin").click()},300)</script></body>')
                 if act == "start":
@@ -329,16 +456,25 @@ try:
                 except BrokenPipeError:  # Chrome abandons requests when it exits
                     pass
 
-        srv = ThreadingHTTPServer(("127.0.0.1", 18100), Portal)
+        srv = ThreadingHTTPServer(("127.0.0.1", 18120), Portal)
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         r = subprocess.run([chrome, "--headless=new", "--no-sandbox", "--disable-gpu", "--autoplay-policy=no-user-gesture-required",
-                            "--virtual-time-budget=7000", "--dump-dom",
-                            "http://127.0.0.1:18100/opennds_preauth/?fas=ABC"],
+                            "--virtual-time-budget=5000", "--dump-dom",
+                            "http://127.0.0.1:18120/opennds_preauth/?fas=ABC"],
                            capture_output=True, text=True, timeout=90)
         srv.shutdown()
-        check('id="pes">\u20b12<' in r.stdout, "waiting page updated its coin count by itself")
-        check('data-dings="1"' in r.stdout, "a new coin played the coin sound once")
+        srv.server_close()
+        return r.stdout, hits
+
+    if chrome:
+        # Without a reachable stream port the page falls back to polling (and the coin sound still plays).
+        dom, hits = browser_run(18130, [0.8, 1.2])
+        check('id="pes">\u20b12<' in dom, "waiting page updated its coin count by itself (fallback polling)")
+        check('data-dings="1"' in dom, "a new coin played the coin sound once")
         check(hits["start_mode"] not in (None, "navigate"), f"Insert Coin started the window without leaving the page (request mode {hits['start_mode']})")
+        # With the stream: the page follows the window to its end through the pushed events, with no polling of the portal.
+        dom, hits = browser_run(STREAM_PORT, [0.8, 1.2])
+        check("Connect" in dom and "&#8369;2" not in dom and hits["wait"] == 1, f"live stream carried the page to the result without polling (portal wait requests: {hits['wait']})")
     else:
         print("skipped: no Chrome/Chromium found for the browser test")
 

@@ -66,7 +66,9 @@ class H(BaseHTTPRequestHandler):
         if s["released"] and time.time() - s["rel_at"] < 0.8:
             state = "draining"
         return self.send(200, {"success": True, "session": sid, "state": state, "armed_remaining": 0,
-                               "pulses": max(pulses, 0), "minutes_per_coin": 6})
+                               "pulses": max(pulses, 0), "minutes_per_coin": 6,
+                               "slot_free": not c.get("busy") and not any(
+                                   x["armed_at"] and not x["released"] for x in sessions.values())})
 
 
 HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()

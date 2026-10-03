@@ -125,6 +125,14 @@ set firewall.guest_dns_tcp.target='ACCEPT'
 
 # --- openNDS gates only the guest network ------------------------------------------------------------------------------
 set opennds.@opennds[0].gatewayinterface='br-guest'
+# Live coin updates: guests (also before they pay) may reach the router's one read-only stream port, nothing else new.
+set firewall.guest_stream=rule
+set firewall.guest_stream.name='Guest-Coinslot-Stream'
+set firewall.guest_stream.src='guest'
+set firewall.guest_stream.proto='tcp'
+set firewall.guest_stream.dest_port='${STREAM_PORT:-8100}'
+set firewall.guest_stream.target='ACCEPT'
+add_list opennds.@opennds[0].users_to_router='allow tcp port ${STREAM_PORT:-8100}'
 
 # --- the coin-slot listener: reach the box on the kiosk side and look for it there if it ever moves --------------
 # Put these in /etc/coinslot.conf:  GW_BOX=$BOX_IP   GW_BOX_MAC=$BOX_MAC   DISCOVER_IFACE=br-kiosk

@@ -167,6 +167,30 @@ If you only have one Wi-Fi and cannot split it: the weaker fallback is to list t
 `trustedmac` in openNDS so they skip the portal. Customers then share the network with the box and the phones, so
 the box's and phones' own protections (signed requests, per-box secret) are all that stands between them.
 
+### Instant updates (coins and "slot is free" pushed to the customer's page)
+Two small things make the portal feel instant. The page works without them, only slower.
+1. **Fast coin polling**: `opkg update && opkg install coreutils-sleep`. While one customer's window is open the
+   router asks the box for coins every `COIN_POLL_SECONDS` (default 0.1). With BusyBox's own `sleep` it is once a second.
+   Nothing is polled while nobody has the slot open. (Test: `sleep 0.3 && echo ok` must print `ok`.)
+2. **Live stream**: the service also starts `coinslot-listener.sh stream` on port 8100 (`STREAM_PORT`). The customer's page
+   listens there, so each coin appears as it arrives, and a customer who finds the slot busy is told the moment it
+   is free (no refreshing). Only the device that started the session can listen to it; it can read, never change anything.
+   Guests must be allowed to reach that one port. Layout B: `layout_b.sh` already prints the rule. Layout A / other setups:
+```
+uci add firewall rule
+uci set firewall.@rule[-1].name='Guest-Coinslot-Stream'
+uci set firewall.@rule[-1].src='<your guest zone, e.g. lan>'
+uci set firewall.@rule[-1].proto='tcp'
+uci set firewall.@rule[-1].dest_port='8100'
+uci set firewall.@rule[-1].target='ACCEPT'
+uci add_list opennds.@opennds[0].users_to_router='allow tcp port 8100'
+uci commit && /etc/init.d/firewall reload && /etc/init.d/opennds restart && /etc/init.d/coinslot restart
+```
+   Check from a phone on the guest Wi-Fi that has NOT paid: open `http://<router-ip>:8100/stream` in the browser. A
+   `403 Forbidden` answer means the port is reachable (the stream only talks to a started session). A timeout means the
+   rule or openNDS' `users_to_router` did not open it; the portal then keeps working with ordinary refreshes.
+   Do not open 8100 on the WAN side.
+
 ## 9. Check each piece
 ```
 curl http://127.0.0.1:8099/info                       # expect {"first":30,"idle":15,"max":115,...}
