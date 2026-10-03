@@ -386,7 +386,7 @@ do_worker() {
     armed=0
     for _ in 1 2 3; do call "$sid" release >/dev/null && break; sleep 1; done  # one lost packet must not leave the acceptor powered
   }
-  trap 'release; write_state "$dir" done "${pulses:-0}" 0 ""; exit 0' INT TERM HUP
+  trap 'release; write_state "$dir" "done" "${pulses:-0}" 0 ""; exit 0' INT TERM HUP
   pulses=0
 
   started=$(now)
@@ -428,7 +428,7 @@ do_worker() {
     }
     nap "$COIN_POLL_SECONDS"
   done
-  write_state "$dir" done "${pulses:-0}" 0 ""
+  write_state "$dir" "done" "${pulses:-0}" 0 ""
 }
 
 # ---------------------------------------------------------------------------

@@ -53,23 +53,7 @@ fails), waits for in-flight coins, prints the total and, with `--ack`, clears th
 - Hardware test: set a key, `arm` with the script, insert a coin, `status` shows `pulses: 1`, `release`,
   `ack` returns 1, `status` shows 0. Then press Ready for coin on a phone: it must still arm normally.
 
-## Router scripts (OpenWrt / busybox, no Python)
-`scripts/gateway_pay.sh` is the `run` flow in POSIX sh (needs `curl` or `wget`, and `openssl`):
-
-    export GW_BOX=192.168.1.50 GW_KEY=<gateway key>
-    sh gateway_pay.sh <session> [seconds] [--ack]      # prints:  PULSES=2 MINUTES=12   (or ERROR=<code>)
-
-It arms, counts until the timeout, always disarms (also on Ctrl+C, kill or a closed connection), waits for
-in-flight coins and prints one result line. If it is interrupted, the coins already received stay queued on
-the box until a later `ack`.
-
-`scripts/gateway_socat_handler.sh` wraps it as a tiny local HTTP service for OpenNDS (copy both scripts to
-the router, `opkg install socat openssl-util curl`):
-
-    socat TCP-LISTEN:8099,bind=127.0.0.1,reuseaddr,fork EXEC:/root/gateway_socat_handler.sh
-    curl -s "http://127.0.0.1:8099/pay?session=<client-mac>&duration=60"
-    -> {"pulses":2,"minutes":12}      (409 SLOT_BUSY, 400 INVALID_SESSION, 502 on any other error)
-
-The handler acknowledges the coins itself, so each pulse is reported once. Keep it bound to localhost (or the
-LAN side): it has no login of its own. The session id is checked against the box's alphabet before it reaches
-any command line.
+## Router (OpenWrt / busybox, no Python)
+`opennds/coinslot-listener.sh` is the production client of this API: it arms, counts coins (extending the wait after each),
+always disarms, waits for in-flight coins and acknowledges them only after access was granted. See `opennds/README.md`.
+For experiments from a PC use `scripts/gateway_client.py`.

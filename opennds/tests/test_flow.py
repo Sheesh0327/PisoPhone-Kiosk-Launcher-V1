@@ -4,7 +4,7 @@ Real pieces under test: theme_coinslot.sh (run the way libopennds.sh runs it, he
 coinslot-listener.sh (handler, worker, fair use, vouchers, revenue). Stand-ins: fakebox.py (the ESP32 gateway API
 with the same HMAC/nonce rules), fake_ndsctl.sh (openNDS' ndsctl) and fake_socat.py (socat).
 Run with:  python3 opennds/tests/test_flow.py"""
-import glob, hashlib, json, os, re, signal, subprocess, sys, tempfile, time, urllib.error, urllib.request
+import glob, hashlib, json, os, re, shutil, signal, subprocess, sys, tempfile, time, urllib.error, urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -183,7 +183,7 @@ try:
     p = page("hidW", MAC_A, "wait", "hyper")
     check("Insert coin(s) now" in p.split("<script>")[0] and 'id="cd" style="display:none"' not in p,
           "waiting page invites coins and shows the countdown once the slot is armed")
-    shutil_rm = __import__("shutil").rmtree; shutil_rm(f"{STATE}/{sw}")
+    shutil.rmtree(f"{STATE}/{sw}")
 
     # ---- Endurance: 17 pesos accumulate to 11 hrs 30 min -----------------------------------------------------------
     p = pay("hidA", MAC_A, "endurance", 17)
@@ -361,9 +361,8 @@ try:
     get(f"/start?sid={sS}&plan=hyper&mac={MAC_A}")
     t_start = time.time()
     ss = Stream(sS, "wait")
-    check(b"200 OK" in ss.head or ss.wait("status", 3) is not None, "stream opens for the device that started the session")
+    check(ss.wait("status", 3) is not None, "stream opens for the device that started the session")
     check(b"text/event-stream" in ss.head, "stream is text/event-stream")
-    e1 = ss.wait("status", 3)
     first = [e for e in ss.events if e[1] == "status" and json.loads(e[2])["pulses"] >= 1]
     for _ in range(60):
         first = [e for e in ss.events if e[1] == "status" and json.loads(e[2])["pulses"] >= 1]
@@ -432,7 +431,7 @@ try:
     check(not glob.glob(f"{STATE}/queue/*"), "the waiting line is empty afterwards")
 
     # ---- browser: the waiting page updates itself and plays a coin sound (headless Chrome; skipped if none) ---------------
-    import shutil, threading
+    import threading
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
     from urllib.parse import parse_qs, urlparse
     chrome = os.environ.get("CHROME") or next((c for c in [shutil.which(x) for x in ("google-chrome", "chromium", "chromium-browser")] + glob.glob("/opt/pw-browsers/chromium-*/chrome-linux/chrome") if c), None)
@@ -442,7 +441,7 @@ try:
         open(conf, "w").write(re.sub(r"STREAM_PORT=\d+", f"STREAM_PORT={stream_port}", c))
         nds_client("aa:bb:cc:00:00:09")
         set_box(busy=False, coins_at=coins)
-        open(ARP, "w").write(f"IP address HW type Flags HW address Mask Device\n127.0.0.1 0x1 0x2 aa:bb:cc:00:00:09 * lo\n")
+        open(ARP, "w").write("IP address HW type Flags HW address Mask Device\n127.0.0.1 0x1 0x2 aa:bb:cc:00:00:09 * lo\n")
         hits = {"wait": 0, "start_mode": None}
 
         class Portal(BaseHTTPRequestHandler):
@@ -506,7 +505,7 @@ try:
         return subprocess.run(["sh", STATUS, *args], env={**env, "COINSLOT_URL": f"http://127.0.0.1:{LISTEN_PORT}", **kw}, capture_output=True, text=True, timeout=30)
     r = status_page("status", "10.9.9.9")
     check(r.returncode == 0 and "You are connected" in r.stdout and "time left" in r.stdout, "status page shows a connected customer")
-    check(code_from(r.stdout.replace('class="code">', 'class="code">')) is not None, "status page shows the voucher code")
+    check(code_from(r.stdout) is not None, "status page shows the voucher code")
     check("HyperSpeed" in r.stdout and "Data used" in r.stdout, "status page shows plan and data used")
     check('href="http://192.168.1.1:2050/opennds_auth/"' in r.stdout, "status page links to the portal for more time")
     check("Logout" not in r.stdout and "opennds_deny" not in r.stdout, "no logout button (paid time keeps running)")
