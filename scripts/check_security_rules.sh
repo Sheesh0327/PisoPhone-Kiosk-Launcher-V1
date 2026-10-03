@@ -14,7 +14,7 @@ if grep -rEl $EXCLUDE -e '-----BEGIN [A-Z ]*PRIVATE KEY-----' . ; then
     bad "a private key is committed (files listed above)"
 fi
 
-# 2. The shared master secret may only remain in the two files still being migrated off it (plan S3/S4).
+# 2. The shared master secret may only remain in the two files still being migrated off it.
 #    Any new use fails the build; the list shrinks to nothing when S3 lands.
 ALLOWED_MASTER="app/src/main/java/com/pisophone/kiosk/security/KioskSecurity.kt esp32_firmware/src/Config.cpp"
 for f in $(grep -rl $EXCLUDE 'PISOPHONE_HMAC_MASTER_KEY' $CODE_DIRS 2>/dev/null); do
@@ -31,7 +31,7 @@ if grep -rn $EXCLUDE 'setInsecure' $CODE_DIRS | grep -v 'piso-allow-insecure'; t
     bad "setInsecure() without a 'piso-allow-insecure: <reason>' marker on the same line"
 fi
 
-# 5. runBlocking on app code blocks threads and risks ANRs. The count may only go down (plan R2).
+# 5. runBlocking on app code blocks threads and risks ANRs. The count may only go down.
 MAX_RUN_BLOCKING=2
 n=$(grep -rn 'runBlocking' app/src/main 2>/dev/null | wc -l | tr -d ' ')
 if [ "$n" -gt "$MAX_RUN_BLOCKING" ]; then

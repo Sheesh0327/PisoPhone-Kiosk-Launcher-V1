@@ -1,7 +1,7 @@
 # OpenNDS coin-slot integration
 
 Customers on your Wi-Fi pay with coins at the PisoPhone box to get internet time. OpenNDS shows the
-portal; the box's coin slot is reached through the gateway API (`docs/overhaul/gateway-coinslot-api.md`).
+portal; the box's coin slot is reached through the gateway API (`docs/api/gateway-coinslot.md`).
 
 ```
 phone browser --> openNDS portal --> theme_coinslot.sh --(127.0.0.1)--> coinslot-listener.sh --(LAN)--> ESP32 box

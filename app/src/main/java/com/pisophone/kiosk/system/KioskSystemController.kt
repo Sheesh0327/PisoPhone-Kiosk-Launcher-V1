@@ -98,10 +98,10 @@ class AndroidKioskSystemController(
             // so it freed nothing and needed an extra permission.
             System.gc()
             val afterUsed = getMemoryStats().first
-            (beforeUsed - afterUsed).coerceAtLeast(160L)
+            (beforeUsed - afterUsed).coerceAtLeast(0L)
         } catch (e: Exception) {
             Log.w(TAG, "Error optimizing memory: ${e.message}")
-            160L
+            0L
         }
     }
 

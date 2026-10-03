@@ -54,9 +54,9 @@ class KioskServerCoordinator(
             stateManager.isEsp32Online.value = true
             return
         }
-        // /ping, /heartbeat, /identify and /status are unauthenticated, so anyone on the LAN can
-        // call them: never re-point the ESP32 address from here. Let the signed (MAC + HMAC)
-        // discovery confirm where the box is instead, at most every 30 s.
+        // The caller's address comes from the network, not from the signed message, so never re-point the
+        // ESP32 address from here. Let the signed (MAC + HMAC) discovery confirm where the box is instead,
+        // at most every 30 s.
         val now = android.os.SystemClock.elapsedRealtime()
         if (now - lastUnverifiedDiscoveryMs >= 30_000L) {
             lastUnverifiedDiscoveryMs = now

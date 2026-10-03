@@ -403,7 +403,7 @@ fun FloatingPill(
                         onBoostClick = {
                             val freed = controller.optimizeMemory()
                             refreshRam()
-                            android.widget.Toast.makeText(context, "⚡ Turbo Boost: Freed ${freed}MB RAM", android.widget.Toast.LENGTH_SHORT).show()
+                            android.widget.Toast.makeText(context, if (freed > 0) "⚡ Turbo Boost: Freed ${freed}MB RAM" else "⚡ Memory already optimized", android.widget.Toast.LENGTH_SHORT).show()
                         },
                     )
 

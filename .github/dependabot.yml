@@ -6,7 +6,18 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
+    ignore:
+      # Major jumps, and minor jumps of the Kotlin toolchain (Kotlin/KSP/Compose must move together), need code
+      # changes and a device test: do those by hand. Patch updates still arrive.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "org.jetbrains.kotlin*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "com.google.devtools.ksp*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "androidx.compose*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       kotlin-toolchain:
         patterns:

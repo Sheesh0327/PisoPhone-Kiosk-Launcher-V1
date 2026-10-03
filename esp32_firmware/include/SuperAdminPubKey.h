@@ -3,7 +3,7 @@
 
 // PLACEHOLDER: remote super-admin password sync stays disabled until this file holds your public
 // key. Run `python3 scripts/superadmin_credentials.py keygen --private <file>` to replace it,
-// then rebuild and flash. See docs/overhaul/superadmin-remote-credentials.md.
+// then rebuild and flash. See docs/api/superadmin-credentials.md.
 #include <stddef.h>
 #include <stdint.h>
 

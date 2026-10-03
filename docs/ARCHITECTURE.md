@@ -22,7 +22,7 @@ Three parts work together: the **Android kiosk app** on each rental phone, the *
    (`PaymentQueueManager.enqueuePendingPayment`, persisted in NVS) *before* anything else.
 4. **Deliver.** The box pushes the payment to the phone over WebSocket and HTTP. Both carry the
    transaction id and a signature.
-5. **Credit.** The phone (`CoinProcessor` -> `PaymentRepository`) adds time exactly once per
+5. **Credit.** The phone (`KioskEngine` -> `PaymentRepository`) adds time exactly once per
    transaction id, then acknowledges (`/api/coinslot/ack`). The ack is only sent when crediting
    succeeded, so a failure leaves the payment queued.
 6. **Retry/expire.** Until acknowledged the box retries every 10 s; very old unacknowledged
@@ -55,7 +55,7 @@ restores the session) and locks the phone when time reaches zero.
 - **Admin PIN (phone):** per phone; also required for every admin broadcast.
 - **Super-admin password:** one value for all boxes, published as a signed hash in
   `website/update/credentials.json` and applied by `SuperAdminCreds.cpp`. See
-  `docs/overhaul/superadmin-remote-credentials.md`.
+  `docs/api/superadmin-credentials.md`.
 
 ## 5. Where things live
 | area | files |
@@ -64,13 +64,13 @@ restores the session) and locks the phone when time reaches zero.
 | Coin slot state machine | `CoinSlotManager.cpp`, `HardwareManager.cpp` |
 | Payment queue | `PaymentQueueManager.cpp` |
 | OpenNDS Wi-Fi payments | `opennds/` (theme, listener, installer, tests) |
-| Network gateway (router payment check) | `GatewayCoinslot.cpp` (logic), `WebServerGateway.cpp` (HTTP), `include/GatewayAuth.h` (auth), docs in `docs/overhaul/gateway-coinslot-api.md` |
+| Network gateway (router payment check) | `GatewayCoinslot.cpp` (logic), `WebServerGateway.cpp` (HTTP), `include/GatewayAuth.h` (auth), docs in `docs/api/gateway-coinslot.md` |
 | Web API | `WebServerModule.cpp` (routes), `WebServerApi.cpp`, `WebServerCoinslot.cpp`, `WebServerTelemetry.cpp`, `WebServerConfig.cpp` |
 | Auth and crypto | `WebServerAuth.cpp`, `Security.cpp`, `SuperAdminCreds.cpp`, `include/CredCrypto.h` |
 | Pure, PC-testable logic | `include/InputSafety.h`, `OtaCheck.h`, `DiagRing.h`, `CredCrypto.h` (tests in `host_tests/`) |
 | App engine | `service/KioskEngine.kt`, `KioskStateManager.kt`, `KioskSessionSupervisor.kt`, `SessionRules.kt` |
 | App <-> box | `network/Esp32ConnectionManager.kt`, `Esp32CoinslotRequests.kt`, `Esp32DiscoveryScanner.kt`, `server/KioskHttpServer.kt` |
-| Payments (app) | `repository/PaymentRepository.kt`, `service/CoinProcessor.kt`, `db/` |
+| Payments (app) | `repository/PaymentRepository.kt`, `db/` |
 | Admin broadcasts | `receiver/KioskAdminActionReceiver.kt` |
 
 ## 6. Quality checks

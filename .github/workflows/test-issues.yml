@@ -1,0 +1,39 @@
+name: Real-world test issues
+
+# When you add a row to the Issue log in docs/REAL_WORLD_TESTING.md and push it, a GitHub issue is created for it and its number
+# is written back into the row. Setting a row's Status to fixed or wontfix closes the issue.
+on:
+  push:
+    paths:
+      - 'docs/REAL_WORLD_TESTING.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: test-issues-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Sync the issue log with GitHub issues
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create and close issues
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 .github/scripts/sync_test_issues.py
+      - name: Save the issue numbers into the file
+        run: |
+          if ! git diff --quiet docs/REAL_WORLD_TESTING.md; then
+            git config user.name 'github-actions[bot]'
+            git config user.email 'github-actions[bot]@users.noreply.github.com'
+            git add docs/REAL_WORLD_TESTING.md
+            git commit -q -m "chore: link test issues to their GitHub issue numbers"
+            git pull -q --rebase --autostash origin "${GITHUB_REF_NAME}"
+            git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"
+          fi

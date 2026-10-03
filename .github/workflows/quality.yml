@@ -1,5 +1,6 @@
 name: Code quality
 
+# Runs on every push to any branch that touches code, scripts or this file.
 # Style and logic checks that do not need the Android toolchain or an ESP32 board:
 #   - ktlint for the Android app (rules in .editorconfig)
 #   - clang-format for the firmware (rules in esp32_firmware/.clang-format)
@@ -75,6 +76,26 @@ jobs:
         run: sh esp32_firmware/host_tests/run.sh
       - name: Test the sold-unit checker
         run: python3 scripts/tests/test_sold_unit_check.py
+
+  firmware-build:
+    name: Firmware build (${{ matrix.env }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [esp32-c3-dev, esp32dev-dev, esp32-c3-production-encrypted, esp32dev-production-encrypted]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+          key: pio-${{ matrix.env }}-${{ hashFiles('esp32_firmware/platformio.ini', 'esp32_firmware/envs/*.ini') }}
+      - name: Install PlatformIO
+        run: pip install platformio
+      - name: Compile
+        working-directory: esp32_firmware
+        run: pio run -e ${{ matrix.env }}
 
   opennds-integration:
     name: OpenNDS integration test

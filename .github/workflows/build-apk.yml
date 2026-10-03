@@ -1,4 +1,5 @@
 name: Build and Deploy APK to Website
+# Builds, signs and publishes the APK for the branch that was pushed.
 
 # Every branch publishes its own APK to its own website/update folder:
 #   main          -> https://pisophone.pages.dev/update              (production channel)
@@ -54,6 +55,9 @@ jobs:
   build-and-deploy:
     name: Build APK and Push to Website
     needs: unit-tests
+    # Dependabot runs get no repository secrets (no signing key), and its branches must never publish an APK.
+    # Its pull requests are still checked by the unit tests above and by the Code quality workflow.
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -154,7 +158,7 @@ jobs:
           echo "Generated APK SHA-256: $SHA ($SIZE bytes)"
 
           # The APK goes to a separate PUBLIC releases repository (this repository is private, and phones
-          # cannot log in to download from it). Needs the RELEASES_TOKEN secret; see docs/RELEASES.md.
+          # cannot log in to download from it). Needs the RELEASES_TOKEN secret; see docs/DEPLOY.md.
           URL=""
           if [ -n "$RELEASES_TOKEN" ]; then
             CHANNEL="${{ steps.channel.outputs.channel }}"
@@ -173,17 +177,13 @@ jobs:
               -q '[.[] | select(.tagName | startswith("app-dev-"))] | sort_by(.createdAt) | reverse | .[20:] | .[].tagName' \
               | xargs -r -n1 env GH_TOKEN="$RELEASES_TOKEN" gh release delete --repo "$RELEASES_REPO" --cleanup-tag --yes || true
           else
-            echo "::warning::RELEASES_TOKEN is not set: the APK is committed to website/update instead (see docs/RELEASES.md)."
+            echo "::warning::RELEASES_TOKEN is not set: the APK is committed to website/update instead (see docs/DEPLOY.md)."
           fi
 
           # Phones running a build from before the 'url' field existed still download website/update/app-release.apk,
           # so it stays published until you set the repository variable KEEP_PAGES_APK to 'false'.
-          if [ -z "$URL" ] || [ "$KEEP_PAGES_APK" != "false" ]; then
-            cp "$APK" website/update/app-release.apk
-            git add -f website/update/app-release.apk
-          else
-            git rm -q -f --ignore-unmatch website/update/app-release.apk
-          fi
+          PUBLISH_APK=0
+          if [ -z "$URL" ] || [ "$KEEP_PAGES_APK" != "false" ]; then PUBLISH_APK=1; fi
 
           # Version info the in-app updater compares against; it is produced from the same
           # run number that was baked into the APK as versionCode.
@@ -204,12 +204,30 @@ jobs:
 
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add -f website/update/app.json
-          if ! git diff --staged --quiet; then
+
+          # The two generated files are the only thing this commit changes, so there is nothing to merge: if the
+          # branch moved while we were building (another push, another bot commit), start again from its newest
+          # tip, put our two files on it and push. Retry a few times if another push wins the race.
+          cp website/update/app.json "$RUNNER_TEMP/app.json"
+          published=0
+          for attempt in 1 2 3 4 5; do
+            git fetch -q origin "$BRANCH"
+            git reset -q --hard "origin/$BRANCH"
+            cp "$RUNNER_TEMP/app.json" website/update/app.json
+            git add -f website/update/app.json
+            if [ "$PUBLISH_APK" = 1 ]; then
+              cp "$APK" website/update/app-release.apk
+              git add -f website/update/app-release.apk
+            else
+              git rm -q -f --ignore-unmatch website/update/app-release.apk
+            fi
+            if git diff --staged --quiet; then published=1; break; fi
             # No [skip ci] marker: Cloudflare Pages honours it and would never deploy this commit.
             # This commit only touches website/update, which no workflow trigger matches, so it
             # cannot start another build.
-            git commit -m "chore: publish ${{ steps.channel.outputs.channel }} APK build ${{ github.run_number }}"
-            git pull --rebase --autostash origin "$BRANCH"
-            git push origin "HEAD:refs/heads/$BRANCH"
-          fi
+            git commit -q -m "chore: publish ${{ steps.channel.outputs.channel }} APK build ${{ github.run_number }}"
+            if git push origin "HEAD:refs/heads/$BRANCH"; then published=1; break; fi
+            echo "::warning::Push rejected (attempt $attempt); trying again on the newest branch tip."
+            sleep $((attempt * 3))
+          done
+          [ "$published" = 1 ] || { echo "::error::Could not publish the APK after 5 attempts."; exit 1; }

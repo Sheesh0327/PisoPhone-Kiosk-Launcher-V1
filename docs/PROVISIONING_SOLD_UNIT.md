@@ -1,7 +1,7 @@
 # Hardening a box you sell (Secure Boot V2 + flash encryption)
 
-**Who needs this:** only boxes that leave your hands (plan item S9). Boxes in your own shops stay on the normal
-build: they are protected by the signed license, the per-box secret and signed OTA (see `FIRMWARE_SIGNING.md`).
+**Who needs this:** only boxes that leave your hands . Boxes in your own shops stay on the normal
+build: they are protected by the signed license, the per-box secret and signed OTA (see `KEYS.md`).
 
 **What it buys:** a buyer cannot read the firmware or the stored secrets with a flash reader, and cannot boot
 firmware you did not sign. **What it costs:** the eFuse steps below can **never be undone**. A mistake bricks the
@@ -126,11 +126,3 @@ power cut, and a factory reset still works.
 | Date | Board / revision | GATE 1 | GATE 2 | GATE 3 | NVS plaintext? | Notes |
 |---|---|---|---|---|---|---|
 | | | | | | | |
-
-## Replaced documents
-
-This file replaces `esp32_flash_encryption_guide.md` and `esp32_security_lockdown.md`. Both were out of date:
-they described `FLASH_CRYPT_CNT` (original ESP32 only, wrong for the C3), a `keygen.py` activation key that no
-longer exists (licenses are now ECDSA-signed tokens, see `KEY_MIGRATION.md`), and a single "master secret" shared
-by every box (now one secret per box). The slot-expiry behaviour they described is documented in
-`ESP32_FIRMWARE_SPECIFICATION.md`.

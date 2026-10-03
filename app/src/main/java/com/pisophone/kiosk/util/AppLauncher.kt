@@ -163,25 +163,6 @@ object AppLauncher {
     }
 
     /**
-     * Launches Android System Settings with automatic admin bypass.
-     */
-    fun launchSettings(context: Context) {
-        try {
-            AdminMaintenanceMode.begin(context, 900)
-            KioskService.triggerAdminBypass(context, 900)
-            ensureLockTaskAllowed(context, "com.android.settings")
-            ensureLockTaskAllowed(context, "com.google.android.settings")
-            val intent = Intent(Settings.ACTION_SETTINGS).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            }
-            context.startActivity(intent)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to launch Settings: ${e.message}")
-            Toast.makeText(context, "Cannot open Settings: ${e.message}", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    /**
      * Launches the Home screen / Kiosk Launcher.
      */
     fun launchHome(context: Context) {
