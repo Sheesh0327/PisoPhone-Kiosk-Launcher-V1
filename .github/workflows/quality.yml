@@ -1,5 +1,6 @@
 name: Code quality
 
+# Runs on every push to any branch that touches code, scripts or this file.
 # Style, logic and build checks for the firmware and the router add-on:
 #   - clang-format for the firmware (rules in esp32_firmware/.clang-format)
 #   - the firmware's host tests (diagnostics ring, input safety, OTA header check, credential, license and money code)
