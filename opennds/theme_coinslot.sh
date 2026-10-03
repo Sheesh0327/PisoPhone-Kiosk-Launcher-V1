@@ -271,12 +271,12 @@ if(!f||!A||!window.fetch||!window.URLSearchParams||!window.FormData)return;
    the busy / error page instead. */
 function instant(){var r=f.querySelector("input[name=coinplan]:checked"),nm=r&&r.value==="endurance"?"Endurance":"HyperSpeed",
 sub=f.previousElementSibling,d=document.createElement("div"),n=document.querySelectorAll(".note"),i;
-if(sub)sub.textContent=nm+" \u00b7 Insert coin(s) now \u00b7 Maglagay ng barya";
+if(sub)sub.textContent=nm+" \u00b7 Getting the coin slot ready \u00b7 Sandali lang";
 f.style.display="none";for(i=0;i<n.length;i++)n[i].style.display="none";
-d.innerHTML='<div class="big">&#8369;0</div><p class="mut">= <span>0 min</span> of Wi-Fi</p><div class="bar"><i style="width:100%"></i></div><p class="mut"><span id="lleft">'+first+'</span>s left &middot; the timer restarts with every coin</p>';
-f.parentNode.insertBefore(d,f.nextSibling);
-var t=first,e=document.getElementById("lleft");setInterval(function(){if(t>0)t--;e.textContent=t},1000)}
+d.innerHTML='<div class="big">&#8369;0</div><p class="mut">Please wait a moment. <b>Do not insert coins yet</b> &middot; huwag pa maglagay ng barya.</p>';
+f.parentNode.insertBefore(d,f.nextSibling)}
 f.addEventListener("submit",function(e){e.preventDefault();
+try{window.speechSynthesis&&speechSynthesis.speak(new SpeechSynthesisUtterance(""))}catch(x){}
 try{var c=window.__ctx=window.__ctx||new A();c.resume();var o=c.createOscillator(),g=c.createGain();g.gain.value=.04;o.frequency.value=880;o.connect(g);g.connect(c.destination);o.start();o.stop(c.currentTime+.05)}catch(x){}
 var url=f.action+"?"+new URLSearchParams(new FormData(f)).toString();instant();
 fetch(url,{cache:"no-store"}).then(function(r){return r.text()})
@@ -289,13 +289,21 @@ page_wait() {
 	pesos=$(printf '%s' "$cst" | jget pulses); mins=$(printf '%s' "$cst" | jget minutes); left=$(printf '%s' "$cst" | jget remaining)
 	total="$infofirst"; [ "${pesos:-0}" -gt 0 ] && total="$infoidle"
 	pct=$(( ${left:-0} * 100 / ${total:-30} )); [ "$pct" -gt 100 ] && pct=100; [ "$pct" -lt 0 ] && pct=0
-	echo "<p class=\"sub\">$(plan_name "$coinplan") &middot; Insert coin(s) now &middot; Maglagay ng barya</p>"
+	# The coin acceptor only takes coins once the box has armed it: until then say so and show no countdown.
+	_ready=yes; [ "$(printf '%s' "$cst" | jget state)" = "starting" ] && _ready=no
 	echo '<div id="wait">'
+	if [ "$_ready" = yes ]; then
+		echo "<p class=\"sub\" id=\"sub\">$(plan_name "$coinplan") &middot; Insert coin(s) now &middot; Maglagay ng barya</p>"
+		_cd=""
+	else
+		echo "<p class=\"sub\" id=\"sub\">$(plan_name "$coinplan") &middot; Getting the coin slot ready &middot; Sandali lang</p>"
+		_cd=' style="display:none"'
+	fi
 	cat << HTML
 <div class="big" id="pes">&#8369;${pesos:-0}</div>
 <p class="mut">= <span id="mins">$(fmt_min "${mins:-0}")</span> of Wi-Fi</p>
-<div class="bar"><i id="bar" style="width:${pct}%"></i></div>
-<p class="mut"><span id="left">${left:-0}</span>s left &middot; the timer restarts with every coin</p>
+<div id="cd"$_cd><div class="bar"><i id="bar" style="width:${pct}%"></i></div>
+<p class="mut"><span id="left">${left:-0}</span>s left &middot; the timer restarts with every coin</p></div>
 HTML
 	if [ "${pesos:-0}" -gt 0 ]; then action_button "Connect now" finish; else action_button "Cancel" finish alt; fi
 	echo '</div>'
@@ -321,15 +329,18 @@ var d=new DOMParser().parseFromString(x.responseText,"text/html"),n=d.getElement
 if(!n){location.replace(url);return}
 var w=document.getElementById("wait");w.innerHTML=n.innerHTML;
 var p=parseInt((d.getElementById("pes").textContent||"").replace(/[^0-9]/g,""),10)||0;
-if(p>pes)ding(p-pes);pes=p};x.send()}
+if(p>pes){ding(p-pes);say(p+(p===1?" peso":" pesos"))}pes=p};x.send()}
+function say(t){try{if(window.speechSynthesis){speechSynthesis.cancel();var u=new SpeechSynthesisUtterance(t);u.lang="en-US";speechSynthesis.speak(u)}}catch(e){}}
 function fmt(m){if(m<60)return m+" min";var h=Math.floor(m/60),r=m%60;return h+(h>1?" hrs":" hr")+(r?" "+r+" min":"")}
 function show(j){if(j.state==="done"||j.state==="error"||j.state==="none"){location.replace(url);return}
+var sb=document.getElementById("sub"),cd=document.getElementById("cd");
+if(j.state==="armed"&&cd&&cd.style.display==="none"){cd.style.display="";if(sb)sb.innerHTML="$(plan_name "$coinplan") &middot; Insert coin(s) now &middot; Maglagay ng barya";try{navigator.vibrate&&navigator.vibrate(80)}catch(e){}say("Insert coin now")}
 var p=+j.pulses||0,t=p>0?$infoidle:$infofirst,e=document.getElementById("pes"),btn=document.querySelector("#wait button.btn");
 if(!e)return;e.textContent="\u20b1"+p;document.getElementById("mins").textContent=fmt(+j.minutes||0);
 document.getElementById("left").textContent=Math.max(+j.remaining||0,0);
 document.getElementById("bar").style.width=Math.max(0,Math.min(100,100*(+j.remaining||0)/t))+"%";
 if(btn){btn.textContent=p>0?"Connect now":"Cancel";btn.className=p>0?"btn":"btn alt"}
-if(p>pes)ding(p-pes);pes=p}
+if(p>pes){ding(p-pes);say(p+(p===1?" peso":" pesos"))}pes=p}
 var sp=${infostream:-0},es=null,got=false;
 if(window.EventSource&&sp){try{es=new EventSource("http://"+location.hostname+":"+sp+"/stream?sid=$sid&mode=wait");
 es.addEventListener("status",function(m){got=true;try{show(JSON.parse(m.data))}catch(e){}});
@@ -363,6 +374,7 @@ t.textContent=p>1?"You are number "+p+" in line. Keep this page open \u00b7 Pang
 es.addEventListener("ready",function(m){got=true;var c=+JSON.parse(m.data).claim||30;h.textContent="Coin slot is ready!";
 t.textContent="Tap Start within "+c+" seconds \u00b7 Pindutin ang Start.";r.style.display="block";document.title="Coin slot ready";
 try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(e){}
+try{window.speechSynthesis&&speechSynthesis.speak(new SpeechSynthesisUtterance("The coin slot is ready. Tap start."))}catch(e){}
 tick=setInterval(function(){c--;if(c>0)t.textContent="Tap Start within "+c+" seconds \u00b7 Pindutin ang Start."},1000)});
 es.addEventListener("expired",function(){done();r.style.display="none";h.textContent="Your turn passed";t.textContent="The slot was held for you but not used. Tap below to get back in line.";
 r.innerHTML='<a class="btn" style="text-align:center;text-decoration:none" href="'+url+'">Try again</a>';r.style.display="block"});
