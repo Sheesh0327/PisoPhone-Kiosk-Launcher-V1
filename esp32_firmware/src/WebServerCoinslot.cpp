@@ -252,6 +252,7 @@ void handleApiCoinslotStatus() {
 
     // Coins are listed only to the phone they belong to, on a signed request (see coinTxVisibleTo). An unsigned or
     // other phone's request gets the slot state but no transactions; the phone still receives its coins by push.
+    purgeOldSessionCoinTx(); // expired entries are dropped before anything is listed
     bool signedOk = coinslotSignatureValid("status", devId, "");
     bool first = true;
     for (int i = 0; i < sessionTxCount; i++) {

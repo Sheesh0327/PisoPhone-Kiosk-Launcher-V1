@@ -22,6 +22,11 @@ int main() {
     CHECK(!coinSettleActive(1234, 0));                         // no window at all
     CHECK(coinSettleRemainingMs(armedAt + 400, until) == 600); // what clients are told
     CHECK(coinSettleRemainingMs(armedAt + 1000, until) == 0);
+    // a pulse that arrived inside the window but is read after it closed (late main loop) is still a stray pulse
+    CHECK(coinSettleCovers(armedAt + 990, until));
+    CHECK(!coinSettleCovers(armedAt + 1000, until));
+    CHECK(!coinSettleCovers(armedAt + 1500, until));
+    CHECK(!coinSettleCovers(armedAt + 100, 0));
     // a train whose last pulse was at +990 ms keeps the window open until it has been silent for 280 ms
     CHECK(coinSettleExtend(until, armedAt + 990, 280) == armedAt + 990 + 280);
     CHECK(coinSettleExtend(until, armedAt + 100, 280) == until); // an early stray pulse does not shorten it

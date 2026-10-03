@@ -317,7 +317,8 @@ void processCoinSlotSession() {
 
     // 2b. Settling window: pulses right after the relay powers on are stray, not coins. Drop them, and drop the rest of
     // a train that began inside the window.
-    if (newPulses > 0 && coinSettleActive(now, ignorePulsesUntilMs)) {
+    if (newPulses > 0 &&
+        (coinSettleActive(now, ignorePulsesUntilMs) || coinSettleCovers(lastPulseTime, ignorePulsesUntilMs))) {
         ignorePulsesUntilMs = coinSettleExtend(ignorePulsesUntilMs, lastPulseTime, INTER_PULSE_TIMEOUT_MS);
         diagLog("[🪙 COIN SLOT] Ignored %d stray pulse(s) while the acceptor settled after power-on.\n", newPulses);
         newPulses = 0;

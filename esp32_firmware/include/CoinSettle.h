@@ -16,6 +16,12 @@ inline bool coinSettleActive(unsigned long now, unsigned long until) {
     return until != 0 && (long)(until - now) > 0;
 }
 
+// Did a pulse that arrived at `pulseMs` fall inside the window? The main loop may harvest pulses a little after the
+// window closed, so pulses are classified by their own (interrupt) timestamp, not by the time they were read.
+inline bool coinSettleCovers(unsigned long pulseMs, unsigned long until) {
+    return until != 0 && (long)(until - pulseMs) > 0;
+}
+
 inline unsigned long coinSettleRemainingMs(unsigned long now, unsigned long until) {
     return coinSettleActive(now, until) ? (unsigned long)((long)(until - now)) : 0UL;
 }

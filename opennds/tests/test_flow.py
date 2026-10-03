@@ -355,7 +355,7 @@ try:
     check(st["pulses"] == 1 and 5.0 <= took <= 12.0, f"window extended after a coin (took {took:.1f}s, pulses {st['pulses']})")
 
     # ---- acceptor settling: the customer is not invited to pay (state stays "starting") until the box says it is ready ----
-    set_box(busy=False, coins_at=[0.4], settle_ms=900)
+    set_box(busy=False, coins_at=[0.4, 1.5], settle_ms=900)   # the first coin falls inside the settling window and is ignored
     sT = sid_of("hidSettle")
     t0 = time.time()
     get(f"/start?sid={sT}&plan=hyper&mac={MAC_C}")
@@ -374,7 +374,7 @@ try:
         if st["state"] == "done":
             break
         time.sleep(0.5)
-    check(st["pulses"] == 1, f"a coin after the settling time is counted ({st['pulses']})")
+    check(st["pulses"] == 1, f"a coin inside the settling window is ignored and one after it is counted ({st['pulses']})")
 
     # ---- live updates (Server-Sent Events) ----------------------------------------------------------------------------
     # coins reach the page as they arrive, not on a 2 s refresh

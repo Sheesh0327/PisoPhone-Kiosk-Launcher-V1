@@ -406,6 +406,11 @@ do_worker() {
   # insert coins, and the countdown starts, only after that.
   settle=$(printf '%s' "$answer" | jget ready_in_ms)
   case "$settle" in "" | *[!0-9]*) settle=0 ;; esac
+  if [ "$settle" -gt 5000 ]; then                         # not a settling time this software knows: do not wait on it
+    release
+    write_state "$dir" error 0 0 "BAD_SETTLE_TIME"
+    return 1
+  fi
   if [ "$settle" -gt 0 ]; then
     nap "$(( settle / 1000 )).$(printf '%03d' $(( settle % 1000 )))"
     deadline=$(( $(now) + COIN_FIRST_WAIT_SECONDS ))

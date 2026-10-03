@@ -505,7 +505,13 @@ class Esp32ConnectionManager(
                 // Powering the acceptor can cause a stray pulse, so the box ignores pulses while it settles. Do not invite
                 // coins until then, or a coin dropped in right away would be ignored.
                 val settleMs = try { JSONObject(body).optLong("settle_ms", 0L) } catch (_: Exception) { 0L }
-                if (settleMs > 0L) Thread.sleep(settleMs.coerceAtMost(MAX_SETTLE_WAIT_MS))
+                if (settleMs > MAX_SETTLE_WAIT_MS) {
+                    // An unsupported settling time: do not report the slot ready while the box would still ignore coins.
+                    Log.w(TAG, "ESP32 reported an unsupported settling time ($settleMs ms); not reporting the slot as ready")
+                    delegate.onSlotBusy()
+                    return
+                }
+                if (settleMs > 0L) Thread.sleep(settleMs)
                 if (!isAttemptCurrent(attemptId)) return
                 delegate.onArmSuccess()
                 Handler(Looper.getMainLooper()).post {

@@ -355,11 +355,11 @@ if(!e)return;put("pes","\u20b1"+p);put("mins",fmt(+j.minutes||0));put("left",""+
 var w=Math.max(0,Math.min(100,100*(+j.remaining||0)/t))+"%",bar=document.getElementById("bar");if(bar&&bar.style.width!==w)bar.style.width=w;
 var want=p>0?"Connect now":"Cancel";if(btn&&!btn.form.__t&&btn.textContent!==want){btn.textContent=want;btn.className=p>0?"btn":"btn alt"}
 if(p>pes){ding(p-pes);say(p+(p===1?" peso":" pesos"))}pes=p}
-var sp=${infostream:-0},es=null,got=false,polling=false;
+var sp=${infostream:-0},es=null,got=false,polling=false,last=0;
 function fallback(){if(es){es.close();es=null}if(!polling){polling=true;setInterval(poll,2000)}}
 if(window.EventSource&&sp){try{es=new EventSource("http://"+location.hostname+":"+sp+"/stream?sid=$sid&mode=wait");
-es.addEventListener("status",function(m){got=true;try{show(JSON.parse(m.data))}catch(e){}});
-es.onerror=function(){if(!got||es.readyState===2)fallback()}}catch(e){es=null}}
+es.addEventListener("status",function(m){got=true;last=Date.now();try{show(JSON.parse(m.data))}catch(e){}});
+es.onerror=function(){if(!got||es.readyState===2)fallback();else setTimeout(function(){if(es&&Date.now()-last>8000)fallback()},8000)}}catch(e){es=null}}
 if(!es)fallback()})();
 </script>
 HTML
