@@ -1,4 +1,5 @@
 name: Build and Deploy APK to Website
+# Builds, signs and publishes the APK for the branch that was pushed.
 
 # Every branch publishes its own APK to its own website/update folder:
 #   main          -> https://pisophone.pages.dev/update              (production channel)
