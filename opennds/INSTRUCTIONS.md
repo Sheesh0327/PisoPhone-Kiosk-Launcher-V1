@@ -12,7 +12,7 @@ Steps 2 onwards run on the router over SSH (`ssh root@<router-ip>`).
 Build or download `opennds-coinslot_<version>_all.ipk` (`python3 opennds/package/build_ipk.py --version 1.0.0`, or the
 file attached to the CI run), then on the PC and the router:
 ```
-scp dist/opennds-coinslot_1.0.0_all.ipk root@<router-ip>:/tmp/
+scp dist/opennds-coinslot_1.0.0_all.ipk root@<router-ip>:/tmp/ # use [scp -O] if on legacy version of openwrt
 ssh root@<router-ip>
 opkg update && opkg install /tmp/opennds-coinslot_1.0.0_all.ipk     # also installs opennds, socat, openssl-util, curl
 ```
