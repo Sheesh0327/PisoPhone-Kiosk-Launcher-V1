@@ -118,6 +118,10 @@ install_packages() {
 		opkg install "$p" > /dev/null 2>&1 || opkg install "$p" || die "could not install $p"
 	done
 	opkg list-installed 2> /dev/null | grep -qi '^libmicrohttpd' || opkg install libmicrohttpd-no-ssl > /dev/null 2>&1
+	# Installing opennds starts it at once with its default settings, which gate the LAN (the kiosk network) and would reject
+	# the coin box and the phones. Keep it stopped until the guest network is configured; it is started at the end.
+	/etc/init.d/opennds stop > /dev/null 2>&1
+	sleep 2
 	sleep 0.1 2> /dev/null || log "note: coreutils-sleep is not active; the coin check polls once a second"
 }
 
@@ -404,6 +408,7 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 
 stage2() {
 	step "Applying the network settings (the LAN is not restarted, so this SSH session stays open)"
+	/etc/init.d/opennds stop > /dev/null 2>&1   # (also on a re-run: no gating of the LAN while the box is paired)
 	/etc/init.d/network reload > /dev/null 2>&1
 	sleep 5
 	wifi reload > /dev/null 2>&1

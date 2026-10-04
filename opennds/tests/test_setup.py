@@ -70,6 +70,8 @@ r = run("--dry-run")
 out = r.stdout
 check(r.returncode == 0, "dry run succeeds: " + r.stderr + out[-300:])
 check("network.lan.ipaddr" not in out and "network.lan.netmask" not in out and "network restart" not in text.split("stage1()")[1], "the LAN address is never changed by the script (so SSH stays open)")
+inst = text.split("install_packages() {")[1].split("\n}\n")[0]
+check("/etc/init.d/opennds stop" in inst, "openNDS is stopped right after it is installed (its default settings would gate the kiosk LAN)")
 check("--stage2" not in text.split("# ---- payload")[0] and "nohup" not in text.split("# ---- payload")[0], "no background stage that outlives the SSH session")
 check("set network.guest.ipaddr='192.168.30.1'" in out and "set network.guest.device='br-guest'" in out, "guest network on its own bridge")
 for radio in ("radio0", "radio1"):
