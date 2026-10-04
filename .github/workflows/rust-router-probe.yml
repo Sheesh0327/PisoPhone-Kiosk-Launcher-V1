@@ -44,7 +44,7 @@ jobs:
           mkdir -p "$PWD/stub"
           echo 'INPUT(-lgcc_eh)' > "$PWD/stub/libunwind.a"
           export STAGING_DIR="$GITHUB_WORKSPACE/toolchain"
-          export RUSTFLAGS="-C linker=$GCC -C link-arg=-L$PWD/stub -C target-feature=+crt-static -C relocation-model=static"
+          export RUSTFLAGS="-C linker=$GCC -C link-arg=-L$PWD/stub -C target-feature=+crt-static -C relocation-model=static -C link-self-contained=no"
           cargo +nightly build --release -Z build-std=std,panic_abort --target mipsel-unknown-linux-musl
           BIN=target/mipsel-unknown-linux-musl/release/coinslot-probe
           ls -l "$BIN"
