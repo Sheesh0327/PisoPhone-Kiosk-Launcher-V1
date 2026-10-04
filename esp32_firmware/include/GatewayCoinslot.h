@@ -20,7 +20,7 @@ static const int GATEWAY_DEFAULT_ARM_SECONDS = 60;
 static const int GATEWAY_MIN_ARM_SECONDS = 5;
 static const int GATEWAY_MAX_ARM_SECONDS = 120; // CoinSlotManager caps any session at 120 s
 
-enum class GatewayArmResult { Ok, Busy, StorageUnavailable, InvalidSession };
+enum class GatewayArmResult { Ok, Busy, StorageUnavailable, InvalidSession, SetupRequired };
 
 struct GatewayStatus {
     String state;            // "armed", "draining" or "idle"

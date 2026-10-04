@@ -138,7 +138,8 @@ void setup() {
     loadAllConfig();
     gatewayInit();
     if (defaultCredentialsActive()) {
-        diagLog("[AUTH] WARNING: the generated admin password has not been changed yet; change it in Settings.\n");
+        diagLog(
+            "[AUTH] WARNING: the default admin password has not been changed yet; coins are blocked until it is.\n");
     }
     lastWifiCheckTime = millis();
 

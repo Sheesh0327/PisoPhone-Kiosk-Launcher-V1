@@ -11,6 +11,7 @@
 #include "WebServerAuth.h"
 #include "PaymentQueueManager.h"
 #include "Config.h"
+#include "SetupGate.h"
 #include "SuperAdminCreds.h"
 #include "Security.h"
 #include "HardwareManager.h"
@@ -230,6 +231,12 @@ void handleSave() {
     }
     if (webServer.hasArg(NVS_KEY_ADMIN_PW)) {
         String newPw = webServer.arg(NVS_KEY_ADMIN_PW);
+        if (newPw != webPassword && !setupgate::passwordAcceptable(newPw.c_str())) {
+            webServer.send(
+                400, "application/json",
+                "{\"success\":false,\"error\":\"WEAK_PASSWORD\",\"message\":\"Use at least 8 characters, and not the default password.\"}");
+            return;
+        }
         if (newPw != webPassword) {
             webPassword = newPw;
             adminPwChanged = true;

@@ -74,8 +74,8 @@ int main() {
         CHECK(r.from == 0 && r.to == CURRENT_VERSION && r.ranAny);
         CHECK(secretmode::validSecret(s.getString(K_SHARED_SECRET, "")));
         CHECK(!s.getBool(K_LEGACY_KEY, true));
-        CHECK(s.getString(K_ADMIN_PW, "").size() == 12 && !s.getBool(K_ADMIN_PW_CHANGED, true));
-        CHECK(s.getString(K_SETUP_AP_PASS, "").size() == 10);
+        CHECK(s.getString(K_ADMIN_PW, "") == "Coinslot@Setup" && !s.getBool(K_ADMIN_PW_CHANGED, true));
+        CHECK(s.getString(K_SETUP_AP_PASS, "") == "Coinslot@Setup");
         CHECK(s.getUInt(K_TOTAL_CENTAVOS, 99) == 0);
         CHECK(s.getUInt(K_CFG_VER, 0) == CURRENT_VERSION);
     }
@@ -156,13 +156,13 @@ int main() {
         CHECK(!s.isKey(K_SHARED_SECRET));
     }
 
-    // two fresh boxes never share a secret or password
+    // two fresh boxes never share a secret; both start on the published default password until it is changed
     {
         FakeStore a, b;
         runAll(a, env());
         runAll(b, env());
         CHECK(a.getString(K_SHARED_SECRET, "") != b.getString(K_SHARED_SECRET, ""));
-        CHECK(a.getString(K_ADMIN_PW, "") != b.getString(K_ADMIN_PW, ""));
+        CHECK(a.getString(K_ADMIN_PW, "") == b.getString(K_ADMIN_PW, ""));
     }
 
     printf("config_migration_test: %d checks, %d failures\n", checks, failures);

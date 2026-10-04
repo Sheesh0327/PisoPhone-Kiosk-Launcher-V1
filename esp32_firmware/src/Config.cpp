@@ -466,12 +466,11 @@ void loadCredentials() {
     prefs.end();
 
     if (!adminPwChanged) {
-        // Shown only until the operator changes the admin password. Needed to reach a box that has never been set up.
-        Serial.println("\n================ FIRST-TIME SETUP CREDENTIALS ================");
-        Serial.printf(" Setup Wi-Fi   : PisoPhone-Setup-xxxx   password: %s\n", setupApPass.c_str());
-        Serial.printf(" Admin login   : admin / %s\n", webPassword.c_str());
+        // The box starts on the published default password so it can be set up and reset without a serial monitor.
+        Serial.println("\n================ FIRST-TIME SETUP ================");
+        Serial.println(" This box is using its default password (see the setup guide).");
         Serial.println(" Change the admin password in Settings; coins stay blocked until you do.");
-        Serial.println("==============================================================\n");
+        Serial.println("==================================================\n");
     }
 }
 

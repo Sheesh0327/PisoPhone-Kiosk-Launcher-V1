@@ -29,7 +29,7 @@ Collect logs as you go: box serial output at 115200 baud (`pio device monitor`),
 
 ## 1. Box basics
 *B1–B3 are pass 1, the rest pass 2*
-- [ ] **B1** Box boots; serial shows setup-AP password and admin password (no factory passwords)
+- [ ] **B1** Box boots with the default password `Coinslot@Setup` (admin login and setup Wi-Fi); a coin request is refused (`SETUP_REQUIRED`) until the admin password is changed
 - [ ] **B2** Box opens its setup Wi-Fi when no Wi-Fi is saved; joins your Wi-Fi once configured
 - [ ] **B3** Dashboard opens; first-run checklist shows; it disappears when its items are done
 - [ ] **B4** Changing the admin password works; old password stops working

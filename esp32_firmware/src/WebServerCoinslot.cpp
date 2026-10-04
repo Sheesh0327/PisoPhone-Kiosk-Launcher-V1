@@ -15,6 +15,7 @@
 #include "WebServerModule.h"
 #include "WebServerAuth.h"
 #include "Config.h"
+#include "SetupGate.h"
 #include "SuperAdminCreds.h"
 #include "Security.h"
 #include "HardwareManager.h"
@@ -141,6 +142,12 @@ void handleApiCoinslotArm() {
                                                  : (webServer.hasArg("id") ? webServer.arg("id") : "");
     devId.trim();
     if (!coinslotRequestAuthorized("arm", devId, "")) return;
+    if (!setupgate::usageAllowed(adminPwChanged)) {
+        webServer.send(
+            403, "application/json",
+            "{\"success\":false,\"status\":\"error\",\"error\":\"SETUP_REQUIRED\",\"message\":\"The box's admin password has not been changed yet.\"}");
+        return;
+    }
     String reqIp = webServer.hasArg("ip") ? webServer.arg("ip") : "";
     reqIp.trim();
     if (reqIp.length() == 0 || reqIp == "127.0.0.1" || reqIp == "0.0.0.0") {
