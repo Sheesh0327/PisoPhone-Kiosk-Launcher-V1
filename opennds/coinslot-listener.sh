@@ -31,6 +31,10 @@
 #   /apply?sid&mac                    top-up for a connected client: re-grant now, then record it
 #   /voucher?sid&mac&code             prepare a grant from a voucher code
 #   /resume?sid&mac                   prepare a grant for a returning device that still has paid time
+#   /verify?sid                       (flash_coin theme) what a finished window collected: pulses, minutes, plan, window id.
+#                                     Changes nothing, so it can be asked again after a crash.
+#   /ack?sid                          (flash_coin theme) the session file now holds the time: acknowledge the coins on the box
+#                                     (retried until it works; asking again is harmless)
 #   /me?mac                           account status for the status page
 #   /pause?mac                        pause a connected Endurance session once (needs PAUSE_MIN_PESOS paid)
 CONF="${COINSLOT_CONF:-/etc/coinslot.conf}"
@@ -645,7 +649,7 @@ do_handle() {
 
   case "$path" in
     /info)
-      reply "200 OK" "{\"first\":$COIN_FIRST_WAIT_SECONDS,\"idle\":$COIN_IDLE_WAIT_SECONDS,\"max\":$COIN_MAX_SECONDS,\"fair_gb\":$FAIR_USE_GB,\"e_down\":$ENDURANCE_DOWN_KBPS,\"e_up\":$ENDURANCE_UP_KBPS,\"pause_pesos\":$PAUSE_MIN_PESOS,\"pause_hours\":$PAUSE_MAX_HOURS,\"stream_port\":$STREAM_PORT}"
+      reply "200 OK" "{\"first\":$COIN_FIRST_WAIT_SECONDS,\"idle\":$COIN_IDLE_WAIT_SECONDS,\"max\":$COIN_MAX_SECONDS,\"fair_gb\":$FAIR_USE_GB,\"e_down\":$ENDURANCE_DOWN_KBPS,\"e_up\":$ENDURANCE_UP_KBPS,\"pause_pesos\":$PAUSE_MIN_PESOS,\"pause_hours\":$PAUSE_MAX_HOURS,\"stream_port\":$STREAM_PORT,\"fair_kb\":${FAIR_USE_KB:-$(( FAIR_USE_GB * 1024 * 1024 ))},\"fair_down\":$FAIR_THROTTLE_DOWN_KBPS,\"fair_up\":$FAIR_THROTTLE_UP_KBPS,\"fair_throttle_min\":$FAIR_THROTTLE_MINUTES,\"fair_full_min\":$FAIR_FULL_MINUTES}"
       return ;;
     /tiers)
       plan=$(qget plan); valid_plan "$plan" || { reply "400 Bad Request" "$(err_json INVALID_PLAN)"; return; }
@@ -730,6 +734,8 @@ do_handle() {
       rm -f "$dir/stop" "$dir/claimed" "$dir/state" "$dir/grant" "$dir/pending" "$dir/forfeit"
       [ -n "$forfeitcode" ] && printf '%s' "$forfeitcode" > "$dir/forfeit"
       printf '%s' "$plan" > "$dir/plan"
+      _wid=$(tr -d '-' < /proc/sys/kernel/random/uuid 2>/dev/null); [ -n "$_wid" ] || _wid="$(now)$$"   # names this window: a coin is never credited twice
+      printf '%s' "$_wid" > "$dir/wid"
       write_state "$dir" starting 0 "$COIN_FIRST_WAIT_SECONDS" ""
       # The worker must not inherit the socket (it would hold the connection open): detach its fds.
       logmsg "start ${sid%????????????????????????} plan=$plan"
@@ -741,6 +747,26 @@ do_handle() {
       worker_running "$dir" && : > "$dir/stop"
       logmsg "finish ${sid%????????????????????????}"
       reply "200 OK" "$(status_json "$dir")" ;;
+    /verify)
+      read_state "$dir"
+      _plan=$(cat "$dir/plan" 2>/dev/null); _wid=$(cat "$dir/wid" 2>/dev/null); _claimed=false; [ -e "$dir/claimed" ] && _claimed=true
+      if [ "$STATE" = "done" ] && [ "${PULSES:-0}" -gt 0 ] && valid_plan "$_plan"; then
+        reply "200 OK" "{\"ok\":true,\"pulses\":$PULSES,\"minutes\":$(minutes_for "$_plan" "$PULSES"),\"plan\":\"$_plan\",\"wid\":\"$_wid\",\"claimed\":$_claimed,\"up\":$(plan_up "$_plan"),\"down\":$(plan_down "$_plan")}"
+      else
+        reply "200 OK" "{\"ok\":false,\"state\":\"$STATE\",\"pulses\":${PULSES:-0}}"
+      fi ;;
+    /ack)
+      read_state "$dir"
+      [ "$STATE" = "done" ] || { reply "200 OK" "$(err_json NOT_DONE)"; return; }
+      if [ -e "$dir/claimed" ] && [ ! -e "$dir/ackpending" ]; then reply "200 OK" '{"success":true,"acked":true}'; return; fi
+      : > "$dir/claimed"; rm -f "$dir/pending" "$dir/forfeit"
+      _acked=true
+      if [ "${PULSES:-0}" -gt 0 ]; then
+        : > "$dir/ackpending"; _acked=false
+        for _ in 1 2 3; do call "$sid" ack >/dev/null && { rm -f "$dir/ackpending"; _acked=true; break; }; sleep 1; done
+      fi
+      logmsg "ack ${sid%????????????????????????} acked=$_acked"
+      reply "200 OK" "{\"success\":true,\"acked\":$_acked}" ;;
     /claim)
       [ -n "$mac" ] || { reply "400 Bad Request" "$(err_json INVALID_MAC)"; return; }
       if build_grant "$sid" "$mac"; then save_pending "$dir"; logmsg "claim ${sid%????????????????????????} $mac ${G_TOTAL_MIN}min mode=$G_MODE"; reply "200 OK" "$(grant_json)"

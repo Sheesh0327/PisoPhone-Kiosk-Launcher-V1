@@ -23,6 +23,12 @@ FILES = [
     ("usr/lib/opennds/theme_coinslot.sh", "theme_coinslot.sh", 0o755),
     ("usr/lib/opennds/coinslot_status.sh", "coinslot_status.sh", 0o755),
     ("etc/init.d/coinslot", "coinslot.init", 0o755),
+    # the "flash coin" portal (see INSTRUCTIONS-FLASH.md): installed but not enabled; use flash_coin INSTEAD OF coinslot
+    ("usr/lib/opennds/flash_coin.sh", "flash_coin.sh", 0o755),
+    ("usr/lib/opennds/flash_coin_lib.sh", "flash_coin_lib.sh", 0o755),
+    ("usr/lib/opennds/flash_coin_status.sh", "flash_coin_status.sh", 0o755),
+    ("usr/lib/opennds/flash_fairuse.sh", "flash_fairuse.sh", 0o755),
+    ("etc/init.d/flash_coin", "flash_coin.init", 0o755),
     ("etc/config/coinslot", "package/coinslot.uci", 0o600),
 ]
 

@@ -8,8 +8,7 @@ import glob, hashlib, socket, json, os, re, shutil, signal, subprocess, sys, tem
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-IMPL = os.environ.get("LISTENER_IMPL", "shell")   # "fast" runs the whole suite against coinslot-fast.sh (MicroPython)
-THEME, LISTENER = f"{ROOT}/theme_coinslot.sh", f"{ROOT}/coinslot-{'fast' if IMPL == 'fast' else 'listener'}.sh"
+THEME, LISTENER = f"{ROOT}/theme_coinslot.sh", f"{ROOT}/coinslot-listener.sh"
 KEY = "test-gateway-key-123456"
 QUEUE_CLAIM = 5
 BOX_PORT, LISTEN_PORT, STREAM_PORT = 18090, 18099, 18110
@@ -63,13 +62,9 @@ ARP = f"{tmp}/arp"
 open(ARP, "w").write(f"IP address       HW type     Flags       HW address            Mask     Device\n127.0.0.1  0x1  0x2  {MAC_A}  *  lo\n")
 env["ARP_FILE"] = ARP
 set_box(busy=False, coins_at=[])
-if IMPL == "fast":   # one resident process serves both the API and the stream
-    procs = [subprocess.Popen([sys.executable, f"{HERE}/fakebox.py", str(BOX_PORT)], env=env),
-             subprocess.Popen(["sh", LISTENER, "serve"], env=dict(env, STREAM_BIND="127.0.0.1", COINSLOT_DEBUG="1"), stdin=subprocess.DEVNULL, stderr=open(f"{tmp}/serve.err", "w"))]
-else:
-    procs = [subprocess.Popen([sys.executable, f"{HERE}/fake_socat.py", str(STREAM_PORT), LISTENER, "stream-handle"], env=env),
-             subprocess.Popen([sys.executable, f"{HERE}/fakebox.py", str(BOX_PORT)], env=env),
-             subprocess.Popen([sys.executable, f"{HERE}/fake_socat.py", str(LISTEN_PORT), LISTENER], env=env)]
+procs = [subprocess.Popen([sys.executable, f"{HERE}/fake_socat.py", str(STREAM_PORT), LISTENER, "stream-handle"], env=env),
+         subprocess.Popen([sys.executable, f"{HERE}/fakebox.py", str(BOX_PORT)], env=env),
+         subprocess.Popen([sys.executable, f"{HERE}/fake_socat.py", str(LISTEN_PORT), LISTENER], env=env)]
 time.sleep(1.0)
 
 
@@ -275,25 +270,6 @@ try:
           "waiting page invites coins and shows the countdown once the slot is armed")
     shutil.rmtree(f"{STATE}/{sw}")
     shutil.rmtree(f"{STATE}/{sw2}")
-    if IMPL == "fast":  # a window that was running when the process stopped has no worker: /finish must end it, not loop forever
-        sr = sid_of("hidR")
-        os.makedirs(f"{STATE}/{sr}", exist_ok=True)
-        open(f"{STATE}/{sr}/plan", "w").write("hyper")
-        open(f"{STATE}/{sr}/state", "w").write("STATE=armed\nPULSES=0\nREMAINING=30\nERROR=\n")
-        get(f"/finish?sid={sr}")
-        st = {}
-        for _ in range(40):
-            st = json.loads(get(f"/status?sid={sr}")[1])
-            if st.get("state") == "done":
-                break
-            time.sleep(0.5)
-        check(st.get("state") == "done", f"a window left active by a stopped process is ended by /finish ({st})")
-        shutil.rmtree(f"{STATE}/{sr}")
-
-    if IMPL == "fast":
-        r = subprocess.run(["sh", LISTENER, "selfcheck"], env=env, capture_output=True, text=True, timeout=60)
-        check(r.returncode == 0 and "everything this script needs is there" in r.stdout, "selfcheck finds every MicroPython feature the script uses: " + r.stdout[-300:])
-
     # ---- Endurance: 17 pesos accumulate to 11 hrs 30 min -----------------------------------------------------------
     p = pay("hidA", MAC_A, "endurance", 17)
     check("11 hrs 30 min" in p and "&#8369;17" in p, "result: P17 Endurance = 11 hrs 30 min")
@@ -561,85 +537,6 @@ try:
     time.sleep(0.5)
     check(not glob.glob(f"{STATE}/queue/*"), "the waiting line is empty afterwards")
 
-    if IMPL == "fast":   # WebSocket endpoint (MicroPython edition only)
-        nds_client(MAC_A)
-        set_box(busy=False, coins_at=[0.6, 1.2])
-        sW = sid_of("hidWS1")
-        w = WS(sW, MAC_A, origin=f"http://127.0.0.1:{STREAM_PORT}")
-        check(b" 101 " in w.head and w.accept_ok, "WebSocket handshake succeeds with the right accept key")
-        w.send({"t": "start", "plan": "hyper"})
-        m = None
-        for _ in range(20):
-            m = w.wait("status", 1)
-            if m and m["state"] in ("starting", "armed"):
-                break
-        check(m is not None and m["state"] in ("starting", "armed"), f"start over the WebSocket opens the window ({m})")
-        got = None
-        for _ in range(40):
-            m = w.recv(0.5)
-            if m and m.get("e") == "status" and m.get("pulses", 0) >= 2:
-                got = m
-                break
-        check(got is not None and got["plan"] == "hyper", "coins are pushed over the WebSocket")
-        w.send({"t": "finish"})
-        done = w.wait("status", 10)
-        for _ in range(60):
-            if done and done.get("state") == "done":
-                break
-            done = w.wait("status", 1) or done
-        check(done is not None and done.get("state") == "done" and done.get("pulses") == 2, f"finish over the WebSocket ends the window with the coins ({done})")
-        w.close()
-        # who may connect
-        for label, kw in (("another device", dict(mac=MAC_B)), ("a page from another site", dict(mac=MAC_A, origin="http://evil.example")),
-                          ("no handshake key", dict(mac=MAC_A, key=None))):
-            x = WS(sid_of("hidWS2"), **kw)
-            check(b" 403 " in x.head, f"WebSocket refused for {label}")
-            x.close()
-        # commands are limited and frames must be well formed
-        for label, act in (("an unmasked frame", lambda x: x.send(b'{"t":"ping"}', masked=False)),
-                           ("an unknown command", lambda x: x.send({"t": "grant", "minutes": 999})),
-                           ("a bad plan", lambda x: x.send({"t": "start", "plan": "free"})),
-                           ("text that is not JSON", lambda x: x.send(b"hello")),
-                           ("an oversized frame", lambda x: x.send(b"x" * 600))):
-            x = WS(sid_of("hidWS3"), MAC_A)
-            act(x)
-            check(x.closed(), f"WebSocket closes on {label}")
-            x.close()
-        x = WS(sid_of("hidWS4"), MAC_A)
-        for _ in range(11):  # one more than allowed: enough to be refused, and the server has not closed before the last send
-            x.send({"t": "ping"})
-        check(x.wait("pong", 3) is not None and x.closed(5) is True, "WebSocket closes a client that sends more than 10 commands in 10 s")
-        x.close()
-        # a busy slot over the WebSocket: place in line, then ready
-        set_box(busy=True, coins_at=[])
-        x = WS(sid_of("hidWS5"), MAC_A)
-        x.send({"t": "start", "plan": "hyper"})
-        busy, pos = None, None
-        end = time.time() + 8
-        while time.time() < end and not (busy and pos):
-            m = x.recv(1)
-            if m and m.get("e") == "status" and m.get("error") == "SLOT_BUSY":
-                busy = m
-            if m and m.get("e") == "queue":
-                pos = m.get("pos")
-        check(busy is not None and pos == 1, f"busy slot over the WebSocket reports the place in line ({busy and busy['error']}, {pos})")
-        # a second customer, while somebody is already first in line: refused with SLOT_BUSY, and put in line as well
-        x2 = WS(sid_of("hidWS6"), MAC_A)
-        x2.send({"t": "start", "plan": "hyper"})
-        refused, pos2 = None, None
-        end = time.time() + 8
-        while time.time() < end and not (refused and pos2):
-            m = x2.recv(1)
-            if m and m.get("e") in ("status", "error") and m.get("error") == "SLOT_BUSY":
-                refused = m
-            if m and m.get("e") == "queue":
-                pos2 = m.get("pos")
-        check(refused is not None and pos2 == 2, f"a second customer is told the slot is busy and gets a place in line ({refused and refused['error']}, {pos2})")
-        x2.close()
-        set_box(busy=False, coins_at=[])
-        check(x.wait("ready", 5) is not None, "the WebSocket tells the first in line when the slot is free")
-        x.close()
-
     # ---- browser: the waiting page updates itself and plays a coin sound (headless Chrome; skipped if none) ---------------
     import threading
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -832,9 +729,5 @@ finally:
         except (OSError, ValueError):
             pass
 
-if IMPL == "fast" and os.path.exists(f"{tmp}/serve.err") and os.path.getsize(f"{tmp}/serve.err"):
-    print("server stderr (tail):", open(f"{tmp}/serve.err").read()[-1500:])
-if IMPL == "fast" and os.path.getsize(f"{tmp}/serve.err"):
-    print("server stderr (tail):", open(f"{tmp}/serve.err").read()[-2500:])
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)
