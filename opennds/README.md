@@ -19,13 +19,13 @@ phone browser --> openNDS portal --> theme_coinslot.sh --(127.0.0.1)--> coinslot
 | `coinslot.init` | OpenWrt service script |
 | `package/` | builds the `opennds-coinslot` .ipk (`build_ipk.py`) and holds the default UCI config |
 | `layout_b.sh` | prints the `uci` commands for the guest/kiosk split network (Layout B) |
-| `INSTRUCTIONS.md` | step-by-step copy/paste setup (there is no installer script) |
+| `INSTRUCTIONS.md`, `INSTRUCTIONS-SHELL.md`, `INSTRUCTIONS-MICROPYTHON.md` | step-by-step copy/paste setup from a factory-reset router: an index and one complete guide per edition (there is no installer script) |
 | `tests/` | end-to-end test with a fake box (`test_flow.py`), plus `test_hmac.py`, `test_uci_config.py`, `test_ipk.py`, `test_layout_b.py` |
 
 How the live coin updates and the busy-slot line work: `docs/PORTAL_LIVE_UPDATES.md`.
 
 ## Install (OpenWrt with openNDS)
-Follow `INSTRUCTIONS.md`: every step is a copy/paste command.
+Follow `INSTRUCTIONS-SHELL.md` (supported) or `INSTRUCTIONS-MICROPYTHON.md` (experimental): every step is a copy/paste command.
 
 ## What the customer sees
 Everything is one small page (about 7 KB, inline CSS, no images or downloads), bilingual English/Tagalog.

@@ -49,5 +49,10 @@ check(run(KIOSK_KEY="short").returncode != 0, "a short Wi-Fi password is refused
 check(run(KIOSK_KEY="").returncode != 0, "a missing Wi-Fi password is refused")
 check("add_list network.kiosk_dev.ports='lan3'" in run(KIOSK_PORTS="lan3 lan4").stdout, "wired ports can join the kiosk network")
 check(subprocess.run(["sh", "-c", f"KIOSK_KEY=x1234567 sh {SCRIPT} >/dev/null 2>&1"], env=dict(os.environ)).returncode != 0, "BOX_MAC is required")
+r = run(GUEST_PORTS="lan2 lan4", KIOSK_PORTS="lan3")
+check("add_list network.guest_dev.ports='lan2'" in r.stdout and "add_list network.guest_dev.ports='lan4'" in r.stdout, "wired guest ports join the guest bridge")
+check("add_list network.kiosk_dev.ports='lan3'" in r.stdout and "kiosk_dev.ports='lan2'" not in r.stdout, "wired ports are not mixed between the two networks")
+check("guest_dev.ports" not in run().stdout, "no wired guest ports unless asked for")
+
 print("layout_b:", "OK" if not failures else f"{failures} failure(s)")
 sys.exit(1 if failures else 0)
