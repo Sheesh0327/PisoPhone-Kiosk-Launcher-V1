@@ -255,6 +255,12 @@ Run these on the router over SSH (`ssh root@<router-ip>`):
    scp opennds/coinslot-fast.init root@<router-ip>:/root/coinslot-fast.init
    ```
    then on the router: `chmod +x /usr/bin/coinslot-fast.sh`. Keep `coinslot-listener.sh` in `/usr/bin/`; it is your way back.
+   **Then run the built-in check** (it tries every MicroPython feature the script uses on your router's build and changes nothing):
+   ```
+   sh /usr/bin/coinslot-fast.sh selfcheck
+   ```
+   The last line must say `everything this script needs is there`. If it lists anything as `MISSING`, stop here, stay on the
+   shell edition, and send the output.
 3. **Back up the current service file and install the fast one.**
    ```
    cp /etc/init.d/coinslot /root/coinslot.init.shell

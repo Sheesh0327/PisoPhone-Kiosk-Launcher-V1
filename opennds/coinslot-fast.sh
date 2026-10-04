@@ -1682,6 +1682,64 @@ async def serve():
         await nap(3600)
 
 
+def selfcheck():
+    """`coinslot-fast.sh selfcheck`: tries every MicroPython feature this script uses on THIS build and says which are
+    missing, so a router with an older MicroPython can be diagnosed in one run, before the service is switched."""
+    bad = []
+
+    def chk(name, fn):
+        try:
+            r = fn()
+            if r is False:
+                raise ValueError("wrong result")
+            print("ok      %s" % name)
+        except Exception as e:
+            bad.append(name)
+            print("MISSING %s: %r" % (name, e))
+    print("MicroPython: %s" % getattr(sys, "version", "?"))
+    for mod, names in (("asyncio", ("create_task", "wait_for", "run", "sleep", "sleep_ms", "start_server", "open_connection", "Lock")),
+                       ("os", ("getenv", "system", "stat", "listdir", "urandom", "rename", "remove", "mkdir", "rmdir")),
+                       ("time", ("time", "gmtime")), ("hashlib", ("sha256", "sha1")), ("json", ("loads", "dumps")),
+                       ("binascii", ("b2a_base64",)), ("sys", ("exit", "stderr", "print_exception"))):
+        for nm in names:
+            chk("%s.%s" % (mod, nm), lambda mod=mod, nm=nm: getattr(__import__(mod) if mod != "asyncio" else asyncio, nm) is not None)
+    chk("arguments (sys.argv or the wrapper's environment)", lambda: hasattr(sys, "argv") or os.getenv("COINSLOT_ARGC") is not None)
+    chk("SHA-256 / HMAC", hmac_selftest)
+    chk("SHA-1 + base64 (WebSocket accept key)", lambda: binascii.b2a_base64(hashlib.sha1(("dGhlIHNhbXBsZSBub25jZQ==" + WS_GUID).encode()).digest()).strip() == b"s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")
+    chk("state directory: write, read, rename, remove", lambda: (write_text(S["STATE_DIR"] + "/.selfcheck", "x"), read_text(S["STATE_DIR"] + "/.selfcheck") == "x", rm(S["STATE_DIR"] + "/.selfcheck"))[1])
+
+    async def net():
+        got = []
+        port = 20000 + (os.urandom(2)[0] * 256 + os.urandom(2)[1]) % 20000
+
+        async def h(r, w):
+            line = await r.readline()
+            w.write(b"pong:" + line)
+            await w.drain()
+            await aclose(w)
+        srv = await asyncio.start_server(h, "127.0.0.1", port)
+        r, w = await asyncio.wait_for(asyncio.open_connection("127.0.0.1", port), 3)
+        w.write(b"ping\n")
+        await w.drain()
+        got.append(await asyncio.wait_for(r.read(100), 3))
+        await aclose(w)
+        lock = asyncio.Lock()
+        async with lock:
+            await asyncio.sleep_ms(5)
+        async def tiny():
+            await asyncio.sleep_ms(1)
+        await asyncio.create_task(tiny())
+        got.append(await run("echo hi"))
+        try:
+            srv.close()
+        except Exception:
+            pass
+        return got == [b"pong:ping\n", (0, "hi\n")]
+    chk("asyncio server + client + lock + background command", lambda: asyncio.run(net()))
+    print("selfcheck: %s" % ("everything this script needs is there" if not bad else "%d missing: %s" % (len(bad), ", ".join(bad))))
+    sys.exit(1 if bad else 0)
+
+
 def main():
     try:
         n = int(os.getenv("COINSLOT_ARGC") or -1)
@@ -1693,6 +1751,9 @@ def main():
         args = sys.argv[1:]
     cmd = args[0] if args else ""
     load_settings()
+    if cmd == "selfcheck":
+        mkdirs(S["STATE_DIR"])
+        selfcheck()
     if cmd in ("minutes",) and len(args) == 3 and valid_plan(args[1]) and args[2].isdigit():
         print(minutes_for(args[1], int(args[2])))
         return
@@ -1724,7 +1785,7 @@ def main():
         if not asyncio.run(chk()):
             sys.exit(1)
     else:
-        sys.stderr.write("usage: coinslot-fast.sh serve | minutes <plan> <pesos> | report [days] | box\n")
+        sys.stderr.write("usage: coinslot-fast.sh serve | selfcheck | minutes <plan> <pesos> | report [days] | box\n")
         sys.exit(2)
 
 
