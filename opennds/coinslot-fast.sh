@@ -146,15 +146,18 @@ async def run(cmd, timeout=30):
     """Run one command line (only built from validated pieces); returns (exit code, output).
 
     The command runs in the background and the loop keeps serving while it works: ndsctl and friends can take
-    hundreds of milliseconds on a router, and a blocking call would freeze every pushed update meanwhile."""
+    hundreds of milliseconds on a router, and a blocking call would freeze every pushed update meanwhile.
+    Files are named uniquely (another process or an earlier run can never confuse them), and a command that
+    outlives its timeout is killed, so it cannot change anything after the caller has given up."""
     global _tmpn
     _tmpn += 1
-    out = S["STATE_DIR"] + "/.run%d" % _tmpn
-    done = out + ".rc"
-    os.system("( %s > %s 2>/dev/null; echo $? > %s ) < /dev/null > /dev/null 2>&1 &" % (cmd, q(out), q(done)))
+    base = "%s/.run%s%d" % (S["STATE_DIR"], hexs(os.urandom(6)), _tmpn)
+    out, done, pidf = base, base + ".rc", base + ".pid"
+    os.system("( sh -c 'echo $$ > \"$1\"; eval \"$2\"' sh %s %s > %s 2>/dev/null; echo $? > %s ) < /dev/null > /dev/null 2>&1 &"
+              % (q(pidf), q(cmd), q(out), q(done)))
     waited = 0
     delay = 5
-    rc = 124  # the shell convention for "timed out"
+    rc = None
     while waited < timeout * 1000:
         await asyncio.sleep_ms(delay)
         waited += delay
@@ -163,9 +166,19 @@ async def run(cmd, timeout=30):
             rc = int(code) if code.strip().isdigit() else 1
             break
         delay = min(delay * 2, 40)
+    if rc is None:
+        rc = 124  # the shell convention for "timed out"
+        pid = (read_text(pidf) or "").strip()
+        if pid.isdigit():
+            os.system("kill -9 %s > /dev/null 2>&1" % pid)
+            for _ in range(10):  # give the wrapper a moment to write its marker before the files are removed
+                await asyncio.sleep_ms(20)
+                if exists(done):
+                    break
     text = read_text(out) or ""
     rm(out)
     rm(done)
+    rm(pidf)
     return rc, text
 
 
@@ -190,8 +203,8 @@ def load_settings():
                 S[k] = v
             elif k in ("DISCOVER_CMD", "FAIR_USE_KB"):
                 HOOKS[k] = v
-    os.system("%s -q show coinslot.main > /tmp/.coinslot_uci.%d 2>/dev/null" % (q(UCI), os.getpid() if hasattr(os, "getpid") else 0))
-    path = "/tmp/.coinslot_uci.%d" % (os.getpid() if hasattr(os, "getpid") else 0)
+    path = "/tmp/.coinslot_uci.%s" % hexs(os.urandom(6))
+    os.system("%s -q show coinslot.main > %s 2>/dev/null" % (q(UCI), q(path)))
     text = read_text(path)
     rm(path)
     for line in (text or "").split("\n"):
@@ -963,24 +976,27 @@ def parse_query(qs):
 
 
 async def read_request(r):
-    line = await asyncio.wait_for(r.readline(), 5)
-    if not line or len(line) > 1024:
-        return None
-    parts = line.decode().strip().split(" ")
-    if len(parts) != 3:
-        return None
-    hdr = {}
-    for _ in range(40):  # only a few headers matter (WebSocket handshake); the rest are skipped within a bound
-        h = await asyncio.wait_for(r.readline(), 5)
-        if h in (b"\r\n", b"\n"):
-            return parts[0], parts[1], hdr
-        if not h or len(h) > 2048:
+    """The request line and headers, within ONE deadline (a client cannot keep a slot by sending a line every 4 s)."""
+    async def head():
+        line = await r.readline()
+        if not line or len(line) > 1024:
             return None
-        k, _, v = h.decode().partition(":")
-        k = k.strip().lower()
-        if k in ("upgrade", "sec-websocket-key", "sec-websocket-version", "origin", "host"):
-            hdr[k] = v.strip()
-    return None
+        parts = line.decode().strip().split(" ")
+        if len(parts) != 3:
+            return None
+        hdr = {}
+        for _ in range(40):  # only a few headers matter (WebSocket handshake); the rest are skipped within a bound
+            h = await r.readline()
+            if h in (b"\r\n", b"\n"):
+                return parts[0], parts[1], hdr
+            if not h or len(h) > 2048:
+                return None
+            k, _, v = h.decode().partition(":")
+            k = k.strip().lower()
+            if k in ("upgrade", "sec-websocket-key", "sec-websocket-version", "origin", "host"):
+                hdr[k] = v.strip()
+        return None
+    return await asyncio.wait_for(head(), 5)
 
 
 async def start_window(sid, plan, mac, forfeit_ok):
@@ -1024,10 +1040,48 @@ async def start_window(sid, plan, mac, forfeit_ok):
     return status_dict(s)
 
 
+async def recover(sid):
+    """A window that was running when this process stopped has no worker any more: power the acceptor down, collect
+    the coins it took, and end the window, so the customer is not left counting forever."""
+    s = SESS.get(sid)
+    if s is None:
+        return
+    pulses = s["pulses"]
+    try:
+        for _ in range(3):
+            r = await box_call(sid, "release")
+            if r.get("success") is True or r.get("error") != "NO_ANSWER":
+                break
+            await nap(1)
+        end = now() + 30
+        while now() < end:
+            st = await box_call(sid, "status")
+            if st.get("success") is True:
+                pulses = int(st.get("pulses", 0) or 0)
+                if st.get("state") == "idle":
+                    break
+            await nap(1)
+        put_state(sid, s, "done", pulses, 0, "")
+        logmsg("recovered window %s with %d pulses" % (sid[:8], pulses))
+    except Exception as e:
+        debug(e)
+        put_state(sid, s, "done" if pulses else "error", pulses, 0, "" if pulses else "INTERNAL")
+    finally:
+        s["task"] = None
+
+
+def recover_active(sid):
+    s = get_sess(sid)
+    if s is not None and s["task"] is None and s["state"] in ("starting", "armed"):
+        s["task"] = asyncio.create_task(recover(sid))
+
+
 def finish_window(sid):
     s = get_sess(sid)
     if s is not None and s["task"] is not None:
         s["stop"] = True
+    elif s is not None:
+        recover_active(sid)
     logmsg("finish %s" % sid[:8])
     return status_dict(s) if s else NONE_STATUS
 
@@ -1464,10 +1518,16 @@ async def handle_ws(r, w, sid, qd, hdr):
              % binascii.b2a_base64(hashlib.sha1((hdr["sec-websocket-key"] + WS_GUID).encode()).digest()).decode().strip()).encode())
     await w.drain()
 
+    wlock = asyncio.Lock()
+
+    async def send(frame):  # the status pusher, the queue pusher and the command loop share one socket: one writer at a time
+        async with wlock:
+            w.write(frame)
+            await w.drain()
+
     async def emit(event, data):
-        w.write(ws_frame(jdump(dict(data, e=event)) if event else b"", 0x89 if not event else 0x81))
-        await w.drain()
-        if event == "status" and data.get("error") == "SLOT_BUSY" and tasks["queue"] is None:  # the slot was taken: wait in line
+        await send(ws_frame(jdump(dict(data, e=event)) if event else b"", 0x89 if not event else 0x81))
+        if event in ("status", "error") and data.get("error") == "SLOT_BUSY" and tasks["queue"] is None:  # the slot was taken: wait in line
             tasks["queue"] = asyncio.create_task(push_queue(emit, sid, tick))
 
     async def tick():
@@ -1481,8 +1541,7 @@ async def handle_ws(r, w, sid, qd, hdr):
             if op == 8:
                 break
             if op == 9:  # ping -> pong
-                w.write(ws_frame(data, 0x8A))
-                await w.drain()
+                await send(ws_frame(data, 0x8A))
                 continue
             if op != 1:
                 continue
@@ -1608,6 +1667,9 @@ async def serve():
     s1 = await asyncio.start_server(handle_api, "127.0.0.1", num("LISTEN_PORT", 8099))
     s2 = await asyncio.start_server(handle_stream, S["STREAM_BIND"], num("STREAM_PORT", 8100))
     asyncio.create_task(housekeeping())
+    for name in os.listdir(S["STATE_DIR"]):  # windows that were running when the process last stopped
+        if valid_sid(name):
+            recover_active(name)
     while True:
         await nap(3600)
 

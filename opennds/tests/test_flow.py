@@ -4,7 +4,7 @@ Real pieces under test: theme_coinslot.sh (run the way libopennds.sh runs it, he
 coinslot-listener.sh (handler, worker, fair use, vouchers, revenue). Stand-ins: fakebox.py (the ESP32 gateway API
 with the same HMAC/nonce rules), fake_ndsctl.sh (openNDS' ndsctl) and fake_socat.py (socat).
 Run with:  python3 opennds/tests/test_flow.py"""
-import glob, hashlib, json, os, re, shutil, signal, subprocess, sys, tempfile, time, urllib.error, urllib.request
+import glob, hashlib, socket, json, os, re, shutil, signal, subprocess, sys, tempfile, time, urllib.error, urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -124,7 +124,7 @@ class WS:
     GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
     def __init__(self, sid, mac, origin=None, key="dGhlIHNhbXBsZSBub25jZQ==", host=None):
-        import base64, socket
+        import base64
         self.sock = socket.create_connection(("127.0.0.1", STREAM_PORT), timeout=10)
         req = f"GET /ws?sid={sid}&mac={mac} HTTP/1.1\r\nHost: {host or '127.0.0.1:%d' % STREAM_PORT}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
         if key:
@@ -156,8 +156,11 @@ class WS:
         out, self.buf = self.buf[:n], self.buf[n:]
         return out
 
+    TIMEOUT = {"e": "__timeout__"}  # recv() result when nothing arrived in time (the connection is still open)
+
     def recv(self, timeout=5):
-        """Next text message as a dict (pings skipped); None on close or timeout."""
+        """Next text message as a dict (pings skipped); None only when the connection closed (EOF or a close frame);
+        WS.TIMEOUT when nothing arrived in time."""
         self.sock.settimeout(timeout)
         try:
             while True:
@@ -170,6 +173,8 @@ class WS:
                     return None
                 if op == 1:
                     return json.loads(data)
+        except socket.timeout:
+            return self.TIMEOUT
         except (EOFError, OSError):
             return None
 
@@ -270,6 +275,20 @@ try:
           "waiting page invites coins and shows the countdown once the slot is armed")
     shutil.rmtree(f"{STATE}/{sw}")
     shutil.rmtree(f"{STATE}/{sw2}")
+    if IMPL == "fast":  # a window that was running when the process stopped has no worker: /finish must end it, not loop forever
+        sr = sid_of("hidR")
+        os.makedirs(f"{STATE}/{sr}", exist_ok=True)
+        open(f"{STATE}/{sr}/plan", "w").write("hyper")
+        open(f"{STATE}/{sr}/state", "w").write("STATE=armed\nPULSES=0\nREMAINING=30\nERROR=\n")
+        get(f"/finish?sid={sr}")
+        st = {}
+        for _ in range(40):
+            st = json.loads(get(f"/status?sid={sr}")[1])
+            if st.get("state") == "done":
+                break
+            time.sleep(0.5)
+        check(st.get("state") == "done", f"a window left active by a stopped process is ended by /finish ({st})")
+        shutil.rmtree(f"{STATE}/{sr}")
 
     # ---- Endurance: 17 pesos accumulate to 11 hrs 30 min -----------------------------------------------------------
     p = pay("hidA", MAC_A, "endurance", 17)
@@ -583,7 +602,7 @@ try:
             check(x.closed(), f"WebSocket closes on {label}")
             x.close()
         x = WS(sid_of("hidWS4"), MAC_A)
-        for _ in range(12):
+        for _ in range(11):  # one more than allowed: enough to be refused, and the server has not closed before the last send
             x.send({"t": "ping"})
         check(x.wait("pong", 3) is not None and x.closed(5) is True, "WebSocket closes a client that sends more than 10 commands in 10 s")
         x.close()
@@ -600,6 +619,19 @@ try:
             if m and m.get("e") == "queue":
                 pos = m.get("pos")
         check(busy is not None and pos == 1, f"busy slot over the WebSocket reports the place in line ({busy and busy['error']}, {pos})")
+        # a second customer, while somebody is already first in line: refused with SLOT_BUSY, and put in line as well
+        x2 = WS(sid_of("hidWS6"), MAC_A)
+        x2.send({"t": "start", "plan": "hyper"})
+        refused, pos2 = None, None
+        end = time.time() + 8
+        while time.time() < end and not (refused and pos2):
+            m = x2.recv(1)
+            if m and m.get("e") in ("status", "error") and m.get("error") == "SLOT_BUSY":
+                refused = m
+            if m and m.get("e") == "queue":
+                pos2 = m.get("pos")
+        check(refused is not None and pos2 == 2, f"a second customer is told the slot is busy and gets a place in line ({refused and refused['error']}, {pos2})")
+        x2.close()
         set_box(busy=False, coins_at=[])
         check(x.wait("ready", 5) is not None, "the WebSocket tells the first in line when the slot is free")
         x.close()

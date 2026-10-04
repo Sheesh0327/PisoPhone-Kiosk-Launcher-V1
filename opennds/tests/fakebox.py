@@ -3,13 +3,14 @@
 Behaviour is driven by a JSON control file (path in FAKEBOX_CTL) that tests rewrite:
   {"busy": false, "coins_at": [2, 4]}   # seconds after arm at which each coin (1 peso) arrives
 The action log is appended to FAKEBOX_LOG (one action per line)."""
-import hashlib, hmac, json, os, sys, time
+import hashlib, hmac, json, os, sys, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 KEY = os.environ.get("FAKEBOX_KEY", "test-gateway-key-123456")
 CTL = os.environ["FAKEBOX_CTL"]
 LOG = os.environ["FAKEBOX_LOG"]
+LOCK = threading.Lock()  # the server is threaded: nonce use and session changes must not interleave
 nonces, sessions = set(), {}  # sid -> {"armed_at", "released_at", "pulses_acked": 0, "coins_seen": 0}
 
 
@@ -30,6 +31,10 @@ class H(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        with LOCK:
+            self.handle_get()
+
+    def handle_get(self):
         u = urlparse(self.path)
         q = {k: v[0] for k, v in parse_qs(u.query).items()}
         action = u.path.rsplit("/", 1)[1]
