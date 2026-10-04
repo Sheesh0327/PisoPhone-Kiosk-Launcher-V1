@@ -24,7 +24,7 @@
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation
-# Settings can be overridden from the environment: COUNTRY (default PH) GUEST_SSID BOX_IP GUEST_IP
+# Settings can be overridden from the environment: COUNTRY (default PH) GUEST_SSID BOX_IP GUEST_IP ROOT_PASSWORD
 
 VERSION="dev"
 
@@ -439,11 +439,15 @@ stage2() {
 
 	step "Securing the router"
 	_rp=$(conf_get ROOT_PASS)
-	printf '%s\n%s\n' "$_rp" "$_rp" | passwd root > /dev/null 2>&1 && log "root password set (see the summary)"
+	echo
+	echo "  ROUTER (SSH / LuCI) PASSWORD:  $_rp      <-- write this down now"
+	echo
+	if printf '%s\n%s\n' "$_rp" "$_rp" | passwd root > /dev/null 2>&1; then log "root password set"; else log "WARNING: could not set the root password; the router still has its old one"; fi
 
 	step "Checking everything"
 	check_all; _f=$?
 	write_summary
+	echo; echo "================ SUMMARY (also saved in $SUMMARY) ================"; cat "$SUMMARY"; echo "=================================================================="
 	if [ "$_f" = 0 ]; then echo "DONE all checks passed" > "$STATE"; log ""; log "SETUP COMPLETE. Read $SUMMARY (ssh root@$LAN_IP)."
 	else echo "DONE with $_f failed checks (see $LOG)" > "$STATE"; log ""; log "Setup finished, but $_f check(s) failed: see above and $LOG. Run: piso-setup status"; fi
 }
@@ -485,6 +489,23 @@ cmd_pair() {
 	log "The new coin box is paired. Check with: piso-setup status"
 }
 
+# The router password protects SSH and LuCI, which the kiosk phones' network can reach. Ask for one, or generate one that is
+# printed on screen (and in the summary), so nobody is ever locked out of the router.
+choose_root_password() {
+	[ -z "$(conf_get ROOT_PASS)" ] || return 0
+	_p="$ROOT_PASSWORD"
+	if [ -z "$_p" ] && [ "$ASSUME_YES" != 1 ] && [ -t 0 ]; then
+		echo
+		echo "Choose the router password (SSH and LuCI login), at least 8 characters, or press Enter to have one generated and shown:"
+		stty -echo 2> /dev/null; read -r _p; stty echo 2> /dev/null; echo
+	fi
+	if [ -n "$_p" ]; then
+		[ "${#_p}" -ge 8 ] || die "the router password must be at least 8 characters"
+		case "$_p" in *\'*) die "please avoid the ' character in the password" ;; esac
+		conf_set ROOT_PASS "$_p"
+	fi
+}
+
 stage1() {
 	preflight
 	if [ "$DRY" != 1 ] && [ "$ASSUME_YES" != 1 ] && [ -t 0 ]; then
@@ -496,6 +517,7 @@ stage1() {
 	KIOSK_PASS=$(secret KIOSK_PASS 12)
 	case "$GUEST_SSID" in *\'* | *\"* | *\\* | *\$* | *\`*) die "GUEST_SSID may not contain quotes, backslashes, \$ or backticks" ;; esac
 	GUEST_NAME=$(conf_get GUEST_NAME); [ -n "$GUEST_NAME" ] || { GUEST_NAME="${GUEST_SSID:-PisoWiFi}"; conf_set GUEST_NAME "$GUEST_NAME"; }
+	choose_root_password
 	secret ROOT_PASS 14 > /dev/null; secret GW_KEY 64 hex > /dev/null; secret BOX_ADMIN_PASS_NEW 16 > /dev/null
 	BOX_MAC=$(conf_get BOX_MAC)
 	if [ "$DRY" = 1 ]; then uci_batch "<kiosk password>" "$GUEST_NAME" "$BOX_MAC"; return 0; fi

@@ -72,6 +72,12 @@ check(r.returncode == 0, "dry run succeeds: " + r.stderr + out[-300:])
 check("network.lan.ipaddr" not in out and "network.lan.netmask" not in out and "network restart" not in text.split("stage1()")[1], "the LAN address is never changed by the script (so SSH stays open)")
 inst = text.split("install_packages() {")[1].split("\n}\n")[0]
 check("/etc/init.d/opennds stop" in inst, "openNDS is stopped right after it is installed (its default settings would gate the kiosk LAN)")
+pre = text.split("# ---- payload")[0]
+check("ROUTER (SSH / LuCI) PASSWORD" in pre and 'cat "$SUMMARY"' in pre.split("stage2() {")[1].split("\n}\n")[0], "the router password and the whole summary are shown on screen")
+r = lib('conf_set ROOT_PASS ""; ROOT_PASSWORD=short; ASSUME_YES=0; choose_root_password; echo rc=$?', env={"ROOT_PASSWORD": "short"})
+check("at least 8" in r.stdout, "a too-short router password is refused: " + r.stdout)
+r = lib('rm -f "$CONF"; ROOT_PASSWORD="my-own-pass"; choose_root_password; conf_get ROOT_PASS', env={"ROOT_PASSWORD": "my-own-pass"})
+check(r.stdout.strip().endswith("my-own-pass"), "ROOT_PASSWORD is used as the router password: " + r.stdout)
 check(not re.search(r"\bod -|hexdump|xxd", text.split("# ---- payload")[0]), "no tools a stock BusyBox lacks (od, hexdump, xxd)")
 check("--stage2" not in text.split("# ---- payload")[0] and "nohup" not in text.split("# ---- payload")[0], "no background stage that outlives the SSH session")
 check("set network.guest.ipaddr='192.168.30.1'" in out and "set network.guest.device='br-guest'" in out, "guest network on its own bridge")
