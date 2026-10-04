@@ -1535,9 +1535,13 @@ async def handle_ws(r, w, sid, qd, hdr):
     tasks = {"status": None, "queue": None}
     tasks["status"] = asyncio.create_task(push_status(emit, sid, False))
     sent = []
+    ends = now() + num("STREAM_MAX_SECONDS", 600)  # like the SSE stream: a connection cannot hold a slot forever, pings or not
     try:
         while True:
-            op, data = await asyncio.wait_for(ws_read(r), 70)
+            left = ends - now()
+            if left <= 0:
+                break
+            op, data = await asyncio.wait_for(ws_read(r), min(70, left))
             if op == 8:
                 break
             if op == 9:  # ping -> pong
