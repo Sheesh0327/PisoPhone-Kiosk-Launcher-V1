@@ -12,6 +12,7 @@ One file, `piso-setup.sh`, turns a factory-reset OpenWrt router into the whole P
 ```
 scp -O setup/piso-setup.sh root@192.168.1.1:/root/
 ssh root@192.168.1.1
+sed -i 's/\r$//' piso-setup.sh     # removes Windows line endings if the file touched Windows (otherwise: ": not found" errors)
 chmod +x piso-setup.sh
 ./piso-setup.sh
 ```
@@ -47,6 +48,7 @@ Running `piso-setup.sh` again is safe: it keeps the passwords and names it alrea
 ## If something fails
 * **"the coin box did not join"**: the box must be powered, have the current firmware, and be a fresh or factory-reset unit (an old unit remembers its old Wi-Fi). Then `piso-setup pair`.
 * **"the box refused the admin login"**: the box already has its own password. Factory reset it, or run `BOX_ADMIN_PASSWORD='<its password>' piso-setup pair`.
+* **`: not found` errors and a syntax error right at the start**: the file has Windows line endings. Run `sed -i 's/\r$//' piso-setup.sh` and try again.
 * Everything is logged in `/root/piso-setup.log`.
 
 ## For developers
