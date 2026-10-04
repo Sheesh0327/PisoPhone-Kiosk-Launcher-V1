@@ -51,7 +51,7 @@ restores the session) and locks the phone when time reaches zero.
 - **Admin -> phone:** `KioskAdminActionReceiver` broadcasts, all gated by the admin PIN.
 
 ## 4. Credentials
-- **Operator admin password:** per box, set in the dashboard. A banner shows while it is the default.
+- **Operator admin password:** every box starts on the published default `Coinslot@Setup` (admin login and setup Wi-Fi) so it can be set up and reset without a serial monitor. Changing it in the dashboard is required: until then a banner shows and the box arms no coin slot (`SETUP_REQUIRED`). A new password needs 8+ characters and cannot be the default.
 - **Admin PIN (phone):** per phone; also required for every admin broadcast.
 - **Super-admin password:** one value for all boxes, published as a signed hash in
   `website/update/credentials.json` and applied by `SuperAdminCreds.cpp`. See

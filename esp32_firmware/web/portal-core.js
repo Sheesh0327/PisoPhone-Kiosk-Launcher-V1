@@ -167,7 +167,7 @@ window.fetchDeviceStatus = function() {
                     credBanner = document.createElement('div');
                     credBanner.id = 'default_cred_banner';
                     credBanner.style.cssText = 'background:#991b1b;color:#fff;padding:10px 14px;font-size:13px;font-weight:700;text-align:center;';
-                    credBanner.textContent = 'Warning: a default admin password is still active. Change it in Settings before going live.';
+                    credBanner.textContent = 'The default admin password is still active. Coins are blocked until you change it (Settings).';
                     document.body.insertBefore(credBanner, document.body.firstChild);
                 }
             } else if (credBanner) {

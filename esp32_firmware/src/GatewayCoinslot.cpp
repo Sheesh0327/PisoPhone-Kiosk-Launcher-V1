@@ -2,6 +2,7 @@
 #include "GatewayCoinslot.h"
 #include "CoinSlotManager.h"
 #include "Config.h"
+#include "SetupGate.h"
 #include "DeviceNetwork.h"
 #include "Diagnostics.h"
 #include "GatewayAuth.h"
@@ -62,6 +63,7 @@ bool gatewaySetKey(const String& key) {
 
 GatewayArmResult gatewayArm(const String& session, int durationSec) {
     if (!gatewayauth::validSessionId(session.c_str())) return GatewayArmResult::InvalidSession;
+    if (!setupgate::usageAllowed(adminPwChanged)) return GatewayArmResult::SetupRequired;
     if (durationSec < GATEWAY_MIN_ARM_SECONDS) durationSec = GATEWAY_MIN_ARM_SECONDS;
     if (durationSec > GATEWAY_MAX_ARM_SECONDS) durationSec = GATEWAY_MAX_ARM_SECONDS;
 

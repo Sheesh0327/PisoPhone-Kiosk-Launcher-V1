@@ -1,4 +1,5 @@
 #include "CoinSlotManager.h"
+#include "SetupGate.h"
 #include "CoinSettle.h"
 #include "PaymentQueueManager.h"
 #include "HardwareManager.h"
@@ -206,6 +207,12 @@ CoinSlotOwnerType getActiveCoinOwnerType() {
 bool reserveCoinSlot(const String& sessionId, CoinSlotOwnerType ownerType, unsigned long ttlMs,
                      CoinPaymentCallback onPayment, CoinSessionEndCallback onSessionEnd) {
     if (sessionId.length() == 0) return false;
+
+    if (!setupgate::usageAllowed(adminPwChanged)) {
+        diagLog("[🪙 COIN SLOT] Reservation rejected for '%s': the default admin password has not been changed.\n",
+                sessionId.c_str());
+        return false;
+    }
 
     if (isPaymentQueueFull() || !isPaymentStorageReady()) {
         diagLog("[🪙 COIN SLOT] Reservation rejected for '%s': Storage unavailable or queue full!\n",

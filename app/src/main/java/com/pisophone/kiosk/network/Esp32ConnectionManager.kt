@@ -533,6 +533,13 @@ class Esp32ConnectionManager(
                 Handler(Looper.getMainLooper()).post {
                     Toast.makeText(context, "Slot is currently busy with another device.", Toast.LENGTH_LONG).show()
                 }
+            } else if (code == 403 && body.contains("SETUP_REQUIRED")) {
+                // The box refuses coins until its owner has changed the default admin password; the WebSocket would be refused too.
+                Log.w(TAG, "ESP32 refuses coins until its admin password is changed (HTTP 403 SETUP_REQUIRED)")
+                delegate.onSlotBusy()
+                Handler(Looper.getMainLooper()).post {
+                    Toast.makeText(context, "Coin box setup is not finished. Please tell the shop owner.", Toast.LENGTH_LONG).show()
+                }
             } else if (code == 423) {
                 Log.e(TAG, "ESP32 Coin Slot is LOCKED/EXPIRED (HTTP 423): $body")
                 if (body.contains("SLOT_NOT_PAIRED")) {
