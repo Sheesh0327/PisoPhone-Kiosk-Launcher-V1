@@ -21,7 +21,7 @@ bindir = f"{tmp}/bin"
 os.makedirs(bindir)
 
 
-def fake_uci(radios, ifaces=3):
+def fake_uci(radios, ifaces=3, lan=None):
     """radios: {name: band}. The fake answers 'show wireless' and 'get'; every other call is recorded."""
     show = "".join(f"wireless.{r}=wifi-device\nwireless.{r}.band='{b}'\n" for r, b in radios.items())
     show += "".join(f"wireless.default_radio{i}=wifi-iface\n" for i in range(ifaces))
@@ -33,7 +33,7 @@ case "$1" in
 {show}EOT
   ;;
   get) case "$2" in
-{"".join(f"    wireless.{r}.band) echo {b} ;;{chr(10)}" for r, b in radios.items())}    *) exit 1 ;;
+{"".join(f"    wireless.{r}.band) echo {b} ;;{chr(10)}" for r, b in radios.items())}{f"    network.lan.ipaddr) echo {lan} ;;{chr(10)}" if lan else ""}    *) exit 1 ;;
   esac ;;
 esac
 exit 0
@@ -69,7 +69,8 @@ fake_uci({"radio0": "2g", "radio1": "5g"})
 r = run("--dry-run")
 out = r.stdout
 check(r.returncode == 0, "dry run succeeds: " + r.stderr + out[-300:])
-check("set network.lan.ipaddr='10.0.0.1'" in out and "set network.lan.netmask='255.255.255.0'" in out, "LAN moves to 10.0.0.1/24")
+check("network.lan.ipaddr" not in out and "network.lan.netmask" not in out and "network restart" not in text.split("stage1()")[1], "the LAN address is never changed by the script (so SSH stays open)")
+check("--stage2" not in text.split("# ---- payload")[0] and "nohup" not in text.split("# ---- payload")[0], "no background stage that outlives the SSH session")
 check("set network.guest.ipaddr='192.168.30.1'" in out and "set network.guest.device='br-guest'" in out, "guest network on its own bridge")
 for radio in ("radio0", "radio1"):
     check(f"set wireless.kiosk_{radio}.ssid='PisoKiosk'" in out and f"set wireless.kiosk_{radio}.network='lan'" in out, f"PisoKiosk on {radio}")
@@ -94,8 +95,19 @@ r = run("--dry-run", env={"PISO_CONF": f"{tmp}/paired"})
 check("set wireless.box_ap.macfilter='allow'" in r.stdout and "add_list wireless.box_ap.maclist='AA:BB:CC:00:11:22'" in r.stdout
       and "set dhcp.pisocoinbox.ip='10.0.0.10'" in r.stdout, "paired box: MAC allow-list and fixed address")
 check("set wireless.guest_radio0.ssid='Juan Net'" in r.stdout, "a renamed customer Wi-Fi keeps its name on re-run")
-r = run("--dry-run", env={"LAN_IP": "10.7.0.1", "BOX_IP": "10.7.0.10", "GUEST_IP": "192.168.31.1", "COUNTRY": "US"})
-check("ipaddr='10.7.0.1'" in r.stdout and "country='US'" in r.stdout and "ipaddr='192.168.31.1'" in r.stdout, "addresses and country can be overridden")
+r = run("--dry-run", env={"GUEST_IP": "192.168.31.1", "COUNTRY": "US"})
+check("country='US'" in r.stdout and "ipaddr='192.168.31.1'" in r.stdout, "guest address and country can be overridden")
+r = lib('echo "$LAN_IP $BOX_IP"')
+check(r.stdout.strip() == "10.0.0.1 10.0.0.10", "default LAN 10.0.0.1, box 10.0.0.10: " + r.stdout)
+fake_uci({"radio0": "2g"}, lan="10.0.0.1/24")
+r = lib('echo "$LAN_IP $BOX_IP"')
+check(r.stdout.strip() == "10.0.0.1 10.0.0.10", "a CIDR LAN address is read correctly: " + r.stdout)
+fake_uci({"radio0": "2g"}, lan="192.168.1.1")
+r = lib('echo "$LAN_IP $BOX_IP"')
+check(r.stdout.strip() == "192.168.1.1 192.168.1.10", "the box address follows the router's own LAN: " + r.stdout)
+r = run("--yes", env={"PISO_ROOT": f"{tmp}/nowhere"})
+check(r.returncode != 0, "a real run needs root on OpenWrt (not run in the test)")
+fake_uci({"radio0": "2g", "radio1": "5g"})
 
 # ---- 2.4 GHz only router, and a router without 2.4 GHz -------------------------------------------------------------------
 fake_uci({"radio0": "2g"}, ifaces=1)
