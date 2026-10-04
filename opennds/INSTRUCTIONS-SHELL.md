@@ -1,4 +1,7 @@
 # Router setup: shell edition (supported)
+
+> **Note:** this manual guide describes the older layout (the box opening its own `PisoPhone-Setup-xxxx` Wi-Fi, networks `192.168.20.x`/`192.168.30.x`). Current firmware has no setup access point: it joins a hidden `PisoCoinBox` network. Use the automatic setup in `setup/README.md` unless you have a reason to do it by hand.
+
 This guide sets up a **factory-reset router** from nothing to a working PisoWiFi coin-operated portal with the
 **shell edition** of the coin-slot manager (`coinslot-listener.sh`). It is the supported edition. Everything is copy/paste;
 replace the values in `<angle brackets>`. Total time: about an hour.

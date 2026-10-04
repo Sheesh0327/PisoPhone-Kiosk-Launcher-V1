@@ -50,11 +50,10 @@ bool ledActiveLow = DEFAULT_LED_ACTIVE_LOW;
 int relayPin = DEFAULT_RELAY_PIN;
 bool relayActiveLow = false;
 
-String wifiSsid = ""; // empty until the operator sets Wi-Fi: the box then opens its setup access point
-String wifiPass = "";
+String wifiSsid = setupgate::DEFAULT_WIFI_SSID; // the hidden network the router setup script creates for the box
+String wifiPass = setupgate::DEFAULT_WIFI_PASSWORD;
 String androidIps = "";
 String webPassword = "";
-String setupApPass = "";
 bool adminPwChanged = false;
 // The auth worker task reads the secret while the main loop can change it (settings save, factory
 // reset). Every access goes through these accessors so a String is never reallocated mid-read.
@@ -462,7 +461,6 @@ void loadCredentials() {
     prefs.begin(NVS_NAMESPACE, false);
     webPassword = prefs.getString(NVS_KEY_ADMIN_PW, "");
     adminPwChanged = prefs.getBool(NVS_KEY_ADMIN_PW_CHANGED, false);
-    setupApPass = prefs.getString(NVS_KEY_SETUP_AP_PASS, "");
     prefs.end();
 
     if (!adminPwChanged) {
@@ -569,8 +567,8 @@ void factoryResetDefaults(bool ownerWipe) {
     loadSecretMode();
     loadCredentials();
 
-    wifiSsid = "";
-    wifiPass = "";
+    wifiSsid = setupgate::DEFAULT_WIFI_SSID;
+    wifiPass = setupgate::DEFAULT_WIFI_PASSWORD;
     universalCoinPin = DEFAULT_UNIVERSAL_COIN_PIN;
     ledPin = DEFAULT_LED_PIN;
     ledActiveLow = DEFAULT_LED_ACTIVE_LOW;
