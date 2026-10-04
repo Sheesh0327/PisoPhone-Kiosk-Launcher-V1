@@ -1,15 +1,16 @@
 #!/bin/sh
 # PisoPhone router setup: one file that turns a factory-reset OpenWrt router into the whole PisoWiFi system.
 #
-#   scp -O piso-setup.sh root@192.168.1.1:/root/
-#   ssh root@192.168.1.1
-#   chmod +x piso-setup.sh && ./piso-setup.sh
+#   (first set the router's LAN address to 10.0.0.1 by hand: see setup/README.md, step 1)
+#   scp -O piso-setup.sh root@10.0.0.1:/root/
+#   ssh root@10.0.0.1
+#   sed -i 's/\r$//' piso-setup.sh && chmod +x piso-setup.sh && ./piso-setup.sh
 #
-# Before you run it: modem in the router's WAN port (internet is needed once, to download packages), the ESP32 coin box
-# flashed with the current firmware (or factory reset) and powered on, the router reachable at 192.168.1.1 from a PC on a LAN port.
+# Before you run it: the router's LAN address is 10.0.0.1 (set by hand, so the SSH connection is never cut), modem in the
+# router's WAN port (internet is needed once, to download packages), the ESP32 coin box flashed with the current firmware
+# (or factory reset) and powered on.
 #
-# What it builds (the router's LAN address becomes 10.0.0.1, so your SSH session ends a few seconds after the settings
-# are applied; the rest of the setup carries on in the background):
+# What it builds (the router's LAN address is not touched; your SSH session stays open the whole time):
 #   PisoKiosk    Wi-Fi, 2.4 + 5 GHz, WPA2, fixed name. For the rental phones only. Network 10.0.0.0/24 (the router's LAN).
 #   PisoCoinBox  hidden Wi-Fi, 2.4 GHz, for the ESP32 coin box only: after pairing, only the box's MAC address may join.
 #                The box gets the fixed address 10.0.0.10.
@@ -23,7 +24,7 @@
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation
-# Settings can be overridden from the environment: COUNTRY (default PH) GUEST_SSID LAN_IP BOX_IP GUEST_IP
+# Settings can be overridden from the environment: COUNTRY (default PH) GUEST_SSID BOX_IP GUEST_IP
 
 VERSION="@VERSION@"
 
@@ -32,8 +33,9 @@ KIOSK_SSID="PisoKiosk"                       # fixed: the phones are provisioned
 BOX_SSID="PisoCoinBox"                       # fixed: the ESP32 firmware has it built in
 BOX_WIFI_PASS="PisoCoinBox@Setup"            # fixed: the ESP32 firmware has it built in (only the paired box's MAC may join)
 BOX_DEFAULT_ADMIN="Coinslot@Setup"           # the box's admin password until this script changes it
+LAN_IP=$(uci -q get network.lan.ipaddr 2> /dev/null | head -n 1 | cut -d/ -f1)   # whatever the router has now: this script never changes it
 LAN_IP="${LAN_IP:-10.0.0.1}"
-BOX_IP="${BOX_IP:-10.0.0.10}"
+BOX_IP="${BOX_IP:-${LAN_IP%.*}.10}"                                               # the box is always <LAN network>.10
 GUEST_IP="${GUEST_IP:-192.168.30.1}"
 STREAM_PORT=8100
 CONF="${PISO_CONF:-/etc/piso-setup.conf}"   # what this script chose (secrets inside): mode 600
@@ -97,8 +99,9 @@ preflight() {
 	[ "$DRY" = 1 ] && return 0
 	WAN=$(wan_ip)
 	[ -n "$WAN" ] || die "the router has no WAN address: plug the modem into the WAN port and wait a minute, then run this again"
+	[ "$LAN_IP" = 10.0.0.1 ] || die "the router's LAN address is $LAN_IP, but this setup expects 10.0.0.1. Change it first (LuCI: Network > Interfaces > LAN, or: uci set network.lan.ipaddr=10.0.0.1 && uci commit network && reboot), then log in again at 10.0.0.1 and re-run. See setup/README.md, step 1."
 	case "$WAN" in
-		10.0.0.*) die "the modem's network ($WAN) uses 10.0.0.x, the same as this setup's LAN. Change the modem's LAN address (for example to 192.168.100.1) or run with LAN_IP and BOX_IP set to another range, e.g. LAN_IP=10.7.0.1 BOX_IP=10.7.0.10" ;;
+		"${LAN_IP%.*}".*) die "the modem's network ($WAN) is in the same range as the router's LAN ($LAN_IP). Change the modem's own LAN address (for example to 192.168.100.1) and run this again" ;;
 		192.168.30.*) die "the modem's network ($WAN) uses 192.168.30.x, the same as the guest network. Run with GUEST_IP=192.168.31.1" ;;
 	esac
 	log "WAN address: $WAN"
@@ -124,10 +127,7 @@ install_packages() {
 uci_batch() {
 	KIOSK_PASS="$1"; GUEST_NAME="$2"; BOX_MAC="$3"
 	cat << EOT
-# --- LAN = the kiosk network (phones by Wi-Fi, the router's wired ports for administration) ----------------------------
-delete network.lan.ipaddr
-set network.lan.ipaddr='$LAN_IP'
-set network.lan.netmask='255.255.255.0'
+# --- LAN = the kiosk network (phones by Wi-Fi, the router's wired ports for administration). Its address is left as it is. ---
 set dhcp.lan.start='50'
 set dhcp.lan.limit='100'
 set dhcp.lan.leasetime='12h'
@@ -363,7 +363,7 @@ provision_box() {
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
-# Stage 2: runs in the background after the network moved to $LAN_IP
+# Stage 2: pairing the box, services, checks
 # ---------------------------------------------------------------------------------------------------------------------
 write_summary() {
 	cat > "$SUMMARY" << EOT
@@ -403,14 +403,14 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 }
 
 stage2() {
-	step "Applying the network settings (this is where the connection to the router changes to $LAN_IP)"
-	/etc/init.d/network restart > /dev/null 2>&1
-	sleep 8
+	step "Applying the network settings (the LAN is not restarted, so this SSH session stays open)"
+	/etc/init.d/network reload > /dev/null 2>&1
+	sleep 5
 	wifi reload > /dev/null 2>&1
-	/etc/init.d/firewall restart > /dev/null 2>&1
+	/etc/init.d/firewall reload > /dev/null 2>&1
 	/etc/init.d/dnsmasq restart > /dev/null 2>&1
-	sleep 10
-	ip -4 addr show br-lan | grep -q "inet $LAN_IP/" || die "the LAN did not come up on $LAN_IP"
+	sleep 8
+	ip -4 addr show br-guest | grep -q "inet $GUEST_IP/" || die "the guest network did not come up on $GUEST_IP"
 
 	KEY=$(conf_get GW_KEY); NEWPW=$(conf_get BOX_ADMIN_PASS_NEW)
 	if [ -n "$(conf_get BOX_MAC)" ] && box_up; then
@@ -480,8 +480,8 @@ stage1() {
 	preflight
 	if [ "$DRY" != 1 ] && [ "$ASSUME_YES" != 1 ] && [ -t 0 ]; then
 		echo
-		echo "This will set up the router as a PisoPhone system: the LAN address changes to $LAN_IP, the Wi-Fi networks are replaced,"
-		echo "and your SSH session will end. Continue? [y/N]"
+		echo "This will set up the router as a PisoPhone system: the Wi-Fi networks are replaced (the LAN address stays $LAN_IP)."
+		echo "It takes a few minutes and waits for the coin box to join. Continue? [y/N]"
 		read -r _a; case "$_a" in y | Y | yes) ;; *) echo "Cancelled."; exit 1 ;; esac
 	fi
 	KIOSK_PASS=$(secret KIOSK_PASS 12)
@@ -496,16 +496,7 @@ stage1() {
 	extract_payload "$0"
 	step "Writing the router settings"
 	apply_batch "$KIOSK_PASS" "$GUEST_NAME" "$BOX_MAC"
-	log ""
-	log "The settings are saved. The router now moves to $LAN_IP and finishes the setup by itself (about 3 to 8 minutes):"
-	log "  1. your SSH session ends and the PisoKiosk / PisoWiFi networks restart;"
-	log "  2. the coin box (hidden $BOX_SSID network) is paired and given its own password and key;"
-	log "  3. the portal and openNDS start."
-	log "Reconnect the PC (unplug and replug its cable so it gets a 10.0.0.x address), then:"
-	log "  ssh root@$LAN_IP        (there is no password until the setup ends; afterwards it is in the summary)"
-	log "  piso-setup status       and      cat $SUMMARY"
-	echo "RUNNING moving to $LAN_IP" > "$STATE"
-	( nohup "$SELF_PATH" --stage2 > /dev/null 2>&1 < /dev/null & )
+	stage2
 }
 
 main() {
@@ -514,7 +505,6 @@ main() {
 		case "$1" in
 			--dry-run) DRY=1 ;;
 			--yes | -y) ASSUME_YES=1 ;;
-			--stage2) CMD=stage2 ;;
 			status | pair | summary | wifi-name | uninstall-info) CMD="$1"; shift; ARG="$1"; break ;;
 			-h | --help) sed -n '2,/^# Options:/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 			*) echo "unknown option: $1 (try --help)" >&2; exit 1 ;;
@@ -522,7 +512,6 @@ main() {
 		shift
 	done
 	case "$CMD" in
-		stage2) stage2 ;;
 		status) cmd_status ;;
 		wifi-name) cmd_wifi_name "$ARG" ;;
 		pair) cmd_pair ;;

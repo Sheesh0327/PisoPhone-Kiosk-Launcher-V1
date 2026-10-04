@@ -5,35 +5,43 @@ One file, `piso-setup.sh`, turns a factory-reset OpenWrt router into the whole P
 ## Before you start
 1. **Flash the ESP32 coin box** with the current firmware (or factory reset a used one) and power it on. It joins the hidden `PisoCoinBox` Wi-Fi by itself, which the router creates.
 2. **Modem into the router's WAN port** (internet is needed once, to download packages).
-3. A PC on one of the router's **LAN ports**, with the router reachable at `192.168.1.1` (factory default).
-4. The modem's own network must not use `10.0.0.x` or `192.168.30.x` (the script stops and tells you if it does).
+3. A PC on one of the router's **LAN ports**.
+4. The modem's own network must not be `10.0.0.x` or `192.168.30.x` (the script stops and tells you if it is).
 
-## Run it
+## Step 1: set the router's LAN address to 10.0.0.1 (by hand, once)
+The script does not change the router's address, so your SSH connection is never cut while it runs. Do this first, on a factory-reset router:
 ```
-scp -O setup/piso-setup.sh root@192.168.1.1:/root/
 ssh root@192.168.1.1
+uci set network.lan.ipaddr='10.0.0.1'
+uci commit network
+/etc/init.d/network restart
+```
+The SSH session ends (that is expected). Unplug and replug the PC's LAN cable so it gets a `10.0.0.x` address, then continue at `10.0.0.1`.
+(In LuCI instead: Network > Interfaces > LAN > Edit > IPv4 address `10.0.0.1`, then Save & Apply.)
+
+## Step 2: run the setup
+```
+scp -O setup/piso-setup.sh root@10.0.0.1:/root/
+ssh root@10.0.0.1
 sed -i 's/\r$//' piso-setup.sh     # removes Windows line endings if the file touched Windows (otherwise: ": not found" errors)
 chmod +x piso-setup.sh
 ./piso-setup.sh
 ```
-Answer `y` when asked. The settings are applied and your SSH session ends, because the router's address becomes **10.0.0.1**. The rest
-(about 3 to 8 minutes) runs by itself. Unplug and replug the PC's cable so it gets a `10.0.0.x` address, then:
+Answer `y` when asked. It runs in front of you for about 3 to 8 minutes and **keeps your SSH session open the whole time**: it installs packages, creates the networks, waits for the ESP32 to join, sets its password and key, starts everything and ends with a health check. When it prints `SETUP COMPLETE`, read the summary:
 ```
-ssh root@10.0.0.1
-piso-setup status
 cat /root/piso-setup-summary.txt
 ```
-The summary has every password generated for you (router, PisoKiosk Wi-Fi, coin box admin). Save them somewhere safe.
+It has every password generated for you (router, PisoKiosk Wi-Fi, coin box admin). Save them somewhere safe.
 
 ## What you get
 | network | for | bands | notes |
 |---|---|---|---|
-| **PisoKiosk** | the rental phones | 2.4 + 5 GHz | WPA2, name is fixed, password generated. This is the router's LAN: `10.0.0.0/24`. |
+| **PisoKiosk** | the rental phones | 2.4 + 5 GHz | WPA2, name is fixed, password generated. This is the router's LAN (`10.0.0.0/24`, the address you set in step 1). |
 | **PisoCoinBox** (hidden) | the ESP32 only | 2.4 GHz | After pairing, only the box's MAC address may join. The box is always `10.0.0.10`. |
 | **PisoWiFi** | customers | 2.4 + 5 GHz | Open, behind the openNDS login and coin payment. Rename: `piso-setup wifi-name "My Shop"`. Separate network `192.168.30.0/24`. |
 
 The script also installs the packages, the portal and the coin-slot manager, sets the box's admin password and gateway key through its API,
-sets a root password, and ends with a health check.
+sets a root password, and ends with a health check. The router's wired LAN ports stay on the same network as PisoKiosk (administration).
 
 ## Day to day
 | command | what it does |
