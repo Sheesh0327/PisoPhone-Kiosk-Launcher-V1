@@ -18,6 +18,10 @@
 # INSTRUCTIONS.md "Faster: the MicroPython edition"); the portal theme and the status page work unchanged with either.
 MICROPYTHON="${MICROPYTHON:-micropython}"
 command -v "$MICROPYTHON" > /dev/null 2>&1 || { echo "micropython not found: opkg install micropython" >&2; exit 1; }
+# Some MicroPython builds do not set sys.argv for -c programs: the arguments also travel in the environment.
+n=0
+for a in "$@"; do eval "COINSLOT_ARG$n=\$a; export COINSLOT_ARG$n"; n=$((n + 1)); done
+COINSLOT_ARGC=$n; export COINSLOT_ARGC
 COINSLOT_SELF="$0" exec "$MICROPYTHON" -c "$(sed '1,/^#__PYTHON__$/d' "$0")" "$@"
 exit 1
 #__PYTHON__
@@ -1667,7 +1671,7 @@ async def serve():
     mkdirs(vdir())
     os.system("chmod 700 %s 2>/dev/null" % q(S["STATE_DIR"]))
     if not S["GW_KEY"]:
-        print("coinslot: GW_KEY is not set", file=sys.stderr)
+        sys.stderr.write("coinslot: GW_KEY is not set\n")
     s1 = await asyncio.start_server(handle_api, "127.0.0.1", num("LISTEN_PORT", 8099))
     s2 = await asyncio.start_server(handle_stream, S["STREAM_BIND"], num("STREAM_PORT", 8100))
     asyncio.create_task(housekeeping())
@@ -1679,14 +1683,21 @@ async def serve():
 
 
 def main():
-    args = sys.argv[1:]
+    try:
+        n = int(os.getenv("COINSLOT_ARGC") or -1)
+    except ValueError:
+        n = -1
+    if n >= 0:  # set by the wrapper above: works on builds without sys.argv for -c programs
+        args = [os.getenv("COINSLOT_ARG%d" % i) or "" for i in range(n)]
+    else:
+        args = sys.argv[1:]
     cmd = args[0] if args else ""
     load_settings()
     if cmd in ("minutes",) and len(args) == 3 and valid_plan(args[1]) and args[2].isdigit():
         print(minutes_for(args[1], int(args[2])))
         return
     if not hmac_selftest():
-        print("coinslot: SHA-256 self-test failed on this MicroPython build; use coinslot-listener.sh", file=sys.stderr)
+        sys.stderr.write("coinslot: SHA-256 self-test failed on this MicroPython build; use coinslot-listener.sh\n")
         sys.exit(1)
     if cmd == "hmac" and len(args) == 2:
         print("shell")
@@ -1713,7 +1724,7 @@ def main():
         if not asyncio.run(chk()):
             sys.exit(1)
     else:
-        print("usage: coinslot-fast.sh serve | minutes <plan> <pesos> | report [days] | box", file=sys.stderr)
+        sys.stderr.write("usage: coinslot-fast.sh serve | minutes <plan> <pesos> | report [days] | box\n")
         sys.exit(2)
 
 
