@@ -1,7 +1,7 @@
 # Portal live updates: how they work
 
 The portal feels instant because the router pushes changes to the customer's page instead of the page asking again and again.
-Setup steps: `opennds/INSTRUCTIONS-SHELL.md` (Parts 3, 4 and 11) or `opennds/INSTRUCTIONS-MICROPYTHON.md`. Everything here is optional: without it the portal still works with refreshes.
+Setup steps: `opennds/INSTRUCTIONS-SHELL.md` (Parts 3, 4 and 11). Everything here is optional: without it the portal still works with refreshes.
 
 ## What happens when someone taps Insert Coin
 1. The page swaps to the waiting screen immediately (no server round trip) and the request that arms the slot runs in the background.
