@@ -29,6 +29,7 @@ jobs:
           echo "toolchain in the image: $TC"
           id=$(docker create "$SDK_IMAGE")
           docker cp "$id:$TC" "$PWD/toolchain"
+          mkdir -p host && docker cp "$id:/builder/staging_dir/host/lib" "$PWD/host/lib"   # the compiler wrapper looks for ../../host/lib
           docker rm "$id" > /dev/null
           ls toolchain/bin | head -20
           echo "GCC=$(ls "$PWD"/toolchain/bin/*-openwrt-linux-musl-gcc | head -1)" >> "$GITHUB_ENV"
@@ -42,8 +43,8 @@ jobs:
           # panic=abort needs no unwinder; satisfy the "-lunwind" the musl targets ask for with the toolchain's own
           mkdir -p "$PWD/stub"
           echo 'INPUT(-lgcc_eh)' > "$PWD/stub/libunwind.a"
-          export STAGING_DIR="$PWD/../../toolchain"
-          export RUSTFLAGS="-C linker=$GCC -C link-arg=-L$PWD/stub"
+          export STAGING_DIR="$GITHUB_WORKSPACE/toolchain"
+          export RUSTFLAGS="-C linker=$GCC -C link-arg=-L$PWD/stub -C target-feature=+crt-static -C relocation-model=static"
           cargo +nightly build --release -Z build-std=std,panic_abort --target mipsel-unknown-linux-musl
           BIN=target/mipsel-unknown-linux-musl/release/coinslot-probe
           ls -l "$BIN"
