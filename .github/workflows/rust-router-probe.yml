@@ -10,7 +10,7 @@ on:
       - '.github/workflows/rust-router-probe.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   SDK_IMAGE: openwrt/sdk:ramips-mt7621-23.05.5
@@ -56,3 +56,14 @@ jobs:
         with:
           name: coinslot-probe-mipsel
           path: dist/
+
+      # Put the built program in the repository too, so it can be copied to the router from a normal checkout.
+      - name: Commit the built program to the branch
+        if: github.ref_name == 'rust-probe'
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@users.noreply.github.com"
+          mkdir -p tools/rust-probe/bin
+          cp dist/coinslot-probe-mipsel dist/coinslot-probe-mipsel.sha256 tools/rust-probe/bin/
+          git add tools/rust-probe/bin
+          git diff --cached --quiet || { git commit -m "ci: built router probe (mipsel_24kc)"; git push; }
