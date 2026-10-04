@@ -3,6 +3,9 @@
 Everything below is copy/paste. Replace the values in `<angle brackets>`.
 Steps 2 onwards run on the router over SSH (`ssh root@<router-ip>`).
 
+Already running and want the faster MicroPython edition? Skip to **"Switching to the MicroPython edition"** at the end
+of this file. Do the normal install first; the fast edition is an optional replacement for the service, not a new install.
+
 ## 0. Before you start
 - The PisoPhone box runs the firmware that includes the gateway API. You know its IP (give it a DHCP
   reservation so it never changes) and its admin password.
@@ -228,23 +231,55 @@ Edit `/etc/coinslot.conf` and run `/etc/init.d/coinslot restart`. To rotate the 
 | challenge gives `GATEWAY_DISABLED` | the key was not set on the box: repeat step 4 |
 | portal page does not appear | `ndsctl status`, `logread -e opennds`; confirm step 7 with `uci show` |
 
-## Faster: the MicroPython edition (experimental, optional)
+## Switching to the MicroPython edition (experimental, optional)
 
 `coinslot-fast.sh` does the same job as `coinslot-listener.sh` in one resident MicroPython process: no per-request
-process starts, pushes the moment something changes, and a WebSocket endpoint (`/ws`) for the start and finish commands.
-It is **not enabled by default and is not part of the package**; the shell edition stays the supported one.
+process starts, live updates pushed the moment something changes, and a WebSocket endpoint (`/ws`) for the start and
+finish commands. It is **not enabled by default and is not part of the package**; the shell edition stays the
+supported one. Settings, vouchers and state files are shared, so you can switch back and forth.
 
-Try it only on a test router:
+**Before you start:** the normal install (steps 1 to 9) works, and nobody is paying right now. Try it on a test router
+first: it has not been run on a real router yet, and it should not take real payments until it has.
 
-1. `opkg install micropython` and check `micropython -c "import hashlib; hashlib.sha1; print('ok')"` prints `ok`.
-2. Copy `coinslot-fast.sh` to `/usr/bin/` (`chmod +x`). Keep `coinslot-listener.sh` there too.
-3. Replace the service file: `cp /etc/init.d/coinslot /root/coinslot.init.shell` (a backup), then install
-   `coinslot-fast.init` as `/etc/init.d/coinslot`. It runs ONE instance, `coinslot-fast.sh serve`, which serves the API
-   port, the stream port and the fair-use watcher. (Do not just change the command of the old file: its separate
-   `stream` and `fairuse` instances would keep running next to it, fight over the stream port and run fair-use twice.)
-4. `/etc/init.d/coinslot restart`, then `logread -e coinslot`.
-5. To go back: `cp /root/coinslot.init.shell /etc/init.d/coinslot` and restart. State files are the same in both editions.
+Run these on the router over SSH (`ssh root@<router-ip>`):
+
+1. **Check that MicroPython can do the job.**
+   ```
+   opkg update && opkg install micropython
+   micropython -c "import hashlib; hashlib.sha1; print('ok')"
+   ```
+   It must print `ok`. If it does not, stop here and stay on the shell edition.
+2. **Copy the two files to the router** (from the repository, on your computer):
+   ```
+   scp opennds/coinslot-fast.sh root@<router-ip>:/usr/bin/coinslot-fast.sh
+   scp opennds/coinslot-fast.init root@<router-ip>:/root/coinslot-fast.init
+   ```
+   then on the router: `chmod +x /usr/bin/coinslot-fast.sh`. Keep `coinslot-listener.sh` in `/usr/bin/`; it is your way back.
+3. **Back up the current service file and install the fast one.**
+   ```
+   cp /etc/init.d/coinslot /root/coinslot.init.shell
+   cp /root/coinslot-fast.init /etc/init.d/coinslot
+   chmod +x /etc/init.d/coinslot
+   ```
+   The fast service runs ONE instance, `coinslot-fast.sh serve`, which serves the API port, the stream port and the
+   fair-use watcher. Do not just edit the old file's command: its separate `stream` and `fairuse` instances would keep
+   running next to it, fight over the stream port and run fair-use twice.
+4. **Restart and check.**
+   ```
+   /etc/init.d/coinslot restart
+   logread -e coinslot | tail
+   ps | grep coinslot-fast
+   curl -s http://127.0.0.1:8099/info
+   ```
+   You should see one `micropython` process for `coinslot-fast.sh serve`, and `/info` should answer with the coin timings
+   and a `stream_port`. Then run the checks in step 9 (`coinslot-listener.sh box` still works) and try one coin through
+   the portal.
+5. **Going back to the shell edition:**
+   ```
+   cp /root/coinslot.init.shell /etc/init.d/coinslot
+   /etc/init.d/coinslot restart
+   ```
 
 Known problem: the integration test suite run against this edition (`LISTENER_IMPL=fast python3 tests/test_flow.py`)
 passed in 7 of 8 consecutive runs on the fake box; a few timing-dependent checks still fail now and then. It has not
-been run on a real router. Do not use it on a router that takes real payments yet.
+been run on a real router.
