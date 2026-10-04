@@ -9,7 +9,7 @@
    3. Provision a phone with the dashboard's **Install & Provision** link, then reboot the phone: the box must still be reachable.
    4. Insert coins: time is added once per coin. Cut the box's power mid-session: no coin lost or doubled.
    5. Drop the Wi-Fi between a coin and its acknowledgement: the box retries and the phone credits it once.
-   6. Router (`opennds/INSTRUCTIONS.md`), only after the above.
+   6. Router (`opennds/INSTRUCTIONS-SHELL.md`, or the experimental `opennds/INSTRUCTIONS-MICROPYTHON.md`), only after the above.
    7. Factory reset from the dashboard: license slots and lifetime revenue survive; Wi-Fi and admin password reset.
 3. If payments stop after a phone reboot, collect `adb logcat -s KioskSecurity`. The phone's box secret and PIN are
    Keystore-wrapped with a plain fallback; if the Keystore key is lost the phone reads them as unset: re-provision it.

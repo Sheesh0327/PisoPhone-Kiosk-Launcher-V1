@@ -47,7 +47,7 @@ CI (`.github/workflows/`) runs all of this on every push; style is ktlint (Kotli
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | How a coin becomes time; who talks to whom; where code lives |
 | [`docs/PROVISIONING_SOLD_UNIT.md`](docs/PROVISIONING_SOLD_UNIT.md) | Secure boot and flash encryption for boxes you sell |
 | [`docs/api/`](docs/api) | Router gateway API and super-admin credential format |
-| [`opennds/INSTRUCTIONS.md`](opennds/INSTRUCTIONS.md) | Router setup (package install, Layout A and B) |
+| [`opennds/INSTRUCTIONS.md`](opennds/INSTRUCTIONS.md) | Router setup: two separate guides from a factory-reset router, [shell edition](opennds/INSTRUCTIONS-SHELL.md) (supported) and [MicroPython edition](opennds/INSTRUCTIONS-MICROPYTHON.md) (experimental) |
 
 ## Branches
 | Branch | Contains | Purpose |

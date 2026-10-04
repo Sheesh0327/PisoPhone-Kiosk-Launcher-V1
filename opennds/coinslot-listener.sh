@@ -93,7 +93,7 @@ ENDURANCE_DOWN_KBPS="${ENDURANCE_DOWN_KBPS:-5000}"   # 5 Mbit/s
 ENDURANCE_UP_KBPS="${ENDURANCE_UP_KBPS:-2000}"       # 2 Mbit/s
 
 # Pause: an Endurance session that has paid at least PAUSE_MIN_PESOS can be paused once (kept for PAUSE_MAX_HOURS).
-# Bursting (no cap until a client's speed stays above its limit for ~30 s) is openNDS' own feature, see INSTRUCTIONS.md.
+# Bursting (no cap until a client's speed stays above its limit for ~30 s) is openNDS' own feature, see INSTRUCTIONS-SHELL.md.
 PAUSE_MIN_PESOS="${PAUSE_MIN_PESOS:-10}"
 PAUSE_MAX_HOURS="${PAUSE_MAX_HOURS:-72}"
 

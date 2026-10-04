@@ -7,7 +7,7 @@
 #
 # Needs OpenWrt 21.02 or newer. Your existing lan network and SSID are not touched; after checking, move the
 # customer SSID to the new guest network (or just use the new one) and keep lan for administration.
-# Settings (environment): RADIO KIOSK_SSID KIOSK_KEY GUEST_SSID KIOSK_IP GUEST_IP BOX_MAC BOX_IP KIOSK_PORTS
+# Settings (environment): RADIO KIOSK_SSID KIOSK_KEY GUEST_SSID KIOSK_IP GUEST_IP BOX_MAC BOX_IP KIOSK_PORTS GUEST_PORTS
 set -e
 RADIO="${RADIO:-radio0}"
 KIOSK_SSID="${KIOSK_SSID:-PisoKiosk}"
@@ -18,6 +18,7 @@ GUEST_IP="${GUEST_IP:-192.168.30.1}"
 BOX_MAC="${BOX_MAC:?set BOX_MAC: the ESP32 box MAC, e.g. AA:BB:CC:DD:EE:FF}"
 BOX_IP="${BOX_IP:-192.168.20.10}"
 KIOSK_PORTS="${KIOSK_PORTS:-}"        # optional wired ports for the kiosk network, e.g. "lan3 lan4"
+GUEST_PORTS="${GUEST_PORTS:-}"        # optional wired ports for the guest network (an access point in bridge mode plugged in), e.g. "lan2"
 [ "${#KIOSK_KEY}" -ge 8 ] || { echo "KIOSK_KEY must be at least 8 characters" >&2; exit 1; }
 
 cat <<EOT
@@ -36,6 +37,9 @@ set network.kiosk.netmask='255.255.255.0'
 set network.guest_dev=device
 set network.guest_dev.type='bridge'
 set network.guest_dev.name='br-guest'
+EOT
+for p in $GUEST_PORTS; do echo "add_list network.guest_dev.ports='$p'"; done
+cat <<EOT
 set network.guest=interface
 set network.guest.proto='static'
 set network.guest.device='br-guest'

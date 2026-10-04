@@ -33,7 +33,7 @@ mkdir -p /etc/coinslot.d/vouchers
 # an older install kept its settings in /etc/coinslot.conf: move them into UCI once
 [ -r /etc/coinslot.conf ] && /usr/bin/coinslot-listener.sh migrate
 /etc/init.d/coinslot enable
-echo "opennds-coinslot installed. Set the box key (INSTRUCTIONS.md), then: /etc/init.d/coinslot start"
+echo "opennds-coinslot installed. Set the box key (INSTRUCTIONS-SHELL.md), then: /etc/init.d/coinslot start"
 exit 0
 """
 

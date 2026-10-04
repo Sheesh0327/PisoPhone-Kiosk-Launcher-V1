@@ -15,7 +15,7 @@
 # state in files with the same names and formats as the shell version, the key never logged, a private state directory.
 # Settings: the same as the shell version (UCI /etc/config/coinslot, section "main", or the old /etc/coinslot.conf).
 # To switch, change the service command in /etc/init.d/coinslot from coinslot-listener.sh to coinslot-fast.sh (see
-# INSTRUCTIONS.md "Faster: the MicroPython edition"); the portal theme and the status page work unchanged with either.
+# INSTRUCTIONS-MICROPYTHON.md); the portal theme and the status page work unchanged with either.
 MICROPYTHON="${MICROPYTHON:-micropython}"
 command -v "$MICROPYTHON" > /dev/null 2>&1 || { echo "micropython not found: opkg install micropython" >&2; exit 1; }
 # Some MicroPython builds do not set sys.argv for -c programs: the arguments also travel in the environment.
