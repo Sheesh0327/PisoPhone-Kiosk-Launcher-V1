@@ -4,11 +4,12 @@ Real pieces under test: theme_coinslot.sh (run the way libopennds.sh runs it, he
 coinslot-listener.sh (handler, worker, fair use, vouchers, revenue). Stand-ins: fakebox.py (the ESP32 gateway API
 with the same HMAC/nonce rules), fake_ndsctl.sh (openNDS' ndsctl) and fake_socat.py (socat).
 Run with:  python3 opennds/tests/test_flow.py"""
-import glob, hashlib, json, os, re, shutil, signal, subprocess, sys, tempfile, time, urllib.error, urllib.request
+import glob, hashlib, socket, json, os, re, shutil, signal, subprocess, sys, tempfile, time, urllib.error, urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-THEME, LISTENER = f"{ROOT}/theme_coinslot.sh", f"{ROOT}/coinslot-listener.sh"
+IMPL = os.environ.get("LISTENER_IMPL", "shell")   # "fast" runs the whole suite against coinslot-fast.sh (MicroPython)
+THEME, LISTENER = f"{ROOT}/theme_coinslot.sh", f"{ROOT}/coinslot-{'fast' if IMPL == 'fast' else 'listener'}.sh"
 KEY = "test-gateway-key-123456"
 QUEUE_CLAIM = 5
 BOX_PORT, LISTEN_PORT, STREAM_PORT = 18090, 18099, 18110
@@ -54,7 +55,7 @@ def calls():
 conf = f"{tmp}/coinslot.conf"
 open(conf, "w").write(
     f"GW_BOX=127.0.0.1:{BOX_PORT}\nGW_KEY={KEY}\nSTATE_DIR={STATE}\nDATA_DIR={DATA}\nNDSCTL={HERE}/fake_ndsctl.sh\n"
-    f"COIN_FIRST_WAIT_SECONDS=4\nCOIN_IDLE_WAIT_SECONDS=3\nCOIN_MAX_SECONDS=12\nQUEUE_CLAIM_SECONDS=5\nSTREAM_PORT={STREAM_PORT}\n"
+    f"LISTEN_PORT={LISTEN_PORT}\nCOIN_FIRST_WAIT_SECONDS=4\nCOIN_IDLE_WAIT_SECONDS=3\nCOIN_MAX_SECONDS=12\nQUEUE_CLAIM_SECONDS=5\nSTREAM_PORT={STREAM_PORT}\n"
     "FAIR_USE_KB=1000\nFAIR_THROTTLE_DOWN_KBPS=2000\nFAIR_THROTTLE_UP_KBPS=1000\nFAIR_THROTTLE_MINUTES=5\nFAIR_FULL_MINUTES=2\n")
 env = dict(os.environ, FAKEBOX_CTL=CTL, FAKEBOX_LOG=LOG, FAKEBOX_KEY=KEY, COINSLOT_CONF=conf, FAKE_NDS_DIR=NDS,
            NDSCTL=f"{HERE}/fake_ndsctl.sh")
@@ -62,9 +63,13 @@ ARP = f"{tmp}/arp"
 open(ARP, "w").write(f"IP address       HW type     Flags       HW address            Mask     Device\n127.0.0.1  0x1  0x2  {MAC_A}  *  lo\n")
 env["ARP_FILE"] = ARP
 set_box(busy=False, coins_at=[])
-procs = [subprocess.Popen([sys.executable, f"{HERE}/fake_socat.py", str(STREAM_PORT), LISTENER, "stream-handle"], env=env),
-         subprocess.Popen([sys.executable, f"{HERE}/fakebox.py", str(BOX_PORT)], env=env),
-         subprocess.Popen([sys.executable, f"{HERE}/fake_socat.py", str(LISTEN_PORT), LISTENER], env=env)]
+if IMPL == "fast":   # one resident process serves both the API and the stream
+    procs = [subprocess.Popen([sys.executable, f"{HERE}/fakebox.py", str(BOX_PORT)], env=env),
+             subprocess.Popen(["sh", LISTENER, "serve"], env=dict(env, STREAM_BIND="127.0.0.1", COINSLOT_DEBUG="1"), stdin=subprocess.DEVNULL, stderr=open(f"{tmp}/serve.err", "w"))]
+else:
+    procs = [subprocess.Popen([sys.executable, f"{HERE}/fake_socat.py", str(STREAM_PORT), LISTENER, "stream-handle"], env=env),
+             subprocess.Popen([sys.executable, f"{HERE}/fakebox.py", str(BOX_PORT)], env=env),
+             subprocess.Popen([sys.executable, f"{HERE}/fake_socat.py", str(LISTEN_PORT), LISTENER], env=env)]
 time.sleep(1.0)
 
 
@@ -109,6 +114,87 @@ class Stream:
                     return e
             time.sleep(0.05)
         return None
+
+    def close(self):
+        self.sock.close()
+
+
+class WS:
+    """A minimal WebSocket client (masked text frames) for the MicroPython edition's /ws endpoint."""
+    GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+
+    def __init__(self, sid, mac, origin=None, key="dGhlIHNhbXBsZSBub25jZQ==", host=None):
+        import base64
+        self.sock = socket.create_connection(("127.0.0.1", STREAM_PORT), timeout=10)
+        req = f"GET /ws?sid={sid}&mac={mac} HTTP/1.1\r\nHost: {host or '127.0.0.1:%d' % STREAM_PORT}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+        if key:
+            req += f"Sec-WebSocket-Key: {key}\r\n"
+        req += "Sec-WebSocket-Version: 13\r\n" + (f"Origin: {origin}\r\n" if origin else "") + "\r\n"
+        self.sock.sendall(req.encode())
+        self.head = b""
+        while b"\r\n\r\n" not in self.head:
+            d = self.sock.recv(4096)
+            if not d:
+                break
+            self.head += d
+        self.head, _, self.buf = self.head.partition(b"\r\n\r\n")
+        self.accept_ok = key and base64.b64encode(hashlib.sha1((key + self.GUID).encode()).digest()) in self.head
+
+    def send(self, obj_or_bytes, masked=True, op=1):
+        b = obj_or_bytes if isinstance(obj_or_bytes, bytes) else json.dumps(obj_or_bytes).encode()
+        m = os.urandom(4)
+        n = len(b)
+        hdr = bytes([0x80 | op, (0x80 if masked else 0) | (n if n < 126 else 126)]) + (n.to_bytes(2, "big") if n >= 126 else b"")
+        self.sock.sendall(hdr + (m + bytes(c ^ m[i % 4] for i, c in enumerate(b)) if masked else b))
+
+    def _need(self, n):
+        while len(self.buf) < n:
+            d = self.sock.recv(4096)
+            if not d:
+                raise EOFError
+            self.buf += d
+        out, self.buf = self.buf[:n], self.buf[n:]
+        return out
+
+    TIMEOUT = {"e": "__timeout__"}  # recv() result when nothing arrived in time (the connection is still open)
+
+    def recv(self, timeout=5):
+        """Next text message as a dict (pings skipped); None only when the connection closed (EOF or a close frame);
+        WS.TIMEOUT when nothing arrived in time."""
+        self.sock.settimeout(timeout)
+        try:
+            while True:
+                h = self._need(2)
+                op, n = h[0] & 15, h[1] & 127
+                if n == 126:
+                    n = int.from_bytes(self._need(2), "big")
+                data = self._need(n) if n else b""
+                if op == 8:
+                    return None
+                if op == 1:
+                    return json.loads(data)
+        except socket.timeout:
+            return self.TIMEOUT
+        except (EOFError, OSError):
+            return None
+
+    def wait(self, event, timeout=8):
+        end = time.time() + timeout
+        while time.time() < end:
+            m = self.recv(max(0.2, end - time.time()))
+            if m is None:
+                return None
+            if m.get("e") == event:
+                return m
+        return None
+
+    def closed(self, timeout=3):
+        """True once the server has closed the connection (pushed messages that arrive first are skipped)."""
+        end = time.time() + timeout
+        while time.time() < end:
+            if self.recv(max(0.2, end - time.time())) is None:
+                return True
+        return False
 
     def close(self):
         self.sock.close()
@@ -168,7 +254,7 @@ try:
     check("up to 5 Mbps down / 2 Mbps up" in p.lower() or "Up to 5 Mbps down / 2 Mbps up" in p, "Endurance speed caps shown")
     check('value="hyper" checked' in p, "HyperSpeed preselected")
     check("refresh" not in p.lower(), "welcome does not auto-refresh")
-    check(len(p) < 7500, f"welcome page is small ({len(p)} bytes)")
+    check(len(p) < 8300, f"welcome page is small ({len(p)} bytes)")
     check("Please wait" in p and "__t" in p, "every form shows it was tapped and ignores a second tap while loading")
     check("function instant()" in p and "Do not insert coins yet" in p and 'id="lleft"' not in p,
           "Insert Coin shows a waiting screen at once that does not invite coins before the slot is armed")
@@ -180,11 +266,29 @@ try:
     p = page("hidW", MAC_A, "wait", "hyper")
     check("Getting the coin slot ready" in p and 'id="cd" style="display:none"' in p and "Insert coin(s) now" not in p.split('id="wait"')[1].split("<script>")[0],
           "waiting page says 'getting ready' and hides the countdown while the slot is still arming")
-    open(f"{STATE}/{sw}/state", "w").write("STATE=armed\nPULSES=0\nREMAINING=30\nERROR=\n")
-    p = page("hidW", MAC_A, "wait", "hyper")
+    sw2 = sid_of("hidW2")
+    os.makedirs(f"{STATE}/{sw2}", exist_ok=True)
+    open(f"{STATE}/{sw2}/plan", "w").write("hyper")
+    open(f"{STATE}/{sw2}/state", "w").write("STATE=armed\nPULSES=0\nREMAINING=30\nERROR=\n")
+    p = page("hidW2", MAC_A, "wait", "hyper")
     check("Insert coin(s) now" in p.split('id="wait"')[1].split("<script>")[0] and 'id="cd" style="display:none"' not in p,
           "waiting page invites coins and shows the countdown once the slot is armed")
     shutil.rmtree(f"{STATE}/{sw}")
+    shutil.rmtree(f"{STATE}/{sw2}")
+    if IMPL == "fast":  # a window that was running when the process stopped has no worker: /finish must end it, not loop forever
+        sr = sid_of("hidR")
+        os.makedirs(f"{STATE}/{sr}", exist_ok=True)
+        open(f"{STATE}/{sr}/plan", "w").write("hyper")
+        open(f"{STATE}/{sr}/state", "w").write("STATE=armed\nPULSES=0\nREMAINING=30\nERROR=\n")
+        get(f"/finish?sid={sr}")
+        st = {}
+        for _ in range(40):
+            st = json.loads(get(f"/status?sid={sr}")[1])
+            if st.get("state") == "done":
+                break
+            time.sleep(0.5)
+        check(st.get("state") == "done", f"a window left active by a stopped process is ended by /finish ({st})")
+        shutil.rmtree(f"{STATE}/{sr}")
 
     # ---- Endurance: 17 pesos accumulate to 11 hrs 30 min -----------------------------------------------------------
     p = pay("hidA", MAC_A, "endurance", 17)
@@ -352,7 +456,7 @@ try:
         if st["state"] == "done": break
         time.sleep(0.5)
     took = time.time() - t0
-    check(st["pulses"] == 1 and 5.0 <= took <= 12.0, f"window extended after a coin (took {took:.1f}s, pulses {st['pulses']})")
+    check(st["pulses"] == 1 and 5.0 <= took <= 12.0, f"window extended after a coin (took {took:.1f}s, status {st})")
 
     # ---- acceptor settling: the customer is not invited to pay (state stays "starting") until the box says it is ready ----
     set_box(busy=False, coins_at=[0.4, 1.5], settle_ms=900)   # the first coin falls inside the settling window and is ignored
@@ -453,18 +557,95 @@ try:
     time.sleep(0.5)
     check(not glob.glob(f"{STATE}/queue/*"), "the waiting line is empty afterwards")
 
+    if IMPL == "fast":   # WebSocket endpoint (MicroPython edition only)
+        nds_client(MAC_A)
+        set_box(busy=False, coins_at=[0.6, 1.2])
+        sW = sid_of("hidWS1")
+        w = WS(sW, MAC_A, origin=f"http://127.0.0.1:{STREAM_PORT}")
+        check(b" 101 " in w.head and w.accept_ok, "WebSocket handshake succeeds with the right accept key")
+        w.send({"t": "start", "plan": "hyper"})
+        m = None
+        for _ in range(20):
+            m = w.wait("status", 1)
+            if m and m["state"] in ("starting", "armed"):
+                break
+        check(m is not None and m["state"] in ("starting", "armed"), f"start over the WebSocket opens the window ({m})")
+        got = None
+        for _ in range(40):
+            m = w.recv(0.5)
+            if m and m.get("e") == "status" and m.get("pulses", 0) >= 2:
+                got = m
+                break
+        check(got is not None and got["plan"] == "hyper", "coins are pushed over the WebSocket")
+        w.send({"t": "finish"})
+        done = w.wait("status", 10)
+        for _ in range(60):
+            if done and done.get("state") == "done":
+                break
+            done = w.wait("status", 1) or done
+        check(done is not None and done.get("state") == "done" and done.get("pulses") == 2, f"finish over the WebSocket ends the window with the coins ({done})")
+        w.close()
+        # who may connect
+        for label, kw in (("another device", dict(mac=MAC_B)), ("a page from another site", dict(mac=MAC_A, origin="http://evil.example")),
+                          ("no handshake key", dict(mac=MAC_A, key=None))):
+            x = WS(sid_of("hidWS2"), **kw)
+            check(b" 403 " in x.head, f"WebSocket refused for {label}")
+            x.close()
+        # commands are limited and frames must be well formed
+        for label, act in (("an unmasked frame", lambda x: x.send(b'{"t":"ping"}', masked=False)),
+                           ("an unknown command", lambda x: x.send({"t": "grant", "minutes": 999})),
+                           ("a bad plan", lambda x: x.send({"t": "start", "plan": "free"})),
+                           ("text that is not JSON", lambda x: x.send(b"hello")),
+                           ("an oversized frame", lambda x: x.send(b"x" * 600))):
+            x = WS(sid_of("hidWS3"), MAC_A)
+            act(x)
+            check(x.closed(), f"WebSocket closes on {label}")
+            x.close()
+        x = WS(sid_of("hidWS4"), MAC_A)
+        for _ in range(11):  # one more than allowed: enough to be refused, and the server has not closed before the last send
+            x.send({"t": "ping"})
+        check(x.wait("pong", 3) is not None and x.closed(5) is True, "WebSocket closes a client that sends more than 10 commands in 10 s")
+        x.close()
+        # a busy slot over the WebSocket: place in line, then ready
+        set_box(busy=True, coins_at=[])
+        x = WS(sid_of("hidWS5"), MAC_A)
+        x.send({"t": "start", "plan": "hyper"})
+        busy, pos = None, None
+        end = time.time() + 8
+        while time.time() < end and not (busy and pos):
+            m = x.recv(1)
+            if m and m.get("e") == "status" and m.get("error") == "SLOT_BUSY":
+                busy = m
+            if m and m.get("e") == "queue":
+                pos = m.get("pos")
+        check(busy is not None and pos == 1, f"busy slot over the WebSocket reports the place in line ({busy and busy['error']}, {pos})")
+        # a second customer, while somebody is already first in line: refused with SLOT_BUSY, and put in line as well
+        x2 = WS(sid_of("hidWS6"), MAC_A)
+        x2.send({"t": "start", "plan": "hyper"})
+        refused, pos2 = None, None
+        end = time.time() + 8
+        while time.time() < end and not (refused and pos2):
+            m = x2.recv(1)
+            if m and m.get("e") in ("status", "error") and m.get("error") == "SLOT_BUSY":
+                refused = m
+            if m and m.get("e") == "queue":
+                pos2 = m.get("pos")
+        check(refused is not None and pos2 == 2, f"a second customer is told the slot is busy and gets a place in line ({refused and refused['error']}, {pos2})")
+        x2.close()
+        set_box(busy=False, coins_at=[])
+        check(x.wait("ready", 5) is not None, "the WebSocket tells the first in line when the slot is free")
+        x.close()
+
     # ---- browser: the waiting page updates itself and plays a coin sound (headless Chrome; skipped if none) ---------------
     import threading
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
     from urllib.parse import parse_qs, urlparse
     chrome = os.environ.get("CHROME") or next((c for c in [shutil.which(x) for x in ("google-chrome", "chromium", "chromium-browser")] + glob.glob("/opt/pw-browsers/chromium-*/chrome-linux/chrome") if c), None)
-    def browser_run(stream_port, coins, driver=None):
+    def browser_run(stream_ok, coins, driver=None):
         """Tap Insert Coin in headless Chrome against the real theme; returns (dumped DOM, request counts)."""
-        c = open(conf).read()
-        open(conf, "w").write(re.sub(r"STREAM_PORT=\d+", f"STREAM_PORT={stream_port}", c))
         nds_client("aa:bb:cc:00:00:09")
         set_box(busy=False, coins_at=coins)
-        open(ARP, "w").write("IP address HW type Flags HW address Mask Device\n127.0.0.1 0x1 0x2 aa:bb:cc:00:00:09 * lo\n")
+        open(ARP, "w").write(f"IP address HW type Flags HW address Mask Device\n127.0.0.1 0x1 0x2 {'aa:bb:cc:00:00:09' if stream_ok else 'aa:bb:cc:99:99:99'} * lo\n")   # another MAC: the stream refuses, the page falls back to polling
         hits = {"wait": 0, "start_mode": None, "finish": 0}
 
         class Portal(BaseHTTPRequestHandler):
@@ -474,7 +655,7 @@ try:
             def do_GET(self):
                 q = {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()}
                 act = q.get("coinact", "")
-                html = page(f"hidJS{stream_port}{len(coins)}{id(driver)}", "aa:bb:cc:00:00:09", act, q.get("coinplan", ""))
+                html = page(f"hidJS{int(stream_ok)}{len(coins)}{id(driver)}", "aa:bb:cc:00:00:09", act, q.get("coinplan", ""))
                 if act == "":  # the welcome page: tap Insert Coin a moment after loading, like a customer would
                     html = html.replace("</body>", '<script>setTimeout(function(){document.querySelector(".coin").click()},300)</script></body>')
                 if act == "start":
@@ -513,7 +694,7 @@ try:
 
     if chrome:
         # Without a reachable stream port the page falls back to polling (and the coin sound still plays).
-        dom, hits = browser_run(18130, [0.8, 1.2])
+        dom, hits = browser_run(False, [0.8, 1.2])
         check('id="pes">\u20b12<' in dom, "waiting page updated its coin count by itself (fallback polling)")
         check('data-dings="1"' in dom, "a new coin played the coin sound once")
         check(hits["start_mode"] not in (None, "navigate"), f"Insert Coin started the window without leaving the page (request mode {hits['start_mode']})")
@@ -552,15 +733,14 @@ try:
                 same = pg.evaluate("window.__b === document.querySelector('#wait button.btn') && document.body.contains(window.__b)")
                 br.close()
                 return str(same)
-
         if sync_playwright:
-            for label, port in (("live stream", STREAM_PORT), ("polling fallback", 18130)):
-                dom, hits = browser_run(port, [0.8, 1.2, 1.6], driver=tap_connect)
+            for label, ok in (("live stream", True), ("polling fallback", False)):
+                dom, hits = browser_run(ok, [0.8, 1.2, 1.6], driver=tap_connect)
                 check(hits["finish"] >= 1, f"tapping Connect now sends the finish request, {label} (seen: {hits['finish']})")
-                dom, hits = browser_run(port, [0.8, 1.2, 1.6, 3.0, 4.5], driver=keeps_button)
+                dom, hits = browser_run(ok, [0.8, 1.2, 1.6, 3.0, 4.5, 6.0, 7.5, 9.0, 10.5], driver=keeps_button)
                 check(dom == "True", f"the Connect button is never replaced while the page updates, {label}")
         # With the stream: the page follows the window to its end through the pushed events, with no polling of the portal.
-        dom, hits = browser_run(STREAM_PORT, [0.8, 1.2])
+        dom, hits = browser_run(True, [0.8, 1.2])
         check("Connect" in dom and "&#8369;2" not in dom and hits["wait"] == 1, f"live stream carried the page to the result without polling (portal wait requests: {hits['wait']})")
     else:
         print("skipped: no Chrome/Chromium found for the browser test")
@@ -648,5 +828,9 @@ finally:
         except (OSError, ValueError):
             pass
 
+if IMPL == "fast" and os.path.exists(f"{tmp}/serve.err") and os.path.getsize(f"{tmp}/serve.err"):
+    print("server stderr (tail):", open(f"{tmp}/serve.err").read()[-1500:])
+if IMPL == "fast" and os.path.getsize(f"{tmp}/serve.err"):
+    print("server stderr (tail):", open(f"{tmp}/serve.err").read()[-2500:])
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)

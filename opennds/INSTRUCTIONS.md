@@ -227,3 +227,24 @@ Edit `/etc/coinslot.conf` and run `/etc/init.d/coinslot restart`. To rotate the 
 | top-up or throttle does nothing | `ndsctl status` works? `logread -e opennds`; the manager re-grants time with `ndsctl deauth` then `ndsctl auth` |
 | challenge gives `GATEWAY_DISABLED` | the key was not set on the box: repeat step 4 |
 | portal page does not appear | `ndsctl status`, `logread -e opennds`; confirm step 7 with `uci show` |
+
+## Faster: the MicroPython edition (experimental, optional)
+
+`coinslot-fast.sh` does the same job as `coinslot-listener.sh` in one resident MicroPython process: no per-request
+process starts, pushes the moment something changes, and a WebSocket endpoint (`/ws`) for the start and finish commands.
+It is **not enabled by default and is not part of the package**; the shell edition stays the supported one.
+
+Try it only on a test router:
+
+1. `opkg install micropython` and check `micropython -c "import hashlib; hashlib.sha1; print('ok')"` prints `ok`.
+2. Copy `coinslot-fast.sh` to `/usr/bin/` (`chmod +x`). Keep `coinslot-listener.sh` there too.
+3. Replace the service file: `cp /etc/init.d/coinslot /root/coinslot.init.shell` (a backup), then install
+   `coinslot-fast.init` as `/etc/init.d/coinslot`. It runs ONE instance, `coinslot-fast.sh serve`, which serves the API
+   port, the stream port and the fair-use watcher. (Do not just change the command of the old file: its separate
+   `stream` and `fairuse` instances would keep running next to it, fight over the stream port and run fair-use twice.)
+4. `/etc/init.d/coinslot restart`, then `logread -e coinslot`.
+5. To go back: `cp /root/coinslot.init.shell /etc/init.d/coinslot` and restart. State files are the same in both editions.
+
+Known problem: the integration test suite run against this edition (`LISTENER_IMPL=fast python3 tests/test_flow.py`)
+passed in 7 of 8 consecutive runs on the fake box; a few timing-dependent checks still fail now and then. It has not
+been run on a real router. Do not use it on a router that takes real payments yet.
