@@ -20,7 +20,7 @@
 # Everything is generated here (Wi-Fi password, box admin password, gateway key) and printed once at the end and saved in
 # /root/piso-setup-summary.txt. Running the file again is safe: it keeps what it already made.
 #
-# Other commands (after setup): piso-setup status | wifi-name "<name>" | pair | summary | uninstall-info
+# Other commands (after setup): piso-setup status | wifi-name "<name>" | pair | summary | test-coin | diag | set-password
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation
@@ -442,7 +442,18 @@ stage2() {
 	echo
 	echo "  ROUTER (SSH / LuCI) PASSWORD:  $_rp      <-- write this down now"
 	echo
-	if printf '%s\n%s\n' "$_rp" "$_rp" | passwd root > /dev/null 2>&1; then log "root password set"; else log "WARNING: could not set the root password; the router still has its old one"; fi
+	if [ "$ASSUME_YES" != 1 ] && [ -t 0 ]; then
+		_try=0
+		while :; do
+			printf 'Type the password again to confirm you have saved it: '; stty -echo 2> /dev/null; read -r _again; stty echo 2> /dev/null; echo
+			[ "$_again" = "$_rp" ] && break
+			_try=$((_try + 1))
+			[ "$_try" -lt 5 ] || { log "The password was not confirmed, so the router password was left unchanged. Run: piso-setup set-password"; _rp=""; break; }
+			echo "That does not match. Look at the line above and try again."
+		done
+	fi
+	if [ -z "$_rp" ]; then :
+	elif printf '%s\n%s\n' "$_rp" "$_rp" | passwd root > /dev/null 2>&1; then log "root password set"; else log "WARNING: could not set the root password; the router still has its old one"; fi
 
 	step "Checking everything"
 	check_all; _f=$?
@@ -476,6 +487,55 @@ cmd_wifi_name() {
 	/etc/init.d/opennds stop > /dev/null 2>&1; /etc/init.d/opennds start > /dev/null 2>&1
 	write_summary 2> /dev/null
 	echo "Customer Wi-Fi is now called \"$_n\"."
+}
+
+# piso-setup test-coin: one real coin window straight against the manager and the box, without the customer portal. It shows
+# whether the box counts a coin at all (wiring, acceptor) before looking for portal problems.
+cmd_test_coin() {
+	_url="${COINSLOT_URL:-http://127.0.0.1:8099}"; _sid=$(rand 32 hex); _mac="aa:bb:cc:00:00:99"
+	_get() { curl -s -m 10 "$_url$1" 2> /dev/null; }
+	_a=$(_get "/start?sid=$_sid&plan=hyper&mac=$_mac")
+	[ -n "$_a" ] || { echo "The coin-slot manager does not answer at $_url (is it running? /etc/init.d/flash_coin start)"; return 1; }
+	case "$_a" in *'"error":"'*) echo "The manager could not open the coin slot: $_a"; return 1 ;; esac
+	echo "The coin slot is armed (the box should beep). Insert a coin now. Waiting up to ${TEST_SECONDS:-30} seconds..."
+	_t=0; _last=0
+	while [ "$_t" -lt "${TEST_SECONDS:-30}" ]; do
+		sleep 1; _t=$((_t + 1))
+		_st=$(_get "/status?sid=$_sid")
+		_p=$(printf '%s' "$_st" | sed -n 's/.*"pulses":\([0-9]*\).*/\1/p')
+		if [ -n "$_p" ] && [ "$_p" -gt "$_last" ]; then echo "  coin detected: $_p peso(s) so far"; _last="$_p"; fi
+		case "$_st" in *'"state":"done"'* | *'"state":"error"'*) break ;; esac
+	done
+	_get "/finish?sid=$_sid" > /dev/null
+	_t=0; while [ "$_t" -lt 15 ]; do _st=$(_get "/status?sid=$_sid"); case "$_st" in *'"state":"done"'*) break ;; esac; sleep 1; _t=$((_t + 1)); done
+	_p=$(printf '%s' "$_st" | sed -n 's/.*"pulses":\([0-9]*\).*/\1/p')
+	if [ "${_p:-0}" -gt 0 ]; then echo "RESULT: the box counted $_p peso(s). The box and the manager work; if the portal does not show it, send the output of: piso-setup diag"
+	else echo "RESULT: no coin was counted. The coin acceptor wiring or the box settings need a look (the box armed, so the network and key are fine). Last answer: $_st"; fi
+	_get "/ack?sid=$_sid" > /dev/null
+	[ "${_p:-0}" -gt 0 ]
+}
+
+# piso-setup diag: everything needed to diagnose a problem, in one block (contains no passwords).
+cmd_diag() {
+	echo "=== piso-setup diag ($(date '+%F %T'), setup $VERSION) ==="
+	cmd_status 2>&1
+	echo "--- manager /info"; curl -s -m 5 "${COINSLOT_URL:-http://127.0.0.1:8099}/info"; echo
+	echo "--- manager <-> box"; /usr/bin/coinslot-listener.sh box 2>&1 | head -5
+	echo "--- coin windows"; for d in /tmp/coinslot/*/; do [ -d "$d" ] && { echo "$d"; cat "$d/state" "$d/plan" 2>/dev/null; }; done
+	echo "--- box neighbour / wifi"; ip neigh show | grep "$BOX_IP"; iwinfo 2> /dev/null | grep -A1 "$BOX_SSID"
+	echo "--- firewall tables"; nft list tables 2> /dev/null
+	echo "--- openNDS"; uci -q get opennds.@opennds[0].gatewayinterface; ndsctl status 2>&1 | head -12
+	echo "--- last coin-slot log lines"; logread -e coinslot 2> /dev/null | tail -30
+	echo "--- setup log"; tail -15 "$LOG" 2> /dev/null
+}
+
+cmd_set_password() {
+	[ "$(id -u)" = 0 ] || die "run as root"
+	echo "Choose a new router (SSH / LuCI) password; it is saved in $CONF and shown by: piso-setup summary"
+	stty -echo 2> /dev/null; printf 'New password (8+ characters): '; read -r _a; echo; printf 'Again: '; read -r _b; echo; stty echo 2> /dev/null
+	[ "$_a" = "$_b" ] && [ "${#_a}" -ge 8 ] || { echo "The passwords differ or are shorter than 8 characters."; return 1; }
+	printf '%s\n%s\n' "$_a" "$_a" | passwd root > /dev/null 2>&1 || { echo "Could not set it."; return 1; }
+	conf_set ROOT_PASS "$_a"; write_summary; echo "Done."
 }
 
 cmd_pair() {
@@ -536,7 +596,7 @@ main() {
 		case "$1" in
 			--dry-run) DRY=1 ;;
 			--yes | -y) ASSUME_YES=1 ;;
-			status | pair | summary | wifi-name | uninstall-info) CMD="$1"; shift; ARG="$1"; break ;;
+			status | pair | summary | wifi-name | uninstall-info | test-coin | diag | set-password) CMD="$1"; shift; ARG="$1"; break ;;
 			-h | --help) sed -n '2,/^# Options:/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 			*) echo "unknown option: $1 (try --help)" >&2; exit 1 ;;
 		esac
@@ -546,6 +606,9 @@ main() {
 		status) cmd_status ;;
 		wifi-name) cmd_wifi_name "$ARG" ;;
 		pair) cmd_pair ;;
+		test-coin) cmd_test_coin ;;
+		diag) cmd_diag ;;
+		set-password) cmd_set_password ;;
 		summary) cat "$SUMMARY" ;;
 		uninstall-info) echo "To undo: sysupgrade -n (factory reset) the router. Nothing else is changed outside the files listed in $0." ;;
 		*) stage1 ;;

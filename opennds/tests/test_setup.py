@@ -219,5 +219,39 @@ os.chmod(f"{bindir}/iwinfo", 0o755)
 r = lib("echo \"$(box_ifname) $(box_station)\"")
 check(r.stdout.strip() == "phy0-ap2 AA:BB:CC:DD:EE:09", "finds the box's interface and the joined station: " + r.stdout + r.stderr)
 
+# ---- test-coin against a stub manager ------------------------------------------------------------------------------------
+class Mgr(http.server.BaseHTTPRequestHandler):
+    pulses = 0
+    calls = 0
+
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        if self.path.startswith("/status"):
+            Mgr.calls += 1
+            if Mgr.calls >= 2:
+                Mgr.pulses = 2
+            st = "done" if Mgr.calls >= 3 else "armed"
+            body = '{"state":"%s","pulses":%d}' % (st, Mgr.pulses)
+        elif self.path.startswith("/start"):
+            body = '{"state":"starting","pulses":0}'
+        else:
+            body = '{"success":true}'
+        self.send_response(200); self.end_headers(); self.wfile.write(body.encode())
+
+
+msrv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Mgr)
+threading.Thread(target=msrv.serve_forever, daemon=True).start()
+r = run("test-coin", env={"COINSLOT_URL": f"http://127.0.0.1:{msrv.server_address[1]}", "TEST_SECONDS": "10"})
+check(r.returncode == 0 and "coin detected: 2" in r.stdout and "the box counted 2" in r.stdout, "test-coin reports a counted coin: " + r.stdout + r.stderr)
+Mgr.pulses = 0; Mgr.calls = -100
+r = run("test-coin", env={"COINSLOT_URL": f"http://127.0.0.1:{msrv.server_address[1]}", "TEST_SECONDS": "2"})
+check(r.returncode != 0 and "no coin was counted" in r.stdout, "test-coin says so when no coin is counted: " + r.stdout)
+r = run("test-coin", env={"COINSLOT_URL": "http://127.0.0.1:9"})
+check(r.returncode != 0 and "does not answer" in r.stdout, "test-coin explains a manager that is down")
+r = run("diag")
+check("=== piso-setup diag" in r.stdout and "--- last coin-slot log lines" in r.stdout and "ROOT_PASS" not in r.stdout and "password:" not in r.stdout.lower(), "diag runs and prints no passwords")
+
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)

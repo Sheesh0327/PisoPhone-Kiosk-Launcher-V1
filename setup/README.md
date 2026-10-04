@@ -53,6 +53,20 @@ sets a root password, and ends with a health check. The router's wired LAN ports
 
 Running `piso-setup.sh` again is safe: it keeps the passwords and names it already made.
 
+## Locked out of the router?
+The setup asks you to choose the router password (or shows a generated one and asks you to type it back), and prints every password at the end. If you still lose it, OpenWrt's failsafe mode keeps all settings:
+1. Give the PC the fixed address `192.168.1.2` (netmask `255.255.255.0`), plugged into a LAN port.
+2. Power-cycle the router; when the power LED starts blinking fast, press the reset button once (WPS on some models). The LED blinks very fast.
+3. `telnet 192.168.1.1`, then `mount_root`, then `cat /etc/piso-setup.conf` (all the generated passwords are in it), then `passwd`, then `reboot -f`.
+
+`piso-setup set-password` changes the router password later; `piso-setup summary` shows all saved passwords.
+
+## Check the coin path
+| command | what it does |
+|---|---|
+| `piso-setup test-coin` | arms the coin slot and waits for a coin, with no customer portal involved. It says whether the box counts the coin. |
+| `piso-setup diag` | prints one block (status, manager, box, firewall, recent logs; no passwords) to paste when asking for help. |
+
 ## If something fails
 * **"the coin box did not join"**: the box must be powered, have the current firmware, and be a fresh or factory-reset unit (an old unit remembers its old Wi-Fi). Then `piso-setup pair`.
 * **"the box refused the admin login"**: the box already has its own password. Factory reset it, or run `BOX_ADMIN_PASSWORD='<its password>' piso-setup pair`.
