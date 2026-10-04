@@ -108,6 +108,8 @@ jobs:
           pip install -q playwright
       - name: Run end-to-end test with a fake box
         run: python3 opennds/tests/test_flow.py
+      - name: Run the flash coin portal test (green theme, roll file, pause, fair use)
+        run: python3 opennds/tests/test_flash_coin.py
       - name: Check the shell-only request signing against a reference
         run: python3 opennds/tests/test_hmac.py
       - name: Check the Layout B router configuration
