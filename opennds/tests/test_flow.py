@@ -290,6 +290,10 @@ try:
         check(st.get("state") == "done", f"a window left active by a stopped process is ended by /finish ({st})")
         shutil.rmtree(f"{STATE}/{sr}")
 
+    if IMPL == "fast":
+        r = subprocess.run(["sh", LISTENER, "selfcheck"], env=env, capture_output=True, text=True, timeout=60)
+        check(r.returncode == 0 and "everything this script needs is there" in r.stdout, "selfcheck finds every MicroPython feature the script uses: " + r.stdout[-300:])
+
     # ---- Endurance: 17 pesos accumulate to 11 hrs 30 min -----------------------------------------------------------
     p = pay("hidA", MAC_A, "endurance", 17)
     check("11 hrs 30 min" in p and "&#8369;17" in p, "result: P17 Endurance = 11 hrs 30 min")
