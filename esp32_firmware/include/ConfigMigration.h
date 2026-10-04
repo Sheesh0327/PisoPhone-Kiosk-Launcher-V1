@@ -17,6 +17,7 @@
 #include "CredGen.h"
 #include "Money.h"
 #include "SecretMode.h"
+#include "SetupGate.h"
 
 #include <cstdint>
 #include <string>
@@ -53,15 +54,17 @@ template <class Store> void migrateV1Secret(Store& s, const Env& env) {
     if (!hasFlag) s.putBool(K_LEGACY_KEY, legacy);
 }
 
-// v2: unique setup-AP and admin passwords; a password other than the old factory "admin" counts as chosen.
-template <class Store> void migrateV2Credentials(Store& s, const Env& env) {
+// v2: setup-AP and admin passwords: the published default (SetupGate.h), so a box can be set up and reset without a
+// serial monitor; using the box is blocked until the operator changes it. A password other than the old factory
+// "admin" on a box that already has one counts as chosen.
+template <class Store> void migrateV2Credentials(Store& s, const Env&) {
     if (!s.isKey(K_ADMIN_PW)) {
-        s.putString(K_ADMIN_PW, credgen::password(12, env.fillRandom));
+        s.putString(K_ADMIN_PW, setupgate::DEFAULT_PASSWORD);
         s.putBool(K_ADMIN_PW_CHANGED, false);
     } else if (!s.isKey(K_ADMIN_PW_CHANGED)) {
         s.putBool(K_ADMIN_PW_CHANGED, s.getString(K_ADMIN_PW, "") != "admin");
     }
-    if (!s.isKey(K_SETUP_AP_PASS)) s.putString(K_SETUP_AP_PASS, credgen::password(10, env.fillRandom));
+    if (!s.isKey(K_SETUP_AP_PASS)) s.putString(K_SETUP_AP_PASS, setupgate::DEFAULT_PASSWORD);
 }
 
 // v3: earnings as whole centavos instead of float pesos.

@@ -31,12 +31,6 @@
 static unsigned long lastWifiCheckTime = 0;
 static unsigned long lastCloudSnapshotMs = 0;
 static unsigned long lastHealthCheckMs = 0;
-static unsigned long wifiDownSinceMs = 0;
-static bool setupApActive = false;
-
-// Without a reachable network the admin portal (and so the Wi-Fi settings) is unreachable, so
-// after this long offline the board also opens its own setup access point.
-static const unsigned long SETUP_AP_AFTER_MS = 180000UL;
 
 static void applyWifiTxPower() {
 #if CONFIG_IDF_TARGET_ESP32C3
@@ -45,32 +39,6 @@ static void applyWifiTxPower() {
     WiFi.setTxPower(WIFI_POWER_8_5dBm);
     esp_wifi_set_max_tx_power(34);
 #endif
-}
-
-static void startSetupAccessPoint() {
-    String suffix = macAddressStr;
-    suffix.replace(":", "");
-    String apSsid = "PisoPhone-Setup-" + suffix.substring(suffix.length() - 4);
-    WiFi.mode(WIFI_AP_STA);
-    applyWifiTxPower();
-    if (WiFi.softAP(apSsid.c_str(), setupApPass.c_str())) {
-        setupApActive = true;
-        diagLog("[📶 SETUP AP] Wi-Fi unreachable. Setup AP '%s' active at http://%s\n", apSsid.c_str(),
-                WiFi.softAPIP().toString().c_str());
-    } else {
-        WiFi.mode(WIFI_STA);
-        applyWifiTxPower();
-        wifiDownSinceMs = millis();
-        Serial.println("[📶 SETUP AP] Failed to start setup AP; will retry.");
-    }
-}
-
-static void stopSetupAccessPoint() {
-    WiFi.softAPdisconnect(true);
-    WiFi.mode(WIFI_STA);
-    applyWifiTxPower();
-    setupApActive = false;
-    diagLog("[📶 SETUP AP] Wi-Fi connected. Setup AP stopped.");
 }
 
 static void initHardwareWatchdog() {
@@ -138,7 +106,8 @@ void setup() {
     loadAllConfig();
     gatewayInit();
     if (defaultCredentialsActive()) {
-        diagLog("[AUTH] WARNING: the generated admin password has not been changed yet; change it in Settings.\n");
+        diagLog(
+            "[AUTH] WARNING: the default admin password has not been changed yet; coins are blocked until it is.\n");
     }
     lastWifiCheckTime = millis();
 
@@ -253,22 +222,13 @@ void loop() {
     // 7. Robust Non-Blocking Wi-Fi Reconnection Watchdog & LED Status Sync
     if (WiFi.status() == WL_CONNECTED) {
         currentLedState = LED_STATE_CONNECTED;
-        wifiDownSinceMs = 0;
-        if (setupApActive) stopSetupAccessPoint();
     } else {
-        if (wifiDownSinceMs == 0) wifiDownSinceMs = millis();
-        // A box with no Wi-Fi configured opens its setup AP straight away; otherwise after a while offline.
-        if (!setupApActive && (wifiSsid.length() == 0 || millis() - wifiDownSinceMs >= SETUP_AP_AFTER_MS)) {
-            startSetupAccessPoint();
-        }
         if (millis() - lastWifiCheckTime < 20000) {
             currentLedState = LED_STATE_CONNECTING;
         } else {
             currentLedState = LED_STATE_FAILED;
 
-            // Reconnect scans hop channels and drop setup-AP clients, so retry less often then.
-            unsigned long retryMs = setupApActive ? 120000UL : 30000UL;
-            if (wifiSsid.length() > 0 && (millis() - lastWifiCheckTime > retryMs)) {
+            if (wifiSsid.length() > 0 && (millis() - lastWifiCheckTime > 30000UL)) {
                 lastWifiCheckTime = millis();
                 diagCount(DiagCounter::WifiReconnects);
                 diagLog("\n[📶 WATCHDOG] Wi-Fi lost. Attempting reconnection to \"%s\"...\n", wifiSsid.c_str());

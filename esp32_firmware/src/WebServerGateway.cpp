@@ -88,6 +88,9 @@ void handleGatewayArm() {
     case GatewayArmResult::InvalidSession:
         sendError(400, "INVALID_SESSION");
         return;
+    case GatewayArmResult::SetupRequired:
+        sendError(403, "SETUP_REQUIRED");
+        return;
     }
 }
 

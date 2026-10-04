@@ -1,0 +1,35 @@
+#ifndef SETUP_GATE_H
+#define SETUP_GATE_H
+
+// The box ships with one known password so it can be set up and reset without a serial monitor. That makes
+// changing it mandatory: until the operator has chosen their own admin password, no coin slot is armed.
+// Pure (no Arduino types) so host_tests/setup_gate_test.cpp can test it.
+
+#include <cstring>
+
+namespace setupgate {
+
+// Admin password of a box that has just been flashed or factory reset.
+static const char* const DEFAULT_PASSWORD = "Coinslot@Setup";
+
+// The box has no access point of its own. A fresh or factory-reset box joins this hidden Wi-Fi, which the router's
+// setup script creates (it admits only this box's MAC address, so the published password is not a way in for anyone else).
+static const char* const DEFAULT_WIFI_SSID = "PisoCoinBox";
+static const char* const DEFAULT_WIFI_PASSWORD = "PisoCoinBox@Setup";
+
+static const unsigned MIN_PASSWORD_LENGTH = 8;
+
+// A new admin password must be long enough and must not be the published default.
+inline bool passwordAcceptable(const char* candidate) {
+    if (!candidate) return false;
+    return std::strlen(candidate) >= MIN_PASSWORD_LENGTH && std::strcmp(candidate, DEFAULT_PASSWORD) != 0;
+}
+
+// Coins may only be accepted once the operator has chosen their own admin password.
+inline bool usageAllowed(bool adminPasswordChanged) {
+    return adminPasswordChanged;
+}
+
+} // namespace setupgate
+
+#endif // SETUP_GATE_H

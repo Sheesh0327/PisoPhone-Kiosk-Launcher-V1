@@ -106,8 +106,7 @@ extern String wifiSsid;
 extern String wifiPass;
 extern String androidIps;
 extern String webPassword;
-extern String setupApPass;                 // password of the setup access point, unique per box
-extern bool adminPwChanged;                // false until the operator replaces the generated admin password
+extern bool adminPwChanged;                // false until the default admin password is replaced
 void runConfigMigrations();                // brings saved settings to this firmware's format (ConfigMigration.h)
 void loadCredentials();                    // reads the admin and setup-AP passwords (the migrations make them)
 String getSharedSecret();                  // the key box<->phone traffic uses right now

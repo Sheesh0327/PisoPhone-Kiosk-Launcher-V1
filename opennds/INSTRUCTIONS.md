@@ -1,5 +1,9 @@
 # Router setup instructions
 
+**Recommended: automatic setup.** Copy one file to a factory-reset router and run it: [`../setup/README.md`](../setup/README.md).
+It builds the PisoKiosk, hidden coin-box and PisoWiFi networks, installs everything, pairs the ESP32 and sets its password and key.
+The guides below are the manual, step-by-step equivalent.
+
 There is one complete guide (shell) plus a portal variant that builds on it. Each starts from a **factory-reset router** and ends with a working coin-operated
 PisoWiFi portal. Follow the shell guide; the flash guide is an optional add-on to it.
 
