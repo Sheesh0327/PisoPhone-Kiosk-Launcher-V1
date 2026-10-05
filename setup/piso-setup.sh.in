@@ -11,7 +11,7 @@
 # (or factory reset) and powered on.
 #
 # What it builds (the router's LAN address is not touched; your SSH session stays open the whole time):
-#   PisoKiosk    Wi-Fi, 2.4 + 5 GHz, WPA2, fixed name. For the rental phones only. Network 10.0.0.0/24 (the router's LAN).
+#   PisoKiosk    Wi-Fi, 2.4 + 5 GHz, WPA2, name chosen at setup. For the rental phones only. Network 10.0.0.0/24 (the router's LAN).
 #   PisoCoinBox  hidden Wi-Fi, 2.4 GHz, for the ESP32 coin box only: after pairing, only the box's MAC address may join.
 #                The box gets the fixed address 10.0.0.10.
 #   PisoWiFi     open Wi-Fi, 2.4 + 5 GHz, for customers (openNDS login page, coin payments). Rename it with:
@@ -24,12 +24,12 @@
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation
-# Settings can be overridden from the environment: COUNTRY (default PH) GUEST_SSID BOX_IP GUEST_IP ROOT_PASSWORD KIOSK_PASSWORD BOX_NEW_ADMIN_PASSWORD
+# Settings can be overridden from the environment: COUNTRY (default PH) GUEST_SSID KIOSK_NAME BOX_IP GUEST_IP ROOT_PASSWORD KIOSK_PASSWORD BOX_NEW_ADMIN_PASSWORD
 
 VERSION="@VERSION@"
 
 COUNTRY="${COUNTRY:-PH}"
-KIOSK_SSID="PisoKiosk"                       # fixed: the phones are provisioned with it
+KIOSK_SSID="PisoKiosk"                       # the default; chosen at setup (KIOSK_NAME), then fixed: the phones are provisioned with it
 BOX_SSID="PisoCoinBox"                       # fixed: the ESP32 firmware has it built in
 BOX_WIFI_PASS="PisoCoinBox@Setup"            # fixed: the ESP32 firmware has it built in (only the paired box's MAC may join)
 BOX_DEFAULT_ADMIN="Coinslot@Setup"           # the box's admin password until this script changes it
@@ -394,7 +394,7 @@ PisoPhone setup summary ($(date '+%F %T'), setup file version $VERSION)
 Keep this file private (it is readable by root only).
 
 Router (SSH / LuCI):   root@$LAN_IP        password: $(if [ "$(conf_get ROOT_PASS_SET)" = 1 ]; then conf_get ROOT_PASS; else echo "NOT SET by this setup (the router keeps its previous one): run piso-setup set-password"; fi)
-PisoKiosk Wi-Fi:       $KIOSK_SSID         password: $(conf_get KIOSK_PASS)    (for the rental phones; 2.4 + 5 GHz)
+Kiosk Wi-Fi:           $KIOSK_SSID         password: $(conf_get KIOSK_PASS)    (for the rental phones; 2.4 + 5 GHz)
 PisoWiFi (customers):  $(conf_get GUEST_NAME)   (open; rename with: piso-setup wifi-name "New Name")
 Coin box:              http://$BOX_IP      admin password: $(conf_get BOX_ADMIN_PASS)    hidden Wi-Fi: $BOX_SSID (only MAC $(conf_get BOX_MAC))
 
@@ -602,6 +602,29 @@ cmd_pair() {
 
 # The router password protects SSH and LuCI, which the kiosk phones' network can reach. Ask for one, or generate one that is
 # printed on screen (and in the summary), so nobody is ever locked out of the router.
+# ask_name NAME "label" DEFAULT [VALUE]: a Wi-Fi name. Already chosen (a re-run): kept. Otherwise from the environment, or asked
+# for (Enter takes the default); with no terminal the default is used.
+ask_name() {
+	_n="$1"; _label="$2"; _def="$3"; _v="$4"
+	ASKED=$(conf_get "$_n"); [ -z "$ASKED" ] || return 0
+	if [ -z "$_v" ] && [ "$ASSUME_YES" != 1 ] && [ -t 0 ]; then
+		echo
+		printf 'Name of the %s Wi-Fi [%s]: ' "$_label" "$_def"; read -r _v
+	fi
+	_v="${_v:-$_def}"
+	[ "${#_v}" -le 32 ] || die "the $_label name can be at most 32 characters"
+	case "$_v" in *\'* | *\"* | *\\* | *\$* | *\`*) die "the $_label name may not contain quotes, backslashes, \$ or backticks" ;; esac
+	conf_set "$_n" "$_v"; ASKED="$_v"
+}
+
+# The two Wi-Fi names (asked once; the phones are provisioned with the kiosk one, so it is not renamed later).
+choose_names() {
+	ask_name GUEST_NAME "public customer" "${GUEST_SSID:-PisoWiFi}" "$GUEST_SSID"; GUEST_NAME="$ASKED"
+	ask_name KIOSK_NAME "rental-phone (kiosk)" "PisoKiosk" "$KIOSK_NAME"; KIOSK_SSID="$ASKED"
+	[ "$GUEST_NAME" != "$KIOSK_SSID" ] || die "the two Wi-Fi names must differ"
+	case "$GUEST_NAME$KIOSK_SSID" in *"$BOX_SSID"*) die "a Wi-Fi name may not contain $BOX_SSID (the coin box's hidden network)" ;; esac
+}
+
 # ask_password NAME "label" MIN MAX [ENV VALUE]: the password for NAME. Already chosen (a re-run): kept. Otherwise it is
 # taken from the environment, or asked for (typed twice, not shown); Enter (or no terminal) leaves it to be generated.
 ask_password() {
@@ -627,7 +650,7 @@ ask_password() {
 # firmware keeps it under remote management and it cannot be set from here.
 choose_passwords() {
 	ask_password ROOT_PASS "router password (SSH and LuCI login)" 8 63 "$ROOT_PASSWORD"
-	ask_password KIOSK_PASS "PisoKiosk Wi-Fi password (typed once into each rental phone's setup page)" 8 63 "$KIOSK_PASSWORD"
+	ask_password KIOSK_PASS "rental-phone (kiosk) Wi-Fi password (typed once into each phone's setup page)" 8 63 "$KIOSK_PASSWORD"
 	ask_password BOX_ADMIN_PASS_NEW "coin box admin password (the box's web page; also the phones' admin PIN)" 8 32 "$BOX_NEW_ADMIN_PASSWORD"
 }
 
@@ -639,10 +662,9 @@ stage1() {
 		echo "It takes a few minutes and waits for the coin box to join. Continue? [y/N]"
 		read -r _a; case "$_a" in y | Y | yes) ;; *) echo "Cancelled."; exit 1 ;; esac
 	fi
+	choose_names
 	choose_passwords
 	KIOSK_PASS=$(secret KIOSK_PASS 12)
-	case "$GUEST_SSID" in *\'* | *\"* | *\\* | *\$* | *\`*) die "GUEST_SSID may not contain quotes, backslashes, \$ or backticks" ;; esac
-	GUEST_NAME=$(conf_get GUEST_NAME); [ -n "$GUEST_NAME" ] || { GUEST_NAME="${GUEST_SSID:-PisoWiFi}"; conf_set GUEST_NAME "$GUEST_NAME"; }
 	secret ROOT_PASS 14 > /dev/null; secret GW_KEY 64 hex > /dev/null; secret BOX_ADMIN_PASS_NEW 16 > /dev/null
 	BOX_MAC=$(conf_get BOX_MAC)
 	if [ "$DRY" = 1 ]; then uci_batch "<kiosk password>" "$GUEST_NAME" "$BOX_MAC"; return 0; fi
@@ -656,6 +678,7 @@ stage1() {
 }
 
 main() {
+	_kn=$(conf_get KIOSK_NAME); [ -z "$_kn" ] || KIOSK_SSID="$_kn"
 	CMD=""
 	while [ $# -gt 0 ]; do
 		case "$1" in

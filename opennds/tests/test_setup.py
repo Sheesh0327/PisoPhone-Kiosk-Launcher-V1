@@ -70,6 +70,15 @@ r = run("--dry-run")
 out = r.stdout
 check(r.returncode == 0, "dry run succeeds: " + r.stderr + out[-300:])
 check("flow_offloading='0'" in out and "flow_offloading_hw='0'" in out, "flow offloading is switched off (it can bypass the speed caps)")
+r2 = run("--dry-run", env={"KIOSK_NAME": "ShopPhones", "GUEST_SSID": "Maria Free WiFi"})
+check("set wireless.kiosk_radio0.ssid='ShopPhones'" in r2.stdout and "set wireless.guest_radio0.ssid='Maria Free WiFi'" in r2.stdout,
+      "both Wi-Fi names can be chosen at setup: " + r2.stderr[-200:])
+r2 = run("--dry-run", env={"KIOSK_NAME": "Same", "GUEST_SSID": "Same"})
+check(r2.returncode != 0 and "must differ" in (r2.stdout + r2.stderr), "the two names must differ")
+r2 = run("--dry-run", env={"KIOSK_NAME": "x" * 33})
+check(r2.returncode != 0 and "at most 32" in (r2.stdout + r2.stderr), "a name over 32 characters is refused")
+r2 = run("--dry-run", env={"GUEST_SSID": "it's"})
+check(r2.returncode != 0 and "may not contain" in (r2.stdout + r2.stderr), "a name with a quote is refused")
 check("ca-bundle" in text and "cmd_telegram" in text and "#@@FILE /usr/bin/piso-monitor.sh 755" in text, "the monitor and its https certificates are part of the setup")
 check("network.lan.ipaddr" not in out and "network.lan.netmask" not in out and "network restart" not in text.split("stage1()")[1], "the LAN address is never changed by the script (so SSH stays open)")
 inst = text.split("install_packages() {")[1].split("\n}\n")[0]
