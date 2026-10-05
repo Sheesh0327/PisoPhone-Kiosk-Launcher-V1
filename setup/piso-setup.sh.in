@@ -20,7 +20,7 @@
 # Everything is generated here (Wi-Fi password, box admin password, gateway key) and printed once at the end and saved in
 # /root/piso-setup-summary.txt. Running the file again is safe: it keeps what it already made.
 #
-# Other commands (after setup): piso-setup status | wifi-name "<name>" | pair | summary | test-coin | diag | set-password | reconcile | telegram | rotate-box-wifi | handout
+# Other commands (after setup): piso-setup status | wifi-name "<name>" | pair | summary | test-coin | diag | set-password | reconcile | telegram | rotate-box-wifi | handout | lock-admin | unlock-admin
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation
@@ -676,6 +676,57 @@ EOT
 }
 cmd_handout() { [ "$(id -u)" = 0 ] || die "run as root"; _p=$(write_handout); echo "Printable setup sheet written to: $_p"; echo "Copy it to a computer to print:  scp -O root@$LAN_IP:$_p ."; }
 
+# --- opt-in: keep the rental phones away from the router's admin ports --------------------------------------------------------
+# The phones share the router's LAN, so they can reach SSH and LuCI (password protected). lock-admin makes ports 22, 80 and
+# 443 answer only to the MAC addresses you name; it undoes itself after 2 minutes unless you confirm, so it cannot lock you out.
+this_machine_mac() {  # the MAC address of the computer this SSH session comes from
+	_ip="${SSH_CONNECTION%% *}"; [ -n "$_ip" ] || return 0
+	ip neigh show "$_ip" 2> /dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "lladdr") { print $(i + 1); exit } }'
+}
+admin_rules_clear() {
+	for _s in $(uci -q show firewall | sed -n 's/^firewall\.\(piso_admin_[a-z0-9_]*\)=rule$/\1/p'); do uci -q delete "firewall.$_s"; done
+}
+cmd_lock_admin() {
+	[ "$(id -u)" = 0 ] || die "run as root"
+	_macs="$*"
+	[ -n "$_macs" ] || { _m=$(this_machine_mac); [ -z "$_m" ] || { _macs="$_m"; echo "Using this computer's address: $_m"; }; }
+	[ -n "$_macs" ] || die "name the computer(s) that may administer the router: piso-setup lock-admin aa:bb:cc:dd:ee:ff [more addresses]"
+	_i=0
+	for _m in $_macs; do
+		case "$_m" in [0-9a-fA-F][0-9a-fA-F]:[0-9a-fA-F][0-9a-fA-F]:[0-9a-fA-F][0-9a-fA-F]:[0-9a-fA-F][0-9a-fA-F]:[0-9a-fA-F][0-9a-fA-F]:[0-9a-fA-F][0-9a-fA-F]) ;; *) die "not a MAC address: $_m" ;; esac
+	done
+	admin_rules_clear
+	for _m in $_macs; do
+		_i=$((_i + 1)); _n="piso_admin_allow_$_i"
+		uci set "firewall.$_n=rule"; uci set "firewall.$_n.name=Router-admin-allow-$_i"
+		uci set "firewall.$_n.src=lan"; uci set "firewall.$_n.src_mac=$_m"; uci set "firewall.$_n.proto=tcp"
+		uci set "firewall.$_n.dest_port=22 80 443"; uci set "firewall.$_n.target=ACCEPT"
+	done
+	uci set firewall.piso_admin_block=rule; uci set firewall.piso_admin_block.name='Router-admin-block'
+	uci set firewall.piso_admin_block.src=lan; uci set firewall.piso_admin_block.proto=tcp
+	uci set firewall.piso_admin_block.dest_port='22 80 443'; uci set firewall.piso_admin_block.target=REJECT
+	uci commit firewall
+	conf_set ADMIN_MACS "$_macs"
+	rm -f /tmp/piso-admin-confirm
+	/etc/init.d/firewall reload > /dev/null 2>&1
+	# the safety net: back to open after 2 minutes unless confirmed (runs on its own, so it also works if this session is lost)
+	setsid sh -c 'sleep "${LOCK_ADMIN_SECONDS:-120}"; [ -e /tmp/piso-admin-confirm ] || { uci -q delete firewall.piso_admin_block; uci commit firewall; /etc/init.d/firewall reload; logger -t piso-setup "lock-admin was not confirmed and has been undone"; }' > /dev/null 2>&1 &
+	echo "Locked: only $_macs may reach the router's admin ports (22, 80, 443)."
+	echo "Now open a NEW SSH session from that computer to check that you can still log in."
+	echo "Then confirm here (or run: piso-setup lock-admin-confirm). Without confirmation the lock undoes itself in 2 minutes."
+	if [ -t 0 ]; then
+		printf 'Type CONFIRM once the new session works: '; read -r _a
+		[ "$_a" = CONFIRM ] && cmd_lock_admin_confirm || echo "Not confirmed: the lock will undo itself."
+	fi
+}
+cmd_lock_admin_confirm() { : > /tmp/piso-admin-confirm; echo "Confirmed: the admin lock stays. Undo it with: piso-setup unlock-admin"; }
+cmd_unlock_admin() {
+	[ "$(id -u)" = 0 ] || die "run as root"
+	admin_rules_clear; uci commit firewall; conf_set ADMIN_MACS ""
+	/etc/init.d/firewall reload > /dev/null 2>&1
+	echo "The router's admin ports are open to the whole kiosk network again."
+}
+
 cmd_set_password() {
 	[ "$(id -u)" = 0 ] || die "run as root"
 	echo "Choose a new router (SSH / LuCI) password; it is saved in $CONF and shown by: piso-setup summary"
@@ -802,7 +853,7 @@ main() {
 		case "$1" in
 			--dry-run) DRY=1 ;;
 			--yes | -y) ASSUME_YES=1 ;;
-			status | pair | summary | wifi-name | uninstall-info | test-coin | diag | set-password | reconcile | telegram | rotate-box-wifi | handout) CMD="$1"; shift; ARG="$1"; break ;;
+			status | pair | summary | wifi-name | uninstall-info | test-coin | diag | set-password | reconcile | telegram | rotate-box-wifi | handout | lock-admin | lock-admin-confirm | unlock-admin) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
 			-h | --help) sed -n '2,/^# Options:/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 			*) echo "unknown option: $1 (try --help)" >&2; exit 1 ;;
 		esac
@@ -817,6 +868,9 @@ main() {
 		reconcile) cmd_reconcile ;;
 		telegram) cmd_telegram ;;
 		handout) cmd_handout ;;
+		lock-admin) cmd_lock_admin $ARGS ;;
+		lock-admin-confirm) cmd_lock_admin_confirm ;;
+		unlock-admin) cmd_unlock_admin ;;
 		rotate-box-wifi) DRY=0; [ "$(id -u)" = 0 ] || die "run as root"; conf_set BOX_WIFI_ROTATED 0; rotate_box_wifi ;;
 		set-password) cmd_set_password ;;
 		summary) cat "$SUMMARY" ;;

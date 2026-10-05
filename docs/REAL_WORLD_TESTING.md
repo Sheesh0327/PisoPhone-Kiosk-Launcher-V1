@@ -29,8 +29,8 @@ Collect logs as you go: box serial output at 115200 baud (`pio device monitor`),
 
 ## 1. Box basics
 *B1–B3 are pass 1, the rest pass 2*
-- [ ] **B1** Box boots with the default password `Coinslot@Setup` (admin login and setup Wi-Fi); a coin request is refused (`SETUP_REQUIRED`) until the admin password is changed
-- [ ] **B2** Box opens its setup Wi-Fi when no Wi-Fi is saved; joins your Wi-Fi once configured
+- [ ] **B1** A fresh or factory-reset box boots with the default password `Coinslot@Setup` and the built-in Wi-Fi `PisoCoinBox` / `PisoCoinBox@Setup`; a coin request is refused (`SETUP_REQUIRED`) until the admin password is changed (the router setup changes it)
+- [ ] **B2** The box has no access-point mode: it joins the router's hidden `PisoCoinBox` network by itself, after the router setup it has its own random Wi-Fi password (`piso-setup status` checks it), and it answers at `10.0.0.10`
 - [ ] **B3** Dashboard opens; first-run checklist shows; it disappears when its items are done
 - [ ] **B4** Changing the admin password works; old password stops working
 - [ ] **B5** Five wrong admin passwords lock login for a minute
@@ -116,3 +116,16 @@ pushing closes its issue. Avoid `|` characters inside cells.
 | Date | Passed | Failed | Not tested | Open blockers | Verdict |
 |---|---|---|---|---|---|
 | | | | | | |
+
+## 9. Router setup and customer Wi-Fi (setup/README.md)
+*pass 1 unless noted*
+- [ ] **RS1** `piso-setup.sh` on a factory-reset router: it asks for the public Wi-Fi name, a site name and three passwords (Enter generates), shows the review screen, and ends with `SETUP COMPLETE` (all checks pass)
+- [ ] **RS2** The hidden `PisoKiosk` network appears in no Wi-Fi list; a provisioned phone joins it by itself and rejoins within about a minute when moved to another network
+- [ ] **RS3** `piso-setup test-coin` counts one inserted coin
+- [ ] **RS4** Customer phone: the page shows each coin at once with a countdown and **Done**; it is **not** online while coins are going in; after Done (or 15 s idle) it is online with the total time and a restore code
+- [ ] **RS5** A second device is refused (Try again) while a window is open; a device that opens empty windows repeatedly is put in a short cooldown
+- [ ] **RS6** `piso-setup reconcile` says `RECONCILE OK`; editing a line of `/etc/coinslot.d/revenue.csv` makes it report a broken ledger
+- [ ] **RS7** Restart the router in the middle of a window (power cut after the first coin): after it is back, the coins are credited once (pass 2)
+- [ ] **RS8** `piso-setup telegram`: messages and `/status` work from your chat only; unplug the box for 5 minutes and an alert arrives (pass 2)
+- [ ] **RS9** `piso-setup lock-admin` from your computer: another device on PisoKiosk can no longer open the router's pages or SSH; `piso-setup unlock-admin` undoes it (pass 2)
+- [ ] **RS10** `piso-setup handout` writes `/root/piso-handout.html` with the right names and passwords

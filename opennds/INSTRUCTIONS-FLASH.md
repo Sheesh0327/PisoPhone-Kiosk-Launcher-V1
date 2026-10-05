@@ -1,5 +1,7 @@
 # Flash coin portal (green theme)
 
+> Setting up a router: use `setup/piso-setup.sh` and `setup/README.md` (one file, asks its questions, installs this portal). This page describes how the portal behaves.
+
 The "flash coin" portal is the pay-with-coins portal in the look and structure of your working paper-voucher theme
 (`flash_voucher.sh` / `green_sprite_params.sh`), without the paper vouchers: a customer chooses a plan, drops coins, and the
 coin-slot manager **verifies the payment**; the theme then records it on one roll file and authenticates the device through

@@ -258,6 +258,22 @@ r = lib('ASSUME_YES=0; ask_telegram; echo rc=$?; echo "[$(conf_get TG_TOKEN)]"')
 check("[]" in r.stdout, "without a terminal the Telegram prompt is skipped")
 check("review_choices" in text.split("stage1() {")[1] and "Apply these settings?" in text and text.index("review_choices\n\task_telegram") > 0, "answers are reviewed before anything is changed")
 check("finish_telegram" in text.split("stage2() {")[1].split("\n}\n")[0] and "write_handout" in text.split("stage2() {")[1].split("\n}\n")[0], "stage 2 writes the sheet and offers Telegram at the end")
+# ---- opt-in admin lock -------------------------------------------------------------------------------------------------------------
+open(f"{tmp}/uci.log", "w").close()
+r = lib('LOCK_ADMIN_SECONDS=0; id() { echo 0; }; cmd_lock_admin aa:bb:cc:dd:ee:01 AA:BB:CC:DD:EE:02 < /dev/null; echo rc=$?; echo "ADMIN=$(conf_get ADMIN_MACS)"',
+        env={"LOCK_ADMIN_SECONDS": "300"})
+ul = open(f"{tmp}/uci.log").read()
+check("rc=0" in r.stdout and "firewall.piso_admin_allow_1.src_mac=aa:bb:cc:dd:ee:01" in ul and "firewall.piso_admin_allow_2.src_mac=AA:BB:CC:DD:EE:02" in ul
+      and "firewall.piso_admin_block.target=REJECT" in ul and "dest_port=22 80 443" in ul and "commit firewall" in ul, "lock-admin allows the named computers and blocks the rest: " + r.stdout + r.stderr[-300:])
+check("undo" in r.stdout.lower() and "ADMIN=aa:bb:cc:dd:ee:01 AA:BB:CC:DD:EE:02" in r.stdout, "it says it undoes itself unless confirmed, and remembers the addresses")
+r = lib('id() { echo 0; }; cmd_lock_admin not-a-mac < /dev/null; echo rc=$?')
+check("not a MAC" in (r.stdout + r.stderr), "a bad address is refused")
+r = lib('id() { echo 0; }; SSH_CONNECTION=""; cmd_lock_admin < /dev/null; echo rc=$?')
+check("name the computer" in (r.stdout + r.stderr), "without any address (and none detectable) it refuses instead of locking everyone out")
+open(f"{tmp}/uci.log", "w").close()
+r = lib('id() { echo 0; }; cmd_unlock_admin; echo rc=$?')
+check("rc=0" in r.stdout and "commit firewall" in open(f"{tmp}/uci.log").read(), "unlock-admin removes the rules")
+check("setsid sh -c 'sleep" in text and "piso-admin-confirm" in text, "the lock has a self-undo timer")
 # ---- finding the box on its own network --------------------------------------------------------------------------------------
 open(f"{bindir}/iwinfo", "w").write("""#!/bin/sh
 if [ -z "$1" ]; then
