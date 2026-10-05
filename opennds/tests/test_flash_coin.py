@@ -557,6 +557,20 @@ try:
             psrv.shutdown()
             psrv.server_close()
 
+    # ---- ledger chain and clock clamp ---------------------------------------------------------------------------------------------
+    rc, out = lib("flash_verify")
+    check(rc == 0 and out.startswith("OK "), "revenue chain verifies: " + out)
+    lines = revenue().strip().split("\n")
+    check(all(len(l.split(",")) == 6 for l in lines), "every revenue line carries a hash")
+    f0 = lines[0].split(",")
+    f0[2] = str(int(f0[2]) + 90)
+    open(REV, "w").write("\n".join([",".join(f0)] + lines[1:]) + "\n")
+    rc, out = lib("flash_verify")
+    check(rc != 0 and out == "BAD 1", "an edited line is detected: " + out)
+    roll_write(f"CLOCK1,1000,1000,0,0,10,{int(time.time()) + 3000},{MAC_A},0,0,0,hyper,w9,1,10,1,1")
+    rc, out = lib(f'roll_parse "$(roll_find_mac {MAC_A})"; roll_calc; echo $R_LEFT')
+    check(out == "600", "a clock that jumped back cannot add time: left " + out)
+
     # ---- terms -------------------------------------------------------------------------------------------------------------------
     check("Terms of Service" in page("hidA", MAC_A, terms="yes"), "terms page")
 finally:

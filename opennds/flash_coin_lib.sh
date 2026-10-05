@@ -143,6 +143,7 @@ roll_calc() {
 	R_END=$((R_FP + R_TL * 60))
 	if [ "$R_PA" != 0 ]; then R_LEFT="$R_RP"; else R_LEFT=$((R_END - $(now_ts))); fi
 	[ "$R_LEFT" -lt 0 ] && R_LEFT=0
+	[ "$R_LEFT" -gt $((R_TL * 60)) ] && R_LEFT=$((R_TL * 60))   # a clock that jumped back can never add time
 	[ "$R_LEFT" -gt 0 ]
 }
 left_min() { echo $(((${1:-0} + 59) / 60)); }
@@ -199,9 +200,29 @@ flash_mint() {
 	roll_unlock
 	return 0
 }
+# Each revenue line ends with a short hash over the previous line's hash and its own text, so edited, removed or inserted
+# lines are detectable (flash_verify). The first line chains from "0".
+flash_chain() {  # flash_chain <prev> <line>
+	printf '%s|%s' "$1" "$2" | sha256sum | cut -c1-12
+}
 flash_revenue() {  # flash_revenue <time> <plan> <pesos> <minutes> <kind>
 	mkdir -p "$(dirname "$FLASH_REVENUE")" 2> /dev/null
-	echo "$1,$2,$3,$4,$5" >> "$FLASH_REVENUE"
+	_rl="$1,$2,$3,$4,$5"
+	_prev=$(tail -n 1 "$FLASH_REVENUE" 2> /dev/null | awk -F, '{print $6}'); [ -n "$_prev" ] || _prev=0
+	echo "$_rl,$(flash_chain "$_prev" "$_rl")" >> "$FLASH_REVENUE"
+}
+# flash_verify: prints "OK <lines> <pesos>" or "BAD <line number>". Lines without a hash (older versions) are skipped.
+flash_verify() {
+	[ -r "$FLASH_REVENUE" ] || { echo "OK 0 0"; return 0; }
+	_prev=0; _i=0; _sum=0
+	while IFS= read -r _l; do
+		_i=$((_i + 1))
+		case "$_l" in *,*,*,*,*,*) ;; *) continue ;; esac
+		_h="${_l##*,}"; _t="${_l%,*}"
+		[ "$(flash_chain "$_prev" "$_t")" = "$_h" ] || { echo "BAD $_i"; return 1; }
+		_prev="$_h"; _p=$(echo "$_t" | cut -d, -f3); _sum=$((_sum + _p))
+	done < "$FLASH_REVENUE"
+	echo "OK $_i $_sum"
 }
 
 # ---------------------------------------------------------------------------
