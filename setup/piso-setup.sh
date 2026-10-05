@@ -593,7 +593,7 @@ cmd_diag() {
 # else is touched: no Wi-Fi or network settings, passwords, pairing or customer data. Run it from the new file:
 #   ./piso-setup.sh update
 cmd_update() {
-	[ "$(id -u)" = 0 ] || die "run as root"
+	[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
 	DRY=0
 	[ -r "$CONF" ] && [ -n "$(conf_get GW_KEY)" ] || die "no PisoPhone setup found on this router: run ./piso-setup.sh without arguments first"
 	[ "$0" != "$SELF_PATH" ] || die "this is the installed (old) copy. Copy the NEW piso-setup.sh to the router and run it from there: ./piso-setup.sh update"
