@@ -12,7 +12,7 @@ One file, `piso-setup.sh`, turns a factory-reset OpenWrt router into the whole P
 ```
 cd esp32_firmware
 sh host_tests/run.sh                  # optional: the firmware's own tests
-pio run -e esp32-c3-dev -t upload     # the board's environment: see esp32_firmware/platformio.ini
+pio run -e esp32-c3-dev -t upload     # ESP32-C3 boards; use esp32dev-dev for a classic ESP32 (environments: esp32_firmware/envs/)
 pio device monitor                    # optional: watch it start
 ```
 CI compiles the firmware on every push (job "Firmware format and host tests" and the build job). The box starts with the published defaults (admin password `Coinslot@Setup`, setup Wi-Fi `PisoCoinBox`); the router setup changes the password and key by itself, and the box refuses coins until its password has been changed.
@@ -57,7 +57,7 @@ It has every password generated for you (router, PisoKiosk Wi-Fi, coin box admin
 3. You get a "connected" message. From then on you receive: router restarted, box offline for 5 minutes (and back), revenue mismatch or edited ledger, a device abusing the coin slot, and a daily report at 21:00.
 4. Commands (only from your chat): `/status`, `/report [days]`, `/reconcile`, `/diag`, `/restart` (coin manager), `/reboot` (then `/reboot confirm` within 2 minutes), `/help`.
 5. Optional dead-man switch: create a check at healthchecks.io, put its ping URL in `/etc/piso-monitor.conf` as `HEALTHCHECK_URL='...'`, then `/etc/init.d/piso_monitor restart`. You are alerted when the router stops pinging (power cut, internet down).
-The router needs internet for this; if the site is offline, alerts arrive late but are not lost for the daily report.
+The router needs internet for this: while the site is offline nothing can be sent, and alerts raised in that time are not delivered later (the dead-man switch covers that case).
 
 ## What you get
 | network | for | bands | notes |
