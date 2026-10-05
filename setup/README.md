@@ -59,6 +59,13 @@ It has every password generated for you (router, PisoKiosk Wi-Fi, coin box admin
 5. Optional dead-man switch: create a check at healthchecks.io, put its ping URL in `/etc/piso-monitor.conf` as `HEALTHCHECK_URL='...'`, then `/etc/init.d/piso_monitor restart`. You are alerted when the router stops pinging (power cut, internet down).
 The router needs internet for this: while the site is offline nothing can be sent, and alerts raised in that time are not delivered later (the dead-man switch covers that case).
 
+## Step 5: provision each rental phone (it joins PisoKiosk by itself)
+A phone that is not on the **PisoKiosk** Wi-Fi cannot find its coin box, so it can never pair or learn its admin PIN. The provisioning page (the "Install & Provision" link on the box's page) therefore has a **Kiosk Wi-Fi** section: the name (`PisoKiosk`) and the PisoKiosk password from `piso-setup summary`. It is sent to the phone together with the box's secret; the app (a device owner) adds the network itself, joins it, and rejoins whenever the phone is on another network (checked every minute). The page remembers the password on that computer, so the next phone needs no typing. Without a password the page warns you before it continues.
+To fix a phone that is already provisioned (it needs the admin PIN or box secret because it is paired already):
+```
+adb shell am broadcast -a com.pisophone.kiosk.CONFIGURE_ESP32 -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es wifi_ssid PisoKiosk --es wifi_pass '<password>' --es pin '<admin PIN>'
+```
+
 ## What you get
 | network | for | bands | notes |
 |---|---|---|---|

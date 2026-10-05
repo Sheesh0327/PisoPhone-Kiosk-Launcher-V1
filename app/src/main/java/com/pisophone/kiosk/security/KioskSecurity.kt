@@ -46,6 +46,8 @@ object KioskSecurity {
      */
     const val DEFAULT_SHARED_SECRET = "PISOPHONE_HMAC_MASTER_KEY"
     private const val KEY_BOX_SECRET = "box_shared_secret"
+    private const val KEY_KIOSK_WIFI_SSID = "kiosk_wifi_ssid"
+    private const val KEY_KIOSK_WIFI_PASSWORD = "kiosk_wifi_password"
     private val BOX_SECRET_REGEX = Regex("^[A-Za-z0-9_.+=-]{16,128}$")
     private const val KEY_SECRET_EXPLICITLY_PROVISIONED = "kiosk_secret_explicitly_provisioned"
     private const val TAG = "KioskSecurity"
@@ -288,6 +290,22 @@ object KioskSecurity {
         return opened.value
     }
 
+    /** The shop's kiosk Wi-Fi this phone must join to find its box (set when provisioned), or "" when none was given. */
+    fun getKioskWifiSsid(context: Context): String = getPrefs(context).getString(KEY_KIOSK_WIFI_SSID, "") ?: ""
+
+    fun getKioskWifiPassword(context: Context): String =
+        secretVault.open(getPrefs(context).getString(KEY_KIOSK_WIFI_PASSWORD, "") ?: "").value
+
+    /** Stores the kiosk Wi-Fi (password wrapped like the box secret). Returns false when either value is not acceptable. */
+    fun setKioskWifi(context: Context, ssid: String, password: String): Boolean {
+        if (!com.pisophone.kiosk.network.KioskWifi.isValidSsid(ssid) || !com.pisophone.kiosk.network.KioskWifi.isValidPassword(password)) return false
+        getPrefs(context).edit()
+            .putString(KEY_KIOSK_WIFI_SSID, ssid)
+            .putString(KEY_KIOSK_WIFI_PASSWORD, secretVault.seal(password))
+            .apply()
+        return true
+    }
+
     /** True while this phone still talks to its box with the old, publicly known shared key. */
     fun usesLegacySharedSecret(context: Context): Boolean = getSharedSecret(context) == DEFAULT_SHARED_SECRET
 
@@ -514,7 +532,17 @@ object KioskSecurity {
         mac: String? = null,
         slot: Int = -1,
         name: String? = null,
+        wifiSsid: String? = null,
+        wifiPassword: String? = null,
     ): Boolean {
+        if (!wifiPassword.isNullOrEmpty()) {
+            val ssid = if (wifiSsid.isNullOrBlank()) com.pisophone.kiosk.network.KioskWifi.DEFAULT_SSID else wifiSsid
+            if (setKioskWifi(context, ssid, wifiPassword)) {
+                Log.i(TAG, "[+] Kiosk Wi-Fi \"$ssid\" stored; this phone will join it to find its box.")
+            } else {
+                Log.w(TAG, "Ignored a kiosk Wi-Fi name or password that is not valid (name 1-32, password 8-63 printable characters).")
+            }
+        }
         if (!mac.isNullOrBlank()) {
             val formattedMac = formatMacAddress(mac.trim())
             if (formattedMac.isNotBlank()) {

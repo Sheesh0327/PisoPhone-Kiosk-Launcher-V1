@@ -41,7 +41,7 @@ Collect logs as you go: box serial output at 115200 baud (`pio device monitor`),
 ## 2. Phone install and pairing
 *P1–P4 are pass 1, the rest pass 2*
 - [ ] **P1** Install the APK from the website; phone becomes the locked kiosk (device owner setup)
-- [ ] **P2** "Install & Provision" link gives the phone its box secret and an admin PIN
+- [ ] **P2** "Install & Provision" link gives the phone its box secret and an admin PIN; with the PisoKiosk password typed on the page, the phone joins PisoKiosk by itself (turn its Wi-Fi to another network and see it come back within about a minute)
 - [ ] **P3** Phone finds the box and shows it online; slot shows as paired in the dashboard
 - [ ] **P4** Reboot the phone: kiosk starts by itself, box still reachable, **no re-provisioning needed** (Keystore check)
 - [ ] **P5** Admin PIN works; five wrong PINs lock further tries

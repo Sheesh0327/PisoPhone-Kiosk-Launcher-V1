@@ -160,7 +160,9 @@ class MainActivity : ComponentActivity() {
             ?: intent.getStringExtra("name")
             ?: intent.getStringExtra("alias")
         val activate = intent.getBooleanExtra("activate", intent.hasExtra("setup_secret") || intent.hasExtra("secret") || intent.hasExtra("setup_mac"))
-        val hasProvisioningData = !secret.isNullOrBlank() || !mac.isNullOrBlank() || slot > 0
+        val wifiSsid = intent.getStringExtra("wifi_ssid")
+        val wifiPassword = intent.getStringExtra("wifi_pass")
+        val hasProvisioningData = !secret.isNullOrBlank() || !mac.isNullOrBlank() || slot > 0 || !wifiPassword.isNullOrEmpty()
         if (!hasProvisioningData && !activate) return
 
         // MainActivity is exported, so any app could send these extras. Same rule as the
@@ -179,6 +181,8 @@ class MainActivity : ComponentActivity() {
                 slot = slot,
                 secret = secret,
                 name = name,
+                wifiSsid = wifiSsid,
+                wifiPassword = wifiPassword,
             )
         }
 

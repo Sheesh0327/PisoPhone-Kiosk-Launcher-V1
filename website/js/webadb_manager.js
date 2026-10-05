@@ -91,6 +91,14 @@
             if (!/^[A-Za-z0-9_.+=\-]{1,128}$/.test(raw.secret)) fail('secret', 'unexpected characters');
             out.secret = raw.secret;
         }
+        if (raw.wifiSsid != null && raw.wifiSsid !== '') {
+            if (!/^[\x20-\x7E]{1,32}$/.test(raw.wifiSsid)) fail('wifi name', 'printable characters only (max 32)');
+            out.wifiSsid = raw.wifiSsid;
+        }
+        if (raw.wifiPass != null && raw.wifiPass !== '') {
+            if (!/^[\x20-\x7E]{8,63}$/.test(raw.wifiPass)) fail('wifi password', '8-63 printable characters');
+            out.wifiPass = raw.wifiPass;
+        }
         return out;
     }
 
@@ -100,6 +108,8 @@
         if (prov.mac) extras += ` --es mac ${shellQuote(prov.mac)} --es esp32_mac ${shellQuote(prov.mac)}`;
         if (prov.slot) extras += ` --ei slot ${prov.slot}`;
         if (prov.name) extras += ` --es name ${shellQuote(prov.name)}`;
+        // The shop's kiosk Wi-Fi: without it a new phone cannot reach its box, so it could never pair or learn its admin PIN.
+        if (prov.wifiPass) extras += ` --es wifi_ssid ${shellQuote(prov.wifiSsid || 'PisoKiosk')} --es wifi_pass ${shellQuote(prov.wifiPass)}`;
         return extras;
     }
 
@@ -744,7 +754,9 @@
                     secret: urlParams.get('secret'),
                     mac: urlParams.get('mac'),
                     slot: urlParams.get('slot'),
-                    name: urlParams.get('name')
+                    name: urlParams.get('name'),
+                    wifiSsid: urlParams.get('wifi_ssid'),
+                    wifiPass: urlParams.get('wifi_pass')
                 }));
             } catch (e) {
                 throw new Error(`Setup link rejected: ${e.message}`);

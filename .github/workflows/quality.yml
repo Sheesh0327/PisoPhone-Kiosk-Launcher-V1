@@ -36,6 +36,8 @@ jobs:
         run: sh scripts/check_security_rules.sh
       - name: Check vendored files match their record
         run: python3 scripts/check_vendored.py
+      - name: Check the setup page's provisioning helpers (kiosk Wi-Fi, shell quoting)
+        run: node scripts/test_provisioning.js
 
   kotlin-style:
     name: ktlint
