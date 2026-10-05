@@ -6,7 +6,10 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'tools/rust-probe/**'
+      - 'tools/rust-probe/src/**'
+      - 'tools/rust-probe/Cargo.*'
+      - 'tools/pisoportal/src/**'
+      - 'tools/pisoportal/Cargo.*'
       - '.github/workflows/rust-router-probe.yml'
 
 permissions:
@@ -52,6 +55,20 @@ jobs:
           mkdir -p ../../dist && cp "$BIN" ../../dist/coinslot-probe-mipsel
           (cd ../../dist && sha256sum coinslot-probe-mipsel | tee coinslot-probe-mipsel.sha256)
 
+      - name: Build the portal (pisoportal) for the router
+        working-directory: tools/pisoportal
+        run: |
+          mkdir -p "$PWD/stub"
+          echo 'INPUT(-lgcc_eh)' > "$PWD/stub/libunwind.a"
+          export STAGING_DIR="$GITHUB_WORKSPACE/toolchain"
+          export RUSTFLAGS="-C linker=$GCC -C link-arg=-L$PWD/stub -C target-feature=+crt-static -C relocation-model=static -C link-self-contained=no"
+          cargo +nightly build --release -Z build-std=std,panic_abort --target mipsel-unknown-linux-musl
+          BIN=target/mipsel-unknown-linux-musl/release/pisoportal
+          ls -l "$BIN"
+          file "$BIN" || true
+          cp "$BIN" ../../dist/pisoportal-mipsel
+          (cd ../../dist && sha256sum pisoportal-mipsel | tee pisoportal-mipsel.sha256)
+
       - uses: actions/upload-artifact@v4
         with:
           name: coinslot-probe-mipsel
@@ -59,11 +76,13 @@ jobs:
 
       # Put the built program in the repository too, so it can be copied to the router from a normal checkout.
       - name: Commit the built program to the branch
-        if: github.ref_name == 'rust-probe'
+        if: github.ref_name == 'rust-probe' || github.ref_name == 'beta'
         run: |
           git config user.name "github-actions"
           git config user.email "actions@users.noreply.github.com"
           mkdir -p tools/rust-probe/bin
           cp dist/coinslot-probe-mipsel dist/coinslot-probe-mipsel.sha256 tools/rust-probe/bin/
-          git add tools/rust-probe/bin
-          git diff --cached --quiet || { git commit -m "ci: built router probe (mipsel_24kc)"; git push; }
+          mkdir -p tools/pisoportal/bin
+          cp dist/pisoportal-mipsel dist/pisoportal-mipsel.sha256 tools/pisoportal/bin/
+          git add tools/rust-probe/bin tools/pisoportal/bin
+          git diff --cached --quiet || { git commit -m "ci: built router programs (mipsel_24kc)"; git pull --rebase -q origin "$GITHUB_REF_NAME" && git push; }

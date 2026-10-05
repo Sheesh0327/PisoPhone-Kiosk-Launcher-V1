@@ -18,6 +18,9 @@ on:
       - 'opennds/**'
       - 'setup/**'
       - 'tools/build_piso_setup.py'
+      - 'tools/pisoportal/src/**'
+      - 'tools/pisoportal/tests/**'
+      - 'tools/pisoportal/Cargo.*'
       - 'website/js/**'
       - '.editorconfig'
       - '.github/workflows/quality.yml'
@@ -100,6 +103,17 @@ jobs:
       - name: Compile
         working-directory: esp32_firmware
         run: pio run -e ${{ matrix.env }}
+
+  pisoportal:
+    name: Portal program (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test pisoportal (host build; the router build is in rust-router-probe.yml)
+        working-directory: tools/pisoportal
+        run: |
+          cargo build --release
+          python3 tests/test_portal.py
 
   opennds-integration:
     name: OpenNDS integration test
