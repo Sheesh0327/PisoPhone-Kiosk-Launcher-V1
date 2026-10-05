@@ -94,9 +94,11 @@ static void sendEvent(const char* type, int pulses) {
 }
 
 void gatewaySetEventTarget(const String& session, const String& wid, IPAddress ip, uint16_t port) {
-    if (evt.port != 0 && evt.session == session && evt.wid == wid) { // the same window armed again: keep its sequence
+    if (evt.session == session && evt.wid == wid) { // the same window armed again (even after "end"): keep its sequence
         evt.ip = ip;
         evt.port = port;
+        evt.readySent = false;
+        evt.sawActive = false;
         return;
     }
     evt = EventTarget();
@@ -187,5 +189,9 @@ GatewayStatus gatewayStatus(const String& session) {
 }
 
 int gatewayAcknowledge(const String& session) {
-    return acknowledgeGatewayPayments(slotSessionId(session));
+    String slotId = slotSessionId(session);
+    int acknowledged = acknowledgeGatewayPayments(slotId);
+    // A record the flash refused to erase stays queued: say so, so the gateway keeps retrying the ack instead of
+    // treating the window as closed and later counting those coins again.
+    return getPendingGatewayPulses(slotId) > 0 ? -1 : acknowledged;
 }

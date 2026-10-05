@@ -71,8 +71,15 @@ out = r.stdout
 check(r.returncode == 0, "dry run succeeds: " + r.stderr + out[-300:])
 check("network.lan.ipaddr" not in out and "network.lan.netmask" not in out and "network restart" not in text.split("stage1()")[1], "the LAN address is never changed by the script (so SSH stays open)")
 inst = text.split("install_packages() {")[1].split("\n}\n")[0]
-check("/etc/init.d/opennds stop" in inst, "openNDS is stopped right after it is installed (its default settings would gate the kiosk LAN)")
+check('[ "$p" = opennds ] && stop_opennds' in inst and inst.index("stop_opennds") < inst.index("done"), "openNDS is stopped right after it is installed, inside the install loop (its default settings would gate the kiosk LAN)")
+stopper = text.split("stop_opennds() {")[1].split("\n}\n")[0]
+check("/etc/init.d/opennds stop" in stopper and "NDS_RESTORE=1" in stopper and "br-guest" in stopper, "a re-run remembers a working guest portal so a failed run can start it again")
+check("NDS_RESTORE" in text.split("die() {")[1].split("\n}\n")[0], "a failed run restores the guest portal it stopped")
 pre = text.split("# ---- payload")[0]
+r = lib('conf_set ROOT_PASS "abcdefgh123"; conf_set ROOT_PASS_SET 0; write_summary; cat "$SUMMARY"; conf_set ROOT_PASS_SET 1; write_summary; cat "$SUMMARY"')
+first, second = r.stdout.split("PisoPhone setup summary")[1:3]
+check("abcdefgh123" not in first and "NOT SET" in first and "set-password" in first, "a password that was not applied is never shown as the router password")
+check("abcdefgh123" in second, "an applied password is shown")
 check("ROUTER (SSH / LuCI) PASSWORD" in pre and 'cat "$SUMMARY"' in pre.split("stage2() {")[1].split("\n}\n")[0], "the router password and the whole summary are shown on screen")
 r = lib('conf_set ROOT_PASS ""; ROOT_PASSWORD=short; ASSUME_YES=0; choose_root_password; echo rc=$?', env={"ROOT_PASSWORD": "short"})
 check("at least 8" in r.stdout, "a too-short router password is refused: " + r.stdout)
@@ -248,6 +255,18 @@ check(r.returncode == 0 and "coin detected: 2" in r.stdout and "the box counted 
 Mgr.pulses = 0; Mgr.calls = -100
 r = run("test-coin", env={"COINSLOT_URL": f"http://127.0.0.1:{msrv.server_address[1]}", "TEST_SECONDS": "2"})
 check(r.returncode != 0 and "no coin was counted" in r.stdout, "test-coin says so when no coin is counted: " + r.stdout)
+class Html(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        self.send_response(200); self.end_headers(); self.wfile.write(b"<html>router login</html>")
+
+
+hsrv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Html)
+threading.Thread(target=hsrv.serve_forever, daemon=True).start()
+r = run("test-coin", env={"COINSLOT_URL": f"http://127.0.0.1:{hsrv.server_address[1]}"})
+check(r.returncode != 0 and "Unexpected answer" in r.stdout and "Insert a coin" not in r.stdout, "test-coin does not ask for a coin when something else answers: " + r.stdout)
 r = run("test-coin", env={"COINSLOT_URL": "http://127.0.0.1:9"})
 check(r.returncode != 0 and "does not answer" in r.stdout, "test-coin explains a manager that is down")
 r = run("diag")

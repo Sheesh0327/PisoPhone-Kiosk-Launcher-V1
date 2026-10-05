@@ -30,7 +30,9 @@ Status object: `{"success":true,"session":"..","state":"armed|draining|idle","ar
 `minutes_per_coin` for time.
 
 Errors: `403 AUTH_FAILED` (bad signature, used or expired nonce), `409 SLOT_BUSY` (a phone, controller or
-another gateway session holds the slot), `503 STORAGE_UNAVAILABLE`, `503 GATEWAY_DISABLED`, `400 INVALID_SESSION`.
+another gateway session holds the slot), `503 STORAGE_UNAVAILABLE`, `503 GATEWAY_DISABLED`, `400 INVALID_SESSION`,
+`400 INVALID_EVENT_TARGET` (`wid`/`evport` given but not both valid; nothing was armed), `503 ACK_INCOMPLETE` (some
+coins could not be removed from flash: retry the ack; until it succeeds those coins are still counted for the session).
 
 ## Coin events (firmware 3.2.0 and later)
 So the router does not have to poll, the box can push every change of a window. Add `wid=<window id, lower-case hex,

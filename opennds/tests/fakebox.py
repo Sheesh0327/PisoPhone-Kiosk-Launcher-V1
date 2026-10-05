@@ -106,6 +106,8 @@ class H(BaseHTTPRequestHandler):
                 threading.Timer(0.85, lambda: s["armed_at"] == gen and push(sid, s, "end")).start()
         pulses = pulses_now(s, c)
         if action == "ack":
+            if c.get("ack_fail"):   # the box could not remove the coins from flash (ACK_INCOMPLETE)
+                return self.send(503, {"success": False, "error": "ACK_INCOMPLETE"})
             s["acked"] += pulses
             return self.send(200, {"success": True, "acknowledged_pulses": pulses})
         state = "idle" if (s["released"] or not s["armed_at"]) else "armed"

@@ -48,7 +48,19 @@ PAIR_WAIT=420                                # seconds to wait for the box to jo
 DRY=0; ASSUME_YES=0; PISO_ROOT="${PISO_ROOT:-}"
 
 log() { printf '%s\n' "$*"; [ "$DRY" = 1 ] || printf '%s %s\n' "$(date '+%F %T')" "$*" >> "$LOG" 2> /dev/null; }
-die() { log "ERROR: $*"; [ "$DRY" = 1 ] || echo "FAILED $*" > "$STATE"; exit 1; }
+die() {
+	log "ERROR: $*"; [ "$DRY" = 1 ] || echo "FAILED $*" > "$STATE"
+	if [ "$NDS_RESTORE" = 1 ]; then log "starting the customer portal (openNDS) again, as it was before this run"; /etc/init.d/opennds start > /dev/null 2>&1; fi
+	exit 1
+}
+# stop_opennds: stop it for the setup. On a re-run it was already serving the guest network: a failed run starts it again.
+NDS_RESTORE=0
+stop_opennds() {
+	[ -x /etc/init.d/opennds ] || return 0
+	if [ "$(uci -q get opennds.@opennds[0].gatewayinterface)" = br-guest ] && pgrep -x opennds > /dev/null 2>&1; then NDS_RESTORE=1; fi
+	/etc/init.d/opennds stop > /dev/null 2>&1
+	sleep 2
+}
 step() { log ""; log "== $*"; [ "$DRY" = 1 ] || echo "RUNNING $*" > "$STATE"; }
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -117,15 +129,15 @@ install_packages() {
 	step "Installing packages"
 	opkg update > /dev/null 2>&1 || opkg update || die "opkg update failed (no internet or DNS?)"
 	for p in opennds socat openssl-util curl coreutils-sleep jsonfilter; do
-		opkg list-installed 2> /dev/null | grep -q "^$p " && continue
-		log "installing $p"
-		opkg install "$p" > /dev/null 2>&1 || opkg install "$p" || die "could not install $p"
+		if ! opkg list-installed 2> /dev/null | grep -q "^$p "; then
+			log "installing $p"
+			opkg install "$p" > /dev/null 2>&1 || opkg install "$p" || die "could not install $p"
+		fi
+		# Installing opennds starts it at once with its default settings, which gate the LAN (the kiosk network) and
+		# would reject the coin box and the phones: stop it before anything else can fail. It is started at the end.
+		[ "$p" = opennds ] && stop_opennds
 	done
 	opkg list-installed 2> /dev/null | grep -qi '^libmicrohttpd' || opkg install libmicrohttpd-no-ssl > /dev/null 2>&1
-	# Installing opennds starts it at once with its default settings, which gate the LAN (the kiosk network) and would reject
-	# the coin box and the phones. Keep it stopped until the guest network is configured; it is started at the end.
-	/etc/init.d/opennds stop > /dev/null 2>&1
-	sleep 2
 	sleep 0.1 2> /dev/null || log "note: coreutils-sleep is not active; the coin check polls once a second"
 }
 
@@ -378,7 +390,7 @@ write_summary() {
 PisoPhone setup summary ($(date '+%F %T'), setup file version $VERSION)
 Keep this file private (it is readable by root only).
 
-Router (SSH / LuCI):   root@$LAN_IP        password: $(conf_get ROOT_PASS)
+Router (SSH / LuCI):   root@$LAN_IP        password: $(if [ "$(conf_get ROOT_PASS_SET)" = 1 ]; then conf_get ROOT_PASS; else echo "NOT SET by this setup (the router keeps its previous one): run piso-setup set-password"; fi)
 PisoKiosk Wi-Fi:       $KIOSK_SSID         password: $(conf_get KIOSK_PASS)    (for the rental phones; 2.4 + 5 GHz)
 PisoWiFi (customers):  $(conf_get GUEST_NAME)   (open; rename with: piso-setup wifi-name "New Name")
 Coin box:              http://$BOX_IP      admin password: $(conf_get BOX_ADMIN_PASS)    hidden Wi-Fi: $BOX_SSID (only MAC $(conf_get BOX_MAC))
@@ -413,7 +425,7 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 
 stage2() {
 	step "Applying the network settings (the LAN is not restarted, so this SSH session stays open)"
-	/etc/init.d/opennds stop > /dev/null 2>&1   # (also on a re-run: no gating of the LAN while the box is paired)
+	stop_opennds   # (also on a re-run: no gating of the LAN while the box is paired)
 	/etc/init.d/network reload > /dev/null 2>&1
 	sleep 5
 	wifi reload > /dev/null 2>&1
@@ -435,7 +447,7 @@ stage2() {
 	step "Starting the services"
 	/etc/init.d/coinslot stop > /dev/null 2>&1; /etc/init.d/coinslot disable > /dev/null 2>&1
 	/etc/init.d/flash_coin enable; /etc/init.d/flash_coin restart
-	/etc/init.d/opennds enable; /etc/init.d/opennds stop > /dev/null 2>&1; /etc/init.d/opennds start
+	/etc/init.d/opennds enable; /etc/init.d/opennds stop > /dev/null 2>&1; /etc/init.d/opennds start; NDS_RESTORE=0
 	sleep 8
 
 	step "Securing the router"
@@ -453,13 +465,15 @@ stage2() {
 			echo "That does not match. Look at the line above and try again."
 		done
 	fi
-	if [ -z "$_rp" ]; then :
-	elif printf '%s\n%s\n' "$_rp" "$_rp" | passwd root > /dev/null 2>&1; then log "root password set"; else log "WARNING: could not set the root password; the router still has its old one"; fi
+	if [ -z "$_rp" ]; then conf_set ROOT_PASS_SET 0
+	elif printf '%s\n%s\n' "$_rp" "$_rp" | passwd root > /dev/null 2>&1; then log "root password set"; conf_set ROOT_PASS_SET 1
+	else log "WARNING: could not set the root password; the router still has its old one"; conf_set ROOT_PASS_SET 0; fi
 
 	step "Checking everything"
 	check_all; _f=$?
 	write_summary
 	echo; echo "================ SUMMARY (also saved in $SUMMARY) ================"; cat "$SUMMARY"; echo "=================================================================="
+	[ "$(conf_get ROOT_PASS_SET)" = 1 ] || { log "INCOMPLETE: the router password was not set. Run: piso-setup set-password"; _f=$((_f + 1)); }
 	if [ "$_f" = 0 ]; then echo "DONE all checks passed" > "$STATE"; log ""; log "SETUP COMPLETE. Read $SUMMARY (ssh root@$LAN_IP)."
 	else echo "DONE with $_f failed checks (see $LOG)" > "$STATE"; log ""; log "Setup finished, but $_f check(s) failed: see above and $LOG. Run: piso-setup status"; fi
 }
@@ -497,7 +511,11 @@ cmd_test_coin() {
 	_get() { curl -s -m 10 "$_url$1" 2> /dev/null; }
 	_a=$(_get "/start?sid=$_sid&plan=hyper&mac=$_mac")
 	[ -n "$_a" ] || { echo "The coin-slot manager does not answer at $_url (is it running? /etc/init.d/flash_coin start)"; return 1; }
-	case "$_a" in *'"error":"'*) echo "The manager could not open the coin slot: $_a"; return 1 ;; esac
+	case "$_a" in
+		*'"error":"'*) echo "The manager could not open the coin slot: $_a"; return 1 ;;
+		*'"state":"starting"'* | *'"state":"armed"'*) ;;
+		*) echo "Unexpected answer from $_url (not the coin-slot manager?): $(printf '%s' "$_a" | head -c 200)"; return 1 ;;
+	esac
 	echo "The coin slot is armed (the box should beep). Insert a coin now. Waiting up to ${TEST_SECONDS:-30} seconds..."
 	_t=0; _last=0
 	while [ "$_t" -lt "${TEST_SECONDS:-30}" ]; do
@@ -537,7 +555,7 @@ cmd_set_password() {
 	stty -echo 2> /dev/null; printf 'New password (8+ characters): '; read -r _a; echo; printf 'Again: '; read -r _b; echo; stty echo 2> /dev/null
 	[ "$_a" = "$_b" ] && [ "${#_a}" -ge 8 ] || { echo "The passwords differ or are shorter than 8 characters."; return 1; }
 	printf '%s\n%s\n' "$_a" "$_a" | passwd root > /dev/null 2>&1 || { echo "Could not set it."; return 1; }
-	conf_set ROOT_PASS "$_a"; write_summary; echo "Done."
+	conf_set ROOT_PASS "$_a"; conf_set ROOT_PASS_SET 1; write_summary; echo "Done."
 }
 
 cmd_pair() {

@@ -43,6 +43,6 @@ void gatewaySetEventTarget(const String& session, const String& wid, IPAddress i
 void gatewayEventsLoop(); // call from loop(): sends "ready" once the acceptor has settled and "end" when the window closed
 void gatewayRelease(const String& session);
 GatewayStatus gatewayStatus(const String& session);
-int gatewayAcknowledge(const String& session); // returns the pulses just acknowledged
+int gatewayAcknowledge(const String& session); // the pulses just acknowledged, or -1 if some are still queued
 
 #endif // GATEWAY_COINSLOT_H

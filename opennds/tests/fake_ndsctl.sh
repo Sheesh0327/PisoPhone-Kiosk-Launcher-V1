@@ -36,7 +36,8 @@ case "$1" in
     fi ;;
   auth)
     k=$(key "$2"); load "$k"
-    if [ "$STATE" = "Preauthenticated" ]; then
+    if [ -e "$D/refuse_auth" ]; then echo "Failed to authenticate client $2."   # openNDS refusing (tests)
+    elif [ "$STATE" = "Preauthenticated" ]; then
       STATE=Authenticated; SESSION_END=$(( $(date +%s) + $3 * 60 )); UPRATE="$4"; DOWNRATE="$5"
       [ "${FAKE_NDS_KEEP_COUNTERS:-0}" = 1 ] || { DL=0; UL=0; }
       save "$k"; echo "Client $2 authenticated."

@@ -271,6 +271,12 @@ sign_msg() {  # sign_msg <message>: hex HMAC-SHA256 with GW_KEY (hmac_init must 
   else printf '%s' "$1" | openssl dgst -sha256 -hmac "$GW_KEY" | awk '{print $NF}'; fi
 }
 
+# ack_box <sid>: acknowledge the coins on the box. Succeeds only when the box answered success (call's exit status alone
+# does not say that: an error page or a lost reply still exits 0), so a failed ack keeps "ackpending" and is retried.
+ack_box() {
+  _ar=$(call "$1" ack) && [ "$(printf '%s' "$_ar" | jget success)" = "true" ]
+}
+
 call() {
   _sid="$1"; _action="$2"; _extra="$3"
   _nonce=$(http "$(box_base)/challenge" | jget nonce)
@@ -387,7 +393,11 @@ read_state() {  # sets STATE PULSES REMAINING ERROR ("none" if the customer has 
   STATE=none; PULSES=0; REMAINING=0; ERROR=""
   [ -r "$1/state" ] && . "$1/state"
 }
-worker_running() { [ -r "$1/pid" ] && kill -0 "$(cat "$1/pid")" 2>/dev/null; }
+worker_running() {  # alive, and not a zombie (a finished worker that nobody has reaped yet still answers kill -0)
+  _wp=$(cat "$1/pid" 2>/dev/null) && kill -0 "$_wp" 2>/dev/null || return 1
+  case "$(sed 's/.*) //' "/proc/$_wp/stat" 2>/dev/null | cut -c1)" in Z | X) return 1 ;; esac
+  return 0
+}
 
 status_json() {  # status_json <dir>
   read_state "$1"
@@ -432,7 +442,7 @@ instant_grant() {
 
 ack_window() {  # the coins are recorded: remove them from the box (retried; /ack and /start retry it again if needed)
   : > "$dir/claimed"; rm -f "$dir/pending" "$dir/forfeit"; : > "$dir/ackpending"
-  for _ in 1 2 3; do call "$sid" ack >/dev/null && { rm -f "$dir/ackpending"; return 0; }; sleep 1; done
+  for _ in 1 2 3; do ack_box "$sid" && { rm -f "$dir/ackpending"; return 0; }; sleep 1; done
   return 1
 }
 
@@ -446,9 +456,16 @@ settle_window() {
   [ "$_rc" = 0 ] || { logmsg "window ${sid%????????????????????????} not recorded (rc=$_rc): left for the portal"; return 0; }
   flash_session "$F_MAC" || return 0
   _st=$(nds_state "$F_MAC"); _eg=$(cat "$dir/egrant" 2>/dev/null)
+  NDSOUT=""
   if [ "$_st" = Authenticated ] && [ "$_eg" = "$_min" ]; then :           # the early grant already holds the whole window
   elif [ "$_st" = Authenticated ]; then nds_regrant "$F_MAC" "$S_MIN" "$S_UP" "$S_DOWN" "$S_QUP" "$S_QDOWN"
   else nds_do auth "$F_MAC" "$S_MIN" "$S_UP" "$S_DOWN" "$S_QUP" "$S_QDOWN"; fi
+  if [ "$(nds_state "$F_MAC")" != Authenticated ]; then                  # what openNDS really did, not what it answered
+    # The time is safely on the roll, but the device is not online: do not tell the customer so, and keep the coins on
+    # the box (no ack). The portal's Connect (verify -> roll -> grant -> ack) or the next visit (reconnect by MAC) finishes it.
+    logmsg "window ${sid%????????????????????????} settled on the roll but openNDS refused the grant: $NDSOUT"
+    return 0
+  fi
   printf 'FINAL_WMIN=%s\nFINAL_LEFT=%s\nFINAL_CODE=%s\n' "$_min" "$S_MIN" "$S_CODE" > "$dir/final.tmp" && mv "$dir/final.tmp" "$dir/final"
   : > "$dir/online"
   logmsg "timing ${sid%????????????????????????} settled pulses=$1 min=$_min left=$S_MIN at=$(uptime_ms)"
@@ -463,11 +480,11 @@ event_line() {
   _l="$1"
   case "$_l" in gw1ev:*) ;; *) return 0 ;; esac
   _l="${_l%$(printf '\r')}"; _esig="${_l##*:}"; _body="${_l%:*}"
-  _r="${_body#gw1ev:}"
-  _esid="${_r%%:*}"; _r="${_r#*:}"
-  _ewid="${_r%%:*}"; _r="${_r#*:}"
-  _eseq="${_r%%:*}"; _r="${_r#*:}"
-  _etype="${_r%%:*}"; _epulses="${_r#*:}"
+  _r="${_body#gw1ev:}"                                    # <session>:<wid>:<seq>:<type>:<pulses>; fixed fields from the right
+  _epulses="${_r##*:}"; _r="${_r%:*}"
+  _etype="${_r##*:}"; _r="${_r%:*}"
+  _eseq="${_r##*:}"; _r="${_r%:*}"
+  _ewid="${_r##*:}"; _esid="${_r%:*}"
   valid_sid "$_esid" || return 0
   case "$_ewid" in "" | *[!0-9a-f]*) return 0 ;; esac
   case "$_eseq" in "" | *[!0-9]*) return 0 ;; esac
@@ -677,7 +694,7 @@ finalize() {
     mkdir -p "$DATA_DIR"
     echo "$_n,$G_PLAN,$G_PULSES,$G_NEW_MIN,$_kind" >> "$DATA_DIR/revenue.csv"
     : > "$_dir/ackpending"
-    for _ in 1 2 3; do call "$1" ack >/dev/null && { rm -f "$_dir/ackpending"; break; }; sleep 1; done
+    for _ in 1 2 3; do ack_box "$1" && { rm -f "$_dir/ackpending"; break; }; sleep 1; done
   elif [ -n "$G_OLDMAC" ] && [ "$G_OLDMAC" != "$_mk" ]; then
     _old=$(printf '%s' "$G_OLDMAC" | sed 's/\(..\)\(..\)\(..\)\(..\)\(..\)\(..\)/\1:\2:\3:\4:\5:\6/')
     [ "$(nds_state "$_old")" = "Authenticated" ] && "$NDSCTL" deauth "$_old" >/dev/null 2>&1   # the time moves to this device
@@ -884,7 +901,7 @@ do_handle() {
         reply "200 OK" "{\"state\":\"error\",\"error\":\"PLAN_MISMATCH\",\"plan\":\"$R_PLAN\",\"remaining\":$R_LEFT}"; return
       fi
       if [ -e "$dir/ackpending" ]; then          # an earlier grant could not be acknowledged on the box
-        if call "$sid" ack >/dev/null && rm -f "$dir/ackpending"; then :; else
+        if ack_box "$sid" && rm -f "$dir/ackpending"; then :; else
           reply "200 OK" '{"state":"error","error":"ACK_PENDING"}'; return
         fi
       fi
@@ -923,7 +940,7 @@ do_handle() {
       _acked=true
       if [ "${PULSES:-0}" -gt 0 ]; then
         : > "$dir/ackpending"; _acked=false
-        for _ in 1 2 3; do call "$sid" ack >/dev/null && { rm -f "$dir/ackpending"; _acked=true; break; }; sleep 1; done
+        for _ in 1 2 3; do ack_box "$sid" && { rm -f "$dir/ackpending"; _acked=true; break; }; sleep 1; done
       fi
       logmsg "ack ${sid%????????????????????????} acked=$_acked"
       reply "200 OK" "{\"success\":true,\"acked\":$_acked}" ;;
@@ -1101,8 +1118,9 @@ do_api() {
   valid_sid "$sid" || { reply_cors "400 Bad Request" "$(err_json INVALID_SID)"; return; }
   dir="$STATE_DIR/$sid"; _peer=$(peer_mac "$SOCAT_PEERADDR")
   [ -n "$_peer" ] || { reply_cors "403 Forbidden" "$(err_json FORBIDDEN)"; return; }
-  if [ "$path" != /api/start ]; then
-    [ "$(cat "$dir/mac" 2>/dev/null)" = "$_peer" ] || { reply_cors "403 Forbidden" "$(err_json FORBIDDEN)"; return; }
+  _own=$(cat "$dir/mac" 2>/dev/null)
+  if [ -n "$_own" ] || [ "$path" != /api/start ]; then           # only /api/start may claim a window nobody owns yet
+    [ "$_own" = "$_peer" ] || { reply_cors "403 Forbidden" "$(err_json FORBIDDEN)"; return; }
   fi
   case "$path" in
     /api/start)

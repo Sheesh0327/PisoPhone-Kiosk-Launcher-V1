@@ -77,16 +77,19 @@ void handleGatewayArm() {
     String session = authorizedSession("arm");
     if (session.length() == 0) return;
     int duration = webServer.hasArg("duration") ? webServer.arg("duration").toInt() : GATEWAY_DEFAULT_ARM_SECONDS;
-    switch (gatewayArm(session, duration)) {
-    case GatewayArmResult::Ok: {
-        String wid = webServer.arg("wid");
-        long evport = webServer.hasArg("evport") ? webServer.arg("evport").toInt() : 0;
-        if (gatewayevent::validWindowId(wid.c_str()) && gatewayevent::validPort(evport)) {
-            gatewaySetEventTarget(session, wid, webServer.client().remoteIP(), (uint16_t)evport);
-        }
-        sendJson(200, statusJson(session));
+    // Coin events: both wid and evport, valid, or neither. Checked before arming, so a bad request changes nothing.
+    bool wantsEvents = webServer.hasArg("wid") || webServer.hasArg("evport");
+    String wid = webServer.arg("wid");
+    long evport = webServer.hasArg("evport") ? webServer.arg("evport").toInt() : 0;
+    if (wantsEvents && !(gatewayevent::validWindowId(wid.c_str()) && gatewayevent::validPort(evport))) {
+        sendError(400, "INVALID_EVENT_TARGET");
         return;
     }
+    switch (gatewayArm(session, duration)) {
+    case GatewayArmResult::Ok:
+        if (wantsEvents) gatewaySetEventTarget(session, wid, webServer.client().remoteIP(), (uint16_t)evport);
+        sendJson(200, statusJson(session));
+        return;
     case GatewayArmResult::Busy:
         sendError(409, "SLOT_BUSY");
         return;
@@ -119,6 +122,10 @@ void handleGatewayAck() {
     String session = authorizedSession("ack");
     if (session.length() == 0) return;
     int acknowledged = gatewayAcknowledge(session);
+    if (acknowledged < 0) {
+        sendError(503, "ACK_INCOMPLETE"); // some coins could not be removed from flash: the gateway retries
+        return;
+    }
     sendJson(200, String("{\"success\":true,\"session\":\"") + jsonEsc(session) +
                       "\",\"acknowledged_pulses\":" + String(acknowledged) + "}");
 }

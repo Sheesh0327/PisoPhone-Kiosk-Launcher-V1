@@ -48,7 +48,19 @@ PAIR_WAIT=420                                # seconds to wait for the box to jo
 DRY=0; ASSUME_YES=0; PISO_ROOT="${PISO_ROOT:-}"
 
 log() { printf '%s\n' "$*"; [ "$DRY" = 1 ] || printf '%s %s\n' "$(date '+%F %T')" "$*" >> "$LOG" 2> /dev/null; }
-die() { log "ERROR: $*"; [ "$DRY" = 1 ] || echo "FAILED $*" > "$STATE"; exit 1; }
+die() {
+	log "ERROR: $*"; [ "$DRY" = 1 ] || echo "FAILED $*" > "$STATE"
+	if [ "$NDS_RESTORE" = 1 ]; then log "starting the customer portal (openNDS) again, as it was before this run"; /etc/init.d/opennds start > /dev/null 2>&1; fi
+	exit 1
+}
+# stop_opennds: stop it for the setup. On a re-run it was already serving the guest network: a failed run starts it again.
+NDS_RESTORE=0
+stop_opennds() {
+	[ -x /etc/init.d/opennds ] || return 0
+	if [ "$(uci -q get opennds.@opennds[0].gatewayinterface)" = br-guest ] && pgrep -x opennds > /dev/null 2>&1; then NDS_RESTORE=1; fi
+	/etc/init.d/opennds stop > /dev/null 2>&1
+	sleep 2
+}
 step() { log ""; log "== $*"; [ "$DRY" = 1 ] || echo "RUNNING $*" > "$STATE"; }
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -117,15 +129,15 @@ install_packages() {
 	step "Installing packages"
 	opkg update > /dev/null 2>&1 || opkg update || die "opkg update failed (no internet or DNS?)"
 	for p in opennds socat openssl-util curl coreutils-sleep jsonfilter; do
-		opkg list-installed 2> /dev/null | grep -q "^$p " && continue
-		log "installing $p"
-		opkg install "$p" > /dev/null 2>&1 || opkg install "$p" || die "could not install $p"
+		if ! opkg list-installed 2> /dev/null | grep -q "^$p "; then
+			log "installing $p"
+			opkg install "$p" > /dev/null 2>&1 || opkg install "$p" || die "could not install $p"
+		fi
+		# Installing opennds starts it at once with its default settings, which gate the LAN (the kiosk network) and
+		# would reject the coin box and the phones: stop it before anything else can fail. It is started at the end.
+		[ "$p" = opennds ] && stop_opennds
 	done
 	opkg list-installed 2> /dev/null | grep -qi '^libmicrohttpd' || opkg install libmicrohttpd-no-ssl > /dev/null 2>&1
-	# Installing opennds starts it at once with its default settings, which gate the LAN (the kiosk network) and would reject
-	# the coin box and the phones. Keep it stopped until the guest network is configured; it is started at the end.
-	/etc/init.d/opennds stop > /dev/null 2>&1
-	sleep 2
 	sleep 0.1 2> /dev/null || log "note: coreutils-sleep is not active; the coin check polls once a second"
 }
 
@@ -378,7 +390,7 @@ write_summary() {
 PisoPhone setup summary ($(date '+%F %T'), setup file version $VERSION)
 Keep this file private (it is readable by root only).
 
-Router (SSH / LuCI):   root@$LAN_IP        password: $(conf_get ROOT_PASS)
+Router (SSH / LuCI):   root@$LAN_IP        password: $(if [ "$(conf_get ROOT_PASS_SET)" = 1 ]; then conf_get ROOT_PASS; else echo "NOT SET by this setup (the router keeps its previous one): run piso-setup set-password"; fi)
 PisoKiosk Wi-Fi:       $KIOSK_SSID         password: $(conf_get KIOSK_PASS)    (for the rental phones; 2.4 + 5 GHz)
 PisoWiFi (customers):  $(conf_get GUEST_NAME)   (open; rename with: piso-setup wifi-name "New Name")
 Coin box:              http://$BOX_IP      admin password: $(conf_get BOX_ADMIN_PASS)    hidden Wi-Fi: $BOX_SSID (only MAC $(conf_get BOX_MAC))
@@ -413,7 +425,7 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 
 stage2() {
 	step "Applying the network settings (the LAN is not restarted, so this SSH session stays open)"
-	/etc/init.d/opennds stop > /dev/null 2>&1   # (also on a re-run: no gating of the LAN while the box is paired)
+	stop_opennds   # (also on a re-run: no gating of the LAN while the box is paired)
 	/etc/init.d/network reload > /dev/null 2>&1
 	sleep 5
 	wifi reload > /dev/null 2>&1
@@ -435,7 +447,7 @@ stage2() {
 	step "Starting the services"
 	/etc/init.d/coinslot stop > /dev/null 2>&1; /etc/init.d/coinslot disable > /dev/null 2>&1
 	/etc/init.d/flash_coin enable; /etc/init.d/flash_coin restart
-	/etc/init.d/opennds enable; /etc/init.d/opennds stop > /dev/null 2>&1; /etc/init.d/opennds start
+	/etc/init.d/opennds enable; /etc/init.d/opennds stop > /dev/null 2>&1; /etc/init.d/opennds start; NDS_RESTORE=0
 	sleep 8
 
 	step "Securing the router"
@@ -453,13 +465,15 @@ stage2() {
 			echo "That does not match. Look at the line above and try again."
 		done
 	fi
-	if [ -z "$_rp" ]; then :
-	elif printf '%s\n%s\n' "$_rp" "$_rp" | passwd root > /dev/null 2>&1; then log "root password set"; else log "WARNING: could not set the root password; the router still has its old one"; fi
+	if [ -z "$_rp" ]; then conf_set ROOT_PASS_SET 0
+	elif printf '%s\n%s\n' "$_rp" "$_rp" | passwd root > /dev/null 2>&1; then log "root password set"; conf_set ROOT_PASS_SET 1
+	else log "WARNING: could not set the root password; the router still has its old one"; conf_set ROOT_PASS_SET 0; fi
 
 	step "Checking everything"
 	check_all; _f=$?
 	write_summary
 	echo; echo "================ SUMMARY (also saved in $SUMMARY) ================"; cat "$SUMMARY"; echo "=================================================================="
+	[ "$(conf_get ROOT_PASS_SET)" = 1 ] || { log "INCOMPLETE: the router password was not set. Run: piso-setup set-password"; _f=$((_f + 1)); }
 	if [ "$_f" = 0 ]; then echo "DONE all checks passed" > "$STATE"; log ""; log "SETUP COMPLETE. Read $SUMMARY (ssh root@$LAN_IP)."
 	else echo "DONE with $_f failed checks (see $LOG)" > "$STATE"; log ""; log "Setup finished, but $_f check(s) failed: see above and $LOG. Run: piso-setup status"; fi
 }
@@ -497,7 +511,11 @@ cmd_test_coin() {
 	_get() { curl -s -m 10 "$_url$1" 2> /dev/null; }
 	_a=$(_get "/start?sid=$_sid&plan=hyper&mac=$_mac")
 	[ -n "$_a" ] || { echo "The coin-slot manager does not answer at $_url (is it running? /etc/init.d/flash_coin start)"; return 1; }
-	case "$_a" in *'"error":"'*) echo "The manager could not open the coin slot: $_a"; return 1 ;; esac
+	case "$_a" in
+		*'"error":"'*) echo "The manager could not open the coin slot: $_a"; return 1 ;;
+		*'"state":"starting"'* | *'"state":"armed"'*) ;;
+		*) echo "Unexpected answer from $_url (not the coin-slot manager?): $(printf '%s' "$_a" | head -c 200)"; return 1 ;;
+	esac
 	echo "The coin slot is armed (the box should beep). Insert a coin now. Waiting up to ${TEST_SECONDS:-30} seconds..."
 	_t=0; _last=0
 	while [ "$_t" -lt "${TEST_SECONDS:-30}" ]; do
@@ -537,7 +555,7 @@ cmd_set_password() {
 	stty -echo 2> /dev/null; printf 'New password (8+ characters): '; read -r _a; echo; printf 'Again: '; read -r _b; echo; stty echo 2> /dev/null
 	[ "$_a" = "$_b" ] && [ "${#_a}" -ge 8 ] || { echo "The passwords differ or are shorter than 8 characters."; return 1; }
 	printf '%s\n%s\n' "$_a" "$_a" | passwd root > /dev/null 2>&1 || { echo "Could not set it."; return 1; }
-	conf_set ROOT_PASS "$_a"; write_summary; echo "Done."
+	conf_set ROOT_PASS "$_a"; conf_set ROOT_PASS_SET 1; write_summary; echo "Done."
 }
 
 cmd_pair() {
@@ -896,6 +914,12 @@ sign_msg() {  # sign_msg <message>: hex HMAC-SHA256 with GW_KEY (hmac_init must 
   else printf '%s' "$1" | openssl dgst -sha256 -hmac "$GW_KEY" | awk '{print $NF}'; fi
 }
 
+# ack_box <sid>: acknowledge the coins on the box. Succeeds only when the box answered success (call's exit status alone
+# does not say that: an error page or a lost reply still exits 0), so a failed ack keeps "ackpending" and is retried.
+ack_box() {
+  _ar=$(call "$1" ack) && [ "$(printf '%s' "$_ar" | jget success)" = "true" ]
+}
+
 call() {
   _sid="$1"; _action="$2"; _extra="$3"
   _nonce=$(http "$(box_base)/challenge" | jget nonce)
@@ -1012,7 +1036,11 @@ read_state() {  # sets STATE PULSES REMAINING ERROR ("none" if the customer has 
   STATE=none; PULSES=0; REMAINING=0; ERROR=""
   [ -r "$1/state" ] && . "$1/state"
 }
-worker_running() { [ -r "$1/pid" ] && kill -0 "$(cat "$1/pid")" 2>/dev/null; }
+worker_running() {  # alive, and not a zombie (a finished worker that nobody has reaped yet still answers kill -0)
+  _wp=$(cat "$1/pid" 2>/dev/null) && kill -0 "$_wp" 2>/dev/null || return 1
+  case "$(sed 's/.*) //' "/proc/$_wp/stat" 2>/dev/null | cut -c1)" in Z | X) return 1 ;; esac
+  return 0
+}
 
 status_json() {  # status_json <dir>
   read_state "$1"
@@ -1057,7 +1085,7 @@ instant_grant() {
 
 ack_window() {  # the coins are recorded: remove them from the box (retried; /ack and /start retry it again if needed)
   : > "$dir/claimed"; rm -f "$dir/pending" "$dir/forfeit"; : > "$dir/ackpending"
-  for _ in 1 2 3; do call "$sid" ack >/dev/null && { rm -f "$dir/ackpending"; return 0; }; sleep 1; done
+  for _ in 1 2 3; do ack_box "$sid" && { rm -f "$dir/ackpending"; return 0; }; sleep 1; done
   return 1
 }
 
@@ -1071,9 +1099,16 @@ settle_window() {
   [ "$_rc" = 0 ] || { logmsg "window ${sid%????????????????????????} not recorded (rc=$_rc): left for the portal"; return 0; }
   flash_session "$F_MAC" || return 0
   _st=$(nds_state "$F_MAC"); _eg=$(cat "$dir/egrant" 2>/dev/null)
+  NDSOUT=""
   if [ "$_st" = Authenticated ] && [ "$_eg" = "$_min" ]; then :           # the early grant already holds the whole window
   elif [ "$_st" = Authenticated ]; then nds_regrant "$F_MAC" "$S_MIN" "$S_UP" "$S_DOWN" "$S_QUP" "$S_QDOWN"
   else nds_do auth "$F_MAC" "$S_MIN" "$S_UP" "$S_DOWN" "$S_QUP" "$S_QDOWN"; fi
+  if [ "$(nds_state "$F_MAC")" != Authenticated ]; then                  # what openNDS really did, not what it answered
+    # The time is safely on the roll, but the device is not online: do not tell the customer so, and keep the coins on
+    # the box (no ack). The portal's Connect (verify -> roll -> grant -> ack) or the next visit (reconnect by MAC) finishes it.
+    logmsg "window ${sid%????????????????????????} settled on the roll but openNDS refused the grant: $NDSOUT"
+    return 0
+  fi
   printf 'FINAL_WMIN=%s\nFINAL_LEFT=%s\nFINAL_CODE=%s\n' "$_min" "$S_MIN" "$S_CODE" > "$dir/final.tmp" && mv "$dir/final.tmp" "$dir/final"
   : > "$dir/online"
   logmsg "timing ${sid%????????????????????????} settled pulses=$1 min=$_min left=$S_MIN at=$(uptime_ms)"
@@ -1088,11 +1123,11 @@ event_line() {
   _l="$1"
   case "$_l" in gw1ev:*) ;; *) return 0 ;; esac
   _l="${_l%$(printf '\r')}"; _esig="${_l##*:}"; _body="${_l%:*}"
-  _r="${_body#gw1ev:}"
-  _esid="${_r%%:*}"; _r="${_r#*:}"
-  _ewid="${_r%%:*}"; _r="${_r#*:}"
-  _eseq="${_r%%:*}"; _r="${_r#*:}"
-  _etype="${_r%%:*}"; _epulses="${_r#*:}"
+  _r="${_body#gw1ev:}"                                    # <session>:<wid>:<seq>:<type>:<pulses>; fixed fields from the right
+  _epulses="${_r##*:}"; _r="${_r%:*}"
+  _etype="${_r##*:}"; _r="${_r%:*}"
+  _eseq="${_r##*:}"; _r="${_r%:*}"
+  _ewid="${_r##*:}"; _esid="${_r%:*}"
   valid_sid "$_esid" || return 0
   case "$_ewid" in "" | *[!0-9a-f]*) return 0 ;; esac
   case "$_eseq" in "" | *[!0-9]*) return 0 ;; esac
@@ -1302,7 +1337,7 @@ finalize() {
     mkdir -p "$DATA_DIR"
     echo "$_n,$G_PLAN,$G_PULSES,$G_NEW_MIN,$_kind" >> "$DATA_DIR/revenue.csv"
     : > "$_dir/ackpending"
-    for _ in 1 2 3; do call "$1" ack >/dev/null && { rm -f "$_dir/ackpending"; break; }; sleep 1; done
+    for _ in 1 2 3; do ack_box "$1" && { rm -f "$_dir/ackpending"; break; }; sleep 1; done
   elif [ -n "$G_OLDMAC" ] && [ "$G_OLDMAC" != "$_mk" ]; then
     _old=$(printf '%s' "$G_OLDMAC" | sed 's/\(..\)\(..\)\(..\)\(..\)\(..\)\(..\)/\1:\2:\3:\4:\5:\6/')
     [ "$(nds_state "$_old")" = "Authenticated" ] && "$NDSCTL" deauth "$_old" >/dev/null 2>&1   # the time moves to this device
@@ -1509,7 +1544,7 @@ do_handle() {
         reply "200 OK" "{\"state\":\"error\",\"error\":\"PLAN_MISMATCH\",\"plan\":\"$R_PLAN\",\"remaining\":$R_LEFT}"; return
       fi
       if [ -e "$dir/ackpending" ]; then          # an earlier grant could not be acknowledged on the box
-        if call "$sid" ack >/dev/null && rm -f "$dir/ackpending"; then :; else
+        if ack_box "$sid" && rm -f "$dir/ackpending"; then :; else
           reply "200 OK" '{"state":"error","error":"ACK_PENDING"}'; return
         fi
       fi
@@ -1548,7 +1583,7 @@ do_handle() {
       _acked=true
       if [ "${PULSES:-0}" -gt 0 ]; then
         : > "$dir/ackpending"; _acked=false
-        for _ in 1 2 3; do call "$sid" ack >/dev/null && { rm -f "$dir/ackpending"; _acked=true; break; }; sleep 1; done
+        for _ in 1 2 3; do ack_box "$sid" && { rm -f "$dir/ackpending"; _acked=true; break; }; sleep 1; done
       fi
       logmsg "ack ${sid%????????????????????????} acked=$_acked"
       reply "200 OK" "{\"success\":true,\"acked\":$_acked}" ;;
@@ -1726,8 +1761,9 @@ do_api() {
   valid_sid "$sid" || { reply_cors "400 Bad Request" "$(err_json INVALID_SID)"; return; }
   dir="$STATE_DIR/$sid"; _peer=$(peer_mac "$SOCAT_PEERADDR")
   [ -n "$_peer" ] || { reply_cors "403 Forbidden" "$(err_json FORBIDDEN)"; return; }
-  if [ "$path" != /api/start ]; then
-    [ "$(cat "$dir/mac" 2>/dev/null)" = "$_peer" ] || { reply_cors "403 Forbidden" "$(err_json FORBIDDEN)"; return; }
+  _own=$(cat "$dir/mac" 2>/dev/null)
+  if [ -n "$_own" ] || [ "$path" != /api/start ]; then           # only /api/start may claim a window nobody owns yet
+    [ "$_own" = "$_peer" ] || { reply_cors "403 Forbidden" "$(err_json FORBIDDEN)"; return; }
   fi
   case "$path" in
     /api/start)
