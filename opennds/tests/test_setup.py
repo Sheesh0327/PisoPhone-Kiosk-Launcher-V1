@@ -274,6 +274,22 @@ open(f"{tmp}/uci.log", "w").close()
 r = lib('id() { echo 0; }; cmd_unlock_admin; echo rc=$?')
 check("rc=0" in r.stdout and "commit firewall" in open(f"{tmp}/uci.log").read(), "unlock-admin removes the rules")
 check("setsid sh -c 'sleep" in text and "piso-admin-confirm" in text, "the lock has a self-undo timer")
+# ---- piso-setup update --------------------------------------------------------------------------------------------------------------
+root = f"{tmp}/uproot"; os.makedirs(root)
+conf_up = f"{tmp}/upconf"; open(conf_up, "w").write("GW_KEY='" + "ab" * 32 + "'\n")
+r = run("update", env={"PISO_ROOT": root, "PISO_CONF": conf_up, "PISO_SELF_PATH": f"{tmp}/installed/piso-setup"})
+check(os.path.exists(f"{root}/usr/bin/coinslot-listener.sh") and os.path.exists(f"{root}/usr/lib/opennds/flash_coin.sh") and os.path.exists(f"{root}/usr/bin/piso-monitor.sh"),
+      "update installs the portal, manager and monitor files: " + r.stdout[-300:] + r.stderr[-300:])
+check(open(f"{root}/usr/bin/coinslot-listener.sh").read() == open(f"{ROOT}/opennds/coinslot-listener.sh").read(), "they are the current ones from this file")
+open(f"{tmp}/uci.log", "w").close()
+r = run("update", env={"PISO_ROOT": root, "PISO_CONF": conf_up, "PISO_SELF_PATH": f"{tmp}/installed/piso-setup"})
+ul = open(f"{tmp}/uci.log").read()
+check("set " not in ul and "commit" not in ul, "update changes no router settings (no uci set / commit): " + ul[:200])
+r = run("update", env={"PISO_ROOT": root, "PISO_CONF": f"{tmp}/nosetup"})
+check(r.returncode != 0 and "run ./piso-setup.sh without arguments first" in (r.stdout + r.stderr), "without an existing setup it refuses")
+r = subprocess.run(["sh", SCRIPT, "update"], env=dict(os.environ, PATH=f"{bindir}:" + os.environ["PATH"], PISO_CONF=conf_up, PISO_LOG=f"{tmp}/log", PISO_STATE=f"{tmp}/state",
+                   PISO_SUMMARY=f"{tmp}/summary", PISO_ROOT=root, PISO_SELF_PATH=SCRIPT), capture_output=True, text=True, timeout=60)
+check(r.returncode != 0 and "installed (old) copy" in (r.stdout + r.stderr), "run from the installed copy it says to use the new file")
 # ---- finding the box on its own network --------------------------------------------------------------------------------------
 open(f"{bindir}/iwinfo", "w").write("""#!/bin/sh
 if [ -z "$1" ]; then

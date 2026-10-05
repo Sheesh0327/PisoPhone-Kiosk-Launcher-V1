@@ -20,7 +20,7 @@
 # Everything is generated here (Wi-Fi password, box admin password, gateway key) and printed once at the end and saved in
 # /root/piso-setup-summary.txt. Running the file again is safe: it keeps what it already made.
 #
-# Other commands (after setup): piso-setup status | wifi-name "<name>" | pair | summary | test-coin | diag | set-password | reconcile | telegram | rotate-box-wifi | handout | lock-admin | unlock-admin
+# Other commands (after setup): piso-setup status | wifi-name "<name>" | pair | summary | test-coin | diag | set-password | reconcile | telegram | rotate-box-wifi | handout | lock-admin | unlock-admin | update
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation
@@ -42,7 +42,7 @@ CONF="${PISO_CONF:-/etc/piso-setup.conf}"   # what this script chose (secrets in
 LOG="${PISO_LOG:-/root/piso-setup.log}"
 SUMMARY="${PISO_SUMMARY:-/root/piso-setup-summary.txt}"
 STATE="${PISO_STATE:-/tmp/piso-setup.state}"
-SELF_PATH="/usr/sbin/piso-setup"
+SELF_PATH="${PISO_SELF_PATH:-/usr/sbin/piso-setup}"
 PAIR_WAIT=420                                # seconds to wait for the box to join during pairing
 
 DRY=0; ASSUME_YES=0; PISO_ROOT="${PISO_ROOT:-}"
@@ -296,7 +296,7 @@ extract_payload() {
 	done
 	cp "$_self" "$SELF_PATH" 2> /dev/null || true
 	chmod 755 "$SELF_PATH" 2> /dev/null
-	ln -sf "$SELF_PATH" /usr/sbin/pisowifi-name 2> /dev/null
+	ln -sf "$SELF_PATH" "$(dirname "$SELF_PATH")/pisowifi-name" 2> /dev/null
 }
 
 write_coinslot_conf() {  # write_coinslot_conf <gateway key> <box mac>
@@ -589,6 +589,24 @@ cmd_diag() {
 	echo "--- setup log"; tail -15 "$LOG" 2> /dev/null
 }
 
+# piso-setup update: install the portal, manager and monitor files from THIS copy of the setup file and restart them. Nothing
+# else is touched: no Wi-Fi or network settings, passwords, pairing or customer data. Run it from the new file:
+#   ./piso-setup.sh update
+cmd_update() {
+	[ "$(id -u)" = 0 ] || die "run as root"
+	DRY=0
+	[ -r "$CONF" ] && [ -n "$(conf_get GW_KEY)" ] || die "no PisoPhone setup found on this router: run ./piso-setup.sh without arguments first"
+	[ "$0" != "$SELF_PATH" ] || die "this is the installed (old) copy. Copy the NEW piso-setup.sh to the router and run it from there: ./piso-setup.sh update"
+	step "Updating the portal files"
+	[ -x /etc/init.d/flash_coin ] && /etc/init.d/flash_coin stop > /dev/null 2>&1   # (no script is replaced while it is running)
+	extract_payload "$0"
+	[ -x /etc/init.d/flash_coin ] && { /etc/init.d/flash_coin enable; /etc/init.d/flash_coin start; }
+	[ -r /etc/piso-monitor.conf ] && [ -x /etc/init.d/piso_monitor ] && { /etc/init.d/piso_monitor enable; /etc/init.d/piso_monitor restart; }
+	sleep 3
+	log "Updated to setup file version $VERSION. Customers' sessions and the revenue ledger were not touched."
+	cmd_status
+}
+
 # piso-setup reconcile: the box's own coin count against the router's revenue ledger (also checks the ledger chain).
 cmd_reconcile() { /usr/bin/coinslot-listener.sh reconcile; }
 
@@ -853,7 +871,7 @@ main() {
 		case "$1" in
 			--dry-run) DRY=1 ;;
 			--yes | -y) ASSUME_YES=1 ;;
-			status | pair | summary | wifi-name | uninstall-info | test-coin | diag | set-password | reconcile | telegram | rotate-box-wifi | handout | lock-admin | lock-admin-confirm | unlock-admin) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
+			status | pair | summary | wifi-name | uninstall-info | test-coin | diag | set-password | reconcile | telegram | rotate-box-wifi | handout | lock-admin | lock-admin-confirm | unlock-admin | update) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
 			-h | --help) sed -n '2,/^# Options:/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 			*) echo "unknown option: $1 (try --help)" >&2; exit 1 ;;
 		esac
@@ -868,6 +886,7 @@ main() {
 		reconcile) cmd_reconcile ;;
 		telegram) cmd_telegram ;;
 		handout) cmd_handout ;;
+		update) cmd_update ;;
 		lock-admin) cmd_lock_admin $ARGS ;;
 		lock-admin-confirm) cmd_lock_admin_confirm ;;
 		unlock-admin) cmd_unlock_admin ;;

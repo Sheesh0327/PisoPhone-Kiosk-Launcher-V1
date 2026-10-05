@@ -84,7 +84,7 @@ sets a root password, and ends with a health check. The router's wired LAN ports
 | `piso-setup pair` | replaces the coin box: re-opens pairing for a few minutes, then locks to the new box |
 | `piso-setup summary` | shows the saved passwords again |
 
-Running `piso-setup.sh` again is safe: it keeps the passwords and names it already made.
+Running `piso-setup.sh` again is safe: it keeps the passwords and names it already made. To install new software only (no Wi-Fi or box changes), use `./piso-setup.sh update` from the new file.
 
 ## Locked out of the router?
 The setup asks you to choose the router password (or shows a generated one and asks you to type it back), and prints every password at the end. If you still lose it, OpenWrt's failsafe mode keeps all settings:
@@ -100,6 +100,7 @@ The setup asks you to choose the router password (or shows a generated one and a
 | `piso-setup test-coin` | arms the coin slot and waits for a coin, with no customer portal involved. It says whether the box counts the coin. |
 | `piso-setup reconcile` | compares the box's own lifetime coin count with the router's revenue ledger and checks that nobody edited the ledger (needs firmware 3.2.1). |
 | `piso-setup telegram` | connects a Telegram bot: alerts (router restarted, box offline, revenue mismatch, a device abusing the coin slot, daily report) and remote commands `/status /report /reconcile /diag /restart /reboot`, answered only to your chat. Create the bot with @BotFather first. Optional: put a healthchecks.io URL in `/etc/piso-monitor.conf` (`HEALTHCHECK_URL`) so you are told when the whole router goes silent. |
+| `./piso-setup.sh update` | **updates only the software** on an installed router: installs the portal, coin manager and Telegram monitor files from the new file and restarts them. It changes no Wi-Fi or network settings, passwords, pairing or customer data. Copy the new `piso-setup.sh` to the router and run it from there (running the installed `piso-setup update` would reinstall the old copy, so it refuses). A coin window open at that moment is picked up by crash recovery. |
 | `piso-setup handout` | writes the printable setup sheet `/root/piso-handout.html` again. |
 | `piso-setup rotate-box-wifi` | gives the coin box a new random Wi-Fi password for the hidden box network (done automatically by the setup). |
 | `piso-setup lock-admin [MAC...]` | opt-in: only the named computers (default: the one you are on) may reach the router's SSH and web pages (ports 22, 80, 443); the rental phones can no longer try them. It **undoes itself after 2 minutes unless you open a new SSH session to check, then type CONFIRM** (or run `piso-setup lock-admin-confirm`), so it cannot lock you out. `piso-setup unlock-admin` removes it. |
