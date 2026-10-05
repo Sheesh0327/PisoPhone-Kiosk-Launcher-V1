@@ -563,9 +563,18 @@ try:
         n = json.load(urllib.request.urlopen(f"http://127.0.0.1:{BOX_PORT}/challenge"))["nonce"]
         sig = _hm.new(KEY.encode(), f"gw1:{action}:{sid}:{n}".encode(), hashlib.sha256).hexdigest()
         return json.load(urllib.request.urlopen(f"http://127.0.0.1:{BOX_PORT}/{action}?session={sid}&nonce={n}&sig={sig}"))
-    nrec = lambda: sum(1 for l in revenue().split("\n") if ",hyper,11," in l)
+    nrec = lambda: sum(1 for l in revenue().split("\n") if ",hyper,11,66,new," in l)
     rsid = sid_of("hidX"); MAC_X = "aa:bb:cc:00:00:99"
-    time.sleep(14)   # let any earlier window finish: the fake box's coin script is shared
+    def workers_alive():
+        for pf in glob.glob(f"{STATE}/*/pid"):
+            try:
+                os.kill(int(open(pf).read()), 0)
+                if open(f"/proc/{open(pf).read().strip()}/stat").read().split(") ")[-1][0] not in "ZX":
+                    return True
+            except (OSError, ValueError):
+                pass
+        return False
+    wait_until(lambda: not workers_alive(), 40)   # the fake box's coin script is shared: no earlier window may still be counting
     set_box(coins_at=[0.05 * i for i in range(1, 12)], events=False)
     box_call("arm", rsid); time.sleep(1); box_call("release", rsid); time.sleep(1.2)   # coins on the box, router "crashed" before settling
     os.makedirs(f"{DATA}/open", exist_ok=True)
@@ -574,7 +583,7 @@ try:
     subprocess.run(["sh", LISTENER, "recover"], env=env, timeout=60)
     rx = roll().get(MAC_X, [])
     check(rx and rx[13] == "11" and rx[16] == "1", f"recover: the coins left on the box are credited to the roll: {rx}")
-    check(nrec() - n0 == 1 and not os.path.exists(f"{DATA}/open/{rsid}"), f"recover: logged once, record removed ({nrec() - n0}) {[l for l in revenue().split(chr(10)) if ',hyper,11,' in l]}")
+    check(nrec() - n0 == 1 and not os.path.exists(f"{DATA}/open/{rsid}"), f"recover: logged once, record removed ({nrec() - n0}) {[l for l in revenue().split(chr(10)) if ',hyper,11,66,' in l]}")
     check(box_call("status", rsid)["pulses"] == 0, "recover: the box was acknowledged")
     subprocess.run(["sh", LISTENER, "recover"], env=env, timeout=60)
     check(nrec() - n0 == 1, "recover again does nothing")
