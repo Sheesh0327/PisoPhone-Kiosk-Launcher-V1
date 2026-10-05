@@ -7,6 +7,8 @@
 #include "Diagnostics.h"
 #include "GatewayAuth.h"
 #include "PaymentQueueManager.h"
+#include "GatewayEvent.h"
+#include <WiFiUdp.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
@@ -61,6 +63,70 @@ bool gatewaySetKey(const String& key) {
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// Coin events to the router (see GatewayEvent.h). Only touched from the main loop (the HTTP handlers and the coin
+// callbacks run there too), so no lock is needed.
+// ---------------------------------------------------------------------------
+struct EventTarget {
+    String session;
+    String wid;
+    IPAddress ip;
+    uint16_t port = 0; // 0 = no events wanted
+    uint32_t seq = 0;
+    bool readySent = false;
+    bool sawActive = false;
+};
+static EventTarget evt;
+static WiFiUDP evUdp;
+
+static void sendEvent(const char* type, int pulses) {
+    if (evt.port == 0) return;
+    std::string l =
+        gatewayevent::line(gatewayKey().c_str(), evt.session.c_str(), evt.wid.c_str(), ++evt.seq, type, pulses);
+    if (l.empty()) return;
+    // Twice: Wi-Fi drops single datagrams now and then. The router keeps the highest total, so a repeat is harmless.
+    for (int i = 0; i < 2; i++) {
+        if (evUdp.beginPacket(evt.ip, evt.port)) {
+            evUdp.write((const uint8_t*)l.data(), l.size());
+            evUdp.endPacket();
+        }
+    }
+}
+
+void gatewaySetEventTarget(const String& session, const String& wid, IPAddress ip, uint16_t port) {
+    if (evt.port != 0 && evt.session == session && evt.wid == wid) { // the same window armed again: keep its sequence
+        evt.ip = ip;
+        evt.port = port;
+        return;
+    }
+    evt = EventTarget();
+    evt.session = session;
+    evt.wid = wid;
+    evt.ip = ip;
+    evt.port = port;
+}
+
+static void notifyCoin(const String& slotId) {
+    if (evt.port == 0 || slotSessionId(evt.session) != slotId) return;
+    sendEvent("coin", getPendingGatewayPulses(slotId));
+}
+
+void gatewayEventsLoop() {
+    if (evt.port == 0) return;
+    String slotId = slotSessionId(evt.session);
+    bool active = getActiveCoinSessionId() == slotId && getActiveCoinOwnerType() == CoinSlotOwnerType::GATEWAY;
+    if (active) {
+        evt.sawActive = true;
+        if (!evt.readySent && getCoinSlotState() == CoinSlotState::ARMED && getCoinSlotSettleRemainingMs() == 0) {
+            evt.readySent = true;
+            sendEvent("ready", getPendingGatewayPulses(slotId));
+        }
+    } else if (evt.sawActive) { // drained and released: the final total for this window
+        sendEvent("end", getPendingGatewayPulses(slotId));
+        evt.port = 0;
+    }
+}
+
 GatewayArmResult gatewayArm(const String& session, int durationSec) {
     if (!gatewayauth::validSessionId(session.c_str())) return GatewayArmResult::InvalidSession;
     if (!setupgate::usageAllowed(adminPwChanged)) return GatewayArmResult::SetupRequired;
@@ -84,6 +150,7 @@ GatewayArmResult gatewayArm(const String& session, int durationSec) {
             }
             recordCoinRevenue(pulses);
             diagLog("[GATEWAY] %d pulse(s) recorded for '%s' (tx_id=%s).\n", pulses, id.c_str(), txId.c_str());
+            notifyCoin(id); // the router learns about the coin now instead of at its next poll
         },
         [](const String& id, const char* reason) {
             diagLog("[GATEWAY] Session '%s' ended (%s).\n", id.c_str(), reason);

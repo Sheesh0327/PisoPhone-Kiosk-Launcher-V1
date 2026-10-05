@@ -4,9 +4,11 @@
 # (the status page) and flash_fairuse.sh. Install next to them in /usr/lib/opennds/.
 #
 # The roll is a CSV, one line per device:
-#   code,rate_down,rate_up,quota_down,quota_up,time_limit_min,first_punched,mac,pauses_used,paused_at,remaining_at_pause,plan,wid,pesos
+#   code,rate_down,rate_up,quota_down,quota_up,time_limit_min,first_punched,mac,pauses_used,paused_at,remaining_at_pause,plan,wid,pesos,wmin,wpesos,wfinal
 # The first 11 fields are exactly the voucher roll of the paper-voucher theme this one grew from; plan, wid (the id of
-# the coin window that paid, so one window can never be credited twice) and pesos are appended. Expiry is always
+# the coin window that paid, so one window can never be credited twice) and pesos are appended, then the share of the
+# last window (wmin minutes, wpesos) and whether that window is final: a window is recorded at its first coin (the device
+# goes online at once) and again, priced as a whole, when it closes; the second write replaces the first share. Expiry is always
 # first_punched + time_limit*60. A top-up adds to time_limit; a pause freezes remaining_at_pause and a resume moves
 # first_punched forward by the time spent paused.
 #
@@ -103,14 +105,15 @@ roll_unlock() { rm -rf "$FLASH_LOCK" 2> /dev/null; }
 
 # roll_parse <line>: sets R_CODE R_DOWN R_UP R_QDOWN R_QUP R_TL R_FP R_MAC R_PU R_PA R_RP R_PLAN R_WID R_PESOS
 roll_parse() {
-	IFS=, read -r R_CODE R_DOWN R_UP R_QDOWN R_QUP R_TL R_FP R_MAC R_PU R_PA R_RP R_PLAN R_WID R_PESOS << EOF
+	IFS=, read -r R_CODE R_DOWN R_UP R_QDOWN R_QUP R_TL R_FP R_MAC R_PU R_PA R_RP R_PLAN R_WID R_PESOS R_WMIN R_WP R_WF << EOF
 $1
 EOF
 	R_DOWN="${R_DOWN:-0}"; R_UP="${R_UP:-0}"; R_QDOWN="${R_QDOWN:-0}"; R_QUP="${R_QUP:-0}"; R_TL="${R_TL:-0}"; R_FP="${R_FP:-0}"
 	R_PU="${R_PU:-0}"; R_PA="${R_PA:-0}"; R_RP="${R_RP:-0}"; R_PLAN="${R_PLAN:-hyper}"; R_PESOS="${R_PESOS:-0}"
+	R_WMIN="${R_WMIN:-0}"; R_WP="${R_WP:-0}"; R_WF="${R_WF:-1}"
 }
 roll_line() {  # the current R_* values as a roll line
-	printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s' "$R_CODE" "$R_DOWN" "$R_UP" "$R_QDOWN" "$R_QUP" "$R_TL" "$R_FP" "$R_MAC" "$R_PU" "$R_PA" "$R_RP" "$R_PLAN" "$R_WID" "$R_PESOS"
+	printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s' "$R_CODE" "$R_DOWN" "$R_UP" "$R_QDOWN" "$R_QUP" "$R_TL" "$R_FP" "$R_MAC" "$R_PU" "$R_PA" "$R_RP" "$R_PLAN" "$R_WID" "$R_PESOS" "$R_WMIN" "$R_WP" "$R_WF"
 }
 roll_find_mac() { [ -f "$FLASH_ROLL" ] && awk -F, -v m="$(lc "$1")" 'tolower($8)==m {print; exit}' "$FLASH_ROLL"; }
 roll_find_code() { [ -f "$FLASH_ROLL" ] && awk -F, -v c="$(lc "$1")" 'tolower($1)==c {print; exit}' "$FLASH_ROLL"; }
@@ -147,18 +150,29 @@ left_min() { echo $(((${1:-0} + 59) / 60)); }
 # ---------------------------------------------------------------------------
 # Paying: flash_mint
 # ---------------------------------------------------------------------------
-# flash_mint <mac> <wid> <plan> <pulses> <minutes> <up> <down> <forfeit 0|1>
-# Records a verified coin payment. Sets M_CODE and M_MODE (new | topup | switch | dup). Returns 0, 5 (roll busy),
-# 6 (the device has live time on the other plan and did not agree to give it up).
+# flash_mint <mac> <wid> <plan> <pulses> <minutes> <up> <down> <forfeit 0|1> [final 1|0]
+# Records a verified coin payment: <pulses> and <minutes> are the window's whole total so far, never a delta. Writing the
+# same window again replaces its earlier share (the early grant at the first coin, then the whole window priced once at
+# the end); a final window is never changed again. Revenue is logged once, when the window is final.
+# Sets M_CODE and M_MODE (new | topup | switch | update | dup). Returns 0, 5 (roll busy), 6 (the device has live time on
+# the other plan and did not agree to give it up).
 flash_mint() {
-	m_mac=$(lc "$1"); m_wid="$2"; m_plan="$3"; m_pulses="$4"; m_min="$5"; m_up="$6"; m_down="$7"; m_forfeit="$8"
+	m_mac=$(lc "$1"); m_wid="$2"; m_plan="$3"; m_pulses="$4"; m_min="$5"; m_up="$6"; m_down="$7"; m_forfeit="$8"; m_final="${9:-1}"
 	roll_lock || return 5
 	_n=$(now_ts); M_MODE=new; M_CODE=""
 	_line=$(roll_find_mac "$m_mac")
 	if [ -n "$_line" ]; then
 		roll_parse "$_line"
-		if [ -n "$m_wid" ] && [ "$R_WID" = "$m_wid" ]; then   # this very coin window was credited already
-			M_MODE=dup; M_CODE="$R_CODE"; roll_unlock; return 0
+		if [ -n "$m_wid" ] && [ "$R_WID" = "$m_wid" ]; then
+			if [ "$R_WF" = 1 ]; then M_MODE=dup; M_CODE="$R_CODE"; roll_unlock; return 0; fi   # credited and closed already
+			_dm=$((m_min - R_WMIN)); _dp=$((m_pulses - R_WP))                                    # the same window, more coins
+			R_TL=$((R_TL + _dm)); R_PESOS=$((R_PESOS + _dp)); [ "$R_PA" != 0 ] && R_RP=$((R_RP + _dm * 60))
+			R_WMIN="$m_min"; R_WP="$m_pulses"; R_WF="$m_final"
+			roll_put
+			M_MODE=update; M_CODE="$R_CODE"
+			[ "$m_final" = 1 ] && flash_revenue "$_n" "$m_plan" "$m_pulses" "$m_min" window
+			roll_unlock
+			return 0
 		fi
 		if roll_calc; then
 			if [ "$R_PLAN" != "$m_plan" ]; then
@@ -178,12 +192,16 @@ flash_mint() {
 		R_CODE=$(new_code); R_DOWN="$m_down"; R_UP="$m_up"; R_QDOWN=0; R_QUP=0; R_TL="$m_min"; R_FP="$_n"; R_MAC="$m_mac"
 		R_PU=0; R_PA=0; R_RP=0; R_PLAN="$m_plan"; R_WID="$m_wid"; R_PESOS="$m_pulses"
 	fi
+	R_WMIN="$m_min"; R_WP="$m_pulses"; R_WF="$m_final"
 	roll_put
 	M_CODE="$R_CODE"
-	mkdir -p "$(dirname "$FLASH_REVENUE")" 2> /dev/null
-	echo "$_n,$m_plan,$m_pulses,$m_min,$M_MODE" >> "$FLASH_REVENUE"
+	[ "$m_final" = 1 ] && flash_revenue "$_n" "$m_plan" "$m_pulses" "$m_min" "$M_MODE"
 	roll_unlock
 	return 0
+}
+flash_revenue() {  # flash_revenue <time> <plan> <pesos> <minutes> <kind>
+	mkdir -p "$(dirname "$FLASH_REVENUE")" 2> /dev/null
+	echo "$1,$2,$3,$4,$5" >> "$FLASH_REVENUE"
 }
 
 # ---------------------------------------------------------------------------
