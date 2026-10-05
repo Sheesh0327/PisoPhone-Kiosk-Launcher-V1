@@ -1,9 +1,9 @@
 {
-  "versionCode": 328,
-  "versionName": "1.0.328-dev",
+  "versionCode": 329,
+  "versionName": "1.0.329-dev",
   "channel": "dev",
   
-  "sha256": "cd22e3bc54cd284daba8b0b368b4915dbc5dfd5e1068cb965c8aa8c8e1ba1fc8",
+  "sha256": "cfb38de55d7297280529cf15af6d03dc8d75d63ed789855373119f9a74542934",
   "size": 1738846,
   "releaseDate": "2026-10-05"
 }
