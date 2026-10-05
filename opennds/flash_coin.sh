@@ -158,7 +158,7 @@ choose_page() {
 					PAGE="mismatch"; otherplan="$R_PLAN"; otherleft="$R_LEFT"; return
 				fi
 			fi
-			answer=$(coinslot "/start?sid=$sid&plan=$coinplan&mac=$mac&flash=1${coinforfeit:+&forfeit=1}")
+			answer=$(coinslot "/start?sid=$sid&plan=$coinplan&mac=$mac")
 			if [ "$(printf '%s' "$answer" | jget state)" = "error" ]; then
 				err=$(printf '%s' "$answer" | jget error)
 				case "$err" in
@@ -256,88 +256,26 @@ $(tier_rows endurance)
 </form>
 <p class="note">Coins add up &middot; Nag-iipon ang oras. HyperSpeed may slow down after $fair GB (fair use).</p>
 <p class="note"><a href="/opennds_preauth/?fas=$(fas_urlsafe)&coinact=vform">I have a code (restore my time) &middot; May code ako</a></p>
-<div id="live" style="display:none">
-<p class="sub" id="lsub"></p>
-<div class="big" id="lpes">&#8369;0</div>
-<p class="mut" id="lmin"></p>
-<div id="lcd" style="display:none"><div class="bar"><i id="lbar" style="width:100%"></i></div><p class="mut" id="lleft"></p></div>
-<div class="msg" id="lon" style="display:none;border-left-color:var(--ok)"><b>&#10003; You're online &middot; Nakakonekta ka na</b><br><span id="lont">Add more coins now for more time.</span></div>
-<div id="lmis" style="display:none"></div>
-<div id="lfin" style="display:none"><p class="mut">Your code restores your time on any device:</p><div class="code" id="lcode"></div>
-<a class="btn" style="text-decoration:none;text-align:center" href="http://$gatewayfqdn/?$randquery">Continue browsing</a></div>
-<button class="btn alt" type="button" id="ldone" style="display:none">Done &middot; Tapos na</button>
-<a class="btn alt" id="lagain" style="display:none;text-decoration:none;text-align:center" href="/opennds_preauth/?fas=$(fas_urlsafe)">Try again</a>
-</div>
 <script>
-/* One live page: Insert Coin talks to the router's small coin API (port $infostream) instead of loading portal pages.
-   The coins show the moment the box counts them, the device is online on the first coin, and the window's total is
-   priced once when it closes. If the API cannot be reached, the regular pages take over (also used without scripts). */
-(function(){
-var f=document.getElementById("coinform"),SP=${infostream:-0},SID="$sid",FIRST=${infofirst:-30},IDLE=${infoidle:-15},
-A=window.AudioContext||window.webkitAudioContext;
-if(!f||!SP||!window.fetch||!window.JSON||!window.FormData||!window.URLSearchParams)return;
-var base="http://"+location.hostname+":"+SP,ctx=null,es=null,pt=null,tk=null,pes=0,on=false,fin=false,armed=false,left=0,tot=FIRST,plan="hyper";
-function el(i){return document.getElementById(i)}
-function show(i,v){var e=el(i);if(e)e.style.display=v?"":"none"}
-function put(i,t){var e=el(i);if(e&&e.textContent!==t)e.textContent=t}
-function pn(p){return p==="endurance"?"Endurance":"HyperSpeed"}
-function fmt(m){m=+m||0;if(m<60)return m+" min";var h=Math.floor(m/60),r=m%60;return h+(h>1?" hrs":" hr")+(r?" "+r+" min":"")}
-function say(t){try{if(window.speechSynthesis){speechSynthesis.cancel();var u=new SpeechSynthesisUtterance(t);u.lang="en-US";speechSynthesis.speak(u)}}catch(e){}}
-function tone(f0,t,d){var o=ctx.createOscillator(),g=ctx.createGain();o.type="triangle";o.frequency.value=f0;
-g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.35,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+d);
-o.connect(g);g.connect(ctx.destination);o.start(t);o.stop(t+d+.05)}
-function ding(n){try{if(!ctx||ctx.state!=="running")return;var t=ctx.currentTime;n=Math.min(n,4);for(var i=0;i<n;i++){tone(988,t+i*.22,.12);tone(1319,t+i*.22+.1,.3)}}catch(e){}}
-function legacy(fq){var q=new URLSearchParams(new FormData(f));q.set("coinplan",plan);if(fq)q.set("coinforfeit","yes");location.href=f.action+"?"+q.toString()}
-function portal(){location.href=f.action+"?fas="+encodeURIComponent(f.elements.fas.value)}
-function stop(){if(es){es.close();es=null}if(pt){clearInterval(pt);pt=null}if(tk){clearInterval(tk);tk=null}}
-function bar(){put("lleft",left+"s left · the timer restarts with every coin");var b=el("lbar");if(b)b.style.width=Math.max(0,Math.min(100,100*left/tot))+"%"}
-function err(e){stop();show("lcd",0);show("ldone",0);put("lsub","Coin payment is not available right now");put("lpes","");put("lmin","Please try again or ask the attendant ("+e+").");show("lagain",1)}
-function upd(j){
-if(fin)return;
-if(j.state==="error"&&!j.online){if(j.error==="SLOT_BUSY")return legacy(false);return err(j.error)}
-var p=+j.pulses||0;
-if(j.state==="armed"){
-if(!armed){armed=true;put("lsub",pn(plan)+" · Insert coin(s) now · Maglagay ng barya");show("lcd",1);
-try{navigator.vibrate&&navigator.vibrate(80)}catch(e){}if(!p)say("Insert coin now")}
-left=Math.max(+j.remaining||0,0);tot=p>0?IDLE:FIRST;bar();
-if(!tk)tk=setInterval(function(){if(left>0)left--;bar()},1000)}
-if(armed||p>0){put("lpes","₱"+p);put("lmin","= "+fmt(j.minutes)+" of Wi-Fi")}
-if(p>pes){ding(p-pes);say(p+(p===1?" peso":" pesos"))}pes=p;
-if(j.online&&!on){on=true;show("lon",1);show("ldone",1);setTimeout(function(){say("You are online")},900);
-try{navigator.vibrate&&navigator.vibrate([100,60,100])}catch(e){}}
-if(j.final){fin=true;stop();show("lcd",0);show("ldone",0);show("lmis",0);put("lsub","Thank you! · Salamat!");
-put("lpes",fmt(j.fleft));put("lmin","of Wi-Fi time left · ₱"+p+" = "+fmt(j.fwmin));put("lont","Enjoy browsing.");
-show("lon",1);put("lcode",j.code||"");show("lfin",1);return}
-if(j.state==="done"||j.state==="none"){stop();
-if(!p){show("lcd",0);show("ldone",0);put("lsub","No coins detected · Walang nabayaran");put("lpes","₱0");
-put("lmin","You were not charged.");show("lagain",1)}else portal()}}
-function poll(){fetch(base+"/api/status?sid="+SID,{cache:"no-store"}).then(function(r){return r.json()}).then(upd).catch(function(){})}
-function watch(){
-if(window.EventSource){try{es=new EventSource(base+"/stream?sid="+SID+"&mode=wait");
-es.addEventListener("status",function(m){try{upd(JSON.parse(m.data))}catch(e){}});
-es.onerror=function(){if(es){es.close();es=null}if(!fin&&!pt)pt=setInterval(poll,1000)}}catch(e){es=null}}
-if(!es&&!pt)pt=setInterval(poll,1000)}
-function start(fq){
-f.style.display="none";var n=document.querySelectorAll(".note"),s0=f.previousElementSibling,i;
-for(i=0;i<n.length;i++)n[i].style.display="none";if(s0)s0.style.display="none";
-show("live",1);show("lagain",0);put("lsub",pn(plan)+" · Getting the coin slot ready · Sandali lang");put("lpes","₱0");
-put("lmin","Please wait. Do not insert coins yet · huwag pa maglagay ng barya.");
-fetch(base+"/api/start?sid="+SID+"&plan="+plan+(fq?"&forfeit=1":""),{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){
-if(j.state==="error"&&j.error==="PLAN_MISMATCH")return mismatch(j);
-if(j.state==="error"||j.error)return legacy(fq);
-upd(j);watch()}).catch(function(){legacy(fq)})}
-function mismatch(j){var o=pn(j.plan),w=pn(plan);
-put("lsub","You still have "+o+" time ("+fmt(Math.round((+j.remaining||0)/60))+")");put("lpes","");
-put("lmin","Add more "+o+" time, or switch to "+w+": the time you have left is given up when you pay.");
-var m=el("lmis");m.innerHTML='<button class="btn" type="button" id="mk">Add '+o+' time</button><button class="btn alt" type="button" id="ms">Switch to '+w+' · lose my time</button>';
-show("lmis",1);el("mk").onclick=function(){show("lmis",0);plan=j.plan;start(false)};el("ms").onclick=function(){show("lmis",0);start(true)}}
-el("ldone").onclick=function(){this.disabled=true;this.textContent="Closing · Sandali lang";
-fetch(base+"/api/finish?sid="+SID,{cache:"no-store"}).then(function(r){return r.json()}).then(upd).catch(function(){})};
+/* Insert Coin also unlocks sound: browsers only allow audio after a tap, and the tap must happen on the page that later
+   plays it. So the tap starts the coin window without leaving the page (the waiting view replaces this one and reuses
+   the unlocked audio). Without scripts the form simply submits and the waiting page offers a "tap for sound" button. */
+(function(){var f=document.getElementById("coinform"),A=window.AudioContext||window.webkitAudioContext,first=${infofirst:-30};
+if(!f||!A||!window.fetch||!window.URLSearchParams||!window.FormData)return;
+/* Show the waiting screen at once (same look as the real one); the router's answer replaces it a moment later, or shows
+   the busy / error page instead. */
+function instant(){var r=f.querySelector("input[name=coinplan]:checked"),nm=r&&r.value==="endurance"?"Endurance":"HyperSpeed",
+sub=f.previousElementSibling,d=document.createElement("div"),n=document.querySelectorAll(".note"),i;
+if(sub)sub.textContent=nm+" \u00b7 Getting the coin slot ready \u00b7 Sandali lang";
+f.style.display="none";for(i=0;i<n.length;i++)n[i].style.display="none";
+d.innerHTML='<div class="big">&#8369;0</div><p class="mut">Please wait a moment. <b>Do not insert coins yet</b> &middot; huwag pa maglagay ng barya.</p>';
+f.parentNode.insertBefore(d,f.nextSibling)}
 f.addEventListener("submit",function(e){e.preventDefault();
 try{window.speechSynthesis&&speechSynthesis.speak(new SpeechSynthesisUtterance(""))}catch(x){}
-try{if(A){ctx=window.__ctx=window.__ctx||new A();ctx.resume();var o=ctx.createOscillator(),g=ctx.createGain();g.gain.value=.04;
-o.frequency.value=880;o.connect(g);g.connect(ctx.destination);o.start();o.stop(ctx.currentTime+.05)}}catch(x){}
-var r=f.querySelector("input[name=coinplan]:checked");plan=r?r.value:"hyper";start(false)})})();
+try{var c=window.__ctx=window.__ctx||new A();c.resume();var o=c.createOscillator(),g=c.createGain();g.gain.value=.04;o.frequency.value=880;o.connect(g);g.connect(c.destination);o.start();o.stop(c.currentTime+.05)}catch(x){}
+var url=f.action+"?"+new URLSearchParams(new FormData(f)).toString();instant();
+fetch(url,{cache:"no-store"}).then(function(r){return r.text()})
+.then(function(t){document.open();document.write(t);document.close()}).catch(function(){location.href=url})})})();
 </script>
 HTML
 }
@@ -502,18 +440,8 @@ page_result() {
 		return
 	fi
 	vplan=$(printf '%s' "$ver" | jget plan); vpulses=$(printf '%s' "$ver" | jget pulses); vmin=$(printf '%s' "$ver" | jget minutes)
-	leftmin=0; label="Connect"; forfeitnote=""; vwid=$(printf '%s' "$ver" | jget wid)
+	leftmin=0; label="Connect"; forfeitnote=""
 	flash_peek "$mac"
-	if [ -n "$vwid" ] && [ "$R_WID" = "$vwid" ] && [ "$P_STATE" = running ]; then
-		# The router already recorded this window (online on the first coin): show the total, add nothing again.
-		cat << HTML
-<p class="sub">$(plan_name "$vplan") &middot; Thank you! &middot; Salamat!</p>
-<div class="big">$(fmt_min "$(left_min "$R_LEFT")")</div>
-<p class="mut">of Wi-Fi time left &middot; &#8369;$vpulses = $(fmt_min "$vmin") added</p>
-HTML
-		coinplan="$vplan"; action_button "Continue" connect "" landing
-		return
-	fi
 	if [ "$P_STATE" = running ] || [ "$P_STATE" = paused ]; then
 		if [ "$R_PLAN" = "$vplan" ]; then
 			leftmin=$(left_min "$R_LEFT"); label="Add time"
@@ -617,14 +545,7 @@ HTML
 	src=5
 	[ "$mrc" = 0 ] && { flash_session "$mac"; src=$?; }
 	if [ "$src" = 0 ]; then
-		# The router usually has done all of this already (online on the first coin, the window settled when it closed):
-		# then nothing is granted again, so the connection is not interrupted.
-		if [ "$paid" = yes ] && { [ "$M_MODE" = dup ] || [ "$M_MODE" = update ]; } && [ "$(nds_state "$mac")" = "Authenticated" ] &&
-			[ "$(printf '%s' "$ver" | jget claimed)" = "true" ]; then
-			ndsstatus="authenticated"
-		else
-			grant_access
-		fi
+		grant_access
 		if [ "$ndsstatus" = "authenticated" ]; then
 			# Only after access was really granted is the payment marked as used on the box.
 			[ "$paid" = yes ] && coinslot "/ack?sid=$sid" > /dev/null

@@ -20,11 +20,11 @@
 # Everything is generated here (Wi-Fi password, box admin password, gateway key) and printed once at the end and saved in
 # /root/piso-setup-summary.txt. Running the file again is safe: it keeps what it already made.
 #
-# Other commands (after setup): piso-setup status | wifi-name "<name>" | pair | summary | test-coin | diag | set-password
+# Other commands (after setup): piso-setup status | wifi-name "<name>" | pair | summary | uninstall-info
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation
-# Settings can be overridden from the environment: COUNTRY (default PH) GUEST_SSID BOX_IP GUEST_IP ROOT_PASSWORD
+# Settings can be overridden from the environment: COUNTRY (default PH) GUEST_SSID BOX_IP GUEST_IP
 
 VERSION="dev"
 
@@ -61,16 +61,12 @@ conf_set() {  # conf_set NAME VALUE
 	grep -v "^$1=" "$CONF" > "$CONF.tmp" 2> /dev/null; printf "%s='%s'\n" "$1" "$2" >> "$CONF.tmp"; mv "$CONF.tmp" "$CONF"; chmod 600 "$CONF"
 }
 rand() {  # rand <length> [hex]: random characters (letters and digits, no look-alikes; or hex)
-	if [ "$2" = hex ]; then head -c 8192 /dev/urandom | tr -dc '0-9a-f' | cut -c1-"$1"     # (only tools every BusyBox has)
+	if [ "$2" = hex ]; then head -c 256 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-"$1"
 	else head -c 512 /dev/urandom | tr -dc 'a-hjkmnp-zA-HJ-NP-Z2-9' | cut -c1-"$1"; fi
 }
 secret() {  # secret NAME LENGTH [hex]: the stored value, or a new random one that is stored
 	_v=$(conf_get "$1")
-	if [ -z "$_v" ]; then
-		_v=$(rand "$2" "$3")
-		[ "${#_v}" -eq "$2" ] || die "could not generate a random value for $1"
-		conf_set "$1" "$_v"
-	fi
+	if [ -z "$_v" ]; then _v=$(rand "$2" "$3"); conf_set "$1" "$_v"; fi
 	printf '%s' "$_v"
 }
 
@@ -122,10 +118,6 @@ install_packages() {
 		opkg install "$p" > /dev/null 2>&1 || opkg install "$p" || die "could not install $p"
 	done
 	opkg list-installed 2> /dev/null | grep -qi '^libmicrohttpd' || opkg install libmicrohttpd-no-ssl > /dev/null 2>&1
-	# Installing opennds starts it at once with its default settings, which gate the LAN (the kiosk network) and would reject
-	# the coin box and the phones. Keep it stopped until the guest network is configured; it is started at the end.
-	/etc/init.d/opennds stop > /dev/null 2>&1
-	sleep 2
 	sleep 0.1 2> /dev/null || log "note: coreutils-sleep is not active; the coin check polls once a second"
 }
 
@@ -404,7 +396,6 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 	_ck "hidden Wi-Fi $BOX_SSID is on and locked to the box" "[ \"\$(uci -q get wireless.box_ap.macfilter)\" = allow ] && [ -n \"\$(uci -q get wireless.box_ap.maclist)\" ]"
 	_ck "coin box answers at $BOX_IP" box_up
 	_ck "coin-slot manager is running" "curl -s -m 4 http://127.0.0.1:8099/info | grep -q fair_kb"
-	_ck "coin events receiver is running (instant coins)" "pgrep -f 'coinslot-listener.sh event-reader'"
 	_ck "the manager can talk to the box (signed request)" "/usr/bin/coinslot-listener.sh box | grep -qi answers"
 	_ck "openNDS is running" "ndsctl status"
 	_ck "internet through the WAN" "ping -c 1 -W 3 1.1.1.1 || ping -c 1 -W 3 8.8.8.8"
@@ -413,7 +404,6 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 
 stage2() {
 	step "Applying the network settings (the LAN is not restarted, so this SSH session stays open)"
-	/etc/init.d/opennds stop > /dev/null 2>&1   # (also on a re-run: no gating of the LAN while the box is paired)
 	/etc/init.d/network reload > /dev/null 2>&1
 	sleep 5
 	wifi reload > /dev/null 2>&1
@@ -440,26 +430,11 @@ stage2() {
 
 	step "Securing the router"
 	_rp=$(conf_get ROOT_PASS)
-	echo
-	echo "  ROUTER (SSH / LuCI) PASSWORD:  $_rp      <-- write this down now"
-	echo
-	if [ "$ASSUME_YES" != 1 ] && [ -t 0 ]; then
-		_try=0
-		while :; do
-			printf 'Type the password again to confirm you have saved it: '; stty -echo 2> /dev/null; read -r _again; stty echo 2> /dev/null; echo
-			[ "$_again" = "$_rp" ] && break
-			_try=$((_try + 1))
-			[ "$_try" -lt 5 ] || { log "The password was not confirmed, so the router password was left unchanged. Run: piso-setup set-password"; _rp=""; break; }
-			echo "That does not match. Look at the line above and try again."
-		done
-	fi
-	if [ -z "$_rp" ]; then :
-	elif printf '%s\n%s\n' "$_rp" "$_rp" | passwd root > /dev/null 2>&1; then log "root password set"; else log "WARNING: could not set the root password; the router still has its old one"; fi
+	printf '%s\n%s\n' "$_rp" "$_rp" | passwd root > /dev/null 2>&1 && log "root password set (see the summary)"
 
 	step "Checking everything"
 	check_all; _f=$?
 	write_summary
-	echo; echo "================ SUMMARY (also saved in $SUMMARY) ================"; cat "$SUMMARY"; echo "=================================================================="
 	if [ "$_f" = 0 ]; then echo "DONE all checks passed" > "$STATE"; log ""; log "SETUP COMPLETE. Read $SUMMARY (ssh root@$LAN_IP)."
 	else echo "DONE with $_f failed checks (see $LOG)" > "$STATE"; log ""; log "Setup finished, but $_f check(s) failed: see above and $LOG. Run: piso-setup status"; fi
 }
@@ -490,56 +465,6 @@ cmd_wifi_name() {
 	echo "Customer Wi-Fi is now called \"$_n\"."
 }
 
-# piso-setup test-coin: one real coin window straight against the manager and the box, without the customer portal. It shows
-# whether the box counts a coin at all (wiring, acceptor) before looking for portal problems.
-cmd_test_coin() {
-	_url="${COINSLOT_URL:-http://127.0.0.1:8099}"; _sid=$(rand 32 hex); _mac="aa:bb:cc:00:00:99"
-	_get() { curl -s -m 10 "$_url$1" 2> /dev/null; }
-	_a=$(_get "/start?sid=$_sid&plan=hyper&mac=$_mac")
-	[ -n "$_a" ] || { echo "The coin-slot manager does not answer at $_url (is it running? /etc/init.d/flash_coin start)"; return 1; }
-	case "$_a" in *'"error":"'*) echo "The manager could not open the coin slot: $_a"; return 1 ;; esac
-	echo "The coin slot is armed (the box should beep). Insert a coin now. Waiting up to ${TEST_SECONDS:-30} seconds..."
-	_t=0; _last=0
-	while [ "$_t" -lt "${TEST_SECONDS:-30}" ]; do
-		sleep 1; _t=$((_t + 1))
-		_st=$(_get "/status?sid=$_sid")
-		_p=$(printf '%s' "$_st" | sed -n 's/.*"pulses":\([0-9]*\).*/\1/p')
-		if [ -n "$_p" ] && [ "$_p" -gt "$_last" ]; then echo "  coin detected: $_p peso(s) so far"; _last="$_p"; fi
-		case "$_st" in *'"state":"done"'* | *'"state":"error"'*) break ;; esac
-	done
-	_get "/finish?sid=$_sid" > /dev/null
-	_t=0; while [ "$_t" -lt 15 ]; do _st=$(_get "/status?sid=$_sid"); case "$_st" in *'"state":"done"'*) break ;; esac; sleep 1; _t=$((_t + 1)); done
-	_p=$(printf '%s' "$_st" | sed -n 's/.*"pulses":\([0-9]*\).*/\1/p')
-	if [ "${_p:-0}" -gt 0 ]; then echo "RESULT: the box counted $_p peso(s). The box and the manager work; if the portal does not show it, send the output of: piso-setup diag"
-	else echo "RESULT: no coin was counted. The coin acceptor wiring or the box settings need a look (the box armed, so the network and key are fine). Last answer: $_st"; fi
-	_get "/ack?sid=$_sid" > /dev/null
-	[ "${_p:-0}" -gt 0 ]
-}
-
-# piso-setup diag: everything needed to diagnose a problem, in one block (contains no passwords).
-cmd_diag() {
-	echo "=== piso-setup diag ($(date '+%F %T'), setup $VERSION) ==="
-	cmd_status 2>&1
-	echo "--- manager /info"; curl -s -m 5 "${COINSLOT_URL:-http://127.0.0.1:8099}/info"; echo
-	echo "--- manager <-> box"; /usr/bin/coinslot-listener.sh box 2>&1 | head -5
-	echo "--- coin windows"; for d in /tmp/coinslot/*/; do [ -d "$d" ] && { echo "$d"; cat "$d/state" "$d/plan" 2>/dev/null; }; done
-	echo "--- box neighbour / wifi"; ip neigh show | grep "$BOX_IP"; iwinfo 2> /dev/null | grep -A1 "$BOX_SSID"
-	echo "--- firewall tables"; nft list tables 2> /dev/null
-	echo "--- openNDS"; uci -q get opennds.@opennds[0].gatewayinterface; ndsctl status 2>&1 | head -12
-	echo "--- last coin timings (ms since boot: armed, event, coin, granted, settled)"; logread -e coinslot 2> /dev/null | grep ' timing ' | tail -12
-	echo "--- last coin-slot log lines"; logread -e coinslot 2> /dev/null | grep -v ' timing ' | tail -20
-	echo "--- setup log"; tail -15 "$LOG" 2> /dev/null
-}
-
-cmd_set_password() {
-	[ "$(id -u)" = 0 ] || die "run as root"
-	echo "Choose a new router (SSH / LuCI) password; it is saved in $CONF and shown by: piso-setup summary"
-	stty -echo 2> /dev/null; printf 'New password (8+ characters): '; read -r _a; echo; printf 'Again: '; read -r _b; echo; stty echo 2> /dev/null
-	[ "$_a" = "$_b" ] && [ "${#_a}" -ge 8 ] || { echo "The passwords differ or are shorter than 8 characters."; return 1; }
-	printf '%s\n%s\n' "$_a" "$_a" | passwd root > /dev/null 2>&1 || { echo "Could not set it."; return 1; }
-	conf_set ROOT_PASS "$_a"; write_summary; echo "Done."
-}
-
 cmd_pair() {
 	DRY=0; [ "$(id -u)" = 0 ] || die "run as root"
 	conf_set BOX_MAC ""
@@ -549,23 +474,6 @@ cmd_pair() {
 	/etc/init.d/flash_coin restart
 	write_summary
 	log "The new coin box is paired. Check with: piso-setup status"
-}
-
-# The router password protects SSH and LuCI, which the kiosk phones' network can reach. Ask for one, or generate one that is
-# printed on screen (and in the summary), so nobody is ever locked out of the router.
-choose_root_password() {
-	[ -z "$(conf_get ROOT_PASS)" ] || return 0
-	_p="$ROOT_PASSWORD"
-	if [ -z "$_p" ] && [ "$ASSUME_YES" != 1 ] && [ -t 0 ]; then
-		echo
-		echo "Choose the router password (SSH and LuCI login), at least 8 characters, or press Enter to have one generated and shown:"
-		stty -echo 2> /dev/null; read -r _p; stty echo 2> /dev/null; echo
-	fi
-	if [ -n "$_p" ]; then
-		[ "${#_p}" -ge 8 ] || die "the router password must be at least 8 characters"
-		case "$_p" in *\'*) die "please avoid the ' character in the password" ;; esac
-		conf_set ROOT_PASS "$_p"
-	fi
 }
 
 stage1() {
@@ -579,7 +487,6 @@ stage1() {
 	KIOSK_PASS=$(secret KIOSK_PASS 12)
 	case "$GUEST_SSID" in *\'* | *\"* | *\\* | *\$* | *\`*) die "GUEST_SSID may not contain quotes, backslashes, \$ or backticks" ;; esac
 	GUEST_NAME=$(conf_get GUEST_NAME); [ -n "$GUEST_NAME" ] || { GUEST_NAME="${GUEST_SSID:-PisoWiFi}"; conf_set GUEST_NAME "$GUEST_NAME"; }
-	choose_root_password
 	secret ROOT_PASS 14 > /dev/null; secret GW_KEY 64 hex > /dev/null; secret BOX_ADMIN_PASS_NEW 16 > /dev/null
 	BOX_MAC=$(conf_get BOX_MAC)
 	if [ "$DRY" = 1 ]; then uci_batch "<kiosk password>" "$GUEST_NAME" "$BOX_MAC"; return 0; fi
@@ -598,7 +505,7 @@ main() {
 		case "$1" in
 			--dry-run) DRY=1 ;;
 			--yes | -y) ASSUME_YES=1 ;;
-			status | pair | summary | wifi-name | uninstall-info | test-coin | diag | set-password) CMD="$1"; shift; ARG="$1"; break ;;
+			status | pair | summary | wifi-name | uninstall-info) CMD="$1"; shift; ARG="$1"; break ;;
 			-h | --help) sed -n '2,/^# Options:/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 			*) echo "unknown option: $1 (try --help)" >&2; exit 1 ;;
 		esac
@@ -608,9 +515,6 @@ main() {
 		status) cmd_status ;;
 		wifi-name) cmd_wifi_name "$ARG" ;;
 		pair) cmd_pair ;;
-		test-coin) cmd_test_coin ;;
-		diag) cmd_diag ;;
-		set-password) cmd_set_password ;;
 		summary) cat "$SUMMARY" ;;
 		uninstall-info) echo "To undo: sysupgrade -n (factory reset) the router. Nothing else is changed outside the files listed in $0." ;;
 		*) stage1 ;;
@@ -631,7 +535,6 @@ exit $?
 #   coinslot-listener.sh worker <sid> <p>   hold one customer's coin window (started by the listener)
 #   coinslot-listener.sh stream             live-update listener (socat, guest network): coin counts and "slot is free" pushed to the portal
 #   coinslot-listener.sh stream-handle      one live-update connection (started by socat)
-#   coinslot-listener.sh events             coin events pushed by the box (UDP, EVENT_PORT): written to <window>/live.json
 #   coinslot-listener.sh fairuse            fair-use watcher loop (HyperSpeed throttle after FAIR_USE_GB)
 #   coinslot-listener.sh box                which box this router uses and whether it answers (finds it if it moved)
 #   coinslot-listener.sh report [days]      revenue per day and plan
@@ -662,14 +565,6 @@ exit $?
 #   /ack?sid                          (flash_coin theme) the session file now holds the time: acknowledge the coins on the box
 #                                     (retried until it works; asking again is harmless)
 #   /me?mac                           account status for the status page
-#   (flash=1 on /start: a flash_coin window. The first coin puts the device online at once; when the window closes the
-#    total is priced once, recorded on the roll, granted and acknowledged on the box, all without the portal.)
-#
-# Portal-facing API on the live-update port (STREAM_PORT, guest network; the device is identified by its MAC):
-#   /api/start?sid&plan[&forfeit=1]    start a flash_coin window for the device that asks
-#   /api/status?sid                    progress, also "online" (granted) and "final" (minutes, code)
-#   /api/finish?sid                    close the window now (the customer tapped Done)
-#   /stream?sid[&mode=queue]           the same progress as Server-Sent Events
 #   /pause?mac                        pause a connected Endurance session once (needs PAUSE_MIN_PESOS paid)
 CONF="${COINSLOT_CONF:-/etc/coinslot.conf}"
 UCI="${UCI:-uci}"
@@ -678,7 +573,7 @@ UCI="${UCI:-uci}"
 # working; any option set in UCI wins. `coinslot-listener.sh migrate` copies the old file into UCI.
 SETTINGS="GW_BOX GW_KEY GW_DISCOVER GW_BOX_MAC DISCOVER_PORT DISCOVER_IFACE DISCOVER_COOLDOWN LISTEN_PORT STATE_DIR DATA_DIR
   COIN_FIRST_WAIT_SECONDS COIN_IDLE_WAIT_SECONDS COIN_MAX_SECONDS COIN_POLL_SECONDS STREAM_PORT STREAM_BIND
-  STREAM_MAX_CLIENTS STREAM_MAX_SECONDS QUEUE_CLAIM_SECONDS EVENT_PORT EVENT_BIND HYPER_TIERS HYPER_PRORATA_MIN ENDURANCE_TIERS
+  STREAM_MAX_CLIENTS STREAM_MAX_SECONDS QUEUE_CLAIM_SECONDS HYPER_TIERS HYPER_PRORATA_MIN ENDURANCE_TIERS
   ENDURANCE_DOWN_KBPS ENDURANCE_UP_KBPS PAUSE_MIN_PESOS PAUSE_MAX_HOURS FAIR_USE_GB FAIR_THROTTLE_DOWN_KBPS
   FAIR_THROTTLE_UP_KBPS FAIR_THROTTLE_MINUTES FAIR_FULL_MINUTES"
 [ -r "$CONF" ] && . "$CONF"
@@ -721,12 +616,6 @@ STREAM_BIND="${STREAM_BIND:-0.0.0.0}"
 STREAM_MAX_CLIENTS="${STREAM_MAX_CLIENTS:-8}"
 STREAM_MAX_SECONDS="${STREAM_MAX_SECONDS:-600}"
 QUEUE_CLAIM_SECONDS="${QUEUE_CLAIM_SECONDS:-30}"
-# Coin events from the box (UDP): the box tells the router about every coin the moment it is counted, so the router
-# does not have to ask it ten times a second. 0 turns them off (the router then asks, as before). The kiosk LAN only:
-# the guest firewall zone does not open this port, and every event is signed with the gateway key anyway.
-EVENT_PORT="${EVENT_PORT:-8101}"
-EVENT_BIND="${EVENT_BIND:-0.0.0.0}"
-FLASH_LIB="${FLASH_LIB:-/usr/lib/opennds/flash_coin_lib.sh}"
 
 # Plans. Tiers are "pesos:minutes". The best combination of tiers is used for any amount, e.g. Endurance
 # 17 pesos = 10 + 5 + 1 + 1 = 8 h + 3 h + 30 min. HyperSpeed pesos that fit no tier (1-4) are paid pro rata.
@@ -891,11 +780,6 @@ hmac_init() {
   hmac_pads "$GW_KEY"; HMAC_MODE=shell
 }
 
-sign_msg() {  # sign_msg <message>: hex HMAC-SHA256 with GW_KEY (hmac_init must have run in this shell)
-  if [ "$HMAC_MODE" = shell ]; then hmac_hex "$1"
-  else printf '%s' "$1" | openssl dgst -sha256 -hmac "$GW_KEY" | awk '{print $NF}'; fi
-}
-
 call() {
   _sid="$1"; _action="$2"; _extra="$3"
   _nonce=$(http "$(box_base)/challenge" | jget nonce)
@@ -903,7 +787,9 @@ call() {
   [ -n "$_nonce" ] || { echo '{"success":false,"error":"NO_NONCE"}'; return 1; }
   BASE=$(box_base)
   [ -n "$HMAC_MODE" ] || hmac_init
-  _sig=$(sign_msg "gw1:$_action:$_sid:$_nonce")
+  _msg="gw1:$_action:$_sid:$_nonce"
+  if [ "$HMAC_MODE" = shell ]; then _sig=$(hmac_hex "$_msg")
+  else _sig=$(printf '%s' "$_msg" | openssl dgst -sha256 -hmac "$GW_KEY" | awk '{print $NF}'); fi
   http "$BASE/$_action?session=$_sid&nonce=$_nonce&sig=$_sig$_extra"
 }
 
@@ -1018,109 +904,9 @@ status_json() {  # status_json <dir>
   read_state "$1"
   _plan=$(cat "$1/plan" 2>/dev/null); _claimed=false; [ -e "$1/claimed" ] && _claimed=true
   _min=0; [ -n "$_plan" ] && [ "${PULSES:-0}" -gt 0 ] && _min=$(minutes_for "$_plan" "$PULSES")
-  _on=false; [ -e "$1/online" ] && _on=true
-  _fin=false; FINAL_WMIN=0; FINAL_LEFT=0; FINAL_CODE=""; [ -r "$1/final" ] && { . "$1/final"; _fin=true; }
-  printf '{"state":"%s","pulses":%s,"minutes":%s,"plan":"%s","remaining":%s,"claimed":%s,"error":"%s","online":%s,"final":%s,"fwmin":%s,"fleft":%s,"code":"%s"}' \
-    "$STATE" "${PULSES:-0}" "$_min" "$_plan" "${REMAINING:-0}" "$_claimed" "$ERROR" "$_on" "$_fin" "$FINAL_WMIN" "$FINAL_LEFT" "$FINAL_CODE"
+  printf '{"state":"%s","pulses":%s,"minutes":%s,"plan":"%s","remaining":%s,"claimed":%s,"error":"%s"}' \
+    "$STATE" "${PULSES:-0}" "$_min" "$_plan" "${REMAINING:-0}" "$_claimed" "$ERROR"
 }
-
-uptime_ms() { read -r _u _ < /proc/uptime; _c="${_u#*.}"; _c="${_c#0}"; echo $(( ${_u%.*} * 1000 + ${_c:-0} * 10 )); }
-
-# ---------------------------------------------------------------------------
-# flash_coin windows: online on the first coin, the whole window priced once at the end (flash_coin_lib.sh holds the roll)
-# ---------------------------------------------------------------------------
-flash_load() {
-  [ -n "$FLASH_LOADED" ] && return 0
-  [ -r "$FLASH_LIB" ] || return 1
-  . "$FLASH_LIB"; FLASH_LOADED=1
-}
-flash_args() {  # sets F_MAC F_PLAN F_WID F_FORFEIT for the window in $dir
-  F_MAC=$(cat "$dir/mac" 2>/dev/null); F_PLAN=$(cat "$dir/plan" 2>/dev/null); F_WID=$(cat "$dir/wid" 2>/dev/null)
-  F_FORFEIT=0; [ -e "$dir/fforfeit" ] && F_FORFEIT=1
-  [ -n "$F_MAC" ] && valid_plan "$F_PLAN"
-}
-
-# instant_grant <pulses>: the first coin of the window puts the device online now, for what the window holds so far.
-# More coins are only counted; the window's total is priced and granted once, when it closes (settle_window).
-instant_grant() {
-  [ -e "$dir/online" ] && return 0
-  flash_load && flash_args || return 0
-  if [ "$(nds_state "$F_MAC")" = Authenticated ]; then : > "$dir/online"; return 0; fi   # a top-up: already online
-  _min=$(minutes_for "$F_PLAN" "$1")
-  flash_mint "$F_MAC" "$F_WID" "$F_PLAN" "$1" "$_min" "$(plan_up "$F_PLAN")" "$(plan_down "$F_PLAN")" "$F_FORFEIT" 0 || return 0
-  flash_session "$F_MAC" || return 0
-  nds_do auth "$F_MAC" "$S_MIN" "$S_UP" "$S_DOWN" "$S_QUP" "$S_QDOWN"
-  case "$NDSOUT" in *Failed*) logmsg "window ${sid%????????????????????????}: openNDS refused the early grant: $NDSOUT"; return 0 ;; esac
-  echo "$_min" > "$dir/egrant"; : > "$dir/online"
-  logmsg "timing ${sid%????????????????????????} granted pulses=$1 min=$_min at=$(uptime_ms)"
-}
-
-ack_window() {  # the coins are recorded: remove them from the box (retried; /ack and /start retry it again if needed)
-  : > "$dir/claimed"; rm -f "$dir/pending" "$dir/forfeit"; : > "$dir/ackpending"
-  for _ in 1 2 3; do call "$sid" ack >/dev/null && { rm -f "$dir/ackpending"; return 0; }; sleep 1; done
-  return 1
-}
-
-# settle_window <pulses>: the window closed. Price the whole window once (best combination of tiers for the total),
-# record it on the roll (same window id: replaces the early grant's share), grant, then acknowledge the box.
-settle_window() {
-  flash_load && flash_args || return 0
-  _min=$(minutes_for "$F_PLAN" "$1")
-  flash_mint "$F_MAC" "$F_WID" "$F_PLAN" "$1" "$_min" "$(plan_up "$F_PLAN")" "$(plan_down "$F_PLAN")" "$F_FORFEIT" 1
-  _rc=$?
-  [ "$_rc" = 0 ] || { logmsg "window ${sid%????????????????????????} not recorded (rc=$_rc): left for the portal"; return 0; }
-  flash_session "$F_MAC" || return 0
-  _st=$(nds_state "$F_MAC"); _eg=$(cat "$dir/egrant" 2>/dev/null)
-  if [ "$_st" = Authenticated ] && [ "$_eg" = "$_min" ]; then :           # the early grant already holds the whole window
-  elif [ "$_st" = Authenticated ]; then nds_regrant "$F_MAC" "$S_MIN" "$S_UP" "$S_DOWN" "$S_QUP" "$S_QDOWN"
-  else nds_do auth "$F_MAC" "$S_MIN" "$S_UP" "$S_DOWN" "$S_QUP" "$S_QDOWN"; fi
-  printf 'FINAL_WMIN=%s\nFINAL_LEFT=%s\nFINAL_CODE=%s\n' "$_min" "$S_MIN" "$S_CODE" > "$dir/final.tmp" && mv "$dir/final.tmp" "$dir/final"
-  : > "$dir/online"
-  logmsg "timing ${sid%????????????????????????} settled pulses=$1 min=$_min left=$S_MIN at=$(uptime_ms)"
-  ack_window
-}
-
-# ---------------------------------------------------------------------------
-# Coin events from the box (GatewayEvent.h): one signed UDP line per change, written to <window>/live.json (and
-# live.env for the worker). Only the running total matters, so a repeated or lost line does no harm.
-# ---------------------------------------------------------------------------
-event_line() {
-  _l="$1"
-  case "$_l" in gw1ev:*) ;; *) return 0 ;; esac
-  _l="${_l%$(printf '\r')}"; _esig="${_l##*:}"; _body="${_l%:*}"
-  _r="${_body#gw1ev:}"
-  _esid="${_r%%:*}"; _r="${_r#*:}"
-  _ewid="${_r%%:*}"; _r="${_r#*:}"
-  _eseq="${_r%%:*}"; _r="${_r#*:}"
-  _etype="${_r%%:*}"; _epulses="${_r#*:}"
-  valid_sid "$_esid" || return 0
-  case "$_ewid" in "" | *[!0-9a-f]*) return 0 ;; esac
-  case "$_eseq" in "" | *[!0-9]*) return 0 ;; esac
-  case "$_epulses" in "" | *[!0-9]*) return 0 ;; esac
-  case "$_etype" in ready | coin | end) ;; *) return 0 ;; esac
-  case "$_esig" in "" | *[!0-9a-f]*) return 0 ;; esac
-  _ed="$STATE_DIR/$_esid"
-  [ -d "$_ed" ] || return 0
-  [ "$(cat "$_ed/wid" 2>/dev/null)" = "$_ewid" ] || return 0              # not the window that is open now
-  [ "$(sign_msg "$_body")" = "$_esig" ] || { logmsg "coin event with a bad signature ignored"; return 0; }
-  LIVE_SEQ=0; LIVE_PULSES=0; LIVE_TYPE=""
-  [ -r "$_ed/live.env" ] && . "$_ed/live.env"
-  [ "$_eseq" -gt "${LIVE_SEQ:-0}" ] || return 0                           # a repeat (the box sends every line twice)
-  [ "$_epulses" -ge "${LIVE_PULSES:-0}" ] || _epulses="$LIVE_PULSES"
-  _at=$(uptime_ms)
-  printf 'LIVE_SEQ=%s\nLIVE_TYPE=%s\nLIVE_PULSES=%s\nLIVE_AT=%s\n' "$_eseq" "$_etype" "$_epulses" "$_at" > "$_ed/live.env.tmp" &&
-    mv "$_ed/live.env.tmp" "$_ed/live.env"
-  printf '{"seq":%s,"type":"%s","pulses":%s,"at":%s}\n' "$_eseq" "$_etype" "$_epulses" "$_at" > "$_ed/live.json.tmp" &&
-    mv "$_ed/live.json.tmp" "$_ed/live.json"
-  logmsg "timing ${_esid%????????????????????????} event $_etype pulses=$_epulses at=$_at"
-}
-do_events() {
-  case "$EVENT_PORT" in "" | 0) echo "coin events are off (EVENT_PORT=0)"; exec sleep 2147483647 ;; esac
-  mkdir -p "$STATE_DIR" && chmod 700 "$STATE_DIR"
-  # socat stays the service's main process: stopping the service stops the reader with it (it reads to end of input).
-  exec socat -u "UDP4-RECV:$EVENT_PORT,bind=$EVENT_BIND,reuseaddr" "EXEC:$SELF event-reader"
-}
-event_reader() { hmac_init; while read -r line; do event_line "$line"; done; }
 
 # ---------------------------------------------------------------------------
 # Worker: arm, count (waiting longer after every coin), always disarm
@@ -1137,16 +923,11 @@ do_worker() {
   }
   trap 'release; write_state "$dir" "done" "${pulses:-0}" 0 ""; exit 0' INT TERM HUP
   pulses=0
-  # Coin events: ask the box to push this window's coins (it answers "events":true if it can). The router then only
-  # checks with a signed status call once a second, as a safety net; without events it asks every COIN_POLL_SECONDS.
-  wid=$(cat "$dir/wid" 2>/dev/null); evx=""
-  case "$EVENT_PORT" in "" | 0) ;; *) [ -n "$wid" ] && evx="&wid=$wid&evport=$EVENT_PORT" ;; esac
-  tps=1; [ "$NAP_FRAC" = 1 ] && tps=$(awk -v p="$COIN_POLL_SECONDS" 'BEGIN { t = int(1 / p + 0.5); if (t < 1) t = 1; print t }')
 
   started=$(now)
   cap=$(( started + COIN_MAX_SECONDS ))
   deadline=$(( started + COIN_FIRST_WAIT_SECONDS ))
-  answer=$(call "$sid" arm "&duration=$(( COIN_FIRST_WAIT_SECONDS + 3 ))$evx")
+  answer=$(call "$sid" arm "&duration=$(( COIN_FIRST_WAIT_SECONDS + 3 ))")
   if [ "$(printf '%s' "$answer" | jget success)" != "true" ]; then
     err=$(printf '%s' "$answer" | jget error)
     write_state "$dir" error 0 0 "${err:-NO_ANSWER}"
@@ -1154,9 +935,6 @@ do_worker() {
     return 1
   fi
   armed=1
-  events=0; [ -n "$evx" ] && [ "$(printf '%s' "$answer" | jget events)" = true ] && events=1
-  pull_every=1; [ "$events" = 1 ] && pull_every="$tps"
-  logmsg "timing ${sid%????????????????????????} armed events=$events at=$(uptime_ms)"
   # The box ignores coin pulses while the acceptor settles after power-on (ready_in_ms): the customer is invited to
   # insert coins, and the countdown starts, only after that.
   settle=$(printf '%s' "$answer" | jget ready_in_ms)
@@ -1170,60 +948,37 @@ do_worker() {
     nap "$(( settle / 1000 )).$(printf '%03d' $(( settle % 1000 )))"
     deadline=$(( $(now) + COIN_FIRST_WAIT_SECONDS ))
     cap=$(( $(now) + COIN_MAX_SECONDS ))
-    call "$sid" arm "&duration=$(( COIN_FIRST_WAIT_SECONDS + 3 ))$evx" > /dev/null    # the box's own timer starts from here too
+    call "$sid" arm "&duration=$(( COIN_FIRST_WAIT_SECONDS + 3 ))" > /dev/null    # the box's own timer starts from here too
   fi
   pulses=$(printf '%s' "$answer" | jget pulses); pulses="${pulses:-0}"
-  last="$pulses"; shown=""; tick=0; boxstate=armed
+  last="$pulses"; shown=""
   write_state "$dir" armed "$pulses" "$(( deadline - $(now) ))" ""
-  [ "$pulses" -gt 0 ] && [ -e "$dir/flash" ] && instant_grant "$pulses"
 
   while [ "$(now)" -lt "$deadline" ] && [ ! -e "$dir/stop" ]; do
-    nap "$COIN_POLL_SECONDS"; tick=$((tick + 1))
-    new="$last"
-    if [ "$events" = 1 ] && [ -r "$dir/live.env" ]; then                  # pushed by the box: no network call needed
-      . "$dir/live.env"
-      [ "${LIVE_PULSES:-0}" -gt "$new" ] && new="$LIVE_PULSES"
-      [ "$LIVE_TYPE" = end ] && boxstate=idle
-    fi
-    if [ $(( tick % pull_every )) = 0 ]; then                             # the signed check (every tick without events)
-      if st=$(call "$sid" status) && [ "$(printf '%s' "$st" | jget success)" = "true" ]; then
-        sp=$(printf '%s' "$st" | jget pulses); [ "${sp:-0}" -gt "$new" ] && new="$sp"
-        boxstate=$(printf '%s' "$st" | jget state)
-      fi                                                                  # a missed poll must not end the window early
-    fi
-    pulses="$new"
-    if [ "$pulses" -gt "$last" ]; then                    # a coin: show it, grant, then restart the short wait (within the cap)
+    nap "$COIN_POLL_SECONDS"
+    st=$(call "$sid" status) || continue                  # a missed poll must not end the window early
+    [ "$(printf '%s' "$st" | jget success)" = "true" ] || continue
+    pulses=$(printf '%s' "$st" | jget pulses)
+    if [ "$pulses" -gt "$last" ]; then                    # a coin: restart the short wait, within the hard cap
       last="$pulses"
       deadline=$(( $(now) + COIN_IDLE_WAIT_SECONDS ))
       [ "$deadline" -gt "$cap" ] && deadline="$cap"
-      write_state "$dir" armed "$pulses" "$(( deadline - $(now) ))" ""; shown="$pulses/$(( deadline - $(now) ))"
-      logmsg "timing ${sid%????????????????????????} coin pulses=$pulses at=$(uptime_ms)"
-      [ -e "$dir/flash" ] && instant_grant "$pulses"
-      call "$sid" arm "&duration=$(( deadline - $(now) + 3 ))$evx" >/dev/null
+      call "$sid" arm "&duration=$(( deadline - $(now) + 3 ))" >/dev/null
     fi
     rem=$(( deadline - $(now) ))
     [ "$pulses/$rem" = "$shown" ] || { write_state "$dir" armed "$pulses" "$rem" ""; shown="$pulses/$rem"; }   # only on change
-    [ "$boxstate" = "armed" ] || break   # the box ended it
+    [ "$(printf '%s' "$st" | jget state)" = "armed" ] || break   # the box ended it
   done
 
   release
-  drain_end=$(( $(now) + 30 ))   # in-flight coins: the box reports "idle" (or pushes "end") once it has drained
-  tick=0
+  drain_end=$(( $(now) + 30 ))   # in-flight coins: the box reports "idle" once it has drained
   while [ "$(now)" -lt "$drain_end" ]; do
-    if [ "$events" = 1 ] && [ -r "$dir/live.env" ]; then
-      . "$dir/live.env"
-      [ "${LIVE_PULSES:-0}" -gt "$pulses" ] && pulses="$LIVE_PULSES"
-      [ "$LIVE_TYPE" = end ] && break
-    fi
-    if [ $(( tick % pull_every )) = 0 ]; then
-      st=$(call "$sid" status) && {
-        sp=$(printf '%s' "$st" | jget pulses); [ "${sp:-0}" -gt "$pulses" ] && pulses="$sp"
-        [ "$(printf '%s' "$st" | jget state)" = "idle" ] && break
-      }
-    fi
-    nap "$COIN_POLL_SECONDS"; tick=$((tick + 1))
+    st=$(call "$sid" status) && {
+      pulses=$(printf '%s' "$st" | jget pulses)
+      [ "$(printf '%s' "$st" | jget state)" = "idle" ] && break
+    }
+    nap "$COIN_POLL_SECONDS"
   done
-  [ "${pulses:-0}" -gt 0 ] && [ -e "$dir/flash" ] && settle_window "$pulses"
   write_state "$dir" "done" "${pulses:-0}" 0 ""
 }
 
@@ -1405,10 +1160,6 @@ reply() {  # reply <status line> <body> [content type]
   printf 'HTTP/1.1 %s\r\nContent-Type: %s\r\nCache-Control: no-store\r\nConnection: close\r\nContent-Length: %s\r\n\r\n%s' \
     "$1" "${3:-application/json}" "${#2}" "$2"
 }
-reply_cors() {  # reply_cors <status line> <json>: for the portal page, which runs on openNDS' own port
-  printf 'HTTP/1.1 %s\r\nContent-Type: application/json\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\nContent-Length: %s\r\n\r\n%s' \
-    "$1" "${#2}" "$2"
-}
 err_json() { printf '{"error":"%s"}' "$1"; }
 
 qget() {  # qget <name>: value of a query parameter (already restricted to safe characters by the callers)
@@ -1503,20 +1254,13 @@ do_handle() {
           reply "200 OK" "{\"state\":\"error\",\"error\":\"PLAN_MISMATCH\",\"plan\":\"$PLAN\",\"remaining\":$V_LEFT}"; return
         fi
       fi
-      # flash_coin: time left on the other plan (on the roll) is given up only with the customer's agreement (forfeit=1).
-      if [ "$(qget flash)" = 1 ] && [ -n "$mac" ] && [ "$(qget forfeit)" != 1 ] && flash_load && flash_peek "$mac" &&
-        { [ "$P_STATE" = running ] || [ "$P_STATE" = paused ]; } && [ "$R_PLAN" != "$plan" ]; then
-        reply "200 OK" "{\"state\":\"error\",\"error\":\"PLAN_MISMATCH\",\"plan\":\"$R_PLAN\",\"remaining\":$R_LEFT}"; return
-      fi
       if [ -e "$dir/ackpending" ]; then          # an earlier grant could not be acknowledged on the box
         if call "$sid" ack >/dev/null && rm -f "$dir/ackpending"; then :; else
           reply "200 OK" '{"state":"error","error":"ACK_PENDING"}'; return
         fi
       fi
       q_gate "$sid" || { reply "200 OK" '{"state":"error","error":"SLOT_BUSY"}'; return; }   # someone is queued ahead
-      rm -f "$dir/stop" "$dir/claimed" "$dir/state" "$dir/grant" "$dir/pending" "$dir/forfeit" "$dir/flash" "$dir/fforfeit" \
-        "$dir/online" "$dir/egrant" "$dir/final" "$dir/live.env" "$dir/live.json"
-      if [ "$(qget flash)" = 1 ]; then : > "$dir/flash"; [ "$(qget forfeit)" = 1 ] && : > "$dir/fforfeit"; fi
+      rm -f "$dir/stop" "$dir/claimed" "$dir/state" "$dir/grant" "$dir/pending" "$dir/forfeit"
       [ -n "$forfeitcode" ] && printf '%s' "$forfeitcode" > "$dir/forfeit"
       printf '%s' "$plan" > "$dir/plan"
       _wid=$(tr -d '-' < /proc/sys/kernel/random/uuid 2>/dev/null); [ -n "$_wid" ] || _wid="$(now)$$"   # names this window: a coin is never credited twice
@@ -1654,8 +1398,7 @@ stream_wait() {
   _ticks=$(( STREAM_MAX_SECONDS * TPS )); _t=0; _quiet=0; _prev=""
   while [ "$_t" -lt "$_ticks" ]; do
     read_state "$dir"
-    _o=0; [ -e "$dir/online" ] && _o=1; _f=0; [ -e "$dir/final" ] && _f=1
-    _cur="$STATE|$PULSES|$REMAINING|$ERROR|$_o|$_f"
+    _cur="$STATE|$PULSES|$REMAINING|$ERROR"
     if [ "$_cur" != "$_prev" ]; then
       _prev="$_cur"; _quiet=0
       sse status "$(status_json "$dir")"
@@ -1705,29 +1448,6 @@ stream_queue() {
   done
 }
 
-# The portal page's own API (flash_coin): the device is the one the router sees at the connecting address, never a MAC
-# the page could make up. Starting goes through the local listener (same checks as the portal's /start).
-do_api() {
-  sid=$(qget sid)
-  valid_sid "$sid" || { reply_cors "400 Bad Request" "$(err_json INVALID_SID)"; return; }
-  dir="$STATE_DIR/$sid"; _peer=$(peer_mac "$SOCAT_PEERADDR")
-  [ -n "$_peer" ] || { reply_cors "403 Forbidden" "$(err_json FORBIDDEN)"; return; }
-  if [ "$path" != /api/start ]; then
-    [ "$(cat "$dir/mac" 2>/dev/null)" = "$_peer" ] || { reply_cors "403 Forbidden" "$(err_json FORBIDDEN)"; return; }
-  fi
-  case "$path" in
-    /api/start)
-      _pl=$(qget plan); valid_plan "$_pl" || { reply_cors "400 Bad Request" "$(err_json INVALID_PLAN)"; return; }
-      _fq=""; [ "$(qget forfeit)" = 1 ] && _fq="&forfeit=1"
-      _ans=$(http "http://127.0.0.1:$LISTEN_PORT/start?sid=$sid&plan=$_pl&mac=$_peer&flash=1$_fq")
-      reply_cors "200 OK" "${_ans:-$(err_json NO_ANSWER)}" ;;
-    /api/status) reply_cors "200 OK" "$(status_json "$dir")" ;;
-    /api/finish)
-      worker_running "$dir" && : > "$dir/stop"
-      reply_cors "200 OK" "$(status_json "$dir")" ;;
-  esac
-}
-
 do_stream() {
   nap_init
   TPS=1; [ "$NAP_FRAC" = 1 ] && TPS=10
@@ -1736,7 +1456,6 @@ do_stream() {
   [ "$method" = "GET" ] || { reply "405 Method Not Allowed" "$(err_json METHOD)"; return; }
   path="${target%%\?*}"; QUERY=""
   case "$target" in *\?*) QUERY="${target#*\?}" ;; esac
-  case "$path" in /api/start | /api/status | /api/finish) do_api; return ;; esac
   [ "$path" = "/stream" ] || { reply "404 Not Found" "$(err_json NOT_FOUND)"; return; }
   sid=$(qget sid)
   valid_sid "$sid" || { reply "400 Bad Request" "$(err_json INVALID_SID)"; return; }
@@ -1761,9 +1480,6 @@ case "$1" in
     mkdir -p "$STATE_DIR" && chmod 700 "$STATE_DIR"
     exec socat "TCP-LISTEN:$STREAM_PORT,bind=$STREAM_BIND,reuseaddr,fork,max-children=$STREAM_MAX_CLIENTS" "EXEC:$SELF stream-handle" ;;
   stream-handle) do_stream ;;
-  events) do_events ;;
-  event-reader) event_reader ;;
-  event-line) hmac_init; event_line "$2" ;;                                        # for tests: one event line
   handle) do_handle ;;
   worker) valid_sid "$2" && do_worker "$2" ;;
   fairuse) do_fairuse ;;
@@ -1937,7 +1653,7 @@ choose_page() {
 					PAGE="mismatch"; otherplan="$R_PLAN"; otherleft="$R_LEFT"; return
 				fi
 			fi
-			answer=$(coinslot "/start?sid=$sid&plan=$coinplan&mac=$mac&flash=1${coinforfeit:+&forfeit=1}")
+			answer=$(coinslot "/start?sid=$sid&plan=$coinplan&mac=$mac")
 			if [ "$(printf '%s' "$answer" | jget state)" = "error" ]; then
 				err=$(printf '%s' "$answer" | jget error)
 				case "$err" in
@@ -2035,88 +1751,26 @@ $(tier_rows endurance)
 </form>
 <p class="note">Coins add up &middot; Nag-iipon ang oras. HyperSpeed may slow down after $fair GB (fair use).</p>
 <p class="note"><a href="/opennds_preauth/?fas=$(fas_urlsafe)&coinact=vform">I have a code (restore my time) &middot; May code ako</a></p>
-<div id="live" style="display:none">
-<p class="sub" id="lsub"></p>
-<div class="big" id="lpes">&#8369;0</div>
-<p class="mut" id="lmin"></p>
-<div id="lcd" style="display:none"><div class="bar"><i id="lbar" style="width:100%"></i></div><p class="mut" id="lleft"></p></div>
-<div class="msg" id="lon" style="display:none;border-left-color:var(--ok)"><b>&#10003; You're online &middot; Nakakonekta ka na</b><br><span id="lont">Add more coins now for more time.</span></div>
-<div id="lmis" style="display:none"></div>
-<div id="lfin" style="display:none"><p class="mut">Your code restores your time on any device:</p><div class="code" id="lcode"></div>
-<a class="btn" style="text-decoration:none;text-align:center" href="http://$gatewayfqdn/?$randquery">Continue browsing</a></div>
-<button class="btn alt" type="button" id="ldone" style="display:none">Done &middot; Tapos na</button>
-<a class="btn alt" id="lagain" style="display:none;text-decoration:none;text-align:center" href="/opennds_preauth/?fas=$(fas_urlsafe)">Try again</a>
-</div>
 <script>
-/* One live page: Insert Coin talks to the router's small coin API (port $infostream) instead of loading portal pages.
-   The coins show the moment the box counts them, the device is online on the first coin, and the window's total is
-   priced once when it closes. If the API cannot be reached, the regular pages take over (also used without scripts). */
-(function(){
-var f=document.getElementById("coinform"),SP=${infostream:-0},SID="$sid",FIRST=${infofirst:-30},IDLE=${infoidle:-15},
-A=window.AudioContext||window.webkitAudioContext;
-if(!f||!SP||!window.fetch||!window.JSON||!window.FormData||!window.URLSearchParams)return;
-var base="http://"+location.hostname+":"+SP,ctx=null,es=null,pt=null,tk=null,pes=0,on=false,fin=false,armed=false,left=0,tot=FIRST,plan="hyper";
-function el(i){return document.getElementById(i)}
-function show(i,v){var e=el(i);if(e)e.style.display=v?"":"none"}
-function put(i,t){var e=el(i);if(e&&e.textContent!==t)e.textContent=t}
-function pn(p){return p==="endurance"?"Endurance":"HyperSpeed"}
-function fmt(m){m=+m||0;if(m<60)return m+" min";var h=Math.floor(m/60),r=m%60;return h+(h>1?" hrs":" hr")+(r?" "+r+" min":"")}
-function say(t){try{if(window.speechSynthesis){speechSynthesis.cancel();var u=new SpeechSynthesisUtterance(t);u.lang="en-US";speechSynthesis.speak(u)}}catch(e){}}
-function tone(f0,t,d){var o=ctx.createOscillator(),g=ctx.createGain();o.type="triangle";o.frequency.value=f0;
-g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.35,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+d);
-o.connect(g);g.connect(ctx.destination);o.start(t);o.stop(t+d+.05)}
-function ding(n){try{if(!ctx||ctx.state!=="running")return;var t=ctx.currentTime;n=Math.min(n,4);for(var i=0;i<n;i++){tone(988,t+i*.22,.12);tone(1319,t+i*.22+.1,.3)}}catch(e){}}
-function legacy(fq){var q=new URLSearchParams(new FormData(f));q.set("coinplan",plan);if(fq)q.set("coinforfeit","yes");location.href=f.action+"?"+q.toString()}
-function portal(){location.href=f.action+"?fas="+encodeURIComponent(f.elements.fas.value)}
-function stop(){if(es){es.close();es=null}if(pt){clearInterval(pt);pt=null}if(tk){clearInterval(tk);tk=null}}
-function bar(){put("lleft",left+"s left · the timer restarts with every coin");var b=el("lbar");if(b)b.style.width=Math.max(0,Math.min(100,100*left/tot))+"%"}
-function err(e){stop();show("lcd",0);show("ldone",0);put("lsub","Coin payment is not available right now");put("lpes","");put("lmin","Please try again or ask the attendant ("+e+").");show("lagain",1)}
-function upd(j){
-if(fin)return;
-if(j.state==="error"&&!j.online){if(j.error==="SLOT_BUSY")return legacy(false);return err(j.error)}
-var p=+j.pulses||0;
-if(j.state==="armed"){
-if(!armed){armed=true;put("lsub",pn(plan)+" · Insert coin(s) now · Maglagay ng barya");show("lcd",1);
-try{navigator.vibrate&&navigator.vibrate(80)}catch(e){}if(!p)say("Insert coin now")}
-left=Math.max(+j.remaining||0,0);tot=p>0?IDLE:FIRST;bar();
-if(!tk)tk=setInterval(function(){if(left>0)left--;bar()},1000)}
-if(armed||p>0){put("lpes","₱"+p);put("lmin","= "+fmt(j.minutes)+" of Wi-Fi")}
-if(p>pes){ding(p-pes);say(p+(p===1?" peso":" pesos"))}pes=p;
-if(j.online&&!on){on=true;show("lon",1);show("ldone",1);setTimeout(function(){say("You are online")},900);
-try{navigator.vibrate&&navigator.vibrate([100,60,100])}catch(e){}}
-if(j.final){fin=true;stop();show("lcd",0);show("ldone",0);show("lmis",0);put("lsub","Thank you! · Salamat!");
-put("lpes",fmt(j.fleft));put("lmin","of Wi-Fi time left · ₱"+p+" = "+fmt(j.fwmin));put("lont","Enjoy browsing.");
-show("lon",1);put("lcode",j.code||"");show("lfin",1);return}
-if(j.state==="done"||j.state==="none"){stop();
-if(!p){show("lcd",0);show("ldone",0);put("lsub","No coins detected · Walang nabayaran");put("lpes","₱0");
-put("lmin","You were not charged.");show("lagain",1)}else portal()}}
-function poll(){fetch(base+"/api/status?sid="+SID,{cache:"no-store"}).then(function(r){return r.json()}).then(upd).catch(function(){})}
-function watch(){
-if(window.EventSource){try{es=new EventSource(base+"/stream?sid="+SID+"&mode=wait");
-es.addEventListener("status",function(m){try{upd(JSON.parse(m.data))}catch(e){}});
-es.onerror=function(){if(es){es.close();es=null}if(!fin&&!pt)pt=setInterval(poll,1000)}}catch(e){es=null}}
-if(!es&&!pt)pt=setInterval(poll,1000)}
-function start(fq){
-f.style.display="none";var n=document.querySelectorAll(".note"),s0=f.previousElementSibling,i;
-for(i=0;i<n.length;i++)n[i].style.display="none";if(s0)s0.style.display="none";
-show("live",1);show("lagain",0);put("lsub",pn(plan)+" · Getting the coin slot ready · Sandali lang");put("lpes","₱0");
-put("lmin","Please wait. Do not insert coins yet · huwag pa maglagay ng barya.");
-fetch(base+"/api/start?sid="+SID+"&plan="+plan+(fq?"&forfeit=1":""),{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){
-if(j.state==="error"&&j.error==="PLAN_MISMATCH")return mismatch(j);
-if(j.state==="error"||j.error)return legacy(fq);
-upd(j);watch()}).catch(function(){legacy(fq)})}
-function mismatch(j){var o=pn(j.plan),w=pn(plan);
-put("lsub","You still have "+o+" time ("+fmt(Math.round((+j.remaining||0)/60))+")");put("lpes","");
-put("lmin","Add more "+o+" time, or switch to "+w+": the time you have left is given up when you pay.");
-var m=el("lmis");m.innerHTML='<button class="btn" type="button" id="mk">Add '+o+' time</button><button class="btn alt" type="button" id="ms">Switch to '+w+' · lose my time</button>';
-show("lmis",1);el("mk").onclick=function(){show("lmis",0);plan=j.plan;start(false)};el("ms").onclick=function(){show("lmis",0);start(true)}}
-el("ldone").onclick=function(){this.disabled=true;this.textContent="Closing · Sandali lang";
-fetch(base+"/api/finish?sid="+SID,{cache:"no-store"}).then(function(r){return r.json()}).then(upd).catch(function(){})};
+/* Insert Coin also unlocks sound: browsers only allow audio after a tap, and the tap must happen on the page that later
+   plays it. So the tap starts the coin window without leaving the page (the waiting view replaces this one and reuses
+   the unlocked audio). Without scripts the form simply submits and the waiting page offers a "tap for sound" button. */
+(function(){var f=document.getElementById("coinform"),A=window.AudioContext||window.webkitAudioContext,first=${infofirst:-30};
+if(!f||!A||!window.fetch||!window.URLSearchParams||!window.FormData)return;
+/* Show the waiting screen at once (same look as the real one); the router's answer replaces it a moment later, or shows
+   the busy / error page instead. */
+function instant(){var r=f.querySelector("input[name=coinplan]:checked"),nm=r&&r.value==="endurance"?"Endurance":"HyperSpeed",
+sub=f.previousElementSibling,d=document.createElement("div"),n=document.querySelectorAll(".note"),i;
+if(sub)sub.textContent=nm+" \u00b7 Getting the coin slot ready \u00b7 Sandali lang";
+f.style.display="none";for(i=0;i<n.length;i++)n[i].style.display="none";
+d.innerHTML='<div class="big">&#8369;0</div><p class="mut">Please wait a moment. <b>Do not insert coins yet</b> &middot; huwag pa maglagay ng barya.</p>';
+f.parentNode.insertBefore(d,f.nextSibling)}
 f.addEventListener("submit",function(e){e.preventDefault();
 try{window.speechSynthesis&&speechSynthesis.speak(new SpeechSynthesisUtterance(""))}catch(x){}
-try{if(A){ctx=window.__ctx=window.__ctx||new A();ctx.resume();var o=ctx.createOscillator(),g=ctx.createGain();g.gain.value=.04;
-o.frequency.value=880;o.connect(g);g.connect(ctx.destination);o.start();o.stop(ctx.currentTime+.05)}}catch(x){}
-var r=f.querySelector("input[name=coinplan]:checked");plan=r?r.value:"hyper";start(false)})})();
+try{var c=window.__ctx=window.__ctx||new A();c.resume();var o=c.createOscillator(),g=c.createGain();g.gain.value=.04;o.frequency.value=880;o.connect(g);g.connect(c.destination);o.start();o.stop(c.currentTime+.05)}catch(x){}
+var url=f.action+"?"+new URLSearchParams(new FormData(f)).toString();instant();
+fetch(url,{cache:"no-store"}).then(function(r){return r.text()})
+.then(function(t){document.open();document.write(t);document.close()}).catch(function(){location.href=url})})})();
 </script>
 HTML
 }
@@ -2281,18 +1935,8 @@ page_result() {
 		return
 	fi
 	vplan=$(printf '%s' "$ver" | jget plan); vpulses=$(printf '%s' "$ver" | jget pulses); vmin=$(printf '%s' "$ver" | jget minutes)
-	leftmin=0; label="Connect"; forfeitnote=""; vwid=$(printf '%s' "$ver" | jget wid)
+	leftmin=0; label="Connect"; forfeitnote=""
 	flash_peek "$mac"
-	if [ -n "$vwid" ] && [ "$R_WID" = "$vwid" ] && [ "$P_STATE" = running ]; then
-		# The router already recorded this window (online on the first coin): show the total, add nothing again.
-		cat << HTML
-<p class="sub">$(plan_name "$vplan") &middot; Thank you! &middot; Salamat!</p>
-<div class="big">$(fmt_min "$(left_min "$R_LEFT")")</div>
-<p class="mut">of Wi-Fi time left &middot; &#8369;$vpulses = $(fmt_min "$vmin") added</p>
-HTML
-		coinplan="$vplan"; action_button "Continue" connect "" landing
-		return
-	fi
 	if [ "$P_STATE" = running ] || [ "$P_STATE" = paused ]; then
 		if [ "$R_PLAN" = "$vplan" ]; then
 			leftmin=$(left_min "$R_LEFT"); label="Add time"
@@ -2396,14 +2040,7 @@ HTML
 	src=5
 	[ "$mrc" = 0 ] && { flash_session "$mac"; src=$?; }
 	if [ "$src" = 0 ]; then
-		# The router usually has done all of this already (online on the first coin, the window settled when it closed):
-		# then nothing is granted again, so the connection is not interrupted.
-		if [ "$paid" = yes ] && { [ "$M_MODE" = dup ] || [ "$M_MODE" = update ]; } && [ "$(nds_state "$mac")" = "Authenticated" ] &&
-			[ "$(printf '%s' "$ver" | jget claimed)" = "true" ]; then
-			ndsstatus="authenticated"
-		else
-			grant_access
-		fi
+		grant_access
 		if [ "$ndsstatus" = "authenticated" ]; then
 			# Only after access was really granted is the payment marked as used on the box.
 			[ "$paid" = yes ] && coinslot "/ack?sid=$sid" > /dev/null
@@ -2502,11 +2139,9 @@ userinfo="$title"
 # (the status page) and flash_fairuse.sh. Install next to them in /usr/lib/opennds/.
 #
 # The roll is a CSV, one line per device:
-#   code,rate_down,rate_up,quota_down,quota_up,time_limit_min,first_punched,mac,pauses_used,paused_at,remaining_at_pause,plan,wid,pesos,wmin,wpesos,wfinal
+#   code,rate_down,rate_up,quota_down,quota_up,time_limit_min,first_punched,mac,pauses_used,paused_at,remaining_at_pause,plan,wid,pesos
 # The first 11 fields are exactly the voucher roll of the paper-voucher theme this one grew from; plan, wid (the id of
-# the coin window that paid, so one window can never be credited twice) and pesos are appended, then the share of the
-# last window (wmin minutes, wpesos) and whether that window is final: a window is recorded at its first coin (the device
-# goes online at once) and again, priced as a whole, when it closes; the second write replaces the first share. Expiry is always
+# the coin window that paid, so one window can never be credited twice) and pesos are appended. Expiry is always
 # first_punched + time_limit*60. A top-up adds to time_limit; a pause freezes remaining_at_pause and a resume moves
 # first_punched forward by the time spent paused.
 #
@@ -2603,15 +2238,14 @@ roll_unlock() { rm -rf "$FLASH_LOCK" 2> /dev/null; }
 
 # roll_parse <line>: sets R_CODE R_DOWN R_UP R_QDOWN R_QUP R_TL R_FP R_MAC R_PU R_PA R_RP R_PLAN R_WID R_PESOS
 roll_parse() {
-	IFS=, read -r R_CODE R_DOWN R_UP R_QDOWN R_QUP R_TL R_FP R_MAC R_PU R_PA R_RP R_PLAN R_WID R_PESOS R_WMIN R_WP R_WF << EOF
+	IFS=, read -r R_CODE R_DOWN R_UP R_QDOWN R_QUP R_TL R_FP R_MAC R_PU R_PA R_RP R_PLAN R_WID R_PESOS << EOF
 $1
 EOF
 	R_DOWN="${R_DOWN:-0}"; R_UP="${R_UP:-0}"; R_QDOWN="${R_QDOWN:-0}"; R_QUP="${R_QUP:-0}"; R_TL="${R_TL:-0}"; R_FP="${R_FP:-0}"
 	R_PU="${R_PU:-0}"; R_PA="${R_PA:-0}"; R_RP="${R_RP:-0}"; R_PLAN="${R_PLAN:-hyper}"; R_PESOS="${R_PESOS:-0}"
-	R_WMIN="${R_WMIN:-0}"; R_WP="${R_WP:-0}"; R_WF="${R_WF:-1}"
 }
 roll_line() {  # the current R_* values as a roll line
-	printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s' "$R_CODE" "$R_DOWN" "$R_UP" "$R_QDOWN" "$R_QUP" "$R_TL" "$R_FP" "$R_MAC" "$R_PU" "$R_PA" "$R_RP" "$R_PLAN" "$R_WID" "$R_PESOS" "$R_WMIN" "$R_WP" "$R_WF"
+	printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s' "$R_CODE" "$R_DOWN" "$R_UP" "$R_QDOWN" "$R_QUP" "$R_TL" "$R_FP" "$R_MAC" "$R_PU" "$R_PA" "$R_RP" "$R_PLAN" "$R_WID" "$R_PESOS"
 }
 roll_find_mac() { [ -f "$FLASH_ROLL" ] && awk -F, -v m="$(lc "$1")" 'tolower($8)==m {print; exit}' "$FLASH_ROLL"; }
 roll_find_code() { [ -f "$FLASH_ROLL" ] && awk -F, -v c="$(lc "$1")" 'tolower($1)==c {print; exit}' "$FLASH_ROLL"; }
@@ -2648,29 +2282,18 @@ left_min() { echo $(((${1:-0} + 59) / 60)); }
 # ---------------------------------------------------------------------------
 # Paying: flash_mint
 # ---------------------------------------------------------------------------
-# flash_mint <mac> <wid> <plan> <pulses> <minutes> <up> <down> <forfeit 0|1> [final 1|0]
-# Records a verified coin payment: <pulses> and <minutes> are the window's whole total so far, never a delta. Writing the
-# same window again replaces its earlier share (the early grant at the first coin, then the whole window priced once at
-# the end); a final window is never changed again. Revenue is logged once, when the window is final.
-# Sets M_CODE and M_MODE (new | topup | switch | update | dup). Returns 0, 5 (roll busy), 6 (the device has live time on
-# the other plan and did not agree to give it up).
+# flash_mint <mac> <wid> <plan> <pulses> <minutes> <up> <down> <forfeit 0|1>
+# Records a verified coin payment. Sets M_CODE and M_MODE (new | topup | switch | dup). Returns 0, 5 (roll busy),
+# 6 (the device has live time on the other plan and did not agree to give it up).
 flash_mint() {
-	m_mac=$(lc "$1"); m_wid="$2"; m_plan="$3"; m_pulses="$4"; m_min="$5"; m_up="$6"; m_down="$7"; m_forfeit="$8"; m_final="${9:-1}"
+	m_mac=$(lc "$1"); m_wid="$2"; m_plan="$3"; m_pulses="$4"; m_min="$5"; m_up="$6"; m_down="$7"; m_forfeit="$8"
 	roll_lock || return 5
 	_n=$(now_ts); M_MODE=new; M_CODE=""
 	_line=$(roll_find_mac "$m_mac")
 	if [ -n "$_line" ]; then
 		roll_parse "$_line"
-		if [ -n "$m_wid" ] && [ "$R_WID" = "$m_wid" ]; then
-			if [ "$R_WF" = 1 ]; then M_MODE=dup; M_CODE="$R_CODE"; roll_unlock; return 0; fi   # credited and closed already
-			_dm=$((m_min - R_WMIN)); _dp=$((m_pulses - R_WP))                                    # the same window, more coins
-			R_TL=$((R_TL + _dm)); R_PESOS=$((R_PESOS + _dp)); [ "$R_PA" != 0 ] && R_RP=$((R_RP + _dm * 60))
-			R_WMIN="$m_min"; R_WP="$m_pulses"; R_WF="$m_final"
-			roll_put
-			M_MODE=update; M_CODE="$R_CODE"
-			[ "$m_final" = 1 ] && flash_revenue "$_n" "$m_plan" "$m_pulses" "$m_min" window
-			roll_unlock
-			return 0
+		if [ -n "$m_wid" ] && [ "$R_WID" = "$m_wid" ]; then   # this very coin window was credited already
+			M_MODE=dup; M_CODE="$R_CODE"; roll_unlock; return 0
 		fi
 		if roll_calc; then
 			if [ "$R_PLAN" != "$m_plan" ]; then
@@ -2690,16 +2313,12 @@ flash_mint() {
 		R_CODE=$(new_code); R_DOWN="$m_down"; R_UP="$m_up"; R_QDOWN=0; R_QUP=0; R_TL="$m_min"; R_FP="$_n"; R_MAC="$m_mac"
 		R_PU=0; R_PA=0; R_RP=0; R_PLAN="$m_plan"; R_WID="$m_wid"; R_PESOS="$m_pulses"
 	fi
-	R_WMIN="$m_min"; R_WP="$m_pulses"; R_WF="$m_final"
 	roll_put
 	M_CODE="$R_CODE"
-	[ "$m_final" = 1 ] && flash_revenue "$_n" "$m_plan" "$m_pulses" "$m_min" "$M_MODE"
+	mkdir -p "$(dirname "$FLASH_REVENUE")" 2> /dev/null
+	echo "$_n,$m_plan,$m_pulses,$m_min,$M_MODE" >> "$FLASH_REVENUE"
 	roll_unlock
 	return 0
-}
-flash_revenue() {  # flash_revenue <time> <plan> <pesos> <minutes> <kind>
-	mkdir -p "$(dirname "$FLASH_REVENUE")" 2> /dev/null
-	echo "$1,$2,$3,$4,$5" >> "$FLASH_REVENUE"
 }
 
 # ---------------------------------------------------------------------------
@@ -3329,9 +2948,8 @@ done
 #@@FILE /etc/init.d/flash_coin 755
 #!/bin/sh /etc/rc.common
 # OpenWrt service for the "flash coin" portal (procd). Installed as /etc/init.d/flash_coin; use it INSTEAD OF
-# /etc/init.d/coinslot (both would start the listener on the same port). Four supervised processes: the local coin-slot
-# manager the portal talks to, the live-update stream for the guests' pages, the receiver of the box's coin events, and
-# the HyperSpeed fair-use watcher.
+# /etc/init.d/coinslot (both would start the listener on the same port). Three supervised processes: the local coin-slot
+# manager the portal talks to, the live-update stream for the guests' pages, and the HyperSpeed fair-use watcher.
 START=99
 USE_PROCD=1
 
@@ -3346,12 +2964,6 @@ start_service() {
 
 	procd_open_instance stream
 	procd_set_param command /usr/bin/coinslot-listener.sh stream
-	procd_set_param respawn
-	procd_set_param stderr 1
-	procd_close_instance
-
-	procd_open_instance events
-	procd_set_param command /usr/bin/coinslot-listener.sh events
 	procd_set_param respawn
 	procd_set_param stderr 1
 	procd_close_instance

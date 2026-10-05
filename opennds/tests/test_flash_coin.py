@@ -11,7 +11,7 @@ ROOT = os.path.dirname(HERE)
 THEME, LISTENER = f"{ROOT}/flash_coin.sh", f"{ROOT}/coinslot-listener.sh"
 LIB, STATUS, FAIR = f"{ROOT}/flash_coin_lib.sh", f"{ROOT}/flash_coin_status.sh", f"{ROOT}/flash_fairuse.sh"
 KEY = "test-gateway-key-123456"
-BOX_PORT, LISTEN_PORT, STREAM_PORT, EVENT_PORT = 18190, 18199, 18210, 18212
+BOX_PORT, LISTEN_PORT, STREAM_PORT = 18190, 18199, 18210
 tmp = tempfile.mkdtemp()
 CTL, LOG, STATE, DATA, NDS = f"{tmp}/ctl.json", f"{tmp}/box.log", f"{tmp}/state", f"{tmp}/data", f"{tmp}/nds"
 ROLL, REV = f"{tmp}/roll/vouchers.txt", f"{tmp}/roll/revenue.csv"
@@ -70,7 +70,7 @@ def revenue():
 conf = f"{tmp}/coinslot.conf"
 open(conf, "w").write(
     f"GW_BOX=127.0.0.1:{BOX_PORT}\nGW_KEY={KEY}\nSTATE_DIR={STATE}\nDATA_DIR={DATA}\nNDSCTL={HERE}/fake_ndsctl.sh\n"
-    f"LISTEN_PORT={LISTEN_PORT}\nCOIN_FIRST_WAIT_SECONDS=4\nCOIN_IDLE_WAIT_SECONDS=3\nCOIN_MAX_SECONDS=12\nQUEUE_CLAIM_SECONDS=5\nSTREAM_PORT={STREAM_PORT}\nEVENT_PORT={EVENT_PORT}\n"
+    f"LISTEN_PORT={LISTEN_PORT}\nCOIN_FIRST_WAIT_SECONDS=4\nCOIN_IDLE_WAIT_SECONDS=3\nCOIN_MAX_SECONDS=12\nQUEUE_CLAIM_SECONDS=5\nSTREAM_PORT={STREAM_PORT}\n"
     "FAIR_USE_KB=1000\nFAIR_THROTTLE_DOWN_KBPS=2000\nFAIR_THROTTLE_UP_KBPS=1000\nFAIR_THROTTLE_MINUTES=5\nFAIR_FULL_MINUTES=2\n")
 os.makedirs(f"{tmp}/bin")
 os.symlink(f"{HERE}/fake_ndsctl.sh", f"{tmp}/bin/ndsctl")
@@ -83,8 +83,7 @@ env["ARP_FILE"] = ARP
 set_box(busy=False, coins_at=[])
 procs = [subprocess.Popen([sys.executable, f"{HERE}/fake_socat.py", str(STREAM_PORT), LISTENER, "stream-handle"], env=env),
          subprocess.Popen([sys.executable, f"{HERE}/fakebox.py", str(BOX_PORT)], env=env),
-         subprocess.Popen([sys.executable, f"{HERE}/fake_socat.py", str(LISTEN_PORT), LISTENER], env=env),
-         subprocess.Popen(["sh", LISTENER, "events"], env=env, stderr=subprocess.DEVNULL)]   # the box's coin events (real socat, UDP)
+         subprocess.Popen([sys.executable, f"{HERE}/fake_socat.py", str(LISTEN_PORT), LISTENER], env=env)]
 time.sleep(1.0)
 
 
@@ -140,117 +139,27 @@ try:
     for needle in ["&#8369;5</span><span>30 min", "&#8369;10</span><span>1 hr", "&#8369;1</span><span>15 min", "&#8369;20</span><span>24 hrs"]:
         check(needle in p, f"rate row present: {needle}")
     check("#0f1715" in p and "linear-gradient(135deg,#11998e,#38ef7d)" in p, "green flash theme")
-    check("refresh" not in p.lower() and len(p) < 14000, f"welcome is small and static ({len(p)} bytes)")
+    check("refresh" not in p.lower() and len(p) < 8500, f"welcome is small and static ({len(p)} bytes)")
     check("coinact=vform" in p, "welcome offers code restore")
     p = page("hidA", MAC_A, port=1)
     check("Coin payment is offline" in p, "listener down and no paid time: offline page, no crash")
 
-    # ---- instant: online on the first coin, the whole window priced once when it closes -----------------------------
-    def api(path):
-        try:
-            with urllib.request.urlopen(f"http://127.0.0.1:{STREAM_PORT}{path}", timeout=15) as r:
-                return r.status, json.loads(r.read().decode()), r.headers.get("Access-Control-Allow-Origin")
-        except urllib.error.HTTPError as e:
-            return e.code, {}, None
-
-    def wait_until(cond, timeout):
-        end = time.time() + timeout
-        while time.time() < end:
-            if cond():
-                return True
-            time.sleep(0.05)
-        return False
-
-    p = page("hidI", MAC_A)
-    check('id="live"' in p and "/api/start?sid=" in p and sid_of("hidI") in p, "the welcome page carries the live page (one page, no reloads)")
-    roll_write(); nds_client(MAC_A); open(f"{NDS}/calls.log", "w").close(); open(LOG, "w").close()
-    # P17 on Endurance as 1 + 1 + 15 pesos: online after the first peso; the window is priced as 10 + 5 + 1 + 1 = 690 min
-    set_box(busy=False, coins_at=[0.5, 1.0] + [1.5 + 0.1 * i for i in range(15)])
-    t0 = time.time()
-    code_, j, cors = api(f"/api/start?sid={sid_of('hidI')}&plan=endurance")
-    check(code_ == 200 and j.get("state") in ("starting", "armed") and cors == "*", f"/api/start opens a window for the device that asks: {j}")
-    online = wait_until(lambda: os.path.exists(f"{NDS}/{MAC_A.replace(':', '')}") and nds_get(MAC_A)["STATE"] == "Authenticated", 6)
-    t_online = time.time() - t0
-    check(online and t_online < 3.0, f"online right after the first coin, with no tap (coin at 0.5 s, online at {t_online:.2f} s)")
-    r = roll().get(MAC_A, [])
-    check(r and r[5] == "15" and r[11] == "endurance" and r[16] == "0", f"first coin recorded as the window's share so far, not final: {r}")
-    check(revenue() == "", "no revenue logged before the window closes")
-    _, j, _ = api(f"/api/status?sid={sid_of('hidI')}")
-    check(j.get("online") is True, f"status says online: {j}")
-    check(wait_until(lambda: api(f"/api/status?sid={sid_of('hidI')}")[1].get("final"), 15), "the window closes and settles by itself")
-    _, j, _ = api(f"/api/status?sid={sid_of('hidI')}")
-    r = roll()[MAC_A]
-    check(r[5] == "690" and r[13] == "17" and r[16] == "1" and j.get("fwmin") == 690 and j.get("pulses") == 17,
-          f"the whole window priced once: P17 = 690 min (not per coin): roll {r} status {j}")
-    check(re.fullmatch(r"[a-z0-9]{4}-[a-z0-9]{4}", j.get("code", "")) and j["code"] == r[0], "the final status carries the restore code")
-    check(revenue().strip().split("\n") == [revenue().strip()] and ",endurance,17,690," in revenue(), "revenue logged once, for the whole window: " + revenue())
-    check(any(l.startswith("ack ") and sid_of("hidI") in l for l in open(LOG).read().split("\n")), "coins acknowledged on the box after the window settled")
-    check(sum(1 for c in calls() if c.startswith("deauth " + MAC_A)) == 1, "exactly one re-grant (at close), not one per coin: " + str(calls()))
-    nds = nds_get(MAC_A)
-    check(nds["UPRATE"] == "2000" and nds["DOWNRATE"] == "5000" and abs(int(nds["SESSION_END"]) - (int(r[6]) + 690 * 60)) < 120,
-          f"granted 690 min from the first coin, with the Endurance caps: {nds}")
-    check(any(l.startswith("event coin") for l in open(LOG).read().split("\n")), "the box pushed coin events")
-    live = json.load(open(f"{STATE}/{sid_of('hidI')}/live.json"))
-    check(live.get("pulses") == 17 and live.get("type") == "end", f"live.json holds the box's last event: {live}")
-    p = page("hidI", MAC_A, "connect", "endurance", landing="yes")
-    check("Connected" in p and "AUTHCALL" not in p and sum(1 for c in calls() if c.startswith("deauth " + MAC_A)) == 1,
-          "a late Connect (no-script flow) confirms without granting again (no interruption)")
-    # top-up while online: no early grant, one re-grant when it closes, priced per window
-    open(f"{NDS}/calls.log", "w").close()
-    set_box(busy=False, coins_at=[0.5, 0.9])
-    api(f"/api/start?sid={sid_of('hidI2')}&plan=endurance")
-    check(wait_until(lambda: api(f"/api/status?sid={sid_of('hidI2')}")[1].get("final"), 15), "top-up window settles")
-    check(roll()[MAC_A][5] == "720" and sum(1 for c in calls() if c.startswith("deauth")) == 1, f"top-up adds this window's price (30 min), one re-grant: {roll()[MAC_A]} {calls()}")
-    # the other plan is refused without consent, through the API too
-    _, j, _ = api(f"/api/start?sid={sid_of('hidI3')}&plan=hyper")
-    check(j.get("error") == "PLAN_MISMATCH" and j.get("plan") == "endurance", f"plan switch needs consent: {j}")
-    # someone else's window cannot be read or closed
-    page("hidJ", MAC_B, "start", "hyper")
-    check(api(f"/api/status?sid={sid_of('hidJ')}")[0] == 403 and api(f"/api/finish?sid={sid_of('hidJ')}")[0] == 403, "another device's window is refused")
-    get(f"/finish?sid={sid_of('hidJ')}"); time.sleep(5)
-    # a forged or replayed event changes nothing
-    d = f"{STATE}/{sid_of('hidI2')}"
-    before = open(f"{d}/live.env").read()
-    wid = open(f"{d}/wid").read()
-    subprocess.run(["sh", LISTENER, "event-line", f"gw1ev:{sid_of('hidI2')}:{wid}:99:coin:50:" + "0" * 64], env=env)
-    other = hashlib.sha256(b"x").hexdigest()[:32]
-    body = f"gw1ev:{sid_of('hidI2')}:{other}:99:coin:50"
-    import hmac as _h
-    subprocess.run(["sh", LISTENER, "event-line", body + ":" + _h.new(KEY.encode(), body.encode(), hashlib.sha256).hexdigest()], env=env)
-    check(open(f"{d}/live.env").read() == before, "an event with a bad signature, or for another window, is ignored")
-    # an older box (no events) and lost events still work, by the signed checks
-    for ctlx, label in [({"events": False}, "a box without coin events"), ({"drop_events": True}, "lost coin events")]:
-        roll_write(); nds_client(MAC_A)
-        set_box(busy=False, coins_at=[0.5], **ctlx)
-        hid = "hidK" + label[:3]
-        t0 = time.time()
-        api(f"/api/start?sid={sid_of(hid)}&plan=hyper")
-        ok = wait_until(lambda: nds_get(MAC_A)["STATE"] == "Authenticated", 8)
-        check(ok and time.time() - t0 < 4, f"{label}: still online on the first coin ({time.time() - t0:.1f} s)")
-        check(wait_until(lambda: api(f"/api/status?sid={sid_of(hid)}")[1].get("final"), 15) and roll()[MAC_A][5] == "6", f"{label}: settles")
-    roll_write(); nds_client(MAC_A); open(LOG, "w").close()
-    if os.path.exists(REV):
-        os.remove(REV)
-    set_box(busy=False, coins_at=[])
-
-    # ---- the no-script pages: P17 Endurance = 11 hrs 30 min, recorded and granted by the router itself -------------------
+    # ---- pay Endurance P17 = 11 hrs 30 min; nothing is recorded until Connect -------------------------------------------
     p = pay("hidA", MAC_A, "endurance", 17)
     check("11 hrs 30 min" in p and "&#8369;17" in p, "result: P17 Endurance = 11 hrs 30 min")
-    check(nds_get(MAC_A)["STATE"] == "Authenticated" and roll().get(MAC_A, [""] * 17)[5] == "690", "the router recorded and granted the window without a Connect tap")
-    check("you still had" not in p and "added" in p and "Continue" in p, "the result page does not count the recorded window twice")
+    check(roll() == {} and "AUTHCALL" not in p, "paying alone grants and records nothing")
     st, v = get(f"/verify?sid={sid_of('hidA')}")
     vj = json.loads(v)
-    check(vj["ok"] and vj["pulses"] == 17 and vj["minutes"] == 690 and vj["plan"] == "endurance" and len(vj["wid"]) >= 16 and vj["claimed"],
+    check(vj["ok"] and vj["pulses"] == 17 and vj["minutes"] == 690 and vj["plan"] == "endurance" and len(vj["wid"]) >= 16 and not vj["claimed"],
           f"/verify tells what was paid: {v}")
-    check(nds_get(MAC_A)["UPRATE"] == "2000" and nds_get(MAC_A)["DOWNRATE"] == "5000", "Endurance grant: 2 Mbit/s up, 5 Mbit/s down")
     p = page("hidA", MAC_A, "connect", "endurance", landing="yes")
-    check("Connected" in p and "AUTHCALL" not in p, "Continue confirms without granting again")
+    check("AUTHCALL sessiontimeout=690 quotas=690 2000 5000 0 0" in p, "Endurance grant: 690 min, 2 Mbit/s up, 5 Mbit/s down: " + p[-300:])
     code = code_from(p)
     check(code is not None, "xxxx-xxxx code shown")
     line = roll().get(MAC_A)
     check(line and line[0] == code and line[5] == "690" and line[11] == "endurance" and line[13] == "17" and line[12] == vj["wid"] and line[8] == "0",
           f"roll line holds code, minutes, plan, window id, pesos: {line}")
-    check(",endurance,17,690," in revenue() and revenue().count("\n") == 1, "revenue logged once")
+    check("endurance,17,690,new" in revenue(), "revenue logged")
     check(any(l.startswith("ack ") and sid_of("hidA") in l for l in open(LOG).read().split("\n")), "coins acknowledged on the box after access")
     check(json.loads(get(f"/verify?sid={sid_of('hidA')}")[1])["claimed"], "/verify reports the window as used")
     check(nds_get(MAC_A)["STATE"] == "Authenticated", "device authenticated")
@@ -265,9 +174,11 @@ try:
     set_box(busy=False, coins_at=[0.5] * 2)
     page("hidX", MAC_B, "start", "hyper"); time.sleep(1.5)
     page("hidX", MAC_B, "finish", "hyper"); time.sleep(2)
-    p = page("hidY", MAC_C, "connect", "hyper", landing="yes")
-    check("AUTHCALL" not in p and "No paid time found" in p and MAC_C not in roll(), "another device cannot claim someone else's coins")
-    check(roll()[MAC_B][5] == "12" and roll()[MAC_B][11] == "hyper", "the coins went to the device that started the window: P2 HyperSpeed = 12 min")
+    p = page("hidY", MAC_B, "connect", "hyper", landing="yes")
+    check("AUTHCALL" not in p and "No paid time found" in p and MAC_B not in roll(), "a different client id cannot claim someone else's coins")
+    nds_client(MAC_B)
+    page("hidX", MAC_B, "connect", "hyper", landing="yes")          # hidX does own these two coins
+    check(roll()[MAC_B][5] == "12" and roll()[MAC_B][11] == "hyper", "own coins are granted: P2 HyperSpeed = 12 min")
     roll_write(*[",".join(v) for k, v in roll().items() if k != MAC_B])
     nds_client(MAC_B)
 
@@ -275,19 +186,25 @@ try:
     p = page("hidA2", MAC_A, "start", "hyper", statusvar="authenticated")
     check("still have Endurance time" in p and "Switch to HyperSpeed" in p, "other plan: warned with add-time and switch options")
     p = pay("hidA3", MAC_A, "endurance", 2)
-    check("12 hrs" in p and "&#8369;2 = 30 min added" in p, "top-up result shows the new total: " + re.sub(r"\s+", " ", p)[-400:])
+    check("&#8369;2 = 30 min + 11 hrs" in p and "Add time" in p, "top-up result keeps the time left: " + re.sub(r"\s+", " ", p)[-400:])
     p = page("hidA3", MAC_A, "connect", "endurance", landing="yes", statusvar="authenticated")
     check(code_from(p) == code and roll()[MAC_A][5] == "720" and roll()[MAC_A][13] == "19", "top-up keeps the code and adds to the roll line")
     check(any(re.match(r"auth aa:bb:cc:00:00:01 72[01] 2000 5000 0 0", c) for c in calls()), "top-up re-granted ~12 hr: " + str([c for c in calls() if c.startswith("auth")][-2:]))
-    check(",endurance,2,30," in revenue(), "top-up logged")
+    check("endurance,2,30,topup" in revenue(), "top-up logged")
 
     # ---- switching plan needs the customer's agreement ------------------------------------------------------------------------
-    p = page("hidA4", MAC_A, "start", "hyper", statusvar="authenticated")
-    check("still have Endurance time" in p and roll()[MAC_A][11] == "endurance", "without agreement the window does not even start")
     p = pay("hidA4", MAC_A, "hyper", 5, forfeit="yes")
+    check("lose" in p or "replaced" in p, "switch result warns the old time is replaced")
+    p = page("hidA4", MAC_A, "connect", "hyper", landing="yes", forfeit="yes", statusvar="authenticated")
     r = roll()[MAC_A]
-    check(r[11] == "hyper" and r[5] == "30" and r[0] != code, f"agreed at Start: the switch replaced the line with a HyperSpeed one: {r}")
-    check(",hyper,5,30," in revenue().split("\n")[-2], "switch logged")
+    check(r[11] == "hyper" and r[5] == "30" and r[0] != code, f"switch replaced the line with a HyperSpeed one: {r}")
+    check("switch" in revenue().split("\n")[-2], "switch logged")
+    # without agreement the coins stay safe
+    pay("hidA5", MAC_A, "endurance", 2, forfeit="yes")        # (the Start page itself only goes ahead once the customer agreed)
+    p = page("hidA5", MAC_A, "connect", "endurance", landing="yes", statusvar="authenticated")
+    check("forfeited" in p and "AUTHCALL" not in p and roll()[MAC_A][11] == "hyper" and roll()[MAC_A][5] == "30", "plan switch without agreement changes nothing")
+    p = page("hidA5", MAC_A, "connect", "endurance", landing="yes", forfeit="yes", statusvar="authenticated")
+    check(roll()[MAC_A][11] == "endurance" and roll()[MAC_A][5] == "30", "...and goes through once agreed")
 
     # ---- automatic reconnect after a reboot (openNDS forgets sessions), even with the manager down --------------------------
     nds_client(MAC_A)
@@ -322,8 +239,9 @@ try:
     page("hidQ", MAC_D, "connect", "endurance", landing="yes")
     page("hidQ", MAC_D, "pause", "endurance", statusvar="authenticated")
     pay("hidQ2", MAC_D, "endurance", 1)       # (a new browser id: the first window's worker may still be a zombie in a container without init)
-    m = [c for c in calls() if re.match(r"auth aa:bb:cc:00:00:04 49[45] ", c)]
-    check(m and roll()[MAC_D][9] == "0" and nds_get(MAC_D)["STATE"] == "Authenticated", "coins paid while paused resume the session with both amounts: " + str([c for c in calls() if "00:04" in c][-3:]))
+    p = page("hidQ2", MAC_D, "connect", "endurance", landing="yes")
+    m = re.search(r"AUTHCALL sessiontimeout=(\d+)", p)
+    check(m and int(m.group(1)) in (494, 495) and roll()[MAC_D][9] == "0", "coins paid while paused resume the session with both amounts: " + (m.group(0) if m else p[-200:]))
     # HyperSpeed cannot pause
     nds_client("aa:bb:cc:00:00:0e")
     pay("hidH", "aa:bb:cc:00:00:0e", "hyper", 5)
@@ -421,88 +339,6 @@ try:
     r = status_page("err511", "10.9.9.8", LIBOPENNDS=f"{tmp}/bin/libopennds.sh")
     check("CONTINUE TO LOGIN" in r.stdout, "login-needed page")
     check(status_page("nonsense", "10.9.9.9").returncode != 0, "bad input is refused")
-
-    # ---- the live page in a real browser (headless Chromium): one tap, online on the first coin, no reloads ------------------
-    try:
-        from playwright.sync_api import sync_playwright
-    except ImportError:
-        sync_playwright = None
-        print("skipped: playwright not installed (live page browser test)")
-    if sync_playwright:
-        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-        from urllib.parse import parse_qs, urlparse
-        import threading
-        roll_write(); nds_client(MAC_A)
-        hits = []
-        BAD_API = {"on": False}
-        HID = {"v": "hidBR"}   # a new browser id per run (in a container without init, a finished worker may linger as a zombie)
-
-        class Portal(BaseHTTPRequestHandler):
-            def log_message(self, *a):
-                pass
-
-            def do_GET(self):
-                if not self.path.startswith("/opennds_preauth/"):   # e.g. the browser asking for /favicon.ico
-                    self.send_response(404); self.end_headers(); return
-                q = {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()}
-                hits.append(q.get("coinact", ""))
-                html = page(HID["v"], MAC_A, q.get("coinact", ""), q.get("coinplan", ""))
-                if BAD_API["on"]:   # the coin API cannot be reached: the page must fall back to the regular pages
-                    html = html.replace(f"SP={STREAM_PORT}", "SP=9")
-                self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.end_headers()
-                try:
-                    self.wfile.write(html.encode())
-                except BrokenPipeError:
-                    pass
-
-        psrv = ThreadingHTTPServer(("127.0.0.1", 18121), Portal)
-        threading.Thread(target=psrv.serve_forever, daemon=True).start()
-        try:
-            with sync_playwright() as pw:
-                chrome = os.environ.get("CHROME") or next((c for c in [shutil.which(x) for x in ("google-chrome", "chromium", "chromium-browser")] + glob.glob("/opt/pw-browsers/chromium-*/chrome-linux/chrome") if c), None)
-                br = pw.chromium.launch(executable_path=chrome, args=["--no-sandbox", "--autoplay-policy=no-user-gesture-required"])
-                pg = br.new_page()
-                errors = []
-                pg.on("pageerror", lambda e: errors.append(str(e)))
-                pg.goto("http://127.0.0.1:18121/opennds_preauth/?fas=ABC")
-                set_box(busy=False, coins_at=[0.6, 1.0])
-                t0 = time.time()
-                pg.click(".coin")
-                pg.wait_for_selector("#lon", state="visible", timeout=10000)
-                t_on = time.time() - t0
-                shown = pg.text_content("#lpes")
-                pg.wait_for_selector("#lfin", state="visible", timeout=20000)
-                dom = pg.content()
-                check(not errors, f"no script errors: {errors}")
-                check(hits == [""], f"one page only: no portal reloads after the first ({hits})")
-                check(t_on < 3.5, f"the page says online about a second after the first coin ({t_on:.2f} s)")
-                check(re.search(r'id="lcode">[a-z0-9]{4}-[a-z0-9]{4}<', dom) and "12 min" in dom and "Continue browsing" in dom,
-                      "the final view shows the time and the restore code: " + re.sub(r"\s+", " ", pg.text_content("#live") or "")[:300])
-                check(nds_get(MAC_A)["STATE"] == "Authenticated", "and the device really is online")
-                # Done closes the window early
-                roll_write(); nds_client(MAC_A); hits.clear(); HID["v"] = "hidBR2"
-                pg.goto("http://127.0.0.1:18121/opennds_preauth/?fas=ABC")
-                set_box(busy=False, coins_at=[0.6])
-                pg.click(".coin")
-                pg.wait_for_selector("#ldone", state="visible", timeout=10000)
-                t0 = time.time()
-                pg.click("#ldone")
-                pg.wait_for_selector("#lfin", state="visible", timeout=10000)
-                check(time.time() - t0 < 4, f"Done closes the window at once ({time.time() - t0:.1f} s, the idle wait is 3 s)")
-                # no coin API: the regular pages take over
-                BAD_API["on"] = True; hits.clear(); roll_write(); nds_client(MAC_A); HID["v"] = "hidBR3"
-                pg.goto("http://127.0.0.1:18121/opennds_preauth/?fas=ABC")
-                pg.click(".coin")
-                pg.wait_for_timeout(2500)
-                check("start" in hits, f"without the coin API, Insert Coin falls back to the regular start page ({hits})")
-                BAD_API["on"] = False
-                get(f"/finish?sid={sid_of('hidBR3')}")
-                br.close()
-        finally:
-            psrv.shutdown()
-            psrv.server_close()
 
     # ---- terms -------------------------------------------------------------------------------------------------------------------
     check("Terms of Service" in page("hidA", MAC_A, terms="yes"), "terms page")
