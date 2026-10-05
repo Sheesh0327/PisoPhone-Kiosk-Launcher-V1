@@ -557,6 +557,28 @@ try:
             psrv.shutdown()
             psrv.server_close()
 
+    # ---- a restart in the middle of a window: the coins are still credited ------------------------------------------------------
+    import hmac as _hm
+    def box_call(action, sid):
+        n = json.load(urllib.request.urlopen(f"http://127.0.0.1:{BOX_PORT}/challenge"))["nonce"]
+        sig = _hm.new(KEY.encode(), f"gw1:{action}:{sid}:{n}".encode(), hashlib.sha256).hexdigest()
+        return json.load(urllib.request.urlopen(f"http://127.0.0.1:{BOX_PORT}/{action}?session={sid}&nonce={n}&sig={sig}"))
+    nrec = lambda: sum(1 for l in revenue().split("\n") if ",hyper,11," in l)
+    rsid = sid_of("hidX"); MAC_X = "aa:bb:cc:00:00:99"
+    time.sleep(14)   # let any earlier window finish: the fake box's coin script is shared
+    set_box(coins_at=[0.05 * i for i in range(1, 12)], events=False)
+    box_call("arm", rsid); time.sleep(1); box_call("release", rsid); time.sleep(1.2)   # coins on the box, router "crashed" before settling
+    os.makedirs(f"{DATA}/open", exist_ok=True)
+    open(f"{DATA}/open/{rsid}", "w").write(f"{MAC_X} hyper widxx01 0\n")
+    roll_write(); n0 = nrec()
+    subprocess.run(["sh", LISTENER, "recover"], env=env, timeout=60)
+    rx = roll().get(MAC_X, [])
+    check(rx and rx[13] == "11" and rx[16] == "1", f"recover: the coins left on the box are credited to the roll: {rx}")
+    check(nrec() - n0 == 1 and not os.path.exists(f"{DATA}/open/{rsid}"), f"recover: logged once, record removed ({nrec() - n0}) {[l for l in revenue().split(chr(10)) if ',hyper,11,' in l]}")
+    check(box_call("status", rsid)["pulses"] == 0, "recover: the box was acknowledged")
+    subprocess.run(["sh", LISTENER, "recover"], env=env, timeout=60)
+    check(nrec() - n0 == 1, "recover again does nothing")
+
     # ---- ledger chain and clock clamp ---------------------------------------------------------------------------------------------
     rc, out = lib("flash_verify")
     check(rc == 0 and out.startswith("OK "), "revenue chain verifies: " + out)

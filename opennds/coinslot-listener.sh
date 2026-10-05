@@ -436,6 +436,8 @@ instant_grant() {
   flash_load && flash_args || return 0
   if [ "$(nds_state "$F_MAC")" = Authenticated ]; then : > "$dir/online"; return 0; fi   # a top-up: already online
   _min=$(minutes_for "$F_PLAN" "$1")
+  # Kept on flash until the box is acknowledged: if the router restarts mid-window, "recover" credits these coins.
+  mkdir -p "$DATA_DIR/open" 2>/dev/null && printf '%s %s %s %s\n' "$F_MAC" "$F_PLAN" "$F_WID" "$F_FORFEIT" > "$DATA_DIR/open/$sid"
   flash_mint "$F_MAC" "$F_WID" "$F_PLAN" "$1" "$_min" "$(plan_up "$F_PLAN")" "$(plan_down "$F_PLAN")" "$F_FORFEIT" 0 || return 0
   flash_session "$F_MAC" || return 0
   nds_do auth "$F_MAC" "$S_MIN" "$S_UP" "$S_DOWN" "$S_QUP" "$S_QDOWN"
@@ -446,8 +448,42 @@ instant_grant() {
 
 ack_window() {  # the coins are recorded: remove them from the box (retried; /ack and /start retry it again if needed)
   : > "$dir/claimed"; rm -f "$dir/pending" "$dir/forfeit"; : > "$dir/ackpending"
-  for _ in 1 2 3; do ack_box "$sid" && { rm -f "$dir/ackpending"; return 0; }; sleep 1; done
+  for _ in 1 2 3; do ack_box "$sid" && { rm -f "$dir/ackpending" "$DATA_DIR/open/$sid"; return 0; }; sleep 1; done
   return 1
+}
+
+# recover: windows that were open when the router stopped (records in $DATA_DIR/open). The box still holds their coins
+# until acknowledged: credit them on the roll (the same window id never counts twice), then acknowledge.
+do_recover() {
+  flash_load || return 0
+  hmac_init
+  for _f in "$DATA_DIR"/open/*; do
+    [ -f "$_f" ] || continue
+    sid="${_f##*/}"; valid_sid "$sid" || { rm -f "$_f"; continue; }
+    dir="$STATE_DIR/$sid"
+    worker_running "$dir" && continue                                    # a live window settles itself
+    read -r _m _p _w _fo < "$_f"
+    _try=0; _st=""
+    while [ "$_try" -lt 6 ]; do
+      _st=$(call "$sid" status) && [ "$(printf '%s' "$_st" | jget success)" = true ] && [ "$(printf '%s' "$_st" | jget state)" != armed ] && break
+      _st=""; _try=$((_try + 1)); sleep 5
+    done
+    if [ -z "$_st" ]; then                                               # box silent: try again at the next start, give up after a day
+      [ -n "$(find "$_f" -mmin +1440 2>/dev/null)" ] && { logmsg "recover: dropped $sid (box never answered for a day)"; rm -f "$_f"; }
+      continue
+    fi
+    _pu=$(printf '%s' "$_st" | jget pulses)
+    case "$_pu" in "" | *[!0-9]*) _pu=0 ;; esac
+    if [ "$_pu" -gt 0 ] && valid_plan "$_p"; then
+      _min=$(minutes_for "$_p" "$_pu")
+      if flash_mint "$_m" "$_w" "$_p" "$_pu" "$_min" "$(plan_up "$_p")" "$(plan_down "$_p")" "${_fo:-0}" 1; then
+        logmsg "recover: window ${sid%????????????????????????} credited ($_pu coins, $_min min) after a restart"
+        ack_box "$sid" && rm -f "$_f"
+      fi
+    else
+      ack_box "$sid"; rm -f "$_f"                                        # nothing was left on the box
+    fi
+  done
 }
 
 # settle_window <pulses>: the window closed. Price the whole window once (best combination of tiers for the total),
@@ -1119,6 +1155,7 @@ case "$1" in
   serve)
     mkdir -p "$STATE_DIR" "$DATA_DIR/vouchers" && chmod 700 "$STATE_DIR"
     find "$STATE_DIR" -mindepth 1 -maxdepth 1 -type d -name '[0-9a-f]*' -mmin +120 -exec rm -rf {} + 2>/dev/null   # forget old sessions
+    [ -z "$(ls "$DATA_DIR/open" 2>/dev/null)" ] || { "$SELF" recover >/dev/null 2>&1 & }
     exec socat "TCP-LISTEN:$LISTEN_PORT,bind=127.0.0.1,reuseaddr,fork" "EXEC:$SELF handle" ;;
   stream)
     mkdir -p "$STATE_DIR" && chmod 700 "$STATE_DIR"
@@ -1129,6 +1166,7 @@ case "$1" in
   event-line) hmac_init; event_line "$2" ;;                                        # for tests: one event line
   handle) do_handle ;;
   worker) valid_sid "$2" && do_worker "$2" ;;
+  recover) do_recover ;;
   fairuse) do_fairuse ;;
   box) do_box ;;
   hmac) hmac_init; echo "$HMAC_MODE"; [ "$HMAC_MODE" = shell ] && hmac_hex "$2"; echo ;;       # for tests: signs with GW_KEY
