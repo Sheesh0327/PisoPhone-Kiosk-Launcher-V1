@@ -1,11 +1,13 @@
 [package]
 name = "pisoportal"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 publish = false
-description = "PisoPhone portal (step 1: proves openNDS FAS mode, a WebSocket and an ndsctl grant on the router)"
+description = "PisoPhone portal: the coin-payment splash (openNDS FAS), the coin box link, the money records"
 
 [dependencies]
+sha2 = { version = "0.10", default-features = false }
+hmac = { version = "0.12", default-features = false }
 
 [profile.release]
 opt-level = "z"
