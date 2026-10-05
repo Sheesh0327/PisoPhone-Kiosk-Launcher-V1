@@ -1879,6 +1879,7 @@ do_handle() {
       printf '%s' "$plan" > "$dir/plan"
       _wid=$(tr -d '-' < /proc/sys/kernel/random/uuid 2>/dev/null); [ -n "$_wid" ] || _wid="$(now)$$"   # names this window: a coin is never credited twice
       printf '%s' "$_wid" > "$dir/wid"
+      logmsg "window ${sid%????????????????????????} opened for ${mac:-unknown device} plan $plan"
       write_state "$dir" starting 0 "$COIN_FIRST_WAIT_SECONDS" ""
       # The worker must not inherit the socket (it would hold the connection open): detach its fds.
       logmsg "start ${sid%????????????????????????} plan=$plan"
@@ -2037,6 +2038,8 @@ do_api() {
     /api/start)
       _pl=$(qget plan); valid_plan "$_pl" || { reply_cors "400 Bad Request" "$(err_json INVALID_PLAN)"; return; }
       _fq=""; [ "$(qget forfeit)" = 1 ] && _fq="&forfeit=1"
+      # (who asks to arm the coin slot, for the day it arms when nobody touched it)
+      logmsg "start via page script: window ${sid%????????????????????????} device $_peer plan $_pl referer=${REQ_REF:-none} agent=$(printf '%s' "$REQ_UA" | cut -c1-70)"
       _ans=$(http "http://127.0.0.1:$LISTEN_PORT/start?sid=$sid&plan=$_pl&mac=$_peer&flash=1$_fq")
       reply_cors "200 OK" "${_ans:-$(err_json NO_ANSWER)}" ;;
     /api/status) reply_cors "200 OK" "$(status_json "$dir")" ;;
@@ -2050,7 +2053,11 @@ do_stream() {
   nap_init
   TPS=1; [ "$NAP_FRAC" = 1 ] && TPS=10
   read -r method target _
-  while read -r line; do [ -z "${line%$(printf '\r')}" ] && break; done
+  REQ_UA=""; REQ_REF=""
+  while read -r line; do
+    line="${line%$(printf '\r')}"; [ -n "$line" ] || break
+    case "$line" in [Uu]ser-[Aa]gent:*) REQ_UA="${line#*: }" ;; [Rr]eferer:*) REQ_REF="${line#*: }" ;; esac
+  done
   [ "$method" = "GET" ] || { reply "405 Method Not Allowed" "$(err_json METHOD)"; return; }
   path="${target%%\?*}"; QUERY=""
   case "$target" in *\?*) QUERY="${target#*\?}" ;; esac
@@ -2115,9 +2122,22 @@ title="flash_coin"
 . "${FLASH_LIB:-/usr/lib/opennds/flash_coin_lib.sh}"
 
 # The coin-slot session id is a hash of the client's secret openNDS id: other clients cannot guess it.
-coinslot_sid() { printf '%s' "$hid" | sha256sum | cut -c1-32; }
+coinslot_sid() { set -- $(printf '%s' "$hid" | sha256sum); _sd="$1"; printf '%s' "${_sd%"${_sd#????????????????????????????????}"}"; }
 # The refresh link needs the base64 characters that are special in a URL percent-encoded.
-fas_urlsafe() { printf '%s' "$fas" | sed 's/+/%2B/g; s,/,%2F,g; s/=/%3D/g'; }
+# (done with the shell's own string handling: no program is started)
+fas_urlsafe() {
+	_us="$fas"; _uo=""
+	while [ -n "$_us" ]; do
+		case "$_us" in
+			*[+/=]*)
+				_up="${_us%%[+/=]*}"; _ur="${_us#"$_up"}"; _uc="${_ur%"${_ur#?}"}"; _us="${_ur#?}"
+				case "$_uc" in +) _uc="%2B" ;; /) _uc="%2F" ;; =) _uc="%3D" ;; esac
+				_uo="$_uo$_up$_uc" ;;
+			*) _uo="$_uo$_us"; _us="" ;;
+		esac
+	done
+	printf '%s' "$_uo"
+}
 
 fmt_min() {  # 30 -> "30 min", 60 -> "1 hr", 690 -> "11 hr 30 min", 1440 -> "24 hrs"
 	_m="${1:-0}"
@@ -2189,6 +2209,8 @@ input[type=text]{width:100%;padding:13px;border-radius:12px;border:1px solid var
 /* Any tap that leaves the page shows it was received, and a second tap while the first is still loading is ignored. */
 document.addEventListener("submit",function(e){var f=e.target,b=f.querySelector&&f.querySelector("button[type=submit]");
 if(f.__t&&Date.now()-f.__t<8000){e.preventDefault();return}f.__t=Date.now();if(b){b.textContent=f.id==="coinform"?"Getting the coin slot ready \u00b7 Sandali lang":"Please wait \u00b7 Sandali lang";b.style.opacity=".6"}},true);
+/* A reload or a restored tab must never press Insert Coin again: the address no longer says "start". */
+try{if(/[?&]coinact=start(&|$)/.test(location.search)&&history.replaceState)history.replaceState(null,"",location.pathname+location.search.replace(/([?&])coinact=start(&|$)/,function(m,a,b){return b?a:""}))}catch(e){}
 window.addEventListener("pageshow",function(e){if(e.persisted)location.reload()});
 </script>
 HTML
@@ -2331,6 +2353,12 @@ tier_rows() {
 	done
 }
 
+# The live page's script (below) has no comments of its own (they would be sent to the phone on every load). In short:
+# Insert Coin talks to the router's small coin API (port $infostream) instead of loading portal pages; coins show as the box
+# counts them; the window's total is priced once and the device goes online once, when the customer is done (Done, or the timer
+# runs out). Status is asked every second next to the live stream (a stream held open but silent froze the page), no answer in
+# 10 s hands over to the regular pages, and sound/speech are prepared after the next paint (starting the speech engine in the
+# tap froze the screen for a second).
 page_welcome() {
 	hchk=""; echk=""; [ "$coinplan" = "endurance" ] && echk="checked" || hchk="checked"
 	edown=$(($(printf '%s' "$info" | jget e_down) / 1000)); eup=$(($(printf '%s' "$info" | jget e_up) / 1000))
@@ -2366,9 +2394,6 @@ $(tier_rows endurance)
 <a class="btn alt" id="lagain" style="display:none;text-decoration:none;text-align:center" href="/opennds_preauth/?fas=$(fas_urlsafe)">Try again</a>
 </div>
 <script>
-/* One live page: Insert Coin talks to the router's small coin API (port $infostream) instead of loading portal pages.
-   The coins show the moment the box counts them; the window's total is priced once, and the device goes online once, when
-   the customer is done (Done, or the timer runs out). If the API cannot be reached, the regular pages take over (also used without scripts). */
 (function(){
 var f=document.getElementById("coinform"),SP=${infostream:-0},SID="$sid",FIRST=${infofirst:-30},IDLE=${infoidle:-15},
 A=window.AudioContext||window.webkitAudioContext;
@@ -2416,15 +2441,13 @@ function watch(){
 if(window.EventSource){try{es=new EventSource(base+"/stream?sid="+SID+"&mode=wait");
 es.addEventListener("status",function(m){try{upd(JSON.parse(m.data))}catch(e){}});
 es.onerror=function(){if(es){es.close();es=null}}}catch(e){es=null}}
-/* The status is also asked for once a second, whatever the live stream does: some phone browsers hold a stream open
-   without delivering anything, which looked like a page that only updates when it is reloaded. */
 if(!pt)pt=setInterval(poll,1000);poll()}
 function start(fq){
 f.style.display="none";var n=document.querySelectorAll(".note"),s0=f.previousElementSibling,i;
 for(i=0;i<n.length;i++)n[i].style.display="none";if(s0)s0.style.display="none";
 show("live",1);show("lagain",0);put("lsub",pn(plan)+" · Getting the coin slot ready · Sandali lang");put("lpes","₱0");
 put("lmin","Please wait. Do not insert coins yet · huwag pa maglagay ng barya.");
-var gone=false,wd=setTimeout(function(){gone=true;legacy(fq)},10000);   /* no answer in 10 s: the regular pages take over */
+var gone=false,wd=setTimeout(function(){gone=true;legacy(fq)},10000);   
 fetch(base+"/api/start?sid="+SID+"&plan="+plan+(fq?"&forfeit=1":""),{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){
 clearTimeout(wd);if(gone)return;
 if(j.state==="error"&&j.error==="PLAN_MISMATCH")return mismatch(j);
@@ -2438,8 +2461,6 @@ var m=el("lmis");m.innerHTML='<button class="btn" type="button" id="mk">Add '+o+
 show("lmis",1);el("mk").onclick=function(){show("lmis",0);plan=j.plan;start(false)};el("ms").onclick=function(){show("lmis",0);start(true)}}
 el("ldone").onclick=function(){this.disabled=true;this.textContent="Closing · Sandali lang";
 fetch(base+"/api/finish?sid="+SID,{cache:"no-store"}).then(function(r){return r.json()}).then(upd).catch(function(){})};
-/* Sound and speech are switched on by a tap, but starting them (the phone's speech engine in particular) can freeze the page
-   for a second or more: the screen changes and the slot is asked first, and they are prepared after the next paint. */
 function prime(){
 try{window.speechSynthesis&&speechSynthesis.speak(new SpeechSynthesisUtterance(""))}catch(x){}
 try{if(A){ctx=window.__ctx=window.__ctx||new A();ctx.resume();var o=ctx.createOscillator(),g=ctx.createGain();g.gain.value=.04;
@@ -2786,7 +2807,7 @@ HTML
 # Main entry point of this Theme: parameters set here override those in libopennds.sh
 #################################################
 
-randquery="$(date | sha256sum | awk '{printf "%s", $1}')"
+read -r _upt _ < /proc/uptime 2> /dev/null; randquery="${_upt%.*}${_upt#*.}$$"      # only a changing value for the link: no program needed
 
 # Session length and speed are set per customer in landing_page() from the manager's grant.
 sessiontimeout="0"
@@ -2834,25 +2855,43 @@ COINSLOT_URL="${COINSLOT_URL:-http://127.0.0.1:8099}"
 NDSCTL="${NDSCTL:-ndsctl}"
 
 now_ts() { date +%s; }
-lc() { printf '%s' "$1" | tr 'A-Z' 'a-z'; }
-mac_key() { printf '%s' "$1" | tr 'A-F' 'a-f' | tr -d ':'; }
+# (No process is started for the usual input: every program started on the router costs 10 to 30 ms, and a portal page used to
+# start about sixty of them.)
+lc() { case "$1" in *[A-Z]*) printf '%s' "$1" | tr 'A-Z' 'a-z' ;; *) printf '%s' "$1" ;; esac; }
+mac_key() {
+	case "$1" in *[A-F]*) set -- "$(printf '%s' "$1" | tr 'A-F' 'a-f')" ;; esac
+	case "$1" in ??:??:??:??:??:??) _mk="${1%%:*}"; _mr="${1#*:}"; printf '%s' "$_mk${_mr%%:*}"; _mr="${_mr#*:}"; printf '%s' "${_mr%%:*}"; _mr="${_mr#*:}"
+		printf '%s' "${_mr%%:*}"; _mr="${_mr#*:}"; printf '%s' "${_mr%%:*}${_mr#*:}" ;; *) printf '%s' "$1" | tr -d ':' ;; esac
+}
 
 # ---------------------------------------------------------------------------
 # Coin-slot manager (local listener)
 # ---------------------------------------------------------------------------
+_CR=$(printf '\r'); _LF='
+'
 coinslot() {  # coinslot <path>: JSON/text answer, empty if the manager is not running
 	# socat starts in milliseconds; curl/wget take about half a second just to start on the router (TLS library).
 	if command -v socat > /dev/null 2>&1; then
 		_h="${COINSLOT_URL#http://}"
-		printf 'GET %s HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n' "$1" "${_h%%:*}" |
-			socat -t10 -T10 - "TCP:$_h,shut-none" 2> /dev/null | tr -d '\r' | sed '1,/^$/d'
+		_r=$(printf 'GET %s HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n' "$1" "${_h%%:*}" | socat -t10 -T10 - "TCP:$_h,shut-none" 2> /dev/null)
+		case "$_r" in *"$_CR$_LF$_CR$_LF"*) _r="${_r#*"$_CR$_LF$_CR$_LF"}" ;; esac   # the body: what follows the blank line after the headers
+		printf '%s\n' "$_r"
 	elif command -v curl > /dev/null 2>&1; then
 		curl -sS -m 10 "$COINSLOT_URL$1" 2> /dev/null
 	else
 		wget -qO- -T 10 "$COINSLOT_URL$1" 2> /dev/null
 	fi
 }
-jget() { sed -n 's/.*"'"$1"'" *: *"\{0,1\}\([^",}]*\).*/\1/p' | head -n 1; }
+# jget <key>: the value of "key" in the JSON line on standard input (quoted or not; empty when the key is missing).
+jget() {
+	IFS= read -r _jl || :
+	case "$_jl" in *\""$1"\"*) ;; *) return 0 ;; esac
+	_jl="${_jl#*\""$1"\"}"; _jl="${_jl#*:}"; _jl="${_jl# }"
+	case "$_jl" in
+		\"*) _jl="${_jl#\"}"; printf '%s\n' "${_jl%%\"*}" ;;
+		*) _jl="${_jl%%[,\}\"]*}"; printf '%s\n' "$_jl" ;;
+	esac
+}
 
 # flash_info: reads /info into infofirst infoidle infostream pausehours pausepesos fair edown eup fairkb fairdown ...
 flash_info() {
@@ -2880,7 +2919,10 @@ nds_do() {
 	done
 	return 1
 }
-nds_state() { nds_do json "$1"; printf '%s' "$NDSOUT" | sed -n 's/.*"state": *"\([^"]*\)".*/\1/p' | head -n 1; }  # Authenticated | Preauthenticated | ""
+nds_state() {
+	nds_do json "$1"
+	case "$NDSOUT" in *\"state\"*) _ns="${NDSOUT#*\"state\"}"; _ns="${_ns#*\"}"; printf '%s' "${_ns%%\"*}" ;; esac
+}  # Authenticated | Preauthenticated | ""
 # nds_regrant <mac> <minutes> <up> <down> [up quota] [down quota]: a plain auth of an authenticated client is ignored by
 # openNDS, so the client is de-authenticated first (this also makes new speed caps apply to connections already open).
 nds_regrant() {

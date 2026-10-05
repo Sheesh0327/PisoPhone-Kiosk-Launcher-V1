@@ -973,6 +973,7 @@ do_handle() {
       printf '%s' "$plan" > "$dir/plan"
       _wid=$(tr -d '-' < /proc/sys/kernel/random/uuid 2>/dev/null); [ -n "$_wid" ] || _wid="$(now)$$"   # names this window: a coin is never credited twice
       printf '%s' "$_wid" > "$dir/wid"
+      logmsg "window ${sid%????????????????????????} opened for ${mac:-unknown device} plan $plan"
       write_state "$dir" starting 0 "$COIN_FIRST_WAIT_SECONDS" ""
       # The worker must not inherit the socket (it would hold the connection open): detach its fds.
       logmsg "start ${sid%????????????????????????} plan=$plan"
@@ -1131,6 +1132,8 @@ do_api() {
     /api/start)
       _pl=$(qget plan); valid_plan "$_pl" || { reply_cors "400 Bad Request" "$(err_json INVALID_PLAN)"; return; }
       _fq=""; [ "$(qget forfeit)" = 1 ] && _fq="&forfeit=1"
+      # (who asks to arm the coin slot, for the day it arms when nobody touched it)
+      logmsg "start via page script: window ${sid%????????????????????????} device $_peer plan $_pl referer=${REQ_REF:-none} agent=$(printf '%s' "$REQ_UA" | cut -c1-70)"
       _ans=$(http "http://127.0.0.1:$LISTEN_PORT/start?sid=$sid&plan=$_pl&mac=$_peer&flash=1$_fq")
       reply_cors "200 OK" "${_ans:-$(err_json NO_ANSWER)}" ;;
     /api/status) reply_cors "200 OK" "$(status_json "$dir")" ;;
@@ -1144,7 +1147,11 @@ do_stream() {
   nap_init
   TPS=1; [ "$NAP_FRAC" = 1 ] && TPS=10
   read -r method target _
-  while read -r line; do [ -z "${line%$(printf '\r')}" ] && break; done
+  REQ_UA=""; REQ_REF=""
+  while read -r line; do
+    line="${line%$(printf '\r')}"; [ -n "$line" ] || break
+    case "$line" in [Uu]ser-[Aa]gent:*) REQ_UA="${line#*: }" ;; [Rr]eferer:*) REQ_REF="${line#*: }" ;; esac
+  done
   [ "$method" = "GET" ] || { reply "405 Method Not Allowed" "$(err_json METHOD)"; return; }
   path="${target%%\?*}"; QUERY=""
   case "$target" in *\?*) QUERY="${target#*\?}" ;; esac

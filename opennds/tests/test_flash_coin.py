@@ -561,12 +561,23 @@ try:
                   sp.speak=function(u){if(window.__spoke===null){var l=document.getElementById('live');window.__spoke=!!l&&l.style.display!=='none';
                   var t=Date.now();while(Date.now()-t<400){}}return orig(u)}})()""")
                 pg.goto("http://127.0.0.1:18121/opennds_preauth/?fas=ABC")
-                set_box(busy=False, coins_at=[])
+                set_box(busy=False, coins_at=[0.3])
                 pg.click(".coin")
                 pg.wait_for_timeout(1200)
                 check(pg.evaluate("window.__spoke") is True, "the screen shows 'getting the slot ready' before the speech engine is touched: " + str(pg.evaluate("window.__spoke")))
                 get(f"/finish?sid={sid_of('hidBR5')}")
                 wait_until(lambda: api(f"/api/status?sid={sid_of('hidBR5')}")[1].get("state") == "done", 20)
+                pg.wait_for_timeout(2500)   # the page follows a finished window on its own: let that navigation end
+                # a reload (or a restored tab) of the address after Insert Coin must not press it again
+                roll_write(); nds_client(MAC_A); hits.clear(); HID["v"] = "hidBR6"
+                set_box(busy=False, coins_at=[0.3])
+                pg.goto("http://127.0.0.1:18121/opennds_preauth/?fas=ABC&coinact=start&coinplan=hyper")
+                pg.wait_for_timeout(300)
+                check("coinact" not in pg.evaluate("location.search") and "fas=ABC" in pg.evaluate("location.search"),
+                      "the address no longer carries coinact=start once the page is shown: " + pg.evaluate("location.search"))
+                get(f"/finish?sid={sid_of('hidBR6')}")
+                wait_until(lambda: api(f"/api/status?sid={sid_of('hidBR6')}")[1].get("state") in ("done", "none"), 20)
+                pg.wait_for_timeout(1500)
                 # a live stream that is held open but never delivers (seen on a phone): the page must still follow the coins
                 roll_write(); nds_client(MAC_A); hits.clear(); HID["v"] = "hidBR4"
                 pg.goto("http://127.0.0.1:18121/opennds_preauth/?fas=ABC")

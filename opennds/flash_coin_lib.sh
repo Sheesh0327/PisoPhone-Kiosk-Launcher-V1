@@ -25,25 +25,43 @@ COINSLOT_URL="${COINSLOT_URL:-http://127.0.0.1:8099}"
 NDSCTL="${NDSCTL:-ndsctl}"
 
 now_ts() { date +%s; }
-lc() { printf '%s' "$1" | tr 'A-Z' 'a-z'; }
-mac_key() { printf '%s' "$1" | tr 'A-F' 'a-f' | tr -d ':'; }
+# (No process is started for the usual input: every program started on the router costs 10 to 30 ms, and a portal page used to
+# start about sixty of them.)
+lc() { case "$1" in *[A-Z]*) printf '%s' "$1" | tr 'A-Z' 'a-z' ;; *) printf '%s' "$1" ;; esac; }
+mac_key() {
+	case "$1" in *[A-F]*) set -- "$(printf '%s' "$1" | tr 'A-F' 'a-f')" ;; esac
+	case "$1" in ??:??:??:??:??:??) _mk="${1%%:*}"; _mr="${1#*:}"; printf '%s' "$_mk${_mr%%:*}"; _mr="${_mr#*:}"; printf '%s' "${_mr%%:*}"; _mr="${_mr#*:}"
+		printf '%s' "${_mr%%:*}"; _mr="${_mr#*:}"; printf '%s' "${_mr%%:*}${_mr#*:}" ;; *) printf '%s' "$1" | tr -d ':' ;; esac
+}
 
 # ---------------------------------------------------------------------------
 # Coin-slot manager (local listener)
 # ---------------------------------------------------------------------------
+_CR=$(printf '\r'); _LF='
+'
 coinslot() {  # coinslot <path>: JSON/text answer, empty if the manager is not running
 	# socat starts in milliseconds; curl/wget take about half a second just to start on the router (TLS library).
 	if command -v socat > /dev/null 2>&1; then
 		_h="${COINSLOT_URL#http://}"
-		printf 'GET %s HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n' "$1" "${_h%%:*}" |
-			socat -t10 -T10 - "TCP:$_h,shut-none" 2> /dev/null | tr -d '\r' | sed '1,/^$/d'
+		_r=$(printf 'GET %s HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n' "$1" "${_h%%:*}" | socat -t10 -T10 - "TCP:$_h,shut-none" 2> /dev/null)
+		case "$_r" in *"$_CR$_LF$_CR$_LF"*) _r="${_r#*"$_CR$_LF$_CR$_LF"}" ;; esac   # the body: what follows the blank line after the headers
+		printf '%s\n' "$_r"
 	elif command -v curl > /dev/null 2>&1; then
 		curl -sS -m 10 "$COINSLOT_URL$1" 2> /dev/null
 	else
 		wget -qO- -T 10 "$COINSLOT_URL$1" 2> /dev/null
 	fi
 }
-jget() { sed -n 's/.*"'"$1"'" *: *"\{0,1\}\([^",}]*\).*/\1/p' | head -n 1; }
+# jget <key>: the value of "key" in the JSON line on standard input (quoted or not; empty when the key is missing).
+jget() {
+	IFS= read -r _jl || :
+	case "$_jl" in *\""$1"\"*) ;; *) return 0 ;; esac
+	_jl="${_jl#*\""$1"\"}"; _jl="${_jl#*:}"; _jl="${_jl# }"
+	case "$_jl" in
+		\"*) _jl="${_jl#\"}"; printf '%s\n' "${_jl%%\"*}" ;;
+		*) _jl="${_jl%%[,\}\"]*}"; printf '%s\n' "$_jl" ;;
+	esac
+}
 
 # flash_info: reads /info into infofirst infoidle infostream pausehours pausepesos fair edown eup fairkb fairdown ...
 flash_info() {
@@ -71,7 +89,10 @@ nds_do() {
 	done
 	return 1
 }
-nds_state() { nds_do json "$1"; printf '%s' "$NDSOUT" | sed -n 's/.*"state": *"\([^"]*\)".*/\1/p' | head -n 1; }  # Authenticated | Preauthenticated | ""
+nds_state() {
+	nds_do json "$1"
+	case "$NDSOUT" in *\"state\"*) _ns="${NDSOUT#*\"state\"}"; _ns="${_ns#*\"}"; printf '%s' "${_ns%%\"*}" ;; esac
+}  # Authenticated | Preauthenticated | ""
 # nds_regrant <mac> <minutes> <up> <down> [up quota] [down quota]: a plain auth of an authenticated client is ignored by
 # openNDS, so the client is de-authenticated first (this also makes new speed caps apply to connections already open).
 nds_regrant() {
