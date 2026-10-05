@@ -24,7 +24,7 @@
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation
-# Settings can be overridden from the environment: COUNTRY (default PH) GUEST_SSID BOX_IP GUEST_IP ROOT_PASSWORD
+# Settings can be overridden from the environment: COUNTRY (default PH) GUEST_SSID BOX_IP GUEST_IP ROOT_PASSWORD KIOSK_PASSWORD BOX_NEW_ADMIN_PASSWORD
 
 VERSION="dev"
 
@@ -602,19 +602,33 @@ cmd_pair() {
 
 # The router password protects SSH and LuCI, which the kiosk phones' network can reach. Ask for one, or generate one that is
 # printed on screen (and in the summary), so nobody is ever locked out of the router.
-choose_root_password() {
-	[ -z "$(conf_get ROOT_PASS)" ] || return 0
-	_p="$ROOT_PASSWORD"
+# ask_password NAME "label" MIN MAX [ENV VALUE]: the password for NAME. Already chosen (a re-run): kept. Otherwise it is
+# taken from the environment, or asked for (typed twice, not shown); Enter (or no terminal) leaves it to be generated.
+ask_password() {
+	_n="$1"; _label="$2"; _min="$3"; _max="$4"; _p="$5"
+	[ -z "$(conf_get "$_n")" ] || return 0
 	if [ -z "$_p" ] && [ "$ASSUME_YES" != 1 ] && [ -t 0 ]; then
 		echo
-		echo "Choose the router password (SSH and LuCI login), at least 8 characters, or press Enter to have one generated and shown:"
+		echo "Choose the $_label ($_min to $_max characters, no spaces or quotes), or press Enter to have one generated and shown:"
 		stty -echo 2> /dev/null; read -r _p; stty echo 2> /dev/null; echo
+		if [ -n "$_p" ]; then
+			printf 'Type it again: '; stty -echo 2> /dev/null; read -r _p2; stty echo 2> /dev/null; echo
+			[ "$_p" = "$_p2" ] || die "the two entries of the $_label differ: run the setup again"
+		fi
 	fi
-	if [ -n "$_p" ]; then
-		[ "${#_p}" -ge 8 ] || die "the router password must be at least 8 characters"
-		case "$_p" in *\'*) die "please avoid the ' character in the password" ;; esac
-		conf_set ROOT_PASS "$_p"
-	fi
+	[ -n "$_p" ] || return 0
+	[ "${#_p}" -ge "$_min" ] || die "the $_label must be at least $_min characters"
+	[ "${#_p}" -le "$_max" ] || die "the $_label can be at most $_max characters"
+	case "$_p" in *[[:space:]\'\"\\\$\`]*) die "the $_label may not contain spaces, quotes, backslashes, \$ or backticks" ;; esac
+	conf_set "$_n" "$_p"
+}
+
+# Every password the system needs is chosen here, once. The coin box's super-admin password is not one of them: the
+# firmware keeps it under remote management and it cannot be set from here.
+choose_passwords() {
+	ask_password ROOT_PASS "router password (SSH and LuCI login)" 8 63 "$ROOT_PASSWORD"
+	ask_password KIOSK_PASS "PisoKiosk Wi-Fi password (typed once into each rental phone's setup page)" 8 63 "$KIOSK_PASSWORD"
+	ask_password BOX_ADMIN_PASS_NEW "coin box admin password (the box's web page; also the phones' admin PIN)" 8 32 "$BOX_NEW_ADMIN_PASSWORD"
 }
 
 stage1() {
@@ -625,10 +639,10 @@ stage1() {
 		echo "It takes a few minutes and waits for the coin box to join. Continue? [y/N]"
 		read -r _a; case "$_a" in y | Y | yes) ;; *) echo "Cancelled."; exit 1 ;; esac
 	fi
+	choose_passwords
 	KIOSK_PASS=$(secret KIOSK_PASS 12)
 	case "$GUEST_SSID" in *\'* | *\"* | *\\* | *\$* | *\`*) die "GUEST_SSID may not contain quotes, backslashes, \$ or backticks" ;; esac
 	GUEST_NAME=$(conf_get GUEST_NAME); [ -n "$GUEST_NAME" ] || { GUEST_NAME="${GUEST_SSID:-PisoWiFi}"; conf_set GUEST_NAME "$GUEST_NAME"; }
-	choose_root_password
 	secret ROOT_PASS 14 > /dev/null; secret GW_KEY 64 hex > /dev/null; secret BOX_ADMIN_PASS_NEW 16 > /dev/null
 	BOX_MAC=$(conf_get BOX_MAC)
 	if [ "$DRY" = 1 ]; then uci_batch "<kiosk password>" "$GUEST_NAME" "$BOX_MAC"; return 0; fi
