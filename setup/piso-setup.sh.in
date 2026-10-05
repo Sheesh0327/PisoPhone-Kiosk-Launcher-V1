@@ -404,6 +404,7 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 	_ck "hidden Wi-Fi $BOX_SSID is on and locked to the box" "[ \"\$(uci -q get wireless.box_ap.macfilter)\" = allow ] && [ -n \"\$(uci -q get wireless.box_ap.maclist)\" ]"
 	_ck "coin box answers at $BOX_IP" box_up
 	_ck "coin-slot manager is running" "curl -s -m 4 http://127.0.0.1:8099/info | grep -q fair_kb"
+	_ck "coin events receiver is running (instant coins)" "pgrep -f 'coinslot-listener.sh event-reader'"
 	_ck "the manager can talk to the box (signed request)" "/usr/bin/coinslot-listener.sh box | grep -qi answers"
 	_ck "openNDS is running" "ndsctl status"
 	_ck "internet through the WAN" "ping -c 1 -W 3 1.1.1.1 || ping -c 1 -W 3 8.8.8.8"
@@ -525,7 +526,8 @@ cmd_diag() {
 	echo "--- box neighbour / wifi"; ip neigh show | grep "$BOX_IP"; iwinfo 2> /dev/null | grep -A1 "$BOX_SSID"
 	echo "--- firewall tables"; nft list tables 2> /dev/null
 	echo "--- openNDS"; uci -q get opennds.@opennds[0].gatewayinterface; ndsctl status 2>&1 | head -12
-	echo "--- last coin-slot log lines"; logread -e coinslot 2> /dev/null | tail -30
+	echo "--- last coin timings (ms since boot: armed, event, coin, granted, settled)"; logread -e coinslot 2> /dev/null | grep ' timing ' | tail -12
+	echo "--- last coin-slot log lines"; logread -e coinslot 2> /dev/null | grep -v ' timing ' | tail -20
 	echo "--- setup log"; tail -15 "$LOG" 2> /dev/null
 }
 

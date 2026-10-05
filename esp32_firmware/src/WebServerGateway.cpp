@@ -2,6 +2,7 @@
 //
 //   GET  /api/gateway/challenge                       -> {"nonce": "..."}   (one-time, 30 s)
 //   POST /api/gateway/arm      session, duration, nonce, sig   reserve the slot and power the acceptor
+//                              [wid, evport]                   also push this window's coin events (GatewayEvent.h)
 //   GET  /api/gateway/status   session, nonce, sig             state + coins received so far
 //   POST /api/gateway/release  session, nonce, sig             stop accepting; returns coins received
 //   POST /api/gateway/ack      session, nonce, sig             coins used; removes them from the box
@@ -11,6 +12,7 @@
 #include "WebServerGateway.h"
 #include "GatewayAuth.h"
 #include "GatewayCoinslot.h"
+#include "GatewayEvent.h"
 #include "InputSafety.h"
 #include "WebServerAuth.h"
 #include "WebServerModule.h"
@@ -68,7 +70,7 @@ static String statusJson(const String& session) {
     return String("{\"success\":true,\"session\":\"") + jsonEsc(session) + "\",\"state\":\"" + st.state +
            "\",\"armed_remaining\":" + String(st.armedRemainingSec) + ",\"pulses\":" + String(st.pulses) +
            ",\"minutes_per_coin\":" + String(st.minutesPerCoin) + ",\"ready_in_ms\":" + String(st.readyInMs) +
-           ",\"slot_free\":" + (st.slotFree ? "true" : "false") + "}";
+           ",\"slot_free\":" + (st.slotFree ? "true" : "false") + ",\"events\":true}";
 }
 
 void handleGatewayArm() {
@@ -76,9 +78,15 @@ void handleGatewayArm() {
     if (session.length() == 0) return;
     int duration = webServer.hasArg("duration") ? webServer.arg("duration").toInt() : GATEWAY_DEFAULT_ARM_SECONDS;
     switch (gatewayArm(session, duration)) {
-    case GatewayArmResult::Ok:
+    case GatewayArmResult::Ok: {
+        String wid = webServer.arg("wid");
+        long evport = webServer.hasArg("evport") ? webServer.arg("evport").toInt() : 0;
+        if (gatewayevent::validWindowId(wid.c_str()) && gatewayevent::validPort(evport)) {
+            gatewaySetEventTarget(session, wid, webServer.client().remoteIP(), (uint16_t)evport);
+        }
         sendJson(200, statusJson(session));
         return;
+    }
     case GatewayArmResult::Busy:
         sendError(409, "SLOT_BUSY");
         return;

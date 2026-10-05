@@ -3,7 +3,7 @@
 One file, `piso-setup.sh`, turns a factory-reset OpenWrt router into the whole PisoWiFi system.
 
 ## Before you start
-1. **Flash the ESP32 coin box** with the current firmware (or factory reset a used one) and power it on. It joins the hidden `PisoCoinBox` Wi-Fi by itself, which the router creates.
+1. **Flash the ESP32 coin box** with the current firmware (3.2.0 or later for instant coins; or factory reset a used one) and power it on. It joins the hidden `PisoCoinBox` Wi-Fi by itself, which the router creates.
 2. **Modem into the router's WAN port** (internet is needed once, to download packages).
 3. A PC on one of the router's **LAN ports**.
 4. The modem's own network must not be `10.0.0.x` or `192.168.30.x` (the script stops and tells you if it is).
