@@ -37,6 +37,10 @@ bool gatewaySetKey(const String& key); // admin only; empty clears (disables) th
 String gatewayKey();                   // copy of the key for request verification
 
 GatewayArmResult gatewayArm(const String& session, int durationSec);
+// Coin events (GatewayEvent.h): after a successful arm, the router may ask for a UDP line on every change of this
+// window (ready, each coin, end). Arming the same window again keeps its sequence; a new window replaces the target.
+void gatewaySetEventTarget(const String& session, const String& wid, IPAddress ip, uint16_t port);
+void gatewayEventsLoop(); // call from loop(): sends "ready" once the acceptor has settled and "end" when the window closed
 void gatewayRelease(const String& session);
 GatewayStatus gatewayStatus(const String& session);
 int gatewayAcknowledge(const String& session); // returns the pulses just acknowledged

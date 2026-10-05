@@ -202,6 +202,7 @@ void loop() {
 
     // 1. Process Unified Coin Slot Manager (Arming, Pulse Accumulation & Draining)
     processCoinSlotSession();
+    gatewayEventsLoop(); // push coin events to the router (if it asked for them)
 
     // 2. Process Coin Slot Power/Enable Relay (Synchronized with Arming / Insert Coin)
     processRelayState();
