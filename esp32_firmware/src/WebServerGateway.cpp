@@ -10,6 +10,7 @@
 //
 // sig = HMAC-SHA256(key, "gw1:<action>:<session>:<nonce>") where action is arm/status/release/ack.
 #include "WebServerGateway.h"
+#include "Config.h"
 #include "GatewayAuth.h"
 #include "GatewayCoinslot.h"
 #include "GatewayEvent.h"
@@ -70,7 +71,8 @@ static String statusJson(const String& session) {
     return String("{\"success\":true,\"session\":\"") + jsonEsc(session) + "\",\"state\":\"" + st.state +
            "\",\"armed_remaining\":" + String(st.armedRemainingSec) + ",\"pulses\":" + String(st.pulses) +
            ",\"minutes_per_coin\":" + String(st.minutesPerCoin) + ",\"ready_in_ms\":" + String(st.readyInMs) +
-           ",\"slot_free\":" + (st.slotFree ? "true" : "false") + ",\"events\":true}";
+           ",\"slot_free\":" + (st.slotFree ? "true" : "false") + ",\"events\":true,\"lifetime_pulses\":" +
+           String(totalCoinsLifetime) + "}";
 }
 
 void handleGatewayArm() {

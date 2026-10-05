@@ -446,6 +446,21 @@ instant_grant() {
   logmsg "timing ${sid%????????????????????????} granted pulses=$1 min=$_min at=$(uptime_ms)"
 }
 
+# reconcile: the box's own lifetime coin count against the router's revenue ledger. The box also counts coins that went
+# to rental phones, so it should be at or above the ledger; a ledger above the box means pesos were credited that the box
+# never counted. Prints one line (RECONCILE OK|MISMATCH|NOBOX|BADLEDGER ...); exit status 0 only for OK.
+do_reconcile() {
+  flash_load || { echo "RECONCILE NOLIB"; return 2; }
+  hmac_init
+  _v=$(flash_verify) || { echo "RECONCILE BADLEDGER line ${_v#BAD }"; return 3; }
+  set -- $_v; _lp="$3"
+  _st=$(call "ffffffffffffffffffffffffffffffff" status)
+  _bp=$(printf '%s' "$_st" | jget lifetime_pulses)
+  case "$_bp" in "" | *[!0-9]*) echo "RECONCILE NOBOX (needs firmware 3.2.1 or later) ledger=$_lp"; return 4 ;; esac
+  if [ "$_lp" -gt "$_bp" ]; then echo "RECONCILE MISMATCH ledger=$_lp box=$_bp (ledger is higher than the box counted)"; return 1; fi
+  echo "RECONCILE OK ledger=$_lp box=$_bp (the difference of $((_bp - _lp)) went to rental phones)"
+}
+
 ack_window() {  # the coins are recorded: remove them from the box (retried; /ack and /start retry it again if needed)
   : > "$dir/claimed"; rm -f "$dir/pending" "$dir/forfeit"; : > "$dir/ackpending"
   for _ in 1 2 3; do ack_box "$sid" && { rm -f "$dir/ackpending" "$DATA_DIR/open/$sid"; return 0; }; sleep 1; done
@@ -1167,6 +1182,7 @@ case "$1" in
   handle) do_handle ;;
   worker) valid_sid "$2" && do_worker "$2" ;;
   recover) do_recover ;;
+  reconcile) do_reconcile ;;
   fairuse) do_fairuse ;;
   box) do_box ;;
   hmac) hmac_init; echo "$HMAC_MODE"; [ "$HMAC_MODE" = shell ] && hmac_hex "$2"; echo ;;       # for tests: signs with GW_KEY

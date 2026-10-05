@@ -20,7 +20,7 @@
 # Everything is generated here (Wi-Fi password, box admin password, gateway key) and printed once at the end and saved in
 # /root/piso-setup-summary.txt. Running the file again is safe: it keeps what it already made.
 #
-# Other commands (after setup): piso-setup status | wifi-name "<name>" | pair | summary | test-coin | diag | set-password
+# Other commands (after setup): piso-setup status | wifi-name "<name>" | pair | summary | test-coin | diag | set-password | reconcile
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation
@@ -540,6 +540,7 @@ cmd_diag() {
 	cmd_status 2>&1
 	echo "--- manager /info"; curl -s -m 5 "${COINSLOT_URL:-http://127.0.0.1:8099}/info"; echo
 	echo "--- manager <-> box"; /usr/bin/coinslot-listener.sh box 2>&1 | head -5
+	echo "--- ledger vs box"; cmd_reconcile 2>&1
 	echo "--- coin windows"; for d in /tmp/coinslot/*/; do [ -d "$d" ] && { echo "$d"; cat "$d/state" "$d/plan" 2>/dev/null; }; done
 	echo "--- box neighbour / wifi"; ip neigh show | grep "$BOX_IP"; iwinfo 2> /dev/null | grep -A1 "$BOX_SSID"
 	echo "--- firewall tables"; nft list tables 2> /dev/null
@@ -548,6 +549,9 @@ cmd_diag() {
 	echo "--- last coin-slot log lines"; logread -e coinslot 2> /dev/null | grep -v ' timing ' | tail -20
 	echo "--- setup log"; tail -15 "$LOG" 2> /dev/null
 }
+
+# piso-setup reconcile: the box's own coin count against the router's revenue ledger (also checks the ledger chain).
+cmd_reconcile() { /usr/bin/coinslot-listener.sh reconcile; }
 
 cmd_set_password() {
 	[ "$(id -u)" = 0 ] || die "run as root"
@@ -616,7 +620,7 @@ main() {
 		case "$1" in
 			--dry-run) DRY=1 ;;
 			--yes | -y) ASSUME_YES=1 ;;
-			status | pair | summary | wifi-name | uninstall-info | test-coin | diag | set-password) CMD="$1"; shift; ARG="$1"; break ;;
+			status | pair | summary | wifi-name | uninstall-info | test-coin | diag | set-password | reconcile) CMD="$1"; shift; ARG="$1"; break ;;
 			-h | --help) sed -n '2,/^# Options:/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 			*) echo "unknown option: $1 (try --help)" >&2; exit 1 ;;
 		esac
@@ -628,6 +632,7 @@ main() {
 		pair) cmd_pair ;;
 		test-coin) cmd_test_coin ;;
 		diag) cmd_diag ;;
+		reconcile) cmd_reconcile ;;
 		set-password) cmd_set_password ;;
 		summary) cat "$SUMMARY" ;;
 		uninstall-info) echo "To undo: sysupgrade -n (factory reset) the router. Nothing else is changed outside the files listed in $0." ;;
@@ -1087,6 +1092,21 @@ instant_grant() {
   case "$NDSOUT" in *Failed*) logmsg "window ${sid%????????????????????????}: openNDS refused the early grant: $NDSOUT"; return 0 ;; esac
   echo "$_min" > "$dir/egrant"; : > "$dir/online"
   logmsg "timing ${sid%????????????????????????} granted pulses=$1 min=$_min at=$(uptime_ms)"
+}
+
+# reconcile: the box's own lifetime coin count against the router's revenue ledger. The box also counts coins that went
+# to rental phones, so it should be at or above the ledger; a ledger above the box means pesos were credited that the box
+# never counted. Prints one line (RECONCILE OK|MISMATCH|NOBOX|BADLEDGER ...); exit status 0 only for OK.
+do_reconcile() {
+  flash_load || { echo "RECONCILE NOLIB"; return 2; }
+  hmac_init
+  _v=$(flash_verify) || { echo "RECONCILE BADLEDGER line ${_v#BAD }"; return 3; }
+  set -- $_v; _lp="$3"
+  _st=$(call "ffffffffffffffffffffffffffffffff" status)
+  _bp=$(printf '%s' "$_st" | jget lifetime_pulses)
+  case "$_bp" in "" | *[!0-9]*) echo "RECONCILE NOBOX (needs firmware 3.2.1 or later) ledger=$_lp"; return 4 ;; esac
+  if [ "$_lp" -gt "$_bp" ]; then echo "RECONCILE MISMATCH ledger=$_lp box=$_bp (ledger is higher than the box counted)"; return 1; fi
+  echo "RECONCILE OK ledger=$_lp box=$_bp (the difference of $((_bp - _lp)) went to rental phones)"
 }
 
 ack_window() {  # the coins are recorded: remove them from the box (retried; /ack and /start retry it again if needed)
@@ -1810,6 +1830,7 @@ case "$1" in
   handle) do_handle ;;
   worker) valid_sid "$2" && do_worker "$2" ;;
   recover) do_recover ;;
+  reconcile) do_reconcile ;;
   fairuse) do_fairuse ;;
   box) do_box ;;
   hmac) hmac_init; echo "$HMAC_MODE"; [ "$HMAC_MODE" = shell ] && hmac_hex "$2"; echo ;;       # for tests: signs with GW_KEY

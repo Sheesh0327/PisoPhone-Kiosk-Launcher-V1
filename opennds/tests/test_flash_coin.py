@@ -579,6 +579,8 @@ try:
     subprocess.run(["sh", LISTENER, "recover"], env=env, timeout=60)
     check(nrec() - n0 == 1, "recover again does nothing")
 
+    r = subprocess.run(["sh", LISTENER, "reconcile"], env=env, capture_output=True, text=True, timeout=30)
+    check(r.returncode == 0 and r.stdout.startswith("RECONCILE OK"), "reconcile: ledger at or below the box's count is fine: " + r.stdout.strip())
     # ---- ledger chain and clock clamp ---------------------------------------------------------------------------------------------
     rc, out = lib("flash_verify")
     check(rc == 0 and out.startswith("OK "), "revenue chain verifies: " + out)
@@ -589,6 +591,8 @@ try:
     open(REV, "w").write("\n".join([",".join(f0)] + lines[1:]) + "\n")
     rc, out = lib("flash_verify")
     check(rc != 0 and out == "BAD 1", "an edited line is detected: " + out)
+    r = subprocess.run(["sh", LISTENER, "reconcile"], env=env, capture_output=True, text=True, timeout=30)
+    check(r.returncode == 3 and "BADLEDGER" in r.stdout, "reconcile reports a broken ledger: " + r.stdout.strip())
     roll_write(f"CLOCK1,1000,1000,0,0,10,{int(time.time()) + 3000},{MAC_A},0,0,0,hyper,w9,1,10,1,1")
     rc, out = lib(f'roll_parse "$(roll_find_mac {MAC_A})"; roll_calc; echo $R_LEFT')
     check(out == "600", "a clock that jumped back cannot add time: left " + out)

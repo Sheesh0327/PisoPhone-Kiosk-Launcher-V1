@@ -118,6 +118,7 @@ class H(BaseHTTPRequestHandler):
                                "ready_in_ms": max(0, int((s.get("settle_until", 0) - time.time()) * 1000)),
                                "slot_free": not c.get("busy") and not any(
                                    x["armed_at"] and not x["released"] for x in sessions.values()),
+                               "lifetime_pulses": 1000 + sum(x.get("acked", 0) for x in sessions.values()),
                                **({"events": True} if c.get("events", True) else {})})
 
 
