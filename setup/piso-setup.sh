@@ -31,7 +31,7 @@ VERSION="dev"
 COUNTRY="${COUNTRY:-PH}"
 KIOSK_SSID="PisoKiosk"                       # fixed, and hidden: only phones provisioned by the coin box page know it
 BOX_SSID="PisoCoinBox"                       # fixed: the ESP32 firmware has it built in
-BOX_WIFI_PASS="PisoCoinBox@Setup"            # fixed: the ESP32 firmware has it built in (only the paired box's MAC may join)
+BOX_DEFAULT_WIFI="PisoCoinBox@Setup"         # the ESP32 firmware has it built in; setup gives the paired box its own (rotate_box_wifi)
 BOX_DEFAULT_ADMIN="Coinslot@Setup"           # the box's admin password until this script changes it
 LAN_IP=$(uci -q get network.lan.ipaddr 2> /dev/null | head -n 1 | cut -d/ -f1)   # whatever the router has now: this script never changes it
 LAN_IP="${LAN_IP:-10.0.0.1}"
@@ -206,7 +206,7 @@ set wireless.box_ap.network='lan'
 set wireless.box_ap.ssid='$BOX_SSID'
 set wireless.box_ap.hidden='1'
 set wireless.box_ap.encryption='psk2'
-set wireless.box_ap.key='$BOX_WIFI_PASS'
+set wireless.box_ap.key='$(box_wifi_key)'
 set wireless.box_ap.isolate='0'
 EOT
 	if [ -n "$BOX_MAC" ]; then
@@ -322,8 +322,16 @@ box_station() {  # MAC of a station joined to the box network
 box_up() { curl -s -m 4 "http://$BOX_IP/api/gateway/challenge" 2> /dev/null | grep -q '{'; }
 
 # pair_box: open the box network, wait for the box to join, then admit only its MAC and give it BOX_IP.
+# The box network's current key: its own once rotate_box_wifi has run, else the firmware's built-in default.
+box_wifi_key() {
+	if [ "$(conf_get BOX_WIFI_ROTATED)" = 1 ] && [ -n "$(conf_get BOX_WIFI_PASS_NEW)" ]; then conf_get BOX_WIFI_PASS_NEW; else printf '%s' "$BOX_DEFAULT_WIFI"; fi
+}
+
 pair_box() {
 	step "Pairing the coin box (power on the ESP32 now if it is off; waiting up to $((PAIR_WAIT / 60)) minutes)"
+	# A new or factory-reset box only knows the built-in password: open the network with it for the pairing.
+	conf_set BOX_WIFI_ROTATED 0
+	uci set wireless.box_ap.key="$BOX_DEFAULT_WIFI"
 	uci -q delete wireless.box_ap.macfilter; uci -q delete wireless.box_ap.maclist; uci commit wireless
 	wifi reload > /dev/null 2>&1
 	_t=0; MAC=""
@@ -386,6 +394,27 @@ provision_box() {
 	log "the gateway key is set on the box"
 }
 
+# rotate_box_wifi: the firmware's built-in Wi-Fi password is public, so once the box is paired (and only its MAC is admitted)
+# it is given a random one of its own: stored on the box through its admin API, then set on the router's hidden box
+# network. The box loses the network for a moment and rejoins with the new password (within about a minute).
+rotate_box_wifi() {
+	[ "$(conf_get BOX_WIFI_ROTATED)" = 1 ] && return 0
+	step "Giving the coin box its own Wi-Fi password"
+	_new=$(secret BOX_WIFI_PASS_NEW 20)
+	box_curl "$(conf_get BOX_ADMIN_PASS)" /save --data-urlencode "wifi_pass=$_new"
+	case "$BOXCODE" in
+		200 | 302 | 303) ;;
+		*) log "the box did not take its own Wi-Fi password (HTTP ${BOXCODE:-none}); it keeps the built-in one for now (still locked to its MAC). Run again: piso-setup rotate-box-wifi"; return 0 ;;
+	esac
+	uci set wireless.box_ap.key="$_new"; uci commit wireless
+	conf_set BOX_WIFI_ROTATED 1
+	wifi reload > /dev/null 2>&1
+	_t=0; sleep "${ROTATE_SETTLE:-10}"
+	while [ "$_t" -lt "${ROTATE_WAIT:-240}" ]; do box_up && break; sleep 5; _t=$((_t + 5)); done
+	box_up || die "the coin box did not come back after its Wi-Fi password changed. Power-cycle it and run: piso-setup status. If it still does not join, factory reset the box and run: piso-setup pair"
+	log "the coin box rejoined with its own Wi-Fi password"
+}
+
 # ---------------------------------------------------------------------------------------------------------------------
 # Stage 2: pairing the box, services, checks
 # ---------------------------------------------------------------------------------------------------------------------
@@ -417,6 +446,7 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 	_ck "guest network is up" "ip -4 addr show br-guest | grep -q 'inet $GUEST_IP/'"
 	_ck "hidden Wi-Fi $KIOSK_SSID is on" "iwinfo | grep -q 'ESSID: \"$KIOSK_SSID\"' || wifi status 2> /dev/null | grep -q '\"ssid\": \"$KIOSK_SSID\"'"
 	_ck "Wi-Fi $(conf_get GUEST_NAME) is broadcasting" "iwinfo | grep -q 'ESSID: \"$(conf_get GUEST_NAME)\"'"
+	_ck "the coin box has its own Wi-Fi password (not the published default)" "[ \"\$(uci -q get wireless.box_ap.key)\" != '$BOX_DEFAULT_WIFI' ]"
 	_ck "hidden Wi-Fi $BOX_SSID is on and locked to the box" "[ \"\$(uci -q get wireless.box_ap.macfilter)\" = allow ] && [ -n \"\$(uci -q get wireless.box_ap.maclist)\" ]"
 	_ck "coin box answers at $BOX_IP" box_up
 	_ck "coin-slot manager is running" "curl -s -m 4 http://127.0.0.1:8099/info | grep -q fair_kb"
@@ -446,6 +476,7 @@ stage2() {
 		pair_box
 	fi
 	provision_box "$NEWPW" "$KEY"
+	rotate_box_wifi
 	write_coinslot_conf "$KEY" "$BOX_MAC"
 
 	step "Starting the services"
@@ -596,6 +627,7 @@ cmd_pair() {
 	pair_box
 	write_coinslot_conf "$(conf_get GW_KEY)" "$BOX_MAC"
 	provision_box "$(conf_get BOX_ADMIN_PASS_NEW)" "$(conf_get GW_KEY)"
+	rotate_box_wifi
 	/etc/init.d/flash_coin restart
 	write_summary
 	log "The new coin box is paired. Check with: piso-setup status"
@@ -683,7 +715,7 @@ main() {
 		case "$1" in
 			--dry-run) DRY=1 ;;
 			--yes | -y) ASSUME_YES=1 ;;
-			status | pair | summary | wifi-name | uninstall-info | test-coin | diag | set-password | reconcile | telegram) CMD="$1"; shift; ARG="$1"; break ;;
+			status | pair | summary | wifi-name | uninstall-info | test-coin | diag | set-password | reconcile | telegram | rotate-box-wifi) CMD="$1"; shift; ARG="$1"; break ;;
 			-h | --help) sed -n '2,/^# Options:/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 			*) echo "unknown option: $1 (try --help)" >&2; exit 1 ;;
 		esac
@@ -697,6 +729,7 @@ main() {
 		diag) cmd_diag ;;
 		reconcile) cmd_reconcile ;;
 		telegram) cmd_telegram ;;
+		rotate-box-wifi) DRY=0; [ "$(id -u)" = 0 ] || die "run as root"; conf_set BOX_WIFI_ROTATED 0; rotate_box_wifi ;;
 		set-password) cmd_set_password ;;
 		summary) cat "$SUMMARY" ;;
 		uninstall-info) echo "To undo: sysupgrade -n (factory reset) the router. Nothing else is changed outside the files listed in $0." ;;

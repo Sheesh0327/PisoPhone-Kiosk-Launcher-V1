@@ -203,6 +203,9 @@ class Box(http.server.BaseHTTPRequestHandler):
         if self.path == "/save" and "admin_pw" in body:
             Box.admin = body["admin_pw"]
             self.send_response(200); self.end_headers(); self.wfile.write(b"{}"); return
+        if self.path == "/save" and "wifi_pass" in body:
+            Box.wifi = body["wifi_pass"]
+            self.send_response(200); self.end_headers(); self.wfile.write(b"{}"); return
         if self.path == "/api/gateway/config":
             Box.key = body.get("key")
             self.send_response(200); self.end_headers(); self.wfile.write(b'{"success":true,"configured":true}'); return
@@ -227,6 +230,23 @@ check("rc=0" not in r.stdout and "factory" in r.stdout.lower(), "a box with an u
 r = lib('provision_box NewPassw0rdXYZ ' + "ef" * 32 + "; echo rc=$?", env={"BOX_IP": addr, "PISO_CONF": f"{tmp}/fresh", "BOX_ADMIN_PASSWORD": "SomethingElse1"})
 check("rc=0" in r.stdout and Box.key == "ef" * 32, "BOX_ADMIN_PASSWORD lets setup adopt an already set-up box: " + r.stdout)
 
+# ---- the box's own Wi-Fi password -----------------------------------------------------------------------------------------------
+Box.wifi = None
+open(f"{tmp}/uci.log", "w").close()
+r = lib('conf_set BOX_ADMIN_PASS NewPassw0rdXYZ; rotate_box_wifi; echo rc=$?; echo "ROT=$(conf_get BOX_WIFI_ROTATED) KEY=$(conf_get BOX_WIFI_PASS_NEW)"; box_wifi_key',
+        env={"BOX_IP": addr, "ROTATE_SETTLE": "0"})
+m = re.search(r"KEY=(\S+)", r.stdout)
+check("rc=0" in r.stdout and "ROT=1" in r.stdout and m and Box.wifi == m.group(1) and len(m.group(1)) == 20 and m.group(1) != "PisoCoinBox@Setup",
+      "the box gets its own random 20-character Wi-Fi password through its API: " + r.stdout + r.stderr)
+check(f"set wireless.box_ap.key={Box.wifi}" in open(f"{tmp}/uci.log").read(), "and the router's box network takes the same one")
+check(r.stdout.strip().endswith(Box.wifi), "box_wifi_key returns it from then on (a re-run of the setup keeps it)")
+Box.wifi = None
+r = lib('rotate_box_wifi; echo rc=$?', env={"BOX_IP": addr, "ROTATE_SETTLE": "0"})
+check("rc=0" in r.stdout and Box.wifi is None, "a second run changes nothing")
+r = lib('conf_set BOX_WIFI_ROTATED 0; box_wifi_key')
+check(r.stdout.strip().endswith("PisoCoinBox@Setup"), "before rotation (or after pairing a new box) the built-in password is used")
+check("conf_set BOX_WIFI_ROTATED 0" in text.split("pair_box() {")[1].split("\n}\n")[0], "pairing a new box starts from the built-in password")
+check("rotate_box_wifi" in text.split("stage2() {")[1].split("\n}\n")[0] and "rotate_box_wifi" in text.split("cmd_pair() {")[1].split("\n}\n")[0], "stage 2 and pair both rotate it")
 # ---- finding the box on its own network --------------------------------------------------------------------------------------
 open(f"{bindir}/iwinfo", "w").write("""#!/bin/sh
 if [ -z "$1" ]; then
