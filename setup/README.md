@@ -3,10 +3,19 @@
 One file, `piso-setup.sh`, turns a factory-reset OpenWrt router into the whole PisoWiFi system.
 
 ## Before you start
-1. **Flash the ESP32 coin box** with the current firmware (3.2.0 or later for instant coins; or factory reset a used one) and power it on. It joins the hidden `PisoCoinBox` Wi-Fi by itself, which the router creates.
+1. **Flash the ESP32 coin box** with firmware **3.2.1 or later** (see "Flashing the coin box" below) and power it on. It joins the hidden `PisoCoinBox` Wi-Fi by itself, which the router creates. A used box must be factory reset first (it remembers its old Wi-Fi).
 2. **Modem into the router's WAN port** (internet is needed once, to download packages).
 3. A PC on one of the router's **LAN ports**.
 4. The modem's own network must not be `10.0.0.x` or `192.168.30.x` (the script stops and tells you if it is).
+
+### Flashing the coin box (once per box, by USB)
+```
+cd esp32_firmware
+sh host_tests/run.sh                  # optional: the firmware's own tests
+pio run -e esp32-c3-dev -t upload     # the board's environment: see esp32_firmware/platformio.ini
+pio device monitor                    # optional: watch it start
+```
+CI compiles the firmware on every push (job "Firmware format and host tests" and the build job). The box starts with the published defaults (admin password `Coinslot@Setup`, setup Wi-Fi `PisoCoinBox`); the router setup changes the password and key by itself, and the box refuses coins until its password has been changed.
 
 ## Step 1: set the router's LAN address to 10.0.0.1 (by hand, once)
 The script does not change the router's address, so your SSH connection is never cut while it runs. Do this first, on a factory-reset router:
@@ -32,6 +41,23 @@ Answer `y` when asked. It runs in front of you for about 3 to 8 minutes and **ke
 cat /root/piso-setup-summary.txt
 ```
 It has every password generated for you (router, PisoKiosk Wi-Fi, coin box admin). Save them somewhere safe.
+
+## Step 3: check that it works (do this before any customer or partner uses it)
+1. `piso-setup status` must end with `All checks passed.`
+2. `piso-setup test-coin`: it arms the slot; insert one coin. It must say `the box counted 1 peso(s)`.
+3. **Wi-Fi customer:** join the customer Wi-Fi (`PisoWiFi`) with a phone, open the login page, pick a plan, tap Insert Coin, insert one coin. The page should show the coin at once and say you are online within about a second; browse something. Insert a second coin: the time is added when the window closes.
+4. **Second device:** while a window is open, try Insert Coin on another phone. It must be refused with a "Try again" page.
+5. **Rental phone:** join `PisoKiosk` with a kiosk phone (the app's own flow) and pay once.
+6. `piso-setup reconcile` must say `RECONCILE OK` (needs firmware 3.2.1).
+7. `piso-setup diag > diag.txt` and keep the output: it contains the coin timings and no passwords. Send it with any bug report.
+
+## Step 4 (optional, recommended): Telegram alerts and remote control
+1. In Telegram, open **@BotFather**, send `/newbot`, pick a name, copy the token it gives you.
+2. On the router: `piso-setup telegram`. Paste the token, give the site a name (it prefixes every message), then open your new bot in Telegram and send it any message. The router shows the chat it found; answer `y` if it is you.
+3. You get a "connected" message. From then on you receive: router restarted, box offline for 5 minutes (and back), revenue mismatch or edited ledger, a device abusing the coin slot, and a daily report at 21:00.
+4. Commands (only from your chat): `/status`, `/report [days]`, `/reconcile`, `/diag`, `/restart` (coin manager), `/reboot` (then `/reboot confirm` within 2 minutes), `/help`.
+5. Optional dead-man switch: create a check at healthchecks.io, put its ping URL in `/etc/piso-monitor.conf` as `HEALTHCHECK_URL='...'`, then `/etc/init.d/piso_monitor restart`. You are alerted when the router stops pinging (power cut, internet down).
+The router needs internet for this; if the site is offline, alerts arrive late but are not lost for the daily report.
 
 ## What you get
 | network | for | bands | notes |
