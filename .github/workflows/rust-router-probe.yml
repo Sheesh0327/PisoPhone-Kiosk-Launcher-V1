@@ -1,0 +1,69 @@
+name: Rust router probe
+
+# Builds tools/rust-probe for a MIPS router (OpenWrt "mipsel_24kc", e.g. MT7621) with OpenWrt's own compiler, so the
+# binary can be copied to a router and tried. Not part of the normal checks: runs by hand or when the probe changes.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/rust-probe/**'
+      - '.github/workflows/rust-router-probe.yml'
+
+permissions:
+  contents: write
+
+env:
+  SDK_IMAGE: openwrt/sdk:ramips-mt7621-23.05.5
+
+jobs:
+  mipsel:
+    name: Build for mipsel_24kc
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Take the C toolchain out of the OpenWrt SDK image
+        run: |
+          docker pull "$SDK_IMAGE"
+          TC=$(docker run --rm "$SDK_IMAGE" sh -c 'ls -d /builder/staging_dir/toolchain-*' | head -1)
+          echo "toolchain in the image: $TC"
+          id=$(docker create "$SDK_IMAGE")
+          docker cp "$id:$TC" "$PWD/toolchain"
+          mkdir -p host && docker cp "$id:/builder/staging_dir/host/lib" "$PWD/host/lib"   # the compiler wrapper looks for ../../host/lib
+          docker rm "$id" > /dev/null
+          ls toolchain/bin | head -20
+          echo "GCC=$(ls "$PWD"/toolchain/bin/*-openwrt-linux-musl-gcc | head -1)" >> "$GITHUB_ENV"
+
+      - name: Rust nightly with the standard-library sources (MIPS has no prebuilt standard library)
+        run: rustup toolchain install nightly --profile minimal -c rust-src
+
+      - name: Build
+        working-directory: tools/rust-probe
+        run: |
+          # panic=abort needs no unwinder; satisfy the "-lunwind" the musl targets ask for with the toolchain's own
+          mkdir -p "$PWD/stub"
+          echo 'INPUT(-lgcc_eh)' > "$PWD/stub/libunwind.a"
+          export STAGING_DIR="$GITHUB_WORKSPACE/toolchain"
+          export RUSTFLAGS="-C linker=$GCC -C link-arg=-L$PWD/stub -C target-feature=+crt-static -C relocation-model=static -C link-self-contained=no"
+          cargo +nightly build --release -Z build-std=std,panic_abort --target mipsel-unknown-linux-musl
+          BIN=target/mipsel-unknown-linux-musl/release/coinslot-probe
+          ls -l "$BIN"
+          file "$BIN" || true
+          mkdir -p ../../dist && cp "$BIN" ../../dist/coinslot-probe-mipsel
+          (cd ../../dist && sha256sum coinslot-probe-mipsel | tee coinslot-probe-mipsel.sha256)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coinslot-probe-mipsel
+          path: dist/
+
+      # Put the built program in the repository too, so it can be copied to the router from a normal checkout.
+      - name: Commit the built program to the branch
+        if: github.ref_name == 'rust-probe'
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@users.noreply.github.com"
+          mkdir -p tools/rust-probe/bin
+          cp dist/coinslot-probe-mipsel dist/coinslot-probe-mipsel.sha256 tools/rust-probe/bin/
+          git add tools/rust-probe/bin
+          git diff --cached --quiet || { git commit -m "ci: built router probe (mipsel_24kc)"; git push; }
