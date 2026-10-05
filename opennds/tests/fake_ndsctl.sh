@@ -5,7 +5,10 @@
 D="${FAKE_NDS_DIR:?}"
 key() { printf '%s' "$1" | tr 'A-F' 'a-f' | tr -d ':'; }
 load() { STATE=""; SESSION_END=0; DL=0; UL=0; UPRATE=0; DOWNRATE=0; [ -r "$D/$1" ] && . "$D/$1"; }
-save() { printf 'STATE=%s\nSESSION_END=%s\nDL=%s\nUL=%s\nUPRATE=%s\nDOWNRATE=%s\n' "$STATE" "$SESSION_END" "$DL" "$UL" "$UPRATE" "$DOWNRATE" > "$D/$1"; }
+save() {  # atomic (temp file + rename): tests read these files while a grant is being written
+  printf 'STATE=%s\nSESSION_END=%s\nDL=%s\nUL=%s\nUPRATE=%s\nDOWNRATE=%s\n' "$STATE" "$SESSION_END" "$DL" "$UL" "$UPRATE" "$DOWNRATE" > "$D/$1.tmp.$$" &&
+    mv "$D/$1.tmp.$$" "$D/$1"
+}
 client_json() {  # client_json <mackey> <mac>
   load "$1"
   _dr="$DOWNRATE"; [ "$_dr" = 0 ] && _dr=null
@@ -23,7 +26,7 @@ case "$1" in
       printf '{"client_list_length":"x","clients":{\n'
       first=1
       for f in "$D"/*; do
-        case "$f" in *.log) continue ;; esac
+        case "$f" in *.log | *.tmp.*) continue ;; esac
         [ -f "$f" ] || continue
         k=$(basename "$f"); mac=$(printf '%s' "$k" | sed 's/\(..\)\(..\)\(..\)\(..\)\(..\)\(..\)/\1:\2:\3:\4:\5:\6/')
         [ "$first" = 1 ] || printf ',\n'; first=0

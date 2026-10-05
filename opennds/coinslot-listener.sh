@@ -1020,6 +1020,20 @@ q_gate() {
 # their place in the waiting line; it never arms, grants or changes anything.
 # ---------------------------------------------------------------------------
 sse() { printf 'event: %s\ndata: %s\n\n' "$1" "$2"; }
+# local_window_open: a coin window this router has started is still open (its worker is alive). The box only reports the
+# slot as taken once that worker has armed it, so without this the next in line could be told "ready" in between.
+local_window_open() {
+  for _d in "$STATE_DIR"/*/; do
+    [ -r "$_d/state" ] || continue
+    case "$(sed -n 's/^STATE=//p' "$_d/state")" in
+      armed) worker_running "$_d" && return 0 ;;
+      starting)                                # the worker may not have written its pid yet: a fresh "starting" counts
+        worker_running "$_d" && return 0
+        [ $(( $(now) - $(date -r "$_d/state" +%s 2>/dev/null || echo 0) )) -lt 10 ] && return 0 ;;
+    esac
+  done
+  return 1
+}
 peer_mac() {  # peer_mac <ip>: MAC the router has for that guest address
   case "$1" in "" | *[!0-9.]*) return ;; esac
   awk -v ip="$1" '$1 == ip { print tolower($4) }' "${ARP_FILE:-/proc/net/arp}"
@@ -1061,7 +1075,7 @@ stream_queue() {
     q_prune "$_n"
     _pos=$(q_pos "$sid")
     if [ "$_readyat" = 0 ]; then
-      if [ "$_pos" = 1 ]; then
+      if [ "$_pos" = 1 ] && ! local_window_open; then
         _st=$(call "$sid" status)
         case "$(printf '%s' "$_st" | jget slot_free)" in
           true) _readyat="$_n"; sse ready "{\"claim\":$QUEUE_CLAIM_SECONDS}"; _last=ready ;;
