@@ -20,7 +20,7 @@
 # Everything is generated here (Wi-Fi password, box admin password, gateway key) and printed once at the end and saved in
 # /root/piso-setup-summary.txt. Running the file again is safe: it keeps what it already made.
 #
-# Other commands (after setup): piso-setup status | wifi-name "<name>" | pair | summary | test-coin | diag | set-password | reconcile | telegram
+# Other commands (after setup): piso-setup status | wifi-name "<name>" | pair | summary | test-coin | diag | set-password | reconcile | telegram | rotate-box-wifi | handout
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation
@@ -508,7 +508,10 @@ stage2() {
 	step "Checking everything"
 	check_all; _f=$?
 	write_summary
+	_hp=$(write_handout)
 	echo; echo "================ SUMMARY (also saved in $SUMMARY) ================"; cat "$SUMMARY"; echo "=================================================================="
+	log "A printable sheet with the passwords is in $_hp (copy it off with: scp -O root@$LAN_IP:$_hp .)"
+	finish_telegram
 	[ "$(conf_get ROOT_PASS_SET)" = 1 ] || { log "INCOMPLETE: the router password was not set. Run: piso-setup set-password"; _f=$((_f + 1)); }
 	if [ "$_f" = 0 ]; then echo "DONE all checks passed" > "$STATE"; log ""; log "SETUP COMPLETE. Read $SUMMARY (ssh root@$LAN_IP)."
 	else echo "DONE with $_f failed checks (see $LOG)" > "$STATE"; log ""; log "Setup finished, but $_f check(s) failed: see above and $LOG. Run: piso-setup status"; fi
@@ -590,14 +593,10 @@ cmd_diag() {
 cmd_reconcile() { /usr/bin/coinslot-listener.sh reconcile; }
 
 # piso-setup telegram: connect the Telegram bot (alerts and remote commands). The token comes from @BotFather.
-cmd_telegram() {
-	[ "$(id -u)" = 0 ] || die "run as root"
+# telegram_connect <token> <site name>: pairs the bot with the first chat that writes to it and starts the monitor.
+telegram_connect() {
+	_tok="$1"; _site="$2"
 	[ -x /usr/bin/piso-monitor.sh ] || die "the monitor is not installed: run the setup first"
-	echo "1. In Telegram, talk to @BotFather: /newbot, choose a name, copy the token it gives you."
-	printf '2. Paste the token here: '; read -r _tok
-	[ -n "$_tok" ] || { echo "No token."; return 1; }
-	printf '3. Name of this site (shown in every message) [PisoPhone]: '; read -r _site; _site="${_site:-PisoPhone}"
-	case "$_site$_tok" in *\'* | *\"* | *\\* | *\$* | *\`*) echo "Please avoid quotes, backslashes, \$ and backticks."; return 1 ;; esac
 	echo "TG_TOKEN='$_tok'" > /etc/piso-monitor.conf; chmod 600 /etc/piso-monitor.conf
 	rm -rf /tmp/piso-monitor
 	PISO_MONITOR_CONF=/etc/piso-monitor.conf /usr/bin/piso-monitor.sh pair || return 1
@@ -611,6 +610,71 @@ cmd_telegram() {
 	sleep 1; /usr/bin/piso-monitor.sh send "connected. Send /help for the commands."
 	echo "Done. A message was sent to your Telegram. Optional dead-man switch: set HEALTHCHECK_URL in /etc/piso-monitor.conf (healthchecks.io), then: /etc/init.d/piso_monitor restart"
 }
+
+# valid_plain <text>: no quotes, backslashes, $ or backticks (values that end up inside shell or uci quoting)
+valid_plain() { case "$1" in *\'* | *\"* | *\\* | *\$* | *\`*) return 1 ;; esac; return 0; }
+
+# piso-setup telegram: connect the Telegram bot (alerts and remote commands). The token comes from @BotFather.
+cmd_telegram() {
+	[ "$(id -u)" = 0 ] || die "run as root"
+	[ -x /usr/bin/piso-monitor.sh ] || die "the monitor is not installed: run the setup first"
+	echo "1. In Telegram, talk to @BotFather: /newbot, choose a name, copy the token it gives you."
+	printf '2. Paste the token here: '; read -r _tok
+	[ -n "$_tok" ] || { echo "No token."; return 1; }
+	_def=$(conf_get SITE_NAME); _def="${_def:-PisoPhone}"
+	printf '3. Name of this site (shown in every message) [%s]: ' "$_def"; read -r _site; _site="${_site:-$_def}"
+	valid_plain "$_site$_tok" || { echo "Please avoid quotes, backslashes, \$ and backticks."; return 1; }
+	telegram_connect "$_tok" "$_site"
+}
+
+# ask_telegram: during setup (with a terminal only): offer to connect the bot at the end. Stores TG_TOKEN for finish_telegram.
+ask_telegram() {
+	[ "$ASSUME_YES" != 1 ] && [ -t 0 ] && [ "$DRY" != 1 ] || return 0
+	[ ! -r /etc/piso-monitor.conf ] || return 0
+	echo
+	printf 'Connect Telegram alerts and remote control now? You need a bot token from @BotFather. [y/N] '; read -r _a
+	case "$_a" in y | Y | yes) ;; *) return 0 ;; esac
+	printf 'Paste the bot token: '; read -r _tok
+	[ -n "$_tok" ] && valid_plain "$_tok" || { echo "No usable token: skipped (you can run: piso-setup telegram)."; return 0; }
+	conf_set TG_TOKEN "$_tok"
+}
+
+# finish_telegram: at the end of the setup, when a token was given: pair the chat and start the monitor.
+finish_telegram() {
+	_tok=$(conf_get TG_TOKEN); [ -n "$_tok" ] || return 0
+	step "Connecting Telegram"
+	telegram_connect "$_tok" "$(conf_get SITE_NAME)" || log "Telegram was not connected. Run later: piso-setup telegram"
+	conf_set TG_TOKEN ""
+}
+
+# --- the printed page for the shop owner ---------------------------------------------------------------------------------------
+html_esc() { printf '%s' "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'; }
+write_handout() {
+	_f="${HANDOUT:-/root/piso-handout.html}"
+	_site=$(html_esc "$(conf_get SITE_NAME)"); _guest=$(html_esc "$(conf_get GUEST_NAME)"); _kp=$(html_esc "$(conf_get KIOSK_PASS)")
+	_bp=$(html_esc "$(conf_get BOX_ADMIN_PASS)"); _rp=$(html_esc "$(if [ "$(conf_get ROOT_PASS_SET)" = 1 ]; then conf_get ROOT_PASS; else echo "(not set by the setup: run piso-setup set-password)"; fi)")
+	umask 077
+	cat > "$_f" << EOT
+<!doctype html><html><head><meta charset="utf-8"><title>${_site:-PisoPhone} setup sheet</title>
+<style>body{font:16px/1.5 system-ui,sans-serif;max-width:720px;margin:2rem auto;padding:0 1rem}h1{margin-bottom:0}
+table{border-collapse:collapse;width:100%;margin:1rem 0}td,th{border:1px solid #999;padding:.5rem .7rem;text-align:left}th{background:#eee;width:34%}
+code{font:1.05em monospace}.warn{border:2px solid #b00;padding:.6rem 1rem;margin:1rem 0}@media print{body{margin:0}}</style></head><body>
+<h1>${_site:-PisoPhone}</h1><p>PisoPhone setup sheet &middot; $(date '+%F')</p>
+<div class="warn"><b>Keep this page private.</b> It holds the passwords for the whole system. Store it safely and do not post it.</div>
+<table>
+<tr><th>Customer Wi-Fi (public)</th><td><code>${_guest}</code> &middot; open, customers pay by coin</td></tr>
+<tr><th>Rental-phone Wi-Fi (hidden)</th><td>name <code>${KIOSK_SSID}</code><br>password <code>${_kp}</code><br>Not shown in any Wi-Fi list. Only used when setting up a phone.</td></tr>
+<tr><th>Coin box admin page</th><td>address <code>http://${BOX_IP}</code> (on the PisoKiosk network)<br>user <code>admin</code><br>password <code>${_bp}</code><br>This password is also the admin PIN of the rental phones.</td></tr>
+<tr><th>Router login (SSH / LuCI)</th><td>address <code>${LAN_IP}</code> (on the PisoKiosk network or a LAN cable)<br>user <code>root</code><br>password <code>${_rp}</code></td></tr>
+</table>
+<p><b>Setting up a new rental phone:</b> open the coin box admin page, tap <i>Install &amp; Provision</i>, type the PisoKiosk password above on the page, and plug the phone in by USB.</p>
+</body></html>
+EOT
+	umask 022
+	chmod 600 "$_f"
+	echo "$_f"
+}
+cmd_handout() { [ "$(id -u)" = 0 ] || die "run as root"; _p=$(write_handout); echo "Printable setup sheet written to: $_p"; echo "Copy it to a computer to print:  scp -O root@$LAN_IP:$_p ."; }
 
 cmd_set_password() {
 	[ "$(id -u)" = 0 ] || die "run as root"
@@ -686,16 +750,39 @@ choose_passwords() {
 	ask_password BOX_ADMIN_PASS_NEW "coin box admin password (the box's web page; also the phones' admin PIN)" 8 32 "$BOX_NEW_ADMIN_PASSWORD"
 }
 
+# review_choices: what will be applied, before anything is changed (with a terminal only).
+review_choices() {
+	[ "$DRY" != 1 ] && [ "$ASSUME_YES" != 1 ] && [ -t 0 ] || return 0
+	_pw() { if [ -n "$(conf_get "$1")" ]; then echo "chosen by you"; else echo "generated for you (shown at the end)"; fi; }
+	echo
+	echo "================ PLEASE REVIEW ================"
+	echo "  Public Wi-Fi (customers):  $GUEST_NAME  (open, behind the coin payment page)"
+	echo "  Rental-phone Wi-Fi:        $KIOSK_SSID  (hidden, 2.4 + 5 GHz)"
+	echo "  Coin box network:          $BOX_SSID  (hidden, only the box)"
+	echo "  Site name:                 $(conf_get SITE_NAME)"
+	echo "  Router address:            $LAN_IP   Country: ${COUNTRY:-PH}"
+	echo "  Router password:           $(_pw ROOT_PASS)"
+	echo "  Kiosk Wi-Fi password:      $(_pw KIOSK_PASS)"
+	echo "  Coin box admin password:   $(_pw BOX_ADMIN_PASS_NEW)"
+	echo "  The Wi-Fi networks of this router are replaced; the coin box is paired and set up; SSH stays open."
+	echo "==============================================="
+	printf 'Apply these settings? [y/N] '; read -r _a
+	case "$_a" in y | Y | yes) ;; *) echo "Cancelled. Nothing was changed (answers kept: run the setup again to change them)."; exit 1 ;; esac
+}
+
 stage1() {
 	preflight
 	if [ "$DRY" != 1 ] && [ "$ASSUME_YES" != 1 ] && [ -t 0 ]; then
 		echo
 		echo "This will set up the router as a PisoPhone system: the Wi-Fi networks are replaced (the LAN address stays $LAN_IP)."
-		echo "It takes a few minutes and waits for the coin box to join. Continue? [y/N]"
-		read -r _a; case "$_a" in y | Y | yes) ;; *) echo "Cancelled."; exit 1 ;; esac
+		echo "First a few questions; nothing is changed until you have reviewed your answers."
 	fi
 	choose_names
+	ask_name SITE_NAME "shop / site (printed on the setup sheet, shown in Telegram messages)" "$GUEST_NAME" "$SITE_NAME"
+	valid_plain "$ASKED" || die "the site name may not contain quotes, backslashes, \$ or backticks"
 	choose_passwords
+	review_choices
+	ask_telegram
 	KIOSK_PASS=$(secret KIOSK_PASS 12)
 	secret ROOT_PASS 14 > /dev/null; secret GW_KEY 64 hex > /dev/null; secret BOX_ADMIN_PASS_NEW 16 > /dev/null
 	BOX_MAC=$(conf_get BOX_MAC)
@@ -715,7 +802,7 @@ main() {
 		case "$1" in
 			--dry-run) DRY=1 ;;
 			--yes | -y) ASSUME_YES=1 ;;
-			status | pair | summary | wifi-name | uninstall-info | test-coin | diag | set-password | reconcile | telegram | rotate-box-wifi) CMD="$1"; shift; ARG="$1"; break ;;
+			status | pair | summary | wifi-name | uninstall-info | test-coin | diag | set-password | reconcile | telegram | rotate-box-wifi | handout) CMD="$1"; shift; ARG="$1"; break ;;
 			-h | --help) sed -n '2,/^# Options:/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 			*) echo "unknown option: $1 (try --help)" >&2; exit 1 ;;
 		esac
@@ -729,6 +816,7 @@ main() {
 		diag) cmd_diag ;;
 		reconcile) cmd_reconcile ;;
 		telegram) cmd_telegram ;;
+		handout) cmd_handout ;;
 		rotate-box-wifi) DRY=0; [ "$(id -u)" = 0 ] || die "run as root"; conf_set BOX_WIFI_ROTATED 0; rotate_box_wifi ;;
 		set-password) cmd_set_password ;;
 		summary) cat "$SUMMARY" ;;

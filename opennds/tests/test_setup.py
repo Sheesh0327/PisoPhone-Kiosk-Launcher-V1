@@ -247,6 +247,17 @@ r = lib('conf_set BOX_WIFI_ROTATED 0; box_wifi_key')
 check(r.stdout.strip().endswith("PisoCoinBox@Setup"), "before rotation (or after pairing a new box) the built-in password is used")
 check("conf_set BOX_WIFI_ROTATED 0" in text.split("pair_box() {")[1].split("\n}\n")[0], "pairing a new box starts from the built-in password")
 check("rotate_box_wifi" in text.split("stage2() {")[1].split("\n}\n")[0] and "rotate_box_wifi" in text.split("cmd_pair() {")[1].split("\n}\n")[0], "stage 2 and pair both rotate it")
+# ---- the printed setup sheet, the review screen and the Telegram prompt ----------------------------------------------------------
+r = lib('rm -f "$CONF"; conf_set SITE_NAME "Maria <Shop> & Sons"; conf_set GUEST_NAME "Maria Free WiFi"; conf_set KIOSK_PASS kioskpw12345; conf_set BOX_ADMIN_PASS boxpw123456; '
+        'conf_set ROOT_PASS rootpw12345; conf_set ROOT_PASS_SET 1; HANDOUT=' + tmp + '/handout.html write_handout; cat ' + tmp + '/handout.html')
+h = r.stdout
+check("Maria &lt;Shop&gt; &amp; Sons" in h and "Maria Free WiFi" in h and "kioskpw12345" in h and "boxpw123456" in h and "rootpw12345" in h and "PisoKiosk" in h and "http://" in h,
+      "the setup sheet carries every name and password (escaped): " + h[:300])
+check(oct(os.stat(f"{tmp}/handout.html").st_mode)[-3:] == "600", "and is readable by root only")
+r = lib('ASSUME_YES=0; ask_telegram; echo rc=$?; echo "[$(conf_get TG_TOKEN)]"')
+check("[]" in r.stdout, "without a terminal the Telegram prompt is skipped")
+check("review_choices" in text.split("stage1() {")[1] and "Apply these settings?" in text and text.index("review_choices\n\task_telegram") > 0, "answers are reviewed before anything is changed")
+check("finish_telegram" in text.split("stage2() {")[1].split("\n}\n")[0] and "write_handout" in text.split("stage2() {")[1].split("\n}\n")[0], "stage 2 writes the sheet and offers Telegram at the end")
 # ---- finding the box on its own network --------------------------------------------------------------------------------------
 open(f"{bindir}/iwinfo", "w").write("""#!/bin/sh
 if [ -z "$1" ]; then
