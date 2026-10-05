@@ -9,3 +9,9 @@ opennds/*.init text eol=lf
 opennds/*.conf text eol=lf
 scripts/*.sh text eol=lf
 opennds/tests/*.sh text eol=lf
+
+# Router scripts must keep LF line endings or the router cannot run them (CRLF gives ": not found" errors)
+*.sh text eol=lf
+*.init text eol=lf
+*.sh.in text eol=lf
+setup/piso-setup.sh text eol=lf

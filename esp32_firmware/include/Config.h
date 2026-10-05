@@ -106,7 +106,6 @@ extern String wifiSsid;
 extern String wifiPass;
 extern String androidIps;
 extern String webPassword;
-extern String setupApPass;                 // setup access point password (published default)
 extern bool adminPwChanged;                // false until the default admin password is replaced
 void runConfigMigrations();                // brings saved settings to this firmware's format (ConfigMigration.h)
 void loadCredentials();                    // reads the admin and setup-AP passwords (the migrations make them)

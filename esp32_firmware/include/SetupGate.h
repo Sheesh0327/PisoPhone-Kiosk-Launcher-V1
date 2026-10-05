@@ -9,8 +9,13 @@
 
 namespace setupgate {
 
-// Admin password and setup-Wi-Fi password of a box that has just been flashed or factory reset.
+// Admin password of a box that has just been flashed or factory reset.
 static const char* const DEFAULT_PASSWORD = "Coinslot@Setup";
+
+// The box has no access point of its own. A fresh or factory-reset box joins this hidden Wi-Fi, which the router's
+// setup script creates (it admits only this box's MAC address, so the published password is not a way in for anyone else).
+static const char* const DEFAULT_WIFI_SSID = "PisoCoinBox";
+static const char* const DEFAULT_WIFI_PASSWORD = "PisoCoinBox@Setup";
 
 static const unsigned MIN_PASSWORD_LENGTH = 8;
 

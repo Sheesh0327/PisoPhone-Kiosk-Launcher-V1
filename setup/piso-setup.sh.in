@@ -1,0 +1,528 @@
+#!/bin/sh
+# PisoPhone router setup: one file that turns a factory-reset OpenWrt router into the whole PisoWiFi system.
+#
+#   (first set the router's LAN address to 10.0.0.1 by hand: see setup/README.md, step 1)
+#   scp -O piso-setup.sh root@10.0.0.1:/root/
+#   ssh root@10.0.0.1
+#   sed -i 's/\r$//' piso-setup.sh && chmod +x piso-setup.sh && ./piso-setup.sh
+#
+# Before you run it: the router's LAN address is 10.0.0.1 (set by hand, so the SSH connection is never cut), modem in the
+# router's WAN port (internet is needed once, to download packages), the ESP32 coin box flashed with the current firmware
+# (or factory reset) and powered on.
+#
+# What it builds (the router's LAN address is not touched; your SSH session stays open the whole time):
+#   PisoKiosk    Wi-Fi, 2.4 + 5 GHz, WPA2, fixed name. For the rental phones only. Network 10.0.0.0/24 (the router's LAN).
+#   PisoCoinBox  hidden Wi-Fi, 2.4 GHz, for the ESP32 coin box only: after pairing, only the box's MAC address may join.
+#                The box gets the fixed address 10.0.0.10.
+#   PisoWiFi     open Wi-Fi, 2.4 + 5 GHz, for customers (openNDS login page, coin payments). Rename it with:
+#                  piso-setup wifi-name "My Shop"
+#                Network 192.168.30.0/24, kept apart from the kiosk network.
+# Everything is generated here (Wi-Fi password, box admin password, gateway key) and printed once at the end and saved in
+# /root/piso-setup-summary.txt. Running the file again is safe: it keeps what it already made.
+#
+# Other commands (after setup): piso-setup status | wifi-name "<name>" | pair | summary | uninstall-info
+#
+# Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
+#           --yes      do not ask for confirmation
+# Settings can be overridden from the environment: COUNTRY (default PH) GUEST_SSID BOX_IP GUEST_IP
+
+VERSION="@VERSION@"
+
+COUNTRY="${COUNTRY:-PH}"
+KIOSK_SSID="PisoKiosk"                       # fixed: the phones are provisioned with it
+BOX_SSID="PisoCoinBox"                       # fixed: the ESP32 firmware has it built in
+BOX_WIFI_PASS="PisoCoinBox@Setup"            # fixed: the ESP32 firmware has it built in (only the paired box's MAC may join)
+BOX_DEFAULT_ADMIN="Coinslot@Setup"           # the box's admin password until this script changes it
+LAN_IP=$(uci -q get network.lan.ipaddr 2> /dev/null | head -n 1 | cut -d/ -f1)   # whatever the router has now: this script never changes it
+LAN_IP="${LAN_IP:-10.0.0.1}"
+BOX_IP="${BOX_IP:-${LAN_IP%.*}.10}"                                               # the box is always <LAN network>.10
+GUEST_IP="${GUEST_IP:-192.168.30.1}"
+STREAM_PORT=8100
+CONF="${PISO_CONF:-/etc/piso-setup.conf}"   # what this script chose (secrets inside): mode 600
+LOG="${PISO_LOG:-/root/piso-setup.log}"
+SUMMARY="${PISO_SUMMARY:-/root/piso-setup-summary.txt}"
+STATE="${PISO_STATE:-/tmp/piso-setup.state}"
+SELF_PATH="/usr/sbin/piso-setup"
+PAIR_WAIT=420                                # seconds to wait for the box to join during pairing
+
+DRY=0; ASSUME_YES=0; PISO_ROOT="${PISO_ROOT:-}"
+
+log() { printf '%s\n' "$*"; [ "$DRY" = 1 ] || printf '%s %s\n' "$(date '+%F %T')" "$*" >> "$LOG" 2> /dev/null; }
+die() { log "ERROR: $*"; [ "$DRY" = 1 ] || echo "FAILED $*" > "$STATE"; exit 1; }
+step() { log ""; log "== $*"; [ "$DRY" = 1 ] || echo "RUNNING $*" > "$STATE"; }
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Stored settings
+# ---------------------------------------------------------------------------------------------------------------------
+conf_get() { [ -r "$CONF" ] && sed -n "s/^$1='\\(.*\\)'\$/\\1/p" "$CONF" | tail -n 1; }
+conf_set() {  # conf_set NAME VALUE
+	[ "$DRY" = 1 ] && return 0
+	touch "$CONF"; chmod 600 "$CONF"
+	grep -v "^$1=" "$CONF" > "$CONF.tmp" 2> /dev/null; printf "%s='%s'\n" "$1" "$2" >> "$CONF.tmp"; mv "$CONF.tmp" "$CONF"; chmod 600 "$CONF"
+}
+rand() {  # rand <length> [hex]: random characters (letters and digits, no look-alikes; or hex)
+	if [ "$2" = hex ]; then head -c 256 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-"$1"
+	else head -c 512 /dev/urandom | tr -dc 'a-hjkmnp-zA-HJ-NP-Z2-9' | cut -c1-"$1"; fi
+}
+secret() {  # secret NAME LENGTH [hex]: the stored value, or a new random one that is stored
+	_v=$(conf_get "$1")
+	if [ -z "$_v" ]; then _v=$(rand "$2" "$3"); conf_set "$1" "$_v"; fi
+	printf '%s' "$_v"
+}
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Preflight
+# ---------------------------------------------------------------------------------------------------------------------
+radios() { uci -q show wireless | sed -n "s/^wireless\\.\\([^.=]*\\)=wifi-device\$/\\1/p"; }
+radio_band() {  # radio_band radioN -> 2g | 5g
+	_b=$(uci -q get "wireless.$1.band")
+	case "$_b" in 2g | 5g) echo "$_b"; return ;; esac
+	case "$(uci -q get "wireless.$1.hwmode")" in 11g) echo 2g; return ;; 11a) echo 5g; return ;; esac
+	_c=$(uci -q get "wireless.$1.channel")
+	case "$_c" in "" | auto) echo 2g ;; *) if [ "$_c" -le 14 ] 2> /dev/null; then echo 2g; else echo 5g; fi ;; esac
+}
+wan_ip() { ifstatus wan 2> /dev/null | jsonfilter -e '@["ipv4-address"][0].address' 2> /dev/null; }
+
+preflight() {
+	step "Checking the router"
+	if [ "$DRY" != 1 ]; then
+		[ "$(id -u)" = 0 ] || die "run this as root"
+		[ -f /etc/openwrt_release ] || die "this is not an OpenWrt router"
+	fi
+	command -v uci > /dev/null || die "uci not found"
+	R24=""; R5=""
+	for r in $(radios); do
+		case "$(radio_band "$r")" in 2g) [ -z "$R24" ] && R24="$r" ;; 5g) [ -z "$R5" ] && R5="$r" ;; esac
+	done
+	[ -n "$R24" ] || die "no 2.4 GHz Wi-Fi radio found: the coin box can only use 2.4 GHz"
+	log "Wi-Fi radios: 2.4 GHz = $R24, 5 GHz = ${R5:-none (the 5 GHz networks are skipped)}"
+	[ "$DRY" = 1 ] && return 0
+	WAN=$(wan_ip)
+	[ -n "$WAN" ] || die "the router has no WAN address: plug the modem into the WAN port and wait a minute, then run this again"
+	[ "$LAN_IP" = 10.0.0.1 ] || die "the router's LAN address is $LAN_IP, but this setup expects 10.0.0.1. Change it first (LuCI: Network > Interfaces > LAN, or: uci set network.lan.ipaddr=10.0.0.1 && uci commit network && reboot), then log in again at 10.0.0.1 and re-run. See setup/README.md, step 1."
+	case "$WAN" in
+		"${LAN_IP%.*}".*) die "the modem's network ($WAN) is in the same range as the router's LAN ($LAN_IP). Change the modem's own LAN address (for example to 192.168.100.1) and run this again" ;;
+		192.168.30.*) die "the modem's network ($WAN) uses 192.168.30.x, the same as the guest network. Run with GUEST_IP=192.168.31.1" ;;
+	esac
+	log "WAN address: $WAN"
+	if ! ping -c 1 -W 3 1.1.1.1 > /dev/null 2>&1 && ! ping -c 1 -W 3 8.8.8.8 > /dev/null 2>&1; then die "no internet through the WAN port"; fi
+	log "Internet: ok"
+}
+
+install_packages() {
+	step "Installing packages"
+	opkg update > /dev/null 2>&1 || opkg update || die "opkg update failed (no internet or DNS?)"
+	for p in opennds socat openssl-util curl coreutils-sleep jsonfilter; do
+		opkg list-installed 2> /dev/null | grep -q "^$p " && continue
+		log "installing $p"
+		opkg install "$p" > /dev/null 2>&1 || opkg install "$p" || die "could not install $p"
+	done
+	opkg list-installed 2> /dev/null | grep -qi '^libmicrohttpd' || opkg install libmicrohttpd-no-ssl > /dev/null 2>&1
+	sleep 0.1 2> /dev/null || log "note: coreutils-sleep is not active; the coin check polls once a second"
+}
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Router settings (one uci batch, printed by --dry-run)
+# ---------------------------------------------------------------------------------------------------------------------
+uci_batch() {
+	KIOSK_PASS="$1"; GUEST_NAME="$2"; BOX_MAC="$3"
+	cat << EOT
+# --- LAN = the kiosk network (phones by Wi-Fi, the router's wired ports for administration). Its address is left as it is. ---
+set dhcp.lan.start='50'
+set dhcp.lan.limit='100'
+set dhcp.lan.leasetime='12h'
+
+# --- guest network: customers, behind openNDS ------------------------------------------------------------------------
+set network.guest_dev=device
+set network.guest_dev.type='bridge'
+set network.guest_dev.name='br-guest'
+set network.guest=interface
+set network.guest.proto='static'
+set network.guest.device='br-guest'
+set network.guest.ipaddr='$GUEST_IP'
+set network.guest.netmask='255.255.255.0'
+set dhcp.guest=dhcp
+set dhcp.guest.interface='guest'
+set dhcp.guest.start='50'
+set dhcp.guest.limit='200'
+set dhcp.guest.leasetime='2h'
+
+# --- Wi-Fi: replace the router's default networks with ours ----------------------------------------------------------
+EOT
+	# delete every existing Wi-Fi network (highest index first, so the numbering stays valid)
+	_n=$(uci -q show wireless | grep -c '=wifi-iface$')
+	while [ "$_n" -gt 0 ]; do _n=$((_n - 1)); echo "delete wireless.@wifi-iface[$_n]"; done
+	for r in $R24 $R5; do
+		_band=$(radio_band "$r")
+		echo "set wireless.$r.disabled='0'"
+		echo "set wireless.$r.country='$COUNTRY'"
+		[ "$_band" = 2g ] && echo "set wireless.$r.htmode='HT20'"
+		cat << EOT
+set wireless.kiosk_$r=wifi-iface
+set wireless.kiosk_$r.device='$r'
+set wireless.kiosk_$r.mode='ap'
+set wireless.kiosk_$r.network='lan'
+set wireless.kiosk_$r.ssid='$KIOSK_SSID'
+set wireless.kiosk_$r.encryption='psk2'
+set wireless.kiosk_$r.key='$KIOSK_PASS'
+set wireless.kiosk_$r.isolate='0'
+set wireless.guest_$r=wifi-iface
+set wireless.guest_$r.device='$r'
+set wireless.guest_$r.mode='ap'
+set wireless.guest_$r.network='guest'
+set wireless.guest_$r.ssid='$GUEST_NAME'
+set wireless.guest_$r.encryption='none'
+set wireless.guest_$r.isolate='1'
+EOT
+	done
+	cat << EOT
+# The coin box network: hidden, 2.4 GHz only, on the kiosk LAN. Until the box is paired anyone with the (published)
+# password could join, so pairing is short; afterwards only the box's MAC address is admitted.
+set wireless.box_ap=wifi-iface
+set wireless.box_ap.device='$R24'
+set wireless.box_ap.mode='ap'
+set wireless.box_ap.network='lan'
+set wireless.box_ap.ssid='$BOX_SSID'
+set wireless.box_ap.hidden='1'
+set wireless.box_ap.encryption='psk2'
+set wireless.box_ap.key='$BOX_WIFI_PASS'
+set wireless.box_ap.isolate='0'
+EOT
+	if [ -n "$BOX_MAC" ]; then
+		cat << EOT
+set wireless.box_ap.macfilter='allow'
+delete wireless.box_ap.maclist
+add_list wireless.box_ap.maclist='$BOX_MAC'
+delete dhcp.pisocoinbox
+set dhcp.pisocoinbox=host
+set dhcp.pisocoinbox.name='pisocoinbox'
+set dhcp.pisocoinbox.mac='$BOX_MAC'
+set dhcp.pisocoinbox.ip='$BOX_IP'
+EOT
+	fi
+	cat << EOT
+
+# --- firewall: guests reach the internet and nothing else; the kiosk LAN is the router's normal LAN ---------------------
+set firewall.guest=zone
+set firewall.guest.name='guest'
+set firewall.guest.network='guest'
+set firewall.guest.input='REJECT'
+set firewall.guest.output='ACCEPT'
+set firewall.guest.forward='REJECT'
+set firewall.guest_wan=forwarding
+set firewall.guest_wan.src='guest'
+set firewall.guest_wan.dest='wan'
+set firewall.guest_dhcp=rule
+set firewall.guest_dhcp.name='Guest-DHCP-DNS'
+set firewall.guest_dhcp.src='guest'
+set firewall.guest_dhcp.proto='udp'
+set firewall.guest_dhcp.dest_port='53 67'
+set firewall.guest_dhcp.target='ACCEPT'
+set firewall.guest_dns_tcp=rule
+set firewall.guest_dns_tcp.name='Guest-DNS-TCP'
+set firewall.guest_dns_tcp.src='guest'
+set firewall.guest_dns_tcp.proto='tcp'
+set firewall.guest_dns_tcp.dest_port='53'
+set firewall.guest_dns_tcp.target='ACCEPT'
+set firewall.guest_stream=rule
+set firewall.guest_stream.name='Guest-Coinslot-Stream'
+set firewall.guest_stream.src='guest'
+set firewall.guest_stream.proto='tcp'
+set firewall.guest_stream.dest_port='$STREAM_PORT'
+set firewall.guest_stream.target='ACCEPT'
+
+# --- openNDS gates only the guest network -------------------------------------------------------------------------------
+set opennds.@opennds[0].enabled='1'
+set opennds.@opennds[0].gatewayinterface='br-guest'
+set opennds.@opennds[0].gatewayname='$GUEST_NAME'
+set opennds.@opennds[0].login_option_enabled='3'
+set opennds.@opennds[0].themespec_path='/usr/lib/opennds/flash_coin.sh'
+set opennds.@opennds[0].statuspath='/usr/lib/opennds/flash_coin_status.sh'
+delete opennds.@opennds[0].users_to_router
+add_list opennds.@opennds[0].users_to_router='allow tcp port $STREAM_PORT'
+set opennds.@opennds[0].download_unrestricted_bursting='1'
+set opennds.@opennds[0].upload_unrestricted_bursting='1'
+set opennds.@opennds[0].checkinterval='15'
+set opennds.@opennds[0].ratecheckwindow='2'
+EOT
+}
+
+apply_batch() {  # apply_batch <kiosk pass> <guest name> <box mac or empty>
+	uci_batch "$1" "$2" "$3" > /tmp/piso-setup.uci || die "could not build the settings"
+	# 'delete' of something that is not there is not an error for us
+	uci batch < /tmp/piso-setup.uci > /dev/null 2>&1 || {
+		grep -v '^#' /tmp/piso-setup.uci | grep -v '^$' | while read -r _l; do echo "$_l" | uci batch > /dev/null 2>&1 || case "$_l" in delete*) ;; *) log "uci refused: $_l" ;; esac; done
+	}
+	uci commit || die "uci commit failed"
+}
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Files
+# ---------------------------------------------------------------------------------------------------------------------
+extract_payload() {
+	step "Installing the portal files"
+	_self="$1"
+	sed -n 's/^#@@FILE //p' "$_self" | while read -r _dest _mode; do mkdir -p "$(dirname "$PISO_ROOT$_dest")"; : > "$PISO_ROOT$_dest"; chmod "$_mode" "$PISO_ROOT$_dest"; done
+	awk -v root="$PISO_ROOT" '/^#@@FILE /{ if (out != "") close(out); out = root $2; next } out != "" { print > out }' "$_self"
+	for f in $(sed -n 's/^#@@FILE \([^ ]*\) .*/\1/p' "$_self"); do
+		f="$PISO_ROOT$f"
+		[ -s "$f" ] || die "could not write $f"
+		sed -i 's/\r$//' "$f"
+		log "installed $f"
+	done
+	cp "$_self" "$SELF_PATH" 2> /dev/null || true
+	chmod 755 "$SELF_PATH" 2> /dev/null
+	ln -sf "$SELF_PATH" /usr/sbin/pisowifi-name 2> /dev/null
+}
+
+write_coinslot_conf() {  # write_coinslot_conf <gateway key> <box mac>
+	umask 077
+	cat > /etc/coinslot.conf << EOT
+GW_BOX=$BOX_IP
+GW_KEY=$1
+GW_BOX_MAC=$2
+DISCOVER_IFACE=br-lan
+EOT
+	umask 022
+	chmod 600 /etc/coinslot.conf
+}
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Coin box: pairing and first setup
+# ---------------------------------------------------------------------------------------------------------------------
+box_ifname() { iwinfo 2> /dev/null | awk -v s="$BOX_SSID" '$1 != "" && /ESSID: / { gsub(/"/, "", $0); if ($0 ~ "ESSID: " s "$") print $1 }' | head -n 1; }
+box_station() {  # MAC of a station joined to the box network
+	_if=$(box_ifname); [ -n "$_if" ] || return 1
+	iwinfo "$_if" assoclist 2> /dev/null | awk 'toupper($1) ~ /^[0-9A-F][0-9A-F]:[0-9A-F:]+$/ { print toupper($1); exit }'
+}
+box_up() { curl -s -m 4 "http://$BOX_IP/api/gateway/challenge" 2> /dev/null | grep -q '{'; }
+
+# pair_box: open the box network, wait for the box to join, then admit only its MAC and give it BOX_IP.
+pair_box() {
+	step "Pairing the coin box (power on the ESP32 now if it is off; waiting up to $((PAIR_WAIT / 60)) minutes)"
+	uci -q delete wireless.box_ap.macfilter; uci -q delete wireless.box_ap.maclist; uci commit wireless
+	wifi reload > /dev/null 2>&1
+	_t=0; MAC=""
+	while [ "$_t" -lt "$PAIR_WAIT" ]; do
+		MAC=$(box_station)
+		[ -n "$MAC" ] && break
+		sleep 5; _t=$((_t + 5))
+	done
+	[ -n "$MAC" ] || { lock_box_network ""; die "the coin box did not join the hidden $BOX_SSID network. Check that it is powered and has the current firmware (or factory reset it: it must try $BOX_SSID), then run: piso-setup pair"; }
+	log "the coin box joined: $MAC"
+	lock_box_network "$MAC"
+	conf_set BOX_MAC "$MAC"
+	BOX_MAC="$MAC"
+	_t=0
+	while [ "$_t" -lt 180 ]; do box_up && break; sleep 5; _t=$((_t + 5)); done   # it rejoins after the reload and takes the fixed address
+	box_up || die "the box joined but does not answer at $BOX_IP (it may still hold an old address lease: power-cycle the box and run: piso-setup status)"
+	log "the coin box answers at $BOX_IP"
+}
+
+lock_box_network() {  # lock_box_network <mac>: admit only this MAC (none at all when empty: the network is closed)
+	uci -q delete wireless.box_ap.maclist
+	uci set wireless.box_ap.macfilter='allow'
+	[ -n "$1" ] && uci add_list wireless.box_ap.maclist="$1"
+	if [ -n "$1" ]; then
+		uci -q delete dhcp.pisocoinbox
+		uci set dhcp.pisocoinbox=host; uci set dhcp.pisocoinbox.name='pisocoinbox'
+		uci set dhcp.pisocoinbox.mac="$1"; uci set dhcp.pisocoinbox.ip="$BOX_IP"
+	fi
+	uci commit wireless; uci commit dhcp
+	/etc/init.d/dnsmasq restart > /dev/null 2>&1
+	wifi reload > /dev/null 2>&1
+}
+
+box_curl() {  # box_curl <admin password> <path> [curl args]: HTTP status and body in BOXOUT / BOXCODE
+	_pw="$1"; _path="$2"; shift 2
+	BOXOUT=$(curl -s -m 10 -w '\n%{http_code}' -u "admin:$_pw" -X POST "http://$BOX_IP$_path" "$@" 2> /dev/null)
+	BOXCODE=$(printf '%s' "$BOXOUT" | tail -n 1)
+	BOXOUT=$(printf '%s' "$BOXOUT" | sed '$d')
+}
+
+# provision_box <new admin password> <gateway key>: replaces the default admin password and sets the gateway key.
+provision_box() {
+	step "Setting up the coin box"
+	_new="$1"; _key="$2"; _stored=$(conf_get BOX_ADMIN_PASS)
+	if [ -n "$_stored" ]; then _cur="$_stored"; else _cur="$BOX_DEFAULT_ADMIN"; fi
+	box_curl "$_cur" /save --data-urlencode "admin_pw=$_new"
+	case "$BOXCODE" in
+		200 | 302 | 303) log "the box now has its own admin password" ;;
+		401)
+			# not the default and not what we stored: maybe the box was already set up by hand
+			if [ -n "$BOX_ADMIN_PASSWORD" ]; then box_curl "$BOX_ADMIN_PASSWORD" /save --data-urlencode "admin_pw=$_new"; fi
+			case "$BOXCODE" in 200 | 302 | 303) ;; *) die "the box refused the admin login (it has a password other than the factory default). Factory reset the box (hold GPIO 2 to ground for 5 seconds, or reflash with an erase) and run: piso-setup pair   -- or run this with BOX_ADMIN_PASSWORD=<its password>" ;; esac ;;
+		400) log "the box says the new password is weak: $BOXOUT"; die "the generated password was refused" ;;
+		*) die "the box did not accept the setup request (HTTP ${BOXCODE:-none}). Is it at $BOX_IP?" ;;
+	esac
+	conf_set BOX_ADMIN_PASS "$_new"
+	sleep 2
+	box_curl "$_new" /api/gateway/config --data-urlencode "key=$_key"
+	printf '%s' "$BOXOUT" | grep -q '"configured":true' || die "the box did not accept the gateway key (HTTP $BOXCODE: $BOXOUT)"
+	log "the gateway key is set on the box"
+}
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Stage 2: pairing the box, services, checks
+# ---------------------------------------------------------------------------------------------------------------------
+write_summary() {
+	cat > "$SUMMARY" << EOT
+PisoPhone setup summary ($(date '+%F %T'), setup file version $VERSION)
+Keep this file private (it is readable by root only).
+
+Router (SSH / LuCI):   root@$LAN_IP        password: $(conf_get ROOT_PASS)
+PisoKiosk Wi-Fi:       $KIOSK_SSID         password: $(conf_get KIOSK_PASS)    (for the rental phones; 2.4 + 5 GHz)
+PisoWiFi (customers):  $(conf_get GUEST_NAME)   (open; rename with: piso-setup wifi-name "New Name")
+Coin box:              http://$BOX_IP      admin password: $(conf_get BOX_ADMIN_PASS)    hidden Wi-Fi: $BOX_SSID (only MAC $(conf_get BOX_MAC))
+
+Useful commands on the router:
+  piso-setup status            health check of every part
+  piso-setup wifi-name "Name"  rename the customer Wi-Fi
+  piso-setup pair              replace the coin box (re-opens pairing for a few minutes)
+  piso-setup summary           show this file again
+  logread -e opennds -e coinslot
+  cat /etc/coinslot.d/vouchers.txt   customers' paid sessions
+EOT
+	chmod 600 "$SUMMARY"
+}
+
+check_all() {  # prints PASS/FAIL lines, returns the number of failures
+	_bad=0
+	_ck() { if eval "$2" > /dev/null 2>&1; then log "PASS  $1"; else log "FAIL  $1"; _bad=$((_bad + 1)); fi; }
+	_ck "LAN address is $LAN_IP" "ip -4 addr show br-lan | grep -q 'inet $LAN_IP/'"
+	_ck "guest network is up" "ip -4 addr show br-guest | grep -q 'inet $GUEST_IP/'"
+	_ck "Wi-Fi $KIOSK_SSID is broadcasting" "iwinfo | grep -q 'ESSID: \"$KIOSK_SSID\"'"
+	_ck "Wi-Fi $(conf_get GUEST_NAME) is broadcasting" "iwinfo | grep -q 'ESSID: \"$(conf_get GUEST_NAME)\"'"
+	_ck "hidden Wi-Fi $BOX_SSID is on and locked to the box" "[ \"\$(uci -q get wireless.box_ap.macfilter)\" = allow ] && [ -n \"\$(uci -q get wireless.box_ap.maclist)\" ]"
+	_ck "coin box answers at $BOX_IP" box_up
+	_ck "coin-slot manager is running" "curl -s -m 4 http://127.0.0.1:8099/info | grep -q fair_kb"
+	_ck "the manager can talk to the box (signed request)" "/usr/bin/coinslot-listener.sh box | grep -qi answers"
+	_ck "openNDS is running" "ndsctl status"
+	_ck "internet through the WAN" "ping -c 1 -W 3 1.1.1.1 || ping -c 1 -W 3 8.8.8.8"
+	return "$_bad"
+}
+
+stage2() {
+	step "Applying the network settings (the LAN is not restarted, so this SSH session stays open)"
+	/etc/init.d/network reload > /dev/null 2>&1
+	sleep 5
+	wifi reload > /dev/null 2>&1
+	/etc/init.d/firewall reload > /dev/null 2>&1
+	/etc/init.d/dnsmasq restart > /dev/null 2>&1
+	sleep 8
+	ip -4 addr show br-guest | grep -q "inet $GUEST_IP/" || die "the guest network did not come up on $GUEST_IP"
+
+	KEY=$(conf_get GW_KEY); NEWPW=$(conf_get BOX_ADMIN_PASS_NEW)
+	if [ -n "$(conf_get BOX_MAC)" ] && box_up; then
+		log "the coin box is already paired and answers"
+		BOX_MAC=$(conf_get BOX_MAC)
+	else
+		pair_box
+	fi
+	provision_box "$NEWPW" "$KEY"
+	write_coinslot_conf "$KEY" "$BOX_MAC"
+
+	step "Starting the services"
+	/etc/init.d/coinslot stop > /dev/null 2>&1; /etc/init.d/coinslot disable > /dev/null 2>&1
+	/etc/init.d/flash_coin enable; /etc/init.d/flash_coin restart
+	/etc/init.d/opennds enable; /etc/init.d/opennds stop > /dev/null 2>&1; /etc/init.d/opennds start
+	sleep 8
+
+	step "Securing the router"
+	_rp=$(conf_get ROOT_PASS)
+	printf '%s\n%s\n' "$_rp" "$_rp" | passwd root > /dev/null 2>&1 && log "root password set (see the summary)"
+
+	step "Checking everything"
+	check_all; _f=$?
+	write_summary
+	if [ "$_f" = 0 ]; then echo "DONE all checks passed" > "$STATE"; log ""; log "SETUP COMPLETE. Read $SUMMARY (ssh root@$LAN_IP)."
+	else echo "DONE with $_f failed checks (see $LOG)" > "$STATE"; log ""; log "Setup finished, but $_f check(s) failed: see above and $LOG. Run: piso-setup status"; fi
+}
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Commands
+# ---------------------------------------------------------------------------------------------------------------------
+cmd_status() {
+	[ -r "$STATE" ] && echo "setup: $(cat "$STATE")"
+	DRY=1; check_all; _f=$?
+	[ "$_f" = 0 ] && echo "All checks passed." || echo "$_f check(s) failed. Log: $LOG"
+	return "$_f"
+}
+
+cmd_wifi_name() {
+	_n="$1"
+	[ -n "$_n" ] || { echo "usage: piso-setup wifi-name \"New Name\"" >&2; exit 1; }
+	[ "${#_n}" -le 32 ] || { echo "the name can be at most 32 characters" >&2; exit 1; }
+	case "$_n" in "$KIOSK_SSID" | "$BOX_SSID") echo "that name is reserved" >&2; exit 1 ;; esac
+	case "$_n" in *\'* | *\"* | *\\* | *\$* | *\`*) echo "please avoid quotes, backslashes, \$ and backticks in the name" >&2; exit 1 ;; esac
+	for s in $(uci -q show wireless | sed -n 's/^\(wireless\.guest_[^.=]*\)=wifi-iface$/\1/p'); do uci set "$s.ssid=$_n"; done
+	uci set opennds.@opennds[0].gatewayname="$_n"
+	uci commit wireless; uci commit opennds
+	conf_set GUEST_NAME "$_n"
+	wifi reload > /dev/null 2>&1
+	/etc/init.d/opennds stop > /dev/null 2>&1; /etc/init.d/opennds start > /dev/null 2>&1
+	write_summary 2> /dev/null
+	echo "Customer Wi-Fi is now called \"$_n\"."
+}
+
+cmd_pair() {
+	DRY=0; [ "$(id -u)" = 0 ] || die "run as root"
+	conf_set BOX_MAC ""
+	pair_box
+	write_coinslot_conf "$(conf_get GW_KEY)" "$BOX_MAC"
+	provision_box "$(conf_get BOX_ADMIN_PASS_NEW)" "$(conf_get GW_KEY)"
+	/etc/init.d/flash_coin restart
+	write_summary
+	log "The new coin box is paired. Check with: piso-setup status"
+}
+
+stage1() {
+	preflight
+	if [ "$DRY" != 1 ] && [ "$ASSUME_YES" != 1 ] && [ -t 0 ]; then
+		echo
+		echo "This will set up the router as a PisoPhone system: the Wi-Fi networks are replaced (the LAN address stays $LAN_IP)."
+		echo "It takes a few minutes and waits for the coin box to join. Continue? [y/N]"
+		read -r _a; case "$_a" in y | Y | yes) ;; *) echo "Cancelled."; exit 1 ;; esac
+	fi
+	KIOSK_PASS=$(secret KIOSK_PASS 12)
+	case "$GUEST_SSID" in *\'* | *\"* | *\\* | *\$* | *\`*) die "GUEST_SSID may not contain quotes, backslashes, \$ or backticks" ;; esac
+	GUEST_NAME=$(conf_get GUEST_NAME); [ -n "$GUEST_NAME" ] || { GUEST_NAME="${GUEST_SSID:-PisoWiFi}"; conf_set GUEST_NAME "$GUEST_NAME"; }
+	secret ROOT_PASS 14 > /dev/null; secret GW_KEY 64 hex > /dev/null; secret BOX_ADMIN_PASS_NEW 16 > /dev/null
+	BOX_MAC=$(conf_get BOX_MAC)
+	if [ "$DRY" = 1 ]; then uci_batch "<kiosk password>" "$GUEST_NAME" "$BOX_MAC"; return 0; fi
+
+	: > "$LOG"
+	install_packages
+	extract_payload "$0"
+	step "Writing the router settings"
+	apply_batch "$KIOSK_PASS" "$GUEST_NAME" "$BOX_MAC"
+	stage2
+}
+
+main() {
+	CMD=""
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--dry-run) DRY=1 ;;
+			--yes | -y) ASSUME_YES=1 ;;
+			status | pair | summary | wifi-name | uninstall-info) CMD="$1"; shift; ARG="$1"; break ;;
+			-h | --help) sed -n '2,/^# Options:/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+			*) echo "unknown option: $1 (try --help)" >&2; exit 1 ;;
+		esac
+		shift
+	done
+	case "$CMD" in
+		status) cmd_status ;;
+		wifi-name) cmd_wifi_name "$ARG" ;;
+		pair) cmd_pair ;;
+		summary) cat "$SUMMARY" ;;
+		uninstall-info) echo "To undo: sysupgrade -n (factory reset) the router. Nothing else is changed outside the files listed in $0." ;;
+		*) stage1 ;;
+	esac
+}
+
+[ -n "$PISO_SETUP_SOURCE_ONLY" ] && return 0   # tests load the functions only
+main "$@"
+exit $?
+
+# ---- payload: the portal files (extracted by extract_payload) ----

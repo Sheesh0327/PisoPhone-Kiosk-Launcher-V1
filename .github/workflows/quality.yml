@@ -16,6 +16,8 @@ on:
       - 'esp32_firmware/**'
       - 'scripts/**'
       - 'opennds/**'
+      - 'setup/**'
+      - 'tools/build_piso_setup.py'
       - 'website/js/**'
       - '.editorconfig'
       - '.github/workflows/quality.yml'
@@ -108,6 +110,10 @@ jobs:
           pip install -q playwright
       - name: Run end-to-end test with a fake box
         run: python3 opennds/tests/test_flow.py
+      - name: Check the one-file router setup (settings, payload, box provisioning)
+        run: python3 opennds/tests/test_setup.py
+      - name: Run the flash coin portal test (green theme, roll file, pause, fair use)
+        run: python3 opennds/tests/test_flash_coin.py
       - name: Check the shell-only request signing against a reference
         run: python3 opennds/tests/test_hmac.py
       - name: Check the Layout B router configuration
