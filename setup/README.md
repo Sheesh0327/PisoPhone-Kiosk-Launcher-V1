@@ -45,7 +45,7 @@ It has every password generated for you (router, PisoKiosk Wi-Fi, coin box admin
 ## Step 3: check that it works (do this before any customer or partner uses it)
 1. `piso-setup status` must end with `All checks passed.`
 2. `piso-setup test-coin`: it arms the slot; insert one coin. It must say `the box counted 1 peso(s)`.
-3. **Wi-Fi customer:** join the customer Wi-Fi (`PisoWiFi`) with a phone, open the login page, pick a plan, tap Insert Coin, insert one coin. The page should show the coin at once and say you are online within about a second; browse something. Insert a second coin: the time is added when the window closes.
+3. **Wi-Fi customer:** join the customer Wi-Fi (`PisoWiFi`) with a phone, open the login page, pick a plan, tap Insert Coin, insert one coin. The page shows each coin at once with a countdown, and a **Done** button. You are *not* online yet (so the phone does not close the login page while you add coins). Insert more coins if you like, then tap **Done** (or wait 15 s after the last coin): the page then says you are online with your time and code. Browse something.
 4. **Second device:** while a window is open, try Insert Coin on another phone. It must be refused with a "Try again" page.
 5. **Rental phone:** join `PisoKiosk` with a kiosk phone (the app's own flow) and pay once.
 6. `piso-setup reconcile` must say `RECONCILE OK` (needs firmware 3.2.1).

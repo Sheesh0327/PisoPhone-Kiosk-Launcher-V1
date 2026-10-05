@@ -7,8 +7,8 @@
 #   code,rate_down,rate_up,quota_down,quota_up,time_limit_min,first_punched,mac,pauses_used,paused_at,remaining_at_pause,plan,wid,pesos,wmin,wpesos,wfinal
 # The first 11 fields are exactly the voucher roll of the paper-voucher theme this one grew from; plan, wid (the id of
 # the coin window that paid, so one window can never be credited twice) and pesos are appended, then the share of the
-# last window (wmin minutes, wpesos) and whether that window is final: a window is recorded at its first coin (the device
-# goes online at once) and again, priced as a whole, when it closes; the second write replaces the first share. Expiry is always
+# last window (wmin minutes, wpesos) and whether that window is final: a window is recorded once, priced as a whole, when it
+# closes (the library also accepts an interim, non-final write for the same window, which a later write replaces). Expiry is always
 # first_punched + time_limit*60. A top-up adds to time_limit; a pause freezes remaining_at_pause and a resume moves
 # first_punched forward by the time spent paused.
 #
@@ -153,8 +153,7 @@ left_min() { echo $(((${1:-0} + 59) / 60)); }
 # ---------------------------------------------------------------------------
 # flash_mint <mac> <wid> <plan> <pulses> <minutes> <up> <down> <forfeit 0|1> [final 1|0]
 # Records a verified coin payment: <pulses> and <minutes> are the window's whole total so far, never a delta. Writing the
-# same window again replaces its earlier share (the early grant at the first coin, then the whole window priced once at
-# the end); a final window is never changed again. Revenue is logged once, when the window is final.
+# same window again replaces its earlier share (an interim write, then the whole window priced once at the end); a final window is never changed again. Revenue is logged once, when the window is final.
 # Sets M_CODE and M_MODE (new | topup | switch | update | dup). Returns 0, 5 (roll busy), 6 (the device has live time on
 # the other plan and did not agree to give it up).
 flash_mint() {

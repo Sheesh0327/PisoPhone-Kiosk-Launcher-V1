@@ -261,17 +261,17 @@ $(tier_rows endurance)
 <div class="big" id="lpes">&#8369;0</div>
 <p class="mut" id="lmin"></p>
 <div id="lcd" style="display:none"><div class="bar"><i id="lbar" style="width:100%"></i></div><p class="mut" id="lleft"></p></div>
-<div class="msg" id="lon" style="display:none;border-left-color:var(--ok)"><b>&#10003; You're online &middot; Nakakonekta ka na</b><br><span id="lont">Add more coins now for more time.</span></div>
+<div class="msg" id="lon" style="display:none;border-left-color:var(--ok)"><b>&#10003; You're online &middot; Nakakonekta ka na</b><br><span id="lont"></span></div>
 <div id="lmis" style="display:none"></div>
 <div id="lfin" style="display:none"><p class="mut">Your code restores your time on any device:</p><div class="code" id="lcode"></div>
 <a class="btn" style="text-decoration:none;text-align:center" href="http://$gatewayfqdn/?$randquery">Continue browsing</a></div>
-<button class="btn alt" type="button" id="ldone" style="display:none">Done &middot; Tapos na</button>
+<button class="btn" type="button" id="ldone" style="display:none">Done &middot; Connect me now &middot; Tapos na</button>
 <a class="btn alt" id="lagain" style="display:none;text-decoration:none;text-align:center" href="/opennds_preauth/?fas=$(fas_urlsafe)">Try again</a>
 </div>
 <script>
 /* One live page: Insert Coin talks to the router's small coin API (port $infostream) instead of loading portal pages.
-   The coins show the moment the box counts them, the device is online on the first coin, and the window's total is
-   priced once when it closes. If the API cannot be reached, the regular pages take over (also used without scripts). */
+   The coins show the moment the box counts them; the window's total is priced once, and the device goes online once, when
+   the customer is done (Done, or the timer runs out). If the API cannot be reached, the regular pages take over (also used without scripts). */
 (function(){
 var f=document.getElementById("coinform"),SP=${infostream:-0},SID="$sid",FIRST=${infofirst:-30},IDLE=${infoidle:-15},
 A=window.AudioContext||window.webkitAudioContext;
@@ -304,13 +304,13 @@ if(!armed){armed=true;put("lsub",pn(plan)+" · Insert coin(s) now · Maglagay ng
 try{navigator.vibrate&&navigator.vibrate(80)}catch(e){}if(!p)say("Insert coin now")}
 left=Math.max(+j.remaining||0,0);tot=p>0?IDLE:FIRST;bar();
 if(!tk)tk=setInterval(function(){if(left>0)left--;bar()},1000)}
-if(armed||p>0){put("lpes","₱"+p);put("lmin","= "+fmt(j.minutes)+" of Wi-Fi")}
+if(armed||p>0){put("lpes","₱"+p);put("lmin","= "+fmt(j.minutes)+" of Wi-Fi"+(p>0?" · add more coins, then tap Done":""))}
 if(p>pes){ding(p-pes);say(p+(p===1?" peso":" pesos"))}pes=p;
-if(j.online&&!on){on=true;show("lon",1);show("ldone",1);setTimeout(function(){say("You are online")},900);
-try{navigator.vibrate&&navigator.vibrate([100,60,100])}catch(e){}}
+if(p>0&&!j.final)show("ldone",1);
 if(j.final){fin=true;stop();show("lcd",0);show("ldone",0);show("lmis",0);put("lsub","Thank you! · Salamat!");
 put("lpes",fmt(j.fleft));put("lmin","of Wi-Fi time left · ₱"+p+" = "+fmt(j.fwmin));put("lont","Enjoy browsing.");
-show("lon",1);put("lcode",j.code||"");show("lfin",1);return}
+show("lon",1);put("lcode",j.code||"");show("lfin",1);setTimeout(function(){say("You are online")},900);
+try{navigator.vibrate&&navigator.vibrate([100,60,100])}catch(e){}return}
 if(j.state==="done"||j.state==="none"){stop();
 if(!p){show("lcd",0);show("ldone",0);put("lsub","No coins detected · Walang nabayaran");put("lpes","₱0");
 put("lmin","You were not charged.");show("lagain",1)}else portal()}}
@@ -494,7 +494,7 @@ page_result() {
 	leftmin=0; label="Connect"; forfeitnote=""; vwid=$(printf '%s' "$ver" | jget wid)
 	flash_peek "$mac"
 	if [ -n "$vwid" ] && [ "$R_WID" = "$vwid" ] && [ "$P_STATE" = running ]; then
-		# The router already recorded this window (online on the first coin): show the total, add nothing again.
+		# The router already recorded this window (granted when the window closed): show the total, add nothing again.
 		cat << HTML
 <p class="sub">$(plan_name "$vplan") &middot; Thank you! &middot; Salamat!</p>
 <div class="big">$(fmt_min "$(left_min "$R_LEFT")")</div>
@@ -606,7 +606,7 @@ HTML
 	src=5
 	[ "$mrc" = 0 ] && { flash_session "$mac"; src=$?; }
 	if [ "$src" = 0 ]; then
-		# The router usually has done all of this already (online on the first coin, the window settled when it closed):
+		# The router usually has done all of this already (the window settled and was granted when it closed):
 		# then nothing is granted again, so the connection is not interrupted.
 		if [ "$paid" = yes ] && { [ "$M_MODE" = dup ] || [ "$M_MODE" = update ]; } && [ "$(nds_state "$mac")" = "Authenticated" ] &&
 			[ "$(printf '%s' "$ver" | jget claimed)" = "true" ]; then

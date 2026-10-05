@@ -24,16 +24,17 @@ Keep it simple: one roll file, one lock, one writer (the theme), one small manag
   the first 11 fields are your voucher-roll layout). It is written only when somebody **pays, pauses or resumes**, never on a
   page view, so flash wear is a few writes a day. Change the place with `FLASH_ROLL=/mnt/sda1/ndslog/vouchers.txt` in
   `/etc/flash_coin.conf` (a USB stick is kinder to the flash on a busy shop). `revenue.csv` is kept next to it.
-* **Online on the first coin, no Connect tap:** the box pushes each coin to the router the moment it is counted (signed UDP
-  "coin events", firmware 3.2.0+; older firmware still works, the router then asks it every 0.1 s). The router puts the
-  device online at the first coin, keeps counting while the slot is open (15 s after each coin), and when the window
-  closes prices the **window's total** once at the best rate (P17 = 10 + 5 + 1 + 1), records it on the roll, re-grants
-  once, and only then acknowledges the coins on the box. Closing the page or a sleeping phone loses nothing.
-* **One live page:** after the first page, Insert Coin, the coins, "You're online" and the final time and code all update
-  in place through the router's small coin API (port 8100), with no page reloads. Without scripts, or if that port is
+* **Online when the customer is done paying, no Connect tap:** the box pushes each coin to the router the moment it is
+  counted (signed UDP "coin events", firmware 3.2.0+; older firmware still works, the router then asks it every 0.1 s) and
+  the page shows it at once. The device is **not** put online while coins are still going in (a phone that gets internet
+  closes its login page, which would cut off a customer adding more coins). When the customer taps **Done**, or the slot
+  has been idle for 15 s, the router prices the **window's total** once at the best rate (P17 = 10 + 5 + 1 + 1), records it
+  on the roll, grants access once, and only then acknowledges the coins on the box. Closing the page or a sleeping phone
+  loses nothing: the window still closes by itself and the device is granted by its MAC address.
+* **One live page:** after the first page, Insert Coin, the coins, Done, "You're online" and the final time and code all update
+  in place through the router's small coin API (port 8100: a live stream plus a status check every second), with no page reloads. Without scripts, or if that port is
   blocked, the regular pages are used instead.
-* **Safe payments:** every window has a one-time id (`wid`). Writing the same window again (first coin, then close)
-  replaces its share; a closed window is never credited twice, and revenue is logged once per window.
+* **Safe payments:** every window has a one-time id (`wid`). Writing the same window again replaces its share; a closed window is never credited twice, and revenue is logged once per window.
 * **Top-up:** coins on the same plan add to the time left. The other plan needs the customer's agreement (the time left on
   the old plan is forfeited when they pay).
 * **Automatic reconnect:** after a reboot or power cut openNDS forgets its sessions; the first page a device opens reconnects it

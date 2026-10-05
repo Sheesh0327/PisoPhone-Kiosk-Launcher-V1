@@ -713,8 +713,9 @@ exit $?
 #   /ack?sid                          (flash_coin theme) the session file now holds the time: acknowledge the coins on the box
 #                                     (retried until it works; asking again is harmless)
 #   /me?mac                           account status for the status page
-#   (flash=1 on /start: a flash_coin window. The first coin puts the device online at once; when the window closes the
-#    total is priced once, recorded on the roll, granted and acknowledged on the box, all without the portal.)
+#   (flash=1 on /start: a flash_coin window. Coins are only counted while it is open; when the customer is done (Done, or
+#    the idle wait runs out) the total is priced once, recorded on the roll, granted and acknowledged on the box, all
+#    without the portal. The device goes online then and not before: a phone that gets internet closes its login page.)
 #
 # Portal-facing API on the live-update port (STREAM_PORT, guest network; the device is identified by its MAC):
 #   /api/start?sid&plan[&forfeit=1]    start a flash_coin window for the device that asks
@@ -1092,7 +1093,7 @@ status_json() {  # status_json <dir>
 uptime_ms() { read -r _u _ < /proc/uptime; _c="${_u#*.}"; _c="${_c#0}"; echo $(( ${_u%.*} * 1000 + ${_c:-0} * 10 )); }
 
 # ---------------------------------------------------------------------------
-# flash_coin windows: online on the first coin, the whole window priced once at the end (flash_coin_lib.sh holds the roll)
+# flash_coin windows: the whole window is priced once and the device goes online once, when the customer is done paying (flash_coin_lib.sh holds the roll)
 # ---------------------------------------------------------------------------
 flash_load() {
   [ -n "$FLASH_LOADED" ] && return 0
@@ -1105,21 +1106,15 @@ flash_args() {  # sets F_MAC F_PLAN F_WID F_FORFEIT for the window in $dir
   [ -n "$F_MAC" ] && valid_plan "$F_PLAN"
 }
 
-# instant_grant <pulses>: the first coin of the window puts the device online now, for what the window holds so far.
-# More coins are only counted; the window's total is priced and granted once, when it closes (settle_window).
-instant_grant() {
-  [ -e "$dir/online" ] && return 0
+# note_open: the first coin of a window leaves a small record on flash, kept until the box is acknowledged: if the router
+# restarts mid-window, "recover" credits the coins. Nothing is granted yet: the device goes online only when the customer
+# is done paying (settle_window), because a phone that gets internet access closes its login page, which would cut off
+# a customer who wants to add more coins.
+note_open() {
+  [ -e "$dir/noted" ] && return 0
   flash_load && flash_args || return 0
-  if [ "$(nds_state "$F_MAC")" = Authenticated ]; then : > "$dir/online"; return 0; fi   # a top-up: already online
-  _min=$(minutes_for "$F_PLAN" "$1")
-  # Kept on flash until the box is acknowledged: if the router restarts mid-window, "recover" credits these coins.
-  mkdir -p "$DATA_DIR/open" 2>/dev/null && printf '%s %s %s %s\n' "$F_MAC" "$F_PLAN" "$F_WID" "$F_FORFEIT" > "$DATA_DIR/open/$sid"
-  flash_mint "$F_MAC" "$F_WID" "$F_PLAN" "$1" "$_min" "$(plan_up "$F_PLAN")" "$(plan_down "$F_PLAN")" "$F_FORFEIT" 0 || return 0
-  flash_session "$F_MAC" || return 0
-  nds_do auth "$F_MAC" "$S_MIN" "$S_UP" "$S_DOWN" "$S_QUP" "$S_QDOWN"
-  case "$NDSOUT" in *Failed*) logmsg "window ${sid%????????????????????????}: openNDS refused the early grant: $NDSOUT"; return 0 ;; esac
-  echo "$_min" > "$dir/egrant"; : > "$dir/online"
-  logmsg "timing ${sid%????????????????????????} granted pulses=$1 min=$_min at=$(uptime_ms)"
+  mkdir -p "$DATA_DIR/open" 2>/dev/null && printf '%s %s %s %s\n' "$F_MAC" "$F_PLAN" "$F_WID" "$F_FORFEIT" > "$DATA_DIR/open/$sid" && : > "$dir/noted"
+  logmsg "timing ${sid%????????????????????????} first coin pulses=$1 at=$(uptime_ms)"
 }
 
 # reconcile: the box's own lifetime coin count against the router's revenue ledger. The box also counts coins that went
@@ -1178,7 +1173,7 @@ do_recover() {
 }
 
 # settle_window <pulses>: the window closed. Price the whole window once (best combination of tiers for the total),
-# record it on the roll (same window id: replaces the early grant's share), grant, then acknowledge the box.
+# record it on the roll, grant, then acknowledge the box.
 settle_window() {
   flash_load && flash_args || return 0
   _min=$(minutes_for "$F_PLAN" "$1")
@@ -1186,10 +1181,10 @@ settle_window() {
   _rc=$?
   [ "$_rc" = 0 ] || { logmsg "window ${sid%????????????????????????} not recorded (rc=$_rc): left for the portal"; return 0; }
   flash_session "$F_MAC" || return 0
-  _st=$(nds_state "$F_MAC"); _eg=$(cat "$dir/egrant" 2>/dev/null)
+  _st=$(nds_state "$F_MAC")
   NDSOUT=""
-  if [ "$_st" = Authenticated ] && [ "$_eg" = "$_min" ]; then :           # the early grant already holds the whole window
-  elif [ "$_st" = Authenticated ]; then nds_regrant "$F_MAC" "$S_MIN" "$S_UP" "$S_DOWN" "$S_QUP" "$S_QDOWN"
+  if [ "$_st" = Authenticated ]; then                                    # a top-up: online already, extend the session
+    nds_regrant "$F_MAC" "$S_MIN" "$S_UP" "$S_DOWN" "$S_QUP" "$S_QDOWN"
   else nds_do auth "$F_MAC" "$S_MIN" "$S_UP" "$S_DOWN" "$S_QUP" "$S_QDOWN"; fi
   if [ "$(nds_state "$F_MAC")" != Authenticated ]; then                  # what openNDS really did, not what it answered
     # The time is safely on the roll, but the device is not online: do not tell the customer so, and keep the coins on
@@ -1298,7 +1293,7 @@ do_worker() {
   pulses=$(printf '%s' "$answer" | jget pulses); pulses="${pulses:-0}"
   last="$pulses"; shown=""; tick=0; boxstate=armed
   write_state "$dir" armed "$pulses" "$(( deadline - $(now) ))" ""
-  [ "$pulses" -gt 0 ] && [ -e "$dir/flash" ] && instant_grant "$pulses"
+  [ "$pulses" -gt 0 ] && [ -e "$dir/flash" ] && note_open "$pulses"
 
   while [ "$(now)" -lt "$deadline" ] && [ ! -e "$dir/stop" ]; do
     nap "$COIN_POLL_SECONDS"; tick=$((tick + 1))
@@ -1321,7 +1316,7 @@ do_worker() {
       [ "$deadline" -gt "$cap" ] && deadline="$cap"
       write_state "$dir" armed "$pulses" "$(( deadline - $(now) ))" ""; shown="$pulses/$(( deadline - $(now) ))"
       logmsg "timing ${sid%????????????????????????} coin pulses=$pulses at=$(uptime_ms)"
-      [ -e "$dir/flash" ] && instant_grant "$pulses"
+      [ -e "$dir/flash" ] && note_open "$pulses"
       call "$sid" arm "&duration=$(( deadline - $(now) + 3 ))$evx" >/dev/null
     fi
     rem=$(( deadline - $(now) ))
@@ -2133,17 +2128,17 @@ $(tier_rows endurance)
 <div class="big" id="lpes">&#8369;0</div>
 <p class="mut" id="lmin"></p>
 <div id="lcd" style="display:none"><div class="bar"><i id="lbar" style="width:100%"></i></div><p class="mut" id="lleft"></p></div>
-<div class="msg" id="lon" style="display:none;border-left-color:var(--ok)"><b>&#10003; You're online &middot; Nakakonekta ka na</b><br><span id="lont">Add more coins now for more time.</span></div>
+<div class="msg" id="lon" style="display:none;border-left-color:var(--ok)"><b>&#10003; You're online &middot; Nakakonekta ka na</b><br><span id="lont"></span></div>
 <div id="lmis" style="display:none"></div>
 <div id="lfin" style="display:none"><p class="mut">Your code restores your time on any device:</p><div class="code" id="lcode"></div>
 <a class="btn" style="text-decoration:none;text-align:center" href="http://$gatewayfqdn/?$randquery">Continue browsing</a></div>
-<button class="btn alt" type="button" id="ldone" style="display:none">Done &middot; Tapos na</button>
+<button class="btn" type="button" id="ldone" style="display:none">Done &middot; Connect me now &middot; Tapos na</button>
 <a class="btn alt" id="lagain" style="display:none;text-decoration:none;text-align:center" href="/opennds_preauth/?fas=$(fas_urlsafe)">Try again</a>
 </div>
 <script>
 /* One live page: Insert Coin talks to the router's small coin API (port $infostream) instead of loading portal pages.
-   The coins show the moment the box counts them, the device is online on the first coin, and the window's total is
-   priced once when it closes. If the API cannot be reached, the regular pages take over (also used without scripts). */
+   The coins show the moment the box counts them; the window's total is priced once, and the device goes online once, when
+   the customer is done (Done, or the timer runs out). If the API cannot be reached, the regular pages take over (also used without scripts). */
 (function(){
 var f=document.getElementById("coinform"),SP=${infostream:-0},SID="$sid",FIRST=${infofirst:-30},IDLE=${infoidle:-15},
 A=window.AudioContext||window.webkitAudioContext;
@@ -2176,13 +2171,13 @@ if(!armed){armed=true;put("lsub",pn(plan)+" · Insert coin(s) now · Maglagay ng
 try{navigator.vibrate&&navigator.vibrate(80)}catch(e){}if(!p)say("Insert coin now")}
 left=Math.max(+j.remaining||0,0);tot=p>0?IDLE:FIRST;bar();
 if(!tk)tk=setInterval(function(){if(left>0)left--;bar()},1000)}
-if(armed||p>0){put("lpes","₱"+p);put("lmin","= "+fmt(j.minutes)+" of Wi-Fi")}
+if(armed||p>0){put("lpes","₱"+p);put("lmin","= "+fmt(j.minutes)+" of Wi-Fi"+(p>0?" · add more coins, then tap Done":""))}
 if(p>pes){ding(p-pes);say(p+(p===1?" peso":" pesos"))}pes=p;
-if(j.online&&!on){on=true;show("lon",1);show("ldone",1);setTimeout(function(){say("You are online")},900);
-try{navigator.vibrate&&navigator.vibrate([100,60,100])}catch(e){}}
+if(p>0&&!j.final)show("ldone",1);
 if(j.final){fin=true;stop();show("lcd",0);show("ldone",0);show("lmis",0);put("lsub","Thank you! · Salamat!");
 put("lpes",fmt(j.fleft));put("lmin","of Wi-Fi time left · ₱"+p+" = "+fmt(j.fwmin));put("lont","Enjoy browsing.");
-show("lon",1);put("lcode",j.code||"");show("lfin",1);return}
+show("lon",1);put("lcode",j.code||"");show("lfin",1);setTimeout(function(){say("You are online")},900);
+try{navigator.vibrate&&navigator.vibrate([100,60,100])}catch(e){}return}
 if(j.state==="done"||j.state==="none"){stop();
 if(!p){show("lcd",0);show("ldone",0);put("lsub","No coins detected · Walang nabayaran");put("lpes","₱0");
 put("lmin","You were not charged.");show("lagain",1)}else portal()}}
@@ -2366,7 +2361,7 @@ page_result() {
 	leftmin=0; label="Connect"; forfeitnote=""; vwid=$(printf '%s' "$ver" | jget wid)
 	flash_peek "$mac"
 	if [ -n "$vwid" ] && [ "$R_WID" = "$vwid" ] && [ "$P_STATE" = running ]; then
-		# The router already recorded this window (online on the first coin): show the total, add nothing again.
+		# The router already recorded this window (granted when the window closed): show the total, add nothing again.
 		cat << HTML
 <p class="sub">$(plan_name "$vplan") &middot; Thank you! &middot; Salamat!</p>
 <div class="big">$(fmt_min "$(left_min "$R_LEFT")")</div>
@@ -2478,7 +2473,7 @@ HTML
 	src=5
 	[ "$mrc" = 0 ] && { flash_session "$mac"; src=$?; }
 	if [ "$src" = 0 ]; then
-		# The router usually has done all of this already (online on the first coin, the window settled when it closed):
+		# The router usually has done all of this already (the window settled and was granted when it closed):
 		# then nothing is granted again, so the connection is not interrupted.
 		if [ "$paid" = yes ] && { [ "$M_MODE" = dup ] || [ "$M_MODE" = update ]; } && [ "$(nds_state "$mac")" = "Authenticated" ] &&
 			[ "$(printf '%s' "$ver" | jget claimed)" = "true" ]; then
@@ -2587,8 +2582,8 @@ userinfo="$title"
 #   code,rate_down,rate_up,quota_down,quota_up,time_limit_min,first_punched,mac,pauses_used,paused_at,remaining_at_pause,plan,wid,pesos,wmin,wpesos,wfinal
 # The first 11 fields are exactly the voucher roll of the paper-voucher theme this one grew from; plan, wid (the id of
 # the coin window that paid, so one window can never be credited twice) and pesos are appended, then the share of the
-# last window (wmin minutes, wpesos) and whether that window is final: a window is recorded at its first coin (the device
-# goes online at once) and again, priced as a whole, when it closes; the second write replaces the first share. Expiry is always
+# last window (wmin minutes, wpesos) and whether that window is final: a window is recorded once, priced as a whole, when it
+# closes (the library also accepts an interim, non-final write for the same window, which a later write replaces). Expiry is always
 # first_punched + time_limit*60. A top-up adds to time_limit; a pause freezes remaining_at_pause and a resume moves
 # first_punched forward by the time spent paused.
 #
@@ -2733,8 +2728,7 @@ left_min() { echo $(((${1:-0} + 59) / 60)); }
 # ---------------------------------------------------------------------------
 # flash_mint <mac> <wid> <plan> <pulses> <minutes> <up> <down> <forfeit 0|1> [final 1|0]
 # Records a verified coin payment: <pulses> and <minutes> are the window's whole total so far, never a delta. Writing the
-# same window again replaces its earlier share (the early grant at the first coin, then the whole window priced once at
-# the end); a final window is never changed again. Revenue is logged once, when the window is final.
+# same window again replaces its earlier share (an interim write, then the whole window priced once at the end); a final window is never changed again. Revenue is logged once, when the window is final.
 # Sets M_CODE and M_MODE (new | topup | switch | update | dup). Returns 0, 5 (roll busy), 6 (the device has live time on
 # the other plan and did not agree to give it up).
 flash_mint() {

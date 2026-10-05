@@ -37,8 +37,9 @@
 #   /ack?sid                          (flash_coin theme) the session file now holds the time: acknowledge the coins on the box
 #                                     (retried until it works; asking again is harmless)
 #   /me?mac                           account status for the status page
-#   (flash=1 on /start: a flash_coin window. The first coin puts the device online at once; when the window closes the
-#    total is priced once, recorded on the roll, granted and acknowledged on the box, all without the portal.)
+#   (flash=1 on /start: a flash_coin window. Coins are only counted while it is open; when the customer is done (Done, or
+#    the idle wait runs out) the total is priced once, recorded on the roll, granted and acknowledged on the box, all
+#    without the portal. The device goes online then and not before: a phone that gets internet closes its login page.)
 #
 # Portal-facing API on the live-update port (STREAM_PORT, guest network; the device is identified by its MAC):
 #   /api/start?sid&plan[&forfeit=1]    start a flash_coin window for the device that asks
@@ -416,7 +417,7 @@ status_json() {  # status_json <dir>
 uptime_ms() { read -r _u _ < /proc/uptime; _c="${_u#*.}"; _c="${_c#0}"; echo $(( ${_u%.*} * 1000 + ${_c:-0} * 10 )); }
 
 # ---------------------------------------------------------------------------
-# flash_coin windows: online on the first coin, the whole window priced once at the end (flash_coin_lib.sh holds the roll)
+# flash_coin windows: the whole window is priced once and the device goes online once, when the customer is done paying (flash_coin_lib.sh holds the roll)
 # ---------------------------------------------------------------------------
 flash_load() {
   [ -n "$FLASH_LOADED" ] && return 0
@@ -429,21 +430,15 @@ flash_args() {  # sets F_MAC F_PLAN F_WID F_FORFEIT for the window in $dir
   [ -n "$F_MAC" ] && valid_plan "$F_PLAN"
 }
 
-# instant_grant <pulses>: the first coin of the window puts the device online now, for what the window holds so far.
-# More coins are only counted; the window's total is priced and granted once, when it closes (settle_window).
-instant_grant() {
-  [ -e "$dir/online" ] && return 0
+# note_open: the first coin of a window leaves a small record on flash, kept until the box is acknowledged: if the router
+# restarts mid-window, "recover" credits the coins. Nothing is granted yet: the device goes online only when the customer
+# is done paying (settle_window), because a phone that gets internet access closes its login page, which would cut off
+# a customer who wants to add more coins.
+note_open() {
+  [ -e "$dir/noted" ] && return 0
   flash_load && flash_args || return 0
-  if [ "$(nds_state "$F_MAC")" = Authenticated ]; then : > "$dir/online"; return 0; fi   # a top-up: already online
-  _min=$(minutes_for "$F_PLAN" "$1")
-  # Kept on flash until the box is acknowledged: if the router restarts mid-window, "recover" credits these coins.
-  mkdir -p "$DATA_DIR/open" 2>/dev/null && printf '%s %s %s %s\n' "$F_MAC" "$F_PLAN" "$F_WID" "$F_FORFEIT" > "$DATA_DIR/open/$sid"
-  flash_mint "$F_MAC" "$F_WID" "$F_PLAN" "$1" "$_min" "$(plan_up "$F_PLAN")" "$(plan_down "$F_PLAN")" "$F_FORFEIT" 0 || return 0
-  flash_session "$F_MAC" || return 0
-  nds_do auth "$F_MAC" "$S_MIN" "$S_UP" "$S_DOWN" "$S_QUP" "$S_QDOWN"
-  case "$NDSOUT" in *Failed*) logmsg "window ${sid%????????????????????????}: openNDS refused the early grant: $NDSOUT"; return 0 ;; esac
-  echo "$_min" > "$dir/egrant"; : > "$dir/online"
-  logmsg "timing ${sid%????????????????????????} granted pulses=$1 min=$_min at=$(uptime_ms)"
+  mkdir -p "$DATA_DIR/open" 2>/dev/null && printf '%s %s %s %s\n' "$F_MAC" "$F_PLAN" "$F_WID" "$F_FORFEIT" > "$DATA_DIR/open/$sid" && : > "$dir/noted"
+  logmsg "timing ${sid%????????????????????????} first coin pulses=$1 at=$(uptime_ms)"
 }
 
 # reconcile: the box's own lifetime coin count against the router's revenue ledger. The box also counts coins that went
@@ -502,7 +497,7 @@ do_recover() {
 }
 
 # settle_window <pulses>: the window closed. Price the whole window once (best combination of tiers for the total),
-# record it on the roll (same window id: replaces the early grant's share), grant, then acknowledge the box.
+# record it on the roll, grant, then acknowledge the box.
 settle_window() {
   flash_load && flash_args || return 0
   _min=$(minutes_for "$F_PLAN" "$1")
@@ -510,10 +505,10 @@ settle_window() {
   _rc=$?
   [ "$_rc" = 0 ] || { logmsg "window ${sid%????????????????????????} not recorded (rc=$_rc): left for the portal"; return 0; }
   flash_session "$F_MAC" || return 0
-  _st=$(nds_state "$F_MAC"); _eg=$(cat "$dir/egrant" 2>/dev/null)
+  _st=$(nds_state "$F_MAC")
   NDSOUT=""
-  if [ "$_st" = Authenticated ] && [ "$_eg" = "$_min" ]; then :           # the early grant already holds the whole window
-  elif [ "$_st" = Authenticated ]; then nds_regrant "$F_MAC" "$S_MIN" "$S_UP" "$S_DOWN" "$S_QUP" "$S_QDOWN"
+  if [ "$_st" = Authenticated ]; then                                    # a top-up: online already, extend the session
+    nds_regrant "$F_MAC" "$S_MIN" "$S_UP" "$S_DOWN" "$S_QUP" "$S_QDOWN"
   else nds_do auth "$F_MAC" "$S_MIN" "$S_UP" "$S_DOWN" "$S_QUP" "$S_QDOWN"; fi
   if [ "$(nds_state "$F_MAC")" != Authenticated ]; then                  # what openNDS really did, not what it answered
     # The time is safely on the roll, but the device is not online: do not tell the customer so, and keep the coins on
@@ -622,7 +617,7 @@ do_worker() {
   pulses=$(printf '%s' "$answer" | jget pulses); pulses="${pulses:-0}"
   last="$pulses"; shown=""; tick=0; boxstate=armed
   write_state "$dir" armed "$pulses" "$(( deadline - $(now) ))" ""
-  [ "$pulses" -gt 0 ] && [ -e "$dir/flash" ] && instant_grant "$pulses"
+  [ "$pulses" -gt 0 ] && [ -e "$dir/flash" ] && note_open "$pulses"
 
   while [ "$(now)" -lt "$deadline" ] && [ ! -e "$dir/stop" ]; do
     nap "$COIN_POLL_SECONDS"; tick=$((tick + 1))
@@ -645,7 +640,7 @@ do_worker() {
       [ "$deadline" -gt "$cap" ] && deadline="$cap"
       write_state "$dir" armed "$pulses" "$(( deadline - $(now) ))" ""; shown="$pulses/$(( deadline - $(now) ))"
       logmsg "timing ${sid%????????????????????????} coin pulses=$pulses at=$(uptime_ms)"
-      [ -e "$dir/flash" ] && instant_grant "$pulses"
+      [ -e "$dir/flash" ] && note_open "$pulses"
       call "$sid" arm "&duration=$(( deadline - $(now) + 3 ))$evx" >/dev/null
     fi
     rem=$(( deadline - $(now) ))

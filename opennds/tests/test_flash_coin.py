@@ -145,7 +145,7 @@ try:
     p = page("hidA", MAC_A, port=1)
     check("Coin payment is offline" in p, "listener down and no paid time: offline page, no crash")
 
-    # ---- instant: online on the first coin, the whole window priced once when it closes -----------------------------
+    # ---- the whole window priced once and granted once, when it closes (not at the first coin) -----------------------------
     def api(path):
         try:
             with urllib.request.urlopen(f"http://127.0.0.1:{STREAM_PORT}{path}", timeout=15) as r:
@@ -169,14 +169,14 @@ try:
     t0 = time.time()
     code_, j, cors = api(f"/api/start?sid={sid_of('hidI')}&plan=endurance")
     check(code_ == 200 and j.get("state") in ("starting", "armed") and cors == "*", f"/api/start opens a window for the device that asks: {j}")
-    online = wait_until(lambda: os.path.exists(f"{NDS}/{MAC_A.replace(':', '')}") and nds_get(MAC_A)["STATE"] == "Authenticated", 6)
-    t_online = time.time() - t0
-    check(online and t_online < 3.0, f"online right after the first coin, with no tap (coin at 0.5 s, online at {t_online:.2f} s)")
-    r = roll().get(MAC_A, [])
-    check(r and r[5] == "15" and r[11] == "endurance" and r[16] == "0", f"first coin recorded as the window's share so far, not final: {r}")
+    counted = wait_until(lambda: api(f"/api/status?sid={sid_of('hidI')}")[1].get("pulses", 0) >= 2, 6)
+    check(counted, "the coins show up on the status while the window is open")
+    check(nds_get(MAC_A)["STATE"] != "Authenticated" and MAC_A not in roll(),
+          "NOT online while coins are still being inserted (a phone that gets internet closes its login page): " + str(roll()))
+    check(os.path.exists(f"{DATA}/open/{sid_of('hidI')}"), "the open window is noted on flash for crash recovery")
     check(revenue() == "", "no revenue logged before the window closes")
     _, j, _ = api(f"/api/status?sid={sid_of('hidI')}")
-    check(j.get("online") is True, f"status says online: {j}")
+    check(j.get("online") is False and j.get("final") is False, f"status says not online yet: {j}")
     check(wait_until(lambda: api(f"/api/status?sid={sid_of('hidI')}")[1].get("final"), 15), "the window closes and settles by itself")
     _, j, _ = api(f"/api/status?sid={sid_of('hidI')}")
     r = roll()[MAC_A]
@@ -185,17 +185,18 @@ try:
     check(re.fullmatch(r"[a-z0-9]{4}-[a-z0-9]{4}", j.get("code", "")) and j["code"] == r[0], "the final status carries the restore code")
     check(revenue().strip().split("\n") == [revenue().strip()] and ",endurance,17,690," in revenue(), "revenue logged once, for the whole window: " + revenue())
     check(any(l.startswith("ack ") and sid_of("hidI") in l for l in open(LOG).read().split("\n")), "coins acknowledged on the box after the window settled")
-    check(sum(1 for c in calls() if c.startswith("deauth " + MAC_A)) == 1, "exactly one re-grant (at close), not one per coin: " + str(calls()))
+    check(sum(1 for c in calls() if c.startswith("auth " + MAC_A)) == 1 and not any(c.startswith("deauth") for c in calls()),
+          "one grant, when the window closed: " + str(calls()))
     nds = nds_get(MAC_A)
     check(nds["UPRATE"] == "2000" and nds["DOWNRATE"] == "5000" and abs(int(nds["SESSION_END"]) - (int(r[6]) + 690 * 60)) < 120,
-          f"granted 690 min from the first coin, with the Endurance caps: {nds}")
+          f"granted 690 min when the window closed, with the Endurance caps: {nds}")
     check(any(l.startswith("event coin") for l in open(LOG).read().split("\n")), "the box pushed coin events")
     live = json.load(open(f"{STATE}/{sid_of('hidI')}/live.json"))
     check(live.get("pulses") == 17 and live.get("type") == "end", f"live.json holds the box's last event: {live}")
     p = page("hidI", MAC_A, "connect", "endurance", landing="yes")
-    check("Connected" in p and "AUTHCALL" not in p and sum(1 for c in calls() if c.startswith("deauth " + MAC_A)) == 1,
+    check("Connected" in p and "AUTHCALL" not in p and sum(1 for c in calls() if c.startswith("auth " + MAC_A)) == 1,
           "a late Connect (no-script flow) confirms without granting again (no interruption)")
-    # top-up while online: no early grant, one re-grant when it closes, priced per window
+    # top-up while online: one re-grant when it closes, priced per window
     open(f"{NDS}/calls.log", "w").close()
     set_box(busy=False, coins_at=[0.5, 0.9])
     api(f"/api/start?sid={sid_of('hidI2')}&plan=endurance")
@@ -226,7 +227,7 @@ try:
         t0 = time.time()
         api(f"/api/start?sid={sid_of(hid)}&plan=hyper")
         ok = wait_until(lambda: nds_get(MAC_A)["STATE"] == "Authenticated", 8)
-        check(ok and time.time() - t0 < 4, f"{label}: still online on the first coin ({time.time() - t0:.1f} s)")
+        check(ok and time.time() - t0 < 10, f"{label}: online when the window closes, not before ({time.time() - t0:.1f} s)")
         check(wait_until(lambda: api(f"/api/status?sid={sid_of(hid)}")[1].get("final"), 15) and roll()[MAC_A][5] == "6", f"{label}: settles")
     # openNDS refuses the grant: never "online", never final, the coins stay on the box for the portal to finish
     roll_write(); nds_client(MAC_A); open(LOG, "w").close(); open(f"{NDS}/refuse_auth", "w").close(); rev0 = revenue().count("\n")
@@ -475,7 +476,7 @@ try:
     check(not os.path.exists(f"{STATE}/empty/{GP.replace(':', '')}"), "a paid window leaves no empty-window record")
     check(os.path.exists(f"{STATE}/empty/{GM.replace(':', '')}"), "the empty windows were recorded for the device that opened them")
 
-    # ---- the live page in a real browser (headless Chromium): one tap, online on the first coin, no reloads ------------------
+    # ---- the live page in a real browser (headless Chromium): one tap, Done, online when it closes, no reloads ------------------
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
@@ -531,14 +532,16 @@ try:
                 set_box(busy=False, coins_at=[0.6, 1.0])
                 t0 = time.time()
                 pg.click(".coin")
-                pg.wait_for_selector("#lon", state="visible", timeout=10000)
+                pg.wait_for_selector("#ldone", state="visible", timeout=10000)
+                check(not pg.is_visible("#lon"), "after the first coin the page offers Done and does not say online yet")
+                pg.wait_for_selector("#lon", state="visible", timeout=15000)
                 t_on = time.time() - t0
                 shown = pg.text_content("#lpes")
                 pg.wait_for_selector("#lfin", state="visible", timeout=20000)
                 dom = pg.content()
                 check(not errors, f"no script errors: {errors}")
                 check(hits == [""], f"one page only: no portal reloads after the first ({hits})")
-                check(t_on < 3.5, f"the page says online about a second after the first coin ({t_on:.2f} s)")
+                check(t_on < 12, f"the page says online once the window has closed ({t_on:.2f} s)")
                 check(re.search(r'id="lcode">[a-z0-9]{4}-[a-z0-9]{4}<', dom) and "12 min" in dom and "Continue browsing" in dom,
                       "the final view shows the time and the restore code: " + re.sub(r"\s+", " ", pg.text_content("#live") or "")[:300])
                 check(nds_get(MAC_A)["STATE"] == "Authenticated", "and the device really is online")
@@ -563,7 +566,7 @@ try:
                       "the tap shows at once that the slot is being armed: " + (pg.text_content("#lsub") or ""))
                 pg.wait_for_selector("#lcd", state="visible", timeout=8000)
                 check(True, "the countdown starts once the slot is armed")
-                pg.wait_for_selector("#lon", state="visible", timeout=10000)
+                pg.wait_for_selector("#ldone", state="visible", timeout=10000)
                 check(pg.text_content("#lpes").strip() in ("\u20b11", "\u20b12"), "coins show without the stream: " + (pg.text_content("#lpes") or ""))
                 pg.wait_for_selector("#lfin", state="visible", timeout=20000)
                 # no coin API: the regular pages take over
