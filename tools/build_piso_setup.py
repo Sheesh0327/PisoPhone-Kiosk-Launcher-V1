@@ -12,6 +12,8 @@ FILES = [  # (source in the repository, destination on the router, mode)
     ("opennds/flash_coin_lib.sh", "/usr/lib/opennds/flash_coin_lib.sh", "755"),
     ("opennds/flash_coin_status.sh", "/usr/lib/opennds/flash_coin_status.sh", "755"),
     ("opennds/flash_fairuse.sh", "/usr/lib/opennds/flash_fairuse.sh", "755"),
+    ("opennds/piso_monitor.sh", "/usr/bin/piso-monitor.sh", "755"),
+    ("opennds/piso_monitor.init", "/etc/init.d/piso_monitor", "755"),
     ("opennds/flash_coin.init", "/etc/init.d/flash_coin", "755"),
 ]
 

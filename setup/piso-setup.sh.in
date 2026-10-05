@@ -20,7 +20,7 @@
 # Everything is generated here (Wi-Fi password, box admin password, gateway key) and printed once at the end and saved in
 # /root/piso-setup-summary.txt. Running the file again is safe: it keeps what it already made.
 #
-# Other commands (after setup): piso-setup status | wifi-name "<name>" | pair | summary | test-coin | diag | set-password | reconcile
+# Other commands (after setup): piso-setup status | wifi-name "<name>" | pair | summary | test-coin | diag | set-password | reconcile | telegram
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation
@@ -128,7 +128,7 @@ preflight() {
 install_packages() {
 	step "Installing packages"
 	opkg update > /dev/null 2>&1 || opkg update || die "opkg update failed (no internet or DNS?)"
-	for p in opennds socat openssl-util curl coreutils-sleep jsonfilter; do
+	for p in opennds socat openssl-util curl ca-bundle coreutils-sleep jsonfilter; do
 		if ! opkg list-installed 2> /dev/null | grep -q "^$p "; then
 			log "installing $p"
 			opkg install "$p" > /dev/null 2>&1 || opkg install "$p" || die "could not install $p"
@@ -223,6 +223,9 @@ EOT
 	cat << EOT
 
 # --- firewall: guests reach the internet and nothing else; the kiosk LAN is the router's normal LAN ---------------------
+# hardware/software flow offloading can send customers' packets past the traffic shaping (the speed caps of each plan)
+set firewall.@defaults[0].flow_offloading='0'
+set firewall.@defaults[0].flow_offloading_hw='0'
 set firewall.guest=zone
 set firewall.guest.name='guest'
 set firewall.guest.network='guest'
@@ -447,6 +450,7 @@ stage2() {
 	step "Starting the services"
 	/etc/init.d/coinslot stop > /dev/null 2>&1; /etc/init.d/coinslot disable > /dev/null 2>&1
 	/etc/init.d/flash_coin enable; /etc/init.d/flash_coin restart
+	[ -r /etc/piso-monitor.conf ] && { /etc/init.d/piso_monitor enable; /etc/init.d/piso_monitor restart; }
 	/etc/init.d/opennds enable; /etc/init.d/opennds stop > /dev/null 2>&1; /etc/init.d/opennds start; NDS_RESTORE=0
 	sleep 8
 
@@ -553,6 +557,29 @@ cmd_diag() {
 # piso-setup reconcile: the box's own coin count against the router's revenue ledger (also checks the ledger chain).
 cmd_reconcile() { /usr/bin/coinslot-listener.sh reconcile; }
 
+# piso-setup telegram: connect the Telegram bot (alerts and remote commands). The token comes from @BotFather.
+cmd_telegram() {
+	[ "$(id -u)" = 0 ] || die "run as root"
+	[ -x /usr/bin/piso-monitor.sh ] || die "the monitor is not installed: run the setup first"
+	echo "1. In Telegram, talk to @BotFather: /newbot, choose a name, copy the token it gives you."
+	printf '2. Paste the token here: '; read -r _tok
+	[ -n "$_tok" ] || { echo "No token."; return 1; }
+	printf '3. Name of this site (shown in every message) [PisoPhone]: '; read -r _site; _site="${_site:-PisoPhone}"
+	case "$_site$_tok" in *\'* | *\"* | *\\* | *\$* | *\`*) echo "Please avoid quotes, backslashes, \$ and backticks."; return 1 ;; esac
+	echo "TG_TOKEN='$_tok'" > /etc/piso-monitor.conf; chmod 600 /etc/piso-monitor.conf
+	rm -rf /tmp/piso-monitor
+	PISO_MONITOR_CONF=/etc/piso-monitor.conf /usr/bin/piso-monitor.sh pair || return 1
+	_chat=$(cat /tmp/piso-monitor/paired.chat 2> /dev/null)
+	[ -n "$_chat" ] || return 1
+	printf 'Is that you (alerts and commands will be accepted only from this chat)? [y/N] '; read -r _a
+	case "$_a" in y | Y) ;; *) rm -f /etc/piso-monitor.conf; echo "Cancelled."; return 1 ;; esac
+	{ echo "TG_TOKEN='$_tok'"; echo "TG_CHAT='$_chat'"; echo "SITE_NAME='$_site'"; echo "REPORT_HOUR='21'"; echo "#HEALTHCHECK_URL=''"; } > /etc/piso-monitor.conf
+	chmod 600 /etc/piso-monitor.conf
+	/etc/init.d/piso_monitor enable; /etc/init.d/piso_monitor restart
+	sleep 1; /usr/bin/piso-monitor.sh send "connected. Send /help for the commands."
+	echo "Done. A message was sent to your Telegram. Optional dead-man switch: set HEALTHCHECK_URL in /etc/piso-monitor.conf (healthchecks.io), then: /etc/init.d/piso_monitor restart"
+}
+
 cmd_set_password() {
 	[ "$(id -u)" = 0 ] || die "run as root"
 	echo "Choose a new router (SSH / LuCI) password; it is saved in $CONF and shown by: piso-setup summary"
@@ -620,7 +647,7 @@ main() {
 		case "$1" in
 			--dry-run) DRY=1 ;;
 			--yes | -y) ASSUME_YES=1 ;;
-			status | pair | summary | wifi-name | uninstall-info | test-coin | diag | set-password | reconcile) CMD="$1"; shift; ARG="$1"; break ;;
+			status | pair | summary | wifi-name | uninstall-info | test-coin | diag | set-password | reconcile | telegram) CMD="$1"; shift; ARG="$1"; break ;;
 			-h | --help) sed -n '2,/^# Options:/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 			*) echo "unknown option: $1 (try --help)" >&2; exit 1 ;;
 		esac
@@ -633,6 +660,7 @@ main() {
 		test-coin) cmd_test_coin ;;
 		diag) cmd_diag ;;
 		reconcile) cmd_reconcile ;;
+		telegram) cmd_telegram ;;
 		set-password) cmd_set_password ;;
 		summary) cat "$SUMMARY" ;;
 		uninstall-info) echo "To undo: sysupgrade -n (factory reset) the router. Nothing else is changed outside the files listed in $0." ;;

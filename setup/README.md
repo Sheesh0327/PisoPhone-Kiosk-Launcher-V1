@@ -65,6 +65,8 @@ The setup asks you to choose the router password (or shows a generated one and a
 | command | what it does |
 |---|---|
 | `piso-setup test-coin` | arms the coin slot and waits for a coin, with no customer portal involved. It says whether the box counts the coin. |
+| `piso-setup reconcile` | compares the box's own lifetime coin count with the router's revenue ledger and checks that nobody edited the ledger (needs firmware 3.2.1). |
+| `piso-setup telegram` | connects a Telegram bot: alerts (router restarted, box offline, revenue mismatch, a device abusing the coin slot, daily report) and remote commands `/status /report /reconcile /diag /restart /reboot`, answered only to your chat. Create the bot with @BotFather first. Optional: put a healthchecks.io URL in `/etc/piso-monitor.conf` (`HEALTHCHECK_URL`) so you are told when the whole router goes silent. |
 | `piso-setup diag` | prints one block (status, manager, box, firewall, recent logs; no passwords) to paste when asking for help. |
 
 ## If something fails

@@ -69,6 +69,8 @@ fake_uci({"radio0": "2g", "radio1": "5g"})
 r = run("--dry-run")
 out = r.stdout
 check(r.returncode == 0, "dry run succeeds: " + r.stderr + out[-300:])
+check("flow_offloading='0'" in out and "flow_offloading_hw='0'" in out, "flow offloading is switched off (it can bypass the speed caps)")
+check("ca-bundle" in text and "cmd_telegram" in text and "#@@FILE /usr/bin/piso-monitor.sh 755" in text, "the monitor and its https certificates are part of the setup")
 check("network.lan.ipaddr" not in out and "network.lan.netmask" not in out and "network restart" not in text.split("stage1()")[1], "the LAN address is never changed by the script (so SSH stays open)")
 inst = text.split("install_packages() {")[1].split("\n}\n")[0]
 check('[ "$p" = opennds ] && stop_opennds' in inst and inst.index("stop_opennds") < inst.index("done"), "openNDS is stopped right after it is installed, inside the install loop (its default settings would gate the kiosk LAN)")
