@@ -555,6 +555,18 @@ try:
                 pg.click("#ldone")
                 pg.wait_for_selector("#lfin", state="visible", timeout=10000)
                 check(time.time() - t0 < 4, f"Done closes the window at once ({time.time() - t0:.1f} s, the idle wait is 3 s)")
+                # the phone's speech engine can freeze the page for a second when first used: the tap must already have changed the screen
+                roll_write(); nds_client(MAC_A); hits.clear(); HID["v"] = "hidBR5"
+                pg.add_init_script("""(function(){window.__spoke=null;var sp=window.speechSynthesis;if(!sp)return;var orig=sp.speak.bind(sp);
+                  sp.speak=function(u){if(window.__spoke===null){var l=document.getElementById('live');window.__spoke=!!l&&l.style.display!=='none';
+                  var t=Date.now();while(Date.now()-t<400){}}return orig(u)}})()""")
+                pg.goto("http://127.0.0.1:18121/opennds_preauth/?fas=ABC")
+                set_box(busy=False, coins_at=[])
+                pg.click(".coin")
+                pg.wait_for_timeout(1200)
+                check(pg.evaluate("window.__spoke") is True, "the screen shows 'getting the slot ready' before the speech engine is touched: " + str(pg.evaluate("window.__spoke")))
+                get(f"/finish?sid={sid_of('hidBR5')}")
+                wait_until(lambda: api(f"/api/status?sid={sid_of('hidBR5')}")[1].get("state") == "done", 20)
                 # a live stream that is held open but never delivers (seen on a phone): the page must still follow the coins
                 roll_write(); nds_client(MAC_A); hits.clear(); HID["v"] = "hidBR4"
                 pg.goto("http://127.0.0.1:18121/opennds_preauth/?fas=ABC")

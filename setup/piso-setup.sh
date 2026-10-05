@@ -2244,11 +2244,15 @@ var m=el("lmis");m.innerHTML='<button class="btn" type="button" id="mk">Add '+o+
 show("lmis",1);el("mk").onclick=function(){show("lmis",0);plan=j.plan;start(false)};el("ms").onclick=function(){show("lmis",0);start(true)}}
 el("ldone").onclick=function(){this.disabled=true;this.textContent="Closing · Sandali lang";
 fetch(base+"/api/finish?sid="+SID,{cache:"no-store"}).then(function(r){return r.json()}).then(upd).catch(function(){})};
-f.addEventListener("submit",function(e){e.preventDefault();
+/* Sound and speech are switched on by a tap, but starting them (the phone's speech engine in particular) can freeze the page
+   for a second or more: the screen changes and the slot is asked first, and they are prepared after the next paint. */
+function prime(){
 try{window.speechSynthesis&&speechSynthesis.speak(new SpeechSynthesisUtterance(""))}catch(x){}
 try{if(A){ctx=window.__ctx=window.__ctx||new A();ctx.resume();var o=ctx.createOscillator(),g=ctx.createGain();g.gain.value=.04;
-o.frequency.value=880;o.connect(g);g.connect(ctx.destination);o.start();o.stop(ctx.currentTime+.05)}}catch(x){}
-var r=f.querySelector("input[name=coinplan]:checked");plan=r?r.value:"hyper";start(false)})})();
+o.frequency.value=880;o.connect(g);g.connect(ctx.destination);o.start();o.stop(ctx.currentTime+.05)}}catch(x){}}
+f.addEventListener("submit",function(e){e.preventDefault();
+var r=f.querySelector("input[name=coinplan]:checked");plan=r?r.value:"hyper";start(false);
+(window.requestAnimationFrame||setTimeout)(function(){setTimeout(prime,0)})})})();
 </script>
 HTML
 }
