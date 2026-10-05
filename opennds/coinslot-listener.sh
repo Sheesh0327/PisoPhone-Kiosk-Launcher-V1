@@ -6,6 +6,7 @@
 #   coinslot-listener.sh worker <sid> <p>   hold one customer's coin window (started by the listener)
 #   coinslot-listener.sh stream             live-update listener (socat, guest network): coin counts and "slot is free" pushed to the portal
 #   coinslot-listener.sh stream-handle      one live-update connection (started by socat)
+#   coinslot-listener.sh events             coin events pushed by the box (UDP, EVENT_PORT): written to <window>/live.json
 #   coinslot-listener.sh fairuse            fair-use watcher loop (HyperSpeed throttle after FAIR_USE_GB)
 #   coinslot-listener.sh box                which box this router uses and whether it answers (finds it if it moved)
 #   coinslot-listener.sh report [days]      revenue per day and plan
@@ -36,6 +37,14 @@
 #   /ack?sid                          (flash_coin theme) the session file now holds the time: acknowledge the coins on the box
 #                                     (retried until it works; asking again is harmless)
 #   /me?mac                           account status for the status page
+#   (flash=1 on /start: a flash_coin window. The first coin puts the device online at once; when the window closes the
+#    total is priced once, recorded on the roll, granted and acknowledged on the box, all without the portal.)
+#
+# Portal-facing API on the live-update port (STREAM_PORT, guest network; the device is identified by its MAC):
+#   /api/start?sid&plan[&forfeit=1]    start a flash_coin window for the device that asks
+#   /api/status?sid                    progress, also "online" (granted) and "final" (minutes, code)
+#   /api/finish?sid                    close the window now (the customer tapped Done)
+#   /stream?sid[&mode=queue]           the same progress as Server-Sent Events
 #   /pause?mac                        pause a connected Endurance session once (needs PAUSE_MIN_PESOS paid)
 CONF="${COINSLOT_CONF:-/etc/coinslot.conf}"
 UCI="${UCI:-uci}"
@@ -44,7 +53,7 @@ UCI="${UCI:-uci}"
 # working; any option set in UCI wins. `coinslot-listener.sh migrate` copies the old file into UCI.
 SETTINGS="GW_BOX GW_KEY GW_DISCOVER GW_BOX_MAC DISCOVER_PORT DISCOVER_IFACE DISCOVER_COOLDOWN LISTEN_PORT STATE_DIR DATA_DIR
   COIN_FIRST_WAIT_SECONDS COIN_IDLE_WAIT_SECONDS COIN_MAX_SECONDS COIN_POLL_SECONDS STREAM_PORT STREAM_BIND
-  STREAM_MAX_CLIENTS STREAM_MAX_SECONDS QUEUE_CLAIM_SECONDS HYPER_TIERS HYPER_PRORATA_MIN ENDURANCE_TIERS
+  STREAM_MAX_CLIENTS STREAM_MAX_SECONDS QUEUE_CLAIM_SECONDS EVENT_PORT EVENT_BIND HYPER_TIERS HYPER_PRORATA_MIN ENDURANCE_TIERS
   ENDURANCE_DOWN_KBPS ENDURANCE_UP_KBPS PAUSE_MIN_PESOS PAUSE_MAX_HOURS FAIR_USE_GB FAIR_THROTTLE_DOWN_KBPS
   FAIR_THROTTLE_UP_KBPS FAIR_THROTTLE_MINUTES FAIR_FULL_MINUTES"
 [ -r "$CONF" ] && . "$CONF"
@@ -87,6 +96,12 @@ STREAM_BIND="${STREAM_BIND:-0.0.0.0}"
 STREAM_MAX_CLIENTS="${STREAM_MAX_CLIENTS:-8}"
 STREAM_MAX_SECONDS="${STREAM_MAX_SECONDS:-600}"
 QUEUE_CLAIM_SECONDS="${QUEUE_CLAIM_SECONDS:-30}"
+# Coin events from the box (UDP): the box tells the router about every coin the moment it is counted, so the router
+# does not have to ask it ten times a second. 0 turns them off (the router then asks, as before). The kiosk LAN only:
+# the guest firewall zone does not open this port, and every event is signed with the gateway key anyway.
+EVENT_PORT="${EVENT_PORT:-8101}"
+EVENT_BIND="${EVENT_BIND:-0.0.0.0}"
+FLASH_LIB="${FLASH_LIB:-/usr/lib/opennds/flash_coin_lib.sh}"
 
 # Plans. Tiers are "pesos:minutes". The best combination of tiers is used for any amount, e.g. Endurance
 # 17 pesos = 10 + 5 + 1 + 1 = 8 h + 3 h + 30 min. HyperSpeed pesos that fit no tier (1-4) are paid pro rata.
@@ -251,6 +266,11 @@ hmac_init() {
   hmac_pads "$GW_KEY"; HMAC_MODE=shell
 }
 
+sign_msg() {  # sign_msg <message>: hex HMAC-SHA256 with GW_KEY (hmac_init must have run in this shell)
+  if [ "$HMAC_MODE" = shell ]; then hmac_hex "$1"
+  else printf '%s' "$1" | openssl dgst -sha256 -hmac "$GW_KEY" | awk '{print $NF}'; fi
+}
+
 call() {
   _sid="$1"; _action="$2"; _extra="$3"
   _nonce=$(http "$(box_base)/challenge" | jget nonce)
@@ -258,9 +278,7 @@ call() {
   [ -n "$_nonce" ] || { echo '{"success":false,"error":"NO_NONCE"}'; return 1; }
   BASE=$(box_base)
   [ -n "$HMAC_MODE" ] || hmac_init
-  _msg="gw1:$_action:$_sid:$_nonce"
-  if [ "$HMAC_MODE" = shell ]; then _sig=$(hmac_hex "$_msg")
-  else _sig=$(printf '%s' "$_msg" | openssl dgst -sha256 -hmac "$GW_KEY" | awk '{print $NF}'); fi
+  _sig=$(sign_msg "gw1:$_action:$_sid:$_nonce")
   http "$BASE/$_action?session=$_sid&nonce=$_nonce&sig=$_sig$_extra"
 }
 
@@ -375,9 +393,109 @@ status_json() {  # status_json <dir>
   read_state "$1"
   _plan=$(cat "$1/plan" 2>/dev/null); _claimed=false; [ -e "$1/claimed" ] && _claimed=true
   _min=0; [ -n "$_plan" ] && [ "${PULSES:-0}" -gt 0 ] && _min=$(minutes_for "$_plan" "$PULSES")
-  printf '{"state":"%s","pulses":%s,"minutes":%s,"plan":"%s","remaining":%s,"claimed":%s,"error":"%s"}' \
-    "$STATE" "${PULSES:-0}" "$_min" "$_plan" "${REMAINING:-0}" "$_claimed" "$ERROR"
+  _on=false; [ -e "$1/online" ] && _on=true
+  _fin=false; FINAL_WMIN=0; FINAL_LEFT=0; FINAL_CODE=""; [ -r "$1/final" ] && { . "$1/final"; _fin=true; }
+  printf '{"state":"%s","pulses":%s,"minutes":%s,"plan":"%s","remaining":%s,"claimed":%s,"error":"%s","online":%s,"final":%s,"fwmin":%s,"fleft":%s,"code":"%s"}' \
+    "$STATE" "${PULSES:-0}" "$_min" "$_plan" "${REMAINING:-0}" "$_claimed" "$ERROR" "$_on" "$_fin" "$FINAL_WMIN" "$FINAL_LEFT" "$FINAL_CODE"
 }
+
+uptime_ms() { read -r _u _ < /proc/uptime; _c="${_u#*.}"; _c="${_c#0}"; echo $(( ${_u%.*} * 1000 + ${_c:-0} * 10 )); }
+
+# ---------------------------------------------------------------------------
+# flash_coin windows: online on the first coin, the whole window priced once at the end (flash_coin_lib.sh holds the roll)
+# ---------------------------------------------------------------------------
+flash_load() {
+  [ -n "$FLASH_LOADED" ] && return 0
+  [ -r "$FLASH_LIB" ] || return 1
+  . "$FLASH_LIB"; FLASH_LOADED=1
+}
+flash_args() {  # sets F_MAC F_PLAN F_WID F_FORFEIT for the window in $dir
+  F_MAC=$(cat "$dir/mac" 2>/dev/null); F_PLAN=$(cat "$dir/plan" 2>/dev/null); F_WID=$(cat "$dir/wid" 2>/dev/null)
+  F_FORFEIT=0; [ -e "$dir/fforfeit" ] && F_FORFEIT=1
+  [ -n "$F_MAC" ] && valid_plan "$F_PLAN"
+}
+
+# instant_grant <pulses>: the first coin of the window puts the device online now, for what the window holds so far.
+# More coins are only counted; the window's total is priced and granted once, when it closes (settle_window).
+instant_grant() {
+  [ -e "$dir/online" ] && return 0
+  flash_load && flash_args || return 0
+  if [ "$(nds_state "$F_MAC")" = Authenticated ]; then : > "$dir/online"; return 0; fi   # a top-up: already online
+  _min=$(minutes_for "$F_PLAN" "$1")
+  flash_mint "$F_MAC" "$F_WID" "$F_PLAN" "$1" "$_min" "$(plan_up "$F_PLAN")" "$(plan_down "$F_PLAN")" "$F_FORFEIT" 0 || return 0
+  flash_session "$F_MAC" || return 0
+  nds_do auth "$F_MAC" "$S_MIN" "$S_UP" "$S_DOWN" "$S_QUP" "$S_QDOWN"
+  case "$NDSOUT" in *Failed*) logmsg "window ${sid%????????????????????????}: openNDS refused the early grant: $NDSOUT"; return 0 ;; esac
+  echo "$_min" > "$dir/egrant"; : > "$dir/online"
+  logmsg "timing ${sid%????????????????????????} granted pulses=$1 min=$_min at=$(uptime_ms)"
+}
+
+ack_window() {  # the coins are recorded: remove them from the box (retried; /ack and /start retry it again if needed)
+  : > "$dir/claimed"; rm -f "$dir/pending" "$dir/forfeit"; : > "$dir/ackpending"
+  for _ in 1 2 3; do call "$sid" ack >/dev/null && { rm -f "$dir/ackpending"; return 0; }; sleep 1; done
+  return 1
+}
+
+# settle_window <pulses>: the window closed. Price the whole window once (best combination of tiers for the total),
+# record it on the roll (same window id: replaces the early grant's share), grant, then acknowledge the box.
+settle_window() {
+  flash_load && flash_args || return 0
+  _min=$(minutes_for "$F_PLAN" "$1")
+  flash_mint "$F_MAC" "$F_WID" "$F_PLAN" "$1" "$_min" "$(plan_up "$F_PLAN")" "$(plan_down "$F_PLAN")" "$F_FORFEIT" 1
+  _rc=$?
+  [ "$_rc" = 0 ] || { logmsg "window ${sid%????????????????????????} not recorded (rc=$_rc): left for the portal"; return 0; }
+  flash_session "$F_MAC" || return 0
+  _st=$(nds_state "$F_MAC"); _eg=$(cat "$dir/egrant" 2>/dev/null)
+  if [ "$_st" = Authenticated ] && [ "$_eg" = "$_min" ]; then :           # the early grant already holds the whole window
+  elif [ "$_st" = Authenticated ]; then nds_regrant "$F_MAC" "$S_MIN" "$S_UP" "$S_DOWN" "$S_QUP" "$S_QDOWN"
+  else nds_do auth "$F_MAC" "$S_MIN" "$S_UP" "$S_DOWN" "$S_QUP" "$S_QDOWN"; fi
+  printf 'FINAL_WMIN=%s\nFINAL_LEFT=%s\nFINAL_CODE=%s\n' "$_min" "$S_MIN" "$S_CODE" > "$dir/final.tmp" && mv "$dir/final.tmp" "$dir/final"
+  : > "$dir/online"
+  logmsg "timing ${sid%????????????????????????} settled pulses=$1 min=$_min left=$S_MIN at=$(uptime_ms)"
+  ack_window
+}
+
+# ---------------------------------------------------------------------------
+# Coin events from the box (GatewayEvent.h): one signed UDP line per change, written to <window>/live.json (and
+# live.env for the worker). Only the running total matters, so a repeated or lost line does no harm.
+# ---------------------------------------------------------------------------
+event_line() {
+  _l="$1"
+  case "$_l" in gw1ev:*) ;; *) return 0 ;; esac
+  _l="${_l%$(printf '\r')}"; _esig="${_l##*:}"; _body="${_l%:*}"
+  _r="${_body#gw1ev:}"
+  _esid="${_r%%:*}"; _r="${_r#*:}"
+  _ewid="${_r%%:*}"; _r="${_r#*:}"
+  _eseq="${_r%%:*}"; _r="${_r#*:}"
+  _etype="${_r%%:*}"; _epulses="${_r#*:}"
+  valid_sid "$_esid" || return 0
+  case "$_ewid" in "" | *[!0-9a-f]*) return 0 ;; esac
+  case "$_eseq" in "" | *[!0-9]*) return 0 ;; esac
+  case "$_epulses" in "" | *[!0-9]*) return 0 ;; esac
+  case "$_etype" in ready | coin | end) ;; *) return 0 ;; esac
+  case "$_esig" in "" | *[!0-9a-f]*) return 0 ;; esac
+  _ed="$STATE_DIR/$_esid"
+  [ -d "$_ed" ] || return 0
+  [ "$(cat "$_ed/wid" 2>/dev/null)" = "$_ewid" ] || return 0              # not the window that is open now
+  [ "$(sign_msg "$_body")" = "$_esig" ] || { logmsg "coin event with a bad signature ignored"; return 0; }
+  LIVE_SEQ=0; LIVE_PULSES=0; LIVE_TYPE=""
+  [ -r "$_ed/live.env" ] && . "$_ed/live.env"
+  [ "$_eseq" -gt "${LIVE_SEQ:-0}" ] || return 0                           # a repeat (the box sends every line twice)
+  [ "$_epulses" -ge "${LIVE_PULSES:-0}" ] || _epulses="$LIVE_PULSES"
+  _at=$(uptime_ms)
+  printf 'LIVE_SEQ=%s\nLIVE_TYPE=%s\nLIVE_PULSES=%s\nLIVE_AT=%s\n' "$_eseq" "$_etype" "$_epulses" "$_at" > "$_ed/live.env.tmp" &&
+    mv "$_ed/live.env.tmp" "$_ed/live.env"
+  printf '{"seq":%s,"type":"%s","pulses":%s,"at":%s}\n' "$_eseq" "$_etype" "$_epulses" "$_at" > "$_ed/live.json.tmp" &&
+    mv "$_ed/live.json.tmp" "$_ed/live.json"
+  logmsg "timing ${_esid%????????????????????????} event $_etype pulses=$_epulses at=$_at"
+}
+do_events() {
+  case "$EVENT_PORT" in "" | 0) echo "coin events are off (EVENT_PORT=0)"; exec sleep 2147483647 ;; esac
+  mkdir -p "$STATE_DIR" && chmod 700 "$STATE_DIR"
+  # socat stays the service's main process: stopping the service stops the reader with it (it reads to end of input).
+  exec socat -u "UDP4-RECV:$EVENT_PORT,bind=$EVENT_BIND,reuseaddr" "EXEC:$SELF event-reader"
+}
+event_reader() { hmac_init; while read -r line; do event_line "$line"; done; }
 
 # ---------------------------------------------------------------------------
 # Worker: arm, count (waiting longer after every coin), always disarm
@@ -394,11 +512,16 @@ do_worker() {
   }
   trap 'release; write_state "$dir" "done" "${pulses:-0}" 0 ""; exit 0' INT TERM HUP
   pulses=0
+  # Coin events: ask the box to push this window's coins (it answers "events":true if it can). The router then only
+  # checks with a signed status call once a second, as a safety net; without events it asks every COIN_POLL_SECONDS.
+  wid=$(cat "$dir/wid" 2>/dev/null); evx=""
+  case "$EVENT_PORT" in "" | 0) ;; *) [ -n "$wid" ] && evx="&wid=$wid&evport=$EVENT_PORT" ;; esac
+  tps=1; [ "$NAP_FRAC" = 1 ] && tps=$(awk -v p="$COIN_POLL_SECONDS" 'BEGIN { t = int(1 / p + 0.5); if (t < 1) t = 1; print t }')
 
   started=$(now)
   cap=$(( started + COIN_MAX_SECONDS ))
   deadline=$(( started + COIN_FIRST_WAIT_SECONDS ))
-  answer=$(call "$sid" arm "&duration=$(( COIN_FIRST_WAIT_SECONDS + 3 ))")
+  answer=$(call "$sid" arm "&duration=$(( COIN_FIRST_WAIT_SECONDS + 3 ))$evx")
   if [ "$(printf '%s' "$answer" | jget success)" != "true" ]; then
     err=$(printf '%s' "$answer" | jget error)
     write_state "$dir" error 0 0 "${err:-NO_ANSWER}"
@@ -406,6 +529,9 @@ do_worker() {
     return 1
   fi
   armed=1
+  events=0; [ -n "$evx" ] && [ "$(printf '%s' "$answer" | jget events)" = true ] && events=1
+  pull_every=1; [ "$events" = 1 ] && pull_every="$tps"
+  logmsg "timing ${sid%????????????????????????} armed events=$events at=$(uptime_ms)"
   # The box ignores coin pulses while the acceptor settles after power-on (ready_in_ms): the customer is invited to
   # insert coins, and the countdown starts, only after that.
   settle=$(printf '%s' "$answer" | jget ready_in_ms)
@@ -419,37 +545,60 @@ do_worker() {
     nap "$(( settle / 1000 )).$(printf '%03d' $(( settle % 1000 )))"
     deadline=$(( $(now) + COIN_FIRST_WAIT_SECONDS ))
     cap=$(( $(now) + COIN_MAX_SECONDS ))
-    call "$sid" arm "&duration=$(( COIN_FIRST_WAIT_SECONDS + 3 ))" > /dev/null    # the box's own timer starts from here too
+    call "$sid" arm "&duration=$(( COIN_FIRST_WAIT_SECONDS + 3 ))$evx" > /dev/null    # the box's own timer starts from here too
   fi
   pulses=$(printf '%s' "$answer" | jget pulses); pulses="${pulses:-0}"
-  last="$pulses"; shown=""
+  last="$pulses"; shown=""; tick=0; boxstate=armed
   write_state "$dir" armed "$pulses" "$(( deadline - $(now) ))" ""
+  [ "$pulses" -gt 0 ] && [ -e "$dir/flash" ] && instant_grant "$pulses"
 
   while [ "$(now)" -lt "$deadline" ] && [ ! -e "$dir/stop" ]; do
-    nap "$COIN_POLL_SECONDS"
-    st=$(call "$sid" status) || continue                  # a missed poll must not end the window early
-    [ "$(printf '%s' "$st" | jget success)" = "true" ] || continue
-    pulses=$(printf '%s' "$st" | jget pulses)
-    if [ "$pulses" -gt "$last" ]; then                    # a coin: restart the short wait, within the hard cap
+    nap "$COIN_POLL_SECONDS"; tick=$((tick + 1))
+    new="$last"
+    if [ "$events" = 1 ] && [ -r "$dir/live.env" ]; then                  # pushed by the box: no network call needed
+      . "$dir/live.env"
+      [ "${LIVE_PULSES:-0}" -gt "$new" ] && new="$LIVE_PULSES"
+      [ "$LIVE_TYPE" = end ] && boxstate=idle
+    fi
+    if [ $(( tick % pull_every )) = 0 ]; then                             # the signed check (every tick without events)
+      if st=$(call "$sid" status) && [ "$(printf '%s' "$st" | jget success)" = "true" ]; then
+        sp=$(printf '%s' "$st" | jget pulses); [ "${sp:-0}" -gt "$new" ] && new="$sp"
+        boxstate=$(printf '%s' "$st" | jget state)
+      fi                                                                  # a missed poll must not end the window early
+    fi
+    pulses="$new"
+    if [ "$pulses" -gt "$last" ]; then                    # a coin: show it, grant, then restart the short wait (within the cap)
       last="$pulses"
       deadline=$(( $(now) + COIN_IDLE_WAIT_SECONDS ))
       [ "$deadline" -gt "$cap" ] && deadline="$cap"
-      call "$sid" arm "&duration=$(( deadline - $(now) + 3 ))" >/dev/null
+      write_state "$dir" armed "$pulses" "$(( deadline - $(now) ))" ""; shown="$pulses/$(( deadline - $(now) ))"
+      logmsg "timing ${sid%????????????????????????} coin pulses=$pulses at=$(uptime_ms)"
+      [ -e "$dir/flash" ] && instant_grant "$pulses"
+      call "$sid" arm "&duration=$(( deadline - $(now) + 3 ))$evx" >/dev/null
     fi
     rem=$(( deadline - $(now) ))
     [ "$pulses/$rem" = "$shown" ] || { write_state "$dir" armed "$pulses" "$rem" ""; shown="$pulses/$rem"; }   # only on change
-    [ "$(printf '%s' "$st" | jget state)" = "armed" ] || break   # the box ended it
+    [ "$boxstate" = "armed" ] || break   # the box ended it
   done
 
   release
-  drain_end=$(( $(now) + 30 ))   # in-flight coins: the box reports "idle" once it has drained
+  drain_end=$(( $(now) + 30 ))   # in-flight coins: the box reports "idle" (or pushes "end") once it has drained
+  tick=0
   while [ "$(now)" -lt "$drain_end" ]; do
-    st=$(call "$sid" status) && {
-      pulses=$(printf '%s' "$st" | jget pulses)
-      [ "$(printf '%s' "$st" | jget state)" = "idle" ] && break
-    }
-    nap "$COIN_POLL_SECONDS"
+    if [ "$events" = 1 ] && [ -r "$dir/live.env" ]; then
+      . "$dir/live.env"
+      [ "${LIVE_PULSES:-0}" -gt "$pulses" ] && pulses="$LIVE_PULSES"
+      [ "$LIVE_TYPE" = end ] && break
+    fi
+    if [ $(( tick % pull_every )) = 0 ]; then
+      st=$(call "$sid" status) && {
+        sp=$(printf '%s' "$st" | jget pulses); [ "${sp:-0}" -gt "$pulses" ] && pulses="$sp"
+        [ "$(printf '%s' "$st" | jget state)" = "idle" ] && break
+      }
+    fi
+    nap "$COIN_POLL_SECONDS"; tick=$((tick + 1))
   done
+  [ "${pulses:-0}" -gt 0 ] && [ -e "$dir/flash" ] && settle_window "$pulses"
   write_state "$dir" "done" "${pulses:-0}" 0 ""
 }
 
@@ -631,6 +780,10 @@ reply() {  # reply <status line> <body> [content type]
   printf 'HTTP/1.1 %s\r\nContent-Type: %s\r\nCache-Control: no-store\r\nConnection: close\r\nContent-Length: %s\r\n\r\n%s' \
     "$1" "${3:-application/json}" "${#2}" "$2"
 }
+reply_cors() {  # reply_cors <status line> <json>: for the portal page, which runs on openNDS' own port
+  printf 'HTTP/1.1 %s\r\nContent-Type: application/json\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\nContent-Length: %s\r\n\r\n%s' \
+    "$1" "${#2}" "$2"
+}
 err_json() { printf '{"error":"%s"}' "$1"; }
 
 qget() {  # qget <name>: value of a query parameter (already restricted to safe characters by the callers)
@@ -725,13 +878,20 @@ do_handle() {
           reply "200 OK" "{\"state\":\"error\",\"error\":\"PLAN_MISMATCH\",\"plan\":\"$PLAN\",\"remaining\":$V_LEFT}"; return
         fi
       fi
+      # flash_coin: time left on the other plan (on the roll) is given up only with the customer's agreement (forfeit=1).
+      if [ "$(qget flash)" = 1 ] && [ -n "$mac" ] && [ "$(qget forfeit)" != 1 ] && flash_load && flash_peek "$mac" &&
+        { [ "$P_STATE" = running ] || [ "$P_STATE" = paused ]; } && [ "$R_PLAN" != "$plan" ]; then
+        reply "200 OK" "{\"state\":\"error\",\"error\":\"PLAN_MISMATCH\",\"plan\":\"$R_PLAN\",\"remaining\":$R_LEFT}"; return
+      fi
       if [ -e "$dir/ackpending" ]; then          # an earlier grant could not be acknowledged on the box
         if call "$sid" ack >/dev/null && rm -f "$dir/ackpending"; then :; else
           reply "200 OK" '{"state":"error","error":"ACK_PENDING"}'; return
         fi
       fi
       q_gate "$sid" || { reply "200 OK" '{"state":"error","error":"SLOT_BUSY"}'; return; }   # someone is queued ahead
-      rm -f "$dir/stop" "$dir/claimed" "$dir/state" "$dir/grant" "$dir/pending" "$dir/forfeit"
+      rm -f "$dir/stop" "$dir/claimed" "$dir/state" "$dir/grant" "$dir/pending" "$dir/forfeit" "$dir/flash" "$dir/fforfeit" \
+        "$dir/online" "$dir/egrant" "$dir/final" "$dir/live.env" "$dir/live.json"
+      if [ "$(qget flash)" = 1 ]; then : > "$dir/flash"; [ "$(qget forfeit)" = 1 ] && : > "$dir/fforfeit"; fi
       [ -n "$forfeitcode" ] && printf '%s' "$forfeitcode" > "$dir/forfeit"
       printf '%s' "$plan" > "$dir/plan"
       _wid=$(tr -d '-' < /proc/sys/kernel/random/uuid 2>/dev/null); [ -n "$_wid" ] || _wid="$(now)$$"   # names this window: a coin is never credited twice
@@ -869,7 +1029,8 @@ stream_wait() {
   _ticks=$(( STREAM_MAX_SECONDS * TPS )); _t=0; _quiet=0; _prev=""
   while [ "$_t" -lt "$_ticks" ]; do
     read_state "$dir"
-    _cur="$STATE|$PULSES|$REMAINING|$ERROR"
+    _o=0; [ -e "$dir/online" ] && _o=1; _f=0; [ -e "$dir/final" ] && _f=1
+    _cur="$STATE|$PULSES|$REMAINING|$ERROR|$_o|$_f"
     if [ "$_cur" != "$_prev" ]; then
       _prev="$_cur"; _quiet=0
       sse status "$(status_json "$dir")"
@@ -919,6 +1080,29 @@ stream_queue() {
   done
 }
 
+# The portal page's own API (flash_coin): the device is the one the router sees at the connecting address, never a MAC
+# the page could make up. Starting goes through the local listener (same checks as the portal's /start).
+do_api() {
+  sid=$(qget sid)
+  valid_sid "$sid" || { reply_cors "400 Bad Request" "$(err_json INVALID_SID)"; return; }
+  dir="$STATE_DIR/$sid"; _peer=$(peer_mac "$SOCAT_PEERADDR")
+  [ -n "$_peer" ] || { reply_cors "403 Forbidden" "$(err_json FORBIDDEN)"; return; }
+  if [ "$path" != /api/start ]; then
+    [ "$(cat "$dir/mac" 2>/dev/null)" = "$_peer" ] || { reply_cors "403 Forbidden" "$(err_json FORBIDDEN)"; return; }
+  fi
+  case "$path" in
+    /api/start)
+      _pl=$(qget plan); valid_plan "$_pl" || { reply_cors "400 Bad Request" "$(err_json INVALID_PLAN)"; return; }
+      _fq=""; [ "$(qget forfeit)" = 1 ] && _fq="&forfeit=1"
+      _ans=$(http "http://127.0.0.1:$LISTEN_PORT/start?sid=$sid&plan=$_pl&mac=$_peer&flash=1$_fq")
+      reply_cors "200 OK" "${_ans:-$(err_json NO_ANSWER)}" ;;
+    /api/status) reply_cors "200 OK" "$(status_json "$dir")" ;;
+    /api/finish)
+      worker_running "$dir" && : > "$dir/stop"
+      reply_cors "200 OK" "$(status_json "$dir")" ;;
+  esac
+}
+
 do_stream() {
   nap_init
   TPS=1; [ "$NAP_FRAC" = 1 ] && TPS=10
@@ -927,6 +1111,7 @@ do_stream() {
   [ "$method" = "GET" ] || { reply "405 Method Not Allowed" "$(err_json METHOD)"; return; }
   path="${target%%\?*}"; QUERY=""
   case "$target" in *\?*) QUERY="${target#*\?}" ;; esac
+  case "$path" in /api/start | /api/status | /api/finish) do_api; return ;; esac
   [ "$path" = "/stream" ] || { reply "404 Not Found" "$(err_json NOT_FOUND)"; return; }
   sid=$(qget sid)
   valid_sid "$sid" || { reply "400 Bad Request" "$(err_json INVALID_SID)"; return; }
@@ -951,6 +1136,9 @@ case "$1" in
     mkdir -p "$STATE_DIR" && chmod 700 "$STATE_DIR"
     exec socat "TCP-LISTEN:$STREAM_PORT,bind=$STREAM_BIND,reuseaddr,fork,max-children=$STREAM_MAX_CLIENTS" "EXEC:$SELF stream-handle" ;;
   stream-handle) do_stream ;;
+  events) do_events ;;
+  event-reader) event_reader ;;
+  event-line) hmac_init; event_line "$2" ;;                                        # for tests: one event line
   handle) do_handle ;;
   worker) valid_sid "$2" && do_worker "$2" ;;
   fairuse) do_fairuse ;;
