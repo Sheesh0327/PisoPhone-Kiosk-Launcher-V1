@@ -44,7 +44,7 @@
 #   /api/start?sid&plan[&forfeit=1]    start a flash_coin window for the device that asks
 #   /api/status?sid                    progress, also "online" (granted) and "final" (minutes, code)
 #   /api/finish?sid                    close the window now (the customer tapped Done)
-#   /stream?sid[&mode=queue]           the same progress as Server-Sent Events
+#   /stream?sid                        the same progress as Server-Sent Events
 #   /pause?mac                        pause a connected Endurance session once (needs PAUSE_MIN_PESOS paid)
 CONF="${COINSLOT_CONF:-/etc/coinslot.conf}"
 UCI="${UCI:-uci}"
@@ -53,7 +53,7 @@ UCI="${UCI:-uci}"
 # working; any option set in UCI wins. `coinslot-listener.sh migrate` copies the old file into UCI.
 SETTINGS="GW_BOX GW_KEY GW_DISCOVER GW_BOX_MAC DISCOVER_PORT DISCOVER_IFACE DISCOVER_COOLDOWN LISTEN_PORT STATE_DIR DATA_DIR
   COIN_FIRST_WAIT_SECONDS COIN_IDLE_WAIT_SECONDS COIN_MAX_SECONDS COIN_POLL_SECONDS STREAM_PORT STREAM_BIND
-  STREAM_MAX_CLIENTS STREAM_MAX_SECONDS QUEUE_CLAIM_SECONDS EVENT_PORT EVENT_BIND HYPER_TIERS HYPER_PRORATA_MIN ENDURANCE_TIERS
+  STREAM_MAX_CLIENTS STREAM_MAX_SECONDS EVENT_PORT EVENT_BIND EMPTY_LIMIT EMPTY_WINDOW EMPTY_COOLDOWN HYPER_TIERS HYPER_PRORATA_MIN ENDURANCE_TIERS
   ENDURANCE_DOWN_KBPS ENDURANCE_UP_KBPS PAUSE_MIN_PESOS PAUSE_MAX_HOURS FAIR_USE_GB FAIR_THROTTLE_DOWN_KBPS
   FAIR_THROTTLE_UP_KBPS FAIR_THROTTLE_MINUTES FAIR_FULL_MINUTES"
 [ -r "$CONF" ] && . "$CONF"
@@ -90,18 +90,22 @@ COIN_POLL_SECONDS="${COIN_POLL_SECONDS:-0.1}"
 
 # Live updates (Server-Sent Events) for the portal page, on their own port so the guest network can reach only this.
 # Each connection can see only its own session, from the device that started it. Bounded: STREAM_MAX_CLIENTS at once,
-# STREAM_MAX_SECONDS each. A customer waiting for a busy slot gets QUEUE_CLAIM_SECONDS to tap Start once it is free.
+# STREAM_MAX_SECONDS each.
 STREAM_PORT="${STREAM_PORT:-8100}"
 STREAM_BIND="${STREAM_BIND:-0.0.0.0}"
-STREAM_MAX_CLIENTS="${STREAM_MAX_CLIENTS:-8}"
+STREAM_MAX_CLIENTS="${STREAM_MAX_CLIENTS:-24}"          # up to ~20 guests at once, each with one live stream
 STREAM_MAX_SECONDS="${STREAM_MAX_SECONDS:-600}"
-QUEUE_CLAIM_SECONDS="${QUEUE_CLAIM_SECONDS:-30}"
 # Coin events from the box (UDP): the box tells the router about every coin the moment it is counted, so the router
 # does not have to ask it ten times a second. 0 turns them off (the router then asks, as before). The kiosk LAN only:
 # the guest firewall zone does not open this port, and every event is signed with the gateway key anyway.
 EVENT_PORT="${EVENT_PORT:-8101}"
 EVENT_BIND="${EVENT_BIND:-0.0.0.0}"
 FLASH_LIB="${FLASH_LIB:-/usr/lib/opennds/flash_coin_lib.sh}"
+# Griefing defense: a device that opens EMPTY_LIMIT coin windows within EMPTY_WINDOW seconds without paying anything is
+# refused for EMPTY_COOLDOWN seconds (it would otherwise keep the one coin slot from everybody else).
+EMPTY_LIMIT="${EMPTY_LIMIT:-2}"
+EMPTY_WINDOW="${EMPTY_WINDOW:-300}"
+EMPTY_COOLDOWN="${EMPTY_COOLDOWN:-120}"
 
 # Plans. Tiers are "pesos:minutes". The best combination of tiers is used for any amount, e.g. Endurance
 # 17 pesos = 10 + 5 + 1 + 1 = 8 h + 3 h + 30 min. HyperSpeed pesos that fit no tier (1-4) are paid pro rata.
@@ -616,6 +620,8 @@ do_worker() {
     nap "$COIN_POLL_SECONDS"; tick=$((tick + 1))
   done
   [ "${pulses:-0}" -gt 0 ] && [ -e "$dir/flash" ] && settle_window "$pulses"
+  _wm=$(cat "$dir/mac" 2>/dev/null)
+  if [ -n "$_wm" ]; then if [ "${pulses:-0}" -gt 0 ]; then clear_empty "$_wm"; else note_empty "$_wm"; fi; fi
   write_state "$dir" "done" "${pulses:-0}" 0 ""
 }
 
@@ -905,7 +911,15 @@ do_handle() {
           reply "200 OK" '{"state":"error","error":"ACK_PENDING"}'; return
         fi
       fi
-      q_gate "$sid" || { reply "200 OK" '{"state":"error","error":"SLOT_BUSY"}'; return; }   # someone is queued ahead
+      if [ -n "$mac" ]; then
+        _cd=$(cooldown_left "$mac")
+        if [ "$_cd" -gt 0 ]; then
+          logmsg "start refused for $mac: cooldown ${_cd}s after empty windows"
+          reply "200 OK" "{\"state\":\"error\",\"error\":\"COOLDOWN\",\"retry\":$_cd}"; return
+        fi
+      fi
+      # One client per coin window: while any other window is open, every other request is refused (no waiting line).
+      if other_window_open "$sid"; then reply "200 OK" "{\"state\":\"error\",\"error\":\"SLOT_BUSY\",\"retry\":$BUSY_RETRY}"; return; fi
       rm -f "$dir/stop" "$dir/claimed" "$dir/state" "$dir/grant" "$dir/pending" "$dir/forfeit" "$dir/flash" "$dir/fforfeit" \
         "$dir/online" "$dir/egrant" "$dir/final" "$dir/live.env" "$dir/live.json"
       if [ "$(qget flash)" = 1 ]; then : > "$dir/flash"; [ "$(qget forfeit)" = 1 ] && : > "$dir/fforfeit"; fi
@@ -994,60 +1008,44 @@ do_handle() {
 
 
 # ---------------------------------------------------------------------------
-# Waiting line for a busy coin slot: $STATE_DIR/queue/<uptime centiseconds>_<sid>. The customer's open live stream keeps
-# its ticket fresh; a ticket nobody refreshed for 6 s is dropped. Only the first in line is told "ready".
-# ---------------------------------------------------------------------------
-q_seq() {
-  read -r _up _ < /proc/uptime 2>/dev/null; _up="${_up%.*}${_up#*.}"
-  case "$_up" in "" | *[!0-9]*) _up=$(( $(now) * 100 )) ;; esac
-  while case "$_up" in 0?*) true ;; *) false ;; esac; do _up="${_up#0}"; done
-  printf '%012d' "$_up"
-}
-q_prune() {  # q_prune <now>
-  for _f in "$STATE_DIR/queue"/*; do
-    [ -f "$_f" ] || continue
-    read -r _ts _ < "$_f"
-    case "$_ts" in "" | *[!0-9]*) continue ;; esac
-    [ $(( $1 - _ts )) -gt 6 ] && rm -f "$_f"
-  done
-}
-q_pos() {  # q_pos <sid>: place in line, 0 if absent
-  _i=0
-  for _f in "$STATE_DIR/queue"/*; do
-    [ -f "$_f" ] || continue
-    _i=$((_i + 1))
-    case "$_f" in *_"$1") echo "$_i"; return ;; esac
-  done
-  echo 0
-}
-# q_gate <sid>: may this customer start now? Not while somebody else is first in line; starting leaves the line.
-q_gate() {
-  [ -d "$STATE_DIR/queue" ] || return 0
-  q_prune "$(now)"
-  for _f in "$STATE_DIR/queue"/*; do
-    [ -f "$_f" ] || continue
-    case "$_f" in *_"$1") rm -f "$_f"; return 0 ;; esac
-    return 1
-  done
-  return 0
-}
-
-# ---------------------------------------------------------------------------
 # Live updates for the portal page (Server-Sent Events). Read-only: it reports this customer's own coin window, or
 # their place in the waiting line; it never arms, grants or changes anything.
 # ---------------------------------------------------------------------------
 sse() { printf 'event: %s\ndata: %s\n\n' "$1" "$2"; }
-# local_window_open: a coin window this router has started is still open (its worker is alive). The box only reports the
-# slot as taken once that worker has armed it, so without this the next in line could be told "ready" in between.
-local_window_open() {
+# Empty windows per device: $STATE_DIR/empty/<mackey> holds the end time of each one; a paid window clears them.
+note_empty() {  # note_empty <mac>
+  mkdir -p "$STATE_DIR/empty"; _ef="$STATE_DIR/empty/$(mac_key "$1")"
+  now >> "$_ef"
+  _recent=$(awk -v t=$(( $(now) - EMPTY_WINDOW )) '$1 > t' "$_ef" | wc -l)
+  [ "$_recent" -ge "$EMPTY_LIMIT" ] && logmsg "alert grief: $1 opened $_recent empty coin windows in ${EMPTY_WINDOW}s"
+  return 0
+}
+clear_empty() { rm -f "$STATE_DIR/empty/$(mac_key "$1")"; }
+# cooldown_left <mac>: seconds this device must still wait (0 = may start)
+cooldown_left() {
+  _ef="$STATE_DIR/empty/$(mac_key "$1")"; [ -r "$_ef" ] || { echo 0; return; }
+  _n=$(now)
+  awk -v t=$(( _n - EMPTY_WINDOW )) -v lim="$EMPTY_LIMIT" -v cd="$EMPTY_COOLDOWN" -v n="$_n" '
+    $1 > t { c++; last = $1 } END { left = (c >= lim) ? last + cd - n : 0; print (left > 0 ? left : 0) }' "$_ef"
+}
+
+# other_window_open <sid>: a coin window of another customer is open on this router (its worker is alive). The box only
+# reports the slot as taken once that worker has armed it, so the router must not rely on the box's answer alone.
+# Sets BUSY_RETRY: about how many seconds until it is done.
+other_window_open() {
+  BUSY_RETRY=10
   for _d in "$STATE_DIR"/*/; do
     [ -r "$_d/state" ] || continue
-    case "$(sed -n 's/^STATE=//p' "$_d/state")" in
-      armed) worker_running "$_d" && return 0 ;;
-      starting)                                # the worker may not have written its pid yet: a fresh "starting" counts
-        worker_running "$_d" && return 0
-        [ $(( $(now) - $(date -r "$_d/state" +%s 2>/dev/null || echo 0) )) -lt 10 ] && return 0 ;;
+    case "$_d" in */"$1"/) continue ;; esac
+    _wst=$(sed -n 's/^STATE=//p' "$_d/state")
+    case "$_wst" in
+      armed) worker_running "$_d" || continue ;;
+      starting)
+        worker_running "$_d" || { [ $(( $(now) - $(date -r "$_d/state" +%s 2>/dev/null || echo 0) )) -lt 10 ] || continue; } ;;
+      *) continue ;;
     esac
+    _rem=$(sed -n 's/^REMAINING=//p' "$_d/state"); case "$_rem" in "" | *[!0-9]*) _rem=10 ;; esac
+    BUSY_RETRY=$(( _rem + 3 )); return 0
   done
   return 1
 }
@@ -1069,45 +1067,6 @@ stream_wait() {
     elif [ "$_quiet" -ge $(( 5 * TPS )) ]; then printf ': ping\n\n'; _quiet=0
     fi
     nap "$COIN_POLL_SECONDS"; _t=$((_t + 1)); _quiet=$((_quiet + 1))
-  done
-}
-
-stream_queue() {
-  mkdir -p "$STATE_DIR/queue"
-  _t=""
-  for _f in "$STATE_DIR/queue"/*_"$sid"; do [ -f "$_f" ] && _t="$_f"; done
-  [ -n "$_t" ] || _t="$STATE_DIR/queue/$(q_seq)_$sid"
-  _readyat=0; _last=""; _end=$(( $(now) + STREAM_MAX_SECONDS ))
-  : >> "$_t"
-  while :; do
-    _n=$(now)
-    [ "$_n" -lt "$_end" ] || { rm -f "$_t"; return; }
-    if [ ! -e "$_t" ]; then
-      read_state "$dir"
-      case "$STATE" in starting | armed) sse started '{}'; return ;; esac    # taken by /start: the customer is in
-      [ "$_readyat" = 0 ] || { sse expired '{}'; return; }
-      _t="$STATE_DIR/queue/$(q_seq)_$sid"                                   # dropped by mistake: back in line
-    fi
-    printf '%s %s\n' "$_n" "$_readyat" > "$_t"
-    q_prune "$_n"
-    _pos=$(q_pos "$sid")
-    if [ "$_readyat" = 0 ]; then
-      if [ "$_pos" = 1 ] && ! local_window_open; then
-        _st=$(call "$sid" status)
-        case "$(printf '%s' "$_st" | jget slot_free)" in
-          true) _readyat="$_n"; sse ready "{\"claim\":$QUEUE_CLAIM_SECONDS}"; _last=ready ;;
-          false) ;;
-          *) if [ "$(printf '%s' "$_st" | jget success)" = true ]; then       # an older box cannot say: page falls back
-               rm -f "$_t"; sse unsupported '{}'; return
-             fi ;;
-        esac
-      fi
-      if [ "$_last" != "$_pos" ] && [ "$_last" != ready ]; then _last="$_pos"; sse queue "{\"pos\":$_pos}"; fi
-    elif [ $(( _n - _readyat )) -ge "$QUEUE_CLAIM_SECONDS" ]; then
-      rm -f "$_t"; sse expired '{}'; return
-    fi
-    printf ': ping\n\n'                                                     # also notices a closed page
-    nap 0.3
   done
 }
 
@@ -1153,10 +1112,7 @@ do_stream() {
   [ -n "$_owner" ] && [ "$_owner" = "$_peer" ] || { reply "403 Forbidden" "$(err_json FORBIDDEN)"; return; }
   printf 'HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-store\r\nConnection: close\r\nAccess-Control-Allow-Origin: *\r\n\r\n'
   printf 'retry: 3000\n\n'
-  case "$(qget mode)" in
-    queue) stream_queue ;;
-    *) stream_wait ;;
-  esac
+  stream_wait
 }
 
 case "$1" in

@@ -10,7 +10,6 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 THEME, LISTENER = f"{ROOT}/theme_coinslot.sh", f"{ROOT}/coinslot-listener.sh"
 KEY = "test-gateway-key-123456"
-QUEUE_CLAIM = 5
 BOX_PORT, LISTEN_PORT, STREAM_PORT = 18090, 18099, 18110
 tmp = tempfile.mkdtemp()
 CTL, LOG, STATE, DATA, NDS = f"{tmp}/ctl.json", f"{tmp}/box.log", f"{tmp}/state", f"{tmp}/data", f"{tmp}/nds"
@@ -54,7 +53,7 @@ def calls():
 conf = f"{tmp}/coinslot.conf"
 open(conf, "w").write(
     f"GW_BOX=127.0.0.1:{BOX_PORT}\nGW_KEY={KEY}\nSTATE_DIR={STATE}\nDATA_DIR={DATA}\nNDSCTL={HERE}/fake_ndsctl.sh\n"
-    f"LISTEN_PORT={LISTEN_PORT}\nCOIN_FIRST_WAIT_SECONDS=4\nCOIN_IDLE_WAIT_SECONDS=3\nCOIN_MAX_SECONDS=12\nQUEUE_CLAIM_SECONDS=5\nSTREAM_PORT={STREAM_PORT}\nEVENT_PORT=0\n"
+    f"LISTEN_PORT={LISTEN_PORT}\nCOIN_FIRST_WAIT_SECONDS=4\nCOIN_IDLE_WAIT_SECONDS=3\nCOIN_MAX_SECONDS=12\nSTREAM_PORT={STREAM_PORT}\nEVENT_PORT=0\n"
     "FAIR_USE_KB=1000\nFAIR_THROTTLE_DOWN_KBPS=2000\nFAIR_THROTTLE_UP_KBPS=1000\nFAIR_THROTTLE_MINUTES=5\nFAIR_FULL_MINUTES=2\n")
 env = dict(os.environ, FAKEBOX_CTL=CTL, FAKEBOX_LOG=LOG, FAKEBOX_KEY=KEY, COINSLOT_CONF=conf, FAKE_NDS_DIR=NDS,
            NDSCTL=f"{HERE}/fake_ndsctl.sh")
@@ -203,6 +202,21 @@ def sid_of(hid):
     return hashlib.sha256(hid.encode()).hexdigest()[:32]
 
 
+def finish_all():
+    """Close every coin window that is still open (the router allows one at a time) and wait until none is."""
+    end = time.time() + 20
+    while time.time() < end:
+        busy = False
+        for d in glob.glob(f"{STATE}/*/state"):
+            sid = os.path.basename(os.path.dirname(d))
+            if re.search(r"STATE=(starting|armed)", open(d).read()):
+                busy = True
+                get(f"/finish?sid={sid}")
+        if not busy:
+            return
+        time.sleep(0.3)
+
+
 def get(path):
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{LISTEN_PORT}{path}", timeout=15) as r:
@@ -213,6 +227,7 @@ def get(path):
 
 def pay(hid, mac, plan, n_coins, coin_times=None):
     """Drive the customer pages: start, wait, finish. Returns the result page."""
+    finish_all()
     set_box(busy=False, coins_at=coin_times if coin_times is not None else [0.5] * n_coins)
     p = page(hid, mac, "start", plan)
     time.sleep(1.6)
@@ -421,9 +436,9 @@ try:
     set_box(busy=True, coins_at=[])
     p = page("hidE", MAC_C, "start", "hyper")
     for _ in range(40):  # the waiting page polls; once the window failed to arm it turns into the busy page
-        if "Coin slot is busy" in p: break
+        if "Coin slot in use" in p: break
         time.sleep(0.5); p = page("hidE", MAC_C, "wait", "hyper")
-    check("Coin slot is busy" in p and 'content="5; url=' in p and "coinact=start" in p, "busy page retries start")
+    check("Coin slot in use" in p and "Try again" in p and 'name="coinact" value="start"' in p and "refresh" not in p.lower(), f"busy page: refused, with a Try again button and no automatic retry: {re.findall('.{40}refresh.{40}', p, re.I)[:2]}")
     p = page("hidF", MAC_C, port=9)
     check("offline" in p.lower(), "listener down: friendly offline page")
 
@@ -498,44 +513,36 @@ try:
     c = _s.create_connection(("127.0.0.1", STREAM_PORT)); c.sendall(b"GET /status?sid=" + sS.encode() + b" HTTP/1.1\r\n\r\n"); time.sleep(0.5)
     check(b"404" in c.recv(4096), "stream port serves nothing but /stream"); c.close()
 
-    # a busy slot is pushed, never polled: waiting line in order, ready for the first only, nobody jumps the line
-    set_box(busy=True, coins_at=[])
-    q1, q2, q3 = sid_of("hidQ1"), sid_of("hidQ2"), sid_of("hidQ3")
-    for q in (q1, q2):
-        get(f"/start?sid={q}&plan=hyper&mac={MAC_A}")
-    time.sleep(1.5)
-    s1 = Stream(q1, "queue"); time.sleep(0.3)
-    s2 = Stream(q2, "queue")
-    ev = s1.wait("queue", 3); check(ev is not None and json.loads(ev[2])["pos"] == 1, "first in line is told position 1")
-    ev = s2.wait("queue", 3); check(ev is not None and json.loads(ev[2])["pos"] == 2, "second in line is told position 2")
-    time.sleep(1.0)
-    check(s1.wait("ready", 0.1) is None, "nobody is told ready while the slot is busy")
-    get(f"/start?sid={q3}&plan=hyper&mac={MAC_A}")
-    check(json.loads(get(f"/start?sid={q3}&plan=hyper&mac={MAC_A}")[1]).get("error") == "SLOT_BUSY", "a newcomer cannot jump the waiting line")
-    t_free = time.time()
-    set_box(busy=False, coins_at=[])
-    ev = s1.wait("ready", 5)
-    check(ev is not None and time.time() - t_free < 2.0, "first in line is told the moment the slot frees")
-    check(s2.wait("ready", 0.8) is None, "second in line is not told while the first holds the claim")
-    check(json.loads(get(f"/start?sid={q2}&plan=hyper&mac={MAC_A}")[1]).get("error") == "SLOT_BUSY", "second in line cannot start ahead of the first")
+    # one client per coin window: while somebody's window is open, everybody else is refused (no waiting line)
+    finish_all()
     set_box(busy=False, coins_at=[0.5])
+    q1, q2, q3 = sid_of("hidQ1"), sid_of("hidQ2"), sid_of("hidQ3")
     r = json.loads(get(f"/start?sid={q1}&plan=hyper&mac={MAC_A}")[1])
-    check(r.get("state") in ("starting", "armed"), "the customer who was told ready can start")
-    check(s1.wait("started", 3) is not None, "their stream ends with started")
-    # q2 is now first, the slot is held by q1: no ready until q1 finishes
-    check(s2.wait("ready", 1.5) is None, "next in line waits while the slot is in use")
+    check(r.get("state") in ("starting", "armed"), f"the first customer gets the coin slot: {r} {[(d, open(d + '/state').read()) for d in glob.glob(STATE + '/*/') if os.path.exists(d + 'state')]}")
+    for q in (q2, q3):
+        r = json.loads(get(f"/start?sid={q}&plan=hyper&mac={MAC_B}")[1])
+        check(r.get("error") == "SLOT_BUSY" and 1 <= r.get("retry", 0) <= 130, f"everybody else is refused with a retry hint: {r}")
+    check(json.loads(get(f"/status?sid={q2}")[1]).get("state") == "none", "a refused customer holds nothing")
+    check(not glob.glob(f"{STATE}/queue/*"), "there is no waiting line")
+    r = json.loads(get(f"/start?sid={q1}&plan=hyper&mac={MAC_A}")[1])
+    check(r.get("state") in ("starting", "armed", "done"), "the customer who holds the slot can ask again (same window)")
     get(f"/finish?sid={q1}")
-    ev = s2.wait("ready", 8); check(ev is not None, "next in line is told when the previous customer is done")
-    s1.close()
-    # a ready customer who does not tap loses the claim
     for _ in range(40):
-        st = json.loads(get(f"/status?sid={q1}")[1])["state"]
-        if st == "done": break
+        if json.loads(get(f"/status?sid={q1}")[1])["state"] == "done":
+            break
         time.sleep(0.25)
-    check(s2.wait("expired", QUEUE_CLAIM + 3) is not None, "an unclaimed ready slot is released after the claim window")
-    s2.close()
-    time.sleep(0.5)
-    check(not glob.glob(f"{STATE}/queue/*"), "the waiting line is empty afterwards")
+    r = json.loads(get(f"/start?sid={q2}&plan=hyper&mac={MAC_B}")[1])
+    check(r.get("state") in ("starting", "armed"), "the next customer can start once the window is over")
+    get(f"/finish?sid={q2}")
+    for _ in range(40):
+        if json.loads(get(f"/status?sid={q2}")[1])["state"] == "done":
+            break
+        time.sleep(0.25)
+    # the box itself busy (a phone holds the slot): refused the same way
+    set_box(busy=True, coins_at=[])
+    get(f"/start?sid={q3}&plan=hyper&mac={MAC_B}"); time.sleep(1.5)
+    check(json.loads(get(f"/status?sid={q3}")[1]).get("error") == "SLOT_BUSY", "a slot held by a phone is refused too")
+    set_box(busy=False, coins_at=[])
 
     # ---- browser: the waiting page updates itself and plays a coin sound (headless Chrome; skipped if none) ---------------
     import threading
@@ -544,6 +551,7 @@ try:
     chrome = os.environ.get("CHROME") or next((c for c in [shutil.which(x) for x in ("google-chrome", "chromium", "chromium-browser")] + glob.glob("/opt/pw-browsers/chromium-*/chrome-linux/chrome") if c), None)
     def browser_run(stream_ok, coins, driver=None):
         """Tap Insert Coin in headless Chrome against the real theme; returns (dumped DOM, request counts)."""
+        finish_all()
         nds_client("aa:bb:cc:00:00:09")
         set_box(busy=False, coins_at=coins)
         open(ARP, "w").write(f"IP address HW type Flags HW address Mask Device\n127.0.0.1 0x1 0x2 {'aa:bb:cc:00:00:09' if stream_ok else 'aa:bb:cc:99:99:99'} * lo\n")   # another MAC: the stream refuses, the page falls back to polling

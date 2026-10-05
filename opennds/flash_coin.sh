@@ -41,7 +41,7 @@ header() {
 	refreshtag=""
 	if [ -n "$REFRESH" ]; then
 		refreshtag="<meta http-equiv=\"refresh\" content=\"${REFRESH%% *}; url=/opennds_preauth/?fas=$(fas_urlsafe)&coinact=${REFRESH##* }&coinplan=$coinplan&coinforfeit=$coinforfeit\">"
-		case "$PAGE" in wait | busy) refreshtag="<noscript>$refreshtag</noscript>" ;; esac   # with scripts on, these pages update themselves
+		case "$PAGE" in wait) refreshtag="<noscript>$refreshtag</noscript>" ;; esac   # with scripts on, these pages update themselves
 	fi
 	cat << HTML
 <!DOCTYPE html>
@@ -162,7 +162,7 @@ choose_page() {
 			if [ "$(printf '%s' "$answer" | jget state)" = "error" ]; then
 				err=$(printf '%s' "$answer" | jget error)
 				case "$err" in
-					SLOT_BUSY) PAGE="busy"; REFRESH="5 start" ;;
+					SLOT_BUSY | COOLDOWN) PAGE="busy"; busyretry=$(printf '%s' "$answer" | jget retry) ;;
 					*) PAGE="error" ;;
 				esac
 				return
@@ -198,7 +198,7 @@ choose_wait_page() {
 		error)
 			err=$(printf '%s' "$cst" | jget error)
 			# The coin slot was in use when the window tried to arm: the busy page tells the customer when it is free.
-			if [ "$err" = "SLOT_BUSY" ]; then PAGE="busy"; REFRESH="5 start"; else PAGE="error"; fi ;;
+			if [ "$err" = "SLOT_BUSY" ]; then PAGE="busy"; busyretry=10; else PAGE="error"; fi ;;
 		*) PAGE="welcome" ;;
 	esac
 }
@@ -291,10 +291,13 @@ function legacy(fq){var q=new URLSearchParams(new FormData(f));q.set("coinplan",
 function portal(){location.href=f.action+"?fas="+encodeURIComponent(f.elements.fas.value)}
 function stop(){if(es){es.close();es=null}if(pt){clearInterval(pt);pt=null}if(tk){clearInterval(tk);tk=null}}
 function bar(){put("lleft",left+"s left · the timer restarts with every coin");var b=el("lbar");if(b)b.style.width=Math.max(0,Math.min(100,100*left/tot))+"%"}
+function busy(j,cool){stop();show("lcd",0);show("ldone",0);
+put("lsub",cool?"Too many empty tries \u00b7 Sobrang daming walang barya":"Coin slot in use \u00b7 Ginagamit ang coin slot");put("lpes","");
+put("lmin",(cool?"Please wait about ":"Another customer is paying. Try again in about ")+(+j.retry||15)+" seconds \u00b7 Subukan ulit mamaya.");show("lagain",1)}
 function err(e){stop();show("lcd",0);show("ldone",0);put("lsub","Coin payment is not available right now");put("lpes","");put("lmin","Please try again or ask the attendant ("+e+").");show("lagain",1)}
 function upd(j){
 if(fin)return;
-if(j.state==="error"&&!j.online){if(j.error==="SLOT_BUSY")return legacy(false);return err(j.error)}
+if(j.state==="error"&&!j.online){if(j.error==="SLOT_BUSY")return busy(j,false);return err(j.error)}
 var p=+j.pulses||0;
 if(j.state==="armed"){
 if(!armed){armed=true;put("lsub",pn(plan)+" · Insert coin(s) now · Maglagay ng barya");show("lcd",1);
@@ -324,6 +327,7 @@ show("live",1);show("lagain",0);put("lsub",pn(plan)+" · Getting the coin slot r
 put("lmin","Please wait. Do not insert coins yet · huwag pa maglagay ng barya.");
 fetch(base+"/api/start?sid="+SID+"&plan="+plan+(fq?"&forfeit=1":""),{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){
 if(j.state==="error"&&j.error==="PLAN_MISMATCH")return mismatch(j);
+if(j.state==="error"&&(j.error==="SLOT_BUSY"||j.error==="COOLDOWN"))return busy(j,j.error==="COOLDOWN");
 if(j.state==="error"||j.error)return legacy(fq);
 upd(j);watch()}).catch(function(){legacy(fq)})}
 function mismatch(j){var o=pn(j.plan),w=pn(plan);
@@ -421,34 +425,15 @@ page_counting() {
 }
 
 page_busy() {
-	_fq=""; [ "$coinforfeit" = "yes" ] && _fq="<input type=\"hidden\" name=\"coinforfeit\" value=\"yes\">"
+	if [ "$err" = COOLDOWN ]; then
+		echo "<div class=\"msg\"><b>Too many empty tries &middot; Sobrang daming walang barya</b><br>Please wait about ${busyretry:-60} seconds before starting again &middot; Maghintay muna ng ${busyretry:-60} segundo.</div>"
+		action_button "Try again" start
+		return
+	fi
 	cat << HTML
-<div class="msg"><b id="bzh">Coin slot is busy</b><br><span id="bzt">Someone else is paying. Keep this page open: it tells you the moment the slot is free &middot; May ibang nagbabayad, sasabihan ka namin kapag libre na.</span></div>
-<div id="rdy" style="display:none"><form action="/opennds_preauth/" method="get"><input type="hidden" name="fas" value="$fas">
-<input type="hidden" name="coinact" value="start"><input type="hidden" name="coinplan" value="$coinplan">$_fq
-<button class="btn" type="submit">Start &middot; insert coin(s) now</button></form></div>
-<script>
-(function(){
-var sp=${infostream:-0},url="/opennds_preauth/?fas=$(fas_urlsafe)&coinact=start&coinplan=$coinplan&coinforfeit=$coinforfeit",
-h=document.getElementById("bzh"),t=document.getElementById("bzt"),r=document.getElementById("rdy"),got=false,es=null,tick=null;
-function again(){setTimeout(function(){location.replace(url)},5000)}
-if(!window.EventSource||!sp){again();return}
-function done(){if(es)es.close();if(tick)clearInterval(tick)}
-try{es=new EventSource("http://"+location.hostname+":"+sp+"/stream?sid=$sid&mode=queue")}catch(e){again();return}
-es.addEventListener("queue",function(m){got=true;var p=+JSON.parse(m.data).pos||0;
-t.textContent=p>1?"You are number "+p+" in line. Keep this page open \u00b7 Pang-"+p+" ka sa pila.":"You are next. Keep this page open \u00b7 Ikaw na ang susunod."});
-es.addEventListener("ready",function(m){got=true;var c=+JSON.parse(m.data).claim||30;h.textContent="Coin slot is ready!";
-t.textContent="Tap Start within "+c+" seconds \u00b7 Pindutin ang Start.";r.style.display="block";document.title="Coin slot ready";
-try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(e){}
-try{window.speechSynthesis&&speechSynthesis.speak(new SpeechSynthesisUtterance("The coin slot is ready. Tap start."))}catch(e){}
-tick=setInterval(function(){c--;if(c>0)t.textContent="Tap Start within "+c+" seconds \u00b7 Pindutin ang Start."},1000)});
-es.addEventListener("expired",function(){done();r.style.display="none";h.textContent="Your turn passed";t.textContent="The slot was held for you but not used. Tap below to get back in line.";
-r.innerHTML='<a class="btn" style="text-align:center;text-decoration:none" href="'+url+'">Try again</a>';r.style.display="block"});
-es.addEventListener("started",function(){done();location.replace(url.replace("coinact=start","coinact=wait"))});
-es.addEventListener("unsupported",function(){done();again()});
-es.onerror=function(){if(!got){done();again()}}})();
-</script>
+<div class="msg"><b>Coin slot in use &middot; Ginagamit ang coin slot</b><br>Another customer is paying right now. Please try again in about ${busyretry:-15} seconds &middot; Subukan ulit pagkalipas ng ${busyretry:-15} segundo.</div>
 HTML
+	action_button "Try again" start
 }
 
 page_mismatch() {

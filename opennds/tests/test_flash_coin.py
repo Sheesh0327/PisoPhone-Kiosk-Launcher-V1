@@ -70,7 +70,7 @@ def revenue():
 conf = f"{tmp}/coinslot.conf"
 open(conf, "w").write(
     f"GW_BOX=127.0.0.1:{BOX_PORT}\nGW_KEY={KEY}\nSTATE_DIR={STATE}\nDATA_DIR={DATA}\nNDSCTL={HERE}/fake_ndsctl.sh\n"
-    f"LISTEN_PORT={LISTEN_PORT}\nCOIN_FIRST_WAIT_SECONDS=4\nCOIN_IDLE_WAIT_SECONDS=3\nCOIN_MAX_SECONDS=12\nQUEUE_CLAIM_SECONDS=5\nSTREAM_PORT={STREAM_PORT}\nEVENT_PORT={EVENT_PORT}\n"
+    f"LISTEN_PORT={LISTEN_PORT}\nCOIN_FIRST_WAIT_SECONDS=4\nCOIN_IDLE_WAIT_SECONDS=3\nCOIN_MAX_SECONDS=12\nSTREAM_PORT={STREAM_PORT}\nEVENT_PORT={EVENT_PORT}\n"
     "FAIR_USE_KB=1000\nFAIR_THROTTLE_DOWN_KBPS=2000\nFAIR_THROTTLE_UP_KBPS=1000\nFAIR_THROTTLE_MINUTES=5\nFAIR_FULL_MINUTES=2\n")
 os.makedirs(f"{tmp}/bin")
 os.symlink(f"{HERE}/fake_ndsctl.sh", f"{tmp}/bin/ndsctl")
@@ -451,6 +451,29 @@ try:
     r = status_page("err511", "10.9.9.8", LIBOPENNDS=f"{tmp}/bin/libopennds.sh")
     check("CONTINUE TO LOGIN" in r.stdout, "login-needed page")
     check(status_page("nonsense", "10.9.9.9").returncode != 0, "bad input is refused")
+
+    # ---- griefing: devices that keep opening empty coin windows are put on a cooldown -------------------------------------------
+    GM, GOOD = "aa:bb:cc:00:00:55", "aa:bb:cc:00:00:56"
+    set_box(busy=False, coins_at=[])
+    for i in (1, 2):
+        sg = sid_of(f"hidG{i}")
+        get(f"/start?sid={sg}&plan=hyper&mac={GM}"); time.sleep(1.2)
+        get(f"/finish?sid={sg}")
+        check(wait_until(lambda: json.loads(get(f"/status?sid={sg}")[1]).get("state") == "done", 15), f"empty window {i} closes")
+    r = json.loads(get(f"/start?sid={sid_of('hidG3')}&plan=hyper&mac={GM}")[1])
+    check(r.get("error") == "COOLDOWN" and 1 <= r.get("retry", 0) <= 120, f"two empty windows in a row: a cooldown, with how long: {r}")
+    p = page("hidG3", GM, "start", "hyper")
+    check("Too many empty tries" in p and "Try again" in p, "the portal explains the cooldown")
+    r = json.loads(get(f"/start?sid={sid_of('hidG4')}&plan=hyper&mac={GOOD}")[1])
+    check(r.get("state") in ("starting", "armed"), f"another device is not affected: {r}")
+    get(f"/finish?sid={sid_of('hidG4')}")
+    wait_until(lambda: json.loads(get(f"/status?sid={sid_of('hidG4')}")[1]).get("state") == "done", 15)
+    set_box(busy=False, coins_at=[0.4])        # a paid window clears a device's empty count
+    sg = sid_of("hidG5"); GP = "aa:bb:cc:00:00:57"
+    get(f"/start?sid={sid_of('hidG6')}&plan=hyper&mac={GP}"); time.sleep(1.2); get(f"/finish?sid={sid_of('hidG6')}")
+    wait_until(lambda: json.loads(get(f"/status?sid={sid_of('hidG6')}")[1]).get("state") == "done", 15)
+    check(not os.path.exists(f"{STATE}/empty/{GP.replace(':', '')}"), "a paid window leaves no empty-window record")
+    check(os.path.exists(f"{STATE}/empty/{GM.replace(':', '')}"), "the empty windows were recorded for the device that opened them")
 
     # ---- the live page in a real browser (headless Chromium): one tap, online on the first coin, no reloads ------------------
     try:
