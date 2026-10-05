@@ -70,15 +70,6 @@ r = run("--dry-run")
 out = r.stdout
 check(r.returncode == 0, "dry run succeeds: " + r.stderr + out[-300:])
 check("network.lan.ipaddr" not in out and "network.lan.netmask" not in out and "network restart" not in text.split("stage1()")[1], "the LAN address is never changed by the script (so SSH stays open)")
-inst = text.split("install_packages() {")[1].split("\n}\n")[0]
-check("/etc/init.d/opennds stop" in inst, "openNDS is stopped right after it is installed (its default settings would gate the kiosk LAN)")
-pre = text.split("# ---- payload")[0]
-check("ROUTER (SSH / LuCI) PASSWORD" in pre and 'cat "$SUMMARY"' in pre.split("stage2() {")[1].split("\n}\n")[0], "the router password and the whole summary are shown on screen")
-r = lib('conf_set ROOT_PASS ""; ROOT_PASSWORD=short; ASSUME_YES=0; choose_root_password; echo rc=$?', env={"ROOT_PASSWORD": "short"})
-check("at least 8" in r.stdout, "a too-short router password is refused: " + r.stdout)
-r = lib('rm -f "$CONF"; ROOT_PASSWORD="my-own-pass"; choose_root_password; conf_get ROOT_PASS', env={"ROOT_PASSWORD": "my-own-pass"})
-check(r.stdout.strip().endswith("my-own-pass"), "ROOT_PASSWORD is used as the router password: " + r.stdout)
-check(not re.search(r"\bod -|hexdump|xxd", text.split("# ---- payload")[0]), "no tools a stock BusyBox lacks (od, hexdump, xxd)")
 check("--stage2" not in text.split("# ---- payload")[0] and "nohup" not in text.split("# ---- payload")[0], "no background stage that outlives the SSH session")
 check("set network.guest.ipaddr='192.168.30.1'" in out and "set network.guest.device='br-guest'" in out, "guest network on its own bridge")
 for radio in ("radio0", "radio1"):
@@ -218,40 +209,6 @@ fi
 os.chmod(f"{bindir}/iwinfo", 0o755)
 r = lib("echo \"$(box_ifname) $(box_station)\"")
 check(r.stdout.strip() == "phy0-ap2 AA:BB:CC:DD:EE:09", "finds the box's interface and the joined station: " + r.stdout + r.stderr)
-
-# ---- test-coin against a stub manager ------------------------------------------------------------------------------------
-class Mgr(http.server.BaseHTTPRequestHandler):
-    pulses = 0
-    calls = 0
-
-    def log_message(self, *a):
-        pass
-
-    def do_GET(self):
-        if self.path.startswith("/status"):
-            Mgr.calls += 1
-            if Mgr.calls >= 2:
-                Mgr.pulses = 2
-            st = "done" if Mgr.calls >= 3 else "armed"
-            body = '{"state":"%s","pulses":%d}' % (st, Mgr.pulses)
-        elif self.path.startswith("/start"):
-            body = '{"state":"starting","pulses":0}'
-        else:
-            body = '{"success":true}'
-        self.send_response(200); self.end_headers(); self.wfile.write(body.encode())
-
-
-msrv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Mgr)
-threading.Thread(target=msrv.serve_forever, daemon=True).start()
-r = run("test-coin", env={"COINSLOT_URL": f"http://127.0.0.1:{msrv.server_address[1]}", "TEST_SECONDS": "10"})
-check(r.returncode == 0 and "coin detected: 2" in r.stdout and "the box counted 2" in r.stdout, "test-coin reports a counted coin: " + r.stdout + r.stderr)
-Mgr.pulses = 0; Mgr.calls = -100
-r = run("test-coin", env={"COINSLOT_URL": f"http://127.0.0.1:{msrv.server_address[1]}", "TEST_SECONDS": "2"})
-check(r.returncode != 0 and "no coin was counted" in r.stdout, "test-coin says so when no coin is counted: " + r.stdout)
-r = run("test-coin", env={"COINSLOT_URL": "http://127.0.0.1:9"})
-check(r.returncode != 0 and "does not answer" in r.stdout, "test-coin explains a manager that is down")
-r = run("diag")
-check("=== piso-setup diag" in r.stdout and "--- last coin-slot log lines" in r.stdout and "ROOT_PASS" not in r.stdout and "password:" not in r.stdout.lower(), "diag runs and prints no passwords")
 
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)

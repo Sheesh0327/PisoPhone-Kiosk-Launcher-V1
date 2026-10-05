@@ -24,16 +24,9 @@ Keep it simple: one roll file, one lock, one writer (the theme), one small manag
   the first 11 fields are your voucher-roll layout). It is written only when somebody **pays, pauses or resumes**, never on a
   page view, so flash wear is a few writes a day. Change the place with `FLASH_ROLL=/mnt/sda1/ndslog/vouchers.txt` in
   `/etc/flash_coin.conf` (a USB stick is kinder to the flash on a busy shop). `revenue.csv` is kept next to it.
-* **Online on the first coin, no Connect tap:** the box pushes each coin to the router the moment it is counted (signed UDP
-  "coin events", firmware 3.2.0+; older firmware still works, the router then asks it every 0.1 s). The router puts the
-  device online at the first coin, keeps counting while the slot is open (15 s after each coin), and when the window
-  closes prices the **window's total** once at the best rate (P17 = 10 + 5 + 1 + 1), records it on the roll, re-grants
-  once, and only then acknowledges the coins on the box. Closing the page or a sleeping phone loses nothing.
-* **One live page:** after the first page, Insert Coin, the coins, "You're online" and the final time and code all update
-  in place through the router's small coin API (port 8100), with no page reloads. Without scripts, or if that port is
-  blocked, the regular pages are used instead.
-* **Safe payments:** every window has a one-time id (`wid`). Writing the same window again (first coin, then close)
-  replaces its share; a closed window is never credited twice, and revenue is logged once per window.
+* **Safe payments:** the manager reports each finished coin window with a one-time window id (`wid`). The theme records the
+  payment under a lock, then authenticates, then tells the manager the coins are used (`/ack`). A double tap, a reload or a
+  second Connect can never credit the same window twice; a failed authentication leaves the coins waiting for a retry.
 * **Top-up:** coins on the same plan add to the time left. The other plan needs the customer's agreement (the time left on
   the old plan is forfeited when they pay).
 * **Automatic reconnect:** after a reboot or power cut openNDS forgets its sessions; the first page a device opens reconnects it
@@ -83,8 +76,7 @@ curl http://127.0.0.1:8099/info          # contains "fair_kb" and "fair_down" (t
 /etc/init.d/flash_coin status            # running
 ls -l /usr/lib/opennds/flash_coin*.sh    # four files, executable
 ```
-First test: join the guest Wi-Fi with a phone, pick a plan, Insert Coin, drop a coin: the phone is online about half a
-second later. `piso-setup diag` shows the timings of the last coins. Then
+First test: join the guest Wi-Fi with a phone, pick a plan, Insert Coin, drop a coin, Connect. Then
 `cat /etc/coinslot.d/vouchers.txt` shows the new line and `logread -e opennds -e coinslot` the grant.
 
 Reboot test: with a paid phone connected, `reboot` the router. When it is back, open any web page on the phone: it reconnects by
@@ -106,7 +98,7 @@ visible on the other.
 * **"Coin payment is offline"**: the manager is not running (`/etc/init.d/flash_coin start`), or it is an old version
   (no `/verify`): copy the current `coinslot-listener.sh`.
 * **A device keeps asking for coins although it paid**: `grep <mac> /etc/coinslot.d/vouchers.txt`; no line means the payment was
-  never recorded (the coins are still on the box until acknowledged: open the portal again), an expired line is replaced by the
+  never recorded (the coins are still on the manager: tap Connect again within the window), an expired line is replaced by the
   next payment.
 * **Roll busy**: another request holds `/tmp/flash_coin.lock` (it clears itself after 10 seconds).
 * **Edit by hand**: stop nothing; edit with care while nobody is paying, or `rm -rf /tmp/flash_coin.lock` first if a lock is stuck.

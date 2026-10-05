@@ -20,7 +20,7 @@ valid for one request and 30 seconds. Sign each request:
 
 | call | purpose | extra params | answer |
 |---|---|---|---|
-| `POST /api/gateway/arm` | reserve the slot and power the coin acceptor | `duration` seconds (5-120, default 60); optional `wid` + `evport` (coin events, below) | status object |
+| `POST /api/gateway/arm` | reserve the slot and power the coin acceptor | `duration` seconds (5-120, default 60) | status object |
 | `GET /api/gateway/status` | state and coins received so far | | status object |
 | `POST /api/gateway/release` | stop accepting (in-flight coins are still counted) | | status object |
 | `POST /api/gateway/ack` | the coins were used; remove them from the box | | `{"acknowledged_pulses": n}` |
@@ -31,20 +31,6 @@ Status object: `{"success":true,"session":"..","state":"armed|draining|idle","ar
 
 Errors: `403 AUTH_FAILED` (bad signature, used or expired nonce), `409 SLOT_BUSY` (a phone, controller or
 another gateway session holds the slot), `503 STORAGE_UNAVAILABLE`, `503 GATEWAY_DISABLED`, `400 INVALID_SESSION`.
-
-## Coin events (firmware 3.2.0 and later)
-So the router does not have to poll, the box can push every change of a window. Add `wid=<window id, lower-case hex,
-up to 40>` and `evport=<udp port>` to `arm`; the status object then carries `"events":true`, and the box sends one UDP
-line (twice, against Wi-Fi loss) to the address the arm request came from, at that port:
-
-    gw1ev:<session>:<wid>:<seq>:<type>:<pulses>:<sig>        type = ready | coin | end
-    sig = HMAC-SHA256(key, "gw1ev:<session>:<wid>:<seq>:<type>:<pulses>")
-
-`ready` once the acceptor has settled, `coin` the moment a coin is counted (about 0.3 s after its last pulse), `end`
-after the slot was released and drained. `pulses` is the window's running total, never a delta, so a lost or repeated
-line does no harm; `seq` only orders them. The `wid` ties a line to one window: an old line cannot be replayed into a
-later window. Re-arming the same window (same `wid`) keeps its sequence. `status`, `release` and `ack` stay the
-authority for acknowledging coins; the router keeps one signed `status` a second as a safety net.
 
 ## Typical flow for one customer
 1. `arm` with the client's id, show the customer "insert coin".
