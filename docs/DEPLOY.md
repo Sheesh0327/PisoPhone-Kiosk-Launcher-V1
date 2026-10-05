@@ -9,7 +9,7 @@
    3. Provision a phone with the dashboard's **Install & Provision** link, then reboot the phone: the box must still be reachable.
    4. Insert coins: time is added once per coin. Cut the box's power mid-session: no coin lost or doubled.
    5. Drop the Wi-Fi between a coin and its acknowledgement: the box retries and the phone credits it once.
-   6. Router (`opennds/INSTRUCTIONS-SHELL.md`), only after the above.
+   6. Router (`setup/README.md`), only after the above.
    7. Factory reset from the dashboard: license slots and lifetime revenue survive; Wi-Fi and admin password reset to the default (coins stay blocked until a new password is chosen).
 3. If payments stop after a phone reboot, collect `adb logcat -s KioskSecurity`. The phone's box secret and PIN are
    Keystore-wrapped with a plain fallback; if the Keystore key is lost the phone reads them as unset: re-provision it.
@@ -20,7 +20,7 @@ Keys are not needed for this test (see `docs/KEYS.md`); boxes then still accept 
 
 ## CI
 `quality.yml` runs on every push: ktlint, clang-format, firmware host tests, a real PlatformIO build of all four firmware
-environments, security-rule and vendored-file checks, and the OpenNDS/router tests. `build-apk.yml` runs the Android unit
+environments, security-rule and vendored-file checks, and the router and portal tests. `build-apk.yml` runs the Android unit
 tests, builds and signs the release APK and publishes it to the branch's channel (`main` = production, other branches =
 `-dev`). Dependabot opens update PRs (majors and Kotlin-toolchain minors are ignored on purpose).
 

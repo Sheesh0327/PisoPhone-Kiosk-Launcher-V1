@@ -73,7 +73,7 @@ adb shell am broadcast -a com.pisophone.kiosk.CONFIGURE_ESP32 -n com.pisophone.k
 | **PisoCoinBox** (hidden) | the ESP32 only | 2.4 GHz | After pairing, only the box's MAC address may join. The box is always `10.0.0.10`. |
 | **PisoWiFi** | customers | 2.4 + 5 GHz | Open, behind the openNDS login and coin payment. Rename: `piso-setup wifi-name "My Shop"`. Separate network `192.168.30.0/24`. |
 
-The script also installs the packages, the portal and the coin-slot manager, sets the box's admin password and gateway key through its API,
+The script also installs the packages, `pisoportal` (the resident coin portal: openNDS FAS mode, one WebSocket per customer), sets the box's admin password and gateway key through its API,
 sets a root password, and ends with a health check. The router's wired LAN ports stay on the same network as PisoKiosk (administration).
 
 ## Day to day
@@ -100,7 +100,7 @@ The setup asks you to choose the router password (or shows a generated one and a
 | `piso-setup test-coin` | arms the coin slot and waits for a coin, with no customer portal involved. It says whether the box counts the coin. |
 | `piso-setup reconcile` | compares the box's own lifetime coin count with the router's revenue ledger and checks that nobody edited the ledger (needs firmware 3.2.1). |
 | `piso-setup telegram` | connects a Telegram bot: alerts (router restarted, box offline, revenue mismatch, a device abusing the coin slot, daily report) and remote commands `/status /report /reconcile /diag /restart /reboot`, answered only to your chat. Create the bot with @BotFather first. Optional: put a healthchecks.io URL in `/etc/piso-monitor.conf` (`HEALTHCHECK_URL`) so you are told when the whole router goes silent. |
-| `./piso-setup.sh update` | **updates only the software** on an installed router: installs the portal, coin manager and Telegram monitor files from the new file and restarts them. It changes no Wi-Fi or network settings, passwords, pairing or customer data. Copy the new `piso-setup.sh` to the router and run it from there (running the installed `piso-setup update` would reinstall the old copy, so it refuses). A coin window open at that moment is picked up by crash recovery. |
+| `./piso-setup.sh update` | **updates only the software** on an installed router: installs the `pisoportal` program and the Telegram monitor files from the new file and restarts them. It changes no Wi-Fi or network settings, passwords, pairing or customer data. Copy the new `piso-setup.sh` to the router and run it from there (running the installed `piso-setup update` would reinstall the old copy, so it refuses). A coin window open at that moment is picked up by crash recovery. |
 | `piso-setup handout` | writes the printable setup sheet `/root/piso-handout.html` again. |
 | `piso-setup rotate-box-wifi` | gives the coin box a new random Wi-Fi password for the hidden box network (done automatically by the setup). |
 | `piso-setup lock-admin [MAC...]` | opt-in: only the named computers (default: the one you are on) may reach the router's SSH and web pages (ports 22, 80, 443); the rental phones can no longer try them. It **undoes itself after 2 minutes unless you open a new SSH session to check, then type CONFIRM** (or run `piso-setup lock-admin-confirm`), so it cannot lock you out. `piso-setup unlock-admin` removes it. |
@@ -114,5 +114,5 @@ The setup asks you to choose the router password (or shows a generated one and a
 
 ## For developers
 `setup/piso-setup.sh` is generated from `setup/piso-setup.sh.in` plus the portal files: after changing any of them run
-`python3 tools/build_piso_setup.py` (CI fails if the committed file is out of date). Tests: `python3 opennds/tests/test_setup.py`.
+`python3 tools/build_piso_setup.py` (CI fails if the committed file is out of date). Tests: `python3 router/tests/test_setup.py`.
 `./piso-setup.sh --dry-run` prints the router settings without applying anything.

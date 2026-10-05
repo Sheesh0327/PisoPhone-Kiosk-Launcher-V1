@@ -4,11 +4,11 @@
 *.apk binary
 
 # Router scripts must keep Unix line endings: a carriage return in a shebang line or a script breaks it on OpenWrt.
-opennds/*.sh text eol=lf
-opennds/*.init text eol=lf
-opennds/*.conf text eol=lf
+router/*.sh text eol=lf
+router/*.init text eol=lf
+router/*.conf text eol=lf
 scripts/*.sh text eol=lf
-opennds/tests/*.sh text eol=lf
+router/tests/*.sh text eol=lf
 
 # Router scripts must keep LF line endings or the router cannot run them (CRLF gives ": not found" errors)
 *.sh text eol=lf

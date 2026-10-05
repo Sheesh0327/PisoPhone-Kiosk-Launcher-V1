@@ -10,6 +10,11 @@ on:
       - 'tools/rust-probe/Cargo.*'
       - 'tools/pisoportal/src/**'
       - 'tools/pisoportal/Cargo.*'
+      - 'tools/pisoportal/src/page.html'
+      - 'router/*.init'
+      - 'router/piso_monitor.sh'
+      - 'setup/piso-setup.sh.in'
+      - 'tools/build_piso_setup.py'
       - '.github/workflows/rust-router-probe.yml'
 
 permissions:
@@ -84,5 +89,6 @@ jobs:
           cp dist/coinslot-probe-mipsel dist/coinslot-probe-mipsel.sha256 tools/rust-probe/bin/
           mkdir -p tools/pisoportal/bin
           cp dist/pisoportal-mipsel dist/pisoportal-mipsel.sha256 tools/pisoportal/bin/
-          git add tools/rust-probe/bin tools/pisoportal/bin
+          python3 tools/build_piso_setup.py
+          git add tools/rust-probe/bin tools/pisoportal/bin setup/piso-setup.sh
           git diff --cached --quiet || { git commit -m "ci: built router programs (mipsel_24kc)"; git pull --rebase -q origin "$GITHUB_REF_NAME" && git push; }

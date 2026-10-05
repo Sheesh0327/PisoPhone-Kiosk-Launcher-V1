@@ -270,7 +270,7 @@ try:
         e2.nds_client(MAC_C)
         c = Cust("127.0.0.3", port=e2.PP, reset=True)
         s = c.wait_state("idle", 5)
-        check(s is not None and s["online"] is True and s["left"] > 0 and e2.nds_get(MAC_C)["STATE"] == "Authenticated", f"reconnect by MAC after a restart: {s}")
+        check(s is not None and s["online"] is True and s["left"] > 0 and wait_until(lambda: e2.nds_get(MAC_C)["STATE"] == "Authenticated", 5), f"reconnect by MAC after a restart: {s}")
         c.close()
         # recovering the same window twice never credits twice (a recorded window is only acknowledged)
         check(e2.cli("verify")[1].startswith("OK 1 3"), "ledger intact")

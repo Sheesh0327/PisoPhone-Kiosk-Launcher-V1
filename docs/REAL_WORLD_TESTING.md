@@ -84,11 +84,11 @@ Collect logs as you go: box serial output at 115200 baud (`pio device monitor`),
 - [ ] **K4** A signed firmware update installs from the dashboard; an unsigned or older one is refused
 - [ ] **K5** Phone updates itself from a newer APK (checksum and signature verified)
 
-## 7. Router (OpenNDS), only after sections 1–4 pass
+## 7. Router (openNDS + pisoportal), only after sections 1–4 pass
 *pass 3*
-- [ ] **R1** Package installs (`opkg install`), service starts, `coinslot-listener.sh box` says the box answers
+- [ ] **R1** `piso-setup` (or `update`) finishes, `pisoportal` is running, `pisoportal box` says the box answers, `pisoportal --selftest`-style `pisoportal selftest` prints all true
 - [ ] **R2** Wi-Fi customer sees the portal; Insert Coin starts a coin window; coins grant the right minutes (HyperSpeed and Endurance)
-- [ ] **R3** Layout A: change the box's IP; the listener finds it again within ~30 s (set `GW_BOX_MAC`)
+- [ ] **R3** Layout A: change the box's IP; the portal finds it again within ~30 s (set `GW_BOX_MAC`)
 - [ ] **R4** Layout B: a guest-network device cannot ping the box or the phones; the portal still takes coins
 - [ ] **R5** Voucher code restores time on another device; pause/resume works for Endurance
 

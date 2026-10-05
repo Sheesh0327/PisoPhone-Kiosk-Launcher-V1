@@ -202,7 +202,8 @@ impl Core {
         let now = now_secs();
         let _g = self.files.lock().unwrap();
         let Some(s) = roll::session(&self.cfg.roll_path(), now, mac) else { return false };
-        if self.nds.state(mac) == "Authenticated" {
+        let cur = self.nds.state(mac);
+        if cur == "Authenticated" {
             return true;
         }
         let ok = self.nds.grant(mac, s.minutes, s.down, s.up, s.qdown, s.qup);

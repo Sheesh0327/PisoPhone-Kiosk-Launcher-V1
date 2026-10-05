@@ -15,7 +15,7 @@ on:
       - 'protocol/**'
       - 'esp32_firmware/**'
       - 'scripts/**'
-      - 'opennds/**'
+      - 'router/**'
       - 'setup/**'
       - 'tools/build_piso_setup.py'
       - 'tools/pisoportal/src/**'
@@ -105,45 +105,22 @@ jobs:
         run: pio run -e ${{ matrix.env }}
 
   pisoportal:
-    name: Portal program (Rust)
+    name: Portal program and router setup
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install Playwright (real-browser test)
+        run: pip install -q playwright && playwright install --with-deps chromium
       - name: Build and test pisoportal (host build; the router build is in rust-router-probe.yml)
         working-directory: tools/pisoportal
         run: |
           cargo build --release
-          python3 tests/test_portal.py
-
-  opennds-integration:
-    name: OpenNDS integration test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install socat (the router uses it for every call, so the test must too) and Playwright (real-time tap tests)
-        run: |
-          sudo apt-get install -y -q socat
-          pip install -q playwright
-      - name: Run end-to-end test with a fake box
-        run: python3 opennds/tests/test_flow.py
+          cargo test --release
+          python3 tests/test_flow.py
+          CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux/chrome | head -1) python3 tests/test_browser.py
       - name: Check the one-file router setup (settings, payload, box provisioning)
-        run: python3 opennds/tests/test_setup.py
-      - name: Run the flash coin portal test (green theme, roll file, pause, fair use)
-        run: python3 opennds/tests/test_flash_coin.py
+        run: python3 router/tests/test_setup.py
       - name: Check the Telegram monitor against a fake Telegram
-        run: python3 opennds/tests/test_monitor.py
-      - name: Check the shell-only request signing against a reference
-        run: python3 opennds/tests/test_hmac.py
-      - name: Check the Layout B router configuration
-        run: python3 opennds/tests/test_layout_b.py
-      - name: Check UCI settings and migration
-        run: python3 opennds/tests/test_uci_config.py
-      - name: Build and check the router package
-        run: |
-          python3 opennds/tests/test_ipk.py
-          python3 opennds/package/build_ipk.py --version 1.0.0-r${{ github.run_number }} --out dist
-      - name: Keep the router package from this run
-        uses: actions/upload-artifact@v4
-        with:
-          name: opennds-coinslot-ipk
-          path: dist/*.ipk
+        run: python3 router/tests/test_monitor.py
+      - name: The committed setup file is up to date
+        run: python3 tools/build_piso_setup.py --check

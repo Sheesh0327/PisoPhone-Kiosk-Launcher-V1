@@ -37,7 +37,7 @@ LAN_IP=$(uci -q get network.lan.ipaddr 2> /dev/null | head -n 1 | cut -d/ -f1)  
 LAN_IP="${LAN_IP:-10.0.0.1}"
 BOX_IP="${BOX_IP:-${LAN_IP%.*}.10}"                                               # the box is always <LAN network>.10
 GUEST_IP="${GUEST_IP:-192.168.30.1}"
-STREAM_PORT=8100
+PORTAL_PORT=2080                             # the portal (openNDS FAS): not 80, which openNDS keeps for captive-portal detection
 CONF="${PISO_CONF:-/etc/piso-setup.conf}"   # what this script chose (secrets inside): mode 600
 LOG="${PISO_LOG:-/root/piso-setup.log}"
 SUMMARY="${PISO_SUMMARY:-/root/piso-setup-summary.txt}"
@@ -128,7 +128,7 @@ preflight() {
 install_packages() {
 	step "Installing packages"
 	opkg update > /dev/null 2>&1 || opkg update || die "opkg update failed (no internet or DNS?)"
-	for p in opennds socat openssl-util curl ca-bundle coreutils-sleep jsonfilter; do
+	for p in opennds curl ca-bundle jsonfilter; do
 		if ! opkg list-installed 2> /dev/null | grep -q "^$p "; then
 			log "installing $p"
 			opkg install "$p" > /dev/null 2>&1 || opkg install "$p" || die "could not install $p"
@@ -138,7 +138,6 @@ install_packages() {
 		[ "$p" = opennds ] && stop_opennds
 	done
 	opkg list-installed 2> /dev/null | grep -qi '^libmicrohttpd' || opkg install libmicrohttpd-no-ssl > /dev/null 2>&1
-	sleep 0.1 2> /dev/null || log "note: coreutils-sleep is not active; the coin check polls once a second"
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -249,21 +248,25 @@ set firewall.guest_dns_tcp.proto='tcp'
 set firewall.guest_dns_tcp.dest_port='53'
 set firewall.guest_dns_tcp.target='ACCEPT'
 set firewall.guest_stream=rule
-set firewall.guest_stream.name='Guest-Coinslot-Stream'
+set firewall.guest_stream.name='Guest-Portal'
 set firewall.guest_stream.src='guest'
 set firewall.guest_stream.proto='tcp'
-set firewall.guest_stream.dest_port='$STREAM_PORT'
+set firewall.guest_stream.dest_port='$PORTAL_PORT'
 set firewall.guest_stream.target='ACCEPT'
 
 # --- openNDS gates only the guest network -------------------------------------------------------------------------------
 set opennds.@opennds[0].enabled='1'
 set opennds.@opennds[0].gatewayinterface='br-guest'
 set opennds.@opennds[0].gatewayname='$GUEST_NAME'
-set opennds.@opennds[0].login_option_enabled='3'
-set opennds.@opennds[0].themespec_path='/usr/lib/opennds/flash_coin.sh'
-set opennds.@opennds[0].statuspath='/usr/lib/opennds/flash_coin_status.sh'
+set opennds.@opennds[0].login_option_enabled='0'
+set opennds.@opennds[0].fasport='$PORTAL_PORT'
+set opennds.@opennds[0].faspath='/'
+set opennds.@opennds[0].fas_secure_enabled='1'
+delete opennds.@opennds[0].fasremoteip
+delete opennds.@opennds[0].themespec_path
+delete opennds.@opennds[0].statuspath
 delete opennds.@opennds[0].users_to_router
-add_list opennds.@opennds[0].users_to_router='allow tcp port $STREAM_PORT'
+add_list opennds.@opennds[0].users_to_router='allow tcp port $PORTAL_PORT'
 set opennds.@opennds[0].download_unrestricted_bursting='1'
 set opennds.@opennds[0].upload_unrestricted_bursting='1'
 set opennds.@opennds[0].checkinterval='15'
@@ -286,12 +289,23 @@ apply_batch() {  # apply_batch <kiosk pass> <guest name> <box mac or empty>
 extract_payload() {
 	step "Installing the portal files"
 	_self="$1"
-	sed -n 's/^#@@FILE //p' "$_self" | while read -r _dest _mode; do mkdir -p "$(dirname "$PISO_ROOT$_dest")"; : > "$PISO_ROOT$_dest"; chmod "$_mode" "$PISO_ROOT$_dest"; done
-	awk -v root="$PISO_ROOT" '/^#@@FILE /{ if (out != "") close(out); out = root $2; next } out != "" { print > out }' "$_self"
+	sed -n 's/^#@@\(FILE\|B64\) //p' "$_self" | while read -r _dest _mode; do mkdir -p "$(dirname "$PISO_ROOT$_dest")"; : > "$PISO_ROOT$_dest"; chmod "$_mode" "$PISO_ROOT$_dest"; done
+	# text files are copied as they are; a binary (the portal program) is stored as base64 lines and decoded into place
+	awk -v root="$PISO_ROOT" '/^#@@FILE /{ if (out != "") close(out); out = root $2; next } /^#@@B64 /{ if (out != "") close(out); out = root $2 ".b64"; next } out != "" { print > out }' "$_self"
 	for f in $(sed -n 's/^#@@FILE \([^ ]*\) .*/\1/p' "$_self"); do
 		f="$PISO_ROOT$f"
 		[ -s "$f" ] || die "could not write $f"
 		sed -i 's/\r$//' "$f"
+		log "installed $f"
+	done
+	for f in $(sed -n 's/^#@@B64 \([^ ]*\) .*/\1/p' "$_self"); do
+		f="$PISO_ROOT$f"
+		[ -s "$f.b64" ] || die "could not write $f"
+		tr -d '\r' < "$f.b64" > "$f.b64.clean"
+		if base64 -d "$f.b64.clean" > "$f.new" 2> /dev/null && [ -s "$f.new" ]; then :; else openssl base64 -d -A -in "$f.b64.clean" -out "$f.new" 2> /dev/null; fi
+		rm -f "$f.b64" "$f.b64.clean"
+		[ -s "$f.new" ] || die "could not decode $f"
+		mv "$f.new" "$f" && chmod 755 "$f"
 		log "installed $f"
 	done
 	cp "$_self" "$SELF_PATH" 2> /dev/null || true
@@ -299,13 +313,24 @@ extract_payload() {
 	ln -sf "$SELF_PATH" "$(dirname "$SELF_PATH")/pisowifi-name" 2> /dev/null
 }
 
+# The files of the earlier shell portal (listener, theme, fair-use script and their services) are removed: the Rust portal
+# replaces all of it. Safe to run on a router that never had them.
+remove_old_portal() {
+	for _s in flash_coin coinslot; do
+		[ -x "/etc/init.d/$_s" ] && { "/etc/init.d/$_s" stop > /dev/null 2>&1; "/etc/init.d/$_s" disable > /dev/null 2>&1; rm -f "/etc/init.d/$_s"; }
+	done
+	rm -f /usr/bin/coinslot-listener.sh /usr/lib/opennds/flash_coin.sh /usr/lib/opennds/flash_coin_lib.sh /usr/lib/opennds/flash_coin_status.sh /usr/lib/opennds/flash_fairuse.sh
+}
+
 write_coinslot_conf() {  # write_coinslot_conf <gateway key> <box mac>
 	umask 077
 	cat > /etc/coinslot.conf << EOT
-GW_BOX=$BOX_IP
-GW_KEY=$1
-GW_BOX_MAC=$2
-DISCOVER_IFACE=br-lan
+GW_BOX='$BOX_IP'
+GW_KEY='$1'
+GW_BOX_MAC='$2'
+PORTAL_BIND='$GUEST_IP'
+PORTAL_PORT='$PORTAL_PORT'
+GATEWAY_NAME='$(conf_get GUEST_NAME)'
 EOT
 	umask 022
 	chmod 600 /etc/coinslot.conf
@@ -435,6 +460,7 @@ Useful commands on the router:
   piso-setup summary           show this file again
   logread -e opennds -e coinslot
   cat /etc/coinslot.d/vouchers.txt   customers' paid sessions
+  pisoportal report             revenue per day
 EOT
 	chmod 600 "$SUMMARY"
 }
@@ -449,10 +475,10 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 	_ck "the coin box has its own Wi-Fi password (not the published default)" "[ \"\$(uci -q get wireless.box_ap.key)\" != '$BOX_DEFAULT_WIFI' ]"
 	_ck "hidden Wi-Fi $BOX_SSID is on and locked to the box" "[ \"\$(uci -q get wireless.box_ap.macfilter)\" = allow ] && [ -n \"\$(uci -q get wireless.box_ap.maclist)\" ]"
 	_ck "coin box answers at $BOX_IP" box_up
-	_ck "coin-slot manager is running" "curl -s -m 4 http://127.0.0.1:8099/info | grep -q fair_kb"
-	_ck "coin events receiver is running (instant coins)" "pgrep -f 'coinslot-listener.sh event-reader'"
-	_ck "the manager can talk to the box (signed request)" "/usr/bin/coinslot-listener.sh box | grep -qi answers"
+	_ck "the portal is running and answers guests on $GUEST_IP:$PORTAL_PORT" "curl -s -m 4 http://$GUEST_IP:$PORTAL_PORT/ping | grep -q ok"
+	_ck "the portal can talk to the box (signed request)" "/usr/bin/pisoportal box | grep -qi answers"
 	_ck "openNDS is running" "ndsctl status"
+	_ck "openNDS sends new guests to the portal (FAS)" "[ \"\$(uci -q get opennds.@opennds[0].fasport)\" = $PORTAL_PORT ]"
 	_ck "internet through the WAN" "ping -c 1 -W 3 1.1.1.1 || ping -c 1 -W 3 8.8.8.8"
 	return "$_bad"
 }
@@ -480,8 +506,8 @@ stage2() {
 	write_coinslot_conf "$KEY" "$BOX_MAC"
 
 	step "Starting the services"
-	/etc/init.d/coinslot stop > /dev/null 2>&1; /etc/init.d/coinslot disable > /dev/null 2>&1
-	/etc/init.d/flash_coin enable; /etc/init.d/flash_coin restart
+	remove_old_portal
+	/etc/init.d/pisoportal enable; /etc/init.d/pisoportal restart
 	[ -r /etc/piso-monitor.conf ] && { /etc/init.d/piso_monitor enable; /etc/init.d/piso_monitor restart; }
 	/etc/init.d/opennds enable; /etc/init.d/opennds stop > /dev/null 2>&1; /etc/init.d/opennds start; NDS_RESTORE=0
 	sleep 8
@@ -537,8 +563,10 @@ cmd_wifi_name() {
 	uci set opennds.@opennds[0].gatewayname="$_n"
 	uci commit wireless; uci commit opennds
 	conf_set GUEST_NAME "$_n"
+	write_coinslot_conf "$(conf_get GW_KEY)" "$(conf_get BOX_MAC)"
 	wifi reload > /dev/null 2>&1
 	/etc/init.d/opennds stop > /dev/null 2>&1; /etc/init.d/opennds start > /dev/null 2>&1
+	/etc/init.d/pisoportal restart > /dev/null 2>&1
 	write_summary 2> /dev/null
 	echo "Customer Wi-Fi is now called \"$_n\"."
 }
@@ -546,30 +574,29 @@ cmd_wifi_name() {
 # piso-setup test-coin: one real coin window straight against the manager and the box, without the customer portal. It shows
 # whether the box counts a coin at all (wiring, acceptor) before looking for portal problems.
 cmd_test_coin() {
-	_url="${COINSLOT_URL:-http://127.0.0.1:8099}"; _sid=$(rand 32 hex); _mac="aa:bb:cc:00:00:99"
+	_url="${PORTAL_ADMIN_URL:-http://127.0.0.1:8099}"; _mac="aa:bb:cc:00:00:99"
 	_get() { curl -s -m 10 "$_url$1" 2> /dev/null; }
-	_a=$(_get "/start?sid=$_sid&plan=hyper&mac=$_mac")
-	[ -n "$_a" ] || { echo "The coin-slot manager does not answer at $_url (is it running? /etc/init.d/flash_coin start)"; return 1; }
+	_a=$(_get "/admin/start?mac=$_mac&plan=hyper")
+	[ -n "$_a" ] || { echo "The portal does not answer at $_url (is it running? /etc/init.d/pisoportal start)"; return 1; }
 	case "$_a" in
-		*'"error":"'*) echo "The manager could not open the coin slot: $_a"; return 1 ;;
-		*'"state":"starting"'* | *'"state":"armed"'*) ;;
-		*) echo "Unexpected answer from $_url (not the coin-slot manager?): $(printf '%s' "$_a" | head -c 200)"; return 1 ;;
+		*'"s":"error"'*) echo "The portal could not open the coin slot: $_a"; return 1 ;;
+		*'"s":"starting"'* | *'"s":"armed"'*) ;;
+		*) echo "Unexpected answer from $_url (not the portal?): $(printf '%s' "$_a" | head -c 200)"; return 1 ;;
 	esac
 	echo "The coin slot is armed (the box should beep). Insert a coin now. Waiting up to ${TEST_SECONDS:-30} seconds..."
 	_t=0; _last=0
 	while [ "$_t" -lt "${TEST_SECONDS:-30}" ]; do
 		sleep 1; _t=$((_t + 1))
-		_st=$(_get "/status?sid=$_sid")
+		_st=$(_get "/admin/status?mac=$_mac")
 		_p=$(printf '%s' "$_st" | sed -n 's/.*"pulses":\([0-9]*\).*/\1/p')
 		if [ -n "$_p" ] && [ "$_p" -gt "$_last" ]; then echo "  coin detected: $_p peso(s) so far"; _last="$_p"; fi
-		case "$_st" in *'"state":"done"'* | *'"state":"error"'*) break ;; esac
+		case "$_st" in *'"s":"idle"'* | *'"s":"error"'* | *'"s":"final"'* | *'"s":"empty"'*) break ;; esac
 	done
-	_get "/finish?sid=$_sid" > /dev/null
-	_t=0; while [ "$_t" -lt 15 ]; do _st=$(_get "/status?sid=$_sid"); case "$_st" in *'"state":"done"'*) break ;; esac; sleep 1; _t=$((_t + 1)); done
+	_get "/admin/finish?mac=$_mac" > /dev/null
+	_t=0; while [ "$_t" -lt 25 ]; do _st=$(_get "/admin/status?mac=$_mac"); case "$_st" in *'"s":"final"'* | *'"s":"empty"'* | *'"s":"error"'* | *'"s":"idle"'*) break ;; esac; sleep 1; _t=$((_t + 1)); done
 	_p=$(printf '%s' "$_st" | sed -n 's/.*"pulses":\([0-9]*\).*/\1/p')
-	if [ "${_p:-0}" -gt 0 ]; then echo "RESULT: the box counted $_p peso(s). The box and the manager work; if the portal does not show it, send the output of: piso-setup diag"
+	if [ "${_p:-0}" -gt 0 ]; then echo "RESULT: the box counted $_p peso(s). The box and the portal work; if a customer's page does not show it, send the output of: piso-setup diag"
 	else echo "RESULT: no coin was counted. The coin acceptor wiring or the box settings need a look (the box armed, so the network and key are fine). Last answer: $_st"; fi
-	_get "/ack?sid=$_sid" > /dev/null
 	[ "${_p:-0}" -gt 0 ]
 }
 
@@ -577,14 +604,14 @@ cmd_test_coin() {
 cmd_diag() {
 	echo "=== piso-setup diag ($(date '+%F %T'), setup $VERSION) ==="
 	cmd_status 2>&1
-	echo "--- manager /info"; curl -s -m 5 "${COINSLOT_URL:-http://127.0.0.1:8099}/info"; echo
-	echo "--- manager <-> box"; /usr/bin/coinslot-listener.sh box 2>&1 | head -5
+	echo "--- portal"; curl -s -m 5 "${PORTAL_ADMIN_URL:-http://127.0.0.1:8099}/admin/info"; echo
+	echo "--- portal program (memory, uptime)"; pidof pisoportal > /dev/null && { grep -E 'VmRSS|Threads' "/proc/$(pidof pisoportal | cut -d' ' -f1)/status"; } 2>&1
+	echo "--- portal <-> box"; /usr/bin/pisoportal box 2>&1 | head -5
 	echo "--- ledger vs box"; cmd_reconcile 2>&1
-	echo "--- coin windows"; for d in /tmp/coinslot/*/; do [ -d "$d" ] && { echo "$d"; cat "$d/state" "$d/plan" 2>/dev/null; }; done
 	echo "--- box neighbour / wifi"; ip neigh show | grep "$BOX_IP"; iwinfo 2> /dev/null | grep -A1 "$BOX_SSID"
 	echo "--- firewall tables"; nft list tables 2> /dev/null
 	echo "--- openNDS"; uci -q get opennds.@opennds[0].gatewayinterface; ndsctl status 2>&1 | head -12
-	echo "--- last coin timings (ms since boot: armed, event, coin, granted, settled)"; logread -e coinslot 2> /dev/null | grep ' timing ' | tail -12
+	echo "--- last coin timings (ms after the slot was asked to arm)"; logread -e coinslot 2> /dev/null | grep ' timing ' | tail -12
 	echo "--- last coin-slot log lines"; logread -e coinslot 2> /dev/null | grep -v ' timing ' | tail -20
 	echo "--- setup log"; tail -15 "$LOG" 2> /dev/null
 }
@@ -598,9 +625,10 @@ cmd_update() {
 	[ -r "$CONF" ] && [ -n "$(conf_get GW_KEY)" ] || die "no PisoPhone setup found on this router: run ./piso-setup.sh without arguments first"
 	[ "$0" != "$SELF_PATH" ] || die "this is the installed (old) copy. Copy the NEW piso-setup.sh to the router and run it from there: ./piso-setup.sh update"
 	step "Updating the portal files"
-	[ -x /etc/init.d/flash_coin ] && /etc/init.d/flash_coin stop > /dev/null 2>&1   # (no script is replaced while it is running)
+	[ -x /etc/init.d/pisoportal ] && /etc/init.d/pisoportal stop > /dev/null 2>&1   # (no program is replaced while it runs)
+	remove_old_portal
 	extract_payload "$0"
-	[ -x /etc/init.d/flash_coin ] && { /etc/init.d/flash_coin enable; /etc/init.d/flash_coin start; }
+	[ -x /etc/init.d/pisoportal ] && { /etc/init.d/pisoportal enable; /etc/init.d/pisoportal start; }
 	[ -r /etc/piso-monitor.conf ] && [ -x /etc/init.d/piso_monitor ] && { /etc/init.d/piso_monitor enable; /etc/init.d/piso_monitor restart; }
 	sleep 3
 	log "Updated to setup file version $VERSION. Customers' sessions and the revenue ledger were not touched."
@@ -608,7 +636,7 @@ cmd_update() {
 }
 
 # piso-setup reconcile: the box's own coin count against the router's revenue ledger (also checks the ledger chain).
-cmd_reconcile() { /usr/bin/coinslot-listener.sh reconcile; }
+cmd_reconcile() { /usr/bin/pisoportal reconcile; }
 
 # piso-setup telegram: connect the Telegram bot (alerts and remote commands). The token comes from @BotFather.
 # telegram_connect <token> <site name>: pairs the bot with the first chat that writes to it and starts the monitor.
@@ -761,7 +789,7 @@ cmd_pair() {
 	write_coinslot_conf "$(conf_get GW_KEY)" "$BOX_MAC"
 	provision_box "$(conf_get BOX_ADMIN_PASS_NEW)" "$(conf_get GW_KEY)"
 	rotate_box_wifi
-	/etc/init.d/flash_coin restart
+	/etc/init.d/pisoportal restart
 	write_summary
 	log "The new coin box is paired. Check with: piso-setup status"
 }

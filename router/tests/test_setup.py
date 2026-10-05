@@ -1,6 +1,6 @@
 """Tests of setup/piso-setup.sh (the one-file router setup) without a router: a fake uci with canned radios, the generated
 settings, the payload, the helpers, and the coin box provisioning against a fake box.
-Run with:  python3 opennds/tests/test_setup.py"""
+Run with:  python3 router/tests/test_setup.py"""
 import http.server, json, os, re, subprocess, sys, tempfile, threading, base64
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -120,9 +120,11 @@ check(out.count("set wireless.box_ap=wifi-iface") == 1, "only one box network")
 check("set wireless.radio0.htmode='HT20'" in out and "set wireless.radio1.htmode" not in out, "2.4 GHz uses HT20")
 check(out.count("delete wireless.@wifi-iface[") == 3 and "delete wireless.@wifi-iface[2]" in out and out.index("[2]") < out.index("[0]"), "router's own default networks removed (highest first)")
 check("macfilter" not in out and "dhcp.pisocoinbox" not in out, "box network is open for pairing until the box's MAC is known")
-check("set firewall.guest.forward='REJECT'" in out and "set firewall.guest_wan.dest='wan'" in out and "set firewall.guest_stream.dest_port='8100'" in out, "guests reach the internet only (and the stream port)")
-check("set opennds.@opennds[0].gatewayinterface='br-guest'" in out and "flash_coin.sh" in out and "flash_coin_status.sh" in out and "set opennds.@opennds[0].gatewayname='PisoWiFi'" in out,
-      "openNDS gates the guest network with the flash coin theme")
+check("set firewall.guest.forward='REJECT'" in out and "set firewall.guest_wan.dest='wan'" in out and "set firewall.guest_stream.dest_port='2080'" in out, "guests reach the internet only (and the portal port)")
+check("set opennds.@opennds[0].gatewayinterface='br-guest'" in out and "set opennds.@opennds[0].gatewayname='PisoWiFi'" in out, "openNDS gates the guest network")
+check("set opennds.@opennds[0].fasport='2080'" in out and "set opennds.@opennds[0].faspath='/'" in out and "set opennds.@opennds[0].fas_secure_enabled='1'" in out
+      and "set opennds.@opennds[0].login_option_enabled='0'" in out and "delete opennds.@opennds[0].themespec_path" in out and "allow tcp port 2080" in out,
+      "openNDS forwards new guests to the portal (FAS level 1) and no theme script is used")
 check("set firewall.kiosk" not in out, "no separate kiosk firewall zone (the kiosk network is the LAN)")
 check("<kiosk password>" in out, "dry run never prints a real password")
 # once paired, the box is locked and gets its address
@@ -158,12 +160,13 @@ fake_uci({"radio0": "2g", "radio1": "5g"})
 # ---- payload ---------------------------------------------------------------------------------------------------------------
 root = f"{tmp}/root"
 r = lib(f'PISO_ROOT={root}; DRY=1; extract_payload {SCRIPT}', env={"PISO_ROOT": root})
-for src, dest in [("opennds/coinslot-listener.sh", "/usr/bin/coinslot-listener.sh"), ("opennds/flash_coin.sh", "/usr/lib/opennds/flash_coin.sh"),
-                  ("opennds/flash_coin_lib.sh", "/usr/lib/opennds/flash_coin_lib.sh"), ("opennds/flash_coin_status.sh", "/usr/lib/opennds/flash_coin_status.sh"),
-                  ("opennds/flash_fairuse.sh", "/usr/lib/opennds/flash_fairuse.sh"), ("opennds/flash_coin.init", "/etc/init.d/flash_coin")]:
-    p = root + dest
+for src, dest in [("router/piso_monitor.sh", "/usr/bin/piso-monitor.sh"), ("router/piso_monitor.init", "/etc/init.d/piso_monitor"), ("router/pisoportal.init", "/etc/init.d/pisoportal")]:
+    p = f"{root}{dest}"
     check(os.path.exists(p) and open(p).read() == open(f"{ROOT}/{src}").read(), f"payload {dest} is identical to {src}")
     check(os.path.exists(p) and os.access(p, os.X_OK), f"{dest} is executable")
+pp = f"{root}/usr/bin/pisoportal"
+check(os.path.exists(pp) and os.access(pp, os.X_OK) and open(pp, "rb").read() == open(f"{ROOT}/tools/pisoportal/bin/pisoportal-mipsel", "rb").read(), "the portal program is decoded from the payload byte for byte")
+check(not os.path.exists(f"{root}/usr/bin/pisoportal.b64") and not os.path.exists(f"{root}/usr/bin/pisoportal.new"), "no temporary files are left behind")
 
 # ---- stored settings -------------------------------------------------------------------------------------------------------
 r = lib('conf_set A "x y"; conf_set A "second"; conf_set B 2; echo "$(conf_get A)|$(conf_get B)"; K=$(secret K 12); echo "$K|$(secret K 12)"; secret G 64 hex')
@@ -278,9 +281,9 @@ check("setsid sh -c 'sleep" in text and "piso-admin-confirm" in text, "the lock 
 root = f"{tmp}/uproot"; os.makedirs(root)
 conf_up = f"{tmp}/upconf"; open(conf_up, "w").write("GW_KEY='" + "ab" * 32 + "'\n")
 r = run("update", env={"PISO_TEST_NONROOT": "1", "PISO_ROOT": root, "PISO_CONF": conf_up, "PISO_SELF_PATH": f"{tmp}/installed/piso-setup"})
-check(os.path.exists(f"{root}/usr/bin/coinslot-listener.sh") and os.path.exists(f"{root}/usr/lib/opennds/flash_coin.sh") and os.path.exists(f"{root}/usr/bin/piso-monitor.sh"),
-      "update installs the portal, manager and monitor files: " + r.stdout[-300:] + r.stderr[-300:])
-check(open(f"{root}/usr/bin/coinslot-listener.sh").read() == open(f"{ROOT}/opennds/coinslot-listener.sh").read(), "they are the current ones from this file")
+check(os.path.exists(f"{root}/usr/bin/pisoportal") and os.path.exists(f"{root}/etc/init.d/pisoportal") and os.path.exists(f"{root}/usr/bin/piso-monitor.sh"),
+      "update installs the portal program and the monitor: " + r.stdout[-300:] + r.stderr[-300:])
+check(open(f"{root}/usr/bin/piso-monitor.sh").read() == open(f"{ROOT}/router/piso_monitor.sh").read(), "they are the current ones from this file")
 open(f"{tmp}/uci.log", "w").close()
 r = run("update", env={"PISO_TEST_NONROOT": "1", "PISO_ROOT": root, "PISO_CONF": conf_up, "PISO_SELF_PATH": f"{tmp}/installed/piso-setup"})
 ul = open(f"{tmp}/uci.log").read()
@@ -310,23 +313,30 @@ os.chmod(f"{bindir}/iwinfo", 0o755)
 r = lib("echo \"$(box_ifname) $(box_station)\"")
 check(r.stdout.strip() == "phy0-ap2 AA:BB:CC:DD:EE:09", "finds the box's interface and the joined station: " + r.stdout + r.stderr)
 
-# ---- test-coin against a stub manager ------------------------------------------------------------------------------------
+# ---- test-coin against a stub portal ------------------------------------------------------------------------------------
 class Mgr(http.server.BaseHTTPRequestHandler):
     pulses = 0
     calls = 0
+    finished = False
+    coin = True
 
     def log_message(self, *a):
         pass
 
     def do_GET(self):
-        if self.path.startswith("/status"):
+        if self.path.startswith("/admin/status"):
             Mgr.calls += 1
-            if Mgr.calls >= 2:
+            if Mgr.coin and Mgr.calls >= 2:
                 Mgr.pulses = 2
-            st = "done" if Mgr.calls >= 3 else "armed"
-            body = '{"state":"%s","pulses":%d}' % (st, Mgr.pulses)
-        elif self.path.startswith("/start"):
-            body = '{"state":"starting","pulses":0}'
+            if Mgr.finished:
+                body = '{"t":"state","s":"final","pulses":%d}' % Mgr.pulses if Mgr.pulses else '{"t":"state","s":"empty","pulses":0}'
+            else:
+                body = '{"t":"state","s":"armed","pulses":%d}' % Mgr.pulses
+        elif self.path.startswith("/admin/start"):
+            body = '{"t":"state","s":"starting","pulses":0}'
+        elif self.path.startswith("/admin/finish"):
+            Mgr.finished = True
+            body = '{"t":"state","s":"closing","pulses":%d}' % Mgr.pulses
         else:
             body = '{"success":true}'
         self.send_response(200); self.end_headers(); self.wfile.write(body.encode())
@@ -334,10 +344,11 @@ class Mgr(http.server.BaseHTTPRequestHandler):
 
 msrv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Mgr)
 threading.Thread(target=msrv.serve_forever, daemon=True).start()
-r = run("test-coin", env={"COINSLOT_URL": f"http://127.0.0.1:{msrv.server_address[1]}", "TEST_SECONDS": "10"})
+PA = f"http://127.0.0.1:{msrv.server_address[1]}"
+r = run("test-coin", env={"PORTAL_ADMIN_URL": PA, "TEST_SECONDS": "3"})
 check(r.returncode == 0 and "coin detected: 2" in r.stdout and "the box counted 2" in r.stdout, "test-coin reports a counted coin: " + r.stdout + r.stderr)
-Mgr.pulses = 0; Mgr.calls = -100
-r = run("test-coin", env={"COINSLOT_URL": f"http://127.0.0.1:{msrv.server_address[1]}", "TEST_SECONDS": "2"})
+Mgr.pulses = 0; Mgr.calls = 0; Mgr.finished = False; Mgr.coin = False
+r = run("test-coin", env={"PORTAL_ADMIN_URL": PA, "TEST_SECONDS": "2"})
 check(r.returncode != 0 and "no coin was counted" in r.stdout, "test-coin says so when no coin is counted: " + r.stdout)
 class Html(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a):
@@ -349,9 +360,9 @@ class Html(http.server.BaseHTTPRequestHandler):
 
 hsrv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Html)
 threading.Thread(target=hsrv.serve_forever, daemon=True).start()
-r = run("test-coin", env={"COINSLOT_URL": f"http://127.0.0.1:{hsrv.server_address[1]}"})
+r = run("test-coin", env={"PORTAL_ADMIN_URL": f"http://127.0.0.1:{hsrv.server_address[1]}"})
 check(r.returncode != 0 and "Unexpected answer" in r.stdout and "Insert a coin" not in r.stdout, "test-coin does not ask for a coin when something else answers: " + r.stdout)
-r = run("test-coin", env={"COINSLOT_URL": "http://127.0.0.1:9"})
+r = run("test-coin", env={"PORTAL_ADMIN_URL": "http://127.0.0.1:9"})
 check(r.returncode != 0 and "does not answer" in r.stdout, "test-coin explains a manager that is down")
 r = run("diag")
 check("=== piso-setup diag" in r.stdout and "--- last coin-slot log lines" in r.stdout and "ROOT_PASS" not in r.stdout and "password:" not in r.stdout.lower(), "diag runs and prints no passwords")

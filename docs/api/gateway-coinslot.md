@@ -70,6 +70,6 @@ fails), waits for in-flight coins, prints the total and, with `--ack`, clears th
   `ack` returns 1, `status` shows 0. Then press Ready for coin on a phone: it must still arm normally.
 
 ## Router (OpenWrt / busybox, no Python)
-`opennds/coinslot-listener.sh` is the production client of this API: it arms, counts coins (extending the wait after each),
-always disarms, waits for in-flight coins and acknowledges them only after access was granted. See `opennds/README.md`.
+`tools/pisoportal` (`src/core.rs`, `src/boxlink.rs`) is the production client of this API: it arms, counts coins (extending the wait after each),
+always disarms, waits for in-flight coins and acknowledges them only after access was granted. See `tools/pisoportal/README.md`.
 For experiments from a PC use `scripts/gateway_client.py`.
