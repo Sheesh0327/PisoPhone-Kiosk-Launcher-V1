@@ -1963,7 +1963,7 @@ input[type=text]{width:100%;padding:13px;border-radius:12px;border:1px solid var
 <script>
 /* Any tap that leaves the page shows it was received, and a second tap while the first is still loading is ignored. */
 document.addEventListener("submit",function(e){var f=e.target,b=f.querySelector&&f.querySelector("button[type=submit]");
-if(f.__t&&Date.now()-f.__t<8000){e.preventDefault();return}f.__t=Date.now();if(b&&f.id!=="coinform"){b.textContent="Please wait \u00b7 Sandali lang";b.style.opacity=".6"}},true);
+if(f.__t&&Date.now()-f.__t<8000){e.preventDefault();return}f.__t=Date.now();if(b){b.textContent=f.id==="coinform"?"Getting the coin slot ready \u00b7 Sandali lang":"Please wait \u00b7 Sandali lang";b.style.opacity=".6"}},true);
 window.addEventListener("pageshow",function(e){if(e.persisted)location.reload()});
 </script>
 HTML
@@ -2190,18 +2190,22 @@ function poll(){fetch(base+"/api/status?sid="+SID,{cache:"no-store"}).then(funct
 function watch(){
 if(window.EventSource){try{es=new EventSource(base+"/stream?sid="+SID+"&mode=wait");
 es.addEventListener("status",function(m){try{upd(JSON.parse(m.data))}catch(e){}});
-es.onerror=function(){if(es){es.close();es=null}if(!fin&&!pt)pt=setInterval(poll,1000)}}catch(e){es=null}}
-if(!es&&!pt)pt=setInterval(poll,1000)}
+es.onerror=function(){if(es){es.close();es=null}}}catch(e){es=null}}
+/* The status is also asked for once a second, whatever the live stream does: some phone browsers hold a stream open
+   without delivering anything, which looked like a page that only updates when it is reloaded. */
+if(!pt)pt=setInterval(poll,1000);poll()}
 function start(fq){
 f.style.display="none";var n=document.querySelectorAll(".note"),s0=f.previousElementSibling,i;
 for(i=0;i<n.length;i++)n[i].style.display="none";if(s0)s0.style.display="none";
 show("live",1);show("lagain",0);put("lsub",pn(plan)+" · Getting the coin slot ready · Sandali lang");put("lpes","₱0");
 put("lmin","Please wait. Do not insert coins yet · huwag pa maglagay ng barya.");
+var gone=false,wd=setTimeout(function(){gone=true;legacy(fq)},10000);   /* no answer in 10 s: the regular pages take over */
 fetch(base+"/api/start?sid="+SID+"&plan="+plan+(fq?"&forfeit=1":""),{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){
+clearTimeout(wd);if(gone)return;
 if(j.state==="error"&&j.error==="PLAN_MISMATCH")return mismatch(j);
 if(j.state==="error"&&(j.error==="SLOT_BUSY"||j.error==="COOLDOWN"))return busy(j,j.error==="COOLDOWN");
 if(j.state==="error"||j.error)return legacy(fq);
-upd(j);watch()}).catch(function(){legacy(fq)})}
+upd(j);watch()}).catch(function(){clearTimeout(wd);if(!gone)legacy(fq)})}
 function mismatch(j){var o=pn(j.plan),w=pn(plan);
 put("lsub","You still have "+o+" time ("+fmt(Math.round((+j.remaining||0)/60))+")");put("lpes","");
 put("lmin","Add more "+o+" time, or switch to "+w+": the time you have left is given up when you pay.");
@@ -2260,7 +2264,7 @@ try{if(A){ctx=window.__ctx||new A();window.__ctx=ctx;ctx.resume();setTimeout(fun
 /* Update fields in place and only when they changed: replacing the panel (or the button's text) would swallow a tap
    that is in progress. */
 function put(id,t){var e=document.getElementById(id);if(e&&e.textContent!==t)e.textContent=t}
-function poll(){var x=new XMLHttpRequest();x.open("GET",url);x.onload=function(){
+function poll(){var x=new XMLHttpRequest();x.open("GET",url+"&_="+Date.now());x.onload=function(){
 var d=new DOMParser().parseFromString(x.responseText,"text/html"),n=d.getElementById("wait");
 if(!n||!d.getElementById("pes")){location.replace(url);return}
 var g=function(i){var e=d.getElementById(i);return e?e.textContent:""},cd=document.getElementById("cd"),dc=d.getElementById("cd"),sb=document.getElementById("sub"),ds=d.getElementById("sub"),

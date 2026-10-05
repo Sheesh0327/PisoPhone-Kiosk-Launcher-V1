@@ -495,6 +495,14 @@ try:
                 pass
 
             def do_GET(self):
+                if self.path.startswith("/hang"):   # an event stream that is held open and never delivers
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/event-stream")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.flush()
+                    time.sleep(25)
+                    return
                 if not self.path.startswith("/opennds_preauth/"):   # e.g. the browser asking for /favicon.ico
                     self.send_response(404); self.end_headers(); return
                 q = {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()}
@@ -544,6 +552,20 @@ try:
                 pg.click("#ldone")
                 pg.wait_for_selector("#lfin", state="visible", timeout=10000)
                 check(time.time() - t0 < 4, f"Done closes the window at once ({time.time() - t0:.1f} s, the idle wait is 3 s)")
+                # a live stream that is held open but never delivers (seen on a phone): the page must still follow the coins
+                roll_write(); nds_client(MAC_A); hits.clear(); HID["v"] = "hidBR4"
+                pg.goto("http://127.0.0.1:18121/opennds_preauth/?fas=ABC")
+                pg.route("**/stream*", lambda route: route.continue_(url="http://127.0.0.1:18121/hang"))
+                set_box(busy=False, coins_at=[1.2, 1.6])
+                pg.click(".coin")
+                pg.wait_for_timeout(150)
+                check(pg.is_visible("#live") and "Getting the coin slot ready" in (pg.text_content("#lsub") or ""),
+                      "the tap shows at once that the slot is being armed: " + (pg.text_content("#lsub") or ""))
+                pg.wait_for_selector("#lcd", state="visible", timeout=8000)
+                check(True, "the countdown starts once the slot is armed")
+                pg.wait_for_selector("#lon", state="visible", timeout=10000)
+                check(pg.text_content("#lpes").strip() in ("\u20b11", "\u20b12"), "coins show without the stream: " + (pg.text_content("#lpes") or ""))
+                pg.wait_for_selector("#lfin", state="visible", timeout=20000)
                 # no coin API: the regular pages take over
                 BAD_API["on"] = True; hits.clear(); roll_write(); nds_client(MAC_A); HID["v"] = "hidBR3"
                 pg.goto("http://127.0.0.1:18121/opennds_preauth/?fas=ABC")
