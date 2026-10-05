@@ -70,12 +70,13 @@ r = run("--dry-run")
 out = r.stdout
 check(r.returncode == 0, "dry run succeeds: " + r.stderr + out[-300:])
 check("flow_offloading='0'" in out and "flow_offloading_hw='0'" in out, "flow offloading is switched off (it can bypass the speed caps)")
-r2 = run("--dry-run", env={"KIOSK_NAME": "ShopPhones", "GUEST_SSID": "Maria Free WiFi"})
-check("set wireless.kiosk_radio0.ssid='ShopPhones'" in r2.stdout and "set wireless.guest_radio0.ssid='Maria Free WiFi'" in r2.stdout,
-      "both Wi-Fi names can be chosen at setup: " + r2.stderr[-200:])
-r2 = run("--dry-run", env={"KIOSK_NAME": "Same", "GUEST_SSID": "Same"})
-check(r2.returncode != 0 and "must differ" in (r2.stdout + r2.stderr), "the two names must differ")
-r2 = run("--dry-run", env={"KIOSK_NAME": "x" * 33})
+r2 = run("--dry-run", env={"GUEST_SSID": "Maria Free WiFi"})
+check("set wireless.guest_radio0.ssid='Maria Free WiFi'" in r2.stdout, "the public Wi-Fi name can be chosen at setup: " + r2.stderr[-200:])
+check("set wireless.kiosk_radio0.ssid='PisoKiosk'" in r2.stdout and "set wireless.kiosk_radio0.hidden='1'" in r2.stdout and "set wireless.kiosk_radio1.hidden='1'" in r2.stdout,
+      "the kiosk network is hidden on both bands and keeps its fixed name")
+r2 = run("--dry-run", env={"GUEST_SSID": "PisoKiosk"})
+check(r2.returncode != 0 and "cannot be PisoKiosk" in (r2.stdout + r2.stderr), "the public name cannot be the kiosk name")
+r2 = run("--dry-run", env={"GUEST_SSID": "x" * 33})
 check(r2.returncode != 0 and "at most 32" in (r2.stdout + r2.stderr), "a name over 32 characters is refused")
 r2 = run("--dry-run", env={"GUEST_SSID": "it's"})
 check(r2.returncode != 0 and "may not contain" in (r2.stdout + r2.stderr), "a name with a quote is refused")
@@ -115,7 +116,7 @@ for radio in ("radio0", "radio1"):
     check(f"set wireless.{radio}.country='PH'" in out and f"set wireless.{radio}.disabled='0'" in out, f"{radio} on with a country")
 check("set wireless.box_ap.device='radio0'" in out and "set wireless.box_ap.hidden='1'" in out and "set wireless.box_ap.ssid='PisoCoinBox'" in out
       and "set wireless.box_ap.key='PisoCoinBox@Setup'" in out, "hidden coin box network on the 2.4 GHz radio only")
-check("set wireless.kiosk_radio1.hidden" not in out and out.count("set wireless.box_ap=wifi-iface") == 1, "only one box network")
+check(out.count("set wireless.box_ap=wifi-iface") == 1, "only one box network")
 check("set wireless.radio0.htmode='HT20'" in out and "set wireless.radio1.htmode" not in out, "2.4 GHz uses HT20")
 check(out.count("delete wireless.@wifi-iface[") == 3 and "delete wireless.@wifi-iface[2]" in out and out.index("[2]") < out.index("[0]"), "router's own default networks removed (highest first)")
 check("macfilter" not in out and "dhcp.pisocoinbox" not in out, "box network is open for pairing until the box's MAC is known")

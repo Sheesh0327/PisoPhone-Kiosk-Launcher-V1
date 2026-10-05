@@ -11,7 +11,7 @@ import android.util.Log
 import com.pisophone.kiosk.security.KioskSecurity
 
 /**
- * Keeps a rental phone on the shop's PisoKiosk Wi-Fi. The phone finds its coin box only on that network, and the box is
+ * Keeps a rental phone on the shop's PisoKiosk Wi-Fi (a hidden network: only phones provisioned from the box's page know it). The phone finds its coin box only on that network, and the box is
  * where it gets its admin PIN: a phone on any other network can never pair, so the network name and password are given
  * to the phone when it is provisioned (see the setup page) and re-applied whenever the phone is not on it.
  *
@@ -40,7 +40,7 @@ object KioskWifi {
             if (isOnNetwork(wm, ssid)) return true
 
             if (Build.VERSION.SDK_INT >= 29) {
-                val suggestion = WifiNetworkSuggestion.Builder().setSsid(ssid).setWpa2Passphrase(password).build()
+                val suggestion = WifiNetworkSuggestion.Builder().setSsid(ssid).setWpa2Passphrase(password).setIsHiddenSsid(true).build()
                 wm.removeNetworkSuggestions(listOf(suggestion))
                 wm.addNetworkSuggestions(listOf(suggestion))
             }
@@ -50,6 +50,7 @@ object KioskWifi {
                 val config = WifiConfiguration().apply {
                     SSID = "\"$ssid\""
                     preSharedKey = "\"$password\""
+                    hiddenSSID = true // the kiosk network is not broadcast: the phone has to look for it by name
                     allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK)
                     status = WifiConfiguration.Status.ENABLED
                 }

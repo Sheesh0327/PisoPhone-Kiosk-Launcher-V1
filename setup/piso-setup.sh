@@ -11,7 +11,7 @@
 # (or factory reset) and powered on.
 #
 # What it builds (the router's LAN address is not touched; your SSH session stays open the whole time):
-#   PisoKiosk    Wi-Fi, 2.4 + 5 GHz, WPA2, name chosen at setup. For the rental phones only. Network 10.0.0.0/24 (the router's LAN).
+#   PisoKiosk    Wi-Fi, 2.4 + 5 GHz, WPA2, fixed name, HIDDEN (not broadcast). For the rental phones only. Network 10.0.0.0/24 (the router's LAN).
 #   PisoCoinBox  hidden Wi-Fi, 2.4 GHz, for the ESP32 coin box only: after pairing, only the box's MAC address may join.
 #                The box gets the fixed address 10.0.0.10.
 #   PisoWiFi     open Wi-Fi, 2.4 + 5 GHz, for customers (openNDS login page, coin payments). Rename it with:
@@ -24,12 +24,12 @@
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation
-# Settings can be overridden from the environment: COUNTRY (default PH) GUEST_SSID KIOSK_NAME BOX_IP GUEST_IP ROOT_PASSWORD KIOSK_PASSWORD BOX_NEW_ADMIN_PASSWORD
+# Settings can be overridden from the environment: COUNTRY (default PH) GUEST_SSID BOX_IP GUEST_IP ROOT_PASSWORD KIOSK_PASSWORD BOX_NEW_ADMIN_PASSWORD
 
 VERSION="dev"
 
 COUNTRY="${COUNTRY:-PH}"
-KIOSK_SSID="PisoKiosk"                       # the default; chosen at setup (KIOSK_NAME), then fixed: the phones are provisioned with it
+KIOSK_SSID="PisoKiosk"                       # fixed, and hidden: only phones provisioned by the coin box page know it
 BOX_SSID="PisoCoinBox"                       # fixed: the ESP32 firmware has it built in
 BOX_WIFI_PASS="PisoCoinBox@Setup"            # fixed: the ESP32 firmware has it built in (only the paired box's MAC may join)
 BOX_DEFAULT_ADMIN="Coinslot@Setup"           # the box's admin password until this script changes it
@@ -183,6 +183,7 @@ set wireless.kiosk_$r.device='$r'
 set wireless.kiosk_$r.mode='ap'
 set wireless.kiosk_$r.network='lan'
 set wireless.kiosk_$r.ssid='$KIOSK_SSID'
+set wireless.kiosk_$r.hidden='1'
 set wireless.kiosk_$r.encryption='psk2'
 set wireless.kiosk_$r.key='$KIOSK_PASS'
 set wireless.kiosk_$r.isolate='0'
@@ -394,7 +395,7 @@ PisoPhone setup summary ($(date '+%F %T'), setup file version $VERSION)
 Keep this file private (it is readable by root only).
 
 Router (SSH / LuCI):   root@$LAN_IP        password: $(if [ "$(conf_get ROOT_PASS_SET)" = 1 ]; then conf_get ROOT_PASS; else echo "NOT SET by this setup (the router keeps its previous one): run piso-setup set-password"; fi)
-Kiosk Wi-Fi:           $KIOSK_SSID         password: $(conf_get KIOSK_PASS)    (for the rental phones; 2.4 + 5 GHz)
+Kiosk Wi-Fi:           $KIOSK_SSID (HIDDEN)   password: $(conf_get KIOSK_PASS)    (rental phones only; type the name and password on each phone's setup page)
 PisoWiFi (customers):  $(conf_get GUEST_NAME)   (open; rename with: piso-setup wifi-name "New Name")
 Coin box:              http://$BOX_IP      admin password: $(conf_get BOX_ADMIN_PASS)    hidden Wi-Fi: $BOX_SSID (only MAC $(conf_get BOX_MAC))
 
@@ -414,7 +415,7 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 	_ck() { if eval "$2" > /dev/null 2>&1; then log "PASS  $1"; else log "FAIL  $1"; _bad=$((_bad + 1)); fi; }
 	_ck "LAN address is $LAN_IP" "ip -4 addr show br-lan | grep -q 'inet $LAN_IP/'"
 	_ck "guest network is up" "ip -4 addr show br-guest | grep -q 'inet $GUEST_IP/'"
-	_ck "Wi-Fi $KIOSK_SSID is broadcasting" "iwinfo | grep -q 'ESSID: \"$KIOSK_SSID\"'"
+	_ck "hidden Wi-Fi $KIOSK_SSID is on" "iwinfo | grep -q 'ESSID: \"$KIOSK_SSID\"' || wifi status 2> /dev/null | grep -q '\"ssid\": \"$KIOSK_SSID\"'"
 	_ck "Wi-Fi $(conf_get GUEST_NAME) is broadcasting" "iwinfo | grep -q 'ESSID: \"$(conf_get GUEST_NAME)\"'"
 	_ck "hidden Wi-Fi $BOX_SSID is on and locked to the box" "[ \"\$(uci -q get wireless.box_ap.macfilter)\" = allow ] && [ -n \"\$(uci -q get wireless.box_ap.maclist)\" ]"
 	_ck "coin box answers at $BOX_IP" box_up
@@ -617,12 +618,11 @@ ask_name() {
 	conf_set "$_n" "$_v"; ASKED="$_v"
 }
 
-# The two Wi-Fi names (asked once; the phones are provisioned with the kiosk one, so it is not renamed later).
+# The public Wi-Fi name (asked once). The kiosk network keeps its fixed, hidden name: the phones are provisioned with it.
 choose_names() {
 	ask_name GUEST_NAME "public customer" "${GUEST_SSID:-PisoWiFi}" "$GUEST_SSID"; GUEST_NAME="$ASKED"
-	ask_name KIOSK_NAME "rental-phone (kiosk)" "PisoKiosk" "$KIOSK_NAME"; KIOSK_SSID="$ASKED"
-	[ "$GUEST_NAME" != "$KIOSK_SSID" ] || die "the two Wi-Fi names must differ"
-	case "$GUEST_NAME$KIOSK_SSID" in *"$BOX_SSID"*) die "a Wi-Fi name may not contain $BOX_SSID (the coin box's hidden network)" ;; esac
+	[ "$GUEST_NAME" != "$KIOSK_SSID" ] || die "the public Wi-Fi name cannot be $KIOSK_SSID"
+	case "$GUEST_NAME" in *"$BOX_SSID"*) die "the public Wi-Fi name may not contain $BOX_SSID (the coin box's hidden network)" ;; esac
 }
 
 # ask_password NAME "label" MIN MAX [ENV VALUE]: the password for NAME. Already chosen (a re-run): kept. Otherwise it is
@@ -650,7 +650,7 @@ ask_password() {
 # firmware keeps it under remote management and it cannot be set from here.
 choose_passwords() {
 	ask_password ROOT_PASS "router password (SSH and LuCI login)" 8 63 "$ROOT_PASSWORD"
-	ask_password KIOSK_PASS "rental-phone (kiosk) Wi-Fi password (typed once into each phone's setup page)" 8 63 "$KIOSK_PASSWORD"
+	ask_password KIOSK_PASS "PisoKiosk Wi-Fi password (typed once into each rental phone's setup page)" 8 63 "$KIOSK_PASSWORD"
 	ask_password BOX_ADMIN_PASS_NEW "coin box admin password (the box's web page; also the phones' admin PIN)" 8 32 "$BOX_NEW_ADMIN_PASSWORD"
 }
 
@@ -678,7 +678,6 @@ stage1() {
 }
 
 main() {
-	_kn=$(conf_get KIOSK_NAME); [ -z "$_kn" ] || KIOSK_SSID="$_kn"
 	CMD=""
 	while [ $# -gt 0 ]; do
 		case "$1" in

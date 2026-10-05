@@ -36,7 +36,7 @@ sed -i 's/\r$//' piso-setup.sh     # removes Windows line endings if the file to
 chmod +x piso-setup.sh
 ./piso-setup.sh
 ```
-Answer `y` when asked. It then asks for the **two Wi-Fi names** (the public customer network, default `PisoWiFi`, and the rental-phone network, default `PisoKiosk`; Enter keeps the default, 32 characters at most, no quotes) and then to choose **three passwords** (each typed twice, not shown; press Enter to have one generated): the router password (SSH and LuCI), the **PisoKiosk Wi-Fi** password (typed into each phone's setup page) and the **coin box admin** password (the box's web page, also the phones' admin PIN). Use 8 or more characters without spaces or quotes. The coin box's *super-admin* password is not asked: the firmware keeps it under remote management and it cannot be set locally. For unattended runs set `ROOT_PASSWORD`, `KIOSK_PASSWORD` and `BOX_NEW_ADMIN_PASSWORD` in the environment. It runs in front of you for about 3 to 8 minutes and **keeps your SSH session open the whole time**: it installs packages, creates the networks, waits for the ESP32 to join, sets its password and key, starts everything and ends with a health check. When it prints `SETUP COMPLETE`, read the summary:
+Answer `y` when asked. It then asks for the **public Wi-Fi name** (default `PisoWiFi`; Enter keeps it; 32 characters at most, no quotes; the rental-phone network is always the hidden `PisoKiosk`) and then to choose **three passwords** (each typed twice, not shown; just press Enter to have a strong one generated for you): the router password (SSH and LuCI), the **PisoKiosk Wi-Fi** password (typed into each phone's setup page) and the **coin box admin** password (the box's web page, also the phones' admin PIN). Use 8 or more characters without spaces or quotes. The coin box's *super-admin* password is not asked: the firmware keeps it under remote management and it cannot be set locally. For unattended runs set `ROOT_PASSWORD`, `KIOSK_PASSWORD` and `BOX_NEW_ADMIN_PASSWORD` in the environment. It runs in front of you for about 3 to 8 minutes and **keeps your SSH session open the whole time**: it installs packages, creates the networks, waits for the ESP32 to join, sets its password and key, starts everything and ends with a health check. When it prints `SETUP COMPLETE`, read the summary:
 ```
 cat /root/piso-setup-summary.txt
 ```
@@ -69,7 +69,7 @@ adb shell am broadcast -a com.pisophone.kiosk.CONFIGURE_ESP32 -n com.pisophone.k
 ## What you get
 | network | for | bands | notes |
 |---|---|---|---|
-| **PisoKiosk** (or the name you chose) | the rental phones | 2.4 + 5 GHz | WPA2, name chosen at setup and then fixed (the phones are provisioned with it; type the same name on the phone setup page), password chosen or generated. This is the router's LAN (`10.0.0.0/24`, the address you set in step 1). |
+| **PisoKiosk** (hidden) | the rental phones | 2.4 + 5 GHz | WPA2, fixed name, **not broadcast**: it appears in no Wi-Fi list, so only phones set up from the coin box's provisioning page (which gives them the name and password) can join. Password chosen or generated. This is the router's LAN (`10.0.0.0/24`, the address you set in step 1). |
 | **PisoCoinBox** (hidden) | the ESP32 only | 2.4 GHz | After pairing, only the box's MAC address may join. The box is always `10.0.0.10`. |
 | **PisoWiFi** | customers | 2.4 + 5 GHz | Open, behind the openNDS login and coin payment. Rename: `piso-setup wifi-name "My Shop"`. Separate network `192.168.30.0/24`. |
 
