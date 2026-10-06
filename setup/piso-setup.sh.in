@@ -36,6 +36,7 @@ BOX_DEFAULT_ADMIN="Coinslot@Setup"           # the box's admin password until th
 LAN_IP=$(uci -q get network.lan.ipaddr 2> /dev/null | head -n 1 | cut -d/ -f1)   # whatever the router has now: this script never changes it
 LAN_IP="${LAN_IP:-10.0.0.1}"
 BOX_IP="${BOX_IP:-${LAN_IP%.*}.10}"                                               # the box is always <LAN network>.10
+GUEST_IP="${GUEST_IP:-$(uci -q get network.guest.ipaddr 2> /dev/null)}"   # a re-run or update keeps what the router has
 GUEST_IP="${GUEST_IP:-192.168.30.1}"
 PORTAL_PORT=2080                             # the portal (openNDS FAS): not 80, which openNDS keeps for captive-portal detection
 CONF="${PISO_CONF:-/etc/piso-setup.conf}"   # what this script chose (secrets inside): mode 600
@@ -165,6 +166,10 @@ set dhcp.guest.interface='guest'
 set dhcp.guest.start='50'
 set dhcp.guest.limit='200'
 set dhcp.guest.leasetime='2h'
+# no IPv6 for guests: openNDS gates IPv4 only, so an IPv6 route would let unpaid devices past the payment page
+set dhcp.guest.ra='disabled'
+set dhcp.guest.dhcpv6='disabled'
+set dhcp.guest.ndp='disabled'
 
 # --- Wi-Fi: replace the router's default networks with ours ----------------------------------------------------------
 EOT
@@ -247,6 +252,37 @@ set firewall.guest_dns_tcp.src='guest'
 set firewall.guest_dns_tcp.proto='tcp'
 set firewall.guest_dns_tcp.dest_port='53'
 set firewall.guest_dns_tcp.target='ACCEPT'
+EOT
+	portal_uci "$GUEST_NAME"
+	router_access_uci
+}
+
+# router_access_uci: the router's own logins (SSH, LuCI) only on the kiosk LAN address. openNDS always lets guests reach
+# ports 22 and 443 of the router (its "essential" access, which also bypasses the firewall's guest zone), so on the guest
+# network these services are simply not offered.
+router_access_uci() {
+	echo "set dropbear.@dropbear[0].Interface='lan'"
+	[ -e "${PISO_ROOT}/etc/config/uhttpd" ] || return 0
+	cat << EOT
+delete uhttpd.main.listen_http
+add_list uhttpd.main.listen_http='$LAN_IP:80'
+delete uhttpd.main.listen_https
+add_list uhttpd.main.listen_https='$LAN_IP:443'
+EOT
+}
+
+# restart_router_access: SSH and LuCI pick up their addresses (an open SSH session stays: only the listener restarts)
+restart_router_access() {
+	[ -x /etc/init.d/dropbear ] && /etc/init.d/dropbear restart > /dev/null 2>&1
+	[ -x /etc/init.d/uhttpd ] && /etc/init.d/uhttpd restart > /dev/null 2>&1
+	log "SSH and LuCI answer only on $LAN_IP (the kiosk LAN), not on the guest network"
+}
+
+# portal_uci <guest name>: the guest-facing portal: openNDS sends new guests to pisoportal (FAS) and only the guest network
+# is gated; guests may reach the portal's port. The same lines are applied by the setup and by an update (which is how a
+# router set up with the earlier ThemeSpec portal is moved to this one).
+portal_uci() {
+	cat << EOT
 set firewall.guest_stream=rule
 set firewall.guest_stream.name='Guest-Portal'
 set firewall.guest_stream.src='guest'
@@ -257,7 +293,7 @@ set firewall.guest_stream.target='ACCEPT'
 # --- openNDS gates only the guest network -------------------------------------------------------------------------------
 set opennds.@opennds[0].enabled='1'
 set opennds.@opennds[0].gatewayinterface='br-guest'
-set opennds.@opennds[0].gatewayname='$GUEST_NAME'
+set opennds.@opennds[0].gatewayname='$1'
 set opennds.@opennds[0].login_option_enabled='0'
 set opennds.@opennds[0].fasport='$PORTAL_PORT'
 set opennds.@opennds[0].faspath='/'
@@ -274,41 +310,99 @@ set opennds.@opennds[0].ratecheckwindow='2'
 EOT
 }
 
-apply_batch() {  # apply_batch <kiosk pass> <guest name> <box mac or empty>
-	uci_batch "$1" "$2" "$3" > /tmp/piso-setup.uci || die "could not build the settings"
-	# 'delete' of something that is not there is not an error for us
-	uci batch < /tmp/piso-setup.uci > /dev/null 2>&1 || {
-		grep -v '^#' /tmp/piso-setup.uci | grep -v '^$' | while read -r _l; do echo "$_l" | uci batch > /dev/null 2>&1 || case "$_l" in delete*) ;; *) log "uci refused: $_l" ;; esac; done
+# uci_apply <file>: one uci batch; a 'delete' of something that is not there is not an error for us.
+uci_apply() {
+	uci batch < "$1" > /dev/null 2>&1 || {
+		grep -v '^#' "$1" | grep -v '^$' | while read -r _l; do echo "$_l" | uci batch > /dev/null 2>&1 || case "$_l" in delete*) ;; *) log "uci refused: $_l" ;; esac; done
 	}
+}
+
+apply_batch() {  # apply_batch <kiosk pass> <guest name> <box mac or empty>
+	(umask 077; uci_batch "$1" "$2" "$3" > /tmp/piso-setup.uci) || die "could not build the settings"
+	uci_apply /tmp/piso-setup.uci
+	rm -f /tmp/piso-setup.uci   # (it holds the Wi-Fi password)
 	uci commit || die "uci commit failed"
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
 # Files
 # ---------------------------------------------------------------------------------------------------------------------
+# b64d <in> <out>: base64 decoding with nothing but awk and printf, for a BusyBox without base64 (the OpenWrt default)
+# and without openssl. About a minute for the portal program on a router.
+b64d() {
+	awk 'BEGIN { a = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"; for (i = 0; i < 64; i++) v[substr(a, i + 1, 1)] = i }
+	{
+		s = s $0; n = length(s) - length(s) % 4; o = ""
+		for (i = 1; i <= n; i += 4) {
+			c3 = substr(s, i + 2, 1); c4 = substr(s, i + 3, 1)
+			b = v[substr(s, i, 1)] * 262144 + v[substr(s, i + 1, 1)] * 4096 + (c3 == "=" ? 0 : v[c3] * 64) + (c4 == "=" ? 0 : v[c4])
+			o = o sprintf("\\%03o", int(b / 65536))
+			if (c3 != "=") o = o sprintf("\\%03o", int(b / 256) % 256)
+			if (c4 != "=") o = o sprintf("\\%03o", b % 256)
+		}
+		s = substr(s, n + 1)
+		if (o != "") print o
+	}' "$1" | while IFS= read -r _l; do
+		# shellcheck disable=SC2059 # the line is the format on purpose: it holds the \ooo escapes printf turns into bytes
+		printf "$_l"
+	done > "$2"
+}
+
+# decode_b64 <in> <out> <sha256 or empty>: the first decoder this router has whose result has the expected checksum
+decode_b64() {
+	for _how in base64 openssl awk; do
+		rm -f "$2"
+		case "$_how" in
+			base64) command -v base64 > /dev/null 2>&1 && base64 -d "$1" > "$2" 2> /dev/null ;;
+			openssl) command -v openssl > /dev/null 2>&1 && openssl base64 -d -in "$1" -out "$2" 2> /dev/null ;;
+			awk) log "decoding with awk (this router has no base64 tool): about a minute"; b64d "$1" "$2" ;;
+		esac
+		[ -s "$2" ] || continue
+		if [ -z "$3" ] || ! command -v sha256sum > /dev/null 2>&1; then return 0; fi
+		[ "$(sha256sum "$2" | cut -d' ' -f1)" = "$3" ] && return 0
+		log "the $_how decoder gave a different file; trying the next one"
+	done
+	rm -f "$2"
+	return 1
+}
+
 extract_payload() {
 	step "Installing the portal files"
 	_self="$1"
-	sed -n 's/^#@@\(FILE\|B64\) //p' "$_self" | while read -r _dest _mode; do mkdir -p "$(dirname "$PISO_ROOT$_dest")"; : > "$PISO_ROOT$_dest"; chmod "$_mode" "$PISO_ROOT$_dest"; done
-	# text files are copied as they are; a binary (the portal program) is stored as base64 lines and decoded into place
-	awk -v root="$PISO_ROOT" '/^#@@FILE /{ if (out != "") close(out); out = root $2; next } /^#@@B64 /{ if (out != "") close(out); out = root $2 ".b64"; next } out != "" { print > out }' "$_self"
+	if ! grep -q '^#@@' "$_self"; then
+		log "this copy carries no portal files (it is the installed one): the files on the router are kept"
+		return 0
+	fi
+	sed -n 's/^#@@FILE //p' "$_self" | while read -r _dest _mode; do mkdir -p "$(dirname "$PISO_ROOT$_dest")"; : > "$PISO_ROOT$_dest"; chmod "$_mode" "$PISO_ROOT$_dest"; done
+	# a program is only replaced once its new copy is decoded and checked: a failed update leaves the old one working
+	sed -n 's/^#@@B64 //p' "$_self" | while read -r _dest _rest; do mkdir -p "$(dirname "$PISO_ROOT$_dest")"; done
+	# text files are copied as they are; a binary (the portal program) is stored as base64 lines, decoded in RAM (/tmp: the
+	# flash may be nearly full) and then moved into place
+	_tmpd="${TMPDIR:-/tmp}/piso-payload.$$"
+	rm -rf "$_tmpd"; mkdir -p "$_tmpd" || die "could not create $_tmpd"
+	awk -v root="$PISO_ROOT" -v tmp="$_tmpd" '/^#@@FILE /{ if (out != "") close(out); out = root $2; next } /^#@@B64 /{ if (out != "") close(out); n = split($2, p, "/"); out = tmp "/" p[n] ".b64"; next } out != "" { print > out }' "$_self"
+	# shellcheck disable=SC2013 # destinations are paths without spaces
 	for f in $(sed -n 's/^#@@FILE \([^ ]*\) .*/\1/p' "$_self"); do
 		f="$PISO_ROOT$f"
 		[ -s "$f" ] || die "could not write $f"
 		sed -i 's/\r$//' "$f"
 		log "installed $f"
 	done
-	for f in $(sed -n 's/^#@@B64 \([^ ]*\) .*/\1/p' "$_self"); do
-		f="$PISO_ROOT$f"
-		[ -s "$f.b64" ] || die "could not write $f"
-		tr -d '\r' < "$f.b64" > "$f.b64.clean"
-		if base64 -d "$f.b64.clean" > "$f.new" 2> /dev/null && [ -s "$f.new" ]; then :; else openssl base64 -d -A -in "$f.b64.clean" -out "$f.new" 2> /dev/null; fi
-		rm -f "$f.b64" "$f.b64.clean"
-		[ -s "$f.new" ] || die "could not decode $f"
-		mv "$f.new" "$f" && chmod 755 "$f"
+	# (a for loop, not a pipe: die must end the whole setup, not a subshell)
+	# shellcheck disable=SC2013 # one word per program: path|mode|sha256
+	for _e in $(sed -n 's/^#@@B64 \([^ ]*\) \([^ ]*\) *\([^ ]*\).*/\1|\2|\3/p' "$_self"); do
+		_dest="${_e%%|*}"; _r="${_e#*|}"; _mode="${_r%%|*}"; _sum="${_r#*|}"
+		f="$PISO_ROOT$_dest"; _t="$_tmpd/${_dest##*/}"
+		[ -s "$_t.b64" ] || { rm -rf "$_tmpd"; die "could not unpack $_dest"; }
+		tr -d '\r' < "$_t.b64" > "$_t.clean"
+		decode_b64 "$_t.clean" "$_t.new" "$_sum" || { rm -rf "$_tmpd"; die "could not decode $_dest (the setup file may be damaged: copy it again)"; }
+		# copied next to the old one, then renamed over it: never a half-written program, even after a power cut
+		{ cp "$_t.new" "$f.new" && chmod "$_mode" "$f.new" && mv "$f.new" "$f"; } || { rm -f "$f.new"; rm -rf "$_tmpd"; die "could not install $f (is the router's flash full? df -h /overlay)"; }
 		log "installed $f"
 	done
-	cp "$_self" "$SELF_PATH" 2> /dev/null || true
+	rm -rf "$_tmpd"
+	# the installed command without the payload (about 1 MB of flash): it is only used for the commands, never to install
+	[ "$_self" -ef "$SELF_PATH" ] || sed '/^# ---- payload: the portal files/,$d' "$_self" > "$SELF_PATH" 2> /dev/null
 	chmod 755 "$SELF_PATH" 2> /dev/null
 	ln -sf "$SELF_PATH" "$(dirname "$SELF_PATH")/pisowifi-name" 2> /dev/null
 }
@@ -324,7 +418,8 @@ remove_old_portal() {
 
 write_coinslot_conf() {  # write_coinslot_conf <gateway key> <box mac>
 	umask 077
-	cat > /etc/coinslot.conf << EOT
+	mkdir -p "$PISO_ROOT/etc"
+	cat > "$PISO_ROOT/etc/coinslot.conf" << EOT
 GW_BOX='$BOX_IP'
 GW_KEY='$1'
 GW_BOX_MAC='$2'
@@ -333,7 +428,7 @@ PORTAL_PORT='$PORTAL_PORT'
 GATEWAY_NAME='$(conf_get GUEST_NAME)'
 EOT
 	umask 022
-	chmod 600 /etc/coinslot.conf
+	chmod 600 "$PISO_ROOT/etc/coinslot.conf"
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -444,6 +539,7 @@ rotate_box_wifi() {
 # Stage 2: pairing the box, services, checks
 # ---------------------------------------------------------------------------------------------------------------------
 write_summary() {
+	umask 077
 	cat > "$SUMMARY" << EOT
 PisoPhone setup summary ($(date '+%F %T'), setup file version $VERSION)
 Keep this file private (it is readable by root only).
@@ -462,6 +558,7 @@ Useful commands on the router:
   cat /etc/coinslot.d/vouchers.txt   customers' paid sessions
   pisoportal report             revenue per day
 EOT
+	umask 022
 	chmod 600 "$SUMMARY"
 }
 
@@ -538,6 +635,7 @@ stage2() {
 	echo; echo "================ SUMMARY (also saved in $SUMMARY) ================"; cat "$SUMMARY"; echo "=================================================================="
 	log "A printable sheet with the passwords is in $_hp (copy it off with: scp -O root@$LAN_IP:$_hp .)"
 	finish_telegram
+	restart_router_access
 	[ "$(conf_get ROOT_PASS_SET)" = 1 ] || { log "INCOMPLETE: the router password was not set. Run: piso-setup set-password"; _f=$((_f + 1)); }
 	if [ "$_f" = 0 ]; then echo "DONE all checks passed" > "$STATE"; log ""; log "SETUP COMPLETE. Read $SUMMARY (ssh root@$LAN_IP)."
 	else echo "DONE with $_f failed checks (see $LOG)" > "$STATE"; log ""; log "Setup finished, but $_f check(s) failed: see above and $LOG. Run: piso-setup status"; fi
@@ -628,7 +726,22 @@ cmd_update() {
 	[ -x /etc/init.d/pisoportal ] && /etc/init.d/pisoportal stop > /dev/null 2>&1   # (no program is replaced while it runs)
 	remove_old_portal
 	extract_payload "$0"
+	write_coinslot_conf "$(conf_get GW_KEY)" "$(conf_get BOX_MAC)"
 	[ -x /etc/init.d/pisoportal ] && { /etc/init.d/pisoportal enable; /etc/init.d/pisoportal start; }
+	# openNDS and the firewall as this version needs them (a router set up with the earlier ThemeSpec portal is moved over)
+	(umask 077; { portal_uci "$(conf_get GUEST_NAME)"; router_access_uci; } > /tmp/piso-setup.uci)
+	uci_apply /tmp/piso-setup.uci
+	rm -f /tmp/piso-setup.uci
+	if [ -n "$(uci changes firewall 2> /dev/null)$(uci changes opennds 2> /dev/null)" ]; then
+		uci commit firewall; uci commit opennds
+		log "openNDS now sends new guests to the portal on port $PORTAL_PORT (FAS)"
+		/etc/init.d/firewall reload > /dev/null 2>&1
+		/etc/init.d/opennds stop > /dev/null 2>&1; /etc/init.d/opennds start > /dev/null 2>&1
+	fi
+	if [ -n "$(uci changes dropbear 2> /dev/null)$(uci changes uhttpd 2> /dev/null)" ]; then
+		uci commit dropbear; uci commit uhttpd 2> /dev/null
+		restart_router_access
+	fi
 	[ -r /etc/piso-monitor.conf ] && [ -x /etc/init.d/piso_monitor ] && { /etc/init.d/piso_monitor enable; /etc/init.d/piso_monitor restart; }
 	sleep 3
 	log "Updated to setup file version $VERSION. Customers' sessions and the revenue ledger were not touched."
@@ -681,7 +794,7 @@ ask_telegram() {
 	printf 'Connect Telegram alerts and remote control now? You need a bot token from @BotFather. [y/N] '; read -r _a
 	case "$_a" in y | Y | yes) ;; *) return 0 ;; esac
 	printf 'Paste the bot token: '; read -r _tok
-	[ -n "$_tok" ] && valid_plain "$_tok" || { echo "No usable token: skipped (you can run: piso-setup telegram)."; return 0; }
+	if [ -z "$_tok" ] || ! valid_plain "$_tok"; then echo "No usable token: skipped (you can run: piso-setup telegram)."; return 0; fi
 	conf_set TG_TOKEN "$_tok"
 }
 
@@ -756,6 +869,7 @@ cmd_lock_admin() {
 	rm -f /tmp/piso-admin-confirm
 	/etc/init.d/firewall reload > /dev/null 2>&1
 	# the safety net: back to open after 2 minutes unless confirmed (runs on its own, so it also works if this session is lost)
+	# shellcheck disable=SC2016 # expanded by that shell, later
 	setsid sh -c 'sleep "${LOCK_ADMIN_SECONDS:-120}"; [ -e /tmp/piso-admin-confirm ] || { uci -q delete firewall.piso_admin_block; uci commit firewall; /etc/init.d/firewall reload; logger -t piso-setup "lock-admin was not confirmed and has been undone"; }' > /dev/null 2>&1 &
 	echo "Locked: only $_macs may reach the router's admin ports (22, 80, 443)."
 	echo "Now open a NEW SSH session from that computer to check that you can still log in."
@@ -915,7 +1029,9 @@ main() {
 		telegram) cmd_telegram ;;
 		handout) cmd_handout ;;
 		update) cmd_update ;;
-		lock-admin) cmd_lock_admin $ARGS ;;
+		lock-admin)
+			# shellcheck disable=SC2086 # one argument per MAC address
+			cmd_lock_admin $ARGS ;;
 		lock-admin-confirm) cmd_lock_admin_confirm ;;
 		unlock-admin) cmd_unlock_admin ;;
 		rotate-box-wifi) DRY=0; [ "$(id -u)" = 0 ] || die "run as root"; conf_set BOX_WIFI_ROTATED 0; rotate_box_wifi ;;

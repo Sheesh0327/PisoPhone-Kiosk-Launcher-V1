@@ -5,6 +5,7 @@ import http.server, json, os, re, subprocess, sys, tempfile, threading, base64
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SCRIPT = f"{ROOT}/setup/piso-setup.sh"
+PAYLOAD_MARK = "\n# ---- payload: the portal files"   # the line where the embedded files start
 failures = checks = 0
 
 
@@ -70,6 +71,14 @@ r = run("--dry-run")
 out = r.stdout
 check(r.returncode == 0, "dry run succeeds: " + r.stderr + out[-300:])
 check("flow_offloading='0'" in out and "flow_offloading_hw='0'" in out, "flow offloading is switched off (it can bypass the speed caps)")
+check("set dhcp.guest.ra='disabled'" in out and "set dhcp.guest.dhcpv6='disabled'" in out, "guests get no IPv6 (openNDS gates IPv4 only)")
+check("set dropbear.@dropbear[0].Interface='lan'" in out, "SSH answers on the kiosk LAN only (openNDS always lets guests reach port 22)")
+os.makedirs(f"{tmp}/fakeroot/etc/config", exist_ok=True)
+open(f"{tmp}/fakeroot/etc/config/uhttpd", "w").close()
+r2 = run("--dry-run", env={"PISO_ROOT": f"{tmp}/fakeroot"})
+check("add_list uhttpd.main.listen_https='10.0.0.1:443'" in r2.stdout and "add_list uhttpd.main.listen_http='10.0.0.1:80'" in r2.stdout,
+      "and so does LuCI, when it is installed")
+check("uhttpd" not in out, "no LuCI settings on a router without LuCI")
 r2 = run("--dry-run", env={"GUEST_SSID": "Maria Free WiFi"})
 check("set wireless.guest_radio0.ssid='Maria Free WiFi'" in r2.stdout, "the public Wi-Fi name can be chosen at setup: " + r2.stderr[-200:])
 check("set wireless.kiosk_radio0.ssid='PisoKiosk'" in r2.stdout and "set wireless.kiosk_radio0.hidden='1'" in r2.stdout and "set wireless.kiosk_radio1.hidden='1'" in r2.stdout,
@@ -87,7 +96,7 @@ check('[ "$p" = opennds ] && stop_opennds' in inst and inst.index("stop_opennds"
 stopper = text.split("stop_opennds() {")[1].split("\n}\n")[0]
 check("/etc/init.d/opennds stop" in stopper and "NDS_RESTORE=1" in stopper and "br-guest" in stopper, "a re-run remembers a working guest portal so a failed run can start it again")
 check("NDS_RESTORE" in text.split("die() {")[1].split("\n}\n")[0], "a failed run restores the guest portal it stopped")
-pre = text.split("# ---- payload")[0]
+pre = text.split(PAYLOAD_MARK)[0]
 r = lib('conf_set ROOT_PASS "abcdefgh123"; conf_set ROOT_PASS_SET 0; write_summary; cat "$SUMMARY"; conf_set ROOT_PASS_SET 1; write_summary; cat "$SUMMARY"')
 first, second = r.stdout.split("PisoPhone setup summary")[1:3]
 check("abcdefgh123" not in first and "NOT SET" in first and "set-password" in first, "a password that was not applied is never shown as the router password")
@@ -106,8 +115,8 @@ for bad, why in [("has space", "spaces"), ("it'sbad12", "a quote"), ("short", "l
     r = lib('rm -f "$CONF"; choose_passwords; echo rc=$?', env={"KIOSK_PASSWORD": bad})
     check("rc=0" not in r.stdout and ("may not contain" in r.stdout or "at least" in r.stdout), f"a Wi-Fi password with {why} is refused: " + r.stdout)
 check("ask_password BOX_ADMIN_PASS_NEW" in text and "ask_password KIOSK_PASS" in text and "super-admin" in text, "all the operating passwords are chosen in the setup")
-check(not re.search(r"\bod -|hexdump|xxd", text.split("# ---- payload")[0]), "no tools a stock BusyBox lacks (od, hexdump, xxd)")
-check("--stage2" not in text.split("# ---- payload")[0] and "nohup" not in text.split("# ---- payload")[0], "no background stage that outlives the SSH session")
+check(not re.search(r"\bod -|hexdump|xxd", text.split(PAYLOAD_MARK)[0]), "no tools a stock BusyBox lacks (od, hexdump, xxd)")
+check("--stage2" not in text.split(PAYLOAD_MARK)[0] and "nohup" not in text.split(PAYLOAD_MARK)[0], "no background stage that outlives the SSH session")
 check("set network.guest.ipaddr='192.168.30.1'" in out and "set network.guest.device='br-guest'" in out, "guest network on its own bridge")
 for radio in ("radio0", "radio1"):
     check(f"set wireless.kiosk_{radio}.ssid='PisoKiosk'" in out and f"set wireless.kiosk_{radio}.network='lan'" in out, f"PisoKiosk on {radio}")
@@ -166,7 +175,40 @@ for src, dest in [("router/piso_monitor.sh", "/usr/bin/piso-monitor.sh"), ("rout
     check(os.path.exists(p) and os.access(p, os.X_OK), f"{dest} is executable")
 pp = f"{root}/usr/bin/pisoportal"
 check(os.path.exists(pp) and os.access(pp, os.X_OK) and open(pp, "rb").read() == open(f"{ROOT}/tools/pisoportal/bin/pisoportal-mipsel", "rb").read(), "the portal program is decoded from the payload byte for byte")
-check(not os.path.exists(f"{root}/usr/bin/pisoportal.b64") and not os.path.exists(f"{root}/usr/bin/pisoportal.new"), "no temporary files are left behind")
+check(not [f for f in os.listdir(f"{root}/usr/bin") if f.endswith((".b64", ".new", ".clean"))], "no temporary files are left behind: " + str(os.listdir(f"{root}/usr/bin")))
+installed = f"{tmp}/installed-copy"
+r = lib(f'PISO_ROOT={root}2; SELF_PATH={installed}; DRY=1; extract_payload {SCRIPT}')
+check(os.path.exists(installed) and not any(l.startswith("#@@") for l in open(installed)) and open(installed).read().startswith("#!/bin/sh")
+      and os.path.getsize(installed) < 200_000, "the installed command is the script without the payload (no 1 MB of flash)")
+r = lib(f'PISO_ROOT={root}3; DRY=1; extract_payload {installed}; echo rc=$?')
+check("rc=0" in r.stdout and "carries no portal files" in r.stdout and not os.path.exists(f"{root}3/usr/bin/pisoportal"), "re-running the installed copy keeps the files on the router")
+# a stock OpenWrt BusyBox has neither base64 nor openssl: the awk decoder must give the same program, checked by its sha256
+bb = subprocess.run(["sh", "-c", "command -v busybox"], capture_output=True, text=True).stdout.strip()
+if bb:
+    bbdir = f"{tmp}/bb"
+    os.makedirs(bbdir)
+    for a in "sh awk sed grep tr rm mv chmod mkdir dirname cut sha256sum printf cat date head tail ln".split():
+        os.symlink(bb, f"{bbdir}/{a}")
+    # (functions stand in for the missing tools: a BusyBox built with "standalone shell" would find its own applets)
+    r = subprocess.run([f"{bbdir}/sh", "-c", f". {SCRIPT}; base64() {{ return 127; }}; openssl() {{ return 127; }}; DRY=1; extract_payload {SCRIPT}"], env={"PATH": bbdir, "PISO_ROOT": f"{tmp}/bbroot", "PISO_SETUP_SOURCE_ONLY": "1",
+                       "PISO_SELF_PATH": f"{tmp}/bbroot/piso-setup", "PISO_LOG": f"{tmp}/bblog"}, capture_output=True, text=True, timeout=300)
+    got = f"{tmp}/bbroot/usr/bin/pisoportal"
+    check(os.path.exists(got) and open(got, "rb").read() == open(f"{ROOT}/tools/pisoportal/bin/pisoportal-mipsel", "rb").read() and "decoding with awk" in r.stdout,
+          "BusyBox only (no base64, no openssl): the portal program is decoded by awk, byte for byte: " + r.stdout[-300:] + r.stderr[-300:])
+    check(os.access(f"{tmp}/bbroot/etc/init.d/pisoportal", os.X_OK), "and the init scripts are executable (marker parsing without GNU sed extensions)")
+else:
+    print("note: busybox not installed; the BusyBox-only decoding test was skipped")
+# a damaged setup file is refused instead of installing a broken program
+bad = f"{tmp}/damaged.sh"
+t = open(SCRIPT).read()
+i = t.index("\n#@@B64 ") + 1
+j = t.index("\n", i) + 200
+open(bad, "w").write(t[:j] + ("B" if t[j] != "B" else "C") + t[j + 1:])
+os.makedirs(f"{tmp}/badroot/usr/bin")
+open(f"{tmp}/badroot/usr/bin/pisoportal", "w").write("the working program")
+r = lib(f'PISO_ROOT={tmp}/badroot; DRY=1; extract_payload {bad}; echo rc=$?')
+check("rc=" not in r.stdout and "could not decode" in (r.stdout + r.stderr), "a damaged payload (checksum mismatch) stops the setup: " + r.stdout[-200:])
+check(open(f"{tmp}/badroot/usr/bin/pisoportal").read() == "the working program", "and the program already on the router is left as it was")
 
 # ---- stored settings -------------------------------------------------------------------------------------------------------
 r = lib('conf_set A "x y"; conf_set A "second"; conf_set B 2; echo "$(conf_get A)|$(conf_get B)"; K=$(secret K 12); echo "$K|$(secret K 12)"; secret G 64 hex')
@@ -284,10 +326,33 @@ r = run("update", env={"PISO_TEST_NONROOT": "1", "PISO_ROOT": root, "PISO_CONF":
 check(os.path.exists(f"{root}/usr/bin/pisoportal") and os.path.exists(f"{root}/etc/init.d/pisoportal") and os.path.exists(f"{root}/usr/bin/piso-monitor.sh"),
       "update installs the portal program and the monitor: " + r.stdout[-300:] + r.stderr[-300:])
 check(open(f"{root}/usr/bin/piso-monitor.sh").read() == open(f"{ROOT}/router/piso_monitor.sh").read(), "they are the current ones from this file")
-open(f"{tmp}/uci.log", "w").close()
+# a router set up with the earlier ThemeSpec portal: update moves openNDS and the firewall to the FAS portal, nothing else
+open(f"{bindir}/uci", "w").write(f"""#!/bin/sh
+echo "$*" >> {tmp}/uci.log
+[ "$1" = -q ] && shift
+case "$1" in
+  batch) cat >> {tmp}/uci.batch; touch {tmp}/uci.pending ;;
+  changes) [ -e {tmp}/uci.pending ] && echo "opennds.@opennds[0].fasport='2080'" ;;
+  commit) rm -f {tmp}/uci.pending ;;
+  get) exit 1 ;;
+esac
+exit 0
+""")
+for f in ("uci.log", "uci.batch"):
+    open(f"{tmp}/{f}", "w").close()
+open(conf_up, "a").write("GUEST_NAME='Shop WiFi'\nBOX_MAC='AA:BB:CC:DD:EE:09'\n")
 r = run("update", env={"PISO_TEST_NONROOT": "1", "PISO_ROOT": root, "PISO_CONF": conf_up, "PISO_SELF_PATH": f"{tmp}/installed/piso-setup"})
-ul = open(f"{tmp}/uci.log").read()
-check("set " not in ul and "commit" not in ul, "update changes no router settings (no uci set / commit): " + ul[:200])
+ub, ul = open(f"{tmp}/uci.batch").read(), open(f"{tmp}/uci.log").read()
+check("set opennds.@opennds[0].fasport='2080'" in ub and "set opennds.@opennds[0].login_option_enabled='0'" in ub and "delete opennds.@opennds[0].themespec_path" in ub
+      and "set firewall.guest_stream.dest_port='2080'" in ub and "set opennds.@opennds[0].gatewayname='Shop WiFi'" in ub, "update moves openNDS to the FAS portal: " + ub[:300])
+check("set dropbear.@dropbear[0].Interface='lan'" in ub, "and keeps SSH off the guest network")
+check(all(l.startswith(("set firewall.guest_stream", "set opennds.", "delete opennds.", "add_list opennds.", "set dropbear.", "delete uhttpd.", "add_list uhttpd.", "#"))
+          for l in ub.splitlines() if l.strip()), "and touches nothing else (no Wi-Fi, network or passwords): " + ub)
+check("commit opennds" in ul and "commit firewall" in ul, "the change is committed")
+cc = open(f"{root}/etc/coinslot.conf").read()
+check("GW_KEY='" + "ab" * 32 + "'" in cc and "PORTAL_PORT='2080'" in cc and "GATEWAY_NAME='Shop WiFi'" in cc and "GW_BOX_MAC='AA:BB:CC:DD:EE:09'" in cc,
+      "and the portal's settings are written for this version: " + cc)
+fake_uci({"radio0": "2g", "radio1": "5g"})
 r = run("update", env={"PISO_TEST_NONROOT": "1", "PISO_ROOT": root, "PISO_CONF": f"{tmp}/nosetup"})
 check(r.returncode != 0 and "run ./piso-setup.sh without arguments first" in (r.stdout + r.stderr), "without an existing setup it refuses")
 r = subprocess.run(["sh", SCRIPT, "update"], env=dict(os.environ, PATH=f"{bindir}:" + os.environ["PATH"], PISO_CONF=conf_up, PISO_LOG=f"{tmp}/log", PISO_STATE=f"{tmp}/state",

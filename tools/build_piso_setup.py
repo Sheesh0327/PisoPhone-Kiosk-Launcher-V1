@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Builds setup/piso-setup.sh: the single file that is copied to the router. It is setup/piso-setup.sh.in plus the files the
 router needs as a payload: text files after a '#@@FILE <destination> <mode>' line, and the portal program (a binary, so as
-base64) after a '#@@B64 <destination> <mode>' line. Run it after changing any embedded file:
+base64) after a '#@@B64 <destination> <mode> <sha256>' line. Run it after changing any embedded file:
     python3 tools/build_piso_setup.py            writes setup/piso-setup.sh
     python3 tools/build_piso_setup.py --check    fails if the committed file is out of date (CI)
 The portal program is built by CI (.github/workflows/rust-router-probe.yml) and committed to tools/pisoportal/bin; CI
 rebuilds this file right after, so the two always match."""
-import base64, os, sys
+import base64, hashlib, os, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FILES = [  # (source in the repository, destination on the router, mode)
@@ -31,7 +31,8 @@ def build():
     for src, dest, mode in BINARIES:
         raw = open(os.path.join(ROOT, src), "rb").read()
         b64 = base64.b64encode(raw).decode()
-        out += f"#@@B64 {dest} {mode}\n" + "".join(b64[i:i + 76] + "\n" for i in range(0, len(b64), 76))
+        # the checksum lets the router verify whichever decoder it used
+        out += f"#@@B64 {dest} {mode} {hashlib.sha256(raw).hexdigest()}\n" + "".join(b64[i:i + 76] + "\n" for i in range(0, len(b64), 76))
     return out
 
 

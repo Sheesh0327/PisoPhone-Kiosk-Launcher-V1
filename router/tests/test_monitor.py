@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for piso_monitor.sh against a fake Telegram server and a fake coin manager."""
+"""Tests for piso_monitor.sh against a fake Telegram server, a fake portal program and a fake openNDS."""
 import json, os, subprocess, sys, tempfile, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -46,7 +46,7 @@ class H(BaseHTTPRequestHandler):
 srv = ThreadingHTTPServer(("127.0.0.1", 0), H); port = srv.server_address[1]
 threading.Thread(target=srv.serve_forever, daemon=True).start()
 
-fake = os.path.join(tmp, "listener.sh")
+fake = os.path.join(tmp, "portal.sh")
 open(fake, "w").write(f"""#!/bin/sh
 case "$1" in
   box) [ -e {tmp}/boxdown ] && {{ echo no; exit 1; }}; echo "box answers" ;;
@@ -59,10 +59,15 @@ logf = os.path.join(tmp, "log.txt"); open(logf, "w").close()
 fakelog = os.path.join(tmp, "logread.sh")
 open(fakelog, "w").write(f"#!/bin/sh\ncat {logf}\n"); os.chmod(fakelog, 0o755)
 fakesetup = os.path.join(tmp, "setup.sh"); open(fakesetup, "w").write("#!/bin/sh\necho DIAGTEXT\n"); os.chmod(fakesetup, 0o755)
+fakesvc = os.path.join(tmp, "pisoportal.init"); open(fakesvc, "w").write(f"#!/bin/sh\necho \"$1\" >> {tmp}/service.log\n"); os.chmod(fakesvc, 0o755)
+fakends = os.path.join(tmp, "ndsctl"); open(fakends, "w").write("""#!/bin/sh
+[ "$1" = json ] && printf '{"client_list_length":"3","clients":{\n"aa":{\n  "state":"Authenticated",\n},\n"bb":{\n  "state":"Preauthenticated",\n},\n"cc":{\n  "state":"Authenticated",\n}}}\n'
+""")
+os.chmod(fakends, 0o755)
 conf = os.path.join(tmp, "mon.conf")
 open(conf, "w").write(f"TG_TOKEN=T0K\nTG_CHAT=111\nSITE_NAME=Shop1\nREPORT_HOUR=0\nHEALTHCHECK_URL=http://127.0.0.1:{port}/hc\n")
-env = dict(os.environ, PISO_MONITOR_CONF=conf, TG_API=f"http://127.0.0.1:{port}", MON_STATE=f"{tmp}/state", LISTENER=fake,
-           PISO_SETUP=fakesetup, LOGREAD=fakelog, BOX_DOWN_AFTER="2")
+env = dict(os.environ, PISO_MONITOR_CONF=conf, TG_API=f"http://127.0.0.1:{port}", MON_STATE=f"{tmp}/state", PORTAL=fake,
+           PISO_SETUP=fakesetup, LOGREAD=fakelog, BOX_DOWN_AFTER="2", PORTAL_SERVICE=fakesvc, NDSCTL=fakends)
 
 
 def mon(*a):
@@ -112,5 +117,17 @@ check(any("DIAGTEXT" in t for t in texts()), "/diag")
 queue.append({"update_id": 8, "message": {"chat": {"id": 111}, "text": "/reboot"}})
 n = len(sent); mon("poll", "1")
 check(any("/reboot confirm" in t for t in texts()[n:]), "/reboot asks for confirmation first")
+queue.append({"update_id": 9, "message": {"chat": {"id": 111}, "text": "/restart"}})
+n = len(sent); mon("poll", "1")
+check(os.path.exists(f"{tmp}/service.log") and open(f"{tmp}/service.log").read() == "restart\n" and any("portal restarted" in t for t in texts()[n:]),
+      "/restart restarts the portal service (pisoportal)")
+queue.append({"update_id": 10, "message": {"chat": {"id": 111}, "text": "/status"}})
+n = len(sent); mon("poll", "1")
+st = "\n".join(texts()[n:])
+check("guests online: 2" in st and "box: answers" in st and "RECONCILE" in st, "/status counts the guests openNDS has let online: " + st)
+open(os.path.join(tmp, "x-should-not-appear"), "w").close()
+queue.append({"update_id": 11, "message": {"chat": {"id": 111}, "text": "/report *"}})
+n = len(sent); r = subprocess.run(["sh", MON, "poll", "1"], env=env, capture_output=True, text=True, timeout=60, cwd=tmp)
+check(any("REPORT days=1" in t for t in texts()[n:]), "a '*' in a command is a word, not a list of files")
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)

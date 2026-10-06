@@ -15,10 +15,13 @@
 # Nothing here can change prices, passwords or Wi-Fi settings.
 
 CONF="${PISO_MONITOR_CONF:-/etc/piso-monitor.conf}"
+# shellcheck source=/dev/null
 [ -r "$CONF" ] && . "$CONF"
 TG_API="${TG_API:-https://api.telegram.org}"
 S="${MON_STATE:-/tmp/piso-monitor}"
-LISTENER="${LISTENER:-/usr/bin/pisoportal}"
+PORTAL="${PORTAL:-/usr/bin/pisoportal}"
+PORTAL_SERVICE="${PORTAL_SERVICE:-/etc/init.d/pisoportal}"
+NDSCTL="${NDSCTL:-ndsctl}"
 SETUP="${PISO_SETUP:-/usr/sbin/piso-setup}"
 SITE_NAME="${SITE_NAME:-PisoPhone}"
 REPORT_HOUR="${REPORT_HOUR:-21}"
@@ -47,7 +50,7 @@ alert() {
 	tg_send "$*" && echo "$_n" > "$_f"
 }
 
-box_ok() { "$LISTENER" box > /dev/null 2>&1; }
+box_ok() { "$PORTAL" box > /dev/null 2>&1; }
 
 check_box() {
 	_fails=$(cat "$S/boxfails" 2> /dev/null); _fails=${_fails:-0}
@@ -64,14 +67,14 @@ check_ledger() {  # at most once an hour
 	_f="$S/lastreconcile"; _n=$(now)
 	[ -r "$_f" ] && [ $((_n - $(cat "$_f"))) -lt 3600 ] && return 0
 	echo "$_n" > "$_f"
-	_o=$("$LISTENER" reconcile 2>&1); _rc=$?
+	_o=$("$PORTAL" reconcile 2>&1); _rc=$?
 	case "$_rc" in
 		1) alert ledger 21600 "REVENUE MISMATCH: $_o" ;;
 		3) alert ledger 21600 "REVENUE LEDGER WAS CHANGED: $_o" ;;
 	esac
 }
 
-check_grief() {  # "alert grief:" lines the coin manager writes to the system log
+check_grief() {  # "alert grief:" lines the portal writes to the system log
 	touch "$S/grief.seen"
 	$LOGREAD -e coinslot 2> /dev/null | grep 'alert grief:' | tail -n 10 | while IFS= read -r _l; do
 		grep -qxF "$_l" "$S/grief.seen" && continue
@@ -86,7 +89,7 @@ check_report() {  # the daily report, once, from REPORT_HOUR on
 	[ "$(date +%H | sed 's/^0//')" -ge "$REPORT_HOUR" ] || return 0
 	echo "$_day" > "$S/lastreport"
 	tg_send "daily report $_day
-$("$LISTENER" report 1 2>&1)"
+$("$PORTAL" report 1 2>&1)"
 }
 
 do_tick() {
@@ -101,20 +104,23 @@ cmd_status_text() {
 	echo "uptime: $(uptime 2> /dev/null | sed 's/^ *//')"
 	echo "memory free: $(awk '/MemAvailable/ {printf "%d MB", $2/1024}' /proc/meminfo 2> /dev/null)"
 	box_ok && echo "box: answers" || echo "box: DOES NOT ANSWER"
-	echo "guests online: $(ndsctl clients 2> /dev/null | grep -c '^client_id')"
-	"$LISTENER" reconcile 2>&1 | head -2
+	echo "guests online: $("$NDSCTL" json 2> /dev/null | grep -c '"state":"Authenticated"')"
+	"$PORTAL" reconcile 2>&1 | head -2
 }
 
 handle_command() {  # handle_command <chat> <text>
-	_c="$1"; set -- $2
+	if [ "$1" != "$TG_CHAT" ]; then say "ignored a message from chat $1"; return 0; fi
+	set -f   # the words of the message, split on purpose; never file names
+	# shellcheck disable=SC2086
+	set -- $2
+	set +f
 	_cmd="${1%%@*}"; _arg="$2"
-	if [ "$_c" != "$TG_CHAT" ]; then say "ignored a message from chat $_c"; return 0; fi
 	case "$_cmd" in
 		/status | /start) tg_send "$(cmd_status_text)" ;;
-		/report) case "$_arg" in "" | *[!0-9]*) _arg=1 ;; esac; tg_send "$("$LISTENER" report "$_arg" 2>&1)" ;;
-		/reconcile) tg_send "$("$LISTENER" reconcile 2>&1)" ;;
+		/report) case "$_arg" in "" | *[!0-9]*) _arg=1 ;; esac; tg_send "$("$PORTAL" report "$_arg" 2>&1)" ;;
+		/reconcile) tg_send "$("$PORTAL" reconcile 2>&1)" ;;
 		/diag) tg_send "$("$SETUP" diag 2>&1 | tail -c 3600)" ;;
-		/restart) /etc/init.d/coinslot restart > /dev/null 2>&1; tg_send "coin manager restarted." ;;
+		/restart) "$PORTAL_SERVICE" restart > /dev/null 2>&1; tg_send "portal restarted (a coin window that was open is settled from its record)." ;;
 		/reboot)
 			if [ "$_arg" = confirm ] && [ -r "$S/reboot.ask" ] && [ $(($(now) - $(cat "$S/reboot.ask"))) -lt 120 ]; then
 				tg_send "rebooting the router now."; rm -f "$S/reboot.ask"; sleep 2; reboot
