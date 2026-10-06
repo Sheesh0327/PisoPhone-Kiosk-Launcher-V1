@@ -167,7 +167,7 @@ try:
     b.close()
     b = Cust("127.0.0.2", reset=True)
     s = b.wait_state("idle", 5)
-    check(s is not None and s["online"] is True and env.nds_get(MAC_B)["STATE"] == "Authenticated", f"the next visit puts it online from the roll: {s}")
+    check(s is not None and s["online"] is True and wait_until(lambda: env.nds_get(MAC_B)["STATE"] == "Authenticated", 5), f"the next visit puts it online from the roll: {s}")
     b.close()
 
     # ---- a failed acknowledgement: no new window until the coins are settled with the box -------------------------------------------------
