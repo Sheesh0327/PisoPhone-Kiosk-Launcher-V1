@@ -69,7 +69,9 @@ fails), waits for in-flight coins, prints the total and, with `--ack`, clears th
 - Hardware test: set a key, `arm` with the script, insert a coin, `status` shows `pulses: 1`, `release`,
   `ack` returns 1, `status` shows 0. Then press Ready for coin on a phone: it must still arm normally.
 
-## Router (OpenWrt / busybox, no Python)
+## Router (OpenWrt)
 `tools/pisoportal` (`src/core.rs`, `src/boxlink.rs`) is the production client of this API: it arms, counts coins (extending the wait after each),
-always disarms, waits for in-flight coins and acknowledges them only after access was granted. See `tools/pisoportal/README.md`.
+always releases, waits for in-flight coins, records the window once (roll and revenue ledger) and only then acknowledges it, so a
+restart at any point neither loses nor doubles a coin; access is granted from the record. While a window is open the box keeps
+one queued record for it, its running total, however many coins go in. See `tools/pisoportal/README.md`.
 For experiments from a PC use `scripts/gateway_client.py`.

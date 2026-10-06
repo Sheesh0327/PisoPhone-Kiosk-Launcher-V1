@@ -23,7 +23,11 @@ coin page must be opened from the portal itself (WebSocket Origin check); a page
 answers the 20 s pings by itself) is dropped. Nothing a client sends can stop the program: input is handled without
 panicking, and a panic would abort it (procd then restarts it, and recovery settles any open window).
 
-CLI: `pisoportal serve | box | reconcile | verify | report [days] | selftest | version`. Admin (router only):
+Reconcile: the ledger is compared with the box's own coin count (`lifetime_pulses`), which starts again at 0 whenever the
+box's revenue is collected. The portal keeps a base in `DATA_DIR/reconcile.state` and moves it when that count goes down
+(checked every 10 minutes); `pisoportal reconcile rebase` moves it by hand.
+
+CLI: `pisoportal serve | box | reconcile [rebase] | verify | report [days] | selftest | version`. Admin (router only):
 `/admin/start?mac=&plan=`, `/admin/status?mac=`, `/admin/finish?mac=`, `/admin/info` (used by `piso-setup test-coin`).
 Config: `/etc/coinslot.conf` (written by `piso-setup`); keys are listed in `src/config.rs`.
 
@@ -34,5 +38,7 @@ cargo build --release
 python3 tests/test_flow.py        # whole flow against a fake box and fake ndsctl
 python3 tests/test_browser.py     # real Chromium (needs: pip install playwright)
 ```
-CI (`rust-router-probe.yml`) builds `bin/pisoportal-mipsel` for `mipsel_24kc` with the OpenWrt toolchain, regenerates
-`setup/piso-setup.sh` (which embeds that binary) and commits both to `beta`. You do not need Rust on the router or on your computer.
+CI (`router-program.yml`) builds `bin/pisoportal-mipsel` for `mipsel_24kc` with the OpenWrt toolchain (the exact
+toolchain is recorded in `bin/BUILD-INFO`), regenerates `setup/piso-setup.sh` (which embeds that binary) and commits both
+to `beta`. `quality.yml` checks rustfmt, clippy (`-D warnings`), the unit tests, `tests/test_flow.py` and
+`tests/test_browser.py` on every push. You do not need Rust on the router or on your computer.

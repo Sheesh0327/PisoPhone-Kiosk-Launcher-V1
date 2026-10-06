@@ -9,17 +9,15 @@
     const PACKAGE_NAME = "com.pisophone.kiosk";
     const INSTALL_TIMEOUT_MS = 90000; // 90 seconds - Package Manager extraction, dex2oat ART compilation & verification require 30-60s on budget hardware
 
-    // Candidate bundle URLs for robust universal loading across Cloudflare, Local ESP32, or Localhost
+    // The ADB library is this site's own vendored copy (its hash is checked in CI, see js/VENDORED.md); it is never fetched
+    // from another site, which would also be refused by the page's Content-Security-Policy.
     const BUNDLE_CANDIDATE_URLS = [
         (typeof window !== 'undefined' && window.YUME_CHAN_BUNDLE_URL) ? window.YUME_CHAN_BUNDLE_URL : null,
         './js/yume-chan-bundle.js',
         '/js/yume-chan-bundle.js',
         '../js/yume-chan-bundle.js',
         './yume-chan-bundle.js',
-        '/yume-chan-bundle.js',
-        'https://pisophone.pages.dev/js/yume-chan-bundle.js',
-        'https://pisophone.pages.dev/yume-chan-bundle.js',
-        'https://cdn.jsdelivr.net/gh/Sheesh0327/PisoPhone-Kiosk-Launcher-V1@main/website/js/yume-chan-bundle.js'
+        '/yume-chan-bundle.js'
     ].filter(Boolean).map(url => {
         if (url.startsWith('http://') || url.startsWith('https://')) return url;
         try {
@@ -749,7 +747,7 @@
             // single-quoted so a crafted link cannot run commands on the phone.
             let provExtras = '';
             try {
-                const urlParams = new URLSearchParams(window.location.search);
+                const urlParams = pageParams;
                 provExtras = buildProvisioningExtras(validateProvisioning({
                     secret: urlParams.get('secret'),
                     mac: urlParams.get('mac'),
@@ -864,7 +862,26 @@
         }
     }
 
+    /**
+     * What the box's link carried, read once. Values may come after '#' (a fragment never reaches a web server, its logs
+     * or a Referer) or, from older boxes, in the query; the fragment wins. The secret and the Wi-Fi password are then taken
+     * out of the address bar and the history; the page keeps them in memory for the install.
+     */
+    function readPageParams(loc, hist) {
+        const p = new URLSearchParams((loc && loc.search) || '');
+        new URLSearchParams(((loc && loc.hash) || '').replace(/^#/, '')).forEach((v, k) => p.set(k, v));
+        if (hist && loc && (p.has('secret') || p.has('wifi_pass'))) {
+            const shown = new URLSearchParams(loc.search || '');
+            shown.delete('secret');
+            shown.delete('wifi_pass');
+            const q = shown.toString();
+            try { hist.replaceState(null, '', (loc.pathname || '/') + (q ? '?' + q : '')); } catch (e) {}
+        }
+        return p;
+    }
+    const pageParams = readPageParams(typeof window !== 'undefined' ? window.location : null, typeof window !== 'undefined' ? window.history : null);
+
     // Export globally for the UI
     window.webADB = new WebADBManager();
-    window.PisoProvisioning = { shellQuote, validateProvisioning, buildProvisioningExtras, describeInstallFailure };
+    window.PisoProvisioning = { shellQuote, validateProvisioning, buildProvisioningExtras, describeInstallFailure, readPageParams, params: pageParams };
 })();

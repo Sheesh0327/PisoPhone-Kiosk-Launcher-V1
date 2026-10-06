@@ -1,3 +1,11 @@
+# Every page: never framed, not sniffed, and no code from other sites. The provisioning page drives phones over WebUSB
+# and hands them the box's key, so only this site's own scripts may run on it (Tailwind is built into css/app.css).
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://pisophone.pages.dev; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
 # The ESP32 dashboard is served from http://<esp32-ip>/ and downloads firmware.json and the .bin
 # from this site, which the browser only allows with CORS headers.
 /update/firmware.json

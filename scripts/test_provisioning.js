@@ -28,5 +28,16 @@ check(throws(() => P.validateProvisioning({ wifiSsid: 'café', wifiPass: 'passwo
 const q = P.buildProvisioningExtras(P.validateProvisioning({ wifiPass: "pa'ss$(id)word" }));
 check(q.includes("'pa'\\''ss$(id)word'"), 'shell metacharacters stay inside quotes: ' + q);
 check(!/wifi_pass [^']/.test(q), 'the password is always quoted');
+// the box's link: the fragment wins over the query, and the secret leaves the address bar (kept in memory)
+const replaced = [];
+const hist = { replaceState(_s, _t, url) { replaced.push(url); } };
+const pp = P.readPageParams({ pathname: '/', search: '?mac=aa%3Abb&slot=2&secret=old', hash: '#secret=abc123&wifi_pass=pw12345678' }, hist);
+check(pp.get('secret') === 'abc123' && pp.get('wifi_pass') === 'pw12345678' && pp.get('mac') === 'aa:bb' && pp.get('slot') === '2', 'values from the fragment win over the query');
+check(replaced.length === 1 && replaced[0] === '/?mac=aa%3Abb&slot=2', 'the secret is taken out of the address bar: ' + replaced[0]);
+const plain = P.readPageParams({ pathname: '/', search: '?mac=aa', hash: '' }, { replaceState() { throw new Error('should not be called'); } });
+check(plain.get('mac') === 'aa', 'a link without secrets is left as it is');
+check(P.readPageParams(null, null).toString() === '', 'no location: no values');
+check(!fs.readFileSync(path.join(__dirname, '..', 'website', 'js', 'webadb_manager.js'), 'utf8').includes('cdn.jsdelivr.net'), 'the ADB library is never loaded from another site');
+check(!fs.readFileSync(path.join(__dirname, '..', 'website', 'index.html'), 'utf8').includes('cdn.tailwindcss.com'), 'no third-party script on the provisioning page');
 console.log(`${checks} checks, ${failures} failures`);
 process.exit(failures ? 1 : 0);

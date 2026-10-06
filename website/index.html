@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PisoPhone - Hardware Provisioning Utility</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="icon" href="data:,">
+    <!-- built from the classes on this page by tools/site-css (no third-party script runs on this page) -->
+    <link rel="stylesheet" href="css/app.css">
     <style>
         body {
             background: linear-gradient(-45deg, #090d16, #0e1726, #052e16);
@@ -208,8 +210,8 @@
     <script src="js/webadb_manager.js"></script>
 
     <script>
-        // Parse incoming ESP32 parameters
-        const urlParams = new URLSearchParams(window.location.search);
+        // Parameters from the box's link (read once by webadb_manager.js; the secret is already out of the address bar)
+        const urlParams = window.PisoProvisioning.params;
         const urlMac = urlParams.get('mac');
         // Only a plain IPv4 address is ever used as a redirect target; anything else is ignored.
         const rawIp = urlParams.get('ip') || '';

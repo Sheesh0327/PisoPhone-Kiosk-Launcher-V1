@@ -48,14 +48,15 @@ It has every password (router, PisoKiosk Wi-Fi, coin box admin). The setup also 
 3. **Wi-Fi customer:** join the customer Wi-Fi (`PisoWiFi`) with a phone, open the login page, pick a plan, tap Insert Coin, insert one coin. The page shows each coin at once with a countdown, and a **Done** button. You are *not* online yet (so the phone does not close the login page while you add coins). Insert more coins if you like, then tap **Done** (or wait 15 s after the last coin): the page then says you are online with your time and code. Browse something.
 4. **Second device:** while a window is open, try Insert Coin on another phone. It must be refused with a "Try again" page.
 5. **Rental phone:** join `PisoKiosk` with a kiosk phone (the app's own flow) and pay once.
-6. `piso-setup reconcile` must say `RECONCILE OK` (needs firmware 3.2.1).
+6. `piso-setup reconcile` must say `RECONCILE OK` (needs firmware 3.2.1). After the box's revenue is collected its count starts again at 0;
+   the portal notices that by itself ("compared from now on"). If a mismatch stays after a collection: `piso-setup reconcile rebase`.
 7. `piso-setup diag > diag.txt` and keep the output: it contains the coin timings and no passwords. Send it with any bug report.
 
 ## Step 4 (optional, recommended): Telegram alerts and remote control
 1. In Telegram, open **@BotFather**, send `/newbot`, pick a name, copy the token it gives you.
 2. On the router: `piso-setup telegram`. Paste the token, give the site a name (it prefixes every message), then open your new bot in Telegram and send it any message. The router shows the chat it found; answer `y` if it is you.
 3. You get a "connected" message. From then on you receive: router restarted, box offline for 5 minutes (and back), revenue mismatch or edited ledger, a device abusing the coin slot, and a daily report at 21:00.
-4. Commands (only from your chat): `/status`, `/report [days]`, `/reconcile`, `/diag`, `/restart` (coin manager), `/reboot` (then `/reboot confirm` within 2 minutes), `/help`.
+4. Commands (only from your chat): `/status`, `/report [days]`, `/reconcile`, `/diag`, `/restart` (the portal), `/reboot` (then `/reboot confirm` within 2 minutes), `/help`.
 5. Optional dead-man switch: create a check at healthchecks.io, put its ping URL in `/etc/piso-monitor.conf` as `HEALTHCHECK_URL='...'`, then `/etc/init.d/piso_monitor restart`. You are alerted when the router stops pinging (power cut, internet down).
 The router needs internet for this: while the site is offline nothing can be sent, and alerts raised in that time are not delivered later (the dead-man switch covers that case).
 
@@ -98,7 +99,7 @@ The setup asks you to choose the router password (or shows a generated one and a
 | command | what it does |
 |---|---|
 | `piso-setup test-coin` | arms the coin slot and waits for a coin, with no customer portal involved. It says whether the box counts the coin. |
-| `piso-setup reconcile` | compares the box's own lifetime coin count with the router's revenue ledger and checks that nobody edited the ledger (needs firmware 3.2.1). |
+| `piso-setup reconcile [rebase]` | compares the box's own coin count with the router's revenue ledger and checks that nobody edited the ledger (needs firmware 3.2.1). The box's count restarts when its revenue is collected; that is noticed by itself, and `rebase` compares from now on. |
 | `piso-setup telegram` | connects a Telegram bot: alerts (router restarted, box offline, revenue mismatch, a device abusing the coin slot, daily report) and remote commands `/status /report /reconcile /diag /restart /reboot`, answered only to your chat. Create the bot with @BotFather first. Optional: put a healthchecks.io URL in `/etc/piso-monitor.conf` (`HEALTHCHECK_URL`) so you are told when the whole router goes silent. |
 | `./piso-setup.sh update` | **updates only the software** on an installed router: installs the `pisoportal` program and the Telegram monitor files from the new file and restarts them. It changes no Wi-Fi or network settings, passwords, pairing or customer data. Copy the new `piso-setup.sh` to the router and run it from there (running the installed `piso-setup update` would reinstall the old copy, so it refuses). A coin window open at that moment is picked up by crash recovery. |
 | `piso-setup handout` | writes the printable setup sheet `/root/piso-handout.html` again. |

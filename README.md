@@ -43,6 +43,7 @@ CI (`.github/workflows/`) runs all of this on every push; style is ktlint (Kotli
 | Doc | For |
 |---|---|
 | [`docs/DEPLOY.md`](docs/DEPLOY.md) | First run, CI, where APKs and firmware are published |
+| [`docs/RELEASE.md`](docs/RELEASE.md) | Release checklist: the owner-only steps before a build goes to shops |
 | [`docs/REAL_WORLD_TESTING.md`](docs/REAL_WORLD_TESTING.md) | Hardware test checklist and issue log |
 | [`docs/KEYS.md`](docs/KEYS.md) | Owner key, licenses, signed firmware, per-box secrets and migration |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | How a coin becomes time; who talks to whom; where code lives |
