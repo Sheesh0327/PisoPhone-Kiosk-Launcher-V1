@@ -112,7 +112,14 @@ pub fn save(path: &str, entries: &[Entry]) -> std::io::Result<()> {
         }
         f.sync_all().ok();
     }
-    fs::rename(&tmp, path)
+    fs::rename(&tmp, path)?;
+    // the rename itself must reach the flash before a payment is reported as recorded
+    if let Some(dir) = std::path::Path::new(path).parent() {
+        if let Ok(d) = fs::File::open(dir) {
+            d.sync_all().ok();
+        }
+    }
+    Ok(())
 }
 
 pub fn find<'a>(entries: &'a [Entry], mac: &str) -> Option<&'a Entry> {

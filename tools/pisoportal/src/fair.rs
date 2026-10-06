@@ -24,7 +24,7 @@ pub fn tick(core: &Arc<Core>) {
         }
         let mut fs_ = {
             let mut st = core.st.lock().unwrap();
-            let e = st.fair.entry(mac.clone()).or_insert_with(FairState::default);
+            let e = st.fair.entry(mac.clone()).or_default();
             FairState { used_kb: e.used_kb, offset_kb: e.offset_kb, throttled: e.throttled, since: e.since }
         };
         if kb < fs_.offset_kb {

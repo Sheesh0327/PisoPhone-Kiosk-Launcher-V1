@@ -126,7 +126,12 @@ pub struct Core {
     cv: Condvar,
     /// serialises the roll, the ledger and the open-window records
     pub files: Mutex<()>,
+    /// one recovery at a time (the maintenance thread and a customer's start can both ask for one)
+    recovering: Mutex<()>,
 }
+
+/// More pesos than one coin window can physically take (about two minutes of coins): an answer above this is not trusted.
+pub const MAX_PULSES: u32 = 5000;
 
 impl Core {
     pub fn new(cfg: Config) -> Arc<Core> {
@@ -146,6 +151,7 @@ impl Core {
             }),
             cv: Condvar::new(),
             files: Mutex::new(()),
+            recovering: Mutex::new(()),
         })
     }
 
@@ -262,6 +268,9 @@ impl Core {
                 return View::Mismatch { plan: p, left };
             }
         }
+        if self.st.lock().unwrap().window.as_ref().is_some_and(|w| w.mac != mac) {
+            return View::Busy(self.cfg.busy_retry);
+        }
         // Coins of an earlier window that are recorded but not yet acknowledged on the box must be settled first.
         self.recover();
         if self.unacked() > 0 {
@@ -291,8 +300,15 @@ impl Core {
         self.bump(&mut st);
         drop(st);
         log!("window {} opened for {} plan {}", &sid[..8], mac, plan.as_str());
-        let core = Arc::clone(self);
-        std::thread::Builder::new().stack_size(128 * 1024).spawn(move || core.run_window(&sid)).ok();
+        let (core, worker_sid) = (Arc::clone(self), sid.clone());
+        if std::thread::Builder::new().stack_size(128 * 1024).spawn(move || core.run_window(&worker_sid)).is_err() {
+            // without its worker the window would hold the coin slot for everybody, for ever
+            log!("window {} could not start (no thread)", &sid[..8]);
+            let mut st = self.st.lock().unwrap();
+            st.window = None;
+            self.bump(&mut st);
+            return View::Error("NO_THREAD".into());
+        }
         View::Starting { plan }
     }
 
@@ -310,6 +326,10 @@ impl Core {
     /// A signed coin event from the box.
     pub fn on_event_line(&self, line: &str) {
         let Some(ev) = parse_event(line, &self.cfg.gw_key) else { return };
+        if ev.pulses > MAX_PULSES {
+            log!("coin event ignored: {} pesos is not possible in one window", ev.pulses);
+            return;
+        }
         let mut st = self.st.lock().unwrap();
         let Some(w) = st.window.as_mut() else { return };
         if w.sid != ev.sid || w.wid != ev.wid || ev.seq <= w.last_seq {
@@ -325,8 +345,13 @@ impl Core {
         self.bump(&mut st);
     }
 
+    /// The box's count for the live window (it only ever grows); the count in use afterwards.
     fn set_pulses(&self, sid: &str, pulses: u32) -> u32 {
         let mut st = self.st.lock().unwrap();
+        if pulses > MAX_PULSES {
+            log!("window {} ignored a count of {} pesos from the box (not possible in one window)", &sid[..8], pulses);
+            return st.window.as_ref().filter(|w| w.sid == sid).map(|w| w.pulses).unwrap_or(0);
+        }
         let mut cur = pulses;
         if let Some(w) = st.window.as_mut().filter(|w| w.sid == sid) {
             if pulses > w.pulses {
@@ -364,6 +389,13 @@ impl Core {
             .unwrap();
     }
 
+    /// Wait until the box reports the end of the window (its "end" event) or the timeout. A stop request does not cut
+    /// this wait short: while closing, the box must be given time.
+    fn wait_end(&self, sid: &str, dur: Duration) {
+        let g = self.st.lock().unwrap();
+        let _ = self.cv.wait_timeout_while(g, dur, |s| s.window.as_ref().filter(|w| w.sid == sid).is_some_and(|w| !w.box_ended)).unwrap();
+    }
+
     fn evx(&self, wid: &str) -> String {
         if self.cfg.event_port != 0 {
             format!("&wid={}&evport={}", wid, self.cfg.event_port)
@@ -393,10 +425,11 @@ impl Core {
     }
 
     fn run_window(self: &Arc<Self>, sid: &str) {
-        let (wid, mac, plan, forfeit) = {
+        let Some((wid, mac, plan, forfeit)) = ({
             let st = self.st.lock().unwrap();
-            let w = st.window.as_ref().filter(|w| w.sid == sid).expect("window exists");
-            (w.wid.clone(), w.mac.clone(), w.plan, w.forfeit)
+            st.window.as_ref().filter(|w| w.sid == sid).map(|w| (w.wid.clone(), w.mac.clone(), w.plan, w.forfeit))
+        }) else {
+            return;
         };
         let cfg = &self.cfg;
         let evx = self.evx(&wid);
@@ -465,6 +498,11 @@ impl Core {
             if ended {
                 boxstate_armed = false;
             }
+            if pulses > 0 && !noted {
+                noted = true;
+                self.note_open(sid, &mac, plan, &wid, forfeit);
+                log!("timing {} first coin pulses={} at={} ms", &sid[..8], pulses, t_arm.elapsed().as_millis());
+            }
             if pulses > last {
                 last = pulses;
                 deadline = (Instant::now() + Duration::from_secs(cfg.idle_wait)).min(cap);
@@ -473,11 +511,6 @@ impl Core {
                     w.deadline = deadline;
                     w.total = total;
                 });
-                if !noted {
-                    noted = true;
-                    self.note_open(sid, &mac, plan, &wid, forfeit);
-                    log!("timing {} first coin pulses={} at={} ms", &sid[..8], pulses, t_arm.elapsed().as_millis());
-                }
                 let rem = deadline.saturating_duration_since(Instant::now()).as_secs();
                 let _ = self.box_.call(sid, "arm", &format!("&duration={}{}", rem + 3, evx));
             }
@@ -485,7 +518,8 @@ impl Core {
                 break;
             }
         }
-        // closing: release the acceptor (a lost packet must not leave it powered), then let in-flight coins drain
+        // closing: release the acceptor (a lost packet must not leave it powered), then count the coins still in flight
+        // until the box says it is idle (or sends "end"); one status call per 300 ms at most
         self.set_state(sid, |w| w.state = WState::Closing);
         for _ in 0..3 {
             if self.box_.call(sid, "release", "").map(|b| BoxLink::is_success(&b)).unwrap_or(false) {
@@ -494,21 +528,26 @@ impl Core {
             std::thread::sleep(Duration::from_millis(300));
         }
         let drain_end = Instant::now() + Duration::from_secs(cfg.drain_secs);
-        while Instant::now() < drain_end {
-            let (p, _, ended, _) = self.cur(sid).unwrap_or((last, false, false, false));
-            if ended {
-                break;
-            }
-            if let Ok(st) = self.box_.call(sid, "status", "") {
-                if BoxLink::is_success(&st) {
-                    self.set_pulses(sid, jget_u64(&st, "pulses").unwrap_or(0) as u32);
-                    if jget(&st, "state") == "idle" {
-                        break;
+        loop {
+            let ended = self.cur(sid).is_some_and(|c| c.2);
+            let mut idle = false;
+            if !ended {
+                if let Ok(st) = self.box_.call(sid, "status", "") {
+                    if BoxLink::is_success(&st) {
+                        self.set_pulses(sid, jget_u64(&st, "pulses").unwrap_or(0) as u32);
+                        idle = jget(&st, "state") == "idle";
                     }
                 }
             }
-            let _ = p;
-            self.wait_activity(sid, Duration::from_millis(200), u32::MAX);
+            // a coin counted only now must still survive a restart
+            if !noted && self.cur(sid).is_some_and(|c| c.0 > 0) {
+                noted = true;
+                self.note_open(sid, &mac, plan, &wid, forfeit);
+            }
+            if ended || idle || Instant::now() >= drain_end {
+                break;
+            }
+            self.wait_end(sid, Duration::from_millis(300));
         }
         let pulses = self.cur(sid).map(|c| c.0).unwrap_or(last);
         if pulses == 0 {
@@ -607,9 +646,22 @@ impl Core {
     }
 
     // ---- recovery ---------------------------------------------------------------------------------------------------------------
+    /// The windows with a record on flash: "<sid>" (opened) and "<sid>.rec" (recorded, not yet acknowledged).
     fn open_sids(&self) -> Vec<String> {
         let Ok(rd) = fs::read_dir(self.cfg.open_dir()) else { return vec![] };
-        rd.filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().into_owned()).filter(|n| crate::util::valid_sid(n)).collect()
+        let mut sids: Vec<String> = rd
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .map(|n| n.strip_suffix(".rec").map(|s| s.to_string()).unwrap_or(n))
+            .filter(|n| crate::util::valid_sid(n))
+            .collect();
+        sids.sort();
+        sids.dedup();
+        sids
+    }
+
+    fn is_live(&self, sid: &str) -> bool {
+        self.st.lock().unwrap().window.as_ref().is_some_and(|w| w.sid == sid)
     }
 
     /// Records of windows that were recorded but never acknowledged (the box did not answer), outside the live window.
@@ -625,9 +677,10 @@ impl Core {
     /// Windows that were open when the router stopped, and windows whose acknowledgement failed: the coins the box still
     /// holds are credited once (a recorded window is only acknowledged), then acknowledged.
     pub fn recover(&self) {
-        let live = self.st.lock().unwrap().window.as_ref().map(|w| w.sid.clone());
+        let _one = self.recovering.lock().unwrap();
         for sid in self.open_sids() {
-            if Some(&sid) == live.as_ref() {
+            // checked for each record: a window may have opened since the list was read
+            if self.is_live(&sid) {
                 continue;
             }
             let rec = fs::metadata(format!("{}.rec", self.open_file(&sid))).is_ok();
@@ -638,7 +691,7 @@ impl Core {
                 }
                 continue;
             }
-            let text = fs::read_to_string(self.open_file(&sid)).unwrap_or_default();
+            let Ok(text) = fs::read_to_string(self.open_file(&sid)) else { continue };
             let f: Vec<&str> = text.split_whitespace().collect();
             let (Some(mac), Some(plan), Some(wid)) = (f.first(), f.get(1).and_then(|p| Plan::parse(p)), f.get(2)) else {
                 let _ = fs::remove_file(self.open_file(&sid));
@@ -665,6 +718,10 @@ impl Core {
                 continue;
             }
             let pulses = jget_u64(&st, "pulses").unwrap_or(0) as u32;
+            if pulses > MAX_PULSES {
+                log!("recover: window {} left as it is: the box reports {} pesos", &sid[..8], pulses);
+                continue;
+            }
             if pulses > 0 {
                 let minutes = minutes_for(&self.cfg, plan, pulses);
                 match self.record(&sid, mac, plan, wid, forfeit, pulses, minutes, now_secs()) {
@@ -691,9 +748,18 @@ impl Core {
             roll::purge(&self.cfg.roll_path(), now_secs());
         }
         let now = now_secs();
+        let paying: std::collections::HashSet<String> =
+            roll::load(&self.cfg.roll_path()).into_iter().filter(|e| e.left(now) > 0).map(|e| e.mac).collect();
         let mut st = self.st.lock().unwrap();
         st.results.retain(|_, (at, _)| now.saturating_sub(*at) < 600);
         st.cooldown.retain(|_, until| *until > now);
+        let window = self.cfg.empty_window;
+        st.empties.retain(|_, v| {
+            v.retain(|t| now.saturating_sub(*t) <= window);
+            !v.is_empty()
+        });
+        // fair-use counters only for devices that still have paid time
+        st.fair.retain(|mac, _| paying.contains(mac));
     }
 }
 
@@ -702,11 +768,17 @@ pub fn run_event_listener(core: Arc<Core>) {
         return;
     }
     let addr = format!("{}:{}", core.cfg.event_bind, core.cfg.event_port);
-    let sock = match std::net::UdpSocket::bind(&addr) {
-        Ok(s) => s,
-        Err(e) => {
-            log!("coin events: cannot listen on {}: {}", addr, e);
-            return;
+    let mut warned = false;
+    let sock = loop {
+        match std::net::UdpSocket::bind(&addr) {
+            Ok(s) => break s,
+            Err(e) => {
+                if !warned {
+                    log!("coin events: cannot listen on {} yet ({}); trying again every 2 s", addr, e);
+                    warned = true;
+                }
+                std::thread::sleep(Duration::from_secs(2));
+            }
         }
     };
     let mut buf = [0u8; 512];

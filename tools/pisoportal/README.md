@@ -17,6 +17,12 @@ Rules that matter: access is granted only when the customer is done paying (the 
 internet); one coin window at a time; a window is priced once, recorded in the roll and ledger, acknowledged to the box, then
 granted; open windows survive a restart (`DATA_DIR/open`, `.rec` markers prevent double credit).
 
+Guest-network limits (a public network gets any kind of traffic): a request head must arrive within 10 s and 8 KB; at most
+8 connections per client address and 4 x `MAX_CLIENTS` in total; at most `MAX_CLIENTS` open coin pages (3 per device); a
+coin page must be opened from the portal itself (WebSocket Origin check); a page that stays silent for 65 s (a browser
+answers the 20 s pings by itself) is dropped. Nothing a client sends can stop the program: input is handled without
+panicking, and a panic would abort it (procd then restarts it, and recovery settles any open window).
+
 CLI: `pisoportal serve | box | reconcile | verify | report [days] | selftest | version`. Admin (router only):
 `/admin/start?mac=&plan=`, `/admin/status?mac=`, `/admin/finish?mac=`, `/admin/info` (used by `piso-setup test-coin`).
 Config: `/etc/coinslot.conf` (written by `piso-setup`); keys are listed in `src/config.rs`.

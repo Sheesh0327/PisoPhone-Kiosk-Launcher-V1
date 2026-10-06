@@ -24,7 +24,7 @@ impl Plan {
     }
 }
 
-pub fn tiers<'a>(cfg: &'a Config, plan: Plan) -> &'a [(u32, u32)] {
+pub fn tiers(cfg: &Config, plan: Plan) -> &[(u32, u32)] {
     match plan {
         Plan::Hyper => &cfg.hyper_tiers,
         Plan::Endurance => &cfg.endurance_tiers,
@@ -34,13 +34,14 @@ pub fn tiers<'a>(cfg: &'a Config, plan: Plan) -> &'a [(u32, u32)] {
 /// The most minutes obtainable for that many pesos.
 pub fn minutes_for(cfg: &Config, plan: Plan, pesos: u32) -> u32 {
     let t = tiers(cfg, plan);
-    let n = pesos as usize;
+    // the table grows with the amount: never for an amount no coin window can hold (see core::MAX_PULSES)
+    let n = pesos.min(crate::core::MAX_PULSES) as usize;
     let mut best = vec![0u32; n + 1];
     for x in 1..=n {
         for &(c, m) in t {
             let c = c as usize;
-            if c > 0 && c <= x && best[x - c] + m > best[x] {
-                best[x] = best[x - c] + m;
+            if c > 0 && c <= x && best[x - c].saturating_add(m) > best[x] {
+                best[x] = best[x - c].saturating_add(m);
             }
         }
     }

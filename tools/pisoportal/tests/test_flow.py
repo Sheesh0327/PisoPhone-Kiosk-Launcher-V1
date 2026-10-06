@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """End-to-end tests of pisoportal: customers over WebSocket, a fake coin box, a fake openNDS."""
-import hashlib, hmac, json, os, signal, socket, subprocess, sys, time
+import hashlib, hmac, json, os, signal, socket, subprocess, sys, time, urllib.error, urllib.request
 from harness import *
 
 MAC_A, MAC_B, MAC_C, MAC_D = "aa:bb:cc:00:00:01", "aa:bb:cc:00:00:02", "aa:bb:cc:00:00:03", "aa:bb:cc:00:00:04"
@@ -52,6 +52,11 @@ try:
     check(nd["STATE"] == "Authenticated" and nd["UPRATE"] == "2000" and nd["DOWNRATE"] == "5000" and abs(int(nd["SESSION_END"]) - (int(r[6]) + 690 * 60)) < 120, f"granted 690 min with the Endurance caps: {nd}")
     check(any(l.startswith("ack ") for l in env.boxlines()) and os.listdir(f"{env.data}/open") == [], "coins acknowledged on the box, the flash record removed")
     check(any(l.startswith("event coin") for l in env.boxlines()), "the box pushed coin events")
+    lines = env.boxlines()
+    rel = next(i for i, l in enumerate(lines) if l.startswith("release "))
+    sid = lines[rel].split()[1]
+    n_status = sum(1 for l in lines[rel:] if l == f"status {sid}")
+    check(n_status <= 6, f"while the box drains, it is asked at most every 300 ms ({n_status} status calls)")
     a.close()
 
     # ---- a top-up on the same plan, then the other plan (refused without consent, then switched) -------------------------------------
@@ -61,10 +66,11 @@ try:
     s = a.wait_state("idle", 5)
     check(s is not None and s["left"] > 600 * 60 and s["plan"] == "endurance" and s["online"] is True, f"a returning page shows the time left: {s}")
     a.mark()
+    arms = sum(l.startswith("arm ") for l in env.boxlines())
     a.send({"t": "start", "plan": "hyper"})
     mm = a.wait_state("mismatch", 5)
     check(mm is not None and mm["plan"] == "endurance" and mm["left"] > 0, f"the other plan needs consent: {mm}")
-    check(not any("arm" in l for l in env.boxlines()[-3:]) or True, "")
+    check(sum(l.startswith("arm ") for l in env.boxlines()) == arms, "and the coin slot is not armed for it")
     a.mark()
     a.send({"t": "start", "plan": "endurance"})
     fin = a.wait_state("final", 25)
@@ -198,7 +204,6 @@ try:
     b.mark()
     b.send({"t": "start", "plan": "hyper"})
     b.wait_state("armed", 8)
-    sid = [f for f in os.listdir(f"{env.data}") if f == "open"] and None
     u = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     body = "gw1ev:" + "0" * 32 + ":" + "1" * 32 + ":99:coin:50"
     u.sendto((body + ":" + hmac.new(KEY.encode(), body.encode(), hashlib.sha256).hexdigest()).encode(), ("127.0.0.1", EVENT_PORT))   # right signature, another window
@@ -237,8 +242,6 @@ try:
 
     # ---- the router restarts in the middle of a window: the coins are credited once, from the flash record ----------------------------------
     env.reset_device(MAC_C)
-    time.sleep(max(0, 22 - (time.time() - 0)) if False else 0)
-    env.set_box(busy=False, coins_at=[0.3, 0.5, 0.7])
     e2 = Env(offset=10, EMPTY_COOLDOWN="1")   # a second, clean environment for the restart tests (own box, own data)
     try:
         e2.start()
@@ -331,10 +334,58 @@ try:
     w.send_raw(0x81, b"not json at all")
     w.send_raw(0x81, b'{"t":"start","plan":"nonsense"}')
     w.send_raw(0x82, b"\x00" * 40)
+    w.send_raw(0x81, '{"t":"hello","fas":"%a\u00e9%\u00e9"}'.encode())   # raw UTF-8; once a crash: '%' before multi-byte characters
     time.sleep(0.5)
-    big = socket.create_connection(("127.0.0.1", PORTAL_PORT), source_address=("127.0.0.2", 0))
     check(env.get("/ping")[1] == "ok", "garbage and bad messages do not take the portal down")
     w.close()
+    u = Cust("127.0.0.2", reset=True)
+    u.s.send(bytes([0x81, 0x02]) + b"hi")   # unmasked: not allowed from a client (RFC 6455)
+    check(wait_until(lambda: u.closed, 3), "an unmasked frame ends the connection")
+    check(env.get("/ping")[1] == "ok", "and the portal carries on")
+
+    # ---- what a guest network can throw at it ----------------------------------------------------------------------------------------------
+    code, body, hdr = env.get("/")
+    check(hdr.get("X-Content-Type-Options") == "nosniff" and hdr.get("X-Frame-Options") == "DENY", f"the page is sent with safe headers: {hdr}")
+    try:
+        with urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{PORTAL_PORT}/", method="HEAD"), timeout=5) as resp:
+            head_ok = resp.status == 200 and resp.read() == b"" and int(resp.headers["Content-Length"]) == len(body.encode())
+    except OSError:
+        head_ok = False
+    check(head_ok, "HEAD answers without a body")
+    try:
+        urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{PORTAL_PORT}/", data=b"x", method="POST"), timeout=5)
+        post = "accepted"
+    except urllib.error.HTTPError as e:
+        post = e.code
+    except OSError as e:
+        post = str(e)
+    check(post == 405, f"POST is refused: {post}")
+    o = Cust("127.0.0.2", origin="http://evil.example")
+    check(not o.ok and "403" in o.head, "a coin page opened from another site's page is refused: " + o.head[:30])
+    o = Cust("127.0.0.2", origin=f"http://127.0.0.1:{PORTAL_PORT}", reset=True)
+    check(o.ok, "the portal's own page connects")
+    o.close()
+    g = socket.create_connection(("127.0.0.1", PORTAL_PORT))
+    g.settimeout(5)
+    g.send(b"GET / HTTP/1.1\r\nX: " + b"a" * 9000)
+    try:
+        closed = g.recv(100) == b""
+    except OSError:
+        closed = True
+    check(closed, "an oversized request head is cut off")
+    g.close()
+    hold = [socket.create_connection(("127.0.0.1", PORTAL_PORT), source_address=("127.0.0.5", 0)) for _ in range(8)]
+    extra = socket.create_connection(("127.0.0.1", PORTAL_PORT), source_address=("127.0.0.5", 0))
+    extra.settimeout(3)
+    try:
+        refused = extra.recv(10) == b""
+    except OSError:
+        refused = True
+    check(refused, "one guest cannot hold more than 8 connections")
+    t = time.time()
+    check(env.get("/ping")[1] == "ok" and time.time() - t < 1, "while everybody else is still served at once")
+    for h in hold + [extra]:
+        h.close()
 finally:
     env.close()
 finish()

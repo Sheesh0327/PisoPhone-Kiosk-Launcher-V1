@@ -169,16 +169,20 @@ class Env:
                 return r.status, r.read().decode(), dict(r.headers)
         except urllib.error.HTTPError as e:
             return e.code, e.read().decode(), dict(e.headers)
+        except OSError as e:   # the portal is down: a failed check, not a crashed test
+            return 0, str(e), {}
 
 
 class Cust:
     """A customer's page: one WebSocket to the portal, from its own source address (the portal maps it to a MAC via ARP)."""
 
-    def __init__(self, ip="127.0.0.1", port=PORTAL_PORT, fas="", reset=False):
+    def __init__(self, ip="127.0.0.1", port=PORTAL_PORT, fas="", reset=False, origin=None):
         self.ip, self.msgs, self.closed, self.lock, self.since = ip, [], False, threading.Lock(), 0
         self.s = socket.create_connection(("127.0.0.1", port), source_address=(ip, 0), timeout=10)
         key = base64.b64encode(os.urandom(16)).decode()
-        self.s.send(f"GET /ws HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n".encode())
+        host = f"127.0.0.1:{port}"
+        org = f"Origin: {origin}\r\n" if origin else ""
+        self.s.send(f"GET /ws HTTP/1.1\r\nHost: {host}\r\n{org}Upgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n".encode())
         head = b""
         while b"\r\n\r\n" not in head:
             c = self.s.recv(1)

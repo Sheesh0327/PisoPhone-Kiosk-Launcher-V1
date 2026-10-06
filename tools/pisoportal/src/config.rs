@@ -73,6 +73,7 @@ impl Config {
             std::env::var(k).ok().filter(|v| !v.is_empty()).or_else(|| file.get(k).cloned()).unwrap_or_else(|| d.to_string())
         };
         let num = |k: &str, d: u64| -> u64 { get(k, "").parse().unwrap_or(d) };
+        let port = |k: &str, d: u16| -> u16 { get(k, "").parse().unwrap_or(d) };
         let mut hyper = parse_tiers(&get("HYPER_TIERS", "5:30 10:60 20:120"));
         let prorata = num("HYPER_PRORATA_MIN", 6) as u32;
         if prorata > 0 {
@@ -84,9 +85,9 @@ impl Config {
         };
         Config {
             bind: get("PORTAL_BIND", "0.0.0.0"),
-            port: num("PORTAL_PORT", 2080) as u16,
-            admin_port: num("ADMIN_PORT", 8099) as u16,
-            event_port: num("EVENT_PORT", 8101) as u16,
+            port: port("PORTAL_PORT", 2080),
+            admin_port: port("ADMIN_PORT", 8099),
+            event_port: port("EVENT_PORT", 8101),
             event_bind: get("EVENT_BIND", "0.0.0.0"),
             gw_box: get("GW_BOX", "10.0.0.10"),
             gw_key: get("GW_KEY", ""),

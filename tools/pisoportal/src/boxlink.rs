@@ -1,7 +1,7 @@
 //! The coin box (ESP32): signed HTTP calls (docs/api/gateway-coinslot.md) and its signed UDP coin events.
 use crate::util::{hmac_hex, jget};
 use std::io::{Read, Write};
-use std::net::{TcpStream, ToSocketAddrs};
+use std::net::{IpAddr, SocketAddr, TcpStream, ToSocketAddrs};
 use std::time::Duration;
 
 #[derive(Clone)]
@@ -17,7 +17,7 @@ pub fn http_get(addr: &str, path: &str, timeout: Duration) -> Result<String, Str
     s.set_read_timeout(Some(timeout)).ok();
     s.set_write_timeout(Some(timeout)).ok();
     s.set_nodelay(true).ok();
-    let host = addr.split(':').next().unwrap_or(addr);
+    let host = addr.rsplit_once(':').map(|(h, _)| h).unwrap_or(addr);
     write!(s, "GET {} HTTP/1.0\r\nHost: {}\r\nConnection: close\r\n\r\n", path, host).map_err(|e| e.to_string())?;
     let mut buf = Vec::new();
     let mut chunk = [0u8; 2048];
@@ -41,9 +41,23 @@ pub fn http_get(addr: &str, path: &str, timeout: Duration) -> Result<String, Str
     })
 }
 
+/// The box's address with a port: piso-setup writes a bare IP ("10.0.0.10"), which connect() cannot use as it is.
+pub fn with_port(addr: &str) -> String {
+    let a = addr.trim();
+    if a.parse::<SocketAddr>().is_ok() {
+        return a.to_string();
+    }
+    match a.parse::<IpAddr>() {
+        Ok(IpAddr::V6(ip)) => format!("[{}]:80", ip),
+        Ok(IpAddr::V4(ip)) => format!("{}:80", ip),
+        Err(_) if a.rsplit_once(':').is_some_and(|(_, p)| p.parse::<u16>().is_ok()) => a.to_string(),
+        Err(_) => format!("{}:80", a),
+    }
+}
+
 impl BoxLink {
     pub fn new(addr: &str, key: &str) -> BoxLink {
-        BoxLink { addr: addr.to_string(), key: key.to_string() }
+        BoxLink { addr: with_port(addr), key: key.to_string() }
     }
 
     pub fn challenge(&self) -> Option<String> {
@@ -103,6 +117,19 @@ pub fn parse_event(line: &str, key: &str) -> Option<Event> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_box_address_from_piso_setup_has_no_port() {
+        // piso-setup writes GW_BOX='10.0.0.10': without a port every call to the box failed before it was sent
+        assert_eq!(BoxLink::new("10.0.0.10", "k").addr, "10.0.0.10:80");
+        assert!(with_port("10.0.0.10").to_socket_addrs().is_ok());
+        assert_eq!(with_port(" 10.0.0.10 "), "10.0.0.10:80");
+        assert_eq!(with_port("127.0.0.1:18283"), "127.0.0.1:18283");
+        assert_eq!(with_port("box.lan"), "box.lan:80");
+        assert_eq!(with_port("box.lan:8080"), "box.lan:8080");
+        assert_eq!(with_port("fe80::1"), "[fe80::1]:80");
+        assert_eq!(with_port("[fe80::1]:81"), "[fe80::1]:81");
+    }
 
     #[test]
     fn events_are_verified_and_parsed_from_the_right() {

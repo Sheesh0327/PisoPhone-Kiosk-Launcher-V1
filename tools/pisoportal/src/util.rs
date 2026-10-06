@@ -29,10 +29,10 @@ pub fn hmac_hex(key: &[u8], msg: &[u8]) -> String {
 /// Random lowercase hex (from the kernel's random source).
 pub fn random_hex(n: usize) -> String {
     let mut buf = vec![0u8; n.div_ceil(2)];
-    if let Ok(mut f) = fs::File::open("/dev/urandom") {
-        let _ = std::io::Read::read_exact(&mut f, &mut buf);
-    } else {
-        let t = now_ms();
+    let read = fs::File::open("/dev/urandom").and_then(|mut f| std::io::Read::read_exact(&mut f, &mut buf));
+    if read.is_err() {
+        // never on Linux; still never all zeros
+        let t = now_ms() ^ (std::process::id() as u64) << 40;
         for (i, b) in buf.iter_mut().enumerate() {
             *b = (t >> ((i % 8) * 8)) as u8 ^ (i as u8).wrapping_mul(31);
         }
@@ -76,15 +76,20 @@ pub fn json_esc(s: &str) -> String {
     o
 }
 
+fn hex_val(c: u8) -> Option<u8> {
+    (c as char).to_digit(16).map(|v| v as u8)
+}
+
+/// Works on bytes: anything a customer's browser sends must decode without panicking (a panic aborts the portal).
 pub fn url_decode(s: &str) -> String {
     let b = s.as_bytes();
-    let mut out = Vec::new();
+    let mut out = Vec::with_capacity(b.len());
     let mut i = 0;
     while i < b.len() {
         match b[i] {
             b'%' if i + 2 < b.len() => {
-                if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                    out.push(v);
+                if let (Some(h), Some(l)) = (hex_val(b[i + 1]), hex_val(b[i + 2])) {
+                    out.push(h << 4 | l);
                     i += 3;
                     continue;
                 }
@@ -182,6 +187,10 @@ mod tests {
         assert_eq!(b64_decode("Y2xpZW50aXA9MS4yLjMuNA==").unwrap(), b"clientip=1.2.3.4");
         assert_eq!(b64_encode(b"clientip=1.2.3.4"), "Y2xpZW50aXA9MS4yLjMuNA==");
         assert_eq!(url_decode("a%2Bb%3D%3D+c"), "a+b== c");
+        // a '%' followed by multi-byte characters (once a crash: the hex digits were sliced out of the str)
+        assert_eq!(url_decode("%aé"), "%aé");
+        assert_eq!(url_decode("%é"), "%é");
+        assert_eq!(url_decode("%e2%82%b1 50%"), "₱ 50%");
         assert_eq!(query_get("x=1&fas=ab%2Bc", "fas").unwrap(), "ab+c");
         assert!(valid_mac("aa:bb:cc:dd:ee:ff") && !valid_mac("aa:bb:cc:dd:ee") && !valid_mac("zz:bb:cc:dd:ee:ff"));
         assert!(valid_sid(&"a1".repeat(16)) && !valid_sid("abc"));
