@@ -35,6 +35,7 @@ pub struct Config {
     pub busy_retry: u64,
     pub max_clients: usize,
     pub fair_interval: u64,
+    pub reconcile_interval: u64,
 }
 
 fn parse_tiers(s: &str) -> Vec<(u32, u32)> {
@@ -115,6 +116,7 @@ impl Config {
             busy_retry: num("BUSY_RETRY", 15),
             max_clients: num("MAX_CLIENTS", 24) as usize,
             fair_interval: num("FAIR_INTERVAL_SECONDS", 60),
+            reconcile_interval: num("RECONCILE_INTERVAL_SECONDS", 600),
         }
     }
 

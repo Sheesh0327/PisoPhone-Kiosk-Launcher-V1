@@ -118,7 +118,9 @@ class H(BaseHTTPRequestHandler):
                                "ready_in_ms": max(0, int((s.get("settle_until", 0) - time.time()) * 1000)),
                                "slot_free": not c.get("busy") and not any(
                                    x["armed_at"] and not x["released"] for x in sessions.values()),
-                               "lifetime_pulses": 1000 + sum(x.get("acked", 0) for x in sessions.values()),
+                               # the box's revenue counter: "lifetime_base" moves it (a collection restarts it),
+                               # "uncounted" pesos were recorded by the router but never counted here
+                               "lifetime_pulses": c.get("lifetime_base", 1000) + sum(x.get("acked", 0) for x in sessions.values()) - c.get("uncounted", 0),
                                **({"events": True} if c.get("events", True) else {})})
 
 

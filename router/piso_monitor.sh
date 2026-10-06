@@ -69,7 +69,8 @@ check_ledger() {  # at most once an hour
 	echo "$_n" > "$_f"
 	_o=$("$PORTAL" reconcile 2>&1); _rc=$?
 	case "$_rc" in
-		1) alert ledger 21600 "REVENUE MISMATCH: $_o" ;;
+		1) alert ledger 21600 "REVENUE MISMATCH: $_o
+(If the box's revenue was just collected, its count restarted; this is normally noticed by itself. If the alert stays, run on the router: piso-setup reconcile rebase)" ;;
 		3) alert ledger 21600 "REVENUE LEDGER WAS CHANGED: $_o" ;;
 	esac
 }

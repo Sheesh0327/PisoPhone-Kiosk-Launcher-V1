@@ -225,6 +225,12 @@ try:
         check(fin is not None and fin["pulses"] == 1 and fin["online"] is True, f"{label}: still counted by the signed checks: {fin}")
         b.close()
 
+    # ---- a page that asks for a fresh start never sees the previous result first --------------------------------------------------------
+    b = Cust("127.0.0.2", reset=True)
+    first = b.wait(lambda m: True, 5)
+    check(first is not None and first["s"] == "idle", f"a fresh page's first view is its own, not the last result: {first}")
+    b.close()
+
     # ---- the page can be closed in the middle of a window: the result is waiting when it comes back ----------------------------------------
     env.reset_device(MAC_B)
     env.set_box(busy=False, coins_at=[0.4, 0.8])
@@ -304,6 +310,28 @@ try:
     check(rc == 0 and "answers" in out, "box: " + out)
     rc, out = env.cli("reconcile")
     check(rc == 0 and out.startswith("RECONCILE OK"), "reconcile: " + out)
+    # the box's revenue was collected: its counter restarts, which is not a mismatch (and not one for ever)
+    acked = int(env.box_call("status", "f" * 32)["lifetime_pulses"]) - 1000
+    env.set_box(busy=False, coins_at=[], lifetime_base=3 - acked)
+    rc, out = env.cli("reconcile")
+    check(rc == 0 and "restarted" in out and "RECONCILE OK ledger=0 box=0" in out, "a collected box (its count restarted) is compared from then on: " + out)
+    rc, out = env.cli("reconcile")
+    check(rc == 0 and out.startswith("RECONCILE OK ledger=0 box=0"), "and stays fine: " + out)
+    # a payment the router recorded but the box never counted is a mismatch
+    env.reset_device(MAC_B)
+    env.set_box(busy=False, coins_at=[0.3], lifetime_base=3 - acked, uncounted=1)
+    b = Cust("127.0.0.2", reset=True)
+    b.wait_state("idle", 5)
+    b.mark()
+    b.send({"t": "start", "plan": "hyper"})
+    fin = b.wait_state("final", 25)
+    b.close()
+    rc, out = env.cli("reconcile")
+    check(fin is not None and fin["pulses"] == 1 and rc == 1 and "RECONCILE MISMATCH ledger=1 box=0" in out,
+          f"the router recording more than the box counted is reported: {fin} " + out)
+    rc, out = env.cli("reconcile", "rebase")
+    check(rc == 0 and "rebase" in out and "RECONCILE OK ledger=0 box=0" in out, "after a look, 'reconcile rebase' compares from now on: " + out)
+    env.set_box(busy=False, coins_at=[])
     rc, out = env.cli("report", "7")
     check(rc == 0 and "PHP" in out and "Total last 7 day(s): PHP" in out and "hyper" in out and "endurance" in out, "report: " + out)
     led = open(f"{env.data}/revenue.csv").read()

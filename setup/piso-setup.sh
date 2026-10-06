@@ -20,7 +20,7 @@
 # Everything is generated here (Wi-Fi password, box admin password, gateway key) and printed once at the end and saved in
 # /root/piso-setup-summary.txt. Running the file again is safe: it keeps what it already made.
 #
-# Other commands (after setup): piso-setup status | wifi-name "<name>" | pair | summary | test-coin | diag | set-password | reconcile | telegram | rotate-box-wifi | handout | lock-admin | unlock-admin | update
+# Other commands (after setup): piso-setup status | wifi-name "<name>" | pair | summary | test-coin | diag | set-password | reconcile [rebase] | telegram | rotate-box-wifi | handout | lock-admin | unlock-admin | update
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation
@@ -748,8 +748,9 @@ cmd_update() {
 	cmd_status
 }
 
-# piso-setup reconcile: the box's own coin count against the router's revenue ledger (also checks the ledger chain).
-cmd_reconcile() { /usr/bin/pisoportal reconcile; }
+# piso-setup reconcile [rebase]: the box's own coin count against the router's revenue ledger (also checks the ledger
+# chain). The box's count restarts when its revenue is collected, which is noticed by itself; "rebase" compares from now on.
+cmd_reconcile() { /usr/bin/pisoportal reconcile "$@"; }
 
 # piso-setup telegram: connect the Telegram bot (alerts and remote commands). The token comes from @BotFather.
 # telegram_connect <token> <site name>: pairs the bot with the first chat that writes to it and starts the monitor.
@@ -1025,7 +1026,7 @@ main() {
 		pair) cmd_pair ;;
 		test-coin) cmd_test_coin ;;
 		diag) cmd_diag ;;
-		reconcile) cmd_reconcile ;;
+		reconcile) if [ "$ARG" = rebase ]; then cmd_reconcile rebase; else cmd_reconcile; fi ;;
 		telegram) cmd_telegram ;;
 		handout) cmd_handout ;;
 		update) cmd_update ;;
@@ -1119,7 +1120,8 @@ check_ledger() {  # at most once an hour
 	echo "$_n" > "$_f"
 	_o=$("$PORTAL" reconcile 2>&1); _rc=$?
 	case "$_rc" in
-		1) alert ledger 21600 "REVENUE MISMATCH: $_o" ;;
+		1) alert ledger 21600 "REVENUE MISMATCH: $_o
+(If the box's revenue was just collected, its count restarted; this is normally noticed by itself. If the alert stays, run on the router: piso-setup reconcile rebase)" ;;
 		3) alert ledger 21600 "REVENUE LEDGER WAS CHANGED: $_o" ;;
 	esac
 }

@@ -51,9 +51,17 @@ pub fn tick(core: &Arc<Core>) {
 }
 
 pub fn run(core: Arc<Core>) {
+    let mut last_reconcile: Option<std::time::Instant> = None;
     loop {
         std::thread::sleep(std::time::Duration::from_secs(core.cfg.fair_interval));
         tick(&core);
         core.maintenance();
+        // the box's counter restarts when its revenue is collected: notice it within minutes, monitor or not
+        if last_reconcile.is_none_or(|t| t.elapsed().as_secs() >= core.cfg.reconcile_interval) {
+            last_reconcile = Some(std::time::Instant::now());
+            if let (_, Some(note)) = crate::reconcile::run(&core.cfg, false) {
+                log!("reconcile: {}", note);
+            }
+        }
     }
 }

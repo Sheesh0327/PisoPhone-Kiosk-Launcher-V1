@@ -160,6 +160,10 @@ impl Core {
         self.cv.notify_all();
     }
 
+    pub fn version(&self) -> u64 {
+        self.st.lock().unwrap().version
+    }
+
     /// Wait until something changed since `last` (or the timeout): the current version.
     pub fn wait_version(&self, last: u64, timeout: Duration) -> u64 {
         let g = self.st.lock().unwrap();

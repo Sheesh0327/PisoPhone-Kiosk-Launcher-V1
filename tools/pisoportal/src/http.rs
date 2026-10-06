@@ -347,8 +347,10 @@ fn ws_session(core: Arc<Core>, mut conn: Incoming, key: &str, mac: String) {
 
     // the writer: pushes this device's view whenever it changed, and pings a quiet page
     let (c2, w2, cl2, m2) = (Arc::clone(&core), Arc::clone(&writer), Arc::clone(&closed), mac.clone());
+    // (from the version now: the first view answers the page's hello, which may first clear an old result)
+    let start_ver = core.version();
     let spawned = std::thread::Builder::new().stack_size(96 * 1024).spawn(move || {
-        let mut last_ver = 0;
+        let mut last_ver = start_ver;
         let mut last_sent = String::new();
         let mut last_ping = Instant::now();
         while !cl2.load(Ordering::Relaxed) {

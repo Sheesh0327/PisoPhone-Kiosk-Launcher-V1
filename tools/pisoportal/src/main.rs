@@ -3,7 +3,8 @@
 //!
 //!   pisoportal [serve]        run (the service)
 //!   pisoportal box            does the coin box answer?
-//!   pisoportal reconcile      the box's own coin count against the revenue ledger (RECONCILE OK|MISMATCH|BADLEDGER|NOBOX)
+//!   pisoportal reconcile [rebase]  the box's own coin count against the revenue ledger (RECONCILE OK|MISMATCH|BADLEDGER|NOBOX);
+//!                             "rebase" compares from now on (after the box's revenue was collected)
 //!   pisoportal verify         check the ledger's hash chain
 //!   pisoportal report [days]  revenue per day and plan
 //!   pisoportal selftest       checks that this build works on this machine
@@ -15,6 +16,7 @@ mod http;
 mod ledger;
 mod nds;
 mod pricing;
+mod reconcile;
 mod roll;
 mod util;
 
@@ -44,31 +46,33 @@ fn cmd_verify(cfg: &config::Config) -> i32 {
     }
 }
 
-fn cmd_reconcile(cfg: &config::Config) -> i32 {
-    let ledger_pesos = match ledger::verify(&cfg.revenue_path()) {
-        Ok((_, sum)) => sum,
-        Err(l) => {
-            println!("RECONCILE BADLEDGER line {}", l);
-            return 3;
-        }
-    };
-    let b = boxlink::BoxLink::new(&cfg.gw_box, &cfg.gw_key);
-    let st = b.call(&"f".repeat(32), "status", "").unwrap_or_default();
-    let Some(box_pulses) = util::jget_u64(&st, "lifetime_pulses") else {
-        println!("RECONCILE NOBOX (needs firmware 3.2.1 or later) ledger={}", ledger_pesos);
-        return 4;
-    };
-    if ledger_pesos > box_pulses {
-        println!("RECONCILE MISMATCH ledger={} box={} (ledger is higher than the box counted)", ledger_pesos, box_pulses);
-        return 1;
+fn cmd_reconcile(cfg: &config::Config, rebase: bool) -> i32 {
+    let (out, note) = reconcile::run(cfg, rebase);
+    if let Some(n) = note {
+        println!("note: {}", n);
     }
-    println!(
-        "RECONCILE OK ledger={} box={} (the difference of {} went to rental phones)",
-        ledger_pesos,
-        box_pulses,
-        box_pulses - ledger_pesos
-    );
-    0
+    match out {
+        reconcile::Outcome::BadLedger(l) => {
+            println!("RECONCILE BADLEDGER line {}", l);
+            3
+        }
+        reconcile::Outcome::NoBox(l) => {
+            println!("RECONCILE NOBOX (needs firmware 3.2.1 or later) ledger={}", l);
+            4
+        }
+        reconcile::Outcome::Mismatch { ledger, counted } => {
+            println!(
+                "RECONCILE MISMATCH ledger={} box={} (the router recorded more than the box counted; if the box's revenue was \
+                 just collected and this persists: pisoportal reconcile rebase)",
+                ledger, counted
+            );
+            1
+        }
+        reconcile::Outcome::Ok { ledger, counted } => {
+            println!("RECONCILE OK ledger={} box={} (the difference of {} went to rental phones)", ledger, counted, counted - ledger);
+            0
+        }
+    }
 }
 
 fn tz_offset_secs() -> i64 {
@@ -181,10 +185,10 @@ fn main() {
         }
         "box" => cmd_box(&config::Config::load()),
         "verify" => cmd_verify(&config::Config::load()),
-        "reconcile" => cmd_reconcile(&config::Config::load()),
+        "reconcile" => cmd_reconcile(&config::Config::load(), args.get(2).map(|a| a.as_str()) == Some("rebase")),
         "report" => cmd_report(&config::Config::load(), args.get(2).and_then(|d| d.parse().ok()).unwrap_or(7)),
         _ => {
-            eprintln!("usage: pisoportal [serve|box|reconcile|verify|report [days]|selftest|version]");
+            eprintln!("usage: pisoportal [serve|box|reconcile [rebase]|verify|report [days]|selftest|version]");
             2
         }
     };
