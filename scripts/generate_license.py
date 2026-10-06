@@ -28,6 +28,7 @@ import sys
 MAX_SUPPORTED_SLOTS = 6
 PUBKEY_HEADER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "esp32_firmware", "include",
                              "LicensePubKey.h")
+ROUTER_KEY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tools", "pisoportal", "owner_key.b64")
 
 
 def _crypto():
@@ -80,9 +81,19 @@ def make_token(private_key, mac: str, slots: int) -> str:
     return f"PISOLIC1.{mac}.{slots}.{base64.b64encode(sig).decode()}"
 
 
+def write_router_key(public_key, path: str = ROUTER_KEY_FILE):
+    """The same public key for the router program (tools/pisoportal/owner_key.b64): routers install only updates this key signed."""
+    _, serialization, _ = _crypto()
+    der = public_key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
+    with open(path, "w") as f:
+        f.write(base64.b64encode(der).decode() + "\n")
+
+
 def write_pubkey_header(public_key, path: str):
     _, serialization, _ = _crypto()
     der = public_key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
+    if os.path.realpath(path) == os.path.realpath(PUBKEY_HEADER):
+        write_router_key(public_key)   # (not when a test or another header is the target)
     body = ", ".join(f"0x{b:02x}" for b in der)
     with open(path, "w") as f:
         f.write("#ifndef LICENSE_PUB_KEY_H\n#define LICENSE_PUB_KEY_H\n\n"

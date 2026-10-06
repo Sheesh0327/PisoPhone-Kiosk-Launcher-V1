@@ -121,6 +121,7 @@ handle_command() {  # handle_command <chat> <text>
 		/report) case "$_arg" in "" | *[!0-9]*) _arg=1 ;; esac; tg_send "$("$PORTAL" report "$_arg" 2>&1)" ;;
 		/reconcile) tg_send "$("$PORTAL" reconcile 2>&1)" ;;
 		/diag) tg_send "$("$SETUP" diag 2>&1 | tail -c 3600)" ;;
+		/update) tg_send "looking for an update the owner signed; the result follows."; "$SETUP" self-update > /dev/null 2>&1 & ;;   # (it tells you itself; the update restarts this monitor)
 		/restart) "$PORTAL_SERVICE" restart > /dev/null 2>&1; tg_send "portal restarted (a coin window that was open is settled from its record)." ;;
 		/reboot)
 			if [ "$_arg" = confirm ] && [ -r "$S/reboot.ask" ] && [ $(($(now) - $(cat "$S/reboot.ask"))) -lt 120 ]; then
@@ -128,7 +129,7 @@ handle_command() {  # handle_command <chat> <text>
 			else
 				now > "$S/reboot.ask"; tg_send "this reboots the router and takes about 2 minutes. Send  /reboot confirm  within 2 minutes to do it."
 			fi ;;
-		/help | *) tg_send "/status  /report [days]  /reconcile  /diag  /restart  /reboot" ;;
+		/help | *) tg_send "/status  /report [days]  /reconcile  /diag  /update  /restart  /reboot" ;;
 	esac
 }
 

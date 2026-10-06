@@ -10,4 +10,4 @@ This directory contains the single-purpose WebUSB provisioning and deprovisionin
   - `index.html`: Unified single-page WebUSB installer and deprovisioner.
   - `js/webadb_manager.js`: WebUSB ADB driver and provisioning orchestration.
   - `js/yume-chan-bundle.js`: Pre-bundled WebUSB ADB protocol runtime.
-  - `app-release.apk` / `update/`: Binary APK packages flashed directly to client Android phones.
+  - `app-release.apk` / `update/`: Binary APK packages flashed directly to client Android phones; `update/firmware*` for the coin box and `update/router.json` + `router-setup.sh` for the routers (signed with the owner key, docs/RELEASE.md).

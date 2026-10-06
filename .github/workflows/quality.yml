@@ -23,6 +23,7 @@ on:
       - 'tools/pisoportal/src/**'
       - 'tools/pisoportal/tests/**'
       - 'tools/pisoportal/Cargo.*'
+      - 'tools/pisoportal/owner_key.b64'
       - 'tools/pisoportal/rustfmt.toml'
       - 'tools/site-css/**'
       - 'website/index.html'
@@ -143,7 +144,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install Playwright (real-browser test), BusyBox (the router's shell and tools), ShellCheck and the Rust lints
         run: |
-          pip install -q playwright && playwright install --with-deps chromium
+          pip install -q playwright cryptography && playwright install --with-deps chromium
           sudo apt-get install -y -q busybox-static
           rustup component add rustfmt clippy
           # one ShellCheck version everywhere (the runner's own changes with the image)
@@ -171,5 +172,10 @@ jobs:
         run: python3 router/tests/test_setup.py
       - name: Check the Telegram monitor against a fake Telegram
         run: python3 router/tests/test_monitor.py
+      - name: Check router updates from the website (signed releases only, staged rollout, undo of a release that does not run)
+        run: |
+          python3 router/tests/test_selfupdate.py
+          # not an error while the owner has not made the keys (docs/KEYS.md), but never silent: routers install no update until then
+          if [ ! -s tools/pisoportal/owner_key.b64 ]; then echo "::warning file=tools/pisoportal/owner_key.b64::no owner key built into the router program: routers will install no update from the website (docs/RELEASE.md)"; fi
       - name: The committed setup file is up to date
         run: python3 tools/build_piso_setup.py --check

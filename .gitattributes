@@ -15,3 +15,6 @@ router/tests/*.sh text eol=lf
 *.init text eol=lf
 *.sh.in text eol=lf
 setup/piso-setup.sh text eol=lf
+
+# The router's update file is signed over its exact bytes: never converted.
+website/update/router-setup.sh -text

@@ -7,6 +7,8 @@
 //!                             "rebase" compares from now on (after the box's revenue was collected)
 //!   pisoportal verify         check the ledger's hash chain
 //!   pisoportal report [days]  revenue per day and plan
+//!   pisoportal update-check <router.json> <installed version> <router id>   a verified router update from the website? (update.rs)
+//!   pisoportal update-verify <router.json> <router-setup.sh>                 is the downloaded file the signed one?
 //!   pisoportal selftest       checks that this build works on this machine
 mod boxlink;
 mod config;
@@ -18,6 +20,7 @@ mod nds;
 mod pricing;
 mod reconcile;
 mod roll;
+mod update;
 mod util;
 
 use std::process::Command;
@@ -186,9 +189,11 @@ fn main() {
         "box" => cmd_box(&config::Config::load()),
         "verify" => cmd_verify(&config::Config::load()),
         "reconcile" => cmd_reconcile(&config::Config::load(), args.get(2).map(|a| a.as_str()) == Some("rebase")),
+        "update-check" => update::cmd_check(&args[2..]),
+        "update-verify" => update::cmd_verify(&args[2..]),
         "report" => cmd_report(&config::Config::load(), args.get(2).and_then(|d| d.parse().ok()).unwrap_or(7)),
         _ => {
-            eprintln!("usage: pisoportal [serve|box|reconcile [rebase]|verify|report [days]|selftest|version]");
+            eprintln!("usage: pisoportal [serve|box|reconcile [rebase]|verify|report [days]|update-check|update-verify|selftest|version]");
             2
         }
     };

@@ -8,6 +8,11 @@ description = "PisoPhone portal: the coin-payment splash (openNDS FAS), the coin
 [dependencies]
 sha2 = { version = "0.10", default-features = false }
 hmac = { version = "0.12", default-features = false }
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "pkcs8"] }
+
+[features]
+# Tests only: the owner key is read from the file named by PISOPORTAL_TEST_OWNER_KEY. The router program is never built with it.
+test-owner-key = []
 
 [profile.release]
 opt-level = "z"

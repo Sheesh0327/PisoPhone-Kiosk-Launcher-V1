@@ -20,6 +20,12 @@
   Access-Control-Allow-Origin: *
   Cache-Control: no-cache
 
+/update/router.json
+  Cache-Control: no-cache
+
+/update/router-setup.sh
+  Cache-Control: no-cache
+
 /update/app.json
   Cache-Control: no-cache
 

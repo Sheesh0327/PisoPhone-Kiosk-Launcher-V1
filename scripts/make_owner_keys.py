@@ -60,7 +60,7 @@ def main():
         self_test(key)
         b64 = base64.b64encode(pem).decode()
         print(f"""
-Public key written to {a.header} (commit this file).
+Public key written to {a.header} and tools/pisoportal/owner_key.b64 (commit both).
 
 PRIVATE KEY, shown once. In GitHub: Settings > Secrets and variables > Actions > New repository secret,
 name  OWNER_SIGNING_KEY_B64   value (the whole line):
@@ -69,7 +69,7 @@ name  OWNER_SIGNING_KEY_B64   value (the whole line):
 
 Also save that line in a password manager NOW: GitHub secrets cannot be read back and nothing was saved on this
 computer. Then clear your terminal scrollback.
-Next: git add esp32_firmware/include/LicensePubKey.h && git commit -m "Install owner public key", then rebuild and flash the boxes.""")
+Next: git add esp32_firmware/include/LicensePubKey.h tools/pisoportal/owner_key.b64 && git commit -m "Install owner public key", then rebuild and flash the boxes.""")
         return
 
     if inside_repo(a.path):
@@ -83,16 +83,17 @@ Next: git add esp32_firmware/include/LicensePubKey.h && git commit -m "Install o
         f.write(pem)
     gl.write_pubkey_header(key.public_key(), a.header)
     print(f"Private key written to {a.path}")
-    print(f"Public key written to {a.header}")
+    print(f"Public key written to {a.header} (and, for the routers, tools/pisoportal/owner_key.b64)")
     self_test(key)
     print(f"""
 Done. Next steps:
   1. BACK UP {a.path} now, in two separate offline places (a USB stick in a drawer, a password manager attachment).
      Lose it and no box can ever take a new license or update; leak it and anyone can forge both.
-  2. Commit ONLY the public key:   git add esp32_firmware/include/LicensePubKey.h && git commit -m "Install owner public key"
+  2. Commit ONLY the public key:   git add esp32_firmware/include/LicensePubKey.h tools/pisoportal/owner_key.b64 && git commit -m "Install owner public key"
   3. Rebuild and flash every box:  cd esp32_firmware && pio run -e esp32-c3-dev -t upload
   4. Issue a license:              python3 scripts/generate_license.py issue --private {a.path} --code <box request code> --slots N
-  5. Sign a firmware build:        python3 scripts/sign_firmware.py --private {a.path} --chip esp32c3 --image <firmware.bin>""")
+  5. Sign a firmware build:        python3 scripts/sign_firmware.py --private {a.path} --chip esp32c3 --image <firmware.bin>
+  6. Sign a router update:         python3 scripts/sign_router.py --private {a.path} --setup setup/piso-setup.sh   (docs/RELEASE.md)""")
 
 
 if __name__ == "__main__":

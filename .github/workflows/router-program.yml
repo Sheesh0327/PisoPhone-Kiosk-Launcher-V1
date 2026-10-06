@@ -9,6 +9,8 @@ on:
     paths:
       - 'tools/pisoportal/src/**'
       - 'tools/pisoportal/Cargo.*'
+      - 'tools/pisoportal/owner_key.b64'
+      - 'setup/RELEASE'
       - 'router/*.init'
       - 'router/piso_monitor.sh'
       - 'setup/piso-setup.sh.in'

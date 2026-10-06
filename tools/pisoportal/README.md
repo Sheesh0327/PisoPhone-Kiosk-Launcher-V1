@@ -31,6 +31,13 @@ CLI: `pisoportal serve | box | reconcile [rebase] | verify | report [days] | sel
 `/admin/start?mac=&plan=`, `/admin/status?mac=`, `/admin/finish?mac=`, `/admin/info` (used by `piso-setup test-coin`).
 Config: `/etc/coinslot.conf` (written by `piso-setup`); keys are listed in `src/config.rs`.
 
+## Router updates (`src/update.rs`)
+`pisoportal update-check <router.json> <installed release> <router id>` and `update-verify <router.json> <router-setup.sh>` are what
+`piso-setup self-update` uses: ECDSA P-256 (the owner key, `owner_key.b64`, built in; empty = every update refused), a signature over
+`pisophone-router-v1|<version>|<sha256>|<size>|<rollout>`, a newer version only, and a staged rollout by a hash of the router's own
+id. Tests: `cargo test` (a signature made by the Python tool) and `router/tests/test_selfupdate.py` (the whole path; builds this
+program with `--features test-owner-key`, which only tests use).
+
 ## Build and test
 ```
 cargo test

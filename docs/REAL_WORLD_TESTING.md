@@ -131,3 +131,7 @@ pushing closes its issue. Avoid `|` characters inside cells.
 - [ ] **RS10** `piso-setup handout` writes `/root/piso-handout.html` with the right names and passwords
 - [ ] **RS11** `./piso-setup.sh update` (a new file) on a router set up with an earlier version: it ends with all checks passing and customers get the coin page (openNDS moved to the FAS portal on port 2080); paid sessions and the ledger are kept
 - [ ] **RS12** Collect the box's revenue (super admin): afterwards `piso-setup reconcile` prints a note that the box's count restarted and `RECONCILE OK`, and no REVENUE MISMATCH alert arrives in Telegram
+- [ ] **RS13** (needs your owner key in `tools/pisoportal/owner_key.b64`, then a router built from that) Publish a test release with `scripts/sign_router.py --rollout 100` (docs/RELEASE.md): on the router `piso-setup self-update check` names it, `piso-setup self-update` installs it, customers still get the coin page afterwards and a Telegram message says it is installed and running
+- [ ] **RS14** With one phone online as a customer, `piso-setup self-update auto` installs nothing and says it waits for a quiet moment; after the phone leaves, it installs
+- [ ] **RS15** Publish a release with `--rollout 0`: the router does not install it; `/update` in Telegram says it is rolling out in stages
+- [ ] **RS16** Hand-edit `website/update/router-setup.sh` after signing (one character) and publish it: the router refuses it, installs nothing and Telegram says REFUSED

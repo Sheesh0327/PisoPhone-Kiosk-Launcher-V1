@@ -6,7 +6,7 @@ base64) after a '#@@B64 <destination> <mode> <sha256>' line. Run it after changi
     python3 tools/build_piso_setup.py --check    fails if the committed file is out of date (CI)
 The portal program is built by CI (.github/workflows/rust-router-probe.yml) and committed to tools/pisoportal/bin; CI
 rebuilds this file right after, so the two always match."""
-import base64, hashlib, os, sys
+import base64, hashlib, os, re, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FILES = [  # (source in the repository, destination on the router, mode)
@@ -21,7 +21,9 @@ BINARIES = [
 
 def build():
     version = os.environ.get("SETUP_VERSION") or "dev"
-    out = open(os.path.join(ROOT, "setup/piso-setup.sh.in")).read().replace("@VERSION@", version)
+    release = open(os.path.join(ROOT, "setup/RELEASE")).read().strip()
+    assert re.fullmatch(r"\d{1,5}\.\d{1,5}\.\d{1,5}", release), "setup/RELEASE must look like 1.2.3"
+    out = open(os.path.join(ROOT, "setup/piso-setup.sh.in")).read().replace("@VERSION@", version).replace("@RELEASE@", release)
     for src, dest, mode in FILES:
         body = open(os.path.join(ROOT, src)).read()
         assert "\n#@@" not in body and "\r" not in body, src
