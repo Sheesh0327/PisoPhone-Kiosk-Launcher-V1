@@ -193,6 +193,35 @@ bool enqueuePendingPayment(const String& txId, const String& targetId, int pulse
         }
     }
 
+    // A gateway (router) window keeps ONE record, its running total: the router collects and acknowledges the whole
+    // window at its end, so a record per coin filled the queue and refused (lost) every coin after about the 20th for a
+    // customer paying with many small coins. Phones and controllers acknowledge each coin, so they keep one per coin.
+    if (ownerType == CoinSlotOwnerType::GATEWAY) {
+        for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
+            if (!paymentSlotUsed[i] || paymentQueue[i].ownerType != 3 || targetId != paymentQueue[i].targetId) continue;
+            paymentQueue[i].pulses += pulses;
+            PaymentRecord total = paymentQueue[i];
+            diagCount(DiagCounter::PaymentsQueued);
+            if (!persistRecord(i, total)) {
+                // the total stays in RAM and is written again with backoff, like a new record
+                diagCount(DiagCounter::PersistFailures);
+                paymentStorageReady = false;
+                paymentSlotPersisted[i] = false;
+                lastPersistAttemptMs[i] = millis();
+                persistRetryCount[i] = 1;
+                unlockQueue();
+                diagLog("[PAY QUEUE] NVS write failed for the gateway total of '%s'. Retained in RAM.\n",
+                        targetId.c_str());
+                return true;
+            }
+            paymentSlotPersisted[i] = true;
+            paymentStorageReady = true;
+            unlockQueue();
+            diagLog("[PAY QUEUE] Gateway window '%s' now holds %d pulse(s).\n", targetId.c_str(), total.pulses);
+            return true;
+        }
+    }
+
     int freeIndex = -1;
     for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
         if (!paymentSlotUsed[i]) {
