@@ -69,7 +69,9 @@ impl Config {
     }
 
     pub fn from_map(file: HashMap<String, String>) -> Config {
-        let get = |k: &str, d: &str| -> String { std::env::var(k).ok().filter(|v| !v.is_empty()).or_else(|| file.get(k).cloned()).unwrap_or_else(|| d.to_string()) };
+        let get = |k: &str, d: &str| -> String {
+            std::env::var(k).ok().filter(|v| !v.is_empty()).or_else(|| file.get(k).cloned()).unwrap_or_else(|| d.to_string())
+        };
         let num = |k: &str, d: u64| -> u64 { get(k, "").parse().unwrap_or(d) };
         let mut hyper = parse_tiers(&get("HYPER_TIERS", "5:30 10:60 20:120"));
         let prorata = num("HYPER_PRORATA_MIN", 6) as u32;

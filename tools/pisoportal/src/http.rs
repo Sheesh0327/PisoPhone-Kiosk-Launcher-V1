@@ -128,7 +128,15 @@ fn read_request(stream: &TcpStream) -> Option<Request> {
 }
 
 fn respond(stream: &mut TcpStream, status: &str, ctype: &str, body: &str, extra: &str) {
-    let _ = write!(stream, "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n{}\r\n{}", status, ctype, body.len(), extra, body);
+    let _ = write!(
+        stream,
+        "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n{}\r\n{}",
+        status,
+        ctype,
+        body.len(),
+        extra,
+        body
+    );
 }
 
 /// The MAC address the router sees behind an IP address.
@@ -206,7 +214,11 @@ fn ws_send(w: &Mutex<TcpStream>, opcode: u8, data: &[u8]) -> bool {
 static WS_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 fn ws_session(core: Arc<Core>, mut stream: TcpStream, key: &str, mac: String) {
-    let _ = write!(stream, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {}\r\n\r\n", ws_accept(key));
+    let _ = write!(
+        stream,
+        "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {}\r\n\r\n",
+        ws_accept(key)
+    );
     let _ = stream.set_read_timeout(Some(Duration::from_secs(60)));
     let Ok(wclone) = stream.try_clone() else { return };
     let writer = Arc::new(Mutex::new(wclone));
@@ -309,7 +321,13 @@ fn handle(core: Arc<Core>, page: Arc<(String, String)>, mut stream: TcpStream, p
         _ => {
             let etag = format!("\"{}\"", page.1);
             if req.header("if-none-match") == Some(etag.as_str()) {
-                return respond(&mut stream, "304 Not Modified", "text/html; charset=utf-8", "", &format!("ETag: {}\r\nCache-Control: no-cache\r\n", etag));
+                return respond(
+                    &mut stream,
+                    "304 Not Modified",
+                    "text/html; charset=utf-8",
+                    "",
+                    &format!("ETag: {}\r\nCache-Control: no-cache\r\n", etag),
+                );
             }
             respond(&mut stream, "200 OK", "text/html; charset=utf-8", &page.0, &format!("ETag: {}\r\nCache-Control: no-cache\r\n", etag));
         }

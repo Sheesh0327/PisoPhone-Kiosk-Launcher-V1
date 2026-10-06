@@ -57,7 +57,11 @@ impl BoxLink {
     pub fn call(&self, sid: &str, action: &str, extra: &str) -> Result<String, String> {
         let nonce = self.challenge().ok_or_else(|| "NO_NONCE".to_string())?;
         let sig = hmac_hex(self.key.as_bytes(), format!("gw1:{}:{}:{}", action, sid, nonce).as_bytes());
-        http_get(&self.addr, &format!("/api/gateway/{}?session={}&nonce={}&sig={}{}", action, sid, nonce, sig, extra), Duration::from_secs(4))
+        http_get(
+            &self.addr,
+            &format!("/api/gateway/{}?session={}&nonce={}&sig={}{}", action, sid, nonce, sig, extra),
+            Duration::from_secs(4),
+        )
     }
 
     pub fn is_success(body: &str) -> bool {
@@ -105,7 +109,10 @@ mod tests {
         let key = "test-gateway-key-123456";
         let body = "gw1ev:abc123:def456:7:coin:12";
         let line = format!("{}:{}", body, hmac_hex(key.as_bytes(), body.as_bytes()));
-        assert_eq!(parse_event(&line, key), Some(Event { sid: "abc123".into(), wid: "def456".into(), seq: 7, kind: "coin".into(), pulses: 12 }));
+        assert_eq!(
+            parse_event(&line, key),
+            Some(Event { sid: "abc123".into(), wid: "def456".into(), seq: 7, kind: "coin".into(), pulses: 12 })
+        );
         assert_eq!(parse_event(&line, "other key 0123456789"), None);
         assert_eq!(parse_event("gw1ev:abc:def:1:coin:1:zz", key), None);
         assert_eq!(parse_event("junk", key), None);

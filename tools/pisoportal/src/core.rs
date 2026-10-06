@@ -7,7 +7,7 @@ use crate::ledger;
 use crate::nds::Nds;
 use crate::pricing::{minutes_for, rates, Plan};
 use crate::roll::{self, MintError};
-use crate::util::{json_esc, jget, jget_u64, now_secs, random_hex};
+use crate::util::{jget, jget_u64, json_esc, now_secs, random_hex};
 use std::collections::HashMap;
 use std::fs;
 use std::sync::{Arc, Condvar, Mutex};
@@ -53,7 +53,12 @@ impl View {
                 total
             ),
             View::Closing { plan, pulses, minutes } => {
-                format!("{{\"t\":\"state\",\"s\":\"closing\",\"plan\":\"{}\",\"pulses\":{},\"minutes\":{}}}", plan.as_str(), pulses, minutes)
+                format!(
+                    "{{\"t\":\"state\",\"s\":\"closing\",\"plan\":\"{}\",\"pulses\":{},\"minutes\":{}}}",
+                    plan.as_str(),
+                    pulses,
+                    minutes
+                )
             }
             View::Final { plan, pulses, minutes, left, online } => format!(
                 "{{\"t\":\"state\",\"s\":\"final\",\"plan\":\"{}\",\"pulses\":{},\"minutes\":{},\"left\":{},\"online\":{}}}",
@@ -67,7 +72,9 @@ impl View {
             View::Error(e) => format!("{{\"t\":\"state\",\"s\":\"error\",\"e\":\"{}\"}}", json_esc(e)),
             View::Busy(r) => format!("{{\"t\":\"state\",\"s\":\"busy\",\"retry\":{}}}", r),
             View::Cooldown(r) => format!("{{\"t\":\"state\",\"s\":\"cooldown\",\"retry\":{}}}", r),
-            View::Mismatch { plan, left } => format!("{{\"t\":\"state\",\"s\":\"mismatch\",\"plan\":\"{}\",\"left\":{}}}", plan.as_str(), left),
+            View::Mismatch { plan, left } => {
+                format!("{{\"t\":\"state\",\"s\":\"mismatch\",\"plan\":\"{}\",\"left\":{}}}", plan.as_str(), left)
+            }
         }
     }
 }
@@ -129,7 +136,14 @@ impl Core {
             cfg,
             box_,
             nds,
-            st: Mutex::new(State { window: None, results: HashMap::new(), version: 1, empties: HashMap::new(), cooldown: HashMap::new(), fair: HashMap::new() }),
+            st: Mutex::new(State {
+                window: None,
+                results: HashMap::new(),
+                version: 1,
+                empties: HashMap::new(),
+                cooldown: HashMap::new(),
+                fair: HashMap::new(),
+            }),
             cv: Condvar::new(),
             files: Mutex::new(()),
         })
@@ -601,7 +615,11 @@ impl Core {
     /// Records of windows that were recorded but never acknowledged (the box did not answer), outside the live window.
     fn unacked(&self) -> usize {
         let live = self.st.lock().unwrap().window.as_ref().map(|w| w.sid.clone());
-        self.open_sids().iter().filter(|s| Some(*s) != live.as_ref()).filter(|s| fs::metadata(format!("{}.rec", self.open_file(s))).is_ok()).count()
+        self.open_sids()
+            .iter()
+            .filter(|s| Some(*s) != live.as_ref())
+            .filter(|s| fs::metadata(format!("{}.rec", self.open_file(s))).is_ok())
+            .count()
     }
 
     /// Windows that were open when the router stopped, and windows whose acknowledgement failed: the coins the box still
@@ -630,7 +648,12 @@ impl Core {
             let st = match self.box_.call(&sid, "status", "") {
                 Ok(b) if BoxLink::is_success(&b) => b,
                 _ => {
-                    let old = fs::metadata(self.open_file(&sid)).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).map(|d| d.as_secs() > 86_400).unwrap_or(false);
+                    let old = fs::metadata(self.open_file(&sid))
+                        .and_then(|m| m.modified())
+                        .ok()
+                        .and_then(|t| t.elapsed().ok())
+                        .map(|d| d.as_secs() > 86_400)
+                        .unwrap_or(false);
                     if old {
                         log!("recover: dropped {} (the box never answered for a day)", &sid[..8]);
                         let _ = fs::remove_file(self.open_file(&sid));

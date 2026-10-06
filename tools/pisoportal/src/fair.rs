@@ -38,7 +38,10 @@ pub fn tick(core: &Arc<Core>) {
                     log!("fair use: {} slowed after {} MB", mac, total / 1024);
                     next = FairState { used_kb: total, offset_kb: 0, throttled: true, since: now };
                 }
-            } else if fs_.throttled && now.saturating_sub(fs_.since) >= cfg.fair_throttle_min * 60 && core.nds.grant(&mac, s.minutes, s.down, s.up, s.qdown, s.qup) {
+            } else if fs_.throttled
+                && now.saturating_sub(fs_.since) >= cfg.fair_throttle_min * 60
+                && core.nds.grant(&mac, s.minutes, s.down, s.up, s.qdown, s.qup)
+            {
                 log!("fair use: {} back to full speed", mac);
                 next = FairState { used_kb: total, offset_kb: 0, throttled: false, since: now };
             }

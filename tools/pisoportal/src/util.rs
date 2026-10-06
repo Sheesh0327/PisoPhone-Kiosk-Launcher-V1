@@ -170,7 +170,10 @@ mod tests {
 
     #[test]
     fn hmac_reference_vector() {
-        assert_eq!(hmac_hex(b"key", b"The quick brown fox jumps over the lazy dog"), "f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8");
+        assert_eq!(
+            hmac_hex(b"key", b"The quick brown fox jumps over the lazy dog"),
+            "f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8"
+        );
         assert_eq!(sha256_hex(b"abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
     }
 

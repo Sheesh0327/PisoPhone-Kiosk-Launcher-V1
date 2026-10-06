@@ -60,8 +60,23 @@ impl Entry {
     pub fn line(&self) -> String {
         format!(
             "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
-            self.code, self.down, self.up, self.qdown, self.qup, self.tl, self.fp, self.mac, self.pu, self.pa, self.rp, self.plan, self.wid, self.pesos, self.wmin,
-            self.wp, self.wf
+            self.code,
+            self.down,
+            self.up,
+            self.qdown,
+            self.qup,
+            self.tl,
+            self.fp,
+            self.mac,
+            self.pu,
+            self.pa,
+            self.rp,
+            self.plan,
+            self.wid,
+            self.pesos,
+            self.wmin,
+            self.wp,
+            self.wf
         )
     }
 
@@ -140,14 +155,28 @@ impl Mode {
 #[derive(Debug, PartialEq)]
 pub enum MintError {
     /// the device has live time on the other plan and did not agree to give it up
-    Mismatch { plan: Plan, left: u64 },
+    Mismatch {
+        plan: Plan,
+        left: u64,
+    },
     Io,
 }
 
 /// Record a verified, closed coin window: `pulses` and `minutes` are the window's whole total. The same window id is never
 /// credited twice. Returns the mode (for the ledger).
 #[allow(clippy::too_many_arguments)]
-pub fn mint(path: &str, now: u64, mac: &str, wid: &str, plan: Plan, pulses: u32, minutes: u32, up: u32, down: u32, forfeit: bool) -> Result<Mode, MintError> {
+pub fn mint(
+    path: &str,
+    now: u64,
+    mac: &str,
+    wid: &str,
+    plan: Plan,
+    pulses: u32,
+    minutes: u32,
+    up: u32,
+    down: u32,
+    forfeit: bool,
+) -> Result<Mode, MintError> {
     let mac = mac.to_lowercase();
     let mut entries = load(path);
     let mut mode = Mode::New;
@@ -257,7 +286,6 @@ pub fn purge(path: &str, now: u64) {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -280,7 +308,10 @@ mod tests {
         assert_eq!(find(&load(&p), mac).unwrap().tl, 690);
         assert_eq!(mint(&p, 1020, mac, "w2", Plan::Endurance, 2, 30, 2000, 5000, false), Ok(Mode::TopUp));
         assert_eq!(find(&load(&p), mac).unwrap().tl, 720);
-        assert_eq!(mint(&p, 1030, mac, "w3", Plan::Hyper, 5, 30, 0, 0, false), Err(MintError::Mismatch { plan: Plan::Endurance, left: 720 * 60 - 30 }));
+        assert_eq!(
+            mint(&p, 1030, mac, "w3", Plan::Hyper, 5, 30, 0, 0, false),
+            Err(MintError::Mismatch { plan: Plan::Endurance, left: 720 * 60 - 30 })
+        );
         assert_eq!(mint(&p, 1030, mac, "w3", Plan::Hyper, 5, 30, 0, 0, true), Ok(Mode::Switch));
         let e = find(&load(&p), mac).unwrap().clone();
         assert_eq!((e.plan.as_str(), e.tl, e.pesos), ("hyper", 30, 5));

@@ -31,7 +31,16 @@ impl Nds {
 
     pub fn auth(&self, mac: &str, minutes: u64, down: u32, up: u32, qdown: u64, qup: u64) -> bool {
         // ndsctl auth <mac> <session minutes> <upload kbit/s> <download kbit/s> <upload quota kB> <download quota kB> <custom>
-        let out = self.run(&["auth", mac, &minutes.to_string(), &up.to_string(), &down.to_string(), &qup.to_string(), &qdown.to_string(), "pisoportal"]);
+        let out = self.run(&[
+            "auth",
+            mac,
+            &minutes.to_string(),
+            &up.to_string(),
+            &down.to_string(),
+            &qup.to_string(),
+            &qdown.to_string(),
+            "pisoportal",
+        ]);
         !out.contains("Failed")
     }
 

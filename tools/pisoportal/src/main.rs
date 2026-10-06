@@ -62,12 +62,18 @@ fn cmd_reconcile(cfg: &config::Config) -> i32 {
         println!("RECONCILE MISMATCH ledger={} box={} (ledger is higher than the box counted)", ledger_pesos, box_pulses);
         return 1;
     }
-    println!("RECONCILE OK ledger={} box={} (the difference of {} went to rental phones)", ledger_pesos, box_pulses, box_pulses - ledger_pesos);
+    println!(
+        "RECONCILE OK ledger={} box={} (the difference of {} went to rental phones)",
+        ledger_pesos,
+        box_pulses,
+        box_pulses - ledger_pesos
+    );
     0
 }
 
 fn tz_offset_secs() -> i64 {
-    let out = Command::new("date").arg("+%z").output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
+    let out =
+        Command::new("date").arg("+%z").output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
     if out.len() == 5 {
         let sign = if out.starts_with('-') { -1 } else { 1 };
         let h: i64 = out[1..3].parse().unwrap_or(0);
@@ -122,11 +128,17 @@ fn cmd_report(cfg: &config::Config, days: i64) -> i32 {
 
 fn selftest() -> i32 {
     let cfg = config::Config::from_map(Default::default());
-    let ok_hmac = util::hmac_hex(b"key", b"The quick brown fox jumps over the lazy dog") == "f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8";
+    let ok_hmac = util::hmac_hex(b"key", b"The quick brown fox jumps over the lazy dog")
+        == "f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8";
     let ok_ws = http::ws_accept("dGhlIHNhbXBsZSBub25jZQ==") == "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=";
     let ok_price = pricing::minutes_for(&cfg, pricing::Plan::Endurance, 17) == 690;
     println!("hmac-sha256: {}  websocket accept key: {}  price P17 endurance=690 min: {}", ok_hmac, ok_ws, ok_price);
-    println!("arch={} endian={} pointer_width={}", std::env::consts::ARCH, if cfg!(target_endian = "little") { "little" } else { "big" }, usize::BITS);
+    println!(
+        "arch={} endian={} pointer_width={}",
+        std::env::consts::ARCH,
+        if cfg!(target_endian = "little") { "little" } else { "big" },
+        usize::BITS
+    );
     if ok_hmac && ok_ws && ok_price {
         0
     } else {
