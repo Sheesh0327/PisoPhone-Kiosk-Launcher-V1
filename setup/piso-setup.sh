@@ -402,8 +402,12 @@ extract_payload() {
 	done
 	rm -rf "$_tmpd"
 	# the installed command without the payload (about 1 MB of flash): it is only used for the commands, never to install
-	[ "$_self" -ef "$SELF_PATH" ] || sed '/^# ---- payload: the portal files/,$d' "$_self" > "$SELF_PATH" 2> /dev/null
-	chmod 755 "$SELF_PATH" 2> /dev/null
+	# (written next to it and renamed: this file may be the one being run, and the shell is still reading it)
+	if sed '/^# ---- payload: the portal files/,$d' "$_self" > "$SELF_PATH.new" 2> /dev/null; then
+		chmod 755 "$SELF_PATH.new" && mv "$SELF_PATH.new" "$SELF_PATH"
+	else
+		rm -f "$SELF_PATH.new"; log "could not save the piso-setup command to $SELF_PATH (is the router's flash full?)"
+	fi
 	ln -sf "$SELF_PATH" "$(dirname "$SELF_PATH")/pisowifi-name" 2> /dev/null
 }
 
@@ -720,7 +724,9 @@ cmd_diag() {
 cmd_update() {
 	[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
 	DRY=0
-	[ -r "$CONF" ] && [ -n "$(conf_get GW_KEY)" ] || die "no PisoPhone setup found on this router: run ./piso-setup.sh without arguments first"
+	if [ ! -r "$CONF" ] || [ -z "$(conf_get GW_KEY)" ]; then
+		die "no PisoPhone setup found on this router: run ./piso-setup.sh without arguments first"
+	fi
 	[ "$0" != "$SELF_PATH" ] || die "this is the installed (old) copy. Copy the NEW piso-setup.sh to the router and run it from there: ./piso-setup.sh update"
 	step "Updating the portal files"
 	[ -x /etc/init.d/pisoportal ] && /etc/init.d/pisoportal stop > /dev/null 2>&1   # (no program is replaced while it runs)
@@ -892,7 +898,9 @@ cmd_set_password() {
 	[ "$(id -u)" = 0 ] || die "run as root"
 	echo "Choose a new router (SSH / LuCI) password; it is saved in $CONF and shown by: piso-setup summary"
 	stty -echo 2> /dev/null; printf 'New password (8+ characters): '; read -r _a; echo; printf 'Again: '; read -r _b; echo; stty echo 2> /dev/null
-	[ "$_a" = "$_b" ] && [ "${#_a}" -ge 8 ] || { echo "The passwords differ or are shorter than 8 characters."; return 1; }
+	if [ "$_a" != "$_b" ] || [ "${#_a}" -lt 8 ]; then
+		echo "The passwords differ or are shorter than 8 characters."; return 1
+	fi
 	printf '%s\n%s\n' "$_a" "$_a" | passwd root > /dev/null 2>&1 || { echo "Could not set it."; return 1; }
 	conf_set ROOT_PASS "$_a"; conf_set ROOT_PASS_SET 1; write_summary; echo "Done."
 }

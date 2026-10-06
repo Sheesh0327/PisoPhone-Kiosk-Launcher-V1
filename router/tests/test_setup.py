@@ -1,7 +1,7 @@
 """Tests of setup/piso-setup.sh (the one-file router setup) without a router: a fake uci with canned radios, the generated
 settings, the payload, the helpers, and the coin box provisioning against a fake box.
 Run with:  python3 router/tests/test_setup.py"""
-import http.server, json, os, re, subprocess, sys, tempfile, threading, base64
+import http.server, json, os, re, shutil, subprocess, sys, tempfile, threading, base64
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SCRIPT = f"{ROOT}/setup/piso-setup.sh"
@@ -182,6 +182,16 @@ check(os.path.exists(installed) and not any(l.startswith("#@@") for l in open(in
       and os.path.getsize(installed) < 200_000, "the installed command is the script without the payload (no 1 MB of flash)")
 r = lib(f'PISO_ROOT={root}3; DRY=1; extract_payload {installed}; echo rc=$?')
 check("rc=0" in r.stdout and "carries no portal files" in r.stdout and not os.path.exists(f"{root}3/usr/bin/pisoportal"), "re-running the installed copy keeps the files on the router")
+# the full file copied to the command's own path and run from there: it must not be emptied while it is being read
+selfrun = f"{tmp}/selfrun/piso-setup"
+os.makedirs(os.path.dirname(selfrun))
+shutil.copy(SCRIPT, selfrun)
+r = subprocess.run(["sh", "-c", f". {selfrun}; PISO_ROOT={root}4; SELF_PATH={selfrun}; DRY=1; extract_payload {selfrun}; echo rc=$?"],
+                   env=dict(os.environ, PATH=f"{bindir}:" + os.environ["PATH"], PISO_SETUP_SOURCE_ONLY="1", PISO_LOG=f"{tmp}/log4"),
+                   capture_output=True, text=True, timeout=120)
+check("rc=0" in r.stdout and os.path.exists(f"{root}4/usr/bin/pisoportal") and open(selfrun).read().startswith("#!/bin/sh")
+      and 1000 < os.path.getsize(selfrun) < 200_000 and not os.path.exists(selfrun + ".new"),
+      "run from the command's own path, the setup installs and leaves the command whole: " + r.stdout[-300:])
 # a stock OpenWrt BusyBox has neither base64 nor openssl: the awk decoder must give the same program, checked by its sha256
 bb = subprocess.run(["sh", "-c", "command -v busybox"], capture_output=True, text=True).stdout.strip()
 if bb:

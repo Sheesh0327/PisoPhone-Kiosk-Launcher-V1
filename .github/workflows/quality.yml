@@ -141,11 +141,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Playwright (real-browser test), BusyBox (the router's shell and tools) and the Rust lints
+      - name: Install Playwright (real-browser test), BusyBox (the router's shell and tools), ShellCheck and the Rust lints
         run: |
           pip install -q playwright && playwright install --with-deps chromium
           sudo apt-get install -y -q busybox-static
           rustup component add rustfmt clippy
+          # one ShellCheck version everywhere (the runner's own changes with the image)
+          curl -fsSLo /tmp/sc.tar.xz https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz
+          echo "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198  /tmp/sc.tar.xz" | sha256sum -c -
+          tar -xJf /tmp/sc.tar.xz -C /tmp && sudo install -m 755 /tmp/shellcheck-v0.11.0/shellcheck /usr/local/bin/shellcheck
+          shellcheck --version
       - name: pisoportal style and lints
         working-directory: tools/pisoportal
         run: |
