@@ -3,38 +3,81 @@
 One file, `piso-setup.sh`, turns a factory-reset OpenWrt router into the whole PisoWiFi system.
 
 ## Before you start
-1. **Flash the ESP32 coin box** with firmware **3.2.1 or later** (see "Flashing the coin box" below) and power it on. It joins the hidden `PisoCoinBox` Wi-Fi by itself, which the router creates. A used box must be factory reset first (it remembers its old Wi-Fi).
+1. **Flash the ESP32 coin box** from the browser (https://pisophone.pages.dev/flash.html, see "Flashing the coin box" below) and power it on. It joins the hidden `PisoCoinBox` Wi-Fi by itself, which the router creates. A used box must be factory reset first (it remembers its old Wi-Fi).
 2. **Modem into the router's WAN port** (internet is needed once, to download packages).
 3. A PC on one of the router's **LAN ports**.
 4. The modem's own network must not be `10.0.0.x` or `192.168.30.x` (the script stops and tells you if it is).
 
 ### Flashing the coin box (once per box, by USB)
+Open **https://pisophone.pages.dev/flash.html** in Chrome or Edge on a computer, plug the box's ESP32 in with a USB data
+cable and click **Connect the box and install**. The page detects the chip (ESP32-C3 or ESP32), downloads the matching
+image, checks its sha256, writes it, reads it back to verify, and restarts the box. Keep **Erase everything first** ticked
+for a new or used box. If it does not connect: hold the board's BOOT button, tap RESET, release BOOT, and try again.
+The images are built by CI from the branch's firmware (`.github/workflows/firmware-images.yml`, the `-dev` environments)
+and published in `website/flash/`; on the beta site the page flashes beta's firmware.
+
+For developers, PlatformIO still works:
 ```
 cd esp32_firmware
-sh host_tests/run.sh                  # optional: the firmware's own tests
-pio run -e esp32-c3-dev -t upload     # ESP32-C3 boards; use esp32dev-dev for a classic ESP32 (environments: esp32_firmware/envs/)
-pio device monitor                    # optional: watch it start
+pio run -e esp32-c3-dev -t upload     # ESP32-C3 boards; esp32dev-dev for a classic ESP32 (environments: esp32_firmware/envs/)
 ```
-CI compiles the firmware on every push (job "Firmware format and host tests" and the build job). The box starts with the published defaults (admin password `Coinslot@Setup`, setup Wi-Fi `PisoCoinBox`); the router setup changes the password and key by itself, and the box refuses coins until its password has been changed.
+The box starts with the published defaults (admin password `Coinslot@Setup`, setup Wi-Fi `PisoCoinBox`); the router setup
+changes the password and key by itself, and the box refuses coins until its password has been changed.
 
-## Step 1: set the router's LAN address to 10.0.0.1 (by hand, once)
-The script does not change the router's address, so your SSH connection is never cut while it runs. Do this first, on a factory-reset router:
+## Easiest: let your computer do steps 1 and 2 (no commands to type)
+Download **https://pisophone.pages.dev/pisophone_setup.py** (also in this folder: `setup/pisophone_setup.py`), plug the
+computer into a LAN port of the factory-reset router (modem in its WAN port, the coin box flashed and powered on), turn the
+computer's Wi-Fi off, and run it:
+```
+python3 pisophone_setup.py                  (Windows: py pisophone_setup.py, or double-click it)
+python3 pisophone_setup.py --branch beta    (the beta branch's setup, for testing)
+```
+It asks for the public Wi-Fi name, the site name and the three passwords (Enter generates them), shows everything on a review
+screen, and after you answer `y` it does the rest by itself: it finds the router (192.168.1.1 or 10.0.0.1), runs the one-line
+installer there unattended (`install.sh --yes`, which checks the setup file's sha256), waits for the router to come back at
+10.0.0.1 (if it does not within half a minute it tells you to unplug and replug the cable; Windows renews its address by
+itself), runs the setup with your answers while you watch its output, and saves **the summary (every password) and the
+printable setup sheet** in the current folder (only you can read them), then opens the sheet. At the end it offers to connect
+Telegram alerts.
+
+It needs Python 3.8 or newer and the `ssh` command, which Windows 10/11, macOS and Linux already have (Windows: Settings > Apps
+> Optional features > OpenSSH Client, if it is missing). The passwords travel over the SSH connection's input, never on a
+command line, and the router's SSH key is pinned for the run (the same key must answer at 192.168.1.1 and at 10.0.0.1).
+Running it again is safe: a router that was set up before keeps its names and passwords and is only finished or repaired
+(ssh then asks for the router password, which is in the saved summary). Other uses: `--update` installs new software on a
+router that is set up already, `--yes` asks nothing (defaults and generated passwords), `--guest-ssid` and `--site-name` set
+the names, `--out <folder>` chooses where the files go. If it stops with an error, it says why; fix that and run it again.
+
+The steps below are the same thing by hand.
+
+## Step 1: one line on the router
+Plug your computer into a LAN port of the factory-reset router, log in and paste one line:
 ```
 ssh root@192.168.1.1
-uci set network.lan.ipaddr='10.0.0.1'
-uci commit network
-/etc/init.d/network restart
+wget -qO- https://pisophone.pages.dev/install.sh | sh
 ```
-The SSH session ends (that is expected). Unplug and replug the PC's LAN cable so it gets a `10.0.0.x` address, then continue at `10.0.0.1`.
-(In LuCI instead: Network > Interfaces > LAN > Edit > IPv4 address `10.0.0.1`, then Save & Apply.)
+It downloads the current setup file to `/root/piso-setup.sh`, checks it (its published sha256, that it is complete and readable),
+then asks to move the router from `192.168.1.1` to **10.0.0.1** (the kiosk network). Answer `y`: the SSH session ends, which is
+expected. Unplug and replug the computer's cable (or wait a minute), then continue:
+```
+ssh root@10.0.0.1
+./piso-setup.sh
+```
+(A router that is already at 10.0.0.1 goes straight on to the setup.) If the modem itself uses `10.0.0.x`, the installer stops and
+tells you to change the modem's address first.
+
+Other uses of the same line: `... | sh -s update` installs new software on a router that is set up already, and
+`... | sh -s -- --branch beta` uses the setup file of another branch (testing); `... | sh -s -- --yes` asks nothing (it moves the
+router by itself and runs the setup unattended, with passwords from `ROOT_PASSWORD`, `KIOSK_PASSWORD`, `BOX_NEW_ADMIN_PASSWORD`
+or generated: this is what `pisophone_setup.py` uses). The installer is `setup/install.sh`; the website serves copies of it and
+of `pisophone_setup.py` (`website/install.sh`, `website/pisophone_setup.py`, kept equal by `tools/build_piso_setup.py`).
 
 ## Step 2: run the setup
+Without internet on the router (or to do it by hand): set the address yourself (`uci set network.lan.ipaddr='10.0.0.1'; uci commit
+network; /etc/init.d/network restart`, then log in at 10.0.0.1), then copy the file over and start it:
 ```
 scp -O setup/piso-setup.sh root@10.0.0.1:/root/
-ssh root@10.0.0.1
-sed -i 's/\r$//' piso-setup.sh     # removes Windows line endings if the file touched Windows (otherwise: ": not found" errors)
-chmod +x piso-setup.sh
-./piso-setup.sh
+ssh root@10.0.0.1 'sed -i "s/\r$//" piso-setup.sh && sh piso-setup.sh'
 ```
 Answer `y` when asked. It then asks for the **public Wi-Fi name** (default `PisoWiFi`; Enter keeps it; 32 characters at most, no quotes; the rental-phone network is always the hidden `PisoKiosk`) and then to choose **three passwords** (each typed twice, not shown; just press Enter to have a strong one generated for you): the router password (SSH and LuCI), the **PisoKiosk Wi-Fi** password (typed into each phone's setup page) and the **coin box admin** password (the box's web page, also the phones' admin PIN). Use 8 or more characters without spaces or quotes. The coin box's *super-admin* password is not asked: the firmware keeps it under remote management and it cannot be set locally. For unattended runs set `ROOT_PASSWORD`, `KIOSK_PASSWORD` and `BOX_NEW_ADMIN_PASSWORD` in the environment. Before anything is changed it shows a **review screen** (names, which passwords you chose and which will be generated, router address and country) and asks `Apply these settings? [y/N]`. It also asks for a **site name** (printed on the setup sheet and shown in Telegram messages) and offers to connect **Telegram** at the end of the setup. It runs in front of you for about 3 to 8 minutes and **keeps your SSH session open the whole time**: it installs packages, creates the networks, waits for the ESP32 to join, sets its password and key, starts everything and ends with a health check. When it prints `SETUP COMPLETE`, read the summary:
 ```
@@ -60,8 +103,29 @@ It has every password (router, PisoKiosk Wi-Fi, coin box admin). The setup also 
 5. Optional dead-man switch: create a check at healthchecks.io, put its ping URL in `/etc/piso-monitor.conf` as `HEALTHCHECK_URL='...'`, then `/etc/init.d/piso_monitor restart`. You are alerted when the router stops pinging (power cut, internet down).
 The router needs internet for this: while the site is offline nothing can be sent, and alerts raised in that time are not delivered later (the dead-man switch covers that case).
 
-## Step 5: provision each rental phone (it joins PisoKiosk by itself)
-A phone that is not on the **PisoKiosk** Wi-Fi cannot find its coin box, so it can never pair or learn its admin PIN. The provisioning page (the "Install & Provision" link on the box's page) therefore has a **Kiosk Wi-Fi** section: the name (`PisoKiosk`) and the PisoKiosk password from `piso-setup summary`. It is sent to the phone together with the box's secret; the app (a device owner) adds the network itself, joins it, and rejoins whenever the phone is on another network (checked every minute). The page remembers the password on that computer, so the next phone needs no typing. Without a password the page warns you before it continues.
+## Step 5: set up each rental phone (QR code, or USB as the fallback)
+Open the box's page, click **Install & Provision** for the slot, and type the **PisoKiosk** Wi-Fi password (from
+`piso-setup summary`; the page remembers it on that computer). Then:
+
+**QR code (recommended, no computer cable):**
+1. Use a new or **factory-reset** phone. On the first welcome screen, **tap the same spot 6 times**: a QR reader opens (some
+   older phones first ask for a Wi-Fi to download the reader).
+2. Click **Show the setup code** on the page and scan it with the phone.
+3. The phone joins PisoKiosk, downloads PisoPhone, checks its signature, makes it the device owner and hands it the box's
+   key, MAC, slot and the Wi-Fi password. Accept the screens it shows; at the end the kiosk opens.
+4. Pair the slot on the box's page as usual.
+The code holds the box's key and the Wi-Fi password: show it only to the phone you are setting up (the page hides it when
+you click Hide or change the password). It needs an app published by CI with its signing fingerprint
+(`update/app.json` has `signatureChecksum`); until then the page says to use the USB cable.
+
+**USB cable (fallback):** for a phone whose welcome screen has no QR reader. Chrome or Edge on a computer, a USB data cable,
+a factory-reset phone with no account, USB debugging on (Xiaomi/Redmi/POCO: also "Install via USB" and "USB debugging
+(Security settings)"; they need a Mi account: sign in, turn them on, then remove the account). Click **Connect the phone
+and set it up**: the page checks the phone first (accounts, extra users), installs, makes PisoPhone the device owner and
+gives it the box's details in one step that the app confirms.
+
+Either way the app joins PisoKiosk, rejoins it whenever the phone is on another network (checked every minute), and shows
+short status lines (Wi-Fi, box search) while it finds its box.
 To fix a phone that is already provisioned (it needs the admin PIN or box secret because it is paired already):
 ```
 adb shell am broadcast -a com.pisophone.kiosk.CONFIGURE_ESP32 -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es wifi_ssid PisoKiosk --es wifi_pass '<password>' --es pin '<admin PIN>'

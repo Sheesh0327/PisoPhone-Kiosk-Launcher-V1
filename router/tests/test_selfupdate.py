@@ -30,9 +30,11 @@ other = ec.generate_private_key(ec.SECP256R1())
 pub = owner.public_key().public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
 keyfile = f"{tmp}/owner_key.b64"
 open(keyfile, "w").write(base64.b64encode(pub).decode() + "\n")
+# (CI keeps this directory between runs, so the program is not compiled from nothing every time)
+TARGET = os.environ.get("PISO_TEST_TARGET_DIR") or f"{tmp}/target"
 b = subprocess.run(["cargo", "build", "--release", "--locked", "--features", "test-owner-key"], cwd=f"{ROOT}/tools/pisoportal",
-                   env=dict(os.environ, CARGO_TARGET_DIR=f"{tmp}/target"), capture_output=True, text=True)
-portal = f"{tmp}/target/release/pisoportal"
+                   env=dict(os.environ, CARGO_TARGET_DIR=TARGET), capture_output=True, text=True)
+portal = f"{TARGET}/release/pisoportal"
 if not os.path.exists(portal):
     sys.exit("could not build the portal program:\n" + b.stderr[-1500:])
 

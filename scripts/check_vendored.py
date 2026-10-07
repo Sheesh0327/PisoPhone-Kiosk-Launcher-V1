@@ -4,7 +4,7 @@ import hashlib, os, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RECORD = os.path.join(ROOT, "website", "js", "VENDORED.md")
-FILES = ["website/js/yume-chan-bundle.js"]
+FILES = ["website/js/yume-chan-bundle.js", "website/js/qrcode.js", "website/js/esptool-bundle.js"]
 
 text = open(RECORD, encoding="utf-8").read()
 bad = 0

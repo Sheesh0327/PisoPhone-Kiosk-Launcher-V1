@@ -50,6 +50,15 @@ class KioskDeviceAdminReceiver : DeviceAdminReceiver() {
         Toast.makeText(context, "Kiosk Device Admin Activated", Toast.LENGTH_SHORT).show()
     }
 
+    /** QR setup on Android 10 and 11 (newer versions use the two provisioning screens): the box's details from the code. */
+    override fun onProfileProvisioningComplete(
+        context: Context,
+        intent: Intent,
+    ) {
+        super.onProfileProvisioningComplete(context, intent)
+        com.pisophone.kiosk.provisioning.QrProvisioning.applyFromIntent(context, intent)
+    }
+
     override fun onDisabled(context: Context, intent: Intent) {
         super.onDisabled(context, intent)
         Log.w("KioskDeviceAdmin", "Device Administrator Disabled")

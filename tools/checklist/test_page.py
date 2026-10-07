@@ -7,6 +7,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 tmp = tempfile.mkdtemp()
 page = os.path.join(tmp, "log.html")
 subprocess.run([sys.executable, os.path.join(HERE, "build.py"), page], check=True, capture_output=True)
+_data = json.loads(open(page).read().split("const DATA = ", 1)[1].split(";\nconst SETUP", 1)[0])
+TOTAL = sum(len(sec["items"]) for sec in _data["sections"])                             # every test in the checklist
+PASS1 = sum(1 for sec in _data["sections"] for it in sec["items"] if it["pass"] == 1)
 checks = failures = 0
 
 
@@ -53,8 +56,8 @@ with sync_playwright() as pw:
 
     p.goto(url)
     p.wait_for_selector(".item")
-    check(p.locator(".item").count() == 62, "62 tests are listed")
-    check("62" in p.inner_text("#tally") and "left" in p.inner_text("#tally"), "all left at the start: " + p.inner_text("#tally"))
+    check(p.locator(".item").count() == TOTAL and TOTAL > 50, f"all {TOTAL} tests are listed")
+    check(str(TOTAL) in p.inner_text("#tally") and "left" in p.inner_text("#tally"), "all left at the start: " + p.inner_text("#tally"))
     check(p.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), "no sideways scroll at phone width")
 
     p.click("#it-B1 [data-act=p]")
@@ -81,16 +84,16 @@ with sync_playwright() as pw:
 
     p.click(".tab[data-pass='1']")
     shown = p.locator(".item:not([hidden])").count()
-    check(shown == 23 and p.is_hidden("#it-B4"), f"the Pass 1 tab shows only pass 1 tests ({shown})")
+    check(shown == PASS1 and p.is_hidden("#it-B4"), f"the Pass 1 tab shows only pass 1 tests ({shown})")
     p.check("#hideDone")
-    check(p.locator(".item:not([hidden])").count() == 20 and p.is_hidden("#it-F1"), "Hide done hides the finished ones")
+    check(p.locator(".item:not([hidden])").count() == PASS1 - 3 and p.is_hidden("#it-F1"), "Hide done hides the finished ones")
     p.uncheck("#hideDone")
     p.click(".tab[data-pass='0']")
 
     p.fill("#setup-fw", "3.0.301 esp32-c3-dev")
     p.click("#makeReport")
     rep = p.input_value("#reportText")
-    check("Passed 2, failed 1, skipped 1, not tested 58 (of 62)" in rep and "firmware version and board: 3.0.301 esp32-c3-dev".lower() in rep.lower(), "the report has the counts and the setup: " + rep[:300])
+    check(f"Passed 2, failed 1, skipped 1, not tested {TOTAL - 4} (of {TOTAL})" in rep and "firmware version and board: 3.0.301 esp32-c3-dev".lower() in rep.lower(), "the report has the counts and the setup: " + rep[:300])
     check("C2 [blocker]" in rep and "| 1 | C2 " in rep and "| blocker | | | Two coins credited" in rep and "S2: no packet capture" in rep, "the failure is there as an Issue log row")
 
     # a reload brings everything back
@@ -116,7 +119,7 @@ with sync_playwright() as pw:
     check(p.get_attribute("#it-F1", "data-s") == "p", "one tap on Clear all changes nothing")
     p.click("#clearAll")
     p.wait_for_timeout(300)
-    check(p.get_attribute("#it-F1", "data-s") is None and "62" in p.inner_text("#tally"), "the second tap erases everything")
+    check(p.get_attribute("#it-F1", "data-s") is None and str(TOTAL) in p.inner_text("#tally"), "the second tap erases everything")
 
     # without the shared record: results stay on this device
     p2 = ctx.new_page()

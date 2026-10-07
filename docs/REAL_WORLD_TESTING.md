@@ -39,15 +39,17 @@ Collect logs as you go: box serial output at 115200 baud (`pio device monitor`),
 - [ ] **B6** Reboot from the dashboard works; settings survive
 - [ ] **B7** Wi-Fi drops and returns (turn the router off/on): box reconnects by itself
 - [ ] **B8** Box runs 1 hour idle without rebooting (check serial for restart reasons)
+- [ ] **B9** Web flasher: https://pisophone.pages.dev/flash.html (Chrome) flashes a factory ESP32-C3 (and a classic ESP32) with "Erase everything first"; the log ends with "Hash of data verified" and the box starts and joins PisoCoinBox
 
 ## 2. Phone install and pairing
 *P1–P4 are pass 1, the rest pass 2. Testing the beta branch: the box's Install & Provision link always opens the production site (main's APK). Copy the link and change only its host to beta.pisophone.pages.dev, keeping everything after it; check that beta.pisophone.pages.dev/update/app.json shows a -dev version first.*
-- [ ] **P1** Install the APK from the website; phone becomes the locked kiosk (device owner setup)
-- [ ] **P2** "Install & Provision" link gives the phone its box secret and an admin PIN; with the PisoKiosk password typed on the page, the phone joins PisoKiosk by itself (turn its Wi-Fi to another network and see it come back within about a minute)
+- [ ] **P1** QR setup: on a factory-reset phone, 6 taps on the welcome screen open the QR reader; scanning the page's code ("Show the setup code") installs PisoPhone, makes it the locked kiosk (device owner) and it opens by itself at the end
+- [ ] **P2** After P1 (or the USB cable setup) the phone has its box secret and gets its admin PIN; with the PisoKiosk password typed on the page, the phone joins PisoKiosk by itself (turn its Wi-Fi to another network and see it come back within about a minute)
 - [ ] **P3** Phone finds the box and shows it online; slot shows as paired in the dashboard
 - [ ] **P4** Reboot the phone: kiosk starts by itself, box still reachable, **no re-provisioning needed** (Keystore check)
 - [ ] **P5** Admin PIN works; five wrong PINs lock further tries
 - [ ] **P6** Phone shows "legacy key" warning only if it really has no box secret
+- [ ] **P7** USB fallback: with the page's "USB cable" method, a factory-reset phone with USB debugging is set up in one run; a phone with a signed-in account is refused within seconds, before anything is copied
 
 ## 3. Coins and time (the money path)
 *C1–C4 are pass 1, the rest pass 2*
@@ -137,3 +139,4 @@ pushing closes its issue. Avoid `|` characters inside cells.
 - [ ] **RS14** With one phone online as a customer, `piso-setup self-update auto` installs nothing and says it waits for a quiet moment; after the phone leaves, it installs
 - [ ] **RS15** Publish a release with `--rollout 0`: the router does not install it; `/update` in Telegram says it is rolling out in stages
 - [ ] **RS16** Hand-edit `website/update/router-setup.sh` after signing (one character) and publish it: the router refuses it, installs nothing and Telegram says REFUSED
+- [ ] **RS17** `python3 pisophone_setup.py --branch beta` (setup/README.md, "Easiest") from a computer on a factory-reset router: you type no commands; it moves the router to 10.0.0.1 (replug the cable if it asks), ends with `SETUP COMPLETE: all checks passed` and saves the summary and the setup sheet in the folder; run again on the finished router, it keeps the passwords and passes again

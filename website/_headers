@@ -20,6 +20,18 @@
   Access-Control-Allow-Origin: *
   Cache-Control: no-cache
 
+/flash/*
+  Cache-Control: no-cache
+
+/install.sh
+  Content-Type: text/plain; charset=utf-8
+  Cache-Control: no-cache
+
+/pisophone_setup.py
+  Content-Type: text/x-python; charset=utf-8
+  Content-Disposition: attachment; filename="pisophone_setup.py"
+  Cache-Control: no-cache
+
 /update/router.json
   Cache-Control: no-cache
 

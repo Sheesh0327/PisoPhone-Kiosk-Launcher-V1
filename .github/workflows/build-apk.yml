@@ -146,10 +146,21 @@ jobs:
           fi
           # An unsigned or badly signed APK cannot update installed phones; refuse to publish one.
           APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)
+          SIG_CHECKSUM=""
           if [ -n "$APKSIGNER" ]; then
-            "$APKSIGNER" verify --print-certs "$APK"
+            "$APKSIGNER" verify --print-certs "$APK" | tee /tmp/certs.txt
+            # QR-code setup: Android only installs an app whose signing certificate has this SHA-256 (URL-safe base64,
+            # no padding); the provisioning page puts it in the code
+            # ("Signer #1 certificate SHA-256 digest: <hex>", or "V2 Signer: ..." when the APK has only a v2 signature)
+            CERT_SHA=$(sed -n 's/^.*[Ss]igner.* certificate SHA-256 digest: \([0-9a-f]\{64\}\)$/\1/p' /tmp/certs.txt | head -n 1)
+            if [ -n "$CERT_SHA" ]; then
+              SIG_CHECKSUM=$(python3 -c "import base64,sys; print(base64.urlsafe_b64encode(bytes.fromhex(sys.argv[1])).decode().rstrip('='))" "$CERT_SHA")
+              echo "Signing certificate SHA-256: $CERT_SHA (QR checksum $SIG_CHECKSUM)"
+            else
+              echo "::warning::no signing certificate SHA-256 in apksigner's output: this build cannot be set up by QR code"
+            fi
           else
-            echo "::warning::apksigner not found; skipping signature verification."
+            echo "::warning::apksigner not found; skipping signature verification (and no QR setup checksum)."
           fi
           mkdir -p website/update
 
@@ -189,12 +200,15 @@ jobs:
           # run number that was baked into the APK as versionCode.
           URL_LINE=""
           if [ -n "$URL" ]; then URL_LINE="\"url\": \"$URL\","; fi
+          SIG_LINE=""
+          if [ -n "$SIG_CHECKSUM" ]; then SIG_LINE="\"signatureChecksum\": \"$SIG_CHECKSUM\","; fi
           cat > website/update/app.json <<EOF
           {
             "versionCode": ${{ github.run_number }},
             "versionName": "$VERSION_NAME",
             "channel": "${{ steps.channel.outputs.channel }}",
             $URL_LINE
+            $SIG_LINE
             "sha256": "$SHA",
             "size": $SIZE,
             "releaseDate": "$(date -u +%Y-%m-%d)"

@@ -8,7 +8,7 @@ const win = { location: { search: '' }, addEventListener() {}, navigator: {} };
 win.window = win;
 const ctx = vm.createContext({ window: win, console: { log() {}, warn() {}, error() {}, info() {}, debug() {} }, setTimeout, clearTimeout, navigator: {}, document: { addEventListener() {}, getElementById() { return null; } },
     fetch: async () => { throw new Error('offline'); }, URL, URLSearchParams, TextEncoder, TextDecoder, Promise });
-vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'website', 'js', 'webadb_manager.js'), 'utf8'), ctx);
+for (const f of ['provisioning.js', 'webadb_manager.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'website', 'js', f), 'utf8'), ctx);
 const P = win.PisoProvisioning;
 
 let checks = 0, failures = 0;
@@ -38,6 +38,30 @@ const plain = P.readPageParams({ pathname: '/', search: '?mac=aa', hash: '' }, {
 check(plain.get('mac') === 'aa', 'a link without secrets is left as it is');
 check(P.readPageParams(null, null).toString() === '', 'no location: no values');
 check(!fs.readFileSync(path.join(__dirname, '..', 'website', 'js', 'webadb_manager.js'), 'utf8').includes('cdn.jsdelivr.net'), 'the ADB library is never loaded from another site');
+// ---- the QR setup code ----
+const app = { signatureChecksum: 'A'.repeat(43), versionCode: 340 };
+const prov = P.validateProvisioning({ mac: 'aa:bb:cc:dd:ee:ff', slot: '2', name: 'Phone 2', secret: 'abcdefghijklmnop1234', wifiSsid: 'PisoKiosk', wifiPass: '3hC4RATnpQMJ' });
+const qp = P.buildQrPayload(prov, app, 'https://pisophone.pages.dev/index.html?mac=aa');
+const E = 'android.app.extra.';
+check(qp[E + 'PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME'] === 'com.pisophone.kiosk/com.pisophone.kiosk.receiver.KioskDeviceAdminReceiver', 'the QR code names the app\'s device admin');
+check(qp[E + 'PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION'] === 'https://pisophone.pages.dev/update/app-release.apk', 'it downloads the APK this site published: ' + qp[E + 'PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION']);
+check(P.buildQrPayload(prov, app, 'https://beta.pisophone.pages.dev/')[E + 'PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION'] === 'https://beta.pisophone.pages.dev/update/app-release.apk', 'the beta site gives the beta APK');
+check(P.buildQrPayload(prov, { ...app, url: 'https://github.com/x/releases/download/a/b.apk' }, 'https://pisophone.pages.dev/')[E + 'PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION'].startsWith('https://github.com/'), 'a release URL in app.json is used when there is one');
+check(qp[E + 'PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM'] === app.signatureChecksum, 'it carries the signing certificate hash');
+check(qp[E + 'PROVISIONING_WIFI_SSID'] === 'PisoKiosk' && qp[E + 'PROVISIONING_WIFI_PASSWORD'] === '3hC4RATnpQMJ' && qp[E + 'PROVISIONING_WIFI_HIDDEN'] === true && qp[E + 'PROVISIONING_WIFI_SECURITY_TYPE'] === 'WPA', 'the phone joins the hidden kiosk Wi-Fi');
+const ex = qp[E + 'PROVISIONING_ADMIN_EXTRAS_BUNDLE'];
+check(ex.secret === 'abcdefghijklmnop1234' && ex.mac === 'AA:BB:CC:DD:EE:FF' && ex.slot === 2 && ex.wifi_ssid === 'PisoKiosk' && ex.wifi_pass === '3hC4RATnpQMJ', 'the box\'s details go in the admin extras (names the app reads): ' + JSON.stringify(ex));
+check(throws(() => P.buildQrPayload(prov, {}, 'https://pisophone.pages.dev/')), 'no signing hash published: no code (the USB cable is offered)');
+check(throws(() => P.buildQrPayload({ ...prov, wifiPass: undefined }, app, 'https://pisophone.pages.dev/')), 'no Wi-Fi password: no code (the phone needs it to download the app)');
+check(throws(() => P.buildQrPayload(prov, app, 'http://example.com/')), 'the app is never downloaded over plain http');
+check(JSON.stringify(qp).length < 1200, 'the code stays small enough to scan: ' + JSON.stringify(qp).length + ' characters');
+// ---- the USB fallback's messages ----
+check(/remove the account again/.test(P.describeDeviceOwnerFailure('SecurityException: MANAGE_DEVICE_ADMINS')), 'Xiaomi: sign in, turn it on, remove the account');
+check(/more than one user/.test(P.describeDeviceOwnerFailure('users')) && /account/.test(P.describeDeviceOwnerFailure('accounts')), 'users and accounts are named before anything is copied');
+check(/Install via USB/.test(P.describeInstallFailure('Failure [INSTALL_FAILED_USER_RESTRICTED: Install canceled by user]')), 'a blocked install names the Xiaomi switch');
+const wm = fs.readFileSync(path.join(__dirname, '..', 'website', 'js', 'webadb_manager.js'), 'utf8');
+check(!/pisophone\.pages\.dev/.test(wm) && !/settings put global/.test(wm), 'the USB setup uses only this site\'s APK and writes no Android settings');
+
 check(!fs.readFileSync(path.join(__dirname, '..', 'website', 'index.html'), 'utf8').includes('cdn.tailwindcss.com'), 'no third-party script on the provisioning page');
 console.log(`${checks} checks, ${failures} failures`);
 process.exit(failures ? 1 : 0);

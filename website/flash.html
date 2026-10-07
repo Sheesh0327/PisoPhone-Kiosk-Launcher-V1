@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PisoPhone - Flash a Coin Box</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="css/app.css">
+    <style>
+        body {
+            background: linear-gradient(-45deg, #090d16, #0e1726, #052e16);
+            background-size: 400% 400%;
+            animation: gradientShift 14s ease infinite;
+            color: #f1f5f9;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        .glass-card {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.7);
+        }
+        .btn-glow-emerald {
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.3), 0 8px 25px -4px rgba(16, 185, 129, 0.25);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .btn-glow-emerald:hover {
+            box-shadow: 0 0 28px rgba(52, 211, 153, 0.55), 0 10px 30px -4px rgba(16, 185, 129, 0.4);
+            transform: translateY(-1px);
+        }
+        .btn-glow-rose {
+            box-shadow: 0 0 20px rgba(225, 29, 72, 0.3), 0 8px 25px -4px rgba(225, 29, 72, 0.25);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .btn-glow-rose:hover {
+            box-shadow: 0 0 28px rgba(244, 63, 94, 0.55), 0 10px 30px -4px rgba(225, 29, 72, 0.4);
+            transform: translateY(-1px);
+        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.5); }
+        ::-webkit-scrollbar-thumb { background: rgba(52, 211, 153, 0.3); border-radius: 3px; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4">
+    <div class="glass-card max-w-lg w-full rounded-2xl p-6 md:p-8 space-y-5">
+        <div class="flex items-center space-x-3 border-b border-slate-800 pb-4">
+            <div class="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xl font-black">₱</div>
+            <div>
+                <h1 class="text-lg font-extrabold tracking-tight text-white leading-tight">Flash a coin box</h1>
+                <p class="text-[11px] text-slate-400">PisoPhone firmware onto an ESP32, from this browser</p>
+            </div>
+        </div>
+
+        <div id="noSerial" class="hidden bg-amber-500/15 border border-amber-500/40 text-amber-300 p-3 rounded-xl text-xs">This needs Google Chrome or Microsoft Edge on a computer (USB serial).</div>
+        <div id="noImages" class="hidden bg-amber-500/15 border border-amber-500/40 text-amber-300 p-3 rounded-xl text-xs">No firmware is published on this site yet.</div>
+
+        <div class="bg-emerald-950/20 p-3.5 border border-emerald-500/15 rounded-xl text-[11px] text-slate-400 space-y-1.5 leading-relaxed">
+            <div class="font-bold text-emerald-400">You need</div>
+            <ul class="list-disc pl-4 space-y-1">
+                <li>The coin box's ESP32 board (ESP32-C3 or ESP32), plugged into this computer with a USB <b>data</b> cable.</li>
+                <li>Nothing else: no programs to install. The page finds the chip and writes the matching firmware.</li>
+            </ul>
+            <p id="fwVersion" class="text-slate-300"></p>
+        </div>
+
+        <label class="flex items-start gap-2.5 text-[11px] text-slate-300 leading-relaxed bg-slate-950/60 p-3 border border-slate-700 rounded-xl">
+            <input type="checkbox" id="eraseFirst" checked class="mt-0.5">
+            <span><b>Erase everything first</b> (a new box, or a used one: it forgets its old Wi-Fi and settings). Untick only to update a box in use: erasing also clears its license slots and coin counters (a box in use is better updated from its own page).</span>
+        </label>
+
+        <button id="flashBtn" type="button" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3.5 px-6 rounded-xl transition shadow-lg text-sm flex items-center justify-center gap-2.5 btn-glow-emerald cursor-pointer">⚡ Connect the box and install</button>
+
+        <div id="progressBox" class="hidden space-y-1">
+            <div class="h-2 bg-slate-800 rounded-full overflow-hidden"><div id="progressBar" class="h-2 bg-emerald-500 rounded-full"></div></div>
+            <div id="progressText" class="text-[11px] text-slate-400 text-right font-mono"></div>
+        </div>
+
+        <div id="logContainer" class="hidden space-y-1.5 pt-2 border-t border-slate-800">
+            <div class="flex justify-between items-center text-[10px]">
+                <span class="text-slate-400 font-semibold uppercase tracking-wider">Log</span>
+                <span id="logStatusBadge" class="font-mono"></span>
+            </div>
+            <div id="terminalLog" class="bg-slate-950 rounded-xl p-3.5 font-mono text-[11px] text-slate-300 leading-relaxed border border-slate-800/90 h-44 overflow-y-auto whitespace-pre-wrap"></div>
+        </div>
+
+        <div id="doneBox" class="hidden bg-emerald-950/30 border border-emerald-500/30 rounded-xl p-3.5 text-[11px] text-slate-300 space-y-1.5 leading-relaxed">
+            <div class="font-bold text-emerald-400">Done</div>
+            <p>The box restarts and joins the router's hidden <code>PisoCoinBox</code> Wi-Fi by itself (the router setup creates it and pairs the box).</p>
+            <p>Next, on the router (logged in by SSH): <code class="text-emerald-300">wget -qO- https://pisophone.pages.dev/install.sh | sh</code></p>
+        </div>
+    </div>
+
+    <script src="js/flasher.js"></script>
+    <script>
+        const $ = (id) => document.getElementById(id);
+        let manifest = null;
+        if (!navigator.serial) $('noSerial').classList.remove('hidden');
+        fetch('flash/manifest.json', { cache: 'no-store' })
+            .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+            .then(m => {
+                manifest = m;
+                $('fwVersion').textContent = `Firmware ${m.version} for ${m.builds.map(b => b.chip).join(' and ')}` + (m.commit ? ` (build ${m.commit.slice(0, 7)})` : '');
+            })
+            .catch(() => { $('noImages').classList.remove('hidden'); $('flashBtn').disabled = true; });
+
+        function log(msg) {
+            $('logContainer').classList.remove('hidden');
+            const div = document.createElement('div');
+            div.textContent = `> ${msg}`;
+            $('terminalLog').appendChild(div);
+            $('terminalLog').scrollTop = $('terminalLog').scrollHeight;
+        }
+        function progress(pct) {
+            $('progressBox').classList.remove('hidden');
+            $('progressBar').style.width = `${pct}%`;
+            $('progressText').textContent = `${pct}%`;
+        }
+        $('flashBtn').addEventListener('click', async () => {
+            if (!manifest) return;
+            const btn = $('flashBtn'), was = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = 'Keep the box connected...';
+            $('terminalLog').textContent = '';
+            $('doneBox').classList.add('hidden');
+            $('logStatusBadge').textContent = 'Running';
+            $('logStatusBadge').className = 'font-mono text-emerald-400 animate-pulse';
+            try {
+                const r = await window.PisoFlasher.flash({ manifest, base: new URL('flash/', document.baseURI), erase: $('eraseFirst').checked, log, progress });
+                log(`Done: PisoPhone firmware ${r.version} is on the ${r.chip}.`);
+                $('logStatusBadge').textContent = 'Done';
+                $('logStatusBadge').className = 'font-mono font-bold text-emerald-400';
+                $('doneBox').classList.remove('hidden');
+                btn.innerHTML = '⚡ Flash another box';
+            } catch (e) {
+                log(`ERROR: ${e.message || e}`);
+                $('logStatusBadge').textContent = 'Failed';
+                $('logStatusBadge').className = 'font-mono font-bold text-rose-400';
+                btn.innerHTML = was;
+            } finally {
+                btn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
