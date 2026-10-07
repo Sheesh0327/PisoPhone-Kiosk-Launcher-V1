@@ -80,5 +80,5 @@ jobs:
           mkdir -p tools/pisoportal/bin
           cp dist/pisoportal-mipsel dist/pisoportal-mipsel.sha256 dist/BUILD-INFO tools/pisoportal/bin/
           python3 tools/build_piso_setup.py
-          git add tools/pisoportal/bin setup/piso-setup.sh setup/piso-setup.sh.sha256 website/install.sh website/pisophone_setup.py
+          git add tools/pisoportal/bin setup/piso-setup.sh setup/piso-setup.sh.sha256 website/setup website/install.sh website/pisophone_setup.py
           git diff --cached --quiet || { git commit -m "ci: built the router program (mipsel_24kc)"; git pull --rebase -q origin "$GITHUB_REF_NAME" && git push; }
