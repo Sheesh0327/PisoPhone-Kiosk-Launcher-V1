@@ -3,7 +3,7 @@
 commands here with sh, against a fake router (fake wget serving the repository's files from a folder, fake uci, ubus and
 jsonfilter), with the real one-line installer (setup/install.sh) and a stand-in setup file.
 Run with:  python3 router/tests/test_pisophone_setup.py"""
-import hashlib, importlib.util, io, os, shutil, subprocess, sys, tempfile, time, types
+import base64, hashlib, importlib.util, io, os, shutil, subprocess, sys, tempfile, time, types, urllib.error, urllib.parse
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 spec = importlib.util.spec_from_file_location("pisophone_setup", f"{ROOT}/setup/pisophone_setup.py")
@@ -166,6 +166,9 @@ lan = open("{tmp}/lan").read().strip()
 if host != lan:
     sys.stderr.write("ssh: connect to host " + host + " port 22: Connection timed out\\n"); sys.exit(255)
 remote = remote.replace("/tmp/piso", "{fake_root}/tmp/piso").replace("/root/piso", "{fake_root}/root/piso")
+if remote == "piso-setup telegram":   # a conversation: the input is passed through as it comes, like real ssh
+    env = dict(os.environ, PATH="{bindir}:" + os.environ["PATH"])
+    sys.exit(subprocess.run(["sh", "-c", remote], env=env).returncode)
 data = sys.stdin.buffer.read() if not sys.stdin.isatty() else b""
 open("{tmp}/ssh-input.log", "ab").write(data)
 env = dict(os.environ, PATH="{bindir}:" + os.environ["PATH"], PISO_INSTALL_DIR="{fake_root}/root", PISO_TEST_NONROOT="1",
@@ -186,7 +189,8 @@ def e2e(answers=(), secrets_=(), lan="192.168.1.1", probe="factory", result="ok"
     open(f"{tmp}/probe", "w").write(probe)
     open(f"{tmp}/result", "w").write(result)
     outdir = tempfile.mkdtemp(dir=tmp)
-    a = dict(branch="main", update=False, router=None, guest_ssid=None, site_name=None, yes=False, out=outdir, no_browser=False)
+    a = dict(branch="main", update=False, router=None, guest_ssid=None, site_name=None, yes=False, out=outdir, no_browser=False,
+             country="PH")
     a.update(opts)
     opened = []
     buf = io.StringIO()
@@ -199,7 +203,7 @@ def e2e(answers=(), secrets_=(), lan="192.168.1.1", probe="factory", result="ok"
     try:
         rc = ps.run_setup(types.SimpleNamespace(**a), ps.Ssh(tmp), read=reader(*answers), read_secret=reader(*secrets_),
                           probe=lambda h: h == (open(f"{tmp}/lan").read().strip()) and up(h),
-                          wait=lambda probe, renew: moved and probe("10.0.0.1"), open_page=opened.append)
+                          wait=lambda probe, renew: moved and probe("10.0.0.1"), open_page=lambda url, chromium=True: opened.append(url))
     except ps.SetupError as e:
         err = str(e)
     finally:
@@ -222,15 +226,15 @@ check("set network.lan.ipaddr=10.0.0.1" in r.uci and open(f"{tmp}/lan").read().s
 check("SETUP-RAN args=[--yes] root=[routerpass1] kiosk=[kioskpass1] box=[boxadmin99] guest=[Tindahan WiFi] site=[Aling Nena]" in r.out,
       "the setup got every answer, unattended: " + r.out[-600:])
 check("routerpass1" not in r.ssh and "kioskpass1" not in r.ssh and "boxadmin99" not in r.ssh, "no password on any command line")
-check(r.input == "routerpass1\nkioskpass1\nboxadmin99\nTindahan WiFi\nAling Nena\n", "the answers went over the connection's input")
+check(r.input == "routerpass1\nkioskpass1\nboxadmin99\nTindahan WiFi\nAling Nena\nPH\n", "the answers went over the connection's input: " + repr(r.input))
 check(r.ssh.count("root@192.168.1.1") == 2 and r.ssh.count("root@10.0.0.1") == 1, "probe and installer at 192.168.1.1, setup at 10.0.0.1: " + r.ssh)
 check("HostKeyAlias=pisophone-router" in r.ssh and "StrictHostKeyChecking=accept-new" in r.ssh, "one pinned host key for both addresses")
 check("https://pisophone.pages.dev/install.sh" in r.wget and "https://pisophone.pages.dev/setup/piso-setup.sh" in r.wget, "main's installer and setup file")
 summary = [f for f in r.saved if f.startswith("pisophone-summary-")]
 sheet = [f for f in r.saved if f.startswith("pisophone-setup-sheet-")]
 check(len(summary) == 1 and "Router password: routerpass1" in open(f"{r.outdir}/{summary[0]}").read(), "the summary is saved: " + str(r.saved))
-check(len(sheet) == 1 and "sheet for Aling Nena" in open(f"{r.outdir}/{sheet[0]}").read() and r.opened and r.opened[0].endswith(sheet[0]),
-      "the setup sheet is saved and opened")
+check(len(sheet) == 1 and "sheet for Aling Nena" in open(f"{r.outdir}/{sheet[0]}").read(), "the setup sheet is saved")
+check(r.opened == ["http://10.0.0.10/"], "the phone setup page opens at the end (here the box does not answer: its own page): " + str(r.opened))
 if os.name != "nt":
     check(oct(os.stat(f"{r.outdir}/{summary[0]}").st_mode & 0o777) == "0o600", "the saved files are private")
 check("SETUP COMPLETE" in r.out and "@@PISO" not in r.out and "<html>" not in r.out, "the markers and the sheet are not shown")
@@ -254,7 +258,7 @@ check("press Enter" in r.out, "a router with a password: it says to type it")
 
 # failures are explained
 r = e2e(answers=("", "", "y"), secrets_=("", "", ""), lan="10.0.0.1", result="fail")
-check(r.rc is None and "the coin box did not join the hidden PisoCoinBox network" in (r.err or "") and "run this script again" in r.err,
+check(r.rc is None and "the coin box did not join the hidden PisoCoinBox network" in (r.err or "") and "run it again" in r.err,
       "a failed setup: the reason, and that it can be run again: " + str(r.err))
 r = e2e(answers=("", "", "y"), secrets_=("", "", ""), lan="10.0.0.1", result="checks")
 check(r.err and "some checks failed" in r.err and r.saved, "failed checks: said, and the summary is still saved")
@@ -274,6 +278,148 @@ r = e2e(lan="10.0.0.1", probe="denied", update=True)
 check(r.rc == 0 and "SETUP-RAN args=[--yes update]" in r.out and "UPDATE DONE" in r.out, "--update runs the installer's update: " + r.out[-300:])
 r = e2e(lan="10.0.0.1", probe="factory", update=True)
 check(r.err and "not been set up yet" in r.err, "--update on a router that was never set up: refused")
+
+# --country, and a configured router still gets the country
+r = e2e(lan="10.0.0.1", yes=True, country="SG", no_browser=True)
+check(r.rc == 0 and r.input.endswith("\nSG\n"), "--country SG is sent: " + repr(r.input))
+r = e2e(answers=("y", "n"), lan="10.0.0.1", probe="configured", country="JP")
+check(r.input == "\n\n\n\n\nJP\n", "a configured router: only the country is sent: " + repr(r.input))
+
+# Telegram: the router waits for a message to the bot, the owner confirms the chat
+script("piso-setup", f"""[ "$1" = telegram ] || exit 9
+read -r tok; read -r site
+echo "token=[$tok] site=[$site]" >> {tmp}/tg.log
+echo "Open your bot in Telegram and send it any message (for example /start). Waiting up to 2 minutes..."
+echo "Got a message from chat 4242 (Evan)."
+printf 'Is that you (alerts and commands will be accepted only from this chat)? [y/N] '
+read -r a
+case "$a" in y) echo "Done. A message was sent to your Telegram."; exit 0 ;; *) echo "Cancelled."; exit 1 ;; esac
+""")
+open(f"{tmp}/lan", "w").write("10.0.0.1")
+for answer in (True, False):
+    seen, lines = [], []
+    ok = ps.connect_telegram(ps.Ssh(tmp), "10.0.0.1", "123456789:" + "A" * 35, "Aling Nena", lines.append,
+                             lambda chat: seen.append(chat) or answer)
+    check(ok is answer and seen == ["Got a message from chat 4242 (Evan)."], f"telegram, answered {answer}: {ok} {seen} {lines}")
+check("token=[123456789:" in open(f"{tmp}/tg.log").read() and "site=[Aling Nena]" in open(f"{tmp}/tg.log").read(),
+      "the token and the site went over the input")
+check(ps.TELEGRAM_TOKEN.fullmatch("123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw") and not ps.TELEGRAM_TOKEN.fullmatch("hello"),
+      "bot token format")
+
+# the summary the router sends back
+SUMMARY = """PisoPhone setup summary (2026-10-07 10:00:00, setup file version abc)
+Router (SSH / LuCI):   root@10.0.0.1        password: Rpass2345678
+Kiosk Wi-Fi:           PisoKiosk (HIDDEN)   password: Kpass234567    (rental phones only; ...)
+PisoWiFi (customers):  Tindahan WiFi   (open; rename with: piso-setup wifi-name "New Name")
+Coin box:              http://10.0.0.10      admin password: Bpass23456789    hidden Wi-Fi: PisoCoinBox (only MAC x)
+"""
+found = ps.parse_summary(SUMMARY)
+check(found == {"ROOT_PASSWORD": "Rpass2345678", "KIOSK_PASSWORD": "Kpass234567", "GUEST_SSID": "Tindahan WiFi",
+                "BOX_NEW_ADMIN_PASSWORD": "Bpass23456789"}, "the summary is read: " + str(found))
+check("ROOT_PASSWORD" not in ps.parse_summary(SUMMARY.replace("password: Rpass2345678", "password: NOT SET by this setup")),
+      "a router password the setup did not set is not shown as one")
+
+# the password helper of the window mode: ssh runs it and reads the password from it
+s2 = ps.Ssh(tmp)
+s2.set_password("pa&ss|w<rd%^")
+helper = s2.env["SSH_ASKPASS"]
+out = subprocess.run([helper, "root@10.0.0.1's password:"], env=s2.env, capture_output=True, text=True).stdout
+check(out == "pa&ss|w<rd%^\n" and s2.env["SSH_ASKPASS_REQUIRE"] == "force", "the helper answers with the password: " + repr(out))
+check("NumberOfPasswordPrompts=1" in s2.argv("10.0.0.1", "true"), "one try only: a wrong password fails at once")
+out = subprocess.run([sys.executable, f"{ROOT}/setup/pisophone_setup.py"], env=dict(os.environ, PISO_ASKPASS_MODE="1", PISO_ASKPASS_PW="x&y"),
+                     capture_output=True, text=True).stdout
+check(out == "x&y\n", "started as the helper (Windows), the program prints only the password")
+
+# the coin box's phone setup page: read from the box's admin page, filled in, opened
+class FakeResponse:
+    status = 200
+
+    def __init__(self, body): self.body = body.encode()
+    def read(self): return self.body
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+
+
+PAGE = '<script>window.PISO_CFG = { mac: "AA:BB:CC:DD:EE:0F", secret: "box_secret-12345678" };</script>'
+seen_req = []
+
+
+def fake_open(req, timeout=0):
+    seen_req.append(req)
+    return FakeResponse(PAGE)
+
+
+link = ps.fetch_box_link("10.0.0.10", "boxadmin99", opener=fake_open)
+check(link == {"mac": "AA:BB:CC:DD:EE:0F", "secret": "box_secret-12345678"}, "the box's MAC and secret are read from its admin page")
+check(seen_req[0].full_url == "http://10.0.0.10/" and base64.b64decode(seen_req[0].get_header("Authorization").split()[1]) == b"admin:boxadmin99",
+      "logged in as admin with the box password")
+for bad in (urllib.error.HTTPError("u", 401, "no", {}, None), urllib.error.URLError("timed out")):
+    def failing(req, timeout=0, bad=bad): raise bad
+    try:
+        ps.fetch_box_link("10.0.0.10", "x", opener=failing)
+        check(False, "a box that refuses or does not answer")
+    except ps.SetupError as e:
+        check("admin password" in str(e) or "does not answer" in str(e), "a box that refuses or does not answer: " + str(e))
+try:
+    ps.fetch_box_link("10.0.0.10", "x", opener=lambda req, timeout=0: FakeResponse("<html>router</html>"))
+    check(False, "another page than the box's")
+except ps.SetupError as e:
+    check("did not show the coin box" in str(e), "another page than the box's admin page")
+url = ps.provisioning_url("main", link, 2, "Kpass 123&x")
+frag = urllib.parse.parse_qs(urllib.parse.urlsplit(url).fragment)
+check(url.startswith("https://pisophone.pages.dev/#") and "?" not in url and frag["mac"] == ["AA:BB:CC:DD:EE:0F"] and frag["slot"] == ["2"]
+      and frag["secret"] == ["box_secret-12345678"] and frag["ip"] == ["10.0.0.10"] and frag["wifi_pass"] == ["Kpass 123&x"] and frag["name"] == ["PisoPhone 2"],
+      "the setup page's address: everything after the #, nothing in the query: " + url)
+check("beta.pisophone.pages.dev" in ps.provisioning_url("beta", link, 1, ""), "a branch's own website")
+opened_urls = []
+kind, note = ps.open_provisioning("main", {"BOX_NEW_ADMIN_PASSWORD": "boxadmin99", "KIOSK_PASSWORD": "Kpass123456"}, 3,
+                                  fetch=lambda host, pw: link, opener=lambda u, chromium=True: opened_urls.append((u, chromium)))
+check(kind == "setup" and note == "" and opened_urls[0][0].startswith("https://pisophone.pages.dev/#") and "slot=3" in opened_urls[0][0]
+      and "wifi_pass=Kpass123456" in opened_urls[0][0], "the filled-in setup page is opened")
+opened_urls.clear()
+
+
+def refusing(host, pw): raise ps.SetupError("the coin box did not accept the admin password")
+
+
+kind, note = ps.open_provisioning("main", {"BOX_NEW_ADMIN_PASSWORD": "wrong"}, 1, fetch=refusing, opener=lambda u, chromium=True: opened_urls.append((u, chromium)))
+check(kind == "box" and "did not accept" in note and opened_urls == [("http://10.0.0.10/", False)], "no luck reading the box: its own page opens, with the reason")
+opened_urls.clear()
+kind, note = ps.open_provisioning("main", {}, 1, fetch=refusing, opener=lambda u, chromium=True: opened_urls.append((u, chromium)))
+check(kind == "box" and "not known" in note, "no admin password known: the box's own page")
+kind, note = ps.open_provisioning("main", {"BOX_NEW_ADMIN_PASSWORD": "x"}, 1, fetch=lambda h, p: {"mac": "00:00:00:00:00:00", "secret": ""},
+                                  opener=lambda u, chromium=True: opened_urls.append((u, chromium)))
+check(kind == "box", "a box without an address yet: its own page")
+
+# the browser: Chrome or Edge first (Web Serial and WebUSB), else the default one
+launched, fell = [], []
+check(ps.open_url("https://x/", find=lambda: "/usr/bin/chrome", launch=lambda cmd, **kw: launched.append(cmd), fallback=fell.append) == "chromium"
+      and launched == [["/usr/bin/chrome", "https://x/"]] and not fell, "Chrome or Edge opens the page when there is one")
+check(ps.open_url("https://x/", find=lambda: None, launch=lambda cmd, **kw: launched.append(cmd), fallback=fell.append) == "default" and fell == ["https://x/"],
+      "else the default browser")
+
+
+def no_launch(cmd, **kw): raise OSError("cannot start")
+
+
+check(ps.open_url("https://y/", find=lambda: "/x/chrome", launch=no_launch, fallback=fell.append) == "default" and fell[-1] == "https://y/",
+      "a browser that cannot start: the default one")
+check(ps.open_url("http://10.0.0.10/", chromium=False, find=lambda: "/x/chrome", launch=no_launch, fallback=fell.append) == "default", "any browser when Chromium is not needed")
+fakebin = tempfile.mkdtemp(dir=tmp)
+open(f"{fakebin}/microsoft-edge", "w").write("#!/bin/sh\n")
+os.chmod(f"{fakebin}/microsoft-edge", 0o755)
+old_path = os.environ["PATH"]
+os.environ["PATH"] = fakebin
+if os.name != "nt" and sys.platform != "darwin":
+    check(ps.chromium_path() == f"{fakebin}/microsoft-edge", "Edge is found on the path")
+os.environ["PATH"] = old_path
+
+# the checks of the first page
+pf = ps.preflight("main", opener=lambda req, timeout=0: FakeResponse("{}"), find=lambda: "/x/chrome")
+check([c[1] for c in pf][1:] == [True, True], "preflight: the website and the browser are found: " + str(pf))
+pf2 = ps.preflight("main", opener=lambda req, timeout=0: (_ for _ in ()).throw(urllib.error.URLError("offline")), find=lambda: None)
+check(pf2[1][1] is False and pf2[2][1] is False and "Chrome" in pf2[2][2], "preflight: no internet, no Chrome: said")
+check(ps.box_online("10.0.0.10", probe=lambda h, p: (h, p) == ("10.0.0.10", 80)) is True, "the box is online when its page port answers")
 
 # main(): options and the missing ssh
 sys.stdout, sys.stderr = io.StringIO(), io.StringIO()

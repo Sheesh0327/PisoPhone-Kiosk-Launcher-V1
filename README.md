@@ -9,7 +9,7 @@ sell Wi-Fi time through an OpenWrt/openNDS router. Three parts plus a router add
 | `esp32_firmware/` | Coin-box firmware (Arduino/PlatformIO, ESP32-C3 and ESP32): coin pulses, durable payment queue, admin dashboard, signed OTA. |
 | `website/` | The PisoPhone website: the coin box flasher (`flash.html`), the phone setup page (QR code, or USB as the fallback), the router installer and the update feeds (`website/update`). |
 | `router/` + `tools/pisoportal/` | Router add-on: `pisoportal` (resident Rust program: coin page over WebSocket, openNDS FAS), Telegram monitor; installed by `setup/piso-setup.sh`. |
-| `setup/` | Setting up a site: `pisophone_setup.py` (run on a computer) and the router setup it drives. |
+| `setup/` | Setting up a site: `pisophone_setup.py` (the setup program, run on a computer) and the router setup it drives. |
 | `protocol/`, `scripts/` | Shared test vectors; owner tools (keys, licenses, firmware signing, checks). |
 
 ```
@@ -19,15 +19,10 @@ coins -> ESP32 box <-- Wi-Fi (signed + encrypted) --> phone kiosk app
 ```
 
 ## Setting up a site
-Everything starts from one program on a computer, `setup/pisophone_setup.py` (also at https://pisophone.pages.dev/pisophone_setup.py):
-1. **Coin box**: flash the ESP32 from Chrome or Edge at https://pisophone.pages.dev/flash.html (USB cable, no tools to install).
-2. **Router**: run `python3 pisophone_setup.py` with the computer on a LAN port of the factory-reset OpenWrt router. It asks for
-   the Wi-Fi name, site name and passwords, then sets up the router and pairs the coin box by itself, and saves the passwords
-   and a printable setup sheet.
-3. **Phones**: on the coin box's page (`http://10.0.0.10`), *Install & Provision* shows a QR code; a factory-reset phone scans it
-   on its welcome screen (tap 6 times) and sets itself up as a kiosk.
-
-The full guide, with the checks and what to do when something fails: [`setup/README.md`](setup/README.md).
+One program does it all, from the bare boards to working phones: download
+[`pisophone_setup.py`](https://pisophone.pages.dev/pisophone_setup.py) (also `setup/pisophone_setup.py`) and open it. A window
+guides you through flashing the coin box, setting up the router (it asks for your Wi-Fi names and passwords), opening the phone
+setup page, and testing a coin. The guide: [`setup/README.md`](setup/README.md); doing it by hand: [`setup/MANUAL.md`](setup/MANUAL.md).
 
 ## How it stays safe
 Each box has its own secret (provisioned to its phones, wrapped in the Android Keystore). Payments are kept in a flash queue on the
@@ -61,7 +56,8 @@ CI (GitHub Actions, `.github/workflows/`) runs all of this on every push, only f
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | How a coin becomes time; who talks to whom; where code lives |
 | [`docs/PROVISIONING_SOLD_UNIT.md`](docs/PROVISIONING_SOLD_UNIT.md) | Secure boot and flash encryption for boxes you sell |
 | [`docs/api/`](docs/api) | Router gateway API and super-admin credential format |
-| [`setup/README.md`](setup/README.md) | Setting up a site from the ground up: coin box, router (`pisophone_setup.py`), phones; day-to-day commands |
+| [`setup/README.md`](setup/README.md) | Setting up a site with the setup program: coin box, router, phones |
+| [`setup/MANUAL.md`](setup/MANUAL.md) | The same by hand, router commands, repair tools |
 
 ## Branches
 | Branch | Contains | Purpose |

@@ -285,6 +285,10 @@ jobs:
         run: python3 router/tests/test_install.py
       - name: Check the router setup run from a computer (setup/pisophone_setup.py, against a fake ssh and router)
         run: python3 router/tests/test_pisophone_setup.py
+      - name: Check the setup program's window (every page, against a fake router, coin box and phone)
+        run: |
+          sudo apt-get install -y -q python3-tk xvfb
+          xvfb-run -a /usr/bin/python3 router/tests/test_setup_gui.py
       - name: Check the Telegram monitor against a fake Telegram
         run: python3 router/tests/test_monitor.py
       - name: Check router updates from the website (signed releases only, staged rollout, undo of a release that does not run)
