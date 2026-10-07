@@ -3,6 +3,7 @@ package com.pisophone.kiosk.overlay.ui
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.net.wifi.WifiManager
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -29,19 +30,49 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pisophone.kiosk.BuildConfig
+import com.pisophone.kiosk.network.KioskWifi
 import com.pisophone.kiosk.util.DiagnosticsLog
+import com.pisophone.kiosk.util.KioskHealth
 import kotlinx.coroutines.delay
 
 private const val SHOWN_LINES = 40
 
+/** The phone's Wi-Fi right now; the signal is read without the location permission (the network name is not). */
+@Suppress("DEPRECATION")
+private fun currentWifi(context: Context): KioskHealth.Wifi {
+    val address = KioskWifi.wifiAddress()
+    val rssi = try {
+        (context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager)?.connectionInfo?.rssi
+    } catch (_: Exception) {
+        null
+    }
+    return KioskHealth.Wifi(address, rssi?.takeIf { address.isNotBlank() && it > -127 && it < 0 })
+}
+
+private fun healthNow(context: Context) = KioskHealth.summarize(System.currentTimeMillis(), KioskHealth.snapshot(), currentWifi(context))
+
+private fun levelLabel(level: KioskHealth.Level) = when (level) {
+    KioskHealth.Level.OK -> "OK"
+    KioskHealth.Level.WARN -> "CHECK"
+    KioskHealth.Level.PROBLEM -> "PROBLEM"
+}
+
+private fun levelColor(level: KioskHealth.Level) = when (level) {
+    KioskHealth.Level.OK -> Color(0xFF22C55E)
+    KioskHealth.Level.WARN -> Color(0xFFFFB86C)
+    KioskHealth.Level.PROBLEM -> Color(0xFFFF6B6B)
+}
+
 @Composable
 fun VaultDiagnosticsSection(context: Context) {
     var lines by remember { mutableStateOf(DiagnosticsLog.snapshot()) }
+    var health by remember { mutableStateOf(healthNow(context)) }
 
     LaunchedEffect(Unit) {
         while (true) {
             delay(2000)
             lines = DiagnosticsLog.snapshot()
+            health = healthNow(context)
         }
     }
 
@@ -64,6 +95,20 @@ fun VaultDiagnosticsSection(context: Context) {
                 .background(Color(0xFF0F172A), RoundedCornerShape(8.dp))
                 .padding(8.dp),
         ) {
+            Text("Health: ${levelLabel(health.level)}", color = levelColor(health.level), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            health.lines.forEach { line ->
+                Text(line, color = Color(0xFFE2E8F0), fontSize = 10.sp)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFF0F172A), RoundedCornerShape(8.dp))
+                .padding(8.dp),
+        ) {
             if (lines.isEmpty()) {
                 Text("No events recorded yet.", color = Color(0xFFA6ADC8), fontSize = 10.sp)
             } else {
@@ -76,7 +121,10 @@ fun VaultDiagnosticsSection(context: Context) {
         Spacer(modifier = Modifier.height(6.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
-                onClick = { lines = DiagnosticsLog.snapshot() },
+                onClick = {
+                    lines = DiagnosticsLog.snapshot()
+                    health = healthNow(context)
+                },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155)),
                 shape = RoundedCornerShape(8.dp),
                 modifier = Modifier.weight(1f).height(32.dp),
@@ -86,7 +134,9 @@ fun VaultDiagnosticsSection(context: Context) {
             Button(
                 onClick = {
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                    val text = header + "\n" + DiagnosticsLog.snapshot().joinToString("\n")
+                    val now = healthNow(context)
+                    val summary = "Health: ${levelLabel(now.level)}\n" + now.lines.joinToString("\n")
+                    val text = header + "\n" + summary + "\n\n" + DiagnosticsLog.snapshot().joinToString("\n")
                     clipboard?.setPrimaryClip(ClipData.newPlainText("PisoPhone diagnostics", text))
                     Toast.makeText(context, "Diagnostics copied", Toast.LENGTH_SHORT).show()
                 },

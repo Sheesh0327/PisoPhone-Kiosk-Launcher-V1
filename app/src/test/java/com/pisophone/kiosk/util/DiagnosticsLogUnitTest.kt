@@ -5,19 +5,95 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
+import java.io.File
 import java.util.concurrent.CountDownLatch
 import kotlin.concurrent.thread
 
 class DiagnosticsLogUnitTest {
+    @get:Rule
+    val tmp = TemporaryFolder()
+
     @Before
     fun setUp() {
+        DiagnosticsLog.detach()
         DiagnosticsLog.clear()
     }
 
     @After
     fun tearDown() {
+        DiagnosticsLog.detach()
         DiagnosticsLog.clear()
+    }
+
+    /** Simulates a new app process: memory is gone, the file is read back. */
+    private fun restartWith(file: File) {
+        DiagnosticsLog.detach()
+        DiagnosticsLog.clear()
+        DiagnosticsLog.persistTo(file)
+    }
+
+    @Test
+    fun linesSurviveARestart() {
+        val file = File(tmp.root, "diagnostics.log")
+        DiagnosticsLog.persistTo(file)
+        DiagnosticsLog.add("ESP32", "link down")
+        DiagnosticsLog.add("COIN", "tx 1 -> APPLIED")
+
+        restartWith(file)
+        DiagnosticsLog.add("APP", "started")
+
+        val lines = DiagnosticsLog.snapshot()
+        assertEquals(3, lines.size)
+        assertTrue(lines[0].endsWith("[ESP32] link down"))
+        assertTrue(lines[2].endsWith("[APP] started"))
+    }
+
+    @Test
+    fun linesLoggedBeforeTheFileIsAttachedAreKeptAfterTheEarlierOnes() {
+        val file = File(tmp.root, "diagnostics.log")
+        file.writeText("01-01 00:00:00 [T] from last run\n")
+        DiagnosticsLog.add("T", "early")
+        DiagnosticsLog.persistTo(file)
+        val lines = DiagnosticsLog.snapshot()
+        assertEquals(listOf("01-01 00:00:00 [T] from last run"), lines.take(1))
+        assertTrue(lines[1].endsWith("[T] early"))
+        assertEquals(2, file.readLines().size)
+    }
+
+    @Test
+    fun fileStaysBoundedAndKeepsTheNewestLines() {
+        val file = File(tmp.root, "diagnostics.log")
+        DiagnosticsLog.persistTo(file)
+        val total = DiagnosticsLog.MAX_LINES * 5 + 7
+        for (i in 1..total) DiagnosticsLog.add("T", "event $i")
+        assertTrue(file.readLines().size <= DiagnosticsLog.MAX_LINES * 2)
+
+        restartWith(file)
+        val lines = DiagnosticsLog.snapshot()
+        assertEquals(DiagnosticsLog.MAX_LINES, lines.size)
+        assertTrue(lines.last().endsWith("event $total"))
+        assertTrue(lines.first().endsWith("event ${total - DiagnosticsLog.MAX_LINES + 1}"))
+    }
+
+    @Test
+    fun clearAlsoEmptiesTheFile() {
+        val file = File(tmp.root, "diagnostics.log")
+        DiagnosticsLog.persistTo(file)
+        DiagnosticsLog.add("T", "a")
+        DiagnosticsLog.clear()
+        restartWith(file)
+        assertTrue(DiagnosticsLog.snapshot().isEmpty())
+    }
+
+    @Test
+    fun anUnreadableFileDoesNotBreakLogging() {
+        val dir = tmp.newFolder("not-a-file")
+        DiagnosticsLog.persistTo(dir)
+        DiagnosticsLog.add("T", "still works")
+        assertTrue(DiagnosticsLog.snapshot().last().endsWith("[T] still works"))
     }
 
     @Test

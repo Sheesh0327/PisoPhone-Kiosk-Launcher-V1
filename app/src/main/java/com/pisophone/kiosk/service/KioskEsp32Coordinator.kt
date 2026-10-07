@@ -9,6 +9,8 @@ import com.pisophone.kiosk.security.KioskActivationManager
 import com.pisophone.kiosk.security.KioskSecurity
 import com.pisophone.kiosk.util.DiagnosticsLog
 import com.pisophone.kiosk.util.HardwareFeedback
+import com.pisophone.kiosk.util.KioskHealth
+import java.io.File
 
 /**
  * Handles all ESP32 event and telemetry lifecycle callbacks, separating Master Box network
@@ -33,6 +35,13 @@ class KioskEsp32Coordinator(
 
     private var lastArmTimestampMs: Long = 0L
 
+    init {
+        // Device-protected storage: the service also runs before the phone is unlocked after a reboot.
+        val storage = context.applicationContext.createDeviceProtectedStorageContext()
+        DiagnosticsLog.persistTo(File(storage.filesDir, "diagnostics.log"))
+        DiagnosticsLog.add("APP", "started, build ${com.pisophone.kiosk.BuildConfig.VERSION_CODE}")
+    }
+
     override fun getDeviceId(): String = stateManager.deviceId.value
     override fun getSecretKey(): String = getSecretKey.invoke()
     override fun getAppState(): Int = stateManager.appState.value
@@ -41,6 +50,8 @@ class KioskEsp32Coordinator(
     override fun getStoredEsp32Ip(): String? = stateManager.esp32Ip
 
     override fun onEsp32Discovered(ip: String) {
+        if (stateManager.esp32Ip != ip) DiagnosticsLog.add("ESP32", "box found at $ip")
+        KioskHealth.boxFound(ip)
         stateManager.esp32Ip = ip
         stateManager.isEsp32Online.value = true
         stateManager.saveState()
@@ -50,6 +61,7 @@ class KioskEsp32Coordinator(
         if (stateManager.isEsp32Online.value != isOnline) {
             DiagnosticsLog.add("ESP32", if (isOnline) "link up" else "link down")
         }
+        KioskHealth.boxLink(isOnline)
         stateManager.isEsp32Online.value = isOnline
         if (!mac.isNullOrBlank()) stateManager.esp32MacAddress.value = mac
     }
@@ -84,6 +96,7 @@ class KioskEsp32Coordinator(
         Log.d(TAG, "Received validated coin via WebSocket: seconds=$seconds, amount=₱$amount, tx_id=$txId")
         val result = onCreditPayment(txId, seconds, amount)
         DiagnosticsLog.add("COIN", "tx $txId: ${seconds}s, amount $amount -> $result")
+        KioskHealth.coin(result.name)
         when (result) {
             PaymentResult.APPLIED -> {
                 // paymentTimeout / appState are published by KioskEngine.onPaymentApplied.
