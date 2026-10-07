@@ -72,6 +72,18 @@ object QrProvisioning {
         return true
     }
 
+    /**
+     * Starts the kiosk service, as the USB setup does after activating: it joins the kiosk Wi-Fi, finds the box and shows
+     * the lock screen. (Without it nothing would run until the home screen starts it.)
+     */
+    fun startKiosk(context: Context) {
+        try {
+            context.startForegroundService(Intent(context, com.pisophone.kiosk.KioskService::class.java))
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not start the kiosk service yet (the home screen starts it): ${e.message}")
+        }
+    }
+
     fun applyFromIntent(
         context: Context,
         intent: Intent?,

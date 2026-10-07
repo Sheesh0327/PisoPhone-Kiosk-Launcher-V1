@@ -205,7 +205,8 @@ class KioskService : Service() {
             }
         }
 
-        if (Settings.canDrawOverlays(this)) {
+        // (without the overlay permission a device owner shows the lock screen as LockScreenActivity)
+        if (Settings.canDrawOverlays(this) || com.pisophone.kiosk.overlay.LockScreenActivity.isDeviceOwner(this)) {
             engine?.overlayCoordinator?.show()
         }
         return START_STICKY

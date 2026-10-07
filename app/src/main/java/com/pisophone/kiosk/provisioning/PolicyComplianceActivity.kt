@@ -12,6 +12,7 @@ class PolicyComplianceActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         QrProvisioning.applyFromIntent(this, intent)
+        QrProvisioning.startKiosk(this)
         setResult(RESULT_OK)
         finish()
     }

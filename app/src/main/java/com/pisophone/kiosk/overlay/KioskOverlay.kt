@@ -98,6 +98,15 @@ class KioskOverlay(
         onDoneClick = onDoneClick,
     )
 
+    /** The session state (LockScreenActivity closes itself when the lock screen is not to be shown). */
+    val appState: StateFlow<Int> get() = appStateFlow
+
+    /** The lock screen's content, for [LockScreenActivity]. */
+    @Composable
+    fun LockContent() {
+        lockScreenOverlay.Content(manageWindow = false)
+    }
+
     fun show(): Boolean {
         val lockShown = lockScreenOverlay.show()
         floatingPillOverlay.show()
@@ -242,109 +251,7 @@ class LockScreenOverlay(
             newOverlay.view.alpha = 0f
         }
 
-        newOverlay.setContent {
-            val appState by appStateFlow.collectAsState()
-            val paymentTimeout by paymentTimeoutFlow.collectAsState()
-            val coinsInserted by coinsInsertedFlow.collectAsState()
-            val isEsp32Online by isEsp32OnlineFlow.collectAsState()
-            val isSlotBusy by isSlotBusyFlow.collectAsState()
-            val isArmingInProgress by isArmingInProgressFlow.collectAsState()
-            val themeIndex by themeIndexFlow.collectAsState()
-            val pricePerCoin by pricePerCoinFlow.collectAsState()
-            val minutesPerCoin by minutesPerCoinFlow.collectAsState()
-            val deviceIp by deviceIpFlow.collectAsState()
-            val slotNumber by slotNumberFlow.collectAsState()
-            val batteryStatus by batteryStatusFlow.collectAsState()
-            val slotWarningDaysLeft by slotWarningDaysLeftFlow.collectAsState()
-            val isSlotExpired by isSlotExpiredFlow.collectAsState()
-            val slotExpiryReason by slotExpiryReasonFlow.collectAsState()
-            val isArenaMode by isArenaModeFlow.collectAsState()
-            val arenaPlayerRole by arenaPlayerRoleFlow.collectAsState()
-            val arenaStakeMinutes by arenaStakeMinutesFlow.collectAsState()
-            val isVisible = SessionRules.isLockScreenShown(appState)
-
-            val unlockAlpha by androidx.compose.animation.core.animateFloatAsState(
-                targetValue = if (isVisible) 1f else 0f,
-                animationSpec = tween(durationMillis = 350, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                label = "unlockAlpha",
-            )
-            val unlockScale by androidx.compose.animation.core.animateFloatAsState(
-                targetValue = if (isVisible) 1f else 1.05f,
-                animationSpec = tween(durationMillis = 350, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                label = "unlockScale",
-            )
-
-            LaunchedEffect(isVisible) {
-                if (isVisible) {
-                    updateWindowFlagsAndDimensions(true)
-                } else {
-                    delay(350)
-                    updateWindowFlagsAndDimensions(false)
-                }
-            }
-
-            if (isVisible || unlockAlpha > 0.01f) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer(
-                            alpha = unlockAlpha,
-                            scaleX = unlockScale,
-                            scaleY = unlockScale,
-                        ),
-                ) {
-                    if (appState == SessionState.LOCKED.code || (appState == SessionState.UNLOCKED.code && !isVisible)) {
-                        BlockScreen(
-                            onInsertCoin = onInsertCoinClick,
-                            isWaiting = false,
-                            coinsInserted = 0,
-                            paymentTimeout = 0,
-                            onDoneClick = {},
-                            isEsp32Online = isEsp32Online,
-                            isSlotBusy = isSlotBusy,
-                            isArmingInProgress = isArmingInProgress,
-                            pricePerCoin = pricePerCoin,
-                            minutesPerCoin = minutesPerCoin,
-                            deviceIp = deviceIp,
-                            slotNumber = slotNumber,
-                            themeIndex = themeIndex,
-                            batteryStatus = batteryStatus,
-                            onThemeChange = onThemeChange,
-                            slotWarningDaysLeft = slotWarningDaysLeft,
-                            isSlotExpired = isSlotExpired,
-                            slotExpiryReason = slotExpiryReason,
-                            isArenaMode = isArenaMode,
-                            arenaRole = arenaPlayerRole,
-                            arenaStakeMinutes = arenaStakeMinutes,
-                        )
-                    } else if (SessionRules.isArmed(appState) || coinsInserted > 0) {
-                        BlockScreen(
-                            onInsertCoin = onInsertCoinClick,
-                            isWaiting = isVisible,
-                            coinsInserted = coinsInserted,
-                            paymentTimeout = paymentTimeout,
-                            onDoneClick = onDoneClick,
-                            isEsp32Online = isEsp32Online,
-                            isSlotBusy = isSlotBusy,
-                            isArmingInProgress = isArmingInProgress,
-                            pricePerCoin = pricePerCoin,
-                            minutesPerCoin = minutesPerCoin,
-                            deviceIp = deviceIp,
-                            slotNumber = slotNumber,
-                            themeIndex = themeIndex,
-                            batteryStatus = batteryStatus,
-                            onThemeChange = onThemeChange,
-                            slotWarningDaysLeft = slotWarningDaysLeft,
-                            isSlotExpired = isSlotExpired,
-                            slotExpiryReason = slotExpiryReason,
-                            isArenaMode = isArenaMode,
-                            arenaRole = arenaPlayerRole,
-                            arenaStakeMinutes = arenaStakeMinutes,
-                        )
-                    }
-                }
-            }
-        }
+        newOverlay.setContent { Content(manageWindow = true) }
         try {
             windowManager.addView(newOverlay.view, layoutParams)
             isViewAdded = true
@@ -388,6 +295,118 @@ class LockScreenOverlay(
             dispose()
         }
         return isViewAdded
+    }
+
+    /**
+     * The lock screen itself. The overlay window shows it (manageWindow: it also makes the window touchable or not), and so
+     * does [LockScreenActivity] on a phone where the app may not draw over other apps (a phone set up by QR code: only ADB
+     * can grant that permission, and Android Go phones do not offer it at all).
+     */
+    @Composable
+    fun Content(manageWindow: Boolean) {
+        val appState by appStateFlow.collectAsState()
+        val paymentTimeout by paymentTimeoutFlow.collectAsState()
+        val coinsInserted by coinsInsertedFlow.collectAsState()
+        val isEsp32Online by isEsp32OnlineFlow.collectAsState()
+        val isSlotBusy by isSlotBusyFlow.collectAsState()
+        val isArmingInProgress by isArmingInProgressFlow.collectAsState()
+        val themeIndex by themeIndexFlow.collectAsState()
+        val pricePerCoin by pricePerCoinFlow.collectAsState()
+        val minutesPerCoin by minutesPerCoinFlow.collectAsState()
+        val deviceIp by deviceIpFlow.collectAsState()
+        val slotNumber by slotNumberFlow.collectAsState()
+        val batteryStatus by batteryStatusFlow.collectAsState()
+        val slotWarningDaysLeft by slotWarningDaysLeftFlow.collectAsState()
+        val isSlotExpired by isSlotExpiredFlow.collectAsState()
+        val slotExpiryReason by slotExpiryReasonFlow.collectAsState()
+        val isArenaMode by isArenaModeFlow.collectAsState()
+        val arenaPlayerRole by arenaPlayerRoleFlow.collectAsState()
+        val arenaStakeMinutes by arenaStakeMinutesFlow.collectAsState()
+        val isVisible = SessionRules.isLockScreenShown(appState)
+
+        val unlockAlpha by androidx.compose.animation.core.animateFloatAsState(
+            targetValue = if (isVisible) 1f else 0f,
+            animationSpec = tween(durationMillis = 350, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+            label = "unlockAlpha",
+        )
+        val unlockScale by androidx.compose.animation.core.animateFloatAsState(
+            targetValue = if (isVisible) 1f else 1.05f,
+            animationSpec = tween(durationMillis = 350, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+            label = "unlockScale",
+        )
+
+        if (manageWindow) {
+            LaunchedEffect(isVisible) {
+                if (isVisible) {
+                    updateWindowFlagsAndDimensions(true)
+                } else {
+                    delay(350)
+                    updateWindowFlagsAndDimensions(false)
+                }
+            }
+        }
+
+        if (isVisible || unlockAlpha > 0.01f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer(
+                        alpha = unlockAlpha,
+                        scaleX = unlockScale,
+                        scaleY = unlockScale,
+                    ),
+            ) {
+                if (appState == SessionState.LOCKED.code || (appState == SessionState.UNLOCKED.code && !isVisible)) {
+                    BlockScreen(
+                        onInsertCoin = onInsertCoinClick,
+                        isWaiting = false,
+                        coinsInserted = 0,
+                        paymentTimeout = 0,
+                        onDoneClick = {},
+                        isEsp32Online = isEsp32Online,
+                        isSlotBusy = isSlotBusy,
+                        isArmingInProgress = isArmingInProgress,
+                        pricePerCoin = pricePerCoin,
+                        minutesPerCoin = minutesPerCoin,
+                        deviceIp = deviceIp,
+                        slotNumber = slotNumber,
+                        themeIndex = themeIndex,
+                        batteryStatus = batteryStatus,
+                        onThemeChange = onThemeChange,
+                        slotWarningDaysLeft = slotWarningDaysLeft,
+                        isSlotExpired = isSlotExpired,
+                        slotExpiryReason = slotExpiryReason,
+                        isArenaMode = isArenaMode,
+                        arenaRole = arenaPlayerRole,
+                        arenaStakeMinutes = arenaStakeMinutes,
+                    )
+                } else if (SessionRules.isArmed(appState) || coinsInserted > 0) {
+                    BlockScreen(
+                        onInsertCoin = onInsertCoinClick,
+                        isWaiting = isVisible,
+                        coinsInserted = coinsInserted,
+                        paymentTimeout = paymentTimeout,
+                        onDoneClick = onDoneClick,
+                        isEsp32Online = isEsp32Online,
+                        isSlotBusy = isSlotBusy,
+                        isArmingInProgress = isArmingInProgress,
+                        pricePerCoin = pricePerCoin,
+                        minutesPerCoin = minutesPerCoin,
+                        deviceIp = deviceIp,
+                        slotNumber = slotNumber,
+                        themeIndex = themeIndex,
+                        batteryStatus = batteryStatus,
+                        onThemeChange = onThemeChange,
+                        slotWarningDaysLeft = slotWarningDaysLeft,
+                        isSlotExpired = isSlotExpired,
+                        slotExpiryReason = slotExpiryReason,
+                        isArenaMode = isArenaMode,
+                        arenaRole = arenaPlayerRole,
+                        arenaStakeMinutes = arenaStakeMinutes,
+                    )
+                }
+            }
+        }
     }
 
     fun remove() {

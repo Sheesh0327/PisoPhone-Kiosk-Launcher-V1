@@ -135,6 +135,12 @@ class MainActivity : ComponentActivity() {
         loadApps()
         KioskWatchdogReceiver.scheduleWatchdog(this)
         checkDeviceOwner()
+        // the home screen is reachable with the Home button: while the phone is locked, the lock screen comes back on top
+        if (com.pisophone.kiosk.overlay.LockScreenActivity.shouldShowNow() &&
+            com.pisophone.kiosk.overlay.LockScreenActivity.shouldUse(this)
+        ) {
+            com.pisophone.kiosk.overlay.LockScreenActivity.launch(this)
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -283,7 +289,9 @@ class MainActivity : ComponentActivity() {
 
     private fun checkOverlayPermission() {
         hasOverlayPermission = Settings.canDrawOverlays(this)
-        if (hasOverlayPermission) {
+        // A phone set up by QR code has no overlay permission (only ADB can grant it); as the device owner the kiosk runs
+        // anyway and shows its lock screen as LockScreenActivity.
+        if (hasOverlayPermission || com.pisophone.kiosk.overlay.LockScreenActivity.isDeviceOwner(this)) {
             try {
                 val intent = Intent(this, KioskService::class.java)
                 startForegroundService(intent)
