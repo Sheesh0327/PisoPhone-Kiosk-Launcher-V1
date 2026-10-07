@@ -68,8 +68,29 @@ It has every password (router, PisoKiosk Wi-Fi, coin box admin). The setup also 
 5. Optional dead-man switch: create a check at healthchecks.io, put its ping URL in `/etc/piso-monitor.conf` as `HEALTHCHECK_URL='...'`, then `/etc/init.d/piso_monitor restart`. You are alerted when the router stops pinging (power cut, internet down).
 The router needs internet for this: while the site is offline nothing can be sent, and alerts raised in that time are not delivered later (the dead-man switch covers that case).
 
-## Step 5: provision each rental phone (it joins PisoKiosk by itself)
-A phone that is not on the **PisoKiosk** Wi-Fi cannot find its coin box, so it can never pair or learn its admin PIN. The provisioning page (the "Install & Provision" link on the box's page) therefore has a **Kiosk Wi-Fi** section: the name (`PisoKiosk`) and the PisoKiosk password from `piso-setup summary`. It is sent to the phone together with the box's secret; the app (a device owner) adds the network itself, joins it, and rejoins whenever the phone is on another network (checked every minute). The page remembers the password on that computer, so the next phone needs no typing. Without a password the page warns you before it continues.
+## Step 5: set up each rental phone (QR code, or USB as the fallback)
+Open the box's page, click **Install & Provision** for the slot, and type the **PisoKiosk** Wi-Fi password (from
+`piso-setup summary`; the page remembers it on that computer). Then:
+
+**QR code (recommended, no computer cable):**
+1. Use a new or **factory-reset** phone. On the first welcome screen, **tap the same spot 6 times**: a QR reader opens (some
+   older phones first ask for a Wi-Fi to download the reader).
+2. Click **Show the setup code** on the page and scan it with the phone.
+3. The phone joins PisoKiosk, downloads PisoPhone, checks its signature, makes it the device owner and hands it the box's
+   key, MAC, slot and the Wi-Fi password. Accept the screens it shows; at the end the kiosk opens.
+4. Pair the slot on the box's page as usual.
+The code holds the box's key and the Wi-Fi password: show it only to the phone you are setting up (the page hides it when
+you click Hide or change the password). It needs an app published by CI with its signing fingerprint
+(`update/app.json` has `signatureChecksum`); until then the page says to use the USB cable.
+
+**USB cable (fallback):** for a phone whose welcome screen has no QR reader. Chrome or Edge on a computer, a USB data cable,
+a factory-reset phone with no account, USB debugging on (Xiaomi/Redmi/POCO: also "Install via USB" and "USB debugging
+(Security settings)"; they need a Mi account: sign in, turn them on, then remove the account). Click **Connect the phone
+and set it up**: the page checks the phone first (accounts, extra users), installs, makes PisoPhone the device owner and
+gives it the box's details in one step that the app confirms.
+
+Either way the app joins PisoKiosk, rejoins it whenever the phone is on another network (checked every minute), and shows
+short status lines (Wi-Fi, box search) while it finds its box.
 To fix a phone that is already provisioned (it needs the admin PIN or box secret because it is paired already):
 ```
 adb shell am broadcast -a com.pisophone.kiosk.CONFIGURE_ESP32 -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es wifi_ssid PisoKiosk --es wifi_pass '<password>' --es pin '<admin PIN>'

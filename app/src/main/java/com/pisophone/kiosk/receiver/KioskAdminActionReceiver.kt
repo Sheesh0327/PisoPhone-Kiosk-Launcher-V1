@@ -196,7 +196,9 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                 val devName = com.pisophone.kiosk.security.KioskActivationManager.getHardwareDescription()
                 val isPaired = com.pisophone.kiosk.security.KioskActivationManager.isPairingCompleted(context)
                 Log.i(TAG, "GET_DEVICE_ID requested via ADB broadcast. Returning: $hwId ($devName), paired=$isPaired")
-                setResultCode(android.app.Activity.RESULT_OK)
+                // the result code says whether the phone took its setup (`am broadcast` always prints it readably as result=-1;
+                // the extras below often print only as a parcel): RESULT_OK when it did, RESULT_FIRST_USER when not yet
+                setResultCode(if (isPaired) android.app.Activity.RESULT_OK else android.app.Activity.RESULT_FIRST_USER)
                 setResultData(hwId)
                 val extras = android.os.Bundle().apply {
                     putString("hardware_id", hwId)

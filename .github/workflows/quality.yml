@@ -114,7 +114,7 @@ jobs:
           flag firmware_build "^(esp32_firmware/|protocol/|$W)"
           flag firmware_tests "^(esp32_firmware/|protocol/|scripts/|$W)"
           flag portal "^(tools/pisoportal/|router/|setup/|website/install\.sh|tools/build_piso_setup\.py|scripts/(sign_router|generate_license|make_owner_keys)\.py|$W)"
-          flag website "^(website/|tools/site-css/|scripts/test_provisioning\.js|scripts/tests/test_site_page\.py|$W)"
+          flag website "^(website/|tools/site-css/|scripts/test_provisioning\.js|scripts/tests/test_site_page\.py|scripts/check_vendored\.py|$W)"
 
   security-rules:
     name: Security rules
@@ -149,7 +149,7 @@ jobs:
           key: playwright-1.63.0
       - name: The page in a browser, with the site's Content-Security-Policy
         run: |
-          pip install -q playwright==1.63.0 && playwright install --with-deps chromium
+          pip install -q playwright==1.63.0 zxing-cpp==2.3.0 pillow==11.3.0 && playwright install --with-deps chromium
           python3 scripts/tests/test_site_page.py
 
   kotlin-style:
