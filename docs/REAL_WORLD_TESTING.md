@@ -1,5 +1,7 @@
 # Real-world testing checklist
 
+**Easier on a phone:** the same tests as a tickable page (Pass / Fail / Skip, a note on failures, a report to paste back): `python3 tools/checklist/build.py out.html`, then publish `out.html`. Re-run it after changing this file. This file stays the single list.
+
 Fill this in while testing on real hardware. It is the baseline of what works and what does not: tick what passes, write what
 fails in the **Issue log** at the bottom, then paste the log (plus the evidence listed there) to the developer so each issue
 becomes a fix. Commit this file after each session so progress is visible in git history.
