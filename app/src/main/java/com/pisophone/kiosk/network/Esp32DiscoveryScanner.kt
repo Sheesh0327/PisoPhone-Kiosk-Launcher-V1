@@ -61,19 +61,34 @@ class Esp32DiscoveryScanner(
         }
     }
 
+    private fun say(message: String, repeatAfterMs: Long = 60_000L) = KioskStatusToast.show(context, message, repeatAfterMs)
+
     fun triggerDiscovery(localIp: String) {
         synchronized(lock) {
-            if (isStopped) return
+            if (isStopped) {
+                say("Scan: cannot start (the connection manager is stopped)")
+                return
+            }
             startUdpListenerLocked()
             if (discoveryJob?.isActive == true) {
                 return
             }
+            val phoneIp = if (localIp.isNotBlank()) localIp else getLocalIpAddress()
+            if (phoneIp.isBlank()) {
+                say("Scan: the phone has no Wi-Fi address yet, so it can only listen for the box's broadcast")
+            } else {
+                say("Scan: started. Looking for the box at ${fastPathTargets(phoneIp).first()} and listening for its broadcast (phone: $phoneIp)", 30_000L)
+            }
             discoveryJob = scope.launch(Dispatchers.IO) {
                 try {
+                    var rounds = 0
                     while (!isAlreadyBound() && isActive) {
                         sendUdpDiscoveryBroadcast(localIp)
                         probeFastPathTargets(localIp)
                         delay(2000)
+                        if (++rounds >= 5 && !isAlreadyBound()) {
+                            say("Scan: the box has not answered after ${rounds * 2} seconds (is the phone on the kiosk Wi-Fi and the box powered?)")
+                        }
                     }
                 } finally {
                     synchronized(lock) {
@@ -137,6 +152,7 @@ class Esp32DiscoveryScanner(
 
                             if (validateEsp32Response(deviceMac, targetIp, sig, message)) {
                                 Log.i(TAG, "[+] Discovered verified ESP32 Master via UDP at $targetIp (MAC=$deviceMac)")
+                                say("Scan: box found at $targetIp (its broadcast)", 120_000L)
                                 delegate.onEsp32Discovered(targetIp, message)
                             }
                         }
@@ -232,9 +248,11 @@ class Esp32DiscoveryScanner(
                 if (resp.isSuccessful) {
                     val rawBody = resp.body?.string() ?: ""
                     if (isEsp32MacMatching(rawBody)) {
+                        say("Scan: box found at $host", 120_000L)
                         delegate.onEsp32Discovered(host, rawBody)
                         return true
                     }
+                    say("Scan: something answered at $host but it is not this phone's box (MAC differs from the paired one)")
                 }
             }
         } catch (_: Exception) {}

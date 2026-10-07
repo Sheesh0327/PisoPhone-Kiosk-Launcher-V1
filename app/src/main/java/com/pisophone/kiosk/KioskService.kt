@@ -61,9 +61,8 @@ class KioskService : Service() {
                 wifiSsid = wifiSsid,
                 wifiPassword = wifiPassword,
             )
-            if (!wifiPassword.isNullOrEmpty()) {
-                Thread { com.pisophone.kiosk.network.KioskWifi.ensureConnected(context) }.start()
-            }
+            // (also without a password: the status line then says that no kiosk network is saved)
+            Thread { com.pisophone.kiosk.network.KioskWifi.joinAndReport(context) }.start()
             KioskActivationManager.setPairingCompleted(context, true)
             val cleanMac = KioskSecurity.formatMacAddress(mac)
             activeInstance?.let { service ->
@@ -173,7 +172,7 @@ class KioskService : Service() {
     private val wifiHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val wifiKeeper = object : Runnable {
         override fun run() {
-            Thread { com.pisophone.kiosk.network.KioskWifi.ensureConnected(applicationContext) }.start()
+            Thread { com.pisophone.kiosk.network.KioskWifi.joinAndReport(applicationContext) }.start()
             wifiHandler.postDelayed(this, WIFI_CHECK_MS)
         }
     }

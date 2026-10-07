@@ -27,22 +27,57 @@ object KioskWifi {
     /** WPA2 passphrase: 8 to 63 printable ASCII characters. */
     fun isValidPassword(password: String): Boolean = password.length in 8..63 && password.all { it in ' '..'~' }
 
+    /** What [join] found or did, for the status line shown on the phone ([statusText]). */
+    enum class Join { NOT_SAVED, ALREADY_ON, JOINING, NEEDS_APPROVAL, REFUSED, ERROR }
+
     /** Adds the saved network and connects to it unless the phone is on it already. Returns true when it is connected. */
+    fun ensureConnected(context: Context): Boolean = join(context) == Join.ALREADY_ON
+
+    /** The phone's own Wi-Fi address (IPv4), or "" when it has none. */
+    fun wifiAddress(): String {
+        try {
+            val interfaces = java.net.NetworkInterface.getNetworkInterfaces() ?: return ""
+            for (nif in interfaces) {
+                if (!nif.name.lowercase().startsWith("wlan")) continue
+                for (addr in nif.inetAddresses) {
+                    if (addr is java.net.Inet4Address && !addr.isLoopbackAddress) return addr.hostAddress ?: ""
+                }
+            }
+        } catch (_: Exception) {
+        }
+        return ""
+    }
+
+    /** One line saying where the phone stands with the kiosk Wi-Fi, for the people provisioning it. */
+    fun statusText(context: Context, join: Join): String {
+        val ssid = KioskSecurity.getKioskWifiSsid(context.applicationContext).ifBlank { DEFAULT_SSID }
+        val ip = wifiAddress()
+        return when (join) {
+            Join.NOT_SAVED -> "Wi-Fi: no kiosk network is saved on this phone (provision it again with the $ssid password)"
+            Join.ALREADY_ON -> "Wi-Fi: connected to $ssid" + if (ip.isNotBlank()) " ($ip)" else " (no address yet)"
+            Join.JOINING -> "Wi-Fi: joining $ssid..." + if (ip.isNotBlank()) " (now on $ip)" else ""
+            Join.NEEDS_APPROVAL -> "Wi-Fi: $ssid was suggested; approve it in Android's notification (this phone is not the device owner)"
+            Join.REFUSED -> "Wi-Fi: Android refused to add $ssid"
+            Join.ERROR -> "Wi-Fi: could not join $ssid"
+        }
+    }
+
     @Suppress("DEPRECATION")
-    fun ensureConnected(context: Context): Boolean {
+    fun join(context: Context): Join {
         val app = context.applicationContext
         val ssid = KioskSecurity.getKioskWifiSsid(app)
         val password = KioskSecurity.getKioskWifiPassword(app)
-        if (!isValidSsid(ssid) || !isValidPassword(password)) return false
+        if (!isValidSsid(ssid) || !isValidPassword(password)) return Join.NOT_SAVED
         return try {
-            val wm = app.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return false
+            val wm = app.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return Join.ERROR
             if (!wm.isWifiEnabled) wm.isWifiEnabled = true
-            if (isOnNetwork(wm, ssid)) return true
+            if (isOnNetwork(wm, ssid)) return Join.ALREADY_ON
 
+            var suggested = false
             if (Build.VERSION.SDK_INT >= 29) {
                 val suggestion = WifiNetworkSuggestion.Builder().setSsid(ssid).setWpa2Passphrase(password).setIsHiddenSsid(true).build()
                 wm.removeNetworkSuggestions(listOf(suggestion))
-                wm.addNetworkSuggestions(listOf(suggestion))
+                suggested = wm.addNetworkSuggestions(listOf(suggestion)) == WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS
             }
 
             val dpm = app.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
@@ -69,15 +104,23 @@ object KioskWifi {
                     wm.enableNetwork(id, true)
                     wm.reconnect()
                     Log.i(TAG, "Joined the saved kiosk Wi-Fi \"$ssid\"")
-                } else {
-                    Log.w(TAG, "Android refused to add the kiosk Wi-Fi \"$ssid\"")
+                    return if (isOnNetwork(wm, ssid)) Join.ALREADY_ON else Join.JOINING
                 }
+                Log.w(TAG, "Android refused to add the kiosk Wi-Fi \"$ssid\"")
+                return Join.REFUSED
             }
-            isOnNetwork(wm, ssid)
+            if (suggested) Join.NEEDS_APPROVAL else Join.REFUSED
         } catch (e: Exception) {
             Log.w(TAG, "Could not join the kiosk Wi-Fi: ${e.message}")
-            false
+            Join.ERROR
         }
+    }
+
+    /** [join], then the status line on the screen. Call from a background thread. */
+    fun joinAndReport(context: Context) {
+        val result = join(context)
+        // a healthy connection is said once in a while; a problem every minute until it is fixed
+        KioskStatusToast.show(context, statusText(context, result), if (result == Join.ALREADY_ON) 600_000L else 60_000L)
     }
 
     @Suppress("DEPRECATION")
