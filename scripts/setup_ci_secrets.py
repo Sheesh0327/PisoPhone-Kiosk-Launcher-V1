@@ -5,6 +5,8 @@ screen. Run it on YOUR OWN computer (never in CI or a cloud session), from the r
     python3 scripts/setup_ci_secrets.py                  your existing signing keystore (the normal case)
     python3 scripts/setup_ci_secrets.py --new-keystore   a brand-new signing key (see below: almost never what you want)
     python3 scripts/setup_ci_secrets.py --dry-run        every check, nothing uploaded
+    python3 scripts/setup_ci_secrets.py --replace-key    a keystore that is not the published app's (a fresh start, e.g. the
+                                                         one a --new-keystore run made before it stopped)
 
 What it sets (docs/CI.md): KEYSTORE_BASE64, STORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD, GITHUB_PUSH_TOKEN and, if you use it,
 RELEASES_TOKEN. Every secret is typed hidden (or generated), checked, and sent straight to CircleCI's API over https:
@@ -42,6 +44,7 @@ RELEASES_REPO = "Sheesh0327/PisoPhone-Releases"
 GITHUB_API = os.environ.get("PISO_GITHUB_API", "https://api.github.com")      # (tests point these at a fake server)
 CIRCLECI_API = os.environ.get("PISO_CIRCLECI_API", "https://circleci.com/api/v2")
 ALIAS_RE = re.compile(r"[A-Za-z0-9._-]{1,64}")
+NEW_KEY_MADE = None   # the keystore a --new-keystore run made (named again if the run stops after making it)
 
 
 class Stop(Exception):
@@ -219,6 +222,9 @@ def upload(token, slug, values):
 
 def run(args, read=input, read_secret=getpass.getpass):
     say("PisoPhone CI secrets. Nothing you type is shown, saved or put on a command line.")
+    if args.new_keystore and args.dry_run:
+        raise Stop("--dry-run cannot be used with --new-keystore (it would make a key and throw it away). Run without "
+                   "--dry-run: everything is checked before anything is uploaded")
     tool = find_keytool()
     values = {}
 
@@ -230,6 +236,8 @@ def run(args, read=input, read_secret=getpass.getpass):
             raise Stop("cancelled")
         path = os.path.abspath(read("File name for the new keystore [pisophone-release.p12]: ").strip() or "pisophone-release.p12")
         alias, password = new_keystore(tool, path)
+        global NEW_KEY_MADE
+        NEW_KEY_MADE = path
         store_password = key_password = password
         say()
         say("=================== WRITE THIS DOWN NOW (it is shown once) ===================")
@@ -260,9 +268,12 @@ def run(args, read=input, read_secret=getpass.getpass):
     say(f"Signing certificate SHA-256: {sha}")
     if args.new_keystore:
         say("This is a new key: the next APK starts a new line of updates.")
+    elif published and checksum != published and args.replace_key:
+        say("This key replaces the published app's key (--replace-key): installed phones cannot update to the new builds.")
     elif published and checksum != published:
         raise Stop(f"this key is NOT the one the published app is signed with ({checksum} here, {published} published). "
-                   "Phones would refuse every update built with it. Find the original keystore; nothing was uploaded")
+                   "Phones would refuse every update built with it. Find the original keystore, or run with --replace-key for "
+                   "a fresh start; nothing was uploaded")
     elif published:
         say("It is the key the published app is signed with: phones will take the updates.")
     else:
@@ -307,6 +318,7 @@ def main(argv=None):
     p = argparse.ArgumentParser(description="Put the CI secrets into the CircleCI project, checked (docs/CI.md).")
     p.add_argument("--new-keystore", action="store_true", help="make a new signing key (only before the first release to phones)")
     p.add_argument("--dry-run", action="store_true", help="every check, nothing uploaded")
+    p.add_argument("--replace-key", action="store_true", help="accept a keystore that differs from the published app's (fresh start)")
     p.add_argument("--allow-classic-token", action="store_true", help="accept a classic GitHub token (not recommended)")
     args = p.parse_args(argv)
     try:
@@ -314,6 +326,10 @@ def main(argv=None):
     except Stop as e:
         say()
         say(f"STOPPED: {e}")
+        if args.new_keystore and NEW_KEY_MADE:
+            say(f"Your new keystore is kept in {NEW_KEY_MADE}. Fix the problem above, then run (not --new-keystore again):")
+            say("    python3 scripts/setup_ci_secrets.py --replace-key")
+            say("and give it that file and the password you wrote down.")
         return 1
     except (KeyboardInterrupt, EOFError):
         say()

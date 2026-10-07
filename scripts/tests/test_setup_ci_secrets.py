@@ -87,7 +87,7 @@ def run(answers, secrets_, published, **opts):
     store["envvars"].clear()
     sc.published_checksum = lambda: published
     it, it2 = iter(answers), iter(secrets_)
-    args = types.SimpleNamespace(new_keystore=False, dry_run=False, allow_classic_token=False)
+    args = types.SimpleNamespace(new_keystore=False, dry_run=False, allow_classic_token=False, replace_key=False)
     args.__dict__.update(opts)
     out, old = io.StringIO(), sys.stdout
     sys.stdout = out
@@ -114,6 +114,11 @@ check("the key the published app is signed with" in out, "it says the key matche
 
 err, _ = run([JKS, ""], [SP, KP, GOOD_GH, RELEASES_GH, CCI], "Un0usqLMwnmeaowrY2g21EgRVWe4bTRDLUi2RH12WbE")
 check(err and "NOT the one the published app is signed with" in err and not store["envvars"], "another key than the published app's: refused, nothing uploaded")
+err, out = run([JKS, ""], [SP, KP, GOOD_GH, "", CCI], "Un0usqLMwnmeaowrY2g21EgRVWe4bTRDLUi2RH12WbE", replace_key=True)
+check(err is None and store["envvars"].get("KEY_ALIAS") == "upload" and "replaces the published app's key" in out,
+      "--replace-key: a fresh start with another key is accepted, and said: " + str(err))
+err, _ = run([], [], mine, new_keystore=True, dry_run=True)
+check(err and "--dry-run cannot be used with --new-keystore" in err, "a dry run never makes a key")
 err, _ = run([JKS], ["wrongpass123"], mine)
 check(err and "keystore password is wrong" in err and not store["envvars"], "a wrong keystore password")
 err, _ = run([JKS, ""], [SP, "wrong-key-pw", ], mine)
@@ -154,7 +159,7 @@ def confirm(prompt=""):
 it_pw["s"] = iter([GOOD_GH, "", CCI])
 store["envvars"].clear()
 sc.published_checksum = lambda: mine
-args = types.SimpleNamespace(new_keystore=True, dry_run=False, allow_classic_token=False)
+args = types.SimpleNamespace(new_keystore=True, dry_run=False, allow_classic_token=False, replace_key=False)
 answers = iter(["NEW KEY", p12])
 sys.stdout = io.StringIO()
 try:

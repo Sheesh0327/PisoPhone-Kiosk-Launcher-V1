@@ -31,6 +31,11 @@ ran out. GitHub only hosts the code.
    everything hidden, and it uploads straight to CircleCI's API: nothing passes through the clipboard, a file or the screen. It refuses a keystore that
    is not the one the published app is signed with, wrong passwords, and GitHub tokens that cannot open the repository.
    It asks for a CircleCI personal API token (User Settings > Personal API Tokens) for that run: revoke it afterwards.
+   **Fresh start** (a new signing key; phones that have the app must be factory reset, or have it removed on the setup
+   page's *Remove from a phone* tab, before they take the new builds): `python3 scripts/setup_ci_secrets.py --new-keystore`.
+   It shows the new password once: keep it and the keystore file in your password manager and a second, offline place.
+   Set up no phone until the first CircleCI APK build is published (`update/app.json` shows a versionCode of 401 or more):
+   before that, the site still serves the APK signed with the old key.
    Or by hand, in **Project Settings > Environment Variables**, add:
 
    | Name | Value |
