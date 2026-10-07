@@ -20,7 +20,7 @@ interface Esp32DiscoveryDelegate {
 
 /**
  * Industry-standard IoT Discovery Service for the ESP32 Master box:
- * 1. Fast Path: Direct probe of configured IP & canonical mDNS ("kioskmanager.local") via HTTP /identify.
+ * 1. Fast Path: Direct probe of the box's fixed address (<network>.10) & canonical mDNS ("kioskmanager.local") via HTTP /identify.
  * 2. Dynamic Discovery: Standard UDP broadcast probe & beacon on port 8888.
  * 3. Security (RULE 6): Uniform MAC address validation from discovered JSON payload.
  */
@@ -242,17 +242,23 @@ class Esp32DiscoveryScanner(
         return false
     }
 
-    fun probeFastPathTargets(localIp: String) {
+    /**
+     * Where the box can be asked directly. The router setup gives the coin box the fixed address <network>.10 on the kiosk
+     * network (docs: setup/README.md), so that is tried first; "kioskmanager.local" (mDNS) is the fallback. (The box has no
+     * Wi-Fi network of its own any more, so the old 192.168.4.1 is gone, and the network's .1 is the router, not the box.)
+     */
+    fun fastPathTargets(localIp: String): List<String> {
         val targets = mutableListOf<String>()
-        val activeIp = if (localIp.isNotBlank()) localIp else getLocalIpAddress()
-        if (activeIp.isNotBlank() && activeIp.contains(".")) {
-            val gateway = activeIp.substringBeforeLast(".") + ".1"
-            targets.add(gateway)
+        if (localIp.isNotBlank() && localIp.contains(".")) {
+            targets.add(localIp.substringBeforeLast(".") + ".10")
         }
-        if (!targets.contains("192.168.4.1")) targets.add("192.168.4.1")
-        if (!targets.contains("kioskmanager.local")) targets.add("kioskmanager.local")
+        targets.add("kioskmanager.local")
+        return targets
+    }
 
-        for (target in targets) {
+    fun probeFastPathTargets(localIp: String) {
+        val activeIp = if (localIp.isNotBlank()) localIp else getLocalIpAddress()
+        for (target in fastPathTargets(activeIp)) {
             if (isAlreadyBound()) break
             if (probeEsp32Connection(target)) {
                 Log.d(TAG, "Direct HTTP discovery succeeded for target: $target")

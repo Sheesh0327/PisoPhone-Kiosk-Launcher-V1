@@ -6,6 +6,7 @@ import com.pisophone.kiosk.security.KioskSecurity
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import org.json.JSONObject
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -105,5 +106,18 @@ class Esp32DiscoveryScannerUnitTest {
         }
 
         assertFalse(scanner.validateEsp32Response(testMac, testIp, "", json.toString()))
+    }
+
+    @Test
+    fun testFastPathTargets_probeTheBoxsFixedAddressNotTheRouter() {
+        val scanner = Esp32DiscoveryScanner(
+            context = context,
+            scope = testScope,
+            delegate = fakeDelegate,
+            isAlreadyBound = { false },
+        )
+
+        assertEquals(listOf("10.0.0.10", "kioskmanager.local"), scanner.fastPathTargets("10.0.0.57"))
+        assertEquals(listOf("kioskmanager.local"), scanner.fastPathTargets(""))
     }
 }
