@@ -99,6 +99,8 @@ with sync_playwright() as pw:
     pg.wait_for_selector("#qrBox svg")
     pg.click("#hideQrBtn")
     check(not pg.is_visible("#qrResult") and pg.inner_html("#qrBox") == "", "Hide removes the code")
+    check(pg.is_visible("#finishUsbBtn") and "Finish over USB" in pg.inner_text("#qrPanel"),
+          "QR + USB: the QR panel has the last step (Finish over USB: the permissions only ADB can grant)")
     pg.click("#methodUsb")
     pg.wait_for_timeout(800)
     check(pg.is_visible("#usbPanel") and not pg.is_visible("#qrPanel") and pg.is_visible("#installAppBtn"), "the USB cable is the other method")

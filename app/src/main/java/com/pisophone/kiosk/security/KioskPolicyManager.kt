@@ -156,6 +156,26 @@ object KioskPolicyManager {
     }
 
     /**
+     * QR + USB setup: right after the QR setup made the app the device owner, USB debugging is turned on so the setup
+     * computer (already connected by USB) can grant what only ADB can grant ("display over other apps"). Nothing else is
+     * changed here (the full kiosk policies wait for the home screen, so Android's setup screens finish undisturbed). It is
+     * the provisioning grace window of [KioskSecurity.isAdbAllowed]: ADB goes off when the computer reports the grants
+     * (SETUP_GRANTS_DONE) or when the window ends.
+     */
+    fun enableAdbForSetup(context: Context) {
+        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager ?: return
+        if (!dpm.isDeviceOwnerApp(context.packageName) || !KioskSecurity.isAdbAllowed(context)) return
+        val componentName = ComponentName(context, KioskDeviceAdminReceiver::class.java)
+        try {
+            dpm.clearUserRestriction(componentName, UserManager.DISALLOW_DEBUGGING_FEATURES)
+            dpm.setGlobalSetting(componentName, Settings.Global.ADB_ENABLED, "1")
+            Log.i(TAG, "USB debugging on for the setup computer (provisioning grace window).")
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not turn USB debugging on for the setup: ${e.message}")
+        }
+    }
+
+    /**
      * Applies strict Enterprise Device Owner policies to the terminal.
      */
     fun applyStrictKioskPolicies(context: Context) {

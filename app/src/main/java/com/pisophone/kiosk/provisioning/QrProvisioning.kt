@@ -74,6 +74,12 @@ object QrProvisioning {
         return true
     }
 
+    /** The end of the QR setup: USB debugging on for the setup computer (it grants the permissions, then ADB goes off). */
+    fun finishSetup(context: Context) {
+        val app = context.applicationContext ?: context
+        Thread { com.pisophone.kiosk.security.KioskPolicyManager.enableAdbForSetup(app) }.start()
+    }
+
     fun applyFromIntent(
         context: Context,
         intent: Intent?,

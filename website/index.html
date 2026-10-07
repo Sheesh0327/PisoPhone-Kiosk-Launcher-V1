@@ -141,9 +141,10 @@
             <div id="qrPanel" class="space-y-3">
                 <ol class="list-decimal pl-5 space-y-1.5 text-[11px] text-slate-300 leading-relaxed">
                     <li>Use a <b>new or factory-reset</b> phone. On the first welcome screen, <b>tap the same spot 6 times</b> until a QR reader opens. (Some older phones first ask to join a Wi-Fi to download the reader.)</li>
+                    <li>Plug the phone into <b>this computer</b> with a USB data cable (now, or any time before step 5).</li>
                     <li>Scan the code below with the phone.</li>
-                    <li>The phone joins PisoKiosk, downloads PisoPhone and sets itself up (a few minutes). Accept its screens; at the end it opens the kiosk.</li>
-                    <li>Then pair the slot on the box's page, as usual.</li>
+                    <li>The phone joins PisoKiosk, downloads PisoPhone and sets itself up (a few minutes). Accept its screens until it shows PisoPhone's <b>One last step</b>. It turns USB debugging on by itself: no Developer options needed.</li>
+                    <li>Tap <b>Allow</b> when the phone asks "Allow USB debugging?", then click <b>Finish over USB</b> below. It grants the permissions, starts the kiosk, turns USB debugging off again and opens the box's page to pair the slot.</li>
                 </ol>
                 <button id="showQrBtn" type="button" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3.5 px-6 rounded-xl transition shadow-lg text-sm flex items-center justify-center gap-2.5 btn-glow-emerald cursor-pointer">▦ Show the setup code</button>
                 <div id="qrError" class="hidden text-[11px] text-amber-300 bg-amber-500/15 border border-amber-500/40 rounded-xl p-3"></div>
@@ -152,6 +153,8 @@
                     <p class="text-[11px] text-amber-300 text-center">The code holds this box's key and the Wi-Fi password: show it only to the phone you are setting up.</p>
                     <button id="hideQrBtn" type="button" class="w-full text-[11px] text-slate-400 hover:text-slate-200 underline">Hide the code</button>
                 </div>
+                <button id="finishUsbBtn" type="button" class="w-full bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/40 font-bold py-3 px-6 rounded-xl transition text-sm flex items-center justify-center gap-2.5 cursor-pointer">🔌 Finish over USB</button>
+                <p class="text-[10px] text-slate-500 text-center">No computer at hand? The phone's One last step screen can also open the setting itself.</p>
             </div>
 
             <div id="usbPanel" class="hidden space-y-3">
@@ -256,7 +259,7 @@
                 if (qr) pick($('methodQr'), $('methodUsb')); else pick($('methodUsb'), $('methodQr'));
                 $('qrPanel').classList.toggle('hidden', !qr);
                 $('usbPanel').classList.toggle('hidden', qr);
-                if (!qr) window.webADB.warmUp();   // the ADB library loads only for USB
+                if (!qr) window.webADB.warmUp();   // the ADB library loads only for USB (or once the QR code is shown)
             }
             $('tabInstall').addEventListener('click', () => setMode('install'));
             $('tabDeprovision').addEventListener('click', () => setMode('deprovision'));
@@ -298,6 +301,7 @@
                     $('qrBox').innerHTML = P.qrSvg(JSON.stringify(payload));
                     $('qrBox').dataset.payload = JSON.stringify(payload);
                     $('qrResult').classList.remove('hidden');
+                    window.webADB.warmUp();   // the last step (Finish over USB) needs the ADB library
                 } catch (e) {
                     $('qrError').textContent = e.message;
                     $('qrError').classList.remove('hidden');
@@ -336,6 +340,16 @@
                     button.disabled = false;
                 }
             }
+
+            // ---- QR + USB: the last step (the permissions only ADB can grant) ----
+            $('finishUsbBtn').addEventListener('click', () => {
+                runUsb($('finishUsbBtn'), 'Keep the phone connected...', async () => {
+                    const id = await window.webADB.grantPermissions(log);
+                    log('Done. The kiosk is running on the phone.');
+                    $('finishUsbBtn').innerHTML = 'Set up. Opening the box page...';
+                    if (boxPage) setTimeout(() => { location.href = `${boxPage}?action=pair&slot=${urlSlot}&id=${encodeURIComponent(id)}&name=${encodeURIComponent(urlName)}`; }, 2500);
+                });
+            });
 
             // ---- USB cable (fallback) ----
             $('localApkInput').addEventListener('change', async (e) => {

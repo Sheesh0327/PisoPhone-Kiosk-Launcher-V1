@@ -49,6 +49,7 @@ Collect logs as you go: box serial output at 115200 baud (`pio device monitor`),
 - [ ] **P4** Reboot the phone: kiosk starts by itself, box still reachable, **no re-provisioning needed** (Keystore check)
 - [ ] **P5** Admin PIN works; five wrong PINs lock further tries
 - [ ] **P6** Phone shows "legacy key" warning only if it really has no box secret
+- [ ] **P8** QR + USB: with the phone plugged into the computer, after the QR setup the phone shows "One last step" and asks "Allow USB debugging?" by itself (Developer options untouched); **Finish over USB** grants the permissions, the lock screen appears, the box page opens to pair the slot, and afterwards Settings > Developer options shows USB debugging off
 - [ ] **P7** USB fallback: with the page's "USB cable" method, a factory-reset phone with USB debugging is set up in one run; a phone with a signed-in account is refused within seconds, before anything is copied
 
 ## 3. Coins and time (the money path)

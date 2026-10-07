@@ -67,6 +67,11 @@
         return `Device owner setup failed: ${text || "no answer from the phone"}`;
     }
 
+    // what only ADB can grant (the USB setup and the QR + USB setup's last step): "display over other apps" (the lock
+    // screen and the time bubble are overlays), secure settings, and no battery optimisation for the kiosk
+    const GRANTS = `appops set ${PACKAGE_NAME} SYSTEM_ALERT_WINDOW allow; pm grant ${PACKAGE_NAME} android.permission.WRITE_SECURE_SETTINGS; ` +
+        `dumpsys deviceidle whitelist +${PACKAGE_NAME}`;
+
     class WebADBManager {
         constructor() {
             this.adb = null;
@@ -215,8 +220,7 @@
                 if (!/^\s*Success/im.test(dpm)) throw new Error(describeDeviceOwnerFailure(dpm));
                 log("PisoPhone is the device owner (kiosk lock).");
             }
-            await this.shell(`appops set ${PACKAGE_NAME} SYSTEM_ALERT_WINDOW allow; pm grant ${PACKAGE_NAME} android.permission.WRITE_SECURE_SETTINGS; ` +
-                `dumpsys deviceidle whitelist +${PACKAGE_NAME}`).catch(() => {});
+            await this.shell(GRANTS).catch(() => {});
 
             // one start carries everything; the app checks it is in its first-setup window, stores it and starts the kiosk
             log("Giving the app the box's details...");
@@ -236,6 +240,33 @@
             if (!answer.paired) throw new Error("The app did not take the box's details. Open PisoPhone on the phone once, then run setup again.");
             log(`The app is set up (${answer.id}).`);
             return answer.id;
+        }
+
+        /**
+         * QR + USB setup: the phone was set up by its QR code (PisoPhone is the device owner and has turned USB debugging on
+         * by itself), so only what Android lets nothing but ADB grant is left: "display over other apps", secure settings and
+         * the battery exemption. The app then starts the kiosk and turns USB debugging off again. Returns the phone's
+         * hardware id (the box's page pairs the slot with it).
+         */
+        async grantPermissions(log) {
+            if (!this.adb) throw new Error("The phone is not connected.");
+            if (!(await this.isOurDeviceOwner())) {
+                throw new Error("PisoPhone is not set up on this phone yet. Scan the QR code with it first, wait until it shows " +
+                    "PisoPhone (\"One last step\"), then click Finish over USB again.");
+            }
+            log("Granting the permissions...");
+            await this.shell(GRANTS).catch(() => {});
+            const ops = await this.shell(`appops get ${PACKAGE_NAME} SYSTEM_ALERT_WINDOW`).catch(() => "");
+            if (!/allow/i.test(ops)) {
+                throw new Error("Android did not grant \"display over other apps\". On the phone, use \"Open the setting\" on its " +
+                    "One last step screen instead.");
+            }
+            log("Granted: display over other apps, secure settings, battery exemption.");
+            const { id } = await this.askApp();
+            // the app starts the kiosk and turns USB debugging off a few seconds after this (the connection then ends)
+            await this.shell(`am broadcast -a ${PACKAGE_NAME}.SETUP_GRANTS_DONE -n ${PACKAGE_NAME}/.receiver.KioskAdminActionReceiver`).catch(() => {});
+            log("The kiosk is starting; USB debugging turns off by itself. You can unplug the phone.");
+            return id;
         }
 
         /** Removes the kiosk from a phone (needs the admin PIN). */

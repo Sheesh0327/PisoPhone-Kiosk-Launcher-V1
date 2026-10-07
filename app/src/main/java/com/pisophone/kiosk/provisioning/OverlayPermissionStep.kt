@@ -133,7 +133,15 @@ fun OverlayPermissionScreen(
             "PisoPhone needs \"Display over other apps\" to show its lock screen and the time bubble over other apps.",
             fontSize = 16.sp,
         )
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(16.dp))
+        Text("With the setup computer (easiest)", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+        Text(
+            "Keep this phone plugged into the computer by USB, tap Allow when it asks \"Allow USB debugging?\", and click " +
+                "Finish over USB on the setup page. Everything else happens by itself.",
+            fontSize = 15.sp,
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Text("Without a computer", fontWeight = FontWeight.Bold, fontSize = 15.sp)
         Text("1. Tap Open the setting below.", fontSize = 15.sp)
         Text("2. Choose PisoPhone and turn on \"Allow display over other apps\".", fontSize = 15.sp)
         Text("3. Press Back to return here. The kiosk starts by itself.", fontSize = 15.sp)

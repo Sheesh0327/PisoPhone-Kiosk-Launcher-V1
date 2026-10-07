@@ -13,7 +13,8 @@
 # again at 10.0.0.1), and runs the setup. No file copying, no line-ending fixes, no chmod.
 # Everything is inside main(), called on the last line: a download cut short runs nothing.
 
-# The setup file comes from the PisoPhone website (Cloudflare Pages, built from this repository, which is private):
+# The setup file comes from the PisoPhone website (Cloudflare Pages, built from this repository; it works whether the
+# repository is public or private):
 # main's from the production site, any other branch's from that branch's preview site (beta: beta.pisophone.pages.dev).
 SITE_HOST="${PISO_SITE_HOST:-pisophone.pages.dev}"
 DIR="${PISO_INSTALL_DIR:-/root}"
