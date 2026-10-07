@@ -1,9 +1,10 @@
 {
-  "versionCode": 333,
-  "versionName": "1.0.333",
+  "versionCode": 336,
+  "versionName": "1.0.336",
   "channel": "stable",
   
-  "sha256": "bdd482c09695ce41c3eacb1ae75e1c2ab167233668fcd4887d9c48cee623fa34",
-  "size": 1738842,
+  "signatureChecksum": "Un0usqLMwnmeaowrY2g21EgRVWe4bTRDLUi2RH12WbE",
+  "sha256": "e1ace5122d7f43d52f6ae95263279fcec9b30617e95aec6a5273d5411ec3cdb6",
+  "size": 1739046,
   "releaseDate": "2026-10-07"
 }
