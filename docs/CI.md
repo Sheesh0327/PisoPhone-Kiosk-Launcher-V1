@@ -26,7 +26,12 @@ ran out. GitHub only hosts the code.
 4. **A GitHub token for CI's commits**: GitHub > Settings > Developer settings > Fine-grained tokens > Generate new token.
    Repository access: only `PisoPhone-Kiosk-Launcher-V1`. Permissions: *Contents: Read and write*, *Issues: Read and write*.
    Copy it.
-5. **Project Settings > Environment Variables** in CircleCI, add:
+5. **The secrets.** Easiest and safest: on your own computer, in the repository folder, run
+   `python3 scripts/setup_ci_secrets.py` (needs a Java JDK for keytool; `--dry-run` checks without uploading). You type
+   everything hidden, and it uploads straight to CircleCI's API: nothing passes through the clipboard, a file or the screen. It refuses a keystore that
+   is not the one the published app is signed with, wrong passwords, and GitHub tokens that cannot open the repository.
+   It asks for a CircleCI personal API token (User Settings > Personal API Tokens) for that run: revoke it afterwards.
+   Or by hand, in **Project Settings > Environment Variables**, add:
 
    | Name | Value |
    |---|---|

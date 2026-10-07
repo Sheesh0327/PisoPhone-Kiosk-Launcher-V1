@@ -27,6 +27,7 @@ check(on(["esp32_firmware/src/Config.cpp"]) == {"security", "firmware_build", "f
 check("firmware_images" not in on(["esp32_firmware/src/Config.cpp"], branch="feature-x"), "flasher images only on main and beta")
 check(on(["website/js/flasher.js"]) == {"security", "website"}, "a website change")
 check(on(["website/setup/piso-setup.sh"]) == {"security", "portal", "website"}, "the website's setup file copy")
+check("apk" in on(["scripts/setup_ci_secrets.py"]), "the CI-secrets tool is tested in the APK workflow")
 check(on(["docs/REAL_WORLD_TESTING.md"]) == {"security", "test_issues"}, "the test log")
 check(on(["website/update/firmware-esp32c3.bin"], branch="main") >= {"firmware_json"}
       and "firmware_json" not in on(["website/update/firmware-esp32c3.bin"], branch="beta"), "firmware.json only on main")

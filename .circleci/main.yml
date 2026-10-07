@@ -254,6 +254,9 @@ jobs:
       - restore_cache:
           keys: ['gradle-{{ checksum "gradle/libs.versions.toml" }}-{{ checksum "app/build.gradle.kts" }}', gradle-]
       - run: bash ./gradlew :app:testDebugUnitTest --no-daemon --no-configuration-cache --stacktrace
+      - run:
+          name: The CI-secrets tool (a throw-away keystore, fake GitHub and CircleCI)
+          command: python3 scripts/tests/test_setup_ci_secrets.py
       - save_cache:
           key: 'gradle-{{ checksum "gradle/libs.versions.toml" }}-{{ checksum "app/build.gradle.kts" }}'
           paths: [~/.gradle/caches, ~/.gradle/wrapper]

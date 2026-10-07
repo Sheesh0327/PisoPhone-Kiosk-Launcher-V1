@@ -27,7 +27,7 @@ FLAGS = {
                rf"tools/build_piso_setup\.py|scripts/(sign_router|generate_license|make_owner_keys)\.py|{C})", None),
     "website": (rf"^(website/|tools/site-css/|scripts/test_provisioning\.js|scripts/test_flasher\.js|"
                 rf"scripts/tests/test_site_page\.py|scripts/check_vendored\.py|{C})", None),
-    "apk": (rf"^(app/|protocol/|gradle/|[^/]*\.gradle\.kts$|gradle\.properties$|{C})", None),
+    "apk": (rf"^(app/|protocol/|gradle/|[^/]*\.gradle\.kts$|gradle\.properties$|scripts/(tests/test_)?setup_ci_secrets\.py|{C})", None),
     "router_program": (rf"^(tools/pisoportal/src/|tools/pisoportal/Cargo\.|tools/pisoportal/owner_key\.b64|setup/RELEASE|"
                        rf"router/[^/]*\.init$|router/piso_monitor\.sh|setup/piso-setup\.sh\.in|tools/build_piso_setup\.py|{C})", None),
     "firmware_images": (rf"^(esp32_firmware/|{C})", ("main", "beta")),
