@@ -68,8 +68,16 @@ object QrProvisioning {
         )
         KioskActivationManager.recordDeviceIdentity(context)
         KioskActivationManager.setPairingCompleted(context, true)
+        // the home screen then asks the installer to turn on "display over other apps" (no PIN for 30 minutes)
+        OverlayPermissionStep.markQrSetup(context)
         Log.i(TAG, "Set up from the QR code: MAC=${v.mac}, slot=${v.slot}, secret=${v.secret != null}, Wi-Fi=${!v.wifiPass.isNullOrEmpty()}")
         return true
+    }
+
+    /** The end of the QR setup: USB debugging on for the setup computer (it grants the permissions, then ADB goes off). */
+    fun finishSetup(context: Context) {
+        val app = context.applicationContext ?: context
+        Thread { com.pisophone.kiosk.security.KioskPolicyManager.enableAdbForSetup(app) }.start()
     }
 
     fun applyFromIntent(

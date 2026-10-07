@@ -74,6 +74,6 @@ restores the session) and locks the phone when time reaches zero.
 | Admin broadcasts | `receiver/KioskAdminActionReceiver.kt` |
 
 ## 6. Quality checks
-CI (`.circleci/main.yml`, docs/CI.md) runs ktlint, clang-format and the firmware host tests on every push.
+`.github/workflows/quality.yml` runs ktlint, clang-format and the firmware host tests on every push.
 `build-apk.yml` runs the Android unit tests, builds and publishes the APK (per-branch channel).
 Format locally with `ktlint -F` (Kotlin) and `clang-format -i` (firmware, config in `esp32_firmware/.clang-format`).

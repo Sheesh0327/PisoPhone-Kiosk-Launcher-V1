@@ -1,11 +1,11 @@
 #!/bin/sh
-# Repository security rules, run by CI (the security-rules job in .circleci/main.yml). Exit 1 on any violation.
+# Repository security rules, run by CI (.github/workflows/quality.yml). Exit 1 on any violation.
 # Run it locally from the repository root: sh scripts/check_security_rules.sh
 cd "$(dirname "$0")/.." || exit 1
 fail=0
 bad() { echo "RULE VIOLATION: $1"; fail=1; }
 
-CODE_DIRS="app esp32_firmware website scripts router setup tools/pisoportal/src tools/pisoportal/tests protocol .github .circleci"
+CODE_DIRS="app esp32_firmware website scripts router setup tools/pisoportal/src tools/pisoportal/tests protocol .github"
 # website/js/yume-chan-bundle.js is a vendored third-party bundle; it is never scanned. ($EXCLUDE is split into words on
 # purpose wherever it is used.)
 EXCLUDE='--exclude-dir=.git --exclude-dir=build --exclude-dir=target --exclude-dir=node_modules --exclude-dir=__pycache__ --exclude=yume-chan-bundle.js --exclude=check_security_rules.sh'
@@ -50,7 +50,7 @@ fi
 
 # 7. Router updates: the program a router runs is never built with the test owner key, and the setup never runs a downloaded
 #    file before the router program has verified the owner's signature on it (and only over https).
-if grep -rn 'test-owner-key' .circleci tools/build_piso_setup.py setup/piso-setup.sh.in; then
+if grep -rn 'test-owner-key' .github/workflows/router-program.yml tools/build_piso_setup.py setup/piso-setup.sh.in; then
     bad "the router program or its workflow mentions the test owner key (it is for tests only)"
 fi
 if ! grep -q 'update-verify "\$_work/router.json" "\$_work/new.sh"' setup/piso-setup.sh.in || ! grep -q 'https://\*) ;;' setup/piso-setup.sh.in; then

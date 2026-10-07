@@ -49,13 +49,12 @@ pio run -e esp32-c3-dev -t upload
 (cd tools/pisoportal && cargo test && python3 tests/test_flow.py)
 python3 router/tests/test_setup.py
 ```
-CI (CircleCI, `.circleci/`, see [`docs/CI.md`](docs/CI.md)) runs all of this on every push, only for the parts it touches; style is ktlint (Kotlin) and clang-format (`esp32_firmware/.clang-format`).
+CI (GitHub Actions, `.github/workflows/`) runs all of this on every push, only for the parts it touches; style is ktlint (Kotlin) and clang-format (`esp32_firmware/.clang-format`).
 
 ## Documentation
 | Doc | For |
 |---|---|
 | [`docs/DEPLOY.md`](docs/DEPLOY.md) | First run, CI, where APKs and firmware are published |
-| [`docs/CI.md`](docs/CI.md) | CircleCI: how the CI is put together, and its one-time setup |
 | [`docs/RELEASE.md`](docs/RELEASE.md) | Release checklist: the owner-only steps before a build goes to shops |
 | [`docs/REAL_WORLD_TESTING.md`](docs/REAL_WORLD_TESTING.md) | Hardware test checklist and issue log |
 | [`docs/KEYS.md`](docs/KEYS.md) | Owner key, licenses, signed firmware, per-box secrets and migration |

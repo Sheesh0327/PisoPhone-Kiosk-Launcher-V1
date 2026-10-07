@@ -12,7 +12,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 SRC = os.path.join(ROOT, "docs", "REAL_WORLD_TESTING.md")
 TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "template.html")
 
-PASS1 = {"B1", "B2", "B3", "P1", "P2", "P3", "P4", "C1", "C2", "C3", "C4", "F1", "F2", "F3",
+PASS1 = {"B1", "B2", "B3", "P1", "P2", "P3", "P4", "P8", "C1", "C2", "C3", "C4", "F1", "F2", "F3",
          *(f"RS{i}" for i in (1, 2, 3, 4, 5, 6, 10, 11, 12, 17))}
 PASS2_EXTRA = {"S1", "S3", "RS7", "RS8", "RS9"}
 

@@ -4,7 +4,7 @@ router needs as a payload: text files after a '#@@FILE <destination> <mode>' lin
 base64) after a '#@@B64 <destination> <mode> <sha256>' line. Run it after changing any embedded file:
     python3 tools/build_piso_setup.py            writes setup/piso-setup.sh
     python3 tools/build_piso_setup.py --check    fails if the committed file is out of date (CI)
-The portal program is built by CI (the router-program job in .circleci/main.yml) and committed to tools/pisoportal/bin; CI
+The portal program is built by CI (.github/workflows/router-program.yml) and committed to tools/pisoportal/bin; CI
 rebuilds this file right after, so the two always match. It also writes the file's sha256 and the website's copy of the
 one-line installer (setup/install.sh) and of setup/pisophone_setup.py."""
 import base64, hashlib, os, re, sys

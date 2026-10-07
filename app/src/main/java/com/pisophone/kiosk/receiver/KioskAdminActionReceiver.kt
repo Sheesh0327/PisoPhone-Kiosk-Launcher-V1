@@ -42,6 +42,7 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
         const val ACTION_ACTIVATE = "com.pisophone.kiosk.ACTIVATE"
         const val ACTION_CONFIGURE_ESP32 = "com.pisophone.kiosk.CONFIGURE_ESP32"
         const val ACTION_GET_DEVICE_ID = "com.pisophone.kiosk.GET_DEVICE_ID"
+        const val ACTION_SETUP_GRANTS_DONE = "com.pisophone.kiosk.SETUP_GRANTS_DONE"
         private const val TAG = "KioskAdminAction"
     }
 
@@ -188,6 +189,28 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                 if (volume in 0..100) {
                     Log.i(TAG, "Setting media volume to $volume%")
                     com.pisophone.kiosk.security.KioskSecurity.setMediaVolume(context, volume)
+                }
+            }
+
+            ACTION_SETUP_GRANTS_DONE -> {
+                // QR + USB setup: the computer has granted what only ADB can grant. Once "display over other apps" is really
+                // on, the kiosk starts and USB debugging goes off (a few seconds later, so the computer's command returns).
+                // No PIN: this can only close ADB and start the kiosk, never open anything.
+                val granted = android.provider.Settings.canDrawOverlays(context)
+                setResultCode(if (granted) android.app.Activity.RESULT_OK else android.app.Activity.RESULT_CANCELED)
+                if (granted) {
+                    Log.i(TAG, "Setup grants done: starting the kiosk; USB debugging goes off.")
+                    val app = context.applicationContext
+                    try {
+                        context.startForegroundService(Intent(context, com.pisophone.kiosk.KioskService::class.java))
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Could not start the kiosk service yet (the home screen starts it): ${e.message}")
+                    }
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                        Thread { com.pisophone.kiosk.security.KioskSecurity.setAdbAllowed(app, false) }.start()
+                    }, 3000L)
+                } else {
+                    Log.w(TAG, "Setup grants reported, but \"display over other apps\" is still off.")
                 }
             }
 

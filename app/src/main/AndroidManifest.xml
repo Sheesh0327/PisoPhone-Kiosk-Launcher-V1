@@ -91,6 +91,7 @@
                 <action android:name="com.pisophone.kiosk.STATUS_REFRESH" />
                 <action android:name="com.pisophone.kiosk.ACTIVATE" />
                 <action android:name="com.pisophone.kiosk.GET_DEVICE_ID" />
+                <action android:name="com.pisophone.kiosk.SETUP_GRANTS_DONE" />
             </intent-filter>
         </receiver>
 

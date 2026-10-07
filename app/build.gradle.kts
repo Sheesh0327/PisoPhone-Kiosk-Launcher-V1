@@ -4,9 +4,8 @@ plugins {
     alias(libs.plugins.google.devtools.ksp)
 }
 
-// CI sets BUILD_NUMBER (CircleCI: 400 + the pipeline number; GITHUB_RUN_NUMBER on the old GitHub Actions builds), which only
-// ever increases; an installed phone refuses an update whose
-// versionCode is not higher. Local builds use 1.
+// CI sets GITHUB_RUN_NUMBER (BUILD_NUMBER overrides it), which only ever increases; an installed phone refuses an update
+// whose versionCode is not higher. Local builds use 1.
 val appVersionCode = (System.getenv("BUILD_NUMBER") ?: System.getenv("GITHUB_RUN_NUMBER"))?.toIntOrNull() ?: 1
 
 // CI sets these for branch (dev) builds so the APK checks its own branch's /update folder instead
