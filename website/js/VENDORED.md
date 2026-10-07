@@ -4,7 +4,8 @@
 |---|---|---|---|
 | `yume-chan-bundle.js` | ESM bundle of the Tango/yume-chan WebUSB ADB libraries, built with esbuild (the `node_modules/@yume-chan/...` path comments show this) | 139579 bytes | `15bb40e373392d8b1e3522915ae90f5de7f55697fb70fea7751733e7be1d6cfe` |
 | `qrcode.js` | `qrcode-generator` 1.4.4 by Kazuhiko Arase (MIT, header kept), `qrcode.js` from the npm package unchanged (npm shasum `63f771224854759329a99048806a53ed278740e7`); draws the QR setup code | 56694 bytes | `18ae399f81182bc9de916e9c77b195df20cc58d6f2d55a62b085a299f1bf1780` |
-| `provisioning.js`, `webadb_manager.js` | PisoPhone's own code (not vendored): the setup link, the QR setup code, and the USB (WebADB) fallback | | |
+| `esptool-bundle.js` | `esptool-js` 0.7.0 by Espressif (Apache-2.0, license text in `esptool-LICENSE.txt`; includes `pako`, MIT), `bundle.js` from the npm package unchanged (npm shasum `9b891bfa886a0b3373b63f1eefe5538fea56cbe8`); flashes the coin box over Web Serial (`flash.html`) | 313171 bytes | `00ebe6fb0b202976d3e2a3c6b9a6bd438c26a81d2af6739c95ac276a64c1a84e` |
+| `provisioning.js`, `webadb_manager.js`, `flasher.js` | PisoPhone's own code (not vendored): the setup link, the QR setup code, and the USB (WebADB) fallback | | |
 
 ## What is inside `yume-chan-bundle.js`
 Packages, from the bundle's own path comments (number of source modules in brackets):

@@ -3,19 +3,26 @@
 One file, `piso-setup.sh`, turns a factory-reset OpenWrt router into the whole PisoWiFi system.
 
 ## Before you start
-1. **Flash the ESP32 coin box** with firmware **3.2.1 or later** (see "Flashing the coin box" below) and power it on. It joins the hidden `PisoCoinBox` Wi-Fi by itself, which the router creates. A used box must be factory reset first (it remembers its old Wi-Fi).
+1. **Flash the ESP32 coin box** from the browser (https://pisophone.pages.dev/flash.html, see "Flashing the coin box" below) and power it on. It joins the hidden `PisoCoinBox` Wi-Fi by itself, which the router creates. A used box must be factory reset first (it remembers its old Wi-Fi).
 2. **Modem into the router's WAN port** (internet is needed once, to download packages).
 3. A PC on one of the router's **LAN ports**.
 4. The modem's own network must not be `10.0.0.x` or `192.168.30.x` (the script stops and tells you if it is).
 
 ### Flashing the coin box (once per box, by USB)
+Open **https://pisophone.pages.dev/flash.html** in Chrome or Edge on a computer, plug the box's ESP32 in with a USB data
+cable and click **Connect the box and install**. The page detects the chip (ESP32-C3 or ESP32), downloads the matching
+image, checks its sha256, writes it, reads it back to verify, and restarts the box. Keep **Erase everything first** ticked
+for a new or used box. If it does not connect: hold the board's BOOT button, tap RESET, release BOOT, and try again.
+The images are built by CI from the branch's firmware (`.github/workflows/firmware-images.yml`, the `-dev` environments)
+and published in `website/flash/`; on the beta site the page flashes beta's firmware.
+
+For developers, PlatformIO still works:
 ```
 cd esp32_firmware
-sh host_tests/run.sh                  # optional: the firmware's own tests
-pio run -e esp32-c3-dev -t upload     # ESP32-C3 boards; use esp32dev-dev for a classic ESP32 (environments: esp32_firmware/envs/)
-pio device monitor                    # optional: watch it start
+pio run -e esp32-c3-dev -t upload     # ESP32-C3 boards; esp32dev-dev for a classic ESP32 (environments: esp32_firmware/envs/)
 ```
-CI compiles the firmware on every push (job "Firmware format and host tests" and the build job). The box starts with the published defaults (admin password `Coinslot@Setup`, setup Wi-Fi `PisoCoinBox`); the router setup changes the password and key by itself, and the box refuses coins until its password has been changed.
+The box starts with the published defaults (admin password `Coinslot@Setup`, setup Wi-Fi `PisoCoinBox`); the router setup
+changes the password and key by itself, and the box refuses coins until its password has been changed.
 
 ## Step 1: one line on the router
 Plug your computer into a LAN port of the factory-reset router, log in and paste one line:

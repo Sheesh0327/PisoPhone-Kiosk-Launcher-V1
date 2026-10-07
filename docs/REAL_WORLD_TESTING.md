@@ -39,6 +39,7 @@ Collect logs as you go: box serial output at 115200 baud (`pio device monitor`),
 - [ ] **B6** Reboot from the dashboard works; settings survive
 - [ ] **B7** Wi-Fi drops and returns (turn the router off/on): box reconnects by itself
 - [ ] **B8** Box runs 1 hour idle without rebooting (check serial for restart reasons)
+- [ ] **B9** Web flasher: https://pisophone.pages.dev/flash.html (Chrome) flashes a factory ESP32-C3 (and a classic ESP32) with "Erase everything first"; the log ends with "Hash of data verified" and the box starts and joins PisoCoinBox
 
 ## 2. Phone install and pairing
 *P1–P4 are pass 1, the rest pass 2. Testing the beta branch: the box's Install & Provision link always opens the production site (main's APK). Copy the link and change only its host to beta.pisophone.pages.dev, keeping everything after it; check that beta.pisophone.pages.dev/update/app.json shows a -dev version first.*

@@ -115,6 +115,39 @@ with sync_playwright() as pw:
     pg.wait_for_selector("#qrError:not(.hidden)")
     check("USB cable" in pg.inner_text("#qrError"), "an app published without its signing hash: the page says to use the USB cable")
     pg.close()
+
+    # ---- the coin box flasher (flash.html) ----
+    site = base.split("/index.html")[0]
+    pg = br.new_page()
+    problems = []
+    pg.on("console", lambda m: m.type == "error" and problems.append(m.text))
+    pg.on("pageerror", lambda e: problems.append(str(e)))
+    pg.route("**/flash/manifest.json", lambda route: route.fulfill(status=404, body="no"))
+    pg.goto(f"{site}/flash.html")
+    pg.wait_for_timeout(500)
+    check(pg.is_visible("#noImages") and pg.is_disabled("#flashBtn"), "flasher without published images: says so, button off")
+    pg.close()
+    flash_manifest = {"version": "3.2.1", "commit": "abcdef1234", "builds": [{"env": "esp32-c3-dev", "chip": "ESP32-C3", "file": "esp32-c3-dev.bin", "offset": 0, "size": 10, "sha256": "0" * 64}]}
+    pg = br.new_page()
+    problems, requested = [], []
+    pg.on("console", lambda m: m.type == "error" and problems.append(m.text))
+    pg.on("pageerror", lambda e: problems.append(str(e)))
+    pg.on("request", lambda r: requested.append(r.url))
+    pg.route("**/flash/manifest.json", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(flash_manifest)))
+    # the person closes the browser's USB port window without choosing (a headless browser would keep it open)
+    pg.add_init_script("Object.defineProperty(navigator, 'serial', { value: { requestPort: () => Promise.reject(new DOMException('No port selected by the user.', 'NotFoundError')) } });")
+    pg.goto(f"{site}/flash.html")
+    pg.wait_for_timeout(500)
+    check("Firmware 3.2.1 for ESP32-C3" in pg.inner_text("#fwVersion") and pg.is_enabled("#flashBtn"), "the flasher shows the published firmware: " + pg.inner_text("#fwVersion"))
+    check(pg.is_checked("#eraseFirst"), "erasing first is the default (a new or used box)")
+    check(not any("esptool-bundle" in u for u in requested), "the flashing library loads only when used")
+    pg.click("#flashBtn")
+    pg.wait_for_selector("#terminalLog div")
+    pg.wait_for_timeout(800)
+    check(any("esptool-bundle" in u for u in requested) and "ERROR" in pg.inner_text("#terminalLog") and pg.is_enabled("#flashBtn"),
+          "a click loads the flashing library and, with no port chosen, ends with a clear error: " + pg.inner_text("#terminalLog")[-200:])
+    check(not [p for p in problems if "Content Security Policy" in p or "Refused" in p], f"the flasher runs under the site's CSP: {problems}")
+    pg.close()
     br.close()
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)
