@@ -19,7 +19,7 @@ The full checklist and issue log are in `docs/REAL_WORLD_TESTING.md`.
 Keys are not needed for this test (see `docs/KEYS.md`); boxes then still accept the old license keys and OTA is off, so flash by USB.
 
 ## CI
-`quality.yml` runs on every push: ktlint, clang-format, firmware host tests, a real PlatformIO build of all four firmware
+`quality.yml` runs on pushes to `main` and `beta` and on pull requests into `main`, and only for the parts a change touches (a "What changed" job decides; a newer push cancels the unfinished run; downloads are cached): ktlint, clang-format, firmware host tests, a real PlatformIO build of all four firmware
 environments (the platform is pinned in `esp32_firmware/envs/*.ini`), security-rule and vendored-file checks, the provisioning
 website (its helpers, its stylesheet and the page itself in a browser under the site's Content-Security-Policy), and the
 router portal and setup tests (rustfmt, clippy, unit, end-to-end and browser tests, shellcheck). `router-program.yml` builds

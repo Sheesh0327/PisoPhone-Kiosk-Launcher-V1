@@ -1,8 +1,11 @@
 name: Code quality
 
-# Runs on every push to any branch that touches code, scripts or this file. Everything that does not need a phone, a box
-# or a router:
-#   - repository security rules, vendored-file record, the setup page's helpers and the page itself in a browser
+# Runs on pushes to main and beta, and on pull requests into main (a pull request from beta or main itself is skipped:
+# its push already ran), when code, scripts or this file changed. A "What changed" job reads the list of changed files
+# and the jobs below run only for the parts that changed (a firmware build is skipped by a change to the portal, and so on),
+# so no runner time is spent on what a change cannot affect. A newer push to the same branch cancels the unfinished run.
+# Everything that does not need a phone, a box or a router:
+#   - repository security rules (always), vendored-file record, the setup page's helpers and the page itself in a browser
 #   - ktlint (Kotlin, rules in .editorconfig); the Android unit tests and build run in build-apk.yml
 #   - clang-format, protocol vectors, generated web assets and the host tests of the firmware; the firmware compiled
 #     for every board and the two production (encrypted) builds
@@ -11,7 +14,8 @@ name: Code quality
 on:
   push:
     branches:
-      - '**'
+      - main
+      - beta
     paths:
       - 'app/**'
       - 'protocol/**'
@@ -33,13 +37,87 @@ on:
       - '.editorconfig'
       - '.github/workflows/quality.yml'
   pull_request:
+    branches:
+      - main
+    paths:
+      - 'app/**'
+      - 'protocol/**'
+      - 'esp32_firmware/**'
+      - 'scripts/**'
+      - 'router/**'
+      - 'setup/**'
+      - 'tools/build_piso_setup.py'
+      - 'tools/pisoportal/src/**'
+      - 'tools/pisoportal/tests/**'
+      - 'tools/pisoportal/Cargo.*'
+      - 'tools/pisoportal/owner_key.b64'
+      - 'tools/pisoportal/rustfmt.toml'
+      - 'tools/site-css/**'
+      - 'website/index.html'
+      - 'website/_headers'
+      - 'website/css/**'
+      - 'website/js/**'
+      - '.editorconfig'
+      - '.github/workflows/quality.yml'
+
+concurrency:
+  group: quality-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
 
 jobs:
+  changes:
+    name: What changed
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      firmware_build: ${{ steps.flags.outputs.firmware_build }}
+      firmware_tests: ${{ steps.flags.outputs.firmware_tests }}
+      portal: ${{ steps.flags.outputs.portal }}
+      website: ${{ steps.flags.outputs.website }}
+      kotlin: ${{ steps.flags.outputs.kotlin }}
+      security: ${{ steps.flags.outputs.security }}
+    steps:
+      - id: flags
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          files=""
+          if [ "$EVENT" = pull_request ]; then
+            files=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --paginate --jq '.[].filename')
+          elif [ -n "$BEFORE" ] && [ "$BEFORE" != 0000000000000000000000000000000000000000 ]; then
+            files=$(gh api "repos/$GITHUB_REPOSITORY/compare/$BEFORE...$GITHUB_SHA" --paginate --jq '.files[].filename')
+          fi
+          all=""
+          [ -n "$files" ] || { echo "no list of changed files (new branch or a lookup failure): running everything"; all=1; }
+          skip=""
+          if [ "$EVENT" = pull_request ] && { [ "$HEAD_REF" = beta ] || [ "$HEAD_REF" = main ]; }; then echo "this pull request's branch was checked by its own push"; skip=1; fi
+          flag() {  # flag <output name> <regex of the paths that matter>
+            if [ -n "$skip" ]; then v=false
+            elif [ -n "$all" ] || printf '%s\n' "$files" | grep -Eq "$2"; then v=true
+            else v=false; fi
+            echo "$1=$v" | tee -a "$GITHUB_OUTPUT"
+          }
+          W='\.github/workflows/quality\.yml'
+          flag security '.'
+          flag kotlin "^(app/|[^/]*\.kts$|\.editorconfig|$W)"
+          flag firmware_build "^(esp32_firmware/|protocol/|$W)"
+          flag firmware_tests "^(esp32_firmware/|protocol/|scripts/|$W)"
+          flag portal "^(tools/pisoportal/|router/|setup/|tools/build_piso_setup\.py|scripts/(sign_router|generate_license|make_owner_keys)\.py|$W)"
+          flag website "^(website/|tools/site-css/|scripts/test_provisioning\.js|scripts/tests/test_site_page\.py|$W)"
+
   security-rules:
     name: Security rules
+    needs: changes
+    if: needs.changes.outputs.security == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -50,6 +128,8 @@ jobs:
 
   website:
     name: Provisioning website
+    needs: changes
+    if: needs.changes.outputs.website == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -61,13 +141,19 @@ jobs:
           npm ci --no-audit --no-fund
           npm run build
           git diff --exit-code ../../website/css || { echo "::error::website/css/app.css is out of date: cd tools/site-css && npm ci && npm run build"; exit 1; }
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-1.63.0
       - name: The page in a browser, with the site's Content-Security-Policy
         run: |
-          pip install -q playwright && playwright install --with-deps chromium
+          pip install -q playwright==1.63.0 && playwright install --with-deps chromium
           python3 scripts/tests/test_site_page.py
 
   kotlin-style:
     name: ktlint
+    needs: changes
+    if: needs.changes.outputs.kotlin == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -84,6 +170,8 @@ jobs:
 
   firmware-style-and-tests:
     name: Firmware format and host tests
+    needs: changes
+    if: needs.changes.outputs.firmware_tests == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -110,6 +198,8 @@ jobs:
 
   firmware-build:
     name: Firmware build (${{ matrix.env }})
+    needs: changes
+    if: needs.changes.outputs.firmware_build == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -139,12 +229,27 @@ jobs:
 
   pisoportal:
     name: Portal program and router setup
+    needs: changes
+    if: needs.changes.outputs.portal == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-1.63.0
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            tools/pisoportal/target
+            ~/test-target
+          key: rust-${{ hashFiles('tools/pisoportal/Cargo.lock') }}
+          restore-keys: rust-
       - name: Install Playwright (real-browser test), BusyBox (the router's shell and tools), ShellCheck and the Rust lints
         run: |
-          pip install -q playwright cryptography && playwright install --with-deps chromium
+          pip install -q playwright==1.63.0 cryptography && playwright install --with-deps chromium
           sudo apt-get install -y -q busybox-static
           rustup component add rustfmt clippy
           # one ShellCheck version everywhere (the runner's own changes with the image)
@@ -174,7 +279,7 @@ jobs:
         run: python3 router/tests/test_monitor.py
       - name: Check router updates from the website (signed releases only, staged rollout, undo of a release that does not run)
         run: |
-          python3 router/tests/test_selfupdate.py
+          PISO_TEST_TARGET_DIR=$HOME/test-target python3 router/tests/test_selfupdate.py
           # not an error while the owner has not made the keys (docs/KEYS.md), but never silent: routers install no update until then
           if [ ! -s tools/pisoportal/owner_key.b64 ]; then echo "::warning file=tools/pisoportal/owner_key.b64::no owner key built into the router program: routers will install no update from the website (docs/RELEASE.md)"; fi
       - name: The committed setup file is up to date
