@@ -13,7 +13,7 @@ Open **https://pisophone.pages.dev/flash.html** in Chrome or Edge on a computer,
 cable and click **Connect the box and install**. The page detects the chip (ESP32-C3 or ESP32), downloads the matching
 image, checks its sha256, writes it, reads it back to verify, and restarts the box. Keep **Erase everything first** ticked
 for a new or used box. If it does not connect: hold the board's BOOT button, tap RESET, release BOOT, and try again.
-The images are built by CI from the branch's firmware (`.github/workflows/firmware-images.yml`, the `-dev` environments)
+The images are built by CI from the branch's firmware (the `firmware-images` job in `.circleci/main.yml`, the `-dev` environments)
 and published in `website/flash/`; on the beta site the page flashes beta's firmware.
 
 For developers, PlatformIO still works:

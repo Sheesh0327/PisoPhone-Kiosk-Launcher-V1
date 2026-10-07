@@ -30,7 +30,7 @@ import tempfile
 import time
 import webbrowser
 
-REPO_RAW = "https://raw.githubusercontent.com/Sheesh0327/PisoPhone-Kiosk-Launcher-V1"
+SITE_HOST = "pisophone.pages.dev"   # the website (Cloudflare Pages): the installer and the setup file come from there
 DEFAULT_BRANCH = "main"
 FACTORY_IP = "192.168.1.1"      # OpenWrt's address after a factory reset
 TARGET_IP = "10.0.0.1"          # where the PisoPhone setup puts it
@@ -216,10 +216,19 @@ def probe_router(ssh, host):
     raise SetupError(f"could not log in to {host}: {r.stderr.strip() or 'ssh failed'}")
 
 
+def site_url(branch):
+    """The website of a branch: main's is the production site, any other branch has its preview site (Cloudflare's branch
+    alias, as in setup/install.sh: lowercase, other characters become '-', 28 at most)."""
+    if branch == "main":
+        return f"https://{SITE_HOST}"
+    alias = re.sub(r"[^a-z0-9]", "-", branch.lower())[:28].strip("-")
+    return f"https://{alias}.{SITE_HOST}"
+
+
 def installer_command(branch, *args):
     """The remote command: download the one-line installer of this branch and run it. Downloaded to a file first, so a
     failed download is reported (a pipe into sh would run nothing and report success)."""
-    url = f"{REPO_RAW}/{branch}/setup/install.sh"
+    url = f"{site_url(branch)}/install.sh"
     run = " ".join(shlex.quote(a) for a in ("--branch", branch, "--yes", *args))
     return (f"rm -f /tmp/piso-install.sh; if ! wget -q -T 60 -O /tmp/piso-install.sh {shlex.quote(url)}; then "
             f"echo 'ERROR: the router could not download the installer. Is the modem plugged into its WAN port, with internet?'; "

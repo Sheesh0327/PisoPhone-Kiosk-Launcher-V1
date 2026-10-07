@@ -30,12 +30,14 @@ def script(name, body):
     os.chmod(f"{bindir}/{name}", 0o755)
 
 
-# wget -q -T 60 -O <file> <url>: copies <site>/<path after the fake repo address>, logging every request
+# wget -q -T 60 -O <file> <url>: the website of a branch (https://fake.test/... main, https://<branch>.fake.test/... others)
+# served from <site>/<branch>/, logging every request
 script("wget", f"""out=""; while [ $# -gt 1 ]; do [ "$1" = -O ] && out="$2"; shift; done; url="$1"
 echo "$url" >> {tmp}/wget.log
-p="${{url#http://fake/repo/}}"
-[ -f "{site}/$p" ] || exit 8
-cat "{site}/$p" > "$out"
+u="${{url#*://}}"; host="${{u%%/*}}"; p="${{u#*/}}"
+case "$host" in fake.test) b=main ;; *.fake.test) b="${{host%.fake.test}}" ;; *) exit 8 ;; esac
+[ -f "{site}/$b/$p" ] || exit 8
+cat "{site}/$b/$p" > "$out"
 """)
 script("uci", f"""echo "$*" >> {tmp}/uci.log
 [ "$1" = -q ] && shift
@@ -67,7 +69,7 @@ def run(*args, lan="10.0.0.1", wan="192.168.1.50", answer="y", stdin_script=None
         if os.path.exists(f"{tmp}/{f}"):
             os.remove(f"{tmp}/{f}")
     open(f"{tmp}/tty", "w").write(answer + "\n")
-    env = dict(os.environ, PATH=f"{bindir}:" + os.environ["PATH"], PISO_REPO_RAW="http://fake/repo", PISO_INSTALL_DIR=home,
+    env = dict(os.environ, PATH=f"{bindir}:" + os.environ["PATH"], PISO_SITE_HOST="fake.test", PISO_INSTALL_DIR=home,
                PISO_TTY=f"{tmp}/tty", PISO_TEST_NONROOT="1", PISO_NETWORK_INIT=f"{bindir}/netinit", FAKE_LAN=lan, FAKE_WAN=wan)
     # as on the router: the installer arrives on sh's standard input
     body = stdin_script if stdin_script is not None else open(INSTALL).read()
@@ -89,14 +91,14 @@ r = run()
 check(r.returncode == 0 and "SETUP-RAN args=[] answer=[y]" in r.stdout, "it downloads the setup and runs it, answers from the terminal: " + r.stdout + r.stderr)
 check(f"cwd={home}" in r.stdout and os.access(f"{home}/piso-setup.sh", os.X_OK) and open(f"{home}/piso-setup.sh").read() == FAKE_SETUP,
       "the setup file is saved in /root, executable, byte for byte")
-check("http://fake/repo/main/setup/piso-setup.sh" in log("wget.log") and "piso-setup.sh.sha256" in log("wget.log"), "from the main branch, with its checksum")
+check("https://fake.test/setup/piso-setup.sh" in log("wget.log") and "piso-setup.sh.sha256" in log("wget.log"), "from the main branch, with its checksum")
 check("release 1.2.3" in r.stdout, "it says which release it saved")
 check(not [f for f in os.listdir(home) if f.startswith(".piso-setup.download")], "no partial download is left behind")
 r = run("update")
 check("SETUP-RAN args=[update] " in r.stdout, "'sh -s update' runs the setup's update")
 publish("beta", FAKE_SETUP.replace("1.2.3", "1.3.0").encode())
 r = run("--", "--branch", "beta")
-check("http://fake/repo/beta/setup/piso-setup.sh" in log("wget.log") and "release 1.3.0" in r.stdout and "SETUP-RAN args=[]" in r.stdout, "--branch beta fetches beta's setup")
+check("https://beta.fake.test/setup/piso-setup.sh" in log("wget.log") and "release 1.3.0" in r.stdout and "SETUP-RAN args=[]" in r.stdout, "--branch beta fetches beta's setup")
 r = run("--", "--branch", "beta;reboot")
 check(r.returncode != 0 and "not a branch name" in r.stdout and log("wget.log") == "", "a branch name with odd characters is refused")
 
@@ -147,7 +149,7 @@ check("SETUP-RAN" not in r.stdout, "--yes: the setup itself waits for the login 
 r = run("--", "--yes", answer="this must not be read")
 check(r.returncode == 0 and "SETUP-RAN args=[--yes] answer=[]" in r.stdout, "--yes: the setup runs with --yes and no terminal: " + r.stdout)
 r = run("--", "--branch", "beta", "--yes", "update", lan="192.168.1.1")
-check("SETUP-RAN args=[--yes update]" in r.stdout and "set network.lan.ipaddr" not in log("uci.log") and "/beta/setup/" in log("wget.log"),
+check("SETUP-RAN args=[--yes update]" in r.stdout and "set network.lan.ipaddr" not in log("uci.log") and "https://beta.fake.test/setup/" in log("wget.log"),
       "--branch beta --yes update: beta's file, updated unattended, not moved: " + r.stdout)
 
 # ---- the real setup file passes the installer's checks; a cut-off installer runs nothing -----------------------------------------

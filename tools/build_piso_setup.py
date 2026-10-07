@@ -4,7 +4,7 @@ router needs as a payload: text files after a '#@@FILE <destination> <mode>' lin
 base64) after a '#@@B64 <destination> <mode> <sha256>' line. Run it after changing any embedded file:
     python3 tools/build_piso_setup.py            writes setup/piso-setup.sh
     python3 tools/build_piso_setup.py --check    fails if the committed file is out of date (CI)
-The portal program is built by CI (.github/workflows/rust-router-probe.yml) and committed to tools/pisoportal/bin; CI
+The portal program is built by CI (the router-program job in .circleci/main.yml) and committed to tools/pisoportal/bin; CI
 rebuilds this file right after, so the two always match. It also writes the file's sha256 and the website's copy of the
 one-line installer (setup/install.sh) and of setup/pisophone_setup.py."""
 import base64, hashlib, os, re, sys
@@ -46,6 +46,9 @@ def outputs(text):
     return {
         "setup/piso-setup.sh": text,
         "setup/piso-setup.sh.sha256": hashlib.sha256(text.encode()).hexdigest() + "  piso-setup.sh\n",
+        # the router downloads the setup file from the website (the repository is private): the installer's site_for()
+        "website/setup/piso-setup.sh": text,
+        "website/setup/piso-setup.sh.sha256": hashlib.sha256(text.encode()).hexdigest() + "  piso-setup.sh\n",
         "website/install.sh": open(os.path.join(ROOT, "setup/install.sh")).read(),
         "website/pisophone_setup.py": open(os.path.join(ROOT, "setup/pisophone_setup.py")).read(),
     }
@@ -57,10 +60,11 @@ if __name__ == "__main__":
         stale = [p for p, t in files.items() if not os.path.exists(os.path.join(ROOT, p)) or open(os.path.join(ROOT, p)).read() != t]
         if stale:
             sys.exit(", ".join(stale) + " out of date: run python3 tools/build_piso_setup.py")
-        print("setup/piso-setup.sh (with its sha256), website/install.sh and website/pisophone_setup.py are up to date")
+        print("setup/piso-setup.sh (with its sha256) and the website's copies (website/setup/, install.sh, pisophone_setup.py) are up to date")
     else:
         for p, t in files.items():
             target = os.path.join(ROOT, p)
+            os.makedirs(os.path.dirname(target), exist_ok=True)
             open(target, "w").write(t)
             if p.endswith((".sh", ".py")):
                 os.chmod(target, 0o755)

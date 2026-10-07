@@ -19,31 +19,33 @@ The full checklist and issue log are in `docs/REAL_WORLD_TESTING.md`.
 Keys are not needed for this test (see `docs/KEYS.md`); boxes then still accept the old license keys and OTA is off, so flash by USB.
 
 ## CI
-`quality.yml` runs on pushes to `main` and `beta` and on pull requests into `main`, and only for the parts a change touches (a "What changed" job decides; a newer push cancels the unfinished run; downloads are cached): ktlint, clang-format, firmware host tests, a real PlatformIO build of all four firmware
-environments (the platform is pinned in `esp32_firmware/envs/*.ini`), security-rule and vendored-file checks, the provisioning
-website (its helpers, its stylesheet and the page itself in a browser under the site's Content-Security-Policy), and the
-router portal and setup tests (rustfmt, clippy, unit, end-to-end and browser tests, shellcheck). `firmware-images.yml` builds the coin box
-firmware for the web flasher (`website/flash/`, one checked image per chip). `router-program.yml` builds
-the router program for `mipsel_24kc` and regenerates `setup/piso-setup.sh` on `beta`. `build-apk.yml` runs the Android unit
-tests, builds and signs the release APK and publishes it to the branch's channel (`main` = production, other branches =
-`-dev`). Dependabot opens update PRs (majors and Kotlin-toolchain minors are ignored on purpose).
+CI runs on CircleCI; [`docs/CI.md`](CI.md) has how it is put together and the one-time setup. Each push runs only the parts it
+touches: ktlint, clang-format, firmware host tests, a real PlatformIO build of all four firmware environments (the platform is
+pinned in `esp32_firmware/envs/*.ini`), security-rule and vendored-file checks, the provisioning website (its helpers, its
+stylesheet and the page itself in a browser under the site's Content-Security-Policy), and the router portal and setup tests
+(rustfmt, clippy, unit, end-to-end and browser tests, shellcheck). It also builds and commits: the coin box firmware for the web
+flasher (`website/flash/`, one checked image per chip), the router program for `mipsel_24kc` with `setup/piso-setup.sh` rebuilt
+around it (on `beta`), and the signed release APK for the branch's channel (`main` = production, other branches = `-dev`).
+Dependabot opens update PRs (majors and Kotlin-toolchain minors are ignored on purpose).
 
-Repository secrets for the APK build: `KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD` (the build stops
-if one is missing, because an APK signed with another key cannot update installed phones), and optionally `RELEASES_TOKEN`.
+CircleCI project environment variables for the APK build: `KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD` (the
+build stops if one is missing, because an APK signed with another key cannot update installed phones), optionally
+`RELEASES_TOKEN`; and `GITHUB_PUSH_TOKEN`, which lets CI commit its builds back.
 
 ## Where APKs and firmware are published
 The repository is private, so phones cannot download from its GitHub Releases. APKs go to a separate **public** releases
-repository (default `Sheesh0327/PisoPhone-Releases`, override with the variable `RELEASES_REPO`):
+repository (default `Sheesh0327/PisoPhone-Releases`, override with the CircleCI environment variable `RELEASES_REPO`):
 1. Create that public repository (with a README) and a fine-grained token limited to it, permission *Contents: read and write*.
-   Save it here as the secret `RELEASES_TOKEN`.
-2. Each build creates a release there (`app-stable-<run>` for `main`, `app-dev-<run>` pre-releases otherwise; the newest 20 dev
+   Save it in CircleCI as the environment variable `RELEASES_TOKEN`.
+2. Each build creates a release there (`app-stable-<versionCode>` for `main`, `app-dev-<versionCode>` pre-releases otherwise; the newest 20 dev
    builds are kept) and writes `website/update/app.json` with the APK's `url`, `sha256` and `size`. Phones refuse an APK
    whose checksum, package name or signing certificate do not match.
 3. Without `RELEASES_TOKEN` the APK is committed to `website/update` instead (with a warning). Once every phone runs a build
-   that understands `url`, set the variable `KEEP_PAGES_APK` to `false` to stop committing APKs.
+   that understands `url`, set the CircleCI environment variable `KEEP_PAGES_APK` to `false` to stop committing APKs.
 4. Optional, owner-run: once APKs are out of git, `git filter-repo --invert-paths --path-glob '*.apk'` (on a fresh mirror clone,
    then force-push every branch) shrinks the repository. It rewrites history; everyone re-clones.
 
-`versionCode` is the workflow run number (always increasing across branches); `versionName` is `1.0.<run>` (+`-dev`).
+`versionCode` is 400 + the CircleCI pipeline number (always increasing across branches, and above the last GitHub Actions
+build, 336); `versionName` is `1.0.<versionCode>` (+`-dev`).
 Firmware images stay on the website (`website/update/firmware-<chip>.bin` + signed manifest): the box's update page downloads
 them in the browser, which cannot fetch GitHub release files cross-origin.

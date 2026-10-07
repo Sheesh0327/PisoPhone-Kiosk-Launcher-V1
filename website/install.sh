@@ -13,7 +13,9 @@
 # again at 10.0.0.1), and runs the setup. No file copying, no line-ending fixes, no chmod.
 # Everything is inside main(), called on the last line: a download cut short runs nothing.
 
-REPO_RAW="${PISO_REPO_RAW:-https://raw.githubusercontent.com/Sheesh0327/PisoPhone-Kiosk-Launcher-V1}"
+# The setup file comes from the PisoPhone website (Cloudflare Pages, built from this repository, which is private):
+# main's from the production site, any other branch's from that branch's preview site (beta: beta.pisophone.pages.dev).
+SITE_HOST="${PISO_SITE_HOST:-pisophone.pages.dev}"
 DIR="${PISO_INSTALL_DIR:-/root}"
 TTY="${PISO_TTY:-/dev/tty}"
 LAN_TARGET=10.0.0.1
@@ -40,6 +42,13 @@ ask() {  # ask <question>: true for y/Y (read from the terminal: this script its
 	read -r _a < "$TTY" || return 1
 	case "$_a" in y | Y | yes | YES) return 0 ;; esac
 	return 1
+}
+
+# site_for <branch>: the website of a branch (Cloudflare's branch alias: lowercase, other characters become '-', 28 at most)
+site_for() {
+	if [ "$1" = main ]; then echo "https://$SITE_HOST"; return 0; fi
+	_alias=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | cut -c1-28 | sed 's/^-*//; s/-*$//')
+	echo "https://$_alias.$SITE_HOST"
 }
 
 lan_ip() { uci -q get network.lan.ipaddr 2> /dev/null | head -n 1 | cut -d/ -f1; }
@@ -91,7 +100,7 @@ main() {
 	[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || fail "run this as root on the router (ssh root@<router address>)"
 	command -v uci > /dev/null 2>&1 || fail "this is not an OpenWrt router (no uci command)"
 
-	base="$REPO_RAW/$branch/setup"
+	base="$(site_for "$branch")/setup"
 	tmp="$DIR/.piso-setup.download.$$"
 	trap 'rm -f "$tmp" "$tmp.sha256"' EXIT
 	say "Downloading the PisoPhone setup ($branch)..."

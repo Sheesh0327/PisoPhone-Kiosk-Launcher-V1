@@ -7,8 +7,9 @@ sell Wi-Fi time through an OpenWrt/openNDS router. Three parts plus a router add
 |---|---|
 | `app/` | Android kiosk launcher (Kotlin, Compose, Room): locks the phone, counts paid time, talks to the box. |
 | `esp32_firmware/` | Coin-box firmware (Arduino/PlatformIO, ESP32-C3 and ESP32): coin pulses, durable payment queue, admin dashboard, signed OTA. |
-| `website/` | Installer/provisioning page (WebUSB ADB) and the update feed (`website/update`). |
+| `website/` | The PisoPhone website: the coin box flasher (`flash.html`), the phone setup page (QR code, or USB as the fallback), the router installer and the update feeds (`website/update`). |
 | `router/` + `tools/pisoportal/` | Router add-on: `pisoportal` (resident Rust program: coin page over WebSocket, openNDS FAS), Telegram monitor; installed by `setup/piso-setup.sh`. |
+| `setup/` | Setting up a site: `pisophone_setup.py` (run on a computer) and the router setup it drives. |
 | `protocol/`, `scripts/` | Shared test vectors; owner tools (keys, licenses, firmware signing, checks). |
 
 ```
@@ -16,6 +17,17 @@ coins -> ESP32 box <-- Wi-Fi (signed + encrypted) --> phone kiosk app
               |                                           |
         admin dashboard                       locks/unlocks the phone
 ```
+
+## Setting up a site
+Everything starts from one program on a computer, `setup/pisophone_setup.py` (also at https://pisophone.pages.dev/pisophone_setup.py):
+1. **Coin box**: flash the ESP32 from Chrome or Edge at https://pisophone.pages.dev/flash.html (USB cable, no tools to install).
+2. **Router**: run `python3 pisophone_setup.py` with the computer on a LAN port of the factory-reset OpenWrt router. It asks for
+   the Wi-Fi name, site name and passwords, then sets up the router and pairs the coin box by itself, and saves the passwords
+   and a printable setup sheet.
+3. **Phones**: on the coin box's page (`http://10.0.0.10`), *Install & Provision* shows a QR code; a factory-reset phone scans it
+   on its welcome screen (tap 6 times) and sets itself up as a kiosk.
+
+The full guide, with the checks and what to do when something fails: [`setup/README.md`](setup/README.md).
 
 ## How it stays safe
 Each box has its own secret (provisioned to its phones, wrapped in the Android Keystore). Payments are kept in a flash queue on the
@@ -37,19 +49,20 @@ pio run -e esp32-c3-dev -t upload
 (cd tools/pisoportal && cargo test && python3 tests/test_flow.py)
 python3 router/tests/test_setup.py
 ```
-CI (`.github/workflows/`) runs all of this on every push; style is ktlint (Kotlin) and clang-format (`esp32_firmware/.clang-format`).
+CI (CircleCI, `.circleci/`, see [`docs/CI.md`](docs/CI.md)) runs all of this on every push, only for the parts it touches; style is ktlint (Kotlin) and clang-format (`esp32_firmware/.clang-format`).
 
 ## Documentation
 | Doc | For |
 |---|---|
 | [`docs/DEPLOY.md`](docs/DEPLOY.md) | First run, CI, where APKs and firmware are published |
+| [`docs/CI.md`](docs/CI.md) | CircleCI: how the CI is put together, and its one-time setup |
 | [`docs/RELEASE.md`](docs/RELEASE.md) | Release checklist: the owner-only steps before a build goes to shops |
 | [`docs/REAL_WORLD_TESTING.md`](docs/REAL_WORLD_TESTING.md) | Hardware test checklist and issue log |
 | [`docs/KEYS.md`](docs/KEYS.md) | Owner key, licenses, signed firmware, per-box secrets and migration |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | How a coin becomes time; who talks to whom; where code lives |
 | [`docs/PROVISIONING_SOLD_UNIT.md`](docs/PROVISIONING_SOLD_UNIT.md) | Secure boot and flash encryption for boxes you sell |
 | [`docs/api/`](docs/api) | Router gateway API and super-admin credential format |
-| [`setup/README.md`](setup/README.md) | Router setup: one file (`piso-setup.sh`) from a factory-reset router; `piso-setup update` afterwards |
+| [`setup/README.md`](setup/README.md) | Setting up a site from the ground up: coin box, router (`pisophone_setup.py`), phones; day-to-day commands |
 
 ## Branches
 | Branch | Contains | Purpose |

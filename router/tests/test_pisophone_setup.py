@@ -85,7 +85,9 @@ check(down is False, "gives up after the wait")
 
 # ---- the remote commands --------------------------------------------------------------------------------------------------
 cmd = ps.setup_command("beta")
-check("raw.githubusercontent.com/Sheesh0327/PisoPhone-Kiosk-Launcher-V1/beta/setup/install.sh" in cmd and "--yes" in cmd, "the branch's installer, --yes")
+check("https://beta.pisophone.pages.dev/install.sh" in cmd and "--yes" in cmd, "the branch's installer, from its website, --yes")
+check(ps.site_url("main") == "https://pisophone.pages.dev" and ps.site_url("Feature/New_UI") == "https://feature-new-ui.pisophone.pages.dev",
+      "the website of a branch (Cloudflare's branch alias)")
 check("IFS= read -r ROOT_PASSWORD" in cmd and "export ROOT_PASSWORD" in cmd, "the answers are read from the input")
 check("'x'\"'\"';reboot;'\"'\"''" in ps.installer_command("x';reboot;'"), "installer arguments are quoted")
 bb = shutil.which("busybox")
@@ -107,9 +109,10 @@ def script(name, body):
 # wget -q -T 60 -O <file> <url>: the repository's raw files, from <site>/<branch>/...
 script("wget", f"""out=""; while [ $# -gt 1 ]; do [ "$1" = -O ] && out="$2"; shift; done; url="$1"
 echo "$url" >> {tmp}/wget.log
-p="${{url#*/PisoPhone-Kiosk-Launcher-V1/}}"; p="${{p#http://fake/repo/}}"
-[ -f "{site}/$p" ] || exit 8
-cat "{site}/$p" > "$out"
+u="${{url#*://}}"; host="${{u%%/*}}"; p="${{u#*/}}"
+case "$host" in pisophone.pages.dev) b=main ;; *.pisophone.pages.dev) b="${{host%.pisophone.pages.dev}}" ;; *) exit 8 ;; esac
+[ -f "{site}/$b/$p" ] || exit 8
+cat "{site}/$b/$p" > "$out"
 """)
 script("uci", f"""echo "$*" >> {tmp}/uci.log
 [ "$1" = -q ] && shift
@@ -140,7 +143,7 @@ exit 0
 for branch in ("main", "beta"):
     d = f"{site}/{branch}/setup"
     os.makedirs(d)
-    shutil.copy(f"{ROOT}/setup/install.sh", d)
+    shutil.copy(f"{ROOT}/setup/install.sh", f"{site}/{branch}/install.sh")
     open(f"{d}/piso-setup.sh", "w").write(FAKE_SETUP)
     open(f"{d}/piso-setup.sh.sha256", "w").write(hashlib.sha256(FAKE_SETUP.encode()).hexdigest() + "  piso-setup.sh\n")
 
@@ -222,7 +225,7 @@ check("routerpass1" not in r.ssh and "kioskpass1" not in r.ssh and "boxadmin99" 
 check(r.input == "routerpass1\nkioskpass1\nboxadmin99\nTindahan WiFi\nAling Nena\n", "the answers went over the connection's input")
 check(r.ssh.count("root@192.168.1.1") == 2 and r.ssh.count("root@10.0.0.1") == 1, "probe and installer at 192.168.1.1, setup at 10.0.0.1: " + r.ssh)
 check("HostKeyAlias=pisophone-router" in r.ssh and "StrictHostKeyChecking=accept-new" in r.ssh, "one pinned host key for both addresses")
-check("/main/setup/install.sh" in r.wget and "/main/setup/piso-setup.sh" in r.wget, "main's installer and setup file")
+check("https://pisophone.pages.dev/install.sh" in r.wget and "https://pisophone.pages.dev/setup/piso-setup.sh" in r.wget, "main's installer and setup file")
 summary = [f for f in r.saved if f.startswith("pisophone-summary-")]
 sheet = [f for f in r.saved if f.startswith("pisophone-setup-sheet-")]
 check(len(summary) == 1 and "Router password: routerpass1" in open(f"{r.outdir}/{summary[0]}").read(), "the summary is saved: " + str(r.saved))
@@ -238,7 +241,7 @@ check(r.rc == 1 and r.ssh.count("root@") == 1 and r.uci == "", "cancelled at the
 
 # --branch beta, --yes, a router already at 10.0.0.1
 r = e2e(lan="10.0.0.1", yes=True, branch="beta", guest_ssid="Cafe", no_browser=True)
-check(r.rc == 0 and "/beta/setup/install.sh" in r.wget and "guest=[Cafe]" in r.out and "set network.lan.ipaddr" not in r.uci,
+check(r.rc == 0 and "https://beta.pisophone.pages.dev/install.sh" in r.wget and "guest=[Cafe]" in r.out and "set network.lan.ipaddr" not in r.uci,
       "--yes --branch beta on a router at 10.0.0.1: " + str(r.err) + r.out[-400:])
 check(r.ssh.count("root@10.0.0.1") == 2 and r.opened == [], "probe and setup only; --no-browser")
 
