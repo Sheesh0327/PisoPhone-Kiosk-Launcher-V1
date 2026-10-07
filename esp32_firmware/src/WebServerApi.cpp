@@ -143,12 +143,9 @@ void handleApiSlotPair() {
     }
 }
 
+// Unsigned like /identify, with the same rule: the caller's own address only, and a paired phone is never moved.
 void handleApiSlotPairRequest() {
-    String reqIp = webServer.hasArg("ip") ? webServer.arg("ip") : "";
-    reqIp.trim();
-    if (reqIp.length() == 0 || reqIp == "127.0.0.1" || reqIp == "0.0.0.0") {
-        reqIp = webServer.client().remoteIP().toString();
-    }
+    String reqIp = webServer.client().remoteIP().toString();
     String devId = webServer.hasArg("device_id") ? webServer.arg("device_id")
                                                  : (webServer.hasArg("id") ? webServer.arg("id") : "");
     devId.trim();
@@ -162,7 +159,11 @@ void handleApiSlotPairRequest() {
     if (devId.length() == 0 && reqIp.length() > 0 && reqIp != "127.0.0.1" && reqIp != "0.0.0.0") {
         devId = "DEV_" + reqIp;
     }
-    if (devId.length() > 0 || reqIp.length() > 0) {
+    bool pairedId = false;
+    for (int i = 0; i < maxLicensedSlots && devId.length() > 0; i++) {
+        if (licenseSlots[i].deviceId == devId) pairedId = true;
+    }
+    if (!pairedId && (devId.length() > 0 || reqIp.length() > 0)) {
         updateDynamicDeviceList(devId, reqIp);
         updateDeviceTelemetry(devId, reqIp, -1, 0, battery, charging, 0, true, devName);
     }
@@ -343,12 +344,11 @@ void handleApiStatus() {
     webServer.send(200, "application/json", json);
 }
 
+// Unsigned, so it may introduce a phone that is not paired yet, but it never moves a paired phone to another address (its
+// signed heartbeat keeps that current) and never speaks for an address other than the caller's: otherwise anyone on the
+// kiosk network could redirect a phone's coins and commands, and wear the flash with endless address changes.
 void handleIdentify() {
-    String reqIp = webServer.hasArg("ip") ? webServer.arg("ip") : "";
-    reqIp.trim();
-    if (reqIp.length() == 0 || reqIp == "127.0.0.1" || reqIp == "0.0.0.0") {
-        reqIp = webServer.client().remoteIP().toString();
-    }
+    String reqIp = webServer.client().remoteIP().toString();
     String devId = webServer.hasArg("device_id") ? webServer.arg("device_id")
                                                  : (webServer.hasArg("id") ? webServer.arg("id") : "");
     devId.trim();
@@ -360,7 +360,11 @@ void handleIdentify() {
     if (devId.length() == 0 && reqIp.length() > 0 && reqIp != "127.0.0.1" && reqIp != "0.0.0.0") {
         devId = "DEV_" + reqIp;
     }
-    if (reqIp.length() > 0 && reqIp != "127.0.0.1" && reqIp != "0.0.0.0") {
+    bool pairedId = false;
+    for (int i = 0; i < maxLicensedSlots && devId.length() > 0; i++) {
+        if (licenseSlots[i].deviceId == devId) pairedId = true;
+    }
+    if (!pairedId && reqIp.length() > 0 && reqIp != "127.0.0.1" && reqIp != "0.0.0.0") {
         updateDynamicDeviceList(devId, reqIp);
         updateDeviceTelemetry(devId, reqIp, -1, 0, -1, false, 0, isApp, devName);
     }

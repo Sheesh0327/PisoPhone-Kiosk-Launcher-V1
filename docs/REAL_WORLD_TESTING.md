@@ -1,5 +1,7 @@
 # Real-world testing checklist
 
+**Easier on a phone:** the same tests as a tickable page (Pass / Fail / Skip, a note on failures, a report to paste back): `python3 tools/checklist/build.py out.html`, then publish `out.html`. Re-run it after changing this file. This file stays the single list.
+
 Fill this in while testing on real hardware. It is the baseline of what works and what does not: tick what passes, write what
 fails in the **Issue log** at the bottom, then paste the log (plus the evidence listed there) to the developer so each issue
 becomes a fix. Commit this file after each session so progress is visible in git history.
@@ -29,8 +31,8 @@ Collect logs as you go: box serial output at 115200 baud (`pio device monitor`),
 
 ## 1. Box basics
 *B1–B3 are pass 1, the rest pass 2*
-- [ ] **B1** Box boots with the default password `Coinslot@Setup` (admin login and setup Wi-Fi); a coin request is refused (`SETUP_REQUIRED`) until the admin password is changed
-- [ ] **B2** Box opens its setup Wi-Fi when no Wi-Fi is saved; joins your Wi-Fi once configured
+- [ ] **B1** A fresh or factory-reset box boots with the default password `Coinslot@Setup` and the built-in Wi-Fi `PisoCoinBox` / `PisoCoinBox@Setup`; a coin request is refused (`SETUP_REQUIRED`) until the admin password is changed (the router setup changes it)
+- [ ] **B2** The box has no access-point mode: it joins the router's hidden `PisoCoinBox` network by itself, after the router setup it has its own random Wi-Fi password (`piso-setup status` checks it), and it answers at `10.0.0.10`
 - [ ] **B3** Dashboard opens; first-run checklist shows; it disappears when its items are done
 - [ ] **B4** Changing the admin password works; old password stops working
 - [ ] **B5** Five wrong admin passwords lock login for a minute
@@ -39,9 +41,9 @@ Collect logs as you go: box serial output at 115200 baud (`pio device monitor`),
 - [ ] **B8** Box runs 1 hour idle without rebooting (check serial for restart reasons)
 
 ## 2. Phone install and pairing
-*P1–P4 are pass 1, the rest pass 2*
+*P1–P4 are pass 1, the rest pass 2. Testing the beta branch: the box's Install & Provision link always opens the production site (main's APK). Copy the link and change only its host to beta.pisophone.pages.dev, keeping everything after it; check that beta.pisophone.pages.dev/update/app.json shows a -dev version first.*
 - [ ] **P1** Install the APK from the website; phone becomes the locked kiosk (device owner setup)
-- [ ] **P2** "Install & Provision" link gives the phone its box secret and an admin PIN
+- [ ] **P2** "Install & Provision" link gives the phone its box secret and an admin PIN; with the PisoKiosk password typed on the page, the phone joins PisoKiosk by itself (turn its Wi-Fi to another network and see it come back within about a minute)
 - [ ] **P3** Phone finds the box and shows it online; slot shows as paired in the dashboard
 - [ ] **P4** Reboot the phone: kiosk starts by itself, box still reachable, **no re-provisioning needed** (Keystore check)
 - [ ] **P5** Admin PIN works; five wrong PINs lock further tries
@@ -84,13 +86,13 @@ Collect logs as you go: box serial output at 115200 baud (`pio device monitor`),
 - [ ] **K4** A signed firmware update installs from the dashboard; an unsigned or older one is refused
 - [ ] **K5** Phone updates itself from a newer APK (checksum and signature verified)
 
-## 7. Router (OpenNDS), only after sections 1–4 pass
+## 7. Router (openNDS + pisoportal), only after sections 1–4 pass
 *pass 3*
-- [ ] **R1** Package installs (`opkg install`), service starts, `coinslot-listener.sh box` says the box answers
+- [ ] **R1** `piso-setup` (or `update`) finishes, `pisoportal` is running, `pisoportal box` says the box answers, `pisoportal selftest` prints all true
 - [ ] **R2** Wi-Fi customer sees the portal; Insert Coin starts a coin window; coins grant the right minutes (HyperSpeed and Endurance)
-- [ ] **R3** Layout A: change the box's IP; the listener finds it again within ~30 s (set `GW_BOX_MAC`)
+- [ ] **R3** One customer pays with 25 one-peso coins in a single window: all 25 are counted (the box keeps one record per window, not per coin)
 - [ ] **R4** Layout B: a guest-network device cannot ping the box or the phones; the portal still takes coins
-- [ ] **R5** Voucher code restores time on another device; pause/resume works for Endurance
+- [ ] **R5** From a phone on the customer Wi-Fi, `http://192.168.30.1` and `ssh root@192.168.30.1` are refused; from the kiosk LAN (10.0.0.1) both work
 
 ## 8. Soak (when everything above passes)
 *pass 3*
@@ -116,3 +118,22 @@ pushing closes its issue. Avoid `|` characters inside cells.
 | Date | Passed | Failed | Not tested | Open blockers | Verdict |
 |---|---|---|---|---|---|
 | | | | | | |
+
+## 9. Router setup and customer Wi-Fi (setup/README.md)
+*pass 1 unless noted*
+- [ ] **RS1** `piso-setup.sh` on a factory-reset router: it asks for the public Wi-Fi name, a site name and three passwords (Enter generates), shows the review screen, and ends with `SETUP COMPLETE` (all checks pass)
+- [ ] **RS2** The hidden `PisoKiosk` network appears in no Wi-Fi list; a provisioned phone joins it by itself and rejoins within about a minute when moved to another network
+- [ ] **RS3** `piso-setup test-coin` counts one inserted coin
+- [ ] **RS4** Customer phone: the page shows each coin at once with a countdown and **Done**; it is **not** online while coins are going in; after Done (or 15 s idle) it is online with the total time
+- [ ] **RS5** A second device is refused (Try again) while a window is open; a device that opens empty windows repeatedly is put in a short cooldown
+- [ ] **RS6** `piso-setup reconcile` says `RECONCILE OK`; editing a line of `/etc/coinslot.d/revenue.csv` makes it report a broken ledger
+- [ ] **RS7** Restart the router in the middle of a window (power cut after the first coin): after it is back, the coins are credited once (pass 2)
+- [ ] **RS8** `piso-setup telegram`: messages and `/status` work from your chat only; unplug the box for 5 minutes and an alert arrives (pass 2)
+- [ ] **RS9** `piso-setup lock-admin` from your computer: another device on PisoKiosk can no longer open the router's pages or SSH; `piso-setup unlock-admin` undoes it (pass 2)
+- [ ] **RS10** `piso-setup handout` writes `/root/piso-handout.html` with the right names and passwords
+- [ ] **RS11** `./piso-setup.sh update` (a new file) on a router set up with an earlier version: it ends with all checks passing and customers get the coin page (openNDS moved to the FAS portal on port 2080); paid sessions and the ledger are kept
+- [ ] **RS12** Collect the box's revenue (super admin): afterwards `piso-setup reconcile` prints a note that the box's count restarted and `RECONCILE OK`, and no REVENUE MISMATCH alert arrives in Telegram
+- [ ] **RS13** (needs your owner key in `tools/pisoportal/owner_key.b64`, then a router built from that) Publish a test release with `scripts/sign_router.py --rollout 100` (docs/RELEASE.md): on the router `piso-setup self-update check` names it, `piso-setup self-update` installs it, customers still get the coin page afterwards and a Telegram message says it is installed and running
+- [ ] **RS14** With one phone online as a customer, `piso-setup self-update auto` installs nothing and says it waits for a quiet moment; after the phone leaves, it installs
+- [ ] **RS15** Publish a release with `--rollout 0`: the router does not install it; `/update` in Telegram says it is rolling out in stages
+- [ ] **RS16** Hand-edit `website/update/router-setup.sh` after signing (one character) and publish it: the router refuses it, installs nothing and Telegram says REFUSED

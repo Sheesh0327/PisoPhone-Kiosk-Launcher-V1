@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>%NAME%</title>
+<style>
+:root{--bg:#0f1715;--card:#16221f;--line:#243630;--fg:#e8f0ec;--mut:#8aa59a;--h:#38ef7d;--e:#4cc9f0;--ok:#38ef7d;--bad:#ff4b4b}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--fg);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;justify-content:center}
+.w{width:100%;max-width:440px;padding:20px 16px 36px}
+h1{font-size:19px;margin:0 0 4px;text-align:center;color:var(--ok);text-transform:uppercase;letter-spacing:1px;text-shadow:0 0 10px #38ef7d66}
+.sub{color:var(--mut);text-align:center;margin:0 0 18px;font-size:14px}
+.plans{display:grid;gap:12px}
+.plan input{position:absolute;opacity:0}
+.card{display:block;background:var(--card);border:2px solid var(--line);border-radius:16px;padding:14px 16px;cursor:pointer}
+.plan input:checked+.card{border-color:var(--c)}
+.card b{color:var(--c);font-size:17px}
+.card small{display:block;color:var(--mut);font-size:13px;margin:2px 0 8px}
+.card div{display:flex;justify-content:space-between;padding:5px 0;border-top:1px solid var(--line);font-size:15px}
+.card div span:first-child{font-weight:600}
+.h{--c:var(--h)}.e{--c:var(--e)}
+.note{color:var(--mut);font-size:12.5px;text-align:center;margin:10px 4px 0}
+button{font:inherit}
+.coin{display:block;width:152px;height:152px;margin:22px auto 6px;border:0;border-radius:50%;font-weight:700;font-size:20px;line-height:1.2;color:#241700;cursor:pointer;background:radial-gradient(circle at 32% 28%,#ffe58a,#f5a300);box-shadow:0 8px 28px #f5a30055}
+.coin:active{transform:scale(.97)}
+.coin small{display:block;font-weight:500;font-size:12px}
+.btn{display:block;width:100%;padding:14px;margin:12px 0 0;border:0;border-radius:12px;font-weight:600;font-size:17px;color:#04140c;background:linear-gradient(135deg,#11998e,#38ef7d);cursor:pointer}
+.btn.alt{background:transparent;color:var(--fg);border:1px solid var(--line)}
+.big{font-size:34px;font-weight:700;text-align:center;margin:6px 0}
+.mut{color:var(--mut);text-align:center;font-size:14px}
+.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin:14px 0}
+.bar i{display:block;height:100%;background:var(--h)}
+.msg{background:var(--card);border-left:4px solid var(--bad);border-radius:8px;padding:12px 14px;margin:12px 0}
+.msg.ok{border-left-color:var(--ok)}
+a{color:var(--mut)}
+.v{display:none}
+</style>
+</head><body><div class="w">
+<h1>%NAME%</h1>
+<div id="v-conn" class="v"><p class="sub" id="conn">Connecting &middot; Kumokonekta</p></div>
+<div id="v-idle" class="v">
+<p class="sub" id="isub"></p>
+<div class="msg ok" id="ion"></div>
+<div class="plans">
+<label class="plan h"><input type="radio" name="p" value="hyper" checked><span class="card"><b>&#9889; HyperSpeed</b><small>Full speed, no limits &middot; Walang limit ang bilis</small>%TIERS_H%</span></label>
+<label class="plan e"><input type="radio" name="p" value="endurance"><span class="card"><b>&#9203; Endurance</b><small>Up to %E_DOWN% Mbps down / %E_UP% Mbps up &middot; Mas matagal</small>%TIERS_E%</span></label>
+</div>
+<div class="msg" id="ibusy"></div>
+<button class="coin" id="go" type="button">Insert Coin<small>Maglagay ng barya</small></button>
+<p class="note">Coins add up &middot; Nag-iipon ang oras. HyperSpeed may slow down after %FAIR_GB% GB (fair use).</p>
+</div>
+<div id="v-live" class="v">
+<p class="sub" id="lsub"></p>
+<div class="big" id="lpes"></div>
+<p class="mut" id="lmin"></p>
+<div id="lcd"><div class="bar"><i id="lbar" style="width:100%"></i></div><p class="mut" id="lleft"></p></div>
+<button class="btn" id="ldone" type="button" style="display:none">Done &middot; Connect me now &middot; Tapos na</button>
+<button class="btn alt" id="lcancel" type="button">Cancel &middot; Kanselahin</button>
+</div>
+<div id="v-final" class="v">
+<p class="sub">Thank you! &middot; Salamat!</p>
+<div class="big" id="fleft"></div>
+<p class="mut" id="fmin"></p>
+<div class="msg ok" id="fon"></div>
+<div class="msg" id="foff" style="display:none"><b>Payment received.</b> You are not online yet: switch Wi-Fi off and on, or open any page. Your time is saved. &middot; Naitala ang bayad mo; i-off at i-on ang Wi-Fi.</div>
+<a class="btn" id="fcont" style="text-decoration:none;text-align:center;display:none">Continue browsing</a>
+<button class="btn alt" id="fagain" type="button">Add more time &middot; Dagdagan</button>
+</div>
+<div id="v-msg" class="v">
+<div class="msg" id="mtext"></div>
+<div id="mbtns"></div>
+</div>
+<p class="note" id="foot"></p>
+</div>
+<script>
+(function(){
+var FIRST=%FIRST%;
+var A=window.AudioContext||window.webkitAudioContext,ctx=null,ws=null,tk=null,left=0,total=FIRST,cont="",plan="hyper",pes=0,fas=location.search.replace(/^.*[?&]fas=([^&]*).*$/,"$1");
+if(fas===location.search)fas="";
+function el(i){return document.getElementById(i)}
+function put(i,t){var e=el(i);if(e&&e.textContent!==t)e.textContent=t}
+function show(n){var l=document.getElementsByClassName("v"),i;for(i=0;i<l.length;i++)l[i].style.display=l[i].id==="v-"+n?"block":"none"}
+function pn(p){return p==="endurance"?"Endurance":"HyperSpeed"}
+function fmt(m){m=+m||0;if(m<60)return m+" min";var h=Math.floor(m/60),r=m%60;return h+(h>1?" hrs":" hr")+(r?" "+r+" min":"")}
+function fsec(s){return fmt(Math.ceil((+s||0)/60))}
+function say(t){try{if(window.speechSynthesis){speechSynthesis.cancel();var u=new SpeechSynthesisUtterance(t);u.lang="en-US";speechSynthesis.speak(u)}}catch(e){}}
+function tone(f,t,d){var o=ctx.createOscillator(),g=ctx.createGain();o.type="triangle";o.frequency.value=f;g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.35,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+d);o.connect(g);g.connect(ctx.destination);o.start(t);o.stop(t+d+.05)}
+function ding(n){try{if(!ctx||ctx.state!=="running")return;var t=ctx.currentTime,i;n=Math.min(n,4);for(i=0;i<n;i++){tone(988,t+i*.22,.12);tone(1319,t+i*.22+.1,.3)}}catch(e){}}
+function prime(){try{window.speechSynthesis&&speechSynthesis.speak(new SpeechSynthesisUtterance(""))}catch(x){}try{if(A){ctx=window.__ctx=window.__ctx||new A();ctx.resume()}}catch(x){}}
+function send(o){if(ws&&ws.readyState===1){ws.send(JSON.stringify(o));return true}return false}
+function bar(){put("lleft",left+"s left · the timer restarts with every coin");el("lbar").style.width=Math.max(0,Math.min(100,100*left/total))+"%"}
+function stopTick(){if(tk){clearInterval(tk);tk=null}}
+function msg(t,btns){put("mtext",t);var b=el("mbtns");b.innerHTML="";var i,x;for(i=0;i<(btns||[]).length;i++){x=document.createElement("button");x.type="button";x.className="btn"+(btns[i][2]?" alt":"");x.textContent=btns[i][0];x.onclick=btns[i][1];b.appendChild(x)}show("msg")}
+function again(){send({t:"hello",fas:fas,reset:true})}
+function startPlan(p,f){plan=p;send({t:"start",plan:p,forfeit:!!f})}
+var go=function(){var r=document.querySelector("input[name=p]:checked");var p=r?r.value:"hyper";show("live");put("lsub",pn(p)+" · Getting the coin slot ready · Sandali lang");put("lpes","");put("lmin","Please wait. Do not insert coins yet · huwag pa maglagay ng barya.");el("lcd").style.display="none";el("ldone").style.display="none";startPlan(p,false);(window.requestAnimationFrame||setTimeout)(function(){setTimeout(prime,0)})};
+el("go").onclick=go;
+el("ldone").onclick=function(){this.disabled=true;this.textContent="Closing · Sandali lang";send({t:"done"})};
+el("lcancel").onclick=function(){send({t:"done"})};
+el("fagain").onclick=function(){show("idle");again()};
+function view(j){
+var s=j.s;
+if(s!=="armed")stopTick();
+if(s==="idle"){
+ show("idle");el("ldone").disabled=false;el("ldone").textContent="Done · Connect me now · Tapos na";
+ var on=el("ion");if(j.left>0){on.style.display="block";on.textContent="✓ You are online · "+fsec(j.left)+" of "+pn(j.plan)+" left · Nakakonekta ka na. Add more time below."}else on.style.display="none";
+ put("isub",j.left>0?"Add time · Dagdagan ang oras":"Wi-Fi rates · Presyo ng Wi-Fi");
+ var b=el("ibusy");if(j.cooldown>0){b.style.display="block";b.textContent="Too many empty tries. Please wait about "+j.cooldown+" seconds · Maghintay muna."}else if(j.busy>0){b.style.display="block";b.textContent="Another customer is paying right now. Try again in a few seconds · Subukan ulit mamaya."}else b.style.display="none";
+ return}
+if(s==="starting"){show("live");put("lsub",pn(j.plan)+" · Getting the coin slot ready · Sandali lang");put("lpes","");put("lmin","Please wait. Do not insert coins yet · huwag pa maglagay ng barya.");el("lcd").style.display="none";el("ldone").style.display="none";return}
+if(s==="armed"){
+ show("live");el("lcd").style.display="block";put("lsub",pn(j.plan)+" · Insert coin(s) now · Maglagay ng barya");
+ put("lpes","₱"+j.pulses);put("lmin","= "+fmt(j.minutes)+" of Wi-Fi"+(j.pulses>0?" · add more coins, then tap Done":""));
+ if(j.pulses>pes){ding(j.pulses-pes);say(j.pulses+(j.pulses===1?" peso":" pesos"))}else if(!pes&&!j.pulses&&!tk)say("Insert coin now");
+ pes=j.pulses;left=j.remaining;total=j.total||FIRST;bar();
+ el("ldone").style.display=j.pulses>0?"block":"none";el("lcancel").style.display=j.pulses>0?"none":"block";
+ if(!tk)tk=setInterval(function(){if(left>0)left--;bar()},1000);return}
+if(s==="closing"){show("live");el("lcd").style.display="none";el("ldone").style.display="none";el("lcancel").style.display="none";put("lsub","Counting coins · Sandali lang");put("lpes","₱"+j.pulses);put("lmin","");return}
+if(s==="final"){
+ show("final");pes=0;put("fleft",fsec(j.left));put("fmin","of Wi-Fi time left · ₱"+j.pulses+" = "+fmt(j.minutes));
+ el("fon").style.display=j.online?"block":"none";el("fon").textContent="✓ You are online · Nakakonekta ka na. Enjoy browsing.";el("foff").style.display=j.online?"none":"block";
+ var c=el("fcont");if(cont){c.href=cont;c.style.display="block"}else c.style.display="none";
+ if(j.online){setTimeout(function(){say("You are online")},900)}
+ try{navigator.vibrate&&navigator.vibrate([100,60,100])}catch(e){}return}
+if(s==="empty"){msg("No coins detected · Walang nabayaran. You were not charged.",[["Try again · Subukan ulit",again]]);return}
+if(s==="busy"){msg("Another customer is paying right now. Try again in about "+j.retry+" seconds · Subukan ulit mamaya.",[["Try again · Subukan ulit",again]]);return}
+if(s==="cooldown"){msg("Too many empty tries. Please wait about "+j.retry+" seconds · Maghintay muna ng "+j.retry+" segundo.",[["Try again · Subukan ulit",again]]);return}
+if(s==="mismatch"){var o=pn(j.plan),sw=plan,n=pn(sw);msg("You still have "+fsec(j.left)+" of "+o+" time. Add more "+o+" time, or switch to "+n+": the time you have left is given up when you pay.",[["Add "+o+" time",function(){startPlan(j.plan,false)}],["Switch to "+n+" \u00b7 lose my time",function(){startPlan(sw,true)},1]]);return}
+msg("Coin payment is not available right now. Please try again or ask the attendant ("+(j.e||"error")+").",[["Try again · Subukan ulit",again]])}
+function connect(){
+ var p=location.protocol==="https:"?"wss://":"ws://";
+ try{ws=new WebSocket(p+location.host+"/ws")}catch(e){put("conn","This phone's browser cannot run the coin page.");show("conn");return}
+ ws.onopen=function(){send({t:"hello",fas:fas})};
+ ws.onmessage=function(m){var j;try{j=JSON.parse(m.data)}catch(e){return}if(j.t==="info"){cont=j.cont||"";return}if(j.t==="state")view(j)};
+ ws.onclose=function(){ws=null;stopTick();put("conn","Reconnecting · Kumokonekta ulit");if(!el("v-live").style.display||el("v-live").style.display==="none")show("conn");setTimeout(connect,1500)};
+ ws.onerror=function(){try{ws.close()}catch(e){}}}
+show("conn");connect();
+})();
+</script></body></html>

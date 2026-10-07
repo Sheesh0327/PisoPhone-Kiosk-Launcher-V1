@@ -96,11 +96,12 @@ static void acknowledgeSessionCoinTx(const String& txId) {
 }
 
 // Coin-slot calls from the phone carry ts + sig = HMAC(shared secret, "v1:<action>:<device>:<ts>[:<tx>]").
-// A present-but-wrong signature is always refused. While PISO_REQUIRE_SIGNED_COINSLOT is 0 (the
-// transition release) unsigned calls from older app builds are still served and counted in the
-// diagnostics; set it to 1 once every phone runs the signing app.
+// A present-but-wrong signature is always refused, and so is an unsigned call: every app build since 2026-10-02 signs
+// arm/unarm/ack/status, and an unsigned ack or unarm from anyone on the kiosk network could otherwise drop a phone's
+// queued coins or end its window. Only for a fleet that still runs older phones: build with
+// -DPISO_REQUIRE_SIGNED_COINSLOT=0 (unsigned calls are then served and counted in the diagnostics).
 #ifndef PISO_REQUIRE_SIGNED_COINSLOT
-#define PISO_REQUIRE_SIGNED_COINSLOT 0
+#define PISO_REQUIRE_SIGNED_COINSLOT 1
 #endif
 // True only for a request carrying a correct, fresh signature for this action, device and transaction.
 static bool coinslotSignatureValid(const char* action, const String& rawDevId, const String& txId) {

@@ -34,20 +34,22 @@ void handleHeartbeat() {
         deviceId = "DEV_" + reqIp;
     }
 
-    if (webServer.hasArg("ack_tx") && deviceId.length() > 0) {
-        String ackTx = webServer.arg("ack_tx");
-        ackTx.trim();
-        if (ackTx.length() > 0) {
-            acknowledgePhonePayment(deviceId, ackTx);
-        }
-    }
-
     bool isAuth = verifyTelemetryAuth(deviceId, tsStr, sig);
     int slotIdx = findSlotIndexForDevice(deviceId, reqIp);
 
     if (!isAuth && slotIdx >= 0) {
         webServer.send(403, "application/json", "{\"error\":\"AUTH_FAILED_OR_REPLAY\"}");
         return;
+    }
+
+    // An acknowledgement removes a paid coin from the retry queue for good: only on a signed heartbeat (it used to be
+    // honoured before any check, so anyone on the kiosk network could clear a phone's queued coins).
+    if (isAuth && webServer.hasArg("ack_tx") && deviceId.length() > 0) {
+        String ackTx = webServer.arg("ack_tx");
+        ackTx.trim();
+        if (ackTx.length() > 0) {
+            acknowledgePhonePayment(deviceId, ackTx);
+        }
     }
 
     bool isAppReq = (webServer.hasArg("app") && (webServer.arg("app") == "1" || webServer.arg("app") == "true")) ||

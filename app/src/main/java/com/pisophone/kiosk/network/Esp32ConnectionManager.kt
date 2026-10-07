@@ -227,6 +227,11 @@ class Esp32ConnectionManager(
                                 if (response.isSuccessful || code == 403 || code == 423) {
                                     consecutiveHeartbeatFailures = 0
                                     lastHeartbeatTime = System.currentTimeMillis()
+                                    if (code == 403) {
+                                        KioskStatusToast.show(context, "Box at $host does not accept this phone (HTTP 403): wrong box secret or not paired. Provision the phone again")
+                                    } else {
+                                        KioskStatusToast.show(context, "Box online at $host", 600_000L)
+                                    }
                                     if (body.isNotBlank()) {
                                         try {
                                             val json = JSONObject(body)
@@ -294,6 +299,10 @@ class Esp32ConnectionManager(
                                     }
                                 } else {
                                     Log.w(TAG, "[HEARTBEAT] Unsuccessful HTTP code: $code")
+                                    KioskStatusToast.show(
+                                        context,
+                                        "Box at $host answered HTTP $code" + if (code == 401 || code == 403) " (it does not accept this phone: wrong secret or not paired; provision it again)" else "",
+                                    )
                                     consecutiveHeartbeatFailures++
                                     checkOfflineThreshold(currentIp)
                                 }
@@ -317,6 +326,7 @@ class Esp32ConnectionManager(
         val offlineDuration = System.currentTimeMillis() - lastHeartbeatTime
         if (consecutiveHeartbeatFailures >= 2 || offlineDuration > 8000L) {
             delegate.onOnlineStatusChanged(false, null)
+            KioskStatusToast.show(context, "Box is offline: its heartbeat failed $consecutiveHeartbeatFailures times; searching again")
             // Immediately trigger discovery to locate ESP32 if assigned a new DHCP IP
             discoveryScanner.triggerDiscovery(currentIp)
             Log.w(TAG, "ESP32 heartbeat failed ($consecutiveHeartbeatFailures failures, ${offlineDuration}ms offline), clearing stale cached IP for fast rediscovery")

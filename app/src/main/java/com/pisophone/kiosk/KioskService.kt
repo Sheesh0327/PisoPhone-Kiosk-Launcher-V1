@@ -27,6 +27,7 @@ class KioskService : Service() {
     companion object {
         private const val TAG = "KioskService"
         private const val NOTIFICATION_ID = 1
+        private const val WIFI_CHECK_MS = 60_000L
         private const val CHANNEL_ID = "kiosk_channel"
 
         const val ACTION_ADMIN_BYPASS = "com.pisophone.kiosk.ADMIN_BYPASS"
@@ -48,6 +49,8 @@ class KioskService : Service() {
             slot: Int = -1,
             secret: String? = null,
             name: String? = null,
+            wifiSsid: String? = null,
+            wifiPassword: String? = null,
         ) {
             KioskSecurity.applyDirectProvisioning(
                 context = context,
@@ -55,7 +58,11 @@ class KioskService : Service() {
                 mac = mac,
                 slot = slot,
                 name = name,
+                wifiSsid = wifiSsid,
+                wifiPassword = wifiPassword,
             )
+            // (also without a password: the status line then says that no kiosk network is saved)
+            Thread { com.pisophone.kiosk.network.KioskWifi.joinAndReport(context) }.start()
             KioskActivationManager.setPairingCompleted(context, true)
             val cleanMac = KioskSecurity.formatMacAddress(mac)
             activeInstance?.let { service ->
@@ -157,6 +164,22 @@ class KioskService : Service() {
         val eng = KioskEngine(this, stateManager)
         engine = eng
         eng.start()
+        startWifiKeeper()
+    }
+
+    // A phone that is not on the kiosk Wi-Fi cannot find its box (and so cannot pair or get its admin PIN): join it
+    // again whenever it is not on it.
+    private val wifiHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val wifiKeeper = object : Runnable {
+        override fun run() {
+            Thread { com.pisophone.kiosk.network.KioskWifi.joinAndReport(applicationContext) }.start()
+            wifiHandler.postDelayed(this, WIFI_CHECK_MS)
+        }
+    }
+
+    private fun startWifiKeeper() {
+        wifiHandler.removeCallbacks(wifiKeeper)
+        wifiHandler.post(wifiKeeper)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -276,6 +299,7 @@ class KioskService : Service() {
         super.onDestroy()
         isServiceRunning = false
         activeInstance = null
+        wifiHandler.removeCallbacks(wifiKeeper)
         engine?.stop()
         engine = null
         releaseLocks()

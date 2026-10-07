@@ -20,7 +20,7 @@ interface Esp32DiscoveryDelegate {
 
 /**
  * Industry-standard IoT Discovery Service for the ESP32 Master box:
- * 1. Fast Path: Direct probe of configured IP & canonical mDNS ("kioskmanager.local") via HTTP /identify.
+ * 1. Fast Path: Direct probe of the box's fixed address (<network>.10) & canonical mDNS ("kioskmanager.local") via HTTP /identify.
  * 2. Dynamic Discovery: Standard UDP broadcast probe & beacon on port 8888.
  * 3. Security (RULE 6): Uniform MAC address validation from discovered JSON payload.
  */
@@ -61,19 +61,34 @@ class Esp32DiscoveryScanner(
         }
     }
 
+    private fun say(message: String, repeatAfterMs: Long = 60_000L) = KioskStatusToast.show(context, message, repeatAfterMs)
+
     fun triggerDiscovery(localIp: String) {
         synchronized(lock) {
-            if (isStopped) return
+            if (isStopped) {
+                say("Scan: cannot start (the connection manager is stopped)")
+                return
+            }
             startUdpListenerLocked()
             if (discoveryJob?.isActive == true) {
                 return
             }
+            val phoneIp = if (localIp.isNotBlank()) localIp else getLocalIpAddress()
+            if (phoneIp.isBlank()) {
+                say("Scan: the phone has no Wi-Fi address yet, so it can only listen for the box's broadcast")
+            } else {
+                say("Scan: started. Looking for the box at ${fastPathTargets(phoneIp).first()} and listening for its broadcast (phone: $phoneIp)", 30_000L)
+            }
             discoveryJob = scope.launch(Dispatchers.IO) {
                 try {
+                    var rounds = 0
                     while (!isAlreadyBound() && isActive) {
                         sendUdpDiscoveryBroadcast(localIp)
                         probeFastPathTargets(localIp)
                         delay(2000)
+                        if (++rounds >= 5 && !isAlreadyBound()) {
+                            say("Scan: the box has not answered after ${rounds * 2} seconds (is the phone on the kiosk Wi-Fi and the box powered?)")
+                        }
                     }
                 } finally {
                     synchronized(lock) {
@@ -137,6 +152,7 @@ class Esp32DiscoveryScanner(
 
                             if (validateEsp32Response(deviceMac, targetIp, sig, message)) {
                                 Log.i(TAG, "[+] Discovered verified ESP32 Master via UDP at $targetIp (MAC=$deviceMac)")
+                                say("Scan: box found at $targetIp (its broadcast)", 120_000L)
                                 delegate.onEsp32Discovered(targetIp, message)
                             }
                         }
@@ -232,9 +248,11 @@ class Esp32DiscoveryScanner(
                 if (resp.isSuccessful) {
                     val rawBody = resp.body?.string() ?: ""
                     if (isEsp32MacMatching(rawBody)) {
+                        say("Scan: box found at $host", 120_000L)
                         delegate.onEsp32Discovered(host, rawBody)
                         return true
                     }
+                    say("Scan: something answered at $host but it is not this phone's box (MAC differs from the paired one)")
                 }
             }
         } catch (_: Exception) {}
@@ -242,17 +260,23 @@ class Esp32DiscoveryScanner(
         return false
     }
 
-    fun probeFastPathTargets(localIp: String) {
+    /**
+     * Where the box can be asked directly. The router setup gives the coin box the fixed address <network>.10 on the kiosk
+     * network (docs: setup/README.md), so that is tried first; "kioskmanager.local" (mDNS) is the fallback. (The box has no
+     * Wi-Fi network of its own any more, so the old 192.168.4.1 is gone, and the network's .1 is the router, not the box.)
+     */
+    fun fastPathTargets(localIp: String): List<String> {
         val targets = mutableListOf<String>()
-        val activeIp = if (localIp.isNotBlank()) localIp else getLocalIpAddress()
-        if (activeIp.isNotBlank() && activeIp.contains(".")) {
-            val gateway = activeIp.substringBeforeLast(".") + ".1"
-            targets.add(gateway)
+        if (localIp.isNotBlank() && localIp.contains(".")) {
+            targets.add(localIp.substringBeforeLast(".") + ".10")
         }
-        if (!targets.contains("192.168.4.1")) targets.add("192.168.4.1")
-        if (!targets.contains("kioskmanager.local")) targets.add("kioskmanager.local")
+        targets.add("kioskmanager.local")
+        return targets
+    }
 
-        for (target in targets) {
+    fun probeFastPathTargets(localIp: String) {
+        val activeIp = if (localIp.isNotBlank()) localIp else getLocalIpAddress()
+        for (target in fastPathTargets(activeIp)) {
             if (isAlreadyBound()) break
             if (probeEsp32Connection(target)) {
                 Log.d(TAG, "Direct HTTP discovery succeeded for target: $target")

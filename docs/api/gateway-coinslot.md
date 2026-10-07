@@ -20,17 +20,33 @@ valid for one request and 30 seconds. Sign each request:
 
 | call | purpose | extra params | answer |
 |---|---|---|---|
-| `POST /api/gateway/arm` | reserve the slot and power the coin acceptor | `duration` seconds (5-120, default 60) | status object |
+| `POST /api/gateway/arm` | reserve the slot and power the coin acceptor | `duration` seconds (5-120, default 60); optional `wid` + `evport` (coin events, below) | status object |
 | `GET /api/gateway/status` | state and coins received so far | | status object |
 | `POST /api/gateway/release` | stop accepting (in-flight coins are still counted) | | status object |
 | `POST /api/gateway/ack` | the coins were used; remove them from the box | | `{"acknowledged_pulses": n}` |
 
-Status object: `{"success":true,"session":"..","state":"armed|draining|idle","armed_remaining":s,"pulses":n,"minutes_per_coin":m,"ready_in_ms":ms,"slot_free":true|false}`. `ready_in_ms` is how long the coin acceptor is still settling after it was powered on: the box ignores coin pulses until it reaches 0 (a power-on surge can produce a stray pulse), so a gateway must not invite the customer to insert coins before then. The phone arm answer carries the same value as `settle_ms`. `slot_free` is true when nobody holds the coin slot, so a gateway can tell a waiting customer the moment it is available.
+Status object: `{"success":true,"session":"..","state":"armed|draining|idle","armed_remaining":s,"pulses":n,"minutes_per_coin":m,"ready_in_ms":ms,"slot_free":true|false,"lifetime_pulses":n}`. `lifetime_pulses` is the box's own total of coins counted since its last factory reset (phone and gateway coins alike); the router compares it with its revenue ledger (`coinslot-listener.sh reconcile`). `ready_in_ms` is how long the coin acceptor is still settling after it was powered on: the box ignores coin pulses until it reaches 0 (a power-on surge can produce a stray pulse), so a gateway must not invite the customer to insert coins before then. The phone arm answer carries the same value as `settle_ms`. `slot_free` is true when nobody holds the coin slot, so a gateway can tell a waiting customer the moment it is available.
 `pulses` is the coins received for that session and not yet acknowledged (1 pulse = 1 coin); multiply by
 `minutes_per_coin` for time.
 
 Errors: `403 AUTH_FAILED` (bad signature, used or expired nonce), `409 SLOT_BUSY` (a phone, controller or
-another gateway session holds the slot), `503 STORAGE_UNAVAILABLE`, `503 GATEWAY_DISABLED`, `400 INVALID_SESSION`.
+another gateway session holds the slot), `503 STORAGE_UNAVAILABLE`, `503 GATEWAY_DISABLED`, `400 INVALID_SESSION`,
+`400 INVALID_EVENT_TARGET` (`wid`/`evport` given but not both valid; nothing was armed), `503 ACK_INCOMPLETE` (some
+coins could not be removed from flash: retry the ack; until it succeeds those coins are still counted for the session).
+
+## Coin events (firmware 3.2.0 and later)
+So the router does not have to poll, the box can push every change of a window. Add `wid=<window id, lower-case hex,
+up to 40>` and `evport=<udp port>` to `arm`; the status object then carries `"events":true`, and the box sends one UDP
+line (twice, against Wi-Fi loss) to the address the arm request came from, at that port:
+
+    gw1ev:<session>:<wid>:<seq>:<type>:<pulses>:<sig>        type = ready | coin | end
+    sig = HMAC-SHA256(key, "gw1ev:<session>:<wid>:<seq>:<type>:<pulses>")
+
+`ready` once the acceptor has settled, `coin` the moment a coin is counted (about 0.3 s after its last pulse), `end`
+after the slot was released and drained. `pulses` is the window's running total, never a delta, so a lost or repeated
+line does no harm; `seq` only orders them. The `wid` ties a line to one window: an old line cannot be replayed into a
+later window. Re-arming the same window (same `wid`) keeps its sequence. `status`, `release` and `ack` stay the
+authority for acknowledging coins; the router keeps one signed `status` a second as a safety net.
 
 ## Typical flow for one customer
 1. `arm` with the client's id, show the customer "insert coin".
@@ -53,7 +69,9 @@ fails), waits for in-flight coins, prints the total and, with `--ack`, clears th
 - Hardware test: set a key, `arm` with the script, insert a coin, `status` shows `pulses: 1`, `release`,
   `ack` returns 1, `status` shows 0. Then press Ready for coin on a phone: it must still arm normally.
 
-## Router (OpenWrt / busybox, no Python)
-`opennds/coinslot-listener.sh` is the production client of this API: it arms, counts coins (extending the wait after each),
-always disarms, waits for in-flight coins and acknowledges them only after access was granted. See `opennds/README.md`.
+## Router (OpenWrt)
+`tools/pisoportal` (`src/core.rs`, `src/boxlink.rs`) is the production client of this API: it arms, counts coins (extending the wait after each),
+always releases, waits for in-flight coins, records the window once (roll and revenue ledger) and only then acknowledges it, so a
+restart at any point neither loses nor doubles a coin; access is granted from the record. While a window is open the box keeps
+one queued record for it, its running total, however many coins go in. See `tools/pisoportal/README.md`.
 For experiments from a PC use `scripts/gateway_client.py`.

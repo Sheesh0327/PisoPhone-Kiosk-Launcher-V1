@@ -11,6 +11,9 @@ Back the key up in two offline places: lose it and no box can take a new license
 It writes only the **public** key into `esp32_firmware/include/LicensePubKey.h`: commit that, then rebuild and flash every box.
 Until a public key is built in, boxes still accept the old deprecated license keys and unsigned firmware.
 
+The same key signs **router updates** (`scripts/sign_router.py`, docs/RELEASE.md); its public half is also written to
+`tools/pisoportal/owner_key.b64`, which the router program has built in. Commit both files.
+
 ## Licenses
 `python3 scripts/generate_license.py issue --private KEY.pem --code <box request code> --slots N` prints a `PISOLIC1...` token to paste into
 the box dashboard. Only your private key can make one.

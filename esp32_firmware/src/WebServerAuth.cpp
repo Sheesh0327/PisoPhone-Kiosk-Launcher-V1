@@ -143,7 +143,9 @@ void authWorkerTask(void* pvParameters) {
                                                           currentTxId.c_str());
                                         }
                                     } else {
-                                        ackValid = true;
+                                        // Unsigned: only before the box has a shared secret. Whatever answers at the
+                                        // phone's address must not be able to clear a paid coin with a plain "OK".
+                                        ackValid = getSharedSecret().length() == 0;
                                     }
                                 } else {
                                     Serial.printf(
@@ -151,7 +153,7 @@ void authWorkerTask(void* pvParameters) {
                                         currentDevId.c_str(), currentTxId.c_str(), ackDev.c_str(), ackTx.c_str());
                                 }
                             } else if (respBody.startsWith("OK") || respBody.startsWith("ALREADY_PROCESSED")) {
-                                ackValid = true;
+                                ackValid = getSharedSecret().length() == 0; // see above: signed once a secret is set
                             }
 
                             if (ackValid) {

@@ -220,11 +220,13 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                 val mac = intent.getStringExtra("esp32_mac") ?: intent.getStringExtra("mac") ?: intent.getStringExtra("box_mac")
                 val slot = intent.getIntExtra("slot", intent.getIntExtra("setup_slot", -1))
                 val name = intent.getStringExtra("name") ?: intent.getStringExtra("alias")
+                val wifiSsid = intent.getStringExtra("wifi_ssid")
+                val wifiPassword = intent.getStringExtra("wifi_pass")
 
                 Log.i(TAG, "CONFIGURE_ESP32 received. Infusing Master MAC: '$mac', Slot: $slot, SecretSet=${!secret.isNullOrBlank()}")
 
-                if (!mac.isNullOrBlank() || slot > 0 || !secret.isNullOrBlank()) {
-                    KioskService.configureMasterBox(context, mac ?: "", slot, secret, name)
+                if (!mac.isNullOrBlank() || slot > 0 || !secret.isNullOrBlank() || !wifiPassword.isNullOrEmpty()) {
+                    KioskService.configureMasterBox(context, mac ?: "", slot, secret, name, wifiSsid, wifiPassword)
                 }
 
                 val savedMac = com.pisophone.kiosk.security.KioskSecurity.getConfiguredEsp32Mac(context)
@@ -248,10 +250,12 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                 val esp32Mac = intent.getStringExtra("esp32_mac") ?: intent.getStringExtra("mac") ?: intent.getStringExtra("box_mac")
                 val slot = intent.getIntExtra("slot", intent.getIntExtra("setup_slot", -1))
                 val name = intent.getStringExtra("name") ?: intent.getStringExtra("alias")
+                val wifiSsid = intent.getStringExtra("wifi_ssid")
+                val wifiPassword = intent.getStringExtra("wifi_pass")
 
-                if (!esp32Mac.isNullOrBlank() || slot > 0 || !secret.isNullOrBlank()) {
+                if (!esp32Mac.isNullOrBlank() || slot > 0 || !secret.isNullOrBlank() || !wifiPassword.isNullOrEmpty()) {
                     Log.i(TAG, "Infusing ESP32 Master params with activation: MAC '$esp32Mac', Slot $slot, SecretSet=${!secret.isNullOrBlank()}")
-                    KioskService.configureMasterBox(context, esp32Mac ?: "", slot, secret, name)
+                    KioskService.configureMasterBox(context, esp32Mac ?: "", slot, secret, name, wifiSsid, wifiPassword)
                 }
 
                 Log.i(TAG, "Activation broadcast received with key: $key")

@@ -342,8 +342,14 @@ void processWebSocketServer() {
                 }
             }
 
-            // 1b. Nonce recording
+            // 1b. Freshness, then nonce recording: a captured handshake must not open the coin slot again later
             unsigned long long ts = strtoull(tsStr.c_str(), NULL, 10);
+            if (getSharedSecret().length() > 0 && !checkReplayProtection(reqDeviceId, ts)) {
+                Serial.printf("[-] WS Auth Failed for %s: stale or replayed timestamp\n", reqDeviceId.c_str());
+                newClient.print("HTTP/1.1 403 Forbidden\r\n\r\nStale Timestamp");
+                newClient.stop();
+                return;
+            }
             if (ts > 0) {
                 recordDeviceNonce(reqDeviceId, ts);
             }
@@ -467,15 +473,16 @@ void processWebSocketServer() {
                     String ackPulses = String(ackDoc["amount"] | "1");
 
                     if (ackDevId.length() > 0 && ackTxId.length() > 0 && ackDevId == boundDevId) {
-                        bool sigValid = true;
-                        if (ackSig.length() > 0 && ackTs.length() > 0) {
+                        // Signed, like the HTTP ack: an ACK removes the coins from the retry queue for good.
+                        bool sigValid = getSharedSecret().length() == 0;
+                        if (!sigValid && ackSig.length() > 0 && ackTs.length() > 0) {
                             String expectedSig = calculateHMAC(
                                 "v1:" + ackDevId + ":" + ackTxId + ":" + ackPulses + ":" + ackTs, getSharedSecret());
-                            if (!ackSig.equalsIgnoreCase(expectedSig)) {
-                                sigValid = false;
-                                Serial.printf("[⚡ WS Port 81] Rejected ACK for '%s': Invalid signature\n",
-                                              ackTxId.c_str());
-                            }
+                            sigValid = ackSig.equalsIgnoreCase(expectedSig);
+                        }
+                        if (!sigValid) {
+                            Serial.printf("[⚡ WS Port 81] Rejected ACK for '%s': missing or invalid signature\n",
+                                          ackTxId.c_str());
                         }
                         if (sigValid && acknowledgePhonePayment(ackDevId, ackTxId)) {
                             Serial.printf("[⚡ WS Port 81] Durable phone ACK accepted for tx_id='%s' (device: %s)\n",

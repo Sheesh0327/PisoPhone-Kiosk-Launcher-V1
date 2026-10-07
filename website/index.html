@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PisoPhone - Hardware Provisioning Utility</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="icon" href="data:,">
+    <!-- built from the classes on this page by tools/site-css (no third-party script runs on this page) -->
+    <link rel="stylesheet" href="css/app.css">
     <style>
         body {
             background: linear-gradient(-45deg, #090d16, #0e1726, #052e16);
@@ -140,6 +142,13 @@
                 </ul>
             </div>
 
+            <div class="bg-slate-950/60 p-3.5 border border-slate-700 rounded-xl space-y-2.5">
+                <div class="font-bold text-emerald-400 text-[11px]">📶 Kiosk Wi-Fi for this phone</div>
+                <p class="text-[11px] text-slate-400 leading-relaxed">The kiosk network is hidden (it is not shown in any Wi-Fi list), so only phones set up from this page can join it. The phone joins it by itself and keeps rejoining. It can only find its coin box, pair and get its admin PIN while it is on it. The password is in the router's setup summary (<code>piso-setup summary</code>, &ldquo;PisoKiosk Wi-Fi&rdquo;).</p>
+                <input type="text" id="wifiSsid" value="PisoKiosk" readonly class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-white text-xs font-mono" placeholder="Wi-Fi name" autocomplete="off">
+                <input type="text" id="wifiPass" value="" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-white text-xs font-mono" placeholder="PisoKiosk Wi-Fi password" autocomplete="off">
+            </div>
+
             <button id="installAppBtn" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3.5 px-6 rounded-xl transition shadow-lg text-sm flex items-center justify-center gap-2.5 btn-glow-emerald cursor-pointer">
                 🚀 1-Click Flash &amp; Pair Slot
             </button>
@@ -201,8 +210,8 @@
     <script src="js/webadb_manager.js"></script>
 
     <script>
-        // Parse incoming ESP32 parameters
-        const urlParams = new URLSearchParams(window.location.search);
+        // Parameters from the box's link (read once by webadb_manager.js; the secret is already out of the address bar)
+        const urlParams = window.PisoProvisioning.params;
         const urlMac = urlParams.get('mac');
         // Only a plain IPv4 address is ever used as a redirect target; anything else is ignored.
         const rawIp = urlParams.get('ip') || '';
@@ -321,12 +330,36 @@
                 });
             }
 
+            // The kiosk Wi-Fi: from the link if it carries one, else what was typed last time on this computer.
+            const wifiSsidInput = document.getElementById('wifiSsid');
+            const wifiPassInput = document.getElementById('wifiPass');
+            try {
+                wifiSsidInput.value = 'PisoKiosk';
+                wifiPassInput.value = urlParams.get('wifi_pass') || localStorage.getItem('pisoWifiPass') || '';
+            } catch (e) {}
+
             // Action: Install & Pair
             const installBtn = document.getElementById('installAppBtn');
             installBtn.addEventListener('click', async () => {
                 if (!navigator.usb) {
                     return alert("WebUSB is not supported in this browser. Please use Google Chrome, Edge, or Brave.");
                 }
+                try {
+                    validatedProv = window.PisoProvisioning.validateProvisioning({
+                        mac: urlMac, slot: String(urlSlot), name: urlName, secret: urlSecret,
+                        wifiSsid: wifiSsidInput.value.trim() || 'PisoKiosk', wifiPass: wifiPassInput.value
+                    });
+                } catch (wErr) {
+                    return alert(wErr.message);
+                }
+                if (!validatedProv.wifiPass && !confirm("No kiosk Wi-Fi password was entered.\n\nThe phone will not be able to find its coin box, pair, or get its admin PIN unless it is already on the PisoKiosk Wi-Fi. Continue anyway?")) {
+                    return;
+                }
+                try {
+                    if (validatedProv.wifiPass) {
+                                                localStorage.setItem('pisoWifiPass', validatedProv.wifiPass);
+                    }
+                } catch (e) {}
 
                 installBtn.disabled = true;
                 installBtn.className = "w-full bg-slate-800 text-slate-400 font-bold py-3.5 rounded-xl text-sm flex items-center justify-center cursor-not-allowed";
