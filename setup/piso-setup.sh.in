@@ -1,12 +1,10 @@
 #!/bin/sh
 # PisoPhone router setup: one file that turns a factory-reset OpenWrt router into the whole PisoWiFi system.
 #
-#   (first set the router's LAN address to 10.0.0.1 by hand: see setup/README.md, step 1)
-#   scp -O piso-setup.sh root@10.0.0.1:/root/
-#   ssh root@10.0.0.1
-#   sed -i 's/\r$//' piso-setup.sh && chmod +x piso-setup.sh && ./piso-setup.sh
+#   on the factory-reset router (ssh root@192.168.1.1):  wget -qO- https://pisophone.pages.dev/install.sh | sh
+#   (it fetches this file, moves the router to 10.0.0.1 and tells you to log in there and run ./piso-setup.sh; setup/README.md)
 #
-# Before you run it: the router's LAN address is 10.0.0.1 (set by hand, so the SSH connection is never cut), modem in the
+# Before you run it: the router's LAN address is 10.0.0.1 (the installer sets it; this file never cuts your SSH session), modem in the
 # router's WAN port (internet is needed once, to download packages), the ESP32 coin box flashed with the current firmware
 # (or factory reset) and powered on.
 #
@@ -118,7 +116,7 @@ preflight() {
 	[ "$DRY" = 1 ] && return 0
 	WAN=$(wan_ip)
 	[ -n "$WAN" ] || die "the router has no WAN address: plug the modem into the WAN port and wait a minute, then run this again"
-	[ "$LAN_IP" = 10.0.0.1 ] || die "the router's LAN address is $LAN_IP, but this setup expects 10.0.0.1. Change it first (LuCI: Network > Interfaces > LAN, or: uci set network.lan.ipaddr=10.0.0.1 && uci commit network && reboot), then log in again at 10.0.0.1 and re-run. See setup/README.md, step 1."
+	[ "$LAN_IP" = 10.0.0.1 ] || die "the router's LAN address is $LAN_IP, but this setup expects 10.0.0.1. Run the installer, which moves it for you: wget -qO- https://pisophone.pages.dev/install.sh | sh   (or by hand: uci set network.lan.ipaddr=10.0.0.1 && uci commit network && reboot), then log in again at 10.0.0.1 and re-run. See setup/README.md."
 	case "$WAN" in
 		"${LAN_IP%.*}".*) die "the modem's network ($WAN) is in the same range as the router's LAN ($LAN_IP). Change the modem's own LAN address (for example to 192.168.100.1) and run this again" ;;
 		192.168.30.*) die "the modem's network ($WAN) uses 192.168.30.x, the same as the guest network. Run with GUEST_IP=192.168.31.1" ;;

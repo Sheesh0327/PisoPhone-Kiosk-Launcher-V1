@@ -17,24 +17,32 @@ pio device monitor                    # optional: watch it start
 ```
 CI compiles the firmware on every push (job "Firmware format and host tests" and the build job). The box starts with the published defaults (admin password `Coinslot@Setup`, setup Wi-Fi `PisoCoinBox`); the router setup changes the password and key by itself, and the box refuses coins until its password has been changed.
 
-## Step 1: set the router's LAN address to 10.0.0.1 (by hand, once)
-The script does not change the router's address, so your SSH connection is never cut while it runs. Do this first, on a factory-reset router:
+## Step 1: one line on the router
+Plug your computer into a LAN port of the factory-reset router, log in and paste one line:
 ```
 ssh root@192.168.1.1
-uci set network.lan.ipaddr='10.0.0.1'
-uci commit network
-/etc/init.d/network restart
+wget -qO- https://pisophone.pages.dev/install.sh | sh
 ```
-The SSH session ends (that is expected). Unplug and replug the PC's LAN cable so it gets a `10.0.0.x` address, then continue at `10.0.0.1`.
-(In LuCI instead: Network > Interfaces > LAN > Edit > IPv4 address `10.0.0.1`, then Save & Apply.)
+It downloads the current setup file to `/root/piso-setup.sh`, checks it (its published sha256, that it is complete and readable),
+then asks to move the router from `192.168.1.1` to **10.0.0.1** (the kiosk network). Answer `y`: the SSH session ends, which is
+expected. Unplug and replug the computer's cable (or wait a minute), then continue:
+```
+ssh root@10.0.0.1
+./piso-setup.sh
+```
+(A router that is already at 10.0.0.1 goes straight on to the setup.) If the modem itself uses `10.0.0.x`, the installer stops and
+tells you to change the modem's address first.
+
+Other uses of the same line: `... | sh -s update` installs new software on a router that is set up already, and
+`... | sh -s -- --branch beta` uses the setup file of another branch (testing). The installer is `setup/install.sh`; the website
+serves a copy of it (`website/install.sh`, kept equal by `tools/build_piso_setup.py`).
 
 ## Step 2: run the setup
+Without internet on the router (or to do it by hand): set the address yourself (`uci set network.lan.ipaddr='10.0.0.1'; uci commit
+network; /etc/init.d/network restart`, then log in at 10.0.0.1), then copy the file over and start it:
 ```
 scp -O setup/piso-setup.sh root@10.0.0.1:/root/
-ssh root@10.0.0.1
-sed -i 's/\r$//' piso-setup.sh     # removes Windows line endings if the file touched Windows (otherwise: ": not found" errors)
-chmod +x piso-setup.sh
-./piso-setup.sh
+ssh root@10.0.0.1 'sed -i "s/\r$//" piso-setup.sh && sh piso-setup.sh'
 ```
 Answer `y` when asked. It then asks for the **public Wi-Fi name** (default `PisoWiFi`; Enter keeps it; 32 characters at most, no quotes; the rental-phone network is always the hidden `PisoKiosk`) and then to choose **three passwords** (each typed twice, not shown; just press Enter to have a strong one generated for you): the router password (SSH and LuCI), the **PisoKiosk Wi-Fi** password (typed into each phone's setup page) and the **coin box admin** password (the box's web page, also the phones' admin PIN). Use 8 or more characters without spaces or quotes. The coin box's *super-admin* password is not asked: the firmware keeps it under remote management and it cannot be set locally. For unattended runs set `ROOT_PASSWORD`, `KIOSK_PASSWORD` and `BOX_NEW_ADMIN_PASSWORD` in the environment. Before anything is changed it shows a **review screen** (names, which passwords you chose and which will be generated, router address and country) and asks `Apply these settings? [y/N]`. It also asks for a **site name** (printed on the setup sheet and shown in Telegram messages) and offers to connect **Telegram** at the end of the setup. It runs in front of you for about 3 to 8 minutes and **keeps your SSH session open the whole time**: it installs packages, creates the networks, waits for the ESP32 to join, sets its password and key, starts everything and ends with a health check. When it prints `SETUP COMPLETE`, read the summary:
 ```

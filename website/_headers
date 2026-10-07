@@ -20,6 +20,10 @@
   Access-Control-Allow-Origin: *
   Cache-Control: no-cache
 
+/install.sh
+  Content-Type: text/plain; charset=utf-8
+  Cache-Control: no-cache
+
 /update/router.json
   Cache-Control: no-cache
 
