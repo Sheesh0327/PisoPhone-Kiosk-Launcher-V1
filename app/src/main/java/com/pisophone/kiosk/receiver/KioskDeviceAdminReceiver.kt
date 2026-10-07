@@ -57,7 +57,6 @@ class KioskDeviceAdminReceiver : DeviceAdminReceiver() {
     ) {
         super.onProfileProvisioningComplete(context, intent)
         com.pisophone.kiosk.provisioning.QrProvisioning.applyFromIntent(context, intent)
-        com.pisophone.kiosk.provisioning.QrProvisioning.startKiosk(context)
     }
 
     override fun onDisabled(context: Context, intent: Intent) {

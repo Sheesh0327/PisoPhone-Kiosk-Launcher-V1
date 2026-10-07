@@ -114,9 +114,6 @@ Open the box's page, click **Install & Provision** for the slot, and type the **
 3. The phone joins PisoKiosk, downloads PisoPhone, checks its signature, makes it the device owner and hands it the box's
    key, MAC, slot and the Wi-Fi password. Accept the screens it shows; at the end the kiosk opens.
 4. Pair the slot on the box's page as usual.
-A phone set up by QR code cannot get Android's "display over other apps" permission (only the USB setup can grant it, and
-Android Go phones do not offer it), so its lock screen is a full-screen app screen instead of an overlay: it looks the same and
-comes back by itself whenever the phone is locked. While a session runs, the floating time pill is not shown on such a phone.
 The code holds the box's key and the Wi-Fi password: show it only to the phone you are setting up (the page hides it when
 you click Hide or change the password). It needs an app published by CI with its signing fingerprint
 (`update/app.json` has `signatureChecksum`); until then the page says to use the USB cable.

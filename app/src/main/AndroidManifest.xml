@@ -131,15 +131,6 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
-        <!-- The lock screen as an activity, on a phone without "display over other apps" (set up by QR code) -->
-        <activity
-            android:name=".overlay.LockScreenActivity"
-            android:exported="false"
-            android:directBootAware="true"
-            android:excludeFromRecents="true"
-            android:launchMode="singleTop"
-            android:lockTaskMode="if_whitelisted"
-            android:theme="@style/Theme.PisoPhoneLauncher" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
