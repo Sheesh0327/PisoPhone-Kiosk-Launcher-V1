@@ -109,6 +109,7 @@ class MainActivity : ComponentActivity() {
                         // set up by QR code: the lock screen is an overlay and needs "display over other apps" (the USB
                         // setup grants it over ADB); until it is on, this step is shown instead of the apps
                         OverlayPermissionScreen(
+                            usbFirst = OverlayPermissionStep.usbFirst(this@MainActivity),
                             needsPin = OverlayPermissionStep.needsPin(this@MainActivity),
                             onOpenSetting = { pin ->
                                 if (OverlayPermissionStep.needsPin(this@MainActivity) && !KioskSecurity.verifyAdminPin(this@MainActivity, pin)) {

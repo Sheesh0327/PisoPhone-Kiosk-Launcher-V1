@@ -107,21 +107,22 @@ The router needs internet for this: while the site is offline nothing can be sen
 Open the box's page, click **Install & Provision** for the slot, and type the **PisoKiosk** Wi-Fi password (from
 `piso-setup summary`; the page remembers it on that computer). Then:
 
-**QR code + USB (recommended: no Developer options, no USB debugging to turn on):**
+**QR code (recommended; USB only for the phones that need it):**
 1. Use a new or **factory-reset** phone. On the first welcome screen, **tap the same spot 6 times**: a QR reader opens (some
    older phones first ask for a Wi-Fi to download the reader).
-2. Plug the phone into the computer showing the page, with a USB data cable.
-3. Click **Show the setup code** on the page and scan it with the phone.
-4. The phone joins PisoKiosk, downloads PisoPhone, checks its signature, makes it the device owner and hands it the box's
-   key, MAC, slot and the Wi-Fi password. Accept the screens it shows until PisoPhone shows **One last step**. As the device
-   owner it has turned **USB debugging on by itself** (for 15 minutes at most).
-5. Tap **Allow** when the phone asks "Allow USB debugging?", then click **Finish over USB** on the page. The computer grants
-   what only USB can grant ("display over other apps": the lock screen and the time bubble are overlays; secure settings;
-   the battery exemption). The app then starts the kiosk and **turns USB debugging off again**, and the page opens the box's
-   page to pair the slot.
-No computer at hand? The phone's **One last step** screen has **Open the setting**: choose PisoPhone, turn on **Allow display
-over other apps**, press Back, and pair the slot on the box's page. (No PIN within 30 minutes of the setup; later the admin
-PIN is asked.)
+2. Click **Show the setup code** on the page and scan it with the phone.
+3. The phone joins PisoKiosk, downloads PisoPhone, checks its signature, makes it the device owner and hands it the box's
+   key, MAC, slot and the Wi-Fi password. Accept the screens it shows until PisoPhone shows **One last step**: the lock
+   screen and the time bubble need "display over other apps", which no app may grant to itself. The app picks the way:
+   - **Most phones:** tap **Open the setting**, choose PisoPhone, turn on **Allow display over other apps**, press Back. The
+     kiosk starts.
+   - **Android Go phones** (they have no such switch), or if the switch is missing or greyed out: plug the phone into the
+     computer showing the page, tap **Allow** on "Allow USB debugging?" (the app turned USB debugging on by itself at the end
+     of the setup: no Developer options), and click **Finish over USB**. The computer grants the permissions, the kiosk
+     starts, and the page opens the box's page to pair the slot.
+   Either way USB debugging goes off again as soon as the permission is on (and after 15 minutes at the latest).
+4. Pair the slot on the box's page as usual (Finish over USB opens it for you).
+No PIN is asked within 30 minutes of the setup; later the admin PIN is.
 The code holds the box's key and the Wi-Fi password: show it only to the phone you are setting up (the page hides it when
 you click Hide or change the password). It needs an app published by CI with its signing fingerprint
 (`update/app.json` has `signatureChecksum`); until then the page says to use the USB cable.

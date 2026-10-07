@@ -1,6 +1,7 @@
 package com.pisophone.kiosk.provisioning
 
 import android.app.Activity
+import android.app.ActivityManager
 import android.app.admin.DevicePolicyManager
 import android.content.ActivityNotFoundException
 import android.content.ComponentName
@@ -31,7 +32,9 @@ import com.pisophone.kiosk.security.KioskSecurity
  *
  * The lock screen and the time bubble are overlay windows, which need that permission. The USB setup grants it over ADB; a
  * QR setup cannot (no app may grant it to itself, not even the device owner), so the home screen shows this step instead of
- * the apps until it is on: one button opens the setting, the installer turns PisoPhone on and comes back. While the setting
+ * the apps until it is on. Which way comes first depends on the phone ([usbFirst]): normally one button opens the setting
+ * and the installer turns PisoPhone on; on an Android Go phone (no such switch) the setup computer grants it over USB
+ * (USB debugging was turned on by the app at the end of the QR setup, see KioskPolicyManager.enableAdbForSetup). While the setting
  * is open, Settings is let through the kiosk lock for a few minutes (an admin maintenance window) and the
  * "modify apps" restriction is lifted; both are restored as soon as the permission is on (or the window runs out).
  * Within the first 30 minutes after the QR setup (or while the phone has no admin PIN yet) no PIN is asked; after that
@@ -48,6 +51,13 @@ object OverlayPermissionStep {
     private var settingsOpened = false
 
     fun isNeeded(context: Context): Boolean = !Settings.canDrawOverlays(context)
+
+    /**
+     * Android Go phones (low-RAM) do not offer the "display over other apps" switch: there the USB way comes first (the
+     * setup computer grants it over ADB). Other phones turn the switch on, with USB as the fallback.
+     */
+    fun usbFirst(context: Context): Boolean =
+        (context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)?.isLowRamDevice == true
 
     /** The QR setup just finished: the step needs no PIN for the next 30 minutes. */
     fun markQrSetup(context: Context) {
@@ -108,18 +118,27 @@ object OverlayPermissionStep {
             }
         }
         AdminMaintenanceMode.end(context)
-        Log.i(TAG, "\"Display over other apps\" is on: the kiosk lock screen can show.")
+        // USB debugging was on for the USB fallback (QR setup); with the switch on it is not needed any more
+        val app = context.applicationContext ?: context
+        Thread { KioskSecurity.setAdbAllowed(app, false) }.start()
+        Log.i(TAG, "\"Display over other apps\" is on: the kiosk lock screen can show; USB debugging goes off.")
     }
 }
 
-/** The step's screen, shown by the home screen instead of the apps until the permission is on. */
+/**
+ * The step's screen, shown by the home screen instead of the apps until the permission is on. [usbFirst] (an Android Go
+ * phone, which does not offer the switch) puts the USB way first; elsewhere the switch is the way, USB the fallback.
+ */
 @Composable
 fun OverlayPermissionScreen(
+    usbFirst: Boolean,
     needsPin: Boolean,
     onOpenSetting: (pin: String) -> String?,
 ) {
     var pin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    val usbText = "Keep this phone plugged into the setup computer by USB, tap Allow when it asks \"Allow USB debugging?\", " +
+        "and click Finish over USB on the setup page. Everything else happens by itself."
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -134,17 +153,14 @@ fun OverlayPermissionScreen(
             fontSize = 16.sp,
         )
         Spacer(modifier = Modifier.height(16.dp))
-        Text("With the setup computer (easiest)", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-        Text(
-            "Keep this phone plugged into the computer by USB, tap Allow when it asks \"Allow USB debugging?\", and click " +
-                "Finish over USB on the setup page. Everything else happens by itself.",
-            fontSize = 15.sp,
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text("Without a computer", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-        Text("1. Tap Open the setting below.", fontSize = 15.sp)
-        Text("2. Choose PisoPhone and turn on \"Allow display over other apps\".", fontSize = 15.sp)
-        Text("3. Press Back to return here. The kiosk starts by itself.", fontSize = 15.sp)
+        if (usbFirst) {
+            Text("This phone sets it over USB", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            Text(usbText, fontSize = 15.sp)
+        } else {
+            Text("1. Tap Open the setting below.", fontSize = 15.sp)
+            Text("2. Choose PisoPhone and turn on \"Allow display over other apps\".", fontSize = 15.sp)
+            Text("3. Press Back to return here. The kiosk starts by itself.", fontSize = 15.sp)
+        }
         if (needsPin) {
             Spacer(modifier = Modifier.height(20.dp))
             OutlinedTextField(
@@ -163,13 +179,21 @@ fun OverlayPermissionScreen(
             Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
         }
         Spacer(modifier = Modifier.height(24.dp))
-        Button(
-            onClick = { error = onOpenSetting(pin) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp),
-        ) {
-            Text("Open the setting", fontSize = 16.sp)
+        if (usbFirst) {
+            OutlinedButton(onClick = { error = onOpenSetting(pin) }, modifier = Modifier.fillMaxWidth()) {
+                Text("Try the setting on the phone instead")
+            }
+        } else {
+            Button(
+                onClick = { error = onOpenSetting(pin) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+            ) {
+                Text("Open the setting", fontSize = 16.sp)
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("Switch missing or greyed out? $usbText", fontSize = 13.sp)
         }
     }
 }

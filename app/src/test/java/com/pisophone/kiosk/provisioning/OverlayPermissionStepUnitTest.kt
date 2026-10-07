@@ -1,6 +1,7 @@
 package com.pisophone.kiosk.provisioning
 
 import android.app.Activity
+import android.app.ActivityManager
 import android.content.Context
 import android.provider.Settings
 import androidx.test.core.app.ApplicationProvider
@@ -43,6 +44,14 @@ class OverlayPermissionStepUnitTest {
         assertTrue("a phone in use: the admin PIN is asked", OverlayPermissionStep.needsPin(context))
         OverlayPermissionStep.markQrSetup(context)
         assertFalse("just set up by QR code", OverlayPermissionStep.needsPin(context))
+    }
+
+    @Test
+    fun androidGoPhonesUseUsbOthersTheSwitch() {
+        assertFalse("a normal phone: the switch first", OverlayPermissionStep.usbFirst(context))
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        shadowOf(am).setIsLowRamDevice(true)
+        assertTrue("an Android Go phone: USB first", OverlayPermissionStep.usbFirst(context))
     }
 
     @Test
