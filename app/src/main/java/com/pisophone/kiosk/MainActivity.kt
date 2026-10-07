@@ -23,6 +23,8 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import com.pisophone.kiosk.model.AppInfo
+import com.pisophone.kiosk.provisioning.OverlayPermissionScreen
+import com.pisophone.kiosk.provisioning.OverlayPermissionStep
 import com.pisophone.kiosk.receiver.KioskWatchdogReceiver
 import com.pisophone.kiosk.security.KioskActivationManager
 import com.pisophone.kiosk.security.KioskSecurity
@@ -103,12 +105,29 @@ class MainActivity : ComponentActivity() {
                         hideSystemBars()
                         dismissKeyguard()
                     }
-                    LauncherScreen(
-                        apps = appsList,
-                        onAppClick = { appInfo ->
-                            AppLauncher.launchApp(this@MainActivity, appInfo.packageName)
-                        },
-                    )
+                    if (!hasOverlayPermission) {
+                        // set up by QR code: the lock screen is an overlay and needs "display over other apps" (the USB
+                        // setup grants it over ADB); until it is on, this step is shown instead of the apps
+                        OverlayPermissionScreen(
+                            needsPin = OverlayPermissionStep.needsPin(this@MainActivity),
+                            onOpenSetting = { pin ->
+                                if (OverlayPermissionStep.needsPin(this@MainActivity) && !KioskSecurity.verifyAdminPin(this@MainActivity, pin)) {
+                                    "Wrong admin PIN."
+                                } else if (OverlayPermissionStep.openSetting(this@MainActivity)) {
+                                    null
+                                } else {
+                                    "This phone has no \"display over other apps\" setting: set it up with the USB cable instead."
+                                }
+                            },
+                        )
+                    } else {
+                        LauncherScreen(
+                            apps = appsList,
+                            onAppClick = { appInfo ->
+                                AppLauncher.launchApp(this@MainActivity, appInfo.packageName)
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -132,6 +151,7 @@ class MainActivity : ComponentActivity() {
         dismissKeyguard()
         KioskSecurity.collapseStatusBar(this)
         checkOverlayPermission()
+        OverlayPermissionStep.finishIfGranted(this)
         loadApps()
         KioskWatchdogReceiver.scheduleWatchdog(this)
         checkDeviceOwner()

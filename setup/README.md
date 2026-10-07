@@ -113,7 +113,10 @@ Open the box's page, click **Install & Provision** for the slot, and type the **
 2. Click **Show the setup code** on the page and scan it with the phone.
 3. The phone joins PisoKiosk, downloads PisoPhone, checks its signature, makes it the device owner and hands it the box's
    key, MAC, slot and the Wi-Fi password. Accept the screens it shows; at the end the kiosk opens.
-4. Pair the slot on the box's page as usual.
+4. **Last step, on the phone:** it shows "One last step". Tap **Open the setting**, choose PisoPhone, turn on **Allow display
+   over other apps**, and press Back. The lock screen then appears. (The USB setup grants this permission itself; a QR setup
+   cannot, because no app may grant it to itself. Within 30 minutes of the setup no PIN is asked; later the admin PIN is.)
+5. Pair the slot on the box's page as usual.
 The code holds the box's key and the Wi-Fi password: show it only to the phone you are setting up (the page hides it when
 you click Hide or change the password). It needs an app published by CI with its signing fingerprint
 (`update/app.json` has `signatureChecksum`); until then the page says to use the USB cable.
