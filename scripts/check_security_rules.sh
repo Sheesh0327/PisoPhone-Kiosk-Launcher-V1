@@ -16,9 +16,10 @@ if grep -rEl $EXCLUDE -e '-----BEGIN [A-Z ]*PRIVATE KEY-----' . ; then
 fi
 
 # 2. The shared master secret may only remain in the two files still being migrated off it.
-#    Any new use fails the build; the list shrinks to nothing when S3 lands.
+#    Any new use fails the build; the list shrinks to nothing when S3 lands. Source files only (-I): the firmware images
+#    built from Config.cpp for the web flasher (website/flash/*.bin) carry its string like any build of it.
 ALLOWED_MASTER="app/src/main/java/com/pisophone/kiosk/security/KioskSecurity.kt esp32_firmware/src/Config.cpp"
-for f in $(grep -rl $EXCLUDE 'PISOPHONE_HMAC_MASTER_KEY' $CODE_DIRS 2>/dev/null); do
+for f in $(grep -rlI $EXCLUDE 'PISOPHONE_HMAC_MASTER_KEY' $CODE_DIRS 2>/dev/null); do
     case " $ALLOWED_MASTER " in *" $f "*) ;; *) bad "shared master secret referenced in $f" ;; esac
 done
 

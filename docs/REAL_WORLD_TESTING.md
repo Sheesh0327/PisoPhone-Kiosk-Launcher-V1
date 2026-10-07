@@ -139,3 +139,4 @@ pushing closes its issue. Avoid `|` characters inside cells.
 - [ ] **RS14** With one phone online as a customer, `piso-setup self-update auto` installs nothing and says it waits for a quiet moment; after the phone leaves, it installs
 - [ ] **RS15** Publish a release with `--rollout 0`: the router does not install it; `/update` in Telegram says it is rolling out in stages
 - [ ] **RS16** Hand-edit `website/update/router-setup.sh` after signing (one character) and publish it: the router refuses it, installs nothing and Telegram says REFUSED
+- [ ] **RS17** `python3 pisophone_setup.py --branch beta` (setup/README.md, "Easiest") from a computer on a factory-reset router: you type no commands; it moves the router to 10.0.0.1 (replug the cable if it asks), ends with `SETUP COMPLETE: all checks passed` and saves the summary and the setup sheet in the folder; run again on the finished router, it keeps the passwords and passes again

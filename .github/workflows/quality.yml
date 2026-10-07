@@ -33,6 +33,7 @@ on:
       - 'website/index.html'
       - 'website/_headers'
       - 'website/install.sh'
+      - 'website/pisophone_setup.py'
       - 'website/css/**'
       - 'website/js/**'
       - '.editorconfig'
@@ -57,6 +58,7 @@ on:
       - 'website/index.html'
       - 'website/_headers'
       - 'website/install.sh'
+      - 'website/pisophone_setup.py'
       - 'website/css/**'
       - 'website/js/**'
       - '.editorconfig'
@@ -113,7 +115,7 @@ jobs:
           flag kotlin "^(app/|[^/]*\.kts$|\.editorconfig|$W)"
           flag firmware_build "^(esp32_firmware/|protocol/|$W)"
           flag firmware_tests "^(esp32_firmware/|protocol/|scripts/|$W)"
-          flag portal "^(tools/pisoportal/|router/|setup/|website/install\.sh|tools/build_piso_setup\.py|scripts/(sign_router|generate_license|make_owner_keys)\.py|$W)"
+          flag portal "^(tools/pisoportal/|router/|setup/|website/install\.sh|website/pisophone_setup\.py|tools/build_piso_setup\.py|scripts/(sign_router|generate_license|make_owner_keys)\.py|$W)"
           flag website "^(website/|tools/site-css/|scripts/test_provisioning\.js|scripts/test_flasher\.js|scripts/tests/test_site_page\.py|scripts/check_vendored\.py|$W)"
 
   security-rules:
@@ -281,6 +283,8 @@ jobs:
         run: python3 router/tests/test_setup.py
       - name: Check the one-line installer (download check, moving the router to 10.0.0.1; also under BusyBox ash)
         run: python3 router/tests/test_install.py
+      - name: Check the router setup run from a computer (setup/pisophone_setup.py, against a fake ssh and router)
+        run: python3 router/tests/test_pisophone_setup.py
       - name: Check the Telegram monitor against a fake Telegram
         run: python3 router/tests/test_monitor.py
       - name: Check router updates from the website (signed releases only, staged rollout, undo of a release that does not run)

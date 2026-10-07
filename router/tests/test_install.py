@@ -138,6 +138,18 @@ check(r.returncode != 0 and "192.168.100.1" in r.stdout and "network.lan.ipaddr=
 r = run("update", lan="192.168.1.1")
 check("SETUP-RAN args=[update]" in r.stdout and "set network.lan.ipaddr" not in log("uci.log"), "update never moves the router")
 
+# ---- --yes (setup/pisophone_setup.py): nothing is asked, the setup runs unattended -------------------------------------------
+r = run("--", "--yes", lan="192.168.1.1", answer="n")
+time.sleep(3.6)
+check(r.returncode == 0 and "set network.lan.ipaddr=10.0.0.1" in log("uci.log") and log("network.log") == "restart\n",
+      "--yes: a factory router is moved to 10.0.0.1 without asking: " + r.stdout)
+check("SETUP-RAN" not in r.stdout, "--yes: the setup itself waits for the login at 10.0.0.1")
+r = run("--", "--yes", answer="this must not be read")
+check(r.returncode == 0 and "SETUP-RAN args=[--yes] answer=[]" in r.stdout, "--yes: the setup runs with --yes and no terminal: " + r.stdout)
+r = run("--", "--branch", "beta", "--yes", "update", lan="192.168.1.1")
+check("SETUP-RAN args=[--yes update]" in r.stdout and "set network.lan.ipaddr" not in log("uci.log") and "/beta/setup/" in log("wget.log"),
+      "--branch beta --yes update: beta's file, updated unattended, not moved: " + r.stdout)
+
 # ---- the real setup file passes the installer's checks; a cut-off installer runs nothing -----------------------------------------
 publish("main", open(REAL_SETUP, "rb").read())
 r = run(lan="192.168.1.1", answer="n")

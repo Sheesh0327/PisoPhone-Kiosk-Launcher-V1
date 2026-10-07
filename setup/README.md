@@ -24,6 +24,32 @@ pio run -e esp32-c3-dev -t upload     # ESP32-C3 boards; esp32dev-dev for a clas
 The box starts with the published defaults (admin password `Coinslot@Setup`, setup Wi-Fi `PisoCoinBox`); the router setup
 changes the password and key by itself, and the box refuses coins until its password has been changed.
 
+## Easiest: let your computer do steps 1 and 2 (no commands to type)
+Download **https://pisophone.pages.dev/pisophone_setup.py** (also in this folder: `setup/pisophone_setup.py`), plug the
+computer into a LAN port of the factory-reset router (modem in its WAN port, the coin box flashed and powered on), turn the
+computer's Wi-Fi off, and run it:
+```
+python3 pisophone_setup.py                  (Windows: py pisophone_setup.py, or double-click it)
+python3 pisophone_setup.py --branch beta    (the beta branch's setup, for testing)
+```
+It asks for the public Wi-Fi name, the site name and the three passwords (Enter generates them), shows everything on a review
+screen, and after you answer `y` it does the rest by itself: it finds the router (192.168.1.1 or 10.0.0.1), runs the one-line
+installer there unattended (`install.sh --yes`, which checks the setup file's sha256), waits for the router to come back at
+10.0.0.1 (if it does not within half a minute it tells you to unplug and replug the cable; Windows renews its address by
+itself), runs the setup with your answers while you watch its output, and saves **the summary (every password) and the
+printable setup sheet** in the current folder (only you can read them), then opens the sheet. At the end it offers to connect
+Telegram alerts.
+
+It needs Python 3.8 or newer and the `ssh` command, which Windows 10/11, macOS and Linux already have (Windows: Settings > Apps
+> Optional features > OpenSSH Client, if it is missing). The passwords travel over the SSH connection's input, never on a
+command line, and the router's SSH key is pinned for the run (the same key must answer at 192.168.1.1 and at 10.0.0.1).
+Running it again is safe: a router that was set up before keeps its names and passwords and is only finished or repaired
+(ssh then asks for the router password, which is in the saved summary). Other uses: `--update` installs new software on a
+router that is set up already, `--yes` asks nothing (defaults and generated passwords), `--guest-ssid` and `--site-name` set
+the names, `--out <folder>` chooses where the files go. If it stops with an error, it says why; fix that and run it again.
+
+The steps below are the same thing by hand.
+
 ## Step 1: one line on the router
 Plug your computer into a LAN port of the factory-reset router, log in and paste one line:
 ```
@@ -41,8 +67,10 @@ ssh root@10.0.0.1
 tells you to change the modem's address first.
 
 Other uses of the same line: `... | sh -s update` installs new software on a router that is set up already, and
-`... | sh -s -- --branch beta` uses the setup file of another branch (testing). The installer is `setup/install.sh`; the website
-serves a copy of it (`website/install.sh`, kept equal by `tools/build_piso_setup.py`).
+`... | sh -s -- --branch beta` uses the setup file of another branch (testing); `... | sh -s -- --yes` asks nothing (it moves the
+router by itself and runs the setup unattended, with passwords from `ROOT_PASSWORD`, `KIOSK_PASSWORD`, `BOX_NEW_ADMIN_PASSWORD`
+or generated: this is what `pisophone_setup.py` uses). The installer is `setup/install.sh`; the website serves copies of it and
+of `pisophone_setup.py` (`website/install.sh`, `website/pisophone_setup.py`, kept equal by `tools/build_piso_setup.py`).
 
 ## Step 2: run the setup
 Without internet on the router (or to do it by hand): set the address yourself (`uci set network.lan.ipaddr='10.0.0.1'; uci commit
