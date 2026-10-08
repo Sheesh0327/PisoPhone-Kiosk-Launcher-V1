@@ -47,7 +47,7 @@ void handleHeartbeat() {
             lastRefusalLogMs = millis() ? millis() : 1;
             const char* why = telemetryAuthFailure(deviceId, tsStr, sig);
             diagLog("[AUTH] Heartbeat refused for '%s' (slot %d): %s\n", deviceId.c_str(),
-                    licenseSlots[slotIdx].slotNum, why ? why : "unknown");
+                    phoneSlots[slotIdx].slotNum, why ? why : "unknown");
         }
         webServer.send(403, "application/json", "{\"error\":\"AUTH_FAILED_OR_REPLAY\"}");
         return;
