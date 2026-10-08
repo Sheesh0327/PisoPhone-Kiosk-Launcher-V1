@@ -13,6 +13,20 @@ class KioskDeviceAdminReceiver : DeviceAdminReceiver() {
             val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
             val msg = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
             Log.d("KioskDeviceAdmin", "Silent installation callback. Status: $status, message: $msg")
+            if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
+                // Android wants the person to confirm this install (not every phone installs silently): show its screen
+                // instead of reporting a failure.
+                @Suppress("DEPRECATION")
+                val confirm = intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
+                if (confirm != null) {
+                    try {
+                        context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        return
+                    } catch (e: Exception) {
+                        Log.e("KioskDeviceAdmin", "Could not show the install confirmation: ${e.message}")
+                    }
+                }
+            }
             if (status == PackageInstaller.STATUS_SUCCESS) {
                 Log.i("KioskDeviceAdmin", "Silent update succeeded! Launching updated kiosk application.")
                 com.pisophone.kiosk.security.KioskUpdateManager.onInstallSuccess()
