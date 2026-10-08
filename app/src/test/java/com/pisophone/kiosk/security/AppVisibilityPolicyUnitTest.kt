@@ -30,9 +30,15 @@ class AppVisibilityPolicyUnitTest {
     fun appsThePhoneNeedsAreOnlyHidden() {
         // things the system itself depends on, whether or not the phone says so
         for (pkg in listOf(
-            "com.android.settings", "com.android.vending", "com.google.android.gms", "com.android.systemui",
-            "com.android.providers.contacts", "com.google.android.tts", "com.google.android.inputmethod.latin",
-            "com.android.permissioncontroller", "com.android.documentsui",
+            "com.android.settings",
+            "com.android.vending",
+            "com.google.android.gms",
+            "com.android.systemui",
+            "com.android.providers.contacts",
+            "com.google.android.tts",
+            "com.google.android.inputmethod.latin",
+            "com.android.permissioncontroller",
+            "com.android.documentsui",
         )) {
             assertEquals(pkg, Action.HIDE_IN_LAUNCHER, decide(pkg, system = true))
         }

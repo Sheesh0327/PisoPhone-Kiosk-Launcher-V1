@@ -33,22 +33,63 @@ object AppVisibilityPolicy {
     /** Exact package names, or prefixes (ending in '.'), that are only ever hidden, never disabled. */
     private val NEVER_DISABLE = listOf(
         "android",
-        "com.android.systemui", "com.android.settings", "com.google.android.settings",
-        "com.android.vending", "com.google.android.gms", "com.google.android.gsf",
-        "com.android.packageinstaller", "com.google.android.packageinstaller",
-        "com.android.permissioncontroller", "com.google.android.permissioncontroller",
-        "com.android.phone", "com.android.server.telecom", "com.android.providers.", "com.android.bluetooth",
-        "com.android.nfc", "com.android.shell", "com.android.keychain", "com.android.certinstaller",
-        "com.android.location.fused", "com.android.inputmethod.", "com.google.android.inputmethod.",
-        "com.android.webview", "com.google.android.webview", "com.android.managedprovisioning",
-        "com.android.networkstack", "com.google.android.networkstack", "com.android.captiveportallogin",
-        "com.google.android.captiveportallogin", "com.android.cellbroadcastreceiver", "com.google.android.cellbroadcastreceiver",
-        "com.android.emergency", "com.android.stk", "com.android.carrierconfig", "com.android.ons",
-        "com.android.documentsui", "com.google.android.documentsui", "com.android.externalstorage", "com.android.mtp",
-        "com.google.android.ext.", "com.google.android.tts", // the kiosk speaks through the text-to-speech engine
+        "com.android.systemui",
+        "com.android.settings",
+        "com.google.android.settings",
+        "com.android.vending",
+        "com.google.android.gms",
+        "com.google.android.gsf",
+        "com.android.packageinstaller",
+        "com.google.android.packageinstaller",
+        "com.android.permissioncontroller",
+        "com.google.android.permissioncontroller",
+        "com.android.phone",
+        "com.android.server.telecom",
+        "com.android.providers.",
+        "com.android.bluetooth",
+        "com.android.nfc",
+        "com.android.shell",
+        "com.android.keychain",
+        "com.android.certinstaller",
+        "com.android.location.fused",
+        "com.android.inputmethod.",
+        "com.google.android.inputmethod.",
+        "com.android.webview",
+        "com.google.android.webview",
+        "com.android.managedprovisioning",
+        "com.android.networkstack",
+        "com.google.android.networkstack",
+        "com.android.captiveportallogin",
+        "com.google.android.captiveportallogin",
+        "com.android.cellbroadcastreceiver",
+        "com.google.android.cellbroadcastreceiver",
+        "com.android.emergency",
+        "com.android.stk",
+        "com.android.carrierconfig",
+        "com.android.ons",
+        "com.android.documentsui",
+        "com.google.android.documentsui",
+        "com.android.externalstorage",
+        "com.android.mtp",
+        "com.google.android.ext.",
+        "com.google.android.tts", // the kiosk speaks through the text-to-speech engine
         // A phone vendor's own apps are mixed up with its framework: never disabled, only hidden.
-        "com.samsung.", "com.sec.", "com.miui.", "com.xiaomi.", "com.huawei.", "com.hihonor.", "com.oppo.", "com.coloros.",
-        "com.heytap.", "com.vivo.", "com.oneplus.", "com.motorola.", "com.mediatek.", "com.qualcomm.", "com.qti.", "vendor.",
+        "com.samsung.",
+        "com.sec.",
+        "com.miui.",
+        "com.xiaomi.",
+        "com.huawei.",
+        "com.hihonor.",
+        "com.oppo.",
+        "com.coloros.",
+        "com.heytap.",
+        "com.vivo.",
+        "com.oneplus.",
+        "com.motorola.",
+        "com.mediatek.",
+        "com.qualcomm.",
+        "com.qti.",
+        "vendor.",
     )
 
     fun isNeverDisabled(packageName: String): Boolean =
@@ -145,7 +186,9 @@ object AppVisibilityPolicy {
                         false
                     }
                     // an app that cannot be disabled is hidden from the launcher instead
-                    if (ok) disabled.add(info.packageName) else { failed.add(info.packageName); hidden.add(info.packageName) }
+                    if (ok) {
+                        disabled.add(info.packageName)
+                    } else { failed.add(info.packageName); hidden.add(info.packageName) }
                 }
             }
         }

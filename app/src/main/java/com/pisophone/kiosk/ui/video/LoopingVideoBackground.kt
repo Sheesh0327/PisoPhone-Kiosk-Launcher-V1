@@ -106,7 +106,10 @@ fun LoopingVideoBackground(
  * Plays one raw video resource in a loop, silently, filling the view (cropping the overflow). Creates its player when the
  * surface exists and releases it as soon as the surface or the view goes away.
  */
-class LoopingVideoView(context: Context, @RawRes private val rawRes: Int) : TextureView(context), TextureView.SurfaceTextureListener {
+class LoopingVideoView(
+    context: Context,
+    @RawRes private val rawRes: Int,
+) : TextureView(context), TextureView.SurfaceTextureListener {
     var onFirstFrame: (() -> Unit)? = null
     var onFailed: (() -> Unit)? = null
 
