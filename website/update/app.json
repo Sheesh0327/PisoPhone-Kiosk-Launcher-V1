@@ -1,10 +1,10 @@
 {
-  "versionCode": 365,
-  "versionName": "1.0.365-dev",
+  "versionCode": 375,
+  "versionName": "1.0.375-dev",
   "channel": "dev",
   
   "signatureChecksum": "Un0usqLMwnmeaowrY2g21EgRVWe4bTRDLUi2RH12WbE",
-  "sha256": "f657bc4e922365b5c0c8c9151621ced37f2835aff301ed6f13fc87a046651cc8",
-  "size": 3028848,
+  "sha256": "ad8ee729839ce137a93c34912d7cfe4a777172ee2e5be0036361de17f92f6619",
+  "size": 2387199,
   "releaseDate": "2026-10-08"
 }
