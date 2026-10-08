@@ -37,7 +37,6 @@ class KioskOverlay(
     private val deviceIpFlow: StateFlow<String> = kotlinx.coroutines.flow.MutableStateFlow("127.0.0.1"),
     private val slotNumberFlow: StateFlow<Int> = kotlinx.coroutines.flow.MutableStateFlow(1),
     private val batteryStatusFlow: StateFlow<BatteryStatus> = kotlinx.coroutines.flow.MutableStateFlow(BatteryStatus()),
-    private val slotWarningDaysLeftFlow: StateFlow<Int?> = kotlinx.coroutines.flow.MutableStateFlow(null),
     private val isSlotExpiredFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
     private val slotExpiryReasonFlow: StateFlow<String> = kotlinx.coroutines.flow.MutableStateFlow(""),
     private val isArenaModeFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
@@ -65,7 +64,6 @@ class KioskOverlay(
         deviceIpFlow = deviceIpFlow,
         slotNumberFlow = slotNumberFlow,
         batteryStatusFlow = batteryStatusFlow,
-        slotWarningDaysLeftFlow = slotWarningDaysLeftFlow,
         isSlotExpiredFlow = isSlotExpiredFlow,
         slotExpiryReasonFlow = slotExpiryReasonFlow,
         isArenaModeFlow = isArenaModeFlow,
@@ -141,7 +139,6 @@ class LockScreenOverlay(
     private val deviceIpFlow: StateFlow<String> = kotlinx.coroutines.flow.MutableStateFlow("127.0.0.1"),
     private val slotNumberFlow: StateFlow<Int> = kotlinx.coroutines.flow.MutableStateFlow(1),
     private val batteryStatusFlow: StateFlow<BatteryStatus> = kotlinx.coroutines.flow.MutableStateFlow(BatteryStatus()),
-    private val slotWarningDaysLeftFlow: StateFlow<Int?> = kotlinx.coroutines.flow.MutableStateFlow(null),
     private val isSlotExpiredFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
     private val slotExpiryReasonFlow: StateFlow<String> = kotlinx.coroutines.flow.MutableStateFlow(""),
     private val isArenaModeFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
@@ -255,7 +252,6 @@ class LockScreenOverlay(
             val deviceIp by deviceIpFlow.collectAsState()
             val slotNumber by slotNumberFlow.collectAsState()
             val batteryStatus by batteryStatusFlow.collectAsState()
-            val slotWarningDaysLeft by slotWarningDaysLeftFlow.collectAsState()
             val isSlotExpired by isSlotExpiredFlow.collectAsState()
             val slotExpiryReason by slotExpiryReasonFlow.collectAsState()
             val isArenaMode by isArenaModeFlow.collectAsState()
@@ -310,7 +306,6 @@ class LockScreenOverlay(
                             themeIndex = themeIndex,
                             batteryStatus = batteryStatus,
                             onThemeChange = onThemeChange,
-                            slotWarningDaysLeft = slotWarningDaysLeft,
                             isSlotExpired = isSlotExpired,
                             slotExpiryReason = slotExpiryReason,
                             isArenaMode = isArenaMode,
@@ -334,7 +329,6 @@ class LockScreenOverlay(
                             themeIndex = themeIndex,
                             batteryStatus = batteryStatus,
                             onThemeChange = onThemeChange,
-                            slotWarningDaysLeft = slotWarningDaysLeft,
                             isSlotExpired = isSlotExpired,
                             slotExpiryReason = slotExpiryReason,
                             isArenaMode = isArenaMode,

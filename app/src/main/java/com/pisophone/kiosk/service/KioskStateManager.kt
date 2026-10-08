@@ -35,7 +35,6 @@ class KioskStateManager(private val context: Context) {
     val pricePerCoin = MutableStateFlow(5.0)
     val minutesPerCoin = MutableStateFlow(30)
     var esp32Ip: String? = null
-    val slotWarningDaysLeft = MutableStateFlow<Int?>(null)
     val isSlotExpired = MutableStateFlow(false)
     val slotExpiryMessage = MutableStateFlow("")
     val slotNumber = MutableStateFlow(0)

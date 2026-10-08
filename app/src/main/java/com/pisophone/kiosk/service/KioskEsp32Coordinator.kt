@@ -140,12 +140,6 @@ class KioskEsp32Coordinator(
         stateManager.isArmingInProgress.value = false
     }
 
-    override fun onSlotWarning(daysLeft: Int, expiresAt: Long, slotNum: Int, message: String) {
-        stateManager.slotWarningDaysLeft.value = daysLeft
-        stateManager.slotExpiryMessage.value = message
-        stateManager.slotNumber.value = slotNum
-    }
-
     override fun onSlotLockdown(reason: String, slotNum: Int, expiresAt: Long) {
         DiagnosticsLog.add("SLOT", "lockdown on slot $slotNum: $reason")
         // Lockdown is a terminal failure for any in-flight arm attempt.
@@ -158,7 +152,6 @@ class KioskEsp32Coordinator(
         stateManager.isSlotExpired.value = true
         stateManager.slotExpiryMessage.value = if (reason.isNotBlank()) reason else "Device activation required."
         stateManager.slotNumber.value = slotNum
-        stateManager.slotWarningDaysLeft.value = 0
         // Heartbeats keep reporting lockdown every few seconds; only hit the database on transition.
         if (!wasAlreadyLocked || hadActiveSession) {
             paymentRepo.expireSessionBlocking()
@@ -186,7 +179,6 @@ class KioskEsp32Coordinator(
         if (stateManager.isSlotExpired.value) {
             stateManager.isSlotExpired.value = false
             stateManager.slotExpiryMessage.value = ""
-            stateManager.slotWarningDaysLeft.value = null
             KioskActivationManager.setSlotLockdown(context, false, slotNum = if (slotNum > 0) slotNum else stateManager.slotNumber.value)
             Log.i(TAG, "Slot activated on ESP32: Ready for coins (Slot #$slotNum).")
         }

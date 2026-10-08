@@ -68,7 +68,6 @@ class KioskOverlayCoordinator(
                         deviceIpFlow = stateManager.deviceIp,
                         slotNumberFlow = stateManager.slotNumber,
                         batteryStatusFlow = batteryStatusFlow,
-                        slotWarningDaysLeftFlow = stateManager.slotWarningDaysLeft,
                         isSlotExpiredFlow = stateManager.isSlotExpired,
                         slotExpiryReasonFlow = stateManager.slotExpiryMessage,
                         isArenaModeFlow = stateManager.isArenaMode,
