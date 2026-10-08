@@ -126,6 +126,7 @@ script("netinit", f'echo "$1" >> {tmp}/network.log\n')
 # the stand-in setup file: shows what it was given, writes the summary, the sheet and the state file like the real one
 FAKE_SETUP = f"""#!/bin/sh
 PISO_RELEASE='9.9.9'
+echo "  TIP: fake advice"
 echo "SETUP-RAN args=[$*] root=[$ROOT_PASSWORD] kiosk=[$KIOSK_PASSWORD] box=[$BOX_NEW_ADMIN_PASSWORD] guest=[$GUEST_SSID] site=[$SITE_NAME]"
 R={fake_root}
 case "$(cat {tmp}/result 2>/dev/null)" in
@@ -280,6 +281,11 @@ check("pisophone-router-password.txt" in r.saved and "password: routerpass1" in 
       "the router password is saved before the setup runs, even when it fails: " + str(r.saved))
 check(ps.saved_router_password(r.outdir)[0] == "routerpass1", "and found again from that folder")
 check(ps.failure_message({"state": "FAILED the coin box did not join the hidden PisoCoinBox network"}).count("box-diag") == 1, "a coin box failure points to box-diag")
+
+check(ps.tip_text("  TIP: keep the box powered.") == "keep the box powered." and ps.tip_text("== step") is None and ps.tip_text("TIP:") is None,
+      "tip lines are recognised for the window")
+r = e2e(lan="10.0.0.1", yes=True, no_browser=True)
+check("  TIP: fake advice" in r.out and r.rc == 0, "tips pass through the streamed output: " + r.out[-300:])
 
 # failures are explained
 r = e2e(answers=("", "", "y"), secrets_=("", "", ""), lan="10.0.0.1", result="fail")

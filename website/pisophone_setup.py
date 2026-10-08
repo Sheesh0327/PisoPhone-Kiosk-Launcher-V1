@@ -401,6 +401,12 @@ def setup_command(branch):
             f"if [ -r /root/piso-handout.html ]; then echo @@PISO-HANDOUT; cat /root/piso-handout.html; fi; echo @@PISO-END")
 
 
+def tip_text(line):
+    """The advice in a "TIP:" line of the router's output, or None."""
+    m = re.match(r"\s*TIP: (.+)$", line or "")
+    return m.group(1).strip() if m else None
+
+
 def stream(proc, emit):
     """Passes the router's output on line by line as it comes (emit) and returns the sections after the markers (rc, state,
     summary, handout)."""
@@ -1564,6 +1570,7 @@ class Wizard:
         self.log.pack(side="left", fill="both", expand=True)
         self.log.tag_configure("err", foreground="#fca5a5")
         self.log.tag_configure("ok", foreground="#86efac")
+        self.log.tag_configure("tip", foreground="#93c5fd")
         self.log.tag_configure("step", foreground="#ffffff", font=(self.f["mono"][0], self.f["mono"][1], "bold"))
         for line in self.log_lines[-2000:]:
             self._log_insert(line)
@@ -1624,6 +1631,8 @@ class Wizard:
             tag = "step"
         elif low.startswith(("error", "fail")) or "warning" in low:
             tag = "err"
+        elif tip_text(line):
+            tag = "tip"
         elif line.startswith(("PASS", "SETUP COMPLETE")):
             tag = "ok"
         self.log.insert("end", line + "\n", tag)
@@ -1661,6 +1670,11 @@ class Wizard:
         self.log_lines.append(line)
         if line.startswith("== "):
             self.activity = line[3:]
+        advice = tip_text(line)
+        if advice and (self.banner is None or self.banner[0] == "info"):
+            self.banner = ("info", "Tip: " + advice)   # the latest tip stays visible above the log
+            if STEPS[self.step][0] == "install":
+                self._render_install_state()
         if STEPS[self.step][0] == "install" and self.log.winfo_exists():
             self.log.configure(state="normal")
             self._log_insert(line)

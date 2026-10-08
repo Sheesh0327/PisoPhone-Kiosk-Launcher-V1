@@ -335,6 +335,18 @@ r = box_diag('box_ifname() { echo wlan0-3; }; iwinfo() { [ "$2" = assoclist ] &&
              'conf_set BOX_MAC AA:BB:CC:DD:EE:01; conf_set BOX_WIFI_ROTATED 0; uci() { case "$*" in *box_ap.key*) echo PisoCoinBox@Setup;; esac; }')
 check("verdict: the link works" in r.stdout, "box-diag: everything fine -> the link works: " + r.stdout + r.stderr)
 check("box-diag) cmd_box_diag" in text and "cmd_box_diag 2>&1" in text.split("cmd_diag() {")[1].split("\n}\n")[0], "box-diag is a command and part of piso-setup diag")
+# ---- tips along the way ------------------------------------------------------------------------------------------------------
+r = lib('sleep() { :; }; box_station() { :; }; box_ifname() { echo wlan0-3; }; box_diag() { :; }; cmd_box_diag() { :; }; pair_box; echo rc=$?', env={"PAIR_WAIT": "310"})
+out = r.stdout + r.stderr
+check("TIP: the coin box's light tells you" in out and "TIP: no box yet after a minute" in out and "TIP: still nothing" in out and "TIP: last try" in out,
+      "while pairing waits, the tips come in turn (light, firmware, factory reset, supply): " + out[-900:])
+check(out.index("no box yet") < out.index("still nothing") < out.index("last try"), "in that order")
+r = lib('sleep() { :; }; box_station() { :; }; box_ifname() { :; }; cmd_box_diag() { :; }; pair_box; echo rc=$?', env={"PAIR_WAIT": "65"})
+check("TIP: the router is not broadcasting PisoCoinBox" in r.stdout + r.stderr and "no box yet after a minute" not in r.stdout + r.stderr,
+      "the tip fits what is wrong (the network is not on the air): " + r.stdout + r.stderr)
+r = lib('sleep() { :; }; box_station() { :; }; box_ifname() { echo wlan0-3; }; cmd_box_diag() { :; }; pair_box; echo rc=$?', env={"PAIR_WAIT": "65", "PISO_TIPS": "0"})
+check("TIP:" not in r.stdout + r.stderr, "PISO_TIPS=0 turns the tips off")
+check("tip \"found it." in text and "tip \"next: open the coin box page" in text and "tip \"running the setup again is safe" in text, "tips at the join, at the end and after a failure")
 check("rotate_box_wifi" in text.split("stage2() {")[1].split("\n}\n")[0] and "rotate_box_wifi" in text.split("cmd_pair() {")[1].split("\n}\n")[0], "stage 2 and pair both rotate it")
 # ---- the printed setup sheet, the review screen and the Telegram prompt ----------------------------------------------------------
 r = lib('rm -f "$CONF"; conf_set SITE_NAME "Maria <Shop> & Sons"; conf_set GUEST_NAME "Maria Free WiFi"; conf_set KIOSK_PASS kioskpw12345; conf_set BOX_ADMIN_PASS boxpw123456; '

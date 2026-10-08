@@ -63,6 +63,8 @@ stop_opennds() {
 	/etc/init.d/opennds stop > /dev/null 2>&1
 	sleep 2
 }
+# tip: advice for the person doing the setup, shown in the output (PISO_TIPS=0 turns the tips off; the window shows the latest one).
+tip() { [ "${PISO_TIPS:-1}" = 0 ] || log "  TIP: $*"; }
 step() { log ""; log "== $*"; [ "$DRY" = 1 ] || echo "RUNNING $*" > "$STATE"; }
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -114,6 +116,7 @@ preflight() {
 	done
 	[ -n "$R24" ] || die "no 2.4 GHz Wi-Fi radio found: the coin box can only use 2.4 GHz"
 	log "Wi-Fi radios: 2.4 GHz = $R24, 5 GHz = ${R5:-none (the 5 GHz networks are skipped)}"
+	[ -n "$R5" ] || tip "this router has no 5 GHz radio: everything runs on 2.4 GHz, which works, but a dual-band router carries more customers at once."
 	[ "$DRY" = 1 ] && return 0
 	WAN=$(wan_ip)
 	[ -n "$WAN" ] || die "the router has no WAN address: plug the modem into the WAN port and wait a minute, then run this again"
@@ -125,6 +128,7 @@ preflight() {
 	log "WAN address: $WAN"
 	if ! ping -c 1 -W 3 1.1.1.1 > /dev/null 2>&1 && ! ping -c 1 -W 3 8.8.8.8 > /dev/null 2>&1; then die "no internet through the WAN port"; fi
 	log "Internet: ok"
+	tip "the setup takes about 3 to 8 minutes. Keep this window open, the coin box powered on near the router, and the network cable plugged in."
 }
 
 install_packages() {
@@ -463,6 +467,8 @@ pair_box() {
 	# A new or factory-reset box only knows the built-in password: open the network with it for the pairing. A box that was
 	# paired before (re-pairing it, or after a router reset) keeps the password it was given, so that one is offered in turn.
 	_old=$(box_wifi_key)
+	tip "the coin box's light tells you how it is doing: fast blinking = looking for the network, slow blinking = it cannot find or join it, steady = connected."
+	if [ -n "$(conf_get BOX_MAC)" ]; then tip "this router was paired with a coin box before: a box that was set up already is offered its own password, a new one the built-in one."; fi
 	conf_set BOX_WIFI_ROTATED 0
 	_key="$BOX_DEFAULT_WIFI"
 	set_box_key "$_key"
@@ -475,6 +481,12 @@ pair_box() {
 			if [ -n "$(box_ifname)" ]; then _net="$BOX_SSID is on the air"; else _net="$BOX_SSID is NOT on the air"; fi
 			log "  still waiting for the coin box ($_t of $PAIR_WAIT s): $_net, nobody has joined it yet"
 		fi
+		case "$_t" in
+			60) if [ -n "$(box_ifname)" ]; then tip "no box yet after a minute. Check that the ESP32 has power (its light should blink) and that it runs this project's firmware: flash it at https://pisophone.pages.dev/flash.html"
+				else tip "the router is not broadcasting $BOX_SSID. Check that its 2.4 GHz radio is on (Network > Wireless in the router's web page)."; fi ;;
+			150) tip "still nothing. A box that was set up before remembers its old Wi-Fi: factory reset it (touch the wire on GPIO 2 to ground for 5 seconds, or flash it again with 'erase all') so that it tries $BOX_SSID." ;;
+			300) tip "last try: put the box right next to the router, and use a phone charger that gives at least 1 A (a weak supply makes the ESP32 restart when it uses Wi-Fi). If it still fails, run: piso-setup box-diag" ;;
+		esac
 		if [ "$_old" != "$BOX_DEFAULT_WIFI" ] && [ $((_t % PAIR_SWAP)) -eq 0 ]; then
 			if [ "$_key" = "$BOX_DEFAULT_WIFI" ]; then _key="$_old"; else _key="$BOX_DEFAULT_WIFI"; fi
 			set_box_key "$_key"
@@ -489,6 +501,7 @@ pair_box() {
 	fi
 	if [ "$_key" = "$_old" ] && [ "$_old" != "$BOX_DEFAULT_WIFI" ]; then conf_set BOX_WIFI_ROTATED 1; fi   # it joined with its own password
 	log "the coin box joined: $MAC"
+	tip "found it. Keep the box powered: next it gets its own admin password and its own Wi-Fi password, and loses the network for up to a minute while it switches."
 	lock_box_network "$MAC"
 	conf_set BOX_MAC "$MAC"
 	BOX_MAC="$MAC"
@@ -547,6 +560,7 @@ provision_box() {
 rotate_box_wifi() {
 	[ "$(conf_get BOX_WIFI_ROTATED)" = 1 ] && return 0
 	step "Giving the coin box its own Wi-Fi password"
+	tip "the box's light will blink for up to a minute while it moves to the new password. That is normal: wait."
 	_new=$(secret BOX_WIFI_PASS_NEW 20)
 	box_curl "$(conf_get BOX_ADMIN_PASS)" /save --data-urlencode "wifi_pass=$_new"
 	case "$BOXCODE" in
@@ -666,8 +680,15 @@ stage2() {
 	finish_telegram
 	restart_router_access
 	[ "$(conf_get ROOT_PASS_SET)" = 1 ] || { log "INCOMPLETE: the router password was not set. Run: piso-setup set-password"; _f=$((_f + 1)); }
-	if [ "$_f" = 0 ]; then echo "DONE all checks passed" > "$STATE"; log ""; log "SETUP COMPLETE. Read $SUMMARY (ssh root@$LAN_IP)."
-	else echo "DONE with $_f failed checks (see $LOG)" > "$STATE"; log ""; log "Setup finished, but $_f check(s) failed: see above and $LOG. Run: piso-setup status"; fi
+	if [ "$_f" = 0 ]; then
+		echo "DONE all checks passed" > "$STATE"; log ""; log "SETUP COMPLETE. Read $SUMMARY (ssh root@$LAN_IP)."
+		tip "next: open the coin box page at http://$BOX_IP/ and use Install & Provision for each rental phone."
+		tip "keep the printed setup sheet (or the summary) somewhere safe: it has every password. The router's admin ports can be limited to your own computer with: piso-setup lock-admin"
+		tip "to check the system later, run: piso-setup status (a quick health check) or piso-setup diag (everything needed to report a problem)."
+	else
+		echo "DONE with $_f failed checks (see $LOG)" > "$STATE"; log ""; log "Setup finished, but $_f check(s) failed: see above and $LOG. Run: piso-setup status"
+		tip "running the setup again is safe and continues where it stopped. If the coin box is involved, piso-setup box-diag shows where its link breaks."
+	fi
 }
 
 # ---------------------------------------------------------------------------------------------------------------------

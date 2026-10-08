@@ -194,6 +194,9 @@ The setup asks you to choose the router password (or shows a generated one and a
 * **`: not found` errors and a syntax error right at the start**: the file has Windows line endings. Run `sed -i 's/\r$//' piso-setup.sh` and try again.
 * Everything is logged in `/root/piso-setup.log`.
 
+## Tips while it runs
+The setup prints `TIP:` lines at the moments people usually get stuck: what the coin box's light means, what to check when the box has not joined after one, two and five minutes (the advice depends on whether the router's `PisoCoinBox` network is on the air), what happens next when the box is found, and what to do when it is finished or a check failed. The window shows the latest tip above the log. `PISO_TIPS=0` turns them off.
+
 ## For developers
 `setup/piso-setup.sh` is generated from `setup/piso-setup.sh.in` plus the portal files: after changing any of them run
 `python3 tools/build_piso_setup.py` (CI fails if the committed file is out of date). Tests: `python3 router/tests/test_setup.py`.
