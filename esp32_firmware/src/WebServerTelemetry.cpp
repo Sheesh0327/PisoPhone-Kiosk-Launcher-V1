@@ -6,6 +6,7 @@
 #include "WebServerModule.h"
 #include "WebServerAuth.h"
 #include "Config.h"
+#include "WebDashboardHtml.h"
 #include "Security.h"
 #include "DeviceManager.h"
 #include "DeviceNetwork.h"
@@ -248,37 +249,33 @@ void handleOneVsOne() {
         if (p2Ip.length() > 0) {
             sendAuthenticated(p2Ip, targetPort, "/trigger_action", "/challenge", "action=arena_mode_deactivate", 1000);
         }
-        matchStatusMsg =
-            "<div style='background:#fef3c7;color:#92400e;padding:10px 14px;border-radius:6px;margin-bottom:10px;font-size:13px;'>⚔️ <b>1v1 Arena Mode Ended:</b> Match cancelled without transferring credits.</div>";
+        matchStatusMsg = noteHtml("warn", "info", "<b>Match ended.</b> Nobody won, so no time was moved.");
         redirectHome();
         return;
     }
 
     if (action == "activate") {
         if (p1Ip == "" || p2Ip == "") {
-            matchStatusMsg =
-                "<div style='background:#ffebee;color:#c62828;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Activation Blocked:</b> Please select both Player 1 and Player 2!</div>";
+            matchStatusMsg = noteHtml("bad", "alert", "<b>Can't start.</b> Choose both players.");
             redirectHome();
             return;
         }
         if (p1Ip == p2Ip) {
             matchStatusMsg =
-                "<div style='background:#ffebee;color:#c62828;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Activation Blocked:</b> Player 1 and Player 2 cannot be the same device!</div>";
+                noteHtml("bad", "alert", "<b>Can't start.</b> Player 1 and Player 2 must be different phones.");
             redirectHome();
             return;
         }
         if (matchMinutes <= 0) {
-            matchStatusMsg =
-                "<div style='background:#ffebee;color:#c62828;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Activation Blocked:</b> Stake minutes must be at least 1 minute!</div>";
+            matchStatusMsg = noteHtml("bad", "alert", "<b>Can't start.</b> The stake must be at least 1 minute.");
             redirectHome();
             return;
         }
 
         matchActive = true;
-        matchStatusMsg =
-            "<div style='background:rgba(234,88,12,0.15);border:1px solid #f97316;color:#fdba74;padding:12px 16px;border-radius:8px;margin-bottom:12px;font-size:13px;line-height:1.5;'>⚔️ <b>1v1 Arena Mode Activated!</b><br>⚠️ <b>Warning:</b> Time credits are at stake (<b>" +
-            String(matchMinutes) +
-            " minutes</b>). The loser will forfeit their stake to the winner upon match completion.</div>";
+        matchStatusMsg = noteHtml("warn", "alert",
+                                  "<b>A match is on.</b> Both players staked " + String(matchMinutes) +
+                                      " minutes. The loser's stake goes to the winner when the match ends.");
 
         sendAuthenticated(p1Ip, targetPort, "/trigger_action", "/challenge",
                           "action=arena_mode_activate_p1&role=1&stake=" + String(matchMinutes), 1000);
@@ -291,15 +288,15 @@ void handleOneVsOne() {
 
     if (winner != "" && p1Ip != "" && p2Ip != "") {
         if (p1Ip == p2Ip) {
-            matchStatusMsg =
-                "<div style='background:#ffebee;color:#c62828;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Match Blocked:</b> Player 1 and Player 2 cannot be the same device!</div>";
+            matchStatusMsg = noteHtml("bad", "alert",
+                                      "<b>Can't count this match.</b> Player 1 and Player 2 must be different phones.");
             redirectHome();
             return;
         }
 
         if (matchMinutes <= 0) {
             matchStatusMsg =
-                "<div style='background:#ffebee;color:#c62828;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Match Blocked:</b> Stake minutes must be at least 1 minute!</div>";
+                noteHtml("bad", "alert", "<b>Can't count this match.</b> The stake must be at least 1 minute.");
             redirectHome();
             return;
         }
@@ -311,11 +308,9 @@ void handleOneVsOne() {
 
         if (p1Sec < 0 || p2Sec < 0) {
             String detail = "";
-            if (p1Sec < 0) detail += "<br>• <b>Player 1 (" + p1Ip + "):</b> " + p1Err;
-            if (p2Sec < 0) detail += "<br>• <b>Player 2 (" + p2Ip + "):</b> " + p2Err;
-            matchStatusMsg =
-                "<div style='background:#ffebee;color:#c62828;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Match Failed:</b> Unable to connect or verify time balance:" +
-                detail + "</div>";
+            if (p1Sec < 0) detail += "<br>Player 1 (" + escapeHtmlText(p1Ip) + "): " + escapeHtmlText(p1Err);
+            if (p2Sec < 0) detail += "<br>Player 2 (" + escapeHtmlText(p2Ip) + "): " + escapeHtmlText(p2Err);
+            matchStatusMsg = noteHtml("bad", "alert", "<b>Could not check the phones:</b>" + detail);
             redirectHome();
             return;
         }
@@ -324,10 +319,11 @@ void handleOneVsOne() {
         int p2Mins = p2Sec / 60;
 
         if (p1Sec < reqStakeSeconds || p2Sec < reqStakeSeconds) {
-            matchStatusMsg =
-                "<div style='background:#ffebee;color:#c62828;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>❌ <b>Stake Denied:</b> Both devices must have at least " +
-                String(matchMinutes) + "m of active time.<br>• Player 1 (" + p1Ip + "): <b>" + String(p1Mins) +
-                "m remaining</b><br>• Player 2 (" + p2Ip + "): <b>" + String(p2Mins) + "m remaining</b></div>";
+            matchStatusMsg = noteHtml("bad", "alert",
+                                      "<b>Not enough time to stake.</b> Both phones need at least " +
+                                          String(matchMinutes) + " minutes.<br>Player 1 (" + escapeHtmlText(p1Ip) +
+                                          "): <b>" + String(p1Mins) + " min left</b><br>Player 2 (" +
+                                          escapeHtmlText(p2Ip) + "): <b>" + String(p2Mins) + " min left</b>");
             redirectHome();
             return;
         }
@@ -339,17 +335,17 @@ void handleOneVsOne() {
             yield();
             sendAddTime(-matchMinutes, p2Ip);
             matchStatusMsg =
-                "<div style='background:#e8f5e9;color:#2e7d32;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>🏆 <b>Player 1 Won:</b> Transferred +" +
-                String(matchMinutes) + "m to Player 1 (" + p1Ip + ") and deducted -" + String(matchMinutes) +
-                "m from Player 2 (" + p2Ip + ").</div>";
+                noteHtml("ok", "trophy",
+                         "<b>Player 1 won.</b> +" + String(matchMinutes) + " min to Player 1 (" + escapeHtmlText(p1Ip) +
+                             "), -" + String(matchMinutes) + " min from Player 2 (" + escapeHtmlText(p2Ip) + ").");
         } else if (winner == "p2" || winner == NVS_KEY_P2) {
             sendAddTime(matchMinutes, p2Ip);
             yield();
             sendAddTime(-matchMinutes, p1Ip);
             matchStatusMsg =
-                "<div style='background:#e8f5e9;color:#2e7d32;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:13px;'>🏆 <b>Player 2 Won:</b> Transferred +" +
-                String(matchMinutes) + "m to Player 2 (" + p2Ip + ") and deducted -" + String(matchMinutes) +
-                "m from Player 1 (" + p1Ip + ").</div>";
+                noteHtml("ok", "trophy",
+                         "<b>Player 2 won.</b> +" + String(matchMinutes) + " min to Player 2 (" + escapeHtmlText(p2Ip) +
+                             "), -" + String(matchMinutes) + " min from Player 1 (" + escapeHtmlText(p1Ip) + ").");
         }
 
         sendAuthenticated(p1Ip, targetPort, "/trigger_action", "/challenge", "action=arena_mode_deactivate", 1000);

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """The provisioning page (website/index.html) in a real browser, served with the site's own Content-Security-Policy
-(website/_headers): it renders with the built stylesheet, runs no third-party code, raises no CSP violation or script
+(website/_headers): it renders with its stylesheet, runs no third-party code, raises no CSP violation or script
 error, and takes the box's secret out of the address bar while keeping it for the install (fragment and query links).
 The QR setup code is decoded from the screen by an independent reader (zxing) and must be exactly what Android expects.
 Needs Playwright (pip install playwright; playwright install chromium), and zxing-cpp + pillow for the QR check.
@@ -53,7 +53,7 @@ with sync_playwright() as pw:
         pg.wait_for_timeout(1000)
         check(not problems, f"{label}: no CSP violation or script error: {problems}")
         check(pg.is_visible("#mainView") and not pg.is_visible("#restrictedView"), f"{label}: the setup view is shown")
-        check(pg.evaluate("getComputedStyle(document.body).display") == "flex", f"{label}: the built stylesheet applies")
+        check(pg.evaluate("getComputedStyle(document.body).display") == "flex", f"{label}: the stylesheet applies")
         check(pg.evaluate("window.PisoProvisioning.params.get('secret')") == secret, f"{label}: the page keeps the secret for the install")
         check("secret" not in pg.evaluate("location.href"), f"{label}: the secret is no longer in the address bar")
         pg.close()

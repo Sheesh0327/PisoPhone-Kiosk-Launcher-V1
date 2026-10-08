@@ -42,7 +42,7 @@ send `/update` in Telegram), `piso-setup auto-update off|on` (off: you are told,
 The key is built into the router program, so a stolen Cloudflare or GitHub account can publish nothing a router will install.
 `./piso-setup.sh update` still works for a router that has no internet.
 ## 4. After `main` serves the new website (timed follow-up)
-- [ ] The box's **Install & Provision** links still carry the box's secret in the query string (`?secret=`), which reaches
+- [ ] The box's **Set up a phone** links still carry the box's secret in the query string (`?secret=`), which reaches
       the web server's logs and the browser history. The website now also reads it after `#` (never sent to a server) and
       removes it from the address bar. Once that website is live on `main`, switch the links to `#secret=` in
       `esp32_firmware/web/portal-modals.js` (two links) and `esp32_firmware/src/WebDashboardComponents.cpp`, run

@@ -54,7 +54,7 @@ fun VaultDiagnosticsSection(context: Context) {
             Text("Warning: no admin PIN is set yet. Pair this phone with its box to receive one.", color = Color(0xFFFF6B6B), fontSize = 10.sp, fontWeight = FontWeight.Bold)
         }
         if (com.pisophone.kiosk.security.KioskSecurity.usesLegacySharedSecret(androidx.compose.ui.platform.LocalContext.current)) {
-            Text("Notice: this phone still uses the old shared key. Provision it with its box's secret (box dashboard > Install & Provision).", color = Color(0xFFFFB86C), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Text("Notice: this phone still uses the old shared key. Provision it with its box's secret (box dashboard > Set up a phone).", color = Color(0xFFFFB86C), fontSize = 10.sp, fontWeight = FontWeight.Bold)
         }
         Spacer(modifier = Modifier.height(6.dp))
 

@@ -1,31 +1,17 @@
-    (function() {
-        const savedTheme = localStorage.getItem('kiosk_theme') || 'light';
-        document.documentElement.setAttribute('data-theme', savedTheme);
-    })();
-
-    window.toggleTheme = function() {
-        const cur = document.documentElement.getAttribute('data-theme') || 'light';
-        const next = cur === 'dark' ? 'light' : 'dark';
-        document.documentElement.setAttribute('data-theme', next);
-        localStorage.setItem('kiosk_theme', next);
-        updateThemeButton();
-    };
-
-    function updateThemeButton() {
-        const btn = document.getElementById('theme_toggle_btn');
-        if (btn) {
-            const cur = document.documentElement.getAttribute('data-theme') || 'light';
-            btn.innerHTML = cur === 'dark' ? '☀️ Light' : '🌙 Dark';
-        }
-    }
-    document.addEventListener('DOMContentLoaded', updateThemeButton);
-
+    // kind: 'success', 'error' or 'info'
     window.showStatus = function(text, type) {
         const box = document.getElementById('status_message');
-        box.style.display = 'block';
-        box.className = 'status-box ' + type;
-        box.innerHTML = text;
+        box.className = 'note ' + (type === 'success' ? 'ok' : (type === 'error' ? 'bad' : ''));
+        box.innerHTML = ic(type === 'success' ? 'check' : (type === 'error' ? 'alert' : 'info')) + '<span class="grow">' + text + '</span>';
     };
+
+    function setProgress(pct, state) {
+        const wrap = document.getElementById('progress_wrapper');
+        const bar = document.getElementById('progress_bar');
+        wrap.className = 'progress' + (state ? ' ' + state : '');
+        wrap.style.display = 'block';
+        bar.style.width = pct + '%';
+    }
 
     // Which firmware file this board needs and which version it runs; filled in by the ESP32
     // when it serves this page.
@@ -108,19 +94,19 @@
 
     window.checkCloudUpdate = async function() {
         const badge = document.getElementById('cloud_ver_badge');
-        if (badge) badge.textContent = 'Checking...';
+        if (badge) badge.textContent = 'Checking…';
         try {
             const info = await fetchChipFirmwareInfo();
             const data = info.data;
-            if (badge) badge.textContent = 'Server v' + (data.version || '3.0.0');
+            if (badge) badge.textContent = 'Latest v' + (data.version || '?');
             if (data.version === RUNNING_VERSION) {
-                showStatus('<b>✅ Up to date:</b> this controller already runs v' + RUNNING_VERSION + ' (' + CHIP_ID + ').', 'success');
+                showStatus('<b>Up to date.</b> This box already runs v' + RUNNING_VERSION + ' (' + CHIP_ID + ').', 'success');
             } else {
-                showStatus('<b>🎉 Update available:</b> v' + (data.version || '?') + ' (this controller runs v' + RUNNING_VERSION + ', chip ' + CHIP_ID + ')<br>' + (data.changelog || 'Latest build ready to install.'), 'info');
+                showStatus('<b>Update available:</b> v' + (data.version || '?') + ' (this box runs v' + RUNNING_VERSION + ', chip ' + CHIP_ID + ')<br>' + escHtml(data.changelog || 'Ready to install.'), 'info');
             }
         } catch(e) {
-            if (badge) badge.textContent = 'Server Ready';
-            showStatus('<b>Server Update Endpoint:</b> Ready to download latest system update.', 'info');
+            if (badge) badge.textContent = 'Unknown';
+            showStatus('Could not check the version. You can still try to install.', 'info');
         }
     };
 
@@ -133,7 +119,7 @@
         try {
             startInfo = await fetchChipFirmwareInfo();
         } catch (e) {
-            showStatus('<b>❌ Cannot update:</b> ' + e.message, 'error');
+            showStatus('<b>Cannot update.</b> ' + escHtml(e.message), 'error');
             return;
         }
         const sameVersion = startInfo.data.version === RUNNING_VERSION;
@@ -144,11 +130,9 @@
         
         if (cloudBtn) cloudBtn.disabled = true;
         
-        progressWrapper.style.display = 'block';
-        progressBar.style.width = '0%';
-        progressBar.style.background = '#3b82f6';
+        setProgress(0);
         
-        showStatus('📥 Downloading latest system update from cloud server...', 'info');
+        showStatus('Downloading the update…', 'info');
         
         try {
             const info = startInfo;
@@ -167,16 +151,16 @@
             if (fwBlob.size < 100000 || magic[0] !== 0xE9) {
                 throw new Error('Downloaded file is not a valid ESP32 firmware image (' + fwBlob.size + ' bytes). Nothing was flashed.');
             }
-            showStatus('🔐 Verifying checksum...', 'info');
+            showStatus('Checking the download…', 'info');
             const actualSha = await sha256Hex(await fwBlob.arrayBuffer());
             if (actualSha !== expectedSha) {
                 throw new Error('Checksum mismatch: the download is corrupt or not the published build. Nothing was flashed.');
             }
             
-            showStatus('🔏 Checking the signed manifest...', 'info');
+            showStatus('Checking the signature…', 'info');
             await postOtaManifest({ chip: CHIP_ID, version: info.data.version, sha256: expectedSha, size: fwBlob.size, sig: info.entry.sig || '' });
 
-            showStatus('⚡ Download complete (' + (fwBlob.size/1024).toFixed(1) + ' KB). Preparing to flash HARDWARE partition...', 'info');
+            showStatus('Download complete (' + (fwBlob.size/1024).toFixed(1) + ' KB). Installing…', 'info');
             
             const formData = new FormData();
             formData.append('update', fwBlob, 'firmware.bin');
@@ -187,37 +171,33 @@
             xhr.upload.addEventListener('progress', function(e) {
                 if (e.lengthComputable) {
                     const percent = (e.loaded / e.total) * 100;
-                    progressBar.style.width = percent + '%';
-                    showStatus('Flashing: ' + Math.round(percent) + '% (' + (e.loaded/1024).toFixed(0) + ' KB / ' + (e.total/1024).toFixed(0) + ' KB)...', 'info');
-                    if (percent >= 99) {
-                        showStatus('Flashing binary to HARDWARE partition... Please do not power off.', 'info');
-                    }
+                    setProgress(percent);
+                    showStatus('Installing: ' + Math.round(percent) + '%' + (percent >= 99 ? '. Do not switch the box off.' : ''), 'info');
                 }
             });
             
             xhr.onload = function() {
                 if (xhr.status === 200) {
-                    progressBar.style.width = '100%';
-                    progressBar.style.background = '#10b981';
-                    showStatus('<b>✅ SUCCESS: Firmware Updated via Server!</b><br>Rebooting HARDWARE Controller now... returning to dashboard in 5 seconds.', 'success');
+                    setProgress(100, 'ok');
+                    showStatus('<b>Updated.</b> The box is restarting and this page returns to the dashboard in 5 seconds.', 'success');
                     setTimeout(function() { window.location.href = '/'; }, 5000);
                 } else {
-                    progressBar.style.background = '#ef4444';
-                    showStatus('<b>❌ Flash Error:</b> ' + (xhr.responseText || 'Error flashing downloaded binary'), 'error');
+                    setProgress(100, 'bad');
+                    showStatus('<b>The update failed.</b> ' + escHtml(xhr.responseText || 'The box could not install the file.'), 'error');
                     if (cloudBtn) cloudBtn.disabled = false;
                 }
             };
             
             xhr.onerror = function() {
-                progressBar.style.background = '#ef4444';
-                showStatus('<b>❌ Connection Error during upload to ESP32 controller.</b>', 'error');
+                setProgress(100, 'bad');
+                showStatus('<b>Lost the connection to the box while installing.</b>', 'error');
                 if (cloudBtn) cloudBtn.disabled = false;
             };
             
             xhr.send(formData);
         } catch(err) {
-            progressBar.style.background = '#ef4444';
-            showStatus('<b>❌ Server Fetch Failed:</b> ' + err.message, 'error');
+            setProgress(100, 'bad');
+            showStatus('<b>The update failed.</b> ' + escHtml(err.message), 'error');
             if (cloudBtn) cloudBtn.disabled = false;
         }
     };
@@ -229,7 +209,7 @@
         const progressBar = document.getElementById('progress_bar');
 
         if (!fileInput.files || fileInput.files.length === 0) {
-            alert('Please select a firmware.bin file first.');
+            notify('Choose a firmware.bin file first.', 'bad');
             return;
         }
 
@@ -238,19 +218,17 @@
 
         if (uploadBtn) uploadBtn.disabled = true;
 
-        progressWrapper.style.display = 'block';
-        progressBar.style.width = '0%';
-        progressBar.style.background = '#4f46e5';
+        setProgress(0);
 
-        showStatus('⚡ Preparing to flash local HARDWARE partition...', 'info');
+        showStatus('Preparing to install…', 'info');
 
         const manifestInput = document.getElementById('local_manifest_input');
         if (manifestInput && manifestInput.files && manifestInput.files.length > 0) {
             try {
                 await postOtaManifest(JSON.parse(await manifestInput.files[0].text()));
             } catch (e) {
-                progressBar.style.background = '#ef4444';
-                showStatus('<b>❌ Manifest refused:</b> ' + e.message, 'error');
+                setProgress(100, 'bad');
+                showStatus('<b>Manifest refused.</b> ' + escHtml(e.message), 'error');
                 if (uploadBtn) uploadBtn.disabled = false;
                 return;
             }
@@ -265,30 +243,26 @@
         xhr.upload.addEventListener('progress', function(e) {
             if (e.lengthComputable) {
                 const percent = (e.loaded / e.total) * 100;
-                progressBar.style.width = percent + '%';
-                showStatus('Flashing local file: ' + Math.round(percent) + '% (' + (e.loaded/1024).toFixed(0) + ' KB / ' + (e.total/1024).toFixed(0) + ' KB)...', 'info');
-                if (percent >= 99) {
-                    showStatus('Flashing binary to HARDWARE partition... Please do not power off.', 'info');
-                }
+                setProgress(percent);
+                showStatus('Installing: ' + Math.round(percent) + '%' + (percent >= 99 ? '. Do not switch the box off.' : ''), 'info');
             }
         });
 
         xhr.onload = function() {
             if (xhr.status === 200) {
-                progressBar.style.width = '100%';
-                progressBar.style.background = '#10b981';
-                showStatus('<b>✅ SUCCESS: Firmware Updated successfully!</b><br>Rebooting HARDWARE Controller now... returning to dashboard in 5 seconds.', 'success');
+                setProgress(100, 'ok');
+                showStatus('<b>Updated.</b> The box is restarting and this page returns to the dashboard in 5 seconds.', 'success');
                 setTimeout(function() { window.location.href = '/'; }, 5000);
             } else {
-                progressBar.style.background = '#ef4444';
-                showStatus('<b>❌ Flash Error:</b> ' + (xhr.responseText || 'Error flashing local binary'), 'error');
+                setProgress(100, 'bad');
+                showStatus('<b>The update failed.</b> ' + escHtml(xhr.responseText || 'The box could not install the file.'), 'error');
                 if (uploadBtn) uploadBtn.disabled = false;
             }
         };
 
         xhr.onerror = function() {
-            progressBar.style.background = '#ef4444';
-            showStatus('<b>❌ Connection Error during upload to ESP32 controller.</b>', 'error');
+            setProgress(100, 'bad');
+            showStatus('<b>Lost the connection to the box while installing.</b>', 'error');
             if (uploadBtn) uploadBtn.disabled = false;
         };
 

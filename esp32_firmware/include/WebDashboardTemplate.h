@@ -9,312 +9,258 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HARDWARE Admin Console</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+    <meta name="color-scheme" content="light dark">
+    <title>PisoPhone Coin Box</title>
     <link rel="stylesheet" href="/assets/portal.css?v={ASSET_V_PORTAL_CSS}">
     <script src="/assets/portal-core.js?v={ASSET_V_PORTAL_CORE}"></script>
 </head>
 <body>
-    <div class="app-container">
-        <!-- Brand Header Bar -->
-        <div class="header-bar">
-            <div class="logo-container">
-                <svg class="logo-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2.5" />
-                    <path d="M13 7L8 13H12L11 17L16 11H12L13 7Z" fill="currentColor" />
-                </svg>
-                <h1 class="logo-text">
-                    <span class="logo-piso">Piso</span><span class="logo-phone">Phone</span>
-                </h1>
-                <span class="badge-pill">Kiosk Admin</span>
-                <div id="wifi_quality_pill" class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #10B981; border: 1px solid rgba(16, 185, 129, 0.3); display: inline-flex; align-items: center; gap: 6px; font-weight: 700; padding: 4px 10px; border-radius: 20px;" title="ESP32 Real-Time Wi-Fi RSSI Signal Quality">
-                    <span id="wifi_icon">📶</span>
-                    <span id="wifi_signal_text">Wi-Fi: {WIFI_RSSI} dBm ({WIFI_QUALITY}%)</span>
-                </div>
+{PORTAL_ICONS}
+    <header class="topbar">
+        <div class="topbar-in">
+            <div class="brand">
+                <span class="brand-mark"><svg class="ic ic-lg"><use href="#i-logo"/></svg></span>
+                <span class="brand-name">PisoPhone</span>
+                <span class="brand-sub">Coin box</span>
             </div>
-            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                <button type="button" id="theme_toggle_btn" onclick="toggleTheme()" class="btn btn-outline btn-sm">🌙 Dark Mode</button>
-                <span class="status-badge">🟢 ONLINE</span>
-                <a href="/logout" onclick="return confirm('Log out?');" class="btn btn-outline btn-sm">🚪 Logout</a>
+            <nav class="tabs">
+                <button type="button" class="tab active" onclick="switchTab('tab-dashboard')"><svg class="ic"><use href="#i-overview"/></svg>Overview</button>
+                <button type="button" class="tab" onclick="switchTab('tab-settings')"><svg class="ic"><use href="#i-settings"/></svg>Settings</button>
+                <button type="button" class="tab" onclick="switchTab('tab-tools')"><svg class="ic"><use href="#i-tools"/></svg>Tools</button>
+                <button type="button" class="tab" onclick="switchTab('tab-superadmin')"><svg class="ic"><use href="#i-shield"/></svg>Vendor</button>
+            </nav>
+            <div class="topbar-end">
+                <span id="conn_pill" class="pill ok">Online</span>
+                <a href="/logout" onclick="return confirm('Sign out?');" class="linkbtn"><svg class="ic"><use href="#i-logout"/></svg>Sign out</a>
             </div>
         </div>
+    </header>
 
-        <!-- Navigation Tabs -->
-        <div class="tabs">
-            <div class="tab active" onclick="switchTab('tab-dashboard')">📊 Dashboard</div>
-            <div class="tab" onclick="switchTab('tab-settings')">🛠️ Settings</div>
-            <div class="tab" onclick="switchTab('tab-tools')">⚡ Advanced Tools</div>
-            <div class="tab" onclick="switchTab('tab-superadmin')" style="color: #f59e0b; font-weight: 700;">👑 Vendor Super Admin</div>
-        </div>
+    <main class="shell">
+        <div id="banners" class="stack"></div>
 
-        <!-- TAB 1: DASHBOARD -->
-        <div id="tab-dashboard" class="tab-content active">
-            <div class="grid">
-                <!-- Live Devices List (Horizontal) -->
-                <div class="card grid-full">
-                    <div class="card-header">
-                        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                            <h3 class="card-title">📡 Live Device Status</h3>
-                            <span id="available_slots_badge" class="badge" style="background: rgba(16, 185, 129, 0.15); color: var(--primary); font-weight: 700; padding: 3px 10px; border-radius: 12px; font-size: 11px;">
-                                {MAX_SLOTS} Seats
-                            </span>
-                            <span id="pending_requests_badge" class="badge" style="display: none; background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.5); font-weight: 800; padding: 3px 10px; border-radius: 12px; font-size: 11px; cursor: pointer;">
-                                🟡 1 Pair Request
-                            </span>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <span class="status-badge" style="background: var(--status-good-bg); color: var(--status-good); border-color: var(--status-good-border);">LIVE SYNC</span>
-                            <button type="button" class="btn btn-outline btn-sm" onclick="fetchDeviceStatus()">🔄 Refresh</button>
-                        </div>
-                    </div>
-                    <div id="live_devices_container" class="device-list">
-                        <div style="padding: 24px; text-align: center; color: var(--text-muted);">Loading devices...</div>
+        <!-- OVERVIEW -->
+        <section id="tab-dashboard" class="tab-content active">
+            <div class="stats">
+                <div class="stat">
+                    <span class="stat-label">Revenue</span>
+                    <span class="stat-value">₱{TOTAL_COINS}</span>
+                    <span class="stat-sub">₱{SESSION_COINS} this session</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Phones</span>
+                    <span class="stat-value"><span id="stat_phones">–</span> <small>of {MAX_SLOTS}</small></span>
+                    <span id="stat_phones_sub" class="stat-sub">Checking…</span>
+                </div>
+                <div id="wifi_stat" class="stat">
+                    <span class="stat-label">Wi-Fi signal</span>
+                    <span id="wifi_quality_pct" class="stat-value">{WIFI_QUALITY}%</span>
+                    <span class="stat-sub"><span id="wifi_rssi_display">{WIFI_RSSI} dBm</span> · <span id="wifi_ssid_display">{WIFI_SSID}</span></span>
+                    <div class="meter"><i id="wifi_meter_fill" style="width: {WIFI_QUALITY}%"></i></div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-head">
+                    <h2>Phones
+                        <span id="pending_requests_badge" class="tag warn hidden"></span>
+                    </h2>
+                    <div class="actions">
+                        <button type="button" class="btn sm" onclick="fetchDeviceStatus()"><svg class="ic"><use href="#i-refresh"/></svg>Refresh</button>
                     </div>
                 </div>
-
-                <!-- Vault Stats -->
-                <div class="card">
-                    <div class="card-header">
-                        <h3 class="card-title">💰 Revenue Vault</h3>
-                    </div>
-                    <div style="background: var(--input-bg); padding: 24px; border-radius: var(--radius-lg); text-align: center; border: 1px solid var(--border); margin-bottom: 4px;">
-                        <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.75px; margin-bottom: 6px;">Total Coins (PHP)</div>
-                        <div style="font-size: 36px; font-weight: 800; color: var(--primary);">₱{TOTAL_COINS}</div>
-                    </div>
-                    <div style="font-size: 13px; text-align: center; color: var(--text-muted); background: var(--bg); padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border); font-weight: 500;">
-                        Session Coins: <b style="color: var(--text-main); font-weight: 700;">₱{SESSION_COINS}</b>
-                    </div>
+                <div id="live_devices_container" class="rows">
+                    <div class="row-empty-msg">Loading phones…</div>
                 </div>
+            </div>
 
-                <!-- Quick Add Time -->
-                <form id="quick_adjust_form" action="/add_time" method="POST" class="card" onsubmit="return validateQuickAdjust(event)">
-                    <div class="card-header">
-                        <h3 class="card-title">⏱️ Quick Adjust Time</h3>
-                    </div>
+            <form id="quick_adjust_form" action="/add_time" method="POST" class="panel" onsubmit="return validateQuickAdjust(event)">
+                <div class="panel-head"><h2>Add or remove time</h2></div>
+                <div class="panel-body">
                     {QUICK_TIME_ALERT}
-                    <div class="form-group">
-                        <label>Target Device</label>
-                        <select id="quick_adjust_target" name="target_ip" onchange="checkQuickAdjustInactive()">
-                            <option value="ALL">All Devices (Broadcast)</option>
-                            {DEVICE_OPTIONS}
-                        </select>
-                        <div id="quick_adjust_warn" style="display: none; margin-top: 6px; padding: 6px 10px; background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; font-size: 11px; font-weight: 700;">
-                            🚫 Selected device is INACTIVE. Manual time adjustment is blocked until activations are allocated.
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label>Minutes</label>
-                        <input type="number" name="add_minutes" value="60" min="1">
-                    </div>
-                    <div style="display: flex; gap: 12px; margin-top: 12px;">
-                        <button type="submit" name="adjust_action" value="add" class="btn btn-warning" style="flex: 1;" onclick="return validateQuickAdjust(event, 'add')">+ Add</button>
-                        <button type="submit" name="adjust_action" value="subtract" class="btn btn-danger" style="flex: 1;" onclick="return validateQuickAdjust(event, 'subtract')">- Subtract</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-
-        <!-- TAB 2: SETTINGS -->
-        <div id="tab-settings" class="tab-content">
-            <form action="/save" method="POST" onsubmit="
-                event.preventDefault();
-                const formData = new FormData(this);
-                fetch('/save', { method: 'POST', body: new URLSearchParams(formData) })
-                    .then(res => { if (res.ok) alert('✅ Configuration saved & pushed live!'); else alert('❌ Failed to save configuration.'); })
-                    .catch(err => alert('Error: ' + err));
-            ">
-                <div class="grid">
-                    <!-- Network -->
-                    <div class="card">
-                        <h3 class="card-title">📡 Wi-Fi & Network</h3>
-                        <div class="form-group" style="background: var(--input-bg); padding: 14px; border-radius: var(--radius-md); border: 1px solid var(--border); margin-bottom: 14px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                                <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Real-Time Wi-Fi Quality (RSSI)</span>
-                                <span id="wifi_status_badge" class="badge" style="background: var(--status-good-bg); color: var(--status-good); font-weight: 700; padding: 2px 8px; border-radius: 10px; font-size: 11px;">Live</span>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
-                                <span id="wifi_rssi_display" style="font-size: 20px; font-weight: 800; color: var(--text-main); font-family: monospace;">{WIFI_RSSI} dBm</span>
-                                <span id="wifi_quality_pct" style="font-size: 13px; font-weight: 700; color: var(--primary);">{WIFI_QUALITY}% Quality</span>
-                            </div>
-                            <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 10px; height: 8px; overflow: hidden; margin-bottom: 6px;">
-                                <div id="wifi_meter_fill" style="background: var(--primary); height: 100%; width: {WIFI_QUALITY}%; transition: width 0.4s ease, background-color 0.4s ease;"></div>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-top: 4px;">
-                                <span>SSID: <b id="wifi_ssid_display" style="color: var(--text-main);">{WIFI_SSID}</b></span>
-                                <span>IP: <b id="wifi_ip_display" style="color: var(--text-main);">{IP_ADDRESS}</b></span>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>SSID</label>
-                            <input type="text" name="wifi_ssid" value="{WIFI_SSID}">
-                        </div>
-                        <div class="form-group">
-                            <label>Password</label>
-                            <input type="password" name="wifi_pass" value="{WIFI_PASS}">
-                        </div>
-                        <div class="form-group">
-                            <label>Android App Port</label>
-                            <input type="number" name="port" value="{PORT}">
-                            <div class="hint">Default is 8080.</div>
-                        </div>
-                    </div>
-
-                    <!-- Advanced Security & Pins -->
-                    <div class="card">
-                        <h3 class="card-title">🔒 Security Vault & Admin Console Password</h3>
-                        <div class="form-group">
-                            <label>Admin Web & Kiosk App Password</label>
-                            <input type="password" name="admin_pw" value="{ADMIN_PASSWORD}">
-                            <div class="hint" style="margin-top: 8px; color: var(--text-muted); line-height: 1.4;">
-                                💡 Changing this password updates access to both this ESP32 Admin Web Portal and the 
-                                <strong>Security Vault & Admin Console</strong> on all paired PisoPhone Android kiosk terminals. 
-                                Changes are pushed and synchronized automatically to all active paired devices.
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Coin Pricing & Rates -->
-                    <div class="card">
-                        <h3 class="card-title">🪙 Coin Pricing & Rate</h3>
-                        <div class="form-group">
-                            <label>Minutes per ₱1 (1 Pulse)</label>
-                            <input type="number" name="minutes_per_coin" value="{MINUTES_PER_COIN}" min="1" max="1440">
-                            <div class="hint" style="margin-top: 8px; color: var(--text-muted); line-height: 1.4;">
-                                Sets the session duration granted per ₱1 PHP (1 coin pulse).<br>
-                                Automatically multiplies for higher coin denominations (₱5 = 5x, ₱10 = 10x, ₱20 = 20x).<br>
-                                Changes are saved to flash and pushed live to all paired Android kiosk terminals.
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="card">
-                        <h3 class="card-title">🔌 Hardware GPIO Pins</h3>
-                        <div class="form-group">
-                            <label>Multi-Coin Slot GPIO</label>
-                            <input type="number" name="u_coin_pin" value="{U_COIN_PIN}">
-                            <div class="hint">Pulse slot signal wire (Default: GPIO 3).</div>
-                        </div>
-                        <div class="form-group">
-                            <label>Indicator LED GPIO</label>
-                            <input type="number" name="led_pin" value="{LED_PIN}">
-                        </div>
-                        <div class="form-group">
-                            <label>LED Polarity Logic</label>
-                            <select name="led_active_low">
-                                <option value="1" {LED_ACTIVE_LOW_SELECTED}>Active LOW (Onboard blue LED)</option>
-                                <option value="0" {LED_ACTIVE_HIGH_SELECTED}>Active HIGH (Standard External LED)</option>
+                    <div class="grid">
+                        <div class="field">
+                            <label for="quick_adjust_target">Phone</label>
+                            <select id="quick_adjust_target" name="target_ip" onchange="checkQuickAdjustInactive()">
+                                <option value="ALL">All phones</option>
+                                {DEVICE_OPTIONS}
                             </select>
                         </div>
-                        <div class="form-group">
-                            <label>Relay Power GPIO</label>
-                            <input type="number" name="relay_pin" value="{RELAY_PIN}">
-                            <div class="hint">Coin slot enable / power relay (GPIO 5).</div>
-                        </div>
-                        <div class="form-group">
-                            <label>Relay Polarity</label>
-                            <select name="relay_active_low">
-                                <option value="0" {RELAY_HIGH_SELECTED}>Active HIGH (Direct 3.3V/5V drive)</option>
-                                <option value="1" {RELAY_LOW_SELECTED}>Active LOW (Optocoupler relay boards)</option>
-                            </select>
-                            <div class="hint">Invert if relay is ON when it should be OFF.</div>
+                        <div class="field">
+                            <label for="quick_adjust_minutes">Minutes</label>
+                            <input id="quick_adjust_minutes" type="number" name="add_minutes" value="60" min="1">
                         </div>
                     </div>
-
-                    <div class="grid-full">
-                        <button type="submit" class="btn" style="width: 100%; font-size: 16px;">💾 Save & Push Configuration Live</button>
-                    </div>
+                    <div id="quick_adjust_warn" class="note bad hidden"><svg class="ic"><use href="#i-alert"/></svg><span class="grow"></span></div>
+                </div>
+                <div class="panel-foot">
+                    <button type="submit" name="adjust_action" value="subtract" class="btn danger" onclick="return validateQuickAdjust(event, 'subtract')"><svg class="ic"><use href="#i-minus"/></svg>Remove time</button>
+                    <button type="submit" name="adjust_action" value="add" class="btn primary" onclick="return validateQuickAdjust(event, 'add')"><svg class="ic"><use href="#i-plus"/></svg>Add time</button>
                 </div>
             </form>
-        </div>
+        </section>
 
-        <!-- TAB 3: TOOLS -->
-        <div id="tab-tools" class="tab-content">
-            <div class="grid">
-                <!-- Master Activation Vault & Seat Slots Manager -->
-                <div class="grid-full">
-                    {DEVICE_SLOTS_MANAGER}
-                </div>
-
-                <!-- 1v1 Match -->
-                <div class="card grid-full {MATCH_CARD_CLASS}" id="match_card_box" style="{MATCH_CARD_STYLE}">
-                    <div class="card-header" id="match_card_header" style="margin-bottom: {MATCH_HEADER_MARGIN};">
-                        <div style="display: flex; align-items: center; gap: 10px;">
-                            <h3 class="card-title">⚔️ 1v1 Match Mode</h3>
-                            {MATCH_STATUS_BADGE}
-                        </div>
-                        {MATCH_HEADER_ACTION}
-                    </div>
-                    <div id="match_collapsible_content" style="{MATCH_CONTENT_DISPLAY}">
-                        {MATCH_ALERT}
-                        <form action="/one_vs_one" method="POST" style="display: flex; flex-direction: column; gap: 16px;">
-                            <div class="form-group" style="max-width: 200px;">
-                                <label>Stake Minutes</label>
-                                <input type="number" id="match_mins_input" name="match_minutes" value="{MATCH_MINUTES}" min="1">
+        <!-- SETTINGS -->
+        <section id="tab-settings" class="tab-content">
+            <form action="/save" method="POST" onsubmit="return saveSettings(this, event);" class="stack">
+                <div class="grid">
+                    <div class="panel">
+                        <div class="panel-head"><h2><svg class="ic"><use href="#i-wifi"/></svg>Wi-Fi and network</h2></div>
+                        <div class="panel-body">
+                            <div class="field">
+                                <label for="wifi_ssid">Wi-Fi name (SSID)</label>
+                                <input id="wifi_ssid" type="text" name="wifi_ssid" value="{WIFI_SSID}" autocomplete="off">
                             </div>
-                            
-                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px;">
-                                <div style="background: var(--bg); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border);">
-                                    <label style="color: var(--primary);">🎮 Player 1</label>
-                                    <select id="p1_select" name="p1_ip" style="margin-bottom: 12px;">{P1_OPTIONS}</select>
-                                    <button type="submit" name="winner" value="p1" class="btn btn-outline" style="width: 100%;">🏆 Award Win to P1</button>
+                            <div class="field">
+                                <label for="wifi_pass">Wi-Fi password</label>
+                                <input id="wifi_pass" type="password" name="wifi_pass" value="{WIFI_PASS}" autocomplete="off">
+                            </div>
+                            <div class="field">
+                                <label for="port">Phone app port</label>
+                                <input id="port" type="number" name="port" value="{PORT}">
+                                <span class="hint">Default is 8080.</span>
+                            </div>
+                            <div class="kv"><span class="muted">Box address</span><span id="wifi_ip_display" class="mono">{IP_ADDRESS}</span></div>
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="panel-head"><h2><svg class="ic"><use href="#i-lock"/></svg>Admin password</h2></div>
+                        <div class="panel-body">
+                            <div class="field">
+                                <label for="admin_pw">Password for this page and the phones' admin screen</label>
+                                <input id="admin_pw" type="password" name="admin_pw" value="{ADMIN_PASSWORD}" autocomplete="new-password">
+                                <span class="hint">Changing it also changes the admin password on every paired phone. They pick it up automatically.</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="panel-head"><h2><svg class="ic"><use href="#i-coin"/></svg>Coin rate</h2></div>
+                        <div class="panel-body">
+                            <div class="field">
+                                <label for="minutes_per_coin">Minutes per ₱1</label>
+                                <input id="minutes_per_coin" type="number" name="minutes_per_coin" value="{MINUTES_PER_COIN}" min="1" max="1440">
+                                <span class="hint">Larger coins multiply it (₱5 = 5×, ₱10 = 10×, ₱20 = 20×). Phones get the new rate right away.</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="panel-head"><h2><svg class="ic"><use href="#i-chip"/></svg>Hardware pins</h2></div>
+                        <div class="panel-body">
+                            <div class="split">
+                                <div class="field">
+                                    <label for="u_coin_pin">Coin slot pin</label>
+                                    <input id="u_coin_pin" type="number" name="u_coin_pin" value="{U_COIN_PIN}">
                                 </div>
-                                <div style="background: var(--bg); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border);">
-                                    <label style="color: var(--danger);">🎮 Player 2</label>
-                                    <select id="p2_select" name="p2_ip" style="margin-bottom: 12px;">{P2_OPTIONS}</select>
-                                    <button type="submit" name="winner" value="p2" class="btn btn-outline" style="width: 100%;">🏆 Award Win to P2</button>
+                                <div class="field">
+                                    <label for="relay_pin">Relay pin</label>
+                                    <input id="relay_pin" type="number" name="relay_pin" value="{RELAY_PIN}">
                                 </div>
                             </div>
-                            
-                            {MATCH_CONTROLS}
-                        </form>
-                        <div id="match_qual_result" class="alert-box"></div>
-                    </div>
-                </div>
-
-                <!-- OTA Update -->
-                <div class="card">
-                    <div class="card-header">
-                        <h3 class="card-title">🚀 Firmware Upgrade</h3>
-                    </div>
-                    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">Upgrade your Kiosk controller wirelessly directly from the official Cloud update server.</p>
-                    <a href="/update" class="btn" style="width: 100%; text-align: center; justify-content: center; background: #10b981; color: #ffffff; font-weight: 700; border: none;">⚡ One-Click Cloud Firmware Update &rarr;</a>
-                </div>
-
-                <!-- System Recovery -->
-                <div class="card">
-                    <div class="card-header">
-                        <h3 class="card-title">⚠️ System Recovery</h3>
-                    </div>
-                    
-                    <form action="/reset_vault" method="POST" onsubmit="return confirm('⚠️ Reset lifetime coin counts? (Super Admin password required)');" style="margin-bottom: 12px;">
-                        <label>Reset Vault Counters (Super Admin Only)</label>
-                        <div style="display: flex; gap: 8px; margin-top: 6px;">
-                            <input type="password" name="reset_pw" placeholder="Super Admin password">
-                            <button type="submit" class="btn btn-danger btn-sm" style="min-height:48px;">Reset</button>
+                            <div class="field">
+                                <label for="relay_active_low">Relay type</label>
+                                <select id="relay_active_low" name="relay_active_low">
+                                    <option value="0" {RELAY_HIGH_SELECTED}>On with a high signal</option>
+                                    <option value="1" {RELAY_LOW_SELECTED}>On with a low signal (most relay boards)</option>
+                                </select>
+                                <span class="hint">Change it if the relay is on when it should be off.</span>
+                            </div>
+                            <div class="field">
+                                <label for="led_pin">Indicator LED pin</label>
+                                <input id="led_pin" type="number" name="led_pin" value="{LED_PIN}">
+                            </div>
+                            <div class="field">
+                                <label for="led_active_low">LED type</label>
+                                <select id="led_active_low" name="led_active_low">
+                                    <option value="1" {LED_ACTIVE_LOW_SELECTED}>On-board LED (on with a low signal)</option>
+                                    <option value="0" {LED_ACTIVE_HIGH_SELECTED}>External LED (on with a high signal)</option>
+                                </select>
+                            </div>
                         </div>
+                    </div>
+                </div>
+                <div class="actions">
+                    <button type="submit" class="btn primary"><svg class="ic"><use href="#i-save"/></svg>Save changes</button>
+                    <span class="hint">Changes are saved on the box and sent to the phones right away.</span>
+                </div>
+            </form>
+        </section>
+
+        <!-- TOOLS -->
+        <section id="tab-tools" class="tab-content">
+            {DEVICE_SLOTS_MANAGER}
+
+            <div class="panel grid-full {MATCH_CARD_CLASS}" id="match_card_box">
+                <div class="panel-head">
+                    <h2><svg class="ic"><use href="#i-users"/></svg>1v1 match mode {MATCH_STATUS_BADGE}</h2>
+                    {MATCH_HEADER_ACTION}
+                </div>
+                <div id="match_collapsible_content" class="panel-body {MATCH_CONTENT_CLASS}">
+                    {MATCH_ALERT}
+                    <form action="/one_vs_one" method="POST" class="stack">
+                        <div class="field" style="max-width: 200px;">
+                            <label for="match_mins_input">Stake (minutes)</label>
+                            <input type="number" id="match_mins_input" name="match_minutes" value="{MATCH_MINUTES}" min="1">
+                        </div>
+                        <div class="duel">
+                            <div>
+                                <label class="lbl" for="p1_select">Player 1</label>
+                                <select id="p1_select" name="p1_ip">{P1_OPTIONS}</select>
+                                <button type="submit" name="winner" value="p1" class="btn block"><svg class="ic"><use href="#i-trophy"/></svg>Player 1 wins</button>
+                            </div>
+                            <div>
+                                <label class="lbl" for="p2_select">Player 2</label>
+                                <select id="p2_select" name="p2_ip">{P2_OPTIONS}</select>
+                                <button type="submit" name="winner" value="p2" class="btn block"><svg class="ic"><use href="#i-trophy"/></svg>Player 2 wins</button>
+                            </div>
+                        </div>
+                        {MATCH_CONTROLS}
                     </form>
-                    <hr style="border: none; border-top: 1px solid var(--border); margin: 12px 0;">
-                    <label>⚡ Relay Pin 5 Hardware Test</label>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; margin-bottom: 12px;">
-                        <button type="button" class="btn" style="background: #10b981;" onclick="fetch('/api/relay?state=1').then(r=>r.json()).then(d=>alert('Relay Pin ' + d.relay_pin + ' turned ON! State: ' + d.state))">⚡ Turn Relay ON</button>
-                        <button type="button" class="btn btn-outline" onclick="fetch('/api/relay?state=0').then(r=>r.json()).then(d=>alert('Relay Pin ' + d.relay_pin + ' turned OFF! State: ' + d.state))">Turn Relay OFF</button>
+                    <div id="match_qual_result" class="note hidden"></div>
+                </div>
+            </div>
+
+            <div class="grid">
+                <div class="panel">
+                    <div class="panel-head"><h2><svg class="ic"><use href="#i-cloud"/></svg>Firmware update</h2></div>
+                    <div class="panel-body">
+                        <p class="hint">Update the coin box over Wi-Fi. The update is downloaded from the PisoPhone website and checked before it is installed.</p>
+                        <a href="/update" class="btn primary block"><svg class="ic"><use href="#i-download"/></svg>Check for an update</a>
                     </div>
-                    <hr style="border: none; border-top: 1px solid var(--border); margin: 12px 0;">
-                    <div style="display: flex; flex-direction: column; gap: 10px;">
-                        <button type="button" class="btn" style="background: #0284c7; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.2);" onclick="if(confirm('🔄 Reboot controller?')) { fetch('/reboot', {method: 'POST'}).then(() => { alert('Rebooting... returning in 5 seconds.'); setTimeout(() => window.location.reload(), 5000); }); }">
-                            🔄 Reboot Controller
-                        </button>
-                        <button type="button" class="btn btn-danger" onclick="if(confirm('⚠️ Factory Reset? All settings will be wiped.')) { fetch('/factory_reset', {method: 'POST'}).then(() => { alert('Resetting...'); setTimeout(() => window.location.reload(), 6000); }); }">
-                            Restore Factory Defaults
-                        </button>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-head"><h2><svg class="ic"><use href="#i-tools"/></svg>Maintenance</h2></div>
+                    <div class="panel-body">
+                        <div class="field">
+                            <span class="lbl">Test the relay (pin {RELAY_PIN})</span>
+                            <div class="split">
+                                <button type="button" class="btn" onclick="relayTest(1)"><svg class="ic"><use href="#i-bolt"/></svg>Relay on</button>
+                                <button type="button" class="btn" onclick="relayTest(0)">Relay off</button>
+                            </div>
+                        </div>
+                        <hr class="sep">
+                        <form action="/reset_vault" method="POST" onsubmit="return confirm('Reset the lifetime coin counters? This needs the Vendor password.');" class="field">
+                            <label for="reset_pw">Reset revenue counters (vendor only)</label>
+                            <div class="inline">
+                                <input id="reset_pw" type="password" name="reset_pw" placeholder="Vendor password" autocomplete="off">
+                                <button type="submit" class="btn danger">Reset</button>
+                            </div>
+                        </form>
+                        <hr class="sep">
+                        <div class="split">
+                            <button type="button" class="btn" onclick="rebootBox()"><svg class="ic"><use href="#i-power"/></svg>Restart box</button>
+                            <button type="button" class="btn danger" onclick="factoryResetBox()">Factory reset</button>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
+        </section>
 
 {SUPER_ADMIN_TAB}
-    </div>
+    </main>
 
 {PORTAL_MODALS}
 

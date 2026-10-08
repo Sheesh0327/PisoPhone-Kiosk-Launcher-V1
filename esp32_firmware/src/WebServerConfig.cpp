@@ -18,6 +18,7 @@
 #include "DeviceManager.h"
 #include "SuperAdminManager.h"
 #include "WebDashboardHtml.h"
+#include "WebDashboardIcons.h"
 #include "WebDashboardOta.h"
 #include <WiFi.h>
 #include <WebServer.h>
@@ -51,33 +52,27 @@ void handlePortalRoot() {
             if (res) {
                 sendCloudSnapshot();
                 String successHtml = R"HTML(
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <meta charset="UTF-8">
-                        <title>Pairing Success</title>
-                        <style>
-                            body { background: #0b0f19; color: #10b981; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-                            .card { background: #111827; padding: 32px; border-radius: 16px; border: 1px solid #10b981; box-shadow: 0 4px 20px rgba(16, 185, 129, 0.2); text-align: center; max-width: 400px; }
-                            h1 { margin-top: 0; font-size: 24px; }
-                            p { color: #9ca3af; font-size: 14px; margin-bottom: 20px; }
-                            .spinner { border: 4px solid rgba(16, 185, 129, 0.1); border-top: 4px solid #10b981; border-radius: 50%; width: 36px; height: 36px; animation: spin 1s linear infinite; margin: 0 auto; }
-                            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-                        </style>
-                        <script>
-                            setTimeout(function() { window.location.href = '/'; }, 3000);
-                        </script>
-                    </head>
-                    <body>
-                        <div class="card">
-                            <h1>🎉 Device Paired Successfully!</h1>
-                            <p>Slot #_SLOT_ is now linked to your PisoPhone terminal.</p>
-                            <p>Returning to your local Admin Console dashboard...</p>
-                            <div class="spinner"></div>
-                        </div>
-                    </body>
-                    </html>
-                )HTML";
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <title>Phone paired</title>
+    <link rel="stylesheet" href="/assets/portal.css">
+    <script>setTimeout(function() { window.location.href = '/'; }, 3000);</script>
+</head>
+<body>
+    <div class="center-page">
+        <div class="card-narrow" style="text-align: center;">
+            <h1>Phone paired</h1>
+            <p class="muted">Slot _SLOT_ is now linked to your phone. Taking you back to the dashboard…</p>
+            <div class="spinner"></div>
+        </div>
+    </div>
+</body>
+</html>
+)HTML";
                 successHtml.replace("_SLOT_", String(slot));
                 webServer.send(200, "text/html", successHtml);
                 return;
@@ -302,6 +297,9 @@ void handleOtaForm() {
     html.replace("{MAC_ADDRESS}", macAddressStr);
     html.replace("{FW_VERSION}", PISO_FW_VERSION);
     html.replace("{ASSET_V_OTA}", webAssetVersion("ota.js"));
+    html.replace("{ASSET_V_PORTAL_CSS}", webAssetVersion("portal.css"));
+    html.replace("{ASSET_V_PORTAL_CORE}", webAssetVersion("portal-core.js"));
+    html.replace("{PORTAL_ICONS}", FPSTR(PORTAL_ICONS_HTML));
 #if CONFIG_IDF_TARGET_ESP32C3
     html.replace("{CHIP_ID}", "esp32c3");
 #else

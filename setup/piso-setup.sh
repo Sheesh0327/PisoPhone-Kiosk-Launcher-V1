@@ -988,7 +988,7 @@ code{font:1.05em monospace}.warn{border:2px solid #b00;padding:.6rem 1rem;margin
 <tr><th>Coin box admin page</th><td>address <code>http://${BOX_IP}</code> (on the PisoKiosk network)<br>user <code>admin</code><br>password <code>${_bp}</code><br>This password is also the admin PIN of the rental phones.</td></tr>
 <tr><th>Router login (SSH / LuCI)</th><td>address <code>${LAN_IP}</code> (on the PisoKiosk network or a LAN cable)<br>user <code>root</code><br>password <code>${_rp}</code></td></tr>
 </table>
-<p><b>Setting up a new rental phone:</b> open the coin box admin page, tap <i>Install &amp; Provision</i>, type the PisoKiosk password above on the page, and plug the phone in by USB.</p>
+<p><b>Setting up a new rental phone:</b> open the coin box admin page, tap <i>Set up a phone</i>, type the PisoKiosk password above on the page, and plug the phone in by USB.</p>
 </body></html>
 EOT
 	umask 022

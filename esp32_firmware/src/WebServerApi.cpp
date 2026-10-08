@@ -6,6 +6,7 @@
 #include "WebServerModule.h"
 #include "WebServerAuth.h"
 #include "Config.h"
+#include "WebDashboardHtml.h"
 #include "SuperAdminCreds.h"
 #include "Security.h"
 #include "HardwareManager.h"
@@ -45,19 +46,18 @@ void handleAddTime() {
         if (!isActive) {
             Serial.printf("[-] handleAddTime blocked: Target device %s (Slot #%d) is EXPIRED!\n", targetIp.c_str(),
                           (slotIdx >= 0) ? licenseSlots[slotIdx].slotNum : 0);
-            quickTimeStatusMsg =
-                "<div style='background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(239,68,68,0.3);'>❌ Adjustment Blocked: Target device " +
-                targetIp + " is EXPIRED! Add credits in the Master Credit Vault to pair device.</div>";
+            quickTimeStatusMsg = noteHtml("bad", "alert",
+                                          "<b>Not changed.</b> " + escapeHtmlText(targetIp) +
+                                              " has no license for its slot. Add slots under Tools first.");
             redirectHome();
             return;
         }
     }
 
     sendAddTime(minutes, targetIp);
-    quickTimeStatusMsg =
-        "<div style='background:#e8f5e9;color:#2e7d32;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;border:1px solid rgba(16,185,129,0.3);'>✅ Adjusted " +
-        String(minutes > 0 ? "+" : "") + String(minutes) + "m for " +
-        (targetIp == "ALL" ? "All Active Devices" : targetIp) + ".</div>";
+    quickTimeStatusMsg = noteHtml("ok", "check",
+                                  "Changed time by " + String(minutes > 0 ? "+" : "") + String(minutes) + " min for " +
+                                      (targetIp == "ALL" ? String("all phones") : escapeHtmlText(targetIp)) + ".");
     redirectHome();
 }
 
@@ -209,7 +209,7 @@ void handleApiSlotApplyToken() {
 }
 
 // Moves a box that was upgraded from the old shared key onto its own key. Phones must then be
-// re-provisioned with the box secret (the dashboard's Install & Provision link carries it).
+// re-provisioned with the box secret (the dashboard's Set up a phone link carries it).
 void handleApiSecuritySwitchKey() {
     if (!checkAdminAuth()) return;
     bool wasLegacy = isLegacyKeyMode();
