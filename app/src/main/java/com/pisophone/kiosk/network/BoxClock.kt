@@ -1,6 +1,5 @@
 package com.pisophone.kiosk.network
 
-import org.json.JSONObject
 import kotlin.math.abs
 
 /**
@@ -39,12 +38,11 @@ object BoxClock {
     /** Reads `server_time_ms` from any answer of the box (a body that is not JSON, or has none, is ignored). */
     fun learnFromBody(body: String, phoneNowMs: Long = System.currentTimeMillis()): Boolean {
         if (body.isBlank() || !body.contains("server_time_ms")) return false
-        return try {
-            learn(JSONObject(body).optLong("server_time_ms", 0L), phoneNowMs)
-        } catch (_: Exception) {
-            false
-        }
+        val serverTimeMs = SERVER_TIME_FIELD.find(body)?.groupValues?.get(1)?.toLongOrNull() ?: return false
+        return learn(serverTimeMs, phoneNowMs)
     }
+
+    private val SERVER_TIME_FIELD = Regex(""""server_time_ms"\s*:\s*(\d{1,19})""")
 
     /** For tests. */
     fun reset() {
