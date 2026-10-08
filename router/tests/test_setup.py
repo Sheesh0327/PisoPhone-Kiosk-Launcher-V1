@@ -318,6 +318,23 @@ r = lib('sleep() { :; }; box_station() { :; }; box_ifname() { :; }; pair_box; ec
 check("rc=0" not in r.stdout and "not on the air" in r.stderr + r.stdout, "a missing box network is reported as such: " + r.stdout + r.stderr)
 r = lib('sleep() { :; }; box_station() { :; }; box_ifname() { echo wlan0-3; }; pair_box; echo rc=$?', env={"PAIR_WAIT": "10"})
 check("rc=0" not in r.stdout and "did not join" in r.stderr + r.stdout, "a network that is up but never joined keeps the original message: " + r.stdout + r.stderr)
+# ---- box-diag: where the router <-> box link breaks -----------------------------------------------------------------------------
+def box_diag(setup_code):
+    return lib(setup_code + "; cmd_box_diag", env={"BOX_IP": "127.0.0.1:1"})   # nothing listens there: the box does not answer
+r = box_diag('box_ifname() { :; }; conf_set BOX_MAC AA:BB:CC:DD:EE:01')
+check("NOT on the air" in r.stdout and "verdict: the router is not broadcasting" in r.stdout, "box-diag: a missing box network is the verdict: " + r.stdout + r.stderr)
+r = box_diag('box_ifname() { echo wlan0-3; }; iwinfo() { :; }; conf_set BOX_MAC AA:BB:CC:DD:EE:01; conf_set BOX_WIFI_ROTATED 1; conf_set BOX_WIFI_PASS_NEW OwnPassw0rd1234567; '
+             'uci() { case "$*" in *box_ap.key*) echo SomethingElse123;; esac; }')
+check("differs from the one stored for the box" in r.stdout, "box-diag: a router password that differs from the box's is the verdict: " + r.stdout + r.stderr)
+check("SomethingElse123" not in r.stdout and "OwnPassw0rd1234567" not in r.stdout, "box-diag never prints a password")
+r = box_diag('box_ifname() { echo wlan0-3; }; iwinfo() { :; }; conf_set BOX_MAC AA:BB:CC:DD:EE:01; conf_set BOX_WIFI_ROTATED 0; uci() { case "$*" in *box_ap.key*) echo PisoCoinBox@Setup;; esac; }')
+check("verdict: the box has not joined" in r.stdout, "box-diag: right password, nobody joined -> read the box's serial console: " + r.stdout + r.stderr)
+r = box_diag('box_ifname() { echo wlan0-3; }; iwinfo() { [ "$2" = assoclist ] && echo "AA:BB:CC:DD:EE:01  -50 dBm / -95 dBm"; }; conf_set BOX_MAC AA:BB:CC:DD:EE:01; conf_set BOX_WIFI_ROTATED 0; uci() { case "$*" in *box_ap.key*) echo PisoCoinBox@Setup;; esac; }')
+check("does not answer" in r.stdout and "lease" in r.stdout, "box-diag: joined but silent -> address lease: " + r.stdout + r.stderr)
+r = box_diag('box_ifname() { echo wlan0-3; }; iwinfo() { [ "$2" = assoclist ] && echo "AA:BB:CC:DD:EE:01  -50 dBm / -95 dBm"; }; box_up() { return 0; }; curl() { :; }; '
+             'conf_set BOX_MAC AA:BB:CC:DD:EE:01; conf_set BOX_WIFI_ROTATED 0; uci() { case "$*" in *box_ap.key*) echo PisoCoinBox@Setup;; esac; }')
+check("verdict: the link works" in r.stdout, "box-diag: everything fine -> the link works: " + r.stdout + r.stderr)
+check("box-diag) cmd_box_diag" in text and "cmd_box_diag 2>&1" in text.split("cmd_diag() {")[1].split("\n}\n")[0], "box-diag is a command and part of piso-setup diag")
 check("rotate_box_wifi" in text.split("stage2() {")[1].split("\n}\n")[0] and "rotate_box_wifi" in text.split("cmd_pair() {")[1].split("\n}\n")[0], "stage 2 and pair both rotate it")
 # ---- the printed setup sheet, the review screen and the Telegram prompt ----------------------------------------------------------
 r = lib('rm -f "$CONF"; conf_set SITE_NAME "Maria <Shop> & Sons"; conf_set GUEST_NAME "Maria Free WiFi"; conf_set KIOSK_PASS kioskpw12345; conf_set BOX_ADMIN_PASS boxpw123456; '

@@ -25,6 +25,7 @@
 #include "Diagnostics.h"
 #include "WebServerAuth.h"
 #include "HealthPolicy.h"
+#include "WifiLink.h"
 
 #define WDT_TIMEOUT_SECONDS 15
 
@@ -39,6 +40,55 @@ static void applyWifiTxPower() {
     WiFi.setTxPower(WIFI_POWER_8_5dBm);
     esp_wifi_set_max_tx_power(34);
 #endif
+}
+
+// Wi-Fi events arrive on the system event task; they only record what happened, loop() writes the log lines.
+static volatile bool wifiEvDisconnected = false;
+static volatile uint8_t wifiEvReason = 0;
+static volatile bool wifiEvGotIp = false;
+
+static void onWifiEvent(arduino_event_id_t event, arduino_event_info_t info) {
+    if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
+        wifiEvReason = info.wifi_sta_disconnected.reason;
+        wifiEvDisconnected = true;
+    } else if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
+        wifiEvGotIp = true;
+    }
+}
+
+// Why a connection attempt fails is the first thing an installer needs; without this every failure looks the same.
+static void reportWifiEvents() {
+    static uint8_t lastLoggedReason = 0;
+    static uint32_t lastLoggedMs = 0;
+    if (wifiEvGotIp) {
+        wifiEvGotIp = false;
+        diagLog("[WIFI] Connected to '%s': IP %s, signal %d dBm\n", wifiSsid.c_str(), WiFi.localIP().toString().c_str(),
+                (int)WiFi.RSSI());
+    }
+    if (wifiEvDisconnected) {
+        wifiEvDisconnected = false;
+        uint8_t reason = wifiEvReason;
+        uint32_t now = millis();
+        // the stack retries by itself every few seconds: log a change at once, the same reason only now and then
+        if (reason != lastLoggedReason || lastLoggedMs == 0 || now - lastLoggedMs > 20000U) {
+            lastLoggedReason = reason;
+            lastLoggedMs = now ? now : 1;
+            const char* hint = wifilink::reasonHint(reason);
+            diagLog("[WIFI] Not connected to '%s': reason %u %s%s%s\n", wifiSsid.c_str(), (unsigned)reason,
+                    wifilink::reasonName(reason), hint[0] ? " - " : "", hint);
+        }
+    }
+}
+
+// Starts a connection attempt from a clean radio state (boot and every retry).
+static void startWifiConnect() {
+    WiFi.disconnect(true, true);
+    delay(100);
+    WiFi.mode(WIFI_STA);
+    applyWifiTxPower();
+    esp_wifi_set_ps(WIFI_PS_NONE);
+    diagLog("[WIFI] Connecting to '%s' (password: %u characters)\n", wifiSsid.c_str(), (unsigned)wifiPass.length());
+    WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
 }
 
 static void initHardwareWatchdog() {
@@ -134,18 +184,12 @@ void setup() {
     Serial.printf("[+] Hardware MAC Address: %s\n", macAddressStr.c_str());
 
     WiFi.persistent(false);
-    WiFi.disconnect(true, true);
-    delay(100);
-    WiFi.mode(WIFI_STA);
-    applyWifiTxPower();
-    esp_wifi_set_ps(WIFI_PS_NONE);
+    WiFi.onEvent(onWifiEvent);
+    startWifiConnect();
 
-    WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
-
-    Serial.printf("[*] Connecting to Wi-Fi \"%s\"", wifiSsid.c_str());
     currentLedState = LED_STATE_CONNECTING;
     unsigned long wifiConnectStart = millis();
-    const unsigned long WIFI_BOOT_TIMEOUT_MS = 10000;
+    const unsigned long WIFI_BOOT_TIMEOUT_MS = wifilink::BOOT_CONNECT_MS;
 
     while (WiFi.status() != WL_CONNECTED && (millis() - wifiConnectStart < WIFI_BOOT_TIMEOUT_MS)) {
         delay(20);
@@ -223,24 +267,25 @@ void loop() {
     // 7. Robust Non-Blocking Wi-Fi Reconnection Watchdog & LED Status Sync
     if (WiFi.status() == WL_CONNECTED) {
         currentLedState = LED_STATE_CONNECTED;
+        lastWifiCheckTime = millis(); // a drop gets the stack's own reconnect and then a full retry, counted from here
     } else {
-        if (millis() - lastWifiCheckTime < 20000) {
+        if (millis() - lastWifiCheckTime < wifilink::RAPID_BLINK_MS) {
             currentLedState = LED_STATE_CONNECTING;
         } else {
             currentLedState = LED_STATE_FAILED;
 
-            if (wifiSsid.length() > 0 && (millis() - lastWifiCheckTime > 30000UL)) {
+            if (wifiSsid.length() > 0 && wifilink::retryDue(millis(), lastWifiCheckTime)) {
                 lastWifiCheckTime = millis();
                 diagCount(DiagCounter::WifiReconnects);
                 diagLog("\n[📶 WATCHDOG] Wi-Fi lost. Attempting reconnection to \"%s\"...\n", wifiSsid.c_str());
-                WiFi.disconnect();
-                WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
+                startWifiConnect();
                 udpServer.stop();
                 udpServer.begin(UDP_DISCOVERY_PORT);
             }
         }
     }
     processLedBlink();
+    reportWifiEvents();
 
     // Periodic Cloud Snapshot Sync (Every 15 mins if connected)
     if (lastCloudSnapshotMs == 0) lastCloudSnapshotMs = millis();

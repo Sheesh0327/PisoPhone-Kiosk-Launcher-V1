@@ -18,7 +18,7 @@
 # Everything is generated here (Wi-Fi password, box admin password, gateway key) and printed once at the end and saved in
 # /root/piso-setup-summary.txt. Running the file again is safe: it keeps what it already made.
 #
-# Other commands (after setup): piso-setup status | wifi-name "<name>" | pair | summary | test-coin | diag | set-password | reconcile [rebase] | telegram | rotate-box-wifi | handout | lock-admin | unlock-admin | update | self-update [check] | auto-update on|off
+# Other commands (after setup): piso-setup status | wifi-name "<name>" | pair | summary | test-coin | diag | box-diag | set-password | reconcile [rebase] | telegram | rotate-box-wifi | handout | lock-admin | unlock-admin | update | self-update [check] | auto-update on|off
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation
@@ -570,6 +570,7 @@ Useful commands on the router:
   piso-setup status            health check of every part
   piso-setup wifi-name "Name"  rename the customer Wi-Fi
   piso-setup pair              replace the coin box (re-opens pairing for a few minutes)
+  piso-setup box-diag          the coin box does not connect: shows where the link breaks
   piso-setup summary           show this file again
   logread -e opennds -e coinslot
   cat /etc/coinslot.d/vouchers.txt   customers' paid sessions
@@ -716,6 +717,54 @@ cmd_test_coin() {
 	[ "${_p:-0}" -gt 0 ]
 }
 
+# key_fp <password>: a short fingerprint, so two passwords can be compared without printing either.
+key_fp() {
+	if [ -z "$1" ]; then echo none; return; fi
+	printf '%s' "$1" | { sha256sum 2> /dev/null || md5sum 2> /dev/null; } | cut -c1-8
+}
+
+# piso-setup box-diag: where the router <-> coin box link breaks (contains no passwords). The box writes its own side of the
+# story (why each Wi-Fi attempt failed) to its serial console and to its diagnostics, which this fetches when the box answers.
+cmd_box_diag() {
+	echo "=== piso-setup box-diag ($(date '+%F %T'), setup $VERSION) ==="
+	_if=$(box_ifname); _mac=$(conf_get BOX_MAC); _verdict=""
+	_key=$(uci -q get wireless.box_ap.key); _want=$(box_wifi_key)
+	echo "--- the router's side"
+	if [ -n "$_if" ]; then
+		echo "hidden network $BOX_SSID: on the air as $_if"
+		iwinfo "$_if" info 2> /dev/null | grep -E 'Channel|Mode:|Encryption' | sed 's/^ */  /'
+	else
+		echo "hidden network $BOX_SSID: NOT on the air"
+		_verdict="the router is not broadcasting $BOX_SSID (is the 2.4 GHz radio on? see: iwinfo)"
+	fi
+	echo "password on the router: fingerprint $(key_fp "$_key"); the box should have: $(key_fp "$_want") ($(if [ "$(conf_get BOX_WIFI_ROTATED)" = 1 ]; then echo "its own"; else echo "the built-in"; fi))"
+	if [ -n "$_key" ] && [ "$_key" != "$_want" ] && [ -z "$_verdict" ]; then
+		_verdict="the router's password for $BOX_SSID differs from the one stored for the box: run: piso-setup pair"
+	fi
+	echo "allowed MAC: filter=$(uci -q get wireless.box_ap.macfilter) list=$(uci -q get wireless.box_ap.maclist); paired box: ${_mac:-none}"
+	if [ -z "$_mac" ]; then [ -n "$_verdict" ] || _verdict="no box is paired yet: run: piso-setup pair"; fi
+	_st=""
+	[ -n "$_if" ] && _st=$(iwinfo "$_if" assoclist 2> /dev/null | awk 'toupper($1) ~ /^[0-9A-F][0-9A-F]:[0-9A-F:]+$/ { print toupper($1) }')
+	echo "joined to the network now: ${_st:-nobody}"
+	echo "address reservation: $(uci -q get dhcp.pisocoinbox.mac) -> $(uci -q get dhcp.pisocoinbox.ip)"
+	echo "lease: $(grep -i "${_mac:-no-mac}" /tmp/dhcp.leases 2> /dev/null || echo none)"
+	echo "neighbour: $(ip neigh show 2> /dev/null | grep "$BOX_IP" || echo none)"
+	if box_up; then _answers=yes; else _answers=no; fi
+	echo "answers at $BOX_IP: $_answers"
+	if [ -z "$_verdict" ]; then
+		if [ "$_answers" = yes ]; then _verdict="the link works"
+		elif [ -z "$_st" ]; then _verdict="the box has not joined: read its serial console ([WIFI] lines say why), check it is powered and has this firmware"
+		else _verdict="the box joined the Wi-Fi but does not answer at $BOX_IP: its address lease (power-cycle the box) or its IP settings"; fi
+	fi
+	echo "--- the router's log about the box"
+	logread 2> /dev/null | grep -iE "${_mac:-no-mac}|$BOX_SSID" | tail -12
+	if [ "$_answers" = yes ]; then
+		echo "--- the box's own Wi-Fi log"
+		curl -s -m 8 -u "admin:$(conf_get BOX_ADMIN_PASS)" "http://$BOX_IP/api/diagnostics" 2> /dev/null | grep -o '\[WIFI\][^"]*' | sed 's/\\n$//' | tail -12
+	fi
+	echo "--- verdict: $_verdict"
+}
+
 # piso-setup diag: everything needed to diagnose a problem, in one block (contains no passwords).
 cmd_diag() {
 	echo "=== piso-setup diag ($(date '+%F %T'), setup $VERSION) ==="
@@ -724,7 +773,7 @@ cmd_diag() {
 	echo "--- portal program (memory, uptime)"; pidof pisoportal > /dev/null && { grep -E 'VmRSS|Threads' "/proc/$(pidof pisoportal | cut -d' ' -f1)/status"; } 2>&1
 	echo "--- portal <-> box"; /usr/bin/pisoportal box 2>&1 | head -5
 	echo "--- ledger vs box"; cmd_reconcile 2>&1
-	echo "--- box neighbour / wifi"; ip neigh show | grep "$BOX_IP"; iwinfo 2> /dev/null | grep -A1 "$BOX_SSID"
+	echo "--- coin box link"; cmd_box_diag 2>&1
 	echo "--- firewall tables"; nft list tables 2> /dev/null
 	echo "--- openNDS"; uci -q get opennds.@opennds[0].gatewayinterface; ndsctl status 2>&1 | head -12
 	echo "--- last coin timings (ms after the slot was asked to arm)"; logread -e coinslot 2> /dev/null | grep ' timing ' | tail -12
@@ -1190,7 +1239,7 @@ main() {
 		case "$1" in
 			--dry-run) DRY=1 ;;
 			--yes | -y) ASSUME_YES=1 ;;
-			status | pair | summary | wifi-name | uninstall-info | test-coin | diag | set-password | reconcile | telegram | rotate-box-wifi | handout | lock-admin | lock-admin-confirm | unlock-admin | update | self-update | auto-update) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
+			status | pair | summary | wifi-name | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | handout | lock-admin | lock-admin-confirm | unlock-admin | update | self-update | auto-update) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
 			-h | --help) sed -n '2,/^# Options:/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 			*) echo "unknown option: $1 (try --help)" >&2; exit 1 ;;
 		esac
@@ -1202,6 +1251,7 @@ main() {
 		pair) cmd_pair ;;
 		test-coin) cmd_test_coin ;;
 		diag) cmd_diag ;;
+		box-diag) cmd_box_diag ;;
 		reconcile) if [ "$ARG" = rebase ]; then cmd_reconcile rebase; else cmd_reconcile; fi ;;
 		telegram) cmd_telegram ;;
 		handout) cmd_handout ;;
