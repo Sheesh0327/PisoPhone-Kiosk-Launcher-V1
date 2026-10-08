@@ -78,7 +78,7 @@ Collect logs as you go: box serial output at 115200 baud (`pio device monitor`),
 *S1 and S3 are pass 2, the rest pass 3*
 - [ ] **S1** Phone's HTTP port (8080) answers `/ping` only; `http://<phone>:8080/status` without a signature returns 401
 - [ ] **S2** A replayed signed request is ignored (response `OK:DUPLICATE`) — optional, needs a packet capture
-- [ ] **S3** Remote admin actions need the admin PIN (broadcast without a PIN does nothing)
+- [ ] **S3** Remote admin actions need the admin PIN (broadcast without a PIN does nothing), except `DEPROVISION`, which also runs while USB debugging is on (the website's "Remove from a phone" needs no PIN); with USB debugging off it needs the PIN
 - [ ] **S4** Phone cannot be factory-reset or have USB debugging enabled from the network
 
 ## 6. Keys and updates

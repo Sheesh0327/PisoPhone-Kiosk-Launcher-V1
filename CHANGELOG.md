@@ -4,6 +4,9 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Removing the kiosk from a phone (website, "Remove from a phone") no longer asks for the admin PIN. The phone accepts the
+  removal while USB debugging is on, which it is when the setup computer is connected. With USB debugging off, as on a
+  rental phone in normal use, the DEPROVISION broadcast still needs the PIN.
 ### Coin box and phone app: fewer refusals
 - A phone with a wrong date (typical on a new phone on a Wi-Fi without internet) is no longer refused as "stale". The box puts
   its time in every answer, including refusals and the answers to phones that are not paired yet, and the phone signs with the

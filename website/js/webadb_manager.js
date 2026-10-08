@@ -269,15 +269,15 @@
             return id;
         }
 
-        /** Removes the kiosk from a phone (needs the admin PIN). */
-        async deprovision(pin, log) {
-            const out = await this.shell(`am broadcast -a ${PACKAGE_NAME}.DEPROVISION -n ${PACKAGE_NAME}/.receiver.KioskAdminActionReceiver --es pin ${P.shellQuote(pin)}`);
+        /** Removes the kiosk from a phone connected by USB. No PIN: the phone accepts it while USB debugging is on. */
+        async deprovision(log) {
+            const out = await this.shell(`am broadcast -a ${PACKAGE_NAME}.DEPROVISION -n ${PACKAGE_NAME}/.receiver.KioskAdminActionReceiver`);
             log(out.trim());
             await sleep(3000);
             await this.shell(`dpm remove-active-admin ${P.ADMIN_COMPONENT}`).catch(() => {});
             const un = await this.shell(`pm uninstall ${PACKAGE_NAME}`);
             log(un.trim());
-            if (/Failure/.test(un)) throw new Error(`The app could not be removed: ${un.trim()}. Is the admin PIN right?`);
+            if (/Failure/.test(un)) throw new Error(`The app could not be removed: ${un.trim()}. Is USB debugging still on, and is this the phone you meant?`);
         }
 
         async disconnect() {

@@ -123,11 +123,7 @@
 
         <!-- Remove from a phone -->
         <div id="deprovisionPanel" class="stack hidden">
-            <div class="note bad"><svg class="ic"><use href="#i-alert"/></svg><span class="grow">Removes the kiosk lock and uninstalls PisoPhone from a phone connected by USB (USB debugging on). Needs the admin PIN.</span></div>
-            <div class="field">
-                <label for="adminPin">Admin PIN</label>
-                <input type="text" id="adminPin" value="" placeholder="The box's admin password" autocomplete="off">
-            </div>
+            <div class="note bad"><svg class="ic"><use href="#i-alert"/></svg><span class="grow">Removes the kiosk lock and uninstalls PisoPhone from a phone connected by USB (USB debugging on). No PIN is needed.</span></div>
             <div id="deprovisionConfirm" class="note bad hidden"><span class="grow">Tap again to remove the kiosk from the connected phone.</span></div>
             <button id="deprovisionBtn" type="button" class="btn danger block"><svg class="ic"><use href="#i-trash"/></svg>Connect the phone and remove the kiosk</button>
         </div>
@@ -312,13 +308,11 @@
             // ---- remove (USB) ----
             let removeArmed = false;
             $('deprovisionBtn').addEventListener('click', () => {
-                const pin = $('adminPin').value.trim();
-                if (!pin) { log('Enter the admin PIN first.'); return; }
                 if (!removeArmed) { removeArmed = true; $('deprovisionConfirm').classList.remove('hidden'); return; }
                 removeArmed = false;
                 $('deprovisionConfirm').classList.add('hidden');
                 runUsb($('deprovisionBtn'), 'Removing the kiosk…', async () => {
-                    await window.webADB.deprovision(pin, log);
+                    await window.webADB.deprovision(log);
                     log('Removed. Unpair this slot on the box page to finish.');
                     if (boxPage) setTimeout(() => { location.href = `${boxPage}?action=unpair&slot=${urlSlot}`; }, 2500);
                 });
