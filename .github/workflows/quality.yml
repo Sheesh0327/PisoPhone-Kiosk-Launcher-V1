@@ -1,7 +1,8 @@
 name: Code quality
 
-# Runs on pushes to main and beta, and on pull requests into main (a pull request from beta or main itself is skipped:
-# its push already ran), when code, scripts or this file changed. A "What changed" job reads the list of changed files
+# Runs on pushes to main and beta, and on pull requests into main or beta (Claude's implementer branches, see
+# claude.yml; a pull request from beta or main itself is skipped: its push already ran), when code, scripts or this
+# file changed. A "What changed" job reads the list of changed files
 # and the jobs below run only for the parts that changed (a firmware build is skipped by a change to the portal, and so on),
 # so no runner time is spent on what a change cannot affect. A newer push to the same branch cancels the unfinished run.
 # Everything that does not need a phone, a box or a router:
@@ -40,6 +41,7 @@ on:
   pull_request:
     branches:
       - main
+      - beta
     paths:
       - 'app/**'
       - 'protocol/**'

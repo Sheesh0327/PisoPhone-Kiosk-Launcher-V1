@@ -45,6 +45,47 @@ jobs:
       - name: Run unit tests
         run: bash ./gradlew :app:testDebugUnitTest --no-daemon --no-configuration-cache --stacktrace
 
+      # Room writes a snapshot of each database version to app/schemas while compiling (see app/build.gradle.kts).
+      # A version's snapshot must never change once committed: changing the tables without a new version number and a
+      # migration makes Room refuse to open the database on phones that already have it. A new version's snapshot is
+      # committed back to the branch here, so it is never forgotten.
+      - name: Database schema snapshots
+        env:
+          BRANCH: ${{ github.ref_name }}
+          ACTOR: ${{ github.actor }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if ! git diff --quiet -- app/schemas; then
+            echo "::error::A committed database schema changed. Change the Room entities only together with a new database version and a migration."
+            git diff --stat -- app/schemas
+            exit 1
+          fi
+          NEW=$(git ls-files --others --exclude-standard -- app/schemas)
+          if [ -z "$NEW" ]; then echo "Database schema snapshots are up to date."; exit 0; fi
+          echo "New database schema snapshot(s):"; echo "$NEW"
+          if [ "$ACTOR" = "dependabot[bot]" ] || [ "$EVENT" != "push" ]; then
+            echo "::warning::New schema snapshot not committed (not a push to a branch); commit it from a regular build."
+            exit 0
+          fi
+          mkdir -p "$RUNNER_TEMP/schemas"
+          cp -r app/schemas/. "$RUNNER_TEMP/schemas/"
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3 4 5; do
+            git fetch -q origin "$BRANCH"
+            git reset -q --hard "origin/$BRANCH"
+            mkdir -p app/schemas
+            cp -rn "$RUNNER_TEMP/schemas/." app/schemas/
+            git add -- app/schemas
+            if git diff --staged --quiet; then exit 0; fi
+            git commit -q -m "chore: database schema snapshot"
+            if git push origin "HEAD:refs/heads/$BRANCH"; then exit 0; fi
+            echo "::warning::Push rejected (attempt $attempt); trying again on the newest branch tip."
+            sleep $((attempt * 3))
+          done
+          echo "::error::Could not commit the database schema snapshot."
+          exit 1
+
       - name: Upload test reports on failure
         if: failure()
         uses: actions/upload-artifact@v4
