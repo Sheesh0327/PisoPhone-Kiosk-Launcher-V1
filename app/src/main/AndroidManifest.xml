@@ -76,6 +76,7 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="com.pisophone.kiosk.DEPROVISION" />
+                <action android:name="com.pisophone.kiosk.RESTORE_SYSTEM_APPS" />
                 <action android:name="com.pisophone.kiosk.ENABLE_ADB" />
                 <action android:name="com.pisophone.kiosk.EMERGENCY_RECOVERY" />
                 <action android:name="com.pisophone.kiosk.EXIT_KIOSK" />

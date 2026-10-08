@@ -26,6 +26,7 @@ object KioskSecurity {
     private const val KEY_ADMIN_PIN = "admin_access_pin"
     private const val KEY_DEVICE_ALIAS = "device_alias"
     private const val KEY_HIDDEN_APPS = "hidden_apps_set"
+    private const val KEY_VIDEO_BACKGROUND = "video_background_enabled"
     private const val KEY_INITIALIZED_DEFAULT_HIDDEN = "initialized_default_hidden_v1"
     private const val KEY_BATTERY_ALERTS_ENABLED = "battery_alerts_enabled"
     private const val KEY_LOW_BATTERY_THRESHOLD = "low_battery_threshold"
@@ -126,6 +127,13 @@ object KioskSecurity {
     }
 
     private fun buildPrefs(context: Context): SharedPreferences = getDirectBootPrefs(context, PREFS_SECURITY_OLD)
+
+    /** The looping background videos on the lock screen and the launcher. On by default; an admin can switch them off. */
+    fun isVideoBackgroundEnabled(context: Context): Boolean = getPrefs(context).getBoolean(KEY_VIDEO_BACKGROUND, true)
+
+    fun setVideoBackgroundEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_VIDEO_BACKGROUND, enabled).apply()
+    }
 
     fun isBatteryAlertsEnabled(context: Context): Boolean = getPrefs(context).getBoolean(KEY_BATTERY_ALERTS_ENABLED, true)
 

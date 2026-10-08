@@ -113,6 +113,15 @@ object KioskRecoveryManager {
         }
     }
 
+    /** Re-enables the apps the first-boot clean-up disabled. Disabled apps stay disabled after the owner is gone, so call this first. */
+    fun restoreSystemApps(context: Context) {
+        try {
+            AppVisibilityPolicy.restoreAll(context)
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not restore the hidden apps: ${e.message}")
+        }
+    }
+
     /**
      * Emergency De-provision / Remove Device Owner.
      * Safely releases the device so developer can uninstall or manage freely without bricking.
@@ -125,6 +134,7 @@ object KioskRecoveryManager {
         val componentName = ComponentName(context, KioskDeviceAdminReceiver::class.java)
 
         if (dpm.isDeviceOwnerApp(context.packageName)) {
+            restoreSystemApps(context)
             try {
                 dpm.setLockTaskPackages(componentName, emptyArray())
                 dpm.clearPackagePersistentPreferredActivities(componentName, context.packageName)

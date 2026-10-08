@@ -5,6 +5,16 @@ separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router
 
 ## Unreleased
 ### Phone app
+- Animated backgrounds: the logo animation behind the lock screen and a drifting-icons backdrop on the home screen (two
+  15-second muted loops, 1.2 MB together). A video exists only while it is on screen: the player is released when the screen
+  leaves the front, while the lock screen covers the home screen, on a low battery (below 15 % and not charging), in battery
+  saver, and always on low-RAM (Android Go) phones, which show the still first frame instead. An admin can switch them off
+  in the vault (Background videos).
+- First start of a freshly set-up phone: Play Store opens for the admin to sign in. When the admin returns to the kiosk, the
+  phone's pre-installed apps are disabled, or only hidden from the launcher when the phone needs them (home screen, dialer,
+  keyboard, web view, Google services, the vendor's own apps, text-to-speech), so only apps somebody installed show. Phones
+  already in use when they get this update are not touched. De-provisioning re-enables everything it disabled, and the
+  `com.pisophone.kiosk.RESTORE_SYSTEM_APPS` broadcast (admin PIN) does the same on demand.
 - While the admin is in Play Store, Settings or the package installer, both kiosk overlay windows (the lock screen and the
   floating pill) are now removed from the screen, not just hidden, and come back when the admin returns to the kiosk or the
   maintenance window ends. Before, the invisible full-screen lock window stayed attached.
