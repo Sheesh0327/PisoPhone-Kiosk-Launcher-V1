@@ -273,9 +273,16 @@
         async deprovision(log) {
             const out = await this.shell(`am broadcast -a ${PACKAGE_NAME}.DEPROVISION -n ${PACKAGE_NAME}/.receiver.KioskAdminActionReceiver`);
             log(out.trim());
-            await sleep(3000);
-            await this.shell(`dpm remove-active-admin ${P.ADMIN_COMPONENT}`).catch(() => {});
-            const un = await this.shell(`pm uninstall ${PACKAGE_NAME}`);
+            // The phone restores its apps and gives up its device-owner role first; that can take a while, so the removal
+            // is tried again until the phone lets go of the app.
+            let un = "";
+            for (let attempt = 0; attempt < 12; attempt++) {
+                await sleep(3000);
+                await this.shell(`dpm remove-active-admin ${P.ADMIN_COMPONENT}`).catch(() => {});
+                un = await this.shell(`pm uninstall ${PACKAGE_NAME}`);
+                if (!/Failure/.test(un)) break;
+                log("Waiting for the phone to release the app...");
+            }
             log(un.trim());
             if (/Failure/.test(un)) throw new Error(`The app could not be removed: ${un.trim()}. Is USB debugging still on, and is this the phone you meant?`);
         }
