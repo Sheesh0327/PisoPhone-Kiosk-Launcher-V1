@@ -152,12 +152,13 @@ fun BlockScreen(
     val TextPrimary = Color(0xFFFFFFFF)
     val Primary = currentTheme.primary
     val OnPrimary = currentTheme.onPrimary
-    val Surface = currentTheme.surface
+    // Semi-transparent, so the logo animation behind the cards stays visible.
+    val Surface = currentTheme.surface.copy(alpha = 0.5f)
     val Border = currentTheme.border.copy(alpha = 0.5f)
     val TextSecondary = Color(0xFFA6ADC8)
     val TextTertiary = Color(0xFFE2E8F0)
     val Success = currentTheme.secondary
-    val SurfaceVariant = currentTheme.surface.copy(alpha = 0.8f)
+    val SurfaceVariant = currentTheme.surface.copy(alpha = 0.55f)
 
     val context = LocalContext.current
     var showPinDialog by remember { mutableStateOf(false) }
@@ -190,8 +191,8 @@ fun BlockScreen(
                         .fillMaxSize()
                         .background(
                             Brush.radialGradient(
-                                0f to Background.copy(alpha = 0.35f),
-                                0.62f to Background.copy(alpha = 0.45f),
+                                0f to Background.copy(alpha = 0.1f),
+                                0.62f to Background.copy(alpha = 0.2f),
                                 1f to Background,
                             ),
                         ),
