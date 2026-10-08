@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [CoinEvent::class, PaymentReceipt::class, PaidSessionState::class, AppMetadata::class], version = 4, exportSchema = false)
+@Database(entities = [CoinEvent::class, PaymentReceipt::class, PaidSessionState::class, AppMetadata::class], version = 4, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun coinEventDao(): CoinEventDao
     abstract fun paymentDao(): PaymentDao
