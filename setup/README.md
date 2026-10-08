@@ -49,7 +49,7 @@ For the next phone, choose the next slot in the program (or on the coin box's pa
 | What you see | What to do |
 |---|---|
 | The flasher cannot connect | Hold the board's BOOT button, tap RESET, release BOOT, try again. Use another USB cable (a data one). |
-| "No router found" | Cable in a **LAN** port (not WAN), router on for 2 minutes after the reset, this computer's Wi-Fi off. Click *Search again*. |
+| "No router found" | Cable in a **LAN** port (not WAN), router on for 2 minutes after the reset, this computer's Wi-Fi off. The program keeps looking every few seconds; after a fix it finds the router by itself. |
 | "The router could not download..." | The modem must be in the router's WAN port and have internet. |
 | "The coin box did not join" | Is the box powered, near the router, flashed with *Erase everything first*? Click *Try again*: the installation continues where it stopped. |
 | The phone does not ask "Allow USB debugging?" | Unlock the phone, use a data cable, unplug and replug. Or use the on-phone setting. |
