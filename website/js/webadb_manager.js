@@ -279,12 +279,21 @@
             for (let attempt = 0; attempt < 12; attempt++) {
                 await sleep(3000);
                 await this.shell(`dpm remove-active-admin ${P.ADMIN_COMPONENT}`).catch(() => {});
-                un = await this.shell(`pm uninstall ${PACKAGE_NAME}`);
+                // Some phones (Infinix, Tecno, Itel) answer DELETE_FAILED_INTERNAL_ERROR to the plain command: try the other forms too.
+                for (const cmd of [`pm uninstall ${PACKAGE_NAME}`, `pm uninstall --user 0 ${PACKAGE_NAME}`, `cmd package uninstall ${PACKAGE_NAME}`]) {
+                    un = await this.shell(cmd).catch((e) => `Failure [${e && e.message}]`);
+                    if (!/Failure/.test(un)) break;
+                }
                 if (!/Failure/.test(un)) break;
                 log("Waiting for the phone to release the app...");
             }
             log(un.trim());
-            if (/Failure/.test(un)) throw new Error(`The app could not be removed: ${un.trim()}. Is USB debugging still on, and is this the phone you meant?`);
+            if (/Failure/.test(un)) {
+                // Say why the phone refuses: still the device owner, or still an active admin.
+                const owners = await this.shell("dpm list-owners").catch(() => "");
+                if (owners.trim()) log(`Device owner on the phone: ${owners.trim()}`);
+                throw new Error(`The app could not be removed: ${un.trim()}. If the phone still lists PisoPhone as its owner above, open the app's Emergency Recovery on the phone, or factory reset it. Is USB debugging still on, and is this the phone you meant?`);
+            }
         }
 
         async disconnect() {
