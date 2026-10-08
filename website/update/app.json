@@ -1,10 +1,10 @@
 {
-  "versionCode": 353,
-  "versionName": "1.0.353-dev",
-  "channel": "dev",
+  "versionCode": 354,
+  "versionName": "1.0.354",
+  "channel": "stable",
   
   "signatureChecksum": "Un0usqLMwnmeaowrY2g21EgRVWe4bTRDLUi2RH12WbE",
-  "sha256": "a79f7dd900102b2f775c47ff964bfd813dfdc399835d4890e8149db576824987",
-  "size": 1739082,
+  "sha256": "9c60c4fdd266544a9c64cd9522fd876d736b3937573befe091e100a285534678",
+  "size": 1739078,
   "releaseDate": "2026-10-08"
 }
