@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """The coin page in a real browser (headless Chromium): one page, no reloads, WebSocket only."""
-import glob, os, shutil, sys, time
+import glob, os, re, shutil, sys, time
 from harness import *
 
 try:
@@ -43,7 +43,7 @@ try:
         pg.click("#ldone")
         pg.wait_for_selector("#v-final", state="visible", timeout=10000)
         check(time.time() - t0 < 4, f"Done closes the window at once ({time.time() - t0:.1f} s; the idle wait is 3 s)")
-        check("You are online" in pg.text_content("#fon") and "18 min" in pg.text_content("#fleft"), "the final view says online and the time left: " + pg.text_content("#fleft"))
+        check("You are online" in pg.text_content("#fon") and re.match(r"0:1[78]:\d\d$", pg.text_content("#fleft").strip()), "the final view says online and shows the live time left: " + pg.text_content("#fleft"))
         check(env.nds_get(MAC_A)["STATE"] == "Authenticated", "and the device really is online")
         check(pg.evaluate("window.__spoke") is True, "the screen changed before the speech engine was touched")
         # a second payment on the same plan from the same page (Add more time)
@@ -51,6 +51,16 @@ try:
         pg.click("#fagain")
         pg.wait_for_selector("#ion", state="visible", timeout=5000)
         check("You are online" in pg.text_content("#ion") and "left" in pg.text_content("#ion"), "Add more time: the plan page shows the time left: " + pg.text_content("#ion"))
+        secs = lambda t: sum(int(x) * m for x, m in zip(reversed(t.strip().split(":")), (1, 60, 3600)))
+        t1 = secs(pg.text_content("#t"))
+        check(pg.text_content(".coin").strip() == "Add more time" and pg.is_visible("#t"), "online: one page with the clock and the menu, the button now says Add more time")
+        pg.wait_for_timeout(2300)
+        t2 = secs(pg.text_content("#t"))
+        check(1 <= t1 - t2 <= 4, f"the clock counts down by itself ({t1} -> {t2} s)")
+        pg.reload()
+        pg.wait_for_selector("#ion", state="visible", timeout=8000)
+        t3 = secs(pg.text_content("#t"))
+        check(0 < t3 <= t2, f"a reload keeps counting from the real time, it never resets ({t2} -> {t3} s)")
         # the other plan needs consent
         pg.click("input[value=endurance]", force=True)
         pg.click(".coin")

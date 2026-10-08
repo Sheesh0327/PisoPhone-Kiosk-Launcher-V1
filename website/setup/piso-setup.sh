@@ -1538,10 +1538,10 @@ start_service() {
 #@@FILE /usr/lib/opennds/pisoportal_status.sh 755
 #!/bin/sh
 # openNDS "statuspath" script: what a guest sees at the openNDS status address (http://status.client, or the gateway
-# address on port 2050). It replaces openNDS' own status page by sending the guest on to the portal's live status page
-# (/status on the portal port), which shows the countdown. openNDS calls:
+# address on port 2050). There is one page for guests: the portal's page (/ on the portal port). It shows the menu and,
+# for a guest that is online, the live countdown. This script only sends the guest there. openNDS calls:
 #   pisoportal_status.sh status <client ip> <b64 query>     a guest that is logged in
-#   pisoportal_status.sh err511 <client ip>                 a guest that is not: to the coin page
+#   pisoportal_status.sh err511 <client ip>                 a guest that is not
 # and serves whatever this prints. It changes nothing.
 status="$1"; clientip="$2"
 case "$clientip" in "" | *[!0-9.]*) exit 1 ;; esac
@@ -1551,11 +1551,10 @@ host=$(conf_get PORTAL_BIND); port=$(conf_get PORTAL_PORT)
 case "$host$port" in *[!0-9.]*) exit 1 ;; esac
 [ -n "$host" ] && [ -n "$port" ] || exit 1
 case "$status" in
-	status) path=/status ;;
-	err511) path=/ ;;
+	status | err511) ;;
 	*) exit 1 ;;
 esac
-url="http://$host:$port$path"
+url="http://$host:$port/"
 cat << HTML
 <!DOCTYPE html>
 <html lang="en"><head>
