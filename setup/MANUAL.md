@@ -187,7 +187,7 @@ The setup asks you to choose the router password (or shows a generated one and a
 | `piso-setup diag` | prints one block (status, manager, box, firewall, recent logs; no passwords) to paste when asking for help. |
 
 ## If something fails
-* **"the coin box did not join"**: the box must be powered, have the current firmware, and be a fresh or factory-reset unit (an old unit remembers its old Wi-Fi). Then `piso-setup pair`.
+* **"the coin box did not join"**: the box must be powered, have the current firmware, and be a fresh or factory-reset unit (an old unit remembers its old Wi-Fi). Then `piso-setup pair`. (If it says the hidden network "is not on the air", the router's 2.4 GHz radio is the problem, not the box. A box that was paired before is offered both its own Wi-Fi password and the built-in one while pairing.)
 * **"the box refused the admin login"**: the box already has its own password. Factory reset it, or run `BOX_ADMIN_PASSWORD='<its password>' piso-setup pair`.
 * **`: not found` errors and a syntax error right at the start**: the file has Windows line endings. Run `sed -i 's/\r$//' piso-setup.sh` and try again.
 * Everything is logged in `/root/piso-setup.log`.

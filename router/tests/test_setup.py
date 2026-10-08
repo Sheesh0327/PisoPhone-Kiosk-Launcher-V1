@@ -301,6 +301,23 @@ check("rc=0" in r.stdout and Box.wifi is None, "a second run changes nothing")
 r = lib('conf_set BOX_WIFI_ROTATED 0; box_wifi_key')
 check(r.stdout.strip().endswith("PisoCoinBox@Setup"), "before rotation (or after pairing a new box) the built-in password is used")
 check("conf_set BOX_WIFI_ROTATED 0" in text.split("pair_box() {")[1].split("\n}\n")[0], "pairing a new box starts from the built-in password")
+# a box paired before keeps its own Wi-Fi password: re-pairing offers the built-in one first, then that one, in turn
+open(f"{tmp}/uci.log", "w").close()
+r = lib('conf_set BOX_WIFI_ROTATED 1; conf_set BOX_WIFI_PASS_NEW OwnPassw0rd1234567; sleep() { :; }; box_up() { return 0; }; '
+        'box_station() { [ "$(grep "set wireless.box_ap.key=" ' + tmp + '/uci.log | tail -n 1)" = "set wireless.box_ap.key=OwnPassw0rd1234567" ] && echo AA:BB:CC:DD:EE:01; }; '
+        'pair_box; echo "rc=$? ROT=$(conf_get BOX_WIFI_ROTATED) MAC=$(conf_get BOX_MAC)"', env={"PAIR_WAIT": "600"})
+ul = open(f"{tmp}/uci.log").read()
+check("rc=0 ROT=1 MAC=AA:BB:CC:DD:EE:01" in r.stdout, "a re-paired box that holds its own password joins with it: " + r.stdout + r.stderr)
+check(ul.index("set wireless.box_ap.key=PisoCoinBox@Setup") < ul.index("set wireless.box_ap.key=OwnPassw0rd1234567"), "the built-in password is offered first")
+open(f"{tmp}/uci.log", "w").close()
+r = lib('conf_set BOX_WIFI_ROTATED 1; conf_set BOX_WIFI_PASS_NEW OwnPassw0rd1234567; sleep() { :; }; box_up() { return 0; }; '
+        'box_station() { [ "$(grep "set wireless.box_ap.key=" ' + tmp + '/uci.log | tail -n 1)" = "set wireless.box_ap.key=PisoCoinBox@Setup" ] && [ "$(grep -c "set wireless.box_ap.key=" ' + tmp + '/uci.log)" -gt 2 ] && echo AA:BB:CC:DD:EE:02; }; '
+        'pair_box; echo "rc=$? ROT=$(conf_get BOX_WIFI_ROTATED) MAC=$(conf_get BOX_MAC)"', env={"PAIR_WAIT": "600"})
+check("rc=0 ROT=0 MAC=AA:BB:CC:DD:EE:02" in r.stdout, "a factory-reset box still joins with the built-in password on a later turn: " + r.stdout + r.stderr)
+r = lib('sleep() { :; }; box_station() { :; }; box_ifname() { :; }; pair_box; echo rc=$?', env={"PAIR_WAIT": "10"})
+check("rc=0" not in r.stdout and "not on the air" in r.stderr + r.stdout, "a missing box network is reported as such: " + r.stdout + r.stderr)
+r = lib('sleep() { :; }; box_station() { :; }; box_ifname() { echo wlan0-3; }; pair_box; echo rc=$?', env={"PAIR_WAIT": "10"})
+check("rc=0" not in r.stdout and "did not join" in r.stderr + r.stdout, "a network that is up but never joined keeps the original message: " + r.stdout + r.stderr)
 check("rotate_box_wifi" in text.split("stage2() {")[1].split("\n}\n")[0] and "rotate_box_wifi" in text.split("cmd_pair() {")[1].split("\n}\n")[0], "stage 2 and pair both rotate it")
 # ---- the printed setup sheet, the review screen and the Telegram prompt ----------------------------------------------------------
 r = lib('rm -f "$CONF"; conf_set SITE_NAME "Maria <Shop> & Sons"; conf_set GUEST_NAME "Maria Free WiFi"; conf_set KIOSK_PASS kioskpw12345; conf_set BOX_ADMIN_PASS boxpw123456; '

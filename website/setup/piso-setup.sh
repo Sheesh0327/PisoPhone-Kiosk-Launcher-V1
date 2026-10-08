@@ -45,6 +45,7 @@ SUMMARY="${PISO_SUMMARY:-/root/piso-setup-summary.txt}"
 STATE="${PISO_STATE:-/tmp/piso-setup.state}"
 SELF_PATH="${PISO_SELF_PATH:-/usr/sbin/piso-setup}"
 PAIR_WAIT=420                                # seconds to wait for the box to join during pairing
+PAIR_SWAP=60                                 # while pairing a box that may hold its own Wi-Fi password: seconds before offering the other one
 
 DRY=0; ASSUME_YES=0; PISO_ROOT="${PISO_ROOT:-}"
 
@@ -451,20 +452,32 @@ box_wifi_key() {
 	if [ "$(conf_get BOX_WIFI_ROTATED)" = 1 ] && [ -n "$(conf_get BOX_WIFI_PASS_NEW)" ]; then conf_get BOX_WIFI_PASS_NEW; else printf '%s' "$BOX_DEFAULT_WIFI"; fi
 }
 
-pair_box() {
-	step "Pairing the coin box (power on the ESP32 now if it is off; waiting up to $((PAIR_WAIT / 60)) minutes)"
-	# A new or factory-reset box only knows the built-in password: open the network with it for the pairing.
-	conf_set BOX_WIFI_ROTATED 0
-	uci set wireless.box_ap.key="$BOX_DEFAULT_WIFI"
+set_box_key() {  # set_box_key <password>: the box network's password, applied now
+	uci set wireless.box_ap.key="$1"
 	uci -q delete wireless.box_ap.macfilter; uci -q delete wireless.box_ap.maclist; uci commit wireless
 	wifi reload > /dev/null 2>&1
+}
+
+pair_box() {
+	step "Pairing the coin box (power on the ESP32 now if it is off; waiting up to $((PAIR_WAIT / 60)) minutes)"
+	# A new or factory-reset box only knows the built-in password: open the network with it for the pairing. A box that was
+	# paired before (re-pairing it, or after a router reset) keeps the password it was given, so that one is offered in turn.
+	_old=$(box_wifi_key)
+	conf_set BOX_WIFI_ROTATED 0
+	_key="$BOX_DEFAULT_WIFI"
+	set_box_key "$_key"
 	_t=0; MAC=""
 	while [ "$_t" -lt "$PAIR_WAIT" ]; do
 		MAC=$(box_station)
 		[ -n "$MAC" ] && break
 		sleep 5; _t=$((_t + 5))
+		if [ "$_old" != "$BOX_DEFAULT_WIFI" ] && [ $((_t % PAIR_SWAP)) -eq 0 ]; then
+			if [ "$_key" = "$BOX_DEFAULT_WIFI" ]; then _key="$_old"; else _key="$BOX_DEFAULT_WIFI"; fi
+			set_box_key "$_key"
+		fi
 	done
-	[ -n "$MAC" ] || { lock_box_network ""; die "the coin box did not join the hidden $BOX_SSID network. Check that it is powered and has the current firmware (or factory reset it: it must try $BOX_SSID), then run: piso-setup pair"; }
+	[ -n "$MAC" ] || { _up=$(box_ifname); lock_box_network ""; [ -n "$_up" ] || die "the hidden $BOX_SSID network is not on the air (check the router's 2.4 GHz radio: iwinfo), so the coin box could not join it. Then run: piso-setup pair"; die "the coin box did not join the hidden $BOX_SSID network. Check that it is powered and has the current firmware (or factory reset it: it must try $BOX_SSID), then run: piso-setup pair"; }
+	if [ "$_key" = "$_old" ] && [ "$_old" != "$BOX_DEFAULT_WIFI" ]; then conf_set BOX_WIFI_ROTATED 1; fi   # it joined with its own password
 	log "the coin box joined: $MAC"
 	lock_box_network "$MAC"
 	conf_set BOX_MAC "$MAC"
