@@ -14,6 +14,12 @@ val updateBaseUrl = System.getenv("UPDATE_BASE_URL")?.takeIf { it.isNotBlank() }
     ?: "https://pisophone.pages.dev/update"
 val buildChannel = System.getenv("BUILD_CHANNEL")?.takeIf { it.isNotBlank() } ?: "stable"
 
+// Room writes a JSON snapshot of each database version here (commit it) so future migrations can be
+// verified against the real previous schema.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 android {
     namespace = "com.pisophone.kiosk"
     compileSdk { version = release(36) { minorApiLevel = 1 } }

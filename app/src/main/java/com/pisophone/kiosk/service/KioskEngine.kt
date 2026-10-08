@@ -311,6 +311,19 @@ class KioskEngine(
         false
     }
 
+    /** Repairs the HTTP listener and overlay if unhealthy. Called by the watchdog through the service. */
+    fun runHealthRepair() {
+        scope.launch(Dispatchers.IO) {
+            if (!ensureHttpServerRunning()) Log.w(TAG, "Health repair: HTTP server could not be restarted")
+            withContext(Dispatchers.Main) {
+                if (!overlayCoordinator.isOverlayHealthy()) {
+                    Log.w(TAG, "Health repair: overlay missing/unattached. Rebuilding...")
+                    overlayCoordinator.setupOverlay()
+                }
+            }
+        }
+    }
+
     fun triggerCandidateDiscovery() {
         esp32Manager.triggerCandidateDiscovery(stateManager.deviceIp.value)
     }
