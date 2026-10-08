@@ -6,6 +6,7 @@ name: Claude (implement issues)
 #   - opens an issue whose title or body contains @claude,
 #   - comments @claude on an issue or pull request (or in a pull request review),
 #   - or adds the label "claude" to an issue.
+# The model is Sonnet unless the issue or pull request has the label model:haiku or model:opus (see CLAUDE.md).
 # Claude works on a new branch made from beta (claude/issue-<n>-...), runs the issue's Verification commands, pushes, and
 # links the pull request into beta from its comment on the issue. Nothing reaches main without the usual beta -> main merge.
 #
@@ -24,9 +25,10 @@ on:
   pull_request_review:
     types: [submitted]
 
-# One run per issue or pull request at a time; a second @claude waits for the first instead of racing it on the same branch.
+# One implementer at a time for the whole repository, so runs never edit the same files in parallel. GitHub keeps one
+# run waiting behind the running one; a third request replaces the waiting one, so dispatch one issue at a time (CLAUDE.md).
 concurrency:
-  group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
+  group: claude-implementer
   cancel-in-progress: false
 
 jobs:
@@ -89,6 +91,21 @@ jobs:
           # ./ktlint is used by the issues' Verification commands; keep it out of commits
           echo ktlint >> .git/info/exclude
 
+      - name: Pick the model
+        id: model
+        env:
+          ISSUE_LABELS: ${{ toJSON(github.event.issue.labels.*.name) }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          labels="$ISSUE_LABELS $PR_LABELS"
+          model=claude-sonnet-5-5
+          case "$labels" in
+            *'"model:opus"'*) model=claude-opus-5-5 ;;
+            *'"model:haiku"'*) model=claude-haiku-5-5 ;;
+          esac
+          echo "Implementer model: $model"
+          echo "name=$model" >> "$GITHUB_OUTPUT"
+
       - name: Run Claude Code
         uses: anthropics/claude-code-action@v1
         with:
@@ -99,7 +116,35 @@ jobs:
           branch_prefix: claude/
           additional_permissions: |
             actions: read
+          # Large generated and binary files cost a whole run's budget to read and must never be edited by hand
+          # (CLAUDE.md section 4); Read rules also cover Grep and Glob.
+          settings: |
+            {
+              "permissions": {
+                "deny": [
+                  "Read(./esp32_firmware/include/WebAssets.h)",
+                  "Edit(./esp32_firmware/include/WebAssets.h)",
+                  "Read(./setup/piso-setup.sh)",
+                  "Edit(./setup/piso-setup.sh)",
+                  "Read(./website/setup/**)",
+                  "Edit(./website/setup/**)",
+                  "Read(./website/pisophone_setup.py)",
+                  "Edit(./website/pisophone_setup.py)",
+                  "Edit(./website/install.sh)",
+                  "Read(./website/update/**)",
+                  "Edit(./website/update/**)",
+                  "Read(./website/flash/**)",
+                  "Edit(./website/flash/**)",
+                  "Read(./tools/pisoportal/bin/**)",
+                  "Edit(./tools/pisoportal/bin/**)",
+                  "Read(./website/js/*-bundle.js)",
+                  "Edit(./website/js/*-bundle.js)",
+                  "Edit(./app/schemas/**)"
+                ]
+              }
+            }
           claude_args: |
-            --model claude-sonnet-5-5
+            --model ${{ steps.model.outputs.name }}
+            --max-turns 60
             --allowedTools "Bash,Read,Edit,MultiEdit,Write,Glob,Grep"
-            --append-system-prompt "You are the Implementer described in CLAUDE.md. Read CLAUDE.md first. Make only the changes the issue asks for, on the branch the action created from beta. Run every command in the issue's Verification section and fix what fails before pushing; report each command and its result in your comment. Never push to main or beta directly, never change signing keys, secrets or files under website/update, and never edit esp32_firmware/include/WebAssets.h by hand (run python3 scripts/embed_web.py). If the issue says it is blocked or waits for another issue that is still open, stop and say so instead of implementing it."
+            --append-system-prompt "You are the Implementer described in CLAUDE.md. Read CLAUDE.md first. Make only the changes the issue asks for, on the branch the action created from beta. Run every command in the issue's Verification section and fix what fails before pushing; report each command and its result in your comment. Never push to main or beta directly, never change signing keys, secrets or files under website/update, and never open or edit the generated files listed in CLAUDE.md section 4 (do not cat or grep them either; change their source and regenerate). If the Verification commands still fail after a few focused attempts, stop and report what fails instead of retrying. If the issue says it is blocked or waits for another issue that is still open, stop and say so instead of implementing it."
