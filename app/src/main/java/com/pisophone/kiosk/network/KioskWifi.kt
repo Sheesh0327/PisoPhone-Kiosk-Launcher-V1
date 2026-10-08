@@ -30,9 +30,6 @@ object KioskWifi {
     /** What [join] found or did, for the status line shown on the phone ([statusText]). */
     enum class Join { NOT_SAVED, ALREADY_ON, JOINING, NEEDS_APPROVAL, REFUSED, ERROR }
 
-    /** Adds the saved network and connects to it unless the phone is on it already. Returns true when it is connected. */
-    fun ensureConnected(context: Context): Boolean = join(context) == Join.ALREADY_ON
-
     /** The phone's own Wi-Fi address (IPv4), or "" when it has none. */
     fun wifiAddress(): String {
         try {

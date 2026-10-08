@@ -83,13 +83,8 @@ void handlePortalRoot() {
     streamPortalHtml();
 }
 
-void handleReboot() {
-    if (!checkAdminAuth()) return;
-    Serial.println("\n[🔄 HTTP API] Reboot request received from Web Portal.");
-    if (!canPerformRebootOrOta()) {
-        webServer.send(409, "text/plain", "BUSY: Unpersisted transactions in RAM");
-        return;
-    }
+// Writes the revenue counters to flash if they changed since the last write.
+static void flushRevenueToFlash() {
     if (revenueDirty || totalCoinsLifetime != lastSavedTotalCoins || totalCentavosLifetime != lastSavedTotalCentavos) {
         prefs.begin(NVS_NAMESPACE, false);
         prefs.putULong(NVS_KEY_TOTAL_COINS, totalCoinsLifetime);
@@ -99,6 +94,16 @@ void handleReboot() {
         lastSavedTotalCentavos = totalCentavosLifetime;
         revenueDirty = false;
     }
+}
+
+void handleReboot() {
+    if (!checkAdminAuth()) return;
+    Serial.println("\n[🔄 HTTP API] Reboot request received from Web Portal.");
+    if (!canPerformRebootOrOta()) {
+        webServer.send(409, "text/plain", "BUSY: Unpersisted transactions in RAM");
+        return;
+    }
+    flushRevenueToFlash();
     webServer.send(200, "text/plain", "REBOOTING");
     delay(500);
     diagNoteRestartReason("admin-reboot");
@@ -146,16 +151,7 @@ void handleSave() {
     if (!checkAdminAuth()) return;
 
     // Immediately flush any dirty revenue to NVS flash on manual save
-    if (revenueDirty || totalCoinsLifetime != lastSavedTotalCoins || totalCentavosLifetime != lastSavedTotalCentavos) {
-        prefs.begin(NVS_NAMESPACE, false);
-        prefs.putULong(NVS_KEY_TOTAL_COINS, totalCoinsLifetime);
-        prefs.putULong(NVS_KEY_TOTAL_CENTAVOS, totalCentavosLifetime);
-        prefs.end();
-        lastSavedTotalCoins = totalCoinsLifetime;
-        lastSavedTotalCentavos = totalCentavosLifetime;
-        revenueDirty = false;
-        Serial.println("[💰 VAULT] Revenue counters flushed to NVS flash on config save.");
-    }
+    flushRevenueToFlash();
 
     prefs.begin(NVS_NAMESPACE, false);
     if (webServer.hasArg(NVS_KEY_WIFI_SSID)) {

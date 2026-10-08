@@ -13,6 +13,37 @@
         bar.style.width = pct + '%';
     }
 
+    // Sends a firmware image to the box and shows the progress; button is re-enabled if it fails.
+    function uploadImage(blob, button) {
+        const formData = new FormData();
+        formData.append('update', blob, 'firmware.bin');
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/update', true);
+        xhr.upload.addEventListener('progress', function(e) {
+            if (e.lengthComputable) {
+                const percent = (e.loaded / e.total) * 100;
+                setProgress(percent);
+                showStatus('Installing: ' + Math.round(percent) + '%' + (percent >= 99 ? '. Do not switch the box off.' : ''), 'info');
+            }
+        });
+        const fail = function(msg) {
+            setProgress(100, 'bad');
+            showStatus(msg, 'error');
+            if (button) button.disabled = false;
+        };
+        xhr.onload = function() {
+            if (xhr.status === 200) {
+                setProgress(100, 'ok');
+                showStatus('<b>Updated.</b> The box is restarting and this page returns to the dashboard in 5 seconds.', 'success');
+                setTimeout(function() { window.location.href = '/'; }, 5000);
+            } else {
+                fail('<b>The update failed.</b> ' + escHtml(xhr.responseText || 'The box could not install the file.'));
+            }
+        };
+        xhr.onerror = function() { fail('<b>Lost the connection to the box while installing.</b>'); };
+        xhr.send(formData);
+    }
+
     // Which firmware file this board needs and which version it runs; filled in by the ESP32
     // when it serves this page.
     const CHIP_ID = (window.PISO_OTA && window.PISO_OTA.chip) || '';
@@ -112,8 +143,6 @@
 
     window.installCloudFirmware = async function() {
         const cloudBtn = document.getElementById('cloud_update_btn');
-        const progressWrapper = document.getElementById('progress_wrapper');
-        const progressBar = document.getElementById('progress_bar');
         
         let startInfo;
         try {
@@ -162,39 +191,7 @@
 
             showStatus('Download complete (' + (fwBlob.size/1024).toFixed(1) + ' KB). Installing…', 'info');
             
-            const formData = new FormData();
-            formData.append('update', fwBlob, 'firmware.bin');
-            
-            const xhr = new XMLHttpRequest();
-            xhr.open('POST', '/update', true);
-            
-            xhr.upload.addEventListener('progress', function(e) {
-                if (e.lengthComputable) {
-                    const percent = (e.loaded / e.total) * 100;
-                    setProgress(percent);
-                    showStatus('Installing: ' + Math.round(percent) + '%' + (percent >= 99 ? '. Do not switch the box off.' : ''), 'info');
-                }
-            });
-            
-            xhr.onload = function() {
-                if (xhr.status === 200) {
-                    setProgress(100, 'ok');
-                    showStatus('<b>Updated.</b> The box is restarting and this page returns to the dashboard in 5 seconds.', 'success');
-                    setTimeout(function() { window.location.href = '/'; }, 5000);
-                } else {
-                    setProgress(100, 'bad');
-                    showStatus('<b>The update failed.</b> ' + escHtml(xhr.responseText || 'The box could not install the file.'), 'error');
-                    if (cloudBtn) cloudBtn.disabled = false;
-                }
-            };
-            
-            xhr.onerror = function() {
-                setProgress(100, 'bad');
-                showStatus('<b>Lost the connection to the box while installing.</b>', 'error');
-                if (cloudBtn) cloudBtn.disabled = false;
-            };
-            
-            xhr.send(formData);
+            uploadImage(fwBlob, cloudBtn);
         } catch(err) {
             setProgress(100, 'bad');
             showStatus('<b>The update failed.</b> ' + escHtml(err.message), 'error');
@@ -205,8 +202,6 @@
     window.uploadLocalFirmware = async function() {
         const fileInput = document.getElementById('local_file_input');
         const uploadBtn = document.getElementById('local_upload_btn');
-        const progressWrapper = document.getElementById('progress_wrapper');
-        const progressBar = document.getElementById('progress_bar');
 
         if (!fileInput.files || fileInput.files.length === 0) {
             notify('Choose a firmware.bin file first.', 'bad');
@@ -234,39 +229,7 @@
             }
         }
 
-        const formData = new FormData();
-        formData.append('update', file, 'firmware.bin');
-
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', '/update', true);
-
-        xhr.upload.addEventListener('progress', function(e) {
-            if (e.lengthComputable) {
-                const percent = (e.loaded / e.total) * 100;
-                setProgress(percent);
-                showStatus('Installing: ' + Math.round(percent) + '%' + (percent >= 99 ? '. Do not switch the box off.' : ''), 'info');
-            }
-        });
-
-        xhr.onload = function() {
-            if (xhr.status === 200) {
-                setProgress(100, 'ok');
-                showStatus('<b>Updated.</b> The box is restarting and this page returns to the dashboard in 5 seconds.', 'success');
-                setTimeout(function() { window.location.href = '/'; }, 5000);
-            } else {
-                setProgress(100, 'bad');
-                showStatus('<b>The update failed.</b> ' + escHtml(xhr.responseText || 'The box could not install the file.'), 'error');
-                if (uploadBtn) uploadBtn.disabled = false;
-            }
-        };
-
-        xhr.onerror = function() {
-            setProgress(100, 'bad');
-            showStatus('<b>Lost the connection to the box while installing.</b>', 'error');
-            if (uploadBtn) uploadBtn.disabled = false;
-        };
-
-        xhr.send(formData);
+        uploadImage(file, uploadBtn);
     };
 
     document.addEventListener('DOMContentLoaded', function() { checkCloudUpdate(); });
