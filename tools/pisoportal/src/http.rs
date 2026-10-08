@@ -89,6 +89,12 @@ pub fn build_page(core: &Core) -> String {
         .replace("%FIRST%", &cfg.first_wait.to_string())
 }
 
+/// The status page a connected guest sees (openNDS sends them here from its own status address): the same bilingual look
+/// with a live countdown, fed by the same WebSocket.
+pub fn build_status_page(core: &Core) -> String {
+    include_str!("status.html").replace("%NAME%", &html_esc(&core.cfg.gateway_name))
+}
+
 fn html_esc(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&#39;")
 }
@@ -432,6 +438,7 @@ struct Portal {
     core: Arc<Core>,
     /// the page and its ETag
     page: (String, String),
+    status: String,
     pages: Arc<Limits<String>>,
 }
 
@@ -458,6 +465,10 @@ fn handle(p: Arc<Portal>, stream: TcpStream, peer: SocketAddr) {
                 return respond(&mut conn.s, "503 Service Unavailable", "text/plain", "busy", "Retry-After: 5\r\n");
             };
             ws_session(Arc::clone(&p.core), conn, &key, mac);
+        }
+        "/status" => {
+            let body = if head_only { "" } else { p.status.as_str() };
+            respond(&mut conn.s, "200 OK", "text/html; charset=utf-8", body, "Cache-Control: no-store\r\n");
         }
         _ => {
             let etag = format!("\"{}\"", p.page.1);
@@ -506,7 +517,8 @@ pub fn serve(core: Arc<Core>) {
     let page = build_page(&core);
     let tag = sha256_hex(page.as_bytes())[..16].to_string();
     let max = core.cfg.max_clients.max(1);
-    let p = Arc::new(Portal { core, page: (page, tag), pages: Limits::new(max, WS_PER_DEVICE) });
+    let status = build_status_page(&core);
+    let p = Arc::new(Portal { core, page: (page, tag), status, pages: Limits::new(max, WS_PER_DEVICE) });
     let conns: Arc<Limits<IpAddr>> = Limits::new(max * 4, CONN_PER_IP);
     let addr = format!("{}:{}", p.core.cfg.bind, p.core.cfg.port);
     let listener = bind_retry(&addr, "portal");

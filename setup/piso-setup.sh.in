@@ -300,7 +300,7 @@ set opennds.@opennds[0].faspath='/'
 set opennds.@opennds[0].fas_secure_enabled='1'
 delete opennds.@opennds[0].fasremoteip
 delete opennds.@opennds[0].themespec_path
-delete opennds.@opennds[0].statuspath
+set opennds.@opennds[0].statuspath='/usr/lib/opennds/pisoportal_status.sh'
 delete opennds.@opennds[0].users_to_router
 add_list opennds.@opennds[0].users_to_router='allow tcp port $PORTAL_PORT'
 set opennds.@opennds[0].download_unrestricted_bursting='1'
