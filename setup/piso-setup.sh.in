@@ -466,7 +466,7 @@ pair_box() {
 	step "Pairing the coin box (power on the ESP32 now if it is off; waiting up to $((PAIR_WAIT / 60)) minutes)"
 	# A new or factory-reset box only knows the built-in password: open the network with it for the pairing. A box that was
 	# paired before (re-pairing it, or after a router reset) keeps the password it was given, so that one is offered in turn.
-	_old=$(box_wifi_key)
+	_old=$(box_wifi_key); _was=$(conf_get BOX_WIFI_ROTATED)
 	tip "the coin box's light tells you how it is doing: fast blinking = looking for the network, slow blinking = it cannot find or join it, steady = connected."
 	if [ -n "$(conf_get BOX_MAC)" ]; then tip "this router was paired with a coin box before: a box that was set up already is offered its own password, a new one the built-in one."; fi
 	conf_set BOX_WIFI_ROTATED 0
@@ -494,6 +494,10 @@ pair_box() {
 	done
 	if [ -z "$MAC" ]; then
 		_up=$(box_ifname)
+		# nobody joined: the box keeps the password it had, so the router goes back to it (the wait may have ended on the other one)
+		# and a next "piso-setup pair" offers it again
+		conf_set BOX_WIFI_ROTATED "${_was:-0}"
+		uci set wireless.box_ap.key="$_old"
 		cmd_box_diag   # while the network is still as it was during the wait
 		lock_box_network ""
 		[ -n "$_up" ] || die "the hidden $BOX_SSID network is not on the air (check the router's 2.4 GHz radio: iwinfo), so the coin box could not join it. Then run: piso-setup pair"

@@ -314,6 +314,17 @@ r = lib('conf_set BOX_WIFI_ROTATED 1; conf_set BOX_WIFI_PASS_NEW OwnPassw0rd1234
         'box_station() { [ "$(grep "set wireless.box_ap.key=" ' + tmp + '/uci.log | tail -n 1)" = "set wireless.box_ap.key=PisoCoinBox@Setup" ] && [ "$(grep -c "set wireless.box_ap.key=" ' + tmp + '/uci.log)" -gt 2 ] && echo AA:BB:CC:DD:EE:02; }; '
         'pair_box; echo "rc=$? ROT=$(conf_get BOX_WIFI_ROTATED) MAC=$(conf_get BOX_MAC)"', env={"PAIR_WAIT": "600"})
 check("rc=0 ROT=0 MAC=AA:BB:CC:DD:EE:02" in r.stdout, "a factory-reset box still joins with the built-in password on a later turn: " + r.stdout + r.stderr)
+# a pairing that times out right after a swap to the box's own password: the router goes back to it and keeps it "rotated"
+open(f"{tmp}/uci.log", "w").close()
+r = lib('conf_set BOX_WIFI_ROTATED 1; conf_set BOX_WIFI_PASS_NEW OwnPassw0rd1234567; sleep() { :; }; box_station() { :; }; box_ifname() { echo wlan0-3; }; '
+        'cmd_box_diag() { echo "DIAG key=$(uci -q get wireless.box_ap.key) ROT=$(conf_get BOX_WIFI_ROTATED)"; }; (pair_box); echo "after ROT=$(conf_get BOX_WIFI_ROTATED) KEY=$(box_wifi_key)"',
+        env={"PAIR_WAIT": "60"})
+ul = open(f"{tmp}/uci.log").read()
+set_keys = [l for l in ul.splitlines() if l.startswith("set wireless.box_ap.key=")]
+check("after ROT=1 KEY=OwnPassw0rd1234567" in r.stdout, "a pairing that fails keeps the box's own password for the next try: " + r.stdout + r.stderr)
+check(set_keys and set_keys[-1] == "set wireless.box_ap.key=OwnPassw0rd1234567" and "set wireless.box_ap.key=PisoCoinBox@Setup" in ul,
+      "and leaves the router's network on it, after offering both: " + str(set_keys))
+check("DIAG key=" in r.stdout and "ROT=1" in r.stdout.split("after ROT")[0].split("DIAG key=")[1], "the failure report sees the restored state: " + r.stdout[-300:])
 r = lib('sleep() { :; }; box_station() { :; }; box_ifname() { :; }; pair_box; echo rc=$?', env={"PAIR_WAIT": "10"})
 check("rc=0" not in r.stdout and "not on the air" in r.stderr + r.stdout, "a missing box network is reported as such: " + r.stdout + r.stderr)
 r = lib('sleep() { :; }; box_station() { :; }; box_ifname() { echo wlan0-3; }; pair_box; echo rc=$?', env={"PAIR_WAIT": "10"})
