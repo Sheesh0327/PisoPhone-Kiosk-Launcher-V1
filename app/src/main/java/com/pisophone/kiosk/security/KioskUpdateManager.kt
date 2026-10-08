@@ -201,7 +201,9 @@ object KioskUpdateManager {
         val installed = context.packageManager.getPackageInfo(context.packageName, flags)
         val wanted = signingCertDigests(installed)
         val offered = signingCertDigests(info)
-        if (wanted.isNotEmpty() && offered != wanted) {
+        // Some Android versions do not report a certificate for a package that is not installed yet (an empty set):
+        // then there is nothing to compare, and the installer makes the same check itself.
+        if (wanted.isNotEmpty() && offered.isNotEmpty() && offered != wanted) {
             throw IOException("The downloaded APK is signed by a different publisher than the installed app.")
         }
         val downloadedCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
