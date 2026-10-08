@@ -14,8 +14,8 @@ val updateBaseUrl = System.getenv("UPDATE_BASE_URL")?.takeIf { it.isNotBlank() }
     ?: "https://pisophone.pages.dev/update"
 val buildChannel = System.getenv("BUILD_CHANNEL")?.takeIf { it.isNotBlank() } ?: "stable"
 
-// Room writes a JSON snapshot of each database version here (commit it) so future migrations can be
-// verified against the real previous schema.
+// Room writes a JSON snapshot of each database version here so future migrations can be verified against the real
+// previous schema. CI commits a new version's snapshot by itself and fails if a committed one changes (build-apk.yml).
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }

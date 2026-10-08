@@ -1,25 +1,46 @@
 # PisoPhone Kiosk Architecture & Workflow Constitution
 
 ## 1. The Architect-Implementer Workflow (Strict)
-This repository uses `anthropics/claude-code-action` for autonomous execution. 
+Implementation runs through `.github/workflows/claude.yml` (`anthropics/claude-code-action@v1`).
 * **If you are acting as the Architect (Opus):** DO NOT write extensive boilerplate or execute massive refactors directly. Your primary job is to diagnose, plan, and create GitHub Issues.
-* **Issue Creation Protocol:** Every GitHub issue you create MUST include the exact target file paths, the specific function/contract changes, the required verification command, and the exact trigger phrase **`@claude`** to automatically dispatch the implementer model.
-* **If you are acting as the Implementer (Sonnet/Haiku):** You were triggered by an issue. Read the issue, execute the exact file modifications requested, run the verification command, and open a Pull Request.
+* **Issue Creation Protocol:** Every GitHub issue you create MUST include the exact target file paths, the specific function/contract changes, the required verification commands, and the trigger phrase **`@claude`** to dispatch the implementer. Keep each issue to one pull request; split larger work and say which issue it waits for.
+* **Choosing the implementer model:** Sonnet is the default. Add the label `model:haiku` for small, local changes (one or two files, no contract change) and `model:opus` for changes to the box ↔ phone protocol or to money/time accounting. Add the label before dispatching.
+* **Dispatch one issue at a time.** Only one implementer runs at once; a second request waits, and a third replaces the waiting one. Start the next issue after the previous pull request is merged into `beta`.
+* **Blocked issues** (waiting for the owner or for another open issue) contain `@claude` only inside their dispatch note; they are started by a new `@claude` comment once unblocked.
+* **If you are acting as the Implementer (Sonnet/Haiku):** You were triggered by an issue. Read the issue, make exactly the file modifications requested on the branch made from `beta`, run every verification command, and link the pull request into `beta`. Never push to `main` or `beta`. If the issue is blocked or waits for an open issue, stop and say so.
 
 ## 2. System Architecture Map
-PisoPhone converts an Android device into a payphone kiosk, communicating with an ESP32-C3 coin pulse detector and an OpenWrt captive portal.
-* **Android (`app/`):** Kiosk lockdown app utilizing Lock Task Mode and Device Owner. Communicates via a local HTTP backend (`KioskHttpServer.kt`)[cite: 1].
-* **Firmware (`esp32_firmware/`):** ESP32-C3 C++ code compiled via PlatformIO. Handles pulse detection, embedded web assets, and HMAC authentication (`GatewayCoinslot.h`)[cite: 1].
-* **Router (`router/` & `tools/pisoportal/`):** OpenWrt configuration, shell scripts (`piso_monitor.sh`), and the Rust-based captive portal backend[cite: 1].
+PisoPhone turns an Android phone into a coin-operated rental kiosk, paid through an ESP32 coin box and served by an OpenWrt router.
+* **Android (`app/`):** Kiosk app, Device Owner with Lock Task Mode. Receives signed, encrypted commands from the box on a local HTTP server (`server/KioskHttpServer.kt`).
+* **Firmware (`esp32_firmware/`):** ESP32-C3 and ESP32 C++ code, built with PlatformIO. Coin pulse detection, the admin dashboard (templates in `include/WebDashboard*.h`, assets in `web/`), and HMAC-signed messages to phones and the router (`include/GatewayCoinslot.h`).
+* **Router (`router/`, `tools/pisoportal/`, `setup/`):** OpenWrt setup and monitor shell scripts (`router/piso_monitor.sh`, `setup/piso-setup.sh.in`), and the Rust captive portal (`tools/pisoportal/`).
+* **Website (`website/`):** Phone setup page, coin box flasher, update feeds. Hosted on Cloudflare Pages.
 
 ## 3. Definition of Done & Verification Gates
-You must run the appropriate tests and achieve a clean exit code before concluding any task:
-* **ESP32 Firmware:** Run `cd esp32_firmware/host_tests && ./run.sh`[cite: 1]. Use `uint32_t` instead of `unsigned long` for 32-bit/64-bit cross-compatibility between the host and the ESP32[cite: 2].
-* **Router/Portal:** Run `cd router && python3 -m pytest tests/test_monitor.py`[cite: 1]. 
-* **Android App:** Ensure Gradle builds cleanly by running `./gradlew assembleDebug`[cite: 1]. Use Kotlin Coroutines, never RxJava.
+Run the commands for every area you touched and get a clean exit before concluding a task. The issue's own Verification section comes first.
+* **ESP32 Firmware:**
+  * `cd esp32_firmware/host_tests && ./run.sh`
+  * `cd esp32_firmware && pio run -e esp32-c3-dev && pio run -e esp32dev-dev`
+  * `clang-format --dry-run --Werror <changed .cpp/.h files>`
+  * After changing `esp32_firmware/web/`: `python3 scripts/embed_web.py`, then `python3 scripts/embed_web.py --check`.
+  * Use `uint32_t` instead of `unsigned long` for 32-bit/64-bit cross-compatibility between the host and the ESP32, and wrap-safe `millis()` arithmetic (`now - start >= duration`).
+* **Router/Portal:** `python3 router/tests/test_monitor.py`, plus `python3 router/tests/test_pisophone_setup.py` and `python3 tools/build_piso_setup.py --check` when `setup/` changed. These are plain scripts, not pytest suites.
+* **Website:** `node scripts/test_provisioning.js`, `node scripts/test_flasher.js`, `python3 scripts/tests/test_site_page.py`.
+* **Android App:** `./gradlew assembleDebug`, `./gradlew :app:testDebugUnitTest`, and ktlint: `./ktlint --relative "app/src/**/*.kt" "*.kts" "app/*.kts"`. Use Kotlin Coroutines, never RxJava.
+* **Always:** `bash scripts/check_security_rules.sh`.
 
-## 4. Progressive Disclosure (Read Before Modifying)
+## 4. Generated and binary files (never open or edit by hand)
+These are large or generated; reading them wastes the whole run's budget. Change their source and regenerate instead.
+* `esp32_firmware/include/WebAssets.h`: generated from `esp32_firmware/web/` by `python3 scripts/embed_web.py`.
+* `setup/piso-setup.sh`, `website/setup/*`, `website/install.sh`, `website/pisophone_setup.py`: generated by `python3 tools/build_piso_setup.py` from `setup/piso-setup.sh.in`, `setup/install.sh` and `setup/pisophone_setup.py`.
+* `website/update/*`, `website/flash/*`, `tools/pisoportal/bin/*`: published by CI; never commit changes to them.
+* `website/js/*-bundle.js`: vendored libraries (see `website/js/VENDORED.md`).
+* `app/schemas/*`: Room schema snapshots, committed by CI.
+
+## 5. Progressive Disclosure (Read Before Modifying)
 Do not guess API contracts, deployment flows, or security rules. If you touch these domains, read the authoritative documentation first:
-* **Coin Pulse/Network Handshake:** Read `docs/api/gateway-coinslot.md` and `docs/api/superadmin-credentials.md`[cite: 1].
-* **Router Deployment:** Read `docs/DEPLOY.md`[cite: 1].
-* **Anti-Spoofing:** Refer to `ReplayGuard.kt` for timestamp and nonce enforcement rules before modifying the Android server[cite: 1].
+* **Coin pulse / network handshake:** `docs/api/gateway-coinslot.md` and `docs/api/superadmin-credentials.md`.
+* **Box ↔ phone message contract:** `protocol/gen_vectors.py` and `esp32_firmware/host_tests/protocol_contract_test.cpp`. Both sides change in one pull request.
+* **Router deployment and CI:** `docs/DEPLOY.md`.
+* **Keys and signing:** `docs/KEYS.md`. Never generate or commit owner keys.
+* **Anti-replay on the phone:** `server/KioskHttpServer.kt` (timestamp and payment `tx_id` checks) and `server/ReplayGuard.kt` (signature de-duplication).
