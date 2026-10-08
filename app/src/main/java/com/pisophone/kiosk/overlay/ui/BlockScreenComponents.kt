@@ -20,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pisophone.kiosk.model.BatteryStatus
+import com.pisophone.kiosk.network.Esp32Responses
 import com.pisophone.kiosk.security.KioskSecurity
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -139,7 +140,7 @@ fun BlockScreenRateTableCard(
     coinsInserted: Int,
     paymentTimeout: Int,
     isEsp32Online: Boolean,
-    isSlotBusy: Boolean,
+    armFailure: Esp32Responses.ArmFailure?,
     isArmingInProgress: Boolean = false,
     isSlotExpired: Boolean = false,
     buttonText: String,
@@ -289,7 +290,7 @@ fun BlockScreenRateTableCard(
         } else {
             val activeContainerColor = if (isSlotExpired) {
                 Color(0xFF7F1D1D)
-            } else if (isSlotBusy) {
+            } else if (armFailure != null) {
                 Color(0xFFDC3545)
             } else if (isEsp32Online) {
                 primaryColor
@@ -298,7 +299,7 @@ fun BlockScreenRateTableCard(
             }
             val activeContentColor = if (isSlotExpired) {
                 Color(0xFFFCA5A5)
-            } else if (isSlotBusy) {
+            } else if (armFailure != null) {
                 Color.White
             } else if (isEsp32Online) {
                 onPrimaryColor
@@ -307,8 +308,8 @@ fun BlockScreenRateTableCard(
             }
             val activeText = if (isSlotExpired) {
                 "DEVICE NOT ACTIVATED"
-            } else if (isSlotBusy) {
-                "COINSLOT BUSY"
+            } else if (armFailure != null) {
+                armFailure.label
             } else if (isEsp32Online) {
                 buttonText
             } else {
@@ -326,11 +327,11 @@ fun BlockScreenRateTableCard(
                     disabledContentColor = activeContentColor,
                 ),
                 shape = RoundedCornerShape(14.dp),
-                enabled = isEsp32Online && !isSlotBusy && !isSlotExpired,
+                enabled = isEsp32Online && armFailure == null && !isSlotExpired,
             ) {
                 if (isSlotExpired) {
                     Icon(Icons.Filled.Lock, contentDescription = null, tint = Color(0xFFFCA5A5))
-                } else if (isSlotBusy) {
+                } else if (armFailure != null) {
                     Icon(Icons.Filled.Lock, contentDescription = null, tint = Color.White)
                 } else if (isEsp32Online) {
                     Icon(Icons.Filled.AddCircle, contentDescription = null)

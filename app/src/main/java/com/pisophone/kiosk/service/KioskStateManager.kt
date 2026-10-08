@@ -2,6 +2,7 @@ package com.pisophone.kiosk.service
 
 import android.content.Context
 import android.util.Log
+import com.pisophone.kiosk.network.Esp32Responses
 import com.pisophone.kiosk.security.KioskSecurity
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -30,7 +31,7 @@ class KioskStateManager(private val context: Context) {
     val deviceId = MutableStateFlow("")
     val isEsp32Online = MutableStateFlow(false)
     val esp32MacAddress = MutableStateFlow("")
-    val isSlotBusy = MutableStateFlow(false)
+    val armFailure = MutableStateFlow<Esp32Responses.ArmFailure?>(null)
     val isArmingInProgress = MutableStateFlow(false)
     val pricePerCoin = MutableStateFlow(5.0)
     val minutesPerCoin = MutableStateFlow(30)

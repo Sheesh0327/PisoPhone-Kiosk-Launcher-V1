@@ -38,7 +38,7 @@ interface Esp32ConnectionDelegate {
      * ESP32 keeps the coin queued (and retries) when crediting failed.
      */
     fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?): PaymentResult
-    fun onSlotBusy()
+    fun onArmFailed(failure: Esp32Responses.ArmFailure)
     fun onArmSuccess()
     fun onSlotLockdown(reason: String, slotNum: Int, expiresAt: Long)
     fun onSlotRestored(slotNum: Int = 0)
@@ -387,7 +387,7 @@ class Esp32ConnectionManager(
             } catch (e: Exception) {
                 Log.e(TAG, "armSlot failed unexpectedly (attempt #$attemptId): ${e.message}", e)
                 if (isAttemptCurrent(attemptId)) {
-                    delegate.onSlotBusy()
+                    delegate.onArmFailed(Esp32Responses.ArmFailure.BOX_ERROR)
                 }
             }
         }
@@ -415,7 +415,7 @@ class Esp32ConnectionManager(
             Log.w(TAG, "Cannot arm slot: No discovered ESP32 IP available. Triggering discovery...")
             delegate.onOnlineStatusChanged(false, null)
             discoveryScanner.triggerDiscovery("")
-            delegate.onSlotBusy()
+            delegate.onArmFailed(Esp32Responses.ArmFailure.BOX_NOT_FOUND)
             Handler(Looper.getMainLooper()).post {
                 Toast.makeText(context, "Searching for ESP32 hardware controller...", Toast.LENGTH_SHORT).show()
             }
@@ -459,7 +459,7 @@ class Esp32ConnectionManager(
                 if (settleMs > MAX_SETTLE_WAIT_MS) {
                     // An unsupported settling time: do not report the slot ready while the box would still ignore coins.
                     Log.w(TAG, "ESP32 reported an unsupported settling time ($settleMs ms); not reporting the slot as ready")
-                    delegate.onSlotBusy()
+                    delegate.onArmFailed(Esp32Responses.ArmFailure.BOX_ERROR)
                     return
                 }
                 if (settleMs > 0L) Thread.sleep(settleMs)
@@ -480,7 +480,7 @@ class Esp32ConnectionManager(
                 }
             } else if (code == 409) {
                 Log.w(TAG, "ESP32 Coin Slot is BUSY with another session (HTTP 409)")
-                delegate.onSlotBusy()
+                delegate.onArmFailed(Esp32Responses.ArmFailure.BUSY)
                 Handler(Looper.getMainLooper()).post {
                     Toast.makeText(context, "Slot is currently busy with another device.", Toast.LENGTH_LONG).show()
                 }
@@ -489,14 +489,14 @@ class Esp32ConnectionManager(
                 // the phone as "not activated" and do not retry over a WebSocket that would be refused the same way.
                 Log.e(TAG, "ESP32 refused the arm request (HTTP 403): $body")
                 DiagnosticsLog.add("ARM", "box refused the request (HTTP 403): $body")
-                delegate.onSlotBusy()
+                delegate.onArmFailed(Esp32Responses.ArmFailure.BOX_REFUSED)
                 Handler(Looper.getMainLooper()).post {
                     Toast.makeText(context, Esp32Responses.authRefusedMessage(), Toast.LENGTH_LONG).show()
                 }
             } else if (code == 403 && body.contains("SETUP_REQUIRED")) {
                 // The box refuses coins until its owner has changed the default admin password; the WebSocket would be refused too.
                 Log.w(TAG, "ESP32 refuses coins until its admin password is changed (HTTP 403 SETUP_REQUIRED)")
-                delegate.onSlotBusy()
+                delegate.onArmFailed(Esp32Responses.ArmFailure.SETUP_REQUIRED)
                 Handler(Looper.getMainLooper()).post {
                     Toast.makeText(context, "Coin box setup is not finished. Please tell the shop owner.", Toast.LENGTH_LONG).show()
                 }
@@ -504,7 +504,7 @@ class Esp32ConnectionManager(
                 Log.e(TAG, "ESP32 Coin Slot is LOCKED/EXPIRED (HTTP 423): $body")
                 if (body.contains("SLOT_NOT_PAIRED")) {
                     sendPairingRequest(targetIpHost)
-                    delegate.onSlotBusy()
+                    delegate.onArmFailed(Esp32Responses.ArmFailure.NOT_PAIRED)
                     Handler(Looper.getMainLooper()).post {
                         Toast.makeText(context, "Device connection pending admin approval on ESP32 portal.", Toast.LENGTH_LONG).show()
                     }
@@ -534,7 +534,7 @@ class Esp32ConnectionManager(
         } catch (e: Exception) {
             Log.e(TAG, "WebSocket arming fallback could not start: ${e.message}")
             if (isAttemptCurrent(attemptId)) {
-                delegate.onSlotBusy()
+                delegate.onArmFailed(Esp32Responses.ArmFailure.BOX_UNREACHABLE)
             }
         }
     }
@@ -686,7 +686,7 @@ class Esp32ConnectionManager(
                 if (isCurrent && !isHttpArmed) {
                     if (code == 409) {
                         Log.e(TAG, "Slot is BUSY with another session (HTTP 409)")
-                        delegate.onSlotBusy()
+                        delegate.onArmFailed(Esp32Responses.ArmFailure.BUSY)
                         Handler(Looper.getMainLooper()).post {
                             Toast.makeText(context, "Slot is currently busy with another device.", Toast.LENGTH_LONG).show()
                         }
@@ -697,13 +697,13 @@ class Esp32ConnectionManager(
                         // The box does not accept this phone's signature or clock: not a slot problem.
                         Log.e(TAG, "ESP32 refused the WebSocket (HTTP 403)")
                         DiagnosticsLog.add("ARM", "box refused the WebSocket (HTTP 403)")
-                        delegate.onSlotBusy()
+                        delegate.onArmFailed(Esp32Responses.ArmFailure.BOX_REFUSED)
                         Handler(Looper.getMainLooper()).post {
                             Toast.makeText(context, Esp32Responses.authRefusedMessage(), Toast.LENGTH_LONG).show()
                         }
                     } else {
                         Log.w(TAG, "WebSocket connection failed (HTTP $code: $msg)")
-                        delegate.onSlotBusy()
+                        delegate.onArmFailed(Esp32Responses.ArmFailure.BOX_UNREACHABLE)
                     }
                 }
                 forceCloseWebSocketIfAttemptCurrent(webSocket, "WebSocket failure: $msg", attemptId)

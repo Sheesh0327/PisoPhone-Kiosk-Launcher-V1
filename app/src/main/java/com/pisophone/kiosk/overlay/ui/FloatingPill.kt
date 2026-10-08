@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pisophone.kiosk.model.BatteryAlertState
 import com.pisophone.kiosk.model.BatteryStatus
+import com.pisophone.kiosk.network.Esp32Responses
 import com.pisophone.kiosk.security.KioskSecurity
 import com.pisophone.kiosk.system.AndroidKioskSystemController
 import com.pisophone.kiosk.system.KioskSystemController
@@ -45,7 +46,7 @@ fun FloatingPill(
     paymentTimeout: Int,
     onDoneClick: () -> Unit,
     isEsp32Online: Boolean,
-    isSlotBusy: Boolean = false,
+    armFailure: Esp32Responses.ArmFailure? = null,
     isArmingInProgress: Boolean = false,
     isWaiting: Boolean,
     themeIndex: Int = 0,
@@ -514,22 +515,22 @@ fun FloatingPill(
                             Text("ARMING COINSLOT...", fontWeight = FontWeight.Bold, fontSize = 11.sp)
                         }
                     } else {
-                        val activeContainerColor = if (isSlotBusy) {
+                        val activeContainerColor = if (armFailure != null) {
                             Color(0xFFDC3545)
                         } else if (isEsp32Online) {
                             Primary
                         } else {
                             SurfaceVariant
                         }
-                        val activeContentColor = if (isSlotBusy) {
+                        val activeContentColor = if (armFailure != null) {
                             Color.White
                         } else if (isEsp32Online) {
                             OnPrimary
                         } else {
                             TextTertiary
                         }
-                        val activeText = if (isSlotBusy) {
-                            "COINSLOT BUSY"
+                        val activeText = if (armFailure != null) {
+                            armFailure.label
                         } else if (isEsp32Online) {
                             "ADD TIME (DROP COIN)"
                         } else {
@@ -545,9 +546,9 @@ fun FloatingPill(
                                 disabledContentColor = activeContainerColor,
                             ),
                             shape = RoundedCornerShape(10.dp),
-                            enabled = isEsp32Online && !isSlotBusy,
+                            enabled = isEsp32Online && armFailure == null,
                         ) {
-                            if (isSlotBusy) {
+                            if (armFailure != null) {
                                 Icon(Icons.Filled.Lock, contentDescription = null, modifier = Modifier.size(15.dp), tint = Color.White)
                                 Spacer(modifier = Modifier.width(6.dp))
                             } else if (isEsp32Online) {

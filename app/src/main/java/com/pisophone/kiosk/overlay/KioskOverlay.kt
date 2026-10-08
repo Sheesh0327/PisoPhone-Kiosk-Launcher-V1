@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import com.pisophone.kiosk.ComposeOverlayView
 import com.pisophone.kiosk.model.BatteryStatus
+import com.pisophone.kiosk.network.Esp32Responses
 import com.pisophone.kiosk.overlay.ui.BlockScreen
 import com.pisophone.kiosk.service.SessionRules
 import com.pisophone.kiosk.service.SessionState
@@ -30,7 +31,7 @@ class KioskOverlay(
     private val themeIndexFlow: StateFlow<Int>,
     private val isEsp32OnlineFlow: StateFlow<Boolean>,
     private val esp32MacAddressFlow: StateFlow<String> = kotlinx.coroutines.flow.MutableStateFlow(""),
-    private val isSlotBusyFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
+    private val armFailureFlow: StateFlow<Esp32Responses.ArmFailure?> = kotlinx.coroutines.flow.MutableStateFlow(null),
     private val isArmingInProgressFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
     private val pricePerCoinFlow: StateFlow<Double>,
     private val minutesPerCoinFlow: StateFlow<Int>,
@@ -57,7 +58,7 @@ class KioskOverlay(
         themeIndexFlow = themeIndexFlow,
         isEsp32OnlineFlow = isEsp32OnlineFlow,
         esp32MacAddressFlow = esp32MacAddressFlow,
-        isSlotBusyFlow = isSlotBusyFlow,
+        armFailureFlow = armFailureFlow,
         isArmingInProgressFlow = isArmingInProgressFlow,
         pricePerCoinFlow = pricePerCoinFlow,
         minutesPerCoinFlow = minutesPerCoinFlow,
@@ -82,7 +83,7 @@ class KioskOverlay(
         coinsInsertedFlow = coinsInsertedFlow,
         themeIndexFlow = themeIndexFlow,
         isEsp32OnlineFlow = isEsp32OnlineFlow,
-        isSlotBusyFlow = isSlotBusyFlow,
+        armFailureFlow = armFailureFlow,
         isArmingInProgressFlow = isArmingInProgressFlow,
         pricePerCoinFlow = pricePerCoinFlow,
         minutesPerCoinFlow = minutesPerCoinFlow,
@@ -132,7 +133,7 @@ class LockScreenOverlay(
     private val themeIndexFlow: StateFlow<Int>,
     private val isEsp32OnlineFlow: StateFlow<Boolean>,
     private val esp32MacAddressFlow: StateFlow<String> = kotlinx.coroutines.flow.MutableStateFlow(""),
-    private val isSlotBusyFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
+    private val armFailureFlow: StateFlow<Esp32Responses.ArmFailure?> = kotlinx.coroutines.flow.MutableStateFlow(null),
     private val isArmingInProgressFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
     private val pricePerCoinFlow: StateFlow<Double>,
     private val minutesPerCoinFlow: StateFlow<Int>,
@@ -244,7 +245,7 @@ class LockScreenOverlay(
             val paymentTimeout by paymentTimeoutFlow.collectAsState()
             val coinsInserted by coinsInsertedFlow.collectAsState()
             val isEsp32Online by isEsp32OnlineFlow.collectAsState()
-            val isSlotBusy by isSlotBusyFlow.collectAsState()
+            val armFailure by armFailureFlow.collectAsState()
             val isArmingInProgress by isArmingInProgressFlow.collectAsState()
             val themeIndex by themeIndexFlow.collectAsState()
             val pricePerCoin by pricePerCoinFlow.collectAsState()
@@ -297,7 +298,7 @@ class LockScreenOverlay(
                             paymentTimeout = 0,
                             onDoneClick = {},
                             isEsp32Online = isEsp32Online,
-                            isSlotBusy = isSlotBusy,
+                            armFailure = armFailure,
                             isArmingInProgress = isArmingInProgress,
                             pricePerCoin = pricePerCoin,
                             minutesPerCoin = minutesPerCoin,
@@ -320,7 +321,7 @@ class LockScreenOverlay(
                             paymentTimeout = paymentTimeout,
                             onDoneClick = onDoneClick,
                             isEsp32Online = isEsp32Online,
-                            isSlotBusy = isSlotBusy,
+                            armFailure = armFailure,
                             isArmingInProgress = isArmingInProgress,
                             pricePerCoin = pricePerCoin,
                             minutesPerCoin = minutesPerCoin,

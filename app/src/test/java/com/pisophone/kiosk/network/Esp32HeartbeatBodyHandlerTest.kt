@@ -22,7 +22,7 @@ class Esp32HeartbeatBodyHandlerTest {
             events += "config=$price,$minutes,$alias,$slotNum"
         }
         override fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?) = PaymentResult.APPLIED
-        override fun onSlotBusy() { events += "busy" }
+        override fun onArmFailed(failure: Esp32Responses.ArmFailure) { events += "arm-failed=${failure.name}" }
         override fun onArmSuccess() { events += "armed" }
         override fun onSlotLockdown(reason: String, slotNum: Int, expiresAt: Long) { events += "lockdown=$slotNum" }
         override fun onSlotRestored(slotNum: Int) { events += "restored=$slotNum" }

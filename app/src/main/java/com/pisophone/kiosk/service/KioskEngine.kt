@@ -9,6 +9,7 @@ import com.pisophone.kiosk.audio.KioskAudioManager
 import com.pisophone.kiosk.db.AppDatabase
 import com.pisophone.kiosk.db.CoinEvent
 import com.pisophone.kiosk.network.Esp32ConnectionManager
+import com.pisophone.kiosk.network.Esp32Responses
 import com.pisophone.kiosk.overlay.KioskOverlayCoordinator
 import com.pisophone.kiosk.repository.CoinEventRepository
 import com.pisophone.kiosk.repository.PaymentRepository
@@ -174,7 +175,7 @@ class KioskEngine(
         onCreditPayment = { txId, seconds, amount ->
             creditPayment(txId, seconds, amount)
         },
-        onSlotBusyTriggered = { triggerSlotBusy() },
+        onArmFailedTriggered = { triggerArmFailure(it) },
         getAudioManager = { audioManager },
         onSessionLocked = { cancelArm -> onSessionLocked(cancelArm) },
     )
@@ -214,7 +215,7 @@ class KioskEngine(
     )
 
     private var nanoServer: KioskHttpServer? = null
-    private var slotBusyJob: Job? = null
+    private var armFailureJob: Job? = null
     private var engineStartTimeMs = 0L
 
     fun start() {
@@ -342,12 +343,13 @@ class KioskEngine(
         esp32Manager.closeSession(sendUnarmToEsp)
     }
 
-    fun triggerSlotBusy() {
-        stateManager.isSlotBusy.value = true
-        slotBusyJob?.cancel()
-        slotBusyJob = scope.launch {
+    /** Shows why the last arm attempt failed on the button for a few seconds. */
+    fun triggerArmFailure(failure: Esp32Responses.ArmFailure) {
+        stateManager.armFailure.value = failure
+        armFailureJob?.cancel()
+        armFailureJob = scope.launch {
             delay(5000)
-            stateManager.isSlotBusy.value = false
+            stateManager.armFailure.value = null
         }
     }
 

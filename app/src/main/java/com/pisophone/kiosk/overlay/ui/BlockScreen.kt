@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pisophone.kiosk.model.BatteryAlertState
 import com.pisophone.kiosk.model.BatteryStatus
+import com.pisophone.kiosk.network.Esp32Responses
 import com.pisophone.kiosk.overlay.ui.AdminAuthenticationDialog
 import com.pisophone.kiosk.overlay.ui.BatteryAlertBanner
 import com.pisophone.kiosk.overlay.ui.EmergencyRecoveryDialog
@@ -40,7 +41,7 @@ fun BlockScreen(
     paymentTimeout: Int,
     onDoneClick: () -> Unit,
     isEsp32Online: Boolean,
-    isSlotBusy: Boolean = false,
+    armFailure: Esp32Responses.ArmFailure? = null,
     isArmingInProgress: Boolean = false,
     pricePerCoin: Double = 5.0,
     minutesPerCoin: Int = 30,
@@ -301,7 +302,7 @@ fun BlockScreen(
                             coinsInserted = coinsInserted,
                             paymentTimeout = paymentTimeout,
                             isEsp32Online = isEsp32Online,
-                            isSlotBusy = isSlotBusy,
+                            armFailure = armFailure,
                             isArmingInProgress = isArmingInProgress,
                             isSlotExpired = isSlotExpired,
                             buttonText = buttonText,

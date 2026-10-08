@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import com.pisophone.kiosk.ComposeOverlayView
 import com.pisophone.kiosk.model.BatteryStatus
+import com.pisophone.kiosk.network.Esp32Responses
 import com.pisophone.kiosk.overlay.ui.FloatingPill
 import com.pisophone.kiosk.security.AdminMaintenanceMode
 import com.pisophone.kiosk.service.SessionRules
@@ -25,7 +26,7 @@ class FloatingPillOverlay(
     private val coinsInsertedFlow: StateFlow<Int>,
     private val themeIndexFlow: StateFlow<Int>,
     private val isEsp32OnlineFlow: StateFlow<Boolean>,
-    private val isSlotBusyFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
+    private val armFailureFlow: StateFlow<Esp32Responses.ArmFailure?> = kotlinx.coroutines.flow.MutableStateFlow(null),
     private val isArmingInProgressFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
     private val pricePerCoinFlow: StateFlow<Double>,
     private val minutesPerCoinFlow: StateFlow<Int>,
@@ -120,7 +121,7 @@ class FloatingPillOverlay(
             val paymentTimeout by paymentTimeoutFlow.collectAsState()
             val coinsInserted by coinsInsertedFlow.collectAsState()
             val isEsp32Online by isEsp32OnlineFlow.collectAsState()
-            val isSlotBusy by isSlotBusyFlow.collectAsState()
+            val armFailure by armFailureFlow.collectAsState()
             val isArmingInProgress by isArmingInProgressFlow.collectAsState()
             val themeIndex by themeIndexFlow.collectAsState()
             val batteryStatus by batteryStatusFlow.collectAsState()
@@ -166,7 +167,7 @@ class FloatingPillOverlay(
                     paymentTimeout = paymentTimeout,
                     onDoneClick = onDoneClick,
                     isEsp32Online = isEsp32Online,
-                    isSlotBusy = isSlotBusy,
+                    armFailure = armFailure,
                     isArmingInProgress = isArmingInProgress,
                     isWaiting = appState == SessionState.UNLOCKED_ARMED.code,
                     themeIndex = themeIndex,

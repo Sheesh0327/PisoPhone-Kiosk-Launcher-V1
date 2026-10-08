@@ -43,4 +43,14 @@ class Esp32ResponsesTest {
         assertTrue(Esp32Responses.shouldForgetAddress(6, 24_000L))
         assertTrue(Esp32Responses.shouldForgetAddress(2, 46_000L))
     }
+
+    @Test
+    fun onlyARealBusyAnswerIsLabelledBusy() {
+        val labels = Esp32Responses.ArmFailure.entries.map { it.label }
+        assertEquals("every failure has its own label", labels.size, labels.toSet().size)
+        assertEquals(listOf(Esp32Responses.ArmFailure.BUSY), Esp32Responses.ArmFailure.entries.filter { "BUSY" in it.label })
+        // the label sits on a small button: keep it short, and give every failure advice to read
+        assertTrue(labels.all { it.length <= 20 })
+        assertTrue(Esp32Responses.ArmFailure.entries.all { it.advice.isNotBlank() })
+    }
 }
