@@ -61,7 +61,7 @@ class KioskOverlayCoordinator(
                         themeIndexFlow = stateManager.themeIndex,
                         isEsp32OnlineFlow = stateManager.isEsp32Online,
                         esp32MacAddressFlow = stateManager.esp32MacAddress,
-                        isSlotBusyFlow = stateManager.isSlotBusy,
+                        armFailureFlow = stateManager.armFailure,
                         isArmingInProgressFlow = stateManager.isArmingInProgress,
                         pricePerCoinFlow = stateManager.pricePerCoin,
                         minutesPerCoinFlow = stateManager.minutesPerCoin,

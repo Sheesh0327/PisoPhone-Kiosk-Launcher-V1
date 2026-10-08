@@ -1,0 +1,9 @@
+# Who must review a change. Every file has an owner; the sensitive areas are listed so a review is never skipped for them.
+*                               @Sheesh0327
+/esp32_firmware/                @Sheesh0327
+/tools/pisoportal/              @Sheesh0327
+/setup/                         @Sheesh0327
+/scripts/                       @Sheesh0327
+/.github/                       @Sheesh0327
+/docs/KEYS.md                   @Sheesh0327
+/app/src/main/java/com/pisophone/kiosk/security/   @Sheesh0327

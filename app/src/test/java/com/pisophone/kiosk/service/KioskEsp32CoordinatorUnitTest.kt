@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.pisophone.kiosk.db.AppDatabase
+import com.pisophone.kiosk.network.Esp32Responses
 import com.pisophone.kiosk.repository.PaymentRepository
 import com.pisophone.kiosk.repository.PaymentResult
 import org.junit.After
@@ -22,6 +23,7 @@ class KioskEsp32CoordinatorUnitTest {
     private lateinit var coordinator: KioskEsp32Coordinator
     private var nextCreditResult = PaymentResult.APPLIED
     private val lockEvents = mutableListOf<Boolean>()
+    private val shownFailures = mutableListOf<Esp32Responses.ArmFailure>()
 
     @Before
     fun setUp() {
@@ -31,6 +33,7 @@ class KioskEsp32CoordinatorUnitTest {
             .build()
         stateManager = KioskStateManager(context)
         lockEvents.clear()
+        shownFailures.clear()
         coordinator = KioskEsp32Coordinator(
             context = context,
             stateManager = stateManager,
@@ -39,7 +42,7 @@ class KioskEsp32CoordinatorUnitTest {
             getSecretKey = { "secret" },
             getRealTimeBatteryInfo = { Pair(80, false) },
             onCreditPayment = { _, _, _ -> nextCreditResult },
-            onSlotBusyTriggered = {},
+            onArmFailedTriggered = { shownFailures.add(it) },
             onSessionLocked = { cancelArm -> lockEvents.add(cancelArm) },
         )
     }
@@ -53,9 +56,20 @@ class KioskEsp32CoordinatorUnitTest {
         stateManager.appState.value = state
         stateManager.sessionTimeRemaining.value = remaining
         stateManager.isArmingInProgress.value = true
-        coordinator.onSlotBusy()
+        coordinator.onArmFailed(Esp32Responses.ArmFailure.BUSY)
         assertFalse("Arming flag must be cleared on busy", stateManager.isArmingInProgress.value)
         return stateManager.appState.value
+    }
+
+    @Test
+    fun everyArmFailureIsShownAndNeverLocksAPaidSession() {
+        for (failure in Esp32Responses.ArmFailure.entries) {
+            stateManager.appState.value = 2
+            stateManager.sessionTimeRemaining.value = 600
+            coordinator.onArmFailed(failure)
+            assertEquals("Paid session stays unlocked after $failure", 2, stateManager.appState.value)
+        }
+        assertEquals(Esp32Responses.ArmFailure.entries.toList(), shownFailures)
     }
 
     @Test

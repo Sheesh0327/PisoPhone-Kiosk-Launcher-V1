@@ -3,6 +3,7 @@ package com.pisophone.kiosk.service
 import android.content.Context
 import android.util.Log
 import com.pisophone.kiosk.network.Esp32ConnectionDelegate
+import com.pisophone.kiosk.network.Esp32Responses
 import com.pisophone.kiosk.repository.PaymentRepository
 import com.pisophone.kiosk.repository.PaymentResult
 import com.pisophone.kiosk.security.KioskActivationManager
@@ -22,7 +23,7 @@ class KioskEsp32Coordinator(
     private val getSecretKey: () -> String,
     private val getRealTimeBatteryInfo: () -> Pair<Int, Boolean>,
     private val onCreditPayment: (txId: String, seconds: Int, amount: Double) -> PaymentResult,
-    private val onSlotBusyTriggered: () -> Unit,
+    private val onArmFailedTriggered: (Esp32Responses.ArmFailure) -> Unit,
     private val getAudioManager: (() -> com.pisophone.kiosk.audio.KioskAudioManager?)? = null,
     /** Centralized lock side effects (unarm, send customer app home, pause media). */
     private val onSessionLocked: (cancelArm: Boolean) -> Unit = {},
@@ -106,17 +107,17 @@ class KioskEsp32Coordinator(
     }
 
     /**
-     * The arm request failed (slot busy, ESP32 unreachable, connection error).
+     * The arm request failed (slot busy, box refused the phone, not paired, box unreachable, ...).
      * Never lock a paid session because an ADD TIME arm attempt failed:
      *  - 2 (unlocked)          -> stays 2
      *  - 3 (unlocked + armed)  -> 2
      *  - 1 (locked + armed)    -> 0, unless the customer already has paid time, then 2
      *  - 0 / 4                 -> unchanged
      */
-    override fun onSlotBusy() {
-        DiagnosticsLog.add("ARM", "slot busy (state ${stateManager.appState.value})")
+    override fun onArmFailed(failure: Esp32Responses.ArmFailure) {
+        DiagnosticsLog.add("ARM", "arm failed: ${failure.name} (state ${stateManager.appState.value})")
         stateManager.isArmingInProgress.value = false
-        onSlotBusyTriggered()
+        onArmFailedTriggered(failure)
         val current = stateManager.appState.value
         val hasPaidTime = stateManager.sessionTimeRemaining.value > 0
         val next = SessionRules.afterArmFailure(current, hasPaidTime)

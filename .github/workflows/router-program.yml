@@ -34,7 +34,7 @@ jobs:
     name: Build pisoportal for mipsel_24kc
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Take the C toolchain out of the OpenWrt SDK image
         run: |
@@ -67,7 +67,7 @@ jobs:
           { echo "pisoportal $(grep -m1 '^version' Cargo.toml | cut -d'"' -f2) for mipsel-unknown-linux-musl, from commit $GITHUB_SHA"
             rustc +nightly -V; echo "C toolchain: $SDK_IMAGE ($("$GCC" --version | head -n 1))"; } | tee ../../dist/BUILD-INFO
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: pisoportal-mipsel
           path: dist/

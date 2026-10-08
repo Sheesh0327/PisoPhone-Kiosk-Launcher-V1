@@ -38,6 +38,20 @@ object Esp32Responses {
     fun authRefusedMessage(): String =
         "The coin box does not accept this phone (HTTP 403). Check the phone's date and time, or provision the phone again."
 
+    /**
+     * Why an arm attempt failed, as the phone shows it. Only [BUSY] means another device holds the coin slot; the others
+     * are the box refusing this phone or the phone not reaching the box, and tapping again will not fix them.
+     */
+    enum class ArmFailure(val label: String, val advice: String) {
+        BUSY("COINSLOT BUSY", "Another device is using the coin slot. Try again in a moment."),
+        NOT_PAIRED("NOT PAIRED YET", "The box has not paired this phone to a slot. Pair it on the box's dashboard."),
+        BOX_REFUSED("BOX REFUSED PHONE", "The box does not accept this phone. Save the box settings to push the secret, or provision the phone again."),
+        SETUP_REQUIRED("BOX SETUP NEEDED", "The box's admin password has not been changed yet."),
+        BOX_NOT_FOUND("BOX NOT FOUND", "The phone cannot find the coin box on this Wi-Fi."),
+        BOX_UNREACHABLE("CAN'T REACH BOX", "The coin box did not answer. Check that it is on and on the same Wi-Fi."),
+        BOX_ERROR("BOX ERROR", "The coin box could not start the coin slot. Check its diagnostics."),
+    }
+
     private const val OFFLINE_AFTER_FAILURES = 3
     private const val OFFLINE_AFTER_MS = 20_000L
     private const val FORGET_ADDRESS_AFTER_FAILURES = 6
