@@ -6,7 +6,7 @@ name: Claude (implement issues)
 #   - opens an issue whose title or body contains @claude,
 #   - comments @claude on an issue or pull request (or in a pull request review),
 #   - or adds the label "claude" to an issue.
-# The model is Sonnet unless the issue or pull request has the label model:haiku or model:opus (see CLAUDE.md).
+# The model is Sonnet, or Haiku when the issue or pull request has the label model:haiku. Opus never implements (CLAUDE.md).
 # Claude works on a new branch made from beta (claude/issue-<n>-...), runs the issue's Verification commands, pushes, and
 # links the pull request into beta from its comment on the issue. Nothing reaches main without the usual beta -> main merge.
 #
@@ -101,7 +101,6 @@ jobs:
           labels="$ISSUE_LABELS $PR_LABELS"
           model=claude-sonnet-5-5
           case "$labels" in
-            *'"model:opus"'*) model=claude-opus-5-5 ;;
             *'"model:haiku"'*) model=claude-haiku-5-5 ;;
           esac
           echo "Implementer model: $model"

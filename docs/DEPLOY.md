@@ -53,8 +53,8 @@ read-only access and a `claude-code-review.yml` that reviews every pull request 
 
 Issues that were already open before the workflow existed start with a new `@claude` comment or the `claude` label.
 
-The implementer runs on Sonnet; add the label `model:haiku` (small, local changes) or `model:opus` (box ↔ phone protocol,
-money or time accounting) before dispatching to change that. Only one implementer runs at a time and each run stops after 60
+The implementer runs on Sonnet; add the label `model:haiku` before dispatching for small, local changes. Opus never
+implements: it plans, writes the issues and reviews the pull requests (`CLAUDE.md` section 1). Only one implementer runs at a time and each run stops after 60
 turns, so dispatch one issue at a time. Generated and binary files (`CLAUDE.md` section 4) are blocked from being read or
 edited by the run.
 

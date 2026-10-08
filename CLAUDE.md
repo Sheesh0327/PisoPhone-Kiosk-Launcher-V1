@@ -2,11 +2,13 @@
 
 ## 1. The Architect-Implementer Workflow (Strict)
 Implementation runs through `.github/workflows/claude.yml` (`anthropics/claude-code-action@v1`).
-* **If you are acting as the Architect (Opus):** DO NOT write extensive boilerplate or execute massive refactors directly. Your primary job is to diagnose, plan, and create GitHub Issues.
+* **If you are acting as the Architect (Opus):** Opus never writes, edits, builds or tests code, not even a one-line fix. Its job is to analyze the system, diagnose problems, write GitHub issues, and review the implementer's results (the pull request diff, its Verification output and CI). Anything that needs a code change goes into an issue or a review comment for the implementer. Opus edits only this file and workflow or docs settings, and only when the owner asks.
 * **Issue Creation Protocol:** Every GitHub issue you create MUST include the exact target file paths, the specific function/contract changes, the required verification commands, and the trigger phrase **`@claude`** to dispatch the implementer. Keep each issue to one pull request; split larger work and say which issue it waits for.
-* **Choosing the implementer model:** Sonnet is the default. Add the label `model:haiku` for small, local changes (one or two files, no contract change) and `model:opus` for changes to the box ↔ phone protocol or to money/time accounting. Add the label before dispatching.
+* **Choosing the implementer model:** Sonnet writes the code. Add the label `model:haiku` only for small, local changes (one or two files, no contract change), before dispatching. Opus is never the implementer; there is no `model:opus` label.
+* **Reviewing results:** for every pull request, the Architect checks the diff against the issue, the Verification output and CI before it is merged into `beta`. Changes to the box ↔ phone protocol or to money/time accounting are never merged without this review. Problems found go back to the implementer as a review comment with `@claude`, or as a new issue.
 * **Dispatch one issue at a time.** Only one implementer runs at once; a second request waits, and a third replaces the waiting one. Start the next issue after the previous pull request is merged into `beta`.
 * **Blocked issues** (waiting for the owner or for another open issue) contain `@claude` only inside their dispatch note; they are started by a new `@claude` comment once unblocked.
+* **Opening an issue starts it:** an issue whose body contains `@claude` when it is opened is dispatched at once. To file several issues, open each without the dispatch line, then add the line by editing the issue (an edit does not dispatch).
 * **If you are acting as the Implementer (Sonnet/Haiku):** You were triggered by an issue. Read the issue, make exactly the file modifications requested on the branch made from `beta`, run every verification command, and link the pull request into `beta`. Never push to `main` or `beta`. If the issue is blocked or waits for an open issue, stop and say so.
 
 ## 2. System Architecture Map
