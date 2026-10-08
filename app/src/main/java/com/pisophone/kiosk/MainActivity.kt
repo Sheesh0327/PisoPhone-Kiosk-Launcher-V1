@@ -27,6 +27,7 @@ import com.pisophone.kiosk.provisioning.OverlayPermissionScreen
 import com.pisophone.kiosk.provisioning.OverlayPermissionStep
 import com.pisophone.kiosk.receiver.KioskWatchdogReceiver
 import com.pisophone.kiosk.security.AdminMaintenanceMode
+import com.pisophone.kiosk.security.FirstBootSetup
 import com.pisophone.kiosk.security.KioskActivationManager
 import com.pisophone.kiosk.security.KioskSecurity
 import com.pisophone.kiosk.ui.*
@@ -149,9 +150,11 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         AdminMaintenanceMode.setKioskScreenInFront(true)
+        FirstBootSetup.onKioskScreenReturned(this)
     }
 
     override fun onStop() {
+        FirstBootSetup.onKioskScreenLeft(this)
         AdminMaintenanceMode.setKioskScreenInFront(false)
         super.onStop()
     }
@@ -167,6 +170,7 @@ class MainActivity : ComponentActivity() {
         loadApps()
         KioskWatchdogReceiver.scheduleWatchdog(this)
         checkDeviceOwner()
+        FirstBootSetup.maybeStart(this)
     }
 
     override fun onNewIntent(intent: Intent) {

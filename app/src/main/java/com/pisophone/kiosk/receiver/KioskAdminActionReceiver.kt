@@ -25,6 +25,7 @@ import com.pisophone.kiosk.MainActivity
 class KioskAdminActionReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_DEPROVISION = "com.pisophone.kiosk.DEPROVISION"
+        const val ACTION_RESTORE_SYSTEM_APPS = "com.pisophone.kiosk.RESTORE_SYSTEM_APPS"
         const val ACTION_ENABLE_ADB = "com.pisophone.kiosk.ENABLE_ADB"
         const val ACTION_EMERGENCY_RECOVERY = "com.pisophone.kiosk.EMERGENCY_RECOVERY"
         const val ACTION_EXIT_KIOSK = "com.pisophone.kiosk.EXIT_KIOSK"
@@ -180,6 +181,17 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                 Toast.makeText(context, "Permissions granted to kiosk apps.", Toast.LENGTH_SHORT).show()
             }
 
+            ACTION_RESTORE_SYSTEM_APPS -> {
+                if (!isPinAuthorized(context, intent)) {
+                    Log.w(TAG, "Unauthorized attempt to trigger RESTORE_SYSTEM_APPS rejected.")
+                    return
+                }
+                Log.i(TAG, "Admin asked to restore the disabled and hidden system apps.")
+                com.pisophone.kiosk.security.FirstBootSetup.markDone(context)
+                Thread { com.pisophone.kiosk.security.AppVisibilityPolicy.restoreAll(context) }.start()
+                Toast.makeText(context, "Restoring the phone's pre-installed apps.", Toast.LENGTH_SHORT).show()
+            }
+
             ACTION_SET_VOLUME -> {
                 if (!isPinAuthorized(context, intent)) {
                     Log.w(TAG, "Unauthorized attempt to trigger SET_VOLUME rejected.")
@@ -323,6 +335,7 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                     val adminComponent = ComponentName(context, KioskDeviceAdminReceiver::class.java)
 
                     if (dpm.isDeviceOwnerApp(context.packageName)) {
+                        com.pisophone.kiosk.security.KioskRecoveryManager.restoreSystemApps(context)
                         try {
                             dpm.setLockTaskPackages(adminComponent, emptyArray())
                         } catch (e: Exception) {
