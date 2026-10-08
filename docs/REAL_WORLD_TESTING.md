@@ -124,7 +124,7 @@ pushing closes its issue. Avoid `|` characters inside cells.
 
 ## 9. Router setup and customer Wi-Fi (setup/README.md)
 *pass 1 unless noted*
-- [ ] **RS1** `piso-setup.sh` on a factory-reset router: it asks for the public Wi-Fi name, a site name and three passwords (Enter generates), shows the review screen, and ends with `SETUP COMPLETE` (all checks pass)
+- [ ] **RS1** `piso-setup.sh` by hand (setup/MANUAL.md) on a factory-reset router: it asks for the public Wi-Fi name, a site name and three passwords (Enter generates), shows the review screen, and ends with `SETUP COMPLETE` (all checks pass)
 - [ ] **RS2** The hidden `PisoKiosk` network appears in no Wi-Fi list; a provisioned phone joins it by itself and rejoins within about a minute when moved to another network
 - [ ] **RS3** `piso-setup test-coin` counts one inserted coin
 - [ ] **RS4** Customer phone: the page shows each coin at once with a countdown and **Done**; it is **not** online while coins are going in; after Done (or 15 s idle) it is online with the total time
