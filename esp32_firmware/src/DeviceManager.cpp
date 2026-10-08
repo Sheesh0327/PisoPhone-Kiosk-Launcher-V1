@@ -4,6 +4,7 @@
 
 #include "InputSafety.h"
 #include "DeviceManager.h"
+#include "ReplayCheck.h"
 #include "CoinSlotManager.h"
 #include "HardwareManager.h"
 #include "Security.h"
@@ -191,22 +192,10 @@ String getDeviceNameByIpOrId(String reqIp, String devId) {
 bool checkReplayProtection(String deviceId, unsigned long long newTs) {
     if (deviceId.length() == 0 || newTs == 0) return false;
 
-    // Master clock window check: Reject packets older than 5 mins or > 5 mins in future
-    unsigned long long currentMasterTs = getCurrentMasterTimeMs();
-    if (currentMasterTs > 300000ULL) {
-        if (newTs < (currentMasterTs - 300000ULL) || newTs > (currentMasterTs + 300000ULL)) {
-            return false;
-        }
-    }
-
+    // Master clock window (5 minutes either way) and per-phone "not older than the newest request" (30 s jitter); see
+    // ReplayCheck.h, which also ignores a stored time that came from a wrong clock instead of refusing the phone for good.
     DeviceTelemetry* dev = findTrackedDevice("", deviceId);
-    if (dev) {
-        // Allow up to 30s jitter
-        if (dev->lastNonceTs > 30000ULL && newTs + 30000ULL < dev->lastNonceTs) {
-            return false;
-        }
-    }
-    return true;
+    return replaycheck::accepts(newTs, getCurrentMasterTimeMs(), dev ? dev->lastNonceTs : 0);
 }
 
 const char* telemetryAuthFailure(String deviceId, String tsStr, String sig) {
@@ -229,7 +218,7 @@ void recordDeviceNonce(String deviceId, unsigned long long ts) {
 
     DeviceTelemetry* dev = findTrackedDevice("", deviceId);
     if (dev) {
-        if (ts > dev->lastNonceTs) dev->lastNonceTs = ts;
+        dev->lastNonceTs = replaycheck::nextNonce(ts, getCurrentMasterTimeMs(), dev->lastNonceTs);
         return;
     }
 
@@ -281,7 +270,7 @@ void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int st
             dev->isCharging = charging;
         }
         dev->lastSeenMs = millis();
-        if (ts > dev->lastNonceTs) dev->lastNonceTs = ts;
+        dev->lastNonceTs = replaycheck::nextNonce(ts, getCurrentMasterTimeMs(), dev->lastNonceTs);
         if (isApp) dev->isApp = true;
         return;
     }
