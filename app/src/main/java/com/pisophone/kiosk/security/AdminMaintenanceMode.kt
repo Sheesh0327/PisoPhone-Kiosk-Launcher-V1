@@ -13,9 +13,10 @@ import kotlinx.coroutines.flow.StateFlow
  * and Wi-Fi configuration is unblocked; both are revoked again when the window ends or the
  * session locks. The deadline is persisted so a process restart cannot leave access open.
  *
- * Play Store, Settings and the package installer ignore touches while another app draws over them, so the floating pill
- * is hidden ([hidePill]) from the moment the admin opens one of those apps until the admin is back on the kiosk's own
- * screen or the window ends. An admin bypass that never opens such an app leaves the pill alone.
+ * Play Store, Settings and the package installer ignore touches (and Play Store reports "screen overlay detected") while another
+ * app has a window over them, even an invisible full-screen one. So every kiosk overlay window (lock screen and floating pill)
+ * is taken off the screen ([suspendOverlays]) from the moment the admin opens one of those apps until the admin is back on the
+ * kiosk's own screen or the window ends. An admin bypass that never opens such an app leaves the overlays alone.
  */
 object AdminMaintenanceMode {
     private const val TAG = "AdminMaintenance"
@@ -28,13 +29,13 @@ object AdminMaintenanceMode {
     private var windowOpen = false
     private var adminAppOpened = false
     private var kioskScreenInFront = true
-    private val _hidePill = MutableStateFlow(false)
+    private val _suspendOverlays = MutableStateFlow(false)
 
-    /** True while the floating pill must not be drawn (an admin-only app is in front during a maintenance window). */
-    val hidePill: StateFlow<Boolean> = _hidePill
+    /** True while no kiosk overlay window may be on screen (an admin-only app is in front during a maintenance window). */
+    val suspendOverlays: StateFlow<Boolean> = _suspendOverlays
 
-    private fun refreshHidePill() {
-        _hidePill.value = windowOpen && adminAppOpened && !kioskScreenInFront
+    private fun refreshSuspendOverlays() {
+        _suspendOverlays.value = windowOpen && adminAppOpened && !kioskScreenInFront
     }
 
     /** Called by the kiosk's main screen when it becomes visible (true) or leaves the front (false). */
@@ -42,7 +43,7 @@ object AdminMaintenanceMode {
         synchronized(this) {
             if (inFront && !kioskScreenInFront) adminAppOpened = false   // the admin is back: the pill returns
             kioskScreenInFront = inFront
-            refreshHidePill()
+            refreshSuspendOverlays()
         }
     }
 
@@ -50,7 +51,7 @@ object AdminMaintenanceMode {
     fun noteAdminAppOpened() {
         synchronized(this) {
             adminAppOpened = true
-            refreshHidePill()
+            refreshSuspendOverlays()
         }
     }
 
@@ -58,7 +59,7 @@ object AdminMaintenanceMode {
         synchronized(this) {
             windowOpen = open
             if (!open) adminAppOpened = false
-            refreshHidePill()
+            refreshSuspendOverlays()
         }
     }
 
