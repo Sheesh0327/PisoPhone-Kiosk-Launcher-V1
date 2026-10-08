@@ -81,7 +81,6 @@ pub fn build_page(core: &Core) -> String {
     let cfg = &core.cfg;
     include_str!("page.html")
         .replace("%CSS%", include_str!("base.css"))
-        .replace("%NAME%", &html_esc(&cfg.gateway_name))
         .replace("%TIERS_H%", &tier_rows(core, Plan::Hyper))
         .replace("%TIERS_E%", &tier_rows(core, Plan::Endurance))
         .replace("%E_DOWN%", &(cfg.endurance_down / 1000).to_string())
@@ -92,12 +91,8 @@ pub fn build_page(core: &Core) -> String {
 
 /// The status page a connected guest sees (openNDS sends them here from its own status address): the same look
 /// with a live countdown, fed by the same WebSocket.
-pub fn build_status_page(core: &Core) -> String {
-    include_str!("status.html").replace("%CSS%", include_str!("base.css")).replace("%NAME%", &html_esc(&core.cfg.gateway_name))
-}
-
-fn html_esc(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&#39;")
+pub fn build_status_page(_core: &Core) -> String {
+    include_str!("status.html").replace("%CSS%", include_str!("base.css"))
 }
 
 // ---- requests -------------------------------------------------------------------------------------------------------------------
@@ -106,6 +101,9 @@ const MAX_HEAD: usize = 8 * 1024;
 const HEAD_TIME: Duration = Duration::from_secs(10);
 /// Headers added to every answer (the page is never framed, sniffed or given a referrer).
 const SAFE_HEADERS: &str = "X-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nReferrer-Policy: no-referrer\r\n";
+
+/// The TechNet PisoWifi logo (fixed branding, not a setting): served from memory like the pages.
+const BRAND_LOGO: &[u8] = include_bytes!("brand.png");
 
 struct Request {
     method: String,
@@ -173,16 +171,23 @@ fn read_request(mut s: TcpStream, limit: Duration) -> Option<(Request, Incoming)
 }
 
 fn respond(stream: &mut TcpStream, status: &str, ctype: &str, body: &str, extra: &str) {
+    respond_bytes(stream, status, ctype, body.as_bytes(), extra, true);
+}
+
+/// Like `respond`, for a body that is not text; `send_body` false answers a HEAD request (the length is still the real one).
+fn respond_bytes(stream: &mut TcpStream, status: &str, ctype: &str, body: &[u8], extra: &str, send_body: bool) {
     let _ = write!(
         stream,
-        "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n{}{}\r\n{}",
+        "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n{}{}\r\n",
         status,
         ctype,
         body.len(),
         SAFE_HEADERS,
-        extra,
-        body
+        extra
     );
+    if send_body {
+        let _ = stream.write_all(body);
+    }
 }
 
 /// The MAC address the router sees behind an IP address.
@@ -466,6 +471,9 @@ fn handle(p: Arc<Portal>, stream: TcpStream, peer: SocketAddr) {
                 return respond(&mut conn.s, "503 Service Unavailable", "text/plain", "busy", "Retry-After: 5\r\n");
             };
             ws_session(Arc::clone(&p.core), conn, &key, mac);
+        }
+        "/brand.png" => {
+            respond_bytes(&mut conn.s, "200 OK", "image/png", BRAND_LOGO, "Cache-Control: public, max-age=86400\r\n", !head_only)
         }
         "/status" => {
             let body = if head_only { "" } else { p.status.as_str() };

@@ -16,7 +16,7 @@ try:
     t = time.time()
     code, body, hdr = env.get("/?fas=abc")
     page_ms = (time.time() - t) * 1000
-    check(code == 200 and "Test Spot" in body and "HyperSpeed" in body and "&#8369;10" in body and "11 hrs 30 min" not in body, "the splash page carries the gateway name and the price list")
+    check(code == 200 and "TechNet" in body and "PisoWifi" in body and "Test Spot" not in body and "HyperSpeed" in body and "&#8369;10" in body and "11 hrs 30 min" not in body, "the splash page carries the TechNet PisoWifi brand (not the configurable name) and the price list")
     check("1 day" not in body and "24 hrs" in body, "tiers are listed in the page (Endurance 20 pesos = 24 hrs)")
     check(len(body) < 15000, f"the page is small ({len(body)} bytes)")
     check(page_ms < 100, f"the page comes back fast ({page_ms:.1f} ms)")
@@ -26,8 +26,16 @@ try:
     check(env.get("/generate_204")[0] == 200 and env.get("/ping")[1] == "ok", "any other address is the page; ping answers")
 
     code_s, body_s, hdr_s = env.get("/status")
-    check(code_s == 200 and "WebSocket" in body_s and "time left" in body_s and "Test Spot" in body_s and "no-store" in hdr_s.get("Cache-Control", ""),
-          "the live status page is served at /status (countdown, gateway name, never cached)")
+    check(code_s == 200 and "WebSocket" in body_s and "time left" in body_s and "TechNet" in body_s and "Test Spot" not in body_s and "no-store" in hdr_s.get("Cache-Control", ""),
+          "the live status page is served at /status (countdown, brand, never cached)")
+    import urllib.request
+    with urllib.request.urlopen(f"http://127.0.0.1:{env.PP}/brand.png", timeout=10) as r:
+        logo, logo_type, logo_cache = r.read(), r.headers.get("Content-Type"), r.headers.get("Cache-Control", "")
+    check(logo[:8] == b"\x89PNG\r\n\x1a\n" and logo_type == "image/png" and "max-age" in logo_cache and len(logo) < 12000,
+          f"the brand logo is served as a small cached PNG ({len(logo)} bytes)")
+    req = urllib.request.Request(f"http://127.0.0.1:{env.PP}/brand.png", method="HEAD")
+    with urllib.request.urlopen(req, timeout=10) as r:
+        check(r.read() == b"" and int(r.headers["Content-Length"]) == len(logo), "HEAD of the logo has its length and no body")
 
     # ---- a payment: P17 on Endurance (1 + 1 + 15 pesos), online only when the customer is done ----------------------------------
     env.set_box(busy=False, coins_at=[0.5, 1.0] + [1.5 + 0.1 * i for i in range(15)])
