@@ -6,6 +6,7 @@ import android.os.Looper
 import android.util.Log
 import android.widget.Toast
 import com.pisophone.kiosk.model.BatteryStatus
+import com.pisophone.kiosk.security.AdminMaintenanceMode
 import com.pisophone.kiosk.security.KioskActivationManager
 import com.pisophone.kiosk.service.KioskStateManager
 import kotlinx.coroutines.CoroutineScope
@@ -32,7 +33,19 @@ class KioskOverlayCoordinator(
 
     private var overlay: KioskOverlay? = null
 
+    /**
+     * True while an admin works in Play Store / Settings / the installer: those apps refuse input (and Play Store warns about a
+     * "screen overlay") while any other app has a window over them, even a transparent one. So the overlay windows are removed
+     * entirely, not just hidden, and nothing (health monitor, activation) puts them back until the admin returns.
+     */
+    private var suspendedForAdminApp = false
+
     init {
+        scope.launch {
+            AdminMaintenanceMode.suspendOverlays.collect { suspend ->
+                Handler(Looper.getMainLooper()).post { setSuspendedForAdminApp(suspend) }
+            }
+        }
         scope.launch {
             KioskActivationManager.activationUpdateVersion.collect {
                 Handler(Looper.getMainLooper()).post {
@@ -44,10 +57,24 @@ class KioskOverlayCoordinator(
         }
     }
 
-    fun isOverlayHealthy(): Boolean = overlay != null && overlay?.isAttached() == true
+    private fun setSuspendedForAdminApp(suspend: Boolean) {
+        if (suspend == suspendedForAdminApp) return
+        suspendedForAdminApp = suspend
+        if (suspend) {
+            Log.i(TAG, "Admin app in front: removing the overlay windows.")
+            overlay?.remove()
+        } else {
+            Log.i(TAG, "Back on the kiosk: restoring the overlay windows.")
+            setupOverlay()
+        }
+    }
+
+    /** Not being on screen while an admin app is in front is the intended state, not a fault to repair. */
+    fun isOverlayHealthy(): Boolean = suspendedForAdminApp || (overlay != null && overlay?.isAttached() == true)
 
     fun setupOverlay() {
         scope.launch(Dispatchers.Main) {
+            if (suspendedForAdminApp) return@launch
             if (overlay != null && overlay?.isAttached() == true) return@launch
 
             if (overlay == null) {
@@ -114,6 +141,7 @@ class KioskOverlayCoordinator(
 
     fun show() {
         scope.launch(Dispatchers.Main) {
+            if (suspendedForAdminApp) return@launch
             overlay?.show()
         }
     }

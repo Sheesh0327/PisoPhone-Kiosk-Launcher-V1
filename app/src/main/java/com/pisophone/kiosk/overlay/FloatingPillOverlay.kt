@@ -36,7 +36,7 @@ class FloatingPillOverlay(
     private val arenaStakeMinutesFlow: StateFlow<Int> = kotlinx.coroutines.flow.MutableStateFlow(15),
     private val isArenaBannerVisibleFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
     private val onDismissArenaBanner: () -> Unit = {},
-    private val hiddenForAdminAppFlow: StateFlow<Boolean> = AdminMaintenanceMode.hidePill,
+    private val hiddenForAdminAppFlow: StateFlow<Boolean> = AdminMaintenanceMode.suspendOverlays,
     private val onInsertCoinClick: () -> Unit,
     private val onDoneClick: () -> Unit,
 ) {

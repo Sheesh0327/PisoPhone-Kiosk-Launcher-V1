@@ -5,6 +5,9 @@ separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router
 
 ## Unreleased
 ### Phone app
+- While the admin is in Play Store, Settings or the package installer, both kiosk overlay windows (the lock screen and the
+  floating pill) are now removed from the screen, not just hidden, and come back when the admin returns to the kiosk or the
+  maintenance window ends. Before, the invisible full-screen lock window stayed attached.
 - The coin button says why a coin slot could not be armed (`NOT PAIRED YET`, `BOX REFUSED PHONE`, `BOX SETUP NEEDED`,
   `BOX NOT FOUND`, `CAN'T REACH BOX`, `BOX ERROR`) instead of showing `COINSLOT BUSY` for every failure. Only a coin slot that
   really is in use by another device says busy.

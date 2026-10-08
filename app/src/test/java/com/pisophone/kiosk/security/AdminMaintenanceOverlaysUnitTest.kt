@@ -10,9 +10,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
-/** The floating pill is hidden while an admin works in Play Store / Settings / the installer, and only then. */
+/** The overlay windows are taken off the screen while an admin works in Play Store / Settings / the installer, and only then. */
 @RunWith(RobolectricTestRunner::class)
-class AdminMaintenancePillUnitTest {
+class AdminMaintenanceOverlaysUnitTest {
     private lateinit var context: Context
 
     @Before
@@ -29,39 +29,39 @@ class AdminMaintenancePillUnitTest {
     }
 
     @Test
-    fun pillStaysVisibleWithoutAMaintenanceWindow() {
+    fun overlaysStayWithoutAMaintenanceWindow() {
         AdminMaintenanceMode.noteAdminAppOpened()
         AdminMaintenanceMode.setKioskScreenInFront(false)
-        assertFalse(AdminMaintenanceMode.hidePill.value)
+        assertFalse(AdminMaintenanceMode.suspendOverlays.value)
     }
 
     @Test
-    fun anAdminBypassThatOpensNoAdminAppLeavesThePillAlone() {
+    fun anAdminBypassThatOpensNoAdminAppLeavesTheOverlaysAlone() {
         AdminMaintenanceMode.begin(context, 900)
         AdminMaintenanceMode.setKioskScreenInFront(false) // e.g. a customer app is in front
-        assertFalse(AdminMaintenanceMode.hidePill.value)
+        assertFalse(AdminMaintenanceMode.suspendOverlays.value)
     }
 
     @Test
-    fun pillHidesWhileTheAdminIsInPlayStoreAndReturnsWhenBackOnTheKiosk() {
+    fun overlaysGoWhileTheAdminIsInPlayStoreAndReturnWhenBackOnTheKiosk() {
         AdminMaintenanceMode.begin(context, 900)
         AdminMaintenanceMode.noteAdminAppOpened()
-        assertFalse("still on the kiosk screen while Play Store starts", AdminMaintenanceMode.hidePill.value)
+        assertFalse("still on the kiosk screen while Play Store starts", AdminMaintenanceMode.suspendOverlays.value)
         AdminMaintenanceMode.setKioskScreenInFront(false) // Play Store is in front
-        assertTrue(AdminMaintenanceMode.hidePill.value)
+        assertTrue(AdminMaintenanceMode.suspendOverlays.value)
         AdminMaintenanceMode.setKioskScreenInFront(true) // admin pressed Home
-        assertFalse(AdminMaintenanceMode.hidePill.value)
-        AdminMaintenanceMode.setKioskScreenInFront(false) // a customer app now: the pill is not hidden again
-        assertFalse(AdminMaintenanceMode.hidePill.value)
+        assertFalse(AdminMaintenanceMode.suspendOverlays.value)
+        AdminMaintenanceMode.setKioskScreenInFront(false) // a customer app now: the overlays are not removed again
+        assertFalse(AdminMaintenanceMode.suspendOverlays.value)
     }
 
     @Test
-    fun pillReturnsWhenTheMaintenanceWindowEnds() {
+    fun overlaysReturnWhenTheMaintenanceWindowEnds() {
         AdminMaintenanceMode.begin(context, 900)
         AdminMaintenanceMode.noteAdminAppOpened()
         AdminMaintenanceMode.setKioskScreenInFront(false)
-        assertTrue(AdminMaintenanceMode.hidePill.value)
+        assertTrue(AdminMaintenanceMode.suspendOverlays.value)
         AdminMaintenanceMode.end(context)
-        assertFalse(AdminMaintenanceMode.hidePill.value)
+        assertFalse(AdminMaintenanceMode.suspendOverlays.value)
     }
 }
