@@ -12,6 +12,7 @@ import androidx.compose.runtime.*
 import com.pisophone.kiosk.ComposeOverlayView
 import com.pisophone.kiosk.model.BatteryStatus
 import com.pisophone.kiosk.overlay.ui.FloatingPill
+import com.pisophone.kiosk.security.AdminMaintenanceMode
 import com.pisophone.kiosk.service.SessionRules
 import com.pisophone.kiosk.service.SessionState
 import kotlinx.coroutines.flow.StateFlow
@@ -34,6 +35,7 @@ class FloatingPillOverlay(
     private val arenaStakeMinutesFlow: StateFlow<Int> = kotlinx.coroutines.flow.MutableStateFlow(15),
     private val isArenaBannerVisibleFlow: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false),
     private val onDismissArenaBanner: () -> Unit = {},
+    private val hiddenForAdminAppFlow: StateFlow<Boolean> = AdminMaintenanceMode.hidePill,
     private val onInsertCoinClick: () -> Unit,
     private val onDoneClick: () -> Unit,
 ) {
@@ -126,7 +128,8 @@ class FloatingPillOverlay(
             val arenaRole by arenaPlayerRoleFlow.collectAsState()
             val arenaStake by arenaStakeMinutesFlow.collectAsState()
             val isArenaBannerVisible by isArenaBannerVisibleFlow.collectAsState()
-            val isVisible = SessionRules.isUnlocked(appState) || isArenaBannerVisible
+            val hiddenForAdminApp by hiddenForAdminAppFlow.collectAsState()
+            val isVisible = SessionRules.isPillShown(appState, isArenaBannerVisible, hiddenForAdminApp)
 
             LaunchedEffect(isVisible) {
                 if (isVisible) {
@@ -263,7 +266,7 @@ class FloatingPillOverlay(
         try {
             currentView.onResume()
             val appState = appStateFlow.value
-            val isVisible = SessionRules.isUnlocked(appState) || isArenaBannerVisibleFlow.value
+            val isVisible = SessionRules.isPillShown(appState, isArenaBannerVisibleFlow.value, hiddenForAdminAppFlow.value)
             currentView.view.visibility = if (isVisible) View.VISIBLE else View.GONE
             windowManager.updateViewLayout(currentView.view, layoutParams)
             currentView.view.requestLayout()
