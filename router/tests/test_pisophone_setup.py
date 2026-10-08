@@ -126,6 +126,7 @@ script("netinit", f'echo "$1" >> {tmp}/network.log\n')
 # the stand-in setup file: shows what it was given, writes the summary, the sheet and the state file like the real one
 FAKE_SETUP = f"""#!/bin/sh
 PISO_RELEASE='9.9.9'
+echo "  TIP: fake advice"
 echo "SETUP-RAN args=[$*] root=[$ROOT_PASSWORD] kiosk=[$KIOSK_PASSWORD] box=[$BOX_NEW_ADMIN_PASSWORD] guest=[$GUEST_SSID] site=[$SITE_NAME]"
 R={fake_root}
 case "$(cat {tmp}/result 2>/dev/null)" in
@@ -165,6 +166,9 @@ if "BatchMode=yes" in argv:
 lan = open("{tmp}/lan").read().strip()
 if host != lan:
     sys.stderr.write("ssh: connect to host " + host + " port 22: Connection timed out\\n"); sys.exit(255)
+need = "{tmp}/needpw"   # a router with a password: a login without it is refused
+if os.path.exists(need) and os.environ.get("PISO_ASKPASS_PW") != open(need).read().strip():
+    sys.stderr.write("root@" + host + ": Permission denied (publickey,password).\\n"); sys.exit(255)
 remote = remote.replace("/tmp/piso", "{fake_root}/tmp/piso").replace("/root/piso", "{fake_root}/root/piso")
 if remote == "piso-setup telegram":   # a conversation: the input is passed through as it comes, like real ssh
     env = dict(os.environ, PATH="{bindir}:" + os.environ["PATH"])
@@ -178,8 +182,9 @@ sys.exit(subprocess.run(["sh", "-c", remote], input=data, env=env).returncode)
 os.environ["PISO_SSH"] = f"{sys.executable} {tmp}/fake_ssh.py"
 
 
-def e2e(answers=(), secrets_=(), lan="192.168.1.1", probe="factory", result="ok", up=lambda h: True, moved=True, **opts):
-    for f in ("ssh.log", "ssh-input.log", "wget.log", "uci.log", "network.log"):
+def e2e(answers=(), secrets_=(), lan="192.168.1.1", probe="factory", result="ok", up=lambda h: True, moved=True, needpw=None,
+        saved_pw=None, **opts):
+    for f in ("needpw", "ssh.log", "ssh-input.log", "wget.log", "uci.log", "network.log"):
         if os.path.exists(f"{tmp}/{f}"):
             os.remove(f"{tmp}/{f}")
     for f in ("tmp/piso-setup.state", "root/piso-setup-summary.txt", "root/piso-handout.html"):
@@ -189,6 +194,10 @@ def e2e(answers=(), secrets_=(), lan="192.168.1.1", probe="factory", result="ok"
     open(f"{tmp}/probe", "w").write(probe)
     open(f"{tmp}/result", "w").write(result)
     outdir = tempfile.mkdtemp(dir=tmp)
+    if needpw:
+        open(f"{tmp}/needpw", "w").write(needpw)
+    if saved_pw:
+        open(f"{outdir}/pisophone-router-password.txt", "w").write(f"Router (SSH / LuCI):   root@10.0.0.1        password: {saved_pw}\n")
     a = dict(branch="main", update=False, router=None, guest_ssid=None, site_name=None, yes=False, out=outdir, no_browser=False,
              country="PH")
     a.update(opts)
@@ -255,6 +264,28 @@ for state in ("configured", "denied"):
     check(r.rc == 0 and "root=[] kiosk=[] box=[] guest=[] site=[]" in r.out and "keeps the names and passwords" in r.out,
           f"{state}: no new answers are sent: " + r.out[-400:])
 check("press Enter" in r.out, "a router with a password: it says to type it")
+
+# a router that has a password (set by an earlier run): the saved one is used by itself
+r = e2e(lan="10.0.0.1", probe="denied", yes=True, needpw="Saved12345678", saved_pw="Saved12345678", no_browser=True)
+check(r.rc == 0 and "Logged in to the router with the password saved in" in r.out and "press Enter" not in r.out and "SETUP-RAN" in r.out,
+      "the saved router password is used by itself: " + str(r.err) + r.out[-500:])
+check("Saved12345678" not in r.ssh, "and it is not on any command line")
+r = e2e(lan="10.0.0.1", probe="denied", yes=True, needpw="Changed1234567", saved_pw="Saved12345678", no_browser=True)
+check("was not accepted" in r.out and "Type the router password" in r.out, "a saved password that no longer works is said so, and ssh asks: " + r.out[-500:])
+r = e2e(lan="10.0.0.1", probe="denied", yes=True, needpw="Saved12345678", no_browser=True)
+check("Logged in to the router" not in r.out and "Type the router password" in r.out, "nothing saved: ssh asks as before")
+# the password is saved before the router changes it, so a run that stops half way can be repeated
+r = e2e(answers=("Tindahan WiFi", "Aling Nena", "y", "n"), secrets_=("routerpass1", "routerpass1", "kioskpass1", "kioskpass1", "boxadmin99", "boxadmin99"),
+        result="fail")
+check("pisophone-router-password.txt" in r.saved and "password: routerpass1" in open(f"{r.outdir}/pisophone-router-password.txt").read(),
+      "the router password is saved before the setup runs, even when it fails: " + str(r.saved))
+check(ps.saved_router_password(r.outdir)[0] == "routerpass1", "and found again from that folder")
+check(ps.failure_message({"state": "FAILED the coin box did not join the hidden PisoCoinBox network"}).count("box-diag") == 1, "a coin box failure points to box-diag")
+
+check(ps.tip_text("  TIP: keep the box powered.") == "keep the box powered." and ps.tip_text("== step") is None and ps.tip_text("TIP:") is None,
+      "tip lines are recognised for the window")
+r = e2e(lan="10.0.0.1", yes=True, no_browser=True)
+check("  TIP: fake advice" in r.out and r.rc == 0, "tips pass through the streamed output: " + r.out[-300:])
 
 # failures are explained
 r = e2e(answers=("", "", "y"), secrets_=("", "", ""), lan="10.0.0.1", result="fail")

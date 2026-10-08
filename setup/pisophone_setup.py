@@ -28,6 +28,7 @@ Build a standalone program with Nuitka (no Python needed on the computer that ru
 import argparse
 import base64
 import getpass
+import glob
 import os
 import pathlib
 import queue
@@ -331,6 +332,54 @@ def check_login(ssh, host):
     return "@@LOGIN-OK" in r.stdout
 
 
+# The router password is saved on this computer: in the summary of a finished setup, and (written before the setup changes it,
+# so an interrupted run can be repeated) in a small file of its own. A re-run logs in with it by itself.
+SAVED_PASSWORD_FILES = ("pisophone-summary-*.txt", "pisophone-router-password.txt")
+
+
+def saved_router_password(*folders):
+    """(password, path) from the newest file with a saved router password in these folders, or (None, None)."""
+    best = None
+    for folder in dict.fromkeys(os.path.abspath(f) for f in folders if f):
+        for pattern in SAVED_PASSWORD_FILES:
+            for path in glob.glob(os.path.join(glob.escape(folder), pattern)):
+                try:
+                    with open(path, encoding="utf-8", errors="replace") as f:
+                        password = parse_summary(f.read()).get("ROOT_PASSWORD")
+                    stamp = os.path.getmtime(path)
+                except OSError:
+                    continue
+                if password and (best is None or stamp > best[0]):
+                    best = (stamp, password, path)
+    return (best[1], best[2]) if best else (None, None)
+
+
+def save_router_password(out_dir, password, host=None):
+    """Keeps the router password the setup is about to set (in the summary's format), before the router changes."""
+    if not password:
+        return None
+    path = os.path.join(out_dir, "pisophone-router-password.txt")
+    os.makedirs(out_dir, exist_ok=True)
+    save_private(path, f"Router (SSH / LuCI):   root@{host or TARGET_IP}        password: {password}\n")
+    return path
+
+
+def use_saved_password(ssh, host, folders, notify=say):
+    """Logs in to a router that has a password with the one saved on this computer. Returns the password when it worked (ssh
+    keeps using it); otherwise None, and ssh is as it was (a terminal ssh asks the person)."""
+    password, path = saved_router_password(*folders)
+    if not password:
+        return None
+    before = ssh.env
+    ssh.set_password(password)
+    if check_login(ssh, host):
+        notify(f"Logged in to the router with the password saved in {path}.")
+        return password
+    ssh.env = before
+    notify(f"The router password saved in {path} was not accepted (was it changed since?).")
+    return None
+
+
 def installer_command(branch, *args):
     """The remote command: download the one-line installer of this branch and run it. Downloaded to a file first, so a
     failed download is reported (a pipe into sh would run nothing and report success)."""
@@ -350,6 +399,12 @@ def setup_command(branch):
             f"echo \"@@PISO-STATE $(cat /tmp/piso-setup.state 2>/dev/null)\"; "
             f"if [ -r /root/piso-setup-summary.txt ]; then echo @@PISO-SUMMARY; cat /root/piso-setup-summary.txt; fi; "
             f"if [ -r /root/piso-handout.html ]; then echo @@PISO-HANDOUT; cat /root/piso-handout.html; fi; echo @@PISO-END")
+
+
+def tip_text(line):
+    """The advice in a "TIP:" line of the router's output, or None."""
+    m = re.match(r"\s*TIP: (.+)$", line or "")
+    return m.group(1).strip() if m else None
 
 
 def stream(proc, emit):
@@ -450,6 +505,7 @@ def install(ssh, host, answers, branch, out_dir, emit, wait_move, stage=lambda n
         host = TARGET_IP
     stage(2)
     values = "".join(answers.get(key, "") + "\n" for key in ANSWER_ORDER)
+    save_router_password(out_dir, answers.get("ROOT_PASSWORD"), host)   # before the router changes it: a repeat can log in
     result = run_remote(ssh, host, setup_command(branch), emit, data=values)
 
     saved = []
@@ -479,7 +535,11 @@ def failure_message(result):
         return (f"the setup finished, but some checks failed ({state}). Read the messages above; after fixing the cause run "
                 "it again (it continues where it stopped).")
     reason = state.replace("FAILED ", "", 1) if state else "see the messages above"
-    return f"the setup stopped: {reason}. Fix that and run it again: it continues where it stopped."
+    more = ""
+    if "box" in reason.lower():
+        more = (" The report above (ending in a line that starts with \"verdict:\") says where the link to the coin box breaks; "
+                f"you can get it again any time with: ssh root@{TARGET_IP} piso-setup box-diag.")
+    return f"the setup stopped: {reason}.{more} Fix that and run it again: it continues where it stopped."
 
 
 def update_router(ssh, host, branch, emit):
@@ -646,6 +706,7 @@ def run_setup(args, ssh, read=input, read_secret=getpass.getpass, probe=port_ope
             "turn this computer's Wi-Fi off.")
     say(f"Router found at {host}.")
     state = probe_router(ssh, host)
+    auto_login = use_saved_password(ssh, host, [args.out, default_out_dir()]) if state == "password" else None
     if args.update:
         if state == "factory":
             raise SetupError("this router has not been set up yet: run this script without --update")
@@ -659,7 +720,7 @@ def run_setup(args, ssh, read=input, read_secret=getpass.getpass, probe=port_ope
         # (the router's own settings win over new answers, so none are asked: they would not be used)
         say("This router was set up before (or has a password): it keeps the names and passwords it has, and the setup")
         say("finishes or repairs it. Anything it does not have yet is generated and shown in the summary.")
-        if state == "password":
+        if state == "password" and not auto_login:
             say("Type the router password when ssh asks for it (it is in your saved summary; a router that was just")
             say("factory reset has none: press Enter).")
         if not args.yes and read("Continue? [y/N] ").strip().lower() not in ("y", "yes"):
@@ -707,7 +768,10 @@ def run_setup(args, ssh, read=input, read_secret=getpass.getpass, probe=port_ope
     else:
         say(f"Next: set up the rental phones from the coin box's page (http://{BOX_IP}/), Set up a phone.")
     if not args.yes and read("Connect Telegram alerts now? You need a bot token from @BotFather. [y/N] ").strip().lower() in ("y", "yes"):
-        say("Type the router password when ssh asks for it (it is in the summary above).")
+        if found.get("ROOT_PASSWORD"):
+            ssh.set_password(found["ROOT_PASSWORD"])   # the setup has set it: ssh needs no typing
+        else:
+            say("Type the router password when ssh asks for it (it is in the summary above).")
         ssh.run(host, "piso-setup telegram", "-t")
     return 0
 
@@ -773,6 +837,10 @@ class Core:
 
     def probe(self, host):
         return probe_router(self.ssh, host)
+
+    def saved_login(self, host, out_dir):
+        """The router password saved on this computer, when the router accepts it (else None)."""
+        return use_saved_password(self.ssh, host, [out_dir, default_out_dir()], notify=lambda text: None)
 
     def login(self, host, password):
         self.ssh.set_password(password)
@@ -1371,10 +1439,13 @@ class Wizard:
             self.note(self.router_status, "warn", f"Router found at {r['host']}. It was set up before: it keeps the names and "
                                                   "passwords it has, and the installation finishes or repairs it. Your "
                                                   "settings from the previous step are not applied to it (the country is).")
-            if r["state"] == "password":
+            if r["state"] == "password" and r.get("login_ok"):
+                self.note(self.router_status, "ok", "Logged in with the router password saved by the previous setup.")
+            elif r["state"] == "password":
                 c = self.card(self.router_status)
                 self.text(c, "Router password", "bold").pack(fill="x")
-                self.text(c, "This router has a password. It is in the summary saved by the previous setup.", "small",
+                self.text(c, "This router has a password. It is in the summary saved by the previous setup, and none of the "
+                             "summaries saved on this computer works.", "small",
                           fg=C["muted"]).pack(fill="x")
                 e = ttk.Entry(c, textvariable=self.router_password, show="•", font=self.f["mono_big"])
                 e.pack(fill="x", pady=(4, 0))
@@ -1405,7 +1476,8 @@ class Wizard:
                 if host:
                     try:
                         state = self.core.probe(host)
-                        self.post("router", host, state, None)
+                        saved = self.core.saved_login(host, self.out_dir) if state == "password" else None
+                        self.post("router", host, state, None, saved)
                     except SetupError as e:
                         self.post("router", host, None, str(e))
                     except Exception as e:  # (an unexpected ssh failure: shown, the search can be repeated)
@@ -1417,9 +1489,11 @@ class Wizard:
                     time.sleep(0.2)
         threading.Thread(target=work, daemon=True).start()
 
-    def on_router(self, host, state, error):
+    def on_router(self, host, state, error, saved=None):
         self.searching = False
-        self.router.update(host=host, state=state, error=error, login_ok=state != "password", login_failed=False)
+        if saved:
+            self.router_password.set(saved)   # the password saved by the earlier setup worked: nothing to type
+        self.router.update(host=host, state=state, error=error, login_ok=state != "password" or bool(saved), login_failed=False)
         self._render_router_status()
         self.update_nav()
 
@@ -1498,6 +1572,7 @@ class Wizard:
         self.log.pack(side="left", fill="both", expand=True)
         self.log.tag_configure("err", foreground="#fca5a5")
         self.log.tag_configure("ok", foreground="#86efac")
+        self.log.tag_configure("tip", foreground="#93c5fd")
         self.log.tag_configure("step", foreground="#ffffff", font=(self.f["mono"][0], self.f["mono"][1], "bold"))
         for line in self.log_lines[-2000:]:
             self._log_insert(line)
@@ -1558,6 +1633,8 @@ class Wizard:
             tag = "step"
         elif low.startswith(("error", "fail")) or "warning" in low:
             tag = "err"
+        elif tip_text(line):
+            tag = "tip"
         elif line.startswith(("PASS", "SETUP COMPLETE")):
             tag = "ok"
         self.log.insert("end", line + "\n", tag)
@@ -1595,6 +1672,11 @@ class Wizard:
         self.log_lines.append(line)
         if line.startswith("== "):
             self.activity = line[3:]
+        advice = tip_text(line)
+        if advice and (self.banner is None or self.banner[0] == "info"):
+            self.banner = ("info", "Tip: " + advice)   # the latest tip stays visible above the log
+            if STEPS[self.step][0] == "install":
+                self._render_install_state()
         if STEPS[self.step][0] == "install" and self.log.winfo_exists():
             self.log.configure(state="normal")
             self._log_insert(line)

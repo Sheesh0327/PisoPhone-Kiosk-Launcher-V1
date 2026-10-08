@@ -301,6 +301,63 @@ check("rc=0" in r.stdout and Box.wifi is None, "a second run changes nothing")
 r = lib('conf_set BOX_WIFI_ROTATED 0; box_wifi_key')
 check(r.stdout.strip().endswith("PisoCoinBox@Setup"), "before rotation (or after pairing a new box) the built-in password is used")
 check("conf_set BOX_WIFI_ROTATED 0" in text.split("pair_box() {")[1].split("\n}\n")[0], "pairing a new box starts from the built-in password")
+# a box paired before keeps its own Wi-Fi password: re-pairing offers the built-in one first, then that one, in turn
+open(f"{tmp}/uci.log", "w").close()
+r = lib('conf_set BOX_WIFI_ROTATED 1; conf_set BOX_WIFI_PASS_NEW OwnPassw0rd1234567; sleep() { :; }; box_up() { return 0; }; '
+        'box_station() { [ "$(grep "set wireless.box_ap.key=" ' + tmp + '/uci.log | tail -n 1)" = "set wireless.box_ap.key=OwnPassw0rd1234567" ] && echo AA:BB:CC:DD:EE:01; }; '
+        'pair_box; echo "rc=$? ROT=$(conf_get BOX_WIFI_ROTATED) MAC=$(conf_get BOX_MAC)"', env={"PAIR_WAIT": "600"})
+ul = open(f"{tmp}/uci.log").read()
+check("rc=0 ROT=1 MAC=AA:BB:CC:DD:EE:01" in r.stdout, "a re-paired box that holds its own password joins with it: " + r.stdout + r.stderr)
+check(ul.index("set wireless.box_ap.key=PisoCoinBox@Setup") < ul.index("set wireless.box_ap.key=OwnPassw0rd1234567"), "the built-in password is offered first")
+open(f"{tmp}/uci.log", "w").close()
+r = lib('conf_set BOX_WIFI_ROTATED 1; conf_set BOX_WIFI_PASS_NEW OwnPassw0rd1234567; sleep() { :; }; box_up() { return 0; }; '
+        'box_station() { [ "$(grep "set wireless.box_ap.key=" ' + tmp + '/uci.log | tail -n 1)" = "set wireless.box_ap.key=PisoCoinBox@Setup" ] && [ "$(grep -c "set wireless.box_ap.key=" ' + tmp + '/uci.log)" -gt 2 ] && echo AA:BB:CC:DD:EE:02; }; '
+        'pair_box; echo "rc=$? ROT=$(conf_get BOX_WIFI_ROTATED) MAC=$(conf_get BOX_MAC)"', env={"PAIR_WAIT": "600"})
+check("rc=0 ROT=0 MAC=AA:BB:CC:DD:EE:02" in r.stdout, "a factory-reset box still joins with the built-in password on a later turn: " + r.stdout + r.stderr)
+# a pairing that times out right after a swap to the box's own password: the router goes back to it and keeps it "rotated"
+open(f"{tmp}/uci.log", "w").close()
+r = lib('conf_set BOX_WIFI_ROTATED 1; conf_set BOX_WIFI_PASS_NEW OwnPassw0rd1234567; sleep() { :; }; box_station() { :; }; box_ifname() { echo wlan0-3; }; '
+        'cmd_box_diag() { echo "DIAG key=$(uci -q get wireless.box_ap.key) ROT=$(conf_get BOX_WIFI_ROTATED)"; }; (pair_box); echo "after ROT=$(conf_get BOX_WIFI_ROTATED) KEY=$(box_wifi_key)"',
+        env={"PAIR_WAIT": "60"})
+ul = open(f"{tmp}/uci.log").read()
+set_keys = [l for l in ul.splitlines() if l.startswith("set wireless.box_ap.key=")]
+check("after ROT=1 KEY=OwnPassw0rd1234567" in r.stdout, "a pairing that fails keeps the box's own password for the next try: " + r.stdout + r.stderr)
+check(set_keys and set_keys[-1] == "set wireless.box_ap.key=OwnPassw0rd1234567" and "set wireless.box_ap.key=PisoCoinBox@Setup" in ul,
+      "and leaves the router's network on it, after offering both: " + str(set_keys))
+check("DIAG key=" in r.stdout and "ROT=1" in r.stdout.split("after ROT")[0].split("DIAG key=")[1], "the failure report sees the restored state: " + r.stdout[-300:])
+r = lib('sleep() { :; }; box_station() { :; }; box_ifname() { :; }; pair_box; echo rc=$?', env={"PAIR_WAIT": "10"})
+check("rc=0" not in r.stdout and "not on the air" in r.stderr + r.stdout, "a missing box network is reported as such: " + r.stdout + r.stderr)
+r = lib('sleep() { :; }; box_station() { :; }; box_ifname() { echo wlan0-3; }; pair_box; echo rc=$?', env={"PAIR_WAIT": "10"})
+check("rc=0" not in r.stdout and "did not join" in r.stderr + r.stdout, "a network that is up but never joined keeps the original message: " + r.stdout + r.stderr)
+# ---- box-diag: where the router <-> box link breaks -----------------------------------------------------------------------------
+def box_diag(setup_code):
+    return lib(setup_code + "; cmd_box_diag", env={"BOX_IP": "127.0.0.1:1"})   # nothing listens there: the box does not answer
+r = box_diag('box_ifname() { :; }; conf_set BOX_MAC AA:BB:CC:DD:EE:01')
+check("NOT on the air" in r.stdout and "verdict: the router is not broadcasting" in r.stdout, "box-diag: a missing box network is the verdict: " + r.stdout + r.stderr)
+r = box_diag('box_ifname() { echo wlan0-3; }; iwinfo() { :; }; conf_set BOX_MAC AA:BB:CC:DD:EE:01; conf_set BOX_WIFI_ROTATED 1; conf_set BOX_WIFI_PASS_NEW OwnPassw0rd1234567; '
+             'uci() { case "$*" in *box_ap.key*) echo SomethingElse123;; esac; }')
+check("differs from the one stored for the box" in r.stdout, "box-diag: a router password that differs from the box's is the verdict: " + r.stdout + r.stderr)
+check("SomethingElse123" not in r.stdout and "OwnPassw0rd1234567" not in r.stdout, "box-diag never prints a password")
+r = box_diag('box_ifname() { echo wlan0-3; }; iwinfo() { :; }; conf_set BOX_MAC AA:BB:CC:DD:EE:01; conf_set BOX_WIFI_ROTATED 0; uci() { case "$*" in *box_ap.key*) echo PisoCoinBox@Setup;; esac; }')
+check("verdict: the box has not joined" in r.stdout, "box-diag: right password, nobody joined -> read the box's serial console: " + r.stdout + r.stderr)
+r = box_diag('box_ifname() { echo wlan0-3; }; iwinfo() { [ "$2" = assoclist ] && echo "AA:BB:CC:DD:EE:01  -50 dBm / -95 dBm"; }; conf_set BOX_MAC AA:BB:CC:DD:EE:01; conf_set BOX_WIFI_ROTATED 0; uci() { case "$*" in *box_ap.key*) echo PisoCoinBox@Setup;; esac; }')
+check("does not answer" in r.stdout and "lease" in r.stdout, "box-diag: joined but silent -> address lease: " + r.stdout + r.stderr)
+r = box_diag('box_ifname() { echo wlan0-3; }; iwinfo() { [ "$2" = assoclist ] && echo "AA:BB:CC:DD:EE:01  -50 dBm / -95 dBm"; }; box_up() { return 0; }; curl() { :; }; '
+             'conf_set BOX_MAC AA:BB:CC:DD:EE:01; conf_set BOX_WIFI_ROTATED 0; uci() { case "$*" in *box_ap.key*) echo PisoCoinBox@Setup;; esac; }')
+check("verdict: the link works" in r.stdout, "box-diag: everything fine -> the link works: " + r.stdout + r.stderr)
+check("box-diag) cmd_box_diag" in text and "cmd_box_diag 2>&1" in text.split("cmd_diag() {")[1].split("\n}\n")[0], "box-diag is a command and part of piso-setup diag")
+# ---- tips along the way ------------------------------------------------------------------------------------------------------
+r = lib('sleep() { :; }; box_station() { :; }; box_ifname() { echo wlan0-3; }; box_diag() { :; }; cmd_box_diag() { :; }; pair_box; echo rc=$?', env={"PAIR_WAIT": "310"})
+out = r.stdout + r.stderr
+check("TIP: the coin box's light tells you" in out and "TIP: no box yet after a minute" in out and "TIP: still nothing" in out and "TIP: last try" in out,
+      "while pairing waits, the tips come in turn (light, firmware, factory reset, supply): " + out[-900:])
+check(out.index("no box yet") < out.index("still nothing") < out.index("last try"), "in that order")
+r = lib('sleep() { :; }; box_station() { :; }; box_ifname() { :; }; cmd_box_diag() { :; }; pair_box; echo rc=$?', env={"PAIR_WAIT": "65"})
+check("TIP: the router is not broadcasting PisoCoinBox" in r.stdout + r.stderr and "no box yet after a minute" not in r.stdout + r.stderr,
+      "the tip fits what is wrong (the network is not on the air): " + r.stdout + r.stderr)
+r = lib('sleep() { :; }; box_station() { :; }; box_ifname() { echo wlan0-3; }; cmd_box_diag() { :; }; pair_box; echo rc=$?', env={"PAIR_WAIT": "65", "PISO_TIPS": "0"})
+check("TIP:" not in r.stdout + r.stderr, "PISO_TIPS=0 turns the tips off")
+check("tip \"found it." in text and "tip \"next: open the coin box page" in text and "tip \"running the setup again is safe" in text, "tips at the join, at the end and after a failure")
 check("rotate_box_wifi" in text.split("stage2() {")[1].split("\n}\n")[0] and "rotate_box_wifi" in text.split("cmd_pair() {")[1].split("\n}\n")[0], "stage 2 and pair both rotate it")
 # ---- the printed setup sheet, the review screen and the Telegram prompt ----------------------------------------------------------
 r = lib('rm -f "$CONF"; conf_set SITE_NAME "Maria <Shop> & Sons"; conf_set GUEST_NAME "Maria Free WiFi"; conf_set KIOSK_PASS kioskpw12345; conf_set BOX_ADMIN_PASS boxpw123456; '
