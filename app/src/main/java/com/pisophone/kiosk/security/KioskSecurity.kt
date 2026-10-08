@@ -51,7 +51,6 @@ object KioskSecurity {
     private val BOX_SECRET_REGEX = Regex("^[A-Za-z0-9_.+=-]{16,128}$")
     private const val KEY_SECRET_EXPLICITLY_PROVISIONED = "kiosk_secret_explicitly_provisioned"
     private const val TAG = "KioskSecurity"
-    private const val KEY_DEVICE_SECRET = "device_crypto_secret"
 
     @Volatile
     private var prefsInstance: SharedPreferences? = null

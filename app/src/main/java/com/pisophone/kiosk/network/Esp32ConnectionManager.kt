@@ -62,7 +62,6 @@ class Esp32ConnectionManager(
         private const val ESP32_WS_PORT = 81
         private const val HEARTBEAT_TIMEOUT_MS = 45000L
         private const val MAX_TIMESTAMP_SKEW_MS = 60000L
-        private const val DRAIN_SAFETY_TIMEOUT_MS = 15000L
         private const val MAX_SETTLE_WAIT_MS = 3000L // never wait longer than this for the acceptor to settle
         private const val DEFAULT_SETTLE_WAIT_MS = 1000L // the box's settling period when it does not say
     }

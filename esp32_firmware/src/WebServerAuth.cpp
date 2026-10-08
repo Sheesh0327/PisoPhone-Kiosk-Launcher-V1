@@ -286,68 +286,17 @@ void handleLogout() {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Logged Out - HARDWARE Controller</title>
-    <style>
-        :root {
-            --bg: #0f172a;
-            --card-bg: #1e293b;
-            --text-main: #f8fafc;
-            --text-muted: #94a3b8;
-            --border: #334155;
-            --primary: #10b981;
-            --primary-hover: #059669;
-        }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background-color: var(--bg);
-            color: var(--text-main);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            padding: 16px;
-        }
-        .logout-card {
-            background-color: var(--card-bg);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 32px 24px;
-            max-width: 400px;
-            width: 100%;
-            text-align: center;
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
-        }
-        .icon { font-size: 44px; margin-bottom: 14px; }
-        h2 { font-size: 20px; font-weight: 800; margin-bottom: 8px; color: var(--text-main); }
-        p { font-size: 14px; color: var(--text-muted); line-height: 1.5; margin-bottom: 24px; }
-        .login-btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            width: 100%;
-            padding: 12px 18px;
-            background-color: var(--primary);
-            color: white;
-            text-decoration: none;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 600;
-            transition: background-color 0.2s, transform 0.1s;
-        }
-        .login-btn:hover {
-            background-color: var(--primary-hover);
-            transform: translateY(-1px);
-        }
-    </style>
+    <meta name="color-scheme" content="light dark">
+    <title>Signed out - PisoPhone</title>
+    <link rel="stylesheet" href="/assets/portal.css">
 </head>
 <body>
-    <div class="logout-card">
-        <div class="icon">🔒</div>
-        <h2>Logged Out</h2>
-        <p>You have successfully logged out of the HARDWARE Admin Console. Session credentials have been invalidated.</p>
-        <a href="/" class="login-btn">🔑 Log In Again</a>
+    <div class="center-page">
+        <div class="card-narrow" style="text-align: center;">
+            <h1>You are signed out</h1>
+            <p class="muted">Your session on the PisoPhone coin box has ended.</p>
+            <a href="/" class="btn primary block">Sign in again</a>
+        </div>
     </div>
 </body>
 </html>

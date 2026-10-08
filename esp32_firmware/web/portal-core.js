@@ -2,40 +2,35 @@ function escHtml(v) {
     return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-// Apply saved theme immediately to prevent flashing
-(function() {
-    const savedTheme = localStorage.getItem('kiosk_theme') || 'light';
-    document.documentElement.setAttribute('data-theme', savedTheme);
-})();
+// Line icon from the sprite every page carries (see WebDashboardIcons.h).
+window.ic = function(name) {
+    return '<svg class="ic" aria-hidden="true"><use href="#i-' + name + '"/></svg>';
+};
 
-window.toggleTheme = function() {
-    const cur = document.documentElement.getAttribute('data-theme') || 'light';
-    const next = cur === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', next);
-    localStorage.setItem('kiosk_theme', next);
-    updateThemeButtonText();
+// A short message at the bottom of the page. kind is 'ok' (default) or 'bad'.
+window.notify = function(msg, kind) {
+    const old = document.getElementById('toast');
+    if (old) old.remove();
+    const t = document.createElement('div');
+    t.id = 'toast';
+    t.className = 'toast' + (kind === 'bad' ? ' bad' : '');
+    t.setAttribute('role', 'status');
+    t.innerHTML = ic(kind === 'bad' ? 'alert' : 'check') + '<span></span>';
+    t.lastChild.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(function() { if (t.parentNode) t.remove(); }, 4000);
 };
 
 window.copyToClipboard = function(text, btnElement) {
     if (!text) return;
     const doFeedback = () => {
         if (btnElement) {
-            const origText = btnElement.innerText;
-            btnElement.innerText = '✓ Copied!';
-            setTimeout(() => { btnElement.innerText = origText; }, 1800);
+            const orig = btnElement.innerHTML;
+            btnElement.innerHTML = ic('check') + 'Copied';
+            setTimeout(() => { btnElement.innerHTML = orig; }, 1800);
         }
     };
-    if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(text).then(doFeedback).catch(() => {
-            const ta = document.createElement('textarea');
-            ta.value = text;
-            document.body.appendChild(ta);
-            ta.select();
-            document.execCommand('copy');
-            document.body.removeChild(ta);
-            doFeedback();
-        });
-    } else {
+    const fallback = () => {
         const ta = document.createElement('textarea');
         ta.value = text;
         document.body.appendChild(ta);
@@ -43,30 +38,13 @@ window.copyToClipboard = function(text, btnElement) {
         document.execCommand('copy');
         document.body.removeChild(ta);
         doFeedback();
+    };
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(doFeedback).catch(fallback);
+    } else {
+        fallback();
     }
 };
-
-window.toggleInstalledDevicesDropdown = function() {
-    const content = document.getElementById('installed-devices-dropdown-content');
-    const arrow = document.getElementById('vault-dropdown-arrow');
-    if (content) {
-        if (content.style.display === 'none' || content.style.display === '') {
-            content.style.display = 'grid';
-            if (arrow) arrow.textContent = '▲';
-        } else {
-            content.style.display = 'none';
-            if (arrow) arrow.textContent = '▼';
-        }
-    }
-};
-
-function updateThemeButtonText() {
-    const btn = document.getElementById('theme_toggle_btn');
-    if (btn) {
-        const cur = document.documentElement.getAttribute('data-theme') || 'light';
-        btn.innerHTML = cur === 'dark' ? '☀️ Light Mode' : '🌙 Dark Mode';
-    }
-}
 
 window.switchTab = function(tabId) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -75,425 +53,252 @@ window.switchTab = function(tabId) {
     if (tabBtn) tabBtn.classList.add('active');
     const tabEl = document.getElementById(tabId);
     if (tabEl) tabEl.classList.add('active');
-    localStorage.setItem('activeTab', tabId);
+    try { localStorage.setItem('activeTab', tabId); } catch (e) { /* private mode */ }
 };
 
 document.addEventListener('DOMContentLoaded', () => {
-    let savedTab = localStorage.getItem('activeTab') || 'tab-dashboard';
-    const path = window.location.pathname.toLowerCase();
-    const search = window.location.search.toLowerCase();
-    const hash = window.location.hash.toLowerCase();
-    if (path.includes('install') || path.includes('provision') || search.includes('install') || search.includes('provision') || hash.includes('install') || hash.includes('provision')) {
-        savedTab = 'tab-install';
-    }
+    let savedTab = 'tab-dashboard';
+    try { savedTab = localStorage.getItem('activeTab') || savedTab; } catch (e) { /* private mode */ }
     if (document.getElementById(savedTab)) switchTab(savedTab);
-    updateThemeButtonText();
 });
+
+window.saveSettings = function(form, ev) {
+    if (ev) ev.preventDefault();
+    fetch('/save', { method: 'POST', body: new URLSearchParams(new FormData(form)) })
+        .then(res => notify(res.ok ? 'Saved. The phones have the new settings.' : 'Could not save the settings.', res.ok ? 'ok' : 'bad'))
+        .catch(err => notify('Could not reach the box: ' + err, 'bad'));
+    return false;
+};
+
+window.relayTest = function(state) {
+    fetch('/api/relay?state=' + state)
+        .then(r => r.json())
+        .then(d => notify('Relay on pin ' + d.relay_pin + ' is now ' + (state ? 'on' : 'off') + '.'))
+        .catch(err => notify('Could not reach the box: ' + err, 'bad'));
+};
+
+window.rebootBox = function() {
+    if (!confirm('Restart the coin box?')) return;
+    fetch('/reboot', { method: 'POST' }).then(() => {
+        notify('Restarting. This page reloads in a few seconds.');
+        setTimeout(() => window.location.reload(), 5000);
+    });
+};
+
+window.factoryResetBox = function() {
+    if (!confirm('Factory reset? All settings on the box will be erased.')) return;
+    fetch('/factory_reset', { method: 'POST' }).then(() => {
+        notify('Resetting. This page reloads in a few seconds.');
+        setTimeout(() => window.location.reload(), 6000);
+    });
+};
+
+// Banners across the top of the page: shown while they apply, removed by themselves.
+function setBanner(id, html, cls) {
+    const host = document.getElementById('banners');
+    if (!host) return;
+    let el = document.getElementById(id);
+    if (!html) {
+        if (el) el.remove();
+        return;
+    }
+    if (!el) {
+        el = document.createElement('div');
+        el.id = id;
+        host.appendChild(el);
+    }
+    if (el.dataset.html !== html) {
+        el.dataset.html = html;
+        el.className = cls;
+        el.innerHTML = html;
+    }
+}
+
+function fmtTime(sec) {
+    if (!(sec > 0)) return '–';
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    const two = n => (n < 10 ? '0' : '') + n;
+    return h > 0 ? (h + ':' + two(m) + ':' + two(s)) : (m + ':' + two(s));
+}
+
+function batteryHtml(level, charging) {
+    if (!(typeof level === 'number' && level >= 0)) return charging ? ic('bolt') + 'Charging' : '–';
+    const cls = level <= 15 ? 'low' : (level <= 30 ? 'mid' : '');
+    return '<span class="row-batt ' + cls + '">' + (charging ? ic('bolt') : ic('battery')) + level + '%' +
+           '<span class="mini-bar"><i style="width:' + level + '%"></i></span></span>';
+}
+
+function updateWifi(wifi) {
+    const rssi = typeof wifi.rssi === 'number' ? wifi.rssi : -100;
+    const quality = typeof wifi.quality === 'number' ? wifi.quality : 0;
+    const connected = !!wifi.connected && quality > 0;
+    const card = document.getElementById('wifi_stat');
+    if (card) card.className = 'stat' + (!connected || quality < 25 ? ' bad' : (quality < 50 ? ' warn' : ''));
+    const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+    set('wifi_quality_pct', connected ? quality + '%' : 'Offline');
+    set('wifi_rssi_display', connected ? rssi + ' dBm' : 'not connected');
+    if (wifi.ssid) set('wifi_ssid_display', wifi.ssid);
+    if (wifi.ip) set('wifi_ip_display', wifi.ip);
+    const fill = document.getElementById('wifi_meter_fill');
+    if (fill) fill.style.width = (connected ? quality : 0) + '%';
+}
+
+function updateBanners(data, devices) {
+    setBanner('default_cred_banner',
+        data.default_credentials
+            ? ic('alert') + '<span class="grow"><b>The default admin password is still in use.</b> Coins are blocked until you choose your own in Settings.</span>'
+            : '',
+        'note bad');
+    setBanner('legacy_key_banner',
+        data.legacy_key
+            ? ic('alert') + '<span class="grow"><b>This box still uses the old shared key.</b> Switch it to its own key. Phones must be set up again afterwards.</span>' +
+              '<button type="button" class="btn sm" onclick="switchToOwnKey()">Switch key</button>'
+            : '',
+        'note warn');
+
+    // First-run checklist: shown until the box is safe and in use, then it disappears by itself.
+    const steps = [
+        { done: !data.default_credentials, text: 'Choose your own admin password (Settings).' },
+        { done: !!(data.wifi && data.wifi.connected), text: 'Connect the box to your Wi-Fi (Settings).' },
+        { done: !data.legacy_key, text: 'Switch the box to its own key (see above).' },
+        { done: devices.some(d => d.isBound), text: 'Pair at least one rental phone (Tools, Phone slots).' }
+    ];
+    setBanner('setup_checklist',
+        steps.every(st => st.done) ? '' :
+            '<div class="panel-head"><h2>Getting started</h2></div><div class="panel-body"><ul class="checklist">' +
+            steps.map(st => '<li class="' + (st.done ? 'done' : '') + '">' + ic(st.done ? 'check' : 'circle') + '<span>' + st.text + '</span></li>').join('') +
+            '</ul></div>',
+        'panel');
+}
+
+const ROW_HEAD = '<div class="row head"><span>Slot</span><span>Phone</span><span>Status</span><span>Time left</span><span>Battery</span><span></span></div>';
+
+function pendingRow(u) {
+    const name = escHtml(u.name || 'New phone');
+    const bat = (typeof u.battery === 'number' && u.battery >= 0) ? u.battery : -1;
+    return '<div class="row pending">' +
+        '<span class="tag warn">New</span>' +
+        '<div class="ident"><div class="row-name">' + name + '</div><div class="row-sub">' + escHtml(u.ip) + ' · ' + escHtml(u.id) + '</div></div>' +
+        '<span class="pill warn">Wants to connect</span><span></span>' +
+        '<span>' + batteryHtml(bat, !!u.charging) + '</span>' +
+        '<div class="row-actions"><button type="button" class="btn primary sm" data-id="' + escHtml(u.id) + '" data-ip="' + escHtml(u.ip) + '" data-name="' + name + '" onclick="pairFromRow(this)">Pair…</button></div>' +
+        '</div>';
+}
+
+window.pairFromRow = function(btn) {
+    showSelectSlotModalForDevice(btn.dataset.id, btn.dataset.ip, btn.dataset.name);
+};
+
+function deviceRow(dev) {
+    const name = escHtml((dev.name && dev.name !== dev.id && !dev.name.startsWith('Terminal') && (!dev.id || !dev.name.includes(dev.id))) ? dev.name : ('PisoPhone ' + dev.slotNum));
+    const slot = '<span class="tag">Slot ' + dev.slotNum + '</span>';
+    const unlicensed = !dev.active ? ' <span class="tag bad">Not licensed</span>' : '';
+    const unpair = '<div class="row-actions"><button type="button" class="btn sm" onclick="unpairSlot(' + dev.slotNum + ')">Unpair</button></div>';
+    if (!dev.isBound) {
+        return '<div class="row empty">' + slot +
+            '<div class="ident"><div class="row-name muted">Empty slot</div></div>' +
+            '<span class="muted">Ready for a phone</span><span></span><span></span>' +
+            '<div class="row-actions"><button type="button" class="btn sm" onclick="occupySlot(' + dev.slotNum + ')">Set up</button></div></div>';
+    }
+    const ident = '<div class="ident"><div class="row-name">' + name + unlicensed + '</div><div class="row-sub">' + escHtml(dev.ip) + '</div></div>';
+    if (!dev.online) {
+        return '<div class="row">' + slot + ident + '<span class="pill bad">Offline</span><span></span><span></span>' + unpair + '</div>';
+    }
+    const renting = dev.time > 0;
+    return '<div class="row">' + slot + ident +
+        '<span class="pill ' + (renting ? 'ok' : '') + '">' + (renting ? 'Renting' : 'Locked') + '</span>' +
+        '<span class="row-time">' + fmtTime(dev.time) + '</span>' +
+        '<span>' + batteryHtml(typeof dev.battery === 'number' ? dev.battery : -1, !!dev.charging) + '</span>' +
+        unpair + '</div>';
+}
+
+function setConn(ok) {
+    const pill = document.getElementById('conn_pill');
+    if (!pill) return;
+    pill.className = 'pill ' + (ok ? 'ok' : 'bad');
+    pill.textContent = ok ? 'Online' : 'Connection lost';
+}
 
 window.fetchDeviceStatus = function() {
     fetch('/api/status')
         .then(res => res.json())
         .then(data => {
+            setConn(true);
             const devices = Array.isArray(data) ? data : (data.devices || []);
-            const wifi = data.wifi || null;
-
-            if (wifi) {
-                const rssi = typeof wifi.rssi === 'number' ? wifi.rssi : -100;
-                const quality = typeof wifi.quality === 'number' ? wifi.quality : 0;
-                const status = wifi.status || (quality >= 50 ? 'Good' : 'Weak');
-                const isConnected = !!wifi.connected;
-                
-                let wifiColor = 'var(--status-good)';
-                let wifiBg = 'var(--status-good-bg)';
-                let wifiBorder = 'var(--status-good-border)';
-                let icon = '📶';
-
-                if (!isConnected || quality <= 0) {
-                    wifiColor = 'var(--status-critical)';
-                    wifiBg = 'var(--status-critical-bg)';
-                    wifiBorder = 'var(--status-critical-border)';
-                    icon = '❌';
-                } else if (quality < 25) {
-                    wifiColor = 'var(--status-critical)';
-                    wifiBg = 'var(--status-critical-bg)';
-                    wifiBorder = 'var(--status-critical-border)';
-                    icon = '⚠️';
-                } else if (quality < 50) {
-                    wifiColor = 'var(--status-warning)';
-                    wifiBg = 'var(--status-warning-bg)';
-                    wifiBorder = 'var(--status-warning-border)';
-                    icon = '📶';
-                }
-
-                const pill = document.getElementById('wifi_quality_pill');
-                const sigText = document.getElementById('wifi_signal_text');
-                const iconEl = document.getElementById('wifi_icon');
-                if (pill && sigText) {
-                    pill.style.background = wifiBg;
-                    pill.style.color = wifiColor;
-                    pill.style.borderColor = wifiBorder;
-                    if (iconEl) iconEl.textContent = icon;
-                    sigText.textContent = isConnected ? ('Wi-Fi: ' + rssi + ' dBm (' + quality + '%)') : 'Wi-Fi: Disconnected';
-                }
-
-                const rssiDisp = document.getElementById('wifi_rssi_display');
-                const qualPct = document.getElementById('wifi_quality_pct');
-                const fill = document.getElementById('wifi_meter_fill');
-                const badge = document.getElementById('wifi_status_badge');
-                const ssidDisp = document.getElementById('wifi_ssid_display');
-                const ipDisp = document.getElementById('wifi_ip_display');
-
-                if (rssiDisp) rssiDisp.textContent = isConnected ? (rssi + ' dBm') : 'Disconnected';
-                if (qualPct) {
-                    qualPct.textContent = quality + '% ' + status;
-                    qualPct.style.color = wifiColor;
-                }
-                if (fill) {
-                    fill.style.width = quality + '%';
-                    fill.style.backgroundColor = wifiColor;
-                }
-                if (badge) {
-                    badge.textContent = status;
-                    badge.style.background = wifiBg;
-                    badge.style.color = wifiColor;
-                }
-                if (ssidDisp && wifi.ssid) ssidDisp.textContent = wifi.ssid;
-                if (ipDisp && wifi.ip) ipDisp.textContent = wifi.ip;
-            }
-
-            let credBanner = document.getElementById('default_cred_banner');
-            if (data.default_credentials) {
-                if (!credBanner) {
-                    credBanner = document.createElement('div');
-                    credBanner.id = 'default_cred_banner';
-                    credBanner.style.cssText = 'background:#991b1b;color:#fff;padding:10px 14px;font-size:13px;font-weight:700;text-align:center;';
-                    credBanner.textContent = 'The default admin password is still active. Coins are blocked until you change it (Settings).';
-                    document.body.insertBefore(credBanner, document.body.firstChild);
-                }
-            } else if (credBanner) {
-                credBanner.remove();
-            }
-
-            let keyBanner = document.getElementById('legacy_key_banner');
-            if (data.legacy_key) {
-                if (!keyBanner) {
-                    keyBanner = document.createElement('div');
-                    keyBanner.id = 'legacy_key_banner';
-                    keyBanner.style.cssText = 'background:#92400e;color:#fff;padding:10px 14px;font-size:13px;font-weight:700;text-align:center;';
-                    keyBanner.innerHTML = 'This box still uses the old shared key. ' +
-                        '<button type="button" style="margin-left:8px;padding:4px 10px;border-radius:6px;border:0;font-weight:700;cursor:pointer;" ' +
-                        'onclick="switchToOwnKey()">Switch to this box\'s own key</button>';
-                    document.body.insertBefore(keyBanner, document.body.firstChild);
-                }
-            } else if (keyBanner) {
-                keyBanner.remove();
-            }
-
-            // First-run checklist: shown until the box is safe and in use, then it disappears by itself.
-            const steps = [
-                { done: !data.default_credentials, text: 'Choose your own admin password (Settings).' },
-                { done: !!(data.wifi && data.wifi.connected), text: 'Connect the box to your Wi-Fi (Settings).' },
-                { done: !data.legacy_key, text: "Switch the box to its own key (button above)." },
-                { done: devices.some(function (d) { return d.isBound; }), text: 'Pair at least one rental phone (Install & Provision).' }
-            ];
-            let setupCard = document.getElementById('setup_checklist');
-            if (steps.every(function (st) { return st.done; })) {
-                if (setupCard) setupCard.remove();
-            } else {
-                if (!setupCard) {
-                    setupCard = document.createElement('div');
-                    setupCard.id = 'setup_checklist';
-                    setupCard.style.cssText = 'background:#1e293b;color:#e2e8f0;padding:12px 16px;font-size:13px;line-height:1.7;border-bottom:2px solid #38bdf8;';
-                    document.body.insertBefore(setupCard, document.body.firstChild);
-                }
-                setupCard.innerHTML = '<strong>Getting started</strong> (' + devices.length + ' licensed slot' + (devices.length === 1 ? '' : 's') + ')<br>' +
-                    steps.map(function (st) { return (st.done ? '\u2705 ' : '\u2B1C ') + st.text; }).join('<br>');
-            }
+            if (data.wifi) updateWifi(data.wifi);
+            updateBanners(data, devices);
 
             const container = document.getElementById('live_devices_container');
             if (!container) return;
-            
+
             window.latestDevicesList = devices;
             const unassigned = data.unassigned_devices || [];
             window.unassignedDevices = unassigned;
 
-            let availableSlotsCount = 0;
-            let totalActiveSlotsCount = 0;
-
-            devices.forEach(dev => {
-                const isExp = (!dev.active);
-                if (!isExp) {
-                    totalActiveSlotsCount++;
-                    if (!dev.isBound) {
-                        availableSlotsCount++;
-                    }
-                }
-            });
-
-            const availableBadge = document.getElementById('available_slots_badge');
-            if (availableBadge) {
-                availableBadge.innerHTML = '<b>' + availableSlotsCount + '</b> Open / ' + totalActiveSlotsCount + ' Active Seats';
-                if (availableSlotsCount > 0) {
-                    availableBadge.style.background = 'rgba(16, 185, 129, 0.15)';
-                    availableBadge.style.color = 'var(--primary)';
-                } else {
-                    availableBadge.style.background = 'rgba(239, 68, 68, 0.15)';
-                    availableBadge.style.color = '#ef4444';
-                }
-            }
+            const paired = devices.filter(d => d.isBound);
+            const online = paired.filter(d => d.online).length;
+            const stat = document.getElementById('stat_phones');
+            if (stat) stat.textContent = paired.length;
+            const sub = document.getElementById('stat_phones_sub');
+            if (sub) sub.textContent = paired.length === 0 ? 'None paired yet' : (online + ' online');
 
             const reqBadge = document.getElementById('pending_requests_badge');
             if (reqBadge) {
-                if (unassigned.length > 0) {
-                    reqBadge.style.display = 'inline-block';
-                    reqBadge.textContent = '🟡 ' + unassigned.length + ' Pair Request' + (unassigned.length > 1 ? 's' : '');
-                } else {
-                    reqBadge.style.display = 'none';
-                }
+                reqBadge.classList.toggle('hidden', unassigned.length === 0);
+                reqBadge.textContent = unassigned.length + ' pair request' + (unassigned.length > 1 ? 's' : '');
             }
 
-            if (devices.length === 0 && unassigned.length === 0) {
-                container.innerHTML = '<div style="padding: 24px; text-align: center; color: var(--text-muted); grid-column: 1/-1;">No PisoPhone devices registered.</div>';
-                return;
-            }
-            let html = '';
-
-            if (unassigned.length > 0) {
-                html += '<div style="grid-column: 1/-1; margin-bottom: 14px;">' +
-                        '<div style="font-size: 13px; font-weight: 800; color: #f59e0b; display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: var(--radius-md); box-shadow: 0 2px 8px rgba(245,158,11,0.08);">' +
-                            '<div style="display: flex; align-items: center; gap: 8px;">' +
-                                '<span>🟡 PENDING CONNECTION REQUESTS</span>' +
-                                '<span style="font-size: 10px; background: #f59e0b; color: #000000; font-weight: 800; padding: 2px 8px; border-radius: 10px;">' + unassigned.length + ' Terminal(s)</span>' +
-                            '</div>' +
-                            '<span style="font-size: 11px; color: var(--text-muted); font-weight: 600;">Unassigned terminals requesting connection</span>' +
-                        '</div>' +
-                        '</div>';
-
-                unassigned.forEach((uDev) => {
-                    const uName = escHtml(uDev.name || 'PisoPhone Terminal');
-                    const uBat = (typeof uDev.battery === 'number' && uDev.battery >= 0) ? uDev.battery : 100;
-                    const uChg = !!uDev.charging;
-                    const uBatText = (uChg ? '⚡ ' : '🔋 ') + uBat + '%';
-
-                    html += '<div class="device-row" style="border-left: 4px solid #f59e0b; background: rgba(245, 158, 11, 0.04); margin-bottom: 10px;">' +
-                                '<div class="device-row-identity">' +
-                                    '<span class="device-slot-badge" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4);">🟡 UNASSIGNED</span>' +
-                                    '<div class="device-row-info">' +
-                                        '<span class="device-row-name">' + uName + '</span>' +
-                                        '<span class="device-row-sub">IP: <b>' + uDev.ip + '</b> • HW: <b>' + uDev.id + '</b></span>' +
-                                    '</div>' +
-                                '</div>' +
-                                '<div class="device-row-metrics">' +
-                                    '<div class="device-row-battery status-good">' +
-                                        '<span style="font-size: 12px; font-weight: 700;">' + uBatText + '</span>' +
-                                    '</div>' +
-                                '</div>' +
-                                '<div class="device-row-actions">' +
-                                    '<button type="button" class="btn btn-primary btn-sm" onclick="showSelectSlotModalForDevice(\'' + uDev.id + '\', \'' + uDev.ip + '\', \'' + uName.replace(/'/g, "\\'") + '\')" style="padding: 8px 14px; font-weight: 700; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); border: none;">' +
-                                        '⚡ Confirm Connection' +
-                                    '</button>' +
-                                '</div>' +
-                            '</div>';
-                });
-            }
-            devices.forEach((dev) => {
-                const name = escHtml((dev.name && dev.name !== dev.id && !dev.name.startsWith('Terminal') && (!dev.id || !dev.name.includes(dev.id))) ? dev.name : ('PisoPhone ' + dev.slotNum));
-                const hasBat = (typeof dev.battery === 'number' && dev.battery >= 0);
-                const battery = hasBat ? dev.battery : -1;
-                const isCharging = !!dev.charging;
-                const isExp = (!dev.active);
-                
-                let batteryStatusClass = 'status-good';
-                if (hasBat) {
-                    if (battery <= 15) {
-                        batteryStatusClass = 'status-critical';
-                    } else if (battery <= 30) {
-                        batteryStatusClass = 'status-warning';
-                    }
-                }
-
-                if (!dev.isBound && isExp) {
-                    return;
-                }
-
-                if (!dev.isBound) {
-                    html += '<div class="device-row empty">' +
-                                '<div class="device-row-identity">' +
-                                    '<span class="device-slot-badge">Slot #' + dev.slotNum + '</span>' +
-                                    '<div class="device-row-info">' +
-                                        '<span class="device-row-name">Empty Slot #' + dev.slotNum + '</span>' +
-                                        '<span class="device-row-sub">Seat open & ready for setup</span>' +
-                                    '</div>' +
-                                '</div>' +
-                                '<div style="color: var(--text-muted); font-size: 13px; font-style: italic;">' +
-                                    'No terminal bound' +
-                                '</div>' +
-                                '<div class="device-row-actions">' +
-                                    '<button type="button" class="btn btn-primary btn-sm" onclick="occupySlot(' + dev.slotNum + ')" style="padding: 8px 16px; font-weight: 700;">' +
-                                        '⚡ Occupy slot' +
-                                    '</button>' +
-                                '</div>' +
-                            '</div>';
-                } else if (dev.online) {
-                    const mins = Math.floor(dev.time / 60);
-                    const secs = dev.time % 60;
-                    const timeStr = mins + 'm ' + secs + 's';
-                    const active = dev.time > 0;
-                    
-                    let badgeHtml = active 
-                        ? '<span class="device-badge active">ACTIVE</span>'
-                        : '<span class="device-badge standby">STANDBY</span>';
-
-                    if (isExp) {
-                        badgeHtml += ' <span class="device-badge inactive" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);">INACTIVE SLOT</span>';
-                    }
-                        
-                    const batteryIcon = isCharging ? '⚡' : '🔋';
-                    const batteryText = hasBat ? ((isCharging ? '⚡ ' : '') + battery + '%') : (isCharging ? '⚡ Charging' : '🔋 --');
-                    const batteryBarHtml = hasBat
-                        ? ('<div class="battery-bar-bg" style="width: 50px; height: 6px; display: inline-block; margin-left: 4px;">' +
-                           '<div class="battery-bar-fill" style="width: ' + battery + '%;"></div>' +
-                           '</div>')
-                        : '';
-
-                    html += '<div class="device-row" ' + (isExp ? 'style="opacity: 0.8;"' : '') + '>' +
-                                '<div class="device-row-identity">' +
-                                    '<span class="device-slot-badge">Slot #' + dev.slotNum + '</span>' +
-                                    '<div class="device-row-info">' +
-                                        '<span class="device-row-name">' + name + '</span>' +
-                                        '<span class="device-row-sub">' + dev.ip + (dev.deviceId ? ' • ' + dev.deviceId : '') + '</span>' +
-                                    '</div>' +
-                                '</div>' +
-                                '<div class="device-row-metrics">' +
-                                    '<div class="device-row-timer">' +
-                                        '<span>⏱️ ' + timeStr + '</span>' +
-                                        badgeHtml +
-                                    '</div>' +
-                                    '<div class="device-row-battery ' + batteryStatusClass + '">' +
-                                        '<span style="font-size: 12px; font-weight: 700;">' + batteryIcon + ' ' + batteryText + '</span>' +
-                                        batteryBarHtml +
-                                    '</div>' +
-                                '</div>' +
-                                '<div class="device-row-actions">' +
-                                    '<button type="button" class="btn btn-outline btn-sm" style="border-color: var(--danger); color: var(--danger);" onclick="unpairSlot(' + dev.slotNum + ')">' +
-                                        '🔓 Unpair' +
-                                    '</button>' +
-                                '</div>' +
-                            '</div>';
-                } else {
-                    html += '<div class="device-row offline">' +
-                                '<div class="device-row-identity">' +
-                                    '<span class="device-slot-badge">Slot #' + dev.slotNum + '</span>' +
-                                    '<div class="device-row-info">' +
-                                        '<span class="device-row-name">' + name + '</span>' +
-                                        '<span class="device-row-sub">' + dev.ip + '</span>' +
-                                    '</div>' +
-                                '</div>' +
-                                '<div class="device-row-metrics">' +
-                                    '<span class="device-badge offline">OFFLINE / DISCONNECTED</span>' +
-                                    (isExp ? ' <span class="device-badge inactive" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);">INACTIVE</span>' : '') +
-                                '</div>' +
-                                '<div class="device-row-actions">' +
-                                    '<button type="button" class="btn btn-outline btn-sm" style="border-color: var(--danger); color: var(--danger);" onclick="unpairSlot(' + dev.slotNum + ')">' +
-                                        '🔓 Unpair' +
-                                    '</button>' +
-                                '</div>' +
-                            '</div>';
-                }
+            let html = unassigned.map(pendingRow).join('');
+            devices.forEach(dev => {
+                if (!dev.isBound && !dev.active) return; // a locked seat is shown under Tools
+                html += deviceRow(dev);
             });
-
-            if (!html) {
-                container.innerHTML = '<div style="padding: 24px; text-align: center; color: var(--text-muted); grid-column: 1/-1;">No active terminals connected. Inactive slots can be monitored under Hardware Slot Seats above.</div>';
-            } else {
-                container.innerHTML = html;
-            }
+            container.innerHTML = html
+                ? ROW_HEAD + html
+                : '<div class="row-empty-msg">No phones yet. Open Tools, Phone slots, to set one up.</div>';
         })
-        .catch(err => console.log('Status polling error', err));
+        .catch(err => { setConn(false); console.log('Status polling error', err); });
 };
 setInterval(fetchDeviceStatus, 3000);
 document.addEventListener("DOMContentLoaded", fetchDeviceStatus);
+
+function showMatchResult(kind, html) {
+    const el = document.getElementById('match_qual_result');
+    if (!el) return;
+    el.className = 'note ' + kind;
+    el.innerHTML = ic(kind === 'ok' ? 'check' : (kind === 'bad' ? 'alert' : 'clock')) + '<span class="grow">' + html + '</span>';
+}
 
 window.checkMatchQualification = function() {
     const p1 = document.getElementById('p1_select') ? document.getElementById('p1_select').value : '';
     const p2 = document.getElementById('p2_select') ? document.getElementById('p2_select').value : '';
     const mins = document.getElementById('match_mins_input') ? document.getElementById('match_mins_input').value : '15';
-    const resDiv = document.getElementById('match_qual_result');
-    if (!resDiv) return;
-    if (!p1 || !p2) {
-        resDiv.style.display = 'block';
-        resDiv.style.background = 'rgba(239, 68, 68, 0.15)';
-        resDiv.style.border = '1px solid rgba(239, 68, 68, 0.4)';
-        resDiv.style.color = '#f87171';
-        resDiv.innerHTML = '❌ <b>Error:</b> Please select both Player 1 and Player 2.';
-        return;
-    }
-    if (p1 === p2) {
-        resDiv.style.display = 'block';
-        resDiv.style.background = 'rgba(239, 68, 68, 0.15)';
-        resDiv.style.border = '1px solid rgba(239, 68, 68, 0.4)';
-        resDiv.style.color = '#f87171';
-        resDiv.innerHTML = '❌ <b>Error:</b> Player 1 and Player 2 cannot be the same device.';
-        return;
-    }
-    resDiv.style.display = 'block';
-    resDiv.style.background = 'rgba(59, 130, 246, 0.15)';
-    resDiv.style.border = '1px solid rgba(59, 130, 246, 0.4)';
-    resDiv.style.color = '#93c5fd';
-    resDiv.innerHTML = '⏳ Verifying device time balances...';
+    if (!p1 || !p2) return showMatchResult('bad', 'Choose both players.');
+    if (p1 === p2) return showMatchResult('bad', 'Player 1 and Player 2 must be different phones.');
+    showMatchResult('', 'Checking the time on both phones…');
 
     fetch('/check_qualification?p1=' + encodeURIComponent(p1) + '&p2=' + encodeURIComponent(p2) + '&minutes=' + encodeURIComponent(mins))
         .then(res => res.json())
         .then(data => {
             if (data && data.success) {
+                const lines = '<br>Player 1 (' + escHtml(data.p1_ip || p1) + '): <b>' + escHtml(data.p1_formatted) + '</b><br>Player 2 (' + escHtml(data.p2_ip || p2) + '): <b>' + escHtml(data.p2_formatted) + '</b>';
                 if (data.qualified) {
-                    resDiv.style.background = 'rgba(16, 185, 129, 0.15)';
-                    resDiv.style.border = '1px solid rgba(16, 185, 129, 0.4)';
-                    resDiv.style.color = '#34d399';
-                    resDiv.innerHTML = '✅ <b>BOTH PLAYERS QUALIFIED FOR ' + (data.stake_minutes || mins) + 'm MATCH!</b><br>• Player 1 (' + (data.p1_ip || p1) + '): <b>' + data.p1_formatted + '</b><br>• Player 2 (' + (data.p2_ip || p2) + '): <b>' + data.p2_formatted + '</b>';
+                    showMatchResult('ok', '<b>Both players can stake ' + escHtml(data.stake_minutes || mins) + ' minutes.</b>' + lines);
                 } else {
-                    resDiv.style.background = 'rgba(239, 68, 68, 0.15)';
-                    resDiv.style.border = '1px solid rgba(239, 68, 68, 0.4)';
-                    resDiv.style.color = '#f87171';
-                    resDiv.innerHTML = '❌ <b>NOT QUALIFIED</b><br>• Player 1 (' + (data.p1_ip || p1) + '): <b>' + data.p1_formatted + '</b><br>• Player 2 (' + (data.p2_ip || p2) + '): <b>' + data.p2_formatted + '</b><br><i>' + (data.message || data.error || '') + '</i>';
+                    showMatchResult('bad', '<b>Not enough time to stake.</b>' + lines + '<br>' + escHtml(data.message || data.error || ''));
                 }
             } else {
-                resDiv.style.background = 'rgba(239, 68, 68, 0.15)';
-                resDiv.style.border = '1px solid rgba(239, 68, 68, 0.4)';
-                resDiv.style.color = '#f87171';
-                resDiv.innerHTML = '❌ ' + (data && data.error ? data.error : 'Error checking qualification.');
+                showMatchResult('bad', escHtml(data && data.error ? data.error : 'Could not check the players.'));
             }
-        }).catch(err => {
-            resDiv.style.background = 'rgba(239, 68, 68, 0.15)';
-            resDiv.style.border = '1px solid rgba(239, 68, 68, 0.4)';
-            resDiv.style.color = '#f87171';
-            resDiv.innerHTML = '❌ Network request failed: ' + err;
-        });
+        }).catch(err => showMatchResult('bad', 'Could not reach the box: ' + escHtml(err)));
 };
 
 window.toggle1v1MatchBox = function() {
-    var content = document.getElementById('match_collapsible_content');
-    var btn = document.getElementById('match_toggle_btn');
-    var header = document.getElementById('match_card_header');
+    const content = document.getElementById('match_collapsible_content');
+    const btn = document.getElementById('match_toggle_btn');
     if (!content) return;
-    if (content.style.display === 'none' || content.style.display === '') {
-        content.style.display = 'block';
-        if (header) header.style.marginBottom = '16px';
-        if (btn) {
-            btn.innerHTML = '▲ Close 1v1 Setup';
-            btn.style.background = 'transparent';
-            btn.style.border = '1px solid var(--border)';
-            btn.style.color = 'var(--text-muted)';
-            btn.style.boxShadow = 'none';
-        }
-    } else {
-        content.style.display = 'none';
-        if (header) header.style.marginBottom = '0px';
-        if (btn) {
-            btn.innerHTML = '⚔️ Activate 1v1 Mode';
-            btn.style.background = 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)';
-            btn.style.border = 'none';
-            btn.style.color = '#fff';
-            btn.style.boxShadow = '0 2px 10px rgba(139,92,246,0.3)';
-        }
-    }
+    const open = content.classList.toggle('hidden') === false;
+    if (btn) btn.innerHTML = open ? ic('x') + 'Close' : ic('users') + 'Start a match';
 };

@@ -6,7 +6,7 @@
 2. **Test order** (serial monitor at 115200 baud):
    1. The box boots with the default password `Coinslot@Setup` for the admin login (`admin`) and joins the hidden `PisoCoinBox` Wi-Fi (password `PisoCoinBox@Setup`) that the router setup creates; it has no access point of its own. No serial monitor is needed (`setup/README.md`).
    2. Open the dashboard and change the admin password (at least 8 characters, not the default), then connect Wi-Fi. **The box accepts no coins until you do.**
-   3. Provision a phone with the dashboard's **Install & Provision** link, then reboot the phone: the box must still be reachable.
+   3. Provision a phone with the dashboard's **Set up a phone** link, then reboot the phone: the box must still be reachable.
    4. Insert coins: time is added once per coin. Cut the box's power mid-session: no coin lost or doubled.
    5. Drop the Wi-Fi between a coin and its acknowledgement: the box retries and the phone credits it once.
    6. Router (`setup/README.md`), only after the above.

@@ -109,7 +109,7 @@ It has every password (router, PisoKiosk Wi-Fi, coin box admin). The setup also 
 The router needs internet for this: while the site is offline nothing can be sent, and alerts raised in that time are not delivered later (the dead-man switch covers that case).
 
 ## Step 5: set up each rental phone (QR code, or USB as the fallback)
-Open the box's page, click **Install & Provision** for the slot, and type the **PisoKiosk** Wi-Fi password (from
+Open the box's page, click **Set up a phone** for the slot, and type the **PisoKiosk** Wi-Fi password (from
 `piso-setup summary`; the page remembers it on that computer). Then:
 
 **QR code (recommended; USB only for the phones that need it):**

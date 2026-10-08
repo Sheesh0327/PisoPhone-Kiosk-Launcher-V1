@@ -23,7 +23,7 @@
                     clearInterval(saSessionTimerInterval);
                     saSessionTimerInterval = null;
                     lockSuperAdmin();
-                    alert('⏳ Super Admin session expired (5-minute limit reached). Logged out automatically.');
+                    notify('Vendor mode locked itself after 5 minutes.');
                 } else {
                     updateSessionTimerDisplay();
                 }
@@ -41,7 +41,7 @@
 
         function unlockSuperAdmin() {
             const pw = document.getElementById('sa_login_pw').value || saToken;
-            if (!pw) { alert('Please enter Super Admin password.'); return; }
+            if (!pw) { notify('Enter the vendor password.', 'bad'); return; }
             
             fetch('/api/superadmin/auth', {
                 method: 'POST',
@@ -53,8 +53,8 @@
                 if (data.status === 'ok') {
                     saToken = pw;
                     localStorage.setItem('sa_token', pw);
-                    document.getElementById('sa_auth_gate').style.display = 'none';
-                    document.getElementById('sa_main_console').style.display = 'block';
+                    document.getElementById('sa_auth_gate').classList.add('hidden');
+                    document.getElementById('sa_main_console').classList.remove('hidden');
                     saVaultTotal = data.total_coins || 0;
                     saSessionTotal = data.session_coins || 0;
                     saVendorSplit = data.vendor_split || 50;
@@ -69,10 +69,10 @@
                     }
                 } else {
                     lockSuperAdmin();
-                    alert('❌ ' + (data.message || 'Incorrect Super Admin password.'));
+                    notify(data.message || 'That vendor password is not correct.', 'bad');
                 }
             })
-            .catch(err => alert('Auth error: ' + err));
+            .catch(err => notify('Could not reach the box: ' + err, 'bad'));
         }
 
         function lockSuperAdmin() {
@@ -84,19 +84,18 @@
             if (saSessionTimerInterval) clearInterval(saSessionTimerInterval);
             saTimerInterval = null;
             saSessionTimerInterval = null;
-            document.getElementById('sa_auth_gate').style.display = 'block';
-            document.getElementById('sa_main_console').style.display = 'none';
+            document.getElementById('sa_auth_gate').classList.remove('hidden');
+            document.getElementById('sa_main_console').classList.add('hidden');
             document.getElementById('sa_login_pw').value = '';
         }
 
         function promptUnmaskVault() {
-            if (!saToken) { alert('Please authenticate first.'); return; }
+            if (!saToken) { notify('Unlock vendor mode first.', 'bad'); return; }
             
             const confirmed = confirm(
-                '⚠️ INITIATE COIN RETRIEVAL?\n\n' +
-                'Unmasking the vault initiates a 5-minute retrieval window.\n' +
-                'The coin vault counter will automatically reset to ₱0 after 5 minutes (or upon logout) to verify physical collection.\n\n' +
-                'Do you want to proceed?'
+                'Start collecting revenue?\n\n' +
+                'This shows the revenue counter and opens a 5-minute window. ' +
+                'The counter resets to ₱0 when the window ends or you lock the page, to confirm the coins were taken out.'
             );
             
             if (!confirmed) return;
@@ -115,27 +114,27 @@
                     showUnmaskedVault(data.timeout_seconds || 300);
                     calculateSplit();
                 } else {
-                    alert('❌ ' + (data.message || 'Failed to unmask vault.'));
+                    notify(data.message || 'Could not show the revenue.', 'bad');
                 }
             })
-            .catch(err => alert('Unmask error: ' + err));
+            .catch(err => notify('Could not reach the box: ' + err, 'bad'));
         }
 
         function showMaskedVault() {
-            document.getElementById('sa_masked_box').style.display = 'block';
-            document.getElementById('sa_unmasked_box').style.display = 'none';
-            document.getElementById('sa_vault_status_badge').textContent = '🔒 MASKED (STANDBY)';
-            document.getElementById('sa_vault_status_badge').style.background = 'rgba(245, 158, 11, 0.2)';
-            document.getElementById('sa_vault_status_badge').style.color = '#f59e0b';
+            document.getElementById('sa_masked_box').classList.remove('hidden');
+            document.getElementById('sa_unmasked_box').classList.add('hidden');
+            const badge = document.getElementById('sa_vault_status_badge');
+            badge.textContent = 'Hidden';
+            badge.className = 'tag warn';
             if (saTimerInterval) clearInterval(saTimerInterval);
         }
 
         function showUnmaskedVault(secondsRemaining) {
-            document.getElementById('sa_masked_box').style.display = 'none';
-            document.getElementById('sa_unmasked_box').style.display = 'block';
-            document.getElementById('sa_vault_status_badge').textContent = '🔓 UNMASKED (ACTIVE)';
-            document.getElementById('sa_vault_status_badge').style.background = 'rgba(239, 68, 68, 0.2)';
-            document.getElementById('sa_vault_status_badge').style.color = 'var(--danger)';
+            document.getElementById('sa_masked_box').classList.add('hidden');
+            document.getElementById('sa_unmasked_box').classList.remove('hidden');
+            const badge = document.getElementById('sa_vault_status_badge');
+            badge.textContent = 'Shown';
+            badge.className = 'tag bad';
             
             saRemainingSeconds = secondsRemaining;
             startCountdownTimer();
@@ -150,7 +149,7 @@
                 saRemainingSeconds--;
                 if (saRemainingSeconds <= 0) {
                     clearInterval(saTimerInterval);
-                    alert('⏳ 5-Minute retrieval window expired. Coin vault counter has reset to ₱0.');
+                    notify('The collection window ended. The revenue counter was reset to ₱0.');
                     saVaultTotal = 0;
                     saSessionTotal = 0;
                     showMaskedVault();
@@ -177,7 +176,7 @@
         }
 
         function confirmResetVaultNow() {
-            if (!confirm('✅ Finish coin collection and reset vault counter to ₱0 now?')) return;
+            if (!confirm('Finish collecting and reset the revenue counter to ₱0 now?')) return;
             
             fetch('/api/superadmin/reset_vault', {
                 method: 'POST',
@@ -187,17 +186,17 @@
             .then(res => res.json())
             .then(data => {
                 if (data.status === 'ok') {
-                    alert('✅ Coin collection completed! Vault reset to ₱0.');
+                    notify('Collection finished. The revenue counter is back to ₱0.');
                     saVaultTotal = 0;
                     saSessionTotal = 0;
                     showMaskedVault();
                     calculateSplit();
                     window.location.reload();
                 } else {
-                    alert('❌ ' + (data.message || 'Reset failed.'));
+                    notify(data.message || 'Could not reset the counter.', 'bad');
                 }
             })
-            .catch(err => alert('Reset error: ' + err));
+            .catch(err => notify('Could not reach the box: ' + err, 'bad'));
         }
 
         function setSplitPercent(val) {
@@ -211,7 +210,7 @@
             saVendorSplit = parseInt(val, 10);
             const opSplit = 100 - saVendorSplit;
             const lbl = document.getElementById('sa_split_label');
-            if (lbl) lbl.textContent = saVendorSplit + '% Vendor / ' + opSplit + '% Operator';
+            if (lbl) lbl.textContent = saVendorSplit + '% vendor / ' + opSplit + '% operator';
             calculateSplit();
         }
 
@@ -227,14 +226,14 @@
             if (opEl) opEl.textContent = '₱' + operatorPayout;
             
             const vsSub = document.getElementById('sa_vendor_share_sub');
-            if (vsSub) vsSub.textContent = saVendorSplit + '% of vault';
+            if (vsSub) vsSub.textContent = saVendorSplit + '% of revenue';
             
             const osSub = document.getElementById('sa_operator_share_sub');
-            if (osSub) osSub.textContent = opSplit + '% of vault';
+            if (osSub) osSub.textContent = opSplit + '% of revenue';
         }
 
         function saveDefaultSplit() {
-            if (!saToken) { alert('Please authenticate first.'); return; }
+            if (!saToken) { notify('Unlock vendor mode first.', 'bad'); return; }
             
             fetch('/api/superadmin/save_split', {
                 method: 'POST',
@@ -243,10 +242,10 @@
             })
             .then(res => res.json())
             .then(data => {
-                if (data.status === 'ok') alert('✅ Default split saved: ' + saVendorSplit + '% Vendor');
-                else alert('❌ ' + (data.message || 'Failed to save split.'));
+                if (data.status === 'ok') notify('Default split saved: ' + saVendorSplit + '% vendor.');
+                else notify(data.message || 'Could not save the split.', 'bad');
             })
-            .catch(err => alert('Error: ' + err));
+            .catch(err => notify('Could not reach the box: ' + err, 'bad'));
         }
 
         function copySplitReceipt() {
@@ -255,18 +254,15 @@
             const operatorPayout = (saVaultTotal * (opSplit / 100.0)).toFixed(2);
             const d = new Date().toLocaleString();
             
-            const text = '==============================\n' +
-                         '🧾 PISOPHONE REVENUE COLLECTION\n' +
-                         '==============================\n' +
-                         'Date/Time: ' + d + '\n' +
-                         'Total Vault Collected: ₱' + saVaultTotal + '\n' +
-                         '------------------------------\n' +
-                         '👑 Vendor Share (' + saVendorSplit + '%): ₱' + vendorPayout + '\n' +
-                         '🏪 Operator Share (' + opSplit + '%): ₱' + operatorPayout + '\n' +
-                         '==============================';
+            const text = 'PISOPHONE REVENUE COLLECTION\n' +
+                         '----------------------------\n' +
+                         'Date/time: ' + d + '\n' +
+                         'Total collected: ₱' + saVaultTotal + '\n' +
+                         'Vendor share (' + saVendorSplit + '%): ₱' + vendorPayout + '\n' +
+                         'Operator share (' + opSplit + '%): ₱' + operatorPayout;
             
             navigator.clipboard.writeText(text).then(() => {
-                alert('📋 Payout receipt copied to clipboard!\n\n' + text);
+                notify('Receipt copied.');
             }).catch(() => {
                 prompt('Copy receipt below:', text);
             });
@@ -277,7 +273,7 @@
             if (saToken) {
                 if (saSessionExpiry && Date.now() >= saSessionExpiry) {
                     lockSuperAdmin();
-                    alert('⏳ Super Admin session expired after 5 minutes. Logged out automatically.');
+                    notify('Vendor mode locked itself after 5 minutes.');
                 } else {
                     document.getElementById('sa_login_pw').value = saToken;
                     unlockSuperAdmin();

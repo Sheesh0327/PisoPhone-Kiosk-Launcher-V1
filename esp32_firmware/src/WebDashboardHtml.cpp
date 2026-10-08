@@ -1,6 +1,7 @@
 #include "WebDashboardHtml.h"
 #include "WebAssetServer.h"
 #include "SuperAdminTemplate.h"
+#include "WebDashboardIcons.h"
 #include "WebDashboardModals.h"
 #include "WebDashboardTemplate.h"
 #include "SuperAdminManager.h"
@@ -11,6 +12,20 @@
 #include <WiFi.h>
 
 extern WebServer webServer;
+
+String escapeHtmlText(String s) {
+    s.replace("&", "&amp;");
+    s.replace("<", "&lt;");
+    s.replace(">", "&gt;");
+    s.replace("\"", "&quot;");
+    s.replace("'", "&#39;");
+    return s;
+}
+
+String noteHtml(const char* kind, const char* icon, const String& html) {
+    return String("<div class=\"note ") + kind + "\"><svg class=\"ic\"><use href=\"#i-" + icon +
+           "\"/></svg><span class=\"grow\">" + html + "</span></div>";
+}
 
 static int getWifiQuality(int rssi) {
     if (rssi <= -100) return 0;
@@ -31,7 +46,6 @@ static String getPlaceholderValue(const String& tag) {
     if (tag == "TOTAL_COINS") return String(totalCoinsLifetime);
     if (tag == "SESSION_COINS") return String(totalCoinsSession);
     if (tag == "DEVICE_OPTIONS") return renderDeviceOptions("");
-    if (tag == "DEVICE_IPS_CONTAINER") return renderDeviceIpInputs();
     if (tag == "LED_ACTIVE_LOW_SELECTED") return ledActiveLow ? "selected" : "";
     if (tag == "LED_ACTIVE_HIGH_SELECTED") return !ledActiveLow ? "selected" : "";
     if (tag == "RELAY_HIGH_SELECTED") return !relayActiveLow ? "selected" : "";
@@ -52,7 +66,6 @@ static String getPlaceholderValue(const String& tag) {
     if (tag == "DEVICE_SLOTS_MANAGER") return renderLicenseSlotsHtml();
     if (tag == "MAX_SLOTS") return String(maxLicensedSlots);
     if (tag == "MAX_SUPPORTED_SLOTS") return String(MAX_SUPPORTED_SLOTS);
-    if (tag == "SLOT_OPTIONS") return renderSlotOptions();
     if (tag == "ASSET_V_PORTAL_CSS") return webAssetVersion("portal.css");
     if (tag == "ASSET_V_PORTAL_CORE") return webAssetVersion("portal-core.js");
     if (tag == "ASSET_V_PORTAL_MODALS") return webAssetVersion("portal-modals.js");
@@ -82,58 +95,34 @@ static String getPlaceholderValue(const String& tag) {
     }
 
     if (tag == "MATCH_CARD_CLASS") {
-        return matchActive ? "match-active-card" : "";
-    }
-
-    if (tag == "MATCH_CARD_STYLE") {
-        return matchActive
-                   ? "border: 2px solid #8b5cf6; background: linear-gradient(135deg, rgba(139, 92, 246, 0.12) 0%, rgba(15, 23, 42, 0.95) 100%); box-shadow: 0 0 25px rgba(139, 92, 246, 0.25);"
-                   : "";
+        return matchActive ? "live" : "";
     }
 
     if (tag == "MATCH_STATUS_BADGE") {
-        if (matchActive) {
-            return "<span class=\"status-badge\" style=\"background:#8b5cf6; color:#ffffff; border-color:#a78bfa;\">⚔️ ARENA ACTIVE</span>";
-        } else {
-            return "<span class=\"status-badge accent\">ESPORTS</span>";
-        }
+        return matchActive ? "<span class=\"tag accent\">Live</span>" : "";
     }
 
-    if (tag == "MATCH_HEADER_MARGIN") {
-        return matchActive ? "16px" : "0px";
-    }
-
-    if (tag == "MATCH_CONTENT_DISPLAY") {
-        return matchActive ? "display: block;" : "display: none;";
+    if (tag == "MATCH_CONTENT_CLASS") {
+        return matchActive ? "" : "hidden";
     }
 
     if (tag == "MATCH_HEADER_ACTION") {
-        if (!matchActive) {
-            return "<button type=\"button\" id=\"match_toggle_btn\" onclick=\"toggle1v1MatchBox()\" class=\"btn btn-primary\" style=\"background:linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);border:none;color:#fff;font-weight:700;padding:8px 18px;border-radius:8px;font-size:13px;box-shadow:0 2px 10px rgba(139,92,246,0.3);\">⚔️ Activate 1v1 Mode</button>";
-        } else {
-            return "<span class=\"status-badge\" style=\"background:linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%); color:#ffffff; font-weight:bold; border-color:#a78bfa;\">⚔️ LIVE DUEL IN PROGRESS</span>";
-        }
+        if (matchActive) return "";
+        return "<button type=\"button\" id=\"match_toggle_btn\" onclick=\"toggle1v1MatchBox()\" class=\"btn sm\">"
+               "<svg class=\"ic\"><use href=\"#i-users\"/></svg>Start a match</button>";
     }
 
     if (tag == "MATCH_CONTROLS") {
-        String html = "";
+        String html = "<div class=\"actions\">";
         if (!matchActive) {
-            html += "<div style=\"display:flex;gap:12px;flex-wrap:wrap;margin-top:12px;align-items:center;\">";
             html +=
-                "<button type=\"submit\" name=\"action\" value=\"activate\" class=\"btn btn-primary\" style=\"background:linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);border:none;color:#fff;font-weight:700;padding:10px 20px;border-radius:8px;\">⚔️ Start 1v1 Match</button>";
-            html +=
-                "<button type=\"button\" onclick=\"checkMatchQualification()\" class=\"btn btn-outline\" style=\"border-color:var(--primary);color:var(--primary);\">🔍 Check Qualification</button>";
-            html +=
-                "<button type=\"button\" onclick=\"toggle1v1MatchBox()\" class=\"btn btn-outline\" style=\"margin-left:auto;\">Close</button>";
-            html += "</div>";
+                "<button type=\"submit\" name=\"action\" value=\"activate\" class=\"btn primary\">Start match</button>";
         } else {
-            html += "<div style=\"display:flex;gap:12px;flex-wrap:wrap;margin-top:12px;align-items:center;\">";
-            html +=
-                "<button type=\"submit\" name=\"action\" value=\"cancel\" class=\"btn btn-outline\" style=\"border-color:#ef4444;color:#ef4444;font-weight:700;\">❌ End / Cancel Match</button>";
-            html +=
-                "<button type=\"button\" onclick=\"checkMatchQualification()\" class=\"btn btn-outline\" style=\"border-color:var(--primary);color:var(--primary);\">🔍 Check Qualification</button>";
-            html += "</div>";
+            html += "<button type=\"submit\" name=\"action\" value=\"cancel\" class=\"btn danger\">End match</button>";
         }
+        html += "<button type=\"button\" onclick=\"checkMatchQualification()\" class=\"btn\">"
+                "<svg class=\"ic\"><use href=\"#i-search\"/></svg>Check both phones</button>";
+        html += "</div>";
         return html;
     }
 
@@ -144,9 +133,10 @@ static String getPlaceholderValue(const String& tag) {
             return alert;
         }
         if (matchActive) {
-            return "<div style='background:rgba(234, 88, 12, 0.15);border:1px solid #f97316;color:#fdba74;padding:12px 16px;border-radius:8px;margin-bottom:12px;font-size:13px;line-height:1.5;'>⚔️ <b>1v1 Arena Mode Active!</b><br>⚠️ <b>Warning:</b> Time credits are at stake (<b>" +
+            return "<div class=\"note warn\"><svg class=\"ic\"><use href=\"#i-alert\"/></svg><span class=\"grow\"><b>A match is on.</b> "
+                   "Both players staked " +
                    String(matchMinutes) +
-                   " minutes</b>). The loser will forfeit their stake to the winner upon match completion.</div>";
+                   " minutes. The loser's stake goes to the winner when the match ends.</span></div>";
         }
         return "";
     }
@@ -196,7 +186,9 @@ static void streamProgmemContent(const char* p) {
                     chunkLen = 0;
                 }
 
-                if (isTagMatch(tagStart, "SUPER_ADMIN_TAB")) {
+                if (isTagMatch(tagStart, "PORTAL_ICONS")) {
+                    webServer.sendContent_P(PORTAL_ICONS_HTML);
+                } else if (isTagMatch(tagStart, "SUPER_ADMIN_TAB")) {
                     // Straight from flash: no 25 KB String copy on the heap.
                     webServer.sendContent_P(SUPER_ADMIN_HTML);
                 } else if (isTagMatch(tagStart, "PORTAL_MODALS")) {
