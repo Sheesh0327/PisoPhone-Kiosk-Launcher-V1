@@ -110,7 +110,7 @@ void handleHeartbeat() {
         json += ",\"device_name\":\"" + jsonEsc(devName) + "\"";
     }
     if (slotIdx >= 0) {
-        json += ",\"slot_num\":" + String(licenseSlots[slotIdx].slotNum);
+        json += ",\"slot_num\":" + String(phoneSlots[slotIdx].slotNum);
     }
     if (!isActive) {
         json += ",\"is_paired\":true,\"slot_expired\":true,\"slot_status\":\"expired\",\"slot_warning\":false";

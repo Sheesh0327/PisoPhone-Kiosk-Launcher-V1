@@ -44,11 +44,11 @@ void handleAddTime() {
         int slotIdx = findSlotIndexForDevice(targetCfg.id, targetCfg.ip);
         bool isActive = isSlotActive(slotIdx);
         if (!isActive) {
-            Serial.printf("[-] handleAddTime blocked: Target device %s (Slot #%d) is EXPIRED!\n", targetIp.c_str(),
-                          (slotIdx >= 0) ? licenseSlots[slotIdx].slotNum : 0);
+            Serial.printf("[-] handleAddTime blocked: Target device %s (Slot #%d) is not paired\n", targetIp.c_str(),
+                          (slotIdx >= 0) ? phoneSlots[slotIdx].slotNum : 0);
             quickTimeStatusMsg = noteHtml("bad", "alert",
                                           "<b>Not changed.</b> " + escapeHtmlText(targetIp) +
-                                              " has no license for its slot. Add slots under Tools first.");
+                                              " is not paired to a slot. Pair it under Phone slots first.");
             redirectHome();
             return;
         }
@@ -100,20 +100,20 @@ void handleQueryTime() {
 
 void handleApiSlots() {
     if (!checkAdminAuth()) return;
-    String json = "{\"maxSlots\":" + String(maxLicensedSlots) + ",\"mac\":\"" + macAddressStr + "\",\"slots\":[";
-    for (int i = 0; i < maxLicensedSlots; i++) {
+    String json = "{\"maxSlots\":" + String(MAX_SUPPORTED_SLOTS) + ",\"mac\":\"" + macAddressStr + "\",\"slots\":[";
+    for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
         if (i > 0) json += ",";
         bool isActive = isSlotActive(i);
         bool isExpiredOrInactive = (!isActive);
         int expStatus = isActive ? 0 : 2;
 
         json += "{";
-        json += "\"slotNum\":" + String(licenseSlots[i].slotNum) + ",";
-        json += "\"deviceId\":\"" + jsonEsc(licenseSlots[i].deviceId) + "\",";
-        json += "\"ip\":\"" + jsonEsc(licenseSlots[i].ip) + "\",";
-        json += "\"name\":\"" + jsonEsc(licenseSlots[i].name) + "\",";
-        json += "\"active\":" + String(licenseSlots[i].active ? "true" : "false") + ",";
-        json += "\"isBound\":" + String(licenseSlots[i].deviceId.length() > 0 ? "true" : "false") + ",";
+        json += "\"slotNum\":" + String(phoneSlots[i].slotNum) + ",";
+        json += "\"deviceId\":\"" + jsonEsc(phoneSlots[i].deviceId) + "\",";
+        json += "\"ip\":\"" + jsonEsc(phoneSlots[i].ip) + "\",";
+        json += "\"name\":\"" + jsonEsc(phoneSlots[i].name) + "\",";
+        json += "\"active\":" + String(phoneSlots[i].active ? "true" : "false") + ",";
+        json += "\"isBound\":" + String(phoneSlots[i].deviceId.length() > 0 ? "true" : "false") + ",";
         json += "\"expStatus\":" + String(expStatus) + ",";
         json += "\"isExpiredOrInactive\":" + String(isExpiredOrInactive ? "true" : "false");
         json += "}";
@@ -129,7 +129,7 @@ void handleApiSlotPair() {
     String ip = webServer.hasArg("ip") ? webServer.arg("ip") : "";
     String name = webServer.hasArg("name") ? cleanName(webServer.arg("name")) : "";
 
-    if (slot < 1 || slot > maxLicensedSlots || id.length() == 0) {
+    if (slot < 1 || slot > MAX_SUPPORTED_SLOTS || id.length() == 0) {
         webServer.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid slot or device ID\"}");
         return;
     }
@@ -160,8 +160,8 @@ void handleApiSlotPairRequest() {
         devId = "DEV_" + reqIp;
     }
     bool pairedId = false;
-    for (int i = 0; i < maxLicensedSlots && devId.length() > 0; i++) {
-        if (licenseSlots[i].deviceId == devId) pairedId = true;
+    for (int i = 0; i < MAX_SUPPORTED_SLOTS && devId.length() > 0; i++) {
+        if (phoneSlots[i].deviceId == devId) pairedId = true;
     }
     if (!pairedId && (devId.length() > 0 || reqIp.length() > 0)) {
         updateDynamicDeviceList(devId, reqIp);
@@ -176,7 +176,7 @@ void handleApiSlotPairRequest() {
 void handleApiSlotUnpair() {
     if (!checkAdminAuth()) return;
     int slot = webServer.hasArg("slot") ? webServer.arg("slot").toInt() : 0;
-    if (slot < 1 || slot > maxLicensedSlots) {
+    if (slot < 1 || slot > MAX_SUPPORTED_SLOTS) {
         webServer.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid slot number\"}");
         return;
     }
@@ -187,24 +187,6 @@ void handleApiSlotUnpair() {
         webServer.send(200, "application/json", "{\"success\":true,\"slot\":" + String(slot) + "}");
     } else {
         webServer.send(500, "application/json", "{\"success\":false,\"error\":\"Failed to unpair\"}");
-    }
-}
-
-void handleApiSlotApplyToken() {
-    if (!checkAdminAuth()) return;
-    String token = webServer.hasArg("token") ? webServer.arg("token") : "";
-    if (token.length() == 0) {
-        webServer.send(400, "application/json", "{\"success\":false,\"error\":\"Missing token\"}");
-        return;
-    }
-
-    bool ok = applySlotToken(token);
-    if (ok) {
-        sendCloudSnapshot();
-        webServer.send(200, "application/json", "{\"success\":true,\"maxSlots\":" + String(maxLicensedSlots) + "}");
-    } else {
-        webServer.send(403, "application/json",
-                       "{\"success\":false,\"error\":\"Invalid slot token or cryptographic signature mismatch\"}");
     }
 }
 
@@ -266,14 +248,14 @@ void handleApiStatus() {
     json += "\"devices\":[";
 
     bool first = true;
-    for (int i = 0; i < maxLicensedSlots; i++) {
+    for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
         if (!first) json += ",";
         first = false;
 
-        int sNum = licenseSlots[i].slotNum;
-        String devId = licenseSlots[i].deviceId;
-        String ip = licenseSlots[i].ip;
-        String name = licenseSlots[i].name.length() > 0 ? licenseSlots[i].name : ("PisoPhone " + String(sNum));
+        int sNum = phoneSlots[i].slotNum;
+        String devId = phoneSlots[i].deviceId;
+        String ip = phoneSlots[i].ip;
+        String name = phoneSlots[i].name.length() > 0 ? phoneSlots[i].name : ("PisoPhone " + String(sNum));
         if (name == devId || name.startsWith("Terminal") || (devId.length() > 0 && name.indexOf(devId) != -1)) {
             name = "PisoPhone " + String(sNum);
         }
@@ -301,9 +283,9 @@ void handleApiStatus() {
         json += "\"online\":" + String(online ? "true" : "false") + ",";
         json += "\"battery\":" + String(bat) + ",";
         json += "\"charging\":" + String(chg ? "true" : "false") + ",";
-        json += "\"active\":" + String(licenseSlots[i].active ? "true" : "false") + ",";
-        json += "\"expStatus\":" + String(licenseSlots[i].active ? 0 : 2) + ",";
-        json += "\"isExpiredOrInactive\":" + String(!licenseSlots[i].active ? "true" : "false");
+        json += "\"active\":" + String(phoneSlots[i].active ? "true" : "false") + ",";
+        json += "\"expStatus\":" + String(phoneSlots[i].active ? 0 : 2) + ",";
+        json += "\"isExpiredOrInactive\":" + String(!phoneSlots[i].active ? "true" : "false");
         json += "}";
     }
     json += "],\"unassigned_devices\":[";
@@ -361,8 +343,8 @@ void handleIdentify() {
         devId = "DEV_" + reqIp;
     }
     bool pairedId = false;
-    for (int i = 0; i < maxLicensedSlots && devId.length() > 0; i++) {
-        if (licenseSlots[i].deviceId == devId) pairedId = true;
+    for (int i = 0; i < MAX_SUPPORTED_SLOTS && devId.length() > 0; i++) {
+        if (phoneSlots[i].deviceId == devId) pairedId = true;
     }
     if (!pairedId && reqIp.length() > 0 && reqIp != "127.0.0.1" && reqIp != "0.0.0.0") {
         updateDynamicDeviceList(devId, reqIp);

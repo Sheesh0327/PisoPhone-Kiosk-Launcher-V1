@@ -60,12 +60,10 @@ static String getPlaceholderValue(const String& tag) {
     }
 
     if (tag == "MAC_ADDRESS") return macAddressStr;
-    if (tag == "BOX_CODE") return getBoxMachineCode();
     // In legacy mode phones still use the old key, so provisioning links carry no secret until the box is switched.
     if (tag == "SHARED_SECRET") return isLegacyKeyMode() ? String("") : getBoxSecret();
-    if (tag == "DEVICE_SLOTS_MANAGER") return renderLicenseSlotsHtml();
-    if (tag == "MAX_SLOTS") return String(maxLicensedSlots);
-    if (tag == "MAX_SUPPORTED_SLOTS") return String(MAX_SUPPORTED_SLOTS);
+    if (tag == "DEVICE_SLOTS_MANAGER") return renderPhoneSlotsHtml();
+    if (tag == "MAX_SLOTS") return String(MAX_SUPPORTED_SLOTS);
     if (tag == "ASSET_V_PORTAL_CSS") return webAssetVersion("portal.css");
     if (tag == "ASSET_V_PORTAL_CORE") return webAssetVersion("portal-core.js");
     if (tag == "ASSET_V_PORTAL_MODALS") return webAssetVersion("portal-modals.js");

@@ -5,8 +5,8 @@ can do, in order, before a build goes to shops.
 
 ## 1. Owner keys (once; on your own computer, never in CI or a cloud session)
 - [ ] `python3 scripts/make_owner_keys.py`, commit the public key it writes into `esp32_firmware/include/LicensePubKey.h`
-      **and** `tools/pisoportal/owner_key.b64` (`docs/KEYS.md`). Until then boxes accept **unsigned firmware updates** and the
-      old shared-secret license keys (the production firmware builds in CI show a warning), and routers install **no** update
+      **and** `tools/pisoportal/owner_key.b64` (`docs/KEYS.md`). Until then boxes accept **unsigned firmware updates**
+      (the production firmware builds in CI show a warning), and routers install **no** update
       from the website at all (they fail closed). Let CI build the router program once more after committing the key (it does
       so on every push), and install that setup file on each router by hand this one time: the key is inside the program.
 - [ ] `python3 scripts/superadmin_credentials.py keygen --private <file>` for `SuperAdminPubKey.h`

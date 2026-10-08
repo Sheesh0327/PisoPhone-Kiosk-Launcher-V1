@@ -4,6 +4,6 @@
 #include <Arduino.h>
 
 String renderDeviceOptions(String selectedIp);
-String renderLicenseSlotsHtml();
+String renderPhoneSlotsHtml();
 
 #endif // WEB_DASHBOARD_COMPONENTS_H

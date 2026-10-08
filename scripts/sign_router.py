@@ -3,7 +3,7 @@
 Signs a router update so every router will install it (owner only; run on your own computer; needs `pip install cryptography`).
 
 The router's one-file setup (setup/piso-setup.sh, built by CI together with the portal program) is what a router installs from.
-This tool signs that file with the same offline owner key that signs licenses and firmware, and writes the two files the
+This tool signs that file with the same offline owner key that signs firmware, and writes the two files the
 routers fetch from the website:
 
   website/update/router-setup.sh   the setup file, byte for byte
@@ -31,7 +31,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
-import generate_license as gl  # noqa: E402  (shared key loading)
+import owner_key  # noqa: E402  (shared key loading)
 
 MAX_SIZE = 4 * 1024 * 1024  # what a router accepts (tools/pisoportal/src/update.rs)
 DEFAULT_SETUP = os.path.join(ROOT, "setup", "piso-setup.sh")
@@ -48,7 +48,7 @@ def release_of(data):
 
 
 def make_manifest(private_key, data, rollout, changelog=""):
-    hashes, _, ec = gl._crypto()
+    hashes, _, ec = owner_key._crypto()
     version = release_of(data)
     if not version:
         raise ValueError("this is not a router setup file (no PISO_RELEASE='x.y.z' line): build it with tools/build_piso_setup.py")
@@ -77,7 +77,7 @@ def main():
     try:
         with open(args.setup, "rb") as f:
             data = f.read()
-        manifest = make_manifest(gl.load_private(args.private), data, args.rollout, args.changelog)
+        manifest = make_manifest(owner_key.load_private(args.private), data, args.rollout, args.changelog)
     except (ValueError, OSError) as e:
         sys.exit(f"Error: {e}")
     os.makedirs(args.out_dir, exist_ok=True)

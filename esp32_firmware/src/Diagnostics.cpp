@@ -168,12 +168,12 @@ String diagBuildJson() {
     coin["unpersisted_payments"] = hasUnpersistedPayments();
 
     JsonArray slots = doc.createNestedArray("slots");
-    for (int i = 0; i < maxLicensedSlots; i++) {
+    for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
         JsonObject s = slots.createNestedObject();
-        s["slot"] = licenseSlots[i].slotNum;
-        s["active"] = licenseSlots[i].active;
-        s["paired"] = licenseSlots[i].deviceId.length() > 0;
-        s["ip"] = licenseSlots[i].ip;
+        s["slot"] = phoneSlots[i].slotNum;
+        s["active"] = phoneSlots[i].active;
+        s["paired"] = phoneSlots[i].deviceId.length() > 0;
+        s["ip"] = phoneSlots[i].ip;
     }
 
     JsonObject counters = doc.createNestedObject("counters");

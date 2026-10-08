@@ -10,7 +10,7 @@ sell Wi-Fi time through an OpenWrt/openNDS router. Three parts plus a router add
 | `website/` | The PisoPhone website: the coin box flasher (`flash.html`), the phone setup page (QR code, or USB as the fallback), the router installer and the update feeds (`website/update`). |
 | `router/` + `tools/pisoportal/` | Router add-on: `pisoportal` (resident Rust program: coin page over WebSocket, openNDS FAS), Telegram monitor; installed by `setup/piso-setup.sh`. |
 | `setup/` | Setting up a site: `pisophone_setup.py` (the setup program, run on a computer) and the router setup it drives. |
-| `protocol/`, `scripts/` | Shared test vectors; owner tools (keys, licenses, firmware signing, checks). |
+| `protocol/`, `scripts/` | Shared test vectors; owner tools (keys, firmware signing, checks). |
 
 ```
 coins -> ESP32 box <-- Wi-Fi (signed + encrypted) --> phone kiosk app
@@ -26,7 +26,7 @@ setup page, and testing a coin. The guide: [`setup/README.md`](setup/README.md);
 
 ## How it stays safe
 Each box has its own secret (provisioned to its phones, wrapped in the Android Keystore). Payments are kept in a flash queue on the
-box until the phone acknowledges them, and the phone credits each transaction id exactly once. Licenses and firmware updates are
+box until the phone acknowledges them, and the phone credits each transaction id exactly once. Firmware and router updates are
 signed with your offline owner key. Details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/KEYS.md`](docs/KEYS.md).
 
 ## Build and test
@@ -52,7 +52,7 @@ CI (GitHub Actions, `.github/workflows/`) runs all of this on every push, only f
 | [`docs/DEPLOY.md`](docs/DEPLOY.md) | First run, CI, where APKs and firmware are published |
 | [`docs/RELEASE.md`](docs/RELEASE.md) | Release checklist: the owner-only steps before a build goes to shops |
 | [`docs/REAL_WORLD_TESTING.md`](docs/REAL_WORLD_TESTING.md) | Hardware test checklist and issue log |
-| [`docs/KEYS.md`](docs/KEYS.md) | Owner key, licenses, signed firmware, per-box secrets and migration |
+| [`docs/KEYS.md`](docs/KEYS.md) | Owner key, signed firmware, per-box secrets and migration |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | How a coin becomes time; who talks to whom; where code lives |
 | [`docs/PROVISIONING_SOLD_UNIT.md`](docs/PROVISIONING_SOLD_UNIT.md) | Secure boot and flash encryption for boxes you sell |
 | [`docs/api/`](docs/api) | Router gateway API and super-admin credential format |

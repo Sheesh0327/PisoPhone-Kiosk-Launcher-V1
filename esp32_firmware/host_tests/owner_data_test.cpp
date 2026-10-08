@@ -44,7 +44,6 @@ struct TypedStore {
 
 int main() {
     TypedStore s;
-    s.putInt("max_slots", 4);
     s.putUInt("total_coins", 12345);
     s.putUInt("earn_c", 1234500);
     s.putInt("vendor_split", 35);
@@ -57,10 +56,9 @@ int main() {
 
     ownerdata::Snapshot snap = ownerdata::capture(s);
     s.clear(); // what Preferences::clear() does in a factory reset
-    CHECK(!s.isKey("max_slots") && !s.isKey("earn_c"));
+    CHECK(!s.isKey("earn_c"));
     ownerdata::restore(s, snap);
 
-    CHECK(s.getInt("max_slots", 0) == 4);        // the license survives
     CHECK(s.getUInt("total_coins", 0) == 12345); // lifetime revenue survives
     CHECK(s.getUInt("earn_c", 0) == 1234500);
     CHECK(s.getInt("vendor_split", 0) == 35); // the vendor split survives
@@ -68,10 +66,10 @@ int main() {
     CHECK(s.getUInt("sa_iter", 0) == 10000 && s.getUInt("sa_ver", 0) == 2);
     CHECK(!s.isKey("wifi_ssid") && !s.isKey("admin_pw")); // operator settings are gone
 
-    // a box that never had a license/revenue/super-admin set restores nothing and invents nothing
+    // a box that never had revenue/super-admin set restores nothing and invents nothing
     TypedStore empty;
     ownerdata::restore(empty, ownerdata::capture(empty));
-    CHECK(!empty.isKey("max_slots") && !empty.isKey("vendor_split") && !empty.isKey("sa_ver"));
+    CHECK(!empty.isKey("vendor_split") && !empty.isKey("sa_ver"));
 
     // an incomplete super-admin set (power cut while it was being written) is not carried over
     TypedStore partial;

@@ -1,4 +1,4 @@
-// Tracks phones the box knows about: licensed slots, live telemetry (time left, battery, state)
+// Tracks phones the box knows about: phone slots, live telemetry (time left, battery, state)
 // and replay protection for signed requests. Telemetry is only updated by heartbeats for time/state;
 // other calls (identify, pair_request) must not overwrite it.
 
@@ -31,26 +31,26 @@ static DeviceTelemetry* findTrackedDevice(const String& ip, const String& devId)
 // SLOT MANAGEMENT & PAIRING
 // ============================================================================
 bool pairDeviceToSlot(int slotNum, String devId, String ip, String name) {
-    if (slotNum < 1 || slotNum > maxLicensedSlots) return false;
+    if (slotNum < 1 || slotNum > MAX_SUPPORTED_SLOTS) return false;
     int targetIdx = slotNum - 1;
     devId.trim();
     ip.trim();
 
     // Clear devId from any other slot to avoid duplicates
-    for (int i = 0; i < maxLicensedSlots; i++) {
-        if (i != targetIdx && licenseSlots[i].deviceId.length() > 0 && licenseSlots[i].deviceId == devId) {
-            licenseSlots[i].deviceId = "";
-            licenseSlots[i].ip = "";
+    for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
+        if (i != targetIdx && phoneSlots[i].deviceId.length() > 0 && phoneSlots[i].deviceId == devId) {
+            phoneSlots[i].deviceId = "";
+            phoneSlots[i].ip = "";
         }
     }
 
-    licenseSlots[targetIdx].deviceId = devId;
-    if (ip.length() > 0) licenseSlots[targetIdx].ip = ip;
+    phoneSlots[targetIdx].deviceId = devId;
+    if (ip.length() > 0) phoneSlots[targetIdx].ip = ip;
     String slotName = "PisoPhone " + String(slotNum);
-    licenseSlots[targetIdx].name = slotName;
-    licenseSlots[targetIdx].active = true;
+    phoneSlots[targetIdx].name = slotName;
+    phoneSlots[targetIdx].active = true;
 
-    saveSlotLicenses();
+    saveSlots();
     Serial.printf("[+] Paired device %s (%s) to Slot #%d -> '%s'\n", devId.c_str(), ip.c_str(), slotNum,
                   slotName.c_str());
 
@@ -68,15 +68,15 @@ int findSlotIndexForDevice(String devId, String ip) {
     ip.trim();
 
     if (devId.length() > 0) {
-        for (int i = 0; i < maxLicensedSlots; i++) {
-            if (licenseSlots[i].deviceId.length() > 0 && licenseSlots[i].deviceId == devId) {
+        for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
+            if (phoneSlots[i].deviceId.length() > 0 && phoneSlots[i].deviceId == devId) {
                 return i;
             }
         }
     }
     if (ip.length() > 0 && ip != "127.0.0.1" && ip != "0.0.0.0") {
-        for (int i = 0; i < maxLicensedSlots; i++) {
-            if (licenseSlots[i].deviceId.length() > 0 && licenseSlots[i].ip.length() > 0 && licenseSlots[i].ip == ip) {
+        for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
+            if (phoneSlots[i].deviceId.length() > 0 && phoneSlots[i].ip.length() > 0 && phoneSlots[i].ip == ip) {
                 return i;
             }
         }
@@ -85,10 +85,10 @@ int findSlotIndexForDevice(String devId, String ip) {
 }
 
 bool unpairSlot(int slotNum) {
-    if (slotNum < 1 || slotNum > maxLicensedSlots) return false;
+    if (slotNum < 1 || slotNum > MAX_SUPPORTED_SLOTS) return false;
     int idx = slotNum - 1;
-    String prevDevId = licenseSlots[idx].deviceId;
-    String prevIp = licenseSlots[idx].ip;
+    String prevDevId = phoneSlots[idx].deviceId;
+    String prevIp = phoneSlots[idx].ip;
     Serial.printf("[+] Unpairing Slot #%d (was %s / %s).\n", slotNum, prevDevId.c_str(), prevIp.c_str());
 
     String activeDev = getActiveCoinSessionId();
@@ -103,9 +103,9 @@ bool unpairSlot(int slotNum) {
         Serial.println("[*] Active armed session disarmed due to unpair.");
     }
 
-    licenseSlots[idx].deviceId = "";
-    licenseSlots[idx].ip = "";
-    saveSlotLicenses();
+    phoneSlots[idx].deviceId = "";
+    phoneSlots[idx].ip = "";
+    saveSlots();
 
     if (prevIp.length() > 0 && prevIp != "127.0.0.1") {
         sendAuthenticated(prevIp, targetPort, "/trigger_action", "/challenge",
@@ -115,8 +115,8 @@ bool unpairSlot(int slotNum) {
 }
 
 bool isSlotActive(int slotIdx) {
-    if (slotIdx < 0 || slotIdx >= maxLicensedSlots) return false;
-    return licenseSlots[slotIdx].active;
+    if (slotIdx < 0 || slotIdx >= MAX_SUPPORTED_SLOTS) return false;
+    return phoneSlots[slotIdx].active;
 }
 
 void updateDynamicDeviceList(String deviceId, String ip) {
@@ -125,11 +125,11 @@ void updateDynamicDeviceList(String deviceId, String ip) {
     if (ip.length() < 7 || ip.indexOf('.') == -1 || ip == "127.0.0.1" || ip == "0.0.0.0") return;
 
     bool changed = false;
-    // Update licenseSlots IP if device matches
-    for (int i = 0; i < maxLicensedSlots; i++) {
-        if (licenseSlots[i].deviceId.length() > 0 && licenseSlots[i].deviceId == deviceId) {
-            if (licenseSlots[i].ip != ip) {
-                licenseSlots[i].ip = ip;
+    // Update phoneSlots IP if device matches
+    for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
+        if (phoneSlots[i].deviceId.length() > 0 && phoneSlots[i].deviceId == deviceId) {
+            if (phoneSlots[i].ip != ip) {
+                phoneSlots[i].ip = ip;
                 changed = true;
             }
             break;
@@ -157,14 +157,14 @@ void updateDynamicDeviceList(String deviceId, String ip) {
 
     if (changed) {
         if (newIps.length() > 0) androidIps = newIps;
-        saveSlotLicenses();
+        saveSlots();
     }
 }
 
 String getDeviceNameByIpOrId(String reqIp, String devId) {
     int slotIdx = findSlotIndexForDevice(devId, reqIp);
     if (slotIdx >= 0) {
-        return "PisoPhone " + String(licenseSlots[slotIdx].slotNum);
+        return "PisoPhone " + String(phoneSlots[slotIdx].slotNum);
     }
 
     String foundName = "";
@@ -326,11 +326,11 @@ bool getTrackedChargingState(String ip, String devId) {
 String getIpFromDeviceId(String id) {
     if (id.length() == 0) return "";
 
-    // 1. Check licensed slots (canonical mapping)
-    for (int i = 0; i < maxLicensedSlots; i++) {
-        if (licenseSlots[i].deviceId.length() > 0 && licenseSlots[i].deviceId == id) {
-            if (licenseSlots[i].ip.length() > 0 && licenseSlots[i].ip != "127.0.0.1") {
-                return licenseSlots[i].ip;
+    // 1. Check phone slots (canonical mapping)
+    for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
+        if (phoneSlots[i].deviceId.length() > 0 && phoneSlots[i].deviceId == id) {
+            if (phoneSlots[i].ip.length() > 0 && phoneSlots[i].ip != "127.0.0.1") {
+                return phoneSlots[i].ip;
             }
         }
     }
@@ -366,11 +366,11 @@ String getIpFromDeviceId(String id) {
 String getDeviceIdFromIp(String ip) {
     if (ip.length() == 0) return "";
 
-    // 1. Check licensed slots
-    for (int i = 0; i < maxLicensedSlots; i++) {
-        if (licenseSlots[i].ip.length() > 0 && licenseSlots[i].ip == ip) {
-            if (licenseSlots[i].deviceId.length() > 0) {
-                return licenseSlots[i].deviceId;
+    // 1. Check phone slots
+    for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
+        if (phoneSlots[i].ip.length() > 0 && phoneSlots[i].ip == ip) {
+            if (phoneSlots[i].deviceId.length() > 0) {
+                return phoneSlots[i].deviceId;
             }
         }
     }

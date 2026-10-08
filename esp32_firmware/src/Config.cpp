@@ -21,7 +21,7 @@
 // HARDWARE CONSTANTS & PIN DEFAULTS DEFINITION
 // ============================================================================
 // DEPRECATED shared key of firmware before per-box secrets. Only used while a box is in legacy mode and
-// to check old-style license keys. Remove with the legacy path once every phone is re-provisioned.
+// to refuse it as a new box secret. Remove with the legacy path once every phone is re-provisioned.
 static const char* LEGACY_CRYPTO_SECRET = "PISOPHONE_HMAC_MASTER_KEY";
 
 // Pin defaults are per board and come from -D flags in envs/*.ini (PISO_PIN_*). A wrong default
@@ -76,7 +76,7 @@ String getBoxSecret() {
     return copy;
 }
 
-String getLegacyLicenseSecret() {
+String getLegacySharedSecret() {
     return String(LEGACY_CRYPTO_SECRET);
 }
 
@@ -93,7 +93,6 @@ void setSharedSecret(const String& value) {
     xSemaphoreGive(sharedSecretMutex);
 }
 String macAddressStr = "";
-int maxLicensedSlots = DEFAULT_MAX_SLOTS;
 
 int targetPort = DEFAULT_PORT;
 int minutesPerCoin = DEFAULT_MINUTES_PER_COIN;
@@ -121,7 +120,7 @@ unsigned long lastCoinChangeTime = 0;
 const unsigned long REVENUE_SAVE_DELAY_MS = 5000;
 
 // Device & Slot Arrays
-LicenseSlot licenseSlots[MAX_SUPPORTED_SLOTS];
+PhoneSlot phoneSlots[MAX_SUPPORTED_SLOTS];
 DeviceTelemetry trackedDevices[MAX_TRACKED_DEVICES];
 int trackedDeviceCount = 0;
 
@@ -286,7 +285,6 @@ void forEachConfiguredDevice(std::function<bool(const DeviceConfig&)> callback) 
 }
 
 const char* const NVS_NAMESPACE = "kiosk_cfg";
-const char* const NVS_KEY_MAX_SLOTS = "max_slots";
 const char* const NVS_KEY_SLOTS_DATA = "slots_data";
 const char* const NVS_KEY_IPS = "ips";
 
@@ -312,25 +310,24 @@ const char* const NVS_KEY_TOTAL_CENTAVOS = cfgmig::K_TOTAL_CENTAVOS;
 
 void syncAndroidIpsFromSlots() {
     String newIps = "";
-    newIps.reserve(maxLicensedSlots * 48); // Pre-allocate to prevent heap fragmentation
-    for (int i = 0; i < maxLicensedSlots; i++) {
-        if (licenseSlots[i].deviceId.length() > 0 && licenseSlots[i].ip.length() > 0) {
+    newIps.reserve(MAX_SUPPORTED_SLOTS * 48); // Pre-allocate to prevent heap fragmentation
+    for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
+        if (phoneSlots[i].deviceId.length() > 0 && phoneSlots[i].ip.length() > 0) {
             if (newIps.length() > 0) newIps += ",";
-            newIps += licenseSlots[i].deviceId + "|" + licenseSlots[i].ip + "|" + licenseSlots[i].name;
+            newIps += phoneSlots[i].deviceId + "|" + phoneSlots[i].ip + "|" + phoneSlots[i].name;
         }
     }
     androidIps = newIps;
 }
 
-void saveSlotLicenses() {
+void saveSlots() {
     prefs.begin(NVS_NAMESPACE, false);
-    prefs.putInt(NVS_KEY_MAX_SLOTS, maxLicensedSlots);
     String raw = "";
-    raw.reserve(maxLicensedSlots * 64); // Pre-allocate approx 64 bytes per slot
-    for (int i = 0; i < maxLicensedSlots; i++) {
+    raw.reserve(MAX_SUPPORTED_SLOTS * 64); // Pre-allocate approx 64 bytes per slot
+    for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
         if (i > 0) raw += ";";
-        raw += String(licenseSlots[i].slotNum) + "|" + licenseSlots[i].deviceId + "|" + licenseSlots[i].ip + "|" +
-               licenseSlots[i].name + "|" + (licenseSlots[i].active ? "1" : "0");
+        raw += String(phoneSlots[i].slotNum) + "|" + phoneSlots[i].deviceId + "|" + phoneSlots[i].ip + "|" +
+               phoneSlots[i].name + "|" + (phoneSlots[i].active ? "1" : "0");
     }
     prefs.putString(NVS_KEY_SLOTS_DATA, raw);
     syncAndroidIpsFromSlots();
@@ -338,18 +335,14 @@ void saveSlotLicenses() {
     prefs.end();
 }
 
-void loadSlotLicenses() {
+void loadSlots() {
     prefs.begin(NVS_NAMESPACE, false);
-    maxLicensedSlots = prefs.getInt(NVS_KEY_MAX_SLOTS, DEFAULT_MAX_SLOTS);
-    if (maxLicensedSlots < 1) maxLicensedSlots = DEFAULT_MAX_SLOTS;
-    if (maxLicensedSlots > MAX_SUPPORTED_SLOTS) maxLicensedSlots = MAX_SUPPORTED_SLOTS;
-
     for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
-        licenseSlots[i].slotNum = i + 1;
-        licenseSlots[i].deviceId = "";
-        licenseSlots[i].ip = "";
-        licenseSlots[i].name = "PisoPhone " + String(i + 1);
-        licenseSlots[i].active = (i < maxLicensedSlots);
+        phoneSlots[i].slotNum = i + 1;
+        phoneSlots[i].deviceId = "";
+        phoneSlots[i].ip = "";
+        phoneSlots[i].name = "PisoPhone " + String(i + 1);
+        phoneSlots[i].active = true;
     }
 
     String raw = prefs.getString(NVS_KEY_SLOTS_DATA, "");
@@ -371,16 +364,12 @@ void loadSlotLicenses() {
                     int sNum = item.substring(0, p1).toInt();
                     if (sNum >= 1 && sNum <= MAX_SUPPORTED_SLOTS) {
                         int idx = sNum - 1;
-                        licenseSlots[idx].slotNum = sNum;
-                        licenseSlots[idx].deviceId = item.substring(p1 + 1, p2);
-                        licenseSlots[idx].ip = item.substring(p2 + 1, p3);
-                        licenseSlots[idx].name = item.substring(p3 + 1, (p4 != -1) ? p4 : item.length());
+                        phoneSlots[idx].slotNum = sNum;
+                        phoneSlots[idx].deviceId = item.substring(p1 + 1, p2);
+                        phoneSlots[idx].ip = item.substring(p2 + 1, p3);
+                        phoneSlots[idx].name = item.substring(p3 + 1, (p4 != -1) ? p4 : item.length());
 
-                        if (p4 != -1) {
-                            licenseSlots[idx].active = (idx < maxLicensedSlots) && (item.substring(p4 + 1) == "1");
-                        } else {
-                            licenseSlots[idx].active = (idx < maxLicensedSlots);
-                        }
+                        phoneSlots[idx].active = true; // saved flag is ignored: every slot is available
                     }
                 }
             }
@@ -473,11 +462,11 @@ void loadCredentials() {
 }
 
 void loadAllConfig() {
-    // 1. Load slot licenses and terminal allocations safely
+    // 1. Load phone slots and terminal allocations safely
     runConfigMigrations(); // first: brings stored settings to this firmware's format
     loadSecretMode();
     initTxIdBootCounter();
-    loadSlotLicenses();
+    loadSlots();
     loadSuperAdminConfig();
     loadCredentials();
 
@@ -551,15 +540,15 @@ void processRevenuePersistence() {
 
 void factoryResetDefaults(bool ownerWipe) {
     Serial.println("\n=======================================================");
-    diagLog(ownerWipe ? "[⚠️ FACTORY RESET] Owner wipe: erasing everything including the license and revenue..."
-                      : "[⚠️ FACTORY RESET] Restoring operator settings to defaults (license and revenue are kept)...");
+    diagLog(ownerWipe ? "[⚠️ FACTORY RESET] Owner wipe: erasing everything including the revenue..."
+                      : "[⚠️ FACTORY RESET] Restoring operator settings to defaults (revenue is kept)...");
     Serial.println("=======================================================");
 
     prefs.begin(NVS_NAMESPACE, false);
     PrefsStore keepStore;
     ownerdata::Snapshot owner = ownerdata::capture(keepStore);
     prefs.clear();
-    if (!ownerWipe) ownerdata::restore(keepStore, owner); // an operator can never reset the license or the revenue
+    if (!ownerWipe) ownerdata::restore(keepStore, owner); // an operator can never reset the revenue
     prefs.end();
     if (ownerWipe)
         clearPaymentQueue(); // an operator reset keeps unacknowledged payments: that money was already collected
@@ -580,15 +569,14 @@ void factoryResetDefaults(bool ownerWipe) {
     p2Ip = "";
     matchMinutes = 15;
     const bool keepOwner = !ownerWipe;
-    maxLicensedSlots = (keepOwner && owner.hasMaxSlots) ? (int)owner.maxSlots : DEFAULT_MAX_SLOTS;
     for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
-        licenseSlots[i].slotNum = i + 1;
-        licenseSlots[i].deviceId = "";
-        licenseSlots[i].ip = "";
-        licenseSlots[i].name = "PisoPhone " + String(i + 1);
-        licenseSlots[i].active = (i < maxLicensedSlots);
+        phoneSlots[i].slotNum = i + 1;
+        phoneSlots[i].deviceId = "";
+        phoneSlots[i].ip = "";
+        phoneSlots[i].name = "PisoPhone " + String(i + 1);
+        phoneSlots[i].active = true;
     }
-    saveSlotLicenses();
+    saveSlots();
 
     totalCoinsLifetime = (keepOwner && owner.hasCoins) ? owner.coins : 0;
     totalCoinsSession = 0;

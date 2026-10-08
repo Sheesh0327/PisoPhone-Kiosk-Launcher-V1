@@ -1,7 +1,7 @@
 # Hardening a box you sell (Secure Boot V2 + flash encryption)
 
 **Who needs this:** only boxes that leave your hands . Boxes in your own shops stay on the normal
-build: they are protected by the signed license, the per-box secret and signed OTA (see `KEYS.md`).
+build: they are protected by the per-box secret and signed OTA (see `KEYS.md`).
 
 **What it buys:** a buyer cannot read the firmware or the stored secrets with a flash reader, and cannot boot
 firmware you did not sign. **What it costs:** the eFuse steps below can **never be undone**. A mistake bricks the
@@ -16,7 +16,7 @@ board. Do it on a spare board first and only then on units for sale.
 | Question | Decision |
 |---|---|
 | Which chip | **ESP32-C3** for sold units. Original ESP32 supports Secure Boot V2 only from chip revision 3 (check with `esptool.py chip_id`); older revisions only have the weaker V1. Do not sell those hardened. |
-| Secure Boot key | New RSA-3072 key, **separate from the license key and the firmware-signing key**. Offline, backed up twice. Losing it means no more updates for hardened units; leaking it means anyone can sign firmware for them. |
+| Secure Boot key | New RSA-3072 key, **separate from the firmware-signing key**. Offline, backed up twice. Losing it means no more updates for hardened units; leaking it means anyone can sign firmware for them. |
 | Flash encryption mode | **Release** (keys can never be read back, UART flashing of plain firmware stops). Development mode can be undone, so it proves nothing about the finished unit. |
 | Download mode | **Secure download mode** (`ENABLE_SECURITY_DOWNLOAD`). Fully disabling download mode (`DIS_DOWNLOAD_MODE`) leaves the owner no way back except a signed OTA; only choose it once OTA recovery has been proven on a hardened board. |
 | JTAG | Disable (`DIS_USB_JTAG`, `DIS_PAD_JTAG`; the C3's USB-serial JTAG too). |
@@ -105,7 +105,7 @@ esptool.py -p /dev/ttyUSB0 read_flash 0x20000 0x2000 app_dump.bin    # may be re
 python3 scripts/sold_unit_check.py flash app_dump.bin                # must say: ciphertext
 python3 scripts/sold_unit_check.py fuses --port /dev/ttyUSB0 --expect-locked
 ```
-Also dump the **NVS region** (`0x9000`, 0x6000 bytes) and search it for the box's secret and license string
+Also dump the **NVS region** (`0x9000`, 0x6000 bytes) and search it for the box's secret
 (`python3 scripts/sold_unit_check.py flash nvs_dump.bin --find "<text>"`). **If the text appears in plain**, the
 NVS partition is not covered by flash encryption on this build; the fix is NVS encryption (`nvs_flash_secure_init`
 with a key partition), a firmware change that must be made before selling hardened units.

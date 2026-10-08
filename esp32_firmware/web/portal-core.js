@@ -194,7 +194,6 @@ window.pairFromRow = function(btn) {
 function deviceRow(dev) {
     const name = escHtml((dev.name && dev.name !== dev.id && !dev.name.startsWith('Terminal') && (!dev.id || !dev.name.includes(dev.id))) ? dev.name : ('PisoPhone ' + dev.slotNum));
     const slot = '<span class="tag">Slot ' + dev.slotNum + '</span>';
-    const unlicensed = !dev.active ? ' <span class="tag bad">Not licensed</span>' : '';
     const unpair = '<div class="row-actions"><button type="button" class="btn sm" onclick="unpairSlot(' + dev.slotNum + ')">Unpair</button></div>';
     if (!dev.isBound) {
         return '<div class="row empty">' + slot +
@@ -202,7 +201,7 @@ function deviceRow(dev) {
             '<span class="muted">Ready for a phone</span><span></span><span></span>' +
             '<div class="row-actions"><button type="button" class="btn sm" onclick="occupySlot(' + dev.slotNum + ')">Set up</button></div></div>';
     }
-    const ident = '<div class="ident"><div class="row-name">' + name + unlicensed + '</div><div class="row-sub">' + escHtml(dev.ip) + '</div></div>';
+    const ident = '<div class="ident"><div class="row-name">' + name + '</div><div class="row-sub">' + escHtml(dev.ip) + '</div></div>';
     if (!dev.online) {
         return '<div class="row">' + slot + ident + '<span class="pill bad">Offline</span><span></span><span></span>' + unpair + '</div>';
     }
@@ -252,7 +251,6 @@ window.fetchDeviceStatus = function() {
 
             let html = unassigned.map(pendingRow).join('');
             devices.forEach(dev => {
-                if (!dev.isBound && !dev.active) return; // a locked seat is shown under Tools
                 html += deviceRow(dev);
             });
             container.innerHTML = html

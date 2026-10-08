@@ -74,7 +74,7 @@ def main():
     f.add_argument("--expect-locked", action="store_true")
     d = sub.add_parser("flash")
     d.add_argument("dump")
-    d.add_argument("--find", help="text that must NOT appear in a protected dump (a secret, a license)")
+    d.add_argument("--find", help="text that must NOT appear in a protected dump (a secret)")
     a = p.parse_args()
     if a.cmd == "fuses":
         r = subprocess.run(["espefuse.py", "-p", a.port, "summary"], capture_output=True, text=True)

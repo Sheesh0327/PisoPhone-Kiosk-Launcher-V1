@@ -1761,8 +1761,8 @@ class Wizard:
         self.open_btn.pack(side="left", padx=(12, 0))
         self.prov_box = tk.Frame(left, bg=C["bg"])
         self.prov_box.pack(fill="x")
-        self.text(left, "One slot per phone: after a phone is done, choose the next slot and open the page again. More slots "
-                        "need seat licenses on the coin box.", "small", fg=C["muted"]).pack(fill="x")
+        self.text(left, "One slot per phone: after a phone is done, choose the next slot and open the page again. A coin box "
+                        "has 10 slots.", "small", fg=C["muted"]).pack(fill="x")
         self.status_card = self.card(right)
         self.text(self.status_card, "Coin box", "h2").pack(fill="x", pady=(0, 6))
         self.box_status = self.text(self.status_card, "Checking...", fg=C["muted"])

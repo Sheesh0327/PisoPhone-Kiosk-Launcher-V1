@@ -5,7 +5,7 @@
 
 // Signed firmware updates (see FwManifest.h). With an owner public key built in (LicensePubKey.h) only an
 // image matching a signed manifest can be flashed. Without a key the box still takes unsigned images and
-// says so in the log (the same transition rule as licenses).
+// says so in the log.
 
 bool otaSigningRequired();
 

@@ -78,9 +78,8 @@ window.showSelectSlotModalForDevice = function(devId, devIp, devName) {
     for (let s = 1; s <= maxS; s++) {
         const slotInfo = devicesList.find(d => d.slotNum === s);
         const isBound = slotInfo ? slotInfo.isBound : false;
-        const isExp = slotInfo ? (!slotInfo.active) : false;
-        if (isBound || isExp) {
-            html += '<button type="button" class="btn" disabled>Slot ' + s + ' · ' + (isBound ? 'in use' : 'locked') + '</button>';
+        if (isBound) {
+            html += '<button type="button" class="btn" disabled>Slot ' + s + ' · in use</button>';
         } else {
             html += '<button type="button" class="btn primary" ' + pairButtonAttrs(devId, devIp, devName || '', s) + '>Slot ' + s + '</button>';
         }
@@ -91,12 +90,6 @@ window.showSelectSlotModalForDevice = function(devId, devIp, devName) {
 
 window.occupySlot = function(slot) {
     activeSlotNum = slot || 1;
-    const devicesList = window.latestDevicesList || [];
-    const slotInfo = devicesList.find(d => d.slotNum === activeSlotNum);
-    if (slotInfo && !slotInfo.active) {
-        notify('Slot ' + activeSlotNum + ' is not licensed yet. Add slots under Tools first.', 'bad');
-        return;
-    }
     const body = document.getElementById('unassigned_modal_body');
     const title = document.getElementById('unassigned_modal_title');
     if (!body) {
@@ -119,32 +112,6 @@ window.occupySlot = function(slot) {
             'Turn the phone on and join this Wi-Fi network, or open the setup page to install PisoPhone on a new phone.</div>';
     }
     showModal('unassigned_pair_modal');
-};
-
-window.openTokenModal = function() {
-    showModal('token_modal');
-    document.getElementById('token_input').value = '';
-    document.getElementById('token_error').classList.add('hidden');
-};
-window.closeTokenModal = function() { hideModal('token_modal'); };
-
-window.submitSlotToken = function() {
-    const token = document.getElementById('token_input').value.trim();
-    const errDiv = document.getElementById('token_error');
-    const fail = msg => { errDiv.innerHTML = ic('alert') + '<span class="grow"></span>'; errDiv.lastChild.textContent = msg; errDiv.classList.remove('hidden'); };
-    if (!token) return fail('Paste the license key first.');
-    errDiv.classList.add('hidden');
-    fetch('/api/slots/apply_token?token=' + encodeURIComponent(token), { method: 'POST' })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                notify('The box now has ' + data.maxSlots + ' phone slots.');
-                setTimeout(() => location.reload(), 1200);
-            } else {
-                fail(data.error || 'That key was not accepted.');
-            }
-        })
-        .catch(err => fail('Could not reach the box: ' + err.message));
 };
 
 window.switchToOwnKey = function() {
@@ -178,7 +145,7 @@ window.unpairSlot = function(slot) {
 
 let targetModalSlot = 1;
 
-window.openSlotActivationModal = function(sNum, name, ip, devId, expInfo, expStatus, isBound) {
+window.openSlotActivationModal = function(sNum, name, ip, devId, isBound) {
     targetModalSlot = sNum;
     const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
     set('modal_slot_title', 'Slot ' + sNum);
@@ -229,10 +196,10 @@ window.checkQuickAdjustInactive = function() {
     let msg = '';
     if (sel.value === 'ALL') {
         const n = sel.querySelectorAll('option[data-inactive="true"]').length;
-        if (n > 0) msg = n + ' phone' + (n > 1 ? 's are' : ' is') + ' not licensed. Time cannot be changed until the slot is licensed.';
+        if (n > 0) msg = n + ' phone' + (n > 1 ? 's are' : ' is') + ' not paired to a slot. Time cannot be changed until it is paired.';
     } else {
         const opt = sel.options[sel.selectedIndex];
-        if (opt && opt.getAttribute('data-inactive') === 'true') msg = opt.text.replace(/\s*\[.*$/, '') + ' is not licensed. Time cannot be changed until the slot is licensed.';
+        if (opt && opt.getAttribute('data-inactive') === 'true') msg = opt.text.replace(/\s*\[.*$/, '') + ' is not paired to a slot. Time cannot be changed until it is paired.';
     }
     warn.classList.toggle('hidden', !msg);
     const text = warn.querySelector('.grow');
@@ -246,7 +213,7 @@ window.validateQuickAdjust = function(e) {
             e.preventDefault();
             e.stopPropagation();
         }
-        notify('That phone is not licensed, so its time cannot be changed.', 'bad');
+        notify('That phone is not paired to a slot, so its time cannot be changed.', 'bad');
         return false;
     }
     return true;

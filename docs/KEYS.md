@@ -1,22 +1,18 @@
-# Keys: owner key, licenses, signed firmware, per-box secrets
+# Keys: owner key, signed firmware, per-box secrets
 
-## Owner key (one key signs licenses and firmware)
+## Owner key (one key signs firmware and router updates)
 Run on **your own computer**, never in CI or a cloud session (`pip install cryptography` first):
 - `python3 scripts/make_owner_keys.py`: saves `~/pisophone_license_key.pem` (refuses to overwrite it or to write inside the repo).
 - `python3 scripts/make_owner_keys.py --github-secret`: saves nothing; prints the key once as one base64 line for the repository secret
   `OWNER_SIGNING_KEY_B64`. GitHub secrets cannot be read back, so also keep that line in a password manager. Only use the secret in
   workflows that run on your own branch (never `pull_request` from forks), write it to a temp file, sign, delete the file.
 
-Back the key up in two offline places: lose it and no box can take a new license or update; leak it and anyone can forge both.
+Back the key up in two offline places: lose it and no box can take a new update; leak it and anyone can forge one.
 It writes only the **public** key into `esp32_firmware/include/LicensePubKey.h`: commit that, then rebuild and flash every box.
-Until a public key is built in, boxes still accept the old deprecated license keys and unsigned firmware.
+Until a public key is built in, boxes accept unsigned firmware.
 
 The same key signs **router updates** (`scripts/sign_router.py`, docs/RELEASE.md); its public half is also written to
 `tools/pisoportal/owner_key.b64`, which the router program has built in. Commit both files.
-
-## Licenses
-`python3 scripts/generate_license.py issue --private KEY.pem --code <box request code> --slots N` prints a `PISOLIC1...` token to paste into
-the box dashboard. Only your private key can make one.
 
 ## Signed firmware updates
 A box with a public key built in only flashes images you signed.

@@ -71,7 +71,6 @@ void setupWebServer() {
     webServer.on("/api/slots/pair", HTTP_ANY, handleApiSlotPair);
     webServer.on("/api/slots/pair_request", HTTP_ANY, handleApiSlotPairRequest);
     webServer.on("/api/slots/unpair", HTTP_ANY, handleApiSlotUnpair);
-    webServer.on("/api/slots/apply_token", HTTP_POST, handleApiSlotApplyToken);
     webServer.on("/api/slots/cloud_sync", HTTP_POST, handleApiSlotCloudSync);
     webServer.on("/api/security/switch_key", HTTP_POST, handleApiSecuritySwitchKey);
 

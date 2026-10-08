@@ -115,7 +115,7 @@ jobs:
           flag kotlin "^(app/|[^/]*\.kts$|\.editorconfig|$W)"
           flag firmware_build "^(esp32_firmware/|protocol/|$W)"
           flag firmware_tests "^(esp32_firmware/|protocol/|scripts/|$W)"
-          flag portal "^(tools/pisoportal/|router/|setup/|website/install\.sh|website/pisophone_setup\.py|tools/build_piso_setup\.py|scripts/(sign_router|generate_license|make_owner_keys)\.py|$W)"
+          flag portal "^(tools/pisoportal/|router/|setup/|website/install\.sh|website/pisophone_setup\.py|tools/build_piso_setup\.py|scripts/(sign_router|owner_key|make_owner_keys)\.py|$W)"
           flag website "^(website/|scripts/test_provisioning\.js|scripts/test_flasher\.js|scripts/tests/test_site_page\.py|scripts/check_vendored\.py|$W)"
 
   security-rules:
@@ -222,7 +222,7 @@ jobs:
         working-directory: esp32_firmware/include
         run: |
           # Not an error while the owner has not made the keys (docs/KEYS.md), but never silent: until then a box accepts
-          # unsigned firmware updates and old shared-secret licenses.
+          # unsigned firmware updates.
           for f in LicensePubKey.h SuperAdminPubKey.h; do
             if grep -q '_LEN = 0;' "$f"; then echo "::warning file=esp32_firmware/include/$f::$f still holds the placeholder: this production build accepts unsigned firmware/credentials (see docs/KEYS.md)"; fi
           done

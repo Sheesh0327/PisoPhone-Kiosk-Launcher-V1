@@ -178,7 +178,7 @@ void handleSuperAdminSaveSplit() {
     webServer.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Invalid split percentage (0-100).\"}");
 }
 
-// Owner-only full wipe, including the license, lifetime revenue and vendor split. The dashboard's operator
+// Owner-only full wipe, including lifetime revenue and vendor split. The dashboard's operator
 // factory reset keeps those (OwnerData.h).
 void handleSuperAdminFactoryReset() {
     if (!authenticateSuperAdmin()) {

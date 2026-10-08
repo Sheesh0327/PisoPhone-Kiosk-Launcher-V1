@@ -4,7 +4,7 @@
 //! router-setup.sh, the one-file setup the router already installs from. The owner signs, on their own computer
 //! (scripts/sign_router.py), the text
 //!     pisophone-router-v1|<version>|<sha256 of router-setup.sh>|<size>|<rollout percent>
-//! with the same ECDSA P-256 key that signs the box's licenses and firmware. This program holds the PUBLIC key (owner_key.b64,
+//! with the same ECDSA P-256 key that signs the box's firmware. This program holds the PUBLIC key (owner_key.b64,
 //! built in), so a stolen website account or a man in the middle can offer nothing a router will install. The program is
 //! fail-closed: with no key built in, every update is refused.
 //!

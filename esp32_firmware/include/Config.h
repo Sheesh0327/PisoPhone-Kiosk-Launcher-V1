@@ -18,15 +18,13 @@ extern const int HARDWARE_RESET_PIN;
 extern const int UDP_DISCOVERY_PORT;
 extern const int DEFAULT_MINUTES_PER_COIN;
 
-#define MAX_SUPPORTED_SLOTS 6
-#define DEFAULT_MAX_SLOTS 1
+#define MAX_SUPPORTED_SLOTS 10
 #define MAX_TRACKED_DEVICES 12
 
 // ============================================================================
 // NVS KEYS
 // ============================================================================
 extern const char* const NVS_NAMESPACE;
-extern const char* const NVS_KEY_MAX_SLOTS;
 extern const char* const NVS_KEY_SLOTS_DATA;
 extern const char* const NVS_KEY_IPS;
 
@@ -59,12 +57,12 @@ struct DeviceConfig {
     String name;
 };
 
-struct LicenseSlot {
-    int slotNum;     // 1 to 12
+struct PhoneSlot {
+    int slotNum;     // 1 to MAX_SUPPORTED_SLOTS
     String deviceId; // Canonical hardware ID (e.g., "HW-A1B2C3D4")
     String ip;       // Terminal local DHCP IP (e.g., "192.168.1.50")
     String name;     // Display label (e.g., "PisoPhone 1")
-    bool active;     // Whether slot is valid/licensed
+    bool active;     // Always true: every slot is available
 };
 
 struct DeviceTelemetry {
@@ -112,12 +110,11 @@ void loadCredentials();                    // reads the admin and setup-AP passw
 String getSharedSecret();                  // the key box<->phone traffic uses right now
 void setSharedSecret(const String& value); // sets this box's own secret (see SecretMode.h)
 String getBoxSecret();                     // this box's own secret, whatever mode the box is in
-String getLegacyLicenseSecret();           // old shared key, only to check old-style license keys
+String getLegacySharedSecret();           // old shared key (legacy mode); a new box secret may never equal it
 bool isLegacyKeyMode();                    // true until the operator switches the box to its own key
 void switchToOwnKey();                     // leaves legacy mode for good
 void loadSecretMode();                     // reads the box secret and legacy-mode flag
 extern String macAddressStr;
-extern int maxLicensedSlots;
 
 extern int targetPort;
 extern int minutesPerCoin;
@@ -144,7 +141,7 @@ extern unsigned long lastCoinChangeTime;
 extern const unsigned long REVENUE_SAVE_DELAY_MS;
 
 // Device & Slot Arrays
-extern LicenseSlot licenseSlots[MAX_SUPPORTED_SLOTS];
+extern PhoneSlot phoneSlots[MAX_SUPPORTED_SLOTS];
 extern DeviceTelemetry trackedDevices[MAX_TRACKED_DEVICES];
 extern int trackedDeviceCount;
 
@@ -155,14 +152,14 @@ int findSlotIndexForDevice(String devId, String ip);
 // CONFIGURATION & TIME FUNCTIONS
 // ============================================================================
 void loadAllConfig();
-void loadSlotLicenses();
-void saveSlotLicenses();
+void loadSlots();
+void saveSlots();
 void syncAndroidIpsFromSlots();
 
 void processRevenuePersistence();
 void flushRevenueNow();
 
-// Operator reset (default): keeps the license, lifetime revenue, vendor split and super-admin credentials (OwnerData.h).
+// Operator reset (default): keeps lifetime revenue, vendor split and super-admin credentials (OwnerData.h).
 // ownerWipe = true (super-admin request only) erases those as well.
 void factoryResetDefaults(bool ownerWipe = false);
 void updateMasterTime(uint64_t ts, const String& sourceId = "");

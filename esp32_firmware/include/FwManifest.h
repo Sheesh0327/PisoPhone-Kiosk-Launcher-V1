@@ -4,8 +4,8 @@
 // Pure (no Arduino types) checks for signed firmware updates, compiled and tested on a PC
 // (host_tests/fw_manifest_test.cpp).
 //
-// The owner signs a small manifest for each firmware image with the same offline key that signs
-// licenses (scripts/sign_firmware.py). Before an upload the box checks the manifest signature; while
+// The owner signs a small manifest for each firmware image with the same offline owner key
+// (scripts/sign_firmware.py). Before an upload the box checks the manifest signature; while
 // the image streams in, it hashes the bytes; before the new image is committed, the hash and size must
 // match the signed manifest. So only an image the owner signed can ever be flashed.
 //
