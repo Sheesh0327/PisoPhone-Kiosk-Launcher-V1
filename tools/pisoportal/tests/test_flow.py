@@ -305,10 +305,16 @@ try:
     env.nds_client(MAC_D, STATE="Authenticated", SESSION_END=nd["SESSION_END"], DL=900, UL=300)
     ok = wait_until(lambda: any(c.startswith("auth " + MAC_D) and " 1000 2000 " in c for c in env.nds_calls()), 8)
     check(ok, "after the limit the connection is slowed (2000 kbit/s down, 1000 up): " + str(env.nds_calls()[-6:]))
-    d2 = Cust("127.0.0.4", reset=True)
-    v = d2.wait_state("idle", 5)
+    # the portal stores the counters just after the slowdown is granted: ask again until they are there
+    v = None
+    for _ in range(10):
+        d2 = Cust("127.0.0.4", reset=True)
+        v = d2.wait_state("idle", 5)
+        d2.close()
+        if v is not None and v.get("used_mb", 0) >= 1:
+            break
+        time.sleep(0.3)
     check(v is not None and v["plan"] == "hyper" and v["used_mb"] >= 1 and "slow" in v, f"the status view carries data used and the fair-use slowdown: {v}")
-    d2.close()
     ok = wait_until(lambda: any(c.startswith("auth " + MAC_D) and " 0 0 0 0" in c for c in env.nds_calls()), 8)
     check(ok, "and released again after the throttle period")
     env.reset_device(MAC_A)
