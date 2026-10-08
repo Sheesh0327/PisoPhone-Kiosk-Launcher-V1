@@ -89,7 +89,14 @@ class Esp32ConnectionManager(
     private val processedTxIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
     private var heartbeatJob: Job? = null
 
-    private val heartbeatBodyHandler = Esp32HeartbeatBodyHandler(delegate) { sendPairingRequest(it) }
+    private val heartbeatBodyHandler = Esp32HeartbeatBodyHandler(
+        delegate,
+        onAuthProblem = { reason ->
+            DiagnosticsLog.add("AUTH", "box does not accept this phone before pairing: $reason")
+            // a clock that is off heals by itself (the same answer carries the box's time); a wrong key does not
+            if (reason != "STALE_TIMESTAMP") KioskStatusToast.show(context, Esp32Responses.badSecretMessage())
+        },
+    ) { sendPairingRequest(it) }
 
     private val discoveryScanner = Esp32DiscoveryScanner(
         context = context,
@@ -210,7 +217,7 @@ class Esp32ConnectionManager(
                     if (!targetIp.isNullOrBlank()) {
                         val (host, esp32Port) = discoveryScanner.getEsp32HostAndPort(targetIp)
                         val deviceId = delegate.getDeviceId()
-                        val ts = System.currentTimeMillis().toString()
+                        val ts = BoxClock.nowMs().toString()
                         val sig = KioskSecurity.generateTimestampSignature(deviceId, ts, delegate.getSecretKey())
                         val (curBat, isChg) = delegate.getRealTimeBatteryInfo()
                         val myName = KioskSecurity.getDeviceAlias(context).takeIf { it.isNotBlank() } ?: "PisoPhone Terminal"
@@ -229,7 +236,12 @@ class Esp32ConnectionManager(
                                     consecutiveHeartbeatFailures = 0
                                     lastHeartbeatTime = System.currentTimeMillis()
                                     if (code == 403) {
-                                        KioskStatusToast.show(context, "Box at $host does not accept this phone (HTTP 403): wrong box secret or not paired. Provision the phone again")
+                                        BoxClock.learnFromBody(body)
+                                        if (Esp32Responses.classify(code, body) == Esp32Responses.Refusal.CLOCK_SKEW) {
+                                            Log.i(TAG, "[HEARTBEAT] Box says this phone's clock is off; now signing with the box's time.")
+                                        } else {
+                                            KioskStatusToast.show(context, Esp32Responses.badSecretMessage())
+                                        }
                                     } else {
                                         KioskStatusToast.show(context, "Box online at $host", 600_000L)
                                     }
@@ -397,7 +409,7 @@ class Esp32ConnectionManager(
         attemptId == currentAttemptId
     }
 
-    private fun performArm(attemptId: Long, initialIp: String?, armingTimeoutSeconds: Int) {
+    private fun performArm(attemptId: Long, initialIp: String?, armingTimeoutSeconds: Int, clockRetried: Boolean = false) {
         var (ipHost, _) = discoveryScanner.getEsp32HostAndPort(initialIp)
         if (ipHost.isBlank()) {
             val localIp = discoveryScanner.getLocalIpAddress()
@@ -483,6 +495,15 @@ class Esp32ConnectionManager(
                 delegate.onArmFailed(Esp32Responses.ArmFailure.BUSY)
                 Handler(Looper.getMainLooper()).post {
                     Toast.makeText(context, "Slot is currently busy with another device.", Toast.LENGTH_LONG).show()
+                }
+            } else if (Esp32Responses.classify(code, body) == Esp32Responses.Refusal.CLOCK_SKEW) {
+                // The phone's clock is outside the box's window. The refusal carries the box's time: adopt it and try once more.
+                val changed = BoxClock.learnFromBody(body)
+                DiagnosticsLog.add("ARM", "phone clock was outside the box's window; adjusted=$changed, retry=${!clockRetried}")
+                if (!clockRetried && isAttemptCurrent(attemptId)) {
+                    performArm(attemptId, initialIp, armingTimeoutSeconds, clockRetried = true)
+                } else {
+                    delegate.onArmFailed(Esp32Responses.ArmFailure.BOX_REFUSED)
                 }
             } else if (Esp32Responses.classify(code, body) == Esp32Responses.Refusal.AUTH_REFUSED) {
                 // 403 is the box refusing this request (signature, clock, secret), not a statement about the slot: do not lock
@@ -621,7 +642,7 @@ class Esp32ConnectionManager(
     }
 
     private fun connectWebSocket(ipHost: String, deviceId: String, armingTimeoutSeconds: Int, attemptId: Long, isHttpArmed: Boolean = false) {
-        val ts = System.currentTimeMillis().toString()
+        val ts = BoxClock.nowMs().toString()
         val sig = KioskSecurity.generateTimestampSignature(deviceId, ts, delegate.getSecretKey())
 
         val wsUrl = "ws://$ipHost:$ESP32_WS_PORT/ws?device_id=$deviceId&ts=$ts&sig=$sig"

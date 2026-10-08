@@ -60,4 +60,18 @@ class Esp32HeartbeatBodyHandlerTest {
         handler.handle("not json", "10.0.0.2")
         assertTrue(delegate.events.isEmpty())
     }
+
+    @Test
+    fun anUnpairedPhoneIsToldWhetherTheBoxAcceptsItsKeyAndLearnsTheBoxTime() {
+        BoxClock.reset()
+        val problems = mutableListOf<String>()
+        val h = Esp32HeartbeatBodyHandler(delegate, onAuthProblem = { problems += it }) { pairingRequests += it }
+        h.handle("""{"status":"unassigned","auth_ok":false,"auth_reason":"BAD_SIGNATURE","server_time_ms":1790000000000}""", "10.0.0.2")
+        assertEquals(listOf("BAD_SIGNATURE"), problems)
+        assertTrue("the box's time was adopted", kotlin.math.abs(BoxClock.nowMs() - 1790000000000L) < 60_000L)
+        problems.clear()
+        h.handle("""{"status":"unassigned","auth_ok":true}""", "10.0.0.2")
+        assertTrue("a good key is not a problem", problems.isEmpty())
+        BoxClock.reset()
+    }
 }

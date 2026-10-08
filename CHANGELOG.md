@@ -4,6 +4,16 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Removing the kiosk from a phone (website, "Remove from a phone") no longer asks for the admin PIN. The phone accepts the
+  removal while USB debugging is on, which it is when the setup computer is connected. With USB debugging off, as on a
+  rental phone in normal use, the DEPROVISION broadcast still needs the PIN.
+### Coin box and phone app: fewer refusals
+- A phone with a wrong date (typical on a new phone on a Wi-Fi without internet) is no longer refused as "stale". The box puts
+  its time in every answer, including refusals and the answers to phones that are not paired yet, and the phone signs with the
+  box's time; a request refused only for its time is retried once with it. Needs both the new firmware and the new app.
+- The box now says why it refuses a phone (`STALE_TIMESTAMP`: heals by itself; `BAD_SIGNATURE`: the phone has another box
+  secret) and tells a not-yet-paired phone whether the box accepts its key (`auth_ok`), so a wrong key shows right after
+  setup, not at the first coin: the phone says to press Save on the box dashboard (which sends the key) or to set it up again.
 ### Phone app
 - Animated backgrounds: the logo animation behind the lock screen and a drifting-icons backdrop on the home screen (two
   15-second muted loops, 1.2 MB together). A video exists only while it is on screen: the player is released when the screen

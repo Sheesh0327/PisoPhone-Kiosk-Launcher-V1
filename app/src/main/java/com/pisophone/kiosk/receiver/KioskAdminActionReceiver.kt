@@ -11,6 +11,7 @@ import android.util.Log
 import android.widget.Toast
 import com.pisophone.kiosk.KioskService
 import com.pisophone.kiosk.MainActivity
+import com.pisophone.kiosk.security.KioskRecoveryManager
 
 /**
  * BroadcastReceiver listening for remote administrative commands via ADB / WebADB.
@@ -25,6 +26,9 @@ import com.pisophone.kiosk.MainActivity
 class KioskAdminActionReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_DEPROVISION = "com.pisophone.kiosk.DEPROVISION"
+
+        /** Whether DEPROVISION may run: the admin PIN, or USB debugging on (see the handler). */
+        fun deprovisionAllowed(pinAuthorized: Boolean, usbDebuggingOn: Boolean): Boolean = pinAuthorized || usbDebuggingOn
         const val ACTION_RESTORE_SYSTEM_APPS = "com.pisophone.kiosk.RESTORE_SYSTEM_APPS"
         const val ACTION_ENABLE_ADB = "com.pisophone.kiosk.ENABLE_ADB"
         const val ACTION_EMERGENCY_RECOVERY = "com.pisophone.kiosk.EMERGENCY_RECOVERY"
@@ -319,9 +323,12 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
             }
 
             ACTION_DEPROVISION -> {
-                if (!isAuthorized(context, intent)) {
-                    Log.w(TAG, "Unauthorized attempt to trigger DEPROVISION rejected. Valid PIN or secret required.")
-                    Toast.makeText(context, "Unauthorized: Valid Admin PIN required to deprovision.", Toast.LENGTH_LONG).show()
+                // Removing the kiosk needs no PIN while USB debugging is on: the setup computer is then connected and was
+                // authorised on the phone, and the website's "Remove from a phone" cannot reach the phone otherwise. With USB
+                // debugging off (the normal state of a rental phone) the PIN is still required.
+                if (!deprovisionAllowed(isAuthorized(context, intent), KioskRecoveryManager.isUsbDebuggingEnabled(context))) {
+                    Log.w(TAG, "Unauthorized attempt to trigger DEPROVISION rejected. USB debugging is off and no valid PIN was sent.")
+                    Toast.makeText(context, "Unauthorized: turn USB debugging on, or send the admin PIN, to deprovision.", Toast.LENGTH_LONG).show()
                     return
                 }
                 Log.w(TAG, "Deprovisioning request authenticated & received. Removing Device Owner and clearing lockdown.")

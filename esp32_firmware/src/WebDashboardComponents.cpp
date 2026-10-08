@@ -78,9 +78,8 @@ String renderPhoneSlotsHtml() {
     String html = "<div class=\"panel\">";
 
     // Head: title and the two setup links
-    html +=
-        "<div class=\"panel-head\"><h2>" + icon("phone") +
-        "Phone slots <span class=\"panel-sub\">Up to " + String(MAX_SUPPORTED_SLOTS) + " phones</span></h2><div class=\"actions\">";
+    html += "<div class=\"panel-head\"><h2>" + icon("phone") + "Phone slots <span class=\"panel-sub\">Up to " +
+            String(MAX_SUPPORTED_SLOTS) + " phones</span></h2><div class=\"actions\">";
     html += "<a class=\"btn primary sm\" href=\"" + setupBase + "&secret=" + secret + "\">" + icon("download") +
             "Set up a phone</a>";
     html +=
@@ -109,9 +108,9 @@ String renderPhoneSlotsHtml() {
         String devId = phoneSlots[i].deviceId;
         String ip = phoneSlots[i].ip;
         bool isBound = (devId.length() > 0);
-        String fullName =
-            isBound ? (phoneSlots[i].name.length() > 0 ? phoneSlots[i].name : ("PisoPhone " + String(sNum)))
-                    : ("Slot " + String(sNum));
+        String fullName = isBound
+                              ? (phoneSlots[i].name.length() > 0 ? phoneSlots[i].name : ("PisoPhone " + String(sNum)))
+                              : ("Slot " + String(sNum));
         String shown = isBound ? fullName : "Empty";
         String jsName = fullName;
         jsName.replace("\\", "\\\\");

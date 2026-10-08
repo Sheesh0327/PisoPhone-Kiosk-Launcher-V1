@@ -110,7 +110,7 @@ void loadCredentials();                    // reads the admin and setup-AP passw
 String getSharedSecret();                  // the key box<->phone traffic uses right now
 void setSharedSecret(const String& value); // sets this box's own secret (see SecretMode.h)
 String getBoxSecret();                     // this box's own secret, whatever mode the box is in
-String getLegacySharedSecret();           // old shared key (legacy mode); a new box secret may never equal it
+String getLegacySharedSecret();            // old shared key (legacy mode); a new box secret may never equal it
 bool isLegacyKeyMode();                    // true until the operator switches the box to its own key
 void switchToOwnKey();                     // leaves legacy mode for good
 void loadSecretMode();                     // reads the box secret and legacy-mode flag
@@ -164,6 +164,7 @@ void flushRevenueNow();
 void factoryResetDefaults(bool ownerWipe = false);
 void updateMasterTime(uint64_t ts, const String& sourceId = "");
 uint64_t getCurrentMasterTimeMs();
+String boxTimeJsonField(); // ,"server_time_ms":<ms> (the box's clock for phones to sign with), or "" while it has none
 String generateTxId(const char* prefix = "tx-");
 
 bool parseDeviceEntry(const String& entry, DeviceConfig& out);
