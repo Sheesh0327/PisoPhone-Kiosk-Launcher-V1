@@ -5,6 +5,11 @@ separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router
 
 ## Unreleased
 ### Phone app
+- Animated backgrounds: the logo animation behind the lock screen and a drifting-icons backdrop on the home screen (two
+  15-second muted loops, 1.2 MB together). A video exists only while it is on screen: the player is released when the screen
+  leaves the front, while the lock screen covers the home screen, on a low battery (below 15 % and not charging), in battery
+  saver, and always on low-RAM (Android Go) phones, which show the still first frame instead. An admin can switch them off
+  in the vault (Background videos).
 - First start of a freshly set-up phone: Play Store opens for the admin to sign in. When the admin returns to the kiosk, the
   phone's pre-installed apps are disabled, or only hidden from the launcher when the phone needs them (home screen, dialer,
   keyboard, web view, Google services, the vendor's own apps, text-to-speech), so only apps somebody installed show. Phones

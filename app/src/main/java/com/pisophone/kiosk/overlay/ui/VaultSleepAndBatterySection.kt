@@ -220,4 +220,48 @@ fun VaultSleepAndBatterySection(
             }
         }
     }
+
+    // ==========================================
+    // BACKGROUND VIDEOS (lock screen logo, launcher backdrop)
+    // ==========================================
+    var videoEnabled by remember { mutableStateOf(KioskSecurity.isVideoBackgroundEnabled(context)) }
+    Spacer(modifier = Modifier.height(8.dp))
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B).copy(alpha = 0.6f)),
+        border = BorderStroke(1.dp, Color(0xFF334155).copy(alpha = 0.6f)),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Background videos", color = Color(0xFFE2E8F0), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Animated logo on the lock screen and backdrop on the home screen. Off shows a still image.",
+                    color = Color(0xFF94A3B8),
+                    fontSize = 10.sp,
+                )
+            }
+            Switch(
+                checked = videoEnabled,
+                onCheckedChange = { isChecked ->
+                    videoEnabled = isChecked
+                    KioskSecurity.setVideoBackgroundEnabled(context, isChecked)
+                    Toast.makeText(context, if (isChecked) "Background videos ON" else "Background videos OFF", Toast.LENGTH_SHORT).show()
+                },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = Color(0xFF10B981),
+                    uncheckedThumbColor = Color.Gray,
+                    uncheckedTrackColor = Color(0xFF334155),
+                ),
+                modifier = Modifier.height(28.dp),
+            )
+        }
+    }
 }

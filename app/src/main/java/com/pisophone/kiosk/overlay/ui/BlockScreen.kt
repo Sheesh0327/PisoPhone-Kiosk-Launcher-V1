@@ -18,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -25,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.pisophone.kiosk.R
 import com.pisophone.kiosk.model.BatteryAlertState
 import com.pisophone.kiosk.model.BatteryStatus
 import com.pisophone.kiosk.network.Esp32Responses
@@ -32,6 +34,8 @@ import com.pisophone.kiosk.overlay.ui.AdminAuthenticationDialog
 import com.pisophone.kiosk.overlay.ui.BatteryAlertBanner
 import com.pisophone.kiosk.overlay.ui.EmergencyRecoveryDialog
 import com.pisophone.kiosk.overlay.ui.SecurityVaultView
+import com.pisophone.kiosk.ui.video.LockScreenPresence
+import com.pisophone.kiosk.ui.video.LoopingVideoBackground
 
 @Composable
 fun BlockScreen(
@@ -162,9 +166,38 @@ fun BlockScreen(
 
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
+    // The launcher sits under this screen while the phone is locked: tell it, so its video does not decode out of sight.
+    DisposableEffect(Unit) {
+        LockScreenPresence.enter()
+        onDispose { LockScreenPresence.leave() }
+    }
+
     Box(
         modifier = modifier.background(Background),
     ) {
+        // The logo animation behind the content: a square, as wide as the screen allows, with its dark edges faded into the theme
+        // and a dim layer so the text on top stays readable.
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val side = minOf(maxWidth, maxHeight)
+            Box(modifier = Modifier.size(side).align(Alignment.Center)) {
+                LoopingVideoBackground(
+                    videoRes = R.raw.piso_lock_logo,
+                    posterRes = R.drawable.piso_lock_logo_poster,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.radialGradient(
+                                0f to Background.copy(alpha = 0.35f),
+                                0.62f to Background.copy(alpha = 0.45f),
+                                1f to Background,
+                            ),
+                        ),
+                )
+            }
+        }
         Column(
             modifier = Modifier
                 .fillMaxSize()
