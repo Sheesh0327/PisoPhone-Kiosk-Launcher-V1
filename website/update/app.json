@@ -1,10 +1,10 @@
 {
-  "versionCode": 378,
-  "versionName": "1.0.378",
+  "versionCode": 380,
+  "versionName": "1.0.380",
   "channel": "stable",
   
   "signatureChecksum": "Un0usqLMwnmeaowrY2g21EgRVWe4bTRDLUi2RH12WbE",
-  "sha256": "9156c32ac1d9f78de1845ea4f65870a404b545eef1280838b76e66f3dcdedc2e",
+  "sha256": "79a75fffca442f978b5d382dd27a6a8f796eb50cbb0fe52fae92e9da8efdb4e3",
   "size": 2387191,
   "releaseDate": "2026-10-08"
 }
