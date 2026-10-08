@@ -6,7 +6,7 @@ talks to every customer over one WebSocket (Insert Coin, live coins, Done). Noth
 
 | Part | File |
 |---|---|
-| Page (bilingual, WebSocket only) | `src/page.html` |
+| Page (English, WebSocket only; shared style in `src/base.css`) | `src/page.html` |
 | HTTP/WebSocket, admin interface (127.0.0.1:8099) | `src/http.rs` |
 | Coin windows, settlement, recovery, cooldown | `src/core.rs` |
 | Signed box calls and coin events (UDP 8101) | `src/boxlink.rs` |

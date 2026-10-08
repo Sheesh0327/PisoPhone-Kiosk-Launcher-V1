@@ -25,20 +25,20 @@
 </style>
 </head><body><div class="w">
 <header>%NAME%</header>
-<div id="v-conn" class="v"><p class="mut c" id="conn">Connecting &middot; Kumokonekta</p></div>
+<div id="v-conn" class="v"><p class="mut c" id="conn">Connecting&hellip;</p></div>
 <div id="v-idle" class="v">
 <div class="msg ok" id="ion" style="margin:0 0 10px"></div>
 <div class="pick">
 <input type="radio" name="p" id="rh" value="hyper" checked><input type="radio" name="p" id="re" value="endurance">
 <div class="seg"><label for="rh">HyperSpeed</label><label for="re">Endurance</label></div>
 <div class="card tiers">
-<div class="th"><p class="mut">Full speed &middot; slows after %FAIR_GB% GB &middot; Mabilis</p><div class="rows">%TIERS_H%</div></div>
-<div class="te"><p class="mut">Up to %E_DOWN%/%E_UP% Mbps &middot; Mas matagal ang oras</p><div class="rows">%TIERS_E%</div></div>
+<div class="th"><p class="mut">Full speed &middot; slows after %FAIR_GB% GB</p><div class="rows">%TIERS_H%</div></div>
+<div class="te"><p class="mut">Up to %E_DOWN%/%E_UP% Mbps &middot; much more time per peso</p><div class="rows">%TIERS_E%</div></div>
 </div>
 </div>
 <div class="msg" id="ibusy"></div>
-<button class="btn coin" id="go" type="button">Insert Coin<small>Maglagay ng barya</small></button>
-<p class="note">Coins add up &middot; Nag-iipon ang oras</p>
+<button class="btn coin" id="go" type="button">Insert Coin</button>
+<p class="note">Coins add up: every coin adds more time</p>
 </div>
 <div id="v-live" class="v card">
 <p class="pill" id="lplan"></p>
@@ -46,18 +46,18 @@
 <div class="big" id="lpes"></div>
 <p class="mut c" id="lmin"></p>
 <div id="lcd"><div class="bar"><i id="lbar" style="width:100%"></i></div><p class="mut" id="lleft"></p></div>
-<p class="mut c" id="lhint" style="display:none">Insert more coins, or tap Done &middot; Dagdag barya o Done</p>
-<button class="btn" id="ldone" type="button" style="display:none">Done &middot; Tapos na</button>
-<button class="btn alt" id="lcancel" type="button">Cancel &middot; Kanselahin</button>
+<p class="mut c" id="lhint" style="display:none">Insert more coins, or tap Done</p>
+<button class="btn" id="ldone" type="button" style="display:none">Done</button>
+<button class="btn alt" id="lcancel" type="button">Cancel</button>
 </div>
 <div id="v-final" class="v card">
-<p class="mut c">Thank you &middot; Salamat!</p>
+<p class="mut c">Thank you!</p>
 <div class="big" id="fleft"></div>
 <p class="mut c" id="fmin"></p>
 <div class="msg ok" id="fon"></div>
-<div class="msg" id="foff" style="display:none"><b>Payment received.</b> You are not online yet: turn Wi-Fi off and on. Your time is saved. &middot; Naitala ang bayad; i-off at i-on ang Wi-Fi.</div>
+<div class="msg" id="foff" style="display:none"><b>Payment received.</b> You are not online yet: turn Wi-Fi off and on. Your time is saved.</div>
 <a class="btn" id="fcont" style="display:none">Continue browsing</a>
-<button class="btn alt" id="fagain" type="button">Add more time &middot; Dagdagan</button>
+<button class="btn alt" id="fagain" type="button">Add more time</button>
 </div>
 <div id="v-msg" class="v card">
 <div id="mtext"></div>
@@ -85,46 +85,46 @@ function stopTick(){if(tk){clearInterval(tk);tk=null}}
 function msg(t,btns){put("mtext",t);var b=el("mbtns");b.innerHTML="";var i,x;for(i=0;i<(btns||[]).length;i++){x=document.createElement("button");x.type="button";x.className="btn"+(btns[i][2]?" alt":"");x.textContent=btns[i][0];x.onclick=btns[i][1];b.appendChild(x)}show("msg")}
 function again(){send({t:"hello",fas:fas,reset:true})}
 function startPlan(p,f){plan=p;send({t:"start",plan:p,forfeit:!!f})}
-function wait(p){show("live");put("lplan",pn(p));put("lsub","Getting the coin slot ready");put("lpes","");put("lmin","Please wait, do not insert coins yet · Sandali lang");el("lcd").style.display="none";el("ldone").style.display="none";el("lhint").style.display="none"}
+function wait(p){show("live");put("lplan",pn(p));put("lsub","Getting the coin slot ready");put("lpes","");put("lmin","Please wait, do not insert coins yet");el("lcd").style.display="none";el("ldone").style.display="none";el("lhint").style.display="none"}
 var go=function(){var r=document.querySelector("input[name=p]:checked");var p=r?r.value:"hyper";wait(p);startPlan(p,false);(window.requestAnimationFrame||setTimeout)(function(){setTimeout(prime,0)})};
 el("go").onclick=go;
-el("ldone").onclick=function(){this.disabled=true;this.textContent="Closing · Sandali lang";send({t:"done"})};
+el("ldone").onclick=function(){this.disabled=true;this.textContent="Closing…";send({t:"done"})};
 el("lcancel").onclick=function(){send({t:"done"})};
 el("fagain").onclick=function(){show("idle");again()};
 function view(j){
 var s=j.s;
 if(s!=="armed")stopTick();
 if(s==="idle"){
- show("idle");el("ldone").disabled=false;el("ldone").textContent="Done · Tapos na";
+ show("idle");el("ldone").disabled=false;el("ldone").textContent="Done";
  var on=el("ion");if(j.left>0){on.style.display="block";on.textContent="✓ You are online · "+fsec(j.left)+" of "+pn(j.plan)+" left"}else on.style.display="none";
- var b=el("ibusy");if(j.cooldown>0){b.style.display="block";b.textContent="Too many empty tries. Wait about "+j.cooldown+" s · Maghintay muna."}else if(j.busy>0){b.style.display="block";b.textContent="Another customer is paying. Try again in a few seconds · Subukan ulit mamaya."}else b.style.display="none";
+ var b=el("ibusy");if(j.cooldown>0){b.style.display="block";b.textContent="Too many empty tries. Wait about "+j.cooldown+" s."}else if(j.busy>0){b.style.display="block";b.textContent="Another customer is paying. Try again in a few seconds."}else b.style.display="none";
  return}
 if(s==="starting"){wait(j.plan);return}
 if(s==="armed"){
  show("live");el("lcd").style.display="block";put("lplan",pn(j.plan));put("lsub","Insert coin now");
- put("lpes","₱"+j.pulses);put("lmin",j.pulses>0?"= "+fmt(j.minutes)+" of Wi-Fi":"Maglagay ng barya");
+ put("lpes","₱"+j.pulses);put("lmin",j.pulses>0?"= "+fmt(j.minutes)+" of Wi-Fi":"Each coin adds Wi-Fi time");
  if(j.pulses>pes){ding(j.pulses-pes);say(j.pulses+(j.pulses===1?" peso":" pesos"))}else if(!pes&&!j.pulses&&!tk)say("Insert coin now");
  pes=j.pulses;left=j.remaining;total=j.total||FIRST;bar();
  el("ldone").style.display=j.pulses>0?"block":"none";el("lhint").style.display=j.pulses>0?"block":"none";el("lcancel").style.display=j.pulses>0?"none":"block";
  if(!tk)tk=setInterval(function(){if(left>0)left--;bar()},1000);return}
-if(s==="closing"){show("live");el("lcd").style.display="none";el("ldone").style.display="none";el("lcancel").style.display="none";el("lhint").style.display="none";put("lplan",pn(j.plan));put("lsub","Counting coins · Sandali lang");put("lpes","₱"+j.pulses);put("lmin","");return}
+if(s==="closing"){show("live");el("lcd").style.display="none";el("ldone").style.display="none";el("lcancel").style.display="none";el("lhint").style.display="none";put("lplan",pn(j.plan));put("lsub","Counting coins");put("lpes","₱"+j.pulses);put("lmin","");return}
 if(s==="final"){
  show("final");pes=0;put("fleft",fsec(j.left));put("fmin","of Wi-Fi time left · ₱"+j.pulses+" = "+fmt(j.minutes));
- el("fon").style.display=j.online?"block":"none";el("fon").textContent="✓ You are online · Nakakonekta ka na";el("foff").style.display=j.online?"none":"block";
+ el("fon").style.display=j.online?"block":"none";el("fon").textContent="✓ You are online";el("foff").style.display=j.online?"none":"block";
  var c=el("fcont");if(cont){c.href=cont;c.style.display="block"}else c.style.display="none";
  if(j.online){setTimeout(function(){say("You are online")},900)}
  try{navigator.vibrate&&navigator.vibrate([100,60,100])}catch(e){}return}
-if(s==="empty"){msg("No coins detected, you were not charged · Walang nabayaran.",[["Try again · Subukan ulit",again]]);return}
-if(s==="busy"){msg("Another customer is paying. Try again in about "+j.retry+" s · Subukan ulit mamaya.",[["Try again · Subukan ulit",again]]);return}
-if(s==="cooldown"){msg("Too many empty tries. Wait about "+j.retry+" s · Maghintay muna ng "+j.retry+" segundo.",[["Try again · Subukan ulit",again]]);return}
+if(s==="empty"){msg("No coins detected, you were not charged.",[["Try again",again]]);return}
+if(s==="busy"){msg("Another customer is paying. Try again in about "+j.retry+" s.",[["Try again",again]]);return}
+if(s==="cooldown"){msg("Too many empty tries. Wait about "+j.retry+" s.",[["Try again",again]]);return}
 if(s==="mismatch"){var o=pn(j.plan),sw=plan,n=pn(sw);msg("You still have "+fsec(j.left)+" of "+o+" time. Add more "+o+" time, or switch to "+n+" and give up the time you have left.",[["Add "+o+" time",function(){startPlan(j.plan,false)}],["Switch to "+n+" · lose my time",function(){startPlan(sw,true)},1]]);return}
-msg("Coin payment is not available right now. Try again, or ask the attendant ("+(j.e||"error")+").",[["Try again · Subukan ulit",again]])}
+msg("Coin payment is not available right now. Try again, or ask the attendant ("+(j.e||"error")+").",[["Try again",again]])}
 function connect(){
  var p=location.protocol==="https:"?"wss://":"ws://";
  try{ws=new WebSocket(p+location.host+"/ws")}catch(e){put("conn","This phone's browser cannot run the coin page.");show("conn");return}
  ws.onopen=function(){send({t:"hello",fas:fas})};
  ws.onmessage=function(m){var j;try{j=JSON.parse(m.data)}catch(e){return}if(j.t==="info"){cont=j.cont||"";return}if(j.t==="state")view(j)};
- ws.onclose=function(){ws=null;stopTick();put("conn","Reconnecting · Kumokonekta ulit");if(!el("v-live").style.display||el("v-live").style.display==="none")show("conn");setTimeout(connect,1500)};
+ ws.onclose=function(){ws=null;stopTick();put("conn","Reconnecting…");if(!el("v-live").style.display||el("v-live").style.display==="none")show("conn");setTimeout(connect,1500)};
  ws.onerror=function(){try{ws.close()}catch(e){}}}
 show("conn");connect();
 })();
