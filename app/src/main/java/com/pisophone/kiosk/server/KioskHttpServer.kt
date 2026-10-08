@@ -40,6 +40,7 @@ class KioskHttpServer(
         private const val TAG = "KioskHttpServer"
         private const val RATE_LIMIT_WINDOW_MS = 60000L
         private const val MAX_REQUESTS_PER_WINDOW = 60
+        private const val MAX_TRACKED_IPS = 256
         private const val MAX_TIMESTAMP_SKEW_MS = 60000L
 
         /** Actions the ESP32 box sends to a phone. Anything else arriving over the network is refused. */
@@ -80,6 +81,12 @@ class KioskHttpServer(
 
     private fun isRateLimited(ip: String): Boolean {
         val now = System.currentTimeMillis()
+        if (rateLimits.size > MAX_TRACKED_IPS) {
+            // Drop IPs whose last request is outside the window so the map cannot grow without bound.
+            rateLimits.entries.removeIf { (_, list) ->
+                synchronized(list) { list.isEmpty() || now - list.last() > RATE_LIMIT_WINDOW_MS }
+            }
+        }
         val timestamps = rateLimits.getOrPut(ip) { mutableListOf() }
         synchronized(timestamps) {
             timestamps.removeAll { now - it > RATE_LIMIT_WINDOW_MS }
