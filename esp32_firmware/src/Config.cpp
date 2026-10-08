@@ -135,6 +135,16 @@ uint64_t getCurrentMasterTimeMs() {
     return 0;
 }
 
+// The box's clock as a JSON field, so a phone whose own clock is wrong can sign with the box's time instead of being
+// refused as stale. Empty until some phone has set the master clock.
+String boxTimeJsonField() {
+    uint64_t t = getCurrentMasterTimeMs();
+    if (t == 0) return "";
+    char buf[48];
+    snprintf(buf, sizeof(buf), ",\"server_time_ms\":%llu", (unsigned long long)t);
+    return String(buf);
+}
+
 // Ids come from a boot counter kept in flash, a per-boot sequence number and random salt (TxId.h), so they never
 // repeat between reboots and do not depend on the phone clock having been synced.
 static uint32_t txBootCount = 0;

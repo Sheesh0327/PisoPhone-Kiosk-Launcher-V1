@@ -12,6 +12,7 @@ import org.json.JSONObject
  */
 internal class Esp32HeartbeatBodyHandler(
     private val delegate: Esp32ConnectionDelegate,
+    private val onAuthProblem: (reason: String) -> Unit = {},
     private val requestPairing: (String) -> Unit,
 ) {
     fun handle(body: String, targetIp: String) {
@@ -22,6 +23,12 @@ internal class Esp32HeartbeatBodyHandler(
         }
         try {
             val json = JSONObject(body)
+            // every answer carries the box's time: sign with it from now on (see BoxClock)
+            BoxClock.learnFromBody(body)
+            // a phone that is not paired yet is still told whether the box accepts its key
+            if (json.has("auth_ok") && !json.optBoolean("auth_ok", true)) {
+                onAuthProblem(json.optString("auth_reason", "BAD_SIGNATURE"))
+            }
             val slotNum = json.optInt("slot_num", json.optInt("slot", 0))
             val isUnassigned = json.optString("status", "") == "unassigned" ||
                 json.optString("slot_status", "") == "unassigned" ||

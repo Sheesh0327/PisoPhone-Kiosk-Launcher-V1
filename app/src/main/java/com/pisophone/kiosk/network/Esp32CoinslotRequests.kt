@@ -29,7 +29,7 @@ object Esp32CoinslotRequests {
         secret: String,
         txId: String = "",
         extraQuery: String = "",
-        nowMs: Long = System.currentTimeMillis(),
+        nowMs: Long = BoxClock.nowMs(),
     ): String {
         val ts = nowMs.toString()
         val sig = KioskSecurity.signCoinslotRequest(action, deviceId, ts, txId, secret)

@@ -103,15 +103,26 @@ static void acknowledgeSessionCoinTx(const String& txId) {
 #ifndef PISO_REQUIRE_SIGNED_COINSLOT
 #define PISO_REQUIRE_SIGNED_COINSLOT 1
 #endif
-// True only for a request carrying a correct, fresh signature for this action, device and transaction.
-static bool coinslotSignatureValid(const char* action, const String& rawDevId, const String& txId) {
-    if (!(webServer.hasArg("sig") && webServer.hasArg("ts"))) return false;
+enum class SigCheck { Ok, Missing, BadSignature, StaleTimestamp };
+
+// Why a request is or is not accepted: a correct signature (the phone has this box's secret) is told apart from a
+// correct signature with a time outside the box's window (the phone's clock is off), because only the second can be
+// healed by the phone itself: the refusal then carries the box's time.
+static SigCheck coinslotSignatureCheck(const char* action, const String& rawDevId, const String& txId) {
+    if (!(webServer.hasArg("sig") && webServer.hasArg("ts"))) return SigCheck::Missing;
     String ts = webServer.arg("ts");
     String sig = webServer.arg("sig");
     String payload = "v1:" + String(action) + ":" + rawDevId + ":" + ts;
     if (txId.length() > 0) payload += ":" + txId;
-    return rawDevId.length() > 0 && sig.equalsIgnoreCase(calculateHMAC(payload, getSharedSecret())) &&
-           checkReplayProtection(rawDevId, strtoull(ts.c_str(), NULL, 10));
+    if (rawDevId.length() == 0 || !sig.equalsIgnoreCase(calculateHMAC(payload, getSharedSecret())))
+        return SigCheck::BadSignature;
+    if (!checkReplayProtection(rawDevId, strtoull(ts.c_str(), NULL, 10))) return SigCheck::StaleTimestamp;
+    return SigCheck::Ok;
+}
+
+// True only for a request carrying a correct, fresh signature for this action, device and transaction.
+static bool coinslotSignatureValid(const char* action, const String& rawDevId, const String& txId) {
+    return coinslotSignatureCheck(action, rawDevId, txId) == SigCheck::Ok;
 }
 
 static bool coinslotRequestAuthorized(const char* action, const String& rawDevId, const String& txId) {
@@ -129,13 +140,18 @@ static bool coinslotRequestAuthorized(const char* action, const String& rawDevId
         return true;
 #endif
     }
-    bool ok = coinslotSignatureValid(action, rawDevId, txId);
-    if (!ok) {
-        diagLog("[AUTH] Rejected /api/coinslot/%s: bad signature or stale timestamp from %s\n", action,
-                webServer.client().remoteIP().toString().c_str());
-        webServer.send(403, "application/json", "{\"success\":false,\"error\":\"AUTH_FAILED\"}");
+    SigCheck check = coinslotSignatureCheck(action, rawDevId, txId);
+    if (check != SigCheck::Ok) {
+        bool stale = (check == SigCheck::StaleTimestamp);
+        diagLog("[AUTH] Rejected /api/coinslot/%s from %s: %s\n", action,
+                webServer.client().remoteIP().toString().c_str(),
+                stale ? "the phone's clock is outside the box's window (the refusal carries the box's time)"
+                      : "signature does not match (the phone has a different box secret)");
+        webServer.send(403, "application/json",
+                       String("{\"success\":false,\"error\":\"AUTH_FAILED\",\"reason\":\"") +
+                           (stale ? "STALE_TIMESTAMP" : "BAD_SIGNATURE") + "\"" + boxTimeJsonField() + "}");
     }
-    return ok;
+    return check == SigCheck::Ok;
 }
 
 void handleApiCoinslotArm() {

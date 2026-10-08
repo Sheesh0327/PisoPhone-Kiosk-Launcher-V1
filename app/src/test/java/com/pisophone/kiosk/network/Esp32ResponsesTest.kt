@@ -22,6 +22,12 @@ class Esp32ResponsesTest {
     }
 
     @Test
+    fun aStaleTimestampIsAClockProblemTheBoxCanHeal() {
+        assertEquals(Refusal.CLOCK_SKEW, Esp32Responses.classify(403, "{\"error\":\"AUTH_FAILED\",\"reason\":\"STALE_TIMESTAMP\",\"server_time_ms\":1790000000000}"))
+        assertEquals("a wrong key is still a refusal", Refusal.AUTH_REFUSED, Esp32Responses.classify(403, "{\"error\":\"AUTH_FAILED\",\"reason\":\"BAD_SIGNATURE\"}"))
+    }
+
+    @Test
     fun busyAndOtherStatuses() {
         assertEquals(Refusal.BUSY, Esp32Responses.classify(409))
         assertEquals(Refusal.OTHER, Esp32Responses.classify(500))

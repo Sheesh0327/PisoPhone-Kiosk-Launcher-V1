@@ -2,6 +2,7 @@
 // config retrieval, crash reports and the one-vs-one match qualification check.
 
 #include "InputSafety.h"
+#include <string.h>
 #include "WebServerTelemetry.h"
 #include "WebServerModule.h"
 #include "WebServerAuth.h"
@@ -36,7 +37,11 @@ void handleHeartbeat() {
         deviceId = "DEV_" + reqIp;
     }
 
-    bool isAuth = verifyTelemetryAuth(deviceId, tsStr, sig);
+    const char* authWhy = telemetryAuthFailure(deviceId, tsStr, sig);
+    bool isAuth = (authWhy == nullptr);
+    // Tells the phone what to fix: a clock outside the box's window heals itself (the box's time is in every answer), a
+    // signature that does not match means the phone has another box secret.
+    const char* authReason = isAuth ? "" : (strstr(authWhy, "clock window") ? "STALE_TIMESTAMP" : "BAD_SIGNATURE");
     int slotIdx = findSlotIndexForDevice(deviceId, reqIp);
 
     if (!isAuth && slotIdx >= 0) {
@@ -45,11 +50,12 @@ void handleHeartbeat() {
         static unsigned long lastRefusalLogMs = 0;
         if (lastRefusalLogMs == 0 || millis() - lastRefusalLogMs > 30000UL) {
             lastRefusalLogMs = millis() ? millis() : 1;
-            const char* why = telemetryAuthFailure(deviceId, tsStr, sig);
-            diagLog("[AUTH] Heartbeat refused for '%s' (slot %d): %s\n", deviceId.c_str(),
-                    phoneSlots[slotIdx].slotNum, why ? why : "unknown");
+            diagLog("[AUTH] Heartbeat refused for '%s' (slot %d): %s\n", deviceId.c_str(), phoneSlots[slotIdx].slotNum,
+                    authWhy ? authWhy : "unknown");
         }
-        webServer.send(403, "application/json", "{\"error\":\"AUTH_FAILED_OR_REPLAY\"}");
+        webServer.send(403, "application/json",
+                       String("{\"error\":\"AUTH_FAILED_OR_REPLAY\",\"reason\":\"") + authReason + "\"" +
+                           boxTimeJsonField() + "}");
         return;
     }
 
@@ -83,6 +89,10 @@ void handleHeartbeat() {
         if (devName.length() == 0 || devName == deviceId) devName = "PisoPhone Terminal";
 
         String json = "{\"status\":\"unassigned\",\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\"";
+        // Before pairing the phone already learns whether the box accepts its key and the box's time (no secret needed).
+        json += String(",\"auth_ok\":") + (isAuth ? "true" : "false");
+        if (!isAuth) json += String(",\"auth_reason\":\"") + authReason + "\"";
+        json += boxTimeJsonField();
         json +=
             ",\"slot_num\":0,\"is_paired\":false,\"slot_expired\":true,\"slot_status\":\"unassigned\",\"slot_warning\":false";
         json += ",\"message\":\"Connected to ESP32: Awaiting Slot Assignment in Admin Portal.\"";
@@ -102,6 +112,7 @@ void handleHeartbeat() {
         devName = "PisoPhone Terminal";
     }
     String json = "{\"status\":\"" + status + "\",\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\"";
+    json += boxTimeJsonField();
     if (slotIdx >= 0) {
         String encPin = aes_encrypt("PIN:" + webPassword, getSharedSecret());
         json += ",\"admin_pin\":\"" + jsonEsc(encPin) + "\"";

@@ -46,6 +46,12 @@ restores the session) and locks the phone when time reaches zero.
 - **Phone -> box:** heartbeat (time, state, battery) every few seconds, arm/unarm/ack, pairing.
   Signatures use the shared secret; see `KioskSecurity.signCoinslotRequest` and firmware
   `coinslotRequestAuthorized`.
+- **Clock:** the box has no clock of its own: it takes its time from paired phones and accepts a signed request only within
+  5 minutes of it. So every answer of the box carries `server_time_ms`, and a phone signs with its own clock corrected by the
+  difference (`network/BoxClock.kt`), whatever date the phone thinks it is. A request refused only because of its time
+  (`403`, `reason: STALE_TIMESTAMP`) carries the box's time too: the phone adopts it and retries once. A `BAD_SIGNATURE`
+  means the phone has another box secret (press Save on the box dashboard, or set the phone up again). Before pairing,
+  the heartbeat answer already says `auth_ok` (does the box accept this phone's key) and carries the box's time.
 - **Box -> phone:** add time, deduct time, config sync (`KioskHttpServer`, encrypted + HMAC).
 - **Admin -> box:** the web dashboard (Basic auth, lockout after repeated failures).
 - **Admin -> phone:** `KioskAdminActionReceiver` broadcasts, all gated by the admin PIN.

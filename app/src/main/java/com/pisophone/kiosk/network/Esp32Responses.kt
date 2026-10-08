@@ -19,6 +19,9 @@ object Esp32Responses {
         /** Any other 403: the box does not accept this phone's signature or clock. Provision the phone again. */
         AUTH_REFUSED,
 
+        /** 403 because the phone's clock is outside the box's window: the refusal carries the box's time, the phone adjusts. */
+        CLOCK_SKEW,
+
         /** 409: another device holds the coin slot. */
         BUSY,
 
@@ -29,10 +32,15 @@ object Esp32Responses {
     fun classify(code: Int, body: String = ""): Refusal = when {
         code == 423 -> Refusal.SLOT_LOCKED
         code == 403 && body.contains("SETUP_REQUIRED") -> Refusal.SETUP_REQUIRED
+        code == 403 && body.contains("STALE_TIMESTAMP") -> Refusal.CLOCK_SKEW
         code == 403 -> Refusal.AUTH_REFUSED
         code == 409 -> Refusal.BUSY
         else -> Refusal.OTHER
     }
+
+    /** The box does not recognise this phone's key (a different secret than the phone has). */
+    fun badSecretMessage(): String =
+        "The coin box does not recognise this phone's key. On the box's dashboard press Save (it sends the key to every phone), or set the phone up again."
 
     /** What to tell the person for a refusal that is not about the slot. */
     fun authRefusedMessage(): String =
