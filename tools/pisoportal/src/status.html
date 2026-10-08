@@ -31,6 +31,8 @@ h1{font-size:19px;margin:0 0 4px;text-align:center;color:var(--ok);text-transfor
 <p class="mut">time left &middot; natitirang oras</p>
 <div class="bar"><i id="bar"></i></div>
 <p class="c"><span class="pill" id="plan"></span></p>
+<p class="mut" id="used" style="display:none"></p>
+<div class="msg" id="slow" style="display:none"><b>Fair use:</b> your speed is reduced for a few minutes because of heavy use. It speeds up again by itself. &middot; Pinabagal muna ang bilis dahil sa sobrang gamit; babalik din ito.</div>
 <a class="btn" href="/">Add more time &middot; Dagdagan</a>
 </div>
 <div id="v-off" class="v">
@@ -63,7 +65,9 @@ function view(j){
  var s=j.s;stopTick();
  if(s==="starting"||s==="armed"||s==="closing"){show("pay");return}
  if((s==="idle"||s==="final")&&j.left>0&&j.online){
-  left=j.left;if(left>total)total=left;put("plan",pn(j.plan));el("plan").style.display=pn(j.plan)?"inline-block":"none";
+  left=j.left;if(left>total)total=left;put("plan",pn(j.plan));
+  var u=el("used");if(j.plan==="hyper"){u.style.display="block";put("used","Data used: "+j.used_mb+" MB \u00b7 Nagamit na data")}else u.style.display="none";
+  el("slow").style.display=j.slow>0?"block":"none";el("plan").style.display=pn(j.plan)?"inline-block":"none";
   show("on");paint();tk=setInterval(function(){left--;paint()},1000);return}
  if(s==="idle"||s==="final"){
   if(j.left>0)off("Not connected yet · Hindi pa nakakonekta","You have "+clock(j.left)+" saved. Open the coin page to get online. · May naitalang oras ka; buksan ang coin page.");
