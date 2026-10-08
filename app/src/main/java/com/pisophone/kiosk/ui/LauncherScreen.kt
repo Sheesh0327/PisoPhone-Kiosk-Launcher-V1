@@ -19,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -101,15 +102,32 @@ fun LauncherScreen(
         }
     }
 
-    // The launcher's backdrop: a video that plays only while the home screen is visible and not covered by the lock screen.
+    // The same logo animation as the lock screen, behind the apps: it plays only while the home screen is visible and not
+    // covered by the lock screen. A square as wide as the screen allows, its dark edges faded into the theme.
     val coveredByLockScreen by LockScreenPresence.shown.collectAsState()
     Box(modifier = Modifier.fillMaxSize().background(currentTheme.bg)) {
-        LoopingVideoBackground(
-            videoRes = R.raw.piso_launcher_bg,
-            posterRes = R.drawable.piso_launcher_bg_poster,
-            modifier = Modifier.fillMaxSize(),
-            covered = coveredByLockScreen,
-        )
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val side = minOf(maxWidth, maxHeight)
+            Box(modifier = Modifier.size(side).align(Alignment.Center)) {
+                LoopingVideoBackground(
+                    videoRes = R.raw.piso_lock_logo,
+                    posterRes = R.drawable.piso_lock_logo_poster,
+                    modifier = Modifier.fillMaxSize(),
+                    covered = coveredByLockScreen,
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.radialGradient(
+                                0f to currentTheme.bg.copy(alpha = 0.1f),
+                                0.62f to currentTheme.bg.copy(alpha = 0.2f),
+                                1f to currentTheme.bg,
+                            ),
+                        ),
+                )
+            }
+        }
         Column(
             modifier = Modifier
                 .fillMaxSize()

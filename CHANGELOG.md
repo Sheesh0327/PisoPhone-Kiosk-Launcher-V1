@@ -19,8 +19,7 @@ separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router
   secret) and tells a not-yet-paired phone whether the box accepts its key (`auth_ok`), so a wrong key shows right after
   setup, not at the first coin: the phone says to press Save on the box dashboard (which sends the key) or to set it up again.
 ### Phone app
-- Animated backgrounds: the logo animation behind the lock screen and a drifting-icons backdrop on the home screen (two
-  15-second muted loops, 1.2 MB together). A video exists only while it is on screen: the player is released when the screen
+- Animated background: the logo animation behind the lock screen and the home screen (one 15-second muted loop, 0.6 MB). A video exists only while it is on screen: the player is released when the screen
   leaves the front, while the lock screen covers the home screen, on a low battery (below 15 % and not charging), in battery
   saver, and always on low-RAM (Android Go) phones, which show the still first frame instead. An admin can switch them off
   in the vault (Background videos).

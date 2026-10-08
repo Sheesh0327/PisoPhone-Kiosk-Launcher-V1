@@ -242,7 +242,7 @@ fun VaultSleepAndBatterySection(
             Column(modifier = Modifier.weight(1f)) {
                 Text("Background videos", color = Color(0xFFE2E8F0), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 Text(
-                    "Animated logo on the lock screen and backdrop on the home screen. Off shows a still image.",
+                    "Animated logo behind the lock screen and the home screen. Off shows a still image.",
                     color = Color(0xFF94A3B8),
                     fontSize = 10.sp,
                 )
