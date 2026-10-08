@@ -4,6 +4,10 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- A paired phone could be refused for good (shown offline on the dashboard, no arming) after it had once talked to the box with
+  a wrong clock: the box kept that bogus time as the phone's "newest request" and refused every later request as older. The box
+  now ignores a stored time that lies beyond what its master clock could have produced and replaces it with the next accepted
+  request (`include/ReplayCheck.h`, tested on a PC). Needs the new firmware (raise `PISO_FW_VERSION` to ship it).
 - Removing the kiosk from a phone (website, "Remove from a phone") no longer asks for the admin PIN. The phone accepts the
   removal while USB debugging is on, which it is when the setup computer is connected. With USB debugging off, as on a
   rental phone in normal use, the DEPROVISION broadcast still needs the PIN.
