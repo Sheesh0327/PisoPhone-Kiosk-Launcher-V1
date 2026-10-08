@@ -471,12 +471,22 @@ pair_box() {
 		MAC=$(box_station)
 		[ -n "$MAC" ] && break
 		sleep 5; _t=$((_t + 5))
+		if [ $((_t % 30)) -eq 0 ]; then
+			if [ -n "$(box_ifname)" ]; then _net="$BOX_SSID is on the air"; else _net="$BOX_SSID is NOT on the air"; fi
+			log "  still waiting for the coin box ($_t of $PAIR_WAIT s): $_net, nobody has joined it yet"
+		fi
 		if [ "$_old" != "$BOX_DEFAULT_WIFI" ] && [ $((_t % PAIR_SWAP)) -eq 0 ]; then
 			if [ "$_key" = "$BOX_DEFAULT_WIFI" ]; then _key="$_old"; else _key="$BOX_DEFAULT_WIFI"; fi
 			set_box_key "$_key"
 		fi
 	done
-	[ -n "$MAC" ] || { _up=$(box_ifname); lock_box_network ""; [ -n "$_up" ] || die "the hidden $BOX_SSID network is not on the air (check the router's 2.4 GHz radio: iwinfo), so the coin box could not join it. Then run: piso-setup pair"; die "the coin box did not join the hidden $BOX_SSID network. Check that it is powered and has the current firmware (or factory reset it: it must try $BOX_SSID), then run: piso-setup pair"; }
+	if [ -z "$MAC" ]; then
+		_up=$(box_ifname)
+		cmd_box_diag   # while the network is still as it was during the wait
+		lock_box_network ""
+		[ -n "$_up" ] || die "the hidden $BOX_SSID network is not on the air (check the router's 2.4 GHz radio: iwinfo), so the coin box could not join it. Then run: piso-setup pair"
+		die "the coin box did not join the hidden $BOX_SSID network. Check that it is powered and has the current firmware (or factory reset it: it must try $BOX_SSID), then run: piso-setup pair"
+	fi
 	if [ "$_key" = "$_old" ] && [ "$_old" != "$BOX_DEFAULT_WIFI" ]; then conf_set BOX_WIFI_ROTATED 1; fi   # it joined with its own password
 	log "the coin box joined: $MAC"
 	lock_box_network "$MAC"
@@ -484,7 +494,7 @@ pair_box() {
 	BOX_MAC="$MAC"
 	_t=0
 	while [ "$_t" -lt 180 ]; do box_up && break; sleep 5; _t=$((_t + 5)); done   # it rejoins after the reload and takes the fixed address
-	box_up || die "the box joined but does not answer at $BOX_IP (it may still hold an old address lease: power-cycle the box and run: piso-setup status)"
+	box_up || { cmd_box_diag; die "the box joined but does not answer at $BOX_IP (it may still hold an old address lease: power-cycle the box and run: piso-setup status)"; }
 	log "the coin box answers at $BOX_IP"
 }
 
@@ -548,7 +558,7 @@ rotate_box_wifi() {
 	wifi reload > /dev/null 2>&1
 	_t=0; sleep "${ROTATE_SETTLE:-10}"
 	while [ "$_t" -lt "${ROTATE_WAIT:-240}" ]; do box_up && break; sleep 5; _t=$((_t + 5)); done
-	box_up || die "the coin box did not come back after its Wi-Fi password changed. Power-cycle it and run: piso-setup status. If it still does not join, factory reset the box and run: piso-setup pair"
+	box_up || { cmd_box_diag; die "the coin box did not come back after its Wi-Fi password changed. Power-cycle it and run: piso-setup status. If it still does not join, factory reset the box and run: piso-setup pair"; }
 	log "the coin box rejoined with its own Wi-Fi password"
 }
 

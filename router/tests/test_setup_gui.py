@@ -55,6 +55,8 @@ class FakeCore:
     def find_router(self): return "192.168.1.1" if self.state == "factory" else "10.0.0.1"
     def probe(self, host): return self.state
 
+    def saved_login(self, host, out_dir): return None
+
     def login(self, host, password):
         self.calls.append(("login", password))
         return password == "Rpass2345678"
