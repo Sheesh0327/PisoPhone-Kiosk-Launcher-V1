@@ -27,7 +27,7 @@ setup page, and testing a coin. The guide: [`setup/README.md`](setup/README.md);
 ## How it stays safe
 Each box has its own secret (provisioned to its phones, wrapped in the Android Keystore). Payments are kept in a flash queue on the
 box until the phone acknowledges them, and the phone credits each transaction id exactly once. Firmware and router updates are
-signed with your offline owner key. Details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/KEYS.md`](docs/KEYS.md).
+signed with your offline owner key. Details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/KEYS.md`](docs/KEYS.md). Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md); security reports: [`SECURITY.md`](SECURITY.md); changes: [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Build and test
 ```bash
