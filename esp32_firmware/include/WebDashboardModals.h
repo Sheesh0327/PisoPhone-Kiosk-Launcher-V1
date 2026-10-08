@@ -32,33 +32,6 @@ const char PORTAL_MODALS_HTML[] PROGMEM = R"HTML(
     </div>
 </div>
 
-<!-- Upgrade capacity -->
-<div id="token_modal" class="modal-overlay">
-    <div class="modal">
-        <div class="modal-head">
-            <h3>Add phone slots</h3>
-            <button type="button" class="modal-x" onclick="closeTokenModal()" aria-label="Close"><svg class="ic"><use href="#i-x"/></svg></button>
-        </div>
-        <div class="modal-body">
-            <p class="hint">Send the box code below to your vendor. They reply with a license key that adds more slots.</p>
-            <div class="kv">
-                <span class="code">{BOX_CODE}</span>
-                <button type="button" class="btn sm" onclick="copyToClipboard('{BOX_CODE}', this)"><svg class="ic"><use href="#i-copy"/></svg>Copy</button>
-            </div>
-            <div class="kv"><span class="muted">Slots now</span><b>{MAX_SLOTS} of {MAX_SUPPORTED_SLOTS}</b></div>
-            <div class="field">
-                <label for="token_input">License key</label>
-                <textarea id="token_input" rows="3" placeholder="Paste the key here (starts with PISOLIC1.)"></textarea>
-            </div>
-            <div id="token_error" class="note bad hidden"></div>
-        </div>
-        <div class="modal-foot">
-            <button type="button" class="btn" onclick="closeTokenModal()">Cancel</button>
-            <button type="button" class="btn primary" onclick="submitSlotToken()">Add slots</button>
-        </div>
-    </div>
-</div>
-
 <!-- Pair a connecting phone -->
 <div id="unassigned_pair_modal" class="modal-overlay">
     <div class="modal">

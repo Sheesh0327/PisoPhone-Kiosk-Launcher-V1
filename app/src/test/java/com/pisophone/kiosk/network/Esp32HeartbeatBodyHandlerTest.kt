@@ -24,7 +24,6 @@ class Esp32HeartbeatBodyHandlerTest {
         override fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?) = PaymentResult.APPLIED
         override fun onSlotBusy() { events += "busy" }
         override fun onArmSuccess() { events += "armed" }
-        override fun onSlotWarning(daysLeft: Int, expiresAt: Long, slotNum: Int, message: String) { events += "warning=$daysLeft" }
         override fun onSlotLockdown(reason: String, slotNum: Int, expiresAt: Long) { events += "lockdown=$slotNum" }
         override fun onSlotRestored(slotNum: Int) { events += "restored=$slotNum" }
     }
@@ -54,15 +53,6 @@ class Esp32HeartbeatBodyHandlerTest {
             delegate.events,
         )
         assertTrue(pairingRequests.isEmpty())
-    }
-
-    @Test
-    fun aSlotNearingExpiryWarnsOnlyWithinSevenDays() {
-        handler.handle("""{"slot_num":1,"slot_warning":true,"days_left":3}""", "10.0.0.2")
-        assertTrue("warning=3" in delegate.events)
-        delegate.events.clear()
-        handler.handle("""{"slot_num":1,"slot_warning":true,"days_left":30}""", "10.0.0.2")
-        assertTrue(delegate.events.none { it.startsWith("warning") })
     }
 
     @Test

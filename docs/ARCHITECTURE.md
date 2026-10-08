@@ -14,7 +14,7 @@ Three parts work together: the **Android kiosk app** on each rental phone, the *
 ## 1. A coin payment, step by step
 1. **Arm.** The locked phone calls `/api/coinslot/arm` (app: `Esp32ConnectionManager.armSlot`
    builds the URL with `Esp32CoinslotRequests`). The box checks the signature, that the phone is
-   paired and licensed, and that payment storage works, then energises the coin acceptor for
+   paired, and that payment storage works, then energises the coin acceptor for
    a limited time (`CoinSlotManager.reserveCoinSlot`). Only one phone can hold the slot.
 2. **Coin.** The acceptor produces pulses; `universalCoinIsr` (HardwareManager) only counts them.
    `CoinSlotManager.processCoinSlotSession` waits for a gap in the pulses, then delivers the total.

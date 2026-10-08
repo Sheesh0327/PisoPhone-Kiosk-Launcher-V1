@@ -370,7 +370,7 @@ void processWebSocketServer() {
             bool wsIsActive = isSlotActive(wsSlotIdx);
             if (!wsIsActive) {
                 Serial.printf("[-] WS Mutex Rejected for %s: Slot Expired / Lockdown Active (Slot #%d)\n",
-                              reqDeviceId.c_str(), licenseSlots[wsSlotIdx].slotNum);
+                              reqDeviceId.c_str(), phoneSlots[wsSlotIdx].slotNum);
                 newClient.print(
                     "HTTP/1.1 423 Locked\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: 26\r\n\r\n{\"error\":\"SLOT_EXPIRED\"}");
                 delay(10);

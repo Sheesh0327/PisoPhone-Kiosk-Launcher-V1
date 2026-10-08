@@ -45,14 +45,6 @@ internal class Esp32HeartbeatBodyHandler(
                 delegate.onSlotLockdown(errorMsg, slotNum, expiresAt)
             } else {
                 delegate.onSlotRestored(slotNum)
-
-                val isWarning = json.optBoolean("slot_warning", false) ||
-                    json.optString("slot_status", "") == "warning"
-                val daysLeft = if (json.has("days_left")) json.optInt("days_left", -1) else -1
-                val warnMsg = json.optString("warning_message", "Slot license nearing expiration")
-                if (isWarning && daysLeft in 0..7) {
-                    delegate.onSlotWarning(daysLeft, expiresAt, slotNum, warnMsg)
-                }
             }
 
             val mac = if (json.has("mac")) json.optString("mac", "") else null

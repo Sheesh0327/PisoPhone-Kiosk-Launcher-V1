@@ -1,9 +1,8 @@
 #ifndef LICENSE_PUB_KEY_H
 #define LICENSE_PUB_KEY_H
 
-// PLACEHOLDER: until this file holds your public key the box still accepts the old shared-secret
-// license keys (deprecated). Run `python3 scripts/generate_license.py keygen --private <file>`
-// to replace it, then rebuild and flash. Once a key is installed the old keys stop working.
+// PLACEHOLDER: until this file holds your public key the box accepts unsigned firmware updates.
+// Run `python3 scripts/make_owner_keys.py` to replace it, then rebuild and flash.
 #include <stddef.h>
 #include <stdint.h>
 

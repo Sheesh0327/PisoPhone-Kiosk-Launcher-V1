@@ -9,7 +9,7 @@ becomes a fix. Commit this file after each session so progress is visible in git
 ## How to run it (one person, three passes)
 - **Pass 1: money path, about 2 hours.** B1–B3, P1–P4, C1–C4, F1–F3. If anything here fails, stop, log it, and send it before going on.
 - **Pass 2: the rest of the box and phone, a second session.** Remaining B, P, C and F items, plus S1 and S3.
-- **Pass 3: later, only when passes 1 and 2 are clean.** K (keys, licenses, updates), R (router), L (soak).
+- **Pass 3: later, only when passes 1 and 2 are clean.** K (keys, updates), R (router), L (soak).
 
 Tip: a phone hotspot you can switch off, and a power strip with a switch, make the Wi-Fi-drop and power-cut tests quick to do alone.
 Save `adb logcat -d > phone.log` and the serial output right after each failure.
@@ -60,7 +60,7 @@ Collect logs as you go: box serial output at 115200 baud (`pio device monitor`),
 - [ ] **C4** Time counts down; the phone locks at zero
 - [ ] **C5** Insert coins while the phone is unlocked and armed: time extends
 - [ ] **C6** Slot is busy for a second phone while the first is armed
-- [ ] **C7** Unlicensed/extra slot: coins are refused, phone shows the license message
+- [ ] **C7** Unpaired phone: coins are refused, phone shows the "activate device slot" message
 - [ ] **C8** Revenue counter resets after 5 minutes or on logout as intended
 
 ## 4. Failure handling (most important)
@@ -71,7 +71,7 @@ Collect logs as you go: box serial output at 115200 baud (`pio device monitor`),
 - [ ] **F4** Kill the app on the phone (or let it crash): it comes back by itself, session intact
 - [ ] **F5** Change the phone's clock: paid time is not extended or shortened
 - [ ] **F6** Unplug the coin acceptor / simulate a jam: no phantom credit
-- [ ] **F7** Dashboard "factory reset": Wi-Fi and admin password reset; **license slots and lifetime revenue survive**
+- [ ] **F7** Dashboard "factory reset": Wi-Fi and admin password reset; **lifetime revenue survives**
 - [ ] **F8** Unacknowledged payment survives a factory reset and is delivered afterwards
 
 ## 5. Security spot checks
@@ -81,11 +81,10 @@ Collect logs as you go: box serial output at 115200 baud (`pio device monitor`),
 - [ ] **S3** Remote admin actions need the admin PIN (broadcast without a PIN does nothing)
 - [ ] **S4** Phone cannot be factory-reset or have USB debugging enabled from the network
 
-## 6. Keys, licenses, updates
+## 6. Keys and updates
 *pass 3*
 - [ ] **K1** `python3 scripts/make_owner_keys.py` runs on your computer; self-test passes; key backed up
-- [ ] **K2** Box flashed with the public key accepts a license issued with `generate_license.py issue`
-- [ ] **K3** The old deprecated license keys are now refused
+- [ ] **K2** Box flashed with the public key refuses an unsigned firmware update
 - [ ] **K4** A signed firmware update installs from the dashboard; an unsigned or older one is refused
 - [ ] **K5** Phone updates itself from a newer APK (checksum and signature verified)
 

@@ -9,6 +9,6 @@ void streamPortalHtml();
 String escapeHtmlText(String s);
 String noteHtml(const char* kind, const char* icon, const String& html);
 String renderDeviceOptions(String selectedIp);
-String renderLicenseSlotsHtml();
+String renderPhoneSlotsHtml();
 
 #endif // WEB_DASHBOARD_HTML_H

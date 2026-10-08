@@ -40,7 +40,6 @@ interface Esp32ConnectionDelegate {
     fun onCoinMessageReceived(seconds: Int, amount: Double, txId: String?): PaymentResult
     fun onSlotBusy()
     fun onArmSuccess()
-    fun onSlotWarning(daysLeft: Int, expiresAt: Long, slotNum: Int, message: String)
     fun onSlotLockdown(reason: String, slotNum: Int, expiresAt: Long)
     fun onSlotRestored(slotNum: Int = 0)
     fun onArenaModeSynced(active: Boolean, role: Int, stake: Int) {}

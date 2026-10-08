@@ -12,7 +12,7 @@
     const PACKAGE_NAME = "com.pisophone.kiosk";
     const ADMIN_COMPONENT = `${PACKAGE_NAME}/${PACKAGE_NAME}.receiver.KioskDeviceAdminReceiver`;
     const DEFAULT_SSID = "PisoKiosk";
-    const MAX_SUPPORTED_SLOTS = 6;
+    const MAX_SUPPORTED_SLOTS = 10;
 
     // Single-quote a value for the phone's shell (USB setup). Every value from the link goes through this.
     function shellQuote(value) {

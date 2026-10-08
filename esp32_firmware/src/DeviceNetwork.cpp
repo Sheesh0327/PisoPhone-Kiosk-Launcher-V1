@@ -23,7 +23,7 @@ void sendAddTime(int minutes, String targetIp, String txId) {
             bool isActive = isSlotActive(slotIdx);
             if (!isActive) {
                 Serial.printf("[-] sendAddTime skipped for %s (Slot #%d): Device Expired / Uncredited\n",
-                              cfg.ip.c_str(), (slotIdx >= 0) ? licenseSlots[slotIdx].slotNum : 0);
+                              cfg.ip.c_str(), (slotIdx >= 0) ? phoneSlots[slotIdx].slotNum : 0);
             } else {
                 String effectiveTxId = (txId.length() > 0) ? txId : generateTxId("tx-adj-");
                 int seconds = minutes * 60;

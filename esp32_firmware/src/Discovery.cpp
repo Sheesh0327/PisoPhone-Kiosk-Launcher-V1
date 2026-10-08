@@ -30,7 +30,7 @@ void sendUdpDiscoveryResponse(IPAddress targetIp, uint16_t targetPort) {
                   "\"ws_port\":81,"
                   "\"device_name\":\"PisoPhone Master\","
                   "\"slots\":" +
-                  String(maxLicensedSlots) +
+                  String(MAX_SUPPORTED_SLOTS) +
                   ","
                   "\"minutes\":" +
                   String(minutesPerCoin) +

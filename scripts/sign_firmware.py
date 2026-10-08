@@ -2,8 +2,8 @@
 """
 Signs a firmware image so boxes will accept it (owner only; needs `pip install cryptography`).
 
-You build firmware.bin with PlatformIO, then sign it with the same offline key that signs licenses
-(see scripts/generate_license.py keygen). The box refuses any image that does not match a signed manifest.
+You build firmware.bin with PlatformIO, then sign it with the same offline owner key
+(see scripts/make_owner_keys.py). The box refuses any image that does not match a signed manifest.
 
   python3 scripts/sign_firmware.py --private ~/pisophone_license_key.pem \
       --chip esp32c3 --image .pio/build/esp32-c3-dev/firmware.bin
@@ -29,7 +29,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-import generate_license as gl  # noqa: E402  (shared key loading)
+import owner_key  # noqa: E402  (shared key loading)
 
 VERSION_HEADER = os.path.join(HERE, "..", "esp32_firmware", "include", "FirmwareVersion.h")
 CHIPS = ("esp32c3", "esp32")
@@ -50,7 +50,7 @@ def canonical(chip, version, sha256_hex, size):
 
 
 def make_manifest(private_key, chip, version, image_bytes):
-    hashes, _, ec = gl._crypto()
+    hashes, _, ec = owner_key._crypto()
     if chip not in CHIPS:
         raise ValueError(f"chip must be one of {CHIPS}")
     if not re.fullmatch(r"\d{1,5}\.\d{1,5}\.\d{1,5}", version):
@@ -65,7 +65,7 @@ def make_manifest(private_key, chip, version, image_bytes):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--private", required=True, help="private key (PEM) made by generate_license.py keygen")
+    p.add_argument("--private", required=True, help="private key (PEM) made by make_owner_keys.py")
     p.add_argument("--chip", required=True, choices=CHIPS)
     p.add_argument("--image", required=True, help="the firmware.bin built by PlatformIO for that chip")
     p.add_argument("--version", help="defaults to PISO_FW_VERSION in FirmwareVersion.h")
@@ -78,7 +78,7 @@ def main():
     try:
         with open(args.image, "rb") as f:
             image = f.read()
-        manifest = make_manifest(gl.load_private(args.private), args.chip, version, image)
+        manifest = make_manifest(owner_key.load_private(args.private), args.chip, version, image)
     except (ValueError, OSError) as e:
         sys.exit(f"Error: {e}")
     out = args.out or args.image + ".manifest.json"

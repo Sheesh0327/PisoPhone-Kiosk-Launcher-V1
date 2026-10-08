@@ -215,7 +215,6 @@ class KioskServerCoordinator(
                 "slot_restore", "slot_renew" -> {
                     stateManager.isSlotExpired.value = false
                     stateManager.slotExpiryMessage.value = ""
-                    stateManager.slotWarningDaysLeft.value = null
                     KioskActivationManager.setSlotLockdown(
                         context,
                         false,

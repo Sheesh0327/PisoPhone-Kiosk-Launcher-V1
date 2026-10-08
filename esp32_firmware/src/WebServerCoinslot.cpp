@@ -175,7 +175,7 @@ void handleApiCoinslotArm() {
 
     if (!isSlotActive(slotIdx)) {
         String json = "{\"success\":false,\"status\":\"locked\",\"error\":\"SLOT_EXPIRED\",\"slot\":" +
-                      String(licenseSlots[slotIdx].slotNum) + ",\"message\":\"Device slot is expired or inactive.\"}";
+                      String(phoneSlots[slotIdx].slotNum) + ",\"message\":\"Device slot is expired or inactive.\"}";
         webServer.send(423, "application/json", json);
         return;
     }
@@ -209,7 +209,7 @@ void handleApiCoinslotArm() {
 
     clearSessionCoinTx(devId);
 
-    int sNum = licenseSlots[slotIdx].slotNum;
+    int sNum = phoneSlots[slotIdx].slotNum;
     String json = "{\"success\":true,\"status\":\"armed\",\"slot\":" + String(sNum) +
                   ",\"duration\":" + String(durationSec) + ",\"minutes_per_coin\":" + String(minutesPerCoin) +
                   ",\"price\":1.0,\"settle_ms\":" + String(getCoinSlotSettleRemainingMs()) + "}";

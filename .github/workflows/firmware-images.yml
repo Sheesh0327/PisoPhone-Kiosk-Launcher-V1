@@ -4,6 +4,12 @@ name: Coin box images for the web flasher
 # table, boot_app0 and the app into ONE image per chip, checks its structure, and commits it with a manifest to
 # website/flash/ on main and beta. The website's flash.html writes it over USB (Web Serial) after checking its sha256, so
 # a box can be flashed from Chrome without PlatformIO. Production (encrypted) builds are not published here.
+#
+# On main it also publishes the app-only images for the dashboard's "Install update" (website/update/firmware-<chip>.bin and
+# firmware.json, scripts/publish_firmware_ota.py). They are signed with the repository secret OWNER_SIGNING_KEY_B64 (made by
+# `python3 scripts/make_owner_keys.py --github-secret`, docs/KEYS.md); without the secret they are published unsigned, which boxes
+# accept only until the owner key is built into the firmware. Raise PISO_FW_VERSION for every release: a box installs only a
+# newer version.
 on:
   push:
     branches:
@@ -32,12 +38,12 @@ jobs:
           path: ~/.platformio
           key: pio-images-${{ hashFiles('esp32_firmware/platformio.ini', 'esp32_firmware/envs/*.ini') }}
       - name: Install PlatformIO and esptool
-        run: pip install platformio==6.2.0 esptool==4.8.1
+        run: pip install platformio==6.2.0 esptool==4.8.1 cryptography
       - name: Build and merge (one image per chip)
         working-directory: esp32_firmware
         run: |
           set -eu
-          mkdir -p ../website/flash
+          mkdir -p ../website/flash "$RUNNER_TEMP/ota"
           VERSION=$(sed -n 's/^#define PISO_FW_VERSION "\(.*\)"/\1/p' include/FirmwareVersion.h)
           [ -n "$VERSION" ] || { echo "::error::no PISO_FW_VERSION"; exit 1; }
           builds=""
@@ -47,6 +53,7 @@ jobs:
             ENV=$1; CHIP=$2; NAME=$3; BOOT=$4
             pio run -e "$ENV"
             B=.pio/build/$ENV
+            cp "$B/firmware.bin" "$RUNNER_TEMP/ota/firmware-$CHIP.bin"   # the app-only image for over-the-air updates
             APP0=$(find ~/.platformio/packages -name boot_app0.bin -path '*partitions*' | head -n 1)
             [ -n "$APP0" ] || { echo "::error::boot_app0.bin not found"; exit 1; }
             OUT=../website/flash/$ENV.bin
@@ -72,18 +79,38 @@ jobs:
           printf '{"version":"%s","commit":"%s","builds":[%s]}\n' "$VERSION" "$GITHUB_SHA" "${builds%,}" | python3 -m json.tool > ../website/flash/manifest.json
           cat ../website/flash/manifest.json
       - name: Commit the images to the branch
+        env:
+          OWNER_SIGNING_KEY_B64: ${{ secrets.OWNER_SIGNING_KEY_B64 }}
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           cp -r website/flash "$RUNNER_TEMP/flash"
+          KEY=""
+          if [ "$GITHUB_REF_NAME" = main ] && [ -n "$OWNER_SIGNING_KEY_B64" ]; then
+            KEY="$RUNNER_TEMP/owner.pem"
+            trap 'rm -f "$KEY"' EXIT
+            (umask 077; printf '%s' "$OWNER_SIGNING_KEY_B64" | tr -d '\r\n ' | base64 -d > "$KEY")
+          fi
+          ota_failed=0
           for attempt in 1 2 3 4 5; do
             git fetch -q origin "$GITHUB_REF_NAME"
             git reset -q --hard "origin/$GITHUB_REF_NAME"
             rm -rf website/flash && cp -r "$RUNNER_TEMP/flash" website/flash
             git add -A website/flash
-            if git diff --staged --quiet; then exit 0; fi
-            git commit -q -m "ci: coin box images for the web flasher ($(python3 -c "import json;print(json.load(open('website/flash/manifest.json'))['version'])"))"
-            if git push origin "HEAD:refs/heads/$GITHUB_REF_NAME"; then exit 0; fi
+            if [ "$GITHUB_REF_NAME" = main ]; then
+              # (the production site is built from main, and the boxes' dashboard reads https://pisophone.pages.dev/update)
+              # (a failure here must not hold back the flasher images, but it still fails the run, after they are pushed)
+              if python3 scripts/publish_firmware_ota.py --images "$RUNNER_TEMP/ota" ${KEY:+--key "$KEY"}; then
+                ota_failed=0
+                git add -A -f website/update
+              else
+                ota_failed=1
+                git checkout -q -- website/update && git clean -fdq website/update
+              fi
+            fi
+            if git diff --staged --quiet; then exit $ota_failed; fi
+            git commit -q -m "ci: coin box images for the web flasher and updates ($(python3 -c "import json;print(json.load(open('website/flash/manifest.json'))['version'])"))"
+            if git push origin "HEAD:refs/heads/$GITHUB_REF_NAME"; then exit $ota_failed; fi
             sleep $((attempt * 3))
           done
           echo "::error::could not push the images"; exit 1

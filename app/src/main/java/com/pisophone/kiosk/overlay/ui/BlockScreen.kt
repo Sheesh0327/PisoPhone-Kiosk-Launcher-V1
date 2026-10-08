@@ -50,7 +50,6 @@ fun BlockScreen(
     batteryStatus: BatteryStatus = BatteryStatus(),
     onThemeChange: () -> Unit = {},
     buttonText: String = "READY FOR COIN",
-    slotWarningDaysLeft: Int? = null,
     isSlotExpired: Boolean = false,
     slotExpiryReason: String = "",
     isArenaMode: Boolean = false,
@@ -178,11 +177,9 @@ fun BlockScreen(
                 BatteryAlertBanner(batteryStatus = batteryStatus)
             }
 
-            // Slot Expiration Warning & Expired Banners
+            // Slot Expired Banner
             if (isSlotExpired) {
                 SlotExpiredBanner(reason = slotExpiryReason)
-            } else if (slotWarningDaysLeft != null && slotWarningDaysLeft >= 0) {
-                SlotExpirationWarningBanner(daysLeft = slotWarningDaysLeft)
             }
 
             if (isArenaMode) {

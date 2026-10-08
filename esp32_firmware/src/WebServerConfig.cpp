@@ -47,7 +47,7 @@ void handlePortalRoot() {
         String ip = webServer.hasArg("ip") ? webServer.arg("ip") : "";
         String name = webServer.hasArg("name") ? cleanName(webServer.arg("name")) : ("PisoPhone " + String(slot));
 
-        if (slot >= 1 && slot <= maxLicensedSlots && id.length() > 0) {
+        if (slot >= 1 && slot <= MAX_SUPPORTED_SLOTS && id.length() > 0) {
             bool res = pairDeviceToSlot(slot, id, ip, name);
             if (res) {
                 sendCloudSnapshot();
@@ -249,7 +249,7 @@ void handleSave() {
     }
     if (webServer.hasArg(NVS_KEY_SHARED_SECRET)) {
         String newSecret = webServer.arg(NVS_KEY_SHARED_SECRET);
-        if (secretmode::validSecret(newSecret.c_str()) && newSecret != getLegacyLicenseSecret()) {
+        if (secretmode::validSecret(newSecret.c_str()) && newSecret != getLegacySharedSecret()) {
             setSharedSecret(newSecret);
             prefs.putString(NVS_KEY_SHARED_SECRET, newSecret);
         }

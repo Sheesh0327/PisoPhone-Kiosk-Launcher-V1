@@ -3,7 +3,7 @@
 by a throwaway owner key (scripts/sign_router.py), the real portal program built for this computer with that key as the owner
 key (the cargo feature test-owner-key; the router program never has it), and the real setup file doing the installing.
 Run with:  python3 router/tests/test_selfupdate.py   (needs: cargo, curl, pip install cryptography)"""
-import base64, hashlib, http.server, json, os, shutil, subprocess, sys, tempfile, threading
+import base64, hashlib, http.server, json, os, re, shutil, subprocess, sys, tempfile, threading
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, f"{ROOT}/scripts")
@@ -39,8 +39,9 @@ if not os.path.exists(portal):
     sys.exit("could not build the portal program:\n" + b.stderr[-1500:])
 
 # ---- the releases ----------------------------------------------------------------------------------------------------------------
-base = open(SCRIPT, "rb").read()
-assert b"PISO_RELEASE='1.0.0'" in base, "this test expects setup/RELEASE to be 1.0.0 (the installed release)"
+# The test works with a fixed installed release (1.0.0) whatever setup/RELEASE says, so raising the real release breaks nothing here.
+base, n = re.subn(rb"^PISO_RELEASE='[^']*'$", b"PISO_RELEASE='1.0.0'", open(SCRIPT, "rb").read(), count=1, flags=re.M)
+assert n == 1, "setup/piso-setup.sh has no PISO_RELEASE line"
 
 
 def release(version):
@@ -93,7 +94,7 @@ OLD = b"the old portal program"
 INSTALLED_FILES = {"usr/bin/pisoportal": OLD, "usr/bin/piso-monitor.sh": b"#!/bin/sh\n# old monitor\n", "etc/init.d/pisoportal": b"#!/bin/sh\n# old init\n",
                    "etc/init.d/piso_monitor": b"#!/bin/sh\n# old init 2\n"}
 # the installed command: the setup file without its payload, as piso-setup installs it
-installed_cmd = subprocess.run(["sed", "/^# ---- payload: the portal files/,$d", SCRIPT], capture_output=True).stdout
+installed_cmd = subprocess.run(["sed", "/^# ---- payload: the portal files/,$d"], input=base, capture_output=True).stdout
 
 
 def reset(extra_conf=""):
@@ -202,6 +203,17 @@ check(r.returncode == 0 and "Up to date (release 1.1.0)" in r.stdout, "afterward
 r = self_update("auto")
 check(r.returncode == 0 and "Up to date" in r.stdout and telegram().count("installed and running") == 1, "and the nightly check says nothing")
 check(not os.path.exists(f"{tmp}/t/piso-update.lock") and not [f for f in os.listdir(f"{tmp}/t") if f.startswith("piso-update")], "no lock or temporary files are left: " + str(os.listdir(f"{tmp}/t")))
+# `piso-setup update` on the router itself is the website update (the same as self-update); a new file's `update` installs its own files
+reset()
+publish(release("1.1.0"))
+r = subprocess.run(["sh", inst, "update", "check"], env=env(), capture_output=True, text=True, timeout=120)
+check(r.returncode == 0 and "Release 1.1.0 is available" in r.stdout and release_of_installed() == "1.0.0" and state() == INSTALLED_FILES,
+      "piso-setup update check only says what is available: " + r.stdout + r.stderr)
+r = subprocess.run(["sh", inst, "update"], env=env(), capture_output=True, text=True, timeout=120)
+check(r.returncode == 0 and release_of_installed() == "1.1.0" and open(f"{root}/usr/bin/pisoportal", "rb").read() == real_prog,
+      "piso-setup update installs the signed release from the website: " + r.stdout + r.stderr)
+r = subprocess.run(["sh", inst, "update"], env=env(), capture_output=True, text=True, timeout=120)
+check(r.returncode == 0 and "Up to date (release 1.1.0)" in r.stdout, "and says so when there is nothing newer: " + r.stdout)
 # the timer's line is not duplicated by another update of the same router
 reset()
 publish(release("1.1.0"))

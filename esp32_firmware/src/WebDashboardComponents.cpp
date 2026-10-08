@@ -33,7 +33,7 @@ String renderDeviceOptions(String selectedIp) {
                 int slotIdx = findSlotIndexForDevice(cfg.id, cfg.ip);
                 bool isInactive = !isSlotActive(slotIdx);
                 String expAttr = isInactive ? " data-inactive=\"true\"" : " data-inactive=\"false\"";
-                String badge = isInactive ? " [not licensed]" : "";
+                String badge = isInactive ? " [not paired]" : "";
                 opts += "<option value=\"" + cfg.ip + "\"" + sel + expAttr + ">" + htmlEscape(name) + " (" + cfg.ip +
                         ")" + badge + "</option>";
                 devNum++;
@@ -48,10 +48,10 @@ static String miniStat(const String& label, const String& value) {
     return "<div class=\"mini\"><div class=\"k\">" + label + "</div><div class=\"v\">" + value + "</div></div>";
 }
 
-String renderLicenseSlotsHtml() {
+String renderPhoneSlotsHtml() {
     int installedCount = 0;
-    for (int i = 0; i < maxLicensedSlots; i++) {
-        if (licenseSlots[i].deviceId.length() > 0) {
+    for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
+        if (phoneSlots[i].deviceId.length() > 0) {
             installedCount++;
         }
     }
@@ -80,7 +80,7 @@ String renderLicenseSlotsHtml() {
     // Head: title and the two setup links
     html +=
         "<div class=\"panel-head\"><h2>" + icon("phone") +
-        "Phone slots <span class=\"panel-sub\">Permanent slot licenses, ₱500 each</span></h2><div class=\"actions\">";
+        "Phone slots <span class=\"panel-sub\">Up to " + String(MAX_SUPPORTED_SLOTS) + " phones</span></h2><div class=\"actions\">";
     html += "<a class=\"btn primary sm\" href=\"" + setupBase + "&secret=" + secret + "\">" + icon("download") +
             "Set up a phone</a>";
     html +=
@@ -90,10 +90,8 @@ String renderLicenseSlotsHtml() {
     html += "<div class=\"panel-body\">";
 
     html += "<div class=\"mini-stats\">";
-    html += miniStat("Slots", String(maxLicensedSlots) + " <small class=\"muted\">of " + String(MAX_SUPPORTED_SLOTS) +
-                                  "</small>");
     html += miniStat("Phones paired",
-                     String(installedCount) + " <small class=\"muted\">of " + String(maxLicensedSlots) + "</small>");
+                     String(installedCount) + " <small class=\"muted\">of " + String(MAX_SUPPORTED_SLOTS) + "</small>");
     if (unassignedCount > 0) html += miniStat("Waiting to connect", String(unassignedCount));
     html += "</div>";
 
@@ -108,23 +106,11 @@ String renderLicenseSlotsHtml() {
     html += "<div class=\"slots\">";
     for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
         int sNum = i + 1;
-        if (i >= maxLicensedSlots) {
-            html += "<button type=\"button\" class=\"slot locked\" onclick=\"openTokenModal()\">";
-            html +=
-                "<span class=\"slot-top\"><span>#" + String(sNum) + "</span><span class=\"dot locked\"></span></span>";
-            html += "<span class=\"slot-ic\">" + icon("lock") + "</span>";
-            html +=
-                "<span><span class=\"slot-name muted\">Locked</span><span class=\"slot-sub\">Tap to add slots</span></span>";
-            html += "</button>";
-            continue;
-        }
-
-        String devId = licenseSlots[i].deviceId;
-        String ip = licenseSlots[i].ip;
+        String devId = phoneSlots[i].deviceId;
+        String ip = phoneSlots[i].ip;
         bool isBound = (devId.length() > 0);
-        bool isActive = isSlotActive(i);
         String fullName =
-            isBound ? (licenseSlots[i].name.length() > 0 ? licenseSlots[i].name : ("PisoPhone " + String(sNum)))
+            isBound ? (phoneSlots[i].name.length() > 0 ? phoneSlots[i].name : ("PisoPhone " + String(sNum)))
                     : ("Slot " + String(sNum));
         String shown = isBound ? fullName : "Empty";
         String jsName = fullName;
@@ -132,28 +118,18 @@ String renderLicenseSlotsHtml() {
         jsName.replace("'", "\\'");
         jsName.replace("\"", "&quot;");
         jsName.replace("<", "&lt;");
-        String cls = !isActive ? "slot off" : (isBound ? "slot used" : "slot");
-        String sub = !isActive ? "Not licensed" : (isBound ? "Paired" : "Tap to set up");
+        String cls = isBound ? "slot used" : "slot";
+        String sub = isBound ? "Paired" : "Tap to set up";
 
         html += "<button type=\"button\" class=\"" + cls + "\" onclick=\"openSlotActivationModal(" + String(sNum) +
-                ", '" + jsName + "', '" + ip + "', '" + devId + "', '" + (isActive ? "Permanent" : "No License") +
-                "', " + String(isActive ? 0 : 2) + ", " + (isBound ? "true" : "false") + ")\">";
-        html += "<span class=\"slot-top\"><span>#" + String(sNum) + "</span><span class=\"dot" +
-                (isActive ? "" : " off") + "\"></span></span>";
+                ", '" + jsName + "', '" + ip + "', '" + devId + "', " + (isBound ? "true" : "false") + ")\">";
+        html += "<span class=\"slot-top\"><span>#" + String(sNum) + "</span><span class=\"dot\"></span></span>";
         html += "<span class=\"slot-ic\">" + icon(isBound ? "phone" : "plus") + "</span>";
         html += "<span><span class=\"slot-name\">" + htmlEscape(shown) + "</span><span class=\"slot-sub\">" + sub +
                 "</span></span>";
         html += "</button>";
     }
     html += "</div>";
-
-    // Box code for slot upgrades
-    String boxCode = getBoxMachineCode();
-    html += "<div class=\"kv\"><span><span class=\"muted\">Box code (send it to your vendor to add slots)</span><br>"
-            "<span class=\"code\">" +
-            boxCode + "</span></span>";
-    html += "<button type=\"button\" class=\"btn sm\" onclick=\"copyToClipboard('" + boxCode + "', this)\">" +
-            icon("copy") + "Copy</button></div>";
 
     html += "</div></div>";
     return html;
