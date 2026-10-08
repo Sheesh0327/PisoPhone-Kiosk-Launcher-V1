@@ -90,6 +90,8 @@ class Esp32ConnectionManager(
     private val processedTxIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
     private var heartbeatJob: Job? = null
 
+    private val heartbeatBodyHandler = Esp32HeartbeatBodyHandler(delegate) { sendPairingRequest(it) }
+
     private val discoveryScanner = Esp32DiscoveryScanner(
         context = context,
         scope = scope,
@@ -232,71 +234,7 @@ class Esp32ConnectionManager(
                                     } else {
                                         KioskStatusToast.show(context, "Box online at $host", 600_000L)
                                     }
-                                    if (body.isNotBlank()) {
-                                        try {
-                                            val json = JSONObject(body)
-                                            val slotNum = json.optInt("slot_num", json.optInt("slot", 0))
-                                            val isUnassigned = json.optString("status", "") == "unassigned" ||
-                                                json.optString("slot_status", "") == "unassigned" ||
-                                                (!json.optBoolean("is_paired", true) && slotNum <= 0)
-                                            val isExpired = isUnassigned ||
-                                                json.optBoolean("slot_expired", false) ||
-                                                json.optBoolean("lockdown", false) ||
-                                                json.optString("status", "") == "expired" ||
-                                                json.optString("slot_status", "") == "expired"
-                                            val expiresAt = json.optLong("expires_at", 0L)
-                                            if (isUnassigned) {
-                                                sendPairingRequest(targetIp)
-                                            }
-                                            val errorMsg = if (json.has("message") && json.optString("message").isNotBlank()) {
-                                                json.optString("message")
-                                            } else {
-                                                json.optString("error", "Please activate device slot on ESP32 Portal.")
-                                            }
-
-                                            if (isExpired) {
-                                                delegate.onSlotLockdown(errorMsg, slotNum, expiresAt)
-                                            } else {
-                                                delegate.onSlotRestored(slotNum)
-
-                                                val isWarning = json.optBoolean("slot_warning", false) ||
-                                                    json.optString("slot_status", "") == "warning"
-                                                val daysLeft = if (json.has("days_left")) json.optInt("days_left", -1) else -1
-                                                val warnMsg = json.optString("warning_message", "Slot license nearing expiration")
-                                                if (isWarning && daysLeft in 0..7) {
-                                                    delegate.onSlotWarning(daysLeft, expiresAt, slotNum, warnMsg)
-                                                }
-                                            }
-
-                                            val mac = if (json.has("mac")) json.optString("mac", "") else null
-                                            val alias = if (json.has("device_name")) json.optString("device_name", "").trim() else null
-                                            val price = if (json.has("price")) json.optDouble("price", 5.0) else null
-                                            val minutes = if (json.has("minutes")) json.optInt("minutes", 30) else null
-                                            val encryptedPin = json.optString("admin_pin", "")
-                                            val decryptedPin = if (encryptedPin.isNotBlank()) {
-                                                val dec = KioskSecurity.decrypt(encryptedPin, delegate.getSecretKey()).trim()
-                                                if (dec.startsWith("PIN:")) dec.substring(4).trim().takeIf { it.isNotBlank() } else null
-                                            } else {
-                                                null
-                                            }
-
-                                            Log.d(TAG, "[HEARTBEAT] JSON parsing successful. Setting online to true.")
-                                            delegate.onOnlineStatusChanged(true, mac)
-                                            delegate.onConfigSynced(price, minutes, alias, decryptedPin, slotNum)
-
-                                            if (json.has("arena_active")) {
-                                                val arenaActive = json.optBoolean("arena_active", false)
-                                                val arenaRole = json.optInt("arena_role", 0)
-                                                val arenaStake = json.optInt("arena_stake", 15)
-                                                delegate.onArenaModeSynced(arenaActive, arenaRole, arenaStake)
-                                            }
-                                        } catch (e: Exception) {
-                                            Log.e(TAG, "[HEARTBEAT] Exception parsing JSON body: ${e.message}", e)
-                                        }
-                                    } else {
-                                        Log.d(TAG, "[HEARTBEAT] Body is blank. Setting online to true.")
-                                        delegate.onOnlineStatusChanged(true, null)
-                                    }
+                                    heartbeatBodyHandler.handle(body, targetIp)
                                 } else {
                                     Log.w(TAG, "[HEARTBEAT] Unsuccessful HTTP code: $code")
                                     KioskStatusToast.show(
@@ -724,33 +662,10 @@ class Esp32ConnectionManager(
                     val event = json.optString("event", "")
 
                     if (event == "COIN_DETECTED") {
-                        var txId = json.optString("tx_id", "").trim()
-                        var seconds = json.optInt("seconds", 0)
-                        var amount = json.optDouble("amount", 0.0)
-
-                        val payload = json.optString("payload", "")
-                        if (payload.isNotBlank()) {
-                            val secretKey = delegate.getSecretKey()
-                            val decryptedStr = KioskSecurity.decrypt(payload, secretKey)
-                            if (decryptedStr.isNotBlank()) {
-                                try {
-                                    val decryptedJson = JSONObject(decryptedStr)
-                                    if (txId.isBlank()) txId = decryptedJson.optString("tx_id", "").trim()
-                                    if (seconds <= 0) {
-                                        val min = decryptedJson.optLong("minutes", 0L)
-                                        val sec = decryptedJson.optLong("seconds", 0L)
-                                        seconds = if (sec > 0L) sec.toInt() else (min * 60L).toInt()
-                                    }
-                                    if (amount <= 0.0) amount = decryptedJson.optDouble("amount", 0.0)
-                                } catch (_: Exception) {}
-                            }
-                        }
-
-                        if (txId.isNotBlank() && seconds > 0 && amount > 0.0) {
-                            if (processedTxIds.add(txId)) {
-                                Log.i(TAG, "⚡ Validated WebSocket Coin Processed: +${seconds}s, amount=₱$amount, txId=$txId")
-                                handleCoinAndAck(ipHost, deviceId, txId, seconds, amount)
-                            }
+                        val coin = Esp32WebSocketMessages.parseCoinDetected(json) { delegate.getSecretKey() }
+                        if (coin != null && processedTxIds.add(coin.txId)) {
+                            Log.i(TAG, "⚡ Validated WebSocket Coin Processed: +${coin.seconds}s, amount=₱${coin.amount}, txId=${coin.txId}")
+                            handleCoinAndAck(ipHost, deviceId, coin.txId, coin.seconds, coin.amount)
                         }
                     } else if (event == "TIMEOUT" || event == "CLOSED" || event == "SESSION_ENDED") {
                         Log.d(TAG, "Received $event event from ESP32 WebSocket (attempt #$attemptId)")

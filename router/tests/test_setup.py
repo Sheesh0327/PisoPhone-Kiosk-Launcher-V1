@@ -132,7 +132,8 @@ check("macfilter" not in out and "dhcp.pisocoinbox" not in out, "box network is 
 check("set firewall.guest.forward='REJECT'" in out and "set firewall.guest_wan.dest='wan'" in out and "set firewall.guest_stream.dest_port='2080'" in out, "guests reach the internet only (and the portal port)")
 check("set opennds.@opennds[0].gatewayinterface='br-guest'" in out and "set opennds.@opennds[0].gatewayname='PisoWiFi'" in out, "openNDS gates the guest network")
 check("set opennds.@opennds[0].fasport='2080'" in out and "set opennds.@opennds[0].faspath='/'" in out and "set opennds.@opennds[0].fas_secure_enabled='1'" in out
-      and "set opennds.@opennds[0].login_option_enabled='0'" in out and "delete opennds.@opennds[0].themespec_path" in out and "allow tcp port 2080" in out,
+      and "set opennds.@opennds[0].login_option_enabled='0'" in out and "delete opennds.@opennds[0].themespec_path" in out and "allow tcp port 2080" in out
+      and "set opennds.@opennds[0].statuspath='/usr/lib/opennds/pisoportal_status.sh'" in out,
       "openNDS forwards new guests to the portal (FAS level 1) and no theme script is used")
 check("set firewall.kiosk" not in out, "no separate kiosk firewall zone (the kiosk network is the LAN)")
 check("<kiosk password>" in out, "dry run never prints a real password")
@@ -169,7 +170,7 @@ fake_uci({"radio0": "2g", "radio1": "5g"})
 # ---- payload ---------------------------------------------------------------------------------------------------------------
 root = f"{tmp}/root"
 r = lib(f'PISO_ROOT={root}; DRY=1; extract_payload {SCRIPT}', env={"PISO_ROOT": root})
-for src, dest in [("router/piso_monitor.sh", "/usr/bin/piso-monitor.sh"), ("router/piso_monitor.init", "/etc/init.d/piso_monitor"), ("router/pisoportal.init", "/etc/init.d/pisoportal")]:
+for src, dest in [("router/piso_monitor.sh", "/usr/bin/piso-monitor.sh"), ("router/piso_monitor.init", "/etc/init.d/piso_monitor"), ("router/pisoportal.init", "/etc/init.d/pisoportal"), ("router/pisoportal_status.sh", "/usr/lib/opennds/pisoportal_status.sh")]:
     p = f"{root}{dest}"
     check(os.path.exists(p) and open(p).read() == open(f"{ROOT}/{src}").read(), f"payload {dest} is identical to {src}")
     check(os.path.exists(p) and os.access(p, os.X_OK), f"{dest} is executable")

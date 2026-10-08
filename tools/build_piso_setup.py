@@ -14,6 +14,7 @@ FILES = [  # (source in the repository, destination on the router, mode)
     ("router/piso_monitor.sh", "/usr/bin/piso-monitor.sh", "755"),
     ("router/piso_monitor.init", "/etc/init.d/piso_monitor", "755"),
     ("router/pisoportal.init", "/etc/init.d/pisoportal", "755"),
+    ("router/pisoportal_status.sh", "/usr/lib/opennds/pisoportal_status.sh", "755"),
 ]
 BINARIES = [
     ("tools/pisoportal/bin/pisoportal-mipsel", "/usr/bin/pisoportal", "755"),

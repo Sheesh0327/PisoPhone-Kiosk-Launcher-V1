@@ -25,6 +25,10 @@ try:
     check(code2 == 304 and body2 == "", "a returning phone gets 304 and downloads nothing")
     check(env.get("/generate_204")[0] == 200 and env.get("/ping")[1] == "ok", "any other address is the page; ping answers")
 
+    code_s, body_s, hdr_s = env.get("/status")
+    check(code_s == 200 and "WebSocket" in body_s and "time left" in body_s and "Test Spot" in body_s and "no-store" in hdr_s.get("Cache-Control", ""),
+          "the live status page is served at /status (countdown, gateway name, never cached)")
+
     # ---- a payment: P17 on Endurance (1 + 1 + 15 pesos), online only when the customer is done ----------------------------------
     env.set_box(busy=False, coins_at=[0.5, 1.0] + [1.5 + 0.1 * i for i in range(15)])
     a = Cust("127.0.0.1")
