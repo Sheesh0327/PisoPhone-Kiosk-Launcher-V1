@@ -34,14 +34,12 @@ class KioskService : Service() {
         const val ACTION_TEST_TTS = "com.pisophone.kiosk.TEST_TTS"
         const val ACTION_LOCK_SESSION = "com.pisophone.kiosk.LOCK_SESSION"
         const val ACTION_ADMIN_ADJUST_TIME = "com.pisophone.kiosk.ADMIN_ADJUST_TIME"
+        const val ACTION_MASTER_BOX_CONFIGURED = "com.pisophone.kiosk.MASTER_BOX_CONFIGURED"
+        const val ACTION_HEALTH_CHECK = "com.pisophone.kiosk.HEALTH_CHECK"
 
-        @Volatile
-        var isServiceRunning: Boolean = false
-            private set
-
-        @Volatile
-        var activeInstance: KioskService? = null
-            private set
+        // Every command reaches the service the same way: as an intent delivered to onStartCommand. That starts
+        // the service if it is not running and queues the command in order if it is, so there is one code path
+        // and no need for callers to hold a reference to the live instance.
 
         fun configureMasterBox(
             context: Context,
@@ -64,77 +62,40 @@ class KioskService : Service() {
             // (also without a password: the status line then says that no kiosk network is saved)
             Thread { com.pisophone.kiosk.network.KioskWifi.joinAndReport(context) }.start()
             KioskActivationManager.setPairingCompleted(context, true)
+            // Credentials are already persisted above; the service only needs the MAC to start discovery.
             val cleanMac = KioskSecurity.formatMacAddress(mac)
-            activeInstance?.let { service ->
-                if (cleanMac.isNotBlank()) {
-                    service.stateManager.esp32MacAddress.value = cleanMac
-                }
-                service.triggerCandidateDiscovery()
-            }
+            send(context, ACTION_MASTER_BOX_CONFIGURED) { putExtra("mac", cleanMac) }
         }
 
-        fun triggerAdminBypass(context: Context, durationSeconds: Int = 900) {
-            val instance = activeInstance
-            if (instance != null) {
-                instance.performAdminBypass(durationSeconds)
-            } else {
-                val intent = Intent(context, KioskService::class.java).apply {
-                    action = ACTION_ADMIN_BYPASS
-                    putExtra("duration", durationSeconds)
-                }
-                startServiceCompat(context, intent)
-            }
-        }
+        fun triggerAdminBypass(context: Context, durationSeconds: Int = 900) =
+            send(context, ACTION_ADMIN_BYPASS) { putExtra("duration", durationSeconds) }
 
-        fun triggerLockSession(context: Context) {
-            val instance = activeInstance
-            if (instance != null) {
-                instance.performLockSession()
-            } else {
-                val intent = Intent(context, KioskService::class.java).apply {
-                    action = ACTION_LOCK_SESSION
-                }
-                startServiceCompat(context, intent)
-            }
-        }
+        fun triggerLockSession(context: Context) = send(context, ACTION_LOCK_SESSION)
 
-        fun triggerAdminTimeAdjust(context: Context, deltaSeconds: Int) {
-            val instance = activeInstance
-            if (instance != null) {
-                instance.performAdminTimeAdjust(deltaSeconds)
-            } else {
-                val intent = Intent(context, KioskService::class.java).apply {
-                    action = ACTION_ADMIN_ADJUST_TIME
-                    putExtra("delta_seconds", deltaSeconds)
-                }
-                startServiceCompat(context, intent)
-            }
-        }
+        fun triggerAdminTimeAdjust(context: Context, deltaSeconds: Int) =
+            send(context, ACTION_ADMIN_ADJUST_TIME) { putExtra("delta_seconds", deltaSeconds) }
 
-        fun triggerTestTts(context: Context, text: String = "PisoPhone voice system online and functional.") {
-            val instance = activeInstance
-            if (instance != null) {
-                instance.speakWarning(text)
-            } else {
-                val intent = Intent(context, KioskService::class.java).apply {
-                    action = ACTION_TEST_TTS
-                    putExtra("text", text)
-                }
-                startServiceCompat(context, intent)
-            }
-        }
+        fun triggerTestTts(context: Context, text: String = "PisoPhone voice system online and functional.") =
+            send(context, ACTION_TEST_TTS) { putExtra("text", text) }
 
-        private fun startServiceCompat(context: Context, intent: Intent) {
+        /** Starts the service if it is dead, otherwise asks it to repair its HTTP listener and overlay. */
+        fun requestHealthCheck(context: Context) = send(context, ACTION_HEALTH_CHECK)
+
+        private fun send(context: Context, action: String, extras: Intent.() -> Unit = {}) {
+            val intent = Intent(context, KioskService::class.java).apply {
+                this.action = action
+                extras()
+            }
             try {
                 context.startForegroundService(intent)
             } catch (e: Throwable) {
-                Log.e(TAG, "Failed startServiceCompat: ${e.message}")
+                Log.e(TAG, "Failed to send $action: ${e.message}")
             }
         }
     }
 
     private var engine: KioskEngine? = null
-    val stateManager: KioskStateManager by lazy { KioskStateManager(applicationContext) }
+    private val stateManager: KioskStateManager by lazy { KioskStateManager(applicationContext) }
 
     private var multicastLock: WifiManager.MulticastLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
@@ -142,9 +103,6 @@ class KioskService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        isServiceRunning = true
-        activeInstance = this
-
         createNotificationChannel()
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Kiosk Active")
@@ -188,21 +146,28 @@ class KioskService : Service() {
         when (intent?.action) {
             ACTION_ADMIN_BYPASS -> {
                 val duration = intent.getIntExtra("duration", 900)
-                performAdminBypass(duration)
+                engine?.requestAdminBypass(duration)
             }
             ACTION_LOCK_SESSION -> {
-                performLockSession()
+                engine?.requestLockSession()
             }
             ACTION_ADMIN_ADJUST_TIME -> {
                 val delta = intent.getIntExtra("delta_seconds", 0)
                 if (delta != 0) {
-                    performAdminTimeAdjust(delta)
+                    engine?.requestAdminTimeAdjust(delta)
                 }
             }
             ACTION_TEST_TTS -> {
                 val text = intent.getStringExtra("text") ?: "PisoPhone voice system online and functional."
-                speakWarning(text)
+                engine?.speakWarning(text)
             }
+            ACTION_MASTER_BOX_CONFIGURED -> {
+                intent.getStringExtra("mac")?.takeIf { it.isNotBlank() }?.let {
+                    stateManager.esp32MacAddress.value = it
+                }
+                engine?.triggerCandidateDiscovery()
+            }
+            ACTION_HEALTH_CHECK -> engine?.runHealthRepair()
         }
 
         if (Settings.canDrawOverlays(this)) {
@@ -212,39 +177,6 @@ class KioskService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
-
-    fun isOverlayHealthy(): Boolean = engine?.overlayCoordinator?.isOverlayHealthy() ?: false
-
-    fun ensureHttpServerRunning(): Boolean = engine?.ensureHttpServerRunning() ?: false
-
-    fun setupOverlay() {
-        engine?.overlayCoordinator?.setupOverlay()
-    }
-
-    // These are reached from Compose click handlers, broadcast receivers and onStartCommand,
-    // all on the main thread. The engine work is blocking Room I/O, so dispatch it to the
-    // engine's IO scope; state is published through StateFlows and toasts are posted to Main.
-    fun performAdminBypass(durationSeconds: Int = 900) {
-        engine?.requestAdminBypass(durationSeconds)
-    }
-
-    fun performLockSession() {
-        engine?.requestLockSession()
-    }
-
-    fun performAdminTimeAdjust(deltaSeconds: Int) {
-        engine?.requestAdminTimeAdjust(deltaSeconds)
-    }
-
-    fun speakWarning(text: String) {
-        engine?.speakWarning(text)
-    }
-
-    fun triggerCandidateDiscovery() {
-        engine?.triggerCandidateDiscovery()
-    }
-
-    fun probeEsp32Connection(ip: String): Boolean = engine?.probeEsp32Connection(ip) ?: false
 
     private fun acquireLocks() {
         try {
@@ -297,8 +229,6 @@ class KioskService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        isServiceRunning = false
-        activeInstance = null
         wifiHandler.removeCallbacks(wifiKeeper)
         engine?.stop()
         engine = null
