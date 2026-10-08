@@ -1439,7 +1439,9 @@ class Wizard:
             self.note(self.router_status, "warn", f"Router found at {r['host']}. It was set up before: it keeps the names and "
                                                   "passwords it has, and the installation finishes or repairs it. Your "
                                                   "settings from the previous step are not applied to it (the country is).")
-            if r["state"] == "password":
+            if r["state"] == "password" and r.get("login_ok"):
+                self.note(self.router_status, "ok", "Logged in with the router password saved by the previous setup.")
+            elif r["state"] == "password":
                 c = self.card(self.router_status)
                 self.text(c, "Router password", "bold").pack(fill="x")
                 self.text(c, "This router has a password. It is in the summary saved by the previous setup, and none of the "
