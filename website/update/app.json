@@ -1,10 +1,10 @@
 {
-  "versionCode": 348,
-  "versionName": "1.0.348-dev",
+  "versionCode": 352,
+  "versionName": "1.0.352-dev",
   "channel": "dev",
   
   "signatureChecksum": "Un0usqLMwnmeaowrY2g21EgRVWe4bTRDLUi2RH12WbE",
-  "sha256": "f5cdb19f0e53329fe42a8fdc2f3ab05f8e3dde3d36fe43040131ecff46910edd",
+  "sha256": "febcb526b3d86675529bbe18df6a25c6156d706a8804c85a9b6714b0189c586f",
   "size": 1739086,
   "releaseDate": "2026-10-08"
 }
