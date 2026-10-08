@@ -19,7 +19,7 @@ The full checklist and issue log are in `docs/REAL_WORLD_TESTING.md`.
 Keys are not needed for this test (see `docs/KEYS.md`); boxes then still accept the old license keys and OTA is off, so flash by USB.
 
 ## CI
-`quality.yml` runs on pushes to `main` and `beta` and on pull requests into `main`, and only for the parts a change touches (a "What changed" job decides; a newer push cancels the unfinished run; downloads are cached): ktlint, clang-format, firmware host tests, a real PlatformIO build of all four firmware
+`quality.yml` runs on pushes to `main` and `beta` and on pull requests into `main` or `beta`, and only for the parts a change touches (a "What changed" job decides; a newer push cancels the unfinished run; downloads are cached): ktlint, clang-format, firmware host tests, a real PlatformIO build of all four firmware
 environments (the platform is pinned in `esp32_firmware/envs/*.ini`), security-rule and vendored-file checks, the provisioning
 website (its helpers, its stylesheet and the page itself in a browser under the site's Content-Security-Policy), and the
 router portal and setup tests (rustfmt, clippy, unit, end-to-end and browser tests, shellcheck). `firmware-images.yml` builds the coin box
@@ -30,6 +30,22 @@ tests, builds and signs the release APK and publishes it to the branch's channel
 
 Repository secrets for the APK build: `KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD` (the build stops
 if one is missing, because an APK signed with another key cannot update installed phones), and optionally `RELEASES_TOKEN`.
+
+## Claude implementer (`claude.yml`)
+Issues written by the Architect (see `CLAUDE.md`) end with `@claude`. `claude.yml` runs Claude Code when someone with write
+access opens such an issue, comments `@claude` on an issue or pull request, or adds the label `claude` to an issue. Claude
+works on a new `claude/...` branch made from `beta`, runs the issue's Verification commands, and links the pull request into
+`beta` in its comment; Code quality then runs on that pull request. Nothing reaches `main` without the usual merge.
+
+Set it up once:
+1. Install the Claude GitHub App on this repository: https://github.com/apps/claude (Contents, Issues and Pull requests
+   read and write).
+2. Add one repository secret: `CLAUDE_CODE_OAUTH_TOKEN` (run `claude setup-token` on your computer; uses your Claude
+   subscription) or `ANTHROPIC_API_KEY` (an API key from the Claude Console).
+3. Create the label `claude` (Issues > Labels) if you want to start a run by labelling an issue.
+4. Merge `claude.yml` to `main`: GitHub runs issue and comment workflows only from the default branch.
+
+Issues that were already open before the workflow existed start with a new `@claude` comment or the `claude` label.
 
 ## Where APKs and firmware are published
 The repository is private, so phones cannot download from its GitHub Releases. APKs go to a separate **public** releases

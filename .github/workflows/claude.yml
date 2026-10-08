@@ -1,0 +1,105 @@
+name: Claude (implement issues)
+
+# The implementer side of CLAUDE.md's Architect-Implementer workflow.
+#
+# Claude Code runs when someone with write access to this repository:
+#   - opens an issue whose title or body contains @claude,
+#   - comments @claude on an issue or pull request (or in a pull request review),
+#   - or adds the label "claude" to an issue.
+# Claude works on a new branch made from beta (claude/issue-<n>-...), runs the issue's Verification commands, pushes, and
+# links the pull request into beta from its comment on the issue. Nothing reaches main without the usual beta -> main merge.
+#
+# Needs, once (see docs/DEPLOY.md):
+#   - the Claude GitHub App installed on this repository (https://github.com/apps/claude),
+#   - the repository secret CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`) or ANTHROPIC_API_KEY.
+# GitHub runs issue and comment workflows from the default branch, so this file only takes effect once it is on main.
+
+on:
+  issues:
+    types: [opened, labeled]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+
+# One run per issue or pull request at a time; a second @claude waits for the first instead of racing it on the same branch.
+concurrency:
+  group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  claude:
+    # Only people who can already push may start a run (the action checks write access again); a bot never can.
+    if: >-
+      (
+        (github.event_name == 'issues' && github.event.action == 'opened' &&
+          (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')) &&
+          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association)) ||
+        (github.event_name == 'issues' && github.event.action == 'labeled' && github.event.label.name == 'claude') ||
+        (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude') &&
+          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
+        (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude') &&
+          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
+        (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude') &&
+          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.review.author_association))
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # The tools the issues' Verification commands use (the same versions as quality.yml and build-apk.yml).
+      - name: Set up JDK 17 (Android build)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.platformio
+          key: claude-tools-${{ hashFiles('esp32_firmware/platformio.ini', 'esp32_firmware/envs/*.ini') }}
+
+      - name: Install firmware, router and lint tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q libmbedtls-dev shellcheck
+          pip install -q platformio==6.2.0 clang-format==23.1.2 cryptography pyyaml pytest
+          curl -sSL -o ktlint https://github.com/pinterest/ktlint/releases/download/1.5.0/ktlint
+          chmod +x ktlint
+          # ./ktlint is used by the issues' Verification commands; keep it out of commits
+          echo ktlint >> .git/info/exclude
+
+      - name: Run Claude Code
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          label_trigger: claude
+          base_branch: beta
+          branch_prefix: claude/
+          additional_permissions: |
+            actions: read
+          claude_args: |
+            --model claude-sonnet-5-5
+            --allowedTools "Bash,Read,Edit,MultiEdit,Write,Glob,Grep"
+            --append-system-prompt "You are the Implementer described in CLAUDE.md. Read CLAUDE.md first. Make only the changes the issue asks for, on the branch the action created from beta. Run every command in the issue's Verification section and fix what fails before pushing; report each command and its result in your comment. Never push to main or beta directly, never change signing keys, secrets or files under website/update, and never edit esp32_firmware/include/WebAssets.h by hand (run python3 scripts/embed_web.py). If the issue says it is blocked or waits for another issue that is still open, stop and say so instead of implementing it."
