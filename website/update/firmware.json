@@ -2,7 +2,7 @@
   "version": "3.0.301",
   "build": 301,
   "releaseDate": "2026-09-15",
-  "changelog": "Official Master Box ESP32 Firmware with 5-Slot Capacity & One-Click Cloud OTA",
+  "changelog": "Slot licensing removed: all 10 phone slots are available",
   "chips": {
     "esp32c3": {
       "url": "https://pisophone.pages.dev/update/firmware-esp32c3.bin",

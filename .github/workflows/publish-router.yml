@@ -1,0 +1,86 @@
+name: Publish the router update
+
+# When the router setup file on main changes (the router-program workflow builds it on beta and it reaches main by merge),
+# signs it with the owner key and publishes website/update/router.json + router-setup.sh. Routers then take it with
+# `piso-setup update` (or by themselves overnight; docs/RELEASE.md section 3a). A router installs only a release that is
+#   - signed by the owner key built into its program (tools/pisoportal/owner_key.b64),
+#   - newer than the one it runs (raise setup/RELEASE for every update), and
+#   - within its turn of the staged rollout.
+#
+# The signing key is the repository secret OWNER_SIGNING_KEY_B64, made once on the owner's own computer with
+# `python3 scripts/make_owner_keys.py --github-secret` (docs/KEYS.md). This workflow only ever runs on pushes to main.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'setup/piso-setup.sh'
+      - 'setup/RELEASE'
+      - '.github/workflows/publish-router.yml'
+  workflow_dispatch:
+    inputs:
+      rollout:
+        description: 'Percent of routers that take it now (100 = everyone; sign the same file again with a higher number to widen)'
+        default: '100'
+      changelog:
+        description: 'One line for the routers'' Telegram message'
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-router
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Sign and publish
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the signing library
+        run: pip install cryptography
+      - name: Check the keys
+        env:
+          OWNER_SIGNING_KEY_B64: ${{ secrets.OWNER_SIGNING_KEY_B64 }}
+        run: |
+          if [ -z "$OWNER_SIGNING_KEY_B64" ]; then
+            echo "::error::The repository secret OWNER_SIGNING_KEY_B64 is not set, so no router update can be signed. Run python3 scripts/make_owner_keys.py --github-secret on your own computer (docs/KEYS.md)."
+            exit 1
+          fi
+          if [ ! -s tools/pisoportal/owner_key.b64 ]; then
+            echo "::error::tools/pisoportal/owner_key.b64 is empty: routers have no owner key built in and would refuse every update. Commit the public key make_owner_keys.py wrote, let CI rebuild the router program, and install that setup file on each router by hand once (docs/RELEASE.md)."
+            exit 1
+          fi
+      - name: Sign and commit
+        env:
+          OWNER_SIGNING_KEY_B64: ${{ secrets.OWNER_SIGNING_KEY_B64 }}
+          ROLLOUT: ${{ github.event.inputs.rollout || '100' }}
+          CHANGELOG: ${{ github.event.inputs.changelog }}
+        run: |
+          set -eu
+          RELEASE=$(tr -d '[:space:]' < setup/RELEASE)
+          [ -n "$CHANGELOG" ] || CHANGELOG="Router software release $RELEASE"
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          KEY="$RUNNER_TEMP/owner.pem"
+          trap 'rm -f "$KEY"' EXIT
+          (umask 077; printf '%s' "$OWNER_SIGNING_KEY_B64" | tr -d '\r\n ' | base64 -d > "$KEY")
+          for attempt in 1 2 3 4 5; do
+            git fetch -q origin main
+            git reset -q --hard origin/main
+            # nothing to do when exactly this file is already published at this rollout
+            if [ -f website/update/router-setup.sh ] && cmp -s setup/piso-setup.sh website/update/router-setup.sh \
+               && python3 -c "import json,sys; sys.exit(0 if str(json.load(open('website/update/router.json')).get('rollout')) == sys.argv[1] else 1)" "$ROLLOUT" 2> /dev/null; then
+              echo "Router release $RELEASE is already published at $ROLLOUT%."; exit 0
+            fi
+            python3 scripts/sign_router.py --private "$KEY" --rollout "$ROLLOUT" --changelog "$CHANGELOG"
+            git add -f website/update/router.json website/update/router-setup.sh
+            if git diff --staged --quiet; then exit 0; fi
+            git commit -q -m "ci: router release $RELEASE signed and published ($ROLLOUT%)"
+            if git push origin HEAD:refs/heads/main; then exit 0; fi
+            sleep $((attempt * 3))
+          done
+          echo "::error::could not push the router release"; exit 1

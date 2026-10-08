@@ -18,7 +18,7 @@
 # Everything is generated here (Wi-Fi password, box admin password, gateway key) and printed once at the end and saved in
 # /root/piso-setup-summary.txt. Running the file again is safe: it keeps what it already made.
 #
-# Other commands (after setup): piso-setup status | wifi-name "<name>" | pair | summary | test-coin | diag | box-diag | set-password | reconcile [rebase] | telegram | rotate-box-wifi | handout | lock-admin | unlock-admin | update | self-update [check] | auto-update on|off
+# Other commands (after setup): piso-setup status | wifi-name "<name>" | pair | summary | test-coin | diag | box-diag | set-password | reconcile [rebase] | telegram | rotate-box-wifi | handout | lock-admin | unlock-admin | update [check] (installs the newest release from the website; same as self-update) | self-update [check] | auto-update on|off
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation
@@ -26,7 +26,7 @@
 
 VERSION="dev"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
-PISO_RELEASE='1.0.0'
+PISO_RELEASE='1.1.0'
 
 COUNTRY="${COUNTRY:-PH}"
 KIOSK_SSID="PisoKiosk"                       # fixed, and hidden: only phones provisioned by the coin box page know it
@@ -816,9 +816,10 @@ cmd_diag() {
 	echo "--- setup log"; tail -15 "$LOG" 2> /dev/null
 }
 
-# piso-setup update: install the portal, manager and monitor files from THIS copy of the setup file and restart them. Nothing
-# else is touched: no Wi-Fi or network settings, passwords, pairing or customer data. Run it from the new file:
-#   ./piso-setup.sh update
+# ./piso-setup.sh update (run from a NEW copy of the setup file): install the portal, manager and monitor files from THIS copy
+# and restart them. Nothing else is touched: no Wi-Fi or network settings, passwords, pairing or customer data.
+# On the router itself, the installed command `piso-setup update` instead fetches the newest release the owner signed from the
+# website (the same as `piso-setup self-update`); see the dispatch in main().
 cmd_update() {
 	[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
 	DRY=0
@@ -1290,7 +1291,9 @@ main() {
 		reconcile) if [ "$ARG" = rebase ]; then cmd_reconcile rebase; else cmd_reconcile; fi ;;
 		telegram) cmd_telegram ;;
 		handout) cmd_handout ;;
-		update) cmd_update ;;
+		update)
+			# the installed command updates from the website; a copy run from anywhere else installs its own files
+			if [ "$0" = "$SELF_PATH" ]; then cmd_self_update "$ARG"; else cmd_update; fi ;;
 		self-update) cmd_self_update "$ARG" ;;
 		auto-update) cmd_auto_update "$ARG" ;;
 		lock-admin)

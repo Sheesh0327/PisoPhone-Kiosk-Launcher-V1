@@ -425,7 +425,8 @@ r = run("update", env={"PISO_TEST_NONROOT": "1", "PISO_ROOT": root, "PISO_CONF":
 check(r.returncode != 0 and "run ./piso-setup.sh without arguments first" in (r.stdout + r.stderr), "without an existing setup it refuses")
 r = subprocess.run(["sh", SCRIPT, "update"], env=dict(os.environ, PATH=f"{bindir}:" + os.environ["PATH"], PISO_CONF=conf_up, PISO_LOG=f"{tmp}/log", PISO_STATE=f"{tmp}/state",
                    PISO_SUMMARY=f"{tmp}/summary", PISO_ROOT=root, PISO_SELF_PATH=SCRIPT, PISO_TEST_NONROOT="1"), capture_output=True, text=True, timeout=60)
-check(r.returncode != 0 and "installed (old) copy" in (r.stdout + r.stderr), "run from the installed copy it says to use the new file")
+check(r.returncode != 0 and "installed (old) copy" not in (r.stdout + r.stderr) and "portal program is not installed" in (r.stdout + r.stderr),
+      "run from the installed copy it updates from the website (self-update) instead of installing its own files")
 # ---- finding the box on its own network --------------------------------------------------------------------------------------
 open(f"{bindir}/iwinfo", "w").write("""#!/bin/sh
 if [ -z "$1" ]; then
