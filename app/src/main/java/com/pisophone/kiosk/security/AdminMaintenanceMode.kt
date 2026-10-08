@@ -41,7 +41,7 @@ object AdminMaintenanceMode {
     /** Called by the kiosk's main screen when it becomes visible (true) or leaves the front (false). */
     fun setKioskScreenInFront(inFront: Boolean) {
         synchronized(this) {
-            if (inFront && !kioskScreenInFront) adminAppOpened = false   // the admin is back: the pill returns
+            if (inFront && !kioskScreenInFront) adminAppOpened = false // the admin is back: the pill returns
             kioskScreenInFront = inFront
             refreshSuspendOverlays()
         }
