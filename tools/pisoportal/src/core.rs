@@ -20,7 +20,7 @@ pub(crate) use log;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum View {
-    Idle { left: u64, plan: Option<Plan>, online: bool, busy: u64, cooldown: u64 },
+    Idle { left: u64, plan: Option<Plan>, online: bool, busy: u64, cooldown: u64, used_mb: u64, slow: u64 },
     Starting { plan: Plan },
     Armed { plan: Plan, pulses: u32, minutes: u32, remaining: u64, total: u64 },
     Closing { plan: Plan, pulses: u32, minutes: u32 },
@@ -35,13 +35,15 @@ pub enum View {
 impl View {
     pub fn to_json(&self) -> String {
         match self {
-            View::Idle { left, plan, online, busy, cooldown } => format!(
-                "{{\"t\":\"state\",\"s\":\"idle\",\"left\":{},\"plan\":\"{}\",\"online\":{},\"busy\":{},\"cooldown\":{}}}",
+            View::Idle { left, plan, online, busy, cooldown, used_mb, slow } => format!(
+                "{{\"t\":\"state\",\"s\":\"idle\",\"left\":{},\"plan\":\"{}\",\"online\":{},\"busy\":{},\"cooldown\":{},\"used_mb\":{},\"slow\":{}}}",
                 left,
                 plan.map(|p| p.as_str()).unwrap_or(""),
                 online,
                 busy,
-                cooldown
+                cooldown,
+                used_mb,
+                slow
             ),
             View::Starting { plan } => format!("{{\"t\":\"state\",\"s\":\"starting\",\"plan\":\"{}\"}}", plan.as_str()),
             View::Armed { plan, pulses, minutes, remaining, total } => format!(
@@ -194,7 +196,14 @@ impl Core {
         let st = self.st.lock().unwrap();
         let busy = if st.window.as_ref().map(|w| w.mac != mac).unwrap_or(false) { self.cfg.busy_retry } else { 0 };
         let cooldown = st.cooldown.get(mac).map(|u| u.saturating_sub(now)).unwrap_or(0);
-        View::Idle { left, plan, online: left > 0, busy, cooldown }
+        // HyperSpeed only: data used this session, and the seconds a fair-use slowdown still lasts (0 = full speed)
+        let (used_mb, slow) = match st.fair.get(mac) {
+            Some(f) if plan == Some(Plan::Hyper) && left > 0 => {
+                (f.used_kb / 1024, if f.throttled { (f.since + self.cfg.fair_throttle_min * 60).saturating_sub(now) } else { 0 })
+            }
+            _ => (0, 0),
+        };
+        View::Idle { left, plan, online: left > 0, busy, cooldown, used_mb, slow }
     }
 
     fn window_view(&self, w: &Window) -> View {
