@@ -121,6 +121,8 @@ object AppLauncher {
                         Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED or
                         Intent.FLAG_ACTIVITY_CLEAR_TOP,
                 )
+                // Play Store, Settings and the installer ignore touches while the pill is drawn over them.
+                if (KioskPolicyManager.isAdminOnlyPackage(packageName)) AdminMaintenanceMode.noteAdminAppOpened()
                 context.startActivity(intent)
                 Log.i(TAG, "Successfully started activity for package: $packageName")
                 return true
@@ -182,6 +184,7 @@ object AppLauncher {
      */
     fun launchDeveloperSettings(context: Context) {
         AdminMaintenanceMode.begin(context, 900)
+        AdminMaintenanceMode.noteAdminAppOpened()
         try {
             val devIntent = Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

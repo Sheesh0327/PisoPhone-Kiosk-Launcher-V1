@@ -40,6 +40,13 @@ object SessionRules {
     /** The customer has paid time and the phone is usable. */
     fun isUnlocked(state: Int): Boolean = state == UNLOCKED || state == UNLOCKED_ARMED
 
+    /**
+     * The floating pill is on screen. It is hidden while an admin works in an admin-only app (Play Store, Settings, installer):
+     * those apps ignore touches when anything is drawn over them.
+     */
+    fun isPillShown(state: Int, arenaBannerVisible: Boolean, hiddenForAdminApp: Boolean): Boolean =
+        (isUnlocked(state) || arenaBannerVisible) && !hiddenForAdminApp
+
     /** The full-screen lock/insert-coin overlay is shown. */
     fun isLockScreenShown(state: Int): Boolean = state == LOCKED || state == ARMED_LOCKED
 

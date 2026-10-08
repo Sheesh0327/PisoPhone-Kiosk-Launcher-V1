@@ -150,4 +150,14 @@ class SessionRulesTest {
         assertTrue(SessionRules.isArmed(SessionRules.afterExpiry(UNLOCKED_ARMED)))
         assertFalse(SessionRules.isUnlocked(SessionRules.afterExpiry(UNLOCKED_ARMED)))
     }
+
+    @Test
+    fun pillShowsOnlyWhenUnlockedOrBannerAndNotHiddenForAnAdminApp() {
+        for (state in allStates) {
+            for (banner in listOf(false, true)) {
+                assertEquals(SessionRules.isUnlocked(state) || banner, SessionRules.isPillShown(state, banner, hiddenForAdminApp = false))
+                assertFalse(SessionRules.isPillShown(state, banner, hiddenForAdminApp = true))
+            }
+        }
+    }
 }
