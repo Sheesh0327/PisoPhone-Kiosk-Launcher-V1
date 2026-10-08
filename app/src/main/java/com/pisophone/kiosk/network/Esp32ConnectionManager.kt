@@ -7,6 +7,7 @@ import android.util.Log
 import android.widget.Toast
 import com.pisophone.kiosk.repository.PaymentResult
 import com.pisophone.kiosk.security.KioskSecurity
+import com.pisophone.kiosk.util.DiagnosticsLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -323,13 +324,17 @@ class Esp32ConnectionManager(
 
     private fun checkOfflineThreshold(currentIp: String) {
         val offlineDuration = System.currentTimeMillis() - lastHeartbeatTime
-        if (consecutiveHeartbeatFailures >= 2 || offlineDuration > 8000L) {
+        if (Esp32Responses.shouldMarkOffline(consecutiveHeartbeatFailures, offlineDuration)) {
             delegate.onOnlineStatusChanged(false, null)
             KioskStatusToast.show(context, "Box is offline: its heartbeat failed $consecutiveHeartbeatFailures times; searching again")
-            // Immediately trigger discovery to locate ESP32 if assigned a new DHCP IP
+            // Look for the box again (it may have a new DHCP address) while the known address keeps being tried.
             discoveryScanner.triggerDiscovery(currentIp)
-            Log.w(TAG, "ESP32 heartbeat failed ($consecutiveHeartbeatFailures failures, ${offlineDuration}ms offline), clearing stale cached IP for fast rediscovery")
-            esp32Ip = null
+            if (Esp32Responses.shouldForgetAddress(consecutiveHeartbeatFailures, offlineDuration)) {
+                Log.w(TAG, "ESP32 heartbeat failed ($consecutiveHeartbeatFailures failures, ${offlineDuration}ms offline), clearing stale cached IP for rediscovery")
+                esp32Ip = null
+            } else {
+                Log.w(TAG, "ESP32 heartbeat failed ($consecutiveHeartbeatFailures failures, ${offlineDuration}ms offline); still trying $esp32Ip")
+            }
         }
     }
 
@@ -541,6 +546,15 @@ class Esp32ConnectionManager(
                 delegate.onSlotBusy()
                 Handler(Looper.getMainLooper()).post {
                     Toast.makeText(context, "Slot is currently busy with another device.", Toast.LENGTH_LONG).show()
+                }
+            } else if (Esp32Responses.classify(code, body) == Esp32Responses.Refusal.AUTH_REFUSED) {
+                // 403 is the box refusing this request (signature, clock, secret), not a statement about the slot: do not lock
+                // the phone as "not activated" and do not retry over a WebSocket that would be refused the same way.
+                Log.e(TAG, "ESP32 refused the arm request (HTTP 403): $body")
+                DiagnosticsLog.add("ARM", "box refused the request (HTTP 403): $body")
+                delegate.onSlotBusy()
+                Handler(Looper.getMainLooper()).post {
+                    Toast.makeText(context, Esp32Responses.authRefusedMessage(), Toast.LENGTH_LONG).show()
                 }
             } else if (code == 403 && body.contains("SETUP_REQUIRED")) {
                 // The box refuses coins until its owner has changed the default admin password; the WebSocket would be refused too.
@@ -762,9 +776,17 @@ class Esp32ConnectionManager(
                         Handler(Looper.getMainLooper()).post {
                             Toast.makeText(context, "Slot is currently busy with another device.", Toast.LENGTH_LONG).show()
                         }
-                    } else if (code == 403 || code == 423 || msg.contains("SLOT_EXPIRED", ignoreCase = true) || msg.contains("423", ignoreCase = true)) {
+                    } else if (code == 423 || msg.contains("SLOT_EXPIRED", ignoreCase = true) || msg.contains("423", ignoreCase = true)) {
                         Log.e(TAG, "Slot is EXPIRED on ESP32 (HTTP $code). Enforcing lockdown.")
                         delegate.onSlotLockdown("Please activate device slot on ESP32 Portal.", 0, 0L)
+                    } else if (code == 403) {
+                        // The box does not accept this phone's signature or clock: not a slot problem.
+                        Log.e(TAG, "ESP32 refused the WebSocket (HTTP 403)")
+                        DiagnosticsLog.add("ARM", "box refused the WebSocket (HTTP 403)")
+                        delegate.onSlotBusy()
+                        Handler(Looper.getMainLooper()).post {
+                            Toast.makeText(context, Esp32Responses.authRefusedMessage(), Toast.LENGTH_LONG).show()
+                        }
                     } else {
                         Log.w(TAG, "WebSocket connection failed (HTTP $code: $msg)")
                         delegate.onSlotBusy()

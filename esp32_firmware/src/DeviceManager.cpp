@@ -209,13 +209,19 @@ bool checkReplayProtection(String deviceId, unsigned long long newTs) {
     return true;
 }
 
-bool verifyTelemetryAuth(String deviceId, String tsStr, String sig) {
-    if (deviceId.length() == 0) return false;
+const char* telemetryAuthFailure(String deviceId, String tsStr, String sig) {
+    if (deviceId.length() == 0) return "no device id";
     String expectedSig = calculateHMAC(deviceId + ":" + tsStr, getSharedSecret());
-    if (!sig.equalsIgnoreCase(expectedSig)) return false;
+    if (!sig.equalsIgnoreCase(expectedSig)) return "signature does not match (the phone has a different box secret)";
 
     unsigned long long ts = strtoull(tsStr.c_str(), NULL, 10);
-    return checkReplayProtection(deviceId, ts);
+    if (!checkReplayProtection(deviceId, ts))
+        return "timestamp outside the box's clock window (check the phone's date and time)";
+    return nullptr;
+}
+
+bool verifyTelemetryAuth(String deviceId, String tsStr, String sig) {
+    return telemetryAuthFailure(deviceId, tsStr, sig) == nullptr;
 }
 
 void recordDeviceNonce(String deviceId, unsigned long long ts) {

@@ -16,6 +16,8 @@ String getDeviceNameByIpOrId(String reqIp, String devId = "");
 
 bool checkReplayProtection(String deviceId, unsigned long long newTs);
 bool verifyTelemetryAuth(String deviceId, String tsStr, String sig);
+// Why a signed request is refused, in words for the diagnostics log; nullptr when it is accepted.
+const char* telemetryAuthFailure(String deviceId, String tsStr, String sig);
 void recordDeviceNonce(String deviceId, unsigned long long ts);
 void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int state, int battery = -1,
                            bool charging = false, unsigned long long ts = 0, bool isApp = false, String name = "");

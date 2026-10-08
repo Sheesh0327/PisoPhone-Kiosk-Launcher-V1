@@ -11,6 +11,7 @@
 #include "DeviceManager.h"
 #include "DeviceNetwork.h"
 #include "PaymentQueueManager.h"
+#include "Diagnostics.h"
 #include <WiFi.h>
 #include <WebServer.h>
 
@@ -39,6 +40,15 @@ void handleHeartbeat() {
     int slotIdx = findSlotIndexForDevice(deviceId, reqIp);
 
     if (!isAuth && slotIdx >= 0) {
+        // A paired phone that is refused looks "offline" on the dashboard (only accepted heartbeats count as seen), so
+        // say why, now and then, in the diagnostics.
+        static unsigned long lastRefusalLogMs = 0;
+        if (lastRefusalLogMs == 0 || millis() - lastRefusalLogMs > 30000UL) {
+            lastRefusalLogMs = millis() ? millis() : 1;
+            const char* why = telemetryAuthFailure(deviceId, tsStr, sig);
+            diagLog("[AUTH] Heartbeat refused for '%s' (slot %d): %s\n", deviceId.c_str(),
+                    licenseSlots[slotIdx].slotNum, why ? why : "unknown");
+        }
         webServer.send(403, "application/json", "{\"error\":\"AUTH_FAILED_OR_REPLAY\"}");
         return;
     }
