@@ -28,7 +28,7 @@ The box checks the signature, chip and that the version is newer (a downgrade ne
 upload against the signed hash and size, accepts one upload per manifest within 15 minutes, and confirms the new image after a minute of normal running.
 
 ## Per-box secrets
-Each box makes its own random secret on first start; the dashboard's **Install & Provision** link hands it to the phone. The old key
+Each box makes its own random secret on first start; the dashboard's **Set up a phone** link hands it to the phone. The old key
 `PISOPHONE_HMAC_MASTER_KEY` was public, so anyone could forge credits.
 A box upgraded from older firmware that already has Wi-Fi saved starts in **legacy mode** (orange banner): it keeps the old key so nothing breaks.
 To migrate a site: update the app on every phone; flash the box; make sure each phone has its admin PIN (the box admin password); click

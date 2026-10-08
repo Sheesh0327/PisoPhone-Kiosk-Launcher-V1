@@ -56,7 +56,7 @@ For the next phone, choose the next slot in the program (or on the coin box's pa
 | Anything else | Click *Try again*: it is always safe, and the router keeps what is already done. |
 
 ## After the setup
-- **Another phone:** run the program (or open the coin box's page at `http://10.0.0.10`) and use *Install & Provision* for the next slot.
+- **Another phone:** run the program (or open the coin box's page at `http://10.0.0.10`) and use *Set up a phone* for the next slot.
 - **New software** for the router: `python3 pisophone_setup.py --update`.
 - **Check on the router at any time:** `ssh root@10.0.0.1`, then `piso-setup status`. More commands: [`MANUAL.md`](MANUAL.md), "Day to day".
 

@@ -4,9 +4,11 @@
 #include <Arduino.h>
 
 void streamPortalHtml();
+// A coloured message box for the dashboard. kind: "ok", "warn", "bad" or ""; icon: a name from the icon sprite.
+// Makes text from a request safe to put inside HTML.
+String escapeHtmlText(String s);
+String noteHtml(const char* kind, const char* icon, const String& html);
 String renderDeviceOptions(String selectedIp);
-String renderDeviceIpInputs();
 String renderLicenseSlotsHtml();
-String renderSlotOptions();
 
 #endif // WEB_DASHBOARD_HTML_H

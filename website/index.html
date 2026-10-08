@@ -3,216 +3,146 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PisoPhone - Phone Setup</title>
+    <meta name="color-scheme" content="light dark">
+    <title>PisoPhone Phone Setup</title>
     <link rel="icon" href="data:,">
-    <!-- built from the classes on this page by tools/site-css (no third-party script runs on this page) -->
-    <link rel="stylesheet" href="css/app.css">
-    <style>
-        body {
-            background: linear-gradient(-45deg, #090d16, #0e1726, #052e16);
-            background-size: 400% 400%;
-            animation: gradientShift 14s ease infinite;
-            color: #f1f5f9;
-            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        }
-        @keyframes gradientShift {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
-        }
-        .glass-card {
-            background: rgba(15, 23, 42, 0.85);
-            backdrop-filter: blur(16px);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.7);
-        }
-        .btn-glow-emerald {
-            box-shadow: 0 0 20px rgba(16, 185, 129, 0.3), 0 8px 25px -4px rgba(16, 185, 129, 0.25);
-            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        .btn-glow-emerald:hover {
-            box-shadow: 0 0 28px rgba(52, 211, 153, 0.55), 0 10px 30px -4px rgba(16, 185, 129, 0.4);
-            transform: translateY(-1px);
-        }
-        .btn-glow-rose {
-            box-shadow: 0 0 20px rgba(225, 29, 72, 0.3), 0 8px 25px -4px rgba(225, 29, 72, 0.25);
-            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        .btn-glow-rose:hover {
-            box-shadow: 0 0 28px rgba(244, 63, 94, 0.55), 0 10px 30px -4px rgba(225, 29, 72, 0.4);
-            transform: translateY(-1px);
-        }
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.5); }
-        ::-webkit-scrollbar-thumb { background: rgba(52, 211, 153, 0.3); border-radius: 3px; }
-    </style>
+    <link rel="stylesheet" href="css/site.css">
 </head>
-<body class="min-h-screen flex flex-col items-center justify-center p-4">
+<body>
+<svg class="hidden" aria-hidden="true">
+<symbol id="i-logo" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M9.5 9.5h4a1.8 1.8 0 010 3.6h-3.5"/></symbol>
+<symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+<symbol id="i-phone" viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></symbol>
+<symbol id="i-qr" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="M14 14h2v2h-2zM18 14h2v2M14 18h2v2M18 18h2v2"/></symbol>
+<symbol id="i-usb" viewBox="0 0 24 24"><path d="M12 3v13M12 16a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM12 9l4-2v3M12 12l-4-2V8"/></symbol>
+<symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></symbol>
+<symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2.5 5 13.5h6l-1 8 8-11h-6z"/></symbol>
+<symbol id="i-wifi" viewBox="0 0 24 24"><path d="M2 9a15 15 0 0 1 20 0M5.5 12.5a10 10 0 0 1 13 0M9 16a5 5 0 0 1 6 0"/><path d="M12 19.5h.01"/></symbol>
+<symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+<symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3.5 2.5 20h19z"/><path d="M12 10v4.5M12 17.5h.01"/></symbol>
+<symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.5h.01"/></symbol>
+<symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v8.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/></symbol>
+<symbol id="i-box" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></symbol>
+</svg>
+<div class="page">
+    <div class="brand">
+        <span class="brand-mark"><svg class="ic"><use href="#i-logo"/></svg></span>
+        <span class="brand-name">PisoPhone</span>
+        <span class="brand-sub">Phone setup</span>
+        <span id="connectionPill" class="pill ok hidden">Coin box found</span>
+    </div>
 
-    <!-- Restricted Access View (Shown when not accessed through ESP32) -->
-    <div id="restrictedView" class="hidden glass-card max-w-md w-full rounded-2xl p-8 space-y-6 text-center border-rose-500/20">
-        <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-rose-500/10 text-rose-400 border border-rose-500/20 text-3xl font-black mx-auto">
-            🔒
-        </div>
-        <div class="space-y-2">
-            <h1 class="text-xl font-extrabold tracking-tight text-white">
-                Hardware Access Restricted
-            </h1>
-            <p class="text-xs text-slate-400 leading-relaxed">
-                This utility can only be accessed when redirected directly from your physical PisoPhone ESP32 Coin Slot Box portal.
-            </p>
-        </div>
-        <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-4 text-left text-xs text-slate-400 space-y-2">
-            <strong class="text-slate-200 block text-xs">How to connect:</strong>
-            <ol class="list-decimal pl-4 space-y-1 text-[11px] text-slate-400">
-                <li>Connect your computer or phone to the same local Wi-Fi network.</li>
-                <li>Open the local dashboard (e.g. <code class="text-emerald-400">http://kioskmanager.local</code> or its assigned DHCP IP).</li>
-                <li>Click <b>Install &amp; Provision</b> or <b>Deprovision</b> on the coin box's page to open this tool with its details.</li>
-            </ol>
-        </div>
-        <a href="pisophone_setup.py" download class="block text-xs font-bold text-emerald-400 hover:text-emerald-300 underline">⬇ Setting up a whole new site? Download the setup program: it guides you through everything</a>
-        <a href="flash.html" class="block text-xs font-bold text-emerald-400 hover:text-emerald-300 underline">⚡ Only the coin box's firmware? Flash it from this browser</a>
-        <div class="text-[11px] text-slate-500">
-            PisoPhone Kiosk Hardware Utility • Private Terminal
+    <!-- Shown when the page was not opened from a coin box -->
+    <div id="restrictedView" class="card hidden">
+        <h1>Open this page from your coin box</h1>
+        <p class="lead">Phone setup needs the details of your coin box, which its own page passes along. Opened on its own, this page has nothing to set up.</p>
+        <ol class="steps">
+            <li>Connect this computer or phone to the same Wi-Fi network as the coin box.</li>
+            <li>Open the coin box's page (for example <code>http://kioskmanager.local</code>, or its address on the router).</li>
+            <li>Under <b>Tools</b>, <b>Phone slots</b>, choose <b>Set up a phone</b> or <b>Remove from a phone</b>.</li>
+        </ol>
+        <div class="links">
+            <a href="pisophone_setup.py" download><svg class="ic"><use href="#i-download"/></svg><span>Setting up a whole new site?<small>Download the setup program. It guides you through everything.</small></span></a>
+            <a href="flash.html"><svg class="ic"><use href="#i-box"/></svg><span>Only the coin box's firmware?<small>Flash it from this browser.</small></span></a>
         </div>
     </div>
 
-    <!-- Main Authenticated Tool View -->
-    <div id="mainView" class="hidden glass-card max-w-lg w-full rounded-2xl p-6 md:p-8 space-y-5">
-        
-        <!-- Header -->
-        <div class="flex items-center justify-between border-b border-slate-800 pb-4">
-            <div class="flex items-center space-x-3">
-                <div class="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xl font-black">
-                    ₱
-                </div>
-                <div>
-                    <h1 class="text-lg font-extrabold tracking-tight text-white leading-tight">
-                        PisoPhone Utility
-                    </h1>
-                    <p class="text-[11px] text-slate-400">Phone setup: QR code or USB</p>
-                </div>
-            </div>
-            <div id="connectionPill" class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
-                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span>ESP32 Connected</span>
-            </div>
+    <!-- The setup tool -->
+    <div id="mainView" class="card hidden">
+        <div class="meta">
+            <div><span class="k">Coin box</span><span id="displayMac" class="v">…</span></div>
+            <div><span class="k">Slot</span><span id="displaySlot" class="v">–</span></div>
+            <div><span class="k">Box address</span><span id="displayIp" class="v">–</span></div>
         </div>
 
-        <!-- Hardware Parameters Badge -->
-        <div class="bg-slate-900/80 rounded-xl p-3.5 border border-slate-800 grid grid-cols-3 gap-2 text-center text-xs">
-            <div class="border-r border-slate-800 pr-2">
-                <span class="text-slate-500 text-[10px] block uppercase tracking-wider font-semibold">Box MAC</span>
-                <span id="displayMac" class="font-mono text-emerald-400 font-bold text-[11px] truncate block">Scanning...</span>
-            </div>
-            <div class="border-r border-slate-800 px-2">
-                <span class="text-slate-500 text-[10px] block uppercase tracking-wider font-semibold">Target Slot</span>
-                <span id="displaySlot" class="font-mono text-cyan-300 font-bold text-[11px] block">Slot #--</span>
-            </div>
-            <div class="pl-2">
-                <span class="text-slate-500 text-[10px] block uppercase tracking-wider font-semibold">Box IP</span>
-                <span id="displayIp" class="font-mono text-slate-300 font-bold text-[11px] truncate block">--</span>
-            </div>
+        <div class="seg" role="tablist">
+            <button id="tabInstall" type="button" role="tab"><svg class="ic"><use href="#i-phone"/></svg>Set up a phone</button>
+            <button id="tabDeprovision" type="button" role="tab" class="danger"><svg class="ic"><use href="#i-trash"/></svg>Remove from a phone</button>
         </div>
 
-        <!-- Tab Selector: set up a phone vs remove the kiosk from one -->
-        <div class="flex bg-slate-950/80 p-1 rounded-xl border border-slate-800">
-            <button id="tabInstall" type="button" class="flex-1 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2">
-                <span>📱 Set up a phone</span>
-            </button>
-            <button id="tabDeprovision" type="button" class="flex-1 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2">
-                <span>🗑️ Remove from a phone</span>
-            </button>
-        </div>
-
-        <!-- Mode 1: SET UP -->
-        <div id="installPanel" class="space-y-4">
-            <div class="bg-slate-950/60 p-3.5 border border-slate-700 rounded-xl space-y-2.5">
-                <div class="font-bold text-emerald-400 text-[11px]">📶 Kiosk Wi-Fi for this phone</div>
-                <p class="text-[11px] text-slate-400 leading-relaxed">The phone joins the hidden <code>PisoKiosk</code> network by itself and keeps rejoining it; it finds its coin box only there. The password is in the router's setup summary (<code>piso-setup summary</code>, &ldquo;PisoKiosk Wi-Fi&rdquo;).</p>
-                <input type="text" id="wifiPass" value="" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-white text-xs font-mono" placeholder="PisoKiosk Wi-Fi password" autocomplete="off" spellcheck="false">
+        <!-- Set up a phone -->
+        <div id="installPanel" class="stack">
+            <div class="field">
+                <label for="wifiPass"><svg class="ic"><use href="#i-wifi"/></svg> PisoKiosk Wi-Fi password</label>
+                <input type="text" id="wifiPass" value="" placeholder="From the router's setup summary" autocomplete="off" spellcheck="false">
+                <span class="hint">The phone joins the hidden <code>PisoKiosk</code> network by itself and keeps rejoining it. It finds its coin box only there. The password is in the router's setup summary (<code>piso-setup summary</code>, "PisoKiosk Wi-Fi").</span>
             </div>
 
-            <!-- Method: QR code (main) or USB cable (fallback) -->
-            <div class="flex bg-slate-950/80 p-1 rounded-xl border border-slate-800" role="tablist">
-                <button id="methodQr" type="button" class="flex-1 py-2 rounded-lg text-xs font-bold transition">▦ QR code (recommended)</button>
-                <button id="methodUsb" type="button" class="flex-1 py-2 rounded-lg text-xs font-bold transition">🔌 USB cable</button>
+            <div class="seg" role="tablist">
+                <button id="methodQr" type="button" role="tab"><svg class="ic"><use href="#i-qr"/></svg>QR code (recommended)</button>
+                <button id="methodUsb" type="button" role="tab"><svg class="ic"><use href="#i-usb"/></svg>USB cable</button>
             </div>
 
-            <div id="qrPanel" class="space-y-3">
-                <ol class="list-decimal pl-5 space-y-1.5 text-[11px] text-slate-300 leading-relaxed">
+            <div id="qrPanel" class="stack">
+                <ol class="steps">
                     <li>Use a <b>new or factory-reset</b> phone. On the first welcome screen, <b>tap the same spot 6 times</b> until a QR reader opens. (Some older phones first ask to join a Wi-Fi to download the reader.)</li>
                     <li>Scan the code below with the phone.</li>
                     <li>The phone joins PisoKiosk, downloads PisoPhone and sets itself up (a few minutes). Accept its screens until it shows PisoPhone's <b>One last step</b>, and do what it says:
-                        <ul class="list-disc pl-4 mt-1 space-y-1">
+                        <ul>
                             <li><b>Most phones:</b> tap <b>Open the setting</b>, choose PisoPhone, turn on "Allow display over other apps", press Back. Then pair the slot on the box's page.</li>
-                            <li><b>Android Go phones</b> (the phone asks for USB), or if the switch is missing or greyed out: plug the phone into this computer, tap <b>Allow</b> on "Allow USB debugging?" (the phone turned it on by itself: no Developer options), and click <b>Finish over USB</b> below. It grants the permissions, starts the kiosk, turns USB debugging off again and opens the box's page to pair the slot.</li>
+                            <li><b>Android Go phones</b> (the phone asks for USB), or if the switch is missing or greyed out: plug the phone into this computer, tap <b>Allow</b> on "Allow USB debugging?" (the phone turned it on by itself, so no Developer options are needed), and click <b>Finish over USB</b> below. It grants the permissions, starts the kiosk, turns USB debugging off again and opens the box's page to pair the slot.</li>
                         </ul>
                     </li>
                 </ol>
-                <button id="showQrBtn" type="button" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3.5 px-6 rounded-xl transition shadow-lg text-sm flex items-center justify-center gap-2.5 btn-glow-emerald cursor-pointer">▦ Show the setup code</button>
-                <div id="qrError" class="hidden text-[11px] text-amber-300 bg-amber-500/15 border border-amber-500/40 rounded-xl p-3"></div>
-                <div id="qrResult" class="hidden space-y-2">
-                    <div id="qrBox" class="bg-white rounded-xl p-3 mx-auto w-full max-w-xs"></div>
-                    <p class="text-[11px] text-amber-300 text-center">The code holds this box's key and the Wi-Fi password: show it only to the phone you are setting up.</p>
-                    <button id="hideQrBtn" type="button" class="w-full text-[11px] text-slate-400 hover:text-slate-200 underline">Hide the code</button>
+                <button id="showQrBtn" type="button" class="btn primary block"><svg class="ic"><use href="#i-qr"/></svg>Show the setup code</button>
+                <div id="qrError" class="note warn hidden"></div>
+                <div id="qrResult" class="stack hidden">
+                    <div id="qrBox" class="qr"></div>
+                    <p class="hint" style="text-align: center;">The code holds this box's key and the Wi-Fi password. Show it only to the phone you are setting up.</p>
+                    <button id="hideQrBtn" type="button" class="linkbtn">Hide the code</button>
                 </div>
-                <button id="finishUsbBtn" type="button" class="w-full bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/40 font-bold py-3 px-6 rounded-xl transition text-sm flex items-center justify-center gap-2.5 cursor-pointer">🔌 Finish over USB</button>
-                <p class="text-[10px] text-slate-500 text-center">Only for phones that ask for USB on their One last step screen.</p>
+                <hr style="border: 0; border-top: 1px solid var(--line);">
+                <button id="finishUsbBtn" type="button" class="btn block"><svg class="ic"><use href="#i-usb"/></svg>Finish over USB</button>
+                <p class="hint" style="text-align: center;">Only for phones that ask for USB on their One last step screen.</p>
             </div>
 
-            <div id="usbPanel" class="hidden space-y-3">
-                <div id="browserWarning" class="hidden bg-amber-500/15 border border-amber-500/40 text-amber-300 p-3 rounded-xl text-xs">USB setup needs Google Chrome or Microsoft Edge on a computer. Use the QR code instead, or open this page in Chrome.</div>
-                <div class="bg-emerald-950/20 p-3.5 border border-emerald-500/15 rounded-xl text-[11px] text-slate-400 space-y-1.5 leading-relaxed">
-                    <div class="font-bold text-emerald-400">Before you plug the phone in</div>
-                    <ul class="list-disc pl-4 space-y-1">
-                        <li>A <b>factory-reset</b> phone with <b>no account</b> signed in (Android allows the kiosk lock only then).</li>
-                        <li>Settings &gt; About phone: tap <b>Build number</b> 7 times, then turn on <b>USB debugging</b> in Developer options.</li>
-                        <li>Xiaomi / Redmi / POCO: also turn on <b>Install via USB</b> and <b>USB debugging (Security settings)</b>. They ask for a Mi account: sign in, turn them on, then <b>remove the account</b> again.</li>
-                        <li>A USB <b>data</b> cable; unlock the phone and tap <b>Allow</b> when it asks about USB debugging.</li>
-                    </ul>
+            <div id="usbPanel" class="stack hidden">
+                <div id="browserWarning" class="note warn hidden"><svg class="ic"><use href="#i-alert"/></svg><span class="grow">USB setup needs Google Chrome or Microsoft Edge on a computer. Use the QR code instead, or open this page in Chrome.</span></div>
+                <div class="note">
+                    <svg class="ic"><use href="#i-info"/></svg>
+                    <div class="grow">
+                        <b>Before you plug the phone in</b>
+                        <ul class="dots" style="margin-top: 6px;">
+                            <li>A <b>factory-reset</b> phone with <b>no account</b> signed in (Android allows the kiosk lock only then).</li>
+                            <li>Settings &gt; About phone: tap <b>Build number</b> 7 times, then turn on <b>USB debugging</b> in Developer options.</li>
+                            <li>Xiaomi / Redmi / POCO: also turn on <b>Install via USB</b> and <b>USB debugging (Security settings)</b>. They ask for a Mi account: sign in, turn them on, then <b>remove the account</b> again.</li>
+                            <li>A USB <b>data</b> cable. Unlock the phone and tap <b>Allow</b> when it asks about USB debugging.</li>
+                        </ul>
+                    </div>
                 </div>
-                <button id="installAppBtn" type="button" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3.5 px-6 rounded-xl transition shadow-lg text-sm flex items-center justify-center gap-2.5 btn-glow-emerald cursor-pointer">🔌 Connect the phone and set it up</button>
-                <div class="flex items-center justify-between text-[11px] text-slate-400 px-1">
+                <button id="installAppBtn" type="button" class="btn primary block"><svg class="ic"><use href="#i-usb"/></svg>Connect the phone and set it up</button>
+                <div class="hint" style="display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
                     <span>Optional: install an APK file from this computer</span>
-                    <label for="localApkInput" class="text-emerald-400 hover:text-emerald-300 cursor-pointer font-bold underline">📁 Choose .APK</label>
+                    <label for="localApkInput" style="color: var(--accent); cursor: pointer; font-weight: 600;"><svg class="ic"><use href="#i-folder"/></svg> Choose .APK</label>
                     <input type="file" id="localApkInput" accept=".apk" class="hidden">
                 </div>
-                <div id="localApkStatus" class="hidden text-[11px] text-emerald-300 font-semibold bg-emerald-950/60 border border-emerald-500/30 px-3 py-1.5 rounded-lg text-center"></div>
+                <div id="localApkStatus" class="note ok hidden"></div>
             </div>
         </div>
 
-        <!-- Mode 2: REMOVE (USB) -->
-        <div id="deprovisionPanel" class="hidden space-y-4">
-            <div class="bg-rose-950/20 p-3.5 border border-rose-500/20 rounded-xl text-[11px] text-rose-300/90 leading-relaxed">
-                Removes the kiosk lock and uninstalls PisoPhone from a phone connected by USB (USB debugging on). Needs the admin PIN.
+        <!-- Remove from a phone -->
+        <div id="deprovisionPanel" class="stack hidden">
+            <div class="note bad"><svg class="ic"><use href="#i-alert"/></svg><span class="grow">Removes the kiosk lock and uninstalls PisoPhone from a phone connected by USB (USB debugging on). Needs the admin PIN.</span></div>
+            <div class="field">
+                <label for="adminPin">Admin PIN</label>
+                <input type="text" id="adminPin" value="" placeholder="The box's admin password" autocomplete="off">
             </div>
-            <div>
-                <label for="adminPin" class="block text-xs font-semibold text-slate-300 mb-1.5">Admin PIN</label>
-                <input type="text" id="adminPin" value="" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-white text-xs placeholder-slate-500 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 font-mono" placeholder="The box's admin password" autocomplete="off">
-            </div>
-            <div id="deprovisionConfirm" class="hidden text-[11px] text-rose-300 text-center">Tap again to remove the kiosk from the connected phone.</div>
-            <button id="deprovisionBtn" type="button" class="w-full bg-rose-600 hover:bg-rose-500 text-white font-black py-3.5 px-6 rounded-xl transition shadow-lg text-sm flex items-center justify-center gap-2.5 btn-glow-rose cursor-pointer">🗑️ Connect the phone and remove the kiosk</button>
+            <div id="deprovisionConfirm" class="note bad hidden"><span class="grow">Tap again to remove the kiosk from the connected phone.</span></div>
+            <button id="deprovisionBtn" type="button" class="btn danger block"><svg class="ic"><use href="#i-trash"/></svg>Connect the phone and remove the kiosk</button>
         </div>
 
-        <!-- Live Terminal Log -->
-        <div id="logContainer" class="hidden space-y-1.5 pt-2 border-t border-slate-800">
-            <div class="flex justify-between items-center text-[10px]">
-                <span class="text-slate-400 font-semibold uppercase tracking-wider">Setup log</span>
-                <span id="logStatusBadge" class="text-emerald-400 font-mono animate-pulse">Running</span>
-            </div>
-            <div id="terminalLog" class="bg-slate-950 rounded-xl p-3.5 font-mono text-[11px] text-slate-300 leading-relaxed border border-slate-800/90 h-44 overflow-y-auto whitespace-pre-wrap">
-            </div>
+        <!-- Log -->
+        <div id="logContainer" class="hidden">
+            <div class="log-head"><span>Setup log</span><span id="logStatusBadge" class="pill run">Running</span></div>
+            <div id="terminalLog" class="terminal"></div>
         </div>
 
-        <!-- Footer -->
-        <div class="text-center pt-2">
-            <a id="returnToEsp32Link" href="#" class="text-[11px] text-slate-500 hover:text-emerald-400 transition">
-                ← Return to ESP32 Coin Slot Dashboard
-            </a>
+        <div class="foot">
+            <a id="returnToEsp32Link" href="#"><svg class="ic"><use href="#i-back"/></svg> Back to the coin box</a>
         </div>
-
     </div>
+</div>
 
     <script src="js/qrcode.js"></script>
     <script src="js/provisioning.js"></script>
@@ -241,19 +171,19 @@
             $('restrictedView').classList.remove('hidden');
         } else {
             $('mainView').classList.remove('hidden');
+            $('connectionPill').classList.remove('hidden');
             $('displayMac').textContent = urlMac;
             $('displaySlot').textContent = `Slot #${urlSlot}`;
             $('displayIp').textContent = urlIp || 'Dynamic (DHCP)';
             $('returnToEsp32Link').href = boxPage || 'javascript:history.back()';
 
-            const ON = 'bg-emerald-500 text-slate-950 shadow-sm', OFF = 'text-slate-400 hover:text-slate-200';
-            function pick(on, off, onClass) {
-                on.classList.add(...(onClass || ON).split(' ')); on.classList.remove(...OFF.split(' '));
-                off.classList.remove(...ON.split(' '), 'bg-rose-600', 'text-white'); off.classList.add(...OFF.split(' '));
+            function pick(on, off) {
+                on.classList.add('on'); on.setAttribute('aria-selected', 'true');
+                off.classList.remove('on'); off.setAttribute('aria-selected', 'false');
             }
             function setMode(mode) {
                 const install = mode !== 'deprovision';
-                if (install) pick($('tabInstall'), $('tabDeprovision')); else pick($('tabDeprovision'), $('tabInstall'), 'bg-rose-600 text-white shadow-sm');
+                if (install) pick($('tabInstall'), $('tabDeprovision')); else pick($('tabDeprovision'), $('tabInstall'));
                 $('installPanel').classList.toggle('hidden', !install);
                 $('deprovisionPanel').classList.toggle('hidden', install);
                 if (!install) window.webADB.warmUp();
@@ -323,21 +253,21 @@
                 terminalLog.appendChild(div);
                 terminalLog.scrollTop = terminalLog.scrollHeight;
             }
-            function status(text, cls) { badge.textContent = text; badge.className = `font-mono font-bold ${cls}`; }
+            function status(text, cls) { badge.textContent = text; badge.className = `pill ${cls}`; }
             async function runUsb(button, label, work) {
                 if (!navigator.usb) { log('USB setup needs Google Chrome or Microsoft Edge on a computer.'); return; }
                 button.disabled = true;
                 const was = button.innerHTML;
                 button.innerHTML = label;
                 terminalLog.textContent = '';
-                status('Running', 'text-emerald-400 animate-pulse');
+                status('Running', 'run');
                 try {
                     await window.webADB.connect(log);
                     await work();
-                    status('Done', 'text-emerald-400');
+                    status('Done', 'ok');
                 } catch (e) {
                     log(`ERROR: ${e.message || e}`);
-                    status('Failed', 'text-rose-400');
+                    status('Failed', 'bad');
                     button.innerHTML = was;
                 } finally {
                     await window.webADB.disconnect();
@@ -347,10 +277,10 @@
 
             // ---- QR + USB: the last step (the permissions only ADB can grant) ----
             $('finishUsbBtn').addEventListener('click', () => {
-                runUsb($('finishUsbBtn'), 'Keep the phone connected...', async () => {
+                runUsb($('finishUsbBtn'), 'Keep the phone connected…', async () => {
                     const id = await window.webADB.grantPermissions(log);
                     log('Done. The kiosk is running on the phone.');
-                    $('finishUsbBtn').innerHTML = 'Set up. Opening the box page...';
+                    $('finishUsbBtn').innerHTML = 'Set up. Opening the box page…';
                     if (boxPage) setTimeout(() => { location.href = `${boxPage}?action=pair&slot=${urlSlot}&id=${encodeURIComponent(id)}&name=${encodeURIComponent(urlName)}`; }, 2500);
                 });
             });
@@ -371,10 +301,10 @@
                 let prov;
                 try { prov = currentProv(); } catch (e) { log(e.message); return; }
                 if (!prov.wifiPass) log('Note: no PisoKiosk password entered. The phone can only find its box if it is already on PisoKiosk.');
-                runUsb($('installAppBtn'), 'Keep the phone connected...', async () => {
+                runUsb($('installAppBtn'), 'Keep the phone connected…', async () => {
                     const id = await window.webADB.installKioskApp(prov, log);
                     log('Done. The kiosk is running on the phone.');
-                    $('installAppBtn').innerHTML = 'Set up. Opening the box page...';
+                    $('installAppBtn').innerHTML = 'Set up. Opening the box page…';
                     if (boxPage) setTimeout(() => { location.href = `${boxPage}?action=pair&slot=${urlSlot}&id=${encodeURIComponent(id)}&name=${encodeURIComponent(urlName)}`; }, 2500);
                 });
             });
@@ -387,7 +317,7 @@
                 if (!removeArmed) { removeArmed = true; $('deprovisionConfirm').classList.remove('hidden'); return; }
                 removeArmed = false;
                 $('deprovisionConfirm').classList.add('hidden');
-                runUsb($('deprovisionBtn'), 'Removing the kiosk...', async () => {
+                runUsb($('deprovisionBtn'), 'Removing the kiosk…', async () => {
                     await window.webADB.deprovision(pin, log);
                     log('Removed. Unpair this slot on the box page to finish.');
                     if (boxPage) setTimeout(() => { location.href = `${boxPage}?action=unpair&slot=${urlSlot}`; }, 2500);

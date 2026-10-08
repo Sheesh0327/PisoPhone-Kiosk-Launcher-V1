@@ -1,5 +1,5 @@
 # Every page: never framed, not sniffed, and no code from other sites. The provisioning page drives phones over WebUSB
-# and hands them the box's key, so only this site's own scripts may run on it (Tailwind is built into css/app.css).
+# and hands them the box's key, so only this site's own scripts may run on it.
 /*
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff

@@ -14,7 +14,7 @@ The assistant's steps, in order:
   4. Settings     the Wi-Fi names, the country and the passwords (made for you; change what you like)
   5. Install      runs the one-line installer on the router unattended (it checks the setup file's sha256), waits for the
                   router to move to 10.0.0.1, runs the setup, pairs the coin box, saves the summary and the setup sheet
-  6. Phones       opens the coin box's phone setup page (Install & Provision) for you, already filled in: scan the QR code
+  6. Phones       opens the coin box's phone setup page (Set up a phone) for you, already filled in: scan the QR code
   7. Finish       tests a real coin, checks the customer Wi-Fi, offers Telegram alerts
 The summary (every password) and the printable setup sheet are saved on this computer, readable only by you.
 
@@ -628,7 +628,7 @@ def open_url(url, chromium=True, find=chromium_path, launch=subprocess.Popen, fa
 
 
 def fetch_box_link(host, password, opener=urllib.request.urlopen, timeout=8):
-    """The coin box's MAC and secret, read from its admin page the way its Install & Provision button does (the page holds
+    """The coin box's MAC and secret, read from its admin page the way its Set up a phone button does (the page holds
     them as window.PISO_CFG). Logs in as admin with the coin box admin password."""
     req = urllib.request.Request(f"http://{host}/")
     req.add_header("Authorization", "Basic " + base64.b64encode(f"admin:{password}".encode()).decode())
@@ -656,8 +656,8 @@ def provisioning_url(branch, link, slot, wifi_pass, box_ip=BOX_IP):
 
 
 def open_provisioning(branch, passwords, slot=1, fetch=fetch_box_link, opener=open_url):
-    """Opens the coin box's phone setup page (Install & Provision) in the browser: filled in when the box's admin page can be
-    read, else the box's own page (log in, click Install & Provision). Returns ("setup" or "box", a note for the user)."""
+    """Opens the coin box's phone setup page (Set up a phone) in the browser: filled in when the box's admin page can be
+    read, else the box's own page (log in, click Set up a phone). Returns ("setup" or "box", a note for the user)."""
     box_password = passwords.get("BOX_NEW_ADMIN_PASSWORD") or ""
     note = "the coin box's admin password is not known here"
     if box_password:
@@ -762,11 +762,11 @@ def run_setup(args, ssh, read=input, read_secret=getpass.getpass, probe=port_ope
             kind, note = open_provisioning(args.branch, found, opener=open_page)
             say("Opened the phone setup page in your browser: scan its QR code with a factory-reset phone (6 taps on the welcome"
                 " screen)." if kind == "setup" else
-                f"Opened the coin box's page ({note}): log in as admin and click Install & Provision.")
+                f"Opened the coin box's page ({note}): log in as admin and click Set up a phone.")
         except Exception:
-            say(f"Next: set up the rental phones from the coin box's page (http://{BOX_IP}/), Install & Provision.")
+            say(f"Next: set up the rental phones from the coin box's page (http://{BOX_IP}/), Set up a phone.")
     else:
-        say(f"Next: set up the rental phones from the coin box's page (http://{BOX_IP}/), Install & Provision.")
+        say(f"Next: set up the rental phones from the coin box's page (http://{BOX_IP}/), Set up a phone.")
     if not args.yes and read("Connect Telegram alerts now? You need a bot token from @BotFather. [y/N] ").strip().lower() in ("y", "yes"):
         if found.get("ROOT_PASSWORD"):
             ssh.set_password(found["ROOT_PASSWORD"])   # the setup has set it: ssh needs no typing
@@ -1827,7 +1827,7 @@ class Wizard:
                                            "code with the phone.")
         elif state == "box":
             self.note(self.prov_box, "warn", f"Opened the coin box's own page ({note}). Log in as admin (the password is "
-                                             "copied: paste it), then click Install & Provision.")
+                                             "copied: paste it), then click Set up a phone.")
         self.open_btn.configure(state="disabled" if state == "opening" else "normal")
 
     def copy_temporarily(self, value):
