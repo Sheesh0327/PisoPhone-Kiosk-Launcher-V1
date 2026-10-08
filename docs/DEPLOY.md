@@ -40,10 +40,16 @@ works on a new `claude/...` branch made from `beta`, runs the issue's Verificati
 Set it up once:
 1. Install the Claude GitHub App on this repository: https://github.com/apps/claude (Contents, Issues and Pull requests
    read and write).
-2. Add one repository secret: `CLAUDE_CODE_OAUTH_TOKEN` (run `claude setup-token` on your computer; uses your Claude
-   subscription) or `ANTHROPIC_API_KEY` (an API key from the Claude Console).
+2. Add the repository secret `CLAUDE_CODE_OAUTH_TOKEN` (run `claude setup-token` on your computer; uses your Claude
+   subscription).
 3. Create the label `claude` (Issues > Labels) if you want to start a run by labelling an issue.
 4. Merge `claude.yml` to `main`: GitHub runs issue and comment workflows only from the default branch.
+5. Turn off **Settings > General > Automatically delete head branches**: with it on, merging a pull request from `beta`
+   into `main` deletes `beta`, and the implementer has no branch to start from.
+
+The app's own setup (`/install-github-app` or the app's "add workflow" pull request) writes a generic `claude.yml` with
+read-only access and a `claude-code-review.yml` that reviews every pull request on every push. Keep this repository's
+`claude.yml`; ask for a review by commenting `@claude review this` on a pull request.
 
 Issues that were already open before the workflow existed start with a new `@claude` comment or the `claude` label.
 
