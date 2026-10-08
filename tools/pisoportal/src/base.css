@@ -1,0 +1,24 @@
+:root{color-scheme:light dark;--bg:#f3f5f8;--card:#fff;--fg:#0f172a;--mut:#64748b;--line:#e2e8f0;--acc:#2563eb;--on:#fff;--ok:#15803d;--okbg:#ecfdf3;--bad:#b91c1c;--badbg:#fef2f2}
+@media(prefers-color-scheme:dark){:root{--bg:#0b1220;--card:#121a2d;--fg:#e6ebf5;--mut:#8b99b3;--line:#222e48;--acc:#4f8cff;--on:#06101f;--ok:#4ade80;--okbg:#0f2a1b;--bad:#f87171;--badbg:#2d1416}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;justify-content:center}
+.w{width:100%;max-width:400px;padding:max(14px,env(safe-area-inset-top)) 14px 24px}
+header{display:flex;align-items:center;gap:8px;padding:2px 2px 12px;font-weight:650;font-size:16px}
+header:before{content:"";width:8px;height:8px;border-radius:50%;background:var(--acc)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+.v{display:none}
+.mut{color:var(--mut);font-size:13px;margin:0}
+.c{text-align:center}
+.big{font-size:42px;font-weight:700;line-height:1.1;text-align:center;margin:2px 0;font-variant-numeric:tabular-nums}
+button,.btn{font:inherit}
+.btn{display:block;width:100%;margin:10px 0 0;padding:13px;border:0;border-radius:12px;background:var(--acc);color:var(--on);font-weight:650;font-size:16px;text-align:center;text-decoration:none;cursor:pointer}
+.btn small{display:block;font-weight:500;font-size:12px;opacity:.85}
+.btn:active{opacity:.85}
+.btn:disabled{opacity:.6}
+.btn.alt{background:transparent;color:var(--mut);border:1px solid var(--line);font-weight:550}
+.msg{margin:10px 0 0;padding:10px 12px;border-radius:10px;background:var(--badbg);color:var(--bad);font-size:14px}
+.msg.ok{background:var(--okbg);color:var(--ok)}
+.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin:12px 0 6px}
+.bar i{display:block;height:100%;background:var(--acc);transition:width 1s linear}
+.pill{display:inline-block;padding:2px 10px;border:1px solid var(--line);border-radius:99px;color:var(--mut);font-size:12px}
+@media(prefers-reduced-motion:reduce){.bar i{transition:none}}

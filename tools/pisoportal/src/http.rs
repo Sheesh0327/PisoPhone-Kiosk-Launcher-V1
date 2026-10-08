@@ -80,6 +80,7 @@ fn tier_rows(core: &Core, plan: Plan) -> String {
 pub fn build_page(core: &Core) -> String {
     let cfg = &core.cfg;
     include_str!("page.html")
+        .replace("%CSS%", include_str!("base.css"))
         .replace("%NAME%", &html_esc(&cfg.gateway_name))
         .replace("%TIERS_H%", &tier_rows(core, Plan::Hyper))
         .replace("%TIERS_E%", &tier_rows(core, Plan::Endurance))
@@ -89,10 +90,10 @@ pub fn build_page(core: &Core) -> String {
         .replace("%FIRST%", &cfg.first_wait.to_string())
 }
 
-/// The status page a connected guest sees (openNDS sends them here from its own status address): the same bilingual look
+/// The status page a connected guest sees (openNDS sends them here from its own status address): the same look
 /// with a live countdown, fed by the same WebSocket.
 pub fn build_status_page(core: &Core) -> String {
-    include_str!("status.html").replace("%NAME%", &html_esc(&core.cfg.gateway_name))
+    include_str!("status.html").replace("%CSS%", include_str!("base.css")).replace("%NAME%", &html_esc(&core.cfg.gateway_name))
 }
 
 fn html_esc(s: &str) -> String {

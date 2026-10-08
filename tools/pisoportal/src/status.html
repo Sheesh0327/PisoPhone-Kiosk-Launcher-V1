@@ -1,50 +1,35 @@
 <!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>%NAME%</title>
 <style>
-:root{--bg:#0f1715;--card:#16221f;--line:#243630;--fg:#e8f0ec;--mut:#8aa59a;--h:#38ef7d;--e:#4cc9f0;--ok:#38ef7d;--bad:#ff4b4b}
-*{box-sizing:border-box}
-body{margin:0;min-height:100vh;background:var(--bg);color:var(--fg);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;justify-content:center}
-.w{width:100%;max-width:440px;padding:20px 16px 36px}
-h1{font-size:19px;margin:0 0 4px;text-align:center;color:var(--ok);text-transform:uppercase;letter-spacing:1px;text-shadow:0 0 10px #38ef7d66}
-.sub{color:var(--mut);text-align:center;margin:0 0 18px;font-size:14px}
-.big{font-size:44px;font-weight:700;text-align:center;margin:10px 0 2px;font-variant-numeric:tabular-nums}
-.mut{color:var(--mut);text-align:center;font-size:14px;margin:4px 0}
-.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin:14px 0}
-.bar i{display:block;height:100%;background:var(--h);width:0}
-.btn{display:block;width:100%;padding:14px;margin:12px 0 0;border:0;border-radius:12px;font:inherit;font-weight:600;font-size:17px;color:#04140c;background:linear-gradient(135deg,#11998e,#38ef7d);cursor:pointer;text-decoration:none;text-align:center}
-.btn.alt{background:transparent;color:var(--fg);border:1px solid var(--line)}
-.msg{background:var(--card);border-left:4px solid var(--bad);border-radius:8px;padding:12px 14px;margin:12px 0}
-.msg.ok{border-left-color:var(--ok)}
-.pill{display:inline-block;border:1px solid var(--line);border-radius:99px;padding:2px 12px;color:var(--mut);font-size:13px}
-.c{text-align:center;margin:6px 0}
-.v{display:none}
+%CSS%
+.big{font-size:44px;margin:4px 0 0}
+#slow{background:var(--line);color:var(--fg)}
+.row{display:flex;justify-content:space-between;align-items:center;margin-top:10px}
 </style>
 </head><body><div class="w">
-<h1>%NAME%</h1>
-<div id="v-conn" class="v"><p class="sub" id="conn">Connecting &middot; Kumokonekta</p></div>
-<div id="v-on" class="v">
-<p class="sub">You are connected &middot; Nakakonekta ka na</p>
+<header>%NAME%</header>
+<div id="v-conn" class="v"><p class="mut c" id="conn">Connecting&hellip;</p></div>
+<div id="v-on" class="v card">
+<p class="mut c">Connected &middot; time left</p>
 <div class="big" id="t">--:--:--</div>
-<p class="mut">time left &middot; natitirang oras</p>
-<div class="bar"><i id="bar"></i></div>
-<p class="c"><span class="pill" id="plan"></span></p>
-<p class="mut" id="used" style="display:none"></p>
-<div class="msg" id="slow" style="display:none"><b>Fair use:</b> your speed is reduced for a few minutes because of heavy use. It speeds up again by itself. &middot; Pinabagal muna ang bilis dahil sa sobrang gamit; babalik din ito.</div>
-<a class="btn" href="/">Add more time &middot; Dagdagan</a>
+<div class="bar"><i id="bar" style="width:0"></i></div>
+<div class="row"><span class="pill" id="plan"></span><span class="mut" id="used" style="display:none"></span></div>
+<div class="msg" id="slow" style="display:none">Speed is reduced for a few minutes (fair use).</div>
+<a class="btn" href="/">Add more time</a>
 </div>
-<div id="v-off" class="v">
-<p class="sub" id="offsub"></p>
+<div id="v-off" class="v card">
+<p class="mut c" id="offsub"></p>
 <div class="big">0:00:00</div>
 <div class="msg" id="offmsg"></div>
-<a class="btn" href="/">Insert Coin &middot; Maglagay ng barya</a>
+<a class="btn" href="/">Insert Coin</a>
 </div>
-<div id="v-pay" class="v">
-<p class="sub">Payment in progress &middot; Nagbabayad</p>
-<div class="msg ok">A coin window is open on this device. Go back to the coin page to finish it. &middot; Bumalik sa coin page para matapos.</div>
-<a class="btn" href="/">Back to the coin page &middot; Bumalik</a>
+<div id="v-pay" class="v card">
+<p class="mut c">Payment in progress</p>
+<div class="msg ok">A coin window is open on this device. Go back to the coin page to finish it.</div>
+<a class="btn" href="/">Back to the coin page</a>
 </div>
 </div>
 <script>
@@ -57,7 +42,7 @@ function pn(p){return p==="endurance"?"Endurance":p==="hyper"?"HyperSpeed":""}
 function p2(n){return(n<10?"0":"")+n}
 function clock(s){s=Math.max(0,s|0);return Math.floor(s/3600)+":"+p2(Math.floor(s%3600/60))+":"+p2(s%60)}
 function paint(){
- if(left<=0){stopTick();off("Your time is up · Tapos na ang oras.","Time is up. Insert a coin to get back online. · Maglagay ng barya para makakonekta ulit.");return}
+ if(left<=0){stopTick();off("Time is up","Insert a coin to get back online.");return}
  put("t",clock(left));el("bar").style.width=Math.min(100,100*left/Math.max(total,left))+"%"}
 function stopTick(){if(tk){clearInterval(tk);tk=null}}
 function off(sub,msg){put("offsub",sub);put("offmsg",msg);show("off")}
@@ -66,21 +51,21 @@ function view(j){
  if(s==="starting"||s==="armed"||s==="closing"){show("pay");return}
  if((s==="idle"||s==="final")&&j.left>0&&j.online){
   left=j.left;if(left>total)total=left;put("plan",pn(j.plan));
-  var u=el("used");if(j.plan==="hyper"){u.style.display="block";put("used","Data used: "+j.used_mb+" MB \u00b7 Nagamit na data")}else u.style.display="none";
+  var u=el("used");if(j.plan==="hyper"){u.style.display="inline";put("used",j.used_mb+" MB used")}else u.style.display="none";
   el("slow").style.display=j.slow>0?"block":"none";el("plan").style.display=pn(j.plan)?"inline-block":"none";
   show("on");paint();tk=setInterval(function(){left--;paint()},1000);return}
  if(s==="idle"||s==="final"){
-  if(j.left>0)off("Not connected yet · Hindi pa nakakonekta","You have "+clock(j.left)+" saved. Open the coin page to get online. · May naitalang oras ka; buksan ang coin page.");
-  else off("Not connected · Hindi nakakonekta","You have no Wi-Fi time. Insert a coin to get online. · Walang oras; maglagay ng barya.");
+  if(j.left>0)off("Not connected yet","You have "+clock(j.left)+" saved. Open the coin page to get online.");
+  else off("Not connected","No Wi-Fi time. Insert a coin to get online.");
   return}
- off("Not connected · Hindi nakakonekta","Open the coin page to continue. · Buksan ang coin page.")}
+ off("Not connected","Open the coin page to continue.")}
 function connect(){
  var p=location.protocol==="https:"?"wss://":"ws://";
  try{ws=new WebSocket(p+location.host+"/ws")}catch(e){put("conn","This phone's browser cannot show live status.");show("conn");return}
  ws.onopen=function(){fails=0;ws.send(JSON.stringify({t:"hello"}))};
  ws.onmessage=function(m){var j;try{j=JSON.parse(m.data)}catch(e){return}if(j.t==="state")view(j)};
  // the countdown keeps running while the link is down; the page says nothing until it is up again for long
- ws.onclose=function(){ws=null;if(++fails>2&&!tk){put("conn","Reconnecting · Kumokonekta ulit");show("conn")}setTimeout(connect,1500)};
+ ws.onclose=function(){ws=null;if(++fails>2&&!tk){put("conn","Reconnecting…");show("conn")}setTimeout(connect,1500)};
  ws.onerror=function(){try{ws.close()}catch(e){}}}
 show("conn");connect();
 })();
