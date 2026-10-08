@@ -1,10 +1,10 @@
 {
-  "versionCode": 358,
-  "versionName": "1.0.358-dev",
+  "versionCode": 360,
+  "versionName": "1.0.360-dev",
   "channel": "dev",
   
   "signatureChecksum": "Un0usqLMwnmeaowrY2g21EgRVWe4bTRDLUi2RH12WbE",
-  "sha256": "3523599bfaabfaa3806641d997bba65b3cb3af82fa7034464b7d73667e329bc8",
+  "sha256": "f3a886f825ceb5de348827d95e548682ff97adf4007f0000306a28c9223e2c00",
   "size": 1739086,
   "releaseDate": "2026-10-08"
 }
