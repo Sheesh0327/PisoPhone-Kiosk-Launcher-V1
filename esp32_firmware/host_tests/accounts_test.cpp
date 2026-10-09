@@ -236,6 +236,56 @@ int main() {
         CHECK(a.seq() == s1 + 1);
     }
 
+    // ---- the cost limiter: a flood is refused, the window reopens, millis() wrap-around is safe ----
+    {
+        CostLimiter lim(3, 60000);
+        CHECK(lim.allow(1000) && lim.allow(1001) && lim.allow(1002));
+        CHECK(!lim.allow(1003) && !lim.allow(30000)); // 4th and later inside the window: refused
+        CHECK(!lim.allow(1000 + 59999));
+        CHECK(lim.allow(1000 + 60000)); // window over: open again
+        CHECK(lim.allow(1000 + 60001) && lim.allow(1000 + 60002) && !lim.allow(1000 + 60003));
+        CostLimiter wrap(2, 1000);
+        uint32_t near = 0xFFFFFF00u; // the 32-bit millis() counter is about to wrap
+        CHECK(wrap.allow(near) && wrap.allow(near + 10) && !wrap.allow(near + 20));
+        CHECK(!wrap.allow(near + 500));
+        CHECK(wrap.allow(near + 1000)); // 0xFFFFFF00 + 1000 wrapped past zero: still counts as a new window
+    }
+
+    // ---- fuzz: random damage to a saved file is never accepted as a different valid table, and never crashes ----
+    {
+        AccountTable src;
+        for (int i = 0; i < 15; i++) {
+            char n[20];
+            snprintf(n, sizeof(n), "player%02d", i);
+            src.create(n, "1234", SALT, T0);
+            src.creditSeconds(n, 60 + i, "fz" + std::to_string(i), T0);
+        }
+        std::vector<uint8_t> good = save(src);
+        uint32_t rng = 12345;
+        auto next = [&]() {
+            rng = rng * 1664525u + 1013904223u;
+            return rng >> 8;
+        };
+        AccountTable keep;
+        keep.create("keepme", "1234", SALT, T0);
+        int accepted = 0;
+        for (int round = 0; round < 3000; round++) {
+            std::vector<uint8_t> bad(good);
+            int edits = 1 + (int)(next() % 4);
+            for (int e = 0; e < edits; e++)
+                bad[next() % bad.size()] ^= (uint8_t)(1u << (next() % 8));
+            if (next() % 5 == 0) bad.resize(next() % bad.size());
+            AccountTable victim = keep; // a copy: creating an account per round would hash a PIN 3000 times
+            if (victim.deserialize(bad.data(), bad.size())) {
+                accepted++; // only possible if the edits cancelled out, i.e. the bytes are the original
+                CHECK(bad == good);
+            } else {
+                CHECK(victim.count() == 1 && victim.find("keepme") != nullptr); // a refused file changes nothing
+            }
+        }
+        CHECK(accepted < 5);
+    }
+
     if (failures == 0) printf("accounts_test: all passed\n");
     return failures == 0 ? 0 : 1;
 }

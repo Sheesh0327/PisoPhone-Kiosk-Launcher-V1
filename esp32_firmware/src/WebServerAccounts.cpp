@@ -24,6 +24,9 @@ static const uint32_t CREATE_MIN_GAP_MS = 3000UL; // each new account is a flash
 
 static uint32_t lastReportMs[MAX_SUPPORTED_SLOTS + 1]; // when each slot's phone last reported (index = slot number)
 static uint32_t lastCreateMs = 0;
+// Every PIN check and every new account costs about 10,000 hash rounds. A shop never needs more than a handful per minute;
+// beyond that the box answers "too fast" instead of letting the network keep the CPU busy (the coin loop shares it).
+static accounts::CostLimiter hashLimiter(20, 60000UL);
 
 static const char* errorName(Result r) {
     switch (r) {
@@ -105,6 +108,12 @@ static bool authorizeCall(const char* op, const String& bound, Caller& c) {
         answer(403, false, "SETUP_REQUIRED", nullptr);
         return false;
     }
+    // The box takes its clock from the phones' heartbeats. Without it, lockouts and pruning have no time to count from
+    // (and the replay window accepts any timestamp), so account calls wait for it: a few seconds after a restart.
+    if (accountsNowS() == 0) {
+        answer(503, false, "CLOCK_UNKNOWN", nullptr);
+        return false;
+    }
     String ip = webServer.client().remoteIP().toString();
     int idx = findSlotIndexForDevice(c.deviceId, ip);
     if (idx < 0) {
@@ -142,6 +151,10 @@ void handleApiAccountCreate() {
         answer(400, false, "BAD_PIN_FORMAT", nullptr);
         return;
     }
+    if (!hashLimiter.allow(now)) {
+        answer(429, false, "TOO_FAST", nullptr);
+        return;
+    }
     lastCreateMs = now ? now : 1;
     Result r = accountsCreate(user, String(pin.c_str()));
     if (r == Result::OK) diagLog("[ACCT] account '%s' created from slot %d\n", user.c_str(), c.slotNum);
@@ -158,6 +171,10 @@ void handleApiAccountSignin() {
     std::string pin;
     if (!acctproto::openPin(enc.c_str(), getSharedSecret().c_str(), pin)) {
         answer(400, false, "BAD_PIN_FORMAT", nullptr);
+        return;
+    }
+    if (!hashLimiter.allow(millis())) {
+        answer(429, false, "TOO_FAST", nullptr);
         return;
     }
     accounts::AccountTable& t = accountsTable();
@@ -234,7 +251,9 @@ void handleApiAccountsList() {
     // Streamed one row at a time: 300 accounts as one String would need tens of KB of contiguous heap.
     webServer.setContentLength(CONTENT_LENGTH_UNKNOWN);
     webServer.send(200, "application/json", "");
-    webServer.sendContent(String("{\"max\":") + String((unsigned)accounts::MAX_ACCOUNTS) + ",\"accounts\":[");
+    AccountStorageHealth health = accountsHealth();
+    webServer.sendContent(String("{\"max\":") + String((unsigned)accounts::MAX_ACCOUNTS) +
+                          ",\"failing\":" + (health.consecutiveFailures > 0 ? "true" : "false") + ",\"accounts\":[");
     for (size_t i = 0; i < t.count(); i++) {
         const accounts::Account& a = t.at(i);
         // -1 while the box has no clock yet

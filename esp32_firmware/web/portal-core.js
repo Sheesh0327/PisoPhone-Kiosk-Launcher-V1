@@ -267,9 +267,10 @@ window.fetchAccounts = function() {
             const list = data.accounts || [];
             const badge = document.getElementById('accounts_count');
             if (badge) badge.textContent = list.length + ' of ' + data.max;
-            box.innerHTML = list.length
+            const warn = data.failing ? '<div class="note bad"><svg class="ic"><use href="#i-alert"/></svg><span class="grow"><b>Accounts are not being saved to the box\'s memory.</b> Changes since the last good save would be lost if the box lost power. See Tools, Diagnostics.</span></div>' : '';
+            box.innerHTML = warn + (list.length
                 ? ACCT_HEAD + list.map(acctRow).join('')
-                : '<div class="row-empty-msg">No player accounts yet. Players create them on the phone, on the lock screen.</div>';
+                : '<div class="row-empty-msg">No player accounts yet. Players create them on the phone, on the lock screen.</div>');
         })
         .catch(err => { box.innerHTML = '<div class="row-empty-msg">' + escHtml(err.message) + '</div>'; });
 };

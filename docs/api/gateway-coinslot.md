@@ -100,7 +100,7 @@ Every call comes from a paired, active phone and is signed with the box secret:
 - `user` is 3 to 16 of `a-z 0-9 _`, case-insensitive. `time` is the seconds the phone still has.
 - Errors: `{success:false, error}` with `BAD_NAME`, `BAD_PIN_FORMAT`, `NAME_TAKEN`, `ACCOUNTS_FULL`, `NO_SUCH_USER`,
   `BAD_PIN` (401), `LOCKED` (429), `ALREADY_SIGNED_IN` (409), `NOT_SIGNED_IN`, `TOO_FAST`, `SLOT_NOT_PAIRED`,
-  `SLOT_EXPIRED`, `SETUP_REQUIRED`, `ACCOUNTS_OFF`, `AUTH_FAILED` (`reason` `STALE_TIMESTAMP` or `BAD_SIGNATURE`, with the box's time).
+  `SLOT_EXPIRED`, `SETUP_REQUIRED`, `ACCOUNTS_OFF`, `CLOCK_UNKNOWN` (503, the box has no clock yet: retry in a few seconds), `AUTH_FAILED` (`reason` `STALE_TIMESTAMP` or `BAD_SIGNATURE`, with the box's time).
 - Five wrong PINs lock the account for 5 minutes, doubling each time up to 1 hour.
 
 ### Heartbeat
@@ -120,3 +120,16 @@ When the phone acknowledges a coin (`ack`), the box adds the coin's seconds to t
 
 An account with no time that is not signed in is deleted after 30 days without use, or after 7 days if it never had any
 time. Accounts with time are never deleted. Nothing is deleted while the box has no clock.
+
+### Safeguards
+
+- **Limits:** a PIN check or a new account costs about 10,000 hash rounds, so the box allows 20 of them per minute in total
+  (`TOO_FAST`, 429) and one new account every 3 seconds. Per account, five wrong PINs lock it (see above).
+- **Storage:** accounts are kept in the `spiffs` partition, written to a temporary file, read back and checked, and only then
+  moved into place with the previous good file kept as `accounts.bak`. After a power cut at any moment the newest intact copy
+  of the three is loaded. The filesystem is formatted only the first time it is used; if it later fails to mount, accounts are
+  switched off and nothing is erased (a factory reset sets it up again).
+- **Coins:** a coin's time is added to the account before the queued payment is erased, so a power cut in between replays
+  the coin and the transaction id makes the account count it once.
+- **Visibility:** `/api/diagnostics` has an `accounts` object (`ready`, `fs_mounted`, `count`, `unsaved`, `save_failures`,
+  `failing_now`, `saves_ok`), and the dashboard shows a warning above the accounts list while saves are failing.

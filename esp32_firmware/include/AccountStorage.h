@@ -9,6 +9,18 @@
 
 #include <Arduino.h>
 
+// What the diagnostics show about the account store, so a failing flash is seen before a player loses anything.
+struct AccountStorageHealth {
+    bool ready;     // the table is loaded and in use
+    bool fsMounted; // the flash filesystem mounted
+    size_t accounts;
+    bool dirty;                   // changes not yet on flash
+    uint32_t saveFailures;        // since boot
+    uint32_t consecutiveFailures; // 0 when the last save worked
+    uint32_t savesOk;
+};
+AccountStorageHealth accountsHealth();
+
 void accountsBegin();                    // call once from setup(), after loadAllConfig()
 void accountsLoop();                     // call from loop(): debounced saving and the hourly prune
 bool accountsReady();                    // false if the filesystem or memory was not available

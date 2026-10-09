@@ -122,6 +122,7 @@ object Esp32AccountRequests {
         "SLOT_NOT_PAIRED", "SLOT_EXPIRED" -> "This phone is not active. Ask the attendant."
         "SETUP_REQUIRED" -> "The box is not set up yet."
         "ACCOUNTS_OFF" -> "Accounts are not available on this box."
+        "CLOCK_UNKNOWN" -> "The box is starting up. Try again in a few seconds."
         "NETWORK" -> "Cannot reach the box."
         else -> "Something went wrong ($error)."
     }

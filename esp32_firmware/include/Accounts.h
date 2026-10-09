@@ -110,6 +110,32 @@ inline uint32_t idleFor(uint32_t nowS, uint32_t sinceS) {
     return nowS > sinceS ? nowS - sinceS : 0; // a clock that moved back counts as "just now"
 }
 
+// Caps how many expensive operations (a PIN check or a new account costs about 10,000 hash rounds) run per window, for the
+// whole box. Without it anyone on the network could keep the CPU busy with sign-in attempts and starve the coin loop.
+// Wrap-safe millis() arithmetic; one fixed window at a time.
+class CostLimiter {
+public:
+    CostLimiter(uint32_t maxPerWindow, uint32_t windowMs) : max_(maxPerWindow), windowMs_(windowMs) {}
+
+    bool allow(uint32_t nowMs) {
+        if (!started_ || (uint32_t)(nowMs - windowStartMs_) >= windowMs_) {
+            started_ = true;
+            windowStartMs_ = nowMs;
+            used_ = 0;
+        }
+        if (used_ >= max_) return false;
+        used_++;
+        return true;
+    }
+
+private:
+    uint32_t max_;
+    uint32_t windowMs_;
+    uint32_t windowStartMs_ = 0;
+    uint32_t used_ = 0;
+    bool started_ = false;
+};
+
 class AccountTable {
 public:
     AccountTable() { clear(); }
