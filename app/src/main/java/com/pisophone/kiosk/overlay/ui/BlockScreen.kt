@@ -34,6 +34,7 @@ import com.pisophone.kiosk.overlay.ui.AdminAuthenticationDialog
 import com.pisophone.kiosk.overlay.ui.BatteryAlertBanner
 import com.pisophone.kiosk.overlay.ui.EmergencyRecoveryDialog
 import com.pisophone.kiosk.overlay.ui.SecurityVaultView
+import com.pisophone.kiosk.service.AccountController
 import com.pisophone.kiosk.ui.video.LockScreenPresence
 import com.pisophone.kiosk.ui.video.LoopingVideoBackground
 
@@ -162,7 +163,6 @@ fun BlockScreen(
 
     val context = LocalContext.current
     var showPinDialog by remember { mutableStateOf(false) }
-    var showAccountDialog by remember { mutableStateOf(false) }
     var showSecurityDialog by remember { mutableStateOf(false) }
     var showEmergencyRecoveryDialog by remember { mutableStateOf(false) }
 
@@ -356,9 +356,9 @@ fun BlockScreen(
                         )
 
                         if (!isWaiting && !isArmingInProgress) {
-                            TextButton(onClick = { showAccountDialog = true }) {
+                            TextButton(onClick = { AccountController.startScan(context) }) {
                                 Text(
-                                    "Have an account? Sign in",
+                                    "Have a PisoPhone card? Scan it",
                                     color = Primary,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.SemiBold,
@@ -468,16 +468,6 @@ fun BlockScreen(
                         )
                     }
                 }
-            }
-
-            if (showAccountDialog) {
-                AccountSignInDialog(
-                    surfaceColor = Surface,
-                    primaryColor = Primary,
-                    textPrimaryColor = TextPrimary,
-                    textSecondaryColor = TextSecondary,
-                    onDismiss = { showAccountDialog = false },
-                )
             }
 
             if (showPinDialog) {

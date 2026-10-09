@@ -70,9 +70,9 @@ internal class Esp32HeartbeatBodyHandler(
             delegate.onOnlineStatusChanged(true, mac)
             delegate.onConfigSynced(price, minutes, alias, decryptedPin, slotNum)
 
-            // who the box thinks is signed in on this slot, and their balance there
+            // who the box thinks is signed in on this slot (card number, name) and their balance there
             if (json.has("acct")) {
-                delegate.onAccountSync(json.optString("acct", ""), json.optInt("acct_bal", -1))
+                delegate.onAccountSync(json.optString("acct", ""), json.optString("acct_name", ""), json.optInt("acct_bal", -1))
             }
 
             if (json.has("arena_active")) {

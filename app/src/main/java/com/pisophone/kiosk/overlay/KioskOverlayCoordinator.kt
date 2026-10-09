@@ -8,10 +8,12 @@ import android.widget.Toast
 import com.pisophone.kiosk.model.BatteryStatus
 import com.pisophone.kiosk.security.AdminMaintenanceMode
 import com.pisophone.kiosk.security.KioskActivationManager
+import com.pisophone.kiosk.service.AccountController
 import com.pisophone.kiosk.service.KioskStateManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 /**
@@ -42,9 +44,11 @@ class KioskOverlayCoordinator(
 
     init {
         scope.launch {
-            AdminMaintenanceMode.suspendOverlays.collect { suspend ->
-                Handler(Looper.getMainLooper()).post { setSuspendedForAdminApp(suspend) }
-            }
+            // An admin-only app in front, or the QR card scanner (whose camera the full-screen lock window would cover).
+            combine(AdminMaintenanceMode.suspendOverlays, AccountController.scanning) { admin, scanning -> admin || scanning }
+                .collect { suspend ->
+                    Handler(Looper.getMainLooper()).post { setSuspendedForAdminApp(suspend) }
+                }
         }
         scope.launch {
             KioskActivationManager.activationUpdateVersion.collect {

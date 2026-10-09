@@ -2,25 +2,25 @@
 #define WEB_SERVER_ACCOUNTS_H
 
 // Player-account calls from the phone app (see AccountProtocol.h and docs/api/gateway-coinslot.md, "Accounts"):
-//   /api/account/create   make an account              /api/account/signin   open it on this phone
-//   /api/account/signout  bank the time left and close  /api/account/info     read the balance (signed-in phone only)
-// All are signed by a paired phone, and the PIN travels only encrypted.
+//   /api/account/scan     sign in by scanning a QR card (the first scan of a card also gives its starter time)
+//   /api/account/name     give the signed-in account a display name
+//   /api/account/signout  bank the time left and sign out
+//   /api/account/info     read the balance (signed-in phone only)
+// All are signed by a paired phone. The card text is the only credential.
 
 #include <Arduino.h>
 
-void handleApiAccountCreate();
-void handleApiAccountSignin();
+void handleApiAccountScan();
+void handleApiAccountName();
 void handleApiAccountSignout();
 void handleApiAccountInfo();
 
-// Admin dashboard (box admin login): list the accounts without their PIN data, and change them.
-//   GET  /api/accounts                          every account: name, minutes left, slot, last use, locked
-//   POST /api/accounts/adjust  user, minutes    add (positive) or remove (negative) minutes; not while signed in
-//   POST /api/accounts/unlock  user             clear the wrong-PIN lock
-//   POST /api/accounts/delete  user             delete the account (and its time); not while signed in
+// Admin dashboard (box admin login): list the accounts and change them.
+//   GET  /api/accounts                          every account: number, name, minutes left, slot, last use
+//   POST /api/accounts/adjust  id, minutes      add (positive) or remove (negative) minutes; not while signed in
+//   POST /api/accounts/delete  id               delete the account and its time (the card stays used); not while signed in
 void handleApiAccountsList();
 void handleApiAccountsAdjust();
-void handleApiAccountsUnlock();
 void handleApiAccountsDelete();
 
 // Heartbeat hook. Applies the signed time report the phone may have attached (acct, atime, asig) and appends the box's

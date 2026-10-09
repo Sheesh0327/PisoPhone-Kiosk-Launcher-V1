@@ -45,11 +45,14 @@ interface Esp32ConnectionDelegate {
     fun onArenaModeSynced(active: Boolean, role: Int, stake: Int) {}
     fun getStoredEsp32Ip(): String? = null
 
-    /** The player signed in on this phone, or null. While set, every heartbeat reports the time left for that player. */
-    fun getSignedInAccount(): String? = null
+    /** The card number of the player signed in on this phone, or null. While set, every heartbeat reports their time left. */
+    fun getSignedInAccount(): Int? = null
 
-    /** The box's view of the account signed in on this slot ([account] is empty when none, [balanceSec] -1 if unknown). */
-    fun onAccountSync(account: String, balanceSec: Int) {}
+    /**
+     * The box's view of the account signed in on this slot: [account] is the card number as text (empty when nobody),
+     * [name] its display name, [balanceSec] -1 if unknown.
+     */
+    fun onAccountSync(account: String, name: String, balanceSec: Int) {}
 }
 
 /**
@@ -230,7 +233,7 @@ class Esp32ConnectionManager(
                         val encodedName = java.net.URLEncoder.encode(myName, "UTF-8")
                         val cleanIp = if (currentIp == "127.0.0.1" || currentIp.isBlank()) "" else currentIp
                         val account = delegate.getSignedInAccount()
-                        val accountReport = if (account.isNullOrBlank()) {
+                        val accountReport = if (account == null) {
                             ""
                         } else {
                             Esp32AccountRequests.heartbeatReport(deviceId, delegate.getSecretKey(), account, delegate.getSessionTimeRemaining(), ts)
@@ -284,10 +287,16 @@ class Esp32ConnectionManager(
     }
 
     /**
-     * One account call to the box ([Esp32AccountRequests.OP_CREATE], `OP_SIGNIN`, `OP_SIGNOUT` or `OP_INFO`). Blocking
-     * network I/O: call it from an IO dispatcher. A clock-skew refusal is retried once with the box's time.
+     * One account call to the box ([Esp32AccountRequests.OP_SCAN], `OP_NAME`, `OP_SIGNOUT` or `OP_INFO`). Blocking network
+     * I/O: call it from an IO dispatcher. A clock-skew refusal is retried once with the box's time.
      */
-    fun accountCall(op: String, username: String, pin: String = "", secondsLeft: Int = 0): Esp32AccountRequests.Reply {
+    fun accountCall(
+        op: String,
+        id: Int = 0,
+        card: String = "",
+        name: String = "",
+        secondsLeft: Int = 0,
+    ): Esp32AccountRequests.Reply {
         val target = esp32Ip ?: delegate.getStoredEsp32Ip()
         if (target.isNullOrBlank()) return Esp32AccountRequests.Reply(false, "NETWORK")
         val (host, port) = discoveryScanner.getEsp32HostAndPort(target)
@@ -299,8 +308,9 @@ class Esp32ConnectionManager(
                 op = op,
                 deviceId = delegate.getDeviceId(),
                 secret = delegate.getSecretKey(),
-                username = username,
-                pin = pin,
+                id = id,
+                card = card,
+                name = name,
                 secondsLeft = secondsLeft,
             )
             try {

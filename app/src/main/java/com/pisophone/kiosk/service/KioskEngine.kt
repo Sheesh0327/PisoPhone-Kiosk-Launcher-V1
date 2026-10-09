@@ -1,6 +1,7 @@
 package com.pisophone.kiosk.service
 
 import android.content.Context
+import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -22,6 +23,7 @@ import com.pisophone.kiosk.security.KioskSecurity
 import com.pisophone.kiosk.server.KioskHttpServer
 import com.pisophone.kiosk.system.KioskSystemMonitor
 import com.pisophone.kiosk.system.KioskSystemMonitorDelegate
+import com.pisophone.kiosk.ui.CardScanActivity
 import com.pisophone.kiosk.util.CoinSpeech
 import com.pisophone.kiosk.util.DiagnosticsLog
 import com.pisophone.kiosk.util.HardwareFeedback
@@ -205,7 +207,7 @@ class KioskEngine(
         onArmFailedTriggered = { triggerArmFailure(it) },
         getAudioManager = { audioManager },
         onSessionLocked = { cancelArm -> onSessionLocked(cancelArm) },
-        onAccountSynced = { account -> onAccountSynced(account) },
+        onAccountSynced = { account, _ -> onAccountSynced(account) },
     )
 
     private val esp32Manager = Esp32ConnectionManager(
@@ -479,8 +481,16 @@ class KioskEngine(
 
     private fun bindAccounts() {
         AccountController.handler = object : AccountController.Handler {
-            override fun submit(op: String, username: String, pin: String, onDone: (Esp32AccountRequests.Reply) -> Unit) {
-                accountSubmit(op, username, pin, onDone)
+            override fun startScan(context: Context) {
+                openCardScanner()
+            }
+
+            override fun scanCard(card: String, onDone: (Esp32AccountRequests.Reply) -> Unit) {
+                accountScan(card, onDone)
+            }
+
+            override fun setName(name: String, onDone: (Esp32AccountRequests.Reply) -> Unit) {
+                accountSetName(name, onDone)
             }
 
             override fun signOut() {
@@ -488,6 +498,7 @@ class KioskEngine(
             }
         }
         scope.launch { stateManager.signedInAccount.collect { AccountController.signedIn.value = it } }
+        scope.launch { stateManager.signedInName.collect { AccountController.signedName.value = it } }
         scope.launch {
             while (isActive) {
                 delay(1000)
@@ -496,19 +507,28 @@ class KioskEngine(
         }
     }
 
-    private fun accountSubmit(op: String, username: String, pin: String, onDone: (Esp32AccountRequests.Reply) -> Unit) {
+    private fun openCardScanner() {
+        try {
+            context.startActivity(
+                Intent(context, CardScanActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Could not open the card scanner: ${e.message}", e)
+        }
+    }
+
+    /** Signs in with a scanned card. The answer arrives on the main thread. */
+    private fun accountScan(card: String, onDone: (Esp32AccountRequests.Reply) -> Unit) {
         scope.launch(Dispatchers.IO) {
-            val user = Esp32AccountRequests.normalizeUsername(username)
             val reply = when {
                 !isInitialized.get() -> Esp32AccountRequests.Reply(false, "NETWORK")
-                !Esp32AccountRequests.isValidUsername(user) -> Esp32AccountRequests.Reply(false, "BAD_NAME")
-                !Esp32AccountRequests.isValidPin(pin) -> Esp32AccountRequests.Reply(false, "BAD_PIN_FORMAT")
+                !Esp32AccountRequests.looksLikeCard(card) -> Esp32AccountRequests.Reply(false, "BAD_CARD")
                 stateManager.signedInAccount.value.isNotBlank() -> Esp32AccountRequests.Reply(false, "ALREADY_SIGNED_IN")
-                // Anonymous time is never merged into an account: finish it first.
+                // Anonymous (coin) time is never merged into an account: finish it first.
                 SessionRules.isUnlocked(stateManager.appState.value) -> Esp32AccountRequests.Reply(false, "SESSION_ACTIVE")
                 !accountBusy.compareAndSet(false, true) -> Esp32AccountRequests.Reply(false, "TOO_FAST")
                 else -> try {
-                    runAccountOp(op, user, pin)
+                    runScan(card)
                 } finally {
                     accountBusy.set(false)
                 }
@@ -517,19 +537,15 @@ class KioskEngine(
         }
     }
 
-    private fun runAccountOp(op: String, user: String, pin: String): Esp32AccountRequests.Reply {
-        if (op == Esp32AccountRequests.OP_CREATE) {
-            val created = esp32Manager.accountCall(Esp32AccountRequests.OP_CREATE, user, pin)
-            if (!created.success) return created
-        }
-        val signedIn = esp32Manager.accountCall(Esp32AccountRequests.OP_SIGNIN, user, pin)
-        if (!signedIn.success) return signedIn
-        if (!startAccountSession(user, signedIn.balanceSec)) {
+    private fun runScan(card: String): Esp32AccountRequests.Reply {
+        val reply = esp32Manager.accountCall(Esp32AccountRequests.OP_SCAN, card = card)
+        if (!reply.success) return reply
+        if (!startAccountSession(reply.id, reply.name, reply.balanceSec)) {
             // Could not start the session here: give the time straight back so nothing is lost.
-            esp32Manager.accountCall(Esp32AccountRequests.OP_SIGNOUT, user, secondsLeft = signedIn.balanceSec)
+            esp32Manager.accountCall(Esp32AccountRequests.OP_SIGNOUT, id = reply.id, secondsLeft = reply.balanceSec)
             return Esp32AccountRequests.Reply(false, "INTERNAL")
         }
-        return signedIn
+        return reply
     }
 
     /**
@@ -537,20 +553,39 @@ class KioskEngine(
      * sign-in, saved to the database), and the phone only starts reporting for this player AFTER it: reporting first
      * would tell the box "0 seconds left" and wipe the balance.
      */
-    private fun startAccountSession(user: String, balanceSec: Int): Boolean {
+    private fun startAccountSession(id: Int, name: String, balanceSec: Int): Boolean {
         if (balanceSec > 0) {
-            val txId = "$ACCOUNT_TX_PREFIX$user-${System.currentTimeMillis()}"
+            val txId = "$ACCOUNT_TX_PREFIX$id-${System.currentTimeMillis()}"
             val result = creditPayment(txId, balanceSec, 0.0)
             if (result != PaymentResult.APPLIED && result != PaymentResult.ALREADY_APPLIED) {
-                Log.w(TAG, "Could not start the session for '$user': $result")
+                Log.w(TAG, "Could not start the session for card $id: $result")
                 return false
             }
         }
         signedOutAnswers = 0
-        stateManager.signedInAccount.value = user
+        stateManager.signedInName.value = name
+        stateManager.signedInAccount.value = id.toString()
         stateManager.saveState()
-        DiagnosticsLog.add("ACCOUNT", "signed in: $user (${balanceSec}s)")
+        DiagnosticsLog.add("ACCOUNT", "signed in: card $id (${balanceSec}s)")
         return true
+    }
+
+    /** Gives the signed-in account its display name. The answer arrives on the main thread. */
+    private fun accountSetName(name: String, onDone: (Esp32AccountRequests.Reply) -> Unit) {
+        scope.launch(Dispatchers.IO) {
+            val id = stateManager.signedInAccount.value.toIntOrNull()
+            val clean = name.trim()
+            val reply = when {
+                id == null -> Esp32AccountRequests.Reply(false, "NOT_SIGNED_IN")
+                !Esp32AccountRequests.isValidName(clean) -> Esp32AccountRequests.Reply(false, "BAD_NAME")
+                else -> esp32Manager.accountCall(Esp32AccountRequests.OP_NAME, id = id, name = clean)
+            }
+            if (reply.success) {
+                stateManager.signedInName.value = reply.name
+                stateManager.saveState()
+            }
+            Handler(Looper.getMainLooper()).post { onDone(reply) }
+        }
     }
 
     /**
@@ -559,18 +594,19 @@ class KioskEngine(
      * balance within a few seconds of the truth, and the box signs the player out by itself after 90 s.
      */
     fun accountSignOut(notifyBox: Boolean, reason: String) {
-        val user = stateManager.signedInAccount.value
-        if (user.isBlank() || !signingOut.compareAndSet(false, true)) return
+        val id = stateManager.signedInAccount.value.toIntOrNull()
+        if (id == null || !signingOut.compareAndSet(false, true)) return
         scope.launch(Dispatchers.IO) {
             try {
                 val remaining = stateManager.sessionTimeRemaining.value
                 stateManager.signedInAccount.value = ""
+                stateManager.signedInName.value = ""
                 stateManager.saveState()
                 if (notifyBox) {
-                    val reply = esp32Manager.accountCall(Esp32AccountRequests.OP_SIGNOUT, user, secondsLeft = remaining)
-                    if (!reply.success) Log.w(TAG, "Sign-out of '$user' not confirmed by the box: ${reply.error}")
+                    val reply = esp32Manager.accountCall(Esp32AccountRequests.OP_SIGNOUT, id = id, secondsLeft = remaining)
+                    if (!reply.success) Log.w(TAG, "Sign-out of card $id not confirmed by the box: ${reply.error}")
                 }
-                DiagnosticsLog.add("ACCOUNT", "signed out: $user ($reason, ${remaining}s banked)")
+                DiagnosticsLog.add("ACCOUNT", "signed out: card $id ($reason, ${remaining}s banked)")
                 serverCoordinator.lockAndResetSession()
             } catch (e: Exception) {
                 Log.e(TAG, "Sign-out failed: ${e.message}", e)

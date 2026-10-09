@@ -1,19 +1,24 @@
-// Flash storage for the account table. The file is written whole to a temporary name and then moved over the old one;
-// both carry a sequence number and a CRC, so after a power cut the newest intact copy is loaded.
-// Writes are rate-limited: routine balance reports only mark the table changed and are saved at most every 30 s;
-// the events that must not be lost (sign-in/out, credit, create, delete) are saved at once.
+// Flash storage for the account table. This is the only copy of players' saved time, so it is written defensively:
+//  - The file is written whole to a temporary name, read back and checked, and only then moved into place; the previous
+//    good file is kept as a backup. Every file carries a sequence number and a CRC, so after a power cut at any moment the
+//    newest intact copy of the three is loaded.
+//  - The filesystem is formatted only the very first time it is used. If it later refuses to mount, accounts are switched
+//    off and nothing is erased: the data may still be recoverable, and formatting would destroy it.
+//  - Writes are rate-limited (routine balance reports are saved at most every 30 s; sign-in/out, credit, create and delete
+//    at once) and failures are counted and reported in the diagnostics instead of being retried silently.
 
 #include "AccountStorage.h"
 
 #include "Config.h"
 #include "Diagnostics.h"
 
+#include <Preferences.h>
 #include <SPIFFS.h>
-#include <esp_random.h>
 #include <new>
 
 static const char* ACCOUNTS_FILE = "/accounts.bin";
 static const char* ACCOUNTS_TMP = "/accounts.tmp";
+static const char* ACCOUNTS_BAK = "/accounts.bak";
 static const uint32_t SAVE_INTERVAL_MS = 30000UL;
 static const uint32_t PRUNE_INTERVAL_MS = 3600000UL;
 
@@ -22,6 +27,10 @@ static bool dirty = false;
 static bool everPruned = false;
 static uint32_t lastSaveMs = 0;
 static uint32_t lastPruneMs = 0;
+static bool fsMounted = false;
+static uint32_t saveFailures = 0;
+static uint32_t consecutiveFailures = 0;
+static uint32_t savesOk = 0;
 
 bool accountsReady() {
     return table != nullptr;
@@ -34,6 +43,39 @@ accounts::AccountTable& accountsTable() {
 uint32_t accountsNowS() {
     uint64_t ms = getCurrentMasterTimeMs();
     return (uint32_t)(ms / 1000ULL);
+}
+
+AccountStorageHealth accountsHealth() {
+    AccountStorageHealth h;
+    h.ready = table != nullptr;
+    h.fsMounted = fsMounted;
+    h.accounts = table ? table->count() : 0;
+    h.dirty = dirty;
+    h.saveFailures = saveFailures;
+    h.consecutiveFailures = consecutiveFailures;
+    h.savesOk = savesOk;
+    return h;
+}
+
+// Mounts the filesystem. A partition that was never set up is formatted once (nothing to lose). After that a failed mount
+// is NOT answered with a format: the accounts may still be on flash, so accounts stay off until an admin decides.
+static bool mountFilesystem() {
+    if (SPIFFS.begin(false)) return true;
+    Preferences marker;
+    if (!marker.begin("acct_fs", false)) return false;
+    bool setUpBefore = marker.getBool("formatted", false);
+    bool ok = false;
+    if (!setUpBefore) {
+        ok = SPIFFS.begin(true);
+        if (ok) marker.putBool("formatted", true);
+        diagLog("[ACCT] first use of the accounts partition: formatted it (%s)\n", ok ? "ok" : "FAILED");
+    } else {
+        diagLog(
+            "[ACCT] the filesystem will not mount although it was set up before. NOT formatting it (the accounts may "
+            "still be there). Player accounts are off; a factory reset sets the partition up again.\n");
+    }
+    marker.end();
+    return ok;
 }
 
 // Reads a whole file into a heap buffer (the caller frees it); nullptr if it is missing or empty.
@@ -62,38 +104,66 @@ static uint8_t* readFile(const char* path, size_t& len) {
     return buf;
 }
 
+static void noteSaveFailure(const char* why) {
+    saveFailures++;
+    consecutiveFailures++;
+    // The first failure and then every tenth: enough to see it, not enough to flood the log (a save is retried every 30 s).
+    if (consecutiveFailures == 1 || consecutiveFailures % 10 == 0) {
+        diagLog(
+            "[ACCT] SAVE FAILED (%s), %u in a row; the accounts are still safe in RAM and the older copy on flash\n",
+            why, (unsigned)consecutiveFailures);
+    }
+}
+
 static bool saveNow() {
     if (!table) return false;
     File f = SPIFFS.open(ACCOUNTS_TMP, "w");
     if (!f) {
-        diagLog("[ACCT] cannot open %s for writing\n", ACCOUNTS_TMP);
+        noteSaveFailure("cannot open the temporary file");
         return false;
     }
     bool ok = true;
+    size_t written = 0;
     table->serialize([&](const uint8_t* d, size_t n) {
         if (ok && f.write(d, n) != n) ok = false;
+        written += n;
     });
     f.close();
     if (!ok) {
-        diagLog("[ACCT] write failed; keeping the previous file\n");
         SPIFFS.remove(ACCOUNTS_TMP);
+        noteSaveFailure("write failed (flash full?)");
         return false;
     }
-    // SPIFFS cannot rename over an existing file. If power fails between these two steps the temporary file is
-    // complete and the loader picks it up on the next boot.
-    SPIFFS.remove(ACCOUNTS_FILE);
+    // Read it back: a file that cannot be read and verified must never replace a good one.
+    size_t len = 0;
+    uint8_t* check = readFile(ACCOUNTS_TMP, len);
+    uint32_t seq = 0;
+    bool verified = check && len == written && accounts::AccountTable::peekSeq(check, len, seq);
+    free(check);
+    if (!verified) {
+        SPIFFS.remove(ACCOUNTS_TMP);
+        noteSaveFailure("read-back check failed");
+        return false;
+    }
+    // Keep the previous good file as the backup, then move the new one into place. SPIFFS cannot rename over an existing
+    // file, so there are moments with no main file; the loader accepts any of the three, newest first.
+    SPIFFS.remove(ACCOUNTS_BAK);
+    if (SPIFFS.exists(ACCOUNTS_FILE)) SPIFFS.rename(ACCOUNTS_FILE, ACCOUNTS_BAK);
     if (!SPIFFS.rename(ACCOUNTS_TMP, ACCOUNTS_FILE)) {
-        diagLog("[ACCT] rename failed; the temporary file will be used on the next boot\n");
+        noteSaveFailure("rename failed; the verified temporary file will be used on the next boot");
         return false;
     }
     dirty = false;
+    consecutiveFailures = 0;
+    savesOk++;
     lastSaveMs = millis();
     return true;
 }
 
 void accountsBegin() {
     if (table) return;
-    if (!SPIFFS.begin(true)) {
+    fsMounted = mountFilesystem();
+    if (!fsMounted) {
         diagLog("[ACCT] filesystem unavailable; player accounts are off\n");
         return;
     }
@@ -103,22 +173,34 @@ void accountsBegin() {
         return;
     }
 
-    // Load the intact copy with the higher sequence number (the temporary file wins only if the move was cut short).
-    size_t lenA = 0, lenB = 0;
-    uint8_t* a = readFile(ACCOUNTS_FILE, lenA);
-    uint8_t* b = readFile(ACCOUNTS_TMP, lenB);
-    uint32_t seqA = 0, seqB = 0;
-    bool hasA = a && accounts::AccountTable::peekSeq(a, lenA, seqA);
-    bool hasB = b && accounts::AccountTable::peekSeq(b, lenB, seqB);
+    // Load the intact copy with the highest sequence number; if that one turns out damaged, the next newest.
+    const char* paths[3] = {ACCOUNTS_FILE, ACCOUNTS_TMP, ACCOUNTS_BAK};
+    uint8_t* bufs[3] = {nullptr, nullptr, nullptr};
+    size_t lens[3] = {0, 0, 0};
+    uint32_t seqs[3] = {0, 0, 0};
+    bool valid[3] = {false, false, false};
+    for (int i = 0; i < 3; i++) {
+        bufs[i] = readFile(paths[i], lens[i]);
+        valid[i] = bufs[i] && accounts::AccountTable::peekSeq(bufs[i], lens[i], seqs[i]);
+    }
     bool loaded = false;
-    if (hasB && (!hasA || seqB > seqA))
-        loaded = table->deserialize(b, lenB) || (hasA && table->deserialize(a, lenA));
-    else if (hasA)
-        loaded = table->deserialize(a, lenA) || (hasB && table->deserialize(b, lenB));
-    free(a);
-    free(b);
-    diagLog("[ACCT] %s, %u accounts\n", loaded ? "loaded" : "starting with an empty table", (unsigned)table->count());
-    if (loaded && SPIFFS.exists(ACCOUNTS_TMP)) dirty = true; // tidy: rewrite and drop the leftover temporary file
+    int loadedFrom = -1;
+    bool tried[3] = {false, false, false};
+    for (int round = 0; round < 3 && !loaded; round++) {
+        int best = -1;
+        for (int i = 0; i < 3; i++)
+            if (valid[i] && !tried[i] && (best < 0 || seqs[i] > seqs[best])) best = i;
+        if (best < 0) break;
+        tried[best] = true;
+        loaded = table->deserialize(bufs[best], lens[best]);
+        if (loaded) loadedFrom = best;
+    }
+    for (int i = 0; i < 3; i++)
+        free(bufs[i]);
+    diagLog("[ACCT] %s%s, %u accounts\n", loaded ? "loaded from " : "starting with an empty table",
+            loaded ? paths[loadedFrom] : "", (unsigned)table->count());
+    // Anything but a clean main file means the last save was cut short: write a fresh, complete set.
+    if (loaded && loadedFrom != 0) dirty = true;
 }
 
 void accountsCommit(bool urgent) {
@@ -140,14 +222,8 @@ void accountsLoop() {
             dirty = true;
         }
     }
-    if (dirty && (uint32_t)(now - lastSaveMs) >= SAVE_INTERVAL_MS) saveNow();
-}
-
-accounts::Result accountsCreate(const String& username, const String& pin) {
-    if (!table) return accounts::Result::INTERNAL;
-    uint8_t salt[accounts::SALT_BYTES];
-    esp_fill_random(salt, sizeof(salt));
-    accounts::Result r = table->create(username.c_str(), pin.c_str(), salt, accountsNowS());
-    if (r == accounts::Result::OK) accountsCommit(true);
-    return r;
+    if (dirty && (uint32_t)(now - lastSaveMs) >= SAVE_INTERVAL_MS) {
+        saveNow();
+        lastSaveMs = now; // also after a failure: retry every 30 s, not on every pass of the loop
+    }
 }

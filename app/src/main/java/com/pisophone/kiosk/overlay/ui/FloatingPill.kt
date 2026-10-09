@@ -460,6 +460,7 @@ fun FloatingPill(
                     }
 
                     val signedInUser by AccountController.signedIn.collectAsState()
+                    val signedInName by AccountController.signedName.collectAsState()
                     if (signedInUser.isNotBlank()) {
                         // Two taps on purpose: signing out locks the phone and banks the time into the account.
                         var confirmSignOut by remember { mutableStateOf(false) }
@@ -488,7 +489,7 @@ fun FloatingPill(
                             contentPadding = PaddingValues(0.dp),
                         ) {
                             Text(
-                                if (confirmSignOut) "TAP AGAIN TO SAVE TIME & SIGN OUT" else "SIGNED IN: ${signedInUser.uppercase()} • SIGN OUT",
+                                if (confirmSignOut) "TAP AGAIN TO SAVE TIME & SIGN OUT" else "SIGNED IN: ${AccountController.displayName(signedInUser, signedInName).uppercase()} • SIGN OUT",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 10.sp,
                             )

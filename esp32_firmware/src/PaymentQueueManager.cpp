@@ -278,8 +278,7 @@ bool enqueuePendingPayment(const String& txId, const String& targetId, int pulse
     return true;
 }
 
-static bool acknowledgeMatchingPayment(const String& txId, const String* sessionId, uint8_t requiredOwnerType,
-                                       int* creditSecondsOut = nullptr) {
+static bool acknowledgeMatchingPayment(const String& txId, const String* sessionId, uint8_t requiredOwnerType) {
     if (txId.length() == 0) return false;
 
     lockQueue();
@@ -296,7 +295,6 @@ static bool acknowledgeMatchingPayment(const String& txId, const String* session
         return false;
     }
 
-    int credit = paymentQueue[foundIndex].creditSeconds;
     if (!eraseRecord(foundIndex)) {
         unlockQueue();
         Serial.printf("[PAY QUEUE] Failed to erase acknowledged tx_id='%s'.\n", txId.c_str());
@@ -307,17 +305,33 @@ static bool acknowledgeMatchingPayment(const String& txId, const String* session
     unlockQueue();
     diagCount(DiagCounter::PaymentsAcked);
     diagLog("[PAY QUEUE] Acknowledged tx_id='%s'.\n", txId.c_str());
-    if (creditSecondsOut) *creditSecondsOut = credit;
     return true;
+}
+
+// The seconds a queued phone payment is worth, or 0 when there is no such payment (already acknowledged, or not this
+// phone's). Only reads: nothing is erased.
+static int peekPhonePaymentCredit(const String& deviceId, const String& txId) {
+    int credit = 0;
+    lockQueue();
+    for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
+        if (paymentSlotUsed[i] && paymentQueue[i].ownerType == 1 && String(paymentQueue[i].txId) == txId &&
+            String(paymentQueue[i].targetId) == deviceId) {
+            credit = paymentQueue[i].creditSeconds;
+            break;
+        }
+    }
+    unlockQueue();
+    return credit;
 }
 
 bool acknowledgePhonePayment(const String& deviceId, const String& txId) {
     if (deviceId.length() == 0 || txId.length() == 0) return false;
-    int credit = 0;
-    if (!acknowledgeMatchingPayment(txId, &deviceId, 1, &credit)) return false;
-    // A coin paid by a phone whose player is signed in also goes into the player's account.
-    accountsOnPhonePaymentAcked(deviceId, txId, credit);
-    return true;
+    // A player signed in on that phone also gets the coin's time. This is done BEFORE the queued payment is erased: if the
+    // power fails in between, the box still holds the payment and offers it again, and the transaction id makes the
+    // account count it once. Done after, a power cut would lose the coin's time from the account for good.
+    int credit = peekPhonePaymentCredit(deviceId, txId);
+    if (credit > 0) accountsOnPhonePaymentAcked(deviceId, txId, credit);
+    return acknowledgeMatchingPayment(txId, &deviceId, 1);
 }
 
 int getPendingPhonePaymentsJson(const String& deviceId, String& outJsonArray) {

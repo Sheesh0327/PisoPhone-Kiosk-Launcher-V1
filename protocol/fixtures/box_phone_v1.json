@@ -65,24 +65,24 @@
   ],
   "accounts": [
     {
-      "name": "signin",
+      "name": "scan",
       "secret": "x7Yq-9_zK.m+3=Rt8UvW4nBp",
-      "op": "signin",
+      "op": "scan",
       "device": "dev-1234",
       "ts": "1760000000000",
-      "bound": "alice:01060b10151a1f24292e33383d42474c8f7431fe28e592970eb86b6eb4c5ad2d",
-      "message": "v1:acct_signin:dev-1234:1760000000000:alice:01060b10151a1f24292e33383d42474c8f7431fe28e592970eb86b6eb4c5ad2d",
-      "hmac": "3fb5dd49954d9032a98c780a29f458befbf7887fd07299fcd4c48ad0f6b73b00"
+      "bound": "PISO1.aabbccddeeff.42.10800.MEUCIQDm9R0kYwq3cG0gq2K1mQ8k5VwXnJ7p2sT4yZb6dUe1xwIgY2n0vLhPq8aRtB3cS5uVwXy7Zk1aD4fG6hJ9lMnO2pQ=",
+      "message": "v1:acct_scan:dev-1234:1760000000000:PISO1.aabbccddeeff.42.10800.MEUCIQDm9R0kYwq3cG0gq2K1mQ8k5VwXnJ7p2sT4yZb6dUe1xwIgY2n0vLhPq8aRtB3cS5uVwXy7Zk1aD4fG6hJ9lMnO2pQ=",
+      "hmac": "71300ef80fcdad678e3f8927bb0ffa93fb96e2e2e69e61f7554524427a5c247a"
     },
     {
-      "name": "create",
+      "name": "name",
       "secret": "x7Yq-9_zK.m+3=Rt8UvW4nBp",
-      "op": "create",
+      "op": "name",
       "device": "dev-1234",
       "ts": "1760000000000",
-      "bound": "bob_99:01060b10151a1f24292e33383d42474c8f7431fe28e592970eb86b6eb4c5ad2d",
-      "message": "v1:acct_create:dev-1234:1760000000000:bob_99:01060b10151a1f24292e33383d42474c8f7431fe28e592970eb86b6eb4c5ad2d",
-      "hmac": "e03b836d09660a2354df32f3b4f3c78b871fc4ad6a7c079f22b472110bd2682a"
+      "bound": "42:Juan Dela Cruz",
+      "message": "v1:acct_name:dev-1234:1760000000000:42:Juan Dela Cruz",
+      "hmac": "bab4db5f7b60c54e8f6d312248138604df726d5514488a6503e6d220680cf62b"
     },
     {
       "name": "signout",
@@ -90,9 +90,9 @@
       "op": "signout",
       "device": "dev-1234",
       "ts": "1760000000000",
-      "bound": "alice:540",
-      "message": "v1:acct_signout:dev-1234:1760000000000:alice:540",
-      "hmac": "cdad26576b2d28b9d1f379bbf5b04a05e64436f8a135448ddc682144575c83a2"
+      "bound": "42:540",
+      "message": "v1:acct_signout:dev-1234:1760000000000:42:540",
+      "hmac": "bc4d96982883343216275ee0dfdb6686ee1b02678056a6dde329bd25ab56b204"
     },
     {
       "name": "report",
@@ -100,9 +100,9 @@
       "op": "report",
       "device": "dev-1234",
       "ts": "1760000000000",
-      "bound": "alice:539",
-      "message": "v1:acct_report:dev-1234:1760000000000:alice:539",
-      "hmac": "cfadd336ee1c8dd82dcd4d8afb0fd2750a137b74accb5dfa106ba4dba3c29374"
+      "bound": "42:539",
+      "message": "v1:acct_report:dev-1234:1760000000000:42:539",
+      "hmac": "0b2967911cf01e043dbb9e8157da407183e2e6ea191c9d832e73fda818e0a68f"
     },
     {
       "name": "info",
@@ -110,16 +110,9 @@
       "op": "info",
       "device": "dev-1234",
       "ts": "1760000000000",
-      "bound": "alice",
-      "message": "v1:acct_info:dev-1234:1760000000000:alice",
-      "hmac": "f8f8905e2827011140c616d2173173cddeaf3cb347e666d86e01741d7852d115"
+      "bound": "42",
+      "message": "v1:acct_info:dev-1234:1760000000000:42",
+      "hmac": "0bced6f7f0259d03948028c3e4a36d670d22f05f8a194ad5a17858bb819837b8"
     }
-  ],
-  "account_pin": {
-    "secret": "x7Yq-9_zK.m+3=Rt8UvW4nBp",
-    "iv": "01060b10151a1f24292e33383d42474c",
-    "pin": "4821",
-    "plaintext": "PIN:4821",
-    "ciphertext": "01060b10151a1f24292e33383d42474c8f7431fe28e592970eb86b6eb4c5ad2d"
-  }
+  ]
 }
