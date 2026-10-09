@@ -4,6 +4,7 @@
 #include "InputSafety.h"
 #include <string.h>
 #include "WebServerTelemetry.h"
+#include "WebServerAccounts.h"
 #include "WebServerModule.h"
 #include "WebServerAuth.h"
 #include "Config.h"
@@ -113,6 +114,7 @@ void handleHeartbeat() {
     }
     String json = "{\"status\":\"" + status + "\",\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\"";
     json += boxTimeJsonField();
+    if (slotIdx >= 0) accountsOnHeartbeat(phoneSlots[slotIdx].slotNum, deviceId, tsStr, json);
     if (slotIdx >= 0) {
         String encPin = aes_encrypt("PIN:" + webPassword, getSharedSecret());
         json += ",\"admin_pin\":\"" + jsonEsc(encPin) + "\"";

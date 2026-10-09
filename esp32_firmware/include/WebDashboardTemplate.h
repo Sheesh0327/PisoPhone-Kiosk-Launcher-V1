@@ -98,6 +98,21 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                     <button type="submit" name="adjust_action" value="add" class="btn primary" onclick="return validateQuickAdjust(event, 'add')"><svg class="ic"><use href="#i-plus"/></svg>Add time</button>
                 </div>
             </form>
+
+            <div class="panel">
+                <div class="panel-head">
+                    <h2><svg class="ic"><use href="#i-users"/></svg>Player accounts <span id="accounts_count" class="tag"></span></h2>
+                    <div class="actions">
+                        <button type="button" class="btn sm" onclick="fetchAccounts()"><svg class="ic"><use href="#i-refresh"/></svg>Refresh</button>
+                    </div>
+                </div>
+                <div id="accounts_container" class="rows">
+                    <div class="row-empty-msg">Loading accounts…</div>
+                </div>
+                <div class="panel-body">
+                    <p class="hint">Players keep unused time in an account. An account with no time that nobody has used for 30 days is deleted automatically. Time cannot be changed, and an account cannot be deleted, while its player is signed in on a phone.</p>
+                </div>
+            </div>
         </section>
 
         <!-- SETTINGS -->

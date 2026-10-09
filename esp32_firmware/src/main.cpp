@@ -9,6 +9,8 @@
 #include <ESPmDNS.h>
 #include <esp_task_wdt.h>
 #include <esp_ota_ops.h>
+#include "AccountStorage.h"
+#include "WebServerAccounts.h"
 #include "esp_wifi.h"
 #include "Config.h"
 #include "Security.h"
@@ -154,6 +156,7 @@ void setup() {
 
     // Load NVS Configuration & Lifetime Vault Revenue safely
     loadAllConfig();
+    accountsBegin();
     gatewayInit();
     if (defaultCredentialsActive()) {
         diagLog(
@@ -236,6 +239,8 @@ void loop() {
 
     // 0. Process Debounced Hardware-Conservative NVS Revenue Persistence
     processRevenuePersistence();
+    accountsLoop();
+    accountsWatchdogLoop();
 
     // 0. Process Super Admin 5-minute auto-reset retrieval window
     processSuperAdminLoop();

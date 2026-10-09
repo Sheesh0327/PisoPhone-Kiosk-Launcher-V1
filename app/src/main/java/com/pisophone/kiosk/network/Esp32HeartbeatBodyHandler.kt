@@ -70,6 +70,11 @@ internal class Esp32HeartbeatBodyHandler(
             delegate.onOnlineStatusChanged(true, mac)
             delegate.onConfigSynced(price, minutes, alias, decryptedPin, slotNum)
 
+            // who the box thinks is signed in on this slot, and their balance there
+            if (json.has("acct")) {
+                delegate.onAccountSync(json.optString("acct", ""), json.optInt("acct_bal", -1))
+            }
+
             if (json.has("arena_active")) {
                 val arenaActive = json.optBoolean("arena_active", false)
                 val arenaRole = json.optInt("arena_role", 0)

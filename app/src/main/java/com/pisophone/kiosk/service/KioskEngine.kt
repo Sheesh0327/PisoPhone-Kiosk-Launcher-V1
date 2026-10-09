@@ -3,11 +3,13 @@ package com.pisophone.kiosk.service
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.widget.Toast
 import com.pisophone.kiosk.audio.KioskAudioManager
 import com.pisophone.kiosk.db.AppDatabase
 import com.pisophone.kiosk.db.CoinEvent
+import com.pisophone.kiosk.network.Esp32AccountRequests
 import com.pisophone.kiosk.network.Esp32ConnectionManager
 import com.pisophone.kiosk.network.Esp32Responses
 import com.pisophone.kiosk.overlay.KioskOverlayCoordinator
@@ -32,6 +34,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Core business orchestrator for the PisoPhone Kiosk.
@@ -48,9 +51,18 @@ class KioskEngine(
 
         /** Explicit marker for admin-originated credits/deductions (never a coin). */
         const val ADMIN_TX_PREFIX = "tx-adj-"
+
+        /** Marks the credit that starts a player's session from their account (never a coin, never an admin change). */
+        const val ACCOUNT_TX_PREFIX = "tx-acct-"
+
+        /** The box must say "nobody is signed in here" this many heartbeats in a row before the phone believes it. */
+        private const val ACCOUNT_SIGNED_OUT_CONFIRMATIONS = 2
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    /** Signs a player out once the phone has been left with its screen off (see [AccountIdleTimer]). */
+    private val idleTimer = AccountIdleTimer()
 
     private val coinEventRepo: CoinEventRepository = CoinEventRepository(
         AppDatabase.getDatabase(context).coinEventDao(),
@@ -61,6 +73,7 @@ class KioskEngine(
         onPaymentApplied = { txId, seconds, amount, snapshot ->
             // Explicit admin flag (tx id prefix) instead of guessing from the amount.
             val isAdminAdjustment = txId.startsWith(ADMIN_TX_PREFIX)
+            val isAccountCredit = txId.startsWith(ACCOUNT_TX_PREFIX)
             // Zero-amount credits pushed by the Master (complimentary time) are not coins either.
             val isCoin = !isAdminAdjustment && amount > 0.0
             val pesoAmount = if (amount >= 1.0) amount.toInt() else 0
@@ -96,6 +109,7 @@ class KioskEngine(
                             secondsAdded = seconds,
                             source = when {
                                 isAdminAdjustment -> "Admin Quick Adjust"
+                                isAccountCredit -> "Player Account Sign-in"
                                 !isCoin -> "Master Time Credit"
                                 else -> "Piso Coin (₱$pesoAmount)"
                             },
@@ -108,13 +122,20 @@ class KioskEngine(
             }
 
             // 2. Play sound / update UI feedback ONLY for newly applied payment (separate from state publication)
-            audioManager.playCoinSound()
-            HardwareFeedback.triggerFlashlight(context, 150L)
+            if (isAccountCredit) {
+                // Signing in is not a coin: the "done" chime, no coin clink or flash.
+                audioManager.playDoneSound()
+            } else {
+                audioManager.playCoinSound()
+                HardwareFeedback.triggerFlashlight(context, 150L)
+            }
             val addedMins = seconds / 60
             if (isCoin) speakCoinConfirmation(CoinSpeech.confirmation(pesoAmount, seconds))
             Handler(Looper.getMainLooper()).post {
                 if (isAdminAdjustment) {
                     Toast.makeText(context, "+${addedMins}m added by Admin!", Toast.LENGTH_SHORT).show()
+                } else if (isAccountCredit) {
+                    Toast.makeText(context, "Signed in: ${addedMins}m on your account", Toast.LENGTH_SHORT).show()
                 } else if (!isCoin) {
                     Toast.makeText(context, "+${addedMins}m added!", Toast.LENGTH_SHORT).show()
                 } else {
@@ -148,8 +169,14 @@ class KioskEngine(
         context = context,
         scope = scope,
         delegate = object : KioskSystemMonitorDelegate {
-            override fun onScreenSleep() { overlayCoordinator.onScreenSleep() }
-            override fun onScreenWake() { overlayCoordinator.onScreenWake() }
+            override fun onScreenSleep() {
+                idleTimer.onScreenOff(SystemClock.elapsedRealtime())
+                overlayCoordinator.onScreenSleep()
+            }
+            override fun onScreenWake() {
+                idleTimer.onScreenOn()
+                overlayCoordinator.onScreenWake()
+            }
             override fun getAudioManager(): KioskAudioManager = audioManager
             override fun isSessionActive(): Boolean = SessionRules.isUnlocked(stateManager.appState.value)
         },
@@ -178,6 +205,7 @@ class KioskEngine(
         onArmFailedTriggered = { triggerArmFailure(it) },
         getAudioManager = { audioManager },
         onSessionLocked = { cancelArm -> onSessionLocked(cancelArm) },
+        onAccountSynced = { account -> onAccountSynced(account) },
     )
 
     private val esp32Manager = Esp32ConnectionManager(
@@ -221,6 +249,7 @@ class KioskEngine(
 
     fun start() {
         engineStartTimeMs = System.currentTimeMillis()
+        bindAccounts()
 
         scope.launch(Dispatchers.IO) {
             try {
@@ -404,6 +433,8 @@ class KioskEngine(
      *  - bring the kiosk launcher (HOME) to the front so the customer app is no longer in use.
      */
     fun onSessionLocked(cancelArm: Boolean) {
+        // Time ran out, an admin locked the phone, a slot lockdown...: a signed-in player is signed out with what is left.
+        if (stateManager.signedInAccount.value.isNotBlank()) accountSignOut(notifyBox = true, reason = "phone locked")
         if (cancelArm) {
             closeSession(sendUnarmToEsp = true)
             stateManager.coinsInserted.value = 0
@@ -435,6 +466,145 @@ class KioskEngine(
     }
 
     private fun isArmedState(state: Int): Boolean = SessionRules.isArmed(state)
+
+    // ------------------------------------------------------------------------
+    // Player accounts: time kept on the box so it is not lost when a player leaves.
+    // The box holds the only copy of the balance; the phone starts a session from it at sign-in and the heartbeat
+    // reports the time left back while the player is signed in (see docs/api/gateway-coinslot.md, "Accounts").
+    // ------------------------------------------------------------------------
+
+    private val accountBusy = AtomicBoolean(false)
+    private val signingOut = AtomicBoolean(false)
+    private var signedOutAnswers = 0
+
+    private fun bindAccounts() {
+        AccountController.handler = object : AccountController.Handler {
+            override fun submit(op: String, username: String, pin: String, onDone: (Esp32AccountRequests.Reply) -> Unit) {
+                accountSubmit(op, username, pin, onDone)
+            }
+
+            override fun signOut() {
+                accountSignOut(notifyBox = true, reason = "player signed out")
+            }
+        }
+        scope.launch { stateManager.signedInAccount.collect { AccountController.signedIn.value = it } }
+        scope.launch {
+            while (isActive) {
+                delay(1000)
+                accountTick()
+            }
+        }
+    }
+
+    private fun accountSubmit(op: String, username: String, pin: String, onDone: (Esp32AccountRequests.Reply) -> Unit) {
+        scope.launch(Dispatchers.IO) {
+            val user = Esp32AccountRequests.normalizeUsername(username)
+            val reply = when {
+                !isInitialized.get() -> Esp32AccountRequests.Reply(false, "NETWORK")
+                !Esp32AccountRequests.isValidUsername(user) -> Esp32AccountRequests.Reply(false, "BAD_NAME")
+                !Esp32AccountRequests.isValidPin(pin) -> Esp32AccountRequests.Reply(false, "BAD_PIN_FORMAT")
+                stateManager.signedInAccount.value.isNotBlank() -> Esp32AccountRequests.Reply(false, "ALREADY_SIGNED_IN")
+                // Anonymous time is never merged into an account: finish it first.
+                SessionRules.isUnlocked(stateManager.appState.value) -> Esp32AccountRequests.Reply(false, "SESSION_ACTIVE")
+                !accountBusy.compareAndSet(false, true) -> Esp32AccountRequests.Reply(false, "TOO_FAST")
+                else -> try {
+                    runAccountOp(op, user, pin)
+                } finally {
+                    accountBusy.set(false)
+                }
+            }
+            Handler(Looper.getMainLooper()).post { onDone(reply) }
+        }
+    }
+
+    private fun runAccountOp(op: String, user: String, pin: String): Esp32AccountRequests.Reply {
+        if (op == Esp32AccountRequests.OP_CREATE) {
+            val created = esp32Manager.accountCall(Esp32AccountRequests.OP_CREATE, user, pin)
+            if (!created.success) return created
+        }
+        val signedIn = esp32Manager.accountCall(Esp32AccountRequests.OP_SIGNIN, user, pin)
+        if (!signedIn.success) return signedIn
+        if (!startAccountSession(user, signedIn.balanceSec)) {
+            // Could not start the session here: give the time straight back so nothing is lost.
+            esp32Manager.accountCall(Esp32AccountRequests.OP_SIGNOUT, user, secondsLeft = signedIn.balanceSec)
+            return Esp32AccountRequests.Reply(false, "INTERNAL")
+        }
+        return signedIn
+    }
+
+    /**
+     * Starts the player's paid session from their balance. The credit goes through the normal payment path (once per
+     * sign-in, saved to the database), and the phone only starts reporting for this player AFTER it: reporting first
+     * would tell the box "0 seconds left" and wipe the balance.
+     */
+    private fun startAccountSession(user: String, balanceSec: Int): Boolean {
+        if (balanceSec > 0) {
+            val txId = "$ACCOUNT_TX_PREFIX$user-${System.currentTimeMillis()}"
+            val result = creditPayment(txId, balanceSec, 0.0)
+            if (result != PaymentResult.APPLIED && result != PaymentResult.ALREADY_APPLIED) {
+                Log.w(TAG, "Could not start the session for '$user': $result")
+                return false
+            }
+        }
+        signedOutAnswers = 0
+        stateManager.signedInAccount.value = user
+        stateManager.saveState()
+        DiagnosticsLog.add("ACCOUNT", "signed in: $user (${balanceSec}s)")
+        return true
+    }
+
+    /**
+     * Ends the player's session: stops reporting, banks the time left in the account (when [notifyBox]) and locks
+     * the phone, which takes the time off it. If the box cannot be reached the last heartbeat has already put the
+     * balance within a few seconds of the truth, and the box signs the player out by itself after 90 s.
+     */
+    fun accountSignOut(notifyBox: Boolean, reason: String) {
+        val user = stateManager.signedInAccount.value
+        if (user.isBlank() || !signingOut.compareAndSet(false, true)) return
+        scope.launch(Dispatchers.IO) {
+            try {
+                val remaining = stateManager.sessionTimeRemaining.value
+                stateManager.signedInAccount.value = ""
+                stateManager.saveState()
+                if (notifyBox) {
+                    val reply = esp32Manager.accountCall(Esp32AccountRequests.OP_SIGNOUT, user, secondsLeft = remaining)
+                    if (!reply.success) Log.w(TAG, "Sign-out of '$user' not confirmed by the box: ${reply.error}")
+                }
+                DiagnosticsLog.add("ACCOUNT", "signed out: $user ($reason, ${remaining}s banked)")
+                serverCoordinator.lockAndResetSession()
+            } catch (e: Exception) {
+                Log.e(TAG, "Sign-out failed: ${e.message}", e)
+            } finally {
+                signingOut.set(false)
+            }
+        }
+    }
+
+    /** The box says who is signed in on this slot; if it no longer lists our player, they were signed out there. */
+    private fun onAccountSynced(account: String) {
+        if (stateManager.signedInAccount.value.isBlank()) {
+            signedOutAnswers = 0
+            return
+        }
+        if (account.isNotBlank()) {
+            signedOutAnswers = 0
+            return
+        }
+        // One empty answer can be a reply that was already on its way before this player signed in.
+        if (++signedOutAnswers >= ACCOUNT_SIGNED_OUT_CONFIRMATIONS) {
+            accountSignOut(notifyBox = false, reason = "signed out by the box")
+        }
+    }
+
+    private fun accountTick() {
+        val signedIn = stateManager.signedInAccount.value.isNotBlank()
+        when (idleTimer.tick(SystemClock.elapsedRealtime(), signedIn)) {
+            AccountIdleTimer.Action.WARN ->
+                audioManager.speakWarning("Signing out in 30 seconds. Turn the screen on to stay signed in.")
+            AccountIdleTimer.Action.SIGN_OUT -> accountSignOut(notifyBox = true, reason = "screen was off")
+            AccountIdleTimer.Action.NONE -> {}
+        }
+    }
 
     fun performAdminBypass(durationSeconds: Int = 900) {
         Log.i(TAG, "Admin bypass granted for $durationSeconds seconds.")

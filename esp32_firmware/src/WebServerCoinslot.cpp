@@ -154,6 +154,23 @@ static bool coinslotRequestAuthorized(const char* action, const String& rawDevId
     return check == SigCheck::Ok;
 }
 
+// Account calls are always signed (the PISO_REQUIRE_SIGNED_COINSLOT escape hatch for old phones does not apply: there
+// are no old phones with accounts). `bound` is the part of the signed message that carries the call's parameters.
+bool accountRequestAuthorized(const char* op, const String& devId, const String& bound) {
+    String action = String("acct_") + op;
+    SigCheck check = coinslotSignatureCheck(action.c_str(), devId, bound);
+    if (check == SigCheck::Ok) return true;
+    bool stale = (check == SigCheck::StaleTimestamp);
+    if (check != SigCheck::Missing) {
+        diagLog("[AUTH] Rejected /api/account/%s from %s: %s\n", op, webServer.client().remoteIP().toString().c_str(),
+                stale ? "the phone's clock is outside the box's window" : "signature does not match");
+    }
+    webServer.send(403, "application/json",
+                   String("{\"success\":false,\"error\":\"AUTH_FAILED\",\"reason\":\"") +
+                       (stale ? "STALE_TIMESTAMP" : "BAD_SIGNATURE") + "\"" + boxTimeJsonField() + "}");
+    return false;
+}
+
 void handleApiCoinslotArm() {
     String devId = webServer.hasArg("device_id") ? webServer.arg("device_id")
                                                  : (webServer.hasArg("id") ? webServer.arg("id") : "");
