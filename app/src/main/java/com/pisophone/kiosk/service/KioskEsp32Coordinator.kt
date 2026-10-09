@@ -27,6 +27,8 @@ class KioskEsp32Coordinator(
     private val getAudioManager: (() -> com.pisophone.kiosk.audio.KioskAudioManager?)? = null,
     /** Centralized lock side effects (unarm, send customer app home, pause media). */
     private val onSessionLocked: (cancelArm: Boolean) -> Unit = {},
+    /** The box's answer about who is signed in on this slot ([account] empty when nobody). */
+    private val onAccountSynced: (account: String) -> Unit = {},
 ) : Esp32ConnectionDelegate {
     companion object {
         private const val TAG = "KioskEsp32Coordinator"
@@ -40,6 +42,8 @@ class KioskEsp32Coordinator(
     override fun getSessionTimeRemaining(): Int = stateManager.sessionTimeRemaining.value
     override fun getRealTimeBatteryInfo(): Pair<Int, Boolean> = getRealTimeBatteryInfo.invoke()
     override fun getStoredEsp32Ip(): String? = stateManager.esp32Ip
+    override fun getSignedInAccount(): String? = stateManager.signedInAccount.value.takeIf { it.isNotBlank() }
+    override fun onAccountSync(account: String, balanceSec: Int) = onAccountSynced(account)
 
     override fun onEsp32Discovered(ip: String) {
         stateManager.esp32Ip = ip

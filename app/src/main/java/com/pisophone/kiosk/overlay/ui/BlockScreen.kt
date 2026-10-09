@@ -162,6 +162,7 @@ fun BlockScreen(
 
     val context = LocalContext.current
     var showPinDialog by remember { mutableStateOf(false) }
+    var showAccountDialog by remember { mutableStateOf(false) }
     var showSecurityDialog by remember { mutableStateOf(false) }
     var showEmergencyRecoveryDialog by remember { mutableStateOf(false) }
 
@@ -353,6 +354,17 @@ fun BlockScreen(
                             onDoneClick = onDoneClick,
                             onInsertCoin = onInsertCoin,
                         )
+
+                        if (!isWaiting && !isArmingInProgress) {
+                            TextButton(onClick = { showAccountDialog = true }) {
+                                Text(
+                                    "Have an account? Sign in",
+                                    color = Primary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -456,6 +468,16 @@ fun BlockScreen(
                         )
                     }
                 }
+            }
+
+            if (showAccountDialog) {
+                AccountSignInDialog(
+                    surfaceColor = Surface,
+                    primaryColor = Primary,
+                    textPrimaryColor = TextPrimary,
+                    textSecondaryColor = TextSecondary,
+                    onDismiss = { showAccountDialog = false },
+                )
             }
 
             if (showPinDialog) {

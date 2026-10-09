@@ -117,6 +117,7 @@ object Esp32AccountRequests {
         "LOCKED" -> "Too many wrong PINs. Try again later."
         "ALREADY_SIGNED_IN" -> "That account is signed in on another phone."
         "NOT_SIGNED_IN" -> "Not signed in."
+        "SESSION_ACTIVE" -> "Finish your current time first."
         "TOO_FAST" -> "Please wait a moment and try again."
         "SLOT_NOT_PAIRED", "SLOT_EXPIRED" -> "This phone is not active. Ask the attendant."
         "SETUP_REQUIRED" -> "The box is not set up yet."

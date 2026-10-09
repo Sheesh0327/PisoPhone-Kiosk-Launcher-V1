@@ -29,6 +29,7 @@ import com.pisophone.kiosk.model.BatteryAlertState
 import com.pisophone.kiosk.model.BatteryStatus
 import com.pisophone.kiosk.network.Esp32Responses
 import com.pisophone.kiosk.security.KioskSecurity
+import com.pisophone.kiosk.service.AccountController
 import com.pisophone.kiosk.system.AndroidKioskSystemController
 import com.pisophone.kiosk.system.KioskSystemController
 import com.pisophone.kiosk.util.AppCloser
@@ -455,6 +456,42 @@ fun FloatingPill(
                             Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(14.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(if (confirmClose) "TAP AGAIN" else "CLOSE APP", fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                        }
+                    }
+
+                    val signedInUser by AccountController.signedIn.collectAsState()
+                    if (signedInUser.isNotBlank()) {
+                        // Two taps on purpose: signing out locks the phone and banks the time into the account.
+                        var confirmSignOut by remember { mutableStateOf(false) }
+                        LaunchedEffect(confirmSignOut) {
+                            if (confirmSignOut) {
+                                delay(4000L)
+                                confirmSignOut = false
+                            }
+                        }
+                        Button(
+                            onClick = {
+                                if (!confirmSignOut) {
+                                    confirmSignOut = true
+                                } else {
+                                    confirmSignOut = false
+                                    expanded = false
+                                    AccountController.signOut()
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().height(36.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (confirmSignOut) Color(0xFFDC3545) else Color(0xFF1E293B),
+                                contentColor = Color.White,
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(0.dp),
+                        ) {
+                            Text(
+                                if (confirmSignOut) "TAP AGAIN TO SAVE TIME & SIGN OUT" else "SIGNED IN: ${signedInUser.uppercase()} • SIGN OUT",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.sp,
+                            )
                         }
                     }
 

@@ -44,6 +44,9 @@ class KioskStateManager(private val context: Context) {
     val arenaStakeMinutes = MutableStateFlow(15)
     val isArenaBannerVisible = MutableStateFlow(false)
 
+    /** The player account signed in on this phone (empty when none); persisted so a reboot keeps the player's session. */
+    val signedInAccount = MutableStateFlow("")
+
     init {
         deviceIp.value = getLocalIpAddress()
         initDeviceId()
@@ -149,6 +152,7 @@ class KioskStateManager(private val context: Context) {
                 .putFloat("price_per_coin", pricePerCoin.value.toFloat())
                 .putInt("minutes_per_coin", minutesPerCoin.value)
                 .putInt("target_port", ESP32_WEB_PORT)
+                .putString("signed_in_account", signedInAccount.value)
                 .putStringSet("processed_tx_ids", txSet.take(20).toSet())
                 .apply()
         } catch (e: Exception) {
@@ -177,6 +181,9 @@ class KioskStateManager(private val context: Context) {
         val effectiveRemainingSec = restored.remainingSeconds
         val effectiveDeadline = restored.deadlineMs
         sessionRevision.value = restored.revision
+
+        // A signed-in player's time survives a reboot only together with the restored session.
+        signedInAccount.value = if (effectiveRemainingSec > 0) prefs.getString("signed_in_account", "") ?: "" else ""
 
         if (effectiveRemainingSec > 0) {
             sessionTimeRemaining.value = effectiveRemainingSec
