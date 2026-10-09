@@ -256,6 +256,31 @@ public:
         return Result::OK;
     }
 
+    // Admin change of the balance by `deltaSec` (negative removes time), kept within 0 and the maximum. Refused while the
+    // player is signed in: their time is running on a phone, which an admin change here would not reach.
+    Result adjustSeconds(const std::string& username, int64_t deltaSec, uint32_t nowS) {
+        int i = indexOf(normalizeUsername(username));
+        if (i < 0) return Result::NO_SUCH_USER;
+        Account& a = rows_[i];
+        if (a.signedInSlot != 0) return Result::ALREADY_SIGNED_IN;
+        int64_t next = (int64_t)a.balanceSec + deltaSec;
+        if (next < 0) next = 0;
+        if (next > (int64_t)UINT32_MAX) next = UINT32_MAX;
+        a.balanceSec = (uint32_t)next;
+        if (deltaSec > 0) a.everFunded = true;
+        a.lastActiveS = nowS;
+        return Result::OK;
+    }
+
+    // Clears the wrong-PIN count and any lock (the player forgot nothing, someone else guessed, or the admin trusts them).
+    Result unlock(const std::string& username) {
+        int i = indexOf(normalizeUsername(username));
+        if (i < 0) return Result::NO_SUCH_USER;
+        rows_[i].failCount = 0;
+        rows_[i].lockedUntilS = 0;
+        return Result::OK;
+    }
+
     Result deleteAccount(const std::string& username) {
         int i = indexOf(normalizeUsername(username));
         if (i < 0) return Result::NO_SUCH_USER;

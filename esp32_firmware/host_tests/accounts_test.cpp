@@ -162,6 +162,31 @@ int main() {
         CHECK(f.find("user000") != nullptr && f.find("user250") == nullptr);
     }
 
+    // ---- admin: adjust, unlock ----
+    {
+        AccountTable a;
+        a.create("dana", "1234", SALT, T0);
+        CHECK(a.adjustSeconds("dana", 600, T0) == Result::OK && a.find("dana")->balanceSec == 600);
+        CHECK(a.find("dana")->everFunded);
+        CHECK(a.adjustSeconds("DANA", -200, T0) == Result::OK && a.find("dana")->balanceSec == 400);
+        CHECK(a.adjustSeconds("dana", -100000, T0) == Result::OK && a.find("dana")->balanceSec == 0); // never negative
+        CHECK(a.adjustSeconds("dana", (int64_t)UINT32_MAX * 3, T0) == Result::OK &&
+              a.find("dana")->balanceSec == UINT32_MAX);
+        CHECK(a.adjustSeconds("dana", 5, T0) == Result::OK && a.find("dana")->balanceSec == UINT32_MAX); // never wraps
+        CHECK(a.adjustSeconds("ghost", 60, T0) == Result::NO_SUCH_USER);
+        a.setBalance("dana", 300, T0);
+        a.signIn("dana", 4, T0);
+        CHECK(a.adjustSeconds("dana", 60, T0) == Result::ALREADY_SIGNED_IN); // time is running on a phone
+        CHECK(a.find("dana")->balanceSec == 300);
+        a.signOut("dana", T0);
+        for (int i = 0; i < 5; i++)
+            a.verifyPin("dana", "0000", T0);
+        CHECK(a.verifyPin("dana", "1234", T0) == Result::LOCKED);
+        CHECK(a.unlock("dana") == Result::OK);
+        CHECK(a.verifyPin("dana", "1234", T0) == Result::OK);
+        CHECK(a.unlock("ghost") == Result::NO_SUCH_USER);
+    }
+
     // ---- delete ----
     CHECK(t.deleteAccount("alice") == Result::OK);
     CHECK(t.find("alice") == nullptr);
