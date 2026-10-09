@@ -121,7 +121,7 @@ class KioskServerCoordinator(
     }
 
     /** Ends the paid session (blocking Room work — call off the main thread) and locks. */
-    private fun lockAndResetSession() {
+    fun lockAndResetSession() {
         val previousState = stateManager.appState.value
         val resetState = paymentRepo.resetSessionBlocking()
         stateManager.applySessionUpdate(
