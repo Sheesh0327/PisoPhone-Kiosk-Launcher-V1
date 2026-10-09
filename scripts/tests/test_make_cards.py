@@ -71,7 +71,15 @@ with tempfile.TemporaryDirectory() as tmp:
     batches = [d for d in os.listdir(out) if d.startswith("batch_")]
     check(len(batches) == 1, "one batch folder")
     files = sorted(os.listdir(os.path.join(out, batches[0])))
-    check(files == ["all_sheets.pdf", "sheet_01.png", "sheet_02.png"], f"14 cards = 2 sheets + pdf, got {files}")
+    check(files == ["back_01.png", "back_02.png", "backs.pdf", "duplex_both_sides.pdf", "front_01.png", "front_02.png", "fronts.pdf"],
+          f"14 cards = 2 sheets, each with a front and a back, plus three PDFs; got {files}")
+
+    def pdf_pages(path):
+        data = open(path, "rb").read()
+        return data.count(b"/Type /Page") - data.count(b"/Type /Pages")
+    folder = os.path.join(out, batches[0])
+    check(pdf_pages(os.path.join(folder, "fronts.pdf")) == 2 and pdf_pages(os.path.join(folder, "backs.pdf")) == 2, "fronts.pdf and backs.pdf have 2 pages")
+    check(pdf_pages(os.path.join(folder, "duplex_both_sides.pdf")) == 4, "duplex_both_sides.pdf alternates front and back: 4 pages")
     r = run(os.path.join(SCRIPTS, "make_cards.py"), "--box", BOX, "--count", "3", "--hours", "5", "--key", pem, "--out", out)
     rows = list(csv.DictReader(open(os.path.join(out, f"ledger_{BOX}.csv"))))
     check([int(x["serial"]) for x in rows][-3:] == [15, 16, 17], "the next batch continues the numbering")
@@ -80,6 +88,51 @@ with tempfile.TemporaryDirectory() as tmp:
     check(r.returncode != 0, "a bad MAC is refused")
     r = run(os.path.join(SCRIPTS, "make_cards.py"), "--box", BOX, "--count", "1", "--key", pem, "--out", os.path.join(os.path.dirname(SCRIPTS), "cards_leak"), expect_ok=False)
     check(r.returncode != 0 and not os.path.exists(os.path.join(os.path.dirname(SCRIPTS), "cards_leak")), "output inside the repo is refused")
+
+    # Back-to-back: the logo must land exactly behind its QR once the paper is turned over.
+    from PIL import Image
+    import make_cards as mc
+
+    def dark(img, rect, inset=40):  # a back: the logo's dark background near the card's corner
+        x, y, w, h = rect
+        r, g, b = img.getpixel((x + inset, y + 40))[:3]
+        return r + g + b < 200
+
+    def white(img, rect, inset=40):  # nothing printed near the corner
+        x, y, w, h = rect
+        return img.getpixel((x + inset, y + 40))[:3] == (255, 255, 255)
+
+    def has_front(img, rect):  # a front: its grey cut line on the left edge
+        x, y, w, h = rect
+        return img.getpixel((x + 1, y + h // 2))[:3] != (255, 255, 255)
+
+    f2 = Image.open(os.path.join(folder, "front_02.png")).convert("RGB")
+    b2 = Image.open(os.path.join(folder, "back_02.png")).convert("RGB")
+    # sheet 2 holds cards 13 and 14: fronts at (0,0) and (1,0); the backs belong at the mirrored (2,0) and (1,0), nothing at (0,0)
+    check(has_front(f2, mc.card_rect(0, 0)) and has_front(f2, mc.card_rect(1, 0)) and not has_front(f2, mc.card_rect(2, 0)), "fronts: cards 13, 14 at the first two places")
+    check(dark(b2, mc.card_rect(2, 0)) and dark(b2, mc.card_rect(1, 0)) and white(b2, mc.card_rect(0, 0)), "backs (turned over the long edge): mirrored left to right")
+    check(white(b2, mc.card_rect(0, 1)) and white(b2, mc.card_rect(2, 3)), "backs: no logo where there is no card")
+    b1 = Image.open(os.path.join(folder, "back_01.png")).convert("RGB")
+    check(all(dark(b1, mc.card_rect(c, r)) for c in range(3) for r in range(4)), "a full sheet has 12 backs")
+    check(mc.back_position(0, 0, "long") == (2, 0) and mc.back_position(2, 3, "long") == (0, 3), "long-edge mapping")
+    check(mc.back_position(0, 0, "short") == (0, 3) and mc.back_position(2, 3, "short") == (2, 0), "short-edge mapping")
+    # the card edge of a front and the colour of its back share one rectangle: a back reaches a little past the front's edge
+    x, y, w, h = mc.card_rect(2, 0)
+    check(b2.getpixel((x - mc.BLEED + 2, y + h // 2))[:3] != (255, 255, 255) and b2.getpixel((x - mc.BLEED - 6, y + h // 2))[:3] == (255, 255, 255), "the back has a small bleed past the card edge")
+
+    # short-edge flip and a printer shift
+    out2 = os.path.join(tmp, "cards_short")
+    r = run(os.path.join(SCRIPTS, "make_cards.py"), "--box", BOX, "--count", "2", "--key", pem, "--out", out2, "--flip", "short", "--back-shift-x-mm", "5")
+    check(r.returncode == 0, "short-edge batch runs")
+    fb = os.path.join(out2, [d for d in os.listdir(out2) if d.startswith("batch_")][0])
+    bs = Image.open(os.path.join(fb, "back_01.png")).convert("RGB")
+    check(dark(bs, mc.card_rect(0, 3), 120) and dark(bs, mc.card_rect(1, 3), 120) and white(bs, mc.card_rect(0, 0), 120), "short-edge: mirrored top to bottom")
+    shift_px = int(round(5 / 25.4 * mc.DPI))
+    sx, sy, sw, sh = mc.card_rect(0, 3)
+    check(bs.getpixel((sx - mc.BLEED + 2, sy + sh // 2))[:3] == (255, 255, 255) and bs.getpixel((sx - mc.BLEED + shift_px + 2, sy + sh // 2))[:3] != (255, 255, 255), "the 5 mm shift moves the backs right")
+    r = run(os.path.join(SCRIPTS, "make_cards.py"), "--box", BOX, "--count", "1", "--key", pem, "--out", os.path.join(tmp, "x"), "--logo", os.path.join(tmp, "nope.png"), expect_ok=False)
+    check(r.returncode != 0, "a missing logo is refused before any serial is used")
+    check(not os.path.exists(os.path.join(tmp, "x", f"ledger_{BOX}.csv")), "and no serial was reserved")
 
     # key script: writes a header, refuses to overwrite, refuses the repo
     kp, hp = os.path.join(tmp, "card.pem"), os.path.join(tmp, "CardPubKey.h")

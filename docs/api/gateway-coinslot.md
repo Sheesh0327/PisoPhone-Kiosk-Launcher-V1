@@ -90,8 +90,13 @@ starter time in seconds (10800 = 3 hours) and an ECDSA P-256 signature over `pis
 format is `scripts/card_format.py`; `esp32_firmware/include/CardCodec.h` reads it.
 
 - **Printing:** `scripts/make_card_key.py` makes the card key (not the firmware owner key) and writes its public half to
-  `CardPubKey.h` (commit it, rebuild, flash). `scripts/make_cards.py --box <MAC> --count N` prints A4 sheets and keeps a ledger
-  so a serial is never reused. The dashboard shows the box ID to use. Until a card key is built in, every card is refused.
+  `CardPubKey.h` (commit it, rebuild, flash). `scripts/make_cards.py --box <MAC> --count N` prints A4 sheets of 12 cards for back-to-back printing
+  (`fronts.pdf` with the QR, `backs.pdf` with the logo as a mirror image so each logo lands behind its QR when the paper is turned
+  over, and `duplex_both_sides.pdf` for printers with automatic two-sided printing; print on card stock, since a dark back can
+  show through thin paper) and keeps a ledger so a serial is never reused. The dashboard shows the box ID to use. Until a card key is built in, every card is refused.
+- **Guests are unaffected:** nobody needs a card. A guest inserts coins on the lock screen exactly as before; the card is only
+  an extra, a place where time is saved. A signed-in player's coins add to their account the same way a guest's coins add to the
+  phone's timer.
 - **One box:** a card works only on the box whose MAC is in it.
 - **First scan:** creates the account holding the starter time and asks the player for a name. Later scans only sign in.
 - **Never twice:** the box keeps a permanent "redeemed" mark per card number (a bitmap saved with the accounts). It outlives the
