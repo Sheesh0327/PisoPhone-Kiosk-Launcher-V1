@@ -26,7 +26,7 @@ class Esp32HeartbeatBodyHandlerTest {
         override fun onArmSuccess() { events += "armed" }
         override fun onSlotLockdown(reason: String, slotNum: Int, expiresAt: Long) { events += "lockdown=$slotNum" }
         override fun onSlotRestored(slotNum: Int) { events += "restored=$slotNum" }
-        override fun onAccountSync(account: String, balanceSec: Int) { events += "account=$account,$balanceSec" }
+        override fun onAccountSync(account: String, name: String, balanceSec: Int) { events += "account=$account,$name,$balanceSec" }
     }
 
     private val delegate = RecordingDelegate()
@@ -58,11 +58,11 @@ class Esp32HeartbeatBodyHandlerTest {
 
     @Test
     fun theBoxsViewOfTheSignedInAccountIsReported() {
-        handler.handle("""{"slot_num":3,"acct":"alice","acct_bal":539}""", "10.0.0.2")
-        assertTrue(delegate.events.contains("account=alice,539"))
+        handler.handle("""{"slot_num":3,"acct":"42","acct_name":"Juan","acct_bal":539}""", "10.0.0.2")
+        assertTrue(delegate.events.contains("account=42,Juan,539"))
         delegate.events.clear()
         handler.handle("""{"slot_num":3,"acct":""}""", "10.0.0.2")
-        assertTrue(delegate.events.contains("account=,-1"))
+        assertTrue(delegate.events.contains("account=,,-1"))
         delegate.events.clear()
         handler.handle("""{"slot_num":3}""", "10.0.0.2")
         assertTrue(delegate.events.none { it.startsWith("account=") })

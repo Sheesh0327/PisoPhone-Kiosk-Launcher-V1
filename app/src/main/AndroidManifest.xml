@@ -4,6 +4,8 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- Scans the QR card a player signs in with (granted automatically on a managed phone, see KioskPolicyManager). -->
+    <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
@@ -148,6 +150,13 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <!-- The QR card scanner: opened over the lock screen by the kiosk itself, never by other apps. -->
+        <activity
+            android:name=".ui.CardScanActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
