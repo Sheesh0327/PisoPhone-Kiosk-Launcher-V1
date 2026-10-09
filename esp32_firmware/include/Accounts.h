@@ -101,7 +101,7 @@ inline uint32_t crc32(const uint8_t* d, size_t n, uint32_t crc = 0) {
     for (size_t i = 0; i < n; i++) {
         crc ^= d[i];
         for (int k = 0; k < 8; k++)
-            crc = (crc >> 1) ^ (0xEDB88320u & (uint32_t) - (int32_t)(crc & 1));
+            crc = (crc >> 1) ^ ((crc & 1) ? 0xEDB88320u : 0u);
     }
     return ~crc;
 }
