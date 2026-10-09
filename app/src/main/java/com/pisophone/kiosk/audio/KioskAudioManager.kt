@@ -440,8 +440,6 @@ class KioskAudioManager(
 
     @Volatile private var locateActive = false
 
-    fun isLocateActive(): Boolean = locateActive
-
     fun startLocateAlarm(durationMs: Long = LOCATE_MAX_DURATION_MS) {
         stopLocateAlarm()
         locateActive = true
