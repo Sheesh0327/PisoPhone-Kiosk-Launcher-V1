@@ -30,8 +30,9 @@ class KioskAudioManager(
         private const val TTS_REINIT_BACKOFF_MS = 30_000L
         private const val SAMPLE_RATE = 44100
         const val LOCATE_MAX_DURATION_MS = 60_000L
-        private const val NOTES_LEAD = "0 4 7 4 12 7 4 7 9 5 9 12 9 5 2 5 7 4 7 11 7 4 2 4 2 5 7 11 12 - 7 -"
-        private const val NOTES_BASS = "0 7 0 7 5 12 5 12 0 7 0 7 7 14 7 7"
+
+        /** The waiting loop's chord notes in Hz, one per second: C5 E5 G5 C6 | A5 F5 G5 E5 | D5 E5 G5 A5 | B5 C6 D6. */
+        private const val WAITING_NOTES_HZ = "523.25 659.25 783.99 1046.50 880.00 698.46 783.99 659.25 587.33 659.25 783.99 880.00 987.77 1046.50 1174.66"
     }
 
     private var tts: TextToSpeech? = null
@@ -382,53 +383,71 @@ class KioskAudioManager(
     }
 
     /**
-     * Lively original 8-bit loop that plays while the phone waits for coins: a bouncy square-wave
-     * lead, a triangle bass and a light hi-hat over four bars at 150 BPM (6.4 s, loops seamlessly).
+     * The cue while the phone waits for coins: a calm 15-second loop that climbs towards the end. One chord note per
+     * second, played as a four-note arpeggio (1, 5/4, 3/2, 5/4 of the note) over a warm bass pulse and a soft tick.
+     *
+     * Polished from the original sine-only version: every note starts with a short fade-in and rings out like a soft
+     * bell instead of a bare beep, the high notes are turned down so the climb never turns shrill, the tick is a quiet
+     * wooden tap (a little firmer on the first beat of each four), a faint echo gives the arpeggio some space, and
+     * nothing is faded at the loop point: the echo wraps around and every sound has died away by then, so the loop
+     * repeats without a gap or a dip.
      */
     private fun generateWaitingMusicBuffer(): ShortArray {
-        val eighth = 0.2
-        val mix = DoubleArray((32 * eighth * SAMPLE_RATE).toInt())
+        val sr = SAMPLE_RATE.toDouble()
+        val total = 15 * SAMPLE_RATE
+        val tau = 2.0 * Math.PI
+        val chord = WAITING_NOTES_HZ.split(" ").map { it.toDouble() }
+        val arp = doubleArrayOf(1.0, 1.25, 1.5, 1.25)
 
-        // Lead: semitones above C5, one per eighth note; "-" is a rest.
-        val lead = NOTES_LEAD.split(" ").map { it.toIntOrNull() }
-        // Bass: semitones above C3, one per quarter note.
-        val bass = NOTES_BASS.split(" ").map { it.toInt() }
-        fun hz(semisFromC5: Int) = 523.25 * Math.pow(2.0, semisFromC5 / 12.0)
+        val melody = DoubleArray(total)
+        val rhythm = DoubleArray(total)
+        for (i in 0 until total) {
+            val t = i / sr
+            val beat = minOf(14, t.toInt())
+            val beatT = t - beat
 
-        lead.forEachIndexed { i, semi ->
-            if (semi != null) addSquare(mix, i * eighth, hz(semi), eighth * 0.9, 0.15, 6.0)
-        }
-        bass.forEachIndexed { i, semi ->
-            addNote(mix, i * eighth * 2, 130.81 * Math.pow(2.0, semi / 12.0), eighth * 1.8, 0.24, 3.0, listOf(1.0 to 1.0, 3.0 to 0.12))
-        }
-        var seed = 12345
-        for (i in 0 until 32) {
-            if (i % 2 == 1) {
-                val first = ((i * eighth + 0.0) * SAMPLE_RATE).toInt()
-                for (n in 0 until (0.04 * SAMPLE_RATE).toInt()) {
-                    val idx = first + n
-                    if (idx >= mix.size) break
-                    seed = seed * 1103515245 + 12345
-                    val noise = ((seed shr 16) and 0x7fff) / 16384.0 - 1.0
-                    mix[idx] += noise * 0.06 * Math.exp(-n / (0.01 * SAMPLE_RATE))
-                }
+            // Bass: a fundamental with a touch of second harmonic, eased in so it never clicks.
+            val bassHz = when {
+                beat < 4 -> 130.81
+                beat < 8 -> 174.61
+                beat < 12 -> 196.00
+                else -> 130.81
             }
-        }
-        return toPcm(mix, 0.9)
-    }
+            val bassEnv = minOf(1.0, beatT / 0.015) * Math.exp(-beatT * 3.2)
+            val bass = 0.30 * (Math.sin(tau * bassHz * t) + 0.25 * Math.sin(tau * 2.0 * bassHz * t)) * bassEnv
 
-    /** Mixes a square-wave note, the classic 8-bit lead voice. */
-    private fun addSquare(mix: DoubleArray, startSec: Double, freq: Double, durSec: Double, amp: Double, decayPerSec: Double) {
-        val first = (startSec * SAMPLE_RATE).toInt()
-        val count = (durSec * SAMPLE_RATE).toInt()
-        for (n in 0 until count) {
-            val idx = first + n
-            if (idx >= mix.size) break
-            val t = n.toDouble() / SAMPLE_RATE
-            val env = minOf(1.0, t / 0.003) * minOf(1.0, (durSec - t) / 0.01) * Math.exp(-t * decayPerSec)
-            val sq = if (Math.sin(2.0 * Math.PI * freq * t) >= 0.0) 1.0 else -1.0
-            mix[idx] += sq * env * amp
+            // Tick: a quiet wooden tap; the first beat of every four is lower and a little firmer.
+            val accent = beat % 4 == 0
+            val tickHz = if (accent) 1100.0 else 1600.0
+            val tickAmp = if (accent) 0.15 else 0.09
+            val tick = tickAmp * Math.sin(tau * tickHz * beatT) * Math.exp(-beatT * 55.0)
+
+            // Arpeggio: fundamental plus two soft overtones, faded in over 6 ms, ringing out; high notes turned down.
+            val quarter = beatT * 4.0
+            val step = minOf(3, quarter.toInt())
+            val noteT = (quarter - step) / 4.0
+            val hz = chord[beat] * arp[step]
+            val brightness = (700.0 / hz).coerceIn(0.55, 1.0)
+            val noteEnv = minOf(1.0, noteT / 0.006) * Math.exp(-noteT * 14.0)
+            val tone = Math.sin(tau * hz * t) + 0.30 * Math.sin(tau * 2.0 * hz * t) + 0.10 * Math.sin(tau * 3.0 * hz * t)
+            melody[i] = 0.20 * brightness * tone * noteEnv
+            rhythm[i] = bass + tick
         }
+
+        // Echo of the arpeggio: three repeats, 3/8 s apart, each quieter. Indexed modulo the loop so it wraps seamlessly.
+        val delay = (0.375 * sr).toInt()
+        val echoGain = doubleArrayOf(0.32, 0.10, 0.03)
+        val out = ShortArray(total)
+        for (i in 0 until total) {
+            var v = rhythm[i] + melody[i]
+            for (k in echoGain.indices) {
+                val from = ((i - (k + 1) * delay) % total + total) % total
+                v += echoGain[k] * melody[from]
+            }
+            // Gentle limiter so coincident peaks round off instead of clipping.
+            out[i] = (Math.tanh(v * 1.1) * 0.85 * 32767.0).toInt().coerceIn(-32768, 32767).toShort()
+        }
+        return out
     }
 
     /** Bright rising arpeggio confirming the customer tapped Done and the connection is being set up. */
