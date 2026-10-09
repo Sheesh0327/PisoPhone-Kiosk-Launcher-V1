@@ -30,6 +30,8 @@ class KioskAudioManager(
         private const val TTS_REINIT_BACKOFF_MS = 30_000L
         private const val SAMPLE_RATE = 44100
         const val LOCATE_MAX_DURATION_MS = 60_000L
+        private const val NOTES_LEAD = "0 4 7 4 12 7 4 7 9 5 9 12 9 5 2 5 7 4 7 11 7 4 2 4 2 5 7 11 12 - 7 -"
+        private const val NOTES_BASS = "0 7 0 7 5 12 5 12 0 7 0 7 7 14 7 7"
     }
 
     private var tts: TextToSpeech? = null
@@ -387,20 +389,10 @@ class KioskAudioManager(
         val eighth = 0.2
         val mix = DoubleArray((32 * eighth * SAMPLE_RATE).toInt())
 
-        // Semitones above C5; null is a rest.
-        val lead = listOf(
-            0, 4, 7, 4, 12, 7, 4, 7,
-            9, 5, 9, 12, 9, 5, 2, 5,
-            7, 4, 7, 11, 7, 4, 2, 4,
-            2, 5, 7, 11, 12, null, 7, null,
-        )
-        // Semitones above C3, one per quarter note.
-        val bass = listOf(
-            0, 7, 0, 7,
-            5, 12, 5, 12,
-            0, 7, 0, 7,
-            7, 14, 7, 7,
-        )
+        // Lead: semitones above C5, one per eighth note; "-" is a rest.
+        val lead = NOTES_LEAD.split(" ").map { it.toIntOrNull() }
+        // Bass: semitones above C3, one per quarter note.
+        val bass = NOTES_BASS.split(" ").map { it.toInt() }
         fun hz(semisFromC5: Int) = 523.25 * Math.pow(2.0, semisFromC5 / 12.0)
 
         lead.forEachIndexed { i, semi ->
