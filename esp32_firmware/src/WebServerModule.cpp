@@ -82,14 +82,13 @@ void setupWebServer() {
     webServer.on("/api/coinslot/status", HTTP_GET, handleApiCoinslotStatus);
     webServer.on("/api/coinslot/ack", HTTP_ANY, handleApiCoinslotAck);
 
-    // Player accounts (signed, PIN encrypted)
-    webServer.on("/api/account/create", HTTP_ANY, handleApiAccountCreate);
-    webServer.on("/api/account/signin", HTTP_ANY, handleApiAccountSignin);
+    // Player accounts (QR cards): phone calls are signed; the admin list and changes sit behind the admin login
+    webServer.on("/api/account/scan", HTTP_ANY, handleApiAccountScan);
+    webServer.on("/api/account/name", HTTP_ANY, handleApiAccountName);
     webServer.on("/api/account/signout", HTTP_ANY, handleApiAccountSignout);
     webServer.on("/api/account/info", HTTP_ANY, handleApiAccountInfo);
     webServer.on("/api/accounts", HTTP_GET, handleApiAccountsList);
     webServer.on("/api/accounts/adjust", HTTP_POST, handleApiAccountsAdjust);
-    webServer.on("/api/accounts/unlock", HTTP_POST, handleApiAccountsUnlock);
     webServer.on("/api/accounts/delete", HTTP_POST, handleApiAccountsDelete);
 
     // Network coin-slot gateway (router payment verification). Disabled until a key is configured.

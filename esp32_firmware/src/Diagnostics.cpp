@@ -1,4 +1,5 @@
 #include "Diagnostics.h"
+#include "AccountStorage.h"
 #include "DiagRing.h"
 #include "FirmwareVersion.h"
 #include "Config.h"
@@ -142,6 +143,16 @@ String diagBuildJson() {
     heap["free"] = ESP.getFreeHeap();
     heap["min_free"] = ESP.getMinFreeHeap();
     heap["largest_block"] = ESP.getMaxAllocHeap();
+
+    AccountStorageHealth accts = accountsHealth();
+    JsonObject acct = doc.createNestedObject("accounts");
+    acct["ready"] = accts.ready;
+    acct["fs_mounted"] = accts.fsMounted;
+    acct["count"] = accts.accounts;
+    acct["unsaved"] = accts.dirty;
+    acct["save_failures"] = accts.saveFailures;
+    acct["failing_now"] = accts.consecutiveFailures > 0;
+    acct["saves_ok"] = accts.savesOk;
 
     JsonObject wifi = doc.createNestedObject("wifi");
     bool connected = WiFi.status() == WL_CONNECTED;

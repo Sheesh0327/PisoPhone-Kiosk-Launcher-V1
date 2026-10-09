@@ -47,20 +47,14 @@ int main() {
         CHECK(acctproto::signature(v.secret, "info", v.device, v.ts, v.bound) != v.hmac || std::string(v.op) == "info");
     }
     {
-        std::string pin;
-        CHECK(acctproto::openPin(ACCT_PIN_CIPHER, ACCT_PIN_SECRET, pin) && pin == ACCT_PIN);
-        CHECK(!acctproto::openPin(ACCT_PIN_CIPHER, std::string(ACCT_PIN_SECRET) + "x", pin) || pin != ACCT_PIN);
-        // an ordinary encrypted string that is not a PIN envelope is refused
-        uint8_t iv[16] = {0};
-        CHECK(!acctproto::openPin(protocol::encryptHex("PIN:12", ACCT_PIN_SECRET, iv), ACCT_PIN_SECRET, pin));
-        CHECK(!acctproto::openPin(protocol::encryptHex("PIN:12ab", ACCT_PIN_SECRET, iv), ACCT_PIN_SECRET, pin));
-        CHECK(!acctproto::openPin(protocol::encryptHex("hello", ACCT_PIN_SECRET, iv), ACCT_PIN_SECRET, pin));
-        CHECK(acctproto::openPin(protocol::encryptHex("PIN:123456", ACCT_PIN_SECRET, iv), ACCT_PIN_SECRET, pin) &&
-              pin == "123456");
-        std::string u, r;
-        CHECK(acctproto::splitBound("alice:540", u, r) && u == "alice" && r == "540");
-        CHECK(!acctproto::splitBound("alice", u, r));
-        uint32_t n = 0;
+        // the helpers that read the numbers out of a call
+        uint32_t id = 0, n = 0;
+        CHECK(acctproto::parseId("42", id) && id == 42);
+        CHECK(acctproto::parseId("65535", id) && id == 65535);
+        CHECK(!acctproto::parseId("0", id) && !acctproto::parseId("65536", id) && !acctproto::parseId("", id));
+        CHECK(!acctproto::parseId("-1", id) && !acctproto::parseId("4x", id) && !acctproto::parseId("123456", id));
+        CHECK(acctproto::boundWithSeconds(42, 540) == "42:540");
+        CHECK(acctproto::boundWithName(42, "Juan Dela Cruz") == "42:Juan Dela Cruz");
         CHECK(acctproto::parseSeconds("540", n) && n == 540);
         CHECK(acctproto::parseSeconds("4294967295", n) && n == UINT32_MAX);
         CHECK(!acctproto::parseSeconds("4294967296", n));

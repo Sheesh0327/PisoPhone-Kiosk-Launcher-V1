@@ -19,6 +19,3 @@ with open(sys.argv[1], "w") as f:
     for a in d["accounts"]:
         f.write(f'    {{{q(a["name"])}, {q(a["secret"])}, {q(a["op"])}, {q(a["device"])}, {q(a["ts"])}, {q(a["bound"])}, {q(a["message"])}, {q(a["hmac"])}}},\n')
     f.write("};\n")
-    p = d["account_pin"]
-    f.write(f'static const char* const ACCT_PIN_SECRET = {q(p["secret"])};\nstatic const char* const ACCT_PIN_IV = {q(p["iv"])};\n')
-    f.write(f'static const char* const ACCT_PIN = {q(p["pin"])};\nstatic const char* const ACCT_PIN_CIPHER = {q(p["ciphertext"])};\n')
