@@ -1,10 +1,10 @@
 {
-  "versionCode": 383,
-  "versionName": "1.0.383-dev",
+  "versionCode": 385,
+  "versionName": "1.0.385-dev",
   "channel": "dev",
   
   "signatureChecksum": "Un0usqLMwnmeaowrY2g21EgRVWe4bTRDLUi2RH12WbE",
-  "sha256": "eba18aee7f03e98fc3c4252ee209bfe423fa265056424967deec78891c409bd8",
+  "sha256": "008bd0e512f88baee8993e0e3b182f42f8436421500b2b5f128ca0103cb7b3f0",
   "size": 2387199,
   "releaseDate": "2026-10-09"
 }
