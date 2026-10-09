@@ -21,6 +21,7 @@ class KioskSessionSupervisor(
     private val paymentRepo: PaymentRepository,
     private val onSpeakWarning: (String) -> Unit,
     private val onFinishPayment: () -> Unit,
+    private val onTimeExpired: () -> Unit = {},
     private val onCloseSession: (Boolean) -> Unit,
     private val onCheckBatteryAlerts: () -> Unit,
     /** Centralized lock side effects (send customer app home, pause media, unarm if needed). */
@@ -108,6 +109,7 @@ class KioskSessionSupervisor(
                                     targetAppState = lockedStateFor(stateBefore),
                                 )
                                 if (applied) {
+                                    onTimeExpired()
                                     onSpeakWarning("Time expired")
                                     stateManager.saveState()
                                     onSessionExpired(false)

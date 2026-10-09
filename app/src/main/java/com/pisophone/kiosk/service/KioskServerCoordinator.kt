@@ -228,6 +228,8 @@ class KioskServerCoordinator(
                     getAudioManager.invoke()?.playHighBatteryAttentionTone()
                 }
                 "flash" -> HardwareFeedback.triggerFlashlight(context, 2000L)
+                "locate" -> getAudioManager.invoke()?.startLocateAlarm()
+                "locate_stop" -> getAudioManager.invoke()?.stopLocateAlarm()
                 "enable_adb" -> {
                     KioskSecurity.emergencyEnableUsbDebugging(context)
                     Toast.makeText(context, "⚡ Remote: USB Debugging Re-Enabled!", Toast.LENGTH_LONG).show()

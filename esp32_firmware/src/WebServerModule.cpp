@@ -64,6 +64,7 @@ void setupWebServer() {
     webServer.on("/check_qualification", HTTP_GET, handleCheckQualification);
     webServer.on("/identify", HTTP_GET, handleIdentify);
     webServer.on("/query_time", HTTP_GET, handleQueryTime);
+    webServer.on("/api/locate", HTTP_POST, handleApiLocate);
     webServer.on("/heartbeat", HTTP_GET, handleHeartbeat);
     webServer.on("/get_config", HTTP_GET, handleGetConfig);
     webServer.on("/crash_report", HTTP_POST, handleCrashReport);
