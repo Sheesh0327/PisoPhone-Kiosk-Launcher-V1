@@ -4,6 +4,7 @@
 // the queue is nearly full, so a coin is never accepted that cannot be recorded.
 
 #include "PaymentQueueManager.h"
+#include "WebServerAccounts.h"
 #include "ControllerWebSocket.h"
 #include "DeviceNetwork.h"
 #include "Config.h"
@@ -277,7 +278,8 @@ bool enqueuePendingPayment(const String& txId, const String& targetId, int pulse
     return true;
 }
 
-static bool acknowledgeMatchingPayment(const String& txId, const String* sessionId, uint8_t requiredOwnerType) {
+static bool acknowledgeMatchingPayment(const String& txId, const String* sessionId, uint8_t requiredOwnerType,
+                                       int* creditSecondsOut = nullptr) {
     if (txId.length() == 0) return false;
 
     lockQueue();
@@ -294,6 +296,7 @@ static bool acknowledgeMatchingPayment(const String& txId, const String* session
         return false;
     }
 
+    int credit = paymentQueue[foundIndex].creditSeconds;
     if (!eraseRecord(foundIndex)) {
         unlockQueue();
         Serial.printf("[PAY QUEUE] Failed to erase acknowledged tx_id='%s'.\n", txId.c_str());
@@ -304,12 +307,17 @@ static bool acknowledgeMatchingPayment(const String& txId, const String* session
     unlockQueue();
     diagCount(DiagCounter::PaymentsAcked);
     diagLog("[PAY QUEUE] Acknowledged tx_id='%s'.\n", txId.c_str());
+    if (creditSecondsOut) *creditSecondsOut = credit;
     return true;
 }
 
 bool acknowledgePhonePayment(const String& deviceId, const String& txId) {
     if (deviceId.length() == 0 || txId.length() == 0) return false;
-    return acknowledgeMatchingPayment(txId, &deviceId, 1);
+    int credit = 0;
+    if (!acknowledgeMatchingPayment(txId, &deviceId, 1, &credit)) return false;
+    // A coin paid by a phone whose player is signed in also goes into the player's account.
+    accountsOnPhonePaymentAcked(deviceId, txId, credit);
+    return true;
 }
 
 int getPendingPhonePaymentsJson(const String& deviceId, String& outJsonArray) {

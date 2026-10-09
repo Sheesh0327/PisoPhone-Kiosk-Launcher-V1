@@ -7,6 +7,7 @@ q = lambda s: json.dumps(s)  # a JSON string is also a valid C++ string literal 
 with open(sys.argv[1], "w") as f:
     f.write("struct EncVec { const char* name; const char* secret; const char* iv; const char* plain; const char* cipher; };\n")
     f.write("struct MacVec { const char* name; const char* secret; const char* message; const char* hmac; };\n")
+    f.write("struct AcctVec { const char* name; const char* secret; const char* op; const char* device; const char* ts; const char* bound; const char* message; const char* hmac; };\n")
     f.write("static const EncVec ENC_VECTORS[] = {\n")
     for e in d["encrypt"]:
         f.write(f'    {{{q(e["name"])}, {q(e["secret"])}, {q(e["iv"])}, {q(e["plaintext"])}, {q(e["ciphertext"])}}},\n')
@@ -14,3 +15,10 @@ with open(sys.argv[1], "w") as f:
     for m in d["hmac"]:
         f.write(f'    {{{q(m["name"])}, {q(m["secret"])}, {q(m["message"])}, {q(m["hmac"])}}},\n')
     f.write("};\n")
+    f.write("static const AcctVec ACCT_VECTORS[] = {\n")
+    for a in d["accounts"]:
+        f.write(f'    {{{q(a["name"])}, {q(a["secret"])}, {q(a["op"])}, {q(a["device"])}, {q(a["ts"])}, {q(a["bound"])}, {q(a["message"])}, {q(a["hmac"])}}},\n')
+    f.write("};\n")
+    p = d["account_pin"]
+    f.write(f'static const char* const ACCT_PIN_SECRET = {q(p["secret"])};\nstatic const char* const ACCT_PIN_IV = {q(p["iv"])};\n')
+    f.write(f'static const char* const ACCT_PIN = {q(p["pin"])};\nstatic const char* const ACCT_PIN_CIPHER = {q(p["ciphertext"])};\n')

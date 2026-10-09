@@ -130,6 +130,14 @@ public:
         return i < 0 ? nullptr : &rows_[i];
     }
 
+    // The account signed in on this phone slot, or nullptr.
+    const Account* findBySlot(uint8_t slot) const {
+        if (slot == 0) return nullptr;
+        for (size_t i = 0; i < count_; i++)
+            if (rows_[i].signedInSlot == slot) return &rows_[i];
+        return nullptr;
+    }
+
     Result create(const std::string& username, const std::string& pin, const uint8_t salt[SALT_BYTES], uint32_t nowS) {
         std::string name = normalizeUsername(username);
         if (!validUsername(name)) return Result::BAD_NAME;

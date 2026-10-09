@@ -2,6 +2,7 @@
 // Authentication is decided inside the handlers (see WebServerAuth.cpp), not here.
 
 #include "WebServerModule.h"
+#include "WebServerAccounts.h"
 #include "CoinSlotManager.h"
 #include "PaymentQueueManager.h"
 #include "Diagnostics.h"
@@ -80,6 +81,12 @@ void setupWebServer() {
     webServer.on("/api/coinslot/unarm", HTTP_ANY, handleApiCoinslotUnarm);
     webServer.on("/api/coinslot/status", HTTP_GET, handleApiCoinslotStatus);
     webServer.on("/api/coinslot/ack", HTTP_ANY, handleApiCoinslotAck);
+
+    // Player accounts (signed, PIN encrypted)
+    webServer.on("/api/account/create", HTTP_ANY, handleApiAccountCreate);
+    webServer.on("/api/account/signin", HTTP_ANY, handleApiAccountSignin);
+    webServer.on("/api/account/signout", HTTP_ANY, handleApiAccountSignout);
+    webServer.on("/api/account/info", HTTP_ANY, handleApiAccountInfo);
 
     // Network coin-slot gateway (router payment verification). Disabled until a key is configured.
     webServer.on("/api/gateway/challenge", HTTP_GET, handleGatewayChallenge);

@@ -44,6 +44,12 @@ interface Esp32ConnectionDelegate {
     fun onSlotRestored(slotNum: Int = 0)
     fun onArenaModeSynced(active: Boolean, role: Int, stake: Int) {}
     fun getStoredEsp32Ip(): String? = null
+
+    /** The player signed in on this phone, or null. While set, every heartbeat reports the time left for that player. */
+    fun getSignedInAccount(): String? = null
+
+    /** The box's view of the account signed in on this slot ([account] is empty when none, [balanceSec] -1 if unknown). */
+    fun onAccountSync(account: String, balanceSec: Int) {}
 }
 
 /**
@@ -223,9 +229,15 @@ class Esp32ConnectionManager(
                         val myName = KioskSecurity.getDeviceAlias(context).takeIf { it.isNotBlank() } ?: "PisoPhone Terminal"
                         val encodedName = java.net.URLEncoder.encode(myName, "UTF-8")
                         val cleanIp = if (currentIp == "127.0.0.1" || currentIp.isBlank()) "" else currentIp
+                        val account = delegate.getSignedInAccount()
+                        val accountReport = if (account.isNullOrBlank()) {
+                            ""
+                        } else {
+                            Esp32AccountRequests.heartbeatReport(deviceId, delegate.getSecretKey(), account, delegate.getSessionTimeRemaining(), ts)
+                        }
 
                         val req = Request.Builder()
-                            .url("http://$host:$esp32Port/heartbeat?device_id=$deviceId&ip=$cleanIp&name=$encodedName&time=${delegate.getSessionTimeRemaining()}&state=${delegate.getAppState()}&battery=$curBat&charging=${if (isChg) 1 else 0}&ts=$ts&sig=$sig&source=app&app=1&client=pisophone_app")
+                            .url("http://$host:$esp32Port/heartbeat?device_id=$deviceId&ip=$cleanIp&name=$encodedName&time=${delegate.getSessionTimeRemaining()}&state=${delegate.getAppState()}&battery=$curBat&charging=${if (isChg) 1 else 0}&ts=$ts&sig=$sig$accountReport&source=app&app=1&client=pisophone_app")
                             .build()
                         try {
                             httpClient.newCall(req).execute().use { response ->
@@ -269,6 +281,45 @@ class Esp32ConnectionManager(
                 delay(4000)
             }
         }
+    }
+
+    /**
+     * One account call to the box ([Esp32AccountRequests.OP_CREATE], `OP_SIGNIN`, `OP_SIGNOUT` or `OP_INFO`). Blocking
+     * network I/O: call it from an IO dispatcher. A clock-skew refusal is retried once with the box's time.
+     */
+    fun accountCall(op: String, username: String, pin: String = "", secondsLeft: Int = 0): Esp32AccountRequests.Reply {
+        val target = esp32Ip ?: delegate.getStoredEsp32Ip()
+        if (target.isNullOrBlank()) return Esp32AccountRequests.Reply(false, "NETWORK")
+        val (host, port) = discoveryScanner.getEsp32HostAndPort(target)
+        if (host.isBlank()) return Esp32AccountRequests.Reply(false, "NETWORK")
+        repeat(2) { attempt ->
+            val url = Esp32AccountRequests.signedUrl(
+                host = host,
+                port = port,
+                op = op,
+                deviceId = delegate.getDeviceId(),
+                secret = delegate.getSecretKey(),
+                username = username,
+                pin = pin,
+                secondsLeft = secondsLeft,
+            )
+            try {
+                httpClient.newCall(Request.Builder().url(url).build()).execute().use { response ->
+                    val body = response.body?.string() ?: ""
+                    val reply = Esp32AccountRequests.parseReply(body)
+                    val skewed = response.code == 403 && Esp32Responses.classify(response.code, body) == Esp32Responses.Refusal.CLOCK_SKEW
+                    if (skewed && attempt == 0) {
+                        BoxClock.learnFromBody(body)
+                        return@repeat // sign again with the box's time
+                    }
+                    return reply
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "[ACCOUNT] $op failed: ${e.message}")
+                return Esp32AccountRequests.Reply(false, "NETWORK")
+            }
+        }
+        return Esp32AccountRequests.Reply(false, "NETWORK")
     }
 
     private fun checkOfflineThreshold(currentIp: String) {

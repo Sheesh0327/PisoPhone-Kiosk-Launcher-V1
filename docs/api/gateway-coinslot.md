@@ -75,3 +75,48 @@ always releases, waits for in-flight coins, records the window once (roll and re
 restart at any point neither loses nor doubles a coin; access is granted from the record. While a window is open the box keeps
 one queued record for it, its running total, however many coins go in. See `tools/pisoportal/README.md`.
 For experiments from a PC use `scripts/gateway_client.py`.
+
+## Accounts (phone <-> box)
+
+Players can keep unused time in an account on the box, so it is not lost when they leave. The box holds the only copy
+(flash partition `spiffs`, see `esp32_firmware/include/Accounts.h`); the phone keeps nothing but the name of the player
+who is signed in. The message format is `esp32_firmware/include/AccountProtocol.h` (box) and
+`app/.../network/Esp32AccountRequests.kt` (phone), both tested against `protocol/fixtures/box_phone_v1.json`.
+
+Every call comes from a paired, active phone and is signed with the box secret:
+
+    sig = HMAC-SHA256(secret, "v1:acct_<op>:<deviceId>:<ts>:<bound>")
+
+`<bound>` holds every parameter that matters, so a captured request cannot be edited:
+
+| op | URL | bound | answer |
+|---|---|---|---|
+| create | `/api/account/create?device_id&user&pin_enc&ts&sig` | `<user>:<pin_enc>` | `{success, username, balance_sec}` |
+| signin | `/api/account/signin?device_id&user&pin_enc&ts&sig` | `<user>:<pin_enc>` | same |
+| signout | `/api/account/signout?device_id&user&time&ts&sig` | `<user>:<time>` | same |
+| info | `/api/account/info?device_id&user&ts&sig` | `<user>` | same (only on the phone the player is signed in on) |
+
+- `pin_enc` = `hex(iv) + hex(AES-256-CBC("PIN:<pin>"))` with the box secret, as for other encrypted fields. The PIN is 4 to 6 digits.
+- `user` is 3 to 16 of `a-z 0-9 _`, case-insensitive. `time` is the seconds the phone still has.
+- Errors: `{success:false, error}` with `BAD_NAME`, `BAD_PIN_FORMAT`, `NAME_TAKEN`, `ACCOUNTS_FULL`, `NO_SUCH_USER`,
+  `BAD_PIN` (401), `LOCKED` (429), `ALREADY_SIGNED_IN` (409), `NOT_SIGNED_IN`, `TOO_FAST`, `SLOT_NOT_PAIRED`,
+  `SLOT_EXPIRED`, `SETUP_REQUIRED`, `ACCOUNTS_OFF`, `AUTH_FAILED` (`reason` `STALE_TIMESTAMP` or `BAD_SIGNATURE`, with the box's time).
+- Five wrong PINs lock the account for 5 minutes, doubling each time up to 1 hour.
+
+### Heartbeat
+
+While a player is signed in the phone adds `acct`, `atime` and `asig` to its heartbeat, where `asig` signs
+`v1:acct_report:<deviceId>:<ts>:<acct>:<atime>` (the heartbeat's own signature does not cover these). The box lowers the
+balance to `atime` if it is lower; **a report can never raise a balance**. The heartbeat answer carries
+`"acct":"<name or empty>","acct_bal":<seconds>`: the box's view of who is signed in on that slot. A phone that is still
+signed in locally but sees `acct` empty has been signed out by the box and should lock.
+
+### Coins
+
+When the phone acknowledges a coin (`ack`), the box adds the coin's seconds to the account signed in on that phone, once per
+`tx_id`. A phone that stops reporting for 90 s is signed out by the box; the account keeps the last reported balance.
+
+### Pruning
+
+An account with no time that is not signed in is deleted after 30 days without use, or after 7 days if it never had any
+time. Accounts with time are never deleted. Nothing is deleted while the box has no clock.

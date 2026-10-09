@@ -113,6 +113,10 @@ int main() {
     CHECK(t.signOutSlot(3, T0 + 90) == 1); // the box drops a phone that went silent
     CHECK(t.find("alice")->signedInSlot == 0 && t.find("alice")->balanceSec == 500);
     CHECK(t.signOutSlot(0, T0) == 0);
+    CHECK(t.findBySlot(3) == nullptr && t.findBySlot(0) == nullptr);
+    CHECK(t.signIn("alice", 3, T0) == Result::OK);
+    CHECK(t.findBySlot(3) != nullptr && strcmp(t.findBySlot(3)->username, "alice") == 0);
+    CHECK(t.signOut("alice", T0) == Result::OK);
 
     // ---- prune: never touches accounts with time or in use ----
     {
