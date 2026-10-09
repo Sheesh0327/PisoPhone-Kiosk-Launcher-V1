@@ -5,6 +5,7 @@
 
 void handleAddTime();
 void handleQueryTime();
+void handleApiLocate();
 
 void handleApiSlots();
 void handleApiSlotPair();

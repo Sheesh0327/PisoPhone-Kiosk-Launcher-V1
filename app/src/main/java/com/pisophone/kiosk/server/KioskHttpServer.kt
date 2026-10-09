@@ -58,6 +58,8 @@ class KioskHttpServer(
             "vibrate",
             "sound",
             "flash",
+            "locate",
+            "locate_stop",
         )
     }
 

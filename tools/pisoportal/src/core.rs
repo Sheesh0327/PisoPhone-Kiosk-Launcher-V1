@@ -185,7 +185,9 @@ impl Core {
             }
             if let Some((at, v)) = st.results.get(mac) {
                 if now.saturating_sub(*at) < 120 {
-                    return v.clone();
+                    let v = v.clone();
+                    drop(st);
+                    return self.live(v, mac, now);
                 }
             }
         }
@@ -204,6 +206,18 @@ impl Core {
             _ => (0, 0),
         };
         View::Idle { left, plan, online: left > 0, busy, cooldown, used_mb, slow }
+    }
+
+    /// A stored result is shown again when a page reloads: the time it names is read from the roll now, never the amount it
+    /// had when the window closed (a reload a minute later must not show the whole purchase again).
+    fn live(&self, v: View, mac: &str, now: u64) -> View {
+        match v {
+            View::Final { plan, pulses, minutes, online, .. } => {
+                let left = roll::peek(&self.cfg.roll_path(), now, mac).map(|(_, l)| l).unwrap_or(0);
+                View::Final { plan, pulses, minutes, left, online: online && left > 0 }
+            }
+            other => other,
+        }
     }
 
     fn window_view(&self, w: &Window) -> View {

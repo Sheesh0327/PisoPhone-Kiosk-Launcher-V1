@@ -210,8 +210,31 @@ function deviceRow(dev) {
         '<span class="pill ' + (renting ? 'ok' : '') + '">' + (renting ? 'Renting' : 'Locked') + '</span>' +
         '<span class="row-time">' + fmtTime(dev.time) + '</span>' +
         '<span>' + batteryHtml(typeof dev.battery === 'number' ? dev.battery : -1, !!dev.charging) + '</span>' +
-        unpair + '</div>';
+        '<div class="row-actions"><button type="button" class="btn sm' + (window.locating[dev.ip] ? ' danger' : '') +
+        '" data-ip="' + escHtml(dev.ip) + '" onclick="toggleLocate(this)">' + (window.locating[dev.ip] ? 'Stop' : 'Locate') +
+        '</button><button type="button" class="btn sm" onclick="unpairSlot(' + dev.slotNum + ')">Unpair</button></div></div>';
 }
+
+window.locating = window.locating || {};
+
+window.toggleLocate = function(btn) {
+    const ip = btn.dataset.ip;
+    const stop = !!window.locating[ip];
+    btn.disabled = true;
+    fetch('/api/locate?ip=' + encodeURIComponent(ip) + (stop ? '&mode=stop' : ''), { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+            if (!data.success) throw new Error(data.error || 'failed');
+            if (stop) delete window.locating[ip];
+            else window.locating[ip] = true;
+            btn.textContent = stop ? 'Locate' : 'Stop';
+            btn.classList.toggle('danger', !stop);
+            notify(stop ? 'Alarm stopped.' : 'Phone is ringing. It stops by itself after a minute.', 'ok');
+            if (!stop) setTimeout(() => { delete window.locating[ip]; }, 60000);
+        })
+        .catch(err => notify('Could not reach the phone: ' + err.message, 'bad'))
+        .finally(() => { btn.disabled = false; });
+};
 
 function setConn(ok) {
     const pill = document.getElementById('conn_pill');

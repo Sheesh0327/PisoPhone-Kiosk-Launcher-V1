@@ -89,12 +89,6 @@ pub fn build_page(core: &Core) -> String {
         .replace("%FIRST%", &cfg.first_wait.to_string())
 }
 
-/// The status page a connected guest sees (openNDS sends them here from its own status address): the same look
-/// with a live countdown, fed by the same WebSocket.
-pub fn build_status_page(_core: &Core) -> String {
-    include_str!("status.html").replace("%CSS%", include_str!("base.css"))
-}
-
 // ---- requests -------------------------------------------------------------------------------------------------------------------
 /// The most a request head may take, in bytes and in time: a slow or endless sender cannot hold a connection or the memory.
 const MAX_HEAD: usize = 8 * 1024;
@@ -444,7 +438,6 @@ struct Portal {
     core: Arc<Core>,
     /// the page and its ETag
     page: (String, String),
-    status: String,
     pages: Arc<Limits<String>>,
 }
 
@@ -474,10 +467,6 @@ fn handle(p: Arc<Portal>, stream: TcpStream, peer: SocketAddr) {
         }
         "/brand.png" => {
             respond_bytes(&mut conn.s, "200 OK", "image/png", BRAND_LOGO, "Cache-Control: public, max-age=86400\r\n", !head_only)
-        }
-        "/status" => {
-            let body = if head_only { "" } else { p.status.as_str() };
-            respond(&mut conn.s, "200 OK", "text/html; charset=utf-8", body, "Cache-Control: no-store\r\n");
         }
         _ => {
             let etag = format!("\"{}\"", p.page.1);
@@ -526,8 +515,7 @@ pub fn serve(core: Arc<Core>) {
     let page = build_page(&core);
     let tag = sha256_hex(page.as_bytes())[..16].to_string();
     let max = core.cfg.max_clients.max(1);
-    let status = build_status_page(&core);
-    let p = Arc::new(Portal { core, page: (page, tag), status, pages: Limits::new(max, WS_PER_DEVICE) });
+    let p = Arc::new(Portal { core, page: (page, tag), pages: Limits::new(max, WS_PER_DEVICE) });
     let conns: Arc<Limits<IpAddr>> = Limits::new(max * 4, CONN_PER_IP);
     let addr = format!("{}:{}", p.core.cfg.bind, p.core.cfg.port);
     let listener = bind_retry(&addr, "portal");

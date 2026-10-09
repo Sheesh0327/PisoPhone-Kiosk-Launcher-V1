@@ -208,6 +208,7 @@ class KioskEngine(
         stateManager = stateManager,
         paymentRepo = paymentRepo,
         onSpeakWarning = { speakWarning(it) },
+        onTimeExpired = { audioManager.playTimeUpSound() },
         onFinishPayment = { finishPayment() },
         onCloseSession = { closeSession(it) },
         onCheckBatteryAlerts = { systemMonitor.checkPeriodicBatteryAlerts() },
@@ -358,6 +359,7 @@ class KioskEngine(
     }
 
     fun finishPayment() {
+        if (stateManager.coinsInserted.value > 0) audioManager.playDoneSound()
         closeSession(sendUnarmToEsp = true)
         stateManager.appState.value = SessionRules.afterFinishPayment(
             stateManager.appState.value,
@@ -373,7 +375,8 @@ class KioskEngine(
 
     /** Spoken confirmation of a coin, without the flash and vibration of a warning. */
     private fun speakCoinConfirmation(text: String) {
-        audioManager.speakWarning(text, alert = false)
+        // Let the coin clink finish first: speech mutes the media stream the clink plays on.
+        audioManager.speakAfterSound(text, delayMs = 650L)
     }
 
     // ------------------------------------------------------------------------

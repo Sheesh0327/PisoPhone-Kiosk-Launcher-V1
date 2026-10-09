@@ -25,9 +25,9 @@ try:
     check(code2 == 304 and body2 == "", "a returning phone gets 304 and downloads nothing")
     check(env.get("/generate_204")[0] == 200 and env.get("/ping")[1] == "ok", "any other address is the page; ping answers")
 
-    code_s, body_s, hdr_s = env.get("/status")
-    check(code_s == 200 and "WebSocket" in body_s and "time left" in body_s and "TechNet" in body_s and "Test Spot" not in body_s and "no-store" in hdr_s.get("Cache-Control", ""),
-          "the live status page is served at /status (countdown, brand, never cached)")
+    code_s, body_s, _ = env.get("/status")
+    check(code_s == 200 and body_s == body and "time left" in body and "TechNet" in body and "WebSocket" in body,
+          "there is one page: /status (an old bookmark) is the same page as / and carries the live countdown")
     import urllib.request
     with urllib.request.urlopen(f"http://127.0.0.1:{env.PP}/brand.png", timeout=10) as r:
         logo, logo_type, logo_cache = r.read(), r.headers.get("Content-Type"), r.headers.get("Cache-Control", "")
@@ -60,6 +60,12 @@ try:
     check(rc == 0 and out.startswith("OK 1 17"), "the ledger chain verifies: " + out)
     calls = [c for c in env.nds_calls() if c.startswith("auth " + MAC_A)]
     check(len(calls) == 1 and not any(c.startswith("deauth") for c in env.nds_calls()), "exactly one grant: " + str(env.nds_calls()))
+    # a reload shortly after paying shows the time really left, never the whole purchase again
+    time.sleep(2.2)
+    a2 = Cust("127.0.0.1")
+    v2 = a2.wait(lambda m: m.get("s") in ("final", "idle"), 5)
+    a2.close()
+    check(v2 is not None and v2["left"] > 0 and v2["left"] < fin["left"], f"a reload counts down from the real time, not the purchase: {fin['left']} -> {v2 and v2['left']}")
     nd = env.nds_get(MAC_A)
     check(nd["STATE"] == "Authenticated" and nd["UPRATE"] == "2000" and nd["DOWNRATE"] == "5000" and abs(int(nd["SESSION_END"]) - (int(r[6]) + 690 * 60)) < 120, f"granted 690 min with the Endurance caps: {nd}")
     check(any(l.startswith("ack ") for l in env.boxlines()) and os.listdir(f"{env.data}/open") == [], "coins acknowledged on the box, the flash record removed")

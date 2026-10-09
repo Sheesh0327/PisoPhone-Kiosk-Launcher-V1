@@ -61,6 +61,36 @@ void handleAddTime() {
     redirectHome();
 }
 
+// Rings a paired phone so it can be found: siren, vibration and torch strobe until stopped (the phone also
+// stops it by itself after a minute). Only addresses of phones configured on this box are accepted.
+void handleApiLocate() {
+    if (!checkAdminAuth()) return;
+    String ip = webServer.hasArg("ip") ? webServer.arg("ip") : "";
+    ip.trim();
+    bool stop = webServer.hasArg("mode") && webServer.arg("mode") == "stop";
+    bool known = false;
+    if (ip.length() > 0) {
+        forEachConfiguredDevice([&](const DeviceConfig& cfg) {
+            if (cfg.ip == ip) {
+                known = true;
+                return false;
+            }
+            return true;
+        });
+    }
+    if (!known) {
+        webServer.send(404, "application/json", "{\"success\":false,\"error\":\"Unknown phone\"}");
+        return;
+    }
+    bool sent = sendAuthenticated(ip, targetPort, "/trigger_action", "/challenge",
+                                  stop ? "action=locate_stop" : "action=locate", 1500);
+    if (sent) {
+        webServer.send(200, "application/json", "{\"success\":true}");
+    } else {
+        webServer.send(502, "application/json", "{\"success\":false,\"error\":\"Phone did not answer\"}");
+    }
+}
+
 void handleQueryTime() {
     if (!checkAuth()) return;
     if (!webServer.hasArg("ip")) {

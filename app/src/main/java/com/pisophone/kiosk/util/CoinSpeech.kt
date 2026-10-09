@@ -4,7 +4,7 @@ package com.pisophone.kiosk.util
 object CoinSpeech {
     fun confirmation(pesos: Int, seconds: Int): String {
         val coin = if (pesos == 1) "1 peso" else "$pesos pesos"
-        return "$coin added. ${duration(seconds)}."
+        return "$coin coin, ${duration(seconds)}"
     }
 
     fun duration(seconds: Int): String {

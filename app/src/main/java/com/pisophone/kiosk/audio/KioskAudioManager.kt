@@ -16,6 +16,7 @@ import com.pisophone.kiosk.util.HardwareFeedback
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -27,6 +28,8 @@ class KioskAudioManager(
         private const val TAG = "KioskAudioManager"
         private const val SAFETY_UNMUTE_TIMEOUT_MS = 12000L
         private const val TTS_REINIT_BACKOFF_MS = 30_000L
+        private const val SAMPLE_RATE = 44100
+        const val LOCATE_MAX_DURATION_MS = 60_000L
     }
 
     private var tts: TextToSpeech? = null
@@ -313,35 +316,14 @@ class KioskAudioManager(
 
     private fun initCoinAudioTrack() {
         try {
-            val sampleRate = 44100
-            val durationSec = 0.38
-            val numSamples = (durationSec * sampleRate).toInt()
-            val buffer = ShortArray(numSamples)
-            val splitSample = (0.085 * sampleRate).toInt()
-            for (i in 0 until numSamples) {
-                val t = i.toDouble() / sampleRate.toDouble()
-                val valSample: Double
-                val env: Double
-                if (i < splitSample) {
-                    val f = 987.77 // B5
-                    env = 1.0 - (t / 0.085) * 0.15
-                    valSample = 0.7 * Math.sin(2.0 * Math.PI * f * t) + 0.25 * Math.sin(4.0 * Math.PI * f * t)
-                } else {
-                    val f = 1318.51 // E6
-                    val t2 = t - 0.085
-                    env = Math.exp(-t2 * 8.5)
-                    valSample = 0.75 * Math.sin(2.0 * Math.PI * f * t) + 0.2 * Math.sin(4.0 * Math.PI * f * t) + 0.1 * Math.sin(6.0 * Math.PI * f * t)
-                }
-                val sample = (valSample * env * 32767.0 * 0.88).toInt().coerceIn(-32768, 32767)
-                buffer[i] = sample.toShort()
-            }
+            val buffer = generateCoinBuffer()
             val audioAttributes = AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_MEDIA)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .build()
             val audioFormat = AudioFormat.Builder()
                 .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                .setSampleRate(sampleRate)
+                .setSampleRate(SAMPLE_RATE)
                 .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                 .build()
             coinAudioTrack = AudioTrack.Builder()
@@ -356,74 +338,194 @@ class KioskAudioManager(
         }
     }
 
-    private fun generateWaitingMusicBuffer(): ShortArray {
-        val sampleRate = 44100
-        val loopDurationSec = 15.0
-        val totalSamples = (loopDurationSec * sampleRate).toInt()
-        val buffer = ShortArray(totalSamples)
-
-        val notes = doubleArrayOf(
-            523.25,
-            659.25,
-            783.99,
-            1046.50, // C5, E5, G5, C6 (s 1-4)
-            880.00,
-            698.46,
-            783.99,
-            659.25, // A5, F5, G5, E5 (s 5-8)
-            587.33,
-            659.25,
-            783.99,
-            880.00, // D5, E5, G5, A5 (s 9-12)
-            987.77,
-            1046.50,
-            1174.66, // B5, C6, D6 (s 13-15 urgency)
-        )
-
-        for (i in 0 until totalSamples) {
-            val t = i.toDouble() / sampleRate.toDouble()
-            val beatIdx = Math.min(14, t.toInt())
-            val beatT = t - beatIdx
-
-            // 1. Rhythmic clock tick on every second
-            val tickEnv = Math.exp(-beatT * 35.0)
-            val tickVal = 0.28 * Math.sin(2.0 * Math.PI * 2200.0 * beatT) * tickEnv
-
-            // 2. Warm bass pulse
-            val bassF = when {
-                beatIdx < 4 -> 130.81
-                beatIdx < 8 -> 174.61
-                beatIdx < 12 -> 196.00
-                else -> 130.81
-            }
-            val bassEnv = Math.exp(-beatT * 3.5)
-            val bassVal = 0.32 * Math.sin(2.0 * Math.PI * bassF * t) * bassEnv
-
-            // 3. Arpeggiated melody note
-            val noteF = notes[beatIdx]
-            val subBeat = ((beatT * 4) % 4).toInt()
-            val arpMult = when (subBeat) {
-                0 -> 1.0
-                1 -> 1.25
-                2 -> 1.5
-                else -> 1.25
-            }
-            val curF = noteF * arpMult
-            val subT = (beatT * 4) - (beatT * 4).toInt()
-            val melEnv = Math.exp(-subT * 6.0)
-            val melVal = 0.22 * Math.sin(2.0 * Math.PI * curF * t) * melEnv
-
-            var total = (tickVal + bassVal + melVal) * 0.75
-            if (t < 0.1) {
-                total *= (t / 0.1)
-            } else if (t > 14.8) {
-                total *= ((15.0 - t) / 0.2)
-            }
-
-            val sample = (total * 32767.0).toInt().coerceIn(-32768, 32767)
-            buffer[i] = sample.toShort()
+    /**
+     * Mixes one decaying note into [mix] starting at [startSec]. [partials] are (frequency multiplier,
+     * relative level) pairs, so bells can use inharmonic overtones and chimes plain harmonics.
+     */
+    private fun addNote(
+        mix: DoubleArray,
+        startSec: Double,
+        freq: Double,
+        durSec: Double,
+        amp: Double,
+        decayPerSec: Double,
+        partials: List<Pair<Double, Double>> = listOf(1.0 to 1.0),
+    ) {
+        val first = (startSec * SAMPLE_RATE).toInt()
+        val count = (durSec * SAMPLE_RATE).toInt()
+        for (n in 0 until count) {
+            val idx = first + n
+            if (idx >= mix.size) break
+            val t = n.toDouble() / SAMPLE_RATE
+            val attack = minOf(1.0, t / 0.004)
+            val release = minOf(1.0, (durSec - t) / 0.02)
+            val env = attack * release * Math.exp(-t * decayPerSec)
+            var v = 0.0
+            for ((mult, level) in partials) v += level * Math.sin(2.0 * Math.PI * freq * mult * t)
+            mix[idx] += v * env * amp
         }
-        return buffer
+    }
+
+    private fun toPcm(mix: DoubleArray, gain: Double = 1.0): ShortArray =
+        ShortArray(mix.size) { (mix[it] * gain * 32767.0).toInt().coerceIn(-32768, 32767).toShort() }
+
+    private val bellPartials = listOf(1.0 to 1.0, 2.76 to 0.55, 5.4 to 0.25)
+
+    /** A metal coin dropping into the slot: two quick bright "tink" strikes. */
+    private fun generateCoinBuffer(): ShortArray {
+        val mix = DoubleArray((0.6 * SAMPLE_RATE).toInt())
+        addNote(mix, 0.0, 2093.0, 0.5, 0.42, 9.0, bellPartials)
+        addNote(mix, 0.075, 2794.0, 0.5, 0.38, 7.5, bellPartials)
+        return toPcm(mix, 0.9)
+    }
+
+    /**
+     * Soft "insert coin" cue that replaces the old ticking arpeggio: a gentle two-note chime every
+     * four seconds so the phone prompts for coins without droning on while the customer pays.
+     */
+    private fun generateWaitingMusicBuffer(): ShortArray {
+        val loopSec = 4.0
+        val mix = DoubleArray((loopSec * SAMPLE_RATE).toInt())
+        val chime = listOf(1.0 to 1.0, 2.0 to 0.25)
+        addNote(mix, 0.0, 659.25, 1.6, 0.30, 3.2, chime) // E5
+        addNote(mix, 0.28, 880.0, 2.2, 0.30, 2.6, chime) // A5
+        return toPcm(mix, 0.8)
+    }
+
+    /** Bright rising arpeggio confirming the customer tapped Done and the connection is being set up. */
+    private fun generateDoneBuffer(): ShortArray {
+        val mix = DoubleArray((0.9 * SAMPLE_RATE).toInt())
+        val chime = listOf(1.0 to 1.0, 2.0 to 0.3, 3.0 to 0.1)
+        addNote(mix, 0.00, 784.0, 0.4, 0.35, 5.0, chime) // G5
+        addNote(mix, 0.12, 1046.5, 0.4, 0.35, 5.0, chime) // C6
+        addNote(mix, 0.24, 1318.5, 0.6, 0.38, 4.0, chime) // E6
+        return toPcm(mix)
+    }
+
+    /** Falling three-note alert for when the countdown reaches zero. */
+    private fun generateTimeUpBuffer(): ShortArray {
+        val mix = DoubleArray((1.3 * SAMPLE_RATE).toInt())
+        val tone = listOf(1.0 to 1.0, 3.0 to 0.25, 5.0 to 0.1)
+        addNote(mix, 0.00, 987.77, 0.22, 0.38, 1.0, tone) // B5
+        addNote(mix, 0.26, 783.99, 0.22, 0.38, 1.0, tone) // G5
+        addNote(mix, 0.52, 587.33, 0.75, 0.42, 2.2, tone) // D5
+        return toPcm(mix)
+    }
+
+    fun playDoneSound() {
+        scope.launch(Dispatchers.IO) { playPcmBuffer(generateDoneBuffer(), SAMPLE_RATE) }
+    }
+
+    fun playTimeUpSound() {
+        scope.launch(Dispatchers.IO) {
+            HardwareFeedback.triggerVibration(context, longArrayOf(0, 250, 120, 250, 120, 500))
+            playPcmBuffer(generateTimeUpBuffer(), SAMPLE_RATE)
+        }
+    }
+
+    /** Speaks [text] after [delayMs], leaving time for the sound effect before it to finish. */
+    fun speakAfterSound(text: String, delayMs: Long, alert: Boolean = false) {
+        scope.launch {
+            kotlinx.coroutines.delay(delayMs)
+            speakWarning(text, alert)
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // Locate alarm: a loud wailing siren on the alarm stream, started from the admin dashboard.
+    // ------------------------------------------------------------------------
+
+    private var sirenJob: Job? = null
+    private var preLocateAlarmVolume: Int? = null
+
+    @Volatile private var locateActive = false
+
+    fun isLocateActive(): Boolean = locateActive
+
+    fun startLocateAlarm(durationMs: Long = LOCATE_MAX_DURATION_MS) {
+        stopLocateAlarm()
+        locateActive = true
+        synchronized(volumeLock) {
+            systemAudioManager?.let { am ->
+                try {
+                    if (!isAlarmMaxedForTts) {
+                        preLocateAlarmVolume = am.getStreamVolume(AudioManager.STREAM_ALARM)
+                    }
+                    am.setStreamVolume(AudioManager.STREAM_ALARM, am.getStreamMaxVolume(AudioManager.STREAM_ALARM), 0)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not raise alarm volume for locate: ${e.message}")
+                }
+            }
+        }
+        HardwareFeedback.startLocateFeedback(context)
+        sirenJob = scope.launch(Dispatchers.IO) {
+            var track: AudioTrack? = null
+            try {
+                val minBuf = AudioTrack.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
+                val chunk = ShortArray(2048)
+                track = AudioTrack.Builder()
+                    .setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_ALARM)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .build(),
+                    )
+                    .setAudioFormat(
+                        AudioFormat.Builder()
+                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                            .setSampleRate(SAMPLE_RATE)
+                            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                            .build(),
+                    )
+                    .setBufferSizeInBytes(maxOf(minBuf, chunk.size * 2))
+                    .setTransferMode(AudioTrack.MODE_STREAM)
+                    .build()
+                track.play()
+                var phase = 0.0
+                var sample = 0L
+                val endAt = android.os.SystemClock.elapsedRealtime() + durationMs
+                while (isActive && locateActive && android.os.SystemClock.elapsedRealtime() < endAt) {
+                    for (i in chunk.indices) {
+                        // Wail between 700 Hz and 1600 Hz every 1.4 s; phase is accumulated so there are no clicks.
+                        val sweep = 0.5 - 0.5 * Math.cos(2.0 * Math.PI * (sample.toDouble() / SAMPLE_RATE) / 1.4)
+                        val f = 700.0 + 900.0 * sweep
+                        phase += 2.0 * Math.PI * f / SAMPLE_RATE
+                        if (phase > 2.0 * Math.PI) phase -= 2.0 * Math.PI
+                        val v = Math.sin(phase) + 0.45 * Math.sin(3.0 * phase) + 0.2 * Math.sin(5.0 * phase)
+                        chunk[i] = (v / 1.65 * 32767.0 * 0.95).toInt().coerceIn(-32768, 32767).toShort()
+                        sample++
+                    }
+                    track.write(chunk, 0, chunk.size)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Locate siren failed: ${e.message}")
+            } finally {
+                try {
+                    track?.stop()
+                } catch (_: Exception) {}
+                try {
+                    track?.release()
+                } catch (_: Exception) {}
+                // Timed out (or failed) rather than stopped by hand: tidy up so vibration and strobe end too.
+                if (locateActive) stopLocateAlarm()
+            }
+        }
+    }
+
+    fun stopLocateAlarm() {
+        locateActive = false
+        sirenJob?.cancel()
+        sirenJob = null
+        HardwareFeedback.stopLocateFeedback(context)
+        synchronized(volumeLock) {
+            val restore = preLocateAlarmVolume ?: return
+            preLocateAlarmVolume = null
+            try {
+                systemAudioManager?.setStreamVolume(AudioManager.STREAM_ALARM, restore, 0)
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not restore alarm volume after locate: ${e.message}")
+            }
+        }
     }
 
     /**
@@ -703,6 +805,7 @@ class KioskAudioManager(
         delayedTtsRunnable?.let { mainHandler.removeCallbacks(it) }
         delayedTtsRunnable = null
         stopWaitingMusic()
+        stopLocateAlarm()
         restoreMediaStreamAfterTts()
         abandonTtsAudioFocus()
         synchronized(this) {
