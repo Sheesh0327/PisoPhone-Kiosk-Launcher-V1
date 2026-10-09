@@ -21,7 +21,7 @@ namespace accounts {
 
 static const size_t MAX_ACCOUNTS = 600;
 static const uint32_t MAX_ID = 65535;
-static const size_t NAME_MAX = 16;
+static const size_t NAME_LEN = 16;
 static const size_t TX_RING = 64;
 static const size_t REDEEMED_BYTES = (MAX_ID + 1) / 8;
 
@@ -43,7 +43,7 @@ enum class Result : uint8_t {
 
 struct Account {
     uint32_t id;             // the card's serial
-    char name[NAME_MAX + 1]; // display name, empty until the player gives one
+    char name[NAME_LEN + 1]; // display name, empty until the player gives one
     uint32_t balanceSec;
     uint8_t signedInSlot; // 0 = nobody
     bool everFunded;      // has ever been given time
@@ -54,7 +54,7 @@ struct Account {
 // A display name: 1 to 16 of letters, digits, space, '_' and '-', not starting or ending with a space. The narrow character set
 // keeps names safe to show on the dashboard and to carry in URLs and JSON without any escaping.
 inline bool validName(const std::string& name) {
-    if (name.empty() || name.size() > NAME_MAX) return false;
+    if (name.empty() || name.size() > NAME_LEN) return false;
     if (name.front() == ' ' || name.back() == ' ') return false;
     for (char c : name) {
         bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == ' ' || c == '_' ||
@@ -312,7 +312,7 @@ public:
     // rows:   u32 id | name[16] | u32 balance | u8 slot | u8 funded | u32 created | u32 lastActive
     // footer: u32 CRC-32 of everything before it
     static const uint8_t FORMAT_VERSION = 2;
-    static const size_t ROW_BYTES = 4 + NAME_MAX + 4 + 1 + 1 + 4 + 4;
+    static const size_t ROW_BYTES = 4 + NAME_LEN + 4 + 1 + 1 + 4 + 4;
     static const size_t HEADER_BYTES = 4 + 1 + 4 + 2 + 1 + TX_RING * 8 + REDEEMED_BYTES;
 
     // Emits the bytes through emit(const uint8_t*, size_t) so a caller can stream them to a file without a second copy in
@@ -343,10 +343,10 @@ public:
             const Account& a = rows_[i];
             put32(b, a.id);
             out(b, 4);
-            uint8_t name[NAME_MAX];
+            uint8_t name[NAME_LEN];
             memset(name, 0, sizeof(name));
-            memcpy(name, a.name, strnlen(a.name, NAME_MAX));
-            out(name, NAME_MAX);
+            memcpy(name, a.name, strnlen(a.name, NAME_LEN));
+            out(name, NAME_LEN);
             put32(b, a.balanceSec);
             out(b, 4);
             b[0] = a.signedInSlot;
@@ -387,9 +387,9 @@ public:
             const uint8_t* r = rows + i * ROW_BYTES;
             uint32_t id = get32(r);
             if (!validId(id)) return false;
-            char name[NAME_MAX + 1];
-            memcpy(name, r + 4, NAME_MAX);
-            name[NAME_MAX] = 0;
+            char name[NAME_LEN + 1];
+            memcpy(name, r + 4, NAME_LEN);
+            name[NAME_LEN] = 0;
             if (name[0] != 0 && !validName(name)) return false;
             for (size_t j = 0; j < i; j++)
                 if (get32(rows + j * ROW_BYTES) == id) return false; // duplicate account
@@ -408,9 +408,9 @@ public:
             Account& a = rows_[count_++];
             a.id = get32(p);
             p += 4;
-            memcpy(a.name, p, NAME_MAX);
-            a.name[NAME_MAX] = 0;
-            p += NAME_MAX;
+            memcpy(a.name, p, NAME_LEN);
+            a.name[NAME_LEN] = 0;
+            p += NAME_LEN;
             a.balanceSec = get32(p);
             p += 4;
             a.signedInSlot = p[0];
