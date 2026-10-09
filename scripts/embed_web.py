@@ -43,7 +43,11 @@ def render():
     for name, ctype, ident in ASSETS:
         with open(os.path.join(WEB_DIR, name), "rb") as f:
             raw = f.read()
-        gz = gzip.compress(raw, compresslevel=9, mtime=0)
+        gz = bytearray(gzip.compress(raw, compresslevel=9, mtime=0))
+        # Python 3.13 writes 255 ("unknown") in the header's OS byte where 3.11 and 3.12 write 3 ("Unix"); the
+        # compressed data is the same. Pin it so the header is byte-for-byte the same on every Python version.
+        gz[9] = 3
+        gz = bytes(gz)
         tag = hashlib.sha256(raw).hexdigest()[:12]
         body = ",".join(str(b) for b in gz)
         out.append(f"// {name}: {len(raw)} bytes, {len(gz)} gzipped")
