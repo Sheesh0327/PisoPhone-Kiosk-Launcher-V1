@@ -1,10 +1,10 @@
 {
-  "versionCode": 397,
-  "versionName": "1.0.397",
+  "versionCode": 401,
+  "versionName": "1.0.401",
   "channel": "stable",
   
   "signatureChecksum": "Un0usqLMwnmeaowrY2g21EgRVWe4bTRDLUi2RH12WbE",
-  "sha256": "00ccb58a9488db10c945b33b4ef10307592e80aa59d25c04106b84ab31c6f074",
-  "size": 2403575,
+  "sha256": "f96906433fc636cebfe8f76bb7e915f724394c833a79a500c7df9ddf1b99402a",
+  "size": 3088723,
   "releaseDate": "2026-10-09"
 }
