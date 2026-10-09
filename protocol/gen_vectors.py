@@ -47,21 +47,21 @@ messages = [
     ("heartbeat-timestamp", SECRET_B, "dev-1234:1760000000000"),
     ("coin-ack", SECRET_A, "v1:dev-1234:tx-b1-1-0000abcd:5:1760000000000"),
 ]
-# Account calls (phone -> box). The signed message is "v1:acct_<op>:<deviceId>:<ts>:<bound>", where <bound> carries
-# every parameter that matters, so a captured request cannot be edited:
-#   create / signin  bound = "<user>:<hex AES of 'PIN:<pin>'>"      (the PIN never travels in clear)
-#   signout          bound = "<user>:<seconds left>"                (final report, then signed out)
-#   report           bound = "<user>:<seconds left>"                (sent with every heartbeat while signed in)
-#   info             bound = "<user>"
+# Account calls (phone -> box). A player's account is a QR card; the signed message is
+# "v1:acct_<op>:<deviceId>:<ts>:<bound>", where <bound> carries every parameter that matters, so a captured request cannot be edited:
+#   scan     bound = "<card text>"          (PISO1.<box>.<serial>.<seconds>.<signature>, see scripts/card_format.py)
+#   name     bound = "<id>:<name>"          (<id> is the card's serial number)
+#   signout  bound = "<id>:<seconds left>"  (final report, then signed out)
+#   report   bound = "<id>:<seconds left>"  (sent with every heartbeat while signed in)
+#   info     bound = "<id>"
 ACCT_DEV, ACCT_TS = "dev-1234", "1760000000000"
-PIN_IV = bytes((i * 5 + 1) % 256 for i in range(16))
-PIN_CIPHER = encrypt(SECRET_B, PIN_IV, "PIN:4821")
+CARD = "PISO1.aabbccddeeff.42.10800.MEUCIQDm9R0kYwq3cG0gq2K1mQ8k5VwXnJ7p2sT4yZb6dUe1xwIgY2n0vLhPq8aRtB3cS5uVwXy7Zk1aD4fG6hJ9lMnO2pQ="
 account_calls = [
-    ("signin", "signin", "alice:" + PIN_CIPHER),
-    ("create", "create", "bob_99:" + PIN_CIPHER),
-    ("signout", "signout", "alice:540"),
-    ("report", "report", "alice:539"),
-    ("info", "info", "alice"),
+    ("scan", "scan", CARD),
+    ("name", "name", "42:Juan Dela Cruz"),
+    ("signout", "signout", "42:540"),
+    ("report", "report", "42:539"),
+    ("info", "info", "42"),
 ]
 accounts = [{"name": n, "secret": SECRET_B, "op": op, "device": ACCT_DEV, "ts": ACCT_TS, "bound": b,
              "message": f"v1:acct_{op}:{ACCT_DEV}:{ACCT_TS}:{b}",
@@ -72,7 +72,6 @@ out = {
                 for n, s, iv, p in cases],
     "hmac": [{"name": n, "secret": s, "message": m, "hmac": sign(s, m)} for n, s, m in messages],
     "accounts": accounts,
-    "account_pin": {"secret": SECRET_B, "iv": PIN_IV.hex(), "pin": "4821", "plaintext": "PIN:4821", "ciphertext": PIN_CIPHER},
 }
 path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "box_phone_v1.json")
 with open(path, "w") as f:

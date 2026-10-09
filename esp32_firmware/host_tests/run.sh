@@ -8,6 +8,7 @@ mkdir -p "$OUT"
 python3 gen_cred_fixture.py "$OUT/cred_fixture.h"
 python3 gen_fw_fixture.py "$OUT/fw_fixture.h"
 python3 gen_protocol_fixture.py "$OUT/protocol_fixture.h"
+python3 gen_card_fixture.py "$OUT/card_fixture.h"
 for t in *_test.cpp; do
     g++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -I"$OUT" -o "$OUT/${t%.cpp}" "$t" -lmbedcrypto
     "$OUT/${t%.cpp}"

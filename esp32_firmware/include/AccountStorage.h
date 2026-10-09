@@ -26,7 +26,6 @@ void accountsLoop();                     // call from loop(): debounced saving a
 bool accountsReady();                    // false if the filesystem or memory was not available
 accounts::AccountTable& accountsTable(); // only valid while accountsReady()
 uint32_t accountsNowS();                 // the box clock in seconds, 0 until a phone has set it
-void accountsCommit(bool urgent);        // urgent: save now (sign-in/out, credit, create, delete); else within 30 s
-accounts::Result accountsCreate(const String& username, const String& pin); // salts, creates, commits
+void accountsCommit(bool urgent);        // urgent: save now (scan, name, sign-out, credit, delete); else within 30 s
 
 #endif // ACCOUNT_STORAGE_H

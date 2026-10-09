@@ -7,6 +7,6 @@
 #include <stdint.h>
 
 static const uint8_t CARD_PUBKEY_DER[] = {0};
-static const size_t CARD_PUBKEY_LEN = 0;
+static const size_t CARD_PUBKEY_LEN = 0; // 0: no card key installed, every card is rejected
 
 #endif

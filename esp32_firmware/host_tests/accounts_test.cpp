@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <memory>
+#include <vector>
 
 using namespace accounts;
 
@@ -14,9 +15,9 @@ static int failures = 0;
         }                                                                                                              \
     } while (0)
 
-static const uint8_t SALT[SALT_BYTES] = {1, 2, 3, 4, 5, 6, 7, 8};
 static const uint32_t DAY = 24 * 3600;
 static const uint32_t T0 = 1000000;
+static const uint32_t BONUS = 10800; // the 3-hour starter card
 
 static std::vector<uint8_t> save(AccountTable& t) {
     std::vector<uint8_t> out;
@@ -24,223 +25,223 @@ static std::vector<uint8_t> save(AccountTable& t) {
     return out;
 }
 
+// Scans a card the way the box does: redeem, then sign in on `slot`.
+static Result scan(AccountTable& t, uint32_t id, uint8_t slot, uint32_t nowS, bool* firstTime = nullptr) {
+    bool first = false;
+    Result r = t.redeemCard(id, BONUS, nowS, first);
+    if (firstTime) *firstTime = first;
+    if (r != Result::OK) return r;
+    return t.signIn(id, slot, nowS);
+}
+
 int main() {
     auto tp = std::make_unique<AccountTable>();
     AccountTable& t = *tp;
 
-    // ---- create / validation ----
-    CHECK(t.create("Alice", "1234", SALT, T0) == Result::OK); // stored lowercase
-    CHECK(t.find("ALICE") != nullptr && strcmp(t.find("alice")->username, "alice") == 0);
-    CHECK(t.create("alice", "9999", SALT, T0) == Result::NAME_TAKEN);
-    CHECK(t.create("al", "1234", SALT, T0) == Result::BAD_NAME);
-    CHECK(t.create("bad name", "1234", SALT, T0) == Result::BAD_NAME);
-    CHECK(t.create("averyveryverylongname", "1234", SALT, T0) == Result::BAD_NAME);
-    CHECK(t.create("bob", "123", SALT, T0) == Result::BAD_PIN_FORMAT);
-    CHECK(t.create("bob", "1234567", SALT, T0) == Result::BAD_PIN_FORMAT);
-    CHECK(t.create("bob", "12a4", SALT, T0) == Result::BAD_PIN_FORMAT);
+    // ---- the first scan of a card gives the starter time, once ----
+    bool first = false;
+    CHECK(scan(t, 42, 1, T0, &first) == Result::OK && first);
+    CHECK(t.find(42) != nullptr && t.find(42)->balanceSec == BONUS && t.find(42)->everFunded);
+    CHECK(t.find(42)->signedInSlot == 1 && t.find(42)->name[0] == 0); // no name yet
+    CHECK(t.isRedeemed(42) && !t.isRedeemed(43));
+    CHECK(t.signOut(42, T0) == Result::OK);
+    CHECK(scan(t, 42, 2, T0, &first) == Result::OK && !first); // a second scan only signs in: no second bonus
+    CHECK(t.find(42)->balanceSec == BONUS);
     CHECK(t.count() == 1);
-    // The PIN is never stored: the hash is not the PIN bytes
-    CHECK(memcmp(t.find("alice")->hash, "1234", 4) != 0);
 
-    // ---- PIN check ----
-    CHECK(t.verifyPin("alice", "1234", T0) == Result::OK);
-    CHECK(t.verifyPin("alice", "0000", T0) == Result::BAD_PIN);
-    CHECK(t.verifyPin("nobody", "1234", T0) == Result::NO_SUCH_USER);
-
-    // ---- wrong-PIN lockout: 5 failures lock 5 min, then 10, 20 ... up to 1 hour ----
-    {
-        uint32_t now = T0;
-        t.verifyPin("alice", "1234", now); // reset the count from the failure above
-        for (int i = 0; i < 4; i++)
-            CHECK(t.verifyPin("alice", "0000", now) == Result::BAD_PIN);
-        CHECK(t.verifyPin("alice", "0000", now) == Result::BAD_PIN); // 5th: locks
-        CHECK(t.verifyPin("alice", "1234", now) == Result::LOCKED);  // right PIN is refused while locked
-        CHECK(t.verifyPin("alice", "1234", now + 299) == Result::LOCKED);
-        now += 300;
-        CHECK(t.verifyPin("alice", "0000", now) == Result::BAD_PIN); // 6th failure: locks 10 min
-        CHECK(t.verifyPin("alice", "1234", now + 599) == Result::LOCKED);
-        CHECK(t.verifyPin("alice", "1234", now + 600) == Result::OK); // lock over, right PIN clears it
-        uint32_t tt = now + 600;
-        for (int i = 0; i < 40; i++) {
-            CHECK(t.verifyPin("alice", "0000", tt) == Result::BAD_PIN);
-            tt = t.find("alice")->lockedUntilS; // wait out each lock
-        }
-        // after many failures the lock is exactly one hour, never more
-        CHECK(t.verifyPin("alice", "0000", tt) == Result::BAD_PIN);
-        CHECK(t.find("alice")->lockedUntilS - tt == 3600);
-    }
-    t.verifyPin("alice", "1234", T0 + 10 * DAY); // lock long over, success resets
-    CHECK(t.find("alice")->failCount == 0);
+    // ---- cards that are not valid ids ----
+    CHECK(t.redeemCard(0, BONUS, T0, first) == Result::BAD_CARD);
+    CHECK(t.redeemCard(65536, BONUS, T0, first) == Result::BAD_CARD);
+    CHECK(t.redeemCard(MAX_ID, BONUS, T0, first) == Result::OK && first);
+    CHECK(t.find(0) == nullptr && t.find(65536) == nullptr);
+    CHECK(t.count() == 2);
 
     // ---- one phone at a time ----
-    CHECK(t.signIn("alice", 2, T0) == Result::OK);
-    CHECK(t.signIn("alice", 2, T0) == Result::OK); // same slot again is fine
-    CHECK(t.signIn("alice", 3, T0) == Result::ALREADY_SIGNED_IN);
-    CHECK(t.signOut("alice", T0) == Result::OK);
-    CHECK(t.signIn("alice", 3, T0) == Result::OK);
-    CHECK(t.signIn("alice", 0, T0) == Result::INTERNAL);
-    CHECK(t.signIn("ghost", 1, T0) == Result::NO_SUCH_USER);
+    CHECK(t.signIn(42, 2, T0) == Result::OK); // same slot again is fine
+    CHECK(t.signIn(42, 3, T0) == Result::ALREADY_SIGNED_IN);
+    CHECK(scan(t, 42, 3, T0) == Result::ALREADY_SIGNED_IN);
+    CHECK(t.signOut(42, T0) == Result::OK);
+    CHECK(t.signIn(42, 3, T0) == Result::OK);
+    CHECK(t.signIn(42, 0, T0) == Result::INTERNAL);
+    CHECK(t.signIn(777, 1, T0) == Result::NO_SUCH_ACCOUNT);
+    CHECK(t.findBySlot(3) != nullptr && t.findBySlot(3)->id == 42 && t.findBySlot(9) == nullptr &&
+          t.findBySlot(0) == nullptr);
+
+    // ---- names ----
+    CHECK(t.setName(42, "Juan") == Result::OK && std::string(t.find(42)->name) == "Juan");
+    CHECK(t.setName(42, "Ana Maria_2-b") == Result::OK && std::string(t.find(42)->name) == "Ana Maria_2-b");
+    CHECK(t.setName(42, "Pedro") == Result::OK &&
+          std::string(t.find(42)->name) == "Pedro"); // a shorter name fully replaces
+    CHECK(t.setName(42, "") == Result::BAD_NAME);
+    CHECK(t.setName(42, " lead") == Result::BAD_NAME && t.setName(42, "trail ") == Result::BAD_NAME);
+    CHECK(t.setName(42, "seventeen chars!!") == Result::BAD_NAME);
+    CHECK(t.setName(42, "a\"b") == Result::BAD_NAME && t.setName(42, "<b>") == Result::BAD_NAME);
+    CHECK(t.setName(42, "a:b") == Result::BAD_NAME && t.setName(42, "a&b") == Result::BAD_NAME);
+    CHECK(t.setName(42, "caf\xC3\xA9") == Result::BAD_NAME); // not ASCII
+    CHECK(std::string(t.find(42)->name) == "Pedro");         // refused names change nothing
+    CHECK(t.setName(999, "Juan") == Result::NO_SUCH_ACCOUNT);
 
     // ---- credits are idempotent by tx id ----
-    CHECK(t.creditSeconds("alice", 600, "tx-1", T0) == Result::OK);
-    CHECK(t.creditSeconds("alice", 600, "tx-1", T0) == Result::DUPLICATE_TX); // box retry
-    CHECK(t.find("alice")->balanceSec == 600);
-    CHECK(t.creditSeconds("alice", 60, "tx-2", T0) == Result::OK);
-    CHECK(t.find("alice")->balanceSec == 660);
-    CHECK(t.find("alice")->everFunded);
-    CHECK(t.creditSeconds("alice", 0xFFFFFFF0u, "tx-3", T0) == Result::OK); // saturates, never wraps
-    CHECK(t.find("alice")->balanceSec == UINT32_MAX);
-    CHECK(t.setBalance("alice", 660, T0) == Result::OK);
-    // The ring forgets the oldest ids after 64 others, never sooner
+    CHECK(t.creditSeconds(42, 600, "tx-1", T0) == Result::OK);
+    CHECK(t.creditSeconds(42, 600, "tx-1", T0) == Result::DUPLICATE_TX); // box retry
+    CHECK(t.find(42)->balanceSec == BONUS + 600);
+    CHECK(t.creditSeconds(42, 0xFFFFFFF0u, "tx-3", T0) == Result::OK &&
+          t.find(42)->balanceSec == UINT32_MAX); // saturates
+    CHECK(t.setBalance(42, 660, T0) == Result::OK);
     for (int i = 0; i < 60; i++)
-        t.creditSeconds("alice", 0, "filler-" + std::to_string(i), T0);
-    CHECK(t.creditSeconds("alice", 5, "tx-1", T0) == Result::DUPLICATE_TX);
+        t.creditSeconds(42, 0, "filler-" + std::to_string(i), T0);
+    CHECK(t.creditSeconds(42, 5, "tx-1", T0) == Result::DUPLICATE_TX); // the ring remembers 64 ids
     for (int i = 0; i < 70; i++)
-        t.creditSeconds("alice", 0, "more-" + std::to_string(i), T0);
-    CHECK(t.creditSeconds("alice", 5, "tx-1", T0) == Result::OK);
-    CHECK(t.setBalance("alice", 660, T0) == Result::OK);
+        t.creditSeconds(42, 0, "more-" + std::to_string(i), T0);
+    CHECK(t.creditSeconds(42, 5, "tx-1", T0) == Result::OK);
+    CHECK(t.setBalance(42, 660, T0) == Result::OK);
 
     // ---- a phone can lower the balance but never raise it ----
-    CHECK(t.reportRemaining("alice", 3, 500, T0 + 5) == Result::OK);
-    CHECK(t.find("alice")->balanceSec == 500);
-    CHECK(t.reportRemaining("alice", 3, 99999, T0 + 6) == Result::OK); // inflated report is ignored
-    CHECK(t.find("alice")->balanceSec == 500);
-    CHECK(t.reportRemaining("alice", 4, 100, T0) == Result::NOT_SIGNED_IN); // a different slot cannot report
-    CHECK(t.find("alice")->balanceSec == 500);
-    CHECK(t.signOut("alice", T0) == Result::OK);
-    CHECK(t.reportRemaining("alice", 3, 100, T0) == Result::NOT_SIGNED_IN); // signed out
-    CHECK(t.signIn("alice", 3, T0) == Result::OK);
-    CHECK(t.signOutSlot(3, T0 + 90) == 1); // the box drops a phone that went silent
-    CHECK(t.find("alice")->signedInSlot == 0 && t.find("alice")->balanceSec == 500);
+    CHECK(t.reportRemaining(42, 3, 500, T0 + 5) == Result::OK && t.find(42)->balanceSec == 500);
+    CHECK(t.reportRemaining(42, 3, 99999, T0 + 6) == Result::OK &&
+          t.find(42)->balanceSec == 500); // inflated report ignored
+    CHECK(t.reportRemaining(42, 4, 100, T0) == Result::NOT_SIGNED_IN &&
+          t.find(42)->balanceSec == 500); // another slot cannot
+    CHECK(t.signOut(42, T0) == Result::OK);
+    CHECK(t.reportRemaining(42, 3, 100, T0) == Result::NOT_SIGNED_IN);
+    CHECK(t.signIn(42, 3, T0) == Result::OK);
+    CHECK(t.signOutSlot(3, T0 + 90) == 1 && t.find(42)->signedInSlot == 0 && t.find(42)->balanceSec == 500);
     CHECK(t.signOutSlot(0, T0) == 0);
-    CHECK(t.findBySlot(3) == nullptr && t.findBySlot(0) == nullptr);
-    CHECK(t.signIn("alice", 3, T0) == Result::OK);
-    CHECK(t.findBySlot(3) != nullptr && strcmp(t.findBySlot(3)->username, "alice") == 0);
-    CHECK(t.signOut("alice", T0) == Result::OK);
+
+    // ---- admin: adjust, delete ----
+    {
+        AccountTable a;
+        scan(a, 5, 1, T0);
+        a.signOut(5, T0);
+        CHECK(a.adjustSeconds(5, 600, T0) == Result::OK && a.find(5)->balanceSec == BONUS + 600);
+        CHECK(a.adjustSeconds(5, -100000, T0) == Result::OK && a.find(5)->balanceSec == 0); // never negative
+        CHECK(a.adjustSeconds(5, (int64_t)UINT32_MAX * 3, T0) == Result::OK && a.find(5)->balanceSec == UINT32_MAX);
+        CHECK(a.adjustSeconds(5, 5, T0) == Result::OK && a.find(5)->balanceSec == UINT32_MAX); // never wraps
+        CHECK(a.adjustSeconds(6, 60, T0) == Result::NO_SUCH_ACCOUNT);
+        a.setBalance(5, 300, T0);
+        a.signIn(5, 4, T0);
+        CHECK(a.adjustSeconds(5, 60, T0) == Result::ALREADY_SIGNED_IN && a.find(5)->balanceSec == 300);
+    }
+
+    // ---- the starter time can NEVER be claimed twice: not after pruning, not after deleting ----
+    {
+        AccountTable a;
+        scan(a, 10, 1, T0);
+        a.signOut(10, T0);
+        a.setBalance(10, 0, T0); // all spent
+        CHECK(a.prune(T0 + 31 * DAY) == 1 && a.find(10) == nullptr);
+        CHECK(a.isRedeemed(10)); // the account is gone, the fact that its card was used is not
+        CHECK(scan(a, 10, 1, T0 + 40 * DAY, &first) == Result::OK && !first);
+        CHECK(a.find(10)->balanceSec == 0 && !a.find(10)->everFunded); // an EMPTY account: no second bonus
+        a.signOut(10, T0 + 40 * DAY);
+
+        scan(a, 11, 1, T0);
+        a.signOut(11, T0);
+        CHECK(a.deleteAccount(11) == Result::OK && a.find(11) == nullptr);
+        CHECK(a.deleteAccount(11) == Result::NO_SUCH_ACCOUNT);
+        CHECK(scan(a, 11, 1, T0, &first) == Result::OK && !first &&
+              a.find(11)->balanceSec == 0); // revoked card = empty account
+
+        // and it survives a save and a load
+        std::vector<uint8_t> img = save(a);
+        AccountTable b;
+        CHECK(b.deserialize(img.data(), img.size()));
+        CHECK(b.isRedeemed(10) && b.isRedeemed(11) && !b.isRedeemed(12));
+        CHECK(scan(b, 12, 1, T0, &first) == Result::OK && first && b.find(12)->balanceSec == BONUS);
+    }
 
     // ---- prune: never touches accounts with time or in use ----
     {
         AccountTable p;
-        p.create("funded", "1234", SALT, T0);
-        p.creditSeconds("funded", 60, "a", T0);
-        p.create("online", "1234", SALT, T0);
-        p.signIn("online", 1, T0);
-        p.create("empty", "1234", SALT, T0);
-        p.creditSeconds("empty", 60, "b", T0);
-        p.reportRemaining("empty", 1, 0, T0); // not signed in: ignored
-        p.setBalance("empty", 0, T0);         // spent everything
-        p.create("never", "1234", SALT, T0);  // never given any time
+        scan(p, 1, 1, T0); // has time and is signed in
+        scan(p, 2, 2, T0);
+        p.signOut(2, T0); // has time
+        scan(p, 3, 3, T0);
+        p.signOut(3, T0);
+        p.setBalance(3, 0, T0); // spent everything
+        p.redeemCard(4, BONUS, T0, first);
+        p.setBalance(4, 0, T0);
+        p.deleteAccount(4);
+        bool f2;
+        p.redeemCard(4, BONUS, T0, f2); // a rescan after revoking: empty and never funded
         CHECK(p.count() == 4);
         CHECK(p.prune(0) == 0); // box has no clock yet: nothing is deleted
         CHECK(p.prune(T0 + DAY) == 0);
         CHECK(p.prune(T0 + 7 * DAY - 1) == 0);
-        CHECK(p.prune(T0 + 7 * DAY) == 1); // "never" goes after a week
-        CHECK(p.find("never") == nullptr);
+        CHECK(p.prune(T0 + 7 * DAY) == 1 && p.find(4) == nullptr); // never funded: gone after a week
         CHECK(p.prune(T0 + 29 * DAY) == 0);
-        CHECK(p.prune(T0 + 30 * DAY) == 1); // "empty" goes after 30 days idle
-        CHECK(p.find("empty") == nullptr);
-        CHECK(p.prune(T0 + 3650UL * DAY) == 0); // 10 years: time and in-use accounts still stay
-        CHECK(p.find("funded") != nullptr && p.find("online") != nullptr && p.count() == 2);
-        // a clock that jumped backwards never underflows into "idle for 136 years"
-        CHECK(p.prune(10) == 0);
+        CHECK(p.prune(T0 + 30 * DAY) == 1 && p.find(3) == nullptr); // spent: gone after 30 idle days
+        CHECK(p.prune(T0 + 3650UL * DAY) == 0);                     // 10 years: time and in-use accounts still stay
+        CHECK(p.find(1) != nullptr && p.find(2) != nullptr && p.count() == 2);
+        CHECK(p.prune(10) == 0); // a clock that moved back never underflows into "idle for 136 years"
     }
 
-    // ---- full table: prune first, then create; otherwise refuse ----
+    // ---- full table: prune first, then redeem; a full table never burns a card's one-time bonus ----
     {
         auto fp = std::make_unique<AccountTable>();
         AccountTable& f = *fp;
-        for (size_t i = 0; i < MAX_ACCOUNTS; i++) {
-            char n[20];
-            snprintf(n, sizeof(n), "user%03u", (unsigned)i);
-            CHECK(f.create(n, "1234", SALT, T0) == Result::OK);
-            if (i < 100) f.creditSeconds(n, 10, "", T0); // 100 have time, 200 never got any
+        for (uint32_t i = 1; i <= MAX_ACCOUNTS; i++) {
+            CHECK(f.redeemCard(i, BONUS, T0, first) == Result::OK);
+            if (i > 100) f.setBalance(i, 0, T0); // 100 keep their time, the rest spent it
         }
         CHECK(f.count() == MAX_ACCOUNTS);
-        CHECK(f.create("newcomer", "1234", SALT, T0) == Result::ACCOUNTS_FULL); // nothing is old enough yet
-        CHECK(f.create("newcomer", "1234", SALT, T0 + 8 * DAY) == Result::OK);  // 200 unfunded were pruned
-        CHECK(f.count() == 101);
-        CHECK(f.find("user000") != nullptr && f.find("user250") == nullptr);
+        uint32_t newcomer = MAX_ACCOUNTS + 1;
+        CHECK(f.redeemCard(newcomer, BONUS, T0, first) == Result::ACCOUNTS_FULL && !first);
+        CHECK(!f.isRedeemed(newcomer)); // nothing changed: the card's bonus is still unspent
+        CHECK(f.redeemCard(newcomer, BONUS, T0 + 31 * DAY, first) == Result::OK && first); // the spent ones were pruned
+        CHECK(f.find(newcomer)->balanceSec == BONUS && f.count() == 101);
+        CHECK(f.find(1) != nullptr && f.find(300) == nullptr);
     }
-
-    // ---- admin: adjust, unlock ----
-    {
-        AccountTable a;
-        a.create("dana", "1234", SALT, T0);
-        CHECK(a.adjustSeconds("dana", 600, T0) == Result::OK && a.find("dana")->balanceSec == 600);
-        CHECK(a.find("dana")->everFunded);
-        CHECK(a.adjustSeconds("DANA", -200, T0) == Result::OK && a.find("dana")->balanceSec == 400);
-        CHECK(a.adjustSeconds("dana", -100000, T0) == Result::OK && a.find("dana")->balanceSec == 0); // never negative
-        CHECK(a.adjustSeconds("dana", (int64_t)UINT32_MAX * 3, T0) == Result::OK &&
-              a.find("dana")->balanceSec == UINT32_MAX);
-        CHECK(a.adjustSeconds("dana", 5, T0) == Result::OK && a.find("dana")->balanceSec == UINT32_MAX); // never wraps
-        CHECK(a.adjustSeconds("ghost", 60, T0) == Result::NO_SUCH_USER);
-        a.setBalance("dana", 300, T0);
-        a.signIn("dana", 4, T0);
-        CHECK(a.adjustSeconds("dana", 60, T0) == Result::ALREADY_SIGNED_IN); // time is running on a phone
-        CHECK(a.find("dana")->balanceSec == 300);
-        a.signOut("dana", T0);
-        for (int i = 0; i < 5; i++)
-            a.verifyPin("dana", "0000", T0);
-        CHECK(a.verifyPin("dana", "1234", T0) == Result::LOCKED);
-        CHECK(a.unlock("dana") == Result::OK);
-        CHECK(a.verifyPin("dana", "1234", T0) == Result::OK);
-        CHECK(a.unlock("ghost") == Result::NO_SUCH_USER);
-    }
-
-    // ---- delete ----
-    CHECK(t.deleteAccount("alice") == Result::OK);
-    CHECK(t.find("alice") == nullptr);
-    CHECK(t.deleteAccount("alice") == Result::NO_SUCH_USER);
 
     // ---- storage round trip, torn writes, corruption ----
     {
         AccountTable a;
-        a.create("carol", "4321", SALT, T0);
-        a.create("dave", "5555", SALT, T0);
-        a.creditSeconds("carol", 1234, "c1", T0);
-        a.signIn("carol", 2, T0 + 1);
+        scan(a, 7, 2, T0 + 1);
+        a.setName(7, "Carol");
+        a.creditSeconds(7, 1234, "c1", T0);
+        scan(a, 9, 1, T0);
+        a.signOut(9, T0);
         std::vector<uint8_t> img = save(a);
-        CHECK(img.size() == 4 + 1 + 4 + 2 + 1 + TX_RING * 8 + 2 * AccountTable::ROW_BYTES + 4);
+        CHECK(img.size() == AccountTable::HEADER_BYTES + 2 * AccountTable::ROW_BYTES + 4);
 
         AccountTable b;
         CHECK(b.deserialize(img.data(), img.size()));
         CHECK(b.count() == 2 && b.seq() == a.seq());
-        CHECK(b.find("carol")->balanceSec == 1234 && b.find("carol")->signedInSlot == 2);
-        CHECK(b.verifyPin("carol", "4321", T0) == Result::OK); // the PIN hash survived
-        CHECK(b.verifyPin("carol", "1111", T0) == Result::BAD_PIN);
-        CHECK(b.creditSeconds("carol", 9, "c1", T0) == Result::DUPLICATE_TX); // so did the tx ring
+        CHECK(b.find(7)->balanceSec == BONUS + 1234 && b.find(7)->signedInSlot == 2 &&
+              std::string(b.find(7)->name) == "Carol");
+        CHECK(b.find(9)->signedInSlot == 0 && b.find(9)->name[0] == 0);
+        CHECK(b.creditSeconds(7, 9, "c1", T0) == Result::DUPLICATE_TX); // the tx ring survived
+        CHECK(b.isRedeemed(7) && b.isRedeemed(9) && !b.isRedeemed(8));
 
         // Every possible cut-off point (a power cut part way through a write) is refused and changes nothing.
-        for (size_t cut = 0; cut < img.size(); cut += 7) {
+        for (size_t cut = 0; cut < img.size(); cut += 97) {
             AccountTable c;
-            c.create("keepme", "1234", SALT, T0);
+            c.redeemCard(5, BONUS, T0, first);
             CHECK(!c.deserialize(img.data(), cut));
-            CHECK(c.count() == 1 && c.find("keepme") != nullptr);
+            CHECK(c.count() == 1 && c.find(5) != nullptr);
         }
         // One flipped bit anywhere is caught by the CRC.
-        for (size_t i = 0; i < img.size(); i += 11) {
+        for (size_t i = 0; i < img.size(); i += 113) {
             std::vector<uint8_t> bad(img);
             bad[i] ^= 0x10;
             AccountTable c;
             CHECK(!c.deserialize(bad.data(), bad.size()));
         }
-        // A valid CRC over nonsense (count too large / bad name) is refused too.
-        std::vector<uint8_t> huge(img);
-        huge[9] = 0xFF;
-        huge[10] = 0xFF;
+        // The old username-and-PIN file format (version 1) is refused, not misread.
+        std::vector<uint8_t> v1(img);
+        v1[4] = 1;
         AccountTable c;
-        CHECK(!c.deserialize(huge.data(), huge.size()));
-        // Saving again bumps the sequence number so the newer of two files can be told apart.
+        CHECK(!c.deserialize(v1.data(), v1.size()));
         uint32_t s1 = a.seq();
         save(a);
-        CHECK(a.seq() == s1 + 1);
+        CHECK(a.seq() == s1 + 1); // saving again bumps the sequence number so the newer of two files can be told apart
     }
 
     // ---- the cost limiter: a flood is refused, the window reopens, millis() wrap-around is safe ----
     {
         CostLimiter lim(3, 60000);
         CHECK(lim.allow(1000) && lim.allow(1001) && lim.allow(1002));
-        CHECK(!lim.allow(1003) && !lim.allow(30000)); // 4th and later inside the window: refused
+        CHECK(!lim.allow(1003) && !lim.allow(30000));
         CHECK(!lim.allow(1000 + 59999));
         CHECK(lim.allow(1000 + 60000)); // window over: open again
         CHECK(lim.allow(1000 + 60001) && lim.allow(1000 + 60002) && !lim.allow(1000 + 60003));
@@ -248,17 +249,17 @@ int main() {
         uint32_t near = 0xFFFFFF00u; // the 32-bit millis() counter is about to wrap
         CHECK(wrap.allow(near) && wrap.allow(near + 10) && !wrap.allow(near + 20));
         CHECK(!wrap.allow(near + 500));
-        CHECK(wrap.allow(near + 1000)); // 0xFFFFFF00 + 1000 wrapped past zero: still counts as a new window
+        CHECK(wrap.allow(near + 1000));
     }
 
     // ---- fuzz: random damage to a saved file is never accepted as a different valid table, and never crashes ----
     {
         AccountTable src;
-        for (int i = 0; i < 15; i++) {
-            char n[20];
-            snprintf(n, sizeof(n), "player%02d", i);
-            src.create(n, "1234", SALT, T0);
-            src.creditSeconds(n, 60 + i, "fz" + std::to_string(i), T0);
+        for (uint32_t i = 1; i <= 15; i++) {
+            scan(src, i * 100, 1, T0);
+            src.signOut(i * 100, T0);
+            src.setName(i * 100, "player" + std::to_string(i));
+            src.creditSeconds(i * 100, 60 + i, "fz" + std::to_string(i), T0);
         }
         std::vector<uint8_t> good = save(src);
         uint32_t rng = 12345;
@@ -267,7 +268,7 @@ int main() {
             return rng >> 8;
         };
         AccountTable keep;
-        keep.create("keepme", "1234", SALT, T0);
+        keep.redeemCard(5, BONUS, T0, first);
         int accepted = 0;
         for (int round = 0; round < 3000; round++) {
             std::vector<uint8_t> bad(good);
@@ -275,12 +276,12 @@ int main() {
             for (int e = 0; e < edits; e++)
                 bad[next() % bad.size()] ^= (uint8_t)(1u << (next() % 8));
             if (next() % 5 == 0) bad.resize(next() % bad.size());
-            AccountTable victim = keep; // a copy: creating an account per round would hash a PIN 3000 times
+            AccountTable victim = keep;
             if (victim.deserialize(bad.data(), bad.size())) {
                 accepted++; // only possible if the edits cancelled out, i.e. the bytes are the original
                 CHECK(bad == good);
             } else {
-                CHECK(victim.count() == 1 && victim.find("keepme") != nullptr); // a refused file changes nothing
+                CHECK(victim.count() == 1 && victim.find(5) != nullptr); // a refused file changes nothing
             }
         }
         CHECK(accepted < 5);

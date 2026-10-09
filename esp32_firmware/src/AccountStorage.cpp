@@ -14,7 +14,6 @@
 
 #include <Preferences.h>
 #include <SPIFFS.h>
-#include <esp_random.h>
 #include <new>
 
 static const char* ACCOUNTS_FILE = "/accounts.bin";
@@ -227,13 +226,4 @@ void accountsLoop() {
         saveNow();
         lastSaveMs = now; // also after a failure: retry every 30 s, not on every pass of the loop
     }
-}
-
-accounts::Result accountsCreate(const String& username, const String& pin) {
-    if (!table) return accounts::Result::INTERNAL;
-    uint8_t salt[accounts::SALT_BYTES];
-    esp_fill_random(salt, sizeof(salt));
-    accounts::Result r = table->create(username.c_str(), pin.c_str(), salt, accountsNowS());
-    if (r == accounts::Result::OK) accountsCommit(true);
-    return r;
 }

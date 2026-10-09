@@ -110,7 +110,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                     <div class="row-empty-msg">Loading accounts…</div>
                 </div>
                 <div class="panel-body">
-                    <p class="hint">Players keep unused time in an account. An account with no time that nobody has used for 30 days is deleted automatically. Time cannot be changed, and an account cannot be deleted, while its player is signed in on a phone.</p>
+                    <p class="hint">Each player has a QR card, and the card is their account. The first scan adds the card's starter time and asks the player for a name. Box ID for printing cards (scripts/make_cards.py --box): <span id="accounts_box_id" class="mono"></span>. An account with no time that nobody has used for 30 days is deleted automatically; scanning its card again gives an empty account, never a second starter time. Time cannot be changed, and an account cannot be deleted, while its player is signed in on a phone.</p>
                 </div>
             </div>
         </section>

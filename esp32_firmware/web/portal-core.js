@@ -239,22 +239,21 @@ window.toggleLocate = function(btn) {
 const ACCT_HEAD = '<div class="row head acct"><span>Player</span><span>Time left</span><span>Status</span><span></span></div>';
 
 function acctRow(a) {
-    const u = escHtml(a.user);
+    const who = a.name ? escHtml(a.name) : '<span class="muted">No name yet</span>';
     let status;
     if (a.slot > 0) status = '<span class="pill ok">Playing on slot ' + a.slot + '</span>';
-    else if (a.locked) status = '<span class="pill bad">PIN locked</span>';
     else if (a.idle_min < 0) status = '<span class="muted">–</span>';
     else status = '<span class="muted">Last used ' + (a.idle_min < 60 ? a.idle_min + ' min' : (a.idle_min < 2880 ? Math.round(a.idle_min / 60) + ' h' : Math.round(a.idle_min / 1440) + ' days')) + ' ago</span>';
     const busy = a.slot > 0 ? ' disabled title="Signed in on a phone"' : '';
+    const id = Number(a.id);
     return '<div class="row acct">' +
-        '<div class="ident"><div class="row-name">' + u + '</div></div>' +
+        '<div class="ident"><div class="row-name">' + who + '</div><div class="row-sub">Card No. ' + String(id).padStart(5, '0') + '</div></div>' +
         '<span class="row-time">' + fmtTime(a.balance_sec) + '</span>' +
         status +
         '<div class="row-actions">' +
-        '<button type="button" class="btn sm" data-user="' + u + '"' + busy + ' onclick="accountAdjust(this, 1)">+ Time</button>' +
-        '<button type="button" class="btn sm" data-user="' + u + '"' + busy + ' onclick="accountAdjust(this, -1)">– Time</button>' +
-        (a.locked ? '<button type="button" class="btn sm" data-user="' + u + '" onclick="accountUnlock(this)">Unlock</button>' : '') +
-        '<button type="button" class="btn sm danger" data-user="' + u + '"' + busy + ' onclick="accountDelete(this)">Delete</button>' +
+        '<button type="button" class="btn sm" data-id="' + id + '"' + busy + ' onclick="accountAdjust(this, 1)">+ Time</button>' +
+        '<button type="button" class="btn sm" data-id="' + id + '"' + busy + ' onclick="accountAdjust(this, -1)">– Time</button>' +
+        '<button type="button" class="btn sm danger" data-id="' + id + '"' + busy + ' onclick="accountDelete(this)">Delete</button>' +
         '</div></div>';
 }
 
@@ -267,21 +266,29 @@ window.fetchAccounts = function() {
             const list = data.accounts || [];
             const badge = document.getElementById('accounts_count');
             if (badge) badge.textContent = list.length + ' of ' + data.max;
-            const warn = data.failing ? '<div class="note bad"><svg class="ic"><use href="#i-alert"/></svg><span class="grow"><b>Accounts are not being saved to the box\'s memory.</b> Changes since the last good save would be lost if the box lost power. See Tools, Diagnostics.</span></div>' : '';
-            box.innerHTML = warn + (list.length
+            const idEl = document.getElementById('accounts_box_id');
+            if (idEl) idEl.textContent = data.box_id || '';
+            let notes = '';
+            if (!data.cards_ready) {
+                notes += '<div class="note bad"><svg class="ic"><use href="#i-alert"/></svg><span class="grow"><b>No card key is installed, so every QR card is refused.</b> Run scripts/make_card_key.py on your computer, commit the public key it writes, then rebuild and flash this box.</span></div>';
+            }
+            if (data.failing) {
+                notes += '<div class="note bad"><svg class="ic"><use href="#i-alert"/></svg><span class="grow"><b>Accounts are not being saved to the box\'s memory.</b> Changes since the last good save would be lost if the box lost power. See Tools, Diagnostics.</span></div>';
+            }
+            box.innerHTML = notes + (list.length
                 ? ACCT_HEAD + list.map(acctRow).join('')
-                : '<div class="row-empty-msg">No player accounts yet. Players create them on the phone, on the lock screen.</div>');
+                : '<div class="row-empty-msg">No accounts yet. A player\'s account is created the first time they scan a card on a phone.</div>');
         })
         .catch(err => { box.innerHTML = '<div class="row-empty-msg">' + escHtml(err.message) + '</div>'; });
 };
 document.addEventListener('DOMContentLoaded', fetchAccounts);
 setInterval(fetchAccounts, 15000);
 
-function accountPost(path, user, extra, done) {
+function accountPost(path, id, extra, done) {
     fetch(path, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'user=' + encodeURIComponent(user) + (extra || '')
+        body: 'id=' + encodeURIComponent(id) + (extra || '')
     })
         .then(res => res.json())
         .then(data => {
@@ -292,20 +299,16 @@ function accountPost(path, user, extra, done) {
 }
 
 window.accountAdjust = function(btn, sign) {
-    const user = btn.dataset.user;
-    const m = parseInt(prompt((sign > 0 ? 'Add how many minutes to ' : 'Remove how many minutes from ') + user + '?', '30'), 10);
+    const id = btn.dataset.id;
+    const m = parseInt(prompt((sign > 0 ? 'Add how many minutes to card ' : 'Remove how many minutes from card ') + id + '?', '30'), 10);
     if (!m || m < 1) return;
-    accountPost('/api/accounts/adjust', user, '&minutes=' + (sign * m), (sign > 0 ? 'Added ' : 'Removed ') + m + ' min ' + (sign > 0 ? 'to ' : 'from ') + user + '.');
-};
-
-window.accountUnlock = function(btn) {
-    accountPost('/api/accounts/unlock', btn.dataset.user, '', btn.dataset.user + ' can try their PIN again.');
+    accountPost('/api/accounts/adjust', id, '&minutes=' + (sign * m), (sign > 0 ? 'Added ' : 'Removed ') + m + ' min ' + (sign > 0 ? 'to ' : 'from ') + 'card ' + id + '.');
 };
 
 window.accountDelete = function(btn) {
-    const user = btn.dataset.user;
-    if (!confirm('Delete the account ' + user + '? Any time left in it is lost.')) return;
-    accountPost('/api/accounts/delete', user, '', 'Deleted ' + user + '.');
+    const id = btn.dataset.id;
+    if (!confirm('Delete the account for card ' + id + '? Any time left in it is lost, and the card gets no new starter time: scanning it again gives an empty account.')) return;
+    accountPost('/api/accounts/delete', id, '', 'Deleted the account for card ' + id + '.');
 };
 
 function setConn(ok) {
