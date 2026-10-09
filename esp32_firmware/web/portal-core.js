@@ -236,6 +236,77 @@ window.toggleLocate = function(btn) {
         .finally(() => { btn.disabled = false; });
 };
 
+const ACCT_HEAD = '<div class="row head acct"><span>Player</span><span>Time left</span><span>Status</span><span></span></div>';
+
+function acctRow(a) {
+    const u = escHtml(a.user);
+    let status;
+    if (a.slot > 0) status = '<span class="pill ok">Playing on slot ' + a.slot + '</span>';
+    else if (a.locked) status = '<span class="pill bad">PIN locked</span>';
+    else if (a.idle_min < 0) status = '<span class="muted">–</span>';
+    else status = '<span class="muted">Last used ' + (a.idle_min < 60 ? a.idle_min + ' min' : (a.idle_min < 2880 ? Math.round(a.idle_min / 60) + ' h' : Math.round(a.idle_min / 1440) + ' days')) + ' ago</span>';
+    const busy = a.slot > 0 ? ' disabled title="Signed in on a phone"' : '';
+    return '<div class="row acct">' +
+        '<div class="ident"><div class="row-name">' + u + '</div></div>' +
+        '<span class="row-time">' + fmtTime(a.balance_sec) + '</span>' +
+        status +
+        '<div class="row-actions">' +
+        '<button type="button" class="btn sm" data-user="' + u + '"' + busy + ' onclick="accountAdjust(this, 1)">+ Time</button>' +
+        '<button type="button" class="btn sm" data-user="' + u + '"' + busy + ' onclick="accountAdjust(this, -1)">– Time</button>' +
+        (a.locked ? '<button type="button" class="btn sm" data-user="' + u + '" onclick="accountUnlock(this)">Unlock</button>' : '') +
+        '<button type="button" class="btn sm danger" data-user="' + u + '"' + busy + ' onclick="accountDelete(this)">Delete</button>' +
+        '</div></div>';
+}
+
+window.fetchAccounts = function() {
+    const box = document.getElementById('accounts_container');
+    if (!box) return;
+    fetch('/api/accounts')
+        .then(res => { if (!res.ok) throw new Error(res.status === 503 ? 'Accounts are off on this box' : 'HTTP ' + res.status); return res.json(); })
+        .then(data => {
+            const list = data.accounts || [];
+            const badge = document.getElementById('accounts_count');
+            if (badge) badge.textContent = list.length + ' of ' + data.max;
+            box.innerHTML = list.length
+                ? ACCT_HEAD + list.map(acctRow).join('')
+                : '<div class="row-empty-msg">No player accounts yet. Players create them on the phone, on the lock screen.</div>';
+        })
+        .catch(err => { box.innerHTML = '<div class="row-empty-msg">' + escHtml(err.message) + '</div>'; });
+};
+document.addEventListener('DOMContentLoaded', fetchAccounts);
+setInterval(fetchAccounts, 15000);
+
+function accountPost(path, user, extra, done) {
+    fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'user=' + encodeURIComponent(user) + (extra || '')
+    })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) { notify(done, 'ok'); fetchAccounts(); }
+            else notify('Not changed: ' + (data.error === 'ALREADY_SIGNED_IN' ? 'the player is signed in on a phone.' : (data.error || 'unknown error')), 'bad');
+        })
+        .catch(err => notify('Could not reach the box: ' + err.message, 'bad'));
+}
+
+window.accountAdjust = function(btn, sign) {
+    const user = btn.dataset.user;
+    const m = parseInt(prompt((sign > 0 ? 'Add how many minutes to ' : 'Remove how many minutes from ') + user + '?', '30'), 10);
+    if (!m || m < 1) return;
+    accountPost('/api/accounts/adjust', user, '&minutes=' + (sign * m), (sign > 0 ? 'Added ' : 'Removed ') + m + ' min ' + (sign > 0 ? 'to ' : 'from ') + user + '.');
+};
+
+window.accountUnlock = function(btn) {
+    accountPost('/api/accounts/unlock', btn.dataset.user, '', btn.dataset.user + ' can try their PIN again.');
+};
+
+window.accountDelete = function(btn) {
+    const user = btn.dataset.user;
+    if (!confirm('Delete the account ' + user + '? Any time left in it is lost.')) return;
+    accountPost('/api/accounts/delete', user, '', 'Deleted ' + user + '.');
+};
+
 function setConn(ok) {
     const pill = document.getElementById('conn_pill');
     if (!pill) return;

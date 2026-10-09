@@ -11,6 +11,7 @@
 #include "InputSafety.h"
 #include "Security.h"
 #include "SetupGate.h"
+#include "WebServerAuth.h"
 #include "WebServerCoinslot.h"
 #include "WebServerModule.h"
 
@@ -212,6 +213,93 @@ void handleApiAccountInfo() {
         return;
     }
     answer(200, true, "", a);
+}
+
+// ---- admin dashboard ----
+
+static void adminAnswer(int code, bool ok, const char* error) {
+    String json = String("{\"success\":") + (ok ? "true" : "false");
+    if (error && error[0]) json += String(",\"error\":\"") + error + "\"";
+    webServer.send(code, "application/json", json + "}");
+}
+
+void handleApiAccountsList() {
+    if (!checkAdminAuth()) return;
+    if (!accountsReady()) {
+        adminAnswer(503, false, "ACCOUNTS_OFF");
+        return;
+    }
+    accounts::AccountTable& t = accountsTable();
+    uint32_t nowS = accountsNowS();
+    // Streamed one row at a time: 300 accounts as one String would need tens of KB of contiguous heap.
+    webServer.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    webServer.send(200, "application/json", "");
+    webServer.sendContent(String("{\"max\":") + String((unsigned)accounts::MAX_ACCOUNTS) + ",\"accounts\":[");
+    for (size_t i = 0; i < t.count(); i++) {
+        const accounts::Account& a = t.at(i);
+        // -1 while the box has no clock yet
+        long idleMin = (nowS == 0) ? -1L : (long)(accounts::idleFor(nowS, a.lastActiveS) / 60);
+        bool locked = nowS != 0 && nowS < a.lockedUntilS;
+        String row = String(i ? "," : "") + "{\"user\":\"" + a.username + "\",\"balance_sec\":" + String(a.balanceSec) +
+                     ",\"slot\":" + String((int)a.signedInSlot) + ",\"idle_min\":" + String(idleMin) +
+                     ",\"locked\":" + (locked ? "true" : "false") + "}";
+        webServer.sendContent(row);
+    }
+    webServer.sendContent("]}");
+    webServer.sendContent("");
+}
+
+// Reads the account name for an admin call; answers 400 and returns false when it is missing.
+static bool adminUser(String& user) {
+    user = userArg();
+    if (user.length() == 0) {
+        adminAnswer(400, false, "BAD_NAME");
+        return false;
+    }
+    return true;
+}
+
+void handleApiAccountsAdjust() {
+    if (!checkAdminAuth()) return;
+    if (!accountsReady()) return adminAnswer(503, false, "ACCOUNTS_OFF");
+    String user;
+    if (!adminUser(user)) return;
+    String m = webServer.hasArg("minutes") ? webServer.arg("minutes") : "";
+    m.trim();
+    long minutes = m.toInt();
+    if (minutes == 0 || minutes > 1440L * 30 || minutes < -1440L * 30) return adminAnswer(400, false, "BAD_MINUTES");
+    Result r = accountsTable().adjustSeconds(user.c_str(), (int64_t)minutes * 60, accountsNowS());
+    if (r == Result::OK) {
+        accountsCommit(true);
+        diagLog("[ACCT] admin changed '%s' by %ld min\n", user.c_str(), minutes);
+    }
+    adminAnswer(httpCodeFor(r), r == Result::OK, errorName(r));
+}
+
+void handleApiAccountsUnlock() {
+    if (!checkAdminAuth()) return;
+    if (!accountsReady()) return adminAnswer(503, false, "ACCOUNTS_OFF");
+    String user;
+    if (!adminUser(user)) return;
+    Result r = accountsTable().unlock(user.c_str());
+    if (r == Result::OK) accountsCommit(true);
+    adminAnswer(httpCodeFor(r), r == Result::OK, errorName(r));
+}
+
+void handleApiAccountsDelete() {
+    if (!checkAdminAuth()) return;
+    if (!accountsReady()) return adminAnswer(503, false, "ACCOUNTS_OFF");
+    String user;
+    if (!adminUser(user)) return;
+    accounts::AccountTable& t = accountsTable();
+    const accounts::Account* a = t.find(user.c_str());
+    if (a && a->signedInSlot != 0) return adminAnswer(409, false, "ALREADY_SIGNED_IN");
+    Result r = t.deleteAccount(user.c_str());
+    if (r == Result::OK) {
+        accountsCommit(true);
+        diagLog("[ACCT] admin deleted '%s'\n", user.c_str());
+    }
+    adminAnswer(httpCodeFor(r), r == Result::OK, errorName(r));
 }
 
 // A signed report rides on the heartbeat: acct, atime and asig = HMAC("v1:acct_report:<dev>:<ts>:<acct>:<atime>").

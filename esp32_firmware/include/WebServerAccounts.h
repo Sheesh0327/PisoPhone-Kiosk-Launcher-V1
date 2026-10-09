@@ -13,6 +13,16 @@ void handleApiAccountSignin();
 void handleApiAccountSignout();
 void handleApiAccountInfo();
 
+// Admin dashboard (box admin login): list the accounts without their PIN data, and change them.
+//   GET  /api/accounts                          every account: name, minutes left, slot, last use, locked
+//   POST /api/accounts/adjust  user, minutes    add (positive) or remove (negative) minutes; not while signed in
+//   POST /api/accounts/unlock  user             clear the wrong-PIN lock
+//   POST /api/accounts/delete  user             delete the account (and its time); not while signed in
+void handleApiAccountsList();
+void handleApiAccountsAdjust();
+void handleApiAccountsUnlock();
+void handleApiAccountsDelete();
+
 // Heartbeat hook. Applies the signed time report the phone may have attached (acct, atime, asig) and appends the box's
 // view of who is signed in on this slot (`,"acct":"...","acct_bal":N`) to the reply.
 void accountsOnHeartbeat(int slotNum, const String& deviceId, const String& tsStr, String& jsonReply);
