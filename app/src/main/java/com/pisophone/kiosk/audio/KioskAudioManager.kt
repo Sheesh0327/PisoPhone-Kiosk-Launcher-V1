@@ -380,16 +380,63 @@ class KioskAudioManager(
     }
 
     /**
-     * Soft "insert coin" cue that replaces the old ticking arpeggio: a gentle two-note chime every
-     * four seconds so the phone prompts for coins without droning on while the customer pays.
+     * Lively original 8-bit loop that plays while the phone waits for coins: a bouncy square-wave
+     * lead, a triangle bass and a light hi-hat over four bars at 150 BPM (6.4 s, loops seamlessly).
      */
     private fun generateWaitingMusicBuffer(): ShortArray {
-        val loopSec = 4.0
-        val mix = DoubleArray((loopSec * SAMPLE_RATE).toInt())
-        val chime = listOf(1.0 to 1.0, 2.0 to 0.25)
-        addNote(mix, 0.0, 659.25, 1.6, 0.30, 3.2, chime) // E5
-        addNote(mix, 0.28, 880.0, 2.2, 0.30, 2.6, chime) // A5
-        return toPcm(mix, 0.8)
+        val eighth = 0.2
+        val mix = DoubleArray((32 * eighth * SAMPLE_RATE).toInt())
+
+        // Semitones above C5; null is a rest.
+        val lead = listOf(
+            0, 4, 7, 4, 12, 7, 4, 7,
+            9, 5, 9, 12, 9, 5, 2, 5,
+            7, 4, 7, 11, 7, 4, 2, 4,
+            2, 5, 7, 11, 12, null, 7, null,
+        )
+        // Semitones above C3, one per quarter note.
+        val bass = listOf(
+            0, 7, 0, 7,
+            5, 12, 5, 12,
+            0, 7, 0, 7,
+            7, 14, 7, 7,
+        )
+        fun hz(semisFromC5: Int) = 523.25 * Math.pow(2.0, semisFromC5 / 12.0)
+
+        lead.forEachIndexed { i, semi ->
+            if (semi != null) addSquare(mix, i * eighth, hz(semi), eighth * 0.9, 0.15, 6.0)
+        }
+        bass.forEachIndexed { i, semi ->
+            addNote(mix, i * eighth * 2, 130.81 * Math.pow(2.0, semi / 12.0), eighth * 1.8, 0.24, 3.0, listOf(1.0 to 1.0, 3.0 to 0.12))
+        }
+        var seed = 12345
+        for (i in 0 until 32) {
+            if (i % 2 == 1) {
+                val first = ((i * eighth + 0.0) * SAMPLE_RATE).toInt()
+                for (n in 0 until (0.04 * SAMPLE_RATE).toInt()) {
+                    val idx = first + n
+                    if (idx >= mix.size) break
+                    seed = seed * 1103515245 + 12345
+                    val noise = ((seed shr 16) and 0x7fff) / 16384.0 - 1.0
+                    mix[idx] += noise * 0.06 * Math.exp(-n / (0.01 * SAMPLE_RATE))
+                }
+            }
+        }
+        return toPcm(mix, 0.9)
+    }
+
+    /** Mixes a square-wave note, the classic 8-bit lead voice. */
+    private fun addSquare(mix: DoubleArray, startSec: Double, freq: Double, durSec: Double, amp: Double, decayPerSec: Double) {
+        val first = (startSec * SAMPLE_RATE).toInt()
+        val count = (durSec * SAMPLE_RATE).toInt()
+        for (n in 0 until count) {
+            val idx = first + n
+            if (idx >= mix.size) break
+            val t = n.toDouble() / SAMPLE_RATE
+            val env = minOf(1.0, t / 0.003) * minOf(1.0, (durSec - t) / 0.01) * Math.exp(-t * decayPerSec)
+            val sq = if (Math.sin(2.0 * Math.PI * freq * t) >= 0.0) 1.0 else -1.0
+            mix[idx] += sq * env * amp
+        }
     }
 
     /** Bright rising arpeggio confirming the customer tapped Done and the connection is being set up. */
