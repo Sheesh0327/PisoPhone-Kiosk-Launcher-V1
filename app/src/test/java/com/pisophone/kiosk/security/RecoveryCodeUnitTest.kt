@@ -7,21 +7,23 @@ import org.junit.Test
 
 /** The vectors come from scripts/make_recovery_code.py (a throwaway key), so Python and the app agree on the format. */
 class RecoveryCodeUnitTest {
-    private const val PUBLIC_KEY =
-        "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEfjTvjxJ0qP9HOZEErHkh6QY4rxOS" +
-            "p+Yn8G3QITPdb2bNvTniqcjcZglppVDWkJXQ8UcqBtdm3UcKxSUNwirJ5g=="
+    private companion object {
+        private const val PUBLIC_KEY =
+            "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEfjTvjxJ0qP9HOZEErHkh6QY4rxOS" +
+                "p+Yn8G3QITPdb2bNvTniqcjcZglppVDWkJXQ8UcqBtdm3UcKxSUNwirJ5g=="
 
-    private const val OTHER_PUBLIC_KEY =
-        "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEZrSDp/GzuwWCR0e+rohB2MMRp92S" +
-            "JmofcYM/xTf1owjAC5oHoCxYO8NifmdNBP3eCRN/t6OsC9dgKj/h6T4abA=="
+        private const val OTHER_PUBLIC_KEY =
+            "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEZrSDp/GzuwWCR0e+rohB2MMRp92S" +
+                "JmofcYM/xTf1owjAC5oHoCxYO8NifmdNBP3eCRN/t6OsC9dgKj/h6T4abA=="
 
-    private const val CODE =
-        "PISOREC1.4102444800.MEQCIHPGzjYUGLX5wzlVSRmpz9fhZpREOvnn1e-mi2zR" +
-            "KvQmAiBTvGXgnDRfa2-IYMT2MpsOtC9xiXq3GXzxlSJ6aJrouA"
+        private const val CODE =
+            "PISOREC1.4102444800.MEQCIHPGzjYUGLX5wzlVSRmpz9fhZpREOvnn1e-mi2zR" +
+                "KvQmAiBTvGXgnDRfa2-IYMT2MpsOtC9xiXq3GXzxlSJ6aJrouA"
 
-    private const val CODE_TOO_FAR =
-        "PISOREC1.4102588800.MEQCIAnb0Nc3-tJVxPqw-yq-GS-yifq_YOMUyjFgAvSY" +
-            "v_VtAiADQiuFgy20Inefw4LsstMU3FL-DazTBF0BbqC3pxj57w"
+        private const val CODE_TOO_FAR =
+            "PISOREC1.4102588800.MEQCIAnb0Nc3-tJVxPqw-yq-GS-yifq_YOMUyjFgAvSY" +
+                "v_VtAiADQiuFgy20Inefw4LsstMU3FL-DazTBF0BbqC3pxj57w"
+    }
 
     private val expiry = 4102444800L
 

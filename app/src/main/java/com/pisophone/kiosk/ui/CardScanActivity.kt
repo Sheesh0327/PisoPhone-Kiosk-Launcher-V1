@@ -444,7 +444,7 @@ class CardScanActivity : ComponentActivity() {
         }
     }
 
-    private companion object {
+    companion object {
         private const val TAG = "CardScanActivity"
 
         /** Start the scanner as the recovery scanner (reads a recovery code instead of a card). */
