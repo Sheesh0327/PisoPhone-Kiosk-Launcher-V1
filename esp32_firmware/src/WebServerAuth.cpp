@@ -15,6 +15,46 @@
 #include <HTTPClient.h>
 #include "SuperAdminCreds.h"
 
+// A phone acknowledgement the AuthWorker confirmed, waiting for loop() to apply it (see WebServerAuth.h).
+struct WorkerAck {
+    char deviceId[97]; // PaymentRecord::targetId is the same size
+    char txId[64];     // PaymentRecord::txId is the same size
+};
+static const int WORKER_ACK_QUEUE_LEN = 16;
+static QueueHandle_t workerAckQueue = NULL;
+
+void initWorkerAckQueue() {
+    if (workerAckQueue == NULL) workerAckQueue = xQueueCreate(WORKER_ACK_QUEUE_LEN, sizeof(WorkerAck));
+}
+
+// Runs on the AuthWorker task: only copies the ids into the queue. If the queue is full or missing the payment simply stays
+// queued on the box and is offered again in 10 s; the phone then answers ALREADY_PROCESSED with a signed acknowledgement,
+// so nothing is lost by dropping an event here.
+static bool postWorkerAck(const String& deviceId, const String& txId) {
+    if (workerAckQueue == NULL || deviceId.length() >= sizeof(WorkerAck::deviceId) ||
+        txId.length() >= sizeof(WorkerAck::txId)) {
+        return false;
+    }
+    WorkerAck ack;
+    memset(&ack, 0, sizeof(ack));
+    strncpy(ack.deviceId, deviceId.c_str(), sizeof(ack.deviceId) - 1);
+    strncpy(ack.txId, txId.c_str(), sizeof(ack.txId) - 1);
+    return xQueueSend(workerAckQueue, &ack, 0) == pdTRUE;
+}
+
+// Runs on the loop() task, the only task that may change the account table and phone slots.
+void processWorkerAcks() {
+    if (workerAckQueue == NULL) return;
+    WorkerAck ack;
+    // bounded per pass so a burst cannot stall the coin loop
+    for (int n = 0; n < WORKER_ACK_QUEUE_LEN && xQueueReceive(workerAckQueue, &ack, 0) == pdTRUE; n++) {
+        if (acknowledgePhonePayment(String(ack.deviceId), String(ack.txId))) {
+            Serial.printf("[AUTH WORKER] Durable phone ACK accepted for tx_id='%s' (device: %s)\n", ack.txId,
+                          ack.deviceId);
+        }
+    }
+}
+
 void authWorkerTask(void* pvParameters) {
     AuthRequest req;
     while (true) {
@@ -158,10 +198,10 @@ void authWorkerTask(void* pvParameters) {
 
                             if (ackValid) {
                                 delivered = true;
-                                if (acknowledgePhonePayment(currentDevId, currentTxId)) {
+                                if (!postWorkerAck(currentDevId, currentTxId)) {
                                     Serial.printf(
-                                        "[AUTH WORKER] Durable phone ACK accepted for tx_id='%s' (device: %s)\n",
-                                        currentTxId.c_str(), currentDevId.c_str());
+                                        "[AUTH WORKER] ACK for tx_id='%s' not queued; the box will offer it again.\n",
+                                        currentTxId.c_str());
                                 }
                             } else {
                                 Serial.printf(

@@ -4,6 +4,10 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Developers (coin box firmware): the background task that delivers coins to phones no longer changes the player-account table or
+  the phone slots itself. When a phone confirms a coin it now hands the confirmation to the main loop, the only task that owns
+  that state, so the two can no longer change the account table at the same moment. A confirmation that cannot be handed over
+  is harmless: the coin stays queued and the box offers it again 10 seconds later.
 - The router already looked for signed updates every hour and installed them when no customer was online (`piso-setup auto-update
   on|off`, on by default). `piso-setup status` now also checks that the hourly job is scheduled with the scheduler running, and
   that it ran in the last 3 hours, so a router that stopped checking is noticed. Release 1.2.3.
