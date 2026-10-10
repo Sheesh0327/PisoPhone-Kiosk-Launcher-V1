@@ -162,6 +162,14 @@ void handleSave() {
         wifiPass = webServer.arg(NVS_KEY_WIFI_PASS);
         prefs.putString(NVS_KEY_WIFI_PASS, wifiPass);
     }
+    if (webServer.hasArg(NVS_KEY_KIOSK_WIFI_PASS)) {
+        // the router's PisoKiosk password for the rental phones (empty clears it); an invalid one is ignored
+        String kp = webServer.arg(NVS_KEY_KIOSK_WIFI_PASS);
+        if (kp.length() == 0 || setupgate::kioskWifiPasswordValid(kp.c_str())) {
+            kioskWifiPass = kp;
+            prefs.putString(NVS_KEY_KIOSK_WIFI_PASS, kioskWifiPass);
+        }
+    }
     if (webServer.hasArg(NVS_KEY_U_COIN_PIN)) {
         universalCoinPin = webServer.arg(NVS_KEY_U_COIN_PIN).toInt();
         prefs.putInt(NVS_KEY_U_COIN_PIN, universalCoinPin);

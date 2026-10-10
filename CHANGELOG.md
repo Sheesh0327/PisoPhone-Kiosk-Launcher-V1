@@ -4,6 +4,11 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Nobody types the PisoKiosk Wi-Fi password into the phone setup page any more. The router gives it to the coin box (setup,
+  `piso-setup kiosk-wifi`, every router update, and the hourly update check repairs a box that lost it), and the box's
+  "Set up a phone" link carries it. A phone can no longer be set up with a stale or mistyped password, which installed fine but
+  never found its box. Needs box firmware 3.3.3 and router release 1.2.1 (sign and publish it like 1.2.0); an older box just
+  keeps asking for the password, and `piso-setup status` says so.
 - A paired phone could be refused for good (shown offline on the dashboard, no arming) after it had once talked to the box with
   a wrong clock: the box kept that bogus time as the phone's "newest request" and refused every later request as older. The box
   now ignores a stored time that lies beyond what its master clock could have produced and replaces it with the next accepted

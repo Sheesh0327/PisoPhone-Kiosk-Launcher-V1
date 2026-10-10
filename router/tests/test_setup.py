@@ -1,7 +1,7 @@
 """Tests of setup/piso-setup.sh (the one-file router setup) without a router: a fake uci with canned radios, the generated
 settings, the payload, the helpers, and the coin box provisioning against a fake box.
 Run with:  python3 router/tests/test_setup.py"""
-import http.server, json, os, re, shutil, subprocess, sys, tempfile, threading, base64
+import urllib.parse, http.server, json, os, re, shutil, subprocess, sys, tempfile, threading, base64
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SCRIPT = f"{ROOT}/setup/piso-setup.sh"
@@ -294,6 +294,8 @@ fake_uci({"radio0": "2g", "radio1": "5g"})
 class Box(http.server.BaseHTTPRequestHandler):
     admin = "Coinslot@Setup"
     key = None
+    kiosk = None
+    kiosk_support = True
     log = []
 
     def log_message(self, *a):
@@ -315,12 +317,21 @@ class Box(http.server.BaseHTTPRequestHandler):
         if self.path == "/save" and "wifi_pass" in body:
             Box.wifi = body["wifi_pass"]
             self.send_response(200); self.end_headers(); self.wfile.write(b"{}"); return
+        if self.path == "/save" and "kiosk_wifi" in body:
+            if not Box.kiosk_support:
+                self.send_response(404); self.end_headers(); return   # a box with older firmware
+            Box.kiosk = urllib.parse.unquote_plus(body["kiosk_wifi"])
+            self.send_response(200); self.end_headers(); self.wfile.write(b"{}"); return
         if self.path == "/api/gateway/config":
             Box.key = body.get("key")
             self.send_response(200); self.end_headers(); self.wfile.write(b'{"success":true,"configured":true}'); return
         self.send_response(404); self.end_headers()
 
     def do_GET(self):
+        if self.path == "/" and self._auth():
+            link = "&wifi_pass=" + urllib.parse.quote_plus(Box.kiosk) if Box.kiosk else ""
+            self.send_response(200); self.end_headers()
+            self.wfile.write(f'<a href="https://pisophone.pages.dev/?mac=AA&secret=xyz{link}">Set up a phone</a>'.encode()); return
         self.send_response(200); self.end_headers(); self.wfile.write(b'{"error":"GATEWAY_DISABLED"}')
 
 
@@ -338,6 +349,40 @@ r = lib('provision_box NewPassw0rdXYZ ' + "ef" * 32 + "; echo rc=$?", env={"BOX_
 check("rc=0" not in r.stdout and "factory" in r.stdout.lower(), "a box with an unknown password gives a clear message: " + r.stdout)
 r = lib('provision_box NewPassw0rdXYZ ' + "ef" * 32 + "; echo rc=$?", env={"BOX_IP": addr, "PISO_CONF": f"{tmp}/fresh", "BOX_ADMIN_PASSWORD": "SomethingElse1"})
 check("rc=0" in r.stdout and Box.key == "ef" * 32, "BOX_ADMIN_PASSWORD lets setup adopt an already set-up box: " + r.stdout)
+
+# ---- the phones' PisoKiosk password goes to the box (its "Set up a phone" link then carries it) -----------------------------
+Box.admin = "NewPassw0rdXYZ"
+KP = "Pa&ss#w0rd+1%"
+pre = f"conf_set BOX_ADMIN_PASS NewPassw0rdXYZ; conf_set KIOSK_PASS '{KP}'; "
+r = lib(pre + "push_kiosk_wifi; echo rc=$?", env={"BOX_IP": addr})
+check("rc=0" in r.stdout and Box.kiosk == KP, f"the router gives the box the PisoKiosk password, special characters intact: {Box.kiosk!r} {r.stdout}{r.stderr}")
+r = lib(pre + "kiosk_wifi_on_box; echo rc=$?", env={"BOX_IP": addr})
+check("rc=0" in r.stdout, "the check sees the password in the box's link: " + r.stdout + r.stderr)
+Box.kiosk = "something-else"
+r = lib(pre + "kiosk_wifi_on_box; echo rc=$?", env={"BOX_IP": addr})
+check("rc=1" in r.stdout, "a different password in the link is not accepted (the router's password changed)")
+r = lib(pre + "sync_kiosk_wifi; echo rc=$?", env={"BOX_IP": addr})
+check("rc=0" in r.stdout and Box.kiosk == KP, "sync fixes a box that has an old password: " + r.stdout)
+Box.kiosk = None
+r = lib(pre + "kiosk_wifi_on_box; echo rc=$?", env={"BOX_IP": addr})
+check("rc=1" in r.stdout, "a box whose link carries nothing fails the check")
+r = lib(pre + "sync_kiosk_wifi; echo rc=$?", env={"BOX_IP": addr})
+check("rc=0" in r.stdout and Box.kiosk == KP, "sync fills it in when missing")
+Box.kiosk = None
+r = lib(pre + "provision_box NewPassw0rdXYZ " + "12" * 32 + "; echo rc=$?", env={"BOX_IP": addr})
+check("rc=0" in r.stdout and Box.kiosk == KP, "setting up a box also gives it the password: " + r.stdout + r.stderr)
+Box.kiosk = None; Box.kiosk_support = False
+r = lib(pre + "provision_box NewPassw0rdXYZ " + "12" * 32 + "; echo rc=$?; push_kiosk_wifi; echo rc2=$?", env={"BOX_IP": addr})
+check("rc=0" in r.stdout and "rc2=0" in r.stdout and "did not take the PisoKiosk password" in r.stdout and Box.kiosk is None,
+      "a box with older firmware is not an error: " + r.stdout + r.stderr)
+Box.kiosk_support = True
+r = lib("conf_set KIOSK_PASS ''; push_kiosk_wifi; echo rc=$?", env={"BOX_IP": addr})
+check("rc=0" in r.stdout, "nothing to give when the router has no PisoKiosk password")
+auto = text.split("cmd_self_update() {")[1].split("\n}\n")[0]
+check("sync_kiosk_wifi" in auto and auto.index("sync_kiosk_wifi") < auto.index("router.json"), "the hourly update also gives the box the password")
+check("sync_kiosk_wifi" in text.split("cmd_update() {")[1].split("\n}\n")[0], "an update gives the box the password")
+check("kiosk_wifi_on_box" in text.split("check_all() {")[1].split("\n}\n")[0], "status checks that the link carries the password")
+check("kiosk-wifi" in text.split("main() {")[1], "piso-setup kiosk-wifi exists")
 
 # ---- the box's own Wi-Fi password -----------------------------------------------------------------------------------------------
 Box.wifi = None

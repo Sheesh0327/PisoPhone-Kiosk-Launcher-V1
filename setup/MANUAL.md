@@ -84,7 +84,7 @@ network; /etc/init.d/network restart`, then log in at 10.0.0.1), then copy the f
 scp -O setup/piso-setup.sh root@10.0.0.1:/root/
 ssh root@10.0.0.1 'sed -i "s/\r$//" piso-setup.sh && sh piso-setup.sh'
 ```
-Answer `y` when asked. It then asks for the **public Wi-Fi name** (default `PisoWiFi`; Enter keeps it; 32 characters at most, no quotes; the rental-phone network is always the hidden `PisoKiosk`) and then to choose **three passwords** (each typed twice, not shown; just press Enter to have a strong one generated for you): the router password (SSH and LuCI), the **PisoKiosk Wi-Fi** password (typed into each phone's setup page) and the **coin box admin** password (the box's web page, also the phones' admin PIN). Use 8 or more characters without spaces or quotes. The coin box's *super-admin* password is not asked: the firmware keeps it under remote management and it cannot be set locally. For unattended runs set `ROOT_PASSWORD`, `KIOSK_PASSWORD` and `BOX_NEW_ADMIN_PASSWORD` in the environment. Before anything is changed it shows a **review screen** (names, which passwords you chose and which will be generated, router address and country) and asks `Apply these settings? [y/N]`. It also asks for a **site name** (printed on the setup sheet and shown in Telegram messages) and offers to connect **Telegram** at the end of the setup. It runs in front of you for about 3 to 8 minutes and **keeps your SSH session open the whole time**: it installs packages, creates the networks, waits for the ESP32 to join, sets its password and key, starts everything and ends with a health check. When it prints `SETUP COMPLETE`, read the summary:
+Answer `y` when asked. It then asks for the **public Wi-Fi name** (default `PisoWiFi`; Enter keeps it; 32 characters at most, no quotes; the rental-phone network is always the hidden `PisoKiosk`) and then to choose **three passwords** (each typed twice, not shown; just press Enter to have a strong one generated for you): the router password (SSH and LuCI), the **PisoKiosk Wi-Fi** password (the router gives it to the coin box, whose *Set up a phone* link carries it, so nobody types it) and the **coin box admin** password (the box's web page, also the phones' admin PIN). Use 8 or more characters without spaces or quotes. The coin box's *super-admin* password is not asked: the firmware keeps it under remote management and it cannot be set locally. For unattended runs set `ROOT_PASSWORD`, `KIOSK_PASSWORD` and `BOX_NEW_ADMIN_PASSWORD` in the environment. Before anything is changed it shows a **review screen** (names, which passwords you chose and which will be generated, router address and country) and asks `Apply these settings? [y/N]`. It also asks for a **site name** (printed on the setup sheet and shown in Telegram messages) and offers to connect **Telegram** at the end of the setup. It runs in front of you for about 3 to 8 minutes and **keeps your SSH session open the whole time**: it installs packages, creates the networks, waits for the ESP32 to join, sets its password and key, starts everything and ends with a health check. When it prints `SETUP COMPLETE`, read the summary:
 ```
 cat /root/piso-setup-summary.txt
 ```
@@ -109,8 +109,10 @@ It has every password (router, PisoKiosk Wi-Fi, coin box admin). The setup also 
 The router needs internet for this: while the site is offline nothing can be sent, and alerts raised in that time are not delivered later (the dead-man switch covers that case).
 
 ## Step 5: set up each rental phone (QR code, or USB as the fallback)
-Open the box's page, click **Set up a phone** for the slot, and type the **PisoKiosk** Wi-Fi password (from
-`piso-setup summary`; the page remembers it on that computer). Then:
+Open the box's page and click **Set up a phone**. The page already has the **PisoKiosk** Wi-Fi password: the router
+gives it to the box (`piso-setup kiosk-wifi` repeats that; the hourly update check also repairs a box that lost it), and the
+box's link carries it. Type it (from `piso-setup summary`) only if the page asks, for example when you open the page some
+other way. The status check says if the box's link does not carry it. Then:
 
 **QR code (recommended; USB only for the phones that need it):**
 1. Use a new or **factory-reset** phone. On the first welcome screen, **tap the same spot 6 times**: a QR reader opens (some
