@@ -2,6 +2,7 @@
 #include "WebDashboardHtml.h"
 #include "Config.h"
 #include "DeviceManager.h"
+#include "DeviceNetwork.h"
 #include "Security.h"
 #include <WiFi.h>
 
@@ -80,8 +81,10 @@ String renderPhoneSlotsHtml() {
     // Head: title and the two setup links
     html += "<div class=\"panel-head\"><h2>" + icon("phone") + "Phone slots <span class=\"panel-sub\">Up to " +
             String(MAX_SUPPORTED_SLOTS) + " phones</span></h2><div class=\"actions\">";
-    html += "<a class=\"btn primary sm\" href=\"" + setupBase + "&secret=" + secret + "\">" + icon("download") +
-            "Set up a phone</a>";
+    // the router gives the box the phones' Wi-Fi password, so the setup page needs no typing
+    String kioskLink = kioskWifiPass.length() > 0 ? String("&wifi_pass=") + urlEncode(kioskWifiPass) : String("");
+    html += "<a class=\"btn primary sm\" href=\"" + setupBase + "&secret=" + secret + kioskLink + "\">" +
+            icon("download") + "Set up a phone</a>";
     html +=
         "<a class=\"btn sm\" href=\"" + setupBase + "&mode=deprovision\">" + icon("trash") + "Remove from a phone</a>";
     html += "</div></div>";

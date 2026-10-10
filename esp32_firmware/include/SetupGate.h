@@ -25,6 +25,19 @@ inline bool passwordAcceptable(const char* candidate) {
     return std::strlen(candidate) >= MIN_PASSWORD_LENGTH && std::strcmp(candidate, DEFAULT_PASSWORD) != 0;
 }
 
+// The password of the rental phones' hidden Wi-Fi (PisoKiosk), which the router hands to the box so the "Set up a phone"
+// link can carry it. Wi-Fi allows 8-63 printable characters; nothing else is stored.
+inline bool kioskWifiPasswordValid(const char* candidate) {
+    if (!candidate) return false;
+    size_t n = std::strlen(candidate);
+    if (n < 8 || n > 63) return false;
+    for (size_t i = 0; i < n; i++) {
+        unsigned char c = static_cast<unsigned char>(candidate[i]);
+        if (c < 0x20 || c > 0x7E) return false;
+    }
+    return true;
+}
+
 // Coins may only be accepted once the operator has chosen their own admin password.
 inline bool usageAllowed(bool adminPasswordChanged) {
     return adminPasswordChanged;

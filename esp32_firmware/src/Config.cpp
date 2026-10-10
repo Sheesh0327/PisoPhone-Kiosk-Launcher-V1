@@ -52,6 +52,7 @@ bool relayActiveLow = false;
 
 String wifiSsid = setupgate::DEFAULT_WIFI_SSID; // the hidden network the router setup script creates for the box
 String wifiPass = setupgate::DEFAULT_WIFI_PASSWORD;
+String kioskWifiPass = "";
 String androidIps = "";
 String webPassword = "";
 bool adminPwChanged = false;
@@ -300,6 +301,7 @@ const char* const NVS_KEY_IPS = "ips";
 
 const char* const NVS_KEY_WIFI_SSID = "wifi_ssid";
 const char* const NVS_KEY_WIFI_PASS = "wifi_pass";
+const char* const NVS_KEY_KIOSK_WIFI_PASS = "kiosk_wifi";
 const char* const NVS_KEY_U_COIN_PIN = "u_coin_pin";
 const char* const NVS_KEY_LED_PIN = "led_pin";
 const char* const NVS_KEY_LED_ACTIVE_LOW = "led_act_low";
@@ -484,6 +486,7 @@ void loadAllConfig() {
     prefs.begin(NVS_NAMESPACE, false);
     wifiSsid = prefs.getString(NVS_KEY_WIFI_SSID, wifiSsid);
     wifiPass = prefs.getString(NVS_KEY_WIFI_PASS, wifiPass);
+    kioskWifiPass = prefs.getString(NVS_KEY_KIOSK_WIFI_PASS, "");
     universalCoinPin = prefs.getInt(NVS_KEY_U_COIN_PIN, universalCoinPin);
     ledPin = prefs.getInt(NVS_KEY_LED_PIN, ledPin);
     ledActiveLow = prefs.getBool(NVS_KEY_LED_ACTIVE_LOW, DEFAULT_LED_ACTIVE_LOW);
@@ -568,6 +571,7 @@ void factoryResetDefaults(bool ownerWipe) {
 
     wifiSsid = setupgate::DEFAULT_WIFI_SSID;
     wifiPass = setupgate::DEFAULT_WIFI_PASSWORD;
+    kioskWifiPass = "";
     universalCoinPin = DEFAULT_UNIVERSAL_COIN_PIN;
     ledPin = DEFAULT_LED_PIN;
     ledActiveLow = DEFAULT_LED_ACTIVE_LOW;

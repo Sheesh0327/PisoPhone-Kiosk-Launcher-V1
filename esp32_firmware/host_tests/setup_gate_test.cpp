@@ -1,6 +1,7 @@
 #include "../include/SetupGate.h"
 
 #include <cstdio>
+#include <string>
 
 static int checks = 0, failures = 0;
 #define CHECK(c)                                                                                                       \
@@ -26,6 +27,17 @@ int main() {
     CHECK(passwordAcceptable("12345678"));
     CHECK(passwordAcceptable("My-shop-2026"));
     CHECK(passwordAcceptable("coinslot@setup")); // only the exact default is refused
+
+    // the phones' Wi-Fi password the router hands over: 8-63 printable characters
+    CHECK(!kioskWifiPasswordValid(nullptr));
+    CHECK(!kioskWifiPasswordValid(""));
+    CHECK(!kioskWifiPasswordValid("1234567"));
+    CHECK(kioskWifiPasswordValid("12345678"));
+    CHECK(kioskWifiPasswordValid("a&b#c%d+e=f g!"));
+    CHECK(kioskWifiPasswordValid(std::string(63, 'x').c_str()));
+    CHECK(!kioskWifiPasswordValid(std::string(64, 'x').c_str()));
+    CHECK(!kioskWifiPasswordValid("tab\there1234"));
+    CHECK(!kioskWifiPasswordValid("caf\xC3\xA9-password"));
 
     // coins only after the operator's own password
     CHECK(!usageAllowed(false));

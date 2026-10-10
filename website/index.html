@@ -65,9 +65,10 @@
         <div id="installPanel" class="stack">
             <div class="field">
                 <label for="wifiPass"><svg class="ic"><use href="#i-wifi"/></svg> PisoKiosk Wi-Fi password</label>
-                <input type="text" id="wifiPass" value="" placeholder="From the router's setup summary" autocomplete="off" spellcheck="false">
+                <input type="text" id="wifiPass" value="" placeholder="Filled in by the coin box's link" autocomplete="off" spellcheck="false">
+                <span id="wifiFromBox" class="hint hidden">Given by your coin box: nothing to type.</span>
                 <span id="wifiRemembered" class="hint warn hidden">Filled in from the last setup on this computer. If the router was reset or set up again, its PisoKiosk password changed: type the new one (<code>piso-setup summary</code>), or the phone will install but never find its box.</span>
-                <span class="hint">The phone joins the hidden <code>PisoKiosk</code> network by itself and keeps rejoining it. It finds its coin box only there. The password is in the router's setup summary (<code>piso-setup summary</code>, "PisoKiosk Wi-Fi").</span>
+                <span class="hint">The phone joins the hidden <code>PisoKiosk</code> network by itself and keeps rejoining it. It finds its coin box only there. Opened from the coin box's <i>Set up a phone</i> button, this page already has the password. Opened any other way, type the one in the router's setup summary (<code>piso-setup summary</code>, "PisoKiosk Wi-Fi").</span>
             </div>
 
             <div class="seg" role="tablist">
@@ -207,8 +208,9 @@
                 const fromLink = urlParams.get('wifi_pass');
                 const remembered = fromLink ? '' : (localStorage.getItem('pisoWifiPass') || '');
                 wifiPass.value = fromLink || remembered;
+                if (fromLink) $('wifiFromBox').classList.remove('hidden');
                 if (remembered) $('wifiRemembered').classList.remove('hidden');
-                wifiPass.addEventListener('input', () => $('wifiRemembered').classList.add('hidden'));
+                wifiPass.addEventListener('input', () => { $('wifiRemembered').classList.add('hidden'); $('wifiFromBox').classList.add('hidden'); });
             } catch (e) {}
             function currentProv() {
                 const prov = P.validateProvisioning({ ...linkProv, slot: linkProv.slot ? String(linkProv.slot) : '', wifiSsid: P.DEFAULT_SSID, wifiPass: wifiPass.value });

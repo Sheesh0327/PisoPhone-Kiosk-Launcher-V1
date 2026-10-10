@@ -18,7 +18,7 @@
 # Everything is generated here (Wi-Fi password, box admin password, gateway key) and printed once at the end and saved in
 # /root/piso-setup-summary.txt. Running the file again is safe: it keeps what it already made.
 #
-# Other commands (after setup): piso-setup status | wifi-name "<name>" | guest-port [lanN|off] | pair | summary | test-coin | diag | box-diag | set-password | reconcile [rebase] | telegram | rotate-box-wifi | handout | lock-admin | unlock-admin | update [check] (installs the newest release from the website; same as self-update) | self-update [check] | auto-update on|off
+# Other commands (after setup): piso-setup status | wifi-name "<name>" | guest-port [lanN|off] | pair | summary | test-coin | diag | box-diag | set-password | reconcile [rebase] | telegram | rotate-box-wifi | kiosk-wifi | handout | lock-admin | unlock-admin | update [check] (installs the newest release from the website; same as self-update) | self-update [check] | auto-update on|off
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation
@@ -556,6 +556,39 @@ provision_box() {
 	box_curl "$_new" /api/gateway/config --data-urlencode "key=$_key"
 	printf '%s' "$BOXOUT" | grep -q '"configured":true' || die "the box did not accept the gateway key (HTTP $BOXCODE: $BOXOUT)"
 	log "the gateway key is set on the box"
+	push_kiosk_wifi
+}
+
+# The rental phones' PisoKiosk password goes to the box, which writes it into its "Set up a phone" link: the setup page
+# needs no typing, and a phone can no longer be set up with a stale or mistyped password. Never fatal: an older box (firmware
+# before 3.3.3) ignores it, and the status check says when the link does not carry it yet.
+push_kiosk_wifi() {
+	_kp=$(conf_get KIOSK_PASS); _bp=$(conf_get BOX_ADMIN_PASS)
+	[ -n "$_kp" ] && [ -n "$_bp" ] || return 0
+	box_curl "$_bp" /save --data-urlencode "kiosk_wifi=$_kp"
+	case "$BOXCODE" in
+		200 | 302 | 303) log "the coin box has the PisoKiosk password: its \"Set up a phone\" link carries it" ;;
+		*) log "the coin box did not take the PisoKiosk password (HTTP ${BOXCODE:-none}); the setup page will ask for it. Run again: piso-setup kiosk-wifi" ;;
+	esac
+	return 0
+}
+
+# kiosk_wifi_on_box: the box's "Set up a phone" link carries this router's current PisoKiosk password
+kiosk_wifi_on_box() {
+	_kp=$(conf_get KIOSK_PASS); _bp=$(conf_get BOX_ADMIN_PASS)
+	[ -n "$_kp" ] && [ -n "$_bp" ] || return 1
+	# (curl writes %2b where the box writes %2B: the escapes are put in capitals before comparing; letters are left alone)
+	_enc=$(curl -Gso /dev/null -w '%{url_effective}' --data-urlencode "wifi_pass=$_kp" "http://127.0.0.1:9/" 2> /dev/null | sed 's/^[^?]*?//' |
+		awk '{ o = ""; s = $0; while (match(s, /%[0-9a-f][0-9a-f]/)) { o = o substr(s, 1, RSTART - 1) toupper(substr(s, RSTART, 3)); s = substr(s, RSTART + 3) } print o s }')
+	[ -n "$_enc" ] || return 1
+	curl -s -m 8 -u "admin:$_bp" "http://$BOX_IP/" 2> /dev/null | grep -qF "&wifi_pass=${_enc#wifi_pass=}\""
+}
+
+# sync_kiosk_wifi: give the box the password when it does not have it (a box that was reflashed, updated or reset since)
+sync_kiosk_wifi() {
+	box_up || return 0
+	kiosk_wifi_on_box || push_kiosk_wifi
+	return 0
 }
 
 # rotate_box_wifi: the firmware's built-in Wi-Fi password is public, so once the box is paired (and only its MAC is admitted)
@@ -590,7 +623,7 @@ PisoPhone setup summary ($(date '+%F %T'), setup file version $VERSION)
 Keep this file private (it is readable by root only).
 
 Router (SSH / LuCI):   root@$LAN_IP        password: $(if [ "$(conf_get ROOT_PASS_SET)" = 1 ]; then conf_get ROOT_PASS; else echo "NOT SET by this setup (the router keeps its previous one): run piso-setup set-password"; fi)
-Kiosk Wi-Fi:           $KIOSK_SSID (HIDDEN)   password: $(conf_get KIOSK_PASS)    (rental phones only; type the name and password on each phone's setup page)
+Kiosk Wi-Fi:           $KIOSK_SSID (HIDDEN)   password: $(conf_get KIOSK_PASS)    (rental phones only; the coin box's "Set up a phone" link carries it, nobody types it)
 PisoWiFi (customers):  $(conf_get GUEST_NAME)   (open; rename with: piso-setup wifi-name "New Name")
 Coin box:              http://$BOX_IP      admin password: $(conf_get BOX_ADMIN_PASS)    hidden Wi-Fi: $BOX_SSID (only MAC $(conf_get BOX_MAC))
 
@@ -618,6 +651,7 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 	_ck "the coin box has its own Wi-Fi password (not the published default)" "[ \"\$(uci -q get wireless.box_ap.key)\" != '$BOX_DEFAULT_WIFI' ]"
 	_ck "hidden Wi-Fi $BOX_SSID is on and locked to the box" "[ \"\$(uci -q get wireless.box_ap.macfilter)\" = allow ] && [ -n \"\$(uci -q get wireless.box_ap.maclist)\" ]"
 	_ck "coin box answers at $BOX_IP" box_up
+	_ck "the coin box's \"Set up a phone\" link carries the PisoKiosk password (box firmware 3.3.3 or newer; else: piso-setup kiosk-wifi)" kiosk_wifi_on_box
 	_ck "the portal is running and answers guests on $GUEST_IP:$PORTAL_PORT" "curl -s -m 4 http://$GUEST_IP:$PORTAL_PORT/ping | grep -q ok"
 	_ck "the portal can talk to the box (signed request)" "/usr/bin/pisoportal box | grep -qi answers"
 	_gp=$(conf_get GUEST_PORT)
@@ -878,6 +912,7 @@ cmd_update() {
 	remove_old_portal
 	extract_payload "$0"
 	write_coinslot_conf "$(conf_get GW_KEY)" "$(conf_get BOX_MAC)"
+	sync_kiosk_wifi
 	[ -x /etc/init.d/pisoportal ] && { /etc/init.d/pisoportal enable; /etc/init.d/pisoportal start; }
 	# openNDS and the firewall as this version needs them (a router set up with the earlier ThemeSpec portal is moved over)
 	(umask 077; { portal_uci "$(conf_get GUEST_NAME)"; router_access_uci; } > /tmp/piso-setup.uci)
@@ -979,6 +1014,7 @@ cmd_self_update() {
 	trap 'rm -rf "$_work" "$_lock"' EXIT
 	rm -rf "$_work"; (umask 077; mkdir -p "$_work") || die "could not create $_work"
 
+	[ "$_mode" != auto ] || sync_kiosk_wifi   # (hourly: a box that lost or never got the phones' Wi-Fi password gets it)
 	_base=$(conf_get UPDATE_URL); _base="${_base:-$UPDATE_URL_DEFAULT}"
 	if ! fetch_url "$_base/router.json" "$_work/router.json" 20000; then
 		log "No update information at $_base (offline, or nothing published yet)."
@@ -1132,7 +1168,7 @@ code{font:1.05em monospace}.warn{border:2px solid #b00;padding:.6rem 1rem;margin
 <tr><th>Coin box admin page</th><td>address <code>http://${BOX_IP}</code> (on the PisoKiosk network)<br>user <code>admin</code><br>password <code>${_bp}</code><br>This password is also the admin PIN of the rental phones.</td></tr>
 <tr><th>Router login (SSH / LuCI)</th><td>address <code>${LAN_IP}</code> (on the PisoKiosk network or a LAN cable)<br>user <code>root</code><br>password <code>${_rp}</code></td></tr>
 </table>
-<p><b>Setting up a new rental phone:</b> open the coin box admin page, tap <i>Set up a phone</i>, type the PisoKiosk password above on the page, and plug the phone in by USB.</p>
+<p><b>Setting up a new rental phone:</b> open the coin box admin page and tap <i>Set up a phone</i>. The page already has the PisoKiosk password above (the box holds it for the link); type it only if the page asks. Then scan the QR code on the factory-reset phone, or plug it in by USB.</p>
 </body></html>
 EOT
 	umask 022
@@ -1321,7 +1357,7 @@ main() {
 		case "$1" in
 			--dry-run) DRY=1 ;;
 			--yes | -y) ASSUME_YES=1 ;;
-			status | pair | summary | wifi-name | guest-port | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | handout | lock-admin | lock-admin-confirm | unlock-admin | update | self-update | auto-update) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
+			status | pair | summary | wifi-name | guest-port | kiosk-wifi | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | handout | lock-admin | lock-admin-confirm | unlock-admin | update | self-update | auto-update) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
 			-h | --help) sed -n '2,/^# Options:/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 			*) echo "unknown option: $1 (try --help)" >&2; exit 1 ;;
 		esac
@@ -1348,6 +1384,11 @@ main() {
 			cmd_lock_admin $ARGS ;;
 		lock-admin-confirm) cmd_lock_admin_confirm ;;
 		unlock-admin) cmd_unlock_admin ;;
+		kiosk-wifi)
+			DRY=0; [ "$(id -u)" = 0 ] || die "run as root"
+			push_kiosk_wifi
+			if kiosk_wifi_on_box; then log "checked: the box's \"Set up a phone\" link carries the password"
+			else log "the box's link does not show it yet (a box with firmware before 3.3.3 cannot: it updates itself, then run this again)"; fi ;;
 		rotate-box-wifi) DRY=0; [ "$(id -u)" = 0 ] || die "run as root"; conf_set BOX_WIFI_ROTATED 0; rotate_box_wifi ;;
 		set-password) cmd_set_password ;;
 		summary) cat "$SUMMARY" ;;
