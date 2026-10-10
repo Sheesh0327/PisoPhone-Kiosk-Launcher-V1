@@ -14,6 +14,8 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 	[ -z "$_gp" ] || _ck "router port $_gp is on the guest network (an access point plugged in there is gated)" "uci -q get \$(net_section br-guest).ports | grep -qw '$_gp'"
 	_ck "openNDS is running" "ndsctl status"
 	_ck "openNDS sends new guests to the portal (FAS)" "[ \"\$(uci -q get opennds.@opennds[0].fasport)\" = $PORTAL_PORT ]"
+	_ck "the router looks for signed updates every hour (scheduler running)" update_timer_ok
+	_ck "the hourly update check ran within the last 3 hours" update_check_recent
 	_ck "internet through the WAN" "ping -c 1 -W 3 1.1.1.1 || ping -c 1 -W 3 8.8.8.8"
 	agree_all
 	return $((_bad + $?))

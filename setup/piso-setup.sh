@@ -26,7 +26,7 @@
 
 VERSION="dev"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
-PISO_RELEASE='1.2.2'
+PISO_RELEASE='1.2.3'
 
 COUNTRY="${COUNTRY:-PH}"
 KIOSK_SSID="PisoKiosk"                       # fixed, and hidden: only phones provisioned by the coin box page know it
@@ -730,6 +730,8 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 	[ -z "$_gp" ] || _ck "router port $_gp is on the guest network (an access point plugged in there is gated)" "uci -q get \$(net_section br-guest).ports | grep -qw '$_gp'"
 	_ck "openNDS is running" "ndsctl status"
 	_ck "openNDS sends new guests to the portal (FAS)" "[ \"\$(uci -q get opennds.@opennds[0].fasport)\" = $PORTAL_PORT ]"
+	_ck "the router looks for signed updates every hour (scheduler running)" update_timer_ok
+	_ck "the hourly update check ran within the last 3 hours" update_check_recent
 	_ck "internet through the WAN" "ping -c 1 -W 3 1.1.1.1 || ping -c 1 -W 3 8.8.8.8"
 	agree_all
 	return $((_bad + $?))
@@ -1087,6 +1089,7 @@ cmd_self_update() {
 	trap 'rm -rf "$_work" "$_lock"' EXIT
 	rm -rf "$_work"; (umask 077; mkdir -p "$_work") || die "could not create $_work"
 
+	[ "$_mode" != auto ] || conf_set UPDATE_LAST_CHECK "$(date +%s)"   # (status says when the hourly check last ran)
 	[ "$_mode" != auto ] || { sync_kiosk_wifi; watch_agreement; }   # (hourly: a box that lost the phones' Wi-Fi password gets it; the owner hears when values stop agreeing)
 	_base=$(conf_get UPDATE_URL); _base="${_base:-$UPDATE_URL_DEFAULT}"
 	if ! fetch_url "$_base/router.json" "$_work/router.json" 20000; then
@@ -1155,6 +1158,18 @@ cmd_auto_update() {
 }
 
 # the hourly check (its minute is this router's own, so the routers do not all ask at once)
+# update_timer_ok: the hourly update check is scheduled and the scheduler runs
+update_timer_ok() {
+	grep -qs 'self-update auto' "$CRON_FILE" && { pgrep -x crond > /dev/null 2>&1 || pgrep -x cron > /dev/null 2>&1; }
+}
+
+# update_check_recent: the hourly check ran within the last 3 hours (a router that has not run it yet is given the time)
+update_check_recent() {
+	_t=$(conf_get UPDATE_LAST_CHECK)
+	[ -n "$_t" ] || return 0
+	[ $(($(date +%s) - _t)) -lt 10800 ]
+}
+
 install_update_timer() {
 	_k=$(conf_get GW_KEY | cut -c1-4); case "$_k" in "" | *[!0-9a-f]*) _k=0 ;; esac
 	mkdir -p "$(dirname "$CRON_FILE")" 2> /dev/null

@@ -4,6 +4,9 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- The router already looked for signed updates every hour and installed them when no customer was online (`piso-setup auto-update
+  on|off`, on by default). `piso-setup status` now also checks that the hourly job is scheduled with the scheduler running, and
+  that it ran in the last 3 hours, so a router that stopped checking is noticed. Release 1.2.3.
 - Developers: the router setup script is now written in 13 parts in `setup/src/` (settings, preflight, box, agreement checks,
   updates, ...). `setup/piso-setup.sh.in` and `setup/piso-setup.sh` are generated from them and are byte-for-byte what they were,
   so nothing changes on a router. CI fails if a generated file is out of date and says to edit the parts.

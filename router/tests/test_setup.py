@@ -463,6 +463,24 @@ check("watch_agreement" in auto and auto.index("watch_agreement") < auto.index("
 check("agree_all" in text.split("check_all() {")[1].split("\n}\n")[0], "status includes the agreement checks")
 check("verify)" in text.split("main() {")[1], "piso-setup verify exists")
 
+# ---- the hourly update check is scheduled, and status says so ------------------------------------------------------------------
+cron = f"{tmp}/crontab"
+open(cron, "w").write("0 3 * * * something\n")
+r = lib("update_timer_ok; echo rc=$?", env={"PISO_CRON_FILE": cron})
+check("rc=1" in r.stdout, "no hourly update line: not scheduled")
+r = lib("install_update_timer; cat $PISO_CRON_FILE; update_timer_ok; echo rc=$?", env={"PISO_CRON_FILE": cron})
+check("self-update auto" in r.stdout and "something" in r.stdout, "installing the timer adds the hourly line and keeps the others: " + r.stdout)
+open(f"{bindir}/pgrep", "w").write("#!/bin/sh\n[ -z \"$FAKE_CRON\" ] || exit 0\nexit 1\n"); os.chmod(f"{bindir}/pgrep", 0o755)
+check("rc=1" in lib("update_timer_ok; echo rc=$?", env={"PISO_CRON_FILE": cron}).stdout, "a scheduler that is not running is reported")
+check("rc=0" in lib("update_timer_ok; echo rc=$?", env={"PISO_CRON_FILE": cron, "FAKE_CRON": "1"}).stdout, "and a running one passes")
+check("rc=0" in lib("update_check_recent; echo rc=$?").stdout, "a router that has not run the check yet gets the time")
+check("rc=0" in lib("conf_set UPDATE_LAST_CHECK $(date +%s); update_check_recent; echo rc=$?").stdout, "a check that just ran passes")
+check("rc=1" in lib("conf_set UPDATE_LAST_CHECK $(($(date +%s) - 20000)); update_check_recent; echo rc=$?").stdout, "one that ran 5 hours ago is reported")
+auto = text.split("cmd_self_update() {")[1].split("\n}\n")[0]
+check("UPDATE_LAST_CHECK" in auto and auto.index("UPDATE_LAST_CHECK") < auto.index("router.json"), "the hourly run records when it ran")
+check("update_timer_ok" in text.split("check_all() {")[1].split("\n}\n")[0] and "update_check_recent" in text.split("check_all() {")[1].split("\n}\n")[0], "status checks the schedule")
+os.remove(f"{bindir}/pgrep")
+
 # ---- the box's own Wi-Fi password -----------------------------------------------------------------------------------------------
 Box.wifi = None
 open(f"{tmp}/uci.log", "w").close()
