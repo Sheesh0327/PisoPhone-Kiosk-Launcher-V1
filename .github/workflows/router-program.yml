@@ -15,6 +15,7 @@ on:
       - 'router/piso_monitor.sh'
       - 'router/pisoportal_status.sh'
       - 'setup/piso-setup.sh.in'
+      - 'setup/src/**'
       - 'tools/build_piso_setup.py'
       - '.github/workflows/router-program.yml'
 

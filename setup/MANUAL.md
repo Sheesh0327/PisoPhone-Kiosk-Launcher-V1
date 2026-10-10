@@ -203,6 +203,10 @@ The setup asks you to choose the router password (or shows a generated one and a
 The setup prints `TIP:` lines at the moments people usually get stuck: what the coin box's light means, what to check when the box has not joined after one, two and five minutes (the advice depends on whether the router's `PisoCoinBox` network is on the air), what happens next when the box is found, and what to do when it is finished or a check failed. The window shows the latest tip above the log. `PISO_TIPS=0` turns them off.
 
 ## For developers
-`setup/piso-setup.sh` is generated from `setup/piso-setup.sh.in` plus the portal files: after changing any of them run
-`python3 tools/build_piso_setup.py` (CI fails if the committed file is out of date). Tests: `python3 router/tests/test_setup.py`.
+The setup file is written in parts: **edit the files in `setup/src/`** (`00-header` settings and helpers, `20-preflight`,
+`30-router-settings` the uci batch, `40-files`, `50-coin-box` pairing and provisioning, `60-summary`, `70-agreement` the
+`verify` checks, `75-checks-stage2` the status checks and the second stage, `80-commands`, `90-updates` signed updates,
+`95-owner-tools` Telegram, handout, admin lock, `98-setup-flow` pairing, questions and `main`). `setup/piso-setup.sh.in` is
+those parts joined, and `setup/piso-setup.sh` is that plus the portal files. After changing any of them run
+`python3 tools/build_piso_setup.py` (CI fails if a committed generated file is out of date). Tests: `python3 router/tests/test_setup.py`.
 `./piso-setup.sh --dry-run` prints the router settings without applying anything.

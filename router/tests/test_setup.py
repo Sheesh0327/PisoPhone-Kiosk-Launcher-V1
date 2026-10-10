@@ -328,6 +328,8 @@ class Box(http.server.BaseHTTPRequestHandler):
         self.send_response(404); self.end_headers()
 
     def do_GET(self):
+        if self.path == "/" and not self._auth():
+            self.send_response(401); self.end_headers(); return
         if self.path == "/" and self._auth():
             link = "&wifi_pass=" + urllib.parse.quote_plus(Box.kiosk) if Box.kiosk else ""
             self.send_response(200); self.end_headers()
@@ -381,8 +383,103 @@ check("rc=0" in r.stdout, "nothing to give when the router has no PisoKiosk pass
 auto = text.split("cmd_self_update() {")[1].split("\n}\n")[0]
 check("sync_kiosk_wifi" in auto and auto.index("sync_kiosk_wifi") < auto.index("router.json"), "the hourly update also gives the box the password")
 check("sync_kiosk_wifi" in text.split("cmd_update() {")[1].split("\n}\n")[0], "an update gives the box the password")
-check("kiosk_wifi_on_box" in text.split("check_all() {")[1].split("\n}\n")[0], "status checks that the link carries the password")
+check("kiosk_wifi_on_box" in text.split("agree_all() {")[1].split("\n}\n")[0], "the agreement checks include the link carrying the password")
 check("kiosk-wifi" in text.split("main() {")[1], "piso-setup kiosk-wifi exists")
+
+# ---- agreement: the copies of one value are compared with each other ----------------------------------------------------------
+AG_ENV = {"T_KIOSK": "kiosk-pass-1", "T_GUEST": "Shop WiFi", "T_MAC": "aa:bb:cc:dd:ee:ff", "T_BOXKEY": "boxwifi-own-key-123"}
+AG_PRE = r"""
+PISO_ROOT=$T_ROOT; mkdir -p "$PISO_ROOT/etc"
+conf_set GW_KEY """ + "9f" * 32 + r"""; conf_set BOX_MAC AA:BB:CC:DD:EE:FF; conf_set GUEST_NAME "Shop WiFi"; conf_set KIOSK_PASS kiosk-pass-1
+conf_set BOX_ADMIN_PASS NewPassw0rdXYZ; conf_set BOX_WIFI_ROTATED 1; conf_set BOX_WIFI_PASS_NEW boxwifi-own-key-123
+write_coinslot_conf """ + "9f" * 32 + r""" AA:BB:CC:DD:EE:FF
+printf 'kiosk-pass-1 NewPassw0rdXYZ\n' > "$SUMMARY"
+uci() { [ "$1" = -q ] && shift; case "$1 $2" in
+  "show wireless") printf 'wireless.kiosk_radio0=wifi-iface\nwireless.kiosk_radio1=wifi-iface\nwireless.guest_radio0=wifi-iface\nwireless.box_ap=wifi-iface\n' ;;
+  "get wireless.kiosk_radio0.key" | "get wireless.kiosk_radio1.key") echo "$T_KIOSK" ;;
+  "get wireless.guest_radio0.ssid" | "get opennds.@opennds[0].gatewayname") echo "$T_GUEST" ;;
+  "get opennds.@opennds[0].fasport") echo "$PORTAL_PORT" ;;
+  "get wireless.box_ap.maclist") echo "$T_MAC" ;;
+  "get wireless.box_ap.key") echo "$T_BOXKEY" ;;
+  *) return 1 ;; esac; }
+ip() { echo "    inet 10.0.30.1/24 brd 10.0.30.255 scope global br-guest"; }
+"""
+fake_portal = f"{bindir}/fakeportal"
+open(fake_portal, "w").write("#!/bin/sh\necho 'box 10.0.0.10 answers'\n"); os.chmod(fake_portal, 0o755)
+
+
+def agree(extra="", env=None, box=False, code="agree_all"):
+    shutil.rmtree(f"{tmp}/agroot", ignore_errors=True)
+    if os.path.exists(f"{tmp}/agconf"):
+        os.remove(f"{tmp}/agconf")
+    e = dict(AG_ENV, T_ROOT=f"{tmp}/agroot", GUEST_IP="10.0.30.1", PISO_PORTAL_BIN=fake_portal, BOX_IP=addr if box else "127.0.0.1:9",
+             PISO_CONF=f"{tmp}/agconf", PISO_SUMMARY=f"{tmp}/agsummary", PISO_LOG=f"{tmp}/aglog")
+    e.update(env or {})
+    return lib(AG_PRE + ("" if box else "box_up() { return 1; }\n") + extra + f"\n{code}; echo rc=$?; echo \"FAILS=$AGREE_FAILS\"", env=e)
+
+
+r = agree()
+check("rc=0" in r.stdout and "SKIP" in r.stdout and "FAIL" not in r.stdout.replace("FAILS=", ""), "everything agrees (the box checks are skipped while it is off): " + r.stdout + r.stderr)
+for what, extra, env, frag in [
+    ("another gateway key in the portal's file", "sed -i \"s/^GW_KEY=.*/GW_KEY='aa'/\" $PISO_ROOT/etc/coinslot.conf", None, "gateway key"),
+    ("a MAC the box network does not allow", "", {"T_MAC": "11:22:33:44:55:66"}, "address"),
+    ("a PisoKiosk radio with another password", "", {"T_KIOSK": "an-old-password"}, "PisoKiosk password"),
+    ("a customer Wi-Fi name changed in LuCI", "", {"T_GUEST": "Renamed"}, "customer Wi-Fi name"),
+    ("a portal that listens on another address", "sed -i \"s/^PORTAL_BIND=.*/PORTAL_BIND='10.9.9.9'/\" $PISO_ROOT/etc/coinslot.conf", None, "listens"),
+    ("a box network whose password was changed by hand", "", {"T_BOXKEY": "changed-by-hand-1"}, "coin box network"),
+    ("a stale setup summary", "echo old > \"$SUMMARY\"", None, "summary"),
+]:
+    r = agree(extra, env)
+    check("rc=1" in r.stdout and "FAIL  " in r.stdout and frag in r.stdout.split("FAILS=")[1], f"{what} is named: " + r.stdout[-300:] + r.stderr)
+
+# with the box on: its password, key and link
+Box.admin = "NewPassw0rdXYZ"; Box.kiosk = "kiosk-pass-1"
+r = agree(box=True)
+check("rc=0" in r.stdout and "SKIP" not in r.stdout, "with the box on, all agree: " + r.stdout + r.stderr)
+Box.admin = "SomethingElse1"
+r = agree(box=True)
+check("rc=0" not in r.stdout and "admin password the router stored" in r.stdout.split("FAILS=")[1], "a box with another admin password is named: " + r.stdout[-300:])
+Box.admin = "NewPassw0rdXYZ"; Box.kiosk = None
+r = agree(box=True)
+check("rc=1" in r.stdout and "Set up a phone" in r.stdout.split("FAILS=")[1], "a box whose link has no password is named")
+Box.kiosk = "kiosk-pass-1"
+
+# the hourly watcher tells Telegram only when the answer changes
+watch = "NOTES=$T_ROOT/notes; : > $NOTES; notify() { echo \"$*\" >> $NOTES; }\n"
+r = agree(watch, {"T_KIOSK": "an-old-password"}, code="watch_agreement; watch_agreement; cat $T_ROOT/notes; DRY=0")
+notes = r.stdout.split("rc=")[0].strip().splitlines()
+check(len(notes) == 1 and "no longer agree" in notes[0] and "PisoKiosk password" in notes[0], "a new disagreement is told once, with its name: " + str(notes) + r.stderr)
+r = agree(watch + "conf_set AGREE_LAST 12345\n", {}, code="watch_agreement; watch_agreement; cat $T_ROOT/notes")
+notes = r.stdout.split("rc=")[0].strip().splitlines()
+check(len(notes) == 1 and "agrees again" in notes[0], "and again when everything agrees: " + str(notes))
+r = agree(watch, {}, code="watch_agreement; cat $T_ROOT/notes")
+check(r.stdout.split("rc=")[0].strip() == "", "a router that always agreed says nothing")
+r = agree(code="cmd_verify")
+check("rc=0" in r.stdout and "matches" in r.stdout, "piso-setup verify prints the result: " + r.stdout)
+r = agree(env={"T_KIOSK": "x"}, code="cmd_verify")
+check("rc=1" in r.stdout and "disagree" in r.stdout, "and fails when a value disagrees")
+auto = text.split("cmd_self_update() {")[1].split("\n}\n")[0]
+check("watch_agreement" in auto and auto.index("watch_agreement") < auto.index("router.json"), "the hourly update check runs the watcher")
+check("agree_all" in text.split("check_all() {")[1].split("\n}\n")[0], "status includes the agreement checks")
+check("verify)" in text.split("main() {")[1], "piso-setup verify exists")
+
+# ---- the hourly update check is scheduled, and status says so ------------------------------------------------------------------
+cron = f"{tmp}/crontab"
+open(cron, "w").write("0 3 * * * something\n")
+r = lib("update_timer_ok; echo rc=$?", env={"PISO_CRON_FILE": cron})
+check("rc=1" in r.stdout, "no hourly update line: not scheduled")
+r = lib("install_update_timer; cat $PISO_CRON_FILE; update_timer_ok; echo rc=$?", env={"PISO_CRON_FILE": cron})
+check("self-update auto" in r.stdout and "something" in r.stdout, "installing the timer adds the hourly line and keeps the others: " + r.stdout)
+open(f"{bindir}/pgrep", "w").write("#!/bin/sh\n[ -z \"$FAKE_CRON\" ] || exit 0\nexit 1\n"); os.chmod(f"{bindir}/pgrep", 0o755)
+check("rc=1" in lib("update_timer_ok; echo rc=$?", env={"PISO_CRON_FILE": cron}).stdout, "a scheduler that is not running is reported")
+check("rc=0" in lib("update_timer_ok; echo rc=$?", env={"PISO_CRON_FILE": cron, "FAKE_CRON": "1"}).stdout, "and a running one passes")
+check("rc=0" in lib("update_check_recent; echo rc=$?").stdout, "a router that has not run the check yet gets the time")
+check("rc=0" in lib("conf_set UPDATE_LAST_CHECK $(date +%s); update_check_recent; echo rc=$?").stdout, "a check that just ran passes")
+check("rc=1" in lib("conf_set UPDATE_LAST_CHECK $(($(date +%s) - 20000)); update_check_recent; echo rc=$?").stdout, "one that ran 5 hours ago is reported")
+auto = text.split("cmd_self_update() {")[1].split("\n}\n")[0]
+check("UPDATE_LAST_CHECK" in auto and auto.index("UPDATE_LAST_CHECK") < auto.index("router.json"), "the hourly run records when it ran")
+check("update_timer_ok" in text.split("check_all() {")[1].split("\n}\n")[0] and "update_check_recent" in text.split("check_all() {")[1].split("\n}\n")[0], "status checks the schedule")
+os.remove(f"{bindir}/pgrep")
 
 # ---- the box's own Wi-Fi password -----------------------------------------------------------------------------------------------
 Box.wifi = None

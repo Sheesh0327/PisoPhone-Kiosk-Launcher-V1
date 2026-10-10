@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Builds setup/piso-setup.sh: the single file that is copied to the router. It is setup/piso-setup.sh.in plus the files the
+"""Builds setup/piso-setup.sh: the single file that is copied to the router. It is setup/piso-setup.sh.in (itself generated from
+the parts in setup/src/: edit those) plus the files the
 router needs as a payload: text files after a '#@@FILE <destination> <mode>' line, and the portal program (a binary, so as
 base64) after a '#@@B64 <destination> <mode> <sha256>' line. Run it after changing any embedded file:
     python3 tools/build_piso_setup.py            writes setup/piso-setup.sh
@@ -21,11 +22,20 @@ BINARIES = [
 ]
 
 
+def template():
+    """setup/piso-setup.sh.in: the parts in setup/src/ (NN-name.sh, in name order) joined as they are. The parts are what you
+    edit; the .in file is generated (and committed, so tools and CI that read it keep working)."""
+    src = os.path.join(ROOT, "setup/src")
+    names = sorted(n for n in os.listdir(src) if re.fullmatch(r"\d\d-[a-z0-9-]+\.sh", n))
+    assert names, "setup/src has no parts"
+    return "".join(open(os.path.join(src, n)).read() for n in names)
+
+
 def build():
     version = os.environ.get("SETUP_VERSION") or "dev"
     release = open(os.path.join(ROOT, "setup/RELEASE")).read().strip()
     assert re.fullmatch(r"\d{1,5}\.\d{1,5}\.\d{1,5}", release), "setup/RELEASE must look like 1.2.3"
-    out = open(os.path.join(ROOT, "setup/piso-setup.sh.in")).read().replace("@VERSION@", version).replace("@RELEASE@", release)
+    out = template().replace("@VERSION@", version).replace("@RELEASE@", release)
     for src, dest, mode in FILES:
         body = open(os.path.join(ROOT, src)).read()
         assert "\n#@@" not in body and "\r" not in body, src
@@ -45,6 +55,7 @@ def outputs(text):
     it) and the website's copies of the installer (https://pisophone.pages.dev/install.sh) and of the computer-side setup
     script (https://pisophone.pages.dev/pisophone_setup.py)."""
     return {
+        "setup/piso-setup.sh.in": template(),
         "setup/piso-setup.sh": text,
         "setup/piso-setup.sh.sha256": hashlib.sha256(text.encode()).hexdigest() + "  piso-setup.sh\n",
         # the router downloads the setup file from the website (the repository is private): the installer's site_for()
@@ -60,7 +71,7 @@ if __name__ == "__main__":
     if "--check" in sys.argv:
         stale = [p for p, t in files.items() if not os.path.exists(os.path.join(ROOT, p)) or open(os.path.join(ROOT, p)).read() != t]
         if stale:
-            sys.exit(", ".join(stale) + " out of date: run python3 tools/build_piso_setup.py")
+            sys.exit(", ".join(stale) + " out of date: edit the parts in setup/src/ (not the generated files), then run python3 tools/build_piso_setup.py")
         print("setup/piso-setup.sh (with its sha256) and the website's copies (website/setup/, install.sh, pisophone_setup.py) are up to date")
     else:
         for p, t in files.items():
