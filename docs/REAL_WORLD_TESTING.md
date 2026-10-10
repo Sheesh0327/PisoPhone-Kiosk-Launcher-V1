@@ -94,7 +94,7 @@ Collect logs as you go: box serial output at 115200 baud (`pio device monitor`),
 - [ ] **R2** Wi-Fi customer sees the portal; Insert Coin starts a coin window; coins grant the right minutes (HyperSpeed and Endurance)
 - [ ] **R3** One customer pays with 25 one-peso coins in a single window: all 25 are counted (the box keeps one record per window, not per coin)
 - [ ] **R4** Layout B: a guest-network device cannot ping the box or the phones; the portal still takes coins
-- [ ] **R5** From a phone on the customer Wi-Fi, `http://192.168.30.1` and `ssh root@192.168.30.1` are refused; from the kiosk LAN (10.0.0.1) both work
+- [ ] **R5** From a phone on the customer Wi-Fi, `http://10.0.30.1` and `ssh root@10.0.30.1` (192.168.30.1 on a router set up before the range changed) are refused; from the kiosk LAN (10.0.0.1) both work
 
 ## 8. Soak (when everything above passes)
 *pass 3*

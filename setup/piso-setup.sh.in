@@ -14,11 +14,11 @@
 #                The box gets the fixed address 10.0.0.10.
 #   PisoWiFi     open Wi-Fi, 2.4 + 5 GHz, for customers (openNDS login page, coin payments). Rename it with:
 #                  piso-setup wifi-name "My Shop"
-#                Network 192.168.30.0/24, kept apart from the kiosk network.
+#                Network 10.0.30.0/24, kept apart from the kiosk network.
 # Everything is generated here (Wi-Fi password, box admin password, gateway key) and printed once at the end and saved in
 # /root/piso-setup-summary.txt. Running the file again is safe: it keeps what it already made.
 #
-# Other commands (after setup): piso-setup status | wifi-name "<name>" | pair | summary | test-coin | diag | box-diag | set-password | reconcile [rebase] | telegram | rotate-box-wifi | handout | lock-admin | unlock-admin | update [check] (installs the newest release from the website; same as self-update) | self-update [check] | auto-update on|off
+# Other commands (after setup): piso-setup status | wifi-name "<name>" | guest-port [lanN|off] | pair | summary | test-coin | diag | box-diag | set-password | reconcile [rebase] | telegram | rotate-box-wifi | handout | lock-admin | unlock-admin | update [check] (installs the newest release from the website; same as self-update) | self-update [check] | auto-update on|off
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation
@@ -37,7 +37,7 @@ LAN_IP=$(uci -q get network.lan.ipaddr 2> /dev/null | head -n 1 | cut -d/ -f1)  
 LAN_IP="${LAN_IP:-10.0.0.1}"
 BOX_IP="${BOX_IP:-${LAN_IP%.*}.10}"                                               # the box is always <LAN network>.10
 GUEST_IP="${GUEST_IP:-$(uci -q get network.guest.ipaddr 2> /dev/null)}"   # a re-run or update keeps what the router has
-GUEST_IP="${GUEST_IP:-192.168.30.1}"
+GUEST_IP="${GUEST_IP:-10.0.30.1}"
 PORTAL_PORT=2080                             # the portal (openNDS FAS): not 80, which openNDS keeps for captive-portal detection
 CONF="${PISO_CONF:-/etc/piso-setup.conf}"   # what this script chose (secrets inside): mode 600
 LOG="${PISO_LOG:-/root/piso-setup.log}"
@@ -123,7 +123,7 @@ preflight() {
 	[ "$LAN_IP" = 10.0.0.1 ] || die "the router's LAN address is $LAN_IP, but this setup expects 10.0.0.1. Run the installer, which moves it for you: wget -qO- https://pisophone.pages.dev/install.sh | sh   (or by hand: uci set network.lan.ipaddr=10.0.0.1 && uci commit network && reboot), then log in again at 10.0.0.1 and re-run. See setup/README.md."
 	case "$WAN" in
 		"${LAN_IP%.*}".*) die "the modem's network ($WAN) is in the same range as the router's LAN ($LAN_IP). Change the modem's own LAN address (for example to 192.168.100.1) and run this again" ;;
-		192.168.30.*) die "the modem's network ($WAN) uses 192.168.30.x, the same as the guest network. Run with GUEST_IP=192.168.31.1" ;;
+		"${GUEST_IP%.*}".*) die "the modem's network ($WAN) uses ${GUEST_IP%.*}.x, the same as the guest network. Run with GUEST_IP=10.0.31.1 (or another free range)" ;;
 	esac
 	log "WAN address: $WAN"
 	if ! ping -c 1 -W 3 1.1.1.1 > /dev/null 2>&1 && ! ping -c 1 -W 3 8.8.8.8 > /dev/null 2>&1; then die "no internet through the WAN port"; fi
@@ -620,6 +620,8 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 	_ck "coin box answers at $BOX_IP" box_up
 	_ck "the portal is running and answers guests on $GUEST_IP:$PORTAL_PORT" "curl -s -m 4 http://$GUEST_IP:$PORTAL_PORT/ping | grep -q ok"
 	_ck "the portal can talk to the box (signed request)" "/usr/bin/pisoportal box | grep -qi answers"
+	_gp=$(conf_get GUEST_PORT)
+	[ -z "$_gp" ] || _ck "router port $_gp is on the guest network (an access point plugged in there is gated)" "uci -q get \$(net_section br-guest).ports | grep -qw '$_gp'"
 	_ck "openNDS is running" "ndsctl status"
 	_ck "openNDS sends new guests to the portal (FAS)" "[ \"\$(uci -q get opennds.@opennds[0].fasport)\" = $PORTAL_PORT ]"
 	_ck "internet through the WAN" "ping -c 1 -W 3 1.1.1.1 || ping -c 1 -W 3 8.8.8.8"
@@ -721,6 +723,50 @@ cmd_wifi_name() {
 	/etc/init.d/pisoportal restart > /dev/null 2>&1
 	write_summary 2> /dev/null
 	echo "Customer Wi-Fi is now called \"$_n\"."
+}
+
+# net_section <bridge name>: the uci section of a bridge device ("network.cfg030f15"), empty when there is none.
+net_section() { uci -q show network | sed -n "s/^\\(network\\.[^.=]*\\)\\.name='$1'\$/\\1/p" | head -n 1; }
+
+# piso-setup guest-port [lanN | off]: dedicate one of the router's wired LAN ports to customers. An access point plugged into it
+# (bridge / AP mode, its own DHCP off) is then on the guest network behind openNDS, like PisoWiFi, instead of on the kiosk LAN
+# (which is not gated). Only the router's own port names (lan1, lan2, ...) are accepted, and at least one LAN port stays.
+cmd_guest_port() {
+	_p="$1"
+	_lan=$(net_section br-lan); _guest=$(net_section br-guest)
+	[ -n "$_guest" ] || { echo "the guest network does not exist yet: run the setup first" >&2; return 1; }
+	if [ -z "$_lan" ] || ! uci -q get "$_lan.ports" > /dev/null 2>&1; then echo "this router does not list its LAN ports as bridge ports (an older switch-based OpenWrt): move the port to the guest network in LuCI (Network > Interfaces > Devices > br-guest) instead" >&2; return 1; fi
+	_lports=$(uci -q get "$_lan.ports"); _gports=$(uci -q get "$_guest.ports" 2> /dev/null)
+	if [ -z "$_p" ]; then
+		echo "kiosk LAN ports (not gated):  ${_lports:-none}"
+		echo "guest ports (gated by openNDS): ${_gports:-none}"
+		echo "usage: piso-setup guest-port lan4   (dedicate a port to an access point for customers)   |   piso-setup guest-port off"
+		return 0
+	fi
+	if [ "$_p" = off ]; then
+		[ -n "$_gports" ] || { echo "no router port is on the guest network"; return 0; }
+		[ "$DRY" = 1 ] && { echo "would move back to the kiosk LAN: $_gports"; return 0; }
+		for _g in $_gports; do uci del_list "$_guest.ports=$_g"; uci add_list "$_lan.ports=$_g"; done
+		_msg="Ports back on the kiosk LAN: $_gports."
+		conf_set GUEST_PORT ""
+	else
+		case "$_p" in lan*) ;; *) echo "give a LAN port name such as lan4 (see: piso-setup guest-port)" >&2; return 1 ;; esac
+		case "${_p#lan}" in "" | *[!0-9]*) echo "give a LAN port name such as lan4 (see: piso-setup guest-port)" >&2; return 1 ;; esac
+		case " $_gports " in *" $_p "*) echo "$_p is already a guest port"; return 0 ;; esac
+		case " $_lports " in *" $_p "*) ;; *) echo "$_p is not one of the router's LAN ports (${_lports:-none})" >&2; return 1 ;; esac
+		[ "$(echo "$_lports" | wc -w)" -gt 1 ] || { echo "$_p is the only LAN port left: the kiosk network needs at least one for administration" >&2; return 1; }
+		[ "$DRY" = 1 ] && { echo "would move $_p to the guest network"; return 0; }
+		echo "Moving $_p to the guest network. If this computer is plugged into $_p, this SSH session ends: use another LAN port."
+		[ "$ASSUME_YES" = 1 ] || sleep 5
+		uci del_list "$_lan.ports=$_p"; uci add_list "$_guest.ports=$_p"
+		_msg="$_p is now a guest port: plug the access point into it (bridge / AP mode, its own DHCP off). Its customers get guest-network (${GUEST_IP%.*}.x) addresses, the openNDS login page and the coin payment, like PisoWiFi. Do not use the AP's router / NAT mode: every customer would look like one device."
+		conf_set GUEST_PORT "$_p"
+	fi
+	uci commit network || { echo "uci commit failed" >&2; return 1; }
+	/etc/init.d/network reload > /dev/null 2>&1
+	sleep 3
+	/etc/init.d/opennds restart > /dev/null 2>&1
+	echo "$_msg"
 }
 
 # piso-setup test-coin: one real coin window straight against the manager and the box, without the customer portal. It shows
@@ -1275,7 +1321,7 @@ main() {
 		case "$1" in
 			--dry-run) DRY=1 ;;
 			--yes | -y) ASSUME_YES=1 ;;
-			status | pair | summary | wifi-name | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | handout | lock-admin | lock-admin-confirm | unlock-admin | update | self-update | auto-update) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
+			status | pair | summary | wifi-name | guest-port | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | handout | lock-admin | lock-admin-confirm | unlock-admin | update | self-update | auto-update) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
 			-h | --help) sed -n '2,/^# Options:/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 			*) echo "unknown option: $1 (try --help)" >&2; exit 1 ;;
 		esac
@@ -1284,6 +1330,7 @@ main() {
 	case "$CMD" in
 		status) cmd_status ;;
 		wifi-name) cmd_wifi_name "$ARG" ;;
+		guest-port) [ "$(id -u)" = 0 ] || [ "$DRY" = 1 ] || die "run as root"; cmd_guest_port "$ARG" ;;
 		pair) cmd_pair ;;
 		test-coin) cmd_test_coin ;;
 		diag) cmd_diag ;;

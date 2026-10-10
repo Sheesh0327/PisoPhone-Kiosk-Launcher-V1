@@ -117,7 +117,7 @@ for bad, why in [("has space", "spaces"), ("it'sbad12", "a quote"), ("short", "l
 check("ask_password BOX_ADMIN_PASS_NEW" in text and "ask_password KIOSK_PASS" in text and "super-admin" in text, "all the operating passwords are chosen in the setup")
 check(not re.search(r"\bod -|hexdump|xxd", text.split(PAYLOAD_MARK)[0]), "no tools a stock BusyBox lacks (od, hexdump, xxd)")
 check("--stage2" not in text.split(PAYLOAD_MARK)[0] and "nohup" not in text.split(PAYLOAD_MARK)[0], "no background stage that outlives the SSH session")
-check("set network.guest.ipaddr='192.168.30.1'" in out and "set network.guest.device='br-guest'" in out, "guest network on its own bridge")
+check("set network.guest.ipaddr='10.0.30.1'" in out and "set network.guest.device='br-guest'" in out, "guest network on its own bridge")
 for radio in ("radio0", "radio1"):
     check(f"set wireless.kiosk_{radio}.ssid='PisoKiosk'" in out and f"set wireless.kiosk_{radio}.network='lan'" in out, f"PisoKiosk on {radio}")
     check(f"set wireless.guest_{radio}.ssid='PisoWiFi'" in out and f"set wireless.guest_{radio}.encryption='none'" in out and f"set wireless.guest_{radio}.network='guest'" in out,
@@ -236,6 +236,59 @@ fake_uci({"radio0": "2g", "radio1": "5g"})
 for bad in ["", "PisoKiosk", "PisoCoinBox", 'He said "hi"', "a$b", "x" * 33]:
     r = run("wifi-name", bad)
     check(r.returncode != 0, f"wifi-name refuses {bad!r}")
+
+# ---- guest-port --------------------------------------------------------------------------------------------------------
+def fake_bridges(lan="lan1 lan2 lan3 lan4", guest="", with_guest=True):
+    """A uci that keeps the ports of br-lan (network.cfglan) and br-guest (network.cfgguest) in files."""
+    open(f"{tmp}/ports_lan", "w").write(lan)
+    open(f"{tmp}/ports_guest", "w").write(guest)
+    guest_line = "network.cfgguest=device\\nnetwork.cfgguest.name='br-guest'\\n" if with_guest else ""
+    open(f"{bindir}/uci", "w").write(f"""#!/bin/sh
+echo "$*" >> {tmp}/uci.log
+[ "$1" = -q ] && shift
+f() {{ case "$1" in network.cfglan.*) echo {tmp}/ports_lan ;; network.cfgguest.*) echo {tmp}/ports_guest ;; esac; }}
+case "$1" in
+  show) printf "network.cfglan=device\\nnetwork.cfglan.name='br-lan'\\n{guest_line}" ;;
+  get) F=$(f "$2"); [ -n "$F" ] && [ -s "$F" ] && cat "$F" || exit 1 ;;
+  del_list) F=$(f "$2"); P=${{2#*=}}; tr ' ' '\\n' < "$F" | grep -vx "$P" | tr '\\n' ' ' | sed 's/ $//' > "$F.n"; mv "$F.n" "$F" ;;
+  add_list) F=$(f "$2"); P=${{2#*=}}; {{ cat "$F"; echo " $P"; }} | tr '\\n' ' ' | sed 's/^ *//; s/ *$//' > "$F.n"; mv "$F.n" "$F" ;;
+esac
+exit 0
+""")
+    os.chmod(f"{bindir}/uci", 0o755)
+    open(f"{bindir}/id", "w").write("#!/bin/sh\necho 0\n")   # the command wants root; CI does not run as root
+    os.chmod(f"{bindir}/id", 0o755)
+
+
+def ports(which):
+    return open(f"{tmp}/ports_{which}").read().split()
+
+
+fake_bridges()
+r = run("guest-port")
+check(r.returncode == 0 and "lan1 lan2 lan3 lan4" in r.stdout, "guest-port lists the ports: " + r.stdout + r.stderr)
+for bad in ["wan", "lan", "lan4x", "lan4;reboot", "br-guest", "lan9"]:
+    r = run("guest-port", bad)
+    check(r.returncode != 0 and ports("lan") == "lan1 lan2 lan3 lan4".split(), f"guest-port refuses {bad!r}")
+r = run("--yes", "guest-port", "lan4")
+check(r.returncode == 0 and ports("lan") == ["lan1", "lan2", "lan3"] and ports("guest") == ["lan4"],
+      f"lan4 moves to the guest bridge: {ports('lan')} {ports('guest')} {r.stdout}{r.stderr}")
+check("DHCP off" in r.stdout and "NAT" in r.stdout, "it tells you how to set the AP up")
+check("commit network" in open(f"{tmp}/uci.log").read(), "the change is committed")
+r = run("--yes", "guest-port", "lan4")
+check(r.returncode == 0 and "already" in r.stdout and ports("guest") == ["lan4"], "moving it twice changes nothing")
+r = run("--yes", "guest-port", "off")
+check(r.returncode == 0 and sorted(ports("lan")) == ["lan1", "lan2", "lan3", "lan4"] and ports("guest") == [], "off puts it back")
+fake_bridges(lan="lan1", guest="")
+r = run("--yes", "guest-port", "lan1")
+check(r.returncode != 0 and ports("lan") == ["lan1"], "the last LAN port is never taken: " + r.stderr)
+fake_bridges(with_guest=False)
+check(run("guest-port", "lan4").returncode != 0, "refuses before the setup has made the guest network")
+fake_bridges()
+r = run("--dry-run", "guest-port", "lan4")
+check(r.returncode == 0 and ports("lan") == ["lan1", "lan2", "lan3", "lan4"], "dry run changes nothing")
+os.remove(f"{bindir}/id")
+fake_uci({"radio0": "2g", "radio1": "5g"})
 
 # ---- coin box provisioning against a fake box ---------------------------------------------------------------------------
 class Box(http.server.BaseHTTPRequestHandler):
