@@ -137,11 +137,8 @@ class KioskSessionSupervisor(
                                 180 -> onSpeakWarning("3 minutes time remaining")
                                 60 -> onSpeakWarning("1 minute time remaining")
                                 10 -> onSpeakWarning("10 seconds time remaining")
-                                5 -> onSpeakWarning("Five")
-                                4 -> onSpeakWarning("Four")
-                                3 -> onSpeakWarning("Three")
-                                2 -> onSpeakWarning("Two")
-                                1 -> onSpeakWarning("One")
+                                // One utterance for the whole final countdown, not five separate TTS calls.
+                                5 -> onSpeakWarning("Five... Four... Three... Two... One...")
                             }
                         }
                     }
