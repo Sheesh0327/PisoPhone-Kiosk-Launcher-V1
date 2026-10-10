@@ -35,7 +35,10 @@ import com.google.zxing.DecodeHintType
 import com.google.zxing.MultiFormatReader
 import com.google.zxing.PlanarYUVLuminanceSource
 import com.google.zxing.common.HybridBinarizer
+import com.pisophone.kiosk.BuildConfig
 import com.pisophone.kiosk.network.Esp32AccountRequests
+import com.pisophone.kiosk.receiver.KioskAdminActionReceiver
+import com.pisophone.kiosk.security.RecoveryCode
 import com.pisophone.kiosk.service.AccountController
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -47,6 +50,9 @@ import java.util.concurrent.Executors
  * A normal screen is used (not an overlay window) because the camera and the keyboard both work properly in one. While it is
  * open [AccountController.scanning] is true, which takes the lock screen and pill windows off so they do not cover the camera;
  * they come back when this screen closes. It closes by itself when nothing happens for a while, and whenever it loses the front.
+ *
+ * Started with [EXTRA_RECOVERY] it is the recovery scanner instead: it reads only a recovery code ([RecoveryCode], made on the
+ * owner's computer) and, when the owner key signed it, removes PisoPhone from this phone. No USB cable, no box, no PIN.
  */
 class CardScanActivity : ComponentActivity() {
     private enum class Mode { SCANNING, WORKING, NAME, MESSAGE }
@@ -68,6 +74,7 @@ class CardScanActivity : ComponentActivity() {
     @Volatile private var mode = Mode.SCANNING
     private var ignoredSince = 0L
     private var finishing = false
+    private var recoveryMode = false
 
     private val reader = MultiFormatReader().apply {
         setHints(
@@ -93,8 +100,10 @@ class CardScanActivity : ComponentActivity() {
                 WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON,
         )
         analysisExecutor = Executors.newSingleThreadExecutor()
+        recoveryMode = intent?.getBooleanExtra(EXTRA_RECOVERY, false) == true
         AccountController.scanning.value = true
         buildUi()
+        if (recoveryMode) status.text = RECOVERY_HINT
         resetTimeout()
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
             startCamera()
@@ -221,7 +230,7 @@ class CardScanActivity : ComponentActivity() {
     }
 
     private fun scanAgain() {
-        status.text = "Hold your PisoPhone card up to the camera"
+        status.text = if (recoveryMode) RECOVERY_HINT else "Hold your PisoPhone card up to the camera"
         ignoredSince = 0L
         setMode(Mode.SCANNING)
     }
@@ -261,6 +270,10 @@ class CardScanActivity : ComponentActivity() {
 
     private fun onCardText(text: String) {
         if (mode != Mode.SCANNING) return
+        if (recoveryMode) {
+            onRecoveryText(text)
+            return
+        }
         if (!Esp32AccountRequests.looksLikeCard(text)) {
             // Some other QR code: keep looking, but say so after a moment so the player knows it was seen.
             val now = System.currentTimeMillis()
@@ -290,6 +303,31 @@ class CardScanActivity : ComponentActivity() {
                 main.postDelayed({ closeScreen() }, 2200L)
             }
         }
+    }
+
+    private fun onRecoveryText(text: String) {
+        if (!RecoveryCode.looksLikeRecovery(text)) {
+            val now = System.currentTimeMillis()
+            if (ignoredSince == 0L) ignoredSince = now
+            if (now - ignoredSince > 2500L) status.text = "That is not a recovery code. $RECOVERY_HINT"
+            return
+        }
+        val result = RecoveryCode.verify(text, BuildConfig.OWNER_PUBKEY_B64, System.currentTimeMillis() / 1000L)
+        if (result != RecoveryCode.Result.OK) {
+            showMessage(RecoveryCode.describe(result), retry = result != RecoveryCode.Result.NO_KEY)
+            return
+        }
+        status.text = "Removing PisoPhone from this phone…"
+        setMode(Mode.WORKING)
+        val app = applicationContext
+        Thread {
+            KioskAdminActionReceiver.deprovisionNow(app)
+            main.post {
+                if (!finishing) {
+                    showMessage("PisoPhone was removed from this phone. You can uninstall it now in Settings > Apps.", retry = false)
+                }
+            }
+        }.start()
     }
 
     private fun submitName() {
@@ -406,8 +444,12 @@ class CardScanActivity : ComponentActivity() {
         }
     }
 
-    private companion object {
+    companion object {
         private const val TAG = "CardScanActivity"
+
+        /** Start the scanner as the recovery scanner (reads a recovery code instead of a card). */
+        const val EXTRA_RECOVERY = "recovery"
+        private const val RECOVERY_HINT = "Hold the recovery code up to the camera"
 
         /** How long the lock screen is given to come back over the black scanner before the scanner leaves. */
         private const val LOCK_SCREEN_COVER_MS = 450L

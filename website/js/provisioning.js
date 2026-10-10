@@ -39,7 +39,8 @@
             out.name = raw.name;
         }
         if (has(raw.secret)) {
-            if (!/^[A-Za-z0-9_.+=\-]{1,128}$/.test(raw.secret)) fail('secret', 'unexpected characters');
+            // the same rule as the app's (KioskSecurity.BOX_SECRET_REGEX): a secret the app would silently refuse must stop here
+            if (!/^[A-Za-z0-9_.+=\-]{16,128}$/.test(raw.secret)) fail('secret', '16-128 characters of A-Z a-z 0-9 _ . + = -');
             out.secret = raw.secret;
         }
         if (has(raw.wifiSsid)) {
@@ -82,7 +83,8 @@
         if (prov.secret) extras.secret = prov.secret;
         if (prov.mac) extras.mac = prov.mac;
         if (prov.slot) extras.slot = prov.slot;
-        if (prov.name) extras.name = prov.name;
+        // the slot already names the phone ("PisoPhone <slot>"); the name only matters without one (and every byte makes the code harder to scan)
+        if (prov.name && !prov.slot) extras.name = prov.name;
         extras.wifi_ssid = prov.wifiSsid || DEFAULT_SSID;
         extras.wifi_pass = prov.wifiPass;
         return {
@@ -99,9 +101,12 @@
         };
     }
 
-    /** The QR code as an SVG tag (js/qrcode.js, error correction M). */
+    /**
+     * The QR code as an SVG tag (js/qrcode.js). Error correction L: the code is shown on a screen, so it is never scratched or
+     * dirty, and every step down in correction makes the squares bigger, which is what a factory-reset phone's camera needs.
+     */
     function qrSvg(text, cellSize) {
-        const qr = window.qrcode(0, 'M');
+        const qr = window.qrcode(0, 'L');
         qr.addData(text, 'Byte');
         qr.make();
         return qr.createSvgTag({ cellSize: cellSize || 4, margin: 4, scalable: true });
