@@ -11,7 +11,7 @@ order as the program: the coin box, the router (steps 1 to 3), alerts, and the p
 1. **Flash the ESP32 coin box** from the browser (https://pisophone.pages.dev/flash.html, see "Flashing the coin box" below) and power it on. It joins the hidden `PisoCoinBox` Wi-Fi by itself, which the router creates. A used box must be factory reset first (it remembers its old Wi-Fi).
 2. **Modem into the router's WAN port** (internet is needed once, to download packages).
 3. A PC on one of the router's **LAN ports**.
-4. The modem's own network must not be `10.0.0.x` or `192.168.30.x` (the script stops and tells you if it is).
+4. The modem's own network must not be `10.0.0.x` or `10.0.30.x` (the script stops and tells you if it is).
 
 ### Flashing the coin box (once per box, by USB)
 Open **https://pisophone.pages.dev/flash.html** in Chrome or Edge on a computer, plug the box's ESP32 in with a USB data
@@ -150,7 +150,7 @@ adb shell am broadcast -a com.pisophone.kiosk.CONFIGURE_ESP32 -n com.pisophone.k
 |---|---|---|---|
 | **PisoKiosk** (hidden) | the rental phones | 2.4 + 5 GHz | WPA2, fixed name, **not broadcast**: it appears in no Wi-Fi list, so only phones set up from the coin box's provisioning page (which gives them the name and password) can join. Password chosen or generated. This is the router's LAN (`10.0.0.0/24`, the address you set in step 1). |
 | **PisoCoinBox** (hidden) | the ESP32 only | 2.4 GHz | After pairing, only the box's MAC address may join. The box is always `10.0.0.10`. |
-| **PisoWiFi** | customers | 2.4 + 5 GHz | Open, behind the openNDS login and coin payment. Rename: `piso-setup wifi-name "My Shop"`. Separate network `192.168.30.0/24`. |
+| **PisoWiFi** | customers | 2.4 + 5 GHz | Open, behind the openNDS login and coin payment. Rename: `piso-setup wifi-name "My Shop"`. Separate network `10.0.30.0/24` (routers set up earlier keep the guest range they already have, usually `192.168.30.0/24`; to move one, run the setup again with `GUEST_IP=10.0.30.1`). |
 
 The script also installs the packages, `pisoportal` (the resident coin portal: openNDS FAS mode, one WebSocket per customer), sets the box's admin password and gateway key through its API,
 sets a root password, and ends with a health check. The router's wired LAN ports stay on the same network as PisoKiosk (administration). **An access point plugged into one of them would therefore bypass the customer login**: give it a dedicated port with `piso-setup guest-port` (below).

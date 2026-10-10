@@ -14,7 +14,7 @@
 #                The box gets the fixed address 10.0.0.10.
 #   PisoWiFi     open Wi-Fi, 2.4 + 5 GHz, for customers (openNDS login page, coin payments). Rename it with:
 #                  piso-setup wifi-name "My Shop"
-#                Network 192.168.30.0/24, kept apart from the kiosk network.
+#                Network 10.0.30.0/24, kept apart from the kiosk network.
 # Everything is generated here (Wi-Fi password, box admin password, gateway key) and printed once at the end and saved in
 # /root/piso-setup-summary.txt. Running the file again is safe: it keeps what it already made.
 #
@@ -37,7 +37,7 @@ LAN_IP=$(uci -q get network.lan.ipaddr 2> /dev/null | head -n 1 | cut -d/ -f1)  
 LAN_IP="${LAN_IP:-10.0.0.1}"
 BOX_IP="${BOX_IP:-${LAN_IP%.*}.10}"                                               # the box is always <LAN network>.10
 GUEST_IP="${GUEST_IP:-$(uci -q get network.guest.ipaddr 2> /dev/null)}"   # a re-run or update keeps what the router has
-GUEST_IP="${GUEST_IP:-192.168.30.1}"
+GUEST_IP="${GUEST_IP:-10.0.30.1}"
 PORTAL_PORT=2080                             # the portal (openNDS FAS): not 80, which openNDS keeps for captive-portal detection
 CONF="${PISO_CONF:-/etc/piso-setup.conf}"   # what this script chose (secrets inside): mode 600
 LOG="${PISO_LOG:-/root/piso-setup.log}"
@@ -123,7 +123,7 @@ preflight() {
 	[ "$LAN_IP" = 10.0.0.1 ] || die "the router's LAN address is $LAN_IP, but this setup expects 10.0.0.1. Run the installer, which moves it for you: wget -qO- https://pisophone.pages.dev/install.sh | sh   (or by hand: uci set network.lan.ipaddr=10.0.0.1 && uci commit network && reboot), then log in again at 10.0.0.1 and re-run. See setup/README.md."
 	case "$WAN" in
 		"${LAN_IP%.*}".*) die "the modem's network ($WAN) is in the same range as the router's LAN ($LAN_IP). Change the modem's own LAN address (for example to 192.168.100.1) and run this again" ;;
-		192.168.30.*) die "the modem's network ($WAN) uses 192.168.30.x, the same as the guest network. Run with GUEST_IP=192.168.31.1" ;;
+		"${GUEST_IP%.*}".*) die "the modem's network ($WAN) uses ${GUEST_IP%.*}.x, the same as the guest network. Run with GUEST_IP=10.0.31.1 (or another free range)" ;;
 	esac
 	log "WAN address: $WAN"
 	if ! ping -c 1 -W 3 1.1.1.1 > /dev/null 2>&1 && ! ping -c 1 -W 3 8.8.8.8 > /dev/null 2>&1; then die "no internet through the WAN port"; fi
@@ -759,7 +759,7 @@ cmd_guest_port() {
 		echo "Moving $_p to the guest network. If this computer is plugged into $_p, this SSH session ends: use another LAN port."
 		[ "$ASSUME_YES" = 1 ] || sleep 5
 		uci del_list "$_lan.ports=$_p"; uci add_list "$_guest.ports=$_p"
-		_msg="$_p is now a guest port: plug the access point into it (bridge / AP mode, its own DHCP off). Its customers get 192.168.30.x addresses, the openNDS login page and the coin payment, like PisoWiFi. Do not use the AP's router / NAT mode: every customer would look like one device."
+		_msg="$_p is now a guest port: plug the access point into it (bridge / AP mode, its own DHCP off). Its customers get guest-network (${GUEST_IP%.*}.x) addresses, the openNDS login page and the coin payment, like PisoWiFi. Do not use the AP's router / NAT mode: every customer would look like one device."
 		conf_set GUEST_PORT "$_p"
 	fi
 	uci commit network || { echo "uci commit failed" >&2; return 1; }

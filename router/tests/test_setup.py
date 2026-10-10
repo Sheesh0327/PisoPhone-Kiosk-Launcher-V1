@@ -117,7 +117,7 @@ for bad, why in [("has space", "spaces"), ("it'sbad12", "a quote"), ("short", "l
 check("ask_password BOX_ADMIN_PASS_NEW" in text and "ask_password KIOSK_PASS" in text and "super-admin" in text, "all the operating passwords are chosen in the setup")
 check(not re.search(r"\bod -|hexdump|xxd", text.split(PAYLOAD_MARK)[0]), "no tools a stock BusyBox lacks (od, hexdump, xxd)")
 check("--stage2" not in text.split(PAYLOAD_MARK)[0] and "nohup" not in text.split(PAYLOAD_MARK)[0], "no background stage that outlives the SSH session")
-check("set network.guest.ipaddr='192.168.30.1'" in out and "set network.guest.device='br-guest'" in out, "guest network on its own bridge")
+check("set network.guest.ipaddr='10.0.30.1'" in out and "set network.guest.device='br-guest'" in out, "guest network on its own bridge")
 for radio in ("radio0", "radio1"):
     check(f"set wireless.kiosk_{radio}.ssid='PisoKiosk'" in out and f"set wireless.kiosk_{radio}.network='lan'" in out, f"PisoKiosk on {radio}")
     check(f"set wireless.guest_{radio}.ssid='PisoWiFi'" in out and f"set wireless.guest_{radio}.encryption='none'" in out and f"set wireless.guest_{radio}.network='guest'" in out,
