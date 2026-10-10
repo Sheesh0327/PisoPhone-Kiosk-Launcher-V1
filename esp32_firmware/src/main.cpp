@@ -8,7 +8,6 @@
 #include <Preferences.h>
 #include <ESPmDNS.h>
 #include <esp_task_wdt.h>
-#include <esp_ota_ops.h>
 #include "AccountStorage.h"
 #include "WebServerAccounts.h"
 #include "esp_wifi.h"
@@ -29,6 +28,7 @@
 #include "HealthPolicy.h"
 #include "WifiLink.h"
 #include "RevenueVault.h"
+#include "OtaRollback.h"
 
 #define WDT_TIMEOUT_SECONDS 15
 
@@ -149,6 +149,7 @@ void setup() {
     delay(300);
 
     diagInit();
+    otaRollbackBegin(); // is this image on trial after an update? (see OtaRollback.cpp)
 
     diagLog("\n--- HARDWARE Master Kiosk Controller v%s ---\n", PISO_FW_VERSION);
 
@@ -221,20 +222,10 @@ void setup() {
     lastWifiCheckTime = millis();
 }
 
-// A freshly flashed image that survives a minute of normal running is confirmed, so a bootloader built
-// with app rollback would not revert it. With the stock Arduino bootloader this call does nothing.
-static void confirmRunningImageWhenStable() {
-    static bool confirmed = false;
-    if (confirmed || millis() < 60000UL) return;
-    confirmed = true;
-    esp_err_t r = esp_ota_mark_app_valid_cancel_rollback();
-    Serial.printf("[OTA] Running image confirmed (%s)\n", esp_err_to_name(r));
-}
-
 void loop() {
     // Feed Hardware Watchdog Timer
     esp_task_wdt_reset();
-    confirmRunningImageWhenStable();
+    otaRollbackLoop(); // confirms a freshly updated image once it has proved itself, or restores the previous one
 
     // Memory and Uptime Health Maintenance Check
     processSystemHealthAndAutoMaintenance();

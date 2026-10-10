@@ -35,8 +35,15 @@ app does not know flash encryption is on. Pick one route and prove it:
    `bootloader.bin` under `esp32_firmware/bootloader/` (never the key). The app can stay on the stock Arduino build
    if a signed app boots under that bootloader.
 
+Whichever route: keep `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y` and `CONFIG_APP_ROLLBACK_ENABLE=y` (the stock Arduino
+libraries have both, and the firmware relies on them: `OtaRollback.cpp`). A bootloader built without them still boots,
+but a bad update is then never reverted, and nothing in the build says so. The dashboard's diagnostics show
+`ota_image_state`; after an update it reads `pending_verify` for about a minute and then `valid`. If it never leaves
+`valid` (it never shows `pending_verify` after an OTA), the bootloader has no rollback.
+
 **GATE 1 passes when:** the bootloader built this way is signed, flashed to a spare board with *no* eFuses burned,
-and the box boots, runs a signed OTA and keeps its coin queue across the update.
+and the box boots, runs a signed OTA, keeps its coin queue across the update, **and reverts a deliberately bad update
+(`docs/REAL_WORLD_TESTING.md`, item H4)**.
 
 ## 2. One-time setup on your PC
 

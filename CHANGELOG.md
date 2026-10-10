@@ -4,6 +4,16 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Coin box firmware: a bad firmware update is now reverted by the box itself. The box's bootloader could always go back to the
+  previous firmware, but the Arduino framework told it that every update was fine before the new firmware had run a single
+  line, so a firmware that crashed, hung or could not get online after an update stayed in charge until someone reflashed the
+  box by USB. Now the new firmware is on trial after an update: it is kept after a minute if the payment storage works and (when
+  the box was on Wi-Fi at the time of the update) it is back on Wi-Fi; if it has not passed after 5 minutes the box restores
+  the previous firmware, once no coin session is open and no payment is waiting to be saved. A box that crashes or loses power
+  during that first minute goes back to the previous firmware at once. This means: restarting the box (or a power cut) in the
+  first minute after an update undoes the update, and a second update cannot be started during that minute (the dashboard says
+  so; wait a minute and try again). Diagnostics show `ota_image_state` and `ota_last_update_rolled_back`, and a revert is
+  recorded as the restart cause `ota-rollback`. Boxes with a custom bootloader (secure boot) must keep rollback enabled in it.
 - Phone app: a command the box sent to a phone (a setting change, an arena or lock action, a status read) can no longer be copied
   off the network and played back later. Before, the phone only remembered the last 10 minutes of messages in memory, so a copy
   played after that, or after the app restarted, was obeyed again. Now a message must also be recent (within 2 minutes of the box's

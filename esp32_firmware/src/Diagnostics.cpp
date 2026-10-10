@@ -4,6 +4,7 @@
 #include "FirmwareVersion.h"
 #include "Config.h"
 #include "CoinSlotManager.h"
+#include "OtaRollback.h"
 #include "PaymentQueueManager.h"
 #include "WebServerModule.h"
 #include "WebServerAuth.h"
@@ -138,6 +139,8 @@ String diagBuildJson() {
 #endif
     doc["mac"] = macAddressStr;
     doc["uptime_s"] = millis() / 1000UL;
+    doc["ota_image_state"] = otaImageStateName();
+    doc["ota_last_update_rolled_back"] = otaLastUpdateWasRolledBack();
 
     JsonObject heap = doc.createNestedObject("heap");
     heap["free"] = ESP.getFreeHeap();

@@ -8,6 +8,7 @@
 #include "Diagnostics.h"
 #include "OtaCheck.h"
 #include "OtaSecurity.h"
+#include "OtaRollback.h"
 #include "WebAssetServer.h"
 #include "WebServerAuth.h"
 #include "Config.h"
@@ -192,6 +193,16 @@ void setupWebServer() {
                     return;
                 }
 
+                // The Arduino Update class does not check this (the ESP-IDF's own OTA call does): a second update started
+                // now would overwrite the one slot that still holds the last confirmed firmware, leaving nothing to roll back to.
+                if (otaImageOnTrial()) {
+                    otaIsValidBinary = false;
+                    otaErrorMsg =
+                        "OTA refused: the box is still checking the firmware it was just updated to (about a minute). Try again shortly.";
+                    diagLog("[OTA] %s\n", otaErrorMsg.c_str());
+                    return;
+                }
+
                 diagCount(DiagCounter::OtaAttempts);
                 diagLog("[OTA] Starting firmware flash: %s\n", upload.filename.c_str());
 
@@ -204,6 +215,7 @@ void setupWebServer() {
                     return;
                 }
 
+                otaNoteUploadStart(WiFi.status() == WL_CONNECTED); // a working update must get back on Wi-Fi then
                 if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
                     otaIsValidBinary = false;
                     otaErrorMsg = "Failed to begin flash partition write (Error: " + String(Update.getError()) + ")";
