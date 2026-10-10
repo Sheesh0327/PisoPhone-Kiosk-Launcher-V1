@@ -249,6 +249,9 @@ void loop() {
     // 0. Process Hardware Fallback Reset Pin (GPIO 2 -> GND for 5 seconds)
     processHardwareResetPin();
 
+    // 0. Apply phone acknowledgements the AuthWorker task confirmed (only this task changes accounts and phone slots)
+    processWorkerAcks();
+
     // 1. Process Unified Coin Slot Manager (Arming, Pulse Accumulation & Draining)
     processCoinSlotSession();
     gatewayEventsLoop(); // push coin events to the router (if it asked for them)
