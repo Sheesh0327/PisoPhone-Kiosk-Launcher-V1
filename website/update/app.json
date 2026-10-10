@@ -1,10 +1,10 @@
 {
-  "versionCode": 400,
-  "versionName": "1.0.400-dev",
+  "versionCode": 405,
+  "versionName": "1.0.405-dev",
   "channel": "dev",
   
   "signatureChecksum": "Un0usqLMwnmeaowrY2g21EgRVWe4bTRDLUi2RH12WbE",
-  "sha256": "dd2c906ccd6728ecda4a8b39521faca2430d72dff5e4774ab6bb16191bdc578d",
+  "sha256": "07a5991f912bb7c7848f33a2d9096305c9529f44dda652f915ea5a3f1c02fc6d",
   "size": 3088723,
-  "releaseDate": "2026-10-09"
+  "releaseDate": "2026-10-10"
 }
