@@ -28,6 +28,7 @@
 #include "WebServerAuth.h"
 #include "HealthPolicy.h"
 #include "WifiLink.h"
+#include "RevenueVault.h"
 
 #define WDT_TIMEOUT_SECONDS 15
 
@@ -156,6 +157,7 @@ void setup() {
 
     // Load NVS Configuration & Lifetime Vault Revenue safely
     loadAllConfig();
+    vaultBegin(); // after the counters are loaded: the vault is the lifetime total less the last collection
     accountsBegin();
     gatewayInit();
     if (defaultCredentialsActive()) {

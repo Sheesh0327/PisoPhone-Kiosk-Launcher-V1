@@ -1,4 +1,5 @@
-// Super-admin features: vault unmask with a 5-minute auto-reset, revenue split and vault reset.
+// Super-admin features: vault unmask with a 5-minute window that ends in a recorded collection, revenue split and the
+// collection history. The lifetime revenue counters never go down: "reset" means a collection (RevenueVault.h).
 // The password itself is managed remotely (SuperAdminCreds.cpp); there is no local change option.
 
 #include "SuperAdminManager.h"
@@ -7,6 +8,8 @@
 #include "WebServerAuth.h"
 #include "SuperAdminCreds.h"
 #include "Money.h"
+#include "RevenueVault.h"
+#include "RevenueLedger.h"
 #include "PaymentQueueManager.h"
 #include "Diagnostics.h"
 #include <WebServer.h>
@@ -52,20 +55,11 @@ void processSuperAdminLoop() {
         if (millis() >= unmaskExpiryTimestamp) {
             Serial.println("\n=======================================================");
             Serial.println("[👑 SUPER ADMIN] 5-Minute Unmask Timeout Expired!");
-            Serial.println("[💰 VAULT] Auto-resetting lifetime vault counters to 0.");
+            Serial.println("[💰 VAULT] Recording the collection; the lifetime totals are kept.");
             Serial.println("=======================================================");
 
-            totalCoinsLifetime = 0;
-            totalCoinsSession = 0;
-            totalCentavosLifetime = 0;
-            totalCentavosSession = 0;
-            lastSavedTotalCoins = 0;
-            lastSavedTotalCentavos = 0;
-
-            prefs.begin(NVS_NAMESPACE, false);
-            prefs.putULong(NVS_KEY_TOTAL_COINS, 0);
-            prefs.putULong(NVS_KEY_TOTAL_CENTAVOS, 0);
-            prefs.end();
+            // If the record cannot be written nothing changes (the money stays in the vault); the window closes either way.
+            vaultCollect(revenue::UNMASK_EXPIRED);
 
             isVaultUnmasked = false;
             unmaskExpiryTimestamp = 0;
@@ -94,7 +88,9 @@ void handleSuperAdminAuth() {
     json += "\"vendor_split\":" + String(vendorRevenueSplitPercent) + ",";
     json += "\"is_unmasked\":" + String(isVaultUnmasked ? "true" : "false") + ",";
     json += "\"remaining_seconds\":" + String(remainingSec) + ",";
-    json += "\"total_coins\":" + String(totalCoinsLifetime) + ",";
+    json += "\"total_coins\":" + String(vaultCoins()) + ","; // in the vault: counted since the last collection
+    json += "\"lifetime_coins\":" + String(totalCoinsLifetime) + ",";
+    json += "\"collections\":" + String(vaultCollections()) + ",";
     json += "\"session_coins\":" + String(totalCoinsSession);
     json += "}";
 
@@ -118,11 +114,15 @@ void handleSuperAdminUnmask() {
     json += "\"status\":\"ok\",";
     json += "\"message\":\"Vault unmasked. Auto-reset timer initiated.\",";
     json += "\"timeout_seconds\":" + String(VAULT_UNMASK_TIMEOUT_SECONDS) + ",";
-    json += "\"total_coins\":" + String(totalCoinsLifetime) + ",";
+    json += "\"total_coins\":" + String(vaultCoins()) + ","; // in the vault: counted since the last collection
     json += "\"session_coins\":" + String(totalCoinsSession) + ",";
-    char earnings[24];
-    money::formatPesos(totalCentavosLifetime, earnings, sizeof(earnings));
+    char earnings[24], lifetimeEarnings[24];
+    money::formatPesos(vaultCentavos(), earnings, sizeof(earnings));
+    money::formatPesos(totalCentavosLifetime, lifetimeEarnings, sizeof(lifetimeEarnings));
     json += "\"total_earnings\":" + String(earnings) + ",";
+    json += "\"lifetime_coins\":" + String(totalCoinsLifetime) + ",";
+    json += "\"lifetime_earnings\":" + String(lifetimeEarnings) + ",";
+    json += "\"collections\":" + String(vaultCollections()) + ",";
     json += "\"vendor_split\":" + String(vendorRevenueSplitPercent);
     json += "}";
 
@@ -136,24 +136,34 @@ void handleSuperAdminResetVault() {
         return;
     }
 
-    totalCoinsLifetime = 0;
-    totalCoinsSession = 0;
-    totalCentavosLifetime = 0;
-    totalCentavosSession = 0;
-    lastSavedTotalCoins = 0;
-    lastSavedTotalCentavos = 0;
-
-    prefs.begin(NVS_NAMESPACE, false);
-    prefs.putULong(NVS_KEY_TOTAL_COINS, 0);
-    prefs.putULong(NVS_KEY_TOTAL_CENTAVOS, 0);
-    prefs.end();
+    if (!vaultCollect(revenue::SUPERADMIN_RESET)) {
+        webServer.send(500, "application/json",
+                       "{\"status\":\"error\",\"message\":\"Could not record the collection; nothing was changed.\"}");
+        return;
+    }
 
     isVaultUnmasked = false;
     unmaskExpiryTimestamp = 0;
 
-    Serial.println("[👑 SUPER ADMIN] Manual vault reset completed by Vendor.");
+    Serial.println("[👑 SUPER ADMIN] Collection finished by Vendor.");
     webServer.send(200, "application/json",
-                   "{\"status\":\"ok\",\"message\":\"Vault counters successfully reset to 0.\"}");
+                   "{\"status\":\"ok\",\"message\":\"Collection recorded. The vault counter starts again at 0.\"}");
+}
+
+// The record of every collection (newest 16) and the lifetime totals, which never reset. Read-only.
+void handleSuperAdminCollections() {
+    if (!authenticateSuperAdmin()) {
+        webServer.send(401, "application/json", "{\"status\":\"error\",\"message\":\"Unauthorized.\"}");
+        return;
+    }
+    char lifetimeEarnings[24], vaultEarnings[24];
+    money::formatPesos(totalCentavosLifetime, lifetimeEarnings, sizeof(lifetimeEarnings));
+    money::formatPesos(vaultCentavos(), vaultEarnings, sizeof(vaultEarnings));
+    String json = "{\"status\":\"ok\",\"lifetime_coins\":" + String(totalCoinsLifetime) +
+                  ",\"lifetime_earnings\":" + lifetimeEarnings + ",\"vault_coins\":" + String(vaultCoins()) +
+                  ",\"vault_earnings\":" + vaultEarnings + ",\"collections\":" + String(vaultCollections()) +
+                  ",\"history\":" + vaultHistoryJson(revenue::RING_SIZE) + "}";
+    webServer.send(200, "application/json", json);
 }
 
 void handleSuperAdminSaveSplit() {

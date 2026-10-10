@@ -7,6 +7,7 @@
 #include "HardwareManager.h"
 #include "SuperAdminManager.h"
 #include "PaymentQueueManager.h"
+#include "RevenueVault.h"
 #include "Diagnostics.h"
 #include "Money.h"
 #include "CredGen.h"
@@ -563,9 +564,11 @@ void factoryResetDefaults(bool ownerWipe) {
     prefs.clear();
     if (!ownerWipe) ownerdata::restore(keepStore, owner); // an operator can never reset the revenue
     prefs.end();
-    if (ownerWipe)
+    if (ownerWipe) {
+        vaultOnOwnerWipe();  // the owner's full wipe also starts a new collection log
         clearPaymentQueue(); // an operator reset keeps unacknowledged payments: that money was already collected
-    runConfigMigrations();   // a cleared box gets a fresh secret and new passwords (printed on the serial console)
+    }
+    runConfigMigrations(); // a cleared box gets a fresh secret and new passwords (printed on the serial console)
     loadSecretMode();
     loadCredentials();
 

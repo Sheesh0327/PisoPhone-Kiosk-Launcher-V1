@@ -257,11 +257,11 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                             </div>
                         </div>
                         <hr class="sep">
-                        <form action="/reset_vault" method="POST" onsubmit="return confirm('Reset the lifetime coin counters? This needs the Vendor password.');" class="field">
-                            <label for="reset_pw">Reset revenue counters (vendor only)</label>
+                        <form action="/reset_vault" method="POST" onsubmit="return confirm('Record a collection? The revenue counter starts again at 0; the lifetime total and the collection history are kept. This needs the Vendor password.');" class="field">
+                            <label for="reset_pw">Collect revenue: restart the counter (vendor only)</label>
                             <div class="inline">
                                 <input id="reset_pw" type="password" name="reset_pw" placeholder="Vendor password" autocomplete="off">
-                                <button type="submit" class="btn danger">Reset</button>
+                                <button type="submit" class="btn danger">Collect</button>
                             </div>
                         </form>
                         <hr class="sep">

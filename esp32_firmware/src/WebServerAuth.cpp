@@ -14,6 +14,8 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include "SuperAdminCreds.h"
+#include "RevenueVault.h"
+#include "RevenueLedger.h"
 
 // A phone acknowledgement the AuthWorker confirmed, waiting for loop() to apply it (see WebServerAuth.h).
 struct WorkerAck {
@@ -304,20 +306,13 @@ void redirectHome() {
 }
 
 void handleLogout() {
-    if (isVaultUnmasked) {
-        totalCoinsLifetime = 0;
-        totalCoinsSession = 0;
-        totalCentavosLifetime = 0;
-        totalCentavosSession = 0;
-        lastSavedTotalCoins = 0;
-        lastSavedTotalCentavos = 0;
-        prefs.begin(NVS_NAMESPACE, false);
-        prefs.putULong(NVS_KEY_TOTAL_COINS, 0);
-        prefs.putULong(NVS_KEY_TOTAL_CENTAVOS, 0);
-        prefs.end();
+    // Signing out ends the vendor's collection, but only when the request really is the vendor's: /logout is a plain GET that
+    // anyone (or a link prefetch) can send, and it must not be able to end someone else's collection window.
+    if (isVaultUnmasked && superAdminBasicAuthOk()) {
+        vaultCollect(revenue::SUPERADMIN_LOGOUT);
         isVaultUnmasked = false;
         unmaskExpiryTimestamp = 0;
-        Serial.println("[👑 SUPER ADMIN] Vault reset triggered by Super Admin logout.");
+        Serial.println("[👑 SUPER ADMIN] Collection recorded at Super Admin logout.");
     }
     webServer.requestAuthentication(BASIC_AUTH, "HARDWARE Admin Login", "Logged out");
     webServer.send(401, "text/html; charset=utf-8", R"HTML(

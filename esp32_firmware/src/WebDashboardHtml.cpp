@@ -1,4 +1,5 @@
 #include "WebDashboardHtml.h"
+#include "RevenueVault.h"
 #include "WebAssetServer.h"
 #include "SuperAdminTemplate.h"
 #include "WebDashboardIcons.h"
@@ -43,7 +44,7 @@ static String getPlaceholderValue(const String& tag) {
     if (tag == "MINUTES_PER_COIN") return String(minutesPerCoin);
     if (tag == "ADMIN_PASSWORD") return webPassword;
     if (tag == "MATCH_MINUTES") return String(matchMinutes);
-    if (tag == "TOTAL_COINS") return String(totalCoinsLifetime);
+    if (tag == "TOTAL_COINS") return String(vaultCoins()); // since the last collection
     if (tag == "SESSION_COINS") return String(totalCoinsSession);
     if (tag == "DEVICE_OPTIONS") return renderDeviceOptions("");
     if (tag == "LED_ACTIVE_LOW_SELECTED") return ledActiveLow ? "selected" : "";

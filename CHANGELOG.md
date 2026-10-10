@@ -4,6 +4,16 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Coin box firmware: collecting the revenue no longer erases it. The lifetime coin and earnings counters now only go up (only the
+  owner's full wipe clears them). Taking the money out is recorded as a collection (time, coins, amount, why, and the lifetime
+  total at that moment; the last 16 are kept in the box and survive a restart, a firmware update and the operator's factory
+  reset). The vendor page and the dashboard still show the amount counted since the last collection and still start again at
+  ₱0, so nothing changes for the person collecting. The vendor can read the history from `/api/superadmin/collections`. Every
+  way of resetting goes through the same step: the 5-minute window ending, finishing a collection or signing out on the vendor
+  page, and the dashboard's vendor-password form (now labelled "Collect"). If the record cannot be written, nothing changes and
+  the money stays in the counter. Signing out of the dashboard used to reset the revenue whenever a vendor window was open,
+  even for a request that was not the vendor's; now only the vendor's own sign-out ends the collection. The router's
+  reconcile check works with both old and new boxes.
 - Developers (coin box firmware): the background task that delivers coins to phones no longer changes the player-account table or
   the phone slots itself. When a phone confirms a coin it now hands the confirmation to the main loop, the only task that owns
   that state, so the two can no longer change the account table at the same moment. A confirmation that cannot be handed over

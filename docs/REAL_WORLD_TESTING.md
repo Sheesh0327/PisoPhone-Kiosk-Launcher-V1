@@ -56,7 +56,8 @@ Collect logs as you go: box serial output at 115200 baud (`pio device monitor`),
 *C1–C4 are pass 1, the rest pass 2*
 - [ ] **C1** Arm the slot from the phone, insert 1 coin: time is added once; the box counts 1 coin
 - [ ] **C2** Insert 5 coins quickly: total time is exactly 5 coins' worth, no double credit
-- [ ] **C3** Dashboard lifetime coin/earnings counters match the coins inserted (₱ amounts exact)
+- [ ] **C3** Dashboard revenue counter matches the coins inserted (₱ amounts exact)
+- [ ] **C3b** Vendor page: unmask, then "finish collecting": the counter returns to ₱0, `/api/superadmin/collections` lists the collection with the right amount, and `lifetime_coins` did NOT go down; unplug and reconnect the box: the history and the ₱0 are still there
 - [ ] **C4** Time counts down; the phone locks at zero
 - [ ] **C5** Insert coins while the phone is unlocked and armed: time extends
 - [ ] **C6** Slot is busy for a second phone while the first is armed
