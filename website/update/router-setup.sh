@@ -18,7 +18,7 @@
 # Everything is generated here (Wi-Fi password, box admin password, gateway key) and printed once at the end and saved in
 # /root/piso-setup-summary.txt. Running the file again is safe: it keeps what it already made.
 #
-# Other commands (after setup): piso-setup status | wifi-name "<name>" | guest-port [lanN|off] | pair | summary | test-coin | diag | box-diag | set-password | reconcile [rebase] | telegram | rotate-box-wifi | kiosk-wifi | handout | lock-admin | unlock-admin | update [check] (installs the newest release from the website; same as self-update) | self-update [check] | auto-update on|off
+# Other commands (after setup): piso-setup status | wifi-name "<name>" | guest-port [lanN|off] | pair | summary | test-coin | diag | box-diag | set-password | reconcile [rebase] | telegram | rotate-box-wifi | kiosk-wifi | verify | handout | lock-admin | unlock-admin | update [check] (installs the newest release from the website; same as self-update) | self-update [check] | auto-update on|off
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation
@@ -26,7 +26,7 @@
 
 VERSION="dev"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
-PISO_RELEASE='1.2.1'
+PISO_RELEASE='1.2.3'
 
 COUNTRY="${COUNTRY:-PH}"
 KIOSK_SSID="PisoKiosk"                       # fixed, and hidden: only phones provisioned by the coin box page know it
@@ -641,6 +641,79 @@ EOT
 	chmod 600 "$SUMMARY"
 }
 
+# ---------------------------------------------------------------------------------------------------------------------
+# Agreement: several values live in more than one place (the settings file, the portal's file, the Wi-Fi settings, openNDS,
+# the setup summary, the coin box). They are only right when the copies match, so each is compared with the others and the
+# check names what disagrees. `piso-setup verify` prints it; the hourly update check runs it and tells the owner's Telegram
+# when the answer changes. Checks that need the coin box are skipped while it does not answer (status says that).
+# ---------------------------------------------------------------------------------------------------------------------
+cs_get() { sed -n "s/^$1='\\(.*\\)'\$/\\1/p" "$PISO_ROOT/etc/coinslot.conf" 2> /dev/null | tail -n 1; }
+ag_ifaces() { uci -q show wireless | sed -n "s/^wireless\\.\\($1[^.=]*\\)=wifi-iface\$/\\1/p"; }   # Wi-Fi sections whose name starts with $1
+ag_every_iface() {  # ag_every_iface <name prefix> <option> <value>: there is at least one such Wi-Fi section and all have the value
+	[ -n "$3" ] || return 1
+	_n=0
+	for _s in $(ag_ifaces "$1"); do
+		_n=$((_n + 1))
+		[ "$(uci -q get "wireless.$_s.$2")" = "$3" ] || return 1
+	done
+	[ "$_n" -gt 0 ]
+}
+ag_box_admin_ok() { [ "$(curl -s -m 8 -o /dev/null -w '%{http_code}' -u "admin:$(conf_get BOX_ADMIN_PASS)" "http://$BOX_IP/" 2> /dev/null)" = 200 ]; }
+ag_mac_allowed() { [ -n "$1" ] && uci -q get wireless.box_ap.maclist 2> /dev/null | tr 'a-f' 'A-F' | grep -qF "$1"; }
+ag_summary_has() { [ -n "$1" ] && [ -r "$SUMMARY" ] && grep -qF "$1" "$SUMMARY"; }
+
+ag_is_key() { [ -n "$(conf_get GW_KEY)" ] && [ "$(cs_get GW_KEY)" = "$(conf_get GW_KEY)" ]; }
+ag_is_mac() { [ -n "$(conf_get BOX_MAC)" ] && [ "$(cs_get GW_BOX_MAC)" = "$(conf_get BOX_MAC)" ] && ag_mac_allowed "$(conf_get BOX_MAC)"; }
+ag_is_kiosk() { ag_every_iface kiosk_ key "$(conf_get KIOSK_PASS)"; }
+ag_is_name() { ag_every_iface guest_ ssid "$(conf_get GUEST_NAME)" && [ "$(uci -q get 'opennds.@opennds[0].gatewayname')" = "$(conf_get GUEST_NAME)" ] && [ "$(cs_get GATEWAY_NAME)" = "$(conf_get GUEST_NAME)" ]; }
+ag_is_bind() { [ -n "$(cs_get PORTAL_BIND)" ] && ip -4 addr show br-guest | grep -q "inet $(cs_get PORTAL_BIND)/" && [ "$(cs_get PORTAL_PORT)" = "$(uci -q get 'opennds.@opennds[0].fasport')" ]; }
+ag_is_boxwifi() { [ "$(conf_get BOX_WIFI_ROTATED)" != 1 ] || { [ -n "$(conf_get BOX_WIFI_PASS_NEW)" ] && [ "$(uci -q get wireless.box_ap.key)" = "$(conf_get BOX_WIFI_PASS_NEW)" ]; }; }
+ag_is_summary() { ag_summary_has "$(conf_get KIOSK_PASS)" && ag_summary_has "$(conf_get BOX_ADMIN_PASS)"; }
+ag_is_gwkey_box() { "$PORTAL_BIN" box | grep -qi answers; }
+
+AGREE_FAILS=""
+ag_run() { if "$2" > /dev/null 2>&1; then log "PASS  $1"; else log "FAIL  $1"; _abad=$((_abad + 1)); AGREE_FAILS="$AGREE_FAILS$1; "; fi; }
+agree_all() {  # prints PASS/FAIL lines, returns the number of disagreements; their names are left in AGREE_FAILS
+	_abad=0; AGREE_FAILS=""
+	ag_run "the gateway key in the settings is the one in the portal's file" ag_is_key
+	ag_run "the coin box's address is the same in the settings, the portal's file and the box network's allow list" ag_is_mac
+	ag_run "the PisoKiosk password in the settings is on every PisoKiosk radio" ag_is_kiosk
+	ag_run "the customer Wi-Fi name is the same in the settings, on every radio, in openNDS and in the portal's file" ag_is_name
+	ag_run "the portal listens on the guest network's address and on the port openNDS sends guests to" ag_is_bind
+	ag_run "the coin box network's password is the one the router gave the box" ag_is_boxwifi
+	ag_run "the setup summary shows the current PisoKiosk and coin box passwords" ag_is_summary
+	if box_up; then
+		ag_run "the box accepts the router's gateway key (signed request)" ag_is_gwkey_box
+		ag_run "the box accepts the admin password the router stored" ag_box_admin_ok
+		ag_run "the box's \"Set up a phone\" link carries the PisoKiosk password (box firmware 3.3.3 or newer; else: piso-setup kiosk-wifi)" kiosk_wifi_on_box
+	else
+		log "SKIP  the checks that need the coin box (it does not answer at $BOX_IP)"
+	fi
+	return "$_abad"
+}
+
+# watch_agreement: what the hourly update check runs. Says nothing while the answer is unchanged; tells the owner's Telegram
+# when something starts to disagree (and which) and when everything agrees again.
+watch_agreement() {
+	[ -r "$CONF" ] && [ -n "$(conf_get GW_KEY)" ] || return 0
+	_d="$DRY"; DRY=1
+	agree_all > /dev/null 2>&1; _n=$?
+	DRY="$_d"
+	_sum=$(printf '%s' "$AGREE_FAILS" | cksum | cut -d' ' -f1)
+	[ "$_sum" != "$(conf_get AGREE_LAST)" ] || return 0
+	if [ "$_n" -gt 0 ]; then notify "setup: $_n value(s) no longer agree: $AGREE_FAILS Run: piso-setup verify"
+	elif [ -n "$(conf_get AGREE_LAST)" ] && [ "$(conf_get AGREE_LAST)" != "$(printf '' | cksum | cut -d' ' -f1)" ]; then notify "setup: everything agrees again"; fi
+	conf_set AGREE_LAST "$_sum"
+	return 0
+}
+
+cmd_verify() {
+	DRY=1
+	agree_all; _f=$?
+	if [ "$_f" = 0 ]; then echo "Everything that must match, matches."; else echo "$_f value(s) disagree: see the FAIL lines above. Fixes: piso-setup kiosk-wifi (the box's password for phones), piso-setup pair (a replaced box), piso-setup summary (reads the current ones)."; fi
+	return "$_f"
+}
+
 check_all() {  # prints PASS/FAIL lines, returns the number of failures
 	_bad=0
 	_ck() { if eval "$2" > /dev/null 2>&1; then log "PASS  $1"; else log "FAIL  $1"; _bad=$((_bad + 1)); fi; }
@@ -651,15 +724,17 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 	_ck "the coin box has its own Wi-Fi password (not the published default)" "[ \"\$(uci -q get wireless.box_ap.key)\" != '$BOX_DEFAULT_WIFI' ]"
 	_ck "hidden Wi-Fi $BOX_SSID is on and locked to the box" "[ \"\$(uci -q get wireless.box_ap.macfilter)\" = allow ] && [ -n \"\$(uci -q get wireless.box_ap.maclist)\" ]"
 	_ck "coin box answers at $BOX_IP" box_up
-	_ck "the coin box's \"Set up a phone\" link carries the PisoKiosk password (box firmware 3.3.3 or newer; else: piso-setup kiosk-wifi)" kiosk_wifi_on_box
 	_ck "the portal is running and answers guests on $GUEST_IP:$PORTAL_PORT" "curl -s -m 4 http://$GUEST_IP:$PORTAL_PORT/ping | grep -q ok"
 	_ck "the portal can talk to the box (signed request)" "/usr/bin/pisoportal box | grep -qi answers"
 	_gp=$(conf_get GUEST_PORT)
 	[ -z "$_gp" ] || _ck "router port $_gp is on the guest network (an access point plugged in there is gated)" "uci -q get \$(net_section br-guest).ports | grep -qw '$_gp'"
 	_ck "openNDS is running" "ndsctl status"
 	_ck "openNDS sends new guests to the portal (FAS)" "[ \"\$(uci -q get opennds.@opennds[0].fasport)\" = $PORTAL_PORT ]"
+	_ck "the router looks for signed updates every hour (scheduler running)" update_timer_ok
+	_ck "the hourly update check ran within the last 3 hours" update_check_recent
 	_ck "internet through the WAN" "ping -c 1 -W 3 1.1.1.1 || ping -c 1 -W 3 8.8.8.8"
-	return "$_bad"
+	agree_all
+	return $((_bad + $?))
 }
 
 stage2() {
@@ -1014,7 +1089,8 @@ cmd_self_update() {
 	trap 'rm -rf "$_work" "$_lock"' EXIT
 	rm -rf "$_work"; (umask 077; mkdir -p "$_work") || die "could not create $_work"
 
-	[ "$_mode" != auto ] || sync_kiosk_wifi   # (hourly: a box that lost or never got the phones' Wi-Fi password gets it)
+	[ "$_mode" != auto ] || conf_set UPDATE_LAST_CHECK "$(date +%s)"   # (status says when the hourly check last ran)
+	[ "$_mode" != auto ] || { sync_kiosk_wifi; watch_agreement; }   # (hourly: a box that lost the phones' Wi-Fi password gets it; the owner hears when values stop agreeing)
 	_base=$(conf_get UPDATE_URL); _base="${_base:-$UPDATE_URL_DEFAULT}"
 	if ! fetch_url "$_base/router.json" "$_work/router.json" 20000; then
 		log "No update information at $_base (offline, or nothing published yet)."
@@ -1082,6 +1158,18 @@ cmd_auto_update() {
 }
 
 # the hourly check (its minute is this router's own, so the routers do not all ask at once)
+# update_timer_ok: the hourly update check is scheduled and the scheduler runs
+update_timer_ok() {
+	grep -qs 'self-update auto' "$CRON_FILE" && { pgrep -x crond > /dev/null 2>&1 || pgrep -x cron > /dev/null 2>&1; }
+}
+
+# update_check_recent: the hourly check ran within the last 3 hours (a router that has not run it yet is given the time)
+update_check_recent() {
+	_t=$(conf_get UPDATE_LAST_CHECK)
+	[ -n "$_t" ] || return 0
+	[ $(($(date +%s) - _t)) -lt 10800 ]
+}
+
 install_update_timer() {
 	_k=$(conf_get GW_KEY | cut -c1-4); case "$_k" in "" | *[!0-9a-f]*) _k=0 ;; esac
 	mkdir -p "$(dirname "$CRON_FILE")" 2> /dev/null
@@ -1357,7 +1445,7 @@ main() {
 		case "$1" in
 			--dry-run) DRY=1 ;;
 			--yes | -y) ASSUME_YES=1 ;;
-			status | pair | summary | wifi-name | guest-port | kiosk-wifi | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | handout | lock-admin | lock-admin-confirm | unlock-admin | update | self-update | auto-update) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
+			status | pair | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | handout | lock-admin | lock-admin-confirm | unlock-admin | update | self-update | auto-update) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
 			-h | --help) sed -n '2,/^# Options:/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 			*) echo "unknown option: $1 (try --help)" >&2; exit 1 ;;
 		esac
@@ -1384,6 +1472,7 @@ main() {
 			cmd_lock_admin $ARGS ;;
 		lock-admin-confirm) cmd_lock_admin_confirm ;;
 		unlock-admin) cmd_unlock_admin ;;
+		verify) cmd_verify ;;
 		kiosk-wifi)
 			DRY=0; [ "$(id -u)" = 0 ] || die "run as root"
 			push_kiosk_wifi
