@@ -60,6 +60,10 @@ class CardScanActivity : ComponentActivity() {
     private lateinit var nameInput: EditText
     private lateinit var primaryButton: Button
     private lateinit var cancelButton: Button
+    private lateinit var flipButton: Button
+    private var cameraProvider: ProcessCameraProvider? = null
+    private var hasBothCameras = false
+    private var useFront = false
 
     @Volatile private var mode = Mode.SCANNING
     private var ignoredSince = 0L
@@ -184,6 +188,18 @@ class CardScanActivity : ComponentActivity() {
         panel.addView(buttons, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
 
         root.addView(panel, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
+
+        // For a phone whose back camera is broken (or a card that is easier to hold up to the screen side).
+        flipButton = Button(this).apply {
+            text = "Use front camera"
+            visibility = View.GONE
+            setOnClickListener {
+                useFront = !useFront
+                bindCamera()
+                resetTimeout()
+            }
+        }
+        root.addView(flipButton, FrameLayout.LayoutParams(-2, dp(44), Gravity.TOP or Gravity.END).apply { setMargins(dp(12), dp(40), dp(12), 0) })
         setContentView(root)
     }
 
@@ -193,6 +209,7 @@ class CardScanActivity : ComponentActivity() {
         nameBox.visibility = if (m == Mode.NAME) View.VISIBLE else View.GONE
         primaryButton.visibility = if (m == Mode.NAME || m == Mode.MESSAGE) View.VISIBLE else View.GONE
         cancelButton.visibility = if (m == Mode.WORKING) View.GONE else View.VISIBLE
+        flipButton.visibility = if (hasBothCameras && m == Mode.SCANNING) View.VISIBLE else View.GONE
         resetTimeout()
     }
 
@@ -214,10 +231,30 @@ class CardScanActivity : ComponentActivity() {
         main.postDelayed(timeout, if (mode == Mode.NAME) 120_000L else 45_000L)
     }
 
+    /**
+     * Closes the scanner without letting the launcher show through. The camera stops and the screen goes black at once, the
+     * lock screen is put back over it, and only then does the scanner leave, so what appears next is the lock screen itself.
+     * A signed-in player is going to the unlocked phone anyway, so that case closes straight away.
+     */
     private fun closeScreen() {
         if (finishing) return
         finishing = true
+        main.removeCallbacks(timeout)
+        cameraProvider?.unbindAll()
+        findViewById<View>(android.R.id.content)?.visibility = View.INVISIBLE
+        window.decorView.setBackgroundColor(Color.BLACK)
+        if (AccountController.signedIn.value.isNotEmpty()) {
+            leave()
+            return
+        }
+        AccountController.scanning.value = false
+        main.postDelayed({ leave() }, LOCK_SCREEN_COVER_MS)
+    }
+
+    private fun leave() {
         finish()
+        @Suppress("DEPRECATION")
+        overridePendingTransition(0, 0)
     }
 
     // ---- card ----
@@ -297,18 +334,17 @@ class CardScanActivity : ComponentActivity() {
             {
                 try {
                     val provider = providerFuture.get()
-                    val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
-                    val analysis = ImageAnalysis.Builder()
-                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                        .build()
-                        .also { it.setAnalyzer(analysisExecutor) { image -> analyze(image) } }
-                    val selector = if (provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)) {
-                        CameraSelector.DEFAULT_BACK_CAMERA
-                    } else {
-                        CameraSelector.DEFAULT_FRONT_CAMERA
+                    cameraProvider = provider
+                    val back = provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)
+                    val front = provider.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA)
+                    if (!back && !front) {
+                        showMessage("This phone has no camera. Ask the attendant.", retry = false)
+                        return@addListener
                     }
-                    provider.unbindAll()
-                    provider.bindToLifecycle(this, selector, preview, analysis)
+                    hasBothCameras = back && front
+                    useFront = !back
+                    bindCamera()
+                    setMode(mode)
                 } catch (e: Exception) {
                     Log.e(TAG, "Camera could not start: ${e.message}", e)
                     showMessage("The camera could not start. Ask the attendant.", retry = false)
@@ -316,6 +352,36 @@ class CardScanActivity : ComponentActivity() {
             },
             ContextCompat.getMainExecutor(this),
         )
+    }
+
+    /** Starts the chosen camera; if it cannot start and the phone has the other one, switches to that instead. */
+    private fun bindCamera() {
+        val provider = cameraProvider ?: return
+        val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
+        val analysis = ImageAnalysis.Builder()
+            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            .build()
+            .also { it.setAnalyzer(analysisExecutor) { image -> analyze(image) } }
+        flipButton.text = if (useFront) "Use back camera" else "Use front camera"
+        try {
+            provider.unbindAll()
+            provider.bindToLifecycle(
+                this,
+                if (useFront) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA,
+                preview,
+                analysis,
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Camera (front=$useFront) could not start: ${e.message}", e)
+            if (hasBothCameras) {
+                hasBothCameras = false
+                useFront = !useFront
+                bindCamera()
+                setMode(mode)
+            } else {
+                showMessage("The camera could not start. Ask the attendant.", retry = false)
+            }
+        }
     }
 
     private fun analyze(image: ImageProxy) {
@@ -342,5 +408,8 @@ class CardScanActivity : ComponentActivity() {
 
     private companion object {
         private const val TAG = "CardScanActivity"
+
+        /** How long the lock screen is given to come back over the black scanner before the scanner leaves. */
+        private const val LOCK_SCREEN_COVER_MS = 450L
     }
 }
