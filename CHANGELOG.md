@@ -4,6 +4,11 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- `piso-setup verify` compares the values that live in more than one place and names the ones that disagree: the gateway key,
+  the coin box's address, the PisoKiosk password on every radio, the customer Wi-Fi name (settings, radios, openNDS, portal),
+  the portal's address and port, the box network's password, the setup summary, and (box on) the box's gateway key, admin
+  password and "Set up a phone" link. `status` includes it, and the hourly update check runs it and tells Telegram once when
+  something starts to disagree, and once when everything agrees again. Needs router release 1.2.1 or newer.
 - Nobody types the PisoKiosk Wi-Fi password into the phone setup page any more. The router gives it to the coin box (setup,
   `piso-setup kiosk-wifi`, every router update, and the hourly update check repairs a box that lost it), and the box's
   "Set up a phone" link carries it. A phone can no longer be set up with a stale or mistyped password, which installed fine but
