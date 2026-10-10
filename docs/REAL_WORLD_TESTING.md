@@ -57,6 +57,7 @@ Collect logs as you go: box serial output at 115200 baud (`pio device monitor`),
 - [ ] **C1** Arm the slot from the phone, insert 1 coin: time is added once; the box counts 1 coin
 - [ ] **C2** Insert 5 coins quickly: total time is exactly 5 coins' worth, no double credit
 - [ ] **C3** Dashboard revenue counter matches the coins inserted (₱ amounts exact)
+- [ ] **H2** Box commands are fresh: from the dashboard send *Locate*/*Identify* to a phone and arena-mode on/off: they work. Then capture one command (`adb logcat -s KioskHttpServer`, or a packet capture) and re-send it by hand a few minutes later (`curl` the same URL): the phone answers `STALE_TIMESTAMP` (403) and does nothing. Restart the kiosk app and send the same capture again: still refused. Reboot the box and send a new command at once: it works (no lock-out while the box relearns the time)
 - [ ] **C3b** Vendor page: unmask, then "finish collecting": the counter returns to ₱0, `/api/superadmin/collections` lists the collection with the right amount, and `lifetime_coins` did NOT go down; unplug and reconnect the box: the history and the ₱0 are still there
 - [ ] **C4** Time counts down; the phone locks at zero
 - [ ] **C5** Insert coins while the phone is unlocked and armed: time extends

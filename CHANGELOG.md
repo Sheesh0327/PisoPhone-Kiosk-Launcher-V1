@@ -4,6 +4,13 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Phone app: a command the box sent to a phone (a setting change, an arena or lock action, a status read) can no longer be copied
+  off the network and played back later. Before, the phone only remembered the last 10 minutes of messages in memory, so a copy
+  played after that, or after the app restarted, was obeyed again. Now a message must also be recent (within 2 minutes of the box's
+  clock) and not older than the newest message the phone accepted; that newest time and the last few messages are kept on the
+  phone across restarts. A refused message is answered `403 STALE_TIMESTAMP`. Payments are unaffected (they are counted once by
+  their transaction id). Until a phone has heard the box's time nothing is judged by time, so a box that has just restarted can
+  still send commands.
 - Coin box firmware: collecting the revenue no longer erases it. The lifetime coin and earnings counters now only go up (only the
   owner's full wipe clears them). Taking the money out is recorded as a collection (time, coins, amount, why, and the lifetime
   total at that moment; the last 16 are kept in the box and survive a restart, a firmware update and the operator's factory

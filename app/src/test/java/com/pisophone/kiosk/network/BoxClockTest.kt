@@ -26,6 +26,18 @@ class BoxClockTest {
     }
 
     @Test
+    fun theBoxsTimeCountsAsHeardOnlyOnceARealOneArrived() {
+        assertFalse(BoxClock.isSynced())
+        BoxClock.learn(0L, boxNow)
+        BoxClock.learn(12345L, boxNow)
+        assertFalse("a time that is not a real date is not the box's clock", BoxClock.isSynced())
+        assertFalse(BoxClock.learn(boxNow + 120, boxNow)) // network delay only: no correction needed
+        assertTrue("but the time was heard", BoxClock.isSynced())
+        BoxClock.reset()
+        assertFalse(BoxClock.isSynced())
+    }
+
+    @Test
     fun networkDelayIsNotMistakenForAWrongClock() {
         assertFalse(BoxClock.learn(boxNow + 120, boxNow)) // 120 ms: keep no correction
         assertEquals(0L, BoxClock.offsetMs())
