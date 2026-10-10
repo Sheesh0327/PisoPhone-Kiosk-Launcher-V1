@@ -45,6 +45,7 @@ void setupWebServer() {
 
     // Initialize Authenticated Request Worker Queue & FreeRTOS Supervisor Task (8KB stack)
     authQueue = xQueueCreate(16, sizeof(AuthRequest));
+    initWorkerAckQueue(); // before the task starts: it posts into this queue
     xTaskCreate(authWorkerTask, "AuthWorker", 8192, NULL, 1, NULL);
 
     // Port 80: HTTP Portal & API routes
