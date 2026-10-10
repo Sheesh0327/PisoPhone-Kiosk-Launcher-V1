@@ -4,6 +4,9 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Developers: the router setup script is now written in 13 parts in `setup/src/` (settings, preflight, box, agreement checks,
+  updates, ...). `setup/piso-setup.sh.in` and `setup/piso-setup.sh` are generated from them and are byte-for-byte what they were,
+  so nothing changes on a router. CI fails if a generated file is out of date and says to edit the parts.
 - `piso-setup verify` compares the values that live in more than one place and names the ones that disagree: the gateway key,
   the coin box's address, the PisoKiosk password on every radio, the customer Wi-Fi name (settings, radios, openNDS, portal),
   the portal's address and port, the box network's password, the setup summary, and (box on) the box's gateway key, admin
