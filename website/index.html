@@ -126,6 +126,7 @@
             <div class="note bad"><svg class="ic"><use href="#i-alert"/></svg><span class="grow">Removes the kiosk lock and uninstalls PisoPhone from a phone connected by USB (USB debugging on). No PIN is needed.</span></div>
             <div id="deprovisionConfirm" class="note bad hidden"><span class="grow">Tap again to remove the kiosk from the connected phone.</span></div>
             <button id="deprovisionBtn" type="button" class="btn danger block"><svg class="ic"><use href="#i-trash"/></svg>Connect the phone and remove the kiosk</button>
+            <div class="note"><svg class="ic"><use href="#i-qr"/></svg><span class="grow"><b>No cable, or the app cannot reach its box?</b> Use a recovery code. On your own computer run <code>python3 scripts/make_recovery_code.py</code> (it signs a short-lived code with your owner key and saves it as a picture). On the phone, open the admin entry on the lock screen, tap <b>Scan a recovery code (remove app)</b> and show the picture to the camera. It works even if USB debugging is off and the box was never reached. Delete the picture afterwards; the code stops working by itself. It cannot be made on this page, because anyone could then remove the app from your phones.</span></div>
         </div>
 
         <!-- Log -->

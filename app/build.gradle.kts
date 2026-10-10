@@ -32,6 +32,10 @@ android {
         versionName = if (buildChannel == "stable") "1.0.$appVersionCode" else "1.0.$appVersionCode-dev"
         buildConfigField("String", "UPDATE_BASE_URL", "\"$updateBaseUrl\"")
         buildConfigField("String", "BUILD_CHANNEL", "\"$buildChannel\"")
+        // The owner public key (the same file the router program embeds): the app checks recovery QR codes against it.
+        val ownerKeyFile = rootProject.file("tools/pisoportal/owner_key.b64")
+        val ownerPublicKey = if (ownerKeyFile.exists()) ownerKeyFile.readText().trim() else ""
+        buildConfigField("String", "OWNER_PUBKEY_B64", "\"$ownerPublicKey\"")
     }
 
     signingConfigs {

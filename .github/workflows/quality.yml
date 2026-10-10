@@ -195,6 +195,10 @@ jobs:
         run: sh esp32_firmware/host_tests/run.sh
       - name: Test the sold-unit checker
         run: python3 scripts/tests/test_sold_unit_check.py
+      - name: Test the recovery code tool
+        run: |
+          pip install qrcode pillow
+          python3 scripts/tests/test_recovery_code.py
 
   firmware-build:
     name: Firmware build (${{ matrix.env }})

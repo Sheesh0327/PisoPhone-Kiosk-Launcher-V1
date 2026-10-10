@@ -51,6 +51,48 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
         const val ACTION_GET_DEVICE_ID = "com.pisophone.kiosk.GET_DEVICE_ID"
         const val ACTION_SETUP_GRANTS_DONE = "com.pisophone.kiosk.SETUP_GRANTS_DONE"
         private const val TAG = "KioskAdminAction"
+
+        /** Removes the kiosk lock and Device Owner. Slow (it restores hidden apps): call it off the main thread. */
+        fun deprovisionNow(context: Context) {
+            val main = Handler(Looper.getMainLooper())
+            fun say(text: String) = main.post { Toast.makeText(context, text, Toast.LENGTH_LONG).show() }
+            try {
+                // 1. Stop background Kiosk Service
+                context.stopService(Intent(context, KioskService::class.java))
+
+                // 2. Clear Device Policy & Lock Task mode
+                val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+                val adminComponent = ComponentName(context, KioskDeviceAdminReceiver::class.java)
+
+                if (dpm.isDeviceOwnerApp(context.packageName)) {
+                    com.pisophone.kiosk.security.KioskRecoveryManager.restoreSystemApps(context)
+                    try {
+                        dpm.setLockTaskPackages(adminComponent, emptyArray())
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to clear lock task packages: ${e.message}")
+                    }
+                    try {
+                        dpm.clearUserRestriction(adminComponent, android.os.UserManager.DISALLOW_FACTORY_RESET)
+                        dpm.clearUserRestriction(adminComponent, android.os.UserManager.DISALLOW_SAFE_BOOT)
+                        dpm.clearUserRestriction(adminComponent, android.os.UserManager.DISALLOW_UNINSTALL_APPS)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to clear user restrictions: ${e.message}")
+                    }
+                    dpm.clearDeviceOwnerApp(context.packageName)
+                    Log.i(TAG, "Device Owner successfully cleared!")
+                }
+
+                if (dpm.isAdminActive(adminComponent)) {
+                    dpm.removeActiveAdmin(adminComponent)
+                    Log.i(TAG, "Active Admin removed!")
+                }
+
+                say("PisoPhone Deprovisioned! Device Owner removed.")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error during deprovisioning: ${e.message}", e)
+                say("Deprovision error: ${e.message}")
+            }
+        }
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -339,53 +381,12 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                 val pending = goAsync()
                 Thread {
                     try {
-                        deprovision(context)
+                        deprovisionNow(context)
                     } finally {
                         pending.finish()
                     }
                 }.start()
             }
-        }
-    }
-
-    private fun deprovision(context: Context) {
-        val main = Handler(Looper.getMainLooper())
-        fun say(text: String) = main.post { Toast.makeText(context, text, Toast.LENGTH_LONG).show() }
-        try {
-            // 1. Stop background Kiosk Service
-            context.stopService(Intent(context, KioskService::class.java))
-
-            // 2. Clear Device Policy & Lock Task mode
-            val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-            val adminComponent = ComponentName(context, KioskDeviceAdminReceiver::class.java)
-
-            if (dpm.isDeviceOwnerApp(context.packageName)) {
-                com.pisophone.kiosk.security.KioskRecoveryManager.restoreSystemApps(context)
-                try {
-                    dpm.setLockTaskPackages(adminComponent, emptyArray())
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to clear lock task packages: ${e.message}")
-                }
-                try {
-                    dpm.clearUserRestriction(adminComponent, android.os.UserManager.DISALLOW_FACTORY_RESET)
-                    dpm.clearUserRestriction(adminComponent, android.os.UserManager.DISALLOW_SAFE_BOOT)
-                    dpm.clearUserRestriction(adminComponent, android.os.UserManager.DISALLOW_UNINSTALL_APPS)
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to clear user restrictions: ${e.message}")
-                }
-                dpm.clearDeviceOwnerApp(context.packageName)
-                Log.i(TAG, "Device Owner successfully cleared!")
-            }
-
-            if (dpm.isAdminActive(adminComponent)) {
-                dpm.removeActiveAdmin(adminComponent)
-                Log.i(TAG, "Active Admin removed!")
-            }
-
-            say("PisoPhone Deprovisioned! Device Owner removed.")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error during deprovisioning: ${e.message}", e)
-            say("Deprovision error: ${e.message}")
         }
     }
 

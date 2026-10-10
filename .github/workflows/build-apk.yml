@@ -12,6 +12,7 @@ on:
     paths:
       - 'app/**'
       - 'protocol/**'
+      - 'tools/pisoportal/owner_key.b64'
       - 'gradle/**'
       - '*.gradle.kts'
       - 'gradle.properties'

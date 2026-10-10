@@ -1,6 +1,7 @@
 package com.pisophone.kiosk.overlay.ui
 
 import android.content.Context
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -23,6 +24,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pisophone.kiosk.security.KioskSecurity
+import com.pisophone.kiosk.ui.CardScanActivity
 import kotlinx.coroutines.delay
 
 /**
@@ -109,6 +111,28 @@ fun AdminAuthenticationDialog(
                     Icon(Icons.Filled.Warning, contentDescription = null, modifier = Modifier.size(15.dp), tint = Color(0xFFFF4444))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("SYSTEM RECOVERY & ADB HUB", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = {
+                        // No password needed: the code itself has to be signed with the owner key.
+                        try {
+                            context.startActivity(
+                                Intent(context, CardScanActivity::class.java)
+                                    .putExtra(CardScanActivity.EXTRA_RECOVERY, true)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
+                        } catch (_: Exception) {
+                        }
+                        onDismiss()
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(38.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = textSecondaryColor),
+                    shape = RoundedCornerShape(8.dp),
+                ) {
+                    Text("SCAN A RECOVERY CODE (REMOVE APP)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
                 Spacer(modifier = Modifier.height(12.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
