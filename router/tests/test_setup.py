@@ -256,8 +256,8 @@ esac
 exit 0
 """)
     os.chmod(f"{bindir}/uci", 0o755)
-    for svc in ("network", "opennds"):
-        os.makedirs(f"{tmp}/etc", exist_ok=True)
+    open(f"{bindir}/id", "w").write("#!/bin/sh\necho 0\n")   # the command wants root; CI does not run as root
+    os.chmod(f"{bindir}/id", 0o755)
 
 
 def ports(which):
@@ -287,6 +287,7 @@ check(run("guest-port", "lan4").returncode != 0, "refuses before the setup has m
 fake_bridges()
 r = run("--dry-run", "guest-port", "lan4")
 check(r.returncode == 0 and ports("lan") == ["lan1", "lan2", "lan3", "lan4"], "dry run changes nothing")
+os.remove(f"{bindir}/id")
 fake_uci({"radio0": "2g", "radio1": "5g"})
 
 # ---- coin box provisioning against a fake box ---------------------------------------------------------------------------
