@@ -116,7 +116,7 @@ jobs:
           flag firmware_build "^(esp32_firmware/|protocol/|$W)"
           flag firmware_tests "^(esp32_firmware/|protocol/|scripts/|$W)"
           flag portal "^(tools/pisoportal/|router/|setup/|website/install\.sh|website/pisophone_setup\.py|tools/build_piso_setup\.py|scripts/(sign_router|owner_key|make_owner_keys)\.py|$W)"
-          flag website "^(website/|scripts/test_provisioning\.js|scripts/test_flasher\.js|scripts/tests/test_site_page\.py|scripts/check_vendored\.py|$W)"
+          flag website "^(website/|scripts/check_published_apk\.py|scripts/tests/test_check_published_apk\.py|app/src/main/java/com/pisophone/kiosk/(security/KioskSecurity|network/KioskWifi|provisioning/QrProvisioning)\.kt|scripts/test_provisioning\.js|scripts/test_flasher\.js|scripts/tests/test_site_page\.py|scripts/check_vendored\.py|$W)"
 
   security-rules:
     name: Security rules
@@ -141,6 +141,10 @@ jobs:
         run: |
           node scripts/test_provisioning.js
           node scripts/test_flasher.js
+      - name: The published APK is the one app.json describes (QR setup needs the signing certificate to match)
+        run: |
+          python3 scripts/check_published_apk.py
+          python3 scripts/tests/test_check_published_apk.py
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.cache/ms-playwright

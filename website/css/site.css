@@ -121,6 +121,7 @@ h2 { font: 600 16px var(--serif); }
 input[type=text], input[type=password] { width: 100%; min-height: 44px; padding: 9px 12px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); color: var(--ink); font: 14px var(--mono); }
 input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .hint { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.hint.warn { color: var(--warn); font-weight: 600; }
 
 .note { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: var(--r); font-size: 14px; background: var(--accent-soft); border: 1px solid var(--line); }
 .note > .ic { margin-top: 2px; color: var(--accent); }

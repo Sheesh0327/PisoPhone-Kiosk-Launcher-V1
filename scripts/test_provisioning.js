@@ -8,7 +8,7 @@ const win = { location: { search: '' }, addEventListener() {}, navigator: {} };
 win.window = win;
 const ctx = vm.createContext({ window: win, console: { log() {}, warn() {}, error() {}, info() {}, debug() {} }, setTimeout, clearTimeout, navigator: {}, document: { addEventListener() {}, getElementById() { return null; } },
     fetch: async () => { throw new Error('offline'); }, URL, URLSearchParams, TextEncoder, TextDecoder, Promise });
-for (const f of ['provisioning.js', 'webadb_manager.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'website', 'js', f), 'utf8'), ctx);
+for (const f of ['qrcode.js', 'provisioning.js', 'webadb_manager.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'website', 'js', f), 'utf8'), ctx);
 const P = win.PisoProvisioning;
 
 let checks = 0, failures = 0;
@@ -55,6 +55,31 @@ check(throws(() => P.buildQrPayload(prov, {}, 'https://pisophone.pages.dev/')), 
 check(throws(() => P.buildQrPayload({ ...prov, wifiPass: undefined }, app, 'https://pisophone.pages.dev/')), 'no Wi-Fi password: no code (the phone needs it to download the app)');
 check(throws(() => P.buildQrPayload(prov, app, 'http://example.com/')), 'the app is never downloaded over plain http');
 check(JSON.stringify(qp).length < 1200, 'the code stays small enough to scan: ' + JSON.stringify(qp).length + ' characters');
+// ---- the page and the app must agree on what is valid (a value the app would refuse silently ends in "cannot find its box") ----
+const kotlin = (f) => fs.readFileSync(path.join(__dirname, '..', 'app', 'src', 'main', 'java', 'com', 'pisophone', 'kiosk', f), 'utf8');
+const secretRegex = new RegExp(kotlin('security/KioskSecurity.kt').match(/BOX_SECRET_REGEX = Regex\("([^"]+)"\)/)[1]);
+for (const sample of ['a'.repeat(15), 'a'.repeat(16), 'a'.repeat(128), 'a'.repeat(129), 'abc def ghijklmnop', 'ab/cdefghijklmnopq', 'ABCdef123_.+=-ABCdef', 'abc\u00e9defghijklmnopq']) {
+    const pageAccepts = !throws(() => P.validateProvisioning({ secret: sample }));
+    check(pageAccepts === secretRegex.test(sample), `the page and the app agree on the secret ${JSON.stringify(sample.slice(0, 20))} (${sample.length} characters): page ${pageAccepts}, app ${secretRegex.test(sample)}`);
+}
+const wifiRule = kotlin('network/KioskWifi.kt').match(/password\.length in (\d+)\.\.(\d+)/);
+for (const len of [7, 8, 63, 64]) {
+    const pageAccepts = !throws(() => P.validateProvisioning({ wifiPass: 'x'.repeat(len) }));
+    check(pageAccepts === (len >= +wifiRule[1] && len <= +wifiRule[2]), `the page and the app agree on a ${len}-character Wi-Fi password`);
+}
+// the admin extras the page sends are exactly names the app reads
+const appReads = new Set([...kotlin('provisioning/QrProvisioning.kt').matchAll(/(?:getString|getInt|str)\("([a-z_]+)"/g)].map(m => m[1]));
+for (const k of Object.keys(ex)) check(appReads.has(k), `the app reads the extra "${k}"`);
+const withName = P.buildQrPayload(P.validateProvisioning({ mac: 'aa:bb:cc:dd:ee:ff', slot: '2', name: 'Phone 2', secret: 'abcdefghijklmnop1234', wifiPass: '3hC4RATnpQMJ' }), app, 'https://pisophone.pages.dev/');
+check(!('name' in withName[E + 'PROVISIONING_ADMIN_EXTRAS_BUNDLE']), 'a phone with a slot is named by its slot, not by an extra name');
+check('name' in P.buildQrPayload(P.validateProvisioning({ mac: 'aa:bb:cc:dd:ee:ff', name: 'Front desk', wifiPass: '3hC4RATnpQMJ' }), app, 'https://pisophone.pages.dev/')[E + 'PROVISIONING_ADMIN_EXTRAS_BUNDLE'], 'without a slot the name is kept');
+// how dense the setup code is: a factory-reset phone's camera is the weakest link, so the code must stay small
+const realApp = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'website', 'update', 'app.json'), 'utf8'));
+const worst = P.buildQrPayload(P.validateProvisioning({ mac: 'AA:BB:CC:DD:EE:FF', slot: '10', name: 'PisoPhone 10', secret: 'A'.repeat(128), wifiSsid: 'PisoKiosk', wifiPass: 'x'.repeat(63) }), realApp, 'https://pisophone.pages.dev/');
+const typical = P.buildQrPayload(P.validateProvisioning({ mac: 'AA:BB:CC:DD:EE:FF', slot: '1', name: 'PisoPhone 1', secret: 'A'.repeat(32), wifiSsid: 'PisoKiosk', wifiPass: '3hC4RATnpQMJ' }), realApp, 'https://pisophone.pages.dev/');
+const qrVersion = (obj) => { const qr = vm.runInContext('qrcode', ctx)(0, 'L'); qr.addData(JSON.stringify(obj), 'Byte'); qr.make(); return (qr.getModuleCount() - 17) / 4; };
+check(qrVersion(typical) <= 21, `a typical setup code is QR version ${qrVersion(typical)} (at most 21)`);
+check(qrVersion(worst) <= 30, `even the longest allowed values stay at QR version ${qrVersion(worst)} (at most 30)`);
 // ---- the USB fallback's messages ----
 check(/remove the account again/.test(P.describeDeviceOwnerFailure('SecurityException: MANAGE_DEVICE_ADMINS')), 'Xiaomi: sign in, turn it on, remove the account');
 check(/more than one user/.test(P.describeDeviceOwnerFailure('users')) && /account/.test(P.describeDeviceOwnerFailure('accounts')), 'users and accounts are named before anything is copied');
