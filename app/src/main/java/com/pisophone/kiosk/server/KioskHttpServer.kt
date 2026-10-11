@@ -36,7 +36,7 @@ class KioskHttpServer(
     private val context: Context,
     private val port: Int,
     private val delegate: KioskServerDelegate,
-    private val freshness: RequestFreshness = RequestFreshness(BoxClock::nowMs, BoxClock::isSynced, PrefsReplayStateStore(context)),
+    private val freshness: RequestFreshness = RequestFreshness(BoxClock::nowMs, BoxClock::isSynced),
 ) : NanoHTTPD(port) {
     companion object {
         private const val TAG = "KioskHttpServer"
@@ -66,11 +66,6 @@ class KioskHttpServer(
 
     private val rateLimits = ConcurrentHashMap<String, MutableList<Long>>()
     private val replayGuard = ReplayGuard()
-
-    init {
-        // Messages accepted before a restart must stay refused after it.
-        freshness.recentSignatures().forEach { replayGuard.firstSeen(it) }
-    }
 
     private fun parseQueryString(queryString: String): Map<String, String> {
         val result = mutableMapOf<String, String>()
@@ -156,17 +151,16 @@ class KioskHttpServer(
         val decryptedParams = parseQueryString(decryptedStr)
 
         // Replay protection layer 1: freshness. A payment is idempotent by tx_id (the box repeats it, with its original
-        // timestamp, until acknowledged), so it is not judged by time. Anything else must be recent and not older than the
-        // newest message accepted so far, which is also kept across restarts, so a captured message cannot be played later.
+        // timestamp, until acknowledged), so it is not judged by time. Anything else must carry a time close to the box's clock,
+        // so a command captured on the network cannot be played back later.
         val ts = decryptedParams["ts"]?.trim()?.toLongOrNull() ?: 0L
         val isPayment = uri == "/add_time" || uri == "/coin"
-        var freshTs = false
         if (!isPayment) {
             when (freshness.check(ts)) {
-                RequestFreshness.Verdict.FRESH -> freshTs = true
+                RequestFreshness.Verdict.FRESH -> {}
                 RequestFreshness.Verdict.UNVERIFIED ->
                     Log.w(TAG, "Notice on $uri: no box clock to check ts=$ts against yet; relying on the signature cache only")
-                RequestFreshness.Verdict.OUTSIDE_WINDOW, RequestFreshness.Verdict.OLDER_THAN_NEWEST -> {
+                RequestFreshness.Verdict.OUTSIDE_WINDOW -> {
                     Log.w(TAG, "Rejected stale signed request to $uri (ts=$ts, box clock=${BoxClock.nowMs()})")
                     return createResponse(Response.Status.FORBIDDEN, "text/plain", "STALE_TIMESTAMP")
                 }
@@ -192,8 +186,6 @@ class KioskHttpServer(
             Log.w(TAG, "Ignoring repeated signed request to $uri")
             return createResponse(Response.Status.OK, "text/plain", "OK:DUPLICATE")
         }
-        // Only a message that was new and fresh moves the "newest accepted" mark forward.
-        if (freshTs) freshness.accepted(ts, hmac.trim().lowercase())
 
         return when (uri) {
             "/heartbeat" -> {

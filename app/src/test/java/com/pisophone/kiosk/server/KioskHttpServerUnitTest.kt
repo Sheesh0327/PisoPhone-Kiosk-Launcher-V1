@@ -65,21 +65,11 @@ class KioskHttpServerUnitTest {
     @After
     fun tearDown() = BoxClock.reset()
 
-    private class MemoryReplayStore : ReplayStateStore {
-        var state = ""
-
-        override fun load() = state
-
-        override fun save(state: String) {
-            this.state = state
-        }
-    }
-
     private val boxNow = 1_790_000_000_000L
 
-    /** A server that knows (or does not know) the box's time and keeps its replay memory in [store], like a phone that restarts. */
-    private fun serverWithBoxClock(known: Boolean = true, store: ReplayStateStore = MemoryReplayStore()) =
-        KioskHttpServer(context, 8080, fakeDelegate, RequestFreshness({ boxNow }, { known }, store))
+    /** A server that knows (or does not know) the box's time. */
+    private fun serverWithBoxClock(known: Boolean = true) =
+        KioskHttpServer(context, 8080, fakeDelegate, RequestFreshness({ boxNow }, { known }))
 
     private fun createSession(
         uri: String,
@@ -405,30 +395,6 @@ class KioskHttpServerUnitTest {
     }
 
     @Test
-    fun aCapturedCommandCannotBePlayedAgainAfterTheAppRestarted() {
-        val store = MemoryReplayStore()
-        val captured = createEncryptedParams("action=slot_lockdown&ts=$boxNow")
-        assertEquals("OK", readResponseBody(serverWithBoxClock(store = store).serve(createSession("/trigger_action", captured))))
-
-        val restarted = serverWithBoxClock(store = store) // a new server: nothing in memory, the same storage
-        val again = restarted.serve(createSession("/trigger_action", captured))
-        assertEquals(200, again.status.requestStatus)
-        assertEquals("OK:DUPLICATE", readResponseBody(again))
-        assertEquals("the action ran once", listOf("slot_lockdown"), triggeredActions)
-    }
-
-    @Test
-    fun aCommandOlderThanTheNewestOneIsRefused() {
-        val store = MemoryReplayStore()
-        val first = serverWithBoxClock(store = store)
-        assertEquals("OK", readResponseBody(first.serve(createSession("/trigger_action", createEncryptedParams("action=slot_lockdown&ts=$boxNow")))))
-        val older = createEncryptedParams("action=slot_restore&ts=${boxNow - 60_000L}") // inside the window, 60 s behind
-        assertEquals(403, first.serve(createSession("/trigger_action", older)).status.requestStatus)
-        assertEquals(403, serverWithBoxClock(store = store).serve(createSession("/trigger_action", older)).status.requestStatus)
-        assertEquals(listOf("slot_lockdown"), triggeredActions)
-    }
-
-    @Test
     fun nothingIsRefusedByTimeBeforeTheBoxClockIsKnown() {
         val stale = boxNow - 10 * 60_000L
         val response = serverWithBoxClock(known = false).serve(createSession("/trigger_action", createEncryptedParams("action=slot_lockdown&ts=$stale")))
@@ -444,15 +410,5 @@ class KioskHttpServerUnitTest {
         assertEquals(200, response.status.requestStatus)
         assertEquals("OK", readResponseBody(response))
         assertEquals(1, creditPaymentCallCount)
-    }
-
-    @Test
-    fun aCommandWithAWrongSignatureNeverMovesTheNewestMark() {
-        val store = MemoryReplayStore()
-        val s = serverWithBoxClock(store = store)
-        val forged = mapOf("payload" to KioskSecurity.encrypt("action=slot_lockdown&ts=${boxNow + 100_000L}", testSecret), "hmac" to "00".repeat(32))
-        assertEquals(401, s.serve(createSession("/trigger_action", forged)).status.requestStatus)
-        assertEquals("", store.state)
-        assertEquals("OK", readResponseBody(s.serve(createSession("/trigger_action", createEncryptedParams("action=slot_restore&ts=$boxNow")))))
     }
 }

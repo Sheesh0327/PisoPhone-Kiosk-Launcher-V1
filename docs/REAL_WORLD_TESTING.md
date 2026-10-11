@@ -83,7 +83,7 @@ Collect logs as you go: box serial output at 115200 baud (`pio device monitor`),
 - [ ] **S2** A replayed signed request is ignored (response `OK:DUPLICATE`) — optional, needs a packet capture
 - [ ] **S3** Remote admin actions need the admin PIN (broadcast without a PIN does nothing), except `DEPROVISION`, which also runs while USB debugging is on (the website's "Remove from a phone" needs no PIN); with USB debugging off it needs the PIN
 - [ ] **S4** Phone cannot be factory-reset or have USB debugging enabled from the network
-- [ ] **H2** Box commands are fresh: from the dashboard send *Locate*/*Identify* to a phone and arena-mode on/off: they work. Then capture one command (`adb logcat -s KioskHttpServer`, or a packet capture) and re-send it by hand a few minutes later (`curl` the same URL): the phone answers `STALE_TIMESTAMP` (403) and does nothing. Restart the kiosk app and send the same capture again: still refused. Reboot the box and send a new command at once: it works (no lock-out while the box relearns the time)
+- [ ] **H2** Box commands are fresh: from the dashboard send *Locate*/*Identify* to a phone and arena-mode on/off: they work. Then capture one command (`adb logcat -s KioskHttpServer`, or a packet capture) and re-send it by hand a few minutes later (`curl` the same URL): the phone answers `STALE_TIMESTAMP` (403) and does nothing. Reboot the box and send a new command at once: it works (no lock-out while the box relearns the time)
 
 ## 6. Keys and updates
 *pass 3*
