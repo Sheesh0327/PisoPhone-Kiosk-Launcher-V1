@@ -46,8 +46,9 @@ class FakeCore:
 
     def __init__(self, tmp, state="factory"):
         self.tmp, self.state, self.calls, self.fail_install = tmp, state, [], False
+        self.boards, self.fail_flash = [("COM5", "USB-SERIAL CH340")], False
         self.preflight_result = [("ssh program", True, ""), ("internet and the pisophone.pages.dev website", True, ""),
-                                 ("Chrome or Edge", True, "")]
+                                 ("USB flashing tool (esptool)", True, ""), ("Chrome or Edge", True, "")]
         self.branch = "main"
 
     def ssh_missing(self): return False
@@ -92,7 +93,17 @@ class FakeCore:
         self.calls.append(("telegram", token, site, confirm("Got a message from chat 4242 (Evan).")))
         return True
 
-    def open_flasher(self): self.calls.append(("flasher",)); return "chromium"
+    def usb_boards(self): return list(self.boards)
+
+    def flash_box(self, port, emit):
+        self.calls.append(("flash", port))
+        emit("== Looking at the board on " + port)
+        emit("ESP32-C3 found. Software version 3.3.3 (1.36 MB).")
+        if self.fail_flash:
+            raise ps.SetupError("the flashing tool stopped: Failed to connect")
+        emit("Writing at 0x00010000... (50 %)")
+        return "ESP32-C3", "3.3.3"
+
     def open_provisioning(self, passwords, slot): self.calls.append(("provisioning", dict(passwords), slot)); return "setup", ""
     def box_online(self): return True
     def browse(self, url): self.calls.append(("browse", url))
@@ -165,7 +176,7 @@ def stop():
         for after_id in root.tk.call("after", "info"):
             root.after_cancel(after_id)
         root.destroy()
-    except tk.TclError:
+    except (tk.TclError, TypeError):   # (a timer that is gone already)
         pass
 
 
@@ -174,9 +185,10 @@ def advance_to(key):
     for _ in range(10):
         if page() == key:
             return
-        if page() == "box":
-            w.box_done.set(True)
-            w.update_nav()
+        if page() == "settings" and not w.vars["GUEST_SSID"].get():
+            w.vars["GUEST_SSID"].set("Tindahan")
+            w.vars["SITE_NAME"].set("Aling Nena")
+            root.update()
         if page() == "router":
             wait_for(lambda: w.router["host"] is not None and enabled(w.next_btn), "the router is found")
         click_next()
@@ -194,23 +206,10 @@ check(root.title() == "PisoPhone Setup" and page() == "welcome" and w.title.cget
 check(not enabled(w.back_btn) and enabled(w.next_btn), "no Back on the first page, Next is there")
 wait_for(lambda: w.pre is not None, "the checks of this computer")
 pump(0.2)
-check(any("Chrome or Edge" in t for t in texts(w.checks_box)), "the first page shows what it checked")
+check(any("Chrome or Edge" in t for t in texts(w.checks_box)) and any("esptool" in t for t in texts(w.checks_box)),
+      "the first page shows what it checked, the USB flashing tool too")
+check([n for _k, n in ps.STEPS] == ["Start", "Router", "Settings", "Install", "Phones", "Finish"], "no coin box page: the flashing is part of the install")
 shot("1-start")
-click_next()
-
-check(page() == "box", "the coin box page")
-wait_for(lambda: ("flasher",) in core.calls, "the flasher opens by itself")
-check(core.calls.count(("flasher",)) == 1, "the flasher opened once")
-check(not enabled(w.next_btn), "Next waits for the coin box to be flashed")
-shot("2-coin-box")
-w.box_done.set(True)
-w.update_nav()
-check(enabled(w.next_btn), "flashed: Next")
-w.back_btn.invoke()
-root.update()
-w.next_btn.invoke()
-root.update()
-check(core.calls.count(("flasher",)) == 1, "going back and forth does not open the flasher again")
 click_next()
 
 check(page() == "router", "the router page")
@@ -224,7 +223,11 @@ check(page() == "settings", "the settings page")
 check(w.title.cget("text") == "Your network and passwords", "factory router: all the settings")
 for env, _label, lo, hi, _n in ps.PASSWORDS:
     check(ps.password_problem(w.vars[env].get(), lo, hi) is None, f"{env}: a valid password is already there")
-check(enabled(w.next_btn), "ready to go on with what was made for you")
+check(not enabled(w.next_btn), "the names are asked every time: Next waits for them")
+check(w.vars["GUEST_SSID"].get() == "" and w.vars["SITE_NAME"].get() == "", "no name is filled in beforehand")
+w.vars["GUEST_SSID"].set("Tindahan WiFi")
+root.update()
+check(not enabled(w.next_btn), "the shop name is needed too")
 shot("4-settings")
 w.vars["GUEST_SSID"].set("Bad'Name")
 root.update()
@@ -242,10 +245,16 @@ root.update()
 click_next()
 
 check(page() == "install" and not enabled(w.next_btn), "the install page: Next waits for the installation")
+wait_for(lambda: w.usb is not None, "the USB boards are looked for")
+pump(0.2)
+check(any("Found: USB-SERIAL CH340 on COM5" in t for t in texts(w.body)), "the board on USB is shown")
 shot("5-install-ready")
 w.start_btn.invoke()
 check(w.installing, "the installation runs")
-wait_for(lambda: w.result is not None, "the installation finishes")
+wait_for(lambda: w.result is not None or w.install_error, "the installation finishes")
+order = [c[0] for c in core.calls if c[0] in ("flash", "install")]
+check(order == ["flash", "install"] and ("flash", "COM5") in core.calls, "the coin box is written first, over USB, then the router: " + str(order))
+check("ESP32-C3 found" in w.log.get("1.0", "end") and w.flashed, "the log shows the flashing and it is remembered")
 check(core.calls[-1][0] == "install" or any(c[0] == "install" for c in core.calls), "the core installed")
 sent = [c for c in core.calls if c[0] == "install"][0][1]
 check(sent["GUEST_SSID"] == "Tindahan WiFi" and sent["ROOT_PASSWORD"] == "Rpass2345678" and sent["COUNTRY"] == "SG" and sent["SITE_NAME"] == "Aling Nena",
@@ -316,13 +325,58 @@ wait_for(lambda: page() == "phones", "on to the phones")
 wait_for(lambda: any(c[0] == "provisioning" for c in core.calls), "the phone setup page opens")
 check(any(c[0] == "provisioning" and c[1]["BOX_NEW_ADMIN_PASSWORD"] == "Bpass23456789" for c in core.calls),
       "its passwords come from the summary the router sent back")
+
+# the next unit: names asked again, new passwords, the flashing again
+first_pw = {k: v.get() for k, v in w.vars.items() if k.endswith("PASSWORD")}
+click_next()
+check(page() == "finish", "the last page")
+w.next_unit()
+root.update()
+check(page() == "router" and w.unit == 2, "the next unit starts at the router page")
+check(any("Unit 2" in t for t in texts(w.body)), "it says to connect the next router and box")
+check(w.vars["GUEST_SSID"].get() == "" and w.vars["SITE_NAME"].get() == "" and w.result is None and not w.flashed,
+      "the names are empty again and nothing of the last unit is left")
+check(all(w.vars[k].get() != first_pw[k] for k in first_pw), "the passwords are new")
+check(w.vars["COUNTRY"].get() == "Philippines (PH)", "the country is kept")
+stop()
+
+# ---- no board on USB: the install says so and changes nothing ----------------------------------------------------------------
+new_wizard()
+core.boards = []
+advance_to("install")
+wait_for(lambda: w.usb == [], "no board is found")
+pump(0.2)
+check(any("No board found" in t for t in texts(w.body)), "the page says no board was found")
+w.start_btn.invoke()
+wait_for(lambda: w.install_error is not None, "the missing board is reported")
+check("no coin box board found on USB" in w.install_error and not any(c[0] == "install" for c in core.calls),
+      "nothing was installed on the router: " + str(w.install_error))
+w.skip_flash.set(True)
+w.start_btn.invoke()
+wait_for(lambda: w.result is not None and w.result["ok"], "with the box marked as ready, the router installs")
+check(not any(c[0] == "flash" for c in core.calls), "and nothing was written to a box")
+stop()
+
+# ---- the flashing fails: the reason is shown, the router is not touched, and a second try writes again -----------------------
+new_wizard()
+core.fail_flash = True
+advance_to("install")
+w.start_btn.invoke()
+wait_for(lambda: w.install_error is not None, "the flash failure is reported")
+check("Failed to connect" in w.install_error and not any(c[0] == "install" for c in core.calls) and not w.flashed,
+      "the router is not touched when the box could not be written: " + str(w.install_error))
+core.fail_flash = False
+w.start_btn.invoke()
+wait_for(lambda: w.result is not None and w.result["ok"], "the second try writes the box and installs")
+core.calls.clear()
+w.install_error = None
+w.start_btn.invoke()
+wait_for(lambda: not w.installing, "a repeat after a success")
+check(not any(c[0] == "flash" for c in core.calls), "a box that was written is not written again on a repeat")
 stop()
 
 # ---- a router with a password: it must be typed, a wrong one is refused ----------------------------------------------------
 new_wizard(state="password")
-click_next()
-w.box_done.set(True)
-w.update_nav()
 click_next()
 wait_for(lambda: w.router["state"] == "password", "the router is found")
 pump(0.2)
@@ -356,7 +410,7 @@ stop()
 # ---- the first page says what is missing ----------------------------------------------------------------------------------
 new_wizard()
 core.preflight_result = [("ssh program", False, "Windows: add OpenSSH Client."), ("internet and the pisophone.pages.dev website", True, ""),
-                         ("Chrome or Edge", False, "The flasher needs Chrome or Microsoft Edge.")]
+                         ("Chrome or Edge", False, "The phone setup page needs Chrome or Microsoft Edge.")]
 w.pre = None
 w.pre_running = False
 w.show(0)

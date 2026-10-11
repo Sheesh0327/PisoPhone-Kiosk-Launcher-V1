@@ -137,10 +137,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: The setup page's provisioning helpers (validation, shell quoting, the box's link, the QR code) and the flasher's
+      - name: The setup page's provisioning helpers (validation, shell quoting, the box's link, the QR code)
         run: |
           node scripts/tests/test_provisioning.js
-          node scripts/tests/test_flasher.js
       - name: The published APK is the one app.json describes (QR setup needs the signing certificate to match)
         run: |
           python3 scripts/check_published_apk.py

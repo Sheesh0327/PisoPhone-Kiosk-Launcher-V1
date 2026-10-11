@@ -14,7 +14,7 @@ SRC = os.path.join(ROOT, "docs", "REAL_WORLD_TESTING.md")
 TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "template.html")
 
 PASS1 = {"B1", "B2", "B3", "P1", "P2", "P3", "P4", "P8", "C1", "C2", "C3", "C4", "F1", "F2", "F3",
-         *(f"RS{i}" for i in (1, 2, 3, 4, 5, 6, 10, 11, 12, 17, 18))}
+         *(f"RS{i}" for i in (1, 2, 3, 4, 5, 6, 10, 11, 12, 17, 18, 19, 20))}
 # C3b (vendor collection), M3a/M3b (undelivered payments), H2 (stale commands), H4a/H4b (update rollback): the box's money and
 # update safety nets, a second session. H4c/H4d need an update to be prepared and wait for pass 3.
 PASS2_EXTRA = {"S1", "S3", "RS7", "RS8", "RS9", "C3b", "M3a", "M3b", "H2", "H4a", "H4b"}

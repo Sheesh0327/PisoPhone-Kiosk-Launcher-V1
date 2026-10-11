@@ -42,7 +42,7 @@ Not run directly: `owner_key.py` (shared key loading for the signing tools) and 
 
 ## Tests
 Run all with the commands in `CONTRIBUTING.md`; CI runs them for the parts a change touches.
-- `scripts/tests/` is where tests of the scripts and the website live: `test_publish_firmware.py`, `test_check_published_apk.py`, `test_sold_unit_check.py`, `test_recovery_code.py`, `test_make_cards.py`, `test_site_page.py` (the provisioning page in a browser), `test_portal_orphans_ui.py` (the box dashboard's undelivered-payments dialog), `test_provisioning.js`, `test_flasher.js`.
+- `scripts/tests/` is where tests of the scripts and the website live: `test_publish_firmware.py`, `test_check_published_apk.py`, `test_sold_unit_check.py`, `test_recovery_code.py`, `test_make_cards.py`, `test_site_page.py` (the provisioning page in a browser), `test_portal_orphans_ui.py` (the box dashboard's undelivered-payments dialog), `test_provisioning.js`.
 - Box firmware: `sh esp32_firmware/host_tests/run.sh` (pure-logic tests on a PC, no board needed).
 - Router: `router/tests/`, the router program in `tools/pisoportal/tests/` and `cargo test`.
 - The real-world test page: `tools/checklist/test_page.py` and `test_apply.py`.

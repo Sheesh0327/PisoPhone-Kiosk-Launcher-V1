@@ -24,7 +24,7 @@ A box with a public key built in only flashes images you signed.
 `firmware.json` to `website/update/` (`scripts/publish_firmware_ota.py`). Then, on the box's dashboard, **Update > Install update**.
 Without the secret the images are published unsigned, which boxes accept only while no owner key is built into their firmware; once
 the key is installed the workflow refuses to publish unsigned images. Edit `changelog` in `website/update/firmware.json` for the text
-the dashboard shows. The images are the dev builds (no flash encryption), the same ones the website's USB flasher writes.
+the dashboard shows. The images are the dev builds (no flash encryption), the same ones the setup program writes over USB.
 
 **By hand:**
 1. Bump `PISO_FW_VERSION`, build each chip with PlatformIO.

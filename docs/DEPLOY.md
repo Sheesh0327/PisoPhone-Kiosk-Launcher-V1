@@ -23,7 +23,7 @@ Keys are not needed for this test (see `docs/KEYS.md`); boxes then accept unsign
 environments (the platform is pinned in `esp32_firmware/envs/*.ini`), security-rule and vendored-file checks, the provisioning
 website (its helpers, its stylesheet and the page itself in a browser under the site's Content-Security-Policy), and the
 router portal and setup tests (rustfmt, clippy, unit, end-to-end and browser tests, shellcheck). `firmware-images.yml` builds the coin box
-firmware for the web flasher (`website/flash/`, one checked image per chip). `router-program.yml` builds
+firmware for the setup program (`website/flash/`, one checked image per chip). `router-program.yml` builds
 the router program for `mipsel_24kc` and regenerates `setup/piso-setup.sh` on `beta`. `build-apk.yml` runs the Android unit
 tests, builds and signs the release APK and publishes it to the branch's channel (`main` = production, other branches =
 `-dev`). Dependabot opens update PRs (majors and Kotlin-toolchain minors are ignored on purpose).

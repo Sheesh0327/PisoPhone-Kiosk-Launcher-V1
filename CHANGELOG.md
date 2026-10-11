@@ -4,6 +4,15 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Setup program: one click per unit. The program now writes the PisoPhone software to the coin box itself over USB (it detects
+  the board, checks the image's size and checksum against the website's list, erases the board and verifies what it wrote), then
+  sets up the router and pairs the two, and the last page has a "Set up the next unit" button that starts over for the next
+  router and box: the shop name and public Wi-Fi name are asked every time and the passwords are new every time. The coin box
+  step in the browser (`flash.html`) is gone: the setup program is the one way to set up a unit, next to the manual steps in
+  `setup/MANUAL.md` (PlatformIO or esptool by hand). It needs `pip install esptool` (a ready-made program has it built in); on
+  Linux the user must be in the `dialout` group. Phones are unchanged: the QR code, and the USB cable for phones that need it
+  ("Finish over USB" stays for Android Go phones). The router's hint for a box that does not join now points to the setup program
+  (router release 1.2.4).
 - Coin box firmware: a payment the box gives up on is no longer lost without a trace. A coin that the phone never acknowledged was
   dropped from the box's queue after 24 hours (30 minutes when the queue was nearly full), the "clear payments" request dropped
   every queued payment, and a coin that arrived when the queue was full was only printed in a log that rolls over. Now each of

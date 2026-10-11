@@ -1,14 +1,15 @@
 # Set up PisoPhone
 
 One program does the whole setup, from the bare boards to phones that are working: **`pisophone_setup.py`**. It guides you
-through every step in a window, asks only for your Wi-Fi names and passwords, and does the rest by itself. About 20 minutes.
+through every step in a window, asks only for the shop's name and Wi-Fi name, and does the rest by itself: it writes the
+coin box over USB, sets up the router and pairs them. About 15 minutes a unit, and one click for the next.
 
 ## What you need
 - The **ESP32 coin box board** and a USB data cable (a charge-only cable does not work)
 - An **OpenWrt router** (for example the 360T6M), factory reset
 - A **modem** with internet, and a network cable from it to the router's **WAN** port
 - A network cable from this computer to one of the router's **LAN** ports
-- **Google Chrome or Microsoft Edge** on this computer
+- **Google Chrome or Microsoft Edge** on this computer (for the phone setup page)
 - The **rental phones**, factory reset
 
 ## Start it
@@ -18,19 +19,25 @@ through every step in a window, asks only for your Wi-Fi names and passwords, an
      again.)
    - **macOS:** open Terminal, type `python3 ` (with a space), drag the file in, press Enter.
    - **Linux:** `sudo apt install python3-tk openssh-client`, then `python3 pisophone_setup.py`.
+   - **All:** the program writes the coin box with Espressif's tool, so run `python3 -m pip install esptool` once (Windows:
+     `py -m pip install esptool`). The ready-made program (a single file, when you have one) has it built in. On Linux add
+     yourself to the `dialout` group (`sudo usermod -aG dialout $USER`, then log in again); on Windows a CH340 or CP210x board may
+     need its USB driver installed once.
 
-The first page checks this computer (the `ssh` program, the internet, Chrome or Edge) and tells you what to fix if anything is
-missing. Then follow the steps in the window:
+The first page checks this computer (the `ssh` program, the internet, the flashing tool, Chrome or Edge) and tells you what
+to fix if anything is missing. Then follow the steps in the window:
 
 | Step | What you do | What the program does |
 |---|---|---|
 | **1 Start** | Read what you need | Checks this computer |
-| **2 Coin box** | Plug the ESP32 in by USB; click *Connect the box and install* on the page that opens | Opens the flasher in Chrome or Edge |
-| **3 Router** | Reset the router, plug in the modem and the cable | Finds the router by itself |
-| **4 Settings** | Choose the Wi-Fi name and the shop name; keep the passwords it made, or type your own | Checks every entry |
-| **5 Install** | Click *Start the installation*, wait 5 to 10 minutes | Installs the router software, pairs the coin box, checks everything, saves your passwords and a printable sheet |
-| **6 Phones** | Scan the QR code on the page that opens with each factory-reset phone | Opens the coin box's phone setup page, already filled in |
-| **7 Finish** | Insert one coin; try the customer Wi-Fi with a phone | Tests the coin and offers Telegram alerts |
+| **2 Router** | Reset the router, plug in the modem and the cable | Finds the router by itself |
+| **3 Settings** | Type this customer's shop name and public Wi-Fi name (asked every time); keep the passwords it made (new ones for every unit), or type your own | Checks every entry |
+| **4 Install** | Plug the ESP32 in by USB (a data cable), click *Start the installation*, wait about 10 minutes | Writes the PisoPhone software to the box (erasing it first), installs the router software, pairs the coin box, checks everything, saves your passwords and a printable sheet |
+| **5 Phones** | Scan the QR code on the page that opens with each factory-reset phone | Opens the coin box's phone setup page, already filled in |
+| **6 Finish** | Insert one coin; try the customer Wi-Fi with a phone; click *Set up the next unit* for the next router and box | Tests the coin and offers Telegram alerts; starts over for the next unit |
+
+Keep the USB cable plugged in during the installation: it powers the coin box. If the box already has the PisoPhone software,
+tick *Do not write it* on the install page.
 
 Your passwords and the printable setup sheet are saved in **Documents/PisoPhone**, readable only by you. Keep them private.
 
@@ -48,10 +55,10 @@ For the next phone, choose the next slot in the program (or on the coin box's pa
 ## If something goes wrong
 | What you see | What to do |
 |---|---|
-| The flasher cannot connect | Hold the board's BOOT button, tap RESET, release BOOT, try again. Use another USB cable (a data one). |
+| "No board found" / the board does not answer | Use a USB **data** cable. Hold the board's BOOT button, tap RESET, release BOOT, click *Try again*. Linux: you must be in the `dialout` group. Windows: install the CH340 / CP210x driver once. Close any serial monitor that uses the port. |
 | "No router found" | Cable in a **LAN** port (not WAN), router on for 2 minutes after the reset, this computer's Wi-Fi off. The program keeps looking every few seconds; after a fix it finds the router by itself. |
 | "The router could not download..." | The modem must be in the router's WAN port and have internet. |
-| "The coin box did not join" | Is the box powered, near the router, flashed with *Erase everything first*? Click *Try again*: the installation continues where it stopped. |
+| "The coin box did not join" | Is the box powered (the USB cable does it), near the router, and written by this program (it erases the board first)? Click *Try again*: the installation continues where it stopped. |
 | The phone does not ask "Allow USB debugging?" | Unlock the phone, use a data cable, unplug and replug. Or use the on-phone setting. |
 | Anything else | Click *Try again*: it is always safe, and the router keeps what is already done. |
 

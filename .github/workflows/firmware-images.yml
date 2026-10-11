@@ -1,9 +1,9 @@
-name: Coin box images for the web flasher
+name: Coin box images for the setup program
 
 # Builds the coin box firmware (the dev environments: no flash encryption) for each chip, merges bootloader, partition
 # table, boot_app0 and the app into ONE image per chip, checks its structure, and commits it with a manifest to
-# website/flash/ on main and beta. The website's flash.html writes it over USB (Web Serial) after checking its sha256, so
-# a box can be flashed from Chrome without PlatformIO. Production (encrypted) builds are not published here.
+# website/flash/ on main and beta. The setup program (setup/pisophone_setup.py) downloads it, checks its sha256 and writes it to
+# the box over USB with esptool, so a box can be flashed without PlatformIO. Production (encrypted) builds are not published here.
 #
 # On main it also publishes the app-only images for the dashboard's "Install update" (website/update/firmware-<chip>.bin and
 # firmware.json, scripts/publish_firmware_ota.py). They are signed with the repository secret OWNER_SIGNING_KEY_B64 (made by
@@ -29,7 +29,7 @@ concurrency:
 
 jobs:
   images:
-    name: Build and publish the flasher images
+    name: Build and publish the coin box images
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -99,7 +99,7 @@ jobs:
             git add -A website/flash
             if [ "$GITHUB_REF_NAME" = main ]; then
               # (the production site is built from main, and the boxes' dashboard reads https://pisophone.pages.dev/update)
-              # (a failure here must not hold back the flasher images, but it still fails the run, after they are pushed)
+              # (a failure here must not hold back the coin box images, but it still fails the run, after they are pushed)
               if python3 scripts/publish_firmware_ota.py --images "$RUNNER_TEMP/ota" ${KEY:+--key "$KEY"}; then
                 ota_failed=0
                 git add -A -f website/update
@@ -109,7 +109,7 @@ jobs:
               fi
             fi
             if git diff --staged --quiet; then exit $ota_failed; fi
-            git commit -q -m "ci: coin box images for the web flasher and updates ($(python3 -c "import json;print(json.load(open('website/flash/manifest.json'))['version'])"))"
+            git commit -q -m "ci: coin box images for the setup program and updates ($(python3 -c "import json;print(json.load(open('website/flash/manifest.json'))['version'])"))"
             if git push origin "HEAD:refs/heads/$GITHUB_REF_NAME"; then exit $ota_failed; fi
             sleep $((attempt * 3))
           done

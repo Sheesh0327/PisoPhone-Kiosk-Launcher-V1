@@ -26,7 +26,7 @@
 
 VERSION="dev"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
-PISO_RELEASE='1.2.3'
+PISO_RELEASE='1.2.4'
 
 COUNTRY="${COUNTRY:-PH}"
 KIOSK_SSID="PisoKiosk"                       # fixed, and hidden: only phones provisioned by the coin box page know it
@@ -482,7 +482,7 @@ pair_box() {
 			log "  still waiting for the coin box ($_t of $PAIR_WAIT s): $_net, nobody has joined it yet"
 		fi
 		case "$_t" in
-			60) if [ -n "$(box_ifname)" ]; then tip "no box yet after a minute. Check that the ESP32 has power (its light should blink) and that it runs this project's firmware: flash it at https://pisophone.pages.dev/flash.html"
+			60) if [ -n "$(box_ifname)" ]; then tip "no box yet after a minute. Check that the ESP32 has power (its light should blink) and that it runs this project's firmware: write it again with the setup program (https://pisophone.pages.dev/pisophone_setup.py, it does this over USB)"
 				else tip "the router is not broadcasting $BOX_SSID. Check that its 2.4 GHz radio is on (Network > Wireless in the router's web page)."; fi ;;
 			150) tip "still nothing. A box that was set up before remembers its old Wi-Fi: factory reset it (touch the wire on GPIO 2 to ground for 5 seconds, or flash it again with 'erase all') so that it tries $BOX_SSID." ;;
 			300) tip "last try: put the box right next to the router, and use a phone charger that gives at least 1 A (a weak supply makes the ESP32 restart when it uses Wi-Fi). If it still fails, run: piso-setup box-diag" ;;

@@ -7,7 +7,7 @@ sell Wi-Fi time through an OpenWrt/openNDS router. Three parts plus a router add
 |---|---|
 | `app/` | Android kiosk launcher (Kotlin, Compose, Room): locks the phone, counts paid time, talks to the box. |
 | `esp32_firmware/` | Coin-box firmware (Arduino/PlatformIO, ESP32-C3 and ESP32): coin pulses, durable payment queue, admin dashboard, signed OTA. |
-| `website/` | The PisoPhone website: the coin box flasher (`flash.html`), the phone setup page (QR code, or USB as the fallback), the router installer and the update feeds (`website/update`). |
+| `website/` | The PisoPhone website: the phone setup page (QR code, or USB as the fallback), the router installer and the update feeds (`website/update`). |
 | `router/` + `tools/pisoportal/` | Router add-on: `pisoportal` (resident Rust program: coin page over WebSocket, openNDS FAS), Telegram monitor; installed by `setup/piso-setup.sh`. |
 | `setup/` | Setting up a site: `pisophone_setup.py` (the setup program, run on a computer) and the router setup it drives. |
 | `protocol/`, `scripts/` | Shared test vectors; owner tools (keys, firmware signing, checks). |

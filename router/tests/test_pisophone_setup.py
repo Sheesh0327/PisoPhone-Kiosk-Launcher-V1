@@ -213,6 +213,7 @@ def e2e(answers=(), secrets_=(), lan="192.168.1.1", probe="factory", result="ok"
     rc, err = None, None
     try:
         rc = ps.run_setup(types.SimpleNamespace(**a), ps.Ssh(tmp), read=reader(*answers), read_secret=reader(*secrets_),
+                          board_finder=lambda: list(BOARDS), flasher=lambda port, emit: FLASHED.append(port),
                           probe=lambda h: h == (open(f"{tmp}/lan").read().strip()) and up(h),
                           wait=lambda probe, renew: moved and probe("10.0.0.1"), open_page=lambda url, chromium=True: opened.append(url))
     except ps.SetupError as e:
@@ -230,7 +231,8 @@ def e2e(answers=(), secrets_=(), lan="192.168.1.1", probe="factory", result="ok"
                                  uci=log("uci.log"), saved=sorted(os.listdir(outdir)), outdir=outdir, opened=opened)
 
 
-# a factory router: questions, review, the move to 10.0.0.1, then the setup with the answers
+# (the coin box over USB: none here; the flashing has its own tests below)
+BOARDS, FLASHED = [], []
 r = e2e(answers=("Tindahan WiFi", "Aling Nena", "y", "n"), secrets_=("routerpass1", "routerpass1", "kioskpass1", "kioskpass1", "boxadmin99", "boxadmin99"))
 check(r.rc == 0 and r.err is None, f"factory router: set up ({r.err}): " + r.out[-800:])
 check("set network.lan.ipaddr=10.0.0.1" in r.uci and open(f"{tmp}/lan").read().strip() == "10.0.0.1", "it was moved to 10.0.0.1")
@@ -448,10 +450,143 @@ if os.name != "nt" and sys.platform != "darwin":
 os.environ["PATH"] = old_path
 
 # the checks of the first page
-pf = ps.preflight("main", opener=lambda req, timeout=0: FakeResponse("{}"), find=lambda: "/x/chrome")
-check([c[1] for c in pf][1:] == [True, True], "preflight: the website and the browser are found: " + str(pf))
-pf2 = ps.preflight("main", opener=lambda req, timeout=0: (_ for _ in ()).throw(urllib.error.URLError("offline")), find=lambda: None)
-check(pf2[1][1] is False and pf2[2][1] is False and "Chrome" in pf2[2][2], "preflight: no internet, no Chrome: said")
+pf = ps.preflight("main", opener=lambda req, timeout=0: FakeResponse("{}"), find=lambda: "/x/chrome", tool=lambda: object())
+check([c[1] for c in pf][1:] == [True, True, True], "preflight: the website, the flashing tool and the browser are found: " + str(pf))
+pf2 = ps.preflight("main", opener=lambda req, timeout=0: (_ for _ in ()).throw(urllib.error.URLError("offline")), find=lambda: None,
+                   tool=lambda: None)
+check(pf2[1][1] is False and pf2[2][1] is False and "esptool" in pf2[2][2] and pf2[3][1] is False and "Chrome" in pf2[3][2],
+      "preflight: no internet, no esptool, no Chrome: said")
+
+# ---- the coin box over USB ------------------------------------------------------------------------------------------------
+Port = types.SimpleNamespace
+check(ps.usb_boards(lambda: [Port(device="COM7", vid=0x1A86, description="USB-SERIAL CH340"), Port(device="COM1", vid=None, description="Communications Port"),
+                             Port(device="COM3", vid=0x303A, description="USB JTAG/serial debug unit"), Port(device="COM9", vid=0x046D, description="Mouse")])
+      == [("COM3", "USB JTAG/serial debug unit"), ("COM7", "USB-SERIAL CH340")], "only the USB serial chips of ESP32 boards are boards")
+check(ps.usb_boards(lambda: []) == [], "no board plugged in")
+for text, want in (("Chip is ESP32-C3 (QFN32) (revision v0.4)", "ESP32-C3"), ("Chip type:          ESP32-C3 (revision v0.4)", "ESP32-C3"),
+                   ("Chip is ESP32-D0WDQ6 (revision v1.0)", "ESP32"), ("Connected to ESP32 on COM5:", "ESP32"),
+                   ("Chip is ESP32-S3 (revision v0.1)", "ESP32-S3")):
+    m = ps.CHIP_RE.search(text)
+    check(m and m.group(1).upper() == want, f"chip {text!r} is {want}: {m and m.group(1)}")
+
+IMG_C3, IMG_32 = b"\xe9" + b"c" * 2000, b"\xe9" + b"d" * 3000
+MANIFEST = {"version": "9.9.9", "builds": [
+    {"env": "esp32-c3-dev", "chip": "ESP32-C3", "file": "esp32-c3-dev.bin", "offset": 0, "size": len(IMG_C3), "sha256": hashlib.sha256(IMG_C3).hexdigest()},
+    {"env": "esp32dev-dev", "chip": "ESP32", "file": "esp32dev-dev.bin", "offset": 4096, "size": len(IMG_32), "sha256": hashlib.sha256(IMG_32).hexdigest()}]}
+
+
+class BinResponse(FakeResponse):
+    def __init__(self, body): self.body = body
+
+
+def website(requests, files=None, manifest=None):
+    """A fake website: records what was asked and serves the manifest and the images."""
+    import json as _json
+    served = {"flash/manifest.json": _json.dumps(manifest or MANIFEST).encode(), "flash/esp32-c3-dev.bin": IMG_C3, "flash/esp32dev-dev.bin": IMG_32}
+    served.update(files or {})
+
+    def opener(req, timeout=0):
+        path = req.full_url.split("pages.dev/", 1)[1]
+        requests.append(path)
+        if path not in served:
+            raise urllib.error.URLError("offline")
+        return BinResponse(served[path])
+    return opener
+
+
+class FakeEsptool:
+    """Stands in for esptool: records the commands, prints what the real one prints."""
+
+    def __init__(self, version, chip_line="Chip is ESP32-C3 (QFN32) (revision v0.4)", fail=None):
+        self.__version__, self.calls, self.chip_line, self.fail = version, [], chip_line, fail
+
+    def main(self, argv):
+        self.calls.append(list(argv))
+        if self.fail:
+            print(self.fail)
+            sys.exit(2)
+        if "chip_id" in argv or "chip-id" in argv:
+            print("esptool.py v4\nSerial port " + argv[1] + "\nConnecting....\n" + self.chip_line)
+        else:
+            sys.stdout.write("Writing at 0x00010000... (10 %)\rWriting at 0x00020000... (15 %)\rWriting at 0x00030000... (100 %)\n"
+                             "Hash of data verified.\n")
+
+
+cache = tempfile.mkdtemp(dir=tmp)
+for ver, sep in (("4.8.1", "_"), ("5.5.0", "-")):
+    reqs, lines = [], []
+    tool = FakeEsptool(ver)
+    chip, version = ps.flash_box("beta", "COM5", lines.append, cache, website(reqs), tool)
+    check((chip, version) == ("ESP32-C3", "9.9.9"), f"esptool {ver}: flashed the ESP32-C3 build: {chip} {version}")
+    cmds = tool.calls
+    check(len(cmds) == 2 and cmds[0][-1] == "chip" + sep + "id", f"esptool {ver}: the chip is asked first: {cmds[0]}")
+    w = cmds[1]
+    check(w[:4] == ["--port", "COM5", "--baud", "460800"] and "write" + sep + "flash" in w and "-e" in w and "-z" in w, f"esptool {ver}: erase and write: {w}")
+    check(w[-2] == "0x0" and w[-1].endswith("esp32-c3-dev.bin"), f"esptool {ver}: the image goes to the right offset: {w[-2:]}")
+    check("--flash" + sep + "mode" in w and w[w.index("--flash" + sep + "mode") + 1] == "keep", f"esptool {ver}: the flash settings are kept")
+    check(reqs == ["flash/manifest.json", "flash/esp32-c3-dev.bin"] or ver != "4.8.1", f"downloaded the manifest and the image: {reqs}")
+    check(len([l for l in lines if "%" in l]) <= 3 and any("(100 %)" in l for l in lines), "progress is reported in steps, not every line: " + str([l for l in lines if "%" in l]))
+check(not os.path.exists(os.path.join(cache, "esp32-c3-dev.bin")) and any(f.endswith("esp32-c3-dev.bin") for f in os.listdir(cache)),
+      "the image is kept in the cache folder")
+
+# the second time the image comes from the cache; the classic ESP32 gets its own image at 0x1000
+reqs, lines = [], []
+tool = FakeEsptool("4.8.1", chip_line="Chip is ESP32-D0WDQ6 (revision v1.0)")
+ps.flash_box("main", "/dev/ttyUSB0", lines.append, cache, website(reqs), tool)
+check(tool.calls[1][-2] == "0x1000" and tool.calls[1][-1].endswith("esp32dev-dev.bin") and reqs == ["flash/manifest.json", "flash/esp32dev-dev.bin"],
+      "ESP32: its own image, at 0x1000")
+reqs = []
+ps.flash_box("main", "/dev/ttyUSB0", lambda l: None, cache, website(reqs), FakeEsptool("4.8.1", chip_line="Chip is ESP32-D0WDQ6 (revision v1.0)"))
+check(reqs == ["flash/manifest.json"], "an image already downloaded and checked is not downloaded again: " + str(reqs))
+# offline: the manifest kept from the last time is used
+lines = []
+ps.flash_box("main", "COM5", lines.append, cache, lambda req, timeout=0: (_ for _ in ()).throw(urllib.error.URLError("offline")),
+             FakeEsptool("4.8.1"))
+check(any("kept from the last time" in l for l in lines), "no internet: the kept software list and image are used")
+
+
+def flash_error(**kw):
+    try:
+        ps.flash_box("main", "COM5", lambda l: None, kw.pop("cache", tempfile.mkdtemp(dir=tmp)), kw.pop("opener", website([])), kw.pop("tool", FakeEsptool("4.8.1")))
+    except ps.SetupError as e:
+        return str(e)
+    return None
+
+
+bad_img = IMG_C3[:-1] + b"X"
+err = flash_error(opener=website([], files={"flash/esp32-c3-dev.bin": bad_img}))
+check(err and "checksum" in err, "an image that does not match its checksum is never written: " + str(err))
+err = flash_error(tool=FakeEsptool("4.8.1", chip_line="Chip is ESP32-S3 (revision v0.1)"))
+check(err and "ESP32-S3" in err and "ESP32-C3 and ESP32" in err, "an unsupported chip is named: " + str(err))
+err = flash_error(tool=FakeEsptool("4.8.1", fail="A fatal error occurred: Failed to connect to ESP32-C3: No serial data received."))
+check(err and "BOOT" in err and "DATA cable" in err, "a board that does not answer: what to try: " + str(err))
+err = flash_error(tool=FakeEsptool("4.8.1", fail="Could not open COM5: PermissionError(13, 'Access is denied.')"))
+check(err and "port" in err.lower() and "serial monitor" in err, "a port in use: said: " + str(err))
+err = flash_error(opener=lambda req, timeout=0: (_ for _ in ()).throw(urllib.error.URLError("offline")))
+check(err and "internet" in err, "no internet and nothing kept: said: " + str(err))
+err = flash_error(opener=website([], manifest={"version": "1", "builds": [{"chip": "ESP32-C3", "file": "../x.bin", "offset": 0, "size": 1, "sha256": "0" * 64}]}))
+check(err and "not valid" in err, "a file name that leaves the folder is refused: " + str(err))
+orig = ps.esptool_module
+ps.esptool_module = lambda: None
+err = flash_error(tool=None)
+ps.esptool_module = orig
+check(err and "pip install esptool" in err, "esptool missing: how to get it: " + str(err))
+
+# the terminal flow: a board is written before the router; --no-flash, several boards, none
+BOARDS[:] = [("COM5", "CH340")]
+FLASHED.clear()
+r = e2e(answers=("Tindahan WiFi", "Aling Nena", "y", "", "n"), secrets_=("routerpass1", "routerpass1", "kioskpass1", "kioskpass1", "boxadmin99", "boxadmin99"))
+check(r.rc == 0 and "Coin box board found: CH340 on COM5" in r.out, "a board on USB is found and the setup goes on: " + r.out[:600])
+check(FLASHED == ["COM5"], "the board is written once: " + str(FLASHED))
+FLASHED.clear()
+r = e2e(answers=("Tindahan WiFi", "Aling Nena", "y", "n"), secrets_=("routerpass1", "routerpass1", "kioskpass1", "kioskpass1", "boxadmin99", "boxadmin99"), no_flash=True)
+check(r.rc == 0 and FLASHED == [], "--no-flash writes nothing")
+BOARDS[:] = [("COM5", "CH340"), ("COM6", "CP210x")]
+r = e2e(answers=("Tindahan WiFi", "Aling Nena", "y", "n"), secrets_=("routerpass1", "routerpass1", "kioskpass1", "kioskpass1", "boxadmin99", "boxadmin99"))
+check(r.rc != 0 and r.err and "several USB boards" in r.err and FLASHED == [], "two boards: asks to unplug one, writes nothing: " + str(r.err))
+BOARDS[:] = []
+r = e2e(answers=("Tindahan WiFi", "Aling Nena", "y", "n"), secrets_=("routerpass1", "routerpass1", "kioskpass1", "kioskpass1", "boxadmin99", "boxadmin99"))
+check(r.rc == 0 and "No coin box board found on USB" in r.out, "no board: it says so and goes on with the router")
 check(ps.box_online("10.0.0.10", probe=lambda h, p: (h, p) == ("10.0.0.10", 80)) is True, "the box is online when its page port answers")
 
 # main(): options and the missing ssh

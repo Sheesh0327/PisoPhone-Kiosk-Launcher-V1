@@ -6,29 +6,36 @@ to working rental phones. Nothing to copy, paste or type into a terminal.
     python3 pisophone_setup.py --branch beta      the same with the beta branch's files (testing)
     python3 pisophone_setup.py --cli              the same in the terminal (no window)
     python3 pisophone_setup.py --update           new software only, on a router that is set up already (terminal)
+    python3 pisophone_setup.py --cli --no-flash   the terminal mode without writing the coin box (it already has the software)
 
 The assistant's steps, in order:
   1. Start        checks this computer (ssh, the website, Chrome or Edge)
-  2. Coin box     opens the web flasher in Chrome or Edge (the ESP32 gets its software over USB)
-  3. Router       finds the factory-reset router by itself (192.168.1.1 or 10.0.0.1)
-  4. Settings     the Wi-Fi names, the country and the passwords (made for you; change what you like)
-  5. Install      runs the one-line installer on the router unattended (it checks the setup file's sha256), waits for the
-                  router to move to 10.0.0.1, runs the setup, pairs the coin box, saves the summary and the setup sheet
-  6. Phones       opens the coin box's phone setup page (Set up a phone) for you, already filled in: scan the QR code
-  7. Finish       tests a real coin, checks the customer Wi-Fi, offers Telegram alerts
+  2. Router       finds the factory-reset router by itself (192.168.1.1 or 10.0.0.1)
+  3. Settings     the shop's name and public Wi-Fi name (asked every time), the country and the passwords (new ones every time)
+  4. Install      writes the PisoPhone software to the coin box over USB (esptool, checked against the website's checksums), runs
+                  the one-line installer on the router unattended (it checks the setup file's sha256), waits for the router to
+                  move to 10.0.0.1, runs the setup, pairs the coin box, saves the summary and the setup sheet
+  5. Phones       opens the coin box's phone setup page (Set up a phone) for you, already filled in: scan the QR code
+  6. Finish       tests a real coin, checks the customer Wi-Fi, offers Telegram alerts; "Set up the next unit" starts over
+                  for the next router and coin box
 The summary (every password) and the printable setup sheet are saved on this computer, readable only by you.
 
-It needs Python 3.8+ (with Tk for the window; the terminal mode works without) and the ssh command (built into Windows
+It needs Python 3.8+ (with Tk for the window; the terminal mode works without), esptool (pip install esptool) and the ssh command (built into Windows
 10/11, macOS and Linux). The passwords travel over the SSH connection's input, never on a command line; the router's SSH
 key is pinned for the run (the same key must answer at 192.168.1.1 and at 10.0.0.1). Running it again is safe: a router
 that is set up already keeps its names and passwords (it is then only repaired or finished).
 
 Build a standalone program with Nuitka (no Python needed on the computer that runs it):
-    python -m nuitka --onefile --enable-plugin=tk-inter --windows-console-mode=disable setup/pisophone_setup.py"""
+    python -m nuitka --onefile --enable-plugin=tk-inter --include-package=esptool --include-package=serial \\
+        --windows-console-mode=disable setup/pisophone_setup.py"""
 import argparse
 import base64
+import contextlib
 import getpass
 import glob
+import hashlib
+import io
+import json
 import os
 import pathlib
 import queue
@@ -48,7 +55,7 @@ import urllib.request
 import webbrowser
 
 APP_NAME = "PisoPhone Setup"
-SITE_HOST = "pisophone.pages.dev"   # the website (Cloudflare Pages): the flasher, the phone setup page, the installer and the setup file
+SITE_HOST = "pisophone.pages.dev"   # the website (Cloudflare Pages): the coin box software, the phone setup page, the installer and the setup file
 DEFAULT_BRANCH = "main"
 FACTORY_IP = "192.168.1.1"      # OpenWrt's address after a factory reset
 TARGET_IP = "10.0.0.1"          # where the PisoPhone setup puts it
@@ -591,7 +598,7 @@ def connect_telegram(ssh, host, token, site, emit, confirm):
 # ---- the browser, the coin box's page, the checks ------------------------------------------------------------------------
 
 def chromium_path():
-    """Chrome, Edge or Chromium on this computer (the flasher and the USB step need Web Serial and WebUSB: Chromium only)."""
+    """Chrome, Edge or Chromium on this computer (the phone setup page needs WebUSB to set up a phone over a cable: Chromium only)."""
     candidates = []
     if os.name == "nt":
         for base in (os.environ.get("PROGRAMFILES"), os.environ.get("PROGRAMFILES(X86)"), os.environ.get("LOCALAPPDATA")):
@@ -677,7 +684,218 @@ def box_online(host=BOX_IP, probe=port_open):
     return probe(host, 80)
 
 
-def preflight(branch, opener=urllib.request.urlopen, find=chromium_path):
+# ---- the coin box: its software goes in over USB ----------------------------------------------------------------------------
+
+FLASH_BAUD = 460800   # fast, and still reliable on the cheap USB-serial chips of most boards
+# the USB-serial chips on ESP32 boards: Espressif's own (C3 and S3 boards), CH340, CP210x, FTDI, Prolific
+USB_BOARD_IDS = {0x303A: "Espressif", 0x1A86: "CH340", 0x10C4: "CP210x", 0x0403: "FTDI", 0x067B: "Prolific"}
+CHIP_RE = re.compile(r"(?:Chip is|Chip type:|Connected to)\s*(ESP32(?:-[CSHP]\d)?)", re.I)
+PROGRESS_RE = re.compile(r"\((\d+) ?%\)")
+
+
+def esptool_module():
+    """Espressif's flashing tool (pip install esptool; the standalone program carries it), or None."""
+    try:
+        import esptool
+        return esptool
+    except ImportError:
+        return None
+
+
+def esptool_major(tool):
+    try:
+        return int(str(tool.__version__).split(".")[0])
+    except (AttributeError, ValueError):
+        return 4
+
+
+def usb_boards(comports=None):
+    """[(port, description)] of the USB serial adapters coin box boards use, sorted. Empty when none is plugged in (or
+    pyserial, which esptool brings, is missing)."""
+    if comports is None:
+        try:
+            from serial.tools.list_ports import comports
+        except ImportError:
+            return []
+    found = []
+    for port in comports():
+        if getattr(port, "vid", None) in USB_BOARD_IDS:
+            found.append((port.device, port.description or USB_BOARD_IDS[port.vid]))
+    return sorted(found)
+
+
+class _Lines(io.TextIOBase):
+    """Collects what esptool prints and hands it on line by line (its progress lines end in a carriage return)."""
+
+    def __init__(self, emit):
+        self.emit, self.buf = emit, ""
+
+    def writable(self):
+        return True
+
+    def write(self, text):
+        self.buf += text
+        parts = re.split(r"[\r\n]", self.buf)
+        self.buf = parts.pop()
+        for part in parts:
+            if part.strip():
+                self.emit(part.rstrip())
+        return len(text)
+
+    def flush(self):
+        if self.buf.strip():
+            self.emit(self.buf.rstrip())
+        self.buf = ""
+
+
+def run_esptool(tool, argv, emit):
+    """Runs one esptool command in this process. Raises SetupError (with the tool's last words) when it fails."""
+    seen = []
+
+    def take(line):
+        seen.append(line)
+        emit(line)
+    out = _Lines(take)
+    try:
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            tool.main(argv)
+    except SystemExit as e:
+        if e.code not in (0, None):
+            out.flush()
+            raise SetupError("the flashing tool stopped: " + (seen[-1] if seen else str(e.code)))
+    except Exception as e:   # esptool's own errors (FatalError, serial problems)
+        out.flush()
+        raise SetupError("the flashing tool failed: " + re.sub(r"\s+", " ", str(e)).strip())
+    out.flush()
+    return seen
+
+
+def board_advice(message):
+    """What to try when the board did not answer (esptool says 'Failed to connect', 'Permission denied' ...)."""
+    low = message.lower()
+    if "permission" in low or "access is denied" in low:
+        return ("This computer may not use the USB port. Linux: add your user to the 'dialout' group and log in again. "
+                "Another program (a serial monitor) may also be using the port.")
+    if "failed to connect" in low or "timed out" in low or "no serial data" in low:
+        return ("The board did not answer. Use a USB DATA cable, hold the board's BOOT button, tap RESET, release BOOT, and try "
+                "again. Some boards need their USB driver (CH340 or CP210x) installed once.")
+    return ""
+
+
+def with_advice(error, evidence):
+    """An error's text, one sentence, with what to try when the board's trouble is a known one."""
+    text = str(error).rstrip(". ")
+    advice = board_advice(evidence)
+    return f"{text}. {advice}" if advice else text + "."
+
+
+def flash_manifest(branch, cache_dir, opener=urllib.request.urlopen, emit=say):
+    """The list of firmware images of this branch (flash/manifest.json on the website). Offline, the copy kept on this
+    computer from the last time is used."""
+    path = os.path.join(cache_dir, "manifest.json")
+    try:
+        with opener(urllib.request.Request(f"{site_url(branch)}/flash/manifest.json"), timeout=15) as r:
+            text = r.read().decode("utf-8")
+        manifest = json.loads(text)
+        os.makedirs(cache_dir, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+    except (urllib.error.URLError, OSError, ValueError):
+        try:
+            with open(path, encoding="utf-8") as f:
+                manifest = json.load(f)
+            emit("The website could not be reached: using the coin box software kept from the last time.")
+        except (OSError, ValueError):
+            raise SetupError("the coin box software list could not be downloaded. This computer needs internet for this step.")
+    if not isinstance(manifest.get("builds"), list) or not manifest["builds"]:
+        raise SetupError("the website has no coin box software for this branch.")
+    return manifest
+
+
+def choose_build(manifest, chip):
+    """The image for a chip ("ESP32-C3", "ESP32"), or None."""
+    name = (chip or "").upper()
+    return next((b for b in manifest["builds"] if str(b.get("chip", "")).upper() == name), None)
+
+
+def fetch_image(branch, build, cache_dir, opener=urllib.request.urlopen):
+    """The path of the image, downloaded and checked against the manifest's size and sha256 (kept for next time)."""
+    path = os.path.join(cache_dir, f"{build['sha256'][:16]}-{build['file']}")
+    if re.search(r"[/\\]", build["file"]):
+        raise SetupError("the website's software list is not valid.")
+
+    def good(data):
+        return len(data) == build["size"] and hashlib.sha256(data).hexdigest() == build["sha256"]
+    try:
+        with open(path, "rb") as f:
+            if good(f.read()):
+                return path
+    except OSError:
+        pass
+    try:
+        with opener(urllib.request.Request(f"{site_url(branch)}/flash/{build['file']}"), timeout=60) as r:
+            data = r.read()
+    except (urllib.error.URLError, OSError) as e:
+        raise SetupError(f"the coin box software could not be downloaded ({e}).")
+    if not good(data):
+        raise SetupError("the downloaded coin box software does not match its checksum. Try again in a minute.")
+    os.makedirs(cache_dir, exist_ok=True)
+    with open(path + ".part", "wb") as f:
+        f.write(data)
+    os.replace(path + ".part", path)
+    return path
+
+
+def flash_box(branch, port, emit, cache_dir, opener=urllib.request.urlopen, tool=None):
+    """Writes the PisoPhone software to the board on `port`: detects the chip, takes the image for it (checked), erases the
+    whole flash (a used box then forgets its old Wi-Fi), writes and verifies it, restarts the board. Returns (chip, version)."""
+    tool = tool or esptool_module()
+    if tool is None:
+        raise SetupError("the flashing tool is missing: run  pip install esptool  and start this again.")
+    major = esptool_major(tool)
+
+    def name(text):   # esptool 5 spells its commands and options with hyphens (4 with underscores)
+        return text.replace("_", "-") if major >= 5 else text
+    base = ["--port", port, "--baud", str(FLASH_BAUD)]
+    emit(f"== Looking at the board on {port}")
+    seen = []
+    try:
+        run_esptool(tool, base + [name("chip_id")], seen.append)
+    except SetupError as e:
+        raise SetupError(with_advice(e, ' '.join(seen) + ' ' + str(e)))
+    match = CHIP_RE.search("\n".join(seen))
+    if not match:
+        raise SetupError("the board did not say which chip it has. " + board_advice("failed to connect"))
+    chip = match.group(1).upper()
+    manifest = flash_manifest(branch, cache_dir, opener, emit)
+    build = choose_build(manifest, chip)
+    if not build:
+        raise SetupError(f"this board is an {chip}; PisoPhone software exists for "
+                         f"{' and '.join(b['chip'] for b in manifest['builds'])}.")
+    emit(f"{chip} found. Software version {manifest.get('version', '?')} ({build['size'] / 1048576:.2f} MB).")
+    image = fetch_image(branch, build, cache_dir, opener)
+    emit("== Writing the coin box software (erasing the board first; about a minute)")
+    last = [-10]
+
+    def progress(line):
+        found = PROGRESS_RE.search(line)
+        if found:
+            pct = int(found.group(1))
+            if pct // 10 == last[0] // 10 and pct < 100:
+                return
+            last[0] = pct
+        emit(line)
+    args = base + [name("write_flash"), "-e", "-z", name("--flash_mode"), "keep", name("--flash_freq"), "keep",
+                   name("--flash_size"), "keep", hex(build["offset"]), image]
+    try:
+        run_esptool(tool, args, progress)
+    except SetupError as e:
+        raise SetupError(with_advice(e, str(e)))
+    emit("Written and verified. The board restarts by itself; keep it powered (the USB cable does that) while the router is set up.")
+    return chip, manifest.get("version", "?")
+
+
+def preflight(branch, opener=urllib.request.urlopen, find=chromium_path, tool=esptool_module):
     """The checks of the first page: [(what, ok, what to do when not)]. Nothing here changes anything."""
     checks = []
     have_ssh = bool(os.environ.get("PISO_SSH") or shutil.which("ssh"))
@@ -690,14 +908,37 @@ def preflight(branch, opener=urllib.request.urlopen, find=chromium_path):
         online = False
     checks.append((f"internet and the {urllib.parse.urlsplit(site_url(branch)).netloc} website", online,
                    "This computer needs internet now (the router gets its own from the modem later)."))
-    checks.append(("Chrome or Edge", bool(find()), "The flasher needs Chrome or Microsoft Edge (Firefox and Safari cannot "
-                                                   "talk to the board over USB). Install one, then start this again."))
+    checks.append(("USB flashing tool (esptool)", tool() is not None,
+                   "Run  pip install esptool  and start this again (the standalone program has it built in)."))
+    checks.append(("Chrome or Edge", bool(find()), "The phone setup page needs Chrome or Microsoft Edge to talk to a phone over "
+                                                   "USB (Firefox and Safari cannot). Install one, then start this again."))
     return checks
 
 
 # ---- the terminal mode ---------------------------------------------------------------------------------------------------
 
-def run_setup(args, ssh, read=input, read_secret=getpass.getpass, probe=port_open, wait=wait_for_move, open_page=open_url):
+def flash_in_terminal(args, read, board_finder, flasher):
+    """Writes the coin box's software when a board is on USB. Without one, goes on (the box may have it already)."""
+    boards = board_finder()
+    if not boards:
+        say("No coin box board found on USB: going on without writing it (it must run PisoPhone software already; plug it in and")
+        say("run this again to write it, or add --no-flash to skip this check).")
+        return
+    if len(boards) > 1:
+        raise SetupError("several USB boards are connected (" + ", ".join(p for p, _d in boards) + "): unplug all but the coin box.")
+    port, description = boards[0]
+    say(f"Coin box board found: {description} on {port}.")
+    if not args.yes and read("Write the PisoPhone software to it? This erases the board. [Y/n] ").strip().lower() in ("n", "no"):
+        say("Skipped writing the coin box.")
+        return
+    flasher(port, say)
+
+
+def run_setup(args, ssh, read=input, read_secret=getpass.getpass, probe=port_open, wait=wait_for_move, open_page=open_url,
+              board_finder=usb_boards, flasher=None):
+    if flasher is None:
+        def flasher(port, emit):
+            return flash_box(args.branch, port, emit, flash_cache_dir())
     host = args.router or find_router(probe)
     if not host:
         raise SetupError(
@@ -734,6 +975,8 @@ def run_setup(args, ssh, read=input, read_secret=getpass.getpass, probe=port_ope
             say("Cancelled. Nothing was changed.")
             return 1
 
+    if not getattr(args, "no_flash", False):
+        flash_in_terminal(args, read, board_finder, flasher)
     say()
     if host == FACTORY_IP:
         say(f"Step 1 of 2: downloading the setup to the router and moving it to {TARGET_IP}...")
@@ -798,6 +1041,11 @@ def gui_available():
     return True
 
 
+def flash_cache_dir():
+    """Where the downloaded coin box software is kept, so the next unit does not download it again."""
+    return os.path.join(default_out_dir(), "firmware-cache")
+
+
 def default_out_dir():
     """Where the window mode saves the summary and the setup sheet: Documents/PisoPhone (or PisoPhone in the home folder)."""
     home = pathlib.Path.home()
@@ -859,8 +1107,11 @@ class Core:
         self.ssh.set_password(password)
         return connect_telegram(self.ssh, host, token, site, emit, confirm)
 
-    def open_flasher(self):
-        return open_url(site_url(self.branch) + "/flash.html")
+    def usb_boards(self):
+        return usb_boards()
+
+    def flash_box(self, port, emit):
+        return flash_box(self.branch, port, emit, flash_cache_dir())
 
     def open_provisioning(self, passwords, slot):
         return open_provisioning(self.branch, passwords, slot)
@@ -883,9 +1134,9 @@ C = {
     "ok": "#15803d", "ok_soft": "#dcfce7", "warn": "#b45309", "warn_soft": "#fef3c7", "bad": "#b91c1c", "bad_soft": "#fee2e2",
     "log_bg": "#0b1220", "log_ink": "#cbd5e1",
 }
-STEPS = [("welcome", "Start"), ("box", "Coin box"), ("router", "Router"), ("settings", "Settings"), ("install", "Install"),
+STEPS = [("welcome", "Start"), ("router", "Router"), ("settings", "Settings"), ("install", "Install"),
          ("phones", "Phones"), ("finish", "Finish")]
-INSTALL_STAGES = ["Prepare the router", f"Move it to {TARGET_IP}", "Install and set up", "Check everything"]
+INSTALL_STAGES = ["Write the coin box software (USB)", "Prepare the router", f"Move it to {TARGET_IP}", "Install and set up", "Check everything"]
 
 
 class Wizard:
@@ -896,9 +1147,12 @@ class Wizard:
         self.out_dir = out_dir or default_out_dir()
         self.q = queue.Queue()
         self.step = 0
-        self.box_done = tk.BooleanVar(value=False)
+        self.skip_flash = tk.BooleanVar(value=False)   # the coin box has the PisoPhone software already
+        self.flashed = False                          # the software was written to this unit's box
+        self.unit = 1                                 # which unit of a batch this is ("Set up the next unit" counts up)
+        self.usb = None                               # the boards on USB: None (not looked yet) or [(port, description)]
         self.vars = {
-            "GUEST_SSID": tk.StringVar(value="PisoWiFi"), "SITE_NAME": tk.StringVar(value=""),
+            "GUEST_SSID": tk.StringVar(value=""), "SITE_NAME": tk.StringVar(value=""),
             "COUNTRY": tk.StringVar(value="Philippines (PH)"),
         }
         for env, _label, _lo, _hi, length in PASSWORDS:
@@ -921,7 +1175,6 @@ class Wizard:
         self.field_errors = {}
         self.final = {}             # what the installed system uses: the passwords and names (from the router's summary)
         self.pre = None             # the first page's checks, once they ran
-        self.flasher_opened = False
         self.slot = tk.IntVar(value=1)
         self.prov = {"state": None, "note": ""}      # the phone setup page: None, "opening", "setup", "box"
         self.prov_auto = False
@@ -1116,8 +1369,6 @@ class Wizard:
         key = STEPS[self.step][0]
         if key == "router" and self.router["state"] == "password" and not self.router["login_ok"]:
             return self._check_router_password()
-        if key == "box" and not self.box_done.get():
-            return
         if self.step == len(STEPS) - 1:
             return self.close()
         self.show(self.step + 1)
@@ -1128,8 +1379,6 @@ class Wizard:
 
     def can_next(self):
         key = STEPS[self.step][0]
-        if key == "box":
-            return self.box_done.get()
         if key == "settings":
             return not any(self.settings_problems().values())
         if key == "router":
@@ -1255,35 +1504,6 @@ class Wizard:
         self.pre = checks
         self._render_checks()
 
-    # -- 2. coin box -------------------------------------------------------------------------------------------------------
-    def page_box(self):
-        url = site_url(self.branch) + "/flash.html"
-        self.title.configure(text="Install the coin box software")
-        self.subtitle.configure(text="The coin box's ESP32 board gets its software from the PisoPhone website, over USB. This "
-                                     "is done once per box. The flasher opens in your browser by itself.")
-        c = self.card(self.body)
-        self.numbered(c, ["Plug the ESP32 board into this computer with a USB data cable (a charge-only cable does not work).",
-                          "On the page that opened, click Connect the box and install, and choose the board's port. Keep "
-                          "\"Erase everything first\" ticked: a used box then forgets its old Wi-Fi.",
-                          "Wait for Done. Then unplug the board and power it from its own supply, near the router."])
-        row = tk.Frame(c, bg=C["card"])
-        row.pack(fill="x", pady=(12, 0))
-        self.flasher_btn = ttk.Button(row, text="Open the flasher again", style="Primary.TButton", command=self.open_flasher)
-        self.flasher_btn.pack(side="left")
-        self.text(row, url, "small", fg=C["muted"]).pack(side="left", padx=12)
-        self.note(self.body, "info", "It does not connect? Hold the board's BOOT button, tap RESET, release BOOT, then try again. "
-                                     "The page needs Chrome or Edge.")
-        ttk.Checkbutton(self.body, text="The coin box software is installed and the box is powered on (or it was done before)",
-                        variable=self.box_done, style="Bg.TCheckbutton", command=self.update_nav).pack(anchor="w", pady=(4, 0))
-        if not self.flasher_opened:
-            self.flasher_opened = True
-            self.root.after(400, self.open_flasher)
-
-    def open_flasher(self):
-        self.core.open_flasher()
-        self.nav_note.configure(text="Opened the flasher in your browser.")
-        self.root.after(3000, lambda: self.nav_note.configure(text="") if self.nav_note.winfo_exists() else None)
-
     # -- 3. settings -------------------------------------------------------------------------------------------------------
     def kept(self):
         """The router was set up before (or has a password): it keeps its names and passwords."""
@@ -1294,7 +1514,7 @@ class Wizard:
         if self.kept():
             return {"COUNTRY": country_problem(self.country_code())}
         problems = {"GUEST_SSID": name_problem(v["GUEST_SSID"], "wifi"),
-                    "SITE_NAME": name_problem(v["SITE_NAME"], "site") if v["SITE_NAME"] else None,
+                    "SITE_NAME": name_problem(v["SITE_NAME"], "site"),
                     "COUNTRY": country_problem(self.country_code())}
         for env, _label, lo, hi, _length in PASSWORDS:
             problems[env] = password_problem(v[env], lo, hi)
@@ -1306,7 +1526,6 @@ class Wizard:
 
     def answers(self):
         a = {k: var.get().strip() if k in ("GUEST_SSID", "SITE_NAME") else var.get() for k, var in self.vars.items()}
-        a["SITE_NAME"] = a["SITE_NAME"] or a["GUEST_SSID"]
         a["COUNTRY"] = self.country_code()
         return a
 
@@ -1326,8 +1545,9 @@ class Wizard:
             self._validate_field("COUNTRY")
             return
         self.title.configure(text="Your network and passwords")
-        self.subtitle.configure(text="The passwords below were made for you. Keep them, or type your own. They are saved "
-                                     "on this computer at the end and printed on the setup sheet.")
+        self.subtitle.configure(text="Type this customer's shop name and public Wi-Fi name. The passwords were made for you, new "
+                                     "ones for every unit: keep them, or type your own. They are saved on this computer at the "
+                                     "end and printed on the setup sheet.")
         cols = tk.Frame(self.body, bg=C["bg"])
         cols.pack(fill="both", expand=True)
         cols.columnconfigure(0, weight=1, uniform="c")
@@ -1338,7 +1558,7 @@ class Wizard:
         names = self.card(left)
         self.text(names, "Names", "h2").pack(fill="x", pady=(0, 6))
         self.field(names, "GUEST_SSID", "Public Wi-Fi name", "What customers see in their Wi-Fi list.")
-        self.field(names, "SITE_NAME", "Shop / site name", "On the setup sheet and in alerts. Empty: the Wi-Fi name.")
+        self.field(names, "SITE_NAME", "Shop / site name", "On the setup sheet and in alerts.")
         lab = tk.Frame(names, bg=C["card"])
         lab.pack(fill="x", pady=(8, 2))
         self.text(lab, "Country", "bold").pack(fill="x")
@@ -1406,6 +1626,9 @@ class Wizard:
         self.title.configure(text="Connect the router")
         self.subtitle.configure(text="The router is set up over a network cable from this computer. This assistant finds it "
                                      "by itself as soon as it is connected.")
+        if self.unit > 1:
+            self.note(self.body, "info", f"Unit {self.unit}: unplug the network cable from the last router, connect this computer "
+                                         "to the next factory-reset router, and plug in the next coin box board by USB.")
         c = self.card(self.body)
         self.numbered(c, ["Factory reset the router (hold its reset button about 10 seconds) and wait 2 minutes for it to start.",
                           "Plug the modem into the router's WAN (internet) port.",
@@ -1519,8 +1742,9 @@ class Wizard:
         if self.result and self.result["ok"]:
             self.subtitle.configure(text="Everything is installed and checked.")
         else:
-            self.subtitle.configure(text="The installation takes about 5 to 10 minutes. Keep the coin box powered on (the "
-                                         "router pairs with it) and this computer's cable plugged in.")
+            self.subtitle.configure(text="One click: the coin box gets its software over USB, then the router is set up and paired "
+                                         "with it. About 10 minutes. Keep the USB cable plugged in (it powers the box) and "
+                                         "this computer's network cable too.")
         top = tk.Frame(self.body, bg=C["bg"])
         top.pack(fill="x")
         top.columnconfigure(0, weight=1, uniform="t")
@@ -1552,6 +1776,20 @@ class Wizard:
         self.activity_label.pack(fill="x", pady=(8, 0))
         self.bar = ttk.Progressbar(prog, mode="indeterminate")
         self.bar.pack(fill="x", pady=(6, 0))
+        usb = self.card(self.body, pady=(0, 10))
+        urow = tk.Frame(usb, bg=C["card"])
+        urow.pack(fill="x")
+        self.text(urow, "Coin box (USB)", "h2").pack(side="left")
+        self.usb_btn = ttk.Button(urow, text="Look again", style="Small.TButton", command=self.refresh_usb)
+        self.usb_btn.pack(side="right")
+        self.usb_label = self.text(usb, "", "body")
+        self.usb_label.pack(fill="x", pady=(4, 0))
+        self.skip_check = ttk.Checkbutton(usb, text="Do not write it: the coin box already has the PisoPhone software",
+                                          variable=self.skip_flash, command=self._render_usb)
+        self.skip_check.pack(anchor="w", pady=(6, 0))
+        self._render_usb()
+        if self.usb is None and not self.flashed:
+            self.refresh_usb()
         self.banner_box = tk.Frame(self.body, bg=C["bg"])
         self.banner_box.pack(fill="x")
         actions = tk.Frame(self.body, bg=C["bg"])
@@ -1578,6 +1816,45 @@ class Wizard:
             self._log_insert(line)
         self.log.configure(state="disabled")
         self._render_install_state()
+
+    def refresh_usb(self):
+        self.usb = None
+        self._render_usb()
+
+        def work():
+            try:
+                boards = self.core.usb_boards()
+            except Exception:
+                boards = []
+            self.post("usb", boards)
+        threading.Thread(target=work, daemon=True).start()
+
+    def on_usb(self, boards):
+        self.usb = boards
+        self._render_usb()
+
+    def _render_usb(self):
+        if STEPS[self.step][0] != "install" or not self.usb_label.winfo_exists():
+            return
+        if self.flashed:
+            text, fg = "The coin box software is written.", C["ok"]
+        elif self.skip_flash.get():
+            text, fg = "Not written: the box is used as it is.", C["muted"]
+        elif self.usb is None:
+            text, fg = "Looking for the board...", C["muted"]
+        elif not self.usb:
+            text, fg = ("No board found. Plug the coin box board into this computer with a USB data cable (a charge-only cable "
+                        "does not work), then click Look again.", C["warn"])
+        elif len(self.usb) > 1:
+            text, fg = ("Several USB boards are connected (" + ", ".join(p for p, _d in self.usb) + "). Unplug all but the coin "
+                        "box.", C["warn"])
+        else:
+            text, fg = (f"Found: {self.usb[0][1]} on {self.usb[0][0]}. It is erased and gets the PisoPhone software.", C["ok"])
+        self.usb_label.configure(text=text, fg=fg)
+
+    def on_flashed(self):
+        self.flashed = True
+        self._render_usb()
 
     def _toggle_log(self):
         if self.logf.winfo_ismapped():
@@ -1652,14 +1929,25 @@ class Wizard:
         a = self.answers()
         answers = kept_answers(a["COUNTRY"]) if self.kept() else a
         out_dir = self.out_dir
+        write_box = not (self.skip_flash.get() or self.flashed)   # (read here: Tk variables belong to the window's thread)
 
         def work():
             try:
                 host = self.core.find_router() or self.router["host"]
                 if not host:
                     raise SetupError("the router is not found any more. Check the network cable, then try again.")
+                if write_box:
+                    boards = self.core.usb_boards()
+                    if not boards:
+                        raise SetupError("no coin box board found on USB. Plug it in with a USB data cable and try again, or "
+                                         "tick that it already has the PisoPhone software.")
+                    if len(boards) > 1:
+                        raise SetupError("several USB boards are connected: unplug all but the coin box.")
+                    self.post("stage", 0)
+                    self.core.flash_box(boards[0][0], lambda line: self.post("log", line))
+                    self.post("flashed")
                 result = self.core.install(host, answers, out_dir, lambda line: self.post("log", line),
-                                           lambda n: self.post("stage", n), lambda msg: self.post("notify", msg))
+                                           lambda n: self.post("stage", n + 1), lambda msg: self.post("notify", msg))
                 self.post("installed", result, None)
             except SetupError as e:
                 self.post("installed", None, str(e))
@@ -1686,9 +1974,9 @@ class Wizard:
 
     def on_stage(self, n):
         self.stage = n
-        self.activity = ["Downloading the setup to the router", f"Waiting for the router at {TARGET_IP}",
-                         "Installing on the router", "Checking"][n]
-        self.banner = None if n != 1 else self.banner
+        self.activity = ["Writing the coin box software", "Downloading the setup to the router",
+                         f"Waiting for the router at {TARGET_IP}", "Installing on the router", "Checking"][n]
+        self.banner = None if n != 2 else self.banner
         self._render_install_state()
 
     def on_notify(self, msg):
@@ -1885,7 +2173,33 @@ class Wizard:
         ttk.Button(f, text="Open the folder", command=lambda: self.core.open_path(self.out_dir)).pack(fill="x", pady=2)
         self.text(f, "Keep the summary private: it holds every password. Day to day, the router has: piso-setup status.", "small",
                   fg=C["muted"]).pack(fill="x", pady=(6, 0))
+        nxt = self.card(right)
+        self.text(nxt, "Another unit?", "h2").pack(fill="x", pady=(0, 4))
+        self.text(nxt, "Starts over for the next router and coin box: the shop and Wi-Fi names are asked again and new "
+                       "passwords are made. This unit's summary stays saved.", fg=C["muted"]).pack(fill="x")
+        ttk.Button(nxt, text="Set up the next unit", style="Primary.TButton", command=self.next_unit).pack(anchor="w", pady=(10, 0))
         self._render_coin()
+
+    def next_unit(self):
+        """Everything of the finished unit is forgotten (its passwords are saved on disk); only the country stays."""
+        if self.installing or self.coin["running"] or self.telegram["running"]:
+            return
+        self.unit += 1
+        self.result = self.install_error = self.banner = None
+        self.stage, self.activity, self.log_lines, self.final = -1, "", [], {}
+        self.prov, self.prov_auto, self.box_up = {"state": None, "note": ""}, False, None
+        self.coin = {"running": False, "ok": None, "lines": []}
+        self.telegram = {"running": False, "ok": False, "lines": []}
+        self.router = {"host": None, "state": None, "error": None, "login_ok": False}
+        self.router_password.set("")
+        self.tg_token.set("")
+        self.flashed, self.usb = False, None
+        self.skip_flash.set(False)
+        for key in ("GUEST_SSID", "SITE_NAME"):
+            self.vars[key].set("")
+        for env, _label, _lo, _hi, length in PASSWORDS:
+            self.vars[env].set(generate(length))
+        self.show(1)
 
     def start_coin_test(self):
         if self.coin["running"]:
@@ -2067,6 +2381,7 @@ def main(argv=None):
     p.add_argument("--out", default=".", help="the folder for the saved summary and setup sheet (default: the current folder; "
                                               "the window uses Documents/PisoPhone)")
     p.add_argument("--no-browser", action="store_true", help="do not open the setup sheet when done (terminal)")
+    p.add_argument("--no-flash", action="store_true", help="do not write the coin box software over USB (terminal; it has it already)")
     args = p.parse_args(argv)
     if not re.fullmatch(r"[A-Za-z0-9._/-]+", args.branch):
         p.error(f"not a branch name: {args.branch}")
@@ -2082,9 +2397,9 @@ def main(argv=None):
             "Linux: install openssh-client.")
         return 2
     say(APP_NAME)
-    say("Before you start: the coin box is flashed (" + site_url(args.branch) + "/flash.html) and powered on near the router,")
-    say("the router is factory reset and on, the modem is in its WAN port, and this computer is in a LAN port by cable")
-    say("(turn its Wi-Fi off).")
+    say("Before you start: the coin box board is plugged into this computer's USB port (its software is written now), the router")
+    say("is factory reset and on, the modem is in its WAN port, and this computer is in a LAN port by cable (turn its Wi-Fi")
+    say("off).")
     workdir = tempfile.mkdtemp(prefix="pisophone-")
     try:
         return run_setup(args, Ssh(workdir))
