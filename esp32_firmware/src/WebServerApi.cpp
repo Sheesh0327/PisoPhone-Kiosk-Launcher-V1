@@ -15,6 +15,7 @@
 #include "DeviceNetwork.h"
 #include "PaymentQueueManager.h"
 #include "Diagnostics.h"
+#include "OrphanPayments.h"
 #include <WiFi.h>
 #include <WebServer.h>
 
@@ -267,6 +268,8 @@ void handleApiStatus() {
     json += "\"super_admin_managed\":" + String(superAdminCredsManaged() ? "true" : "false") + ",";
     json += "\"default_credentials\":" + String(defaultCredentialsActive() ? "true" : "false") + ",";
     json += "\"legacy_key\":" + String(isLegacyKeyMode() ? "true" : "false") + ",";
+    json += "\"orphans\":{\"unhandled\":" + String(orphansUnhandledCount()) +
+            ",\"pulses\":" + String(orphansUnhandledPulses()) + "},";
     json += "\"wifi\":{";
     json += "\"rssi\":" + String(rssi) + ",";
     json += "\"quality\":" + String(quality) + ",";

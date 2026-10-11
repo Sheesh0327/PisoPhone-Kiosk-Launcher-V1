@@ -195,6 +195,14 @@ jobs:
           git diff --exit-code protocol
       - name: Check generated web assets are up to date
         run: python3 scripts/embed_web.py --check
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-1.63.0
+      - name: The dashboard's own scripts in a browser
+        run: |
+          pip install -q playwright==1.63.0 && playwright install --with-deps chromium
+          python3 scripts/tests/test_portal_orphans_ui.py
       - name: Run host tests
         run: sh esp32_firmware/host_tests/run.sh
       - name: Test the sold-unit checker

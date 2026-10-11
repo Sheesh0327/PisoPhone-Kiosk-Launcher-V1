@@ -29,6 +29,7 @@
 #include "WifiLink.h"
 #include "RevenueVault.h"
 #include "OtaRollback.h"
+#include "OrphanPayments.h"
 
 #define WDT_TIMEOUT_SECONDS 15
 
@@ -158,7 +159,8 @@ void setup() {
 
     // Load NVS Configuration & Lifetime Vault Revenue safely
     loadAllConfig();
-    vaultBegin(); // after the counters are loaded: the vault is the lifetime total less the last collection
+    orphansBegin(); // payments the box gave up on, kept until the operator deals with them
+    vaultBegin();   // after the counters are loaded: the vault is the lifetime total less the last collection
     accountsBegin();
     gatewayInit();
     if (defaultCredentialsActive()) {

@@ -12,7 +12,9 @@
 static const char* const LEDGER_NAMESPACE = "rev_ledger";
 static revenue::Ledger ledger;
 
-// Opens the log's namespace for the duration of one operation.
+// Opens the log's namespace for the duration of one operation. (In an anonymous namespace: another source file has a
+// different class of the same name, and two such definitions with external linkage would be merged by the linker.)
+namespace {
 struct LedgerStore {
     Preferences p;
     bool open;
@@ -24,6 +26,7 @@ struct LedgerStore {
     size_t getBytes(const char* k, void* b, size_t n) { return open ? p.getBytes(k, b, n) : 0; }
     size_t putBytes(const char* k, const void* b, size_t n) { return open ? p.putBytes(k, b, n) : 0; }
 };
+} // namespace
 
 static uint32_t nowSeconds() {
     uint64_t ms = getCurrentMasterTimeMs();

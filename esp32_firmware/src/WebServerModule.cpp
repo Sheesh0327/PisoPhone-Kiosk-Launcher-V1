@@ -9,6 +9,7 @@
 #include "OtaCheck.h"
 #include "OtaSecurity.h"
 #include "OtaRollback.h"
+#include "OrphanPayments.h"
 #include "WebAssetServer.h"
 #include "WebServerAuth.h"
 #include "Config.h"
@@ -143,7 +144,31 @@ void setupWebServer() {
             return;
         }
         int cleared = clearPaymentQueue();
+        if (cleared < 0) {
+            webServer.send(
+                500, "application/json",
+                "{\"status\":\"error\",\"message\":\"Could not record the payments in the orphaned-payments list; nothing was cleared.\"}");
+            return;
+        }
         webServer.send(200, "application/json", "{\"status\":\"ok\",\"cleared\":" + String(cleared) + "}");
+    });
+    // Payments the box gave up on (OrphanLedger.h): the list for the dashboard, and "the operator dealt with it".
+    webServer.on("/api/payments/orphans", HTTP_GET, []() {
+        if (!checkAdminAuth()) return;
+        webServer.send(200, "application/json", orphansJson());
+    });
+    webServer.on("/api/payments/orphans/handle", HTTP_POST, []() {
+        if (!checkAdminAuth()) return;
+        bool ok = false;
+        if (webServer.arg("all") == "1") {
+            ok = orphansHandleAll();
+        } else {
+            long seq = webServer.arg("seq").toInt();
+            ok = seq > 0 && orphansHandle((uint32_t)seq);
+        }
+        webServer.send(ok ? 200 : 400, "application/json",
+                       ok ? "{\"status\":\"ok\"}"
+                          : "{\"status\":\"error\",\"message\":\"No such payment, or it could not be saved.\"}");
     });
 
     // Port 80: Web OTA Firmware Update Endpoints

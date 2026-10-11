@@ -8,6 +8,7 @@
 #include "SuperAdminManager.h"
 #include "PaymentQueueManager.h"
 #include "RevenueVault.h"
+#include "OrphanPayments.h"
 #include "Diagnostics.h"
 #include "Money.h"
 #include "CredGen.h"
@@ -565,8 +566,10 @@ void factoryResetDefaults(bool ownerWipe) {
     if (!ownerWipe) ownerdata::restore(keepStore, owner); // an operator can never reset the revenue
     prefs.end();
     if (ownerWipe) {
-        vaultOnOwnerWipe();  // the owner's full wipe also starts a new collection log
-        clearPaymentQueue(); // an operator reset keeps unacknowledged payments: that money was already collected
+        vaultOnOwnerWipe();   // the owner's full wipe also starts a new collection log
+        orphansOnOwnerWipe(); // ... and a new list of orphaned payments
+        // (an operator reset keeps unacknowledged payments: that money was already collected)
+        clearPaymentQueue(false); // the ledger was just wiped as well, so nothing is written to it
     }
     runConfigMigrations(); // a cleared box gets a fresh secret and new passwords (printed on the serial console)
     loadSecretMode();

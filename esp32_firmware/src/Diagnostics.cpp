@@ -5,6 +5,7 @@
 #include "Config.h"
 #include "CoinSlotManager.h"
 #include "OtaRollback.h"
+#include "OrphanPayments.h"
 #include "PaymentQueueManager.h"
 #include "WebServerModule.h"
 #include "WebServerAuth.h"
@@ -12,6 +13,7 @@
 #include <Preferences.h>
 #include <WiFi.h>
 #include <esp_system.h>
+#include <nvs.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <stdarg.h>
@@ -190,12 +192,28 @@ String diagBuildJson() {
         s["ip"] = phoneSlots[i].ip;
     }
 
+    JsonObject orphansObj = doc.createNestedObject("orphaned_payments");
+    orphansObj["unhandled"] = orphansUnhandledCount();
+    orphansObj["unhandled_pulses"] = orphansUnhandledPulses();
+
+    // How full the settings flash is: the payment queue, the revenue log and this ledger all live there, so this is the number
+    // to watch before making any of them bigger.
+    nvs_stats_t nvsStats;
+    if (nvs_get_stats(nullptr, &nvsStats) == ESP_OK) {
+        JsonObject nvsObj = doc.createNestedObject("nvs");
+        nvsObj["used_entries"] = nvsStats.used_entries;
+        nvsObj["free_entries"] = nvsStats.free_entries;
+        nvsObj["total_entries"] = nvsStats.total_entries;
+    }
+
     JsonObject counters = doc.createNestedObject("counters");
     counters["coin_events"] = diagCounters[(size_t)DiagCounter::CoinEvents];
     counters["coin_pulses"] = diagCounters[(size_t)DiagCounter::CoinPulses];
     counters["payments_queued"] = diagCounters[(size_t)DiagCounter::PaymentsQueued];
     counters["payments_acked"] = diagCounters[(size_t)DiagCounter::PaymentsAcked];
     counters["payments_evicted"] = diagCounters[(size_t)DiagCounter::PaymentsEvicted];
+    counters["payments_orphaned"] = diagCounters[(size_t)DiagCounter::PaymentsOrphaned];
+    counters["orphan_write_failures"] = diagCounters[(size_t)DiagCounter::OrphanWriteFailures];
     counters["persist_failures"] = diagCounters[(size_t)DiagCounter::PersistFailures];
     counters["slot_reservations"] = diagCounters[(size_t)DiagCounter::SlotReservations];
     counters["ws_connects"] = diagCounters[(size_t)DiagCounter::WsConnects];

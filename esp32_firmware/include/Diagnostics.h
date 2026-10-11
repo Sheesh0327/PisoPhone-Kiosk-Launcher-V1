@@ -12,6 +12,8 @@ enum class DiagCounter : uint8_t {
     PaymentsQueued,
     PaymentsAcked,
     PaymentsEvicted,
+    PaymentsOrphaned,
+    OrphanWriteFailures,
     PersistFailures,
     SlotReservations,
     WsConnects,

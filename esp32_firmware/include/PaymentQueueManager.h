@@ -32,6 +32,9 @@ void processPendingPaymentRetries();
 // acknowledges once it has granted access. These two read and clear one gateway session's coins.
 int getPendingGatewayPulses(const String& targetId);
 int acknowledgeGatewayPayments(const String& targetId);
-int clearPaymentQueue();
+// Removes every queued payment. Each is written to the orphaned-payments ledger first (`recordOrphans`, always except for the
+// owner's full wipe, which starts a new ledger); returns how many were removed, or -1 when the ledger could not be written and
+// nothing was changed.
+int clearPaymentQueue(bool recordOrphans = true);
 
 #endif // PAYMENT_QUEUE_MANAGER_H

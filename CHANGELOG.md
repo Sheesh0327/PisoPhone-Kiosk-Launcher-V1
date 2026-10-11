@@ -4,6 +4,17 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Coin box firmware: a payment the box gives up on is no longer lost without a trace. A coin that the phone never acknowledged was
+  dropped from the box's queue after 24 hours (30 minutes when the queue was nearly full), the "clear payments" request dropped
+  every queued payment, and a coin that arrived when the queue was full was only printed in a log that rolls over. Now each of
+  these is first written to a list in the box's flash: the time, the amount, what it was worth, the phone, the transaction number
+  and why it was given up on. The dashboard shows a red banner ("N payments (₱X) could not be delivered") with a Review dialog:
+  refund the customer or add the time by hand, then press Handled. The list keeps the newest 16 and counts any older ones that no
+  longer fit, so the total never shrinks until you mark them handled; it survives a restart and a firmware update, and only the
+  owner's full wipe clears it. If the list cannot be written, the payment stays queued instead of being dropped. A payment that
+  could not be delivered is not necessarily one the customer lost: a coin the box could not record may still have reached the
+  phone, so check the phone before refunding. The diagnostics now also show how full the settings flash is (`nvs`), the number of
+  waiting payments and two new counters.
 - Coin box firmware: a bad firmware update is now reverted by the box itself. The box's bootloader could always go back to the
   previous firmware, but the Arduino framework told it that every update was fine before the new firmware had run a single
   line, so a firmware that crashed, hung or could not get online after an update stayed in charge until someone reflashed the
