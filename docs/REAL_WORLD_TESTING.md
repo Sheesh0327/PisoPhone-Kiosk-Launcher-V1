@@ -87,27 +87,27 @@ Collect logs as you go: box serial output at 115200 baud (`pio device monitor`),
 
 ## 6. Keys and updates
 *pass 3*
-- [ ] **K1** `python3 scripts/make_owner_keys.py` runs on your computer; self-test passes; key backed up
-- [ ] **K2** Box flashed with the public key refuses an unsigned firmware update
-- [ ] **K4** A signed firmware update installs from the dashboard; an unsigned or older one is refused
-- [ ] **K5** Phone updates itself from a newer APK (checksum and signature verified)
+- [x] **K1** `python3 scripts/make_owner_keys.py` runs on your computer; self-test passes; key backed up
+- [x] **K2** Box flashed with the public key refuses an unsigned firmware update
+- [x] **K4** A signed firmware update installs from the dashboard; an unsigned or older one is refused
+- [x] **K5** Phone updates itself from a newer APK (checksum and signature verified)
 - [x] **H4a** A good update is kept: update the box over the air from the dashboard. The serial log says `New firmware is on trial`; `/api/diagnostics` shows `ota_image_state: pending_verify`; after about a minute the log says `New firmware confirmed` and the state is `valid`. Power-cycle: the new version is still running
 - [x] **H4b** A bad update is reverted: build a signed image with `PLATFORMIO_BUILD_FLAGS="-D PISO_TEST_REFUSE_CONFIRM=1" pio run -e esp32-c3-dev` (it can never pass its start-up check), and update to it. After 5 minutes the log says `restoring the previous firmware`, the box restarts on the OLD version, `/api/diagnostics` shows `ota_last_update_rolled_back: true` and the restart cause `ota-rollback`. No coin session was cut (try with a coin session open: the revert waits until the slot is idle)
-- [ ] **H4c** Power loss during the trial reverts: update, then pull the power within 30 seconds. The box comes back on the OLD version (this is the intended safe behaviour: restarting a box in the first minute after an update undoes the update)
-- [ ] **H4d** A second update during the trial is refused, not queued: start another update right after the first one restarts the box. The dashboard says `the box is still checking the firmware it was just updated to`; a minute later the same update works
+- [x] **H4c** Power loss during the trial reverts: update, then pull the power within 30 seconds. The box comes back on the OLD version (this is the intended safe behaviour: restarting a box in the first minute after an update undoes the update)
+- [x] **H4d** A second update during the trial is refused, not queued: start another update right after the first one restarts the box. The dashboard says `the box is still checking the firmware it was just updated to`; a minute later the same update works
 
 ## 7. Router (openNDS + pisoportal), only after sections 1–4 pass
 *pass 3*
-- [ ] **R1** `piso-setup` (or `update`) finishes, `pisoportal` is running, `pisoportal box` says the box answers, `pisoportal selftest` prints all true
-- [ ] **R2** Wi-Fi customer sees the portal; Insert Coin starts a coin window; coins grant the right minutes (HyperSpeed and Endurance)
-- [ ] **R3** One customer pays with 25 one-peso coins in a single window: all 25 are counted (the box keeps one record per window, not per coin)
+- [x] **R1** `piso-setup` (or `update`) finishes, `pisoportal` is running, `pisoportal box` says the box answers, `pisoportal selftest` prints all true
+- [x] **R2** Wi-Fi customer sees the portal; Insert Coin starts a coin window; coins grant the right minutes (HyperSpeed and Endurance)
+- [x] **R3** One customer pays with 25 one-peso coins in a single window: all 25 are counted (the box keeps one record per window, not per coin)
 - [ ] **R4** Layout B: a guest-network device cannot ping the box or the phones; the portal still takes coins
-- [ ] **R5** From a phone on the customer Wi-Fi, `http://10.0.30.1` and `ssh root@10.0.30.1` (192.168.30.1 on a router set up before the range changed) are refused; from the kiosk LAN (10.0.0.1) both work
+- [x] **R5** From a phone on the customer Wi-Fi, `http://10.0.30.1` and `ssh root@10.0.30.1` (192.168.30.1 on a router set up before the range changed) are refused; from the kiosk LAN (10.0.0.1) both work
 
 ## 8. Soak (when everything above passes)
 *pass 3*
-- [ ] **L1** 24 hours running with real use: no unexplained reboots, no lost or doubled coins (compare coins inserted vs credited)
-- [ ] **L2** 72 hours: same, and memory/uptime in the dashboard diagnostics looks stable
+- [x] **L1** 24 hours running with real use: no unexplained reboots, no lost or doubled coins (compare coins inserted vs credited)
+- [x] **L2** 72 hours: same, and memory/uptime in the dashboard diagnostics looks stable
 
 ## Issue log
 One row per problem. Keep it factual: what you did, what you expected, what happened. Attach evidence (serial or logcat text,
@@ -126,11 +126,12 @@ pushing closes its issue. Avoid `|` characters inside cells.
 - C8 skipped (2026-10-11): Can't open super admin. Don't know how to setup password.
 - F8 skipped (2026-10-11): Not sure how to simulate that. It doesn't happen often, overlooking for now.
 - RS7 skipped (2026-10-11): There are still users actively connected to the portal.
+- R4 skipped (2026-10-11): will check later.
 
 ## Baseline summary (update after each session)
 | Date | Passed | Failed | Not tested | Open blockers | Verdict |
 |---|---|---|---|---|---|
-| 2026-10-11 | 46 | 0 | 28 | 0 | no failures so far; 28 not tested |
+| 2026-10-11 | 59 | 0 | 15 | 0 | no failures so far; 15 not tested |
 
 ## 9. Router setup and customer Wi-Fi (setup/README.md)
 *pass 1 unless noted*
@@ -148,7 +149,7 @@ pushing closes its issue. Avoid `|` characters inside cells.
 - [x] **RS12** Collect the box's revenue (super admin): afterwards `piso-setup reconcile` says `RECONCILE OK` and no REVENUE MISMATCH alert arrives in Telegram. Box firmware newer than 3.3.3 keeps counting through a collection (nothing to note); an older box starts its count again at 0 and `reconcile` then prints a note saying so
 - [ ] **RS13** (needs your owner key in `tools/pisoportal/owner_key.b64`, then a router built from that) Publish a test release with `scripts/sign_router.py --rollout 100` (docs/RELEASE.md): on the router `piso-setup self-update check` names it, `piso-setup self-update` installs it, customers still get the coin page afterwards and a Telegram message says it is installed and running
 - [ ] **RS14** With one phone online as a customer, `piso-setup self-update auto` installs nothing and says it waits for a quiet moment; after the phone leaves, it installs
-- [ ] **RS15** Publish a release with `--rollout 0`: the router does not install it; `/update` in Telegram says it is rolling out in stages
+- [x] **RS15** Publish a release with `--rollout 0`: the router does not install it; `/update` in Telegram says it is rolling out in stages
 - [ ] **RS16** Hand-edit `website/update/router-setup.sh` after signing (one character) and publish it: the router refuses it, installs nothing and Telegram says REFUSED
 - [x] **RS17** The setup program (setup/README.md) from a computer on a factory-reset router, in its window: it checks the computer, opens the flasher in Chrome or Edge, finds the router by itself, asks for the Wi-Fi names and passwords, installs (moving the router to 10.0.0.1: replug the cable if it asks), saves the summary and the setup sheet in Documents/PisoPhone, then opens the phone setup page already filled in. Run it again on the finished router: it keeps the passwords and passes again
 - [x] **RS18** The program's last page: **Test a coin** says the box counted 1 peso after you insert one coin; the customer Wi-Fi steps work; **Set up Telegram alerts** connects (optional)
