@@ -23,6 +23,8 @@ def check(cond, msg):
 
 
 # ---- what is typed -------------------------------------------------------------------------------------------------------
+check(open(f"{ROOT}/setup/pisophone_setup.py", "rb").read() == open(f"{ROOT}/website/pisophone_setup.py", "rb").read(),
+      "the website serves the same setup program as setup/pisophone_setup.py (copy one over the other after editing)")
 check(ps.password_problem("abcdefgh", 8, 63) is None, "8 characters are enough")
 check(ps.password_problem("abcdefg", 8, 63), "7 are not")
 check(ps.password_problem("a" * 33, 8, 32), "the box password is at most 32")

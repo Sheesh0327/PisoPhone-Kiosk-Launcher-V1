@@ -1,5 +1,5 @@
 // Checks the coin box flasher's helpers (website/js/flasher.js): which image for which chip, the read-back hash, and that a
-// download not matching its manifest is refused before anything is written. Run: node scripts/test_flasher.js
+// download not matching its manifest is refused before anything is written. Run: node scripts/tests/test_flasher.js
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
@@ -9,7 +9,7 @@ let served = null;
 const win = {};
 const ctx = vm.createContext({ window: win, crypto: globalThis.crypto, URL, navigator: {}, document: { baseURI: 'https://pisophone.pages.dev/flash.html' },
     fetch: async (url) => served ? { ok: true, status: 200, url, arrayBuffer: async () => served.buffer.slice(served.byteOffset, served.byteOffset + served.length) } : { ok: false, status: 404 } });
-vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'website', 'js', 'flasher.js'), 'utf8'), ctx);
+vm.runInContext(fs.readFileSync(path.join(__dirname, '..', '..', 'website', 'js', 'flasher.js'), 'utf8'), ctx);
 const F = win.PisoFlasher;
 
 let checks = 0, failures = 0;
@@ -41,7 +41,7 @@ const check = (ok, name) => { checks++; if (!ok) { failures++; console.log('FAIL
     let missing = false;
     try { await F.fetchImage(manifest.builds[0], new URL('https://pisophone.pages.dev/flash/')); } catch (e) { missing = /HTTP 404/.test(e.message); }
     check(missing, 'a missing image says so');
-    check(!/https?:\/\/(?!pisophone)/.test(fs.readFileSync(path.join(__dirname, '..', 'website', 'flash.html'), 'utf8').replace(/https:\/\/pisophone\.pages\.dev\/install\.sh/, '')), 'the flasher page loads nothing from other sites');
+    check(!/https?:\/\/(?!pisophone)/.test(fs.readFileSync(path.join(__dirname, '..', '..', 'website', 'flash.html'), 'utf8').replace(/https:\/\/pisophone\.pages\.dev\/install\.sh/, '')), 'the flasher page loads nothing from other sites');
     console.log(`${checks} checks, ${failures} failures`);
     process.exit(failures ? 1 : 0);
 })();

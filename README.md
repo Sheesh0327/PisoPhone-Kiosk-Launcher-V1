@@ -51,6 +51,7 @@ CI (GitHub Actions, `.github/workflows/`) runs all of this on every push, only f
 |---|---|
 | [`docs/DEPLOY.md`](docs/DEPLOY.md) | First run, CI, where APKs and firmware are published |
 | [`docs/RELEASE.md`](docs/RELEASE.md) | Release checklist: the owner-only steps before a build goes to shops |
+| [`scripts/README.md`](scripts/README.md) | What every script is for, grouped by who runs it and when |
 | [`docs/REAL_WORLD_TESTING.md`](docs/REAL_WORLD_TESTING.md) | Hardware test checklist and issue log |
 | [`docs/KEYS.md`](docs/KEYS.md) | Owner key, signed firmware, per-box secrets and migration |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | How a coin becomes time; who talks to whom; where code lives |

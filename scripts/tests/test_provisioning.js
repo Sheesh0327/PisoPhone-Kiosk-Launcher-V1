@@ -1,5 +1,5 @@
 // Checks the setup page's provisioning helpers (validation of what is sent to the phone's shell, and the extras).
-// Run: node scripts/test_provisioning.js
+// Run: node scripts/tests/test_provisioning.js
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
@@ -8,7 +8,7 @@ const win = { location: { search: '' }, addEventListener() {}, navigator: {} };
 win.window = win;
 const ctx = vm.createContext({ window: win, console: { log() {}, warn() {}, error() {}, info() {}, debug() {} }, setTimeout, clearTimeout, navigator: {}, document: { addEventListener() {}, getElementById() { return null; } },
     fetch: async () => { throw new Error('offline'); }, URL, URLSearchParams, TextEncoder, TextDecoder, Promise });
-for (const f of ['qrcode.js', 'provisioning.js', 'webadb_manager.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'website', 'js', f), 'utf8'), ctx);
+for (const f of ['qrcode.js', 'provisioning.js', 'webadb_manager.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', '..', 'website', 'js', f), 'utf8'), ctx);
 const P = win.PisoProvisioning;
 
 let checks = 0, failures = 0;
@@ -37,7 +37,7 @@ check(replaced.length === 1 && replaced[0] === '/?mac=aa%3Abb&slot=2', 'the secr
 const plain = P.readPageParams({ pathname: '/', search: '?mac=aa', hash: '' }, { replaceState() { throw new Error('should not be called'); } });
 check(plain.get('mac') === 'aa', 'a link without secrets is left as it is');
 check(P.readPageParams(null, null).toString() === '', 'no location: no values');
-check(!fs.readFileSync(path.join(__dirname, '..', 'website', 'js', 'webadb_manager.js'), 'utf8').includes('cdn.jsdelivr.net'), 'the ADB library is never loaded from another site');
+check(!fs.readFileSync(path.join(__dirname, '..', '..', 'website', 'js', 'webadb_manager.js'), 'utf8').includes('cdn.jsdelivr.net'), 'the ADB library is never loaded from another site');
 // ---- the QR setup code ----
 const app = { signatureChecksum: 'A'.repeat(43), versionCode: 340 };
 const prov = P.validateProvisioning({ mac: 'aa:bb:cc:dd:ee:ff', slot: '2', name: 'Phone 2', secret: 'abcdefghijklmnop1234', wifiSsid: 'PisoKiosk', wifiPass: '3hC4RATnpQMJ' });
@@ -56,7 +56,7 @@ check(throws(() => P.buildQrPayload({ ...prov, wifiPass: undefined }, app, 'http
 check(throws(() => P.buildQrPayload(prov, app, 'http://example.com/')), 'the app is never downloaded over plain http');
 check(JSON.stringify(qp).length < 1200, 'the code stays small enough to scan: ' + JSON.stringify(qp).length + ' characters');
 // ---- the page and the app must agree on what is valid (a value the app would refuse silently ends in "cannot find its box") ----
-const kotlin = (f) => fs.readFileSync(path.join(__dirname, '..', 'app', 'src', 'main', 'java', 'com', 'pisophone', 'kiosk', f), 'utf8');
+const kotlin = (f) => fs.readFileSync(path.join(__dirname, '..', '..', 'app', 'src', 'main', 'java', 'com', 'pisophone', 'kiosk', f), 'utf8');
 const secretRegex = new RegExp(kotlin('security/KioskSecurity.kt').match(/BOX_SECRET_REGEX = Regex\("([^"]+)"\)/)[1]);
 for (const sample of ['a'.repeat(15), 'a'.repeat(16), 'a'.repeat(128), 'a'.repeat(129), 'abc def ghijklmnop', 'ab/cdefghijklmnopq', 'ABCdef123_.+=-ABCdef', 'abc\u00e9defghijklmnopq']) {
     const pageAccepts = !throws(() => P.validateProvisioning({ secret: sample }));
@@ -74,7 +74,7 @@ const withName = P.buildQrPayload(P.validateProvisioning({ mac: 'aa:bb:cc:dd:ee:
 check(!('name' in withName[E + 'PROVISIONING_ADMIN_EXTRAS_BUNDLE']), 'a phone with a slot is named by its slot, not by an extra name');
 check('name' in P.buildQrPayload(P.validateProvisioning({ mac: 'aa:bb:cc:dd:ee:ff', name: 'Front desk', wifiPass: '3hC4RATnpQMJ' }), app, 'https://pisophone.pages.dev/')[E + 'PROVISIONING_ADMIN_EXTRAS_BUNDLE'], 'without a slot the name is kept');
 // how dense the setup code is: a factory-reset phone's camera is the weakest link, so the code must stay small
-const realApp = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'website', 'update', 'app.json'), 'utf8'));
+const realApp = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'website', 'update', 'app.json'), 'utf8'));
 const worst = P.buildQrPayload(P.validateProvisioning({ mac: 'AA:BB:CC:DD:EE:FF', slot: '10', name: 'PisoPhone 10', secret: 'A'.repeat(128), wifiSsid: 'PisoKiosk', wifiPass: 'x'.repeat(63) }), realApp, 'https://pisophone.pages.dev/');
 const typical = P.buildQrPayload(P.validateProvisioning({ mac: 'AA:BB:CC:DD:EE:FF', slot: '1', name: 'PisoPhone 1', secret: 'A'.repeat(32), wifiSsid: 'PisoKiosk', wifiPass: '3hC4RATnpQMJ' }), realApp, 'https://pisophone.pages.dev/');
 const qrVersion = (obj) => { const qr = vm.runInContext('qrcode', ctx)(0, 'L'); qr.addData(JSON.stringify(obj), 'Byte'); qr.make(); return (qr.getModuleCount() - 17) / 4; };
@@ -84,9 +84,9 @@ check(qrVersion(worst) <= 30, `even the longest allowed values stay at QR versio
 check(/remove the account again/.test(P.describeDeviceOwnerFailure('SecurityException: MANAGE_DEVICE_ADMINS')), 'Xiaomi: sign in, turn it on, remove the account');
 check(/more than one user/.test(P.describeDeviceOwnerFailure('users')) && /account/.test(P.describeDeviceOwnerFailure('accounts')), 'users and accounts are named before anything is copied');
 check(/Install via USB/.test(P.describeInstallFailure('Failure [INSTALL_FAILED_USER_RESTRICTED: Install canceled by user]')), 'a blocked install names the Xiaomi switch');
-const wm = fs.readFileSync(path.join(__dirname, '..', 'website', 'js', 'webadb_manager.js'), 'utf8');
+const wm = fs.readFileSync(path.join(__dirname, '..', '..', 'website', 'js', 'webadb_manager.js'), 'utf8');
 check(!/pisophone\.pages\.dev/.test(wm) && !/settings put global/.test(wm), 'the USB setup uses only this site\'s APK and writes no Android settings');
 
-check(!fs.readFileSync(path.join(__dirname, '..', 'website', 'index.html'), 'utf8').includes('cdn.tailwindcss.com'), 'no third-party script on the provisioning page');
+check(!fs.readFileSync(path.join(__dirname, '..', '..', 'website', 'index.html'), 'utf8').includes('cdn.tailwindcss.com'), 'no third-party script on the provisioning page');
 console.log(`${checks} checks, ${failures} failures`);
 process.exit(failures ? 1 : 0);
