@@ -34,12 +34,12 @@ Collect logs as you go: box serial output at 115200 baud (`pio device monitor`),
 - [x] **B1** A fresh or factory-reset box boots with the default password `Coinslot@Setup` and the built-in Wi-Fi `PisoCoinBox` / `PisoCoinBox@Setup`; a coin request is refused (`SETUP_REQUIRED`) until the admin password is changed (the router setup changes it)
 - [x] **B2** The box has no access-point mode: it joins the router's hidden `PisoCoinBox` network by itself, after the router setup it has its own random Wi-Fi password (`piso-setup status` checks it), and it answers at `10.0.0.10`
 - [x] **B3** Dashboard opens; first-run checklist shows; it disappears when its items are done
-- [ ] **B4** Changing the admin password works; old password stops working
-- [ ] **B5** Five wrong admin passwords lock login for a minute
-- [ ] **B6** Reboot from the dashboard works; settings survive
-- [ ] **B7** Wi-Fi drops and returns (turn the router off/on): box reconnects by itself
-- [ ] **B8** Box runs 1 hour idle without rebooting (check serial for restart reasons)
-- [ ] **B9** Web flasher: https://pisophone.pages.dev/flash.html (Chrome) flashes a factory ESP32-C3 (and a classic ESP32) with "Erase everything first"; the log ends with "Hash of data verified" and the box starts and joins PisoCoinBox
+- [x] **B4** Changing the admin password works; old password stops working
+- [x] **B5** Five wrong admin passwords lock login for a minute
+- [x] **B6** Reboot from the dashboard works; settings survive
+- [x] **B7** Wi-Fi drops and returns (turn the router off/on): box reconnects by itself
+- [x] **B8** Box runs 1 hour idle without rebooting (check serial for restart reasons)
+- [x] **B9** Web flasher: https://pisophone.pages.dev/flash.html (Chrome) flashes a factory ESP32-C3 (and a classic ESP32) with "Erase everything first"; the log ends with "Hash of data verified" and the box starts and joins PisoCoinBox
 
 ## 2. Phone install and pairing
 *P1–P4 are pass 1, the rest pass 2. Testing the beta branch: the box's Set up a phone link always opens the production site (main's APK). Copy the link and change only its host to beta.pisophone.pages.dev, keeping everything after it; check that beta.pisophone.pages.dev/update/app.json shows a -dev version first.*
@@ -47,10 +47,10 @@ Collect logs as you go: box serial output at 115200 baud (`pio device monitor`),
 - [x] **P2** After P1 (or the USB cable setup) the phone has its box secret and gets its admin PIN; with the PisoKiosk password typed on the page, the phone joins PisoKiosk by itself (turn its Wi-Fi to another network and see it come back within about a minute)
 - [x] **P3** Phone finds the box and shows it online; slot shows as paired in the dashboard
 - [x] **P4** Reboot the phone: kiosk starts by itself, box still reachable, **no re-provisioning needed** (Keystore check)
-- [ ] **P5** Admin PIN works; five wrong PINs lock further tries
-- [ ] **P6** Phone shows "legacy key" warning only if it really has no box secret
+- [x] **P5** Admin PIN works; five wrong PINs lock further tries
+- [x] **P6** Phone shows "legacy key" warning only if it really has no box secret
 - [x] **P8** QR, the last step: on a normal phone "One last step" leads with **Open the setting**; turning the switch on starts the kiosk (lock screen and time bubble) and Developer options then show USB debugging off. On an Android Go phone (or with the switch greyed out) it leads with USB: with the phone plugged in, "Allow USB debugging?" appears by itself, **Finish over USB** grants the permissions, the lock screen appears and the box page opens to pair the slot
-- [ ] **P7** USB fallback: with the page's "USB cable" method, a factory-reset phone with USB debugging is set up in one run; a phone with a signed-in account is refused within seconds, before anything is copied
+- [x] **P7** USB fallback: with the page's "USB cable" method, a factory-reset phone with USB debugging is set up in one run; a phone with a signed-in account is refused within seconds, before anything is copied
 
 ## 3. Coins and time (the money path)
 *C1–C4 are pass 1, the rest pass 2*
@@ -58,12 +58,12 @@ Collect logs as you go: box serial output at 115200 baud (`pio device monitor`),
 - [x] **C2** Insert 5 coins quickly: total time is exactly 5 coins' worth, no double credit
 - [x] **C3** Dashboard revenue counter matches the coins inserted (₱ amounts exact)
 - [ ] **C3b** Vendor page: unmask, then "finish collecting": the counter returns to ₱0, `/api/superadmin/collections` lists the collection with the right amount, and `lifetime_coins` did NOT go down; unplug and reconnect the box: the history and the ₱0 are still there
-- [ ] **M3a** An unclaimed payment is not lost silently: arm a phone, put in a coin, then switch the phone's app off (or unpair it) so it never acknowledges. Wait 24 hours, or for a quick test queue 18 or more unacknowledged coins (the queue then gives up after 30 minutes). The dashboard shows the red banner `N payments (₱X) could not be delivered`; Review lists the coin with its amount, the phone and the reason; `Handled` clears it; the banner survives a reboot of the box until every payment is handled. The same coin does not appear twice
-- [ ] **M3b** Diagnostics (`/api/diagnostics`) show `orphaned_payments`, the counters `payments_orphaned` and `orphan_write_failures`, and `nvs` (`used_entries` / `free_entries`): note how full the settings flash is on both the C3 and the classic ESP32 builds
+- [x] **M3a** An unclaimed payment is not lost silently: arm a phone, put in a coin, then switch the phone's app off (or unpair it) so it never acknowledges. Wait 24 hours, or for a quick test queue 18 or more unacknowledged coins (the queue then gives up after 30 minutes). The dashboard shows the red banner `N payments (₱X) could not be delivered`; Review lists the coin with its amount, the phone and the reason; `Handled` clears it; the banner survives a reboot of the box until every payment is handled. The same coin does not appear twice
+- [x] **M3b** Diagnostics (`/api/diagnostics`) show `orphaned_payments`, the counters `payments_orphaned` and `orphan_write_failures`, and `nvs` (`used_entries` / `free_entries`): note how full the settings flash is on both the C3 and the classic ESP32 builds
 - [x] **C4** Time counts down; the phone locks at zero
-- [ ] **C5** Insert coins while the phone is unlocked and armed: time extends
-- [ ] **C6** Slot is busy for a second phone while the first is armed
-- [ ] **C7** Unpaired phone: coins are refused, phone shows the "activate device slot" message
+- [x] **C5** Insert coins while the phone is unlocked and armed: time extends
+- [x] **C6** Slot is busy for a second phone while the first is armed
+- [x] **C7** Unpaired phone: coins are refused, phone shows the "activate device slot" message
 - [ ] **C8** Revenue counter resets after 5 minutes or on logout as intended
 
 ## 4. Failure handling (most important)
@@ -71,10 +71,10 @@ Collect logs as you go: box serial output at 115200 baud (`pio device monitor`),
 - [x] **F1** Pull the **box's power** right after a coin: after power returns the coin is credited once (not lost, not doubled)
 - [x] **F2** Switch the **Wi-Fi off** after a coin, back on 30 s later: the phone credits it exactly once
 - [x] **F3** Reboot the **phone** mid-session: remaining time is restored, no free time
-- [ ] **F4** Kill the app on the phone (or let it crash): it comes back by itself, session intact
-- [ ] **F5** Change the phone's clock: paid time is not extended or shortened
-- [ ] **F6** Unplug the coin acceptor / simulate a jam: no phantom credit
-- [ ] **F7** Dashboard "factory reset": Wi-Fi and admin password reset; **lifetime revenue survives**
+- [x] **F4** Kill the app on the phone (or let it crash): it comes back by itself, session intact
+- [x] **F5** Change the phone's clock: paid time is not extended or shortened
+- [x] **F6** Unplug the coin acceptor / simulate a jam: no phantom credit
+- [x] **F7** Dashboard "factory reset": Wi-Fi and admin password reset; **lifetime revenue survives**
 - [ ] **F8** Unacknowledged payment survives a factory reset and is delivered afterwards
 
 ## 5. Security spot checks
@@ -91,8 +91,8 @@ Collect logs as you go: box serial output at 115200 baud (`pio device monitor`),
 - [ ] **K2** Box flashed with the public key refuses an unsigned firmware update
 - [ ] **K4** A signed firmware update installs from the dashboard; an unsigned or older one is refused
 - [ ] **K5** Phone updates itself from a newer APK (checksum and signature verified)
-- [ ] **H4a** A good update is kept: update the box over the air from the dashboard. The serial log says `New firmware is on trial`; `/api/diagnostics` shows `ota_image_state: pending_verify`; after about a minute the log says `New firmware confirmed` and the state is `valid`. Power-cycle: the new version is still running
-- [ ] **H4b** A bad update is reverted: build a signed image with `PLATFORMIO_BUILD_FLAGS="-D PISO_TEST_REFUSE_CONFIRM=1" pio run -e esp32-c3-dev` (it can never pass its start-up check), and update to it. After 5 minutes the log says `restoring the previous firmware`, the box restarts on the OLD version, `/api/diagnostics` shows `ota_last_update_rolled_back: true` and the restart cause `ota-rollback`. No coin session was cut (try with a coin session open: the revert waits until the slot is idle)
+- [x] **H4a** A good update is kept: update the box over the air from the dashboard. The serial log says `New firmware is on trial`; `/api/diagnostics` shows `ota_image_state: pending_verify`; after about a minute the log says `New firmware confirmed` and the state is `valid`. Power-cycle: the new version is still running
+- [x] **H4b** A bad update is reverted: build a signed image with `PLATFORMIO_BUILD_FLAGS="-D PISO_TEST_REFUSE_CONFIRM=1" pio run -e esp32-c3-dev` (it can never pass its start-up check), and update to it. After 5 minutes the log says `restoring the previous firmware`, the box restarts on the OLD version, `/api/diagnostics` shows `ota_last_update_rolled_back: true` and the restart cause `ota-rollback`. No coin session was cut (try with a coin session open: the revert waits until the slot is idle)
 - [ ] **H4c** Power loss during the trial reverts: update, then pull the power within 30 seconds. The box comes back on the OLD version (this is the intended safe behaviour: restarting a box in the first minute after an update undoes the update)
 - [ ] **H4d** A second update during the trial is refused, not queued: start another update right after the first one restarts the box. The dashboard says `the box is still checking the firmware it was just updated to`; a minute later the same update works
 
@@ -122,12 +122,15 @@ pushing closes its issue. Avoid `|` characters inside cells.
 | 1 | | | | | | | | open | |
 
 ## Notes and ideas (not bugs)
--
+- C3b skipped (2026-10-11): I can't open super admin. I don't know how to set the global password for it.
+- C8 skipped (2026-10-11): Can't open super admin. Don't know how to setup password.
+- F8 skipped (2026-10-11): Not sure how to simulate that. It doesn't happen often, overlooking for now.
+- RS7 skipped (2026-10-11): There are still users actively connected to the portal.
 
 ## Baseline summary (update after each session)
 | Date | Passed | Failed | Not tested | Open blockers | Verdict |
 |---|---|---|---|---|---|
-| 2026-10-11 | 24 | 0 | 50 | 0 | no failures so far; 50 not tested |
+| 2026-10-11 | 46 | 0 | 28 | 0 | no failures so far; 28 not tested |
 
 ## 9. Router setup and customer Wi-Fi (setup/README.md)
 *pass 1 unless noted*
@@ -138,8 +141,8 @@ pushing closes its issue. Avoid `|` characters inside cells.
 - [x] **RS5** A second device is refused (Try again) while a window is open; a device that opens empty windows repeatedly is put in a short cooldown
 - [ ] **RS6** `piso-setup reconcile` says `RECONCILE OK`; editing a line of `/etc/coinslot.d/revenue.csv` makes it report a broken ledger
 - [ ] **RS7** Restart the router in the middle of a window (power cut after the first coin): after it is back, the coins are credited once (pass 2)
-- [ ] **RS8** `piso-setup telegram`: messages and `/status` work from your chat only; unplug the box for 5 minutes and an alert arrives (pass 2)
-- [ ] **RS9** `piso-setup lock-admin` from your computer: another device on PisoKiosk can no longer open the router's pages or SSH; `piso-setup unlock-admin` undoes it (pass 2)
+- [x] **RS8** `piso-setup telegram`: messages and `/status` work from your chat only; unplug the box for 5 minutes and an alert arrives (pass 2)
+- [x] **RS9** `piso-setup lock-admin` from your computer: another device on PisoKiosk can no longer open the router's pages or SSH; `piso-setup unlock-admin` undoes it (pass 2)
 - [ ] **RS10** `piso-setup handout` writes `/root/piso-handout.html` with the right names and passwords
 - [x] **RS11** `./piso-setup.sh update` (a new file) on a router set up with an earlier version: it ends with all checks passing and customers get the coin page (openNDS moved to the FAS portal on port 2080); paid sessions and the ledger are kept
 - [x] **RS12** Collect the box's revenue (super admin): afterwards `piso-setup reconcile` says `RECONCILE OK` and no REVENUE MISMATCH alert arrives in Telegram. Box firmware newer than 3.3.3 keeps counting through a collection (nothing to note); an older box starts its count again at 0 and `reconcile` then prints a note saying so
