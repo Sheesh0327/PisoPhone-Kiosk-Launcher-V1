@@ -10,8 +10,9 @@ CODE_DIRS="app esp32_firmware website scripts router setup tools/pisoportal/src 
 # purpose wherever it is used.)
 EXCLUDE='--exclude-dir=.git --exclude-dir=build --exclude-dir=target --exclude-dir=node_modules --exclude-dir=__pycache__ --exclude=yume-chan-bundle.js --exclude=check_security_rules.sh'
 
-# 1. No private keys anywhere in the repository (the signing keys live offline).
-if grep -rEl $EXCLUDE -e '-----BEGIN [A-Z ]*PRIVATE KEY-----' . ; then
+# 1. No private keys anywhere in the repository (the signing keys live offline). Binary files are skipped (-I): a firmware image
+# contains the mbedTLS parser's own text "-----BEGIN EC PRIVATE KEY-----", which is not a key.
+if grep -rEIl $EXCLUDE -e '-----BEGIN [A-Z ]*PRIVATE KEY-----' . ; then
     bad "a private key is committed (files listed above)"
 fi
 
