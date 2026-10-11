@@ -1,6 +1,6 @@
 {
     "version": "3.3.3",
-    "commit": "f1cf74d54b33d3b9dbfaa845bb4a604d80c133af",
+    "commit": "d531859524f90b34054dcf84349f7df0800c8d2b",
     "builds": [
         {
             "env": "esp32-c3-dev",
@@ -8,7 +8,7 @@
             "file": "esp32-c3-dev.bin",
             "offset": 0,
             "size": 1426384,
-            "sha256": "52f944a08bd094036a2942c4594d782cf43358228e72ef6277b6caabef579fbb"
+            "sha256": "c1e7557dda7c7c097b4aa1f142ecc800338c64448c6acd84da1675975bb7d7c2"
         },
         {
             "env": "esp32dev-dev",
@@ -16,7 +16,7 @@
             "file": "esp32dev-dev.bin",
             "offset": 4096,
             "size": 1411552,
-            "sha256": "f581684c2affe914346c74cde98ba32128d897ed329e514db9c436fe3e3ceac4"
+            "sha256": "03f286ba25bcc0c4e5534731e27f2ae2b82c090efd34617d07a3b854b9b73c44"
         }
     ]
 }
