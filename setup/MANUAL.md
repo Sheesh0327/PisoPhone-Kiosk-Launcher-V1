@@ -96,7 +96,7 @@ It has every password (router, PisoKiosk Wi-Fi, coin box admin). The setup also 
 3. **Wi-Fi customer:** join the customer Wi-Fi (`PisoWiFi`) with a phone, open the login page, pick a plan, tap Insert Coin, insert one coin. The page shows each coin at once with a countdown, and a **Done** button. You are *not* online yet (so the phone does not close the login page while you add coins). Insert more coins if you like, then tap **Done** (or wait 15 s after the last coin): the page then says you are online with your time and code. Browse something.
 4. **Second device:** while a window is open, try Insert Coin on another phone. It must be refused with a "Try again" page.
 5. **Rental phone:** join `PisoKiosk` with a kiosk phone (the app's own flow) and pay once.
-6. `piso-setup reconcile` must say `RECONCILE OK` (needs firmware 3.2.1). After the box's revenue is collected its count starts again at 0;
+6. `piso-setup reconcile` must say `RECONCILE OK` (needs firmware 3.2.1). On box firmware newer than 3.3.3 the count keeps going through a collection; on older firmware it starts again at 0 after one;
    the portal notices that by itself ("compared from now on"). If a mismatch stays after a collection: `piso-setup reconcile rebase`.
 7. `piso-setup diag > diag.txt` and keep the output: it contains the coin timings and no passwords. Send it with any bug report.
 
@@ -179,7 +179,7 @@ The setup asks you to choose the router password (or shows a generated one and a
 | command | what it does |
 |---|---|
 | `piso-setup test-coin` | arms the coin slot and waits for a coin, with no customer portal involved. It says whether the box counts the coin. |
-| `piso-setup reconcile [rebase]` | compares the box's own coin count with the router's revenue ledger and checks that nobody edited the ledger (needs firmware 3.2.1). The box's count restarts when its revenue is collected; that is noticed by itself, and `rebase` compares from now on. |
+| `piso-setup reconcile [rebase]` | compares the box's own coin count with the router's revenue ledger and checks that nobody edited the ledger (needs firmware 3.2.1). On box firmware older than 3.3.4 the box's count restarts at 0 when its revenue is collected (newer firmware keeps counting); that is noticed by itself, and `rebase` compares from now on. |
 | `piso-setup telegram` | connects a Telegram bot: alerts (router restarted, box offline, revenue mismatch, a device abusing the coin slot, daily report) and remote commands `/status /report /reconcile /diag /restart /reboot`, answered only to your chat. Create the bot with @BotFather first. Optional: put a healthchecks.io URL in `/etc/piso-monitor.conf` (`HEALTHCHECK_URL`) so you are told when the whole router goes silent. |
 | `piso-setup self-update [check]` / `auto-update on\|off` | **updates from the website**: the router checks hourly for a release you signed (docs/RELEASE.md), installs it when no customer is online, goes back by itself if it does not run, and tells you in Telegram (`/update` installs now). Only releases signed with your owner key are accepted. |
 | `piso-setup update [check]` | the same as `self-update` (below), when run as the installed command on the router: fetches the newest release the owner signed from https://pisophone.pages.dev/update and installs it now. (A router still on release 1.0.0 needs `piso-setup self-update` once.) |

@@ -1,6 +1,6 @@
 # Real-world testing checklist
 
-**Easier on a phone:** the same tests as a tickable page (Pass / Fail / Skip, a note on failures, a report to paste back): `python3 tools/checklist/build.py out.html`, then publish `out.html`. Re-run it after changing this file. This file stays the single list.
+**Easier on a phone:** the same tests as a tickable page (Pass / Fail / Skip, a note on failures, a report to paste back): `python3 tools/checklist/build.py out.html`, then publish `out.html`. Re-run it after changing this file. This file stays the single list. **To write the results back into this file** (ticks, Issue log rows for failures, the setup table, the baseline row): export the page's shared record as JSON and run `python3 tools/checklist/apply.py results.json` (add `--dry-run` to preview), then commit and push; a failed test becomes a GitHub issue by the workflow below, and a retest that passes closes it. Running it again with the same results changes nothing.
 
 Fill this in while testing on real hardware. It is the baseline of what works and what does not: tick what passes, write what
 fails in the **Issue log** at the bottom, then paste the log (plus the evidence listed there) to the developer so each issue
@@ -57,14 +57,9 @@ Collect logs as you go: box serial output at 115200 baud (`pio device monitor`),
 - [ ] **C1** Arm the slot from the phone, insert 1 coin: time is added once; the box counts 1 coin
 - [ ] **C2** Insert 5 coins quickly: total time is exactly 5 coins' worth, no double credit
 - [ ] **C3** Dashboard revenue counter matches the coins inserted (₱ amounts exact)
+- [ ] **C3b** Vendor page: unmask, then "finish collecting": the counter returns to ₱0, `/api/superadmin/collections` lists the collection with the right amount, and `lifetime_coins` did NOT go down; unplug and reconnect the box: the history and the ₱0 are still there
 - [ ] **M3a** An unclaimed payment is not lost silently: arm a phone, put in a coin, then switch the phone's app off (or unpair it) so it never acknowledges. Wait 24 hours, or for a quick test queue 18 or more unacknowledged coins (the queue then gives up after 30 minutes). The dashboard shows the red banner `N payments (₱X) could not be delivered`; Review lists the coin with its amount, the phone and the reason; `Handled` clears it; the banner survives a reboot of the box until every payment is handled. The same coin does not appear twice
 - [ ] **M3b** Diagnostics (`/api/diagnostics`) show `orphaned_payments`, the counters `payments_orphaned` and `orphan_write_failures`, and `nvs` (`used_entries` / `free_entries`): note how full the settings flash is on both the C3 and the classic ESP32 builds
-- [ ] **H4a** A good update is kept: update the box over the air from the dashboard. The serial log says `New firmware is on trial`; `/api/diagnostics` shows `ota_image_state: pending_verify`; after about a minute the log says `New firmware confirmed` and the state is `valid`. Power-cycle: the new version is still running
-- [ ] **H4b** A bad update is reverted: build a signed image with `PLATFORMIO_BUILD_FLAGS="-D PISO_TEST_REFUSE_CONFIRM=1" pio run -e esp32-c3-dev` (it can never pass its start-up check), and update to it. After 5 minutes the log says `restoring the previous firmware`, the box restarts on the OLD version, `/api/diagnostics` shows `ota_last_update_rolled_back: true` and the restart cause `ota-rollback`. No coin session was cut (try with a coin session open: the revert waits until the slot is idle)
-- [ ] **H4c** Power loss during the trial reverts: update, then pull the power within 30 seconds. The box comes back on the OLD version (this is the intended safe behaviour: restarting a box in the first minute after an update undoes the update)
-- [ ] **H4d** A second update during the trial is refused, not queued: start another update right after the first one restarts the box. The dashboard says `the box is still checking the firmware it was just updated to`; a minute later the same update works
-- [ ] **H2** Box commands are fresh: from the dashboard send *Locate*/*Identify* to a phone and arena-mode on/off: they work. Then capture one command (`adb logcat -s KioskHttpServer`, or a packet capture) and re-send it by hand a few minutes later (`curl` the same URL): the phone answers `STALE_TIMESTAMP` (403) and does nothing. Restart the kiosk app and send the same capture again: still refused. Reboot the box and send a new command at once: it works (no lock-out while the box relearns the time)
-- [ ] **C3b** Vendor page: unmask, then "finish collecting": the counter returns to ₱0, `/api/superadmin/collections` lists the collection with the right amount, and `lifetime_coins` did NOT go down; unplug and reconnect the box: the history and the ₱0 are still there
 - [ ] **C4** Time counts down; the phone locks at zero
 - [ ] **C5** Insert coins while the phone is unlocked and armed: time extends
 - [ ] **C6** Slot is busy for a second phone while the first is armed
@@ -88,6 +83,7 @@ Collect logs as you go: box serial output at 115200 baud (`pio device monitor`),
 - [ ] **S2** A replayed signed request is ignored (response `OK:DUPLICATE`) — optional, needs a packet capture
 - [ ] **S3** Remote admin actions need the admin PIN (broadcast without a PIN does nothing), except `DEPROVISION`, which also runs while USB debugging is on (the website's "Remove from a phone" needs no PIN); with USB debugging off it needs the PIN
 - [ ] **S4** Phone cannot be factory-reset or have USB debugging enabled from the network
+- [ ] **H2** Box commands are fresh: from the dashboard send *Locate*/*Identify* to a phone and arena-mode on/off: they work. Then capture one command (`adb logcat -s KioskHttpServer`, or a packet capture) and re-send it by hand a few minutes later (`curl` the same URL): the phone answers `STALE_TIMESTAMP` (403) and does nothing. Restart the kiosk app and send the same capture again: still refused. Reboot the box and send a new command at once: it works (no lock-out while the box relearns the time)
 
 ## 6. Keys and updates
 *pass 3*
@@ -95,6 +91,10 @@ Collect logs as you go: box serial output at 115200 baud (`pio device monitor`),
 - [ ] **K2** Box flashed with the public key refuses an unsigned firmware update
 - [ ] **K4** A signed firmware update installs from the dashboard; an unsigned or older one is refused
 - [ ] **K5** Phone updates itself from a newer APK (checksum and signature verified)
+- [ ] **H4a** A good update is kept: update the box over the air from the dashboard. The serial log says `New firmware is on trial`; `/api/diagnostics` shows `ota_image_state: pending_verify`; after about a minute the log says `New firmware confirmed` and the state is `valid`. Power-cycle: the new version is still running
+- [ ] **H4b** A bad update is reverted: build a signed image with `PLATFORMIO_BUILD_FLAGS="-D PISO_TEST_REFUSE_CONFIRM=1" pio run -e esp32-c3-dev` (it can never pass its start-up check), and update to it. After 5 minutes the log says `restoring the previous firmware`, the box restarts on the OLD version, `/api/diagnostics` shows `ota_last_update_rolled_back: true` and the restart cause `ota-rollback`. No coin session was cut (try with a coin session open: the revert waits until the slot is idle)
+- [ ] **H4c** Power loss during the trial reverts: update, then pull the power within 30 seconds. The box comes back on the OLD version (this is the intended safe behaviour: restarting a box in the first minute after an update undoes the update)
+- [ ] **H4d** A second update during the trial is refused, not queued: start another update right after the first one restarts the box. The dashboard says `the box is still checking the firmware it was just updated to`; a minute later the same update works
 
 ## 7. Router (openNDS + pisoportal), only after sections 1–4 pass
 *pass 3*
@@ -142,7 +142,7 @@ pushing closes its issue. Avoid `|` characters inside cells.
 - [ ] **RS9** `piso-setup lock-admin` from your computer: another device on PisoKiosk can no longer open the router's pages or SSH; `piso-setup unlock-admin` undoes it (pass 2)
 - [ ] **RS10** `piso-setup handout` writes `/root/piso-handout.html` with the right names and passwords
 - [ ] **RS11** `./piso-setup.sh update` (a new file) on a router set up with an earlier version: it ends with all checks passing and customers get the coin page (openNDS moved to the FAS portal on port 2080); paid sessions and the ledger are kept
-- [ ] **RS12** Collect the box's revenue (super admin): afterwards `piso-setup reconcile` prints a note that the box's count restarted and `RECONCILE OK`, and no REVENUE MISMATCH alert arrives in Telegram
+- [ ] **RS12** Collect the box's revenue (super admin): afterwards `piso-setup reconcile` says `RECONCILE OK` and no REVENUE MISMATCH alert arrives in Telegram. Box firmware newer than 3.3.3 keeps counting through a collection (nothing to note); an older box starts its count again at 0 and `reconcile` then prints a note saying so
 - [ ] **RS13** (needs your owner key in `tools/pisoportal/owner_key.b64`, then a router built from that) Publish a test release with `scripts/sign_router.py --rollout 100` (docs/RELEASE.md): on the router `piso-setup self-update check` names it, `piso-setup self-update` installs it, customers still get the coin page afterwards and a Telegram message says it is installed and running
 - [ ] **RS14** With one phone online as a customer, `piso-setup self-update auto` installs nothing and says it waits for a quiet moment; after the phone leaves, it installs
 - [ ] **RS15** Publish a release with `--rollout 0`: the router does not install it; `/update` in Telegram says it is rolling out in stages
