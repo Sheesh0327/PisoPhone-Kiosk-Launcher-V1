@@ -124,7 +124,9 @@ def main():
             report("PASS", "box firmware is the same as on %s" % ref)
         live_rel = (git("show", "%s:setup/RELEASE" % ref) or "").strip()
         rel = open("setup/RELEASE").read().strip()
-        rchanged = bool(git("diff", "--name-only", ref, "HEAD", "--", "setup/piso-setup.sh", "setup/src", "router", "tools/pisoportal/src"))
+        # only what a router installs: not the tests under router/tests or tools/pisoportal/tests
+        rchanged = bool(git("diff", "--name-only", ref, "HEAD", "--", "setup/piso-setup.sh", "setup/src", "router", "tools/pisoportal/src",
+                            ":(exclude)router/tests"))
         key = lambda v: tuple(int(x) for x in re.findall(r"\d+", v))
         if rchanged and live_rel and key(rel) <= key(live_rel):
             report("FAIL", "router software changed since %s but setup/RELEASE is still %s: no router will install it" % (ref, rel))
