@@ -1,22 +1,22 @@
 {
     "version": "3.3.3",
-    "commit": "1d93abc72c63573da4c5fca9dd729a9450dd035a",
+    "commit": "962c7183186672f14f259f65b89e33d002cb0b68",
     "builds": [
         {
             "env": "esp32-c3-dev",
             "chip": "ESP32-C3",
             "file": "esp32-c3-dev.bin",
             "offset": 0,
-            "size": 1304496,
-            "sha256": "06e8aed150eecb7bf85bd5cf0772d6557f120a9f80318fffb495206e3629de71"
+            "size": 1317632,
+            "sha256": "ceb765867728807922722ea4d8fc9e943abb27781c9ca372df5604b9731b7c83"
         },
         {
             "env": "esp32dev-dev",
             "chip": "ESP32",
             "file": "esp32dev-dev.bin",
             "offset": 4096,
-            "size": 1295008,
-            "sha256": "40f793f0b6de31b534cf70345a1593e57b51a16766992802c862b01157a770f3"
+            "size": 1306560,
+            "sha256": "6480e65d4e5fff92105162c274a54302488ed2c496c473688130f46b18aaa2d1"
         }
     ]
 }
