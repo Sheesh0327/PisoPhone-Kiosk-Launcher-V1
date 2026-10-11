@@ -9,7 +9,29 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 spec = importlib.util.spec_from_file_location("apply_results", os.path.join(HERE, "apply.py"))
 ap = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ap)
-SRC = open(os.path.join(ROOT, "docs", "REAL_WORLD_TESTING.md"), encoding="utf-8").read()
+
+
+def blank(md):
+    """The document as it is before any session: nothing ticked, empty setup table, empty baseline table. The real document
+    keeps recorded results, and these tests must not depend on them."""
+    md = re.sub(r"^- \[[x!]\] (\*\*)", r"- [ ] \1", md, flags=re.M)
+    lines = md.split("\n")
+    for heading in ("## 0. Test setup", "## Baseline summary"):
+        i = next(n for n, l in enumerate(lines) if l.startswith(heading))
+        h = next(n for n in range(i, len(lines)) if lines[n].startswith("|"))
+        end = h + 2
+        while end < len(lines) and lines[end].startswith("|"):
+            end += 1
+        cols = len(lines[h].strip().strip("|").split("|"))
+        if heading.startswith("## 0"):
+            for n in range(h + 2, end):
+                lines[n] = "| " + lines[n].strip().strip("|").split("|")[0].strip() + " |" + " |" * (cols - 1)
+        else:
+            lines[h + 2:end] = ["|" + " |" * cols]
+    return "\n".join(lines)
+
+
+SRC = blank(open(os.path.join(ROOT, "docs", "REAL_WORLD_TESTING.md"), encoding="utf-8").read())
 checks = failures = 0
 
 

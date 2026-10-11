@@ -19,21 +19,21 @@ Save `adb logcat -d > phone.log` and the serial output right after each failure.
 ## 0. Test setup (fill in first)
 | Item | Value |
 |---|---|
-| Date / tester | |
-| Firmware version and board (`esp32-c3-dev`, etc.) | |
-| APK build number (`app.json` versionCode) | |
-| Phone model / Android version | |
-| Router model / OpenWrt version / layout (A or B) | |
-| Coin acceptor model | |
+| Date / tester | 10-10-2026/Mil Admin |
+| Firmware version and board (`esp32-c3-dev`, etc.) | 3.3.3/esp32-dev-c3 |
+| APK build number (`app.json` versionCode) | 411 |
+| Phone model / Android version | Infinix Hot 40i/13 |
+| Router model / OpenWrt version / layout (A or B) | 360T6GS/23.5.0/ |
+| Coin acceptor model | Weiyu Universal Coin slot |
 
 Collect logs as you go: box serial output at 115200 baud (`pio device monitor`), phone `adb logcat -s KioskSecurity KioskService`
 (`adb logcat -d > phone.log` after a failure), router `logread -e coinslot -e opennds`.
 
 ## 1. Box basics
 *B1–B3 are pass 1, the rest pass 2*
-- [ ] **B1** A fresh or factory-reset box boots with the default password `Coinslot@Setup` and the built-in Wi-Fi `PisoCoinBox` / `PisoCoinBox@Setup`; a coin request is refused (`SETUP_REQUIRED`) until the admin password is changed (the router setup changes it)
-- [ ] **B2** The box has no access-point mode: it joins the router's hidden `PisoCoinBox` network by itself, after the router setup it has its own random Wi-Fi password (`piso-setup status` checks it), and it answers at `10.0.0.10`
-- [ ] **B3** Dashboard opens; first-run checklist shows; it disappears when its items are done
+- [x] **B1** A fresh or factory-reset box boots with the default password `Coinslot@Setup` and the built-in Wi-Fi `PisoCoinBox` / `PisoCoinBox@Setup`; a coin request is refused (`SETUP_REQUIRED`) until the admin password is changed (the router setup changes it)
+- [x] **B2** The box has no access-point mode: it joins the router's hidden `PisoCoinBox` network by itself, after the router setup it has its own random Wi-Fi password (`piso-setup status` checks it), and it answers at `10.0.0.10`
+- [x] **B3** Dashboard opens; first-run checklist shows; it disappears when its items are done
 - [ ] **B4** Changing the admin password works; old password stops working
 - [ ] **B5** Five wrong admin passwords lock login for a minute
 - [ ] **B6** Reboot from the dashboard works; settings survive
@@ -43,24 +43,24 @@ Collect logs as you go: box serial output at 115200 baud (`pio device monitor`),
 
 ## 2. Phone install and pairing
 *P1–P4 are pass 1, the rest pass 2. Testing the beta branch: the box's Set up a phone link always opens the production site (main's APK). Copy the link and change only its host to beta.pisophone.pages.dev, keeping everything after it; check that beta.pisophone.pages.dev/update/app.json shows a -dev version first.*
-- [ ] **P1** QR setup: on a factory-reset phone, 6 taps on the welcome screen open the QR reader; scanning the page's code ("Show the setup code") installs PisoPhone, makes it the locked kiosk (device owner) and it opens by itself at the end
-- [ ] **P2** After P1 (or the USB cable setup) the phone has its box secret and gets its admin PIN; with the PisoKiosk password typed on the page, the phone joins PisoKiosk by itself (turn its Wi-Fi to another network and see it come back within about a minute)
-- [ ] **P3** Phone finds the box and shows it online; slot shows as paired in the dashboard
-- [ ] **P4** Reboot the phone: kiosk starts by itself, box still reachable, **no re-provisioning needed** (Keystore check)
+- [x] **P1** QR setup: on a factory-reset phone, 6 taps on the welcome screen open the QR reader; scanning the page's code ("Show the setup code") installs PisoPhone, makes it the locked kiosk (device owner) and it opens by itself at the end
+- [x] **P2** After P1 (or the USB cable setup) the phone has its box secret and gets its admin PIN; with the PisoKiosk password typed on the page, the phone joins PisoKiosk by itself (turn its Wi-Fi to another network and see it come back within about a minute)
+- [x] **P3** Phone finds the box and shows it online; slot shows as paired in the dashboard
+- [x] **P4** Reboot the phone: kiosk starts by itself, box still reachable, **no re-provisioning needed** (Keystore check)
 - [ ] **P5** Admin PIN works; five wrong PINs lock further tries
 - [ ] **P6** Phone shows "legacy key" warning only if it really has no box secret
-- [ ] **P8** QR, the last step: on a normal phone "One last step" leads with **Open the setting**; turning the switch on starts the kiosk (lock screen and time bubble) and Developer options then show USB debugging off. On an Android Go phone (or with the switch greyed out) it leads with USB: with the phone plugged in, "Allow USB debugging?" appears by itself, **Finish over USB** grants the permissions, the lock screen appears and the box page opens to pair the slot
+- [x] **P8** QR, the last step: on a normal phone "One last step" leads with **Open the setting**; turning the switch on starts the kiosk (lock screen and time bubble) and Developer options then show USB debugging off. On an Android Go phone (or with the switch greyed out) it leads with USB: with the phone plugged in, "Allow USB debugging?" appears by itself, **Finish over USB** grants the permissions, the lock screen appears and the box page opens to pair the slot
 - [ ] **P7** USB fallback: with the page's "USB cable" method, a factory-reset phone with USB debugging is set up in one run; a phone with a signed-in account is refused within seconds, before anything is copied
 
 ## 3. Coins and time (the money path)
 *C1–C4 are pass 1, the rest pass 2*
-- [ ] **C1** Arm the slot from the phone, insert 1 coin: time is added once; the box counts 1 coin
-- [ ] **C2** Insert 5 coins quickly: total time is exactly 5 coins' worth, no double credit
-- [ ] **C3** Dashboard revenue counter matches the coins inserted (₱ amounts exact)
+- [x] **C1** Arm the slot from the phone, insert 1 coin: time is added once; the box counts 1 coin
+- [x] **C2** Insert 5 coins quickly: total time is exactly 5 coins' worth, no double credit
+- [x] **C3** Dashboard revenue counter matches the coins inserted (₱ amounts exact)
 - [ ] **C3b** Vendor page: unmask, then "finish collecting": the counter returns to ₱0, `/api/superadmin/collections` lists the collection with the right amount, and `lifetime_coins` did NOT go down; unplug and reconnect the box: the history and the ₱0 are still there
 - [ ] **M3a** An unclaimed payment is not lost silently: arm a phone, put in a coin, then switch the phone's app off (or unpair it) so it never acknowledges. Wait 24 hours, or for a quick test queue 18 or more unacknowledged coins (the queue then gives up after 30 minutes). The dashboard shows the red banner `N payments (₱X) could not be delivered`; Review lists the coin with its amount, the phone and the reason; `Handled` clears it; the banner survives a reboot of the box until every payment is handled. The same coin does not appear twice
 - [ ] **M3b** Diagnostics (`/api/diagnostics`) show `orphaned_payments`, the counters `payments_orphaned` and `orphan_write_failures`, and `nvs` (`used_entries` / `free_entries`): note how full the settings flash is on both the C3 and the classic ESP32 builds
-- [ ] **C4** Time counts down; the phone locks at zero
+- [x] **C4** Time counts down; the phone locks at zero
 - [ ] **C5** Insert coins while the phone is unlocked and armed: time extends
 - [ ] **C6** Slot is busy for a second phone while the first is armed
 - [ ] **C7** Unpaired phone: coins are refused, phone shows the "activate device slot" message
@@ -68,9 +68,9 @@ Collect logs as you go: box serial output at 115200 baud (`pio device monitor`),
 
 ## 4. Failure handling (most important)
 *F1–F3 are pass 1, the rest pass 2*
-- [ ] **F1** Pull the **box's power** right after a coin: after power returns the coin is credited once (not lost, not doubled)
-- [ ] **F2** Switch the **Wi-Fi off** after a coin, back on 30 s later: the phone credits it exactly once
-- [ ] **F3** Reboot the **phone** mid-session: remaining time is restored, no free time
+- [x] **F1** Pull the **box's power** right after a coin: after power returns the coin is credited once (not lost, not doubled)
+- [x] **F2** Switch the **Wi-Fi off** after a coin, back on 30 s later: the phone credits it exactly once
+- [x] **F3** Reboot the **phone** mid-session: remaining time is restored, no free time
 - [ ] **F4** Kill the app on the phone (or let it crash): it comes back by itself, session intact
 - [ ] **F5** Change the phone's clock: paid time is not extended or shortened
 - [ ] **F6** Unplug the coin acceptor / simulate a jam: no phantom credit
@@ -127,25 +127,25 @@ pushing closes its issue. Avoid `|` characters inside cells.
 ## Baseline summary (update after each session)
 | Date | Passed | Failed | Not tested | Open blockers | Verdict |
 |---|---|---|---|---|---|
-| | | | | | |
+| 2026-10-11 | 24 | 0 | 50 | 0 | no failures so far; 50 not tested |
 
 ## 9. Router setup and customer Wi-Fi (setup/README.md)
 *pass 1 unless noted*
-- [ ] **RS1** `piso-setup.sh` by hand (setup/MANUAL.md) on a factory-reset router: it asks for the public Wi-Fi name, a site name and three passwords (Enter generates), shows the review screen, and ends with `SETUP COMPLETE` (all checks pass)
-- [ ] **RS2** The hidden `PisoKiosk` network appears in no Wi-Fi list; a provisioned phone joins it by itself and rejoins within about a minute when moved to another network
-- [ ] **RS3** `piso-setup test-coin` counts one inserted coin
-- [ ] **RS4** Customer phone: the page shows each coin at once with a countdown and **Done**; it is **not** online while coins are going in; after Done (or 15 s idle) it is online with the total time
-- [ ] **RS5** A second device is refused (Try again) while a window is open; a device that opens empty windows repeatedly is put in a short cooldown
+- [x] **RS1** `piso-setup.sh` by hand (setup/MANUAL.md) on a factory-reset router: it asks for the public Wi-Fi name, a site name and three passwords (Enter generates), shows the review screen, and ends with `SETUP COMPLETE` (all checks pass)
+- [x] **RS2** The hidden `PisoKiosk` network appears in no Wi-Fi list; a provisioned phone joins it by itself and rejoins within about a minute when moved to another network
+- [x] **RS3** `piso-setup test-coin` counts one inserted coin
+- [x] **RS4** Customer phone: the page shows each coin at once with a countdown and **Done**; it is **not** online while coins are going in; after Done (or 15 s idle) it is online with the total time
+- [x] **RS5** A second device is refused (Try again) while a window is open; a device that opens empty windows repeatedly is put in a short cooldown
 - [ ] **RS6** `piso-setup reconcile` says `RECONCILE OK`; editing a line of `/etc/coinslot.d/revenue.csv` makes it report a broken ledger
 - [ ] **RS7** Restart the router in the middle of a window (power cut after the first coin): after it is back, the coins are credited once (pass 2)
 - [ ] **RS8** `piso-setup telegram`: messages and `/status` work from your chat only; unplug the box for 5 minutes and an alert arrives (pass 2)
 - [ ] **RS9** `piso-setup lock-admin` from your computer: another device on PisoKiosk can no longer open the router's pages or SSH; `piso-setup unlock-admin` undoes it (pass 2)
 - [ ] **RS10** `piso-setup handout` writes `/root/piso-handout.html` with the right names and passwords
-- [ ] **RS11** `./piso-setup.sh update` (a new file) on a router set up with an earlier version: it ends with all checks passing and customers get the coin page (openNDS moved to the FAS portal on port 2080); paid sessions and the ledger are kept
-- [ ] **RS12** Collect the box's revenue (super admin): afterwards `piso-setup reconcile` says `RECONCILE OK` and no REVENUE MISMATCH alert arrives in Telegram. Box firmware newer than 3.3.3 keeps counting through a collection (nothing to note); an older box starts its count again at 0 and `reconcile` then prints a note saying so
+- [x] **RS11** `./piso-setup.sh update` (a new file) on a router set up with an earlier version: it ends with all checks passing and customers get the coin page (openNDS moved to the FAS portal on port 2080); paid sessions and the ledger are kept
+- [x] **RS12** Collect the box's revenue (super admin): afterwards `piso-setup reconcile` says `RECONCILE OK` and no REVENUE MISMATCH alert arrives in Telegram. Box firmware newer than 3.3.3 keeps counting through a collection (nothing to note); an older box starts its count again at 0 and `reconcile` then prints a note saying so
 - [ ] **RS13** (needs your owner key in `tools/pisoportal/owner_key.b64`, then a router built from that) Publish a test release with `scripts/sign_router.py --rollout 100` (docs/RELEASE.md): on the router `piso-setup self-update check` names it, `piso-setup self-update` installs it, customers still get the coin page afterwards and a Telegram message says it is installed and running
 - [ ] **RS14** With one phone online as a customer, `piso-setup self-update auto` installs nothing and says it waits for a quiet moment; after the phone leaves, it installs
 - [ ] **RS15** Publish a release with `--rollout 0`: the router does not install it; `/update` in Telegram says it is rolling out in stages
 - [ ] **RS16** Hand-edit `website/update/router-setup.sh` after signing (one character) and publish it: the router refuses it, installs nothing and Telegram says REFUSED
-- [ ] **RS17** The setup program (setup/README.md) from a computer on a factory-reset router, in its window: it checks the computer, opens the flasher in Chrome or Edge, finds the router by itself, asks for the Wi-Fi names and passwords, installs (moving the router to 10.0.0.1: replug the cable if it asks), saves the summary and the setup sheet in Documents/PisoPhone, then opens the phone setup page already filled in. Run it again on the finished router: it keeps the passwords and passes again
-- [ ] **RS18** The program's last page: **Test a coin** says the box counted 1 peso after you insert one coin; the customer Wi-Fi steps work; **Set up Telegram alerts** connects (optional)
+- [x] **RS17** The setup program (setup/README.md) from a computer on a factory-reset router, in its window: it checks the computer, opens the flasher in Chrome or Edge, finds the router by itself, asks for the Wi-Fi names and passwords, installs (moving the router to 10.0.0.1: replug the cable if it asks), saves the summary and the setup sheet in Documents/PisoPhone, then opens the phone setup page already filled in. Run it again on the finished router: it keeps the passwords and passes again
+- [x] **RS18** The program's last page: **Test a coin** says the box counted 1 peso after you insert one coin; the customer Wi-Fi steps work; **Set up Telegram alerts** connects (optional)
