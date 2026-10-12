@@ -79,7 +79,7 @@ cmd_self_update() {
 		rm -rf "$_lock"; mkdir "$_lock" || die "could not take the update lock"
 	fi
 	echo $$ > "$_lock/pid"
-	_work="${TMPDIR:-/tmp}/piso-update.$$"
+	_work="$(work_base)/piso-update.$$"
 	trap 'rm -rf "$_work" "$_lock"' EXIT
 	rm -rf "$_work"; (umask 077; mkdir -p "$_work") || die "could not create $_work"
 
@@ -136,6 +136,8 @@ cmd_self_update() {
 	if [ -z "$UPDATE_WHY" ]; then
 		conf_set UPDATE_NOTIFIED "$_new"
 		log "Release $_new is installed and running."
+		rm -rf "$UPDATE_BACKUP"   # it has proven itself: the backup of the old release is not needed any more
+		trim_log
 		notify "update: release $_new installed and running (was $PISO_RELEASE). $_note"
 		return 0
 	fi

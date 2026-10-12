@@ -4,6 +4,17 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Router 1.3.0: **space, backups and safety on small routers.**
+  - A firmware upgrade (sysupgrade) now keeps the PisoPhone settings, the revenue ledger, the monitor settings and the programs
+    (`/etc/sysupgrade.conf`), so an upgraded router still pairs with its box and keeps its records.
+  - `piso-setup export [file]` / `piso-setup import <file>`: a private backup of the settings and the ledger to copy to your computer, and
+    back after a reset or on a replaced router (it refuses a file with anything else in it).
+  - `piso-setup space`: what is kept on the router, what is free, what can go. `piso-setup forget-summary` deletes the saved summary
+    (it holds passwords; `piso-setup summary` shows them again).
+  - An update's backup of the old release is deleted as soon as the new one has proven itself; the log keeps its last 600 lines;
+    an update on a router with under ~24 MB of free memory downloads into flash instead of memory.
+  - The portal program is built for mipsel_24kc only: on another CPU the setup and update now stop before changing anything and say so.
+  - CI checks a footprint budget (`router/tests/test_footprint.py`).
 - **Owner console** (`python3 scripts/owner_console.py`): a web page for every owner script, in place of typing its command line. Each
   tool has its own page (`/p/<name>`): admin QR, recovery code, card key, owner key, print time cards, sign firmware, sign router update,
   publish box firmware, release/APK/library/security checks and the sold-unit checks. A form fills in the options, Run shows the output

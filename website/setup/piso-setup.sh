@@ -18,7 +18,7 @@
 # Everything is generated here (Wi-Fi password, box admin password, gateway key) and printed once at the end and saved in
 # /root/piso-setup-summary.txt. Running the file again is safe: it keeps what it already made.
 #
-# Other commands (after setup): piso-setup status | wifi-name "<name>" | guest-port [lanN|off] | pair | summary | test-coin | diag | box-diag | set-password | reconcile [rebase] | telegram | rotate-box-wifi | kiosk-wifi | verify | handout | lock-admin | unlock-admin | update [check] (installs the newest release from the website; same as self-update) | self-update [check] | auto-update on|off
+# Other commands (after setup): piso-setup status | wifi-name "<name>" | guest-port [lanN|off] | pair | summary | test-coin | diag | box-diag | set-password | reconcile [rebase] | telegram | rotate-box-wifi | export [file] | import <file> | space | forget-summary | kiosk-wifi | verify | handout | lock-admin | unlock-admin | update [check] (installs the newest release from the website; same as self-update) | self-update [check] | auto-update on|off
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation
@@ -26,7 +26,7 @@
 
 VERSION="dev"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
-PISO_RELEASE='1.2.8'
+PISO_RELEASE='1.3.0'
 
 COUNTRY="${COUNTRY:-PH}"
 KIOSK_SSID="PisoKiosk"                       # fixed, and hidden: only phones provisioned by the coin box page know it
@@ -114,6 +114,7 @@ preflight() {
 		[ -f /etc/openwrt_release ] || die "this is not an OpenWrt router"
 	fi
 	command -v uci > /dev/null || die "uci not found"
+	check_arch
 	R24=""; R5=""
 	for r in $(radios); do
 		case "$(radio_band "$r")" in 2g) [ -z "$R24" ] && R24="$r" ;; 5g) [ -z "$R5" ] && R5="$r" ;; esac
@@ -777,6 +778,7 @@ stage2() {
 	remove_old_portal
 	/etc/init.d/pisoportal enable; /etc/init.d/pisoportal restart
 	install_update_timer
+	keep_across_upgrades
 	[ -r /etc/piso-monitor.conf ] && { /etc/init.d/piso_monitor enable; /etc/init.d/piso_monitor restart; }
 	/etc/init.d/opennds enable; /etc/init.d/opennds stop > /dev/null 2>&1; /etc/init.d/opennds start; NDS_RESTORE=0
 	sleep 8
@@ -999,6 +1001,7 @@ cmd_update() {
 		die "no PisoPhone setup found on this router: run ./piso-setup.sh without arguments first"
 	fi
 	[ "$0" != "$SELF_PATH" ] || die "this is the installed (old) copy. Copy the NEW piso-setup.sh to the router and run it from there: ./piso-setup.sh update"
+	check_arch
 	step "Updating the portal files"
 	[ -x /etc/init.d/pisoportal ] && /etc/init.d/pisoportal stop > /dev/null 2>&1   # (no program is replaced while it runs)
 	remove_old_portal
@@ -1021,6 +1024,7 @@ cmd_update() {
 		restart_router_access
 	fi
 	install_update_timer
+	keep_across_upgrades
 	[ -r /etc/piso-monitor.conf ] && [ -x /etc/init.d/piso_monitor ] && { /etc/init.d/piso_monitor enable; /etc/init.d/piso_monitor restart; }
 	sleep 3
 	log "Updated to setup file version $VERSION. Customers' sessions and the revenue ledger were not touched."
@@ -1110,7 +1114,7 @@ cmd_self_update() {
 		rm -rf "$_lock"; mkdir "$_lock" || die "could not take the update lock"
 	fi
 	echo $$ > "$_lock/pid"
-	_work="${TMPDIR:-/tmp}/piso-update.$$"
+	_work="$(work_base)/piso-update.$$"
 	trap 'rm -rf "$_work" "$_lock"' EXIT
 	rm -rf "$_work"; (umask 077; mkdir -p "$_work") || die "could not create $_work"
 
@@ -1167,6 +1171,8 @@ cmd_self_update() {
 	if [ -z "$UPDATE_WHY" ]; then
 		conf_set UPDATE_NOTIFIED "$_new"
 		log "Release $_new is installed and running."
+		rm -rf "$UPDATE_BACKUP"   # it has proven itself: the backup of the old release is not needed any more
+		trim_log
 		notify "update: release $_new installed and running (was $PISO_RELEASE). $_note"
 		return 0
 	fi
@@ -1358,6 +1364,105 @@ cmd_set_password() {
 	conf_set ROOT_PASS "$_a"; conf_set ROOT_PASS_SET 1; write_summary; echo "Done."
 }
 
+# ---------------------------------------------------------------------------------------------------------------------
+# Space, backups and what a firmware upgrade keeps
+# ---------------------------------------------------------------------------------------------------------------------
+# What the system keeps when the router's own firmware is upgraded (sysupgrade): the settings, the revenue ledger, the monitor and the
+# programs, so a router that is upgraded (or whose settings are restored) still pairs with its box and still has its records.
+KEEP_FILES="/etc/piso-setup.conf /etc/coinslot.conf /etc/coinslot.d /etc/piso-monitor.conf /etc/crontabs/root /usr/sbin/piso-setup /usr/bin/pisoportal /usr/bin/piso-monitor.sh /etc/init.d/pisoportal /etc/init.d/piso_monitor /usr/lib/opennds/pisoportal_status.sh"
+
+keep_across_upgrades() {
+	_kf="${PISO_SYSUPGRADE_CONF:-$PISO_ROOT/etc/sysupgrade.conf}"
+	mkdir -p "$(dirname "$_kf")" 2> /dev/null; touch "$_kf" 2> /dev/null || return 0
+	for _p in $KEEP_FILES; do grep -qxF "$_p" "$_kf" 2> /dev/null || echo "$_p" >> "$_kf"; done
+}
+
+# mem_available_kb: free memory a download could use (0 when unknown)
+mem_available_kb() {
+	if [ -n "$PISO_MEM_KB" ]; then echo "$PISO_MEM_KB"; return; fi
+	sed -n 's/^MemAvailable: *\([0-9]*\) kB.*/\1/p' /proc/meminfo 2> /dev/null | head -n 1 | sed 's/^$/0/'
+}
+
+# work_base: where an update's files go. In memory (/tmp) normally; a router with little free memory (under ~24 MB) uses flash
+# (/root) instead, so a 1.2 MB download never starves the portal and the router. Both are cleaned up when the update ends.
+work_base() {
+	_m=$(mem_available_kb); _m="${_m:-0}"
+	if [ -n "$_m" ] && [ "$_m" -gt 0 ] 2> /dev/null && [ "$_m" -lt "${PISO_LOW_MEM_KB:-24000}" ]; then echo "${PISO_FLASH_WORK:-/root}"; else echo "${TMPDIR:-/tmp}"; fi
+}
+
+# trim_log: the log keeps its last 600 lines (it is what shows why an update was undone; it must not grow for ever)
+trim_log() {
+	[ -f "$LOG" ] || return 0
+	[ "$(wc -l < "$LOG" 2> /dev/null)" -gt "${PISO_LOG_MAX:-900}" ] 2> /dev/null || return 0
+	tail -n "${PISO_LOG_KEEP:-600}" "$LOG" > "$LOG.new" 2> /dev/null && mv "$LOG.new" "$LOG"
+}
+
+# check_arch: the portal program in this file is built for mipsel_24kc routers only (most MT76xx / MT7621 boxes). On another CPU it would
+# not start, so say so before anything is changed.
+check_arch() {
+	[ -z "$PISO_SKIP_ARCH" ] || return 0
+	[ -r "$PISO_ROOT/etc/openwrt_release" ] || return 0
+	_a=$(sed -n "s/^DISTRIB_ARCH=['\"]\\{0,1\\}\\([^'\"]*\\).*/\\1/p" "$PISO_ROOT/etc/openwrt_release" | head -n 1)
+	case "$_a" in
+		"" | mipsel_24kc) return 0 ;;
+		*) die "this router's CPU is \"$_a\", but this release of the portal program is built for mipsel_24kc only (for example MT7621 and MT7620 routers like the 360T6M). Nothing was changed. Builds for other CPUs are not available yet: tell the owner which router this is." ;;
+	esac
+}
+
+dir_kb() { du -sk "$1" 2> /dev/null | cut -f1; }
+
+# piso-setup space: what PisoPhone keeps on this router, what is free, and what can go
+cmd_space() {
+	echo "=== piso-setup space ($(date '+%F %T')) ==="
+	echo "flash free:   $(df -k /overlay 2> /dev/null | awk 'NR==2 {printf "%d KB of %d KB", $4, $2}')"
+	echo "memory free:  $(mem_available_kb) KB"
+	for _f in /usr/bin/pisoportal /usr/sbin/piso-setup /usr/bin/piso-monitor.sh "$CONF" "$LOG" "$SUMMARY"; do
+		[ -e "$_f" ] && printf '  %-34s %6s KB\n' "$_f" "$(( ($(wc -c < "$_f") + 1023) / 1024 ))"
+	done
+	[ -d /etc/coinslot.d ] && printf '  %-34s %6s KB (the revenue ledger and records: keep)\n' "/etc/coinslot.d" "$(dir_kb /etc/coinslot.d)"
+	[ -d "$UPDATE_BACKUP" ] && printf '  %-34s %6s KB (the last update'"'"'s backup)\n' "$UPDATE_BACKUP" "$(dir_kb "$UPDATE_BACKUP")"
+	echo "kept across a firmware upgrade: $(for _p in $KEEP_FILES; do grep -qxF "$_p" /etc/sysupgrade.conf 2> /dev/null || printf '%s ' "(missing: $_p)"; done)"
+	echo "can go: the backup folder above after an update has proven itself (it goes by itself), the saved summary ($SUMMARY: piso-setup forget-summary; it holds passwords)."
+}
+
+# piso-setup forget-summary: delete the saved summary (it holds the passwords). piso-setup summary shows them again.
+cmd_forget_summary() {
+	[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
+	[ -f "$SUMMARY" ] || { echo "No saved summary."; return 0; }
+	if [ "$ASSUME_YES" != 1 ]; then printf 'Delete %s? Print or copy it first. [y/N] ' "$SUMMARY"; read -r _a; case "$_a" in y | Y) ;; *) echo "Kept."; return 0 ;; esac; fi
+	rm -f "$SUMMARY"; echo "Deleted. The passwords stay in the router's settings: piso-setup summary shows them again."
+}
+
+# piso-setup export [file]: this router's settings, the revenue ledger and the monitor settings in one file (mode 600: it holds passwords
+# and keys). Copy it off the router, e.g.  scp root@10.0.0.1:/tmp/piso-backup-*.tar.gz .
+cmd_export() {
+	[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
+	_out="${1:-/tmp/piso-backup-$(date +%Y%m%d-%H%M%S).tar.gz}"
+	_list=""
+	for _p in /etc/piso-setup.conf /etc/coinslot.conf /etc/coinslot.d /etc/piso-monitor.conf; do [ -e "$PISO_ROOT$_p" ] && _list="$_list ${_p#/}"; done
+	[ -n "$_list" ] || die "nothing to back up: no PisoPhone settings found"
+	# shellcheck disable=SC2086 # one argument per file
+	( umask 077; tar -C "${PISO_ROOT:-/}" -czf "$_out" $_list ) || die "could not write $_out"
+	echo "Backup written: $_out  ($(( ($(wc -c < "$_out") + 1023) / 1024 )) KB). It holds your passwords and keys: keep it private."
+	echo "Copy it to your computer:  scp root@$LAN_IP:$_out ."
+}
+
+# piso-setup import <file>: put a backup made by export back (after a reset or a replaced router), then restart the portal
+cmd_import() {
+	[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
+	_in="$1"; [ -f "$_in" ] || die "usage: piso-setup import <backup file>"
+	tar -tzf "$_in" > /tmp/piso-import.list 2> /dev/null || { rm -f /tmp/piso-import.list; die "that is not a PisoPhone backup"; }
+	if grep -vE '^(etc/piso-setup\.conf|etc/coinslot\.conf|etc/coinslot\.d(/.*)?|etc/piso-monitor\.conf)$' /tmp/piso-import.list | grep -q .; then
+		rm -f /tmp/piso-import.list; die "that backup holds files this command does not restore: refused"
+	fi
+	rm -f /tmp/piso-import.list
+	if [ "$ASSUME_YES" != 1 ]; then printf 'Replace this router'"'"'s PisoPhone settings and ledger with the backup? [y/N] '; read -r _a; case "$_a" in y | Y) ;; *) echo "Cancelled."; return 0 ;; esac; fi
+	[ -x /etc/init.d/pisoportal ] && /etc/init.d/pisoportal stop > /dev/null 2>&1
+	tar -C "${PISO_ROOT:-/}" -xzf "$_in" || die "could not unpack the backup"
+	chmod 600 "$PISO_ROOT/etc/piso-setup.conf" 2> /dev/null
+	[ -x /etc/init.d/pisoportal ] && /etc/init.d/pisoportal start > /dev/null 2>&1
+	echo "Restored. Run: piso-setup status"
+}
 cmd_pair() {
 	DRY=0; [ "$(id -u)" = 0 ] || die "run as root"
 	conf_set BOX_MAC ""
@@ -1474,7 +1579,7 @@ main() {
 		case "$1" in
 			--dry-run) DRY=1 ;;
 			--yes | -y) ASSUME_YES=1 ;;
-			status | pair | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | handout | lock-admin | lock-admin-confirm | unlock-admin | update | self-update | auto-update) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
+			status | pair | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | handout | export | import | space | forget-summary | lock-admin | lock-admin-confirm | unlock-admin | update | self-update | auto-update) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
 			-h | --help) sed -n '2,/^# Options:/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 			*) echo "unknown option: $1 (try --help)" >&2; exit 1 ;;
 		esac
@@ -1491,6 +1596,10 @@ main() {
 		reconcile) if [ "$ARG" = rebase ]; then cmd_reconcile rebase; else cmd_reconcile; fi ;;
 		telegram) cmd_telegram ;;
 		handout) cmd_handout ;;
+		export) cmd_export "$ARG" ;;
+		import) cmd_import "$ARG" ;;
+		space) cmd_space ;;
+		forget-summary) cmd_forget_summary ;;
 		update)
 			# the installed command updates from the website; a copy run from anywhere else installs its own files
 			if [ "$0" = "$SELF_PATH" ]; then cmd_self_update "$ARG"; else cmd_update; fi ;;

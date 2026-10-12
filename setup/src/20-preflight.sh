@@ -18,6 +18,7 @@ preflight() {
 		[ -f /etc/openwrt_release ] || die "this is not an OpenWrt router"
 	fi
 	command -v uci > /dev/null || die "uci not found"
+	check_arch
 	R24=""; R5=""
 	for r in $(radios); do
 		case "$(radio_band "$r")" in 2g) [ -z "$R24" ] && R24="$r" ;; 5g) [ -z "$R5" ] && R5="$r" ;; esac

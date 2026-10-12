@@ -47,6 +47,7 @@ stage2() {
 	remove_old_portal
 	/etc/init.d/pisoportal enable; /etc/init.d/pisoportal restart
 	install_update_timer
+	keep_across_upgrades
 	[ -r /etc/piso-monitor.conf ] && { /etc/init.d/piso_monitor enable; /etc/init.d/piso_monitor restart; }
 	/etc/init.d/opennds enable; /etc/init.d/opennds stop > /dev/null 2>&1; /etc/init.d/opennds start; NDS_RESTORE=0
 	sleep 8

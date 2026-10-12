@@ -707,5 +707,52 @@ check(r.returncode != 0 and "does not answer" in r.stdout, "test-coin explains a
 r = run("diag")
 check("=== piso-setup diag" in r.stdout and "--- last coin-slot log lines" in r.stdout and "ROOT_PASS" not in r.stdout and "password:" not in r.stdout.lower(), "diag runs and prints no passwords")
 
+# ---- space, backups and what a firmware upgrade keeps (96-space-backup.sh) ---------------------------------------------------------
+sysconf = f"{tmp}/sysupgrade.conf"
+open(sysconf, "w").write("/etc/config/network\n")
+r = lib("keep_across_upgrades; keep_across_upgrades; cat $PISO_SYSUPGRADE_CONF", env={"PISO_SYSUPGRADE_CONF": sysconf})
+lines = r.stdout.split()
+check("/etc/piso-setup.conf" in lines and "/etc/coinslot.d" in lines and "/usr/bin/pisoportal" in lines and "/etc/config/network" in lines,
+      "a firmware upgrade keeps the settings, the ledger and the programs, and the owner's own lines: " + r.stdout)
+check(len(lines) == len(set(lines)), "running it twice adds nothing twice")
+r = lib("work_base", env={"PISO_MEM_KB": "90000"})
+check(r.stdout.strip() == "/tmp", "plenty of memory: an update works in memory: " + r.stdout)
+r = lib("work_base", env={"PISO_MEM_KB": "12000", "PISO_FLASH_WORK": "/root"})
+check(r.stdout.strip() == "/root", "little memory: an update works in flash instead: " + r.stdout)
+logf = f"{tmp}/trim.log"
+open(logf, "w").write("".join(f"line {i}\n" for i in range(1000)))
+r = lib("trim_log; wc -l < $LOG; head -n1 $LOG", env={"PISO_LOG": logf, "PISO_LOG_MAX": "900", "PISO_LOG_KEEP": "600"})
+check(r.stdout.split()[0] == "600" and "line 400" in r.stdout, "a long log is cut to its last 600 lines: " + r.stdout)
+osr = f"{tmp}/openwrt"
+os.makedirs(f"{osr}/etc", exist_ok=True)
+open(f"{osr}/etc/openwrt_release", "w").write("DISTRIB_ARCH='aarch64_cortex-a53'\n")
+r = lib("check_arch; echo reached", env={"PISO_ROOT": osr})
+check("aarch64_cortex-a53" in r.stdout + r.stderr and "reached" not in r.stdout and "Nothing was changed" in r.stdout + r.stderr, "another CPU is refused before anything changes: " + r.stdout + r.stderr)
+open(f"{osr}/etc/openwrt_release", "w").write("DISTRIB_ARCH='mipsel_24kc'\n")
+check("reached" in lib("check_arch; echo reached", env={"PISO_ROOT": osr}).stdout, "mipsel_24kc passes")
+# export / import round trip
+root = f"{tmp}/exp"
+for d in ("etc/coinslot.d",):
+    os.makedirs(f"{root}/{d}", exist_ok=True)
+open(f"{root}/etc/piso-setup.conf", "w").write("GW_KEY='abc'\n")
+open(f"{root}/etc/coinslot.d/revenue.csv", "w").write("1,2,3\n")
+bk = f"{tmp}/backup.tar.gz"
+r = lib(f"cmd_export {bk}", env={"PISO_ROOT": root, "PISO_TEST_NONROOT": "1"})
+check(os.path.isfile(bk) and oct(os.stat(bk).st_mode & 0o777) == "0o600" and "Backup written" in r.stdout, "export writes a private backup: " + r.stdout + r.stderr)
+os.remove(f"{root}/etc/piso-setup.conf"); os.remove(f"{root}/etc/coinslot.d/revenue.csv")
+r = lib(f"ASSUME_YES=1; cmd_import {bk}", env={"PISO_ROOT": root, "PISO_TEST_NONROOT": "1"})
+check(open(f"{root}/etc/piso-setup.conf").read() == "GW_KEY='abc'\n" and os.path.isfile(f"{root}/etc/coinslot.d/revenue.csv") and "Restored" in r.stdout, "import puts the settings and the ledger back: " + r.stdout + r.stderr)
+import subprocess as _sp
+evil = f"{tmp}/evil.tar.gz"
+_sp.run(["tar", "-C", root, "-czf", evil, "etc/piso-setup.conf", "etc/coinslot.d/revenue.csv"])
+open(f"{root}/etc/passwd", "w").write("x")
+_sp.run(["tar", "-C", root, "-czf", evil, "etc/passwd"])
+r = lib(f"ASSUME_YES=1; cmd_import {evil}", env={"PISO_ROOT": root, "PISO_TEST_NONROOT": "1"})
+check("refused" in r.stdout + r.stderr, "a backup with other files is refused: " + r.stdout + r.stderr)
+summ = f"{tmp}/summary.txt"
+open(summ, "w").write("passwords")
+r = lib("ASSUME_YES=1; cmd_forget_summary", env={"PISO_SUMMARY": summ, "PISO_TEST_NONROOT": "1"})
+check(not os.path.exists(summ), "forget-summary deletes the saved summary: " + r.stdout)
+
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)
