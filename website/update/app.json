@@ -1,10 +1,10 @@
 {
-  "versionCode": 411,
-  "versionName": "1.0.411",
+  "versionCode": 417,
+  "versionName": "1.0.417",
   "channel": "stable",
   
   "signatureChecksum": "Un0usqLMwnmeaowrY2g21EgRVWe4bTRDLUi2RH12WbE",
-  "sha256": "23bd368e70903da868ab1d4c586de4236a38f1e8fbc62fead3e59cab05fdb8e9",
-  "size": 3088723,
-  "releaseDate": "2026-10-10"
+  "sha256": "6dc5e4f88bf0126af07dbf1ed486d2ff56248e46a59cf58095510104ed5da8a0",
+  "size": 3105107,
+  "releaseDate": "2026-10-12"
 }
