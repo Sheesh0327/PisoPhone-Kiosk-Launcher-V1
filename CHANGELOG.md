@@ -4,6 +4,9 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- **Owner's Manual** (`website/manual.html`): one print-ready page covering setup, rental phones, the dashboard tab by tab, how customers
+  rent and use PisoWiFi, time cards, collecting revenue with the admin QR, phone admin console, router commands, updates,
+  troubleshooting, safety and a quick-reference page. Checked by `scripts/tests/test_manual.py` (links, no outside resources, print rules).
 - Setup program: a printable **Wi-Fi join card** for every unit (`pisophone-wifi-card-<date>.html`, saved next to the summary and
   opened from the last page). One QR code joins the hidden `PisoKiosk` network from a phone (Android and iPhone cameras read it),
   another opens the coin box's page; the same steps by hand and a privacy note are on it, on one A4 page. The QR codes are drawn by

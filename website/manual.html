@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PisoPhone Owner's Manual</title>
+<style>
+:root{--ink:#1b2430;--mute:#5b6675;--line:#d9dee5;--bg:#fff;--soft:#f4f6f9;--brand:#1f6feb;--tip:#e8f3ff;--warn:#fff4e0;--stop:#ffe9e9}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:0 20px 60px}
+h1{font-size:2.2rem;margin:.2em 0}
+h2{font-size:1.6rem;margin:2.2em 0 .4em;padding-top:.6em;border-top:3px solid var(--brand)}
+h3{font-size:1.15rem;margin:1.6em 0 .3em}
+a{color:var(--brand)}
+table{border-collapse:collapse;width:100%;margin:.8em 0;font-size:.95rem}
+th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+th{background:var(--soft)}
+code,kbd{background:var(--soft);border:1px solid var(--line);border-radius:4px;padding:0 5px;font:.9em ui-monospace,Consolas,monospace}
+pre{background:var(--soft);border:1px solid var(--line);border-radius:6px;padding:10px;overflow:auto}
+pre code{border:0;padding:0;background:none}
+.cover{padding:50px 0 20px;border-bottom:1px solid var(--line)}
+.cover p{color:var(--mute);font-size:1.1rem;max-width:620px}
+.note,.warn,.stop{border-left:5px solid var(--brand);background:var(--tip);padding:10px 14px;border-radius:4px;margin:1em 0}
+.warn{border-color:#e69500;background:var(--warn)}
+.stop{border-color:#d33;background:var(--stop)}
+.note b:first-child,.warn b:first-child,.stop b:first-child{display:block}
+nav.toc{background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:6px 20px;margin:1.5em 0}
+nav.toc ol{columns:2;margin:.5em 0;padding-left:1.4em}
+nav.toc li{margin:.15em 0;break-inside:avoid}
+ol.steps{counter-reset:s;list-style:none;padding:0}
+ol.steps>li{counter-increment:s;position:relative;padding:4px 0 4px 44px;margin:.5em 0}
+ol.steps>li::before{content:counter(s);position:absolute;left:0;top:2px;width:30px;height:30px;border-radius:50%;background:var(--brand);color:#fff;text-align:center;line-height:30px;font-weight:700}
+.diagram{background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:10px;margin:1em 0}
+.diagram svg{width:100%;height:auto}
+.quick{page-break-before:always}
+@media(max-width:600px){nav.toc ol{columns:1}}
+@media print{
+ body{font-size:11pt}main{max-width:none;padding:0}
+ h2{break-before:page;border-top:0;border-bottom:2px solid #000}
+ h2:first-of-type{break-before:auto}
+ .cover{break-after:page}
+ nav.toc{break-inside:avoid}
+ table,pre,.note,.warn,.stop,.diagram{break-inside:avoid}
+ a{color:inherit;text-decoration:none}
+ @page{margin:16mm}
+}
+</style>
+</head>
+<body>
+<main>
+
+<header class="cover">
+<h1>PisoPhone Owner's Manual</h1>
+<p>Everything you need to set up a unit, run it every day, collect your money and fix problems. Written for the owner and operator, in plain steps. Print it (the page is made for A4 or Letter) or keep it on your phone.</p>
+<p><b>How to read it:</b> new unit? Start at <a href="#setup">chapter 3</a>. Running a shop? Chapters <a href="#dashboard">6</a> to <a href="#money">9</a>. Something broke? <a href="#trouble">Chapter 13</a>. One page of the essentials: <a href="#quick">Quick reference</a>.</p>
+</header>
+
+<nav class="toc" aria-label="Contents">
+<b>Contents</b>
+<ol>
+<li><a href="#meet">Meet the system</a></li>
+<li><a href="#need">What you need</a></li>
+<li><a href="#setup">Set up a new unit</a></li>
+<li><a href="#phones">Set up the rental phones</a></li>
+<li><a href="#first-day">First-day checks</a></li>
+<li><a href="#dashboard">The coin box dashboard</a></li>
+<li><a href="#customers">How your customers use it</a></li>
+<li><a href="#cards">Time cards (player accounts)</a></li>
+<li><a href="#money">Collecting your revenue</a></li>
+<li><a href="#admin-phone">Admin on a rental phone</a></li>
+<li><a href="#router">The router and alerts</a></li>
+<li><a href="#updates">Updates</a></li>
+<li><a href="#trouble">Troubleshooting</a></li>
+<li><a href="#safe">Keeping it safe</a></li>
+<li><a href="#quick">Quick reference</a></li>
+<li><a href="#glossary">Glossary</a></li>
+</ol>
+</nav>
+
+<h2 id="meet">1. Meet the system</h2>
+<p>A PisoPhone unit has three parts that work together:</p>
+<div class="diagram">
+<svg viewBox="0 0 760 210" role="img" aria-label="Coin slot connects to the ESP32 coin box, which talks over Wi-Fi to the router and the rental phones; customers use the PisoWiFi network">
+<g font-family="system-ui,sans-serif" font-size="15" fill="#1b2430">
+<rect x="10" y="70" width="150" height="70" rx="8" fill="#fff" stroke="#1f6feb" stroke-width="2"/><text x="85" y="100" text-anchor="middle" font-weight="700">Coin slot</text><text x="85" y="122" text-anchor="middle">takes the pesos</text>
+<rect x="210" y="70" width="150" height="70" rx="8" fill="#fff" stroke="#1f6feb" stroke-width="2"/><text x="285" y="100" text-anchor="middle" font-weight="700">ESP32 coin box</text><text x="285" y="122" text-anchor="middle">counts, keeps time</text>
+<rect x="410" y="70" width="150" height="70" rx="8" fill="#fff" stroke="#1f6feb" stroke-width="2"/><text x="485" y="100" text-anchor="middle" font-weight="700">OpenWrt router</text><text x="485" y="122" text-anchor="middle">Wi-Fi + internet</text>
+<rect x="600" y="10" width="150" height="60" rx="8" fill="#fff" stroke="#2da44e" stroke-width="2"/><text x="675" y="36" text-anchor="middle" font-weight="700">Rental phones</text><text x="675" y="56" text-anchor="middle">up to 10 slots</text>
+<rect x="600" y="140" width="150" height="60" rx="8" fill="#fff" stroke="#2da44e" stroke-width="2"/><text x="675" y="166" text-anchor="middle" font-weight="700">Customer Wi-Fi</text><text x="675" y="186" text-anchor="middle">their own devices</text>
+<path d="M160 105H210M360 105H410M560 90L600 45M560 120L600 165" stroke="#1b2430" stroke-width="2" fill="none"/>
+</g></svg>
+</div>
+<ul>
+<li><b>The coin box</b> (an ESP32 board with the coin slot). It counts coins, runs the countdown for every phone and serves the dashboard at <code>http://10.0.0.10</code>.</li>
+<li><b>The router</b> (OpenWrt). It makes the Wi-Fi networks, gives internet and shows the customer login page.</li>
+<li><b>The rental phones</b> (Android). Each is locked as a kiosk. A customer inserts a coin and the phone unlocks for the time they paid for, then locks itself again.</li>
+</ul>
+<h3>The three Wi-Fi networks</h3>
+<table>
+<tr><th>Name</th><th>For</th><th>Visible?</th></tr>
+<tr><td><b>PisoKiosk</b></td><td>Your rental phones. A phone locks itself to this one network only.</td><td>Hidden; password made by the setup program</td></tr>
+<tr><td><b>PisoCoinBox</b></td><td>The ESP32 coin box only. Never give this one out.</td><td>Hidden</td></tr>
+<tr><td><b>PisoWiFi</b></td><td>Customers on their own phones and laptops (the name you chose at setup).</td><td>Open, shows a login page</td></tr>
+</table>
+<div class="note"><b>Tip</b>Each unit gets new passwords. The setup program saves them in a summary file and a printable sheet. Keep those safe: they are your records.</div>
+
+<h2 id="need">2. What you need</h2>
+<ul>
+<li>The ESP32 coin box board, and a USB <b>data</b> cable (charge-only cables do not work).</li>
+<li>An OpenWrt router, factory reset (for example the 360T6M), and a modem with internet.</li>
+<li>A computer to run the setup program (Windows, macOS, Linux, Armbian, Parrot, Raspberry Pi OS), with a network cable to the router. A small Armbian PC with no screen works too.</li>
+<li>Your own phone or laptop to open the setup page.</li>
+<li>The rental phones, factory reset.</li>
+<li>Your <b>admin QR code</b> (see <a href="#safe">chapter 14</a>), made once on your own computer.</li>
+</ul>
+
+<h2 id="setup">3. Set up a new unit</h2>
+<p>One program, <code>pisophone_setup.py</code>, does the whole job. It is about 15 minutes per unit.</p>
+<ol class="steps">
+<li><b>Download and run it.</b> Get <a href="https://pisophone.pages.dev/pisophone_setup.py">pisophone_setup.py</a> and run <code>python3 pisophone_setup.py</code> (Windows: <code>py pisophone_setup.py</code>). It installs what is missing by itself.</li>
+<li><b>Open the page it prints</b> on your phone, for example <code>http://192.168.1.50:8765</code>, and type the <b>PIN</b> shown in the terminal.</li>
+<li><b>Router step.</b> Reset the router, connect the modem to its <b>WAN</b> port and the computer to a <b>LAN</b> port. The program finds the router.</li>
+<li><b>Settings step.</b> Type this customer's <b>shop name</b> and <b>public Wi-Fi name</b>. Keep the passwords it made, or type your own.</li>
+<li><b>Install step.</b> Plug the ESP32 into the computer by USB, tap <b>Start the installation</b> and wait about 10 minutes. It writes the coin box, sets up the router and pairs them. Keep the USB cable plugged in.</li>
+<li><b>Save your papers.</b> The program saves a summary, a setup sheet and a <b>Wi-Fi join card</b>. Print the sheet and the card. The card holds a password: keep it with your admin QR code.</li>
+</ol>
+<div class="note"><b>No monitor?</b>On a small Armbian PC run once <code>sudo python3 pisophone_setup.py --install-service</code>. The page then starts by itself at every boot. <code>cat /var/lib/pisophone-setup/pin</code> shows the PIN again.</div>
+<div class="warn"><b>Phone cannot open the page?</b>A factory-reset router has no Wi-Fi yet. The setup computer needs a second connection (its own Wi-Fi or another Ethernet port) on a network your phone is also on, or use the computer's own browser at <code>http://127.0.0.1:8765</code>.</div>
+<p>Problems during install? Tap <b>Try again</b>: it is always safe and continues where it stopped. The full table is in <code>setup/README.md</code>.</p>
+
+<h2 id="phones">4. Set up the rental phones</h2>
+<p>Do this for each phone, starting from a factory-reset phone.</p>
+<ol class="steps">
+<li>On the setup program's <b>Phones</b> step, choose the slot number. It makes a link filled in with this unit's key.</li>
+<li>On the rental phone's first welcome screen <b>tap the same spot 6 times</b>. A QR reader opens.</li>
+<li>On your own phone or laptop open the link, tap <b>Show the setup code</b>, and scan it with the rental phone. It joins the Wi-Fi, installs PisoPhone and locks itself.</li>
+<li>When the phone says <b>One last step</b>, follow it: usually <i>Open the setting</i> and switch on <i>Allow display over other apps</i>. <b>Android Go</b> phones have no such switch: plug the phone into a computer, tap <i>Allow</i> on "Allow USB debugging?" and use <i>Finish over USB</i> on the setup page (Chrome or Edge).</li>
+<li>Open the coin box dashboard (<code>http://10.0.0.10</code>), go to <b>Overview</b> and tap <b>Pair…</b> on that slot.</li>
+</ol>
+<p>The slot's status turns from <i>Offline</i> to <i>Locked</i>. Repeat with the next slot. A box handles up to <b>10</b> phones.</p>
+
+<h2 id="first-day">5. First-day checks</h2>
+<p>Before you open for customers, do these five checks:</p>
+<table>
+<tr><th>Check</th><th>How</th><th>Expected</th></tr>
+<tr><td>Admin password changed</td><td>Dashboard banner</td><td>No "default password" banner. A default password blocks coins.</td></tr>
+<tr><td>Coin counts</td><td>Insert one peso on the rental phone</td><td>"Coins inserted: 1" then time starts</td></tr>
+<tr><td>Phone locks</td><td>Let the time run out</td><td>Voice says "Time expired", the phone locks</td></tr>
+<tr><td>Customer Wi-Fi</td><td>Join PisoWiFi with another phone</td><td>Login page shows the plans</td></tr>
+<tr><td>Owner login</td><td>Login page, <b>Scan admin QR</b></td><td>You reach the Vendor tab</td></tr>
+</table>
+<p>The longer test list is <code>docs/REAL_WORLD_TESTING.md</code>.</p>
+
+<h2 id="dashboard">6. The coin box dashboard</h2>
+<p>On a device on the router's network open <code>http://10.0.0.10</code> and sign in with the admin password. There are four tabs and a <b>Sign out</b> button.</p>
+<h3>Overview</h3>
+<ul>
+<li><b>Stats:</b> Revenue, Phones (x of 10) and Wi-Fi signal.</li>
+<li><b>Phones table</b> with a row per slot: Phone, Status (<i>Renting</i>, <i>Locked</i> or <i>Offline</i>), Time left and Battery. Buttons: <b>Pair…</b>, <b>Locate</b> (the phone rings for 1 minute), <b>Unpair</b>, <b>Set up</b>.</li>
+<li><b>Add or remove time:</b> choose one phone or <i>All phones</i>, type minutes, tap <b>Add time</b> or <b>Remove time</b>. Use this for refunds, freebies and fixes.</li>
+<li><b>Player accounts:</b> see <a href="#cards">chapter 8</a>.</li>
+</ul>
+<h3>Settings</h3>
+<table>
+<tr><th>Setting</th><th>What it does</th></tr>
+<tr><td>Wi-Fi name / password</td><td>The box's own network settings</td></tr>
+<tr><td>Phone app port</td><td>The port the phones use to reach the box (leave as is)</td></tr>
+<tr><td>Admin password</td><td>Also the phones' admin PIN. Change the default first.</td></tr>
+<tr><td>Coin rate: minutes per ₱1</td><td>How much time one peso buys on a rental phone</td></tr>
+<tr><td>Hardware pins</td><td>Coin pin, relay pin and type, LED pin and type. Only change if you wired the board differently.</td></tr>
+</table>
+<p>Tap <b>Save changes</b> after editing.</p>
+<h3>Tools</h3>
+<ul>
+<li><b>Phone slots manager.</b> Add, rename or remove slots.</li>
+<li><b>1v1 match mode.</b> Two players each put in stake minutes; the loser's stake goes to the winner. Cancel or end moves no time.</li>
+<li><b>Firmware update.</b> <b>Check for an update</b>, then <b>Update &gt; Install update</b> (see <a href="#updates">chapter 12</a>).</li>
+<li><b>Maintenance.</b> Relay test, <b>Restart box</b>, <b>Factory reset</b>.</li>
+</ul>
+<div class="stop"><b>Factory reset</b>Erases the box's settings and pairings. Write down what you need first.</div>
+<h3>Vendor</h3>
+<p>Owner-only. It is locked until you scan your admin QR code. See <a href="#money">chapter 9</a>.</p>
+<h3>Banners you may see</h3>
+<table>
+<tr><th>Banner</th><th>Meaning / what to do</th></tr>
+<tr><td>Default admin password</td><td>Coins are blocked until you change it in Settings.</td></tr>
+<tr><td>Orphaned payments</td><td>A payment was received but not credited. Tap <b>Review</b>, then <b>Handled</b> once you sorted it out.</td></tr>
+<tr><td>Legacy shared key: Switch key</td><td>An older setup. Tap <b>Switch key</b> and re-provision the phones.</td></tr>
+<tr><td>Getting started checklist</td><td>Steps to finish a new unit.</td></tr>
+</table>
+
+<h2 id="customers">7. How your customers use it</h2>
+<h3>Renting a phone</h3>
+<ol class="steps">
+<li>The locked phone says <b>"Insert a coin to unlock all applications for a N-minute session."</b></li>
+<li>The customer taps <b>READY FOR COIN</b>. The phone arms the slot (up to 20 seconds) and shows <b>WAITING FOR COIN</b>.</li>
+<li>They insert coins. The screen shows <b>Coins inserted: N</b>.</li>
+<li>They tap the green <b>DONE</b> button. The phone unlocks and the countdown starts.</li>
+</ol>
+<p>While playing, a small <b>floating pill</b> shows the time left. Tap it to open a panel:</p>
+<ul>
+<li>Battery and memory, brightness and volume sliders.</li>
+<li><b>BOOST</b> frees memory. (The <b>TURBO</b> chip is just a label.)</li>
+<li><b>HOME</b> goes to the launcher. <b>CLOSE APP</b> needs a second tap and closes the running apps.</li>
+<li><b>ADD TIME (DROP COIN)</b> adds minutes without waiting for the end. It says <b>ESP32 OFFLINE</b> if the box is not reachable.</li>
+</ul>
+<p>The phone speaks warnings at <b>5 minutes, 3 minutes, 1 minute and 10 seconds</b>, then counts down the last five seconds and says "Time expired". It then locks itself. A notice reminds the customer to save their work and sign out of accounts.</p>
+<h3>Using PisoWiFi on their own device</h3>
+<ol class="steps">
+<li>Join <b>PisoWiFi</b>. The login page opens by itself.</li>
+<li>Pick a plan, tap <b>Insert Coin</b> and drop coins. They show with a countdown.</li>
+<li>Tap <b>Done</b> (or wait 15 seconds with no coin). They are online, with their time and a code.</li>
+</ol>
+<p>Only one customer can have the coin window open at a time. The router picks the best combination of plans for the coins paid. Default plans (pesos : minutes), changeable in <code>/etc/coinslot.conf</code>:</p>
+<table>
+<tr><th>Tier</th><th>Plans</th></tr>
+<tr><td>Hyper</td><td>₱5 : 30 min, ₱10 : 60 min, ₱20 : 120 min</td></tr>
+<tr><td>Endurance</td><td>₱1 : 15 min, ₱5 : 180 min, ₱10 : 480 min, ₱20 : 1440 min</td></tr>
+</table>
+
+<h2 id="cards">8. Time cards (player accounts)</h2>
+<p>A time card is a printed QR code that holds a customer's minutes, so regulars can bank time and use it on any phone of your unit.</p>
+<h3>On the phone</h3>
+<ol class="steps">
+<li>On the lock screen tap <b>Have a PisoPhone card? Scan it</b> and hold the card up to the camera. (Switch cameras with <i>Use front camera</i> / <i>Use back camera</i>.)</li>
+<li>A <b>new</b> card asks for a name (up to 16 letters or numbers) and says "Welcome! &lt;time&gt; added to your new account."</li>
+<li>A <b>returning</b> card says "Welcome back, &lt;name&gt;!" and shows the time on the account.</li>
+<li>To stop, the player taps <b>SIGN OUT</b> twice in the pill panel. The unused time is banked and the phone locks.</li>
+</ol>
+<p>If the screen stays off 120 seconds while signed in, the player is signed out automatically (a voice warns 30 seconds before). Their time is kept.</p>
+<h3>Making and selling cards</h3>
+<ol class="steps">
+<li>On your computer make the unit's card key with <code>make_card_key.py</code>, then print cards with <code>make_cards.py</code>. The dashboard's Player accounts section shows your <b>Box ID</b> for printing.</li>
+<li>Sell a card for the minutes you wish. Add the time on the dashboard: <b>Player accounts</b> &rarr; <b>+ Time</b>. Use <b>– Time</b> to remove, <b>Delete</b> to remove an account.</li>
+<li>The table shows each card's number and when it was last used.</li>
+</ol>
+<div class="warn"><b>The card is the key</b>Whoever holds the card has its time. Tell customers to keep it like cash. Cards are signed so nobody can make a fake one without your card key.</div>
+
+<h2 id="money">9. Collecting your revenue</h2>
+<p>The Vendor tab shows your takings. The amounts stay hidden unless you unlock them with your admin QR code.</p>
+<ol class="steps">
+<li>Open the dashboard, tap <b>Sign out</b> if needed, and on the login page tap <b>Scan admin QR</b>. Photograph your QR code with your phone's camera.</li>
+<li>Open the <b>Vendor</b> tab. The revenue unmasks for a <b>5-minute window</b>.</li>
+<li>Open the coin box and take out the money. Count it.</li>
+<li>Tap <b>collect</b> to record the collection. The counter restarts, the lifetime total is kept, and the entry goes into the <b>collections history</b>.</li>
+<li>Use the <b>split calculator</b> if you share the income with a partner or a host.</li>
+</ol>
+<div class="note"><b>Why a QR code?</b>Your code holds a secret key. The box only knows the matching public key, so nobody can read it from the box. The key never leaves your phone; only a signature does. A login session ends after 15 minutes idle or 1 hour at most.</div>
+<p>If the count and the cash do not match, check <b>Orphaned payments</b> on the dashboard before you worry.</p>
+
+<h2 id="admin-phone">10. Admin on a rental phone</h2>
+<h3>Opening the admin console</h3>
+<ul>
+<li><b>Locked phone:</b> tap the shield icon at the bottom of the lock screen (<i>Security Vault</i>).</li>
+<li><b>Unlocked phone:</b> press and hold the floating pill for <b>5 seconds</b>. A buzz confirms.</li>
+</ul>
+<p>Enter the <b>Master Admin Password</b>. There is no factory PIN: it is your <b>box's admin password</b>, sent to the phone when it pairs. After 5 wrong tries the phone locks the PIN for 60 seconds, doubling after each further miss up to 15 minutes. A phone that never paired cannot be unlocked.</p>
+<h3>What the console offers</h3>
+<table>
+<tr><th>Section</th><th>Use it to</th></tr>
+<tr><td>5m Direct Bypass</td><td>Unlock the phone for 5 minutes (also opens a maintenance window)</td></tr>
+<tr><td>Lock Terminal</td><td>Lock the phone now</td></tr>
+<tr><td>Quick Time Adjustments</td><td>Add or remove a few minutes with the +/– buttons</td></tr>
+<tr><td>Direct App Update</td><td><b>Check for Update &amp; Install</b>: updates the phone app</td></tr>
+<tr><td>Battery Health &amp; TTS</td><td>Voice reminders when the battery leaves your chosen range; <b>Test Voice Engine</b>; background videos on/off</td></tr>
+<tr><td>Diagnostics</td><td>Version, recent events, Refresh, copy for support</td></tr>
+<tr><td>Hidden Apps</td><td>Hide apps from customers (<b>Manage Apps</b>). <b>LAUNCH</b> opens a hidden app and starts a maintenance session.</td></tr>
+</table>
+<p>Tap <b>Exit Admin Console</b> when done.</p>
+<h3>Maintenance window</h3>
+<p>A timed window (15 minutes normally; 5 minutes for the bypass) in which Settings, Play Store and the package installer work and Wi-Fi settings can be changed. While it is open the lock screen and pill are hidden so the admin apps can be touched. It ends when the timer runs out or the phone locks. Opening a new one never shortens one already open.</p>
+<h3>Recovery</h3>
+<p>The PIN dialog has two recovery options:</p>
+<ul>
+<li><b>SYSTEM RECOVERY &amp; ADB HUB</b> (needs the PIN): shows USB debugging and Device Owner status; can re-enable USB debugging, exit kiosk lockdown, open developer options, or <b>de-provision</b> the phone so you can uninstall without a factory reset.</li>
+<li><b>SCAN A RECOVERY CODE (REMOVE APP)</b> (no PIN): scan a signed recovery code from the owner. It removes PisoPhone from that phone. Codes expire.</li>
+</ul>
+<div class="stop"><b>De-provision</b>This removes the kiosk lock for good on that phone. Only do it to retire or repair a phone.</div>
+<p>The phone's kiosk Wi-Fi name and password are set during provisioning and cannot be edited on the phone.</p>
+
+<h2 id="router">11. The router and alerts</h2>
+<h3>Joining the hidden PisoKiosk network</h3>
+<p>Scan the QR on your <b>Wi-Fi join card</b> with a phone camera, or add the network by hand with the name, WPA password and "hidden network" ticked. The card also has a QR that opens the coin box page.</p>
+<h3>Commands</h3>
+<p>Log in with <code>ssh root@10.0.0.1</code>, then:</p>
+<table>
+<tr><th>Command</th><th>What it does</th></tr>
+<tr><td><code>piso-setup status</code></td><td>Health of everything</td></tr>
+<tr><td><code>piso-setup test-coin</code></td><td>Simulate a coin</td></tr>
+<tr><td><code>piso-setup reconcile</code></td><td>Fix bookkeeping (<code>rebase</code> to restart it)</td></tr>
+<tr><td><code>piso-setup telegram</code></td><td>Set up Telegram alerts</td></tr>
+<tr><td><code>piso-setup wifi-name</code> / <code>guest-port</code></td><td>Change public Wi-Fi name / guest port</td></tr>
+<tr><td><code>piso-setup pair</code></td><td>Pair a coin box</td></tr>
+<tr><td><code>piso-setup summary</code> / <code>handout</code></td><td>Reprint the passwords sheet / customer handout</td></tr>
+<tr><td><code>piso-setup diag</code> / <code>box-diag</code></td><td>Diagnostics for you or for support</td></tr>
+<tr><td><code>piso-setup set-password</code></td><td>Change the router password</td></tr>
+<tr><td><code>piso-setup lock-admin</code></td><td>Lock down router administration</td></tr>
+<tr><td><code>piso-setup rotate-box-wifi</code></td><td>New password for PisoCoinBox</td></tr>
+<tr><td><code>piso-setup self-update</code>, <code>update</code>, <code>auto-update</code></td><td>Update the router software (see chapter 12)</td></tr>
+</table>
+<p>Telegram alerts message you when the unit needs attention. Set them up once with <code>piso-setup telegram</code>.</p>
+
+<h2 id="updates">12. Updates</h2>
+<table>
+<tr><th>What</th><th>How</th></tr>
+<tr><td>Coin box</td><td>Dashboard &rarr; Tools &rarr; <b>Firmware update</b> &rarr; <b>Check for an update</b> &rarr; <b>Update &gt; Install update</b>. The box tries the new version for about a minute and rolls back by itself if it fails. Updates are signed.</td></tr>
+<tr><td>Router</td><td><code>piso-setup update</code> (or <code>python3 pisophone_setup.py --update</code>)</td></tr>
+<tr><td>Rental phones</td><td>Admin console &rarr; Direct App Update &rarr; <b>Check for Update &amp; Install</b></td></tr>
+<tr><td>Setup program</td><td>Download the latest <code>pisophone_setup.py</code></td></tr>
+</table>
+<div class="note"><b>Do it at a quiet time</b>The box restarts while updating. Choose a time with no customers.</div>
+
+<h2 id="trouble">13. Troubleshooting</h2>
+<table>
+<tr><th>Symptom</th><th>Try this</th></tr>
+<tr><td>Coins are not accepted</td><td>Check for the "default admin password" banner and change it. Then <code>piso-setup test-coin</code> and the relay test in Tools &rarr; Maintenance.</td></tr>
+<tr><td>Phone shows "HARDWARE CONTROLLER OFFLINE"</td><td>Is the box powered? Is the phone on PisoKiosk? <b>Locate</b> the phone in Overview to test the link. Restart the box.</td></tr>
+<tr><td>Phone shows "DEVICE NOT ACTIVATED"</td><td>Tap <b>Pair…</b> for that slot in Overview.</td></tr>
+<tr><td>Slot shows Offline</td><td>Check phone battery, Wi-Fi in range, then re-pair.</td></tr>
+<tr><td>Customer Wi-Fi shows no login page</td><td><code>piso-setup status</code>; check the modem and the WAN cable.</td></tr>
+<tr><td>Forgot the admin password</td><td>Sign in with your admin QR code (login page &rarr; Scan admin QR); from there you can open Settings and set a new one.</td></tr>
+<tr><td>Admin QR will not scan</td><td>Light and distance; the box must be on the same version as the key. Update the box.</td></tr>
+<tr><td>Lost or leaked admin QR</td><td>See chapter 14.</td></tr>
+<tr><td>Setup page will not open</td><td>See chapter 3 "Phone cannot open the page".</td></tr>
+<tr><td>A customer says time vanished</td><td>Overview &rarr; Add or remove time to fix it; check Orphaned payments.</td></tr>
+<tr><td>Phone stuck and you cannot unlock it</td><td>Admin PIN, or use the recovery hub (chapter 10).</td></tr>
+</table>
+<p>When asking for help, send the output of <code>piso-setup diag</code> and the phone's Diagnostics copy.</p>
+
+<h2 id="safe">14. Keeping it safe</h2>
+<ul>
+<li><b>Admin QR code and its key file</b> (<code>~/pisophone-superadmin.key</code>): anyone with either is super admin on your boxes. Keep them on your own computer and phone; never email or upload them. Back up the key file somewhere private: it is the only copy.</li>
+<li>Make the QR with <code>python3 scripts/make_admin_qr.py</code>. The first run also writes a public key file; commit that and update every box once.</li>
+<li><b>Lost or leaked QR:</b> run <code>make_admin_qr.py --new</code>, commit the new public key, update every box. The old QR stops working once a box is updated.</li>
+<li><b>Passwords:</b> one set per unit. Keep the setup sheet and Wi-Fi join card in a safe place; they hold passwords.</li>
+<li><b>Never share</b> the PisoKiosk or PisoCoinBox passwords with customers.</li>
+<li><b>Backups:</b> keep the saved summaries from the setup computer (<code>Documents/PisoPhone</code>).</li>
+</ul>
+
+<section class="quick">
+<h2 id="quick">Quick reference</h2>
+<table>
+<tr><th>I want to…</th><th>Do this</th></tr>
+<tr><td>Open the dashboard</td><td><code>http://10.0.0.10</code></td></tr>
+<tr><td>Open the router</td><td><code>ssh root@10.0.0.1</code>, then <code>piso-setup status</code></td></tr>
+<tr><td>Collect my money</td><td>Login page &rarr; Scan admin QR &rarr; Vendor tab (5-minute window) &rarr; collect</td></tr>
+<tr><td>Add or remove time</td><td>Overview &rarr; Add or remove time</td></tr>
+<tr><td>Open admin on a phone</td><td>Tap the shield on the lock screen, or hold the pill 5 s &rarr; box admin password</td></tr>
+<tr><td>Find a phone</td><td>Overview &rarr; Locate (rings 1 min)</td></tr>
+<tr><td>Update the box</td><td>Tools &rarr; Firmware update &rarr; Install update</td></tr>
+<tr><td>Add another unit</td><td>Run <code>pisophone_setup.py</code> &rarr; Set up the next unit</td></tr>
+<tr><td>Lost my admin QR</td><td><code>make_admin_qr.py --new</code>, commit, update boxes</td></tr>
+</table>
+<h3>Numbers to remember</h3>
+<ul>
+<li>10 phones per box. Voice warnings at 5, 3, 1 minute and 10 s.</li>
+<li>Admin PIN lock: 5 wrong tries &rarr; 60 s, doubling to 15 min.</li>
+<li>Vendor unmask: 5 minutes. Owner login: 15 min idle, 1 h max.</li>
+<li>Maintenance window: 15 min (bypass: 5 min).</li>
+</ul>
+<p>My unit's details: shop ____________ &nbsp; Box ID ____________ &nbsp; Support ____________</p>
+</section>
+
+<h2 id="glossary">Glossary</h2>
+<table>
+<tr><th>Word</th><th>Meaning</th></tr>
+<tr><td>Box / coin box</td><td>The ESP32 board with the coin slot</td></tr>
+<tr><td>Slot</td><td>A numbered place for one rental phone (1 to 10)</td></tr>
+<tr><td>Pair</td><td>Link a rental phone to its slot on the box</td></tr>
+<tr><td>Kiosk</td><td>A phone locked so it can only run what you allow</td></tr>
+<tr><td>Device Owner</td><td>The Android mode that makes the lock permanent</td></tr>
+<tr><td>Admin QR</td><td>Your private QR code that proves you are the owner</td></tr>
+<tr><td>Time card</td><td>A customer's printed QR code for a time account</td></tr>
+<tr><td>OTA</td><td>Updating the box over Wi-Fi</td></tr>
+</table>
+
+</main>
+</body>
+</html>
