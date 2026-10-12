@@ -27,6 +27,8 @@
 VERSION="@VERSION@"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
 PISO_RELEASE='@RELEASE@'
+# the CPU family the portal program in this file is built for (router_family below names the family of the router it runs on)
+PISO_ARCH='@ARCH@'
 
 COUNTRY="${COUNTRY:-PH}"
 KIOSK_SSID="PisoKiosk"                       # fixed, and hidden: only phones provisioned by the coin box page know it
@@ -57,6 +59,20 @@ die() {
 }
 # stop_opennds: stop it for the setup. On a re-run it was already serving the guest network: a failed run starts it again.
 NDS_RESTORE=0
+# router_family: the CPU family of this router, from OpenWrt's package architecture (DISTRIB_ARCH): mipsel, mips, aarch64, armv7, x86_64
+# or "" when it is none of those (no portal program is built for it)
+router_family() {
+	_ra=$(sed -n "s/^DISTRIB_ARCH=['\"]\\{0,1\\}\\([^'\"]*\\).*/\\1/p" "$PISO_ROOT/etc/openwrt_release" 2> /dev/null | head -n 1)
+	case "$_ra" in
+		mipsel_*) echo mipsel ;;
+		mips_*) echo mips ;;
+		aarch64_*) echo aarch64 ;;
+		arm_cortex-a7_neon-vfpv4 | arm_cortex-a15_neon-vfpv4 | arm_cortex-a9_neon | arm_cortex-a9_vfpv3-d16) echo armv7 ;;
+		x86_64) echo x86_64 ;;
+		*) echo "" ;;
+	esac
+}
+
 # proc_running <name>: a process of that name runs. Both tools are asked: on a real router `pgrep -x` answered "no" for a running
 # pisoportal while `pidof` found it, so neither alone is trusted to say "not running".
 proc_running() { pidof "$1" > /dev/null 2>&1 || pgrep -x "$1" > /dev/null 2>&1; }
@@ -1123,6 +1139,7 @@ cmd_self_update() {
 	[ "$_mode" != auto ] || conf_set UPDATE_LAST_CHECK "$(date +%s)"   # (status says when the hourly check last ran)
 	[ "$_mode" != auto ] || { sync_kiosk_wifi; watch_agreement; }   # (hourly: a box that lost the phones' Wi-Fi password gets it; the owner hears when values stop agreeing)
 	_base=$(conf_get UPDATE_URL); _base="${_base:-$UPDATE_URL_DEFAULT}"
+	[ "$PISO_ARCH" = mipsel ] || _base="$_base/$PISO_ARCH"   # the first family (mipsel) is at the top, as it always was; the others have a folder each
 	if ! fetch_url "$_base/router.json" "$_work/router.json" 20000; then
 		log "No update information at $_base (offline, or nothing published yet)."
 		[ "$_mode" = apply ] && notify "update: could not reach $_base"
@@ -1399,16 +1416,18 @@ trim_log() {
 	tail -n "${PISO_LOG_KEEP:-600}" "$LOG" > "$LOG.new" 2> /dev/null && mv "$LOG.new" "$LOG"
 }
 
-# check_arch: the portal program in this file is built for mipsel_24kc routers only (most MT76xx / MT7621 boxes). On another CPU it would
-# not start, so say so before anything is changed.
+# check_arch: the portal program in this file is built for one CPU family (PISO_ARCH); on another it would not start, so say so before
+# anything is changed, and name the file that fits.
 check_arch() {
 	[ -z "$PISO_SKIP_ARCH" ] || return 0
 	[ -r "$PISO_ROOT/etc/openwrt_release" ] || return 0
-	_a=$(sed -n "s/^DISTRIB_ARCH=['\"]\\{0,1\\}\\([^'\"]*\\).*/\\1/p" "$PISO_ROOT/etc/openwrt_release" | head -n 1)
-	case "$_a" in
-		"" | mipsel_24kc) return 0 ;;
-		*) die "this router's CPU is \"$_a\", but this release of the portal program is built for mipsel_24kc only (for example MT7621 and MT7620 routers like the 360T6M). Nothing was changed. Builds for other CPUs are not available yet: tell the owner which router this is." ;;
-	esac
+	_f=$(router_family)
+	[ "$_f" != "$PISO_ARCH" ] || return 0
+	_pkg=$(sed -n "s/^DISTRIB_ARCH=['\"]\\{0,1\\}\\([^'\"]*\\).*/\\1/p" "$PISO_ROOT/etc/openwrt_release" | head -n 1)
+	if [ -z "$_f" ]; then
+		die "this router's CPU (\"$_pkg\") has no portal program built yet; this file is for \"$PISO_ARCH\" routers. Nothing was changed. Tell the owner which router this is."
+	fi
+	die "this file is built for \"$PISO_ARCH\" routers, but this router's CPU is \"$_pkg\" (family \"$_f\"). Nothing was changed. Use the setup file for \"$_f\": https://pisophone.pages.dev/setup/piso-setup-$_f.sh (or run the one-line installer again: it picks the right file)."
 }
 
 dir_kb() { du -sk "$1" 2> /dev/null | cut -f1; }

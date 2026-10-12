@@ -725,11 +725,23 @@ r = lib("trim_log; wc -l < $LOG; head -n1 $LOG", env={"PISO_LOG": logf, "PISO_LO
 check(r.stdout.split()[0] == "600" and "line 400" in r.stdout, "a long log is cut to its last 600 lines: " + r.stdout)
 osr = f"{tmp}/openwrt"
 os.makedirs(f"{osr}/etc", exist_ok=True)
+fam = {"mipsel_24kc": "mipsel", "mipsel_74kc": "mipsel", "mips_24kc": "mips", "aarch64_cortex-a53": "aarch64", "aarch64_generic": "aarch64",
+       "arm_cortex-a7_neon-vfpv4": "armv7", "x86_64": "x86_64", "arm_arm1176jzf-s_vfp": "", "riscv64_riscv64": ""}
+for pkg, want in fam.items():
+    open(f"{osr}/etc/openwrt_release", "w").write(f"DISTRIB_ARCH='{pkg}'\n")
+    got = lib("router_family", env={"PISO_ROOT": osr}).stdout.strip()
+    check(got == want, f"the CPU family of {pkg} is '{want}': got '{got}'")
 open(f"{osr}/etc/openwrt_release", "w").write("DISTRIB_ARCH='aarch64_cortex-a53'\n")
 r = lib("check_arch; echo reached", env={"PISO_ROOT": osr})
-check("aarch64_cortex-a53" in r.stdout + r.stderr and "reached" not in r.stdout and "Nothing was changed" in r.stdout + r.stderr, "another CPU is refused before anything changes: " + r.stdout + r.stderr)
+check("aarch64_cortex-a53" in r.stdout + r.stderr and "piso-setup-aarch64.sh" in r.stdout + r.stderr and "reached" not in r.stdout and "Nothing was changed" in r.stdout + r.stderr,
+      "another CPU family is refused before anything changes, and the right file is named: " + r.stdout + r.stderr)
+open(f"{osr}/etc/openwrt_release", "w").write("DISTRIB_ARCH='riscv64_riscv64'\n")
+r = lib("check_arch; echo reached", env={"PISO_ROOT": osr})
+check("no portal program built yet" in r.stdout + r.stderr and "reached" not in r.stdout, "a CPU with no build is refused: " + r.stdout + r.stderr)
 open(f"{osr}/etc/openwrt_release", "w").write("DISTRIB_ARCH='mipsel_24kc'\n")
-check("reached" in lib("check_arch; echo reached", env={"PISO_ROOT": osr}).stdout, "mipsel_24kc passes")
+check("reached" in lib("check_arch; echo reached", env={"PISO_ROOT": osr}).stdout, "mipsel_24kc passes (this file is built for mipsel)")
+open(f"{osr}/etc/openwrt_release", "w").write("DISTRIB_ARCH='aarch64_cortex-a53'\n")
+check("reached" in lib("PISO_ARCH=aarch64; check_arch; echo reached", env={"PISO_ROOT": osr}).stdout, "an aarch64 router passes with the aarch64 file")
 # export / import round trip
 root = f"{tmp}/exp"
 for d in ("etc/coinslot.d",):

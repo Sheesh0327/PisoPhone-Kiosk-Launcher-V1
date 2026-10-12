@@ -15,6 +15,7 @@ on:
       - main
     paths:
       - 'setup/piso-setup.sh'
+      - 'setup/piso-setup-*.sh'
       - 'tools/pisoportal/src/console-ui.js'
       - 'setup/RELEASE'
       - '.github/workflows/publish-router.yml'
@@ -79,6 +80,18 @@ jobs:
             else
               python3 scripts/sign_router.py --private "$KEY" --rollout "$ROLLOUT" --changelog "$CHANGELOG"
             fi
+            # the other CPU families: setup/piso-setup-<family>.sh is signed into website/update/<family>/
+            for F in setup/piso-setup-*.sh; do
+              [ -f "$F" ] || continue
+              FAM=$(basename "$F" .sh); FAM=${FAM#piso-setup-}
+              if [ -f "website/update/$FAM/router-setup.sh" ] && cmp -s "$F" "website/update/$FAM/router-setup.sh" \
+                 && python3 -c "import json,sys; sys.exit(0 if str(json.load(open('website/update/$FAM/router.json')).get('rollout')) == sys.argv[1] else 1)" "$ROLLOUT" 2> /dev/null; then
+                echo "$FAM release $RELEASE is already published at $ROLLOUT%."
+              else
+                python3 scripts/sign_router.py --private "$KEY" --setup "$F" --out-dir "website/update/$FAM" --rollout "$ROLLOUT" --changelog "$CHANGELOG"
+              fi
+              git add -f "website/update/$FAM/router.json" "website/update/$FAM/router-setup.sh"
+            done
             # the console page's script (routers use a newer signed one from the website): sign it when it changed
             if ! cmp -s tools/pisoportal/src/console-ui.js website/console/ui.js 2> /dev/null; then
               python3 scripts/sign_console_ui.py --private "$KEY"

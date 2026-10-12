@@ -102,11 +102,25 @@ main() {
 	command -v uci > /dev/null 2>&1 || fail "this is not an OpenWrt router (no uci command)"
 
 	base="$(site_for "$branch")/setup"
+	# the setup file carries a portal program built for one CPU family: mipsel is piso-setup.sh (as it always was), the others have their own
+	file=piso-setup.sh
+	if [ -r "${PISO_ROOT:-}/etc/openwrt_release" ]; then
+		pkg=$(sed -n "s/^DISTRIB_ARCH=['\"]\{0,1\}\([^'\"]*\).*/\1/p" "${PISO_ROOT:-}/etc/openwrt_release" | head -n 1)
+		case "$pkg" in
+			mipsel_*) ;;
+			mips_*) file=piso-setup-mips.sh ;;
+			aarch64_*) file=piso-setup-aarch64.sh ;;
+			arm_cortex-a7_neon-vfpv4 | arm_cortex-a15_neon-vfpv4 | arm_cortex-a9_neon | arm_cortex-a9_vfpv3-d16) file=piso-setup-armv7.sh ;;
+			x86_64) file=piso-setup-x86_64.sh ;;
+			"") ;;
+			*) fail "this router's CPU (\"$pkg\") has no PisoPhone portal program built yet. Nothing was changed. Tell the owner which router this is." ;;
+		esac
+	fi
 	tmp="$DIR/.piso-setup.download.$$"
 	trap 'rm -f "$tmp" "$tmp.sha256"' EXIT
 	say "Downloading the PisoPhone setup ($branch)..."
-	fetch "$base/piso-setup.sh" "$tmp" || fail "could not download $base/piso-setup.sh (is the router online? the modem must be in the WAN port)"
-	fetch "$base/piso-setup.sh.sha256" "$tmp.sha256" || fail "could not download the checksum of the setup file"
+	fetch "$base/$file" "$tmp" || fail "could not download $base/$file (is the router online? the modem must be in the WAN port)"
+	fetch "$base/$file.sha256" "$tmp.sha256" || fail "could not download the checksum of the setup file"
 	want=$(cut -c1-64 < "$tmp.sha256")
 	have=$(sha256sum "$tmp" | cut -c1-64)
 	if [ "${#want}" != 64 ] || [ "$want" != "$have" ]; then fail "the downloaded setup file is damaged or incomplete (checksum differs). Run this again."; fi

@@ -17,9 +17,21 @@ FILES = [  # (source in the repository, destination on the router, mode)
     ("router/pisoportal.init", "/etc/init.d/pisoportal", "755"),
     ("router/pisoportal_status.sh", "/usr/lib/opennds/pisoportal_status.sh", "755"),
 ]
-BINARIES = [
-    ("tools/pisoportal/bin/pisoportal-mipsel", "/usr/bin/pisoportal", "755"),
-]
+DEFAULT_ARCH = "mipsel"   # its setup file is setup/piso-setup.sh (as it always was); the other families have setup/piso-setup-<family>.sh
+ARCHES = ["mipsel", "mips", "aarch64", "armv7", "x86_64"]
+
+
+def binary_for(arch):
+    return [(f"tools/pisoportal/bin/pisoportal-{arch}", "/usr/bin/pisoportal", "755")]
+
+
+def built_arches():
+    """The families that have a portal program in tools/pisoportal/bin (CI builds them)."""
+    return [a for a in ARCHES if os.path.exists(os.path.join(ROOT, f"tools/pisoportal/bin/pisoportal-{a}"))]
+
+
+def setup_name(arch):
+    return "piso-setup.sh" if arch == DEFAULT_ARCH else f"piso-setup-{arch}.sh"
 
 
 def template():
@@ -31,18 +43,18 @@ def template():
     return "".join(open(os.path.join(src, n)).read() for n in names)
 
 
-def build():
+def build(arch=DEFAULT_ARCH):
     version = os.environ.get("SETUP_VERSION") or "dev"
     release = open(os.path.join(ROOT, "setup/RELEASE")).read().strip()
     assert re.fullmatch(r"\d{1,5}\.\d{1,5}\.\d{1,5}", release), "setup/RELEASE must look like 1.2.3"
-    out = template().replace("@VERSION@", version).replace("@RELEASE@", release)
+    out = template().replace("@VERSION@", version).replace("@RELEASE@", release).replace("@ARCH@", arch)
     for src, dest, mode in FILES:
         body = open(os.path.join(ROOT, src)).read()
         assert "\n#@@" not in body and "\r" not in body, src
         if not body.endswith("\n"):
             body += "\n"
         out += f"#@@FILE {dest} {mode}\n{body}"
-    for src, dest, mode in BINARIES:
+    for src, dest, mode in binary_for(arch):
         raw = open(os.path.join(ROOT, src), "rb").read()
         b64 = base64.b64encode(raw).decode()
         # the checksum lets the router verify whichever decoder it used
@@ -53,8 +65,9 @@ def build():
 def outputs(text):
     """Every generated file and its content: the setup file, its sha256 (the one-line installer checks the download against
     it) and the website's copies of the installer (https://pisophone.pages.dev/install.sh) and of the computer-side setup
-    script (https://pisophone.pages.dev/pisophone_setup.py)."""
-    return {
+    script (https://pisophone.pages.dev/pisophone_setup.py). The other CPU families get setup/piso-setup-<family>.sh (and the same
+    copies on the website) for every family whose portal program CI has built."""
+    out = {
         "setup/piso-setup.sh.in": template(),
         "setup/piso-setup.sh": text,
         "setup/piso-setup.sh.sha256": hashlib.sha256(text.encode()).hexdigest() + "  piso-setup.sh\n",
@@ -64,6 +77,13 @@ def outputs(text):
         "website/install.sh": open(os.path.join(ROOT, "setup/install.sh")).read(),
         "website/pisophone_setup.py": open(os.path.join(ROOT, "setup/pisophone_setup.py")).read(),
     }
+    for arch in built_arches():
+        if arch == DEFAULT_ARCH:
+            continue
+        body, name = build(arch), setup_name(arch)
+        digest = hashlib.sha256(body.encode()).hexdigest() + f"  {name}\n"
+        out.update({f"setup/{name}": body, f"setup/{name}.sha256": digest, f"website/setup/{name}": body, f"website/setup/{name}.sha256": digest})
+    return out
 
 
 if __name__ == "__main__":
@@ -78,6 +98,6 @@ if __name__ == "__main__":
             target = os.path.join(ROOT, p)
             os.makedirs(os.path.dirname(target), exist_ok=True)
             open(target, "w").write(t)
-            if p.endswith((".sh", ".py")):
+            if p.endswith((".sh", ".py")) and not p.endswith(".sha256"):
                 os.chmod(target, 0o755)
             print(f"wrote {target} ({len(t)} bytes)")

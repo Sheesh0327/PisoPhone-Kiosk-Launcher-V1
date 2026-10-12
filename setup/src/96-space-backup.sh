@@ -31,16 +31,18 @@ trim_log() {
 	tail -n "${PISO_LOG_KEEP:-600}" "$LOG" > "$LOG.new" 2> /dev/null && mv "$LOG.new" "$LOG"
 }
 
-# check_arch: the portal program in this file is built for mipsel_24kc routers only (most MT76xx / MT7621 boxes). On another CPU it would
-# not start, so say so before anything is changed.
+# check_arch: the portal program in this file is built for one CPU family (PISO_ARCH); on another it would not start, so say so before
+# anything is changed, and name the file that fits.
 check_arch() {
 	[ -z "$PISO_SKIP_ARCH" ] || return 0
 	[ -r "$PISO_ROOT/etc/openwrt_release" ] || return 0
-	_a=$(sed -n "s/^DISTRIB_ARCH=['\"]\\{0,1\\}\\([^'\"]*\\).*/\\1/p" "$PISO_ROOT/etc/openwrt_release" | head -n 1)
-	case "$_a" in
-		"" | mipsel_24kc) return 0 ;;
-		*) die "this router's CPU is \"$_a\", but this release of the portal program is built for mipsel_24kc only (for example MT7621 and MT7620 routers like the 360T6M). Nothing was changed. Builds for other CPUs are not available yet: tell the owner which router this is." ;;
-	esac
+	_f=$(router_family)
+	[ "$_f" != "$PISO_ARCH" ] || return 0
+	_pkg=$(sed -n "s/^DISTRIB_ARCH=['\"]\\{0,1\\}\\([^'\"]*\\).*/\\1/p" "$PISO_ROOT/etc/openwrt_release" | head -n 1)
+	if [ -z "$_f" ]; then
+		die "this router's CPU (\"$_pkg\") has no portal program built yet; this file is for \"$PISO_ARCH\" routers. Nothing was changed. Tell the owner which router this is."
+	fi
+	die "this file is built for \"$PISO_ARCH\" routers, but this router's CPU is \"$_pkg\" (family \"$_f\"). Nothing was changed. Use the setup file for \"$_f\": https://pisophone.pages.dev/setup/piso-setup-$_f.sh (or run the one-line installer again: it picks the right file)."
 }
 
 dir_kb() { du -sk "$1" 2> /dev/null | cut -f1; }

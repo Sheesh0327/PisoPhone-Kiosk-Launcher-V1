@@ -86,6 +86,7 @@ cmd_self_update() {
 	[ "$_mode" != auto ] || conf_set UPDATE_LAST_CHECK "$(date +%s)"   # (status says when the hourly check last ran)
 	[ "$_mode" != auto ] || { sync_kiosk_wifi; watch_agreement; }   # (hourly: a box that lost the phones' Wi-Fi password gets it; the owner hears when values stop agreeing)
 	_base=$(conf_get UPDATE_URL); _base="${_base:-$UPDATE_URL_DEFAULT}"
+	[ "$PISO_ARCH" = mipsel ] || _base="$_base/$PISO_ARCH"   # the first family (mipsel) is at the top, as it always was; the others have a folder each
 	if ! fetch_url "$_base/router.json" "$_work/router.json" 20000; then
 		log "No update information at $_base (offline, or nothing published yet)."
 		[ "$_mode" = apply ] && notify "update: could not reach $_base"
