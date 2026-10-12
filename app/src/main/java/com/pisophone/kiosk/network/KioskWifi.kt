@@ -129,13 +129,13 @@ object KioskWifi {
         val ssid = KioskSecurity.getKioskWifiSsid(app)
         val password = KioskSecurity.getKioskWifiPassword(app)
         if (!isValidSsid(ssid) || !isValidPassword(password)) {
-            releaseNetworkLock(app)   // (nothing to hold the phone to yet)
+            releaseNetworkLock(app) // (nothing to hold the phone to yet)
             return Join.NOT_SAVED
         }
         return try {
             val wm = app.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return Join.ERROR
             if (!wm.isWifiEnabled) wm.isWifiEnabled = true
-            lockToKioskNetwork(app)   // before joining: the allowlist must know the (possibly new) network first
+            lockToKioskNetwork(app) // before joining: the allowlist must know the (possibly new) network first
             if (isOnNetwork(wm, ssid)) return Join.ALREADY_ON
 
             var suggested = false
