@@ -4,6 +4,9 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Lock screen: the original texts and cards are easier to read over the new art. The cards are darker (the theme colour mixed with black) and
+  still translucent, a dark translucent panel sits behind the lock, the title and the cards, and the dim layer over the art is stronger. The
+  layout is the same (8 dp of padding inside the panel).
 - Setup program: the first page no longer says "no internet" without saying why. It tries two addresses on the website, names itself
   (`TechNetPisoHubSetup/1.0`) instead of Python's own default, which websites often refuse, waits 15 s instead of 8, and shows the real
   error when it still fails (an HTTP code, a timeout or a certificate problem, with a hint for a security program that inspects HTTPS).

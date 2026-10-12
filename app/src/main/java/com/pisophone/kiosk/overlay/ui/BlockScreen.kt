@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -150,13 +151,13 @@ fun BlockScreen(
     val TextPrimary = Color(0xFFFFFFFF)
     val Primary = currentTheme.primary
     val OnPrimary = currentTheme.onPrimary
-    // Semi-transparent, so the logo animation behind the cards stays visible.
-    val Surface = currentTheme.surface.copy(alpha = 0.5f)
-    val Border = currentTheme.border.copy(alpha = 0.5f)
+    // Darker than the theme's own surface and still translucent: the mascot's art shows through, the text on top stays easy to read.
+    val Surface = lerp(currentTheme.surface, Color.Black, 0.45f).copy(alpha = 0.78f)
+    val Border = currentTheme.border.copy(alpha = 0.6f)
     val TextSecondary = Color(0xFFA6ADC8)
     val TextTertiary = Color(0xFFE2E8F0)
     val Success = currentTheme.secondary
-    val SurfaceVariant = currentTheme.surface.copy(alpha = 0.55f)
+    val SurfaceVariant = lerp(currentTheme.surface, Color.Black, 0.45f).copy(alpha = 0.82f)
 
     val context = LocalContext.current
     var showPinDialog by remember { mutableStateOf(false) }
@@ -263,7 +264,10 @@ fun BlockScreen(
 
                 val mainContent: @Composable (Modifier) -> Unit = { mod ->
                     Column(
-                        modifier = mod,
+                        // a dark translucent panel behind the lock, the title and the cards, so none of it blends with the art
+                        modifier = mod
+                            .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(24.dp))
+                            .padding(vertical = 8.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Box(
