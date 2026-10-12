@@ -317,7 +317,7 @@ class Client:
 core, session, server = start()
 c = Client(server)
 status, body, r = c.call("GET", "/", login=False)
-check(status == 200 and b"PisoPhone Setup" in body and "frame" not in str(r.getheader("Content-Security-Policy")).replace("frame-", ""), "the page is served without a login")
+check(status == 200 and b"PisoHub Setup" in body and "frame" not in str(r.getheader("Content-Security-Policy")).replace("frame-", ""), "the page is served without a login")
 check("default-src 'none'" in r.getheader("Content-Security-Policy") and r.getheader("X-Frame-Options") == "DENY" and r.getheader("Cache-Control") == "no-store",
       "and with strict security headers")
 check(c.call("GET", "/api/state", login=False)[0] == 401, "the state needs a login")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PisoPhone Setup: the one program that sets up a whole PisoPhone system, from a bare coin box and a factory-reset router
+"""TechNet PisoHub Setup: the one program that sets up a whole PisoHub system, from a bare coin box and a factory-reset router
 to working rental phones. It needs no screen: it serves its setup as a web page, so a small headless computer (Armbian, Parrot,
 a Raspberry Pi, a laptop) can run it and you open the page on your phone.
 
@@ -66,7 +66,7 @@ import urllib.parse
 import urllib.request
 import webbrowser
 
-APP_NAME = "PisoPhone Setup"
+APP_NAME = "TechNet PisoHub Setup"
 SITE_HOST = "pisophone.pages.dev"   # the website (Cloudflare Pages): the coin box software, the phone setup page, the installer and the setup file
 DEFAULT_BRANCH = "main"
 FACTORY_IP = "192.168.1.1"      # OpenWrt's address after a factory reset
@@ -462,7 +462,7 @@ def wifi_card_html(site, kiosk_ssid, kiosk_password, box_url=f"http://{BOX_IP}/"
     join, page = qr_svg(wifi_qr_text(kiosk_ssid, kiosk_password), 7), qr_svg(box_url, 7)
     return f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>PisoPhone: join the {html_escape(kiosk_ssid)} Wi-Fi - {html_escape(site)}</title>
+<title>TechNet PisoHub: join the {html_escape(kiosk_ssid)} Wi-Fi - {html_escape(site)}</title>
 <style>
 @page {{ size: A4; margin: 14mm; }}
 * {{ box-sizing: border-box; }}
@@ -483,7 +483,7 @@ ol {{ margin: 6px 0 0 20px; padding: 0; }} li {{ margin: 3px 0; }}
 @media (max-width: 640px) {{ .row {{ flex-direction: column; }} }}
 @media print {{ body {{ padding: 0; }} }}
 </style></head><body><main>
-<h1>PisoPhone: reach the coin box from your phone</h1>
+<h1>TechNet PisoHub: reach the coin box from your phone</h1>
 <p class="sub">{html_escape(site)}{(' &middot; ' + html_escape(stamp)) if stamp else ''}</p>
 <div class="row">
  <div class="card"><h2><span class="num">1</span> Join the Wi-Fi</h2>
@@ -503,7 +503,7 @@ ol {{ margin: 6px 0 0 20px; padding: 0; }} li {{ margin: 3px 0; }}
 <li>Name <b>{html_escape(kiosk_ssid)}</b>, security <b>WPA2-Personal</b>, turn on <b>Hidden network</b>, type the password above.</li>
 <li>Open <b>{html_escape(box_url)}</b> in the phone's browser.</li></ol></div>
 <div class="warn">Keep this page private: whoever has the password can join the rental-phone network. Store the printout with your admin QR code, not at the shop.</div>
-<p class="foot">Made by the PisoPhone setup program. The rental phones join this network by themselves; this page is for you.</p>
+<p class="foot">Made by the TechNet PisoHub setup program. The rental phones join this network by themselves; this page is for you.</p>
 </main></body></html>
 """
 
@@ -2313,7 +2313,7 @@ def run_web(args, core=None, system=None):
 
 PAGE = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>PisoPhone Setup</title>
+<title>TechNet PisoHub Setup</title>
 <style>
 :root{--bg:#f8fafc;--card:#fff;--line:#e2e8f0;--ink:#0f172a;--mut:#64748b;--acc:#2563eb;--accd:#1d4ed8;--accs:#dbeafe;--ok:#15803d;--oks:#dcfce7;--warn:#b45309;--warns:#fef3c7;--bad:#b91c1c;--bads:#fee2e2;--log:#0b1220;--logi:#cbd5e1}
 @media(prefers-color-scheme:dark){:root{--bg:#0b1220;--card:#111a2e;--line:#22304a;--ink:#e5e9f2;--mut:#93a1ba;--acc:#4f8bff;--accd:#6b9dff;--accs:#14284d;--ok:#4ade80;--oks:#0f2c1c;--warn:#fbbf24;--warns:#33280c;--bad:#f87171;--bads:#3a1414;--log:#050912}}
@@ -2344,14 +2344,14 @@ footer .in{display:flex;gap:10px;justify-content:space-between;width:100%;max-wi
 #login{position:fixed;inset:0;background:var(--bg);display:none;align-items:center;justify-content:center;padding:20px;z-index:9}#login .card{width:100%;max-width:360px}
 a{color:var(--acc)}.hide{display:none!important}
 </style></head><body>
-<div id="login"><div class="card"><h1>PisoPhone Setup</h1><p class="mut">Type the PIN shown on the computer that runs the setup (in its terminal, or <code>pisophone-setup.service</code>'s log).</p>
+<div id="login"><div class="card"><h1>TechNet PisoHub Setup</h1><p class="mut">Type the PIN shown on the computer that runs the setup (in its terminal, or <code>pisophone-setup.service</code>'s log).</p>
 <label for="pin">PIN</label><input id="pin" type="password" inputmode="text" autocomplete="off"><div class="err" id="pinErr"></div>
 <p><button class="primary" id="pinBtn" style="width:100%">Open the setup</button></p></div></div>
-<header><b>PisoPhone Setup</b><span id="unit"></span><span id="sysname"></span></header>
+<header><b>TechNet PisoHub Setup</b><span id="unit"></span><span id="sysname"></span></header>
 <nav id="nav"></nav>
 <main>
 <section id="s0">
- <h1>Set up your PisoPhone system</h1>
+ <h1>Set up your PisoHub system</h1>
  <p class="mut">One unit at a time: the coin box gets its software over USB, the router is set up and paired with it, then the rental phones. About 15 minutes. Nothing on the router is changed until you start the installation.</p>
  <div class="card"><h2>What you need</h2><ul class="steps"><li>The ESP32 coin box board and a USB <b>data</b> cable, plugged into this computer</li><li>An OpenWrt router (for example a 360T6M), factory reset</li><li>The modem in the router's WAN port, and a network cable from this computer to a LAN port</li><li>The rental phones, factory reset</li></ul></div>
  <div class="card"><h2>This computer</h2><p class="mut small" id="sysline"></p><div id="checks"><p class="mut">Checking...</p></div>
@@ -2533,7 +2533,7 @@ def main(argv=None):
     if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(errors="replace")
     use_private_libs()
-    p = argparse.ArgumentParser(description="Set up a PisoPhone system: the coin box, the router and the rental phones.")
+    p = argparse.ArgumentParser(description="Set up a TechNet PisoHub system: the coin box, the router and the rental phones.")
     p.add_argument("--branch", default=DEFAULT_BRANCH, help=f"the repository branch whose setup files are used (default {DEFAULT_BRANCH})")
     p.add_argument("--cli", action="store_true", help="run in the terminal instead of the setup page")
     p.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"the setup page's port (default {DEFAULT_PORT})")

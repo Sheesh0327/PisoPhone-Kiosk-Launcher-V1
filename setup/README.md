@@ -1,4 +1,4 @@
-# Set up PisoPhone
+# Set up TechNet PisoHub
 
 One program does the whole setup, from the bare boards to phones that are working: **`pisophone_setup.py`**. It runs on any
 computer, with **no screen needed**: it serves its setup as a web page, so a small Armbian or Parrot computer can run it and you

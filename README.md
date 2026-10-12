@@ -1,4 +1,8 @@
-# PisoPhone: coin-operated phone rental kiosk
+# TechNet PisoHub
+
+**Coin-powered Wi-Fi, rentals and time cards.** By TechNet Solutions.
+
+PisoHub is one coin box for a whole shop. It has three parts: **PisoHub WiFi** (customer Wi-Fi sold by the coin), **PisoPhone** (rental phones that lock and unlock by the minute) and **PisoHub Cards** (prepaid time cards and player accounts), all run from one owner dashboard.
 
 Customers insert coins into an ESP32 box; the box credits time to a locked-down Android phone (the kiosk), and can also
 sell Wi-Fi time through an OpenWrt/openNDS router. Three parts plus a router add-on:
