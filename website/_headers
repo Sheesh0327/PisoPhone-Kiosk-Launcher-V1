@@ -6,6 +6,11 @@
   Referrer-Policy: strict-origin-when-cross-origin
   Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://pisophone.pages.dev; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
+# The router's console page (http://<router>/) loads its newer script from here; the page checks the owner's signature before it runs it.
+/console/*
+  Access-Control-Allow-Origin: *
+  Cache-Control: no-cache
+
 # The ESP32 dashboard is served from http://<esp32-ip>/ and downloads firmware.json and the .bin
 # from this site, which the browser only allows with CORS headers.
 /update/firmware.json

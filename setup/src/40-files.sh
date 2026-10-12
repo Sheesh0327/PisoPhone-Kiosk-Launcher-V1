@@ -104,6 +104,8 @@ GW_BOX_MAC='$2'
 PORTAL_BIND='$GUEST_IP'
 PORTAL_PORT='$PORTAL_PORT'
 GATEWAY_NAME='$(conf_get GUEST_NAME)'
+CONSOLE_BIND='$LAN_IP'
+CONSOLE_PORT='$(console_port)'
 EOT
 	umask 022
 	chmod 600 "$PISO_ROOT/etc/coinslot.conf"

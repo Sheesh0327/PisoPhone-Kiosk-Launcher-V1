@@ -4,6 +4,15 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Router 1.3.0: **the owner's console.** A friendly page in place of LuCI, inside the portal program (nothing more to install): customers
+  online, money today, the internet line with a short graph, every PisoWiFi device with its name, plan, time left, data and live speed
+  (and a Disconnect button), and the rental phones from the coin box. It signs in with the router's root password (checked like LuCI does,
+  5 wrong tries lock it for a minute) and keeps its history in memory only. It is at `http://10.0.0.1:8081`; `piso-setup console on`
+  makes it the front page at `http://10.0.0.1` and moves LuCI to `:8080` as "Advanced" (and puts everything back if it does not come
+  up; `console off` reverts). The page's script can be replaced by a newer one from the website without a router update, but only a
+  script the owner signed (`scripts/sign_console_ui.py`, checked in the browser against the owner key the router already trusts; an
+  unsigned, changed, expired or older script is ignored). Tests: `tools/pisoportal/tests/test_console.py`, `test_console_loader.py`,
+  `scripts/tests/test_console_ui.py`. Not tried on a real router yet (the openNDS client list format is read as documented).
 - Router 1.3.0: **space, backups and safety on small routers.**
   - A firmware upgrade (sysupgrade) now keeps the PisoPhone settings, the revenue ledger, the monitor settings and the programs
     (`/etc/sysupgrade.conf`), so an upgraded router still pairs with its box and keeps its records.

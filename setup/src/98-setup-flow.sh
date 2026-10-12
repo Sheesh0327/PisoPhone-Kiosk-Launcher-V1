@@ -114,7 +114,7 @@ main() {
 		case "$1" in
 			--dry-run) DRY=1 ;;
 			--yes | -y) ASSUME_YES=1 ;;
-			status | pair | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | handout | export | import | space | forget-summary | lock-admin | lock-admin-confirm | unlock-admin | update | self-update | auto-update) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
+			status | pair | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | handout | console | export | import | space | forget-summary | lock-admin | lock-admin-confirm | unlock-admin | update | self-update | auto-update) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
 			-h | --help) sed -n '2,/^# Options:/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 			*) echo "unknown option: $1 (try --help)" >&2; exit 1 ;;
 		esac
@@ -131,6 +131,7 @@ main() {
 		reconcile) if [ "$ARG" = rebase ]; then cmd_reconcile rebase; else cmd_reconcile; fi ;;
 		telegram) cmd_telegram ;;
 		handout) cmd_handout ;;
+		console) cmd_console "$ARG" ;;
 		export) cmd_export "$ARG" ;;
 		import) cmd_import "$ARG" ;;
 		space) cmd_space ;;

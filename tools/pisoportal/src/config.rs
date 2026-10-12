@@ -35,6 +35,13 @@ pub struct Config {
     pub max_clients: usize,
     pub fair_interval: u64,
     pub reconcile_interval: u64,
+    pub console_bind: String,
+    pub console_port: u16,
+    pub ubus: String,
+    pub setup_conf: String,
+    pub dhcp_leases: String,
+    pub route_file: String,
+    pub netdev_file: String,
 }
 
 fn parse_tiers(s: &str) -> Vec<(u32, u32)> {
@@ -115,6 +122,13 @@ impl Config {
             max_clients: num("MAX_CLIENTS", 24) as usize,
             fair_interval: num("FAIR_INTERVAL_SECONDS", 60),
             reconcile_interval: num("RECONCILE_INTERVAL_SECONDS", 600),
+            console_bind: get("CONSOLE_BIND", "0.0.0.0"),
+            console_port: port("CONSOLE_PORT", 8081),
+            ubus: get("UBUS", "ubus"),
+            setup_conf: get("PISO_SETUP_CONF", "/etc/piso-setup.conf"),
+            dhcp_leases: get("DHCP_LEASES", "/tmp/dhcp.leases"),
+            route_file: get("ROUTE_FILE", "/proc/net/route"),
+            netdev_file: get("NETDEV_FILE", "/proc/net/dev"),
         }
     }
 

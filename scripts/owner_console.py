@@ -118,6 +118,16 @@ SCRIPTS = [
         ],
     },
     {
+        "name": "sign_console_ui", "file": "sign_console_ui.py", "group": "Releasing", "title": "Sign the router console page",
+        "blurb": "Signs the router console's page script so routers can take a newer one from the website without a router update. "
+                 "Writes website/console/ui.js and ui.json.",
+        "warn": KEY_NOTE + " Commit the two files to main afterwards (CI does it on main).",
+        "fields": [
+            {"id": "private", "label": "Owner key file", "kind": "text", "flag": "--private", "required": True},
+            {"id": "expires_days", "label": "Good for (days)", "kind": "number", "flag": "--expires-days", "default": "120"},
+        ],
+    },
+    {
         "name": "publish_firmware_ota", "file": "publish_firmware_ota.py", "group": "Releasing", "title": "Publish box firmware",
         "blurb": "Copies freshly built images into website/update/, signs them and rewrites firmware.json (the dashboard's Install update).",
         "warn": "CI does this on main by itself. Run it by hand only when you must. " + KEY_NOTE,

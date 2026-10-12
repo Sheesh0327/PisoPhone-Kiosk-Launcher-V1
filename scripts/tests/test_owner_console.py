@@ -69,7 +69,7 @@ check(call(port, "/run/sold_unit_flash", "POST", body=b"{}", headers={"X-Piso": 
 check(all(os.path.isfile(os.path.join(oc.HERE, s["file"])) for s in oc.SCRIPTS), "every page runs a script that exists")
 covered = {s["file"] for s in oc.SCRIPTS}
 owner_tools = {"make_admin_qr.py", "make_card_key.py", "make_cards.py", "make_owner_keys.py", "make_recovery_code.py", "sign_firmware.py",
-               "sign_router.py", "publish_firmware_ota.py", "sold_unit_check.py", "verify_release.py", "check_published_apk.py"}
+               "sign_router.py", "sign_console_ui.py", "publish_firmware_ota.py", "sold_unit_check.py", "verify_release.py", "check_published_apk.py"}
 check(owner_tools <= covered, "every owner script has a page: " + str(owner_tools - covered))
 
 # command lines

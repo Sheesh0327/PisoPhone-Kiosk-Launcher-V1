@@ -154,6 +154,8 @@ jobs:
           python3 scripts/tests/test_site_page.py
       - name: The owner's admin QR login (the key and QR code script, the browser code that signs, reading a photo of the code)
         run: python3 scripts/tests/test_admin_qr.py
+      - name: The console page's signed script (the signer and the browser-side check)
+        run: python3 scripts/tests/test_console_ui.py
 
   kotlin-style:
     name: ktlint
@@ -288,7 +290,9 @@ jobs:
           cargo build --locked --release
           cargo test --locked --release
           python3 tests/test_flow.py
+          python3 tests/test_console.py
           CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 tests/test_browser.py
+          CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 tests/test_console_loader.py
       - name: Shell scripts (shellcheck)
         run: |
           shellcheck -s sh setup/piso-setup.sh.in router/piso_monitor.sh

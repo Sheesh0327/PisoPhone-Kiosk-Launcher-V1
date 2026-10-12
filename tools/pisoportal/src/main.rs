@@ -12,6 +12,7 @@
 //!   pisoportal selftest       checks that this build works on this machine
 mod boxlink;
 mod config;
+mod console;
 mod core;
 mod fair;
 mod http;
@@ -164,6 +165,9 @@ fn serve() {
         std::thread::spawn(move || core::run_event_listener(c));
         let c = std::sync::Arc::clone(&core);
         std::thread::spawn(move || http::serve_admin(c));
+        if core.cfg.console_port != 0 {
+            console::start(std::sync::Arc::clone(&core));
+        }
         let c = std::sync::Arc::clone(&core);
         std::thread::spawn(move || {
             c.maintenance();

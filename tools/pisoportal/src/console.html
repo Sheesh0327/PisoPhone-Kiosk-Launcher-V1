@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TechNet PisoHub Console</title><link rel="icon" href="/brand.png">
+<style>
+:root{color-scheme:dark;--bg:#050d22;--card:#0c1a3a;--card2:#102349;--fg:#eef3ff;--mut:#97a6c7;--line:#1f3361;--acc:#2f7bff;--acc2:#16c9a4;--gold:#ffb81c;--ok:#4be3b4;--bad:#ff8a8a}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(120% 50% at 85% -10%,#12307a55,transparent 60%),var(--bg);color:var(--fg);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh}
+header{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)}header img{width:38px;height:38px}
+header b{font-size:19px;font-style:italic;font-weight:800;background:linear-gradient(90deg,var(--acc),var(--acc2));-webkit-background-clip:text;background-clip:text;color:transparent}
+header .sp{flex:1}header a,header button.l{color:var(--mut);font-size:13px;text-decoration:none;background:none;border:0;cursor:pointer;font:inherit}
+nav{display:flex;gap:6px;padding:10px 16px;overflow-x:auto}nav button{padding:7px 14px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--mut);font:inherit;cursor:pointer;white-space:nowrap}
+nav button.on{background:linear-gradient(90deg,var(--acc),var(--acc2));border-color:transparent;color:#fff;font-weight:700}
+main{max-width:1000px;margin:0 auto;padding:6px 16px 60px}h2{font-size:16px;margin:18px 0 8px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.card{background:linear-gradient(180deg,var(--card2),var(--card));border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.k{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.06em}.v{font-size:26px;font-weight:750;font-variant-numeric:tabular-nums}.s{color:var(--mut);font-size:12px}
+table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:8px 6px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}th{color:var(--mut);font-size:12px;font-weight:600}
+td.n{font-variant-numeric:tabular-nums;text-align:right}th.n{text-align:right}
+.pill{display:inline-block;padding:1px 9px;border-radius:99px;font-size:12px;border:1px solid var(--line);color:var(--mut)}.pill.ok{color:var(--ok);border-color:var(--ok)}.pill.bad{color:var(--bad);border-color:var(--bad)}.pill.gold{color:var(--gold);border-color:var(--gold)}
+button.b{padding:5px 11px;border-radius:9px;border:1px solid var(--line);background:transparent;color:var(--fg);cursor:pointer;font:inherit;font-size:13px}
+button.go{padding:11px 18px;border:0;border-radius:12px;background:linear-gradient(90deg,var(--acc),var(--acc2));color:#fff;font:inherit;font-weight:750;width:100%;cursor:pointer}
+input{width:100%;font:inherit;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
+#login{max-width:380px;margin:40px auto;padding:0 16px;text-align:center}#login img{width:130px}
+.bars{display:flex;align-items:flex-end;gap:6px;height:90px}.bars div{flex:1;background:linear-gradient(180deg,var(--acc),var(--acc2));border-radius:5px 5px 0 0;min-height:2px;position:relative}.bars span{position:absolute;top:-16px;left:0;right:0;text-align:center;font-size:11px;color:var(--mut)}
+.days{display:flex;gap:6px;font-size:11px;color:var(--mut)}.days div{flex:1;text-align:center}
+canvas{width:100%;height:80px;display:block}.err{color:var(--bad);min-height:1.2em;font-size:13px}.hide{display:none!important}.note{border-left:4px solid var(--gold);background:#33280c;padding:8px 12px;border-radius:6px;margin:10px 0;font-size:13px}
+.tile{cursor:default}@media(max-width:640px){.hm{display:none}}
+</style></head><body>
+<div id="login" class="hide"><img src="/mascot.png" alt=""><h1 style="margin:6px 0">TechNet PisoHub</h1><p class="s">Sign in with this router's password.</p>
+<input id="pw" type="password" placeholder="Router password" autocomplete="current-password"><div class="err" id="err"></div><p><button class="go" id="gobtn">Sign in</button></p></div>
+<div id="app" class="hide">
+<header><img src="/brand.png" alt=""><b>TechNet PisoHub</b><span class="s">Console</span><span class="sp"></span><a id="adv" href="#" title="The router's own settings page (LuCI)">Advanced</a><button class="l" id="out">Sign out</button></header>
+<nav id="tabs"><button data-t="over" class="on">Overview</button><button data-t="cli">Customers</button><button data-t="ph">Rental phones</button><button data-t="money">Money</button></nav>
+<main>
+<section id="t-over">
+<div class="grid" id="tiles"></div>
+<h2>Internet line</h2><div class="card"><canvas id="cv" width="900" height="160"></canvas><div class="s" id="cvl"></div></div>
+</section>
+<section id="t-cli" class="hide"><h2>Customers on PisoWiFi</h2><div class="card" style="overflow-x:auto"><table><thead><tr><th>Device</th><th class="hm">Address</th><th>Plan</th><th class="n">Time left</th><th class="n">Used</th><th class="n">Speed</th><th></th></tr></thead><tbody id="cl"></tbody></table><p class="s" id="clnote"></p></div></section>
+<section id="t-ph" class="hide"><h2>Rental phones</h2><div class="card" style="overflow-x:auto"><table><thead><tr><th>Slot</th><th>Phone</th><th>Status</th><th class="n">Time left</th><th class="n">Battery</th></tr></thead><tbody id="phl"></tbody></table><p class="s" id="phnote"></p></div></section>
+<section id="t-money" class="hide"><h2>Money</h2><div class="grid" id="mt"></div><h2>Last 7 days</h2><div class="card"><div class="bars" id="bars"></div><div class="days" id="days"></div></div></section>
+</main></div>
+<script src="/verify.js"></script>
+<script>
+/* The page's code is the built-in /ui.js, or a newer one from the website that the owner signed (checked here with the owner key this
+   router already trusts for updates); anything else is ignored. A verified newer copy is kept in this browser for the next visit. */
+(function(){
+var OWNER='@OWNER_KEY@',SITE='https://pisophone.pages.dev/console/',STORE='piso_console_ui',API=1,enc=new TextEncoder();
+function ver(src){var m=/PISO_UI_VERSION\s*=\s*(\d+)/.exec(src);return m?+m[1]:0}
+function ok(m,src){try{return m&&m.api===API&&m.expires>Date.now()/1000&&src.length<200000&&PisoVerify.sha256hex(enc.encode(src))===m.sha256&&
+ PisoVerify.verify(OWNER,'pisophone-console-ui-v1|'+m.version+'|'+m.api+'|'+m.expires+'|'+m.sha256,m.sig)&&ver(src)===m.version}catch(e){return false}}
+function run(src){try{(new Function(src))()}catch(e){document.body.insertAdjacentHTML('beforeend','<p style="padding:20px;color:#ff8a8a">The page could not start: '+String(e.message).replace(/</g,'&lt;')+'</p>')}}
+function cached(){try{var c=JSON.parse(localStorage.getItem(STORE)||'null');return c&&ok(c.m,c.src)?c:null}catch(e){return null}}
+fetch('/ui.js').then(function(r){return r.text()}).then(function(built){
+ var best=ver(built),src=built,c=cached();
+ if(c&&c.m.version>best){best=c.m.version;src=c.src}
+ run(src);
+ if(typeof AbortController==='undefined')return;var ab=new AbortController();setTimeout(function(){ab.abort()},6000);
+ fetch(SITE+'ui.json',{signal:ab.signal,cache:'no-store'}).then(function(r){return r.json()}).then(function(m){
+  if(!m||m.version<=best)return;
+  return fetch(SITE+'ui.js',{signal:ab.signal,cache:'no-store'}).then(function(r){return r.text()}).then(function(js){if(ok(m,js)){try{localStorage.setItem(STORE,JSON.stringify({m:m,src:js}))}catch(e){}}})
+ }).catch(function(){})
+}).catch(function(){document.body.insertAdjacentHTML('beforeend','<p style="padding:20px;color:#ff8a8a">The console could not load.</p>')});
+})();
+</script></body></html>
