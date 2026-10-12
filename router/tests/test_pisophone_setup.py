@@ -458,6 +458,20 @@ pf2 = ps.preflight("main", opener=lambda req, timeout=0: (_ for _ in ()).throw(u
 if saved_ssh:
     os.environ["PISO_SSH"] = saved_ssh
 check(pf2[0][1] is False and pf2[1][1] is False and pf2[2][1] is False and "esptool" in pf2[2][2], "preflight: nothing found: all said")
+seen = []
+def second_url_works(req, timeout=0):
+    seen.append((req.full_url, req.get_header("User-agent")))
+    if req.full_url.endswith("app.json"):
+        raise urllib.error.HTTPError(req.full_url, 403, "Forbidden", {}, None)
+    return FakeResponse("{}")
+pf3 = ps.preflight("main", opener=second_url_works, tool=lambda: object(), which=lambda n: "/usr/bin/ssh")
+check(pf3[1][1] is True and len(seen) == 2 and all(ua == ps.USER_AGENT for _u, ua in seen),
+      "preflight: the website is found by its second address when the first is refused, and says who is asking: " + str(seen))
+pf4 = ps.preflight("main", opener=lambda req, timeout=0: (_ for _ in ()).throw(urllib.error.URLError("[SSL: CERTIFICATE_VERIFY_FAILED] unable to get local issuer certificate")),
+                   tool=lambda: object(), which=lambda n: "/usr/bin/ssh")
+check(pf4[1][1] is False and "CERTIFICATE_VERIFY_FAILED" in pf4[1][2] and "inspecting HTTPS" in pf4[1][2], "preflight: the real error is shown, with a hint for a certificate problem: " + pf4[1][2])
+pf5 = ps.preflight("main", opener=lambda req, timeout=0: (_ for _ in ()).throw(urllib.error.HTTPError(req.full_url, 403, "Forbidden", {}, None)), tool=lambda: object(), which=lambda n: "/usr/bin/ssh")
+check("HTTP 403" in pf5[1][2], "preflight: an HTTP error is named: " + pf5[1][2])
 check(ps.box_online("10.0.0.10", probe=lambda h, p: (h, p) == ("10.0.0.10", 80)) is True, "the box is online when its page port answers")
 
 # ---- QR codes and the Wi-Fi join card -------------------------------------------------------------------------------------------

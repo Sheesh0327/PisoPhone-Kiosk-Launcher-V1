@@ -67,6 +67,7 @@ import urllib.request
 import webbrowser
 
 APP_NAME = "TechNet PisoHub Setup"
+USER_AGENT = "TechNetPisoHubSetup/1.0 (+https://pisophone.pages.dev)"   # a name a website can recognise (Python's own is often refused)
 SITE_HOST = "pisophone.pages.dev"   # the website (Cloudflare Pages): the coin box software, the phone setup page, the installer and the setup file
 DEFAULT_BRANCH = "main"
 FACTORY_IP = "192.168.1.1"      # OpenWrt's address after a factory reset
@@ -1467,13 +1468,25 @@ def preflight(branch, opener=urllib.request.urlopen, tool=esptool_module, which=
     have_ssh = bool(os.environ.get("PISO_SSH") or which("ssh"))
     checks.append(("ssh program", have_ssh, "Install it with the button below (Linux), or: Windows: Settings > Apps > Optional "
                                             "features > add \"OpenSSH Client\"."))
-    try:
-        with opener(urllib.request.Request(f"{site_url(branch)}/update/app.json", method="GET"), timeout=8) as r:
-            online = r.status == 200
-    except (urllib.error.URLError, OSError, ValueError):
-        online = False
-    checks.append((f"internet and the {urllib.parse.urlsplit(site_url(branch)).netloc} website", online,
-                   "This computer needs internet now (the router gets its own from the modem later)."))
+    online, why = False, ""
+    for path in ("/update/app.json", "/update/router.json"):   # (either answering proves the website is reachable)
+        try:
+            with opener(urllib.request.Request(f"{site_url(branch)}{path}", headers={"User-Agent": USER_AGENT}), timeout=15) as r:
+                online = r.status == 200
+        except urllib.error.HTTPError as e:
+            why = f"the website answered HTTP {e.code}"
+        except urllib.error.URLError as e:
+            why = f"{e.reason}"
+        except (OSError, ValueError) as e:
+            why = f"{type(e).__name__}: {e}"
+        if online:
+            break
+    advice = "This computer needs internet now (the router gets its own from the modem later)."
+    if why:
+        advice += f" The error was: {why}."
+        if "CERTIFICATE" in why.upper():
+            advice += " A security program or a proxy on this computer may be inspecting HTTPS traffic: pause it for the setup, or try another network."
+    checks.append((f"internet and the {urllib.parse.urlsplit(site_url(branch)).netloc} website", online, advice))
     checks.append(("USB flashing tool (esptool)", tool() is not None,
                    "Install it with the button below, or run  python3 -m pip install esptool."))
     return checks
@@ -2810,6 +2823,9 @@ def main(argv=None):
         return 0
     if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(errors="replace")
+    web = urllib.request.build_opener()   # every download of this program says who it is (Python's own name is often refused)
+    web.addheaders = [("User-Agent", USER_AGENT)]
+    urllib.request.install_opener(web)
     use_private_libs()
     p = argparse.ArgumentParser(description="Set up a TechNet PisoHub system: the coin box, the router and the rental phones.")
     p.add_argument("--branch", default=DEFAULT_BRANCH, help=f"the repository branch whose setup files are used (default {DEFAULT_BRANCH})")
