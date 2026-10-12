@@ -200,6 +200,13 @@ fun BlockScreen(
                 )
             }
         }
+        // The TechNet mascot, a faint animated watermark under everything (it takes no touches and moves nothing).
+        MascotWatermark(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .fillMaxWidth(0.8f)
+                .offset(x = 24.dp),
+        )
         Column(
             modifier = Modifier
                 .fillMaxSize()

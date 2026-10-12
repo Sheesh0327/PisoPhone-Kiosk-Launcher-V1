@@ -1,4 +1,10 @@
-# PisoPhone: coin-operated phone rental kiosk
+<p align="center"><img src="website/img/pisohub-banner.jpg" alt="TechNet Solutions: PisoWiFi and PisoPhone" width="720"></p>
+
+# TechNet PisoHub
+
+**Coin-powered Wi-Fi and phone rentals.** By TechNet Solutions.
+
+PisoHub is one coin box for a whole shop. It runs two services: **PisoWiFi** (customer Wi-Fi sold by the coin) and **PisoPhone** (rental phones that lock and unlock by the minute, with prepaid time cards for regular players), both managed from one owner dashboard.
 
 Customers insert coins into an ESP32 box; the box credits time to a locked-down Android phone (the kiosk), and can also
 sell Wi-Fi time through an OpenWrt/openNDS router. Three parts plus a router add-on:
@@ -57,6 +63,7 @@ CI (GitHub Actions, `.github/workflows/`) runs all of this on every push, only f
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | How a coin becomes time; who talks to whom; where code lives |
 | [`docs/PROVISIONING_SOLD_UNIT.md`](docs/PROVISIONING_SOLD_UNIT.md) | Secure boot and flash encryption for boxes you sell |
 | [`docs/api/`](docs/api) | Router gateway API and the super-admin QR login |
+| [`website/manual.html`](website/manual.html) | **Owner's Manual**: setup, daily use, every feature, revenue, troubleshooting (print-ready) |
 | [`setup/README.md`](setup/README.md) | Setting up a site with the setup program: coin box, router, phones |
 | [`setup/MANUAL.md`](setup/MANUAL.md) | The same by hand, router commands, repair tools |
 

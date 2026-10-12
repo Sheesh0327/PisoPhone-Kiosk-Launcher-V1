@@ -10,7 +10,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light dark">
-    <title>PisoPhone Coin Box</title>
+    <title>TechNet PisoHub Coin Box</title>
     <link rel="stylesheet" href="/assets/portal.css?v={ASSET_V_PORTAL_CSS}">
     <script src="/assets/portal-core.js?v={ASSET_V_PORTAL_CORE}"></script>
 </head>
@@ -19,8 +19,8 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
     <header class="topbar">
         <div class="topbar-in">
             <div class="brand">
-                <span class="brand-mark"><svg class="ic ic-lg"><use href="#i-logo"/></svg></span>
-                <span class="brand-name">PisoPhone</span>
+                <span class="brand-mark"><img src="/assets/brand.png" alt="" width="34" height="34"></span>
+                <span class="brand-name">TechNet PisoHub</span>
                 <span class="brand-sub">Coin box</span>
             </div>
             <nav class="tabs">

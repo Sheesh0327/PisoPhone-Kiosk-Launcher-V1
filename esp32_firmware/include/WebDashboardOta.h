@@ -18,8 +18,8 @@ static const char OTA_FORM_HTML[] PROGMEM = R"HTML(
     <div class="center-page">
         <div class="card-narrow" style="max-width: 520px;">
             <div class="brand">
-                <span class="brand-mark"><svg class="ic ic-lg"><use href="#i-logo"/></svg></span>
-                <span class="brand-name">PisoPhone</span>
+                <span class="brand-mark"><img src="/assets/brand.png" alt="" width="34" height="34"></span>
+                <span class="brand-name">TechNet PisoHub</span>
                 <span class="brand-sub">Firmware update</span>
             </div>
 

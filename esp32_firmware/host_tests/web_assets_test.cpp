@@ -16,13 +16,14 @@ static int failures = 0, checks = 0;
     } while (0)
 
 int main() {
-    CHECK(WEB_ASSET_COUNT == 7);
+    CHECK(WEB_ASSET_COUNT == 9);
     for (size_t i = 0; i < WEB_ASSET_COUNT; i++) {
         const WebAsset& a = WEB_ASSETS[i];
         CHECK(a.gzLen > 200 && a.gzLen < 70000);                   // (jsqr.js, the QR reader, is the largest)
         CHECK(a.gz[0] == 0x1f && a.gz[1] == 0x8b && a.gz[2] == 8); // gzip magic, deflate
         CHECK(strlen(a.version) == 12);
-        CHECK(strstr(a.contentType, "text/css") || strstr(a.contentType, "javascript"));
+        CHECK(strstr(a.contentType, "text/css") || strstr(a.contentType, "javascript") ||
+              strstr(a.contentType, "image/png"));
         for (size_t j = i + 1; j < WEB_ASSET_COUNT; j++)
             CHECK(strcmp(a.name, WEB_ASSETS[j].name) != 0);
     }

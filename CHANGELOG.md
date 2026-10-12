@@ -4,6 +4,18 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- **TechNet look on every screen people see.** One theme (navy, blue-to-teal buttons, gold accents) with the TechNet logo and mascot:
+  the PisoWifi login page (new header, a welcome mascot, gradient buttons), the rental phones' lock screen (the mascot as a faint, gently
+  moving watermark under the unchanged layout; it holds still where background videos are off), the coin box's sign-in page and
+  dashboard, the phone setup website (with the PisoWiFi + PisoPhone banner), the Owner's Manual cover, the setup program and the
+  printed Wi-Fi join card. Pictures are small PNGs; the website and the README carry the banner. The box's `/assets/brand.png` and
+  `/assets/mascot.png` are new.
+- **Product name: TechNet PisoHub** (by TechNet Solutions): the umbrella for PisoWiFi and PisoPhone (rental phones, with time cards as a PisoPhone feature). README, the Owner's
+  Manual, the setup guides and the setup program's pages and printouts use it. Technical names are unchanged on purpose (the Android package, `piso-setup`,
+  the PisoKiosk / PisoCoinBox / PisoWiFi networks, key prefixes) so deployed phones and boxes keep updating.
+- **Owner's Manual** (`website/manual.html`): one print-ready page covering setup, rental phones, the dashboard tab by tab, how customers
+  rent and use PisoWiFi, time cards, collecting revenue with the admin QR, phone admin console, router commands, updates,
+  troubleshooting, safety and a quick-reference page. Checked by `scripts/tests/test_manual.py` (links, no outside resources, print rules).
 - Setup program: a printable **Wi-Fi join card** for every unit (`pisophone-wifi-card-<date>.html`, saved next to the summary and
   opened from the last page). One QR code joins the hidden `PisoKiosk` network from a phone (Android and iPhone cameras read it),
   another opens the coin box's page; the same steps by hand and a privacy note are on it, on one A4 page. The QR codes are drawn by

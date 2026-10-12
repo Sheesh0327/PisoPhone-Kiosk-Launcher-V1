@@ -28,6 +28,8 @@ ASSETS = [
     ("jsqr.js", "application/javascript; charset=utf-8", "JSQR_JS"),
     ("adminqr.js", "application/javascript; charset=utf-8", "ADMINQR_JS"),
     ("ota.js", "application/javascript; charset=utf-8", "OTA_JS"),
+    ("brand.png", "image/png", "BRAND_PNG"),
+    ("mascot.png", "image/png", "MASCOT_PNG"),
 ]
 
 
