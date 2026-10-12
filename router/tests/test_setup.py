@@ -470,7 +470,8 @@ r = lib("update_timer_ok; echo rc=$?", env={"PISO_CRON_FILE": cron})
 check("rc=1" in r.stdout, "no hourly update line: not scheduled")
 r = lib("install_update_timer; cat $PISO_CRON_FILE; update_timer_ok; echo rc=$?", env={"PISO_CRON_FILE": cron})
 check("self-update auto" in r.stdout and "something" in r.stdout, "installing the timer adds the hourly line and keeps the others: " + r.stdout)
-open(f"{bindir}/pgrep", "w").write("#!/bin/sh\n[ -z \"$FAKE_CRON\" ] || exit 0\nexit 1\n"); os.chmod(f"{bindir}/pgrep", 0o755)
+for _tool in ("pgrep", "pidof"):  # (both are asked: the machine running the test may really have a scheduler)
+    open(f"{bindir}/{_tool}", "w").write("#!/bin/sh\n[ -z \"$FAKE_CRON\" ] || exit 0\nexit 1\n"); os.chmod(f"{bindir}/{_tool}", 0o755)
 check("rc=1" in lib("update_timer_ok; echo rc=$?", env={"PISO_CRON_FILE": cron}).stdout, "a scheduler that is not running is reported")
 check("rc=0" in lib("update_timer_ok; echo rc=$?", env={"PISO_CRON_FILE": cron, "FAKE_CRON": "1"}).stdout, "and a running one passes")
 check("rc=0" in lib("update_check_recent; echo rc=$?").stdout, "a router that has not run the check yet gets the time")
@@ -479,7 +480,7 @@ check("rc=1" in lib("conf_set UPDATE_LAST_CHECK $(($(date +%s) - 20000)); update
 auto = text.split("cmd_self_update() {")[1].split("\n}\n")[0]
 check("UPDATE_LAST_CHECK" in auto and auto.index("UPDATE_LAST_CHECK") < auto.index("router.json"), "the hourly run records when it ran")
 check("update_timer_ok" in text.split("check_all() {")[1].split("\n}\n")[0] and "update_check_recent" in text.split("check_all() {")[1].split("\n}\n")[0], "status checks the schedule")
-os.remove(f"{bindir}/pgrep")
+os.remove(f"{bindir}/pgrep"); os.remove(f"{bindir}/pidof")
 
 # ---- the box's own Wi-Fi password -----------------------------------------------------------------------------------------------
 Box.wifi = None
