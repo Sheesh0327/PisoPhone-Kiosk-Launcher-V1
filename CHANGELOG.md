@@ -4,6 +4,10 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Setup program: the first page no longer says "no internet" without saying why. It tries two addresses on the website, names itself
+  (`TechNetPisoHubSetup/1.0`) instead of Python's own default, which websites often refuse, waits 15 s instead of 8, and shows the real
+  error when it still fails (an HTTP code, a timeout or a certificate problem, with a hint for a security program that inspects HTTPS).
+  Every download the program makes uses the same name.
 - Router 1.2.8: **pairing tells a refused box from a joined one.** A coin box that was set up before keeps its own Wi-Fi password; when the
   router offers another, the box is listed as joined for a moment and thrown out again, which pairing took for "joined" and then blamed
   an address lease. Pairing now reads the router's Wi-Fi log ("POSSIBLE-PSK-MISMATCH"): it says the box is refused and to factory reset
