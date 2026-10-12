@@ -47,10 +47,6 @@ int main() {
     s.putUInt("total_coins", 12345);
     s.putUInt("earn_c", 1234500);
     s.putInt("vendor_split", 35);
-    s.putString("sa_salt", "aabb");
-    s.putString("sa_hash", "ccdd");
-    s.putUInt("sa_iter", 10000);
-    s.putUInt("sa_ver", 2);
     s.putString("wifi_ssid", "shop-wifi");
     s.putString("admin_pw", "operatorpw");
 
@@ -61,20 +57,13 @@ int main() {
 
     CHECK(s.getUInt("total_coins", 0) == 12345); // lifetime revenue survives
     CHECK(s.getUInt("earn_c", 0) == 1234500);
-    CHECK(s.getInt("vendor_split", 0) == 35); // the vendor split survives
-    CHECK(s.getString("sa_hash", "") == "ccdd" && s.getString("sa_salt", "") == "aabb");
-    CHECK(s.getUInt("sa_iter", 0) == 10000 && s.getUInt("sa_ver", 0) == 2);
+    CHECK(s.getInt("vendor_split", 0) == 35);             // the vendor split survives
     CHECK(!s.isKey("wifi_ssid") && !s.isKey("admin_pw")); // operator settings are gone
 
-    // a box that never had revenue/super-admin set restores nothing and invents nothing
+    // a box that never had revenue or a split set restores nothing and invents nothing
     TypedStore empty;
     ownerdata::restore(empty, ownerdata::capture(empty));
-    CHECK(!empty.isKey("vendor_split") && !empty.isKey("sa_ver"));
-
-    // an incomplete super-admin set (power cut while it was being written) is not carried over
-    TypedStore partial;
-    partial.putString("sa_hash", "ccdd");
-    CHECK(!ownerdata::capture(partial).hasSuperAdmin);
+    CHECK(!empty.isKey("vendor_split") && !empty.isKey("total_coins") && !empty.isKey("earn_c"));
 
     printf("owner_data: %d checks, %d failures\n", checks, failures);
     return failures ? 1 : 0;

@@ -19,7 +19,6 @@
 #include "DeviceNetwork.h"
 #include "WebServerModule.h"
 #include "SuperAdminManager.h"
-#include "SuperAdminCreds.h"
 #include "GatewayCoinslot.h"
 #include "PaymentQueueManager.h"
 #include "FirmwareVersion.h"
@@ -239,7 +238,6 @@ void loop() {
 
     // 0. Process Super Admin 5-minute auto-reset retrieval window
     processSuperAdminLoop();
-    superAdminSyncLoop();
 
     // 0. Process Hardware Fallback Reset Pin (GPIO 2 -> GND for 5 seconds)
     processHardwareResetPin();

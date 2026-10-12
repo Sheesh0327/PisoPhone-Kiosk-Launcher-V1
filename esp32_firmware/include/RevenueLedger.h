@@ -30,9 +30,10 @@ static const size_t RECORD_BYTES = RECORD_WORDS * 4;
 enum Reason : uint32_t {
     UNMASK_EXPIRED = 1, // the vendor's 5-minute window ended
     SUPERADMIN_LOGOUT = 2,
-    SUPERADMIN_RESET = 3,      // "finish collecting" on the vendor page
-    VENDOR_PASSWORD_RESET = 4, // the dashboard's reset form, with the vendor password
-    REBASE = 5,                // bookkeeping only: the counters were found below the last baseline, nothing collected
+    SUPERADMIN_RESET = 3, // "finish collecting" on the vendor page
+    VENDOR_PASSWORD_RESET =
+        4,      // (earlier firmware: the dashboard's reset form with the vendor password; only old records)
+    REBASE = 5, // bookkeeping only: the counters were found below the last baseline, nothing collected
 };
 
 inline const char* reasonName(uint32_t r) {

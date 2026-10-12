@@ -1,6 +1,6 @@
 # Dashboard static files
 
-`portal.css`, `portal-core.js`, `portal-modals.js`, `superadmin.js` and `ota.js` are the dashboard's CSS and JavaScript.
+`portal.css`, `portal-core.js`, `portal-modals.js`, `superadmin.js`, `ota.js`, `adminqr.js` and `jsqr.js` are the dashboard's CSS and JavaScript (`adminqr.js` is the owner's QR login; `jsqr.js` is the vendored jsQR QR reader, see `website/js/VENDORED.md`).
 The box serves them gzip-compressed from flash at `/assets/<name>?v=<version>`, and browsers keep them cached until
 the content changes.
 

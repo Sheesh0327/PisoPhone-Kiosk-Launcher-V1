@@ -69,6 +69,8 @@ static String getPlaceholderValue(const String& tag) {
     if (tag == "ASSET_V_PORTAL_CORE") return webAssetVersion("portal-core.js");
     if (tag == "ASSET_V_PORTAL_MODALS") return webAssetVersion("portal-modals.js");
     if (tag == "ASSET_V_SUPERADMIN") return webAssetVersion("superadmin.js");
+    if (tag == "ASSET_V_JSQR") return webAssetVersion("jsqr.js");
+    if (tag == "ASSET_V_ADMINQR") return webAssetVersion("adminqr.js");
 
     if (tag == "WIFI_RSSI") {
         if (WiFi.status() == WL_CONNECTED) {

@@ -31,7 +31,7 @@ the dashboard shows. The images are the dev builds (no flash encryption), the sa
 2. `python3 scripts/sign_firmware.py --private KEY.pem --chip esp32c3 --image <path>/firmware.bin` writes `firmware.bin.manifest.json`.
 3. Copy the image and manifest to `website/update/firmware-<chip>.bin` (+ `.manifest.json`); `python3 scripts/publish_firmware_ota.py --json-only`
    publishes size and signature in `firmware.json`. Manual update: choose both files on the box's update page.
-The box checks the signature, chip and that the version is newer (a downgrade needs `allow_downgrade=1` and the super-admin password), hashes the
+The box checks the signature, chip and that the version is newer (a downgrade needs `allow_downgrade=1` and a super-admin session, signed in with the admin QR code), hashes the
 upload against the signed hash and size, accepts one upload per manifest within 15 minutes, and confirms the new image after a minute of normal running.
 
 ## Per-box secrets

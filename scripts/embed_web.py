@@ -25,6 +25,8 @@ ASSETS = [
     ("portal-core.js", "application/javascript; charset=utf-8", "PORTAL_CORE_JS"),
     ("portal-modals.js", "application/javascript; charset=utf-8", "PORTAL_MODALS_JS"),
     ("superadmin.js", "application/javascript; charset=utf-8", "SUPERADMIN_JS"),
+    ("jsqr.js", "application/javascript; charset=utf-8", "JSQR_JS"),
+    ("adminqr.js", "application/javascript; charset=utf-8", "ADMINQR_JS"),
     ("ota.js", "application/javascript; charset=utf-8", "OTA_JS"),
 ]
 

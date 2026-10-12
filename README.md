@@ -56,7 +56,7 @@ CI (GitHub Actions, `.github/workflows/`) runs all of this on every push, only f
 | [`docs/KEYS.md`](docs/KEYS.md) | Owner key, signed firmware, per-box secrets and migration |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | How a coin becomes time; who talks to whom; where code lives |
 | [`docs/PROVISIONING_SOLD_UNIT.md`](docs/PROVISIONING_SOLD_UNIT.md) | Secure boot and flash encryption for boxes you sell |
-| [`docs/api/`](docs/api) | Router gateway API and super-admin credential format |
+| [`docs/api/`](docs/api) | Router gateway API and the super-admin QR login |
 | [`setup/README.md`](setup/README.md) | Setting up a site with the setup program: coin box, router, phones |
 | [`setup/MANUAL.md`](setup/MANUAL.md) | The same by hand, router commands, repair tools |
 

@@ -162,7 +162,7 @@ void syncAndroidIpsFromSlots();
 void processRevenuePersistence();
 void flushRevenueNow();
 
-// Operator reset (default): keeps lifetime revenue, vendor split and super-admin credentials (OwnerData.h).
+// Operator reset (default): keeps lifetime revenue and the vendor split (OwnerData.h).
 // ownerWipe = true (super-admin request only) erases those as well.
 void factoryResetDefaults(bool ownerWipe = false);
 void updateMasterTime(uint64_t ts, const String& sourceId = "");

@@ -7,7 +7,7 @@
 #include "WebServerAuth.h"
 #include "Config.h"
 #include "WebDashboardHtml.h"
-#include "SuperAdminCreds.h"
+#include "SuperAdminPubKey.h"
 #include "Security.h"
 #include "HardwareManager.h"
 #include "DeviceManager.h"
@@ -265,7 +265,7 @@ void handleApiStatus() {
     }
 
     String json = "{";
-    json += "\"super_admin_managed\":" + String(superAdminCredsManaged() ? "true" : "false") + ",";
+    json += "\"admin_qr\":" + String(SUPER_ADMIN_PUBKEY_LEN > 0 ? "true" : "false") + ",";
     json += "\"default_credentials\":" + String(defaultCredentialsActive() ? "true" : "false") + ",";
     json += "\"legacy_key\":" + String(isLegacyKeyMode() ? "true" : "false") + ",";
     json += "\"orphans\":{\"unhandled\":" + String(orphansUnhandledCount()) +

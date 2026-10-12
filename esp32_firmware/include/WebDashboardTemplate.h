@@ -257,14 +257,6 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                             </div>
                         </div>
                         <hr class="sep">
-                        <form action="/reset_vault" method="POST" onsubmit="return confirm('Record a collection? The revenue counter starts again at 0; the lifetime total and the collection history are kept. This needs the Vendor password.');" class="field">
-                            <label for="reset_pw">Collect revenue: restart the counter (vendor only)</label>
-                            <div class="inline">
-                                <input id="reset_pw" type="password" name="reset_pw" placeholder="Vendor password" autocomplete="off">
-                                <button type="submit" class="btn danger">Collect</button>
-                            </div>
-                        </form>
-                        <hr class="sep">
                         <div class="split">
                             <button type="button" class="btn" onclick="rebootBox()"><svg class="ic"><use href="#i-power"/></svg>Restart box</button>
                             <button type="button" class="btn danger" onclick="factoryResetBox()">Factory reset</button>
@@ -281,6 +273,8 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
 
     <script>window.PISO_CFG = { mac: "{MAC_ADDRESS}", secret: "{SHARED_SECRET}" };</script>
     <script src="/assets/portal-modals.js?v={ASSET_V_PORTAL_MODALS}"></script>
+    <script defer src="/assets/jsqr.js?v={ASSET_V_JSQR}"></script>
+    <script defer src="/assets/adminqr.js?v={ASSET_V_ADMINQR}"></script>
     <script src="/assets/superadmin.js?v={ASSET_V_SUPERADMIN}"></script>
 </body>
 </html>
