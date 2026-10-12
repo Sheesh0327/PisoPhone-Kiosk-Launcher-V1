@@ -4,6 +4,11 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- **Rental phone lock screen for younger users.** The old logo animation is replaced by the TechNet mascot, big in the middle, bobbing,
+  breathing and swaying in turning light rays over slow colour clouds. Eleven mascot stickers float, wiggle and pop around the edges
+  (PisoWiFi, PisoPhone, gamer, laptop, cool, wink, and more), sparkles twinkle and gold coins spin down the screen. It is one canvas under
+  the content, so the layout and every button stay as they were. It stands still, with the same pictures, on phones where background
+  videos are off or not affordable (the admin's switch, low memory, power saving, low battery). The launcher still has its own logo video.
 - Router 1.2.7: **fixes self-update undoing itself.** On a real router `pgrep -x pisoportal` said "not running" while the portal ran (found by
   `pidof`), so every update was undone. All process checks (portal, openNDS, the scheduler) now ask `pidof` and `pgrep`.
   Also: when a self-update is undone, the log, the Telegram message and `piso-setup status` now say **why** (the installer stopped
