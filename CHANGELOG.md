@@ -4,6 +4,12 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- **TechNet look on every screen people see.** One theme (navy, blue-to-teal buttons, gold accents) with the TechNet logo and mascot:
+  the PisoWifi login page (new header, a welcome mascot, gradient buttons), the rental phones' lock screen (the mascot as a faint, gently
+  moving watermark under the unchanged layout; it holds still where background videos are off), the coin box's sign-in page and
+  dashboard, the phone setup website (with the PisoWiFi + PisoPhone banner), the Owner's Manual cover, the setup program and the
+  printed Wi-Fi join card. Pictures are small PNGs; the website and the README carry the banner. The box's `/assets/brand.png` and
+  `/assets/mascot.png` are new.
 - **Product name: TechNet PisoHub** (by TechNet Solutions): the umbrella for PisoWiFi and PisoPhone (rental phones, with time cards as a PisoPhone feature). README, the Owner's
   Manual, the setup guides and the setup program's pages and printouts use it. Technical names are unchanged on purpose (the Android package, `piso-setup`,
   the PisoKiosk / PisoCoinBox / PisoWiFi networks, key prefixes) so deployed phones and boxes keep updating.

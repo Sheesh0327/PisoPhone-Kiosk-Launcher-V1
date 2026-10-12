@@ -507,6 +507,9 @@ if zxingcpp:
 card = ps.wifi_card_html("Aling <Nena> & Co", "PisoKiosk", "3hC4RATnpQMJ", stamp="2026-10-12")
 check("3hC4RATnpQMJ" in card and "PisoKiosk" in card and "http://10.0.0.10/" in card and "<svg" in card and card.count("<svg") == 2, "the card shows the network, the password, the address and two QR codes")
 check("Aling &lt;Nena&gt; &amp; Co" in card and "<Nena>" not in card, "the shop name is escaped")
+check(card.count("data:image/png;base64,") == 2 and "http" not in card.replace("http://10.0.0.10/", "").replace("http://www.w3.org/2000/svg", ""),
+      "the card carries the TechNet logo and mascot inside the file and loads nothing from outside")
+check("@@LOGO@@" in ps.PAGE and "@@MASCOT@@" in ps.PAGE and ps.LOGO_URI.startswith("data:image/png;base64,iVBOR"), "the setup page has the TechNet logo and mascot slots")
 check("@page" in card and "Keep this page private" in card and "Hidden network" in card, "it is print-ready, with the hand steps and the privacy note")
 check(card.count('<rect x=') > 100 and 'viewBox="0 0 ' in card, "the QR codes are drawn as pictures inside the page (nothing to download)")
 try:
