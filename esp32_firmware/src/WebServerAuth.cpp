@@ -333,12 +333,15 @@ static void sendLoginPage() {
     String next = htmlEscape(safeNext(requestedPage()));
     String page = F("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\">"
                     "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">"
-                    "<meta name=\"color-scheme\" content=\"light dark\"><title>Sign in - PisoPhone</title>"
+                    "<meta name=\"color-scheme\" content=\"light dark\"><title>Sign in - TechNet PisoHub</title>"
                     "<link rel=\"stylesheet\" href=\"/assets/portal.css\"></head><body data-next=\"");
     page += next;
-    page += F("\"><div class=\"center-page\"><div class=\"card-narrow\" style=\"text-align:center\">"
-              "<h1>PisoPhone admin</h1><p class=\"muted\">Sign in to manage this coin box.</p>"
-              "<p><a class=\"btn primary\" id=\"pw\" style=\"display:block\" href=\"/signin?next=");
+    page += F(
+        "\"><div class=\"center-page\"><div class=\"card-narrow\" style=\"text-align:center\">"
+        "<div class=\"hero-logo\"><img class=\"mascot\" src=\"/assets/mascot.png\" alt=\"\" width=\"100\" height=\"103\">"
+        "<img class=\"badge\" src=\"/assets/brand.png\" alt=\"\" width=\"56\" height=\"56\"></div>"
+        "<h1>TechNet PisoHub admin</h1><p class=\"muted\">Sign in to manage this coin box.</p>"
+        "<p><a class=\"btn primary\" id=\"pw\" style=\"display:block\" href=\"/signin?next=");
     page += urlEncode(safeNext(requestedPage()));
     page += F("\">Sign in with the admin password</a></p>"
               "<p><label class=\"btn\" for=\"qr\" style=\"display:block\">Scan admin QR</label>"
@@ -416,7 +419,7 @@ void handleLogout() {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light dark">
-    <title>Signed out - PisoPhone</title>
+    <title>Signed out - TechNet PisoHub</title>
     <link rel="stylesheet" href="/assets/portal.css">
 </head>
 <body>
