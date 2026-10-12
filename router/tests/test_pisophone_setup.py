@@ -460,6 +460,82 @@ if saved_ssh:
 check(pf2[0][1] is False and pf2[1][1] is False and pf2[2][1] is False and "esptool" in pf2[2][2], "preflight: nothing found: all said")
 check(ps.box_online("10.0.0.10", probe=lambda h, p: (h, p) == ("10.0.0.10", 80)) is True, "the box is online when its page port answers")
 
+# ---- QR codes and the Wi-Fi join card -------------------------------------------------------------------------------------------
+check(ps.wifi_qr_text("PisoKiosk", "3hC4RATnpQMJ") == "WIFI:T:WPA;S:PisoKiosk;P:3hC4RATnpQMJ;H:true;;", "the Wi-Fi QR text: " + ps.wifi_qr_text("PisoKiosk", "3hC4RATnpQMJ"))
+check(ps.wifi_qr_text("My;Net", "a:b,c\\d") == "WIFI:T:WPA;S:My\\;Net;P:a\\:b\\,c\\\\d;H:true;;", "special characters are escaped: " + ps.wifi_qr_text("My;Net", "a:b,c\\d"))
+check(ps.wifi_qr_text("Net", "12345678") == 'WIFI:T:WPA;S:Net;P:"12345678";H:true;;', "a password of only hex digits is quoted")
+check(ps.wifi_qr_text("Net", "pw123456", hidden=False) == "WIFI:T:WPA;S:Net;P:pw123456;;", "a visible network has no H:true")
+try:
+    ps.qr_matrix("x" * 214)
+    check(False, "a text that is too long is refused")
+except ValueError:
+    check(True, "a text that is too long is refused")
+m = ps.qr_matrix("hello")
+check(len(m) == 21 and all(len(r) == 21 for r in m) and m[0][:7] == [True] * 7 and m[6][:7] == [True] * 7, "version 1 is 21 x 21 with its finder pattern")
+check(len(ps.qr_matrix("x" * 14)) == 21 and len(ps.qr_matrix("x" * 15)) == 25 and len(ps.qr_matrix("x" * 213)) == 57, "the version grows with the text")
+
+try:
+    import zxingcpp
+    from PIL import Image
+except ImportError:
+    zxingcpp = None
+    print("note: zxing-cpp / pillow are not installed: the QR codes were not decoded")
+
+
+def raster(matrix, scale=6, quiet=4):
+    n = len(matrix) + 2 * quiet
+    img = Image.new("L", (n * scale, n * scale), 255)
+    px = img.load()
+    for r, row in enumerate(matrix):
+        for c, v in enumerate(row):
+            if v:
+                for dy in range(scale):
+                    for dx in range(scale):
+                        px[(c + quiet) * scale + dx, (r + quiet) * scale + dy] = 0
+    return img
+
+
+if zxingcpp:
+    import random as _random
+    rng = _random.Random(3)
+    texts = ["a", ps.wifi_qr_text("PisoKiosk", "3hC4RATnpQMJ"), "http://10.0.0.10/"]
+    for n in (13, 14, 15, 25, 26, 27, 41, 42, 43, 61, 62, 63, 83, 84, 85, 105, 106, 107, 121, 122, 123, 151, 152, 153, 179, 180, 181, 210, 213):
+        texts.append("".join(rng.choice("abcXYZ019 ;:,\\\"-_/.\u00e9") for _ in range(n)))
+    bad = [len(t.encode()) for t in texts if len(t.encode()) <= 213 and (not zxingcpp.read_barcodes(raster(ps.qr_matrix(t))) or zxingcpp.read_barcodes(raster(ps.qr_matrix(t)))[0].text != t)]
+    check(not bad, f"an independent QR reader reads our codes back, from version 1 to 10 (failures at lengths {bad})")
+
+card = ps.wifi_card_html("Aling <Nena> & Co", "PisoKiosk", "3hC4RATnpQMJ", stamp="2026-10-12")
+check("3hC4RATnpQMJ" in card and "PisoKiosk" in card and "http://10.0.0.10/" in card and "<svg" in card and card.count("<svg") == 2, "the card shows the network, the password, the address and two QR codes")
+check("Aling &lt;Nena&gt; &amp; Co" in card and "<Nena>" not in card, "the shop name is escaped")
+check("@page" in card and "Keep this page private" in card and "Hidden network" in card, "it is print-ready, with the hand steps and the privacy note")
+check(card.count('<rect x=') > 100 and 'viewBox="0 0 ' in card, "the QR codes are drawn as pictures inside the page (nothing to download)")
+try:
+    from playwright.sync_api import sync_playwright
+    import glob as _glob
+    chrome = os.environ.get("CHROME") or next(iter(_glob.glob("/opt/pw-browsers/chromium-*/chrome-linux/chrome")), None)
+    if zxingcpp:
+        page_file = os.path.join(tmp, "card.html")
+        open(page_file, "w").write(card)
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(executable_path=chrome, args=["--no-sandbox"]) if chrome else pw.chromium.launch()
+            pg = browser.new_page(viewport={"width": 900, "height": 1200})
+            pg.goto("file://" + page_file)
+            shot = os.path.join(tmp, "card.png")
+            pg.screenshot(path=shot, full_page=True)
+            pdf_ok = True
+            try:
+                pg.pdf(path=os.path.join(tmp, "card.pdf"), format="A4", print_background=True)
+            except Exception:
+                pdf_ok = False
+            browser.close()
+        decoded = sorted(r.text for r in zxingcpp.read_barcodes(Image.open(shot)))
+        check(decoded == sorted(["http://10.0.0.10/", ps.wifi_qr_text("PisoKiosk", "3hC4RATnpQMJ")]),
+              "a photo-like screenshot of the page: both QR codes read back: " + str(decoded))
+        if pdf_ok:
+            check(os.path.getsize(os.path.join(tmp, "card.pdf")) > 2000, "the page prints to a PDF")
+except ImportError:
+    print("note: playwright is not installed: the card was not drawn in a browser")
+
 # ---- the coin box over USB ------------------------------------------------------------------------------------------------
 Port = types.SimpleNamespace
 check(ps.usb_boards(lambda: [Port(device="COM7", vid=0x1A86, description="USB-SERIAL CH340"), Port(device="COM1", vid=None, description="Communications Port"),

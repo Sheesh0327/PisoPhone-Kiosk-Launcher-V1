@@ -62,7 +62,10 @@ add `--local-only` to serve the computer's own browser only.
 
 Keep the USB cable plugged in during the installation: it powers the coin box. If the box already has the PisoPhone software,
 tick *Do not write it* on the install page. Your passwords and the printable setup sheet are saved on the setup computer
-(`Documents/PisoPhone`, readable only by you) and can be opened from the last page.
+(`Documents/PisoPhone`, readable only by you) and can be opened from the last page. Besides the summary and the setup sheet there
+is a **Wi-Fi join card**: a print-ready page with a QR code that joins the hidden `PisoKiosk` network from a phone (scan it
+with the camera) and one that opens the coin box's page, plus the same steps by hand. Print it for your manual and keep it with
+your admin QR code: it holds the Wi-Fi password.
 
 ## Setting up a phone
 On the phone setup page (step 5) the link is filled in for the chosen slot. On the rental phone:

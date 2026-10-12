@@ -268,7 +268,7 @@ jobs:
           restore-keys: rust-
       - name: Install Playwright (real-browser test), BusyBox (the router's shell and tools), ShellCheck and the Rust lints
         run: |
-          pip install -q playwright==1.63.0 cryptography && playwright install --with-deps chromium
+          pip install -q playwright==1.63.0 cryptography zxing-cpp==2.3.0 pillow==11.3.0 && playwright install --with-deps chromium
           sudo apt-get install -y -q busybox-static
           rustup component add rustfmt clippy
           # one ShellCheck version everywhere (the runner's own changes with the image)

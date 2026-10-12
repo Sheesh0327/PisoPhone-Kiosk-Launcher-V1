@@ -4,6 +4,10 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Setup program: a printable **Wi-Fi join card** for every unit (`pisophone-wifi-card-<date>.html`, saved next to the summary and
+  opened from the last page). One QR code joins the hidden `PisoKiosk` network from a phone (Android and iPhone cameras read it),
+  another opens the coin box's page; the same steps by hand and a privacy note are on it, on one A4 page. The QR codes are drawn by
+  a small encoder inside the program, so nothing needs installing.
 - Super admin now opens with **one QR code that only you hold**, instead of a password that had to be published from the website.
   On a box's login page there is a **Scan admin QR** button next to the admin password: it opens the phone's camera, the page reads
   your code and answers a one-time challenge from the box with a signature (the key in the QR code never leaves your phone), and

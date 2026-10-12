@@ -25,7 +25,8 @@ The setup page's steps, in order:
                   internet and scan its QR code with the rental phone
   6. Finish       tests a real coin, checks the customer Wi-Fi, offers Telegram alerts; "Set up the next unit" starts over
                   for the next router and coin box
-The summary (every password) and the printable setup sheet are saved on this computer, readable only by you, and can be opened
+The summary (every password), the printable setup sheet and a printable Wi-Fi join card (a QR code that joins the hidden PisoKiosk
+network from a phone, and one that opens the coin box's page) are saved on this computer, readable only by you, and can be opened
 from the page.
 
 The page is served over plain HTTP to the local network and protected by a PIN (printed when it starts, kept in
@@ -242,6 +243,269 @@ def parse_summary(text):
             found[key] = m.group(1)
     return found
 
+
+# ---- QR codes and the printable Wi-Fi card ------------------------------------------------------------------------------------
+# A small QR encoder (byte mode, error correction M, versions 1 to 10: up to 213 bytes), so the setup program needs nothing
+# installed to draw a QR code. It is checked against two independent QR readers in router/tests/test_pisophone_setup.py.
+
+_QR_M = {   # version: (data codewords per block list, EC codewords per block)
+    1: ([16], 10), 2: ([28], 16), 3: ([44], 26), 4: ([32] * 2, 18), 5: ([43] * 2, 24), 6: ([27] * 4, 16), 7: ([31] * 4, 18),
+    8: ([38] * 2 + [39] * 2, 22), 9: ([36] * 3 + [37] * 2, 22), 10: ([43] * 4 + [44], 26)}
+_QR_ALIGN = {2: [6, 18], 3: [6, 22], 4: [6, 26], 5: [6, 30], 6: [6, 34], 7: [6, 22, 38], 8: [6, 24, 42], 9: [6, 26, 46],
+             10: [6, 28, 50]}
+_GF_EXP, _GF_LOG = [0] * 512, [0] * 256
+_x = 1
+for _i in range(255):
+    _GF_EXP[_i], _GF_LOG[_x] = _x, _i
+    _x <<= 1
+    if _x & 0x100:
+        _x ^= 0x11D
+for _i in range(255, 512):
+    _GF_EXP[_i] = _GF_EXP[_i - 255]
+
+
+def _gf_mul(a, b):
+    return 0 if a == 0 or b == 0 else _GF_EXP[_GF_LOG[a] + _GF_LOG[b]]
+
+
+def _rs_remainder(data, n):
+    """The n Reed-Solomon error correction codewords of `data`."""
+    gen = [1]
+    for i in range(n):
+        nxt = [0] * (len(gen) + 1)
+        for j, c in enumerate(gen):
+            nxt[j] ^= _gf_mul(c, 1)
+            nxt[j + 1] ^= _gf_mul(c, _GF_EXP[i])
+        gen = nxt
+    rem = [0] * n
+    for byte in data:
+        factor = byte ^ rem[0]
+        rem = rem[1:] + [0]
+        for i in range(n):
+            rem[i] ^= _gf_mul(gen[i + 1], factor)
+    return rem
+
+
+def _bch_remainder(value, poly, degree):
+    """The BCH check bits for the format (degree 10, poly 0x537) and version (degree 12, poly 0x1F25) information."""
+    rem = value
+    for _ in range(degree):
+        rem = (rem << 1) ^ ((rem >> (degree - 1)) * poly)
+    return rem
+
+
+def qr_matrix(text):
+    """The QR code for a text (UTF-8, byte mode, level M) as a list of rows of booleans (True = dark), without a quiet zone."""
+    raw = text.encode("utf-8")
+    version = next((v for v in range(1, 11) if len(raw) <= sum(_QR_M[v][0]) - (2 if v < 10 else 3)), None)
+    if version is None:
+        raise ValueError("the text is too long for this QR encoder")
+    blocks, ec_len = _QR_M[version]
+    capacity = sum(blocks)
+    bits = [0, 1, 0, 0]
+    count_bits = 8 if version < 10 else 16
+    bits += [(len(raw) >> i) & 1 for i in range(count_bits - 1, -1, -1)]
+    for byte in raw:
+        bits += [(byte >> i) & 1 for i in range(7, -1, -1)]
+    bits += [0] * min(4, capacity * 8 - len(bits))
+    bits += [0] * (-len(bits) % 8)
+    data = [int("".join(map(str, bits[i:i + 8])), 2) for i in range(0, len(bits), 8)]
+    for pad in range(capacity - len(data)):
+        data.append(0xEC if pad % 2 == 0 else 0x11)
+    # split into blocks, add the error correction, interleave
+    parts, at = [], 0
+    for size in blocks:
+        chunk = data[at:at + size]
+        at += size
+        parts.append((chunk, _rs_remainder(chunk, ec_len)))
+    out = []
+    for i in range(max(blocks)):
+        out += [c[i] for c, _e in parts if i < len(c)]
+    for i in range(ec_len):
+        out += [e[i] for _c, e in parts]
+    stream = [(byte >> i) & 1 for byte in out for i in range(7, -1, -1)]
+    size = 17 + 4 * version
+
+    def blank():
+        return [[None] * size for _ in range(size)]
+
+    def finder(m, r, c):
+        for dr in range(-1, 8):
+            for dc in range(-1, 8):
+                rr, cc = r + dr, c + dc
+                if 0 <= rr < size and 0 <= cc < size:
+                    m[rr][cc] = (0 <= dr <= 6 and 0 <= dc <= 6 and (dr in (0, 6) or dc in (0, 6) or (2 <= dr <= 4 and 2 <= dc <= 4)))
+
+    base = blank()
+    finder(base, 0, 0)
+    finder(base, 0, size - 7)
+    finder(base, size - 7, 0)
+    pos = _QR_ALIGN.get(version, [])
+    for r in pos:
+        for c in pos:
+            if base[r][c] is not None:
+                continue   # (the three corners hold finders)
+            for dr in range(-2, 3):
+                for dc in range(-2, 3):
+                    base[r + dr][c + dc] = max(abs(dr), abs(dc)) != 1
+    for i in range(8, size - 8):
+        base[6][i] = base[i][6] = (i % 2 == 0)
+    base[size - 8][8] = True   # the always-dark module
+    reserved = [[cell is not None for cell in row] for row in base]
+    for i in range(9):
+        reserved[8][i] = reserved[i][8] = True
+    for i in range(8):
+        reserved[8][size - 1 - i] = reserved[size - 1 - i][8] = True
+    if version >= 7:
+        for i in range(6):
+            for j in range(3):
+                reserved[i][size - 11 + j] = reserved[size - 11 + j][i] = True
+
+    def place(mask):
+        m = [row[:] for row in base]
+        bit = 0
+        col = size - 1
+        up = True
+        while col > 0:
+            if col == 6:
+                col -= 1
+            for step in range(size):
+                r = size - 1 - step if up else step
+                for c in (col, col - 1):
+                    if reserved[r][c]:
+                        continue
+                    v = bool(stream[bit]) if bit < len(stream) else False
+                    bit += 1
+                    if (mask == 0 and (r + c) % 2 == 0) or (mask == 1 and r % 2 == 0) or (mask == 2 and c % 3 == 0) or \
+                       (mask == 3 and (r + c) % 3 == 0) or (mask == 4 and (r // 2 + c // 3) % 2 == 0) or \
+                       (mask == 5 and (r * c) % 2 + (r * c) % 3 == 0) or (mask == 6 and ((r * c) % 2 + (r * c) % 3) % 2 == 0) or \
+                       (mask == 7 and ((r + c) % 2 + (r * c) % 3) % 2 == 0):
+                        v = not v
+                    m[r][c] = v
+            col -= 2
+            up = not up
+        data_bits = 0b00 << 3 | mask   # (error correction level M is 00)
+        fmt = ((data_bits << 10) | _bch_remainder(data_bits, 0x537, 10)) ^ 0x5412
+        for i in range(15):
+            bit_i = bool((fmt >> i) & 1)
+            if i < 6:
+                m[i][8] = bit_i
+            elif i < 8:
+                m[i + 1][8] = bit_i
+            elif i == 8:
+                m[8][7] = bit_i
+            else:
+                m[8][14 - i] = bit_i
+            if i < 8:
+                m[8][size - 1 - i] = bit_i
+            else:
+                m[size - 15 + i][8] = bit_i
+        if version >= 7:
+            info = (version << 12) | _bch_remainder(version, 0x1F25, 12)
+            for i in range(18):
+                v = bool((info >> i) & 1)
+                m[i // 3][size - 11 + i % 3] = v
+                m[size - 11 + i % 3][i // 3] = v
+        return m
+
+    def penalty(m):
+        score = 0
+        for grid in (m, [list(col) for col in zip(*m)]):
+            for row in grid:
+                run = 1
+                for i in range(1, size):
+                    if row[i] == row[i - 1]:
+                        run += 1
+                        if run == 5:
+                            score += 3
+                        elif run > 5:
+                            score += 1
+                    else:
+                        run = 1
+                pattern = "".join("1" if v else "0" for v in row)
+                score += 40 * (pattern.count("10111010000") + pattern.count("00001011101"))
+        for r in range(size - 1):
+            for c in range(size - 1):
+                if m[r][c] == m[r][c + 1] == m[r + 1][c] == m[r + 1][c + 1]:
+                    score += 3
+        dark = sum(v for row in m for v in row)
+        score += 10 * (abs(dark * 100 // (size * size) - 50) // 5)
+        return score
+    return min((place(mask) for mask in range(8)), key=penalty)
+
+
+def qr_svg(text, module=8, quiet=4):
+    """The QR code as an SVG picture (black modules on white, with the quiet zone the readers need)."""
+    m = qr_matrix(text)
+    n = len(m) + 2 * quiet
+    cells = "".join(f'<rect x="{c + quiet}" y="{r + quiet}" width="1" height="1"/>' for r, row in enumerate(m) for c, v in enumerate(row) if v)
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {n} {n}" width="{n * module}" height="{n * module}" '
+            f'shape-rendering="crispEdges"><rect width="{n}" height="{n}" fill="#fff"/><g fill="#000">{cells}</g></svg>')
+
+
+def wifi_qr_text(ssid, password, hidden=True):
+    """The text phones read as "join this Wi-Fi": WIFI:T:WPA;S:<name>;P:<password>;H:true;; (backslash, semicolon, comma, colon and double quote are escaped;
+    a name or password made only of hex digits is quoted so the phone does not take it for hex)."""
+    def esc(value):
+        value = re.sub(r'([\\;,:"])', r"\\\1", value)
+        return f'"{value}"' if re.fullmatch(r"[0-9A-Fa-f]+", value) else value
+    return f"WIFI:T:WPA;S:{esc(ssid)};P:{esc(password)};{'H:true;' if hidden else ''};"
+
+
+def html_escape(text):
+    return (str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;").replace("'", "&#39;"))
+
+
+def wifi_card_html(site, kiosk_ssid, kiosk_password, box_url=f"http://{BOX_IP}/", stamp=""):
+    """A print-ready page (one A4 or Letter sheet) for the owner's manual: scan to join the hidden rental-phone Wi-Fi, scan to open
+    the coin box's page, and the same steps by hand. It holds the Wi-Fi password: keep the printout private."""
+    join, page = qr_svg(wifi_qr_text(kiosk_ssid, kiosk_password), 7), qr_svg(box_url, 7)
+    return f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PisoPhone: join the {html_escape(kiosk_ssid)} Wi-Fi - {html_escape(site)}</title>
+<style>
+@page {{ size: A4; margin: 14mm; }}
+* {{ box-sizing: border-box; }}
+body {{ font: 15px/1.45 system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #111; margin: 0; padding: 16px; background: #fff; }}
+main {{ max-width: 780px; margin: 0 auto; }}
+h1 {{ font-size: 26px; margin: 0 0 2px; }} h2 {{ font-size: 17px; margin: 0 0 6px; }}
+.sub {{ color: #444; margin: 0 0 14px; }}
+.row {{ display: flex; gap: 20px; margin: 14px 0; }}
+.card {{ flex: 1; border: 2px solid #111; border-radius: 10px; padding: 14px; text-align: center; break-inside: avoid; }}
+.card svg {{ width: 100%; max-width: 270px; height: auto; display: block; margin: 8px auto; }}
+.num {{ display: inline-block; width: 26px; height: 26px; line-height: 26px; border-radius: 50%; background: #111; color: #fff; font-weight: 700; }}
+.kv {{ text-align: left; margin: 10px 0 0; }} .kv div {{ display: flex; gap: 8px; padding: 2px 0; }}
+.kv span:first-child {{ color: #555; min-width: 92px; }} .mono {{ font-family: ui-monospace, Menlo, Consolas, monospace; font-weight: 700; word-break: break-all; }}
+ol {{ margin: 6px 0 0 20px; padding: 0; }} li {{ margin: 3px 0; }}
+.steps {{ border: 1px solid #999; border-radius: 10px; padding: 12px 16px; margin: 14px 0; break-inside: avoid; }}
+.warn {{ border: 2px dashed #b00; color: #800; border-radius: 10px; padding: 8px 12px; margin-top: 14px; font-weight: 600; }}
+.foot {{ color: #666; font-size: 12px; margin-top: 12px; }}
+@media (max-width: 640px) {{ .row {{ flex-direction: column; }} }}
+@media print {{ body {{ padding: 0; }} }}
+</style></head><body><main>
+<h1>PisoPhone: reach the coin box from your phone</h1>
+<p class="sub">{html_escape(site)}{(' &middot; ' + html_escape(stamp)) if stamp else ''}</p>
+<div class="row">
+ <div class="card"><h2><span class="num">1</span> Join the Wi-Fi</h2>
+  <p>Scan with your phone's camera. It joins the hidden network by itself.</p>
+  {join}
+  <div class="kv"><div><span>Network</span><span class="mono">{html_escape(kiosk_ssid)}</span></div>
+  <div><span>Password</span><span class="mono">{html_escape(kiosk_password)}</span></div>
+  <div><span>Security</span><span>WPA2-Personal, hidden network</span></div></div></div>
+ <div class="card"><h2><span class="num">2</span> Open the coin box</h2>
+  <p>Once joined, scan to open its page (or type the address).</p>
+  {page}
+  <div class="kv"><div><span>Address</span><span class="mono">{html_escape(box_url)}</span></div>
+  <div><span>Sign in</span><span>admin password, or <b>Scan admin QR</b> (your own code)</span></div></div></div>
+</div>
+<div class="steps"><h2>No QR scanner? Join by hand</h2>
+<ol><li>Wi-Fi settings &rarr; <b>Add network</b> (a hidden network does not show in the list).</li>
+<li>Name <b>{html_escape(kiosk_ssid)}</b>, security <b>WPA2-Personal</b>, turn on <b>Hidden network</b>, type the password above.</li>
+<li>Open <b>{html_escape(box_url)}</b> in the phone's browser.</li></ol></div>
+<div class="warn">Keep this page private: whoever has the password can join the rental-phone network. Store the printout with your admin QR code, not at the shop.</div>
+<p class="foot">Made by the PisoPhone setup program. The rental phones join this network by themselves; this page is for you.</p>
+</main></body></html>
+"""
 
 # ---- reaching the router -------------------------------------------------------------------------------------------------
 
@@ -537,6 +801,12 @@ def install(ssh, host, answers, branch, out_dir, emit, wait_move, stage=lambda n
         path = os.path.join(out_dir, f"pisophone-setup-sheet-{stamp}.html")
         save_private(path, "\n".join(result["handout"]) + "\n")
         saved.append(("Printable setup sheet", os.path.abspath(path)))
+    found = parse_summary("\n".join(result["summary"]))
+    if found.get("KIOSK_PASSWORD"):   # the card for the owner's manual: scan to join the hidden network, scan to open the box
+        site = answers.get("SITE_NAME") or found.get("GUEST_SSID") or KIOSK_SSID
+        path = os.path.join(out_dir, f"pisophone-wifi-card-{stamp}.html")
+        save_private(path, wifi_card_html(site, KIOSK_SSID, found["KIOSK_PASSWORD"], stamp=time.strftime("%Y-%m-%d")))
+        saved.append(("Wi-Fi join card (print it for your manual)", os.path.abspath(path)))
     if result["rc"] is None:
         raise SetupError("the connection to the router was lost before the setup finished. Try again: it continues where it "
                          "stopped (the router keeps what is done).")
