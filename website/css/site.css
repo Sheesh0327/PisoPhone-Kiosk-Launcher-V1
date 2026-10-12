@@ -2,25 +2,26 @@
    Same look as the coin box's own pages (esp32_firmware/web/portal.css). */
 :root {
     color-scheme: light dark;
-    --bg: #f4f1ea;
-    --surface: #fffdf8;
-    --surface-2: #f8f5ec;
-    --ink: #23201b;
-    --muted: #7a7366;
-    --line: #e4ded0;
-    --line-strong: #d3ccbb;
-    --accent: #2456d6;
+    --bg: #eef3fb;
+    --surface: #ffffff;
+    --surface-2: #f4f8ff;
+    --ink: #0b1630;
+    --muted: #5b6b8c;
+    --line: #d9e3f5;
+    --line-strong: #c3d1ec;
+    --accent: #1f6bff;
+    --accent-2: #12b894;
     --accent-ink: #ffffff;
-    --accent-soft: #e6ecfb;
-    --sel: #e8e2d2;
-    --ok: #1f7a4f;
-    --ok-soft: #e3f1e8;
+    --accent-soft: #e3edff;
+    --sel: #e3ecfb;
+    --ok: #0f8f6b;
+    --ok-soft: #ddf5ee;
     --warn: #9a5b00;
-    --warn-soft: #f8ecd2;
+    --warn-soft: #fdf0d3;
     --bad: #b3392b;
     --bad-soft: #f8e4e0;
-    --shadow: 0 1px 2px rgba(60, 48, 20, 0.05), 0 8px 24px rgba(60, 48, 20, 0.05);
-    --serif: Georgia, "Times New Roman", serif;
+    --shadow: 0 1px 3px rgba(11, 22, 48, 0.08);
+    --serif: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     --r: 10px;
@@ -28,23 +29,24 @@
 }
 @media (prefers-color-scheme: dark) {
     :root {
-        --bg: #171512;
-        --surface: #201d19;
-        --surface-2: #1b1915;
-        --ink: #ece7dc;
-        --muted: #a39c8e;
-        --line: #302c25;
-        --line-strong: #433e35;
-        --accent: #7f9cff;
-        --accent-ink: #0f1530;
-        --accent-soft: #232a45;
-        --sel: #2d2923;
-        --ok: #5fcf93;
-        --ok-soft: #1c2d24;
-        --warn: #e7b35c;
+        --bg: #050d22;
+        --surface: #0c1a3a;
+        --surface-2: #0a1630;
+        --ink: #eef3ff;
+        --muted: #97a6c7;
+        --line: #1f3361;
+        --line-strong: #2b4580;
+        --accent: #4f93ff;
+        --accent-2: #16c9a4;
+        --accent-ink: #04122b;
+        --accent-soft: #112a5c;
+        --sel: #14295a;
+        --ok: #4be3b4;
+        --ok-soft: #0b2b2a;
+        --warn: #ffb81c;
         --warn-soft: #33291a;
-        --bad: #f1887a;
-        --bad-soft: #36201c;
+        --bad: #ff8a8a;
+        --bad-soft: #341420;
         --shadow: none;
     }
 }
@@ -71,9 +73,9 @@ code, .mono { font-family: var(--mono); font-size: 0.92em; }
 
 .page { width: 100%; max-width: 620px; display: flex; flex-direction: column; gap: 18px; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 0 2px; }
-.brand-mark { width: 32px; height: 32px; border-radius: 9px; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; }
-.brand-mark .ic { width: 20px; height: 20px; }
-.brand-name { font: 600 18px var(--serif); letter-spacing: -0.01em; }
+.brand-mark { width: 38px; height: 38px; display: grid; place-items: center; }
+.brand-mark img { width: 38px; height: 38px; display: block; }
+.brand-name { font: 800 19px var(--serif); letter-spacing: -0.01em; font-style: italic; background: linear-gradient(90deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .brand-sub { color: var(--muted); font-size: 14px; }
 .brand .pill { margin-left: auto; }
 
@@ -109,7 +111,7 @@ h2 { font: 600 16px var(--serif); }
 .btn:hover { background: var(--surface-2); }
 .btn:active { transform: translateY(1px); }
 .btn[disabled] { opacity: 0.55; cursor: not-allowed; }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.primary { background: linear-gradient(90deg, var(--accent), var(--accent-2)); border-color: transparent; color: #fff; font-weight: 700; }
 .btn.primary:hover { filter: brightness(1.08); }
 .btn.danger { background: var(--bad); border-color: var(--bad); color: #fff; }
 .btn.block { width: 100%; }
@@ -163,3 +165,6 @@ ul.dots { padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
     .meta > div + div { border-left: 0; border-top: 1px solid var(--line); }
     input { font-size: 16px; }
 }
+
+.hero-banner { display: block; width: 100%; height: auto; border-radius: var(--R); margin: 0 0 16px; }
+body { background-image: radial-gradient(90% 40% at 85% -10%, rgba(31, 107, 255, 0.14), transparent 60%); background-repeat: no-repeat; }

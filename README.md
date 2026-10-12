@@ -1,3 +1,5 @@
+<p align="center"><img src="website/img/pisohub-banner.jpg" alt="TechNet Solutions: PisoWiFi and PisoPhone" width="720"></p>
+
 # TechNet PisoHub
 
 **Coin-powered Wi-Fi and phone rentals.** By TechNet Solutions.
