@@ -64,6 +64,7 @@ CI (GitHub Actions, `.github/workflows/`) runs all of this on every push, only f
 | [`docs/PROVISIONING_SOLD_UNIT.md`](docs/PROVISIONING_SOLD_UNIT.md) | Secure boot and flash encryption for boxes you sell |
 | [`docs/api/`](docs/api) | Router gateway API and the super-admin QR login |
 | [`website/manual.html`](website/manual.html) | **Owner's Manual**: setup, daily use, every feature, revenue, troubleshooting (print-ready) |
+| [`docs/ROUTERS.md`](docs/ROUTERS.md) | Which routers work (five CPU families), what they need |
 | [`setup/README.md`](setup/README.md) | Setting up a site with the setup program: coin box, router, phones |
 | [`setup/MANUAL.md`](setup/MANUAL.md) | The same by hand, router commands, repair tools |
 

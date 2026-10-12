@@ -4,6 +4,12 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Router 1.3.0: **five CPU families.** The portal program (and so the console) is now built for `mipsel` (as before; MT7621, MT7628, the
+  360T6M), `mips` (ath79, big-endian), `aarch64` (newer Wi-Fi 6 routers, Raspberry Pi 4, NanoPi), `armv7` (Qualcomm IPQ40xx) and `x86_64`, each with
+  OpenWrt's own toolchain in CI. Each family has its own setup file (`setup/piso-setup-<family>.sh`, signed into `website/update/<family>/`;
+  mipsel stays where it was, so deployed routers keep updating). The one-line installer and `piso-setup update` pick the file by the router's CPU
+  and a file for another CPU refuses to run before changing anything. Every build passes its self-test and the console tests in QEMU, including the
+  big-endian MIPS one. Only the 360T6M has run on real hardware. See `docs/ROUTERS.md`.
 - Router 1.3.0: **the owner's console.** A friendly page in place of LuCI, inside the portal program (nothing more to install): customers
   online, money today, the internet line with a short graph, every PisoWiFi device with its name, plan, time left, data and live speed
   (and a Disconnect button), and the rental phones from the coin box. It signs in with the router's root password (checked like LuCI does,
