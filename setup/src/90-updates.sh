@@ -33,15 +33,26 @@ update_files() {
 	echo "$SELF_PATH"
 }
 
+# portal_running: either tool will do (a router may lack one of them)
+portal_running() { pidof pisoportal > /dev/null 2>&1 || pgrep -x pisoportal > /dev/null 2>&1; }
+
+# update_healthy: the new portal program passes its self-test and is running (it gets up to PISO_HEALTH_RETRY seconds to start);
+# when it is not, UPDATE_WHY says why, so the log and the owner's message name the reason
 update_healthy() {
-	if [ -n "$PISO_HEALTH_CMD" ]; then sh -c "$PISO_HEALTH_CMD"; return $?; fi
-	"$PORTAL_BIN" selftest > /dev/null 2>&1 || return 1
+	if [ -n "$PISO_HEALTH_CMD" ]; then sh -c "$PISO_HEALTH_CMD" && return 0; UPDATE_WHY="the health check command failed"; return 1; fi
+	"$PORTAL_BIN" selftest > /dev/null 2>&1 || { UPDATE_WHY="the new portal program failed its self-test"; return 1; }
 	[ -x /etc/init.d/pisoportal ] || return 0
-	pgrep -x pisoportal > /dev/null 2>&1
+	_t=0
+	while [ "$_t" -lt "${PISO_HEALTH_RETRY:-30}" ]; do
+		portal_running && return 0
+		sleep 2; _t=$((_t + 2))
+	done
+	UPDATE_WHY="the portal program is not running after the update"
+	return 1
 }
 
 rollback_update() {
-	log "Going back to release $PISO_RELEASE (the new one did not run)"
+	log "Going back to release $PISO_RELEASE (the new one did not run: ${UPDATE_WHY:-unknown reason})"
 	[ -x /etc/init.d/pisoportal ] && /etc/init.d/pisoportal stop > /dev/null 2>&1
 	for _f in $(update_files); do
 		_b="$UPDATE_BACKUP/$(echo "$_f" | tr / _)"
@@ -121,14 +132,19 @@ cmd_self_update() {
 	for _f in $(update_files); do
 		if [ -e "$_f" ]; then cp -p "$_f" "$UPDATE_BACKUP/$(echo "$_f" | tr / _)" || die "could not save $_f aside (is the router's flash full?)"; fi
 	done
-	if sh "$_work/new.sh" update > /dev/null 2>&1 && sleep "${PISO_HEALTH_WAIT:-8}" && update_healthy; then
+	UPDATE_WHY=""
+	sh "$_work/new.sh" update > "$_work/update.out" 2>&1; _urc=$?
+	if [ "$_urc" != 0 ]; then UPDATE_WHY="the installer stopped with code $_urc"
+	else sleep "${PISO_HEALTH_WAIT:-8}"; update_healthy; fi
+	if [ -z "$UPDATE_WHY" ]; then
 		conf_set UPDATE_NOTIFIED "$_new"
 		log "Release $_new is installed and running."
 		notify "update: release $_new installed and running (was $PISO_RELEASE). $_note"
 		return 0
 	fi
+	tail -n 15 "$_work/update.out" 2> /dev/null | while IFS= read -r _l; do log "  installer: $_l"; done
 	rollback_update
-	notify "update to release $_new FAILED and was undone: the router is back on release $PISO_RELEASE. See /root/piso-setup.log"
+	notify "update to release $_new FAILED and was undone ($UPDATE_WHY): the router is back on release $PISO_RELEASE. See /root/piso-setup.log"
 	return 1
 }
 

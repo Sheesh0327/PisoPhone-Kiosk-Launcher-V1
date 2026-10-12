@@ -4,6 +4,9 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Router 1.2.7: when a self-update is undone, the log, the Telegram message and `piso-setup status` now say **why** (the installer stopped
+  with a code, the new portal program failed its self-test, or it was not running). The check no longer depends on `pgrep` alone (it also
+  uses `pidof`) and waits up to 30 s for the portal program to start instead of 8 s. The installer's last lines are written to the log.
 - **TechNet look on every screen people see.** One theme (navy, blue-to-teal buttons, gold accents) with the TechNet logo and mascot:
   the PisoWifi login page (new header, a welcome mascot, gradient buttons), the rental phones' lock screen (the mascot as a faint, gently
   moving watermark under the unchanged layout; it holds still where background videos are off), the coin box's sign-in page and
