@@ -4,6 +4,11 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Phone app: a rental phone now connects only to the one Wi-Fi network its box paired it with (PisoKiosk). On Android 13 and newer
+  the system itself is told to allow only that network (an SSID allowlist set by the device owner), and on every version any other
+  saved network is removed, so a phone no longer wanders onto a neighbour's Wi-Fi or a hotspot. An admin maintenance window lifts the lock
+  while it is open (so an admin can still use Settings) and it is back as soon as the window ends; a phone that has no
+  kiosk network saved yet, or that leaves kiosk mode or has the app removed, is not held. (Needs the next APK; test S5.)
 - Setup program: the setup is now a web page served by the program, so the computer that runs it needs no monitor: run it on a
   small Armbian, Parrot, Debian, Ubuntu or Raspberry Pi computer, open the address it prints on your phone and type the PIN.
   The window (Tk) is gone. On start the program detects the system and installs what is missing: `ssh` from the system's packages
