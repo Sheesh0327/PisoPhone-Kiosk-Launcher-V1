@@ -1,44 +1,55 @@
 #!/usr/bin/env python3
 """PisoPhone Setup: the one program that sets up a whole PisoPhone system, from a bare coin box and a factory-reset router
-to working rental phones. Nothing to copy, paste or type into a terminal.
+to working rental phones. It needs no screen: it serves its setup as a web page, so a small headless computer (Armbian, Parrot,
+a Raspberry Pi, a laptop) can run it and you open the page on your phone.
 
-    python3 pisophone_setup.py                    the setup assistant (a window that guides you through every step)
+    python3 pisophone_setup.py                    the setup page: open the address it prints, type the PIN
     python3 pisophone_setup.py --branch beta      the same with the beta branch's files (testing)
-    python3 pisophone_setup.py --cli              the same in the terminal (no window)
+    sudo python3 pisophone_setup.py --install-service   start the setup page by itself whenever the computer boots (Linux)
+    python3 pisophone_setup.py --cli              the same in the terminal (no web page)
     python3 pisophone_setup.py --update           new software only, on a router that is set up already (terminal)
     python3 pisophone_setup.py --cli --no-flash   the terminal mode without writing the coin box (it already has the software)
 
-The assistant's steps, in order:
-  1. Start        checks this computer (ssh, the website, Chrome or Edge)
+On start it detects the system (Windows, macOS, Linux; Debian, Armbian, Parrot, Ubuntu, Raspberry Pi OS, Fedora, Arch...) and installs
+what is missing: ssh from the system's packages (needs root or sudo) and esptool with pip into its own folder
+(~/.pisophone, no root needed). --no-install turns that off.
+
+The setup page's steps, in order:
+  1. Start        checks this computer (ssh, the website, esptool) and installs what is missing
   2. Router       finds the factory-reset router by itself (192.168.1.1 or 10.0.0.1)
   3. Settings     the shop's name and public Wi-Fi name (asked every time), the country and the passwords (new ones every time)
   4. Install      writes the PisoPhone software to the coin box over USB (esptool, checked against the website's checksums), runs
                   the one-line installer on the router unattended (it checks the setup file's sha256), waits for the router to
                   move to 10.0.0.1, runs the setup, pairs the coin box, saves the summary and the setup sheet
-  5. Phones       opens the coin box's phone setup page (Set up a phone) for you, already filled in: scan the QR code
+  5. Phones       the link to the phone setup page (Set up a phone), already filled in: open it on a phone or laptop with
+                  internet and scan its QR code with the rental phone
   6. Finish       tests a real coin, checks the customer Wi-Fi, offers Telegram alerts; "Set up the next unit" starts over
                   for the next router and coin box
-The summary (every password) and the printable setup sheet are saved on this computer, readable only by you.
+The summary (every password) and the printable setup sheet are saved on this computer, readable only by you, and can be opened
+from the page.
 
-It needs Python 3.8+ (with Tk for the window; the terminal mode works without), esptool (pip install esptool) and the ssh command (built into Windows
-10/11, macOS and Linux). The passwords travel over the SSH connection's input, never on a command line; the router's SSH
-key is pinned for the run (the same key must answer at 192.168.1.1 and at 10.0.0.1). Running it again is safe: a router
-that is set up already keeps its names and passwords (it is then only repaired or finished).
+The page is served over plain HTTP to the local network and protected by a PIN (printed when it starts, kept in
+~/.pisophone/pin; five wrong PINs lock it for a minute). Use --local-only to serve this computer only. It needs Python 3.8+
+and the ssh command (built into Windows 10/11, macOS and most Linux systems). The passwords travel over the SSH connection's
+input, never on a command line; the router's SSH key is pinned for the run (the same key must answer at 192.168.1.1 and at
+10.0.0.1). Running it again is safe: a router that is set up already keeps its names and passwords (it is then only repaired
+or finished).
 
 Build a standalone program with Nuitka (no Python needed on the computer that runs it):
-    python -m nuitka --onefile --enable-plugin=tk-inter --include-package=esptool --include-package=serial \\
-        --windows-console-mode=disable setup/pisophone_setup.py"""
+    python -m nuitka --onefile --include-package=esptool --include-package=serial setup/pisophone_setup.py"""
 import argparse
 import base64
 import contextlib
 import getpass
 import glob
 import hashlib
+import http.server
+import importlib
 import io
 import json
 import os
 import pathlib
-import queue
+import platform
 import re
 import secrets
 import shlex
@@ -662,22 +673,31 @@ def provisioning_url(branch, link, slot, wifi_pass, box_ip=BOX_IP):
     return f"{site_url(branch)}/#" + urllib.parse.urlencode({k: v for k, v in values.items() if v not in ("", None)})
 
 
-def open_provisioning(branch, passwords, slot=1, fetch=fetch_box_link, opener=open_url):
-    """Opens the coin box's phone setup page (Set up a phone) in the browser: filled in when the box's admin page can be
-    read, else the box's own page (log in, click Set up a phone). Returns ("setup" or "box", a note for the user)."""
+def provisioning_target(branch, passwords, slot=1, fetch=fetch_box_link):
+    """Where the phone setup page is: ("setup", the website's page, filled in, "") when the coin box's admin page can be read,
+    else ("box", the coin box's own page, why not)."""
     box_password = passwords.get("BOX_NEW_ADMIN_PASSWORD") or ""
     note = "the coin box's admin password is not known here"
     if box_password:
         try:
             link = fetch(BOX_IP, box_password)
             if link["mac"] and link["mac"] != "00:00:00:00:00:00":
-                opener(provisioning_url(branch, link, slot, passwords.get("KIOSK_PASSWORD", "")))
-                return "setup", ""
+                return "setup", provisioning_url(branch, link, slot, passwords.get("KIOSK_PASSWORD", "")), ""
             note = "the coin box has no address yet"
         except SetupError as e:
             note = str(e)
-    opener(f"http://{BOX_IP}/", chromium=False)
-    return "box", note
+    return "box", f"http://{BOX_IP}/", note
+
+
+def open_provisioning(branch, passwords, slot=1, fetch=fetch_box_link, opener=open_url):
+    """Opens the coin box's phone setup page (Set up a phone) in the browser: filled in when the box's admin page can be
+    read, else the box's own page (log in, click Set up a phone). Returns ("setup" or "box", a note for the user)."""
+    kind, url, note = provisioning_target(branch, passwords, slot, fetch)
+    if kind == "setup":
+        opener(url)
+    else:
+        opener(url, chromium=False)
+    return kind, note
 
 
 def box_online(host=BOX_IP, probe=port_open):
@@ -895,12 +915,12 @@ def flash_box(branch, port, emit, cache_dir, opener=urllib.request.urlopen, tool
     return chip, manifest.get("version", "?")
 
 
-def preflight(branch, opener=urllib.request.urlopen, find=chromium_path, tool=esptool_module):
+def preflight(branch, opener=urllib.request.urlopen, tool=esptool_module, which=shutil.which):
     """The checks of the first page: [(what, ok, what to do when not)]. Nothing here changes anything."""
     checks = []
-    have_ssh = bool(os.environ.get("PISO_SSH") or shutil.which("ssh"))
-    checks.append(("ssh program", have_ssh, "Windows: Settings > Apps > Optional features > add \"OpenSSH Client\". "
-                                            "Linux: install openssh-client."))
+    have_ssh = bool(os.environ.get("PISO_SSH") or which("ssh"))
+    checks.append(("ssh program", have_ssh, "Install it with the button below (Linux), or: Windows: Settings > Apps > Optional "
+                                            "features > add \"OpenSSH Client\"."))
     try:
         with opener(urllib.request.Request(f"{site_url(branch)}/update/app.json", method="GET"), timeout=8) as r:
             online = r.status == 200
@@ -909,9 +929,7 @@ def preflight(branch, opener=urllib.request.urlopen, find=chromium_path, tool=es
     checks.append((f"internet and the {urllib.parse.urlsplit(site_url(branch)).netloc} website", online,
                    "This computer needs internet now (the router gets its own from the modem later)."))
     checks.append(("USB flashing tool (esptool)", tool() is not None,
-                   "Run  pip install esptool  and start this again (the standalone program has it built in)."))
-    checks.append(("Chrome or Edge", bool(find()), "The phone setup page needs Chrome or Microsoft Edge to talk to a phone over "
-                                                   "USB (Firefox and Safari cannot). Install one, then start this again."))
+                   "Install it with the button below, or run  python3 -m pip install esptool."))
     return checks
 
 
@@ -1019,26 +1037,190 @@ def run_setup(args, ssh, read=input, read_secret=getpass.getpass, probe=port_ope
     return 0
 
 
-# ---- the window mode -----------------------------------------------------------------------------------------------------
+# ---- this computer: what it is, what it needs --------------------------------------------------------------------------------
 
-tk = ttk = messagebox = tkfont = None
-
-
-def _load_tk():
-    global tk, ttk, messagebox, tkfont
-    import tkinter
-    from tkinter import ttk as _ttk, messagebox as _messagebox, font as _tkfont
-    tk, ttk, messagebox, tkfont = tkinter, _ttk, _messagebox, _tkfont
+def pisophone_home():
+    """The folder for what this program keeps (the PIN, downloaded libraries): ~/.pisophone, or $PISOPHONE_HOME (the service)."""
+    return os.environ.get("PISOPHONE_HOME") or os.path.join(os.path.expanduser("~"), ".pisophone")
 
 
-def gui_available():
+def private_lib_dir():
+    """Where esptool is installed when the system's Python does not have it (pip --target: no root, no venv, works on
+    Debian-family systems whose Python is 'externally managed')."""
+    return os.path.join(pisophone_home(), f"pylib-{sys.version_info[0]}.{sys.version_info[1]}")
+
+
+def use_private_libs():
+    lib = private_lib_dir()
+    if os.path.isdir(lib) and lib not in sys.path:
+        sys.path.insert(0, lib)
+
+
+def read_os_release(path="/etc/os-release"):
+    values = {}
     try:
-        __import__("tkinter")   # (only whether it loads)
-    except Exception:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                key, sep, value = line.strip().partition("=")
+                if sep:
+                    values[key] = value.strip().strip('"')
+    except OSError:
+        pass
+    return values
+
+
+def package_family(os_release):
+    """The package manager family of a Linux system, from /etc/os-release (ID and ID_LIKE): Armbian, Parrot, Kali, Ubuntu,
+    Raspberry Pi OS and Debian are all 'debian'."""
+    ids = set((os_release.get("ID", "") + " " + os_release.get("ID_LIKE", "")).lower().split())
+    for family, names in (("debian", {"debian", "ubuntu", "armbian", "parrot", "kali", "raspbian", "linuxmint", "pop"}),
+                          ("redhat", {"fedora", "rhel", "centos", "rocky", "almalinux"}), ("arch", {"arch", "manjaro"}),
+                          ("alpine", {"alpine"}), ("suse", {"suse", "opensuse", "opensuse-leap"})):
+        if ids & names:
+            return family
+    return ""
+
+
+def detect_system(os_release=None, system=None, machine=None, is_root=None, which=shutil.which):
+    """What this computer is: {kind: linux|windows|macos, name, family, arch, root, sudo}. 'sudo' means sudo works without a
+    password (so packages can be installed unattended)."""
+    system = system or platform.system()
+    kind = {"Windows": "windows", "Darwin": "macos"}.get(system, "linux")
+    info = {"kind": kind, "family": "", "arch": machine or platform.machine(), "root": False, "sudo": False}
+    if kind == "linux":
+        release = os_release if os_release is not None else read_os_release()
+        info["family"] = package_family(release)
+        info["name"] = release.get("PRETTY_NAME") or release.get("NAME") or "Linux"
+        info["root"] = (os.geteuid() == 0) if is_root is None and hasattr(os, "geteuid") else bool(is_root)
+        if not info["root"] and which("sudo"):
+            try:
+                info["sudo"] = subprocess.run(["sudo", "-n", "true"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                              timeout=10).returncode == 0
+            except (OSError, subprocess.SubprocessError):
+                pass
+    else:
+        info["name"] = "Windows" if kind == "windows" else "macOS " + platform.mac_ver()[0]
+    return info
+
+
+SYSTEM_PACKAGES = {   # what to install per package family
+    "ssh": {"debian": "openssh-client", "redhat": "openssh-clients", "arch": "openssh", "alpine": "openssh-client", "suse": "openssh"},
+    "pip": {"debian": "python3-pip", "redhat": "python3-pip", "arch": "python-pip", "alpine": "py3-pip", "suse": "python3-pip"},
+}
+INSTALLERS = {"debian": ["apt-get", "install", "-y", "-q"], "redhat": ["dnf", "install", "-y"], "arch": ["pacman", "-S", "--noconfirm"],
+              "alpine": ["apk", "add"], "suse": ["zypper", "--non-interactive", "install"]}
+
+
+def run_command(argv, emit, timeout=900, env=None):
+    """Runs a command, hands its output on line by line. Returns its exit status (127 when it cannot be started)."""
+    try:
+        proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env, universal_newlines=True,
+                                errors="replace", creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except OSError as e:
+        emit(f"{argv[0]}: {e}")
+        return 127
+    timer = threading.Timer(timeout, proc.kill)
+    timer.start()
+    try:
+        for line in proc.stdout:
+            if line.strip():
+                emit(line.rstrip())
+        return proc.wait()
+    finally:
+        timer.cancel()
+
+
+def install_system_package(what, system, emit, run=run_command):
+    """Installs a system package ('ssh', 'pip') with the system's package manager, when this program may (root, or sudo
+    without a password). Returns True when the command succeeded."""
+    family = system.get("family", "")
+    package = SYSTEM_PACKAGES.get(what, {}).get(family)
+    if not package or family not in INSTALLERS:
+        emit(f"This system's packages are not known here: install {what} yourself.")
         return False
-    if os.name != "nt" and sys.platform != "darwin" and not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+    if not (system.get("root") or system.get("sudo")):
+        emit(f"Installing {package} needs administrator rights: run  sudo {' '.join(INSTALLERS[family])} {package}  and start this again.")
         return False
-    return True
+    argv = ([] if system.get("root") else ["sudo", "-n"]) + INSTALLERS[family] + [package]
+    env = dict(os.environ, DEBIAN_FRONTEND="noninteractive")
+    if family == "debian":
+        run((["sudo", "-n"] if not system.get("root") else []) + ["apt-get", "update", "-q"], emit, 600, env)
+    emit(f"Installing {package}...")
+    return run(argv, emit, 900, env) == 0
+
+
+def pip_available(run=run_command):
+    return run([sys.executable, "-m", "pip", "--version"], lambda line: None, 60) == 0
+
+
+def ensure_esptool(emit, system, run=run_command):
+    """Makes `import esptool` work: already there, or installed into this program's own folder with pip (and pip itself from
+    the system's packages when it is missing). Returns True when esptool can be used."""
+    use_private_libs()
+    if esptool_module():
+        return True
+    if not pip_available(run):
+        emit("pip is missing.")
+        if system["kind"] == "linux":
+            install_system_package("pip", system, emit, run)
+        if not pip_available(run):
+            emit("Without pip esptool cannot be installed here. Debian family: sudo apt install python3-pip (or: sudo apt install esptool).")
+            return False
+    lib = private_lib_dir()
+    os.makedirs(lib, exist_ok=True)
+    emit("Installing esptool (the tool that writes the coin box)...")
+    lines = []
+
+    def keep(line):
+        lines.append(line)
+        emit(line)
+    argv = [sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "--quiet", "--upgrade", "--target", lib, "esptool"]
+    code = run(argv, keep, 900)
+    if code != 0 and any("externally-managed" in line for line in lines):
+        code = run(argv + ["--break-system-packages"], keep, 900)   # (only into the folder above)
+    if code != 0:
+        emit("esptool could not be installed (is the internet on? Armbian / Debian: sudo apt install esptool is the alternative).")
+        return False
+    importlib.invalidate_caches()
+    use_private_libs()
+    return esptool_module() is not None
+
+
+def ensure_ssh(emit, system, run=run_command, which=shutil.which):
+    """The ssh command: present, or installed from the system's packages on Linux. Returns True when it can be used."""
+    if os.environ.get("PISO_SSH") or which("ssh"):
+        return True
+    if system["kind"] == "linux":
+        install_system_package("ssh", system, emit, run)
+        return bool(which("ssh"))
+    if system["kind"] == "windows":
+        emit("Windows: Settings > Apps > Optional features > add 'OpenSSH Client'.")
+    else:
+        emit("ssh is missing: it is part of macOS; check the Command Line Tools.")
+    return False
+
+
+def ensure_dependencies(emit, system=None, run=run_command, which=shutil.which):
+    """Installs what this program needs and the system lacks (ssh, esptool). Returns {name: ok}."""
+    system = system or detect_system()
+    emit(f"This computer: {system['name']} ({system['arch']}){', running as administrator' if system['root'] else ''}.")
+    result = {"ssh": ensure_ssh(emit, system, run, which), "esptool": ensure_esptool(emit, system, run)}
+    for name, ok in result.items():
+        emit(f"{name}: {'ready' if ok else 'MISSING'}")
+    return result
+
+
+def serial_access_fix(port, system, emit, run=run_command):
+    """Linux: a USB serial port is usually owned by root and group 'dialout'. Makes the port usable for this run when the
+    user may (sudo without a password); otherwise says what to do. Returns True when the port can be opened."""
+    if system["kind"] != "linux" or os.access(port, os.R_OK | os.W_OK):
+        return True
+    if system.get("sudo") and run(["sudo", "-n", "chmod", "a+rw", port], emit, 30) == 0:
+        emit(f"Allowed this program to use {port}.")
+        return True
+    user = os.environ.get("USER") or "your-user"
+    emit(f"This account may not use {port}: run  sudo usermod -aG dialout {user}  and log in again (or start this as root).")
+    return False
 
 
 def flash_cache_dir():
@@ -1047,7 +1229,10 @@ def flash_cache_dir():
 
 
 def default_out_dir():
-    """Where the window mode saves the summary and the setup sheet: Documents/PisoPhone (or PisoPhone in the home folder)."""
+    """Where the summary and the setup sheet are saved: Documents/PisoPhone (or PisoPhone in the home folder), or the
+    service's own folder."""
+    if os.environ.get("PISOPHONE_HOME"):
+        return os.path.join(os.environ["PISOPHONE_HOME"], "saved")
     home = pathlib.Path.home()
     docs = home / "Documents"
     return str((docs if docs.is_dir() else home) / "PisoPhone")
@@ -1066,16 +1251,28 @@ def open_path(path):
         webbrowser.open(pathlib.Path(path).as_uri())
 
 
+# ---- the setup page: a small web server on this computer ----------------------------------------------------------------------
+# The setup is a web page served by this program (standard library only), so it needs no screen on the computer that runs it:
+# open the address on any phone or laptop in the same network. A PIN keeps everyone else out.
+
+STEPS = [("welcome", "Start"), ("router", "Router"), ("settings", "Settings"), ("install", "Install"), ("phones", "Phones"),
+         ("finish", "Finish")]
+INSTALL_STAGES = ["Write the coin box software (USB)", "Prepare the router", f"Move it to {TARGET_IP}", "Install and set up",
+                  "Check everything"]
+STAGE_ACTIVITY = ["Writing the coin box software", "Downloading the setup to the router", f"Waiting for the router at {TARGET_IP}",
+                  "Installing on the router", "Checking"]
+PIN_RE = re.compile(r"[A-Za-z0-9]{6,32}")
+DEFAULT_PORT = 8765
+LOG_KEEP = 3000
+
+
 class Core:
-    """What the window does with the network, the router and the browser; tests replace it with a fake."""
+    """What the setup does with the network, the router and the coin box; tests replace it with a fake."""
 
     def __init__(self, branch, workdir):
         self.branch = branch
         self.ssh = Ssh(workdir, hidden=True)
         self.ssh.set_password("")   # never wait for a password on a terminal there is not
-
-    def ssh_missing(self):
-        return not os.environ.get("PISO_SSH") and not shutil.which("ssh")
 
     def preflight(self):
         return preflight(self.branch)
@@ -1094,6 +1291,15 @@ class Core:
         self.ssh.set_password(password)
         return check_login(self.ssh, host)
 
+    def usb_boards(self):
+        return usb_boards()
+
+    def flash_box(self, port, emit):
+        system = detect_system()
+        if not serial_access_fix(port, system, emit):
+            raise SetupError("this account may not use the USB port (see above).")
+        return flash_box(self.branch, port, emit, flash_cache_dir())
+
     def install(self, host, answers, out_dir, emit, stage, notify):
         return install(self.ssh, host, answers, self.branch, out_dir, emit,
                        lambda: wait_for_move(renew=renew_address, notify=notify), stage)
@@ -1107,276 +1313,137 @@ class Core:
         self.ssh.set_password(password)
         return connect_telegram(self.ssh, host, token, site, emit, confirm)
 
-    def usb_boards(self):
-        return usb_boards()
-
-    def flash_box(self, port, emit):
-        return flash_box(self.branch, port, emit, flash_cache_dir())
-
-    def open_provisioning(self, passwords, slot):
-        return open_provisioning(self.branch, passwords, slot)
+    def provisioning_target(self, passwords, slot):
+        return provisioning_target(self.branch, passwords, slot)
 
     def box_online(self):
         return box_online()
 
-    def browse(self, url):
-        open_url(url, chromium=False)
 
-    def open_path(self, path):
-        open_path(path)
+class Session:
+    """The state of the setup, for the web page: one unit after the other. Worker threads change it, the page reads it."""
 
-
-# the colours: one neutral palette, one accent
-C = {
-    "side": "#0f172a", "side_text": "#cbd5e1", "side_muted": "#64748b", "side_line": "#1e293b",
-    "bg": "#f8fafc", "card": "#ffffff", "line": "#e2e8f0", "ink": "#0f172a", "muted": "#64748b",
-    "accent": "#2563eb", "accent_dark": "#1d4ed8", "accent_soft": "#dbeafe", "accent_off": "#93b4f5",
-    "ok": "#15803d", "ok_soft": "#dcfce7", "warn": "#b45309", "warn_soft": "#fef3c7", "bad": "#b91c1c", "bad_soft": "#fee2e2",
-    "log_bg": "#0b1220", "log_ink": "#cbd5e1",
-}
-STEPS = [("welcome", "Start"), ("router", "Router"), ("settings", "Settings"), ("install", "Install"),
-         ("phones", "Phones"), ("finish", "Finish")]
-INSTALL_STAGES = ["Write the coin box software (USB)", "Prepare the router", f"Move it to {TARGET_IP}", "Install and set up", "Check everything"]
-
-
-class Wizard:
-    """The setup assistant: one window, a step list on the left, one step at a time on the right."""
-
-    def __init__(self, root, core, branch=DEFAULT_BRANCH, out_dir=None):
-        self.root, self.core, self.branch = root, core, branch
+    def __init__(self, core, branch=DEFAULT_BRANCH, out_dir=None, system=None, install_deps=None):
+        self.core, self.branch = core, branch
         self.out_dir = out_dir or default_out_dir()
-        self.q = queue.Queue()
-        self.step = 0
-        self.skip_flash = tk.BooleanVar(value=False)   # the coin box has the PisoPhone software already
-        self.flashed = False                          # the software was written to this unit's box
-        self.unit = 1                                 # which unit of a batch this is ("Set up the next unit" counts up)
-        self.usb = None                               # the boards on USB: None (not looked yet) or [(port, description)]
-        self.vars = {
-            "GUEST_SSID": tk.StringVar(value=""), "SITE_NAME": tk.StringVar(value=""),
-            "COUNTRY": tk.StringVar(value="Philippines (PH)"),
-        }
-        for env, _label, _lo, _hi, length in PASSWORDS:
-            self.vars[env] = tk.StringVar(value=generate(length))
-        for key, var in self.vars.items():
-            var.trace_add("write", lambda *_a, k=key: self._validate_field(k))
-        self.router_password = tk.StringVar(value="")
-        self.tg_token = tk.StringVar(value="")
-        self.router = {"host": None, "state": None, "error": None, "login_ok": False}
-        self.searching = False
-        self.installing = False
-        self.result = None          # the installation's result once it has run
-        self.install_error = None
-        self.log_lines = []
-        self.activity = ""
-        self.stage = -1
-        self.banner = None          # (kind, text) on the install page
-        self.telegram = {"running": False, "ok": False, "lines": []}
-        self.tg_win = None
-        self.field_errors = {}
-        self.final = {}             # what the installed system uses: the passwords and names (from the router's summary)
-        self.pre = None             # the first page's checks, once they ran
-        self.slot = tk.IntVar(value=1)
-        self.prov = {"state": None, "note": ""}      # the phone setup page: None, "opening", "setup", "box"
-        self.prov_auto = False
-        self.box_up = None
-        self.coin = {"running": False, "ok": None, "lines": []}
-        self.clip_token = ""
-        self._fonts()
-        self._styles()
-        self._layout()
-        self.root.protocol("WM_DELETE_WINDOW", self.close)
-        self.show(0)
-        self.root.after(80, self._poll)
+        self.system = system or detect_system()
+        self.install_deps = install_deps or (lambda emit: ensure_dependencies(emit, self.system))
+        self.lock = threading.RLock()
+        self.unit = 0
+        self.checks = None
+        self.deps = {"running": False, "lines": []}
+        self.country = "PH"
+        self.reset_unit()
+        self.run_checks()
 
-    # -- look --------------------------------------------------------------------------------------------------------------
-    def _fonts(self):
-        families = set(tkfont.families(self.root))
-        family = next((f for f in ("Segoe UI", "SF Pro Text", "Helvetica Neue", "Inter", "Cantarell", "Ubuntu", "Noto Sans",
-                                   "DejaVu Sans") if f in families), tkfont.nametofont("TkDefaultFont").actual("family"))
-        mono = next((f for f in ("Cascadia Mono", "Consolas", "SF Mono", "Menlo", "DejaVu Sans Mono", "Liberation Mono")
-                     if f in families), "TkFixedFont")
-        self.f = {
-            "body": (family, 10), "small": (family, 9), "bold": (family, 10, "bold"), "h1": (family, 18, "bold"),
-            "h2": (family, 11, "bold"), "eyebrow": (family, 8, "bold"), "brand": (family, 15, "bold"),
-            "step": (family, 10), "step_on": (family, 10, "bold"), "mono": (mono, 9), "mono_big": (mono, 11),
-        }
-        for name in ("TkDefaultFont", "TkTextFont"):
-            tkfont.nametofont(name).configure(family=family, size=10)
+    # -- state ---------------------------------------------------------------------------------------------------------------
+    def reset_unit(self):
+        with self.lock:
+            self.unit += 1
+            self.step = 0 if self.unit == 1 else 1
+            self.values = {"GUEST_SSID": "", "SITE_NAME": ""}
+            for env, _label, _lo, _hi, length in PASSWORDS:
+                self.values[env] = generate(length)
+            self.router = {"host": None, "state": None, "error": None, "login_ok": False, "login_failed": False, "searching": False}
+            self.router_password = ""
+            self.usb = None            # None: not looked yet, else [(port, description)]
+            self.skip_flash = False
+            self.flashed = False
+            self.install = {"running": False, "stage": -1, "activity": "", "error": None, "banner": None, "ok": False, "lines": []}
+            self.result = None
+            self.final = {}
+            self.saved = []
+            self.prov = {"state": None, "note": "", "url": "", "slot": 1}
+            self.prov_auto = False
+            self.box_up = None
+            self.coin = {"running": False, "ok": None, "lines": []}
+            self.telegram = {"running": False, "ok": False, "error": None, "lines": [], "confirm": None}
+            self._tg_answer = None
+            self._entered = {self.step}
+            if self.step == 1:
+                self._enter(1)
 
-    def _styles(self):
-        s = ttk.Style(self.root)
-        try:
-            s.theme_use("clam")
-        except tk.TclError:
-            pass
-        s.configure(".", background=C["bg"], foreground=C["ink"], font=self.f["body"])
-        s.configure("Card.TFrame", background=C["card"])
-        s.configure("TButton", padding=(14, 7), font=self.f["body"], borderwidth=1, focusthickness=0, relief="solid",
-                    background=C["card"], foreground=C["ink"], bordercolor="#cbd5e1", lightcolor=C["card"], darkcolor=C["card"])
-        s.map("TButton", background=[("disabled", C["bg"]), ("pressed", C["line"]), ("active", "#f1f5f9")],
-              foreground=[("disabled", "#94a3b8")], bordercolor=[("disabled", C["line"]), ("focus", C["accent"])])
-        s.configure("Primary.TButton", background=C["accent"], foreground="#ffffff", bordercolor=C["accent"],
-                    lightcolor=C["accent"], darkcolor=C["accent"], font=self.f["bold"], padding=(18, 8))
-        s.map("Primary.TButton", background=[("disabled", C["accent_off"]), ("pressed", C["accent_dark"]), ("active", C["accent_dark"])],
-              foreground=[("disabled", "#eef2ff")], bordercolor=[("disabled", C["accent_off"]), ("focus", C["accent_dark"])],
-              lightcolor=[("disabled", C["accent_off"])], darkcolor=[("disabled", C["accent_off"])])
-        s.configure("Small.TButton", padding=(8, 3), font=self.f["small"])
-        s.configure("TEntry", padding=(8, 6), fieldbackground=C["card"], bordercolor=C["line"], lightcolor=C["line"],
-                    darkcolor=C["line"], insertcolor=C["ink"])
-        s.map("TEntry", bordercolor=[("focus", C["accent"])], lightcolor=[("focus", C["accent"])])
-        s.configure("Bad.TEntry", bordercolor=C["bad"], lightcolor=C["bad"], darkcolor=C["bad"])
-        s.configure("TCombobox", padding=(8, 5), fieldbackground=C["card"], background=C["card"], bordercolor=C["line"],
-                    arrowcolor=C["muted"], lightcolor=C["line"], darkcolor=C["line"])
-        s.map("TCombobox", fieldbackground=[("readonly", C["card"])], bordercolor=[("focus", C["accent"])])
-        s.configure("TCheckbutton", background=C["card"], font=self.f["body"], focusthickness=0, indicatorbackground=C["card"],
-                    indicatorforeground=C["accent"])
-        s.map("TCheckbutton", background=[("active", C["card"])], indicatorbackground=[("selected", C["card"])])
-        s.configure("Bg.TCheckbutton", background=C["bg"])
-        s.map("Bg.TCheckbutton", background=[("active", C["bg"])])
-        s.configure("Horizontal.TProgressbar", troughcolor=C["line"], background=C["accent"], bordercolor=C["line"],
-                    lightcolor=C["accent"], darkcolor=C["accent"], thickness=6)
-        s.configure("Vertical.TScrollbar", background=C["log_bg"], troughcolor=C["log_bg"], bordercolor=C["log_bg"],
-                    arrowcolor=C["side_muted"], lightcolor=C["log_bg"], darkcolor=C["log_bg"])
+    def spawn(self, fn):
+        threading.Thread(target=fn, daemon=True).start()
 
-    def _layout(self):
-        r = self.root
-        r.title(APP_NAME)
-        r.configure(bg=C["bg"])
-        r.geometry("1000x700")
-        r.minsize(900, 640)
-        r.columnconfigure(1, weight=1)
-        r.rowconfigure(0, weight=1)
-        side = tk.Frame(r, bg=C["side"], width=250)
-        side.grid(row=0, column=0, sticky="nsw")
-        side.grid_propagate(False)
-        tk.Label(side, text="PisoPhone", bg=C["side"], fg="#ffffff", font=self.f["brand"], anchor="w").pack(fill="x", padx=24, pady=(26, 0))
-        tk.Label(side, text="System setup", bg=C["side"], fg=C["side_muted"], font=self.f["small"], anchor="w").pack(fill="x", padx=24)
-        tk.Frame(side, bg=C["side_line"], height=1).pack(fill="x", padx=24, pady=(20, 14))
-        self.step_rows = []
-        for i, (_key, title) in enumerate(STEPS):
-            row = tk.Frame(side, bg=C["side"])
-            row.pack(fill="x", padx=18, pady=3)
-            dot = tk.Canvas(row, width=26, height=26, bg=C["side"], highlightthickness=0)
-            dot.pack(side="left", padx=(6, 10))
-            lab = tk.Label(row, text=title, bg=C["side"], fg=C["side_text"], font=self.f["step"], anchor="w")
-            lab.pack(side="left", fill="x")
-            self.step_rows.append((row, dot, lab))
-        foot = "Setup files: " + self.branch + ("" if self.branch == "main" else "  (testing)")
-        tk.Label(side, text=foot, bg=C["side"], fg=C["side_muted"], font=self.f["small"], anchor="w").pack(side="bottom", fill="x", padx=24, pady=18)
+    def log(self, line):
+        with self.lock:
+            lines = self.install["lines"]
+            lines.append(line)
+            if len(lines) > LOG_KEEP:
+                del lines[:len(lines) - LOG_KEEP]
+            if line.startswith("== "):
+                self.install["activity"] = line[3:]
+            advice = tip_text(line)
+            if advice and (self.install["banner"] is None or self.install["banner"][0] == "info"):
+                self.install["banner"] = ("info", "Tip: " + advice)
 
-        main = tk.Frame(r, bg=C["bg"])
-        main.grid(row=0, column=1, sticky="nsew")
-        main.columnconfigure(0, weight=1)
-        main.rowconfigure(1, weight=1)
-        head = tk.Frame(main, bg=C["bg"])
-        head.grid(row=0, column=0, sticky="ew", padx=36, pady=(28, 0))
-        self.eyebrow = tk.Label(head, bg=C["bg"], fg=C["accent"], font=self.f["eyebrow"], anchor="w")
-        self.eyebrow.pack(fill="x")
-        self.title = tk.Label(head, bg=C["bg"], fg=C["ink"], font=self.f["h1"], anchor="w")
-        self.title.pack(fill="x", pady=(2, 0))
-        self.subtitle = tk.Label(head, bg=C["bg"], fg=C["muted"], font=self.f["body"], anchor="w", justify="left", wraplength=640)
-        self.subtitle.pack(fill="x", pady=(4, 0))
-        self.body = tk.Frame(main, bg=C["bg"])
-        self.body.grid(row=1, column=0, sticky="nsew", padx=36, pady=(18, 0))
-        tk.Frame(main, bg=C["line"], height=1).grid(row=2, column=0, sticky="ew")
-        nav = tk.Frame(main, bg=C["bg"])
-        nav.grid(row=3, column=0, sticky="ew", padx=36, pady=14)
-        self.nav_note = tk.Label(nav, bg=C["bg"], fg=C["muted"], font=self.f["small"], anchor="w")
-        self.nav_note.pack(side="left")
-        self.next_btn = ttk.Button(nav, text="Next", style="Primary.TButton", command=self.next)
-        self.next_btn.pack(side="right")
-        self.back_btn = ttk.Button(nav, text="Back", command=self.back)
-        self.back_btn.pack(side="right", padx=(0, 10))
-        self.subtitle.bind("<Configure>", lambda e: self.wrap(self.subtitle, e.width - 10, 300))
+    # -- the checks of this computer ---------------------------------------------------------------------------------------------
+    def run_checks(self):
+        def work():
+            try:
+                checks = self.core.preflight()
+            except Exception as e:
+                checks = [("checks", False, str(e))]
+            with self.lock:
+                self.checks = checks
+        self.spawn(work)
 
-    def _draw_steps(self):
-        for i, (row, dot, lab) in enumerate(self.step_rows):
-            dot.delete("all")
-            if i < self.step:
-                dot.create_oval(2, 2, 24, 24, fill=C["accent"], outline=C["accent"])
-                dot.create_line(8, 13, 12, 17, 18, 9, fill="#ffffff", width=2, capstyle="round", joinstyle="round")
-                lab.configure(fg=C["side_text"], font=self.f["step"])
-            elif i == self.step:
-                dot.create_oval(2, 2, 24, 24, fill="#ffffff", outline="#ffffff")
-                dot.create_text(13, 13, text=str(i + 1), fill=C["side"], font=self.f["eyebrow"])
-                lab.configure(fg="#ffffff", font=self.f["step_on"])
-            else:
-                dot.create_oval(2, 2, 24, 24, outline=C["side_muted"], width=1.5)
-                dot.create_text(13, 13, text=str(i + 1), fill=C["side_muted"], font=self.f["eyebrow"])
-                lab.configure(fg=C["side_muted"], font=self.f["step"])
+    def do_recheck(self, a):
+        with self.lock:
+            self.checks = None
+        self.run_checks()
 
-    # -- small building blocks ---------------------------------------------------------------------------------------------
-    def card(self, parent, **pack):
-        outer = tk.Frame(parent, bg=C["line"])
-        outer.pack(fill="x", **dict({"pady": (0, 14)}, **pack))
-        inner = tk.Frame(outer, bg=C["card"], padx=20, pady=16)
-        inner.pack(fill="both", expand=True, padx=1, pady=1)
-        return inner
+    def do_install_deps(self, a):
+        with self.lock:
+            if self.deps["running"]:
+                return
+            self.deps = {"running": True, "lines": []}
 
-    def text(self, parent, value, style="body", fg=None, bg=None, **kw):
-        bg = bg or parent.cget("bg")
-        lab = tk.Label(parent, text=value, bg=bg, fg=fg or C["ink"], font=self.f[style], anchor="w", justify="left", **kw)
-        lab.bind("<Configure>", lambda e: self.wrap(lab, e.width - 4, 200))
-        return lab
+        def emit(line):
+            with self.lock:
+                self.deps["lines"].append(line)
 
-    @staticmethod
-    def wrap(label, width, least):
-        """Wraps a label's text to the width it was given. Only a real change counts: two columns that grow by one pixel
-        every time their text is wrapped again would otherwise never come to rest."""
-        width = max(least, width)
-        if abs(width - int(float(label.cget("wraplength")))) > 8:
-            label.configure(wraplength=width)
+        def work():
+            try:
+                self.install_deps(emit)
+            except Exception as e:
+                emit(f"failed: {e}")
+            with self.lock:
+                self.deps["running"] = False
+                self.checks = None
+            self.run_checks()
+        self.spawn(work)
 
-    def numbered(self, parent, items):
-        for n, item in enumerate(items, 1):
-            row = tk.Frame(parent, bg=parent.cget("bg"))
-            row.pack(fill="x", pady=4)
-            badge = tk.Canvas(row, width=22, height=22, bg=parent.cget("bg"), highlightthickness=0)
-            badge.create_oval(1, 1, 21, 21, fill=C["accent_soft"], outline=C["accent_soft"])
-            badge.create_text(11, 11, text=str(n), fill=C["accent_dark"], font=self.f["eyebrow"])
-            badge.pack(side="left", anchor="n", padx=(0, 12))
-            self.text(row, item).pack(side="left", fill="x", expand=True)
+    # -- the settings --------------------------------------------------------------------------------------------------------
+    def kept(self):
+        return self.router["state"] in ("configured", "password")
 
-    def note(self, parent, kind, value):
-        colors = {"ok": (C["ok_soft"], C["ok"]), "warn": (C["warn_soft"], C["warn"]), "bad": (C["bad_soft"], C["bad"]),
-                  "info": (C["accent_soft"], C["accent_dark"])}[kind]
-        box = tk.Frame(parent, bg=colors[0], padx=14, pady=10)
-        box.pack(fill="x", pady=(0, 12))
-        tk.Frame(box, bg=colors[1], width=3).pack(side="left", fill="y", padx=(0, 12))
-        self.text(box, value, fg=colors[1], bg=colors[0]).pack(side="left", fill="x", expand=True)
-        return box
+    def settings_problems(self):
+        v = self.values
+        if self.kept():
+            return {"COUNTRY": country_problem(self.country)}
+        problems = {"GUEST_SSID": name_problem(v["GUEST_SSID"], "wifi"), "SITE_NAME": name_problem(v["SITE_NAME"], "site"),
+                    "COUNTRY": country_problem(self.country)}
+        for env, _label, lo, hi, _length in PASSWORDS:
+            problems[env] = password_problem(v[env], lo, hi)
+        return problems
 
-    def copy(self, value):
-        self.root.clipboard_clear()
-        self.root.clipboard_append(value)
-        self.nav_note.configure(text="Copied.")
-        self.root.after(1800, lambda: self.nav_note.configure(text=""))
+    def answers(self):
+        a = {k: v.strip() if k in ("GUEST_SSID", "SITE_NAME") else v for k, v in self.values.items()}
+        a["COUNTRY"] = self.country
+        return a
 
-    # -- navigation --------------------------------------------------------------------------------------------------------
-    def show(self, n):
-        if self.searching and STEPS[n][0] != "router":
-            self.searching = False
-        self.step = n
-        for w in self.body.winfo_children():
-            w.destroy()
-        self.eyebrow.configure(text=f"STEP {n + 1} OF {len(STEPS)}")
-        self.nav_note.configure(text="")
-        getattr(self, "page_" + STEPS[n][0])()
-        self._draw_steps()
-        self.update_nav()
+    def do_set(self, a):
+        with self.lock:
+            for key, value in (a.get("values") or {}).items():
+                if key in self.values and isinstance(value, str) and len(value) < 200:
+                    self.values[key] = value
+            country = a.get("country")
+            if isinstance(country, str) and re.fullmatch(r"[A-Za-z]{2}", country):
+                self.country = country.upper()
 
-    def next(self):
-        key = STEPS[self.step][0]
-        if key == "router" and self.router["state"] == "password" and not self.router["login_ok"]:
-            return self._check_router_password()
-        if self.step == len(STEPS) - 1:
-            return self.close()
-        self.show(self.step + 1)
-
-    def back(self):
-        if self.step > 0 and not self.installing:
-            self.show(self.step - 1)
-
+    # -- moving between the steps -----------------------------------------------------------------------------------------------
     def can_next(self):
         key = STEPS[self.step][0]
         if key == "settings":
@@ -1384,556 +1451,143 @@ class Wizard:
         if key == "router":
             if not self.router["host"] or self.router["error"]:
                 return False
-            return self.router["state"] != "password" or bool(self.router_password.get())
+            return self.router["state"] != "password" or bool(self.router_password)
         if key == "install":
             return bool(self.result and self.result["ok"])
         if key == "finish":
-            return not (self.coin["running"] or self.telegram["running"])
+            return False
         return True
 
-    def update_nav(self):
-        key = STEPS[self.step][0]
-        self.back_btn.configure(state="disabled" if self.step == 0 or self.installing else "normal")
-        labels = {"phones": "Next", "finish": "Finish"}
-        self.next_btn.configure(text=labels.get(key, "Next"), state="normal" if self.can_next() else "disabled")
+    def do_next(self, a):
+        with self.lock:
+            key = STEPS[self.step][0]
+            if key == "router" and self.router["state"] == "password" and not self.router["login_ok"]:
+                return self._check_password()
+            if not self.can_next() or self.install["running"]:
+                return
+            self.step += 1
+            self._enter(self.step)
 
-    def close(self):
-        if self.installing and not messagebox.askyesno(APP_NAME, "The installation is still running. If you close now the "
-                                                       "router may be left half set up (running the setup again finishes it).\n\n"
-                                                       "Close anyway?", icon="warning", parent=self.root):
-            return
-        self.searching = False
-        try:   # no timer may fire into a window that is gone
-            for after_id in self.root.tk.call("after", "info"):
-                self.root.after_cancel(after_id)
-        except tk.TclError:
-            pass
-        self.root.destroy()
+    def do_back(self, a):
+        with self.lock:
+            if self.step > 0 and not self.install["running"]:
+                self.router["searching"] = False
+                self.step -= 1
+                self._enter(self.step)
 
-    # -- talking to the worker threads -------------------------------------------------------------------------------------
-    def post(self, *event):
-        self.q.put(event)
+    def _enter(self, n):
+        key = STEPS[n][0]
+        if key == "router" and (not self.router["host"] or self.router["error"]):
+            self.do_search({})
+        elif key == "install" and self.usb is None:
+            self.do_refresh_usb({})
+        elif key == "phones":
+            self.do_recheck_box({})
+            if not self.prov_auto and self.final:
+                self.prov_auto = True
+                self.do_open_phone({"slot": self.prov["slot"]})
 
-    def ask(self, func):
-        """From a worker thread: runs func on the window's thread and returns its answer."""
-        done, box = threading.Event(), []
-        self.q.put(("call", func, done, box))
-        done.wait()
-        return box[0] if box else None
-
-    def _poll(self):
-        try:
-            while True:
-                event = self.q.get_nowait()
-                getattr(self, "on_" + event[0])(*event[1:])
-        except queue.Empty:
-            pass
-        if self.root.winfo_exists():
-            self.root.after(80, self._poll)
-
-    def on_call(self, func, done, box):
-        try:
-            box.append(func())
-        finally:
-            done.set()
-
-    # -- 1. start ----------------------------------------------------------------------------------------------------------
-    def page_welcome(self):
-        self.title.configure(text="Set up your PisoPhone system")
-        self.subtitle.configure(text="This assistant takes you from a bare coin box and router to working rental phones, one step "
-                                     "at a time, and does the rest by itself. It takes about 20 minutes. Nothing on the router "
-                                     "is changed until you start the installation.")
-        cols = tk.Frame(self.body, bg=C["bg"])
-        cols.pack(fill="both", expand=True)
-        cols.columnconfigure(0, weight=1, uniform="w")
-        cols.columnconfigure(1, weight=1, uniform="w")
-        left, right = tk.Frame(cols, bg=C["bg"]), tk.Frame(cols, bg=C["bg"])
-        left.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
-        right.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
-        c = self.card(left)
-        self.text(c, "What you need", "h2").pack(fill="x", pady=(0, 8))
-        for item in ("The ESP32 coin box board and a USB data cable",
-                     "An OpenWrt router (for example a 360T6M), factory reset",
-                     "Internet from a modem, by cable to the router's WAN port",
-                     "A network (LAN) cable from this computer to the router",
-                     "The rental phones, factory reset"):
-            self.tick_row(c, item)
-        self.checks_card = self.card(right)
-        self.text(self.checks_card, "This computer", "h2").pack(fill="x", pady=(0, 8))
-        self.checks_box = tk.Frame(self.checks_card, bg=C["card"])
-        self.checks_box.pack(fill="x")
-        self.note(self.body, "info", f"Your passwords and the printable setup sheet are saved in {self.out_dir} at the end, "
-                                     "readable only by you.")
-        self._render_checks()
-        if self.pre is None and not getattr(self, "pre_running", False):
-            self.pre_running = True
-            threading.Thread(target=lambda: self.post("pre", self.core.preflight()), daemon=True).start()
-
-    def tick_row(self, parent, item, ok=True):
-        row = tk.Frame(parent, bg=C["card"])
-        row.pack(fill="x", pady=3)
-        mark = tk.Canvas(row, width=18, height=18, bg=C["card"], highlightthickness=0)
-        soft, hard = (C["ok_soft"], C["ok"]) if ok else (C["bad_soft"], C["bad"])
-        mark.create_oval(1, 1, 17, 17, fill=soft, outline=soft)
-        if ok:
-            mark.create_line(5, 9, 8, 12, 13, 6, fill=hard, width=2, capstyle="round", joinstyle="round")
-        else:
-            mark.create_line(6, 6, 12, 12, fill=hard, width=2, capstyle="round")
-            mark.create_line(12, 6, 6, 12, fill=hard, width=2, capstyle="round")
-        mark.pack(side="left", anchor="n", padx=(0, 10))
-        label = self.text(row, item)
-        label.pack(side="left", fill="x", expand=True)
-        return label
-
-    def _render_checks(self):
-        if STEPS[self.step][0] != "welcome" or not self.checks_box.winfo_exists():
-            return
-        for w in self.checks_box.winfo_children():
-            w.destroy()
-        if self.pre is None:
-            self.text(self.checks_box, "Checking...", fg=C["muted"]).pack(fill="x")
-            return
-        for what, ok, hint in self.pre:
-            holder = tk.Frame(self.checks_box, bg=C["card"])
-            holder.pack(fill="x")
-            self.tick_row(holder, what, ok)
-            if not ok:
-                self.text(holder, hint, "small", fg=C["bad"]).pack(fill="x", padx=(28, 0))
-
-    def on_pre(self, checks):
-        self.pre = checks
-        self._render_checks()
-
-    # -- 3. settings -------------------------------------------------------------------------------------------------------
-    def kept(self):
-        """The router was set up before (or has a password): it keeps its names and passwords."""
-        return self.router["state"] in ("configured", "password")
-
-    def settings_problems(self):
-        v = {k: var.get() for k, var in self.vars.items()}
-        if self.kept():
-            return {"COUNTRY": country_problem(self.country_code())}
-        problems = {"GUEST_SSID": name_problem(v["GUEST_SSID"], "wifi"),
-                    "SITE_NAME": name_problem(v["SITE_NAME"], "site"),
-                    "COUNTRY": country_problem(self.country_code())}
-        for env, _label, lo, hi, _length in PASSWORDS:
-            problems[env] = password_problem(v[env], lo, hi)
-        return problems
-
-    def country_code(self):
-        m = re.search(r"\(([A-Za-z]{2})\)\s*$", self.vars["COUNTRY"].get()) or re.fullmatch(r"\s*([A-Za-z]{2})\s*", self.vars["COUNTRY"].get())
-        return m.group(1).upper() if m else ""
-
-    def answers(self):
-        a = {k: var.get().strip() if k in ("GUEST_SSID", "SITE_NAME") else var.get() for k, var in self.vars.items()}
-        a["COUNTRY"] = self.country_code()
-        return a
-
-    def page_settings(self):
-        self.field_errors = {}
-        if self.kept():
-            self.title.configure(text="This router keeps its settings")
-            self.subtitle.configure(text="It was set up before, so its Wi-Fi names and passwords stay as they are (they are in "
-                                         "the summary the earlier setup saved). The installation finishes or repairs it.")
-            c = self.card(self.body)
-            self.text(c, "Country", "h2").pack(fill="x", pady=(0, 4))
-            self.text(c, "Decides which Wi-Fi channels the router may use.", "small", fg=C["muted"]).pack(fill="x")
-            combo = ttk.Combobox(c, textvariable=self.vars["COUNTRY"], values=[f"{n} ({cc})" for cc, n in COUNTRIES], height=12)
-            combo.pack(fill="x", pady=(6, 0))
-            combo.bind("<<ComboboxSelected>>", lambda e: self.update_nav())
-            self._error_label(c, "COUNTRY")
-            self._validate_field("COUNTRY")
-            return
-        self.title.configure(text="Your network and passwords")
-        self.subtitle.configure(text="Type this customer's shop name and public Wi-Fi name. The passwords were made for you, new "
-                                     "ones for every unit: keep them, or type your own. They are saved on this computer at the "
-                                     "end and printed on the setup sheet.")
-        cols = tk.Frame(self.body, bg=C["bg"])
-        cols.pack(fill="both", expand=True)
-        cols.columnconfigure(0, weight=1, uniform="c")
-        cols.columnconfigure(1, weight=1, uniform="c")
-        left, right = tk.Frame(cols, bg=C["bg"]), tk.Frame(cols, bg=C["bg"])
-        left.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
-        right.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
-        names = self.card(left)
-        self.text(names, "Names", "h2").pack(fill="x", pady=(0, 6))
-        self.field(names, "GUEST_SSID", "Public Wi-Fi name", "What customers see in their Wi-Fi list.")
-        self.field(names, "SITE_NAME", "Shop / site name", "On the setup sheet and in alerts.")
-        lab = tk.Frame(names, bg=C["card"])
-        lab.pack(fill="x", pady=(8, 2))
-        self.text(lab, "Country", "bold").pack(fill="x")
-        self.text(lab, "Decides which Wi-Fi channels the router may use.", "small", fg=C["muted"]).pack(fill="x")
-        combo = ttk.Combobox(names, textvariable=self.vars["COUNTRY"], values=[f"{n} ({c})" for c, n in COUNTRIES], height=12)
-        combo.pack(fill="x", pady=(2, 0))
-        combo.bind("<<ComboboxSelected>>", lambda e: self.update_nav())
-        self._error_label(names, "COUNTRY")
-        pw = self.card(right)
-        self.text(pw, "Passwords", "h2").pack(fill="x", pady=(0, 6))
-        hints = {"ROOT_PASSWORD": ("Router password", "Logs in to the router (SSH and its web page)."),
-                 "KIOSK_PASSWORD": (f"{KIOSK_SSID} Wi-Fi password", "The hidden network of the rental phones."),
-                 "BOX_NEW_ADMIN_PASSWORD": ("Coin box admin password", "The box's admin page; also the phones' admin PIN.")}
-        for env, *_ in PASSWORDS:
-            self.field(pw, env, hints[env][0], hints[env][1], secret=True)
-        for key in self.vars:
-            self._validate_field(key)
-
-    def field(self, parent, key, label, hint, secret=False):
-        box = tk.Frame(parent, bg=C["card"])
-        box.pack(fill="x", pady=(8, 0))
-        self.text(box, label, "bold").pack(fill="x")
-        self.text(box, hint, "small", fg=C["muted"]).pack(fill="x")
-        row = tk.Frame(box, bg=C["card"])
-        row.pack(fill="x", pady=(3, 0))
-        entry = ttk.Entry(row, textvariable=self.vars[key], show="•" if secret else "", font=self.f["mono_big"] if secret else self.f["body"])
-        entry.pack(side="left", fill="x", expand=True)
-        if secret:
-            length = next(n for env, *_x, n in PASSWORDS if env == key)
-
-            def toggle(btn):
-                hidden = entry.cget("show") != ""
-                entry.configure(show="" if hidden else "•")
-                btn.configure(text="Hide" if hidden else "Show")
-            show = ttk.Button(row, text="Show", style="Small.TButton", width=5)
-            show.configure(command=lambda b=show: toggle(b))
-            show.pack(side="left", padx=(6, 0))
-            ttk.Button(row, text="New", style="Small.TButton", width=4,
-                       command=lambda: self.vars[key].set(generate(length))).pack(side="left", padx=(4, 0))
-        self.field_errors[key] = (entry, None)
-        self._error_label(box, key)
-
-    def _error_label(self, parent, key):
-        lab = tk.Label(parent, text="", bg=C["card"], fg=C["bad"], font=self.f["small"], anchor="w")
-        lab.pack(fill="x")
-        entry = self.field_errors.get(key, (None, None))[0]
-        self.field_errors[key] = (entry, lab)
-
-    def _validate_field(self, key):
-        if STEPS[self.step][0] != "settings" or key not in self.field_errors:
-            return
-        entry, lab = self.field_errors[key]
-        problem = self.settings_problems().get(key)
-        try:
-            if lab is not None and lab.winfo_exists():
-                lab.configure(text=f"{problem[0].upper()}{problem[1:]}." if problem else "")
-            if entry is not None and entry.winfo_exists():
-                entry.configure(style="Bad.TEntry" if problem else "TEntry")
-        except tk.TclError:
-            pass
-        self.update_nav()
-
-    # -- 4. router ---------------------------------------------------------------------------------------------------------
-    def page_router(self):
-        self.title.configure(text="Connect the router")
-        self.subtitle.configure(text="The router is set up over a network cable from this computer. This assistant finds it "
-                                     "by itself as soon as it is connected.")
-        if self.unit > 1:
-            self.note(self.body, "info", f"Unit {self.unit}: unplug the network cable from the last router, connect this computer "
-                                         "to the next factory-reset router, and plug in the next coin box board by USB.")
-        c = self.card(self.body)
-        self.numbered(c, ["Factory reset the router (hold its reset button about 10 seconds) and wait 2 minutes for it to start.",
-                          "Plug the modem into the router's WAN (internet) port.",
-                          "Plug this computer into one of the router's LAN ports with a network cable.",
-                          "Turn this computer's Wi-Fi off until the setup is done (so it talks only to the router)."])
-        self.router_status = tk.Frame(self.body, bg=C["bg"])
-        self.router_status.pack(fill="x")
-        self._render_router_status()
-        if not self.router["host"] or self.router["error"]:
-            self._start_search()
-
-    def _render_router_status(self):
-        if STEPS[self.step][0] != "router":
-            return
-        for w in self.router_status.winfo_children():
-            w.destroy()
-        r = self.router
-        if self.core.ssh_missing():
-            self.note(self.router_status, "bad", "The ssh program was not found on this computer (see the first step).")
-            return
-        if r["error"]:
-            self.note(self.router_status, "bad", f"Found something at {r['host']}, but: {r['error']}.")
-        elif not r["host"]:
-            box = self.note(self.router_status, "info", "Looking for the router at 192.168.1.1 and 10.0.0.1...")
-            bar = ttk.Progressbar(box, mode="indeterminate", length=120)
-            bar.pack(side="right")
-            bar.start(12)
-        elif r["state"] == "factory":
-            self.note(self.router_status, "ok", f"Router found at {r['host']}. It is ready for the installation.")
-        else:
-            self.note(self.router_status, "warn", f"Router found at {r['host']}. It was set up before: it keeps the names and "
-                                                  "passwords it has, and the installation finishes or repairs it. Your "
-                                                  "settings from the previous step are not applied to it (the country is).")
-            if r["state"] == "password" and r.get("login_ok"):
-                self.note(self.router_status, "ok", "Logged in with the router password saved by the previous setup.")
-            elif r["state"] == "password":
-                c = self.card(self.router_status)
-                self.text(c, "Router password", "bold").pack(fill="x")
-                self.text(c, "This router has a password. It is in the summary saved by the previous setup, and none of the "
-                             "summaries saved on this computer works.", "small",
-                          fg=C["muted"]).pack(fill="x")
-                e = ttk.Entry(c, textvariable=self.router_password, show="•", font=self.f["mono_big"])
-                e.pack(fill="x", pady=(4, 0))
-                e.bind("<KeyRelease>", lambda ev: self.update_nav())
-                e.bind("<Return>", lambda ev: self.next())
-                if r.get("login_failed"):
-                    tk.Label(c, text="That password did not work.", bg=C["card"], fg=C["bad"], font=self.f["small"],
-                             anchor="w").pack(fill="x", pady=(4, 0))
-        row = tk.Frame(self.router_status, bg=C["bg"])
-        row.pack(fill="x")
-        if r["host"] or r["error"]:
-            ttk.Button(row, text="Search again", command=self._search_again).pack(side="left")
-        self.update_nav()
-
-    def _search_again(self):
-        self.router.update(host=None, state=None, error=None, login_ok=False, login_failed=False)
-        self._render_router_status()
-        self._start_search()
-
-    def _start_search(self):
-        if self.searching:
-            return
-        self.searching = True
+    # -- the router ----------------------------------------------------------------------------------------------------------
+    def do_search(self, a):
+        with self.lock:
+            if self.router["searching"]:
+                return
+            self.router.update(host=None, state=None, error=None, login_ok=False, login_failed=False, searching=True)
 
         def work():
-            while self.searching:
+            while True:
+                with self.lock:
+                    if not self.router["searching"]:
+                        return
                 host = self.core.find_router()
                 if host:
                     try:
                         state = self.core.probe(host)
                         saved = self.core.saved_login(host, self.out_dir) if state == "password" else None
-                        self.post("router", host, state, None, saved)
+                        error = None
                     except SetupError as e:
-                        self.post("router", host, None, str(e))
-                    except Exception as e:  # (an unexpected ssh failure: shown, the search can be repeated)
-                        self.post("router", host, None, f"unexpected error: {e}")
+                        state, saved, error = None, None, str(e)
+                    except Exception as e:
+                        state, saved, error = None, None, f"unexpected error: {e}"
+                    with self.lock:
+                        if saved:
+                            self.router_password = saved   # the password saved by the earlier setup worked: nothing to type
+                        self.router.update(host=host, state=state, error=error, searching=False,
+                                           login_ok=state != "password" or bool(saved), login_failed=False)
                     return
-                for _ in range(15):
-                    if not self.searching:
-                        return
-                    time.sleep(0.2)
-        threading.Thread(target=work, daemon=True).start()
+                time.sleep(3)
+        self.spawn(work)
 
-    def on_router(self, host, state, error, saved=None):
-        self.searching = False
-        if saved:
-            self.router_password.set(saved)   # the password saved by the earlier setup worked: nothing to type
-        self.router.update(host=host, state=state, error=error, login_ok=state != "password" or bool(saved), login_failed=False)
-        self._render_router_status()
-        self.update_nav()
+    def do_router_password(self, a):
+        password = a.get("password")
+        with self.lock:
+            if isinstance(password, str) and len(password) < 200:
+                self.router_password = password
+                self.router["login_failed"] = False
 
-    def _check_router_password(self):
-        self.next_btn.configure(state="disabled")
-        self.nav_note.configure(text="Checking the password...")
-        host, password = self.router["host"], self.router_password.get()
-        threading.Thread(target=lambda: self.post("login", self.core.login(host, password)), daemon=True).start()
+    def _check_password(self):
+        host, password = self.router["host"], self.router_password
+        if not password:
+            return
 
-    def on_login(self, ok):
-        self.router.update(login_ok=ok, login_failed=not ok)
-        self.nav_note.configure(text="")
-        if ok:
-            self.show(self.step + 1)
-        else:
-            self._render_router_status()
+        def work():
+            try:
+                ok = self.core.login(host, password)
+            except Exception:
+                ok = False
+            with self.lock:
+                self.router.update(login_ok=ok, login_failed=not ok)
+                if ok and STEPS[self.step][0] == "router":
+                    self.step += 1
+                    self._enter(self.step)
+        self.spawn(work)
 
-    # -- 5. install --------------------------------------------------------------------------------------------------------
-    def page_install(self):
-        self.title.configure(text="Install")
-        kept = self.router["state"] in ("configured", "password")
-        a = self.answers()
-        if self.result and self.result["ok"]:
-            self.subtitle.configure(text="Everything is installed and checked.")
-        else:
-            self.subtitle.configure(text="One click: the coin box gets its software over USB, then the router is set up and paired "
-                                         "with it. About 10 minutes. Keep the USB cable plugged in (it powers the box) and "
-                                         "this computer's network cable too.")
-        top = tk.Frame(self.body, bg=C["bg"])
-        top.pack(fill="x")
-        top.columnconfigure(0, weight=1, uniform="t")
-        top.columnconfigure(1, weight=1, uniform="t")
-        rev = self.card(tk.Frame(top, bg=C["bg"]))
-        rev.master.master.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
-        self.text(rev, "Settings", "h2").pack(fill="x", pady=(0, 6))
-        rows = [("Public Wi-Fi", "kept as it is" if kept else a["GUEST_SSID"]), ("Site name", "kept as it is" if kept else a["SITE_NAME"]),
-                ("Country", a["COUNTRY"]), ("Router", f"{self.router['host'] or '?'} → {TARGET_IP}" if self.router["host"] == FACTORY_IP else TARGET_IP),
-                ("Passwords", "kept as they are" if kept else "the three you chose")]
-        for k, v in rows:
-            row = tk.Frame(rev, bg=C["card"])
-            row.pack(fill="x", pady=1)
-            self.text(row, k, "small", fg=C["muted"], width=14).pack(side="left")
-            self.text(row, v, "body").pack(side="left", fill="x", expand=True)
-        prog = self.card(tk.Frame(top, bg=C["bg"]))
-        prog.master.master.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
-        self.text(prog, "Progress", "h2").pack(fill="x", pady=(0, 6))
-        self.stage_rows = []
-        for i, name in enumerate(INSTALL_STAGES):
-            row = tk.Frame(prog, bg=C["card"])
-            row.pack(fill="x", pady=2)
-            dot = tk.Canvas(row, width=16, height=16, bg=C["card"], highlightthickness=0)
-            dot.pack(side="left", padx=(0, 10))
-            lab = tk.Label(row, text=name, bg=C["card"], font=self.f["body"], anchor="w")
-            lab.pack(side="left")
-            self.stage_rows.append((dot, lab))
-        self.activity_label = self.text(prog, self.activity, "small", fg=C["muted"])
-        self.activity_label.pack(fill="x", pady=(8, 0))
-        self.bar = ttk.Progressbar(prog, mode="indeterminate")
-        self.bar.pack(fill="x", pady=(6, 0))
-        usb = self.card(self.body, pady=(0, 10))
-        urow = tk.Frame(usb, bg=C["card"])
-        urow.pack(fill="x")
-        self.text(urow, "Coin box (USB)", "h2").pack(side="left")
-        self.usb_btn = ttk.Button(urow, text="Look again", style="Small.TButton", command=self.refresh_usb)
-        self.usb_btn.pack(side="right")
-        self.usb_label = self.text(usb, "", "body")
-        self.usb_label.pack(fill="x", pady=(4, 0))
-        self.skip_check = ttk.Checkbutton(usb, text="Do not write it: the coin box already has the PisoPhone software",
-                                          variable=self.skip_flash, command=self._render_usb)
-        self.skip_check.pack(anchor="w", pady=(6, 0))
-        self._render_usb()
-        if self.usb is None and not self.flashed:
-            self.refresh_usb()
-        self.banner_box = tk.Frame(self.body, bg=C["bg"])
-        self.banner_box.pack(fill="x")
-        actions = tk.Frame(self.body, bg=C["bg"])
-        actions.pack(fill="x", pady=(0, 10))
-        self.start_btn = ttk.Button(actions, text="Start the installation", style="Primary.TButton", command=self.start_install)
-        if not (self.result and self.result["ok"]):
-            self.start_btn.pack(side="left")
-        self.details_btn = ttk.Button(actions, text="Hide details", command=self._toggle_log)
-        self.details_btn.pack(side="right")
-        logf = tk.Frame(self.body, bg=C["log_bg"])
-        logf.pack(fill="both", expand=True, pady=(0, 6))
-        self.logf = logf
-        self.log = tk.Text(logf, bg=C["log_bg"], fg=C["log_ink"], insertbackground=C["log_ink"], font=self.f["mono"], height=8,
-                           relief="flat", padx=12, pady=10, wrap="word", highlightthickness=0, borderwidth=0)
-        sb = ttk.Scrollbar(logf, orient="vertical", command=self.log.yview)
-        self.log.configure(yscrollcommand=sb.set)
-        sb.pack(side="right", fill="y")
-        self.log.pack(side="left", fill="both", expand=True)
-        self.log.tag_configure("err", foreground="#fca5a5")
-        self.log.tag_configure("ok", foreground="#86efac")
-        self.log.tag_configure("tip", foreground="#93c5fd")
-        self.log.tag_configure("step", foreground="#ffffff", font=(self.f["mono"][0], self.f["mono"][1], "bold"))
-        for line in self.log_lines[-2000:]:
-            self._log_insert(line)
-        self.log.configure(state="disabled")
-        self._render_install_state()
-
-    def refresh_usb(self):
-        self.usb = None
-        self._render_usb()
+    # -- the coin box on USB and the installation ---------------------------------------------------------------------------------
+    def do_refresh_usb(self, a):
+        with self.lock:
+            self.usb = None
 
         def work():
             try:
                 boards = self.core.usb_boards()
             except Exception:
                 boards = []
-            self.post("usb", boards)
-        threading.Thread(target=work, daemon=True).start()
+            with self.lock:
+                self.usb = boards
+        self.spawn(work)
 
-    def on_usb(self, boards):
-        self.usb = boards
-        self._render_usb()
+    def do_skip_flash(self, a):
+        with self.lock:
+            self.skip_flash = bool(a.get("value"))
 
-    def _render_usb(self):
-        if STEPS[self.step][0] != "install" or not self.usb_label.winfo_exists():
-            return
-        if self.flashed:
-            text, fg = "The coin box software is written.", C["ok"]
-        elif self.skip_flash.get():
-            text, fg = "Not written: the box is used as it is.", C["muted"]
-        elif self.usb is None:
-            text, fg = "Looking for the board...", C["muted"]
-        elif not self.usb:
-            text, fg = ("No board found. Plug the coin box board into this computer with a USB data cable (a charge-only cable "
-                        "does not work), then click Look again.", C["warn"])
-        elif len(self.usb) > 1:
-            text, fg = ("Several USB boards are connected (" + ", ".join(p for p, _d in self.usb) + "). Unplug all but the coin "
-                        "box.", C["warn"])
-        else:
-            text, fg = (f"Found: {self.usb[0][1]} on {self.usb[0][0]}. It is erased and gets the PisoPhone software.", C["ok"])
-        self.usb_label.configure(text=text, fg=fg)
+    def do_start_install(self, a):
+        with self.lock:
+            if self.install["running"] or STEPS[self.step][0] != "install":
+                return
+            self.install.update(running=True, stage=0, activity="Starting...", error=None, banner=None, ok=False, lines=[])
+            self.result = None
+            answers = kept_answers(self.country) if self.kept() else self.answers()
+            write_box = not (self.skip_flash or self.flashed)
+            host_hint = self.router["host"]
 
-    def on_flashed(self):
-        self.flashed = True
-        self._render_usb()
+        def stage(n):
+            with self.lock:
+                self.install["stage"] = n
+                self.install["activity"] = STAGE_ACTIVITY[n]
+                if n != 2:
+                    self.install["banner"] = None
 
-    def _toggle_log(self):
-        if self.logf.winfo_ismapped():
-            self.logf.pack_forget()
-            self.details_btn.configure(text="Show details")
-        else:
-            self.logf.pack(fill="both", expand=True, pady=(0, 6))
-            self.details_btn.configure(text="Hide details")
-
-    def _render_install_state(self):
-        if STEPS[self.step][0] != "install":
-            return
-        done_all = bool(self.result and self.result["ok"])
-        for i, (dot, lab) in enumerate(self.stage_rows):
-            dot.delete("all")
-            if done_all or i < self.stage:
-                dot.create_oval(1, 1, 15, 15, fill=C["ok"], outline=C["ok"])
-                dot.create_line(4, 8, 7, 11, 12, 5, fill="#ffffff", width=2)
-                lab.configure(fg=C["ink"], font=self.f["body"])
-            elif i == self.stage and self.installing:
-                dot.create_oval(1, 1, 15, 15, fill=C["accent"], outline=C["accent"])
-                dot.create_oval(5, 5, 11, 11, fill="#ffffff", outline="#ffffff")
-                lab.configure(fg=C["ink"], font=self.f["bold"])
-            else:
-                dot.create_oval(2, 2, 14, 14, outline=C["line"], width=2)
-                lab.configure(fg=C["muted"], font=self.f["body"])
-        if self.installing:
-            self.bar.configure(mode="indeterminate")
-            self.bar.start(12)
-            self.start_btn.configure(state="disabled", text="Installing...")
-        else:
-            self.bar.stop()
-            self.bar.configure(mode="determinate", value=100 if done_all else 0)
-            self.start_btn.configure(state="normal", text="Try again" if (self.install_error or self.result) else "Start the installation")
-            if done_all:
-                self.start_btn.pack_forget()   # nothing left to start
-        self.activity_label.configure(text=self.activity)
-        for w in self.banner_box.winfo_children():
-            w.destroy()
-        if done_all:
-            self.note(self.banner_box, "ok", "Installation complete: all checks passed. Your passwords and the setup sheet are "
-                                             f"saved in {self.out_dir}. Opening the phone setup page...")
-        elif self.install_error:
-            self.note(self.banner_box, "bad", self.install_error[0].upper() + self.install_error[1:])
-        elif self.banner:
-            self.note(self.banner_box, self.banner[0], self.banner[1])
-        self.update_nav()
-
-    def _log_insert(self, line):
-        tag = None
-        low = line.lower()
-        if line.startswith("== "):
-            tag = "step"
-        elif low.startswith(("error", "fail")) or "warning" in low:
-            tag = "err"
-        elif tip_text(line):
-            tag = "tip"
-        elif line.startswith(("PASS", "SETUP COMPLETE")):
-            tag = "ok"
-        self.log.insert("end", line + "\n", tag)
-
-    def start_install(self):
-        if self.installing:
-            return
-        self.installing, self.result, self.install_error, self.banner = True, None, None, None
-        self.stage, self.activity = 0, "Starting..."
-        self.log_lines = []
-        if self.log.winfo_exists():
-            self.log.configure(state="normal")
-            self.log.delete("1.0", "end")
-            self.log.configure(state="disabled")
-        a = self.answers()
-        answers = kept_answers(a["COUNTRY"]) if self.kept() else a
-        out_dir = self.out_dir
-        write_box = not (self.skip_flash.get() or self.flashed)   # (read here: Tk variables belong to the window's thread)
+        def notify(msg):
+            self.log(msg)
+            if "Unplug" in msg:
+                with self.lock:
+                    self.install["banner"] = ("warn", "Unplug this computer's network cable from the router, wait 5 seconds and "
+                                                      "plug it back in. The installation continues by itself.")
 
         def work():
+            error, result = None, None
             try:
-                host = self.core.find_router() or self.router["host"]
+                host = self.core.find_router() or host_hint
                 if not host:
                     raise SetupError("the router is not found any more. Check the network cable, then try again.")
                 if write_box:
@@ -1943,421 +1597,660 @@ class Wizard:
                                          "tick that it already has the PisoPhone software.")
                     if len(boards) > 1:
                         raise SetupError("several USB boards are connected: unplug all but the coin box.")
-                    self.post("stage", 0)
-                    self.core.flash_box(boards[0][0], lambda line: self.post("log", line))
-                    self.post("flashed")
-                result = self.core.install(host, answers, out_dir, lambda line: self.post("log", line),
-                                           lambda n: self.post("stage", n + 1), lambda msg: self.post("notify", msg))
-                self.post("installed", result, None)
+                    stage(0)
+                    self.core.flash_box(boards[0][0], self.log)
+                    with self.lock:
+                        self.flashed = True
+                result = self.core.install(host, answers, self.out_dir, self.log, lambda n: stage(n + 1), notify)
             except SetupError as e:
-                self.post("installed", None, str(e))
+                error = str(e)
             except Exception as e:
-                self.post("installed", None, f"unexpected error: {e}")
-        self._render_install_state()
-        threading.Thread(target=work, daemon=True).start()
+                error = f"unexpected error: {e}"
+            self._finish_install(result, error)
+        self.spawn(work)
 
-    def on_log(self, line):
-        self.log_lines.append(line)
-        if line.startswith("== "):
-            self.activity = line[3:]
-        advice = tip_text(line)
-        if advice and (self.banner is None or self.banner[0] == "info"):
-            self.banner = ("info", "Tip: " + advice)   # the latest tip stays visible above the log
-            if STEPS[self.step][0] == "install":
-                self._render_install_state()
-        if STEPS[self.step][0] == "install" and self.log.winfo_exists():
-            self.log.configure(state="normal")
-            self._log_insert(line)
-            self.log.see("end")
-            self.log.configure(state="disabled")
-            self.activity_label.configure(text=self.activity)
+    def _finish_install(self, result, error):
+        with self.lock:
+            self.install["running"] = False
+            self.result = result
+            if result and result["host"]:
+                self.router["host"] = result["host"]
+            if result and not result["ok"]:
+                error = failure_message(result)
+            self.install["error"] = error
+            if result and result["ok"]:
+                self.install.update(ok=True, stage=len(INSTALL_STAGES), activity="Done.", banner=("ok", "Installed and checked."))
+                found = parse_summary(result.get("summary_text", ""))
+                self.final = dict(self.answers(), **found) if not self.kept() else found
+                self.saved = [[label, path] for label, path in result.get("saved", [])]
+                if self.final.get("ROOT_PASSWORD"):
+                    self.router_password = self.final["ROOT_PASSWORD"]
+            else:
+                self.install["activity"] = "Stopped."
 
-    def on_stage(self, n):
-        self.stage = n
-        self.activity = ["Writing the coin box software", "Downloading the setup to the router",
-                         f"Waiting for the router at {TARGET_IP}", "Installing on the router", "Checking"][n]
-        self.banner = None if n != 2 else self.banner
-        self._render_install_state()
-
-    def on_notify(self, msg):
-        self.on_log(msg)
-        if "Unplug" in msg:
-            self.banner = ("warn", "Unplug this computer's network cable from the router, wait 5 seconds and plug it back in. "
-                                   "The installation continues by itself.")
-            self._render_install_state()
-
-    def on_installed(self, result, error):
-        self.installing = False
-        self.result = result
-        if result and result["host"]:
-            self.router.update(host=result["host"])
-        if result and not result["ok"]:
-            error = failure_message(result)
-        self.install_error = error
-        if result and result["ok"]:
-            self.stage = len(INSTALL_STAGES)
-            self.activity = "Done."
-            found = parse_summary(result.get("summary_text", ""))
-            self.final = dict(self.answers(), **found) if not self.kept() else found
-            if self.final.get("ROOT_PASSWORD"):
-                self.router_password.set(self.final["ROOT_PASSWORD"])
-            self.banner = ("ok", "Installed and checked. Opening the phone setup page...")
-        else:
-            self.activity = "Stopped."
-        self._render_install_state()
-        if result and result["ok"]:
-            self.root.after(2500, self._auto_to_phones)
-        elif STEPS[self.step][0] == "install":
-            self.root.bell()
-
-    def _auto_to_phones(self):
-        """The installation is done: on to the phones, which opens the coin box's phone setup page by itself."""
-        if STEPS[self.step][0] == "install" and self.result and self.result["ok"]:
-            self.show(self.step + 1)
-
-    # -- 6. phones ---------------------------------------------------------------------------------------------------------
+    # -- the phones ------------------------------------------------------------------------------------------------------------
     def passwords(self):
-        """What the installed system uses (from the router's summary): the names and passwords."""
         return dict(self.final or {})
 
-    def page_phones(self):
-        self.title.configure(text="Set up the rental phones")
-        self.subtitle.configure(text="The coin box's phone setup page opens in your browser, already filled in. Each phone is "
-                                     "set up once with a QR code: Android installs PisoPhone, locks the phone as a kiosk and "
-                                     "connects it to its coin box slot.")
-        cols = tk.Frame(self.body, bg=C["bg"])
-        cols.pack(fill="both", expand=True)
-        cols.columnconfigure(0, weight=3, uniform="p")
-        cols.columnconfigure(1, weight=2, uniform="p")
-        left, right = tk.Frame(cols, bg=C["bg"]), tk.Frame(cols, bg=C["bg"])
-        left.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
-        right.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
-        c = self.card(left)
-        self.text(c, "For each phone", "h2").pack(fill="x", pady=(0, 6))
-        self.numbered(c, ["Factory reset the phone. On its first welcome screen tap the same spot 6 times: a QR reader opens.",
-                          "On the page in your browser click Show the setup code and scan it with the phone.",
-                          "Accept the phone's screens until PisoPhone shows One last step, and do what it says: on most "
-                          "phones switch on Allow display over other apps; an Android Go phone asks for USB (plug it in and "
-                          "click Finish over USB on the page).",
-                          "The page then opens the coin box's page to pair the slot. The kiosk is running."])
-        row = tk.Frame(c, bg=C["card"])
-        row.pack(fill="x", pady=(12, 0))
-        self.text(row, "Slot", "bold").pack(side="left", padx=(0, 8))
-        spin = ttk.Spinbox(row, from_=1, to=6, width=3, textvariable=self.slot, state="readonly")
-        spin.pack(side="left")
-        self.open_btn = ttk.Button(row, text="Open the setup page", style="Primary.TButton", command=self.open_phone_page)
-        self.open_btn.pack(side="left", padx=(12, 0))
-        self.prov_box = tk.Frame(left, bg=C["bg"])
-        self.prov_box.pack(fill="x")
-        self.text(left, "One slot per phone: after a phone is done, choose the next slot and open the page again. A coin box "
-                        "has 10 slots.", "small", fg=C["muted"]).pack(fill="x")
-        self.status_card = self.card(right)
-        self.text(self.status_card, "Coin box", "h2").pack(fill="x", pady=(0, 6))
-        self.box_status = self.text(self.status_card, "Checking...", fg=C["muted"])
-        self.box_status.pack(fill="x")
-        p = self.card(right)
-        self.text(p, "Your passwords", "h2").pack(fill="x", pady=(0, 6))
-        final = self.passwords()
-        for key, label in (("BOX_NEW_ADMIN_PASSWORD", "Coin box admin (user admin)"), ("KIOSK_PASSWORD", f"{KIOSK_SSID} Wi-Fi"),
-                           ("ROOT_PASSWORD", "Router (user root)")):
-            value = final.get(key)
-            box = tk.Frame(p, bg=C["card"])
-            box.pack(fill="x", pady=(4, 2))
-            self.text(box, label, "small", fg=C["muted"]).pack(fill="x")
-            line = tk.Frame(box, bg=C["card"])
-            line.pack(fill="x")
-            self.text(line, value or "in the saved summary", "mono_big" if value else "small",
-                      fg=C["ink"] if value else C["muted"]).pack(side="left", fill="x", expand=True)
-            if value:
-                ttk.Button(line, text="Copy", style="Small.TButton", command=lambda v=value: self.copy(v)).pack(side="right")
-        self._render_prov()
-        threading.Thread(target=lambda: self.post("box_up", self.core.box_online()), daemon=True).start()
-        if not self.prov_auto:
-            self.prov_auto = True
-            self.root.after(500, self.open_phone_page)
+    def do_recheck_box(self, a):
+        def work():
+            try:
+                up = self.core.box_online()
+            except Exception:
+                up = False
+            with self.lock:
+                self.box_up = up
+        self.spawn(work)
 
-    def on_box_up(self, up):
-        self.box_up = up
-        if STEPS[self.step][0] == "phones" and self.box_status.winfo_exists():
-            self.box_status.configure(text=f"Online at {BOX_IP}" if up else f"Does not answer at {BOX_IP}. Is it powered on, "
-                                      "near the router?", fg=C["ok"] if up else C["bad"])
-
-    def open_phone_page(self):
-        """Opens the phone setup page for the chosen slot (the coin box's secret read from its admin page, the Wi-Fi password
-        passed in the address's # part)."""
-        if self.prov["state"] == "opening":
-            return
-        self.prov = {"state": "opening", "note": ""}
-        self._render_prov()
-        slot, passwords = self.slot.get(), self.passwords()
+    def do_open_phone(self, a):
+        try:
+            slot = max(1, min(10, int(a.get("slot", 1))))
+        except (TypeError, ValueError):
+            slot = 1
+        with self.lock:
+            if self.prov["state"] == "opening":
+                return
+            self.prov = {"state": "opening", "note": "", "url": "", "slot": slot}
+            passwords = self.passwords()
 
         def work():
             try:
-                self.post("prov", *self.core.open_provisioning(passwords, slot))
+                kind, url, note = self.core.provisioning_target(passwords, slot)
             except Exception as e:
-                self.post("prov", "box", f"the page could not be opened ({e})")
-        threading.Thread(target=work, daemon=True).start()
+                kind, url, note = "box", f"http://{BOX_IP}/", f"the page could not be prepared ({e})"
+            with self.lock:
+                self.prov = {"state": kind, "note": note, "url": url, "slot": slot}
+        self.spawn(work)
 
-    def on_prov(self, kind, note):
-        self.prov = {"state": kind, "note": note}
-        if kind == "box" and self.passwords().get("BOX_NEW_ADMIN_PASSWORD"):
-            self.copy_temporarily(self.passwords()["BOX_NEW_ADMIN_PASSWORD"])
-        self._render_prov()
+    # -- the last checks ---------------------------------------------------------------------------------------------------------
+    def do_coin_test(self, a):
+        with self.lock:
+            if self.coin["running"]:
+                return
+            self.coin = {"running": True, "ok": None, "lines": []}
+            host, password = self.router["host"] or TARGET_IP, self.router_password
 
-    def _render_prov(self):
-        if STEPS[self.step][0] != "phones" or not self.prov_box.winfo_exists():
-            return
-        for w in self.prov_box.winfo_children():
-            w.destroy()
-        state, note = self.prov["state"], self.prov["note"]
-        if state == "opening":
-            self.note(self.prov_box, "info", "Opening the setup page in your browser...")
-        elif state == "setup":
-            self.note(self.prov_box, "ok", f"The setup page for slot {self.slot.get()} is open in your browser. Scan its QR "
-                                           "code with the phone.")
-        elif state == "box":
-            self.note(self.prov_box, "warn", f"Opened the coin box's own page ({note}). Log in as admin (the password is "
-                                             "copied: paste it), then click Set up a phone.")
-        self.open_btn.configure(state="disabled" if state == "opening" else "normal")
-
-    def copy_temporarily(self, value):
-        """To the clipboard, and out of it again after a minute (when it is still there)."""
-        self.copy(value)
-        self.clip_token = value
-
-        def clear():
-            try:
-                if self.root.winfo_exists() and self.clip_token == value and self.root.clipboard_get() == value:
-                    self.root.clipboard_clear()
-            except tk.TclError:
-                pass
-        self.root.after(60000, clear)
-
-    # -- 7. finish ---------------------------------------------------------------------------------------------------------
-    def page_finish(self):
-        self.title.configure(text="Check that it all works")
-        self.subtitle.configure(text="A real coin through the box, and a customer's phone on the public Wi-Fi: when both work, "
-                                     "your PisoPhone system is running.")
-        cols = tk.Frame(self.body, bg=C["bg"])
-        cols.pack(fill="both", expand=True)
-        cols.columnconfigure(0, weight=1, uniform="f")
-        cols.columnconfigure(1, weight=1, uniform="f")
-        left, right = tk.Frame(cols, bg=C["bg"]), tk.Frame(cols, bg=C["bg"])
-        left.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
-        right.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
-        c = self.card(left)
-        self.text(c, "1. Test a coin", "h2").pack(fill="x", pady=(0, 4))
-        self.text(c, "Click the button, then insert one coin when the box beeps (within 30 seconds).", fg=C["muted"]).pack(fill="x")
-        self.coin_btn = ttk.Button(c, text="Test a coin", style="Primary.TButton", command=self.start_coin_test)
-        self.coin_btn.pack(anchor="w", pady=(10, 0))
-        self.coin_box = tk.Frame(c, bg=C["card"])
-        self.coin_box.pack(fill="x", pady=(8, 0))
-        c2 = self.card(left)
-        self.text(c2, "2. Try it as a customer", "h2").pack(fill="x", pady=(0, 4))
-        guest = self.passwords().get("GUEST_SSID") or self.vars["GUEST_SSID"].get()
-        self.numbered(c2, [f"With any phone join the Wi-Fi {guest}. The payment page opens by itself.",
-                           "Pick a plan, tap Insert Coin, insert a coin: it shows at once. Tap Done: you are online."])
-        c3 = self.card(right)
-        self.text(c3, "Alerts on your phone (optional)", "h2").pack(fill="x", pady=(0, 4))
-        self.text(c3, "Telegram messages when the coin box goes offline or the revenue does not add up, plus a daily report. "
-                      "You can also do it later.", fg=C["muted"]).pack(fill="x")
-        self.tg_btn_main = ttk.Button(c3, text="Set up Telegram alerts", command=self.open_telegram_dialog)
-        self.tg_btn_main.pack(anchor="w", pady=(10, 0))
-        self.tg_state = self.text(c3, "Connected." if self.telegram["ok"] else "", fg=C["ok"])
-        self.tg_state.pack(fill="x", pady=(6, 0))
-        f = self.card(right)
-        self.text(f, "Saved on this computer", "h2").pack(fill="x", pady=(0, 6))
-        saved = (self.result or {}).get("saved") or []
-        for label, path in saved:
-            ttk.Button(f, text="Open the " + label.split(" (")[0].lower(), command=lambda pth=path: self.core.open_path(pth)).pack(fill="x", pady=2)
-        ttk.Button(f, text="Open the folder", command=lambda: self.core.open_path(self.out_dir)).pack(fill="x", pady=2)
-        self.text(f, "Keep the summary private: it holds every password. Day to day, the router has: piso-setup status.", "small",
-                  fg=C["muted"]).pack(fill="x", pady=(6, 0))
-        nxt = self.card(right)
-        self.text(nxt, "Another unit?", "h2").pack(fill="x", pady=(0, 4))
-        self.text(nxt, "Starts over for the next router and coin box: the shop and Wi-Fi names are asked again and new "
-                       "passwords are made. This unit's summary stays saved.", fg=C["muted"]).pack(fill="x")
-        ttk.Button(nxt, text="Set up the next unit", style="Primary.TButton", command=self.next_unit).pack(anchor="w", pady=(10, 0))
-        self._render_coin()
-
-    def next_unit(self):
-        """Everything of the finished unit is forgotten (its passwords are saved on disk); only the country stays."""
-        if self.installing or self.coin["running"] or self.telegram["running"]:
-            return
-        self.unit += 1
-        self.result = self.install_error = self.banner = None
-        self.stage, self.activity, self.log_lines, self.final = -1, "", [], {}
-        self.prov, self.prov_auto, self.box_up = {"state": None, "note": ""}, False, None
-        self.coin = {"running": False, "ok": None, "lines": []}
-        self.telegram = {"running": False, "ok": False, "lines": []}
-        self.router = {"host": None, "state": None, "error": None, "login_ok": False}
-        self.router_password.set("")
-        self.tg_token.set("")
-        self.flashed, self.usb = False, None
-        self.skip_flash.set(False)
-        for key in ("GUEST_SSID", "SITE_NAME"):
-            self.vars[key].set("")
-        for env, _label, _lo, _hi, length in PASSWORDS:
-            self.vars[env].set(generate(length))
-        self.show(1)
-
-    def start_coin_test(self):
-        if self.coin["running"]:
-            return
-        host, password = self.router["host"] or TARGET_IP, self.router_password.get()
-        self.coin = {"running": True, "ok": None, "lines": []}
-        self._render_coin()
-        self.update_nav()
+        def line(text):
+            with self.lock:
+                self.coin["lines"].append(text)
+                if text.startswith("RESULT: the box counted"):
+                    self.coin["ok"] = True
+                elif text.startswith("RESULT:"):
+                    self.coin["ok"] = False
 
         def work():
             try:
-                self.core.run(host, password, "piso-setup test-coin", lambda line: self.post("coin_line", line))
+                self.core.run(host, password, "piso-setup test-coin", line)
             except Exception as e:
-                self.post("coin_line", f"RESULT: the test could not run ({e})")
-            self.post("coin_done")
-        threading.Thread(target=work, daemon=True).start()
+                line(f"RESULT: the test could not run ({e})")
+            with self.lock:
+                self.coin["running"] = False
+                if self.coin["ok"] is None:
+                    self.coin["ok"] = False
+        self.spawn(work)
 
-    def on_coin_line(self, line):
-        self.coin["lines"].append(line)
-        if line.startswith("RESULT: the box counted"):
-            self.coin["ok"] = True
-        elif line.startswith("RESULT:"):
-            self.coin["ok"] = False
-        self._render_coin()
-
-    def on_coin_done(self):
-        self.coin["running"] = False
-        if self.coin["ok"] is None:
-            self.coin["ok"] = False
-        self._render_coin()
-        self.update_nav()
-
-    def _render_coin(self):
-        if STEPS[self.step][0] != "finish" or not self.coin_box.winfo_exists():
-            return
-        for w in self.coin_box.winfo_children():
-            w.destroy()
-        c = self.coin
-        if c["running"] and not c["lines"]:
-            self.text(self.coin_box, "Arming the coin slot...", fg=C["muted"]).pack(fill="x")
-        elif c["running"]:
-            self.text(self.coin_box, c["lines"][-1], fg=C["accent_dark"]).pack(fill="x")
-        elif c["ok"] is True:
-            self.note(self.coin_box, "ok", self._sentence([x for x in c["lines"] if x.startswith("RESULT:")][-1][len("RESULT: "):]))
-        elif c["ok"] is False:
-            result = [x for x in c["lines"] if x.startswith("RESULT:")]
-            self.note(self.coin_box, "bad", (self._sentence(result[-1][len("RESULT: "):]) if result else "The test did not finish.")
-                      + " You can run it again.")
-        self.coin_btn.configure(state="disabled" if c["running"] else "normal",
-                                text="Test again" if c["ok"] is not None and not c["running"] else "Test a coin")
-
-    @staticmethod
-    def _sentence(text):
-        return text[:1].upper() + text[1:]
-
-    # -- Telegram (a dialog on the last page) -----------------------------------------------------------------------------
-    def open_telegram_dialog(self):
-        if self.tg_win is not None and self.tg_win.winfo_exists():
-            self.tg_win.lift()
-            return
-        win = tk.Toplevel(self.root)
-        self.tg_win = win
-        win.title("Telegram alerts")
-        win.configure(bg=C["bg"])
-        win.transient(self.root)
-        self.root.update_idletasks()
-        win.geometry(f"520x420+{self.root.winfo_rootx() + 240}+{self.root.winfo_rooty() + 100}")
-        win.resizable(False, False)
-        body = tk.Frame(win, bg=C["bg"], padx=24, pady=20)
-        body.pack(fill="both", expand=True)
-        self.text(body, "Alerts on your phone", "h1").pack(fill="x")
-        c = self.card(body, pady=(10, 10))
-        self.numbered(c, ["In Telegram, open @BotFather (button below), send /newbot and choose a name for your bot.",
-                          "Copy the token BotFather gives you (it looks like 123456789:AAH...) and paste it here.",
-                          "Click Connect, then open your new bot in Telegram and send it any message, like /start."])
-        row = tk.Frame(c, bg=C["card"])
-        row.pack(fill="x", pady=(8, 0))
-        ttk.Button(row, text="Open @BotFather", command=lambda: self.core.browse("https://t.me/BotFather")).pack(side="left")
-        form = tk.Frame(c, bg=C["card"])
-        form.pack(fill="x", pady=(12, 0))
-        self.text(form, "Bot token", "bold").pack(fill="x")
-        row2 = tk.Frame(form, bg=C["card"])
-        row2.pack(fill="x", pady=(3, 0))
-        ttk.Entry(row2, textvariable=self.tg_token, font=self.f["mono_big"]).pack(side="left", fill="x", expand=True)
-        self.tg_btn = ttk.Button(row2, text="Connect", style="Primary.TButton", command=self.start_telegram)
-        self.tg_btn.pack(side="left", padx=(8, 0))
-        self.tg_status = tk.Frame(body, bg=C["bg"])
-        self.tg_status.pack(fill="x")
-        ttk.Button(body, text="Close", command=win.destroy).pack(side="bottom", anchor="e")
-        self._render_telegram()
-
-    def _render_telegram(self):
-        win = self.tg_win
-        if win is None or not win.winfo_exists():
-            return
-        for w in self.tg_status.winfo_children():
-            w.destroy()
-        t = self.telegram
-        if t["ok"]:
-            self.note(self.tg_status, "ok", "Telegram is connected. A message was sent to your chat; send /help to your bot "
-                                            "for the commands.")
-        elif t["running"]:
-            self.note(self.tg_status, "info", "Now open your new bot in Telegram and send it any message (for example "
-                                              "/start). Waiting up to 2 minutes...")
-        elif t.get("error"):
-            self.note(self.tg_status, "bad", t["error"])
-        self.tg_btn.configure(state="disabled" if t["running"] or t["ok"] else "normal")
-        if STEPS[self.step][0] == "finish" and self.tg_state.winfo_exists():
-            self.tg_state.configure(text="Connected." if t["ok"] else "")
-        self.update_nav()
-
-    def start_telegram(self):
-        token = self.tg_token.get().strip()
-        if not TELEGRAM_TOKEN.fullmatch(token):
-            self.telegram["error"] = "That does not look like a bot token (numbers, a colon, then letters, like 123456789:AAH...)."
-            return self._render_telegram()
-        self.telegram.update(running=True, error=None, lines=[])
-        self._render_telegram()
-        host, password = self.router["host"] or TARGET_IP, self.router_password.get()
-        site = self.passwords().get("SITE_NAME") or self.answers()["SITE_NAME"]
+    def do_telegram(self, a):
+        token = str(a.get("token", "")).strip()
+        with self.lock:
+            if self.telegram["running"]:
+                return
+            if not TELEGRAM_TOKEN.fullmatch(token):
+                self.telegram["error"] = "That does not look like a bot token (numbers, a colon, then letters, like 123456789:AAH...)."
+                return
+            self.telegram.update(running=True, error=None, lines=[], confirm=None)
+            host, password = self.router["host"] or TARGET_IP, self.router_password
+            site = self.passwords().get("SITE_NAME") or self.answers()["SITE_NAME"]
+            self._tg_answer = threading.Event()
+            self._tg_yes = False
 
         def confirm(chat):
-            return self.ask(lambda: messagebox.askyesno(APP_NAME, f"{chat}\n\nIs that you? Alerts and commands are then "
-                                                                  "accepted only from this chat.", parent=self.tg_win or self.root))
+            with self.lock:
+                self.telegram["confirm"] = chat
+                event = self._tg_answer
+            event.wait(600)
+            with self.lock:
+                self.telegram["confirm"] = None
+                return self._tg_yes
+
+        def line(text):
+            with self.lock:
+                self.telegram["lines"].append(text)
 
         def work():
             try:
-                ok = self.core.telegram(host, password, token, site, lambda line: self.post("tg_line", line), confirm)
-                self.post("tg_done", ok, None if ok else "Telegram was not connected. Try again, or do it later with "
-                                                         "piso-setup telegram on the router.")
+                ok = self.core.telegram(host, password, token, site, line, confirm)
+                error = None if ok else ("Telegram was not connected. Try again, or do it later with piso-setup telegram on the router.")
             except Exception as e:
-                self.post("tg_done", False, f"Telegram was not connected: {e}")
-        threading.Thread(target=work, daemon=True).start()
+                ok, error = False, f"Telegram was not connected: {e}"
+            with self.lock:
+                self.telegram.update(running=False, ok=ok, error=error, confirm=None)
+        self.spawn(work)
 
-    def on_tg_line(self, line):
-        self.telegram["lines"].append(line)
+    def do_telegram_answer(self, a):
+        with self.lock:
+            if self.telegram.get("confirm") is None or self._tg_answer is None:
+                return
+            self._tg_yes = bool(a.get("yes"))
+            self._tg_answer.set()
 
-    def on_tg_done(self, ok, error):
-        self.telegram.update(running=False, ok=ok, error=error)
-        self._render_telegram()
+    def do_next_unit(self, a):
+        with self.lock:
+            if self.install["running"] or self.coin["running"] or self.telegram["running"]:
+                return
+            self.reset_unit()
+
+    # -- what the page reads -------------------------------------------------------------------------------------------------------
+    def act(self, name, args):
+        if not re.fullmatch(r"[a-z_]{2,24}", name or "") or not hasattr(self, "do_" + name):
+            raise ValueError("unknown action")
+        getattr(self, "do_" + name)(args if isinstance(args, dict) else {})
+
+    def snapshot(self):
+        with self.lock:
+            inst = dict(self.install, lines=list(self.install["lines"][-600:]), total=len(self.install["lines"]))
+            problems = {k: v for k, v in self.settings_problems().items() if v}
+            return {
+                "unit": self.unit, "step": self.step, "steps": [label for _key, label in STEPS],
+                "keys": [key for key, _label in STEPS], "can_next": self.can_next(),
+                "system": {"name": self.system["name"], "kind": self.system["kind"], "arch": self.system["arch"],
+                           "root": self.system["root"]},
+                "checks": None if self.checks is None else [list(c) for c in self.checks],
+                "deps": dict(self.deps, lines=list(self.deps["lines"][-60:])),
+                "router": dict(self.router, has_password=bool(self.router_password)),
+                "settings": {"values": dict(self.values), "country": self.country, "problems": problems, "kept": self.kept(),
+                             "countries": [[c, n] for c, n in COUNTRIES]},
+                "usb": {"boards": self.usb, "skip": self.skip_flash, "flashed": self.flashed},
+                "install": inst, "stages": INSTALL_STAGES, "final": self.passwords(), "saved": [[l, os.path.basename(p)] for l, p in self.saved],
+                "review": {"public_wifi": self.answers()["GUEST_SSID"], "site": self.answers()["SITE_NAME"], "country": self.country,
+                           "router": f"{self.router['host'] or '?'} -> {TARGET_IP}" if self.router["host"] == FACTORY_IP else TARGET_IP},
+                "phones": dict(self.prov, box_up=self.box_up, box_ip=BOX_IP, kiosk_ssid=KIOSK_SSID),
+                "coin": dict(self.coin), "telegram": dict(self.telegram),
+            }
+
+    def saved_file(self, index):
+        """(name, path) of a file the installation saved, or None. Only those files can be fetched by the page."""
+        with self.lock:
+            if 0 <= index < len(self.saved):
+                path = self.saved[index][1]
+                return os.path.basename(path), path
+        return None
 
 
-def run_gui(args, core=None):
-    _load_tk()
-    if os.name == "nt":
-        try:   # crisp text on high-resolution screens
-            import ctypes
-            ctypes.windll.shcore.SetProcessDpiAwareness(1)
-        except Exception:
-            pass
+def local_addresses():
+    """This computer's addresses on its networks (not loopback): what to type on a phone."""
+    found = []
+    try:
+        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        probe.connect(("10.255.255.255", 1))   # (no packet is sent: it only picks the outgoing interface)
+        found.append(probe.getsockname()[0])
+        probe.close()
+    except OSError:
+        pass
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            found.append(info[4][0])
+    except OSError:
+        pass
+    return [ip for ip in dict.fromkeys(found) if not ip.startswith("127.") and not ip.startswith("0.")]
+
+
+def load_pin(path=None, wanted=None):
+    """The PIN of the setup page: --pin, else the one saved from the last run, else a new random one (saved, owner only)."""
+    path = path or os.path.join(pisophone_home(), "pin")
+    if wanted:
+        if not PIN_RE.fullmatch(wanted):
+            raise SetupError("the PIN must be 6 to 32 letters or digits")
+        pin = wanted
+    else:
+        try:
+            with open(path, encoding="utf-8") as f:
+                pin = f.read().strip()
+        except OSError:
+            pin = ""
+        if PIN_RE.fullmatch(pin):
+            return pin
+        pin = "".join(secrets.choice("0123456789") for _ in range(6))
+    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+    save_private(path, pin + "\n")
+    return pin
+
+
+class Web:
+    """The page's server state: the PIN, who has logged in, who guessed wrong."""
+
+    def __init__(self, session, pin, allowed_hosts=()):
+        self.session, self.pin = session, pin
+        self.tokens = set()
+        self.fails = []
+        self.lock = threading.Lock()
+        self.allowed_hosts = {h.lower() for h in allowed_hosts}
+
+    def host_ok(self, header):
+        """Rejects a Host header that is not this computer's address or name: a web page of another site cannot then reach the
+        setup through the visitor's browser (DNS rebinding)."""
+        host = (header or "").lower()
+        if host.startswith("["):
+            host = host[1:host.find("]")]
+        elif host.count(":") == 1:
+            host = host.split(":")[0]
+        if host in ("localhost", "") or host in self.allowed_hosts or host.endswith(".local") or ":" in host:
+            return True
+        return bool(re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", host))
+
+    def login(self, pin):
+        now = time.monotonic()
+        with self.lock:
+            self.fails = [t for t in self.fails if now - t < 60]
+            if len(self.fails) >= 5:
+                return None, "Too many wrong PINs: wait a minute."
+            if secrets.compare_digest(str(pin), self.pin):
+                token = secrets.token_urlsafe(24)
+                self.tokens.add(token)
+                return token, None
+            self.fails.append(now)
+            return None, "Wrong PIN."
+
+    def valid(self, token):
+        with self.lock:
+            return token in self.tokens
+
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    server_version = "PisoSetup"
+    protocol_version = "HTTP/1.0"
+
+    def log_message(self, *args):
+        pass
+
+    @property
+    def web(self):
+        return self.server.web
+
+    def _send(self, code, body, ctype="application/json", extra=()):
+        data = body if isinstance(body, bytes) else body.encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
+                                                    "connect-src 'self'; img-src data:; base-uri 'none'; form-action 'none'")
+        for key, value in extra:
+            self.send_header(key, value)
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _json(self, code, value, extra=()):
+        self._send(code, json.dumps(value), extra=extra)
+
+    def _token(self):
+        for part in (self.headers.get("Cookie") or "").split(";"):
+            key, _sep, value = part.strip().partition("=")
+            if key == "piso":
+                return value
+        return ""
+
+    def _guard(self, post=False):
+        if not self.web.host_ok(self.headers.get("Host")):
+            self._json(403, {"error": "unknown host name: use this computer's address"})
+            return False
+        if post and self.headers.get("X-Piso") != "1":
+            self._json(403, {"error": "forbidden"})
+            return False
+        return True
+
+    def do_GET(self):
+        path = urllib.parse.urlsplit(self.path)
+        if not self._guard():
+            return
+        if path.path == "/":
+            return self._send(200, PAGE, "text/html; charset=utf-8")
+        if path.path == "/favicon.ico":
+            return self._send(204, b"")
+        if not self.web.valid(self._token()):
+            return self._json(401, {"error": "login"})
+        if path.path == "/api/state":
+            return self._json(200, self.web.session.snapshot())
+        if path.path == "/api/saved":
+            try:
+                found = self.web.session.saved_file(int(urllib.parse.parse_qs(path.query).get("i", ["-1"])[0]))
+            except ValueError:
+                found = None
+            if not found:
+                return self._json(404, {"error": "no such file"})
+            with open(found[1], "rb") as f:
+                body = f.read()
+            kind = "text/html; charset=utf-8" if found[0].endswith(".html") else "text/plain; charset=utf-8"
+            return self._send(200, body, kind, [("Content-Disposition", f'inline; filename="{found[0]}"')])
+        self._json(404, {"error": "not found"})
+
+    def do_POST(self):
+        if not self._guard(post=True):
+            return
+        try:
+            size = int(self.headers.get("Content-Length") or 0)
+            body = json.loads(self.rfile.read(min(size, 20000)).decode("utf-8") or "{}")
+        except (ValueError, UnicodeDecodeError):
+            return self._json(400, {"error": "bad request"})
+        if not isinstance(body, dict):
+            return self._json(400, {"error": "bad request"})
+        if self.path == "/api/login":
+            token, error = self.web.login(body.get("pin", ""))
+            if error:
+                return self._json(403, {"error": error})
+            return self._json(200, {"ok": True}, [("Set-Cookie", f"piso={token}; HttpOnly; SameSite=Strict; Path=/")])
+        if not self.web.valid(self._token()):
+            return self._json(401, {"error": "login"})
+        if self.path == "/api/do":
+            try:
+                self.web.session.act(body.get("action"), body)
+            except ValueError as e:
+                return self._json(400, {"error": str(e)})
+            return self._json(200, self.web.session.snapshot())
+        self._json(404, {"error": "not found"})
+
+
+def make_server(session, pin, host="0.0.0.0", port=DEFAULT_PORT):
+    """The setup page's server (port 0: any free one). Tries the next ports when the first is taken."""
+    last = None
+    for candidate in ([port] if port == 0 else range(port, port + 10)):
+        try:
+            server = http.server.ThreadingHTTPServer((host, candidate), Handler)
+            break
+        except OSError as e:
+            last = e
+    else:
+        raise SetupError(f"no port is free from {port} on ({last})")
+    server.daemon_threads = True
+    server.web = Web(session, pin, {socket.gethostname()})
+    return server
+
+
+def has_display():
+    return os.name == "nt" or sys.platform == "darwin" or bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+
+
+def service_unit(script, port):
+    """The systemd unit that starts the setup page when the computer boots."""
+    return (f"[Unit]\nDescription=PisoPhone setup page\nAfter=network-online.target\nWants=network-online.target\n\n"
+            f"[Service]\nType=simple\nEnvironment=PISOPHONE_HOME=/var/lib/pisophone-setup\nEnvironment=PYTHONUNBUFFERED=1\n"
+            f"ExecStart={sys.executable} {script} --port {port} --no-open\nRestart=on-failure\nRestartSec=5\n\n"
+            f"[Install]\nWantedBy=multi-user.target\n")
+
+
+def install_service(args, unit_path="/etc/systemd/system/pisophone-setup.service", state_dir="/var/lib/pisophone-setup",
+                    run=run_command, supported=None):
+    """Linux: makes the setup page start by itself at boot (as root: it writes to the USB port and installs packages)."""
+    if supported is None:
+        supported = sys.platform.startswith("linux") and bool(shutil.which("systemctl"))
+    if not supported:
+        raise SetupError("--install-service needs a Linux system with systemd")
+    if hasattr(os, "geteuid") and os.geteuid() != 0:
+        raise SetupError("run it as administrator:  sudo python3 " + os.path.abspath(sys.argv[0]) + " --install-service")
+    os.environ["PISOPHONE_HOME"] = state_dir
+    os.makedirs(state_dir, mode=0o700, exist_ok=True)
+    pin = load_pin(wanted=args.pin)
+    with open(unit_path, "w", encoding="utf-8") as f:
+        f.write(service_unit(os.path.abspath(sys.argv[0]), args.port))
+    for command in (["systemctl", "daemon-reload"], ["systemctl", "enable", "--now", "pisophone-setup"]):
+        if run(command, say, 60) != 0:
+            raise SetupError("systemctl failed (see above)")
+    say("The setup page now starts by itself when this computer starts.")
+    for ip in local_addresses() or ["<this computer's address>"]:
+        say(f"  Open  http://{ip}:{args.port}  on your phone (same network), PIN {pin}")
+    say("  Stop it with: sudo systemctl disable --now pisophone-setup")
+    return 0
+
+
+def run_web(args, core=None, system=None):
+    """The default mode: the setup page. Installs what is missing, serves the page, prints where to open it."""
+    use_private_libs()
+    system = system or detect_system()
+    say(APP_NAME)
+    if not args.no_install:
+        say("Checking what this computer needs (the first time it installs ssh and esptool; this can take a minute)...")
+        ensure_dependencies(say, system)
     workdir = tempfile.mkdtemp(prefix="pisophone-")
     try:
-        root = tk.Tk()
-        Wizard(root, core or Core(args.branch, workdir), args.branch, None if args.out == "." else args.out)
-        root.mainloop()
+        session = Session(core or Core(args.branch, workdir), args.branch, None if args.out == "." else args.out, system)
+        pin = load_pin(wanted=args.pin)
+        server = make_server(session, pin, "127.0.0.1" if args.local_only else "0.0.0.0", args.port)
+        port = server.server_address[1]
+        say()
+        say("The setup page is running. Open it in a browser:")
+        say(f"  on this computer:  http://127.0.0.1:{port}")
+        if not args.local_only:
+            for ip in local_addresses():
+                say(f"  on your phone:     http://{ip}:{port}   (same network as this computer)")
+        say(f"  PIN: {pin}")
+        say("Leave this running until the last unit is done (Ctrl+C stops it).")
+        if not args.no_open and has_display():
+            try:
+                webbrowser.open(f"http://127.0.0.1:{port}")
+            except Exception:
+                pass
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            say()
+            say("Stopped. Running this again is safe: the router keeps what is done.")
+        return 0
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
-    return 0
+
+
+PAGE = r"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PisoPhone Setup</title>
+<style>
+:root{--bg:#f8fafc;--card:#fff;--line:#e2e8f0;--ink:#0f172a;--mut:#64748b;--acc:#2563eb;--accd:#1d4ed8;--accs:#dbeafe;--ok:#15803d;--oks:#dcfce7;--warn:#b45309;--warns:#fef3c7;--bad:#b91c1c;--bads:#fee2e2;--log:#0b1220;--logi:#cbd5e1}
+@media(prefers-color-scheme:dark){:root{--bg:#0b1220;--card:#111a2e;--line:#22304a;--ink:#e5e9f2;--mut:#93a1ba;--acc:#4f8bff;--accd:#6b9dff;--accs:#14284d;--ok:#4ade80;--oks:#0f2c1c;--warn:#fbbf24;--warns:#33280c;--bad:#f87171;--bads:#3a1414;--log:#050912}}
+*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+header b{font-size:18px}header span{color:var(--mut);font-size:14px}
+nav{display:flex;gap:6px;padding:10px 16px;overflow-x:auto}
+nav div{flex:1 0 auto;text-align:center;padding:6px 10px;border-radius:999px;font-size:13px;background:var(--card);border:1px solid var(--line);color:var(--mut);white-space:nowrap}
+nav div.on{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}nav div.done{color:var(--ok);border-color:var(--ok)}
+main{max-width:760px;margin:0 auto;padding:6px 16px 110px}
+h1{font-size:22px;margin:14px 0 4px}h2{font-size:16px;margin:0 0 8px}p{margin:6px 0}.mut{color:var(--mut)}.small{font-size:13px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:12px 0}
+.note{border-left:4px solid var(--acc);background:var(--accs);padding:10px 12px;border-radius:6px;margin:12px 0}
+.note.ok{border-color:var(--ok);background:var(--oks)}.note.warn{border-color:var(--warn);background:var(--warns)}.note.bad{border-color:var(--bad);background:var(--bads)}
+button{font:inherit;padding:10px 16px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;min-height:44px}
+button.primary{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}button:disabled{opacity:.45;cursor:default}
+button.small{min-height:34px;padding:4px 10px;font-size:13px}
+input,select{font:inherit;width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);min-height:44px}
+input.bad{border-color:var(--bad)}label{display:block;font-weight:600;margin-top:12px}.hint{font-weight:400;color:var(--mut);font-size:13px}.err{color:var(--bad);font-size:13px;min-height:1em}
+ul.steps{padding-left:20px;margin:6px 0}ul.steps li{margin:4px 0}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.grow{flex:1}
+.kv{display:flex;gap:10px;padding:3px 0}.kv span:first-child{color:var(--mut);min-width:110px}
+pre{background:var(--log);color:var(--logi);padding:10px 12px;border-radius:8px;overflow:auto;max-height:280px;font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word;margin:8px 0}
+.dot{display:inline-block;width:14px;height:14px;border-radius:50%;border:2px solid var(--line);margin-right:10px;vertical-align:-2px}.dot.on{background:var(--acc);border-color:var(--acc)}.dot.ok{background:var(--ok);border-color:var(--ok)}
+.pw{font:15px ui-monospace,Menlo,Consolas,monospace;word-break:break-all}
+footer{position:fixed;left:0;right:0;bottom:0;background:var(--bg);border-top:1px solid var(--line);padding:10px 16px;display:flex;gap:10px;justify-content:space-between;max-width:100%}
+footer .in{display:flex;gap:10px;justify-content:space-between;width:100%;max-width:760px;margin:0 auto}
+#login{position:fixed;inset:0;background:var(--bg);display:none;align-items:center;justify-content:center;padding:20px;z-index:9}#login .card{width:100%;max-width:360px}
+a{color:var(--acc)}.hide{display:none!important}
+</style></head><body>
+<div id="login"><div class="card"><h1>PisoPhone Setup</h1><p class="mut">Type the PIN shown on the computer that runs the setup (in its terminal, or <code>pisophone-setup.service</code>'s log).</p>
+<label for="pin">PIN</label><input id="pin" type="password" inputmode="text" autocomplete="off"><div class="err" id="pinErr"></div>
+<p><button class="primary" id="pinBtn" style="width:100%">Open the setup</button></p></div></div>
+<header><b>PisoPhone Setup</b><span id="unit"></span><span id="sysname"></span></header>
+<nav id="nav"></nav>
+<main>
+<section id="s0">
+ <h1>Set up your PisoPhone system</h1>
+ <p class="mut">One unit at a time: the coin box gets its software over USB, the router is set up and paired with it, then the rental phones. About 15 minutes. Nothing on the router is changed until you start the installation.</p>
+ <div class="card"><h2>What you need</h2><ul class="steps"><li>The ESP32 coin box board and a USB <b>data</b> cable, plugged into this computer</li><li>An OpenWrt router (for example a 360T6M), factory reset</li><li>The modem in the router's WAN port, and a network cable from this computer to a LAN port</li><li>The rental phones, factory reset</li></ul></div>
+ <div class="card"><h2>This computer</h2><p class="mut small" id="sysline"></p><div id="checks"><p class="mut">Checking...</p></div>
+  <div class="row" style="margin-top:8px"><button id="btnDeps" class="hide">Install what is missing</button><button id="btnRecheck">Check again</button></div>
+  <pre id="depsLog" class="hide"></pre></div>
+</section>
+<section id="s1" class="hide">
+ <h1>Connect the router</h1>
+ <p class="mut">The router is set up over a network cable from this computer. It is found by itself as soon as it is connected.</p>
+ <div class="card"><ul class="steps"><li>Factory reset the router (hold its reset button about 10 seconds) and wait 2 minutes.</li><li>Plug the modem into the router's <b>WAN</b> (internet) port.</li><li>Plug this computer into one of the router's <b>LAN</b> ports.</li><li>Turn this computer's Wi-Fi off if it is also on the router's network.</li></ul></div>
+ <div id="unitNote" class="note hide"></div>
+ <div id="routerBox" class="note">Looking for the router...</div>
+ <div id="pwRow" class="card hide"><label for="routerPw">Router password <span class="hint">this router was set up before and has a password (it is in your saved summary)</span></label><input id="routerPw" type="password" autocomplete="off"><div class="err" id="pwErr"></div></div>
+ <button id="btnSearch">Search again</button>
+</section>
+<section id="s2" class="hide">
+ <h1 id="setTitle">This customer's names</h1>
+ <p class="mut" id="setSub"></p>
+ <div class="card" id="namesCard">
+  <label for="GUEST_SSID">Public Wi-Fi name <span class="hint">what customers see in their Wi-Fi list</span></label><input id="GUEST_SSID" data-k="1" autocomplete="off" autocapitalize="off"><div class="err" data-e="GUEST_SSID"></div>
+  <label for="SITE_NAME">Shop / site name <span class="hint">on the setup sheet and in alerts</span></label><input id="SITE_NAME" data-k="1" autocomplete="off"><div class="err" data-e="SITE_NAME"></div>
+ </div>
+ <div class="card"><label for="COUNTRY" style="margin-top:0">Country <span class="hint">decides which Wi-Fi channels the router may use</span></label><select id="COUNTRY"></select><div class="err" data-e="COUNTRY"></div></div>
+ <div class="card" id="pwCard"><h2>Passwords <span class="hint">new for every unit; keep them or type your own</span></h2>
+  <label for="ROOT_PASSWORD">Router password <span class="hint">SSH and the router's web page</span></label><input id="ROOT_PASSWORD" data-k="1" autocomplete="off"><div class="err" data-e="ROOT_PASSWORD"></div>
+  <label for="KIOSK_PASSWORD">PisoKiosk Wi-Fi password <span class="hint">the hidden network of the rental phones</span></label><input id="KIOSK_PASSWORD" data-k="1" autocomplete="off"><div class="err" data-e="KIOSK_PASSWORD"></div>
+  <label for="BOX_NEW_ADMIN_PASSWORD">Coin box admin password <span class="hint">the box's admin page; also the phones' admin PIN</span></label><input id="BOX_NEW_ADMIN_PASSWORD" data-k="1" autocomplete="off"><div class="err" data-e="BOX_NEW_ADMIN_PASSWORD"></div></div>
+</section>
+<section id="s3" class="hide">
+ <h1>Install</h1>
+ <p class="mut" id="instSub">One click: the coin box gets its software over USB, then the router is set up and paired with it. About 10 minutes. Keep the USB cable plugged in (it powers the box) and the network cable too.</p>
+ <div class="card"><h2>Settings</h2><div id="review"></div></div>
+ <div class="card"><div class="row"><h2 class="grow" style="margin:0">Coin box (USB)</h2><button class="small" id="btnUsb">Look again</button></div><p id="usbText" class="mut"></p>
+  <label style="font-weight:400;display:flex;gap:10px;align-items:center;margin-top:8px"><input type="checkbox" id="skipFlash" style="width:auto;min-height:0"> Do not write it: the coin box already has the PisoPhone software</label></div>
+ <div class="card"><h2>Progress</h2><div id="stages"></div><p id="activity" class="mut small"></p></div>
+ <div id="instBanner"></div>
+ <p><button class="primary" id="btnStart">Start the installation</button></p>
+ <details open><summary class="mut small">Details</summary><pre id="instLog"></pre></details>
+</section>
+<section id="s4" class="hide">
+ <h1>Set up the rental phones</h1>
+ <p class="mut">Each phone is set up once with a QR code: Android installs PisoPhone, locks the phone as a kiosk and connects it to its coin box slot. Open the setup page on a phone or laptop that has internet, and scan its code with the rental phone.</p>
+ <div class="card"><h2>For each phone</h2><ul class="steps"><li>Factory reset the phone. On its first welcome screen tap the same spot 6 times: a QR reader opens.</li><li>Open the setup page below, tap <b>Show the setup code</b>, and scan it with the rental phone.</li><li>Accept the screens until PisoPhone shows <b>One last step</b>: on most phones switch on <i>Allow display over other apps</i>. An Android Go phone asks for USB: plug it into a computer and use <b>Finish over USB</b> on the setup page (Chrome or Edge).</li><li>Pair the slot on the coin box's page. The kiosk is running.</li></ul>
+  <div class="row" style="margin-top:10px"><label style="margin:0">Slot</label><select id="slot" style="width:90px"></select><button class="primary" id="btnPhone">Make the setup page link</button></div>
+  <div id="provBox"></div></div>
+ <div class="card"><h2>Coin box</h2><p id="boxUp" class="mut">Checking...</p></div>
+ <div class="card"><h2>Your passwords</h2><div id="pwList"></div></div>
+</section>
+<section id="s5" class="hide">
+ <h1>Check that it all works</h1>
+ <div class="card"><h2>1. Test a coin</h2><p class="mut">Tap the button, then insert one coin when the box beeps (within 30 seconds).</p><button class="primary" id="btnCoin">Test a coin</button><div id="coinBox"></div></div>
+ <div class="card"><h2>2. Try it as a customer</h2><p class="mut" id="custText"></p></div>
+ <div class="card"><h2>Alerts on your phone (optional)</h2><p class="mut">Telegram messages when the coin box goes offline or the revenue does not add up, plus a daily report. You need a bot token from @BotFather.</p>
+  <input id="tgToken" placeholder="123456789:AAH..." autocomplete="off"><div class="err" id="tgErr"></div><button id="btnTg">Connect Telegram</button><div id="tgBox"></div></div>
+ <div class="card"><h2>Saved on this computer</h2><div id="savedList"></div><p class="mut small" id="savedDir"></p></div>
+ <div class="card"><h2>Another unit?</h2><p class="mut">Starts over for the next router and coin box: the shop and Wi-Fi names are asked again and new passwords are made. This unit's summary stays saved.</p><button class="primary" id="btnNext">Set up the next unit</button></div>
+</section>
+</main>
+<footer><div class="in"><button id="btnBack">Back</button><button class="primary" id="btnNextStep">Next</button></div></footer>
+<script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+let S=null,shown=-1,shownUnit=0,dirty=false,pwTimer=0;
+const h=(tag,attrs,...kids)=>{const e=document.createElement(tag);for(const k in(attrs||{})){if(k==='class')e.className=attrs[k];else if(k==='onclick')e.onclick=attrs[k];else e.setAttribute(k,attrs[k])}for(const c of kids.flat())if(c!=null)e.append(c.nodeType?c:document.createTextNode(String(c)));return e};
+const clear=e=>{while(e.firstChild)e.removeChild(e.firstChild)};
+async function api(path,body){const r=await fetch(path,{method:body?'POST':'GET',headers:{'X-Piso':'1','Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,credentials:'same-origin'});if(r.status===401){showLogin();throw new Error('login')}return r.json()}
+async function act(action,extra){S=await api('/api/do',Object.assign({action},extra||{}));paint()}
+function showLogin(){$('#login').style.display='flex'}
+async function login(){const r=await fetch('/api/login',{method:'POST',headers:{'X-Piso':'1','Content-Type':'application/json'},body:JSON.stringify({pin:$('#pin').value}),credentials:'same-origin'});const j=await r.json();if(r.ok){$('#login').style.display='none';$('#pin').value='';poll(true)}else $('#pinErr').textContent=j.error||'Wrong PIN.'}
+$('#pinBtn').onclick=login;$('#pin').onkeydown=e=>{if(e.key==='Enter')login()};
+async function poll(once){try{S=await api('/api/state');paint()}catch(e){}if(once!==true)setTimeout(poll,document.hidden?4000:1000)}
+function copyText(t,btn){const done=()=>{if(btn){const o=btn.textContent;btn.textContent='Copied';setTimeout(()=>btn.textContent=o,1200)}};if(navigator.clipboard&&window.isSecureContext)navigator.clipboard.writeText(t).then(done,()=>{});else{const a=document.createElement('textarea');a.value=t;document.body.append(a);a.select();try{document.execCommand('copy')}catch(e){}a.remove();done()}}
+function note(kind,text){return h('div',{class:'note '+kind},text)}
+function setPre(pre,lines){const near=pre.scrollTop+pre.clientHeight>=pre.scrollHeight-40;pre.textContent=lines.join('\n');if(near)pre.scrollTop=pre.scrollHeight}
+function paint(){
+ if(!S)return;
+ $('#unit').textContent='Unit '+S.unit;$('#sysname').textContent=S.system.name;
+ if(S.unit!==shownUnit){shownUnit=S.unit;shown=-1;fillSettingsOnce()}
+ const nav=$('#nav');if(nav.children.length!==S.steps.length){clear(nav);S.steps.forEach(n=>nav.append(h('div',{},n)))}
+ [...nav.children].forEach((d,i)=>d.className=i===S.step?'on':i<S.step?'done':'');
+ if(shown!==S.step){shown=S.step;$$('main>section').forEach((s,i)=>s.classList.toggle('hide',i!==S.step));window.scrollTo(0,0)}
+ $('#btnBack').classList.toggle('hide',S.step===0||S.install.running);
+ const last=S.step===S.steps.length-1;$('#btnNextStep').classList.toggle('hide',last);$('#btnNextStep').disabled=!S.can_next&&!(S.step===1&&S.router.state==='password'&&S.router.has_password);
+ [paint0,paint1,paint2,paint3,paint4,paint5][S.step]();
+}
+function paint0(){
+ $('#sysline').textContent=S.system.name+' ('+S.system.arch+')'+(S.system.root?', running as administrator':'');
+ const c=$('#checks');clear(c);let miss=false;
+ if(!S.checks)c.append(h('p',{class:'mut'},'Checking...'));
+ else S.checks.forEach(([what,ok,fix])=>{if(!ok)miss=true;c.append(h('div',{class:'kv'},h('span',{style:'color:var(--'+(ok?'ok':'bad')+')'},ok?'OK':'Missing'),h('span',{style:'color:var(--ink)'},what+(ok?'':': '+fix))))});
+ $('#btnDeps').classList.toggle('hide',!miss||S.deps.running);$('#btnDeps').disabled=S.deps.running;
+ const lg=$('#depsLog');lg.classList.toggle('hide',!S.deps.lines.length);if(S.deps.lines.length)setPre(lg,S.deps.lines);
+ $('#btnRecheck').disabled=S.deps.running;
+}
+function paint1(){
+ const r=S.router,b=$('#routerBox');
+ $('#unitNote').classList.toggle('hide',S.unit<2);if(S.unit>1)$('#unitNote').textContent='Unit '+S.unit+': unplug the network cable from the last router, connect this computer to the next factory-reset router, and plug the next coin box board into USB.';
+ let kind='',text='';
+ if(r.error){kind='bad';text=r.error[0].toUpperCase()+r.error.slice(1)}
+ else if(r.host){kind='ok';text='Router found at '+r.host+(r.state==='factory'?' (factory reset: ready to be set up).':r.state==='configured'?' (set up before: it keeps its names and passwords and is finished or repaired).':r.state==='password'?' (it has a password).':'.')}
+ else{kind='';text='Looking for the router at 192.168.1.1 or 10.0.0.1... Check the cable is in a LAN port (not WAN) and the router has been on for 2 minutes.'}
+ b.className='note '+kind;b.textContent=text;
+ $('#pwRow').classList.toggle('hide',!(r.host&&r.state==='password'&&!r.login_ok));
+ $('#pwErr').textContent=r.login_failed?'That password did not work.':'';
+ $('#btnSearch').disabled=r.searching&&!r.host;
+}
+function fillSettingsOnce(){
+ const v=S.settings.values;$$('input[data-k]').forEach(i=>i.value=v[i.id]||'');
+ const sel=$('#COUNTRY');clear(sel);S.settings.countries.forEach(([c,n])=>sel.append(h('option',{value:c},n+' ('+c+')')));sel.value=S.settings.country;
+}
+function paint2(){
+ const st=S.settings,kept=st.kept;
+ $('#namesCard').classList.toggle('hide',kept);$('#pwCard').classList.toggle('hide',kept);
+ $('#setTitle').textContent=kept?'This router keeps its settings':'This customer\'s names and passwords';
+ $('#setSub').textContent=kept?'It was set up before, so its Wi-Fi names and passwords stay as they are (they are in the summary the earlier setup saved). The installation finishes or repairs it.':'Type the shop name and public Wi-Fi name for this customer (asked every time). The passwords were made for you, new ones for every unit: keep them or type your own. They are saved on this computer at the end and printed on the setup sheet.';
+ $$('.err[data-e]').forEach(e=>{const k=e.dataset.e,p=st.problems[k];const input=document.getElementById(k);const typed=input&&(input.value||k==='COUNTRY');e.textContent=p&&typed?p[0].toUpperCase()+p.slice(1):'';if(input)input.classList.toggle('bad',!!(p&&typed))});
+}
+$$('input[data-k]').forEach(i=>i.addEventListener('input',()=>{clearTimeout(pwTimer);const values={};$$('input[data-k]').forEach(x=>values[x.id]=x.value);pwTimer=setTimeout(()=>act('set',{values}),250)}));
+$('#COUNTRY').onchange=e=>act('set',{country:e.target.value});
+$('#routerPw').addEventListener('input',e=>act('router_password',{password:e.target.value}));
+function paint3(){
+ const rv=S.review,i=S.install,u=S.usb,kept=S.settings.kept,box=$('#review');clear(box);
+ [['Public Wi-Fi',kept?'kept as it is':rv.public_wifi],['Site name',kept?'kept as it is':rv.site],['Country',rv.country],['Router',rv.router],['Passwords',kept?'kept as they are':'the three shown before']].forEach(([k,v])=>box.append(h('div',{class:'kv'},h('span',{},k),h('span',{},v))));
+ let t,cls='mut';
+ if(u.flashed){t='The coin box software is written.';cls='ok'}else if(u.skip){t='Not written: the box is used as it is.'}else if(u.boards===null)t='Looking for the board...';
+ else if(!u.boards.length){t='No board found. Plug the coin box board into this computer with a USB data cable (a charge-only cable does not work), then tap Look again.';cls='warn'}
+ else if(u.boards.length>1){t='Several USB boards are connected ('+u.boards.map(b=>b[0]).join(', ')+'). Unplug all but the coin box.';cls='warn'}
+ else{t='Found: '+u.boards[0][1]+' on '+u.boards[0][0]+'. It is erased and gets the PisoPhone software.';cls='ok'}
+ const ut=$('#usbText');ut.textContent=t;ut.style.color=cls==='mut'?'':'var(--'+cls+')';
+ $('#skipFlash').checked=u.skip;$('#skipFlash').disabled=i.running;$('#btnUsb').disabled=i.running;
+ const st=$('#stages');clear(st);S.stages.forEach((n,k)=>{const done=i.ok||k<i.stage,on=k===i.stage&&i.running;st.append(h('div',{style:'margin:4px 0'},h('span',{class:'dot '+(done?'ok':on?'on':'')}),h('span',{style:on?'font-weight:600':''},n)))});
+ $('#activity').textContent=i.activity;
+ const bn=$('#instBanner');clear(bn);
+ if(i.ok)bn.append(note('ok','Installation complete: all checks passed. Your passwords and the setup sheet are saved. Tap Next for the phones.'));
+ else if(i.error)bn.append(note('bad',i.error[0].toUpperCase()+i.error.slice(1)));
+ else if(i.banner)bn.append(note(i.banner[0],i.banner[1]));
+ const sb=$('#btnStart');sb.classList.toggle('hide',i.ok);sb.disabled=i.running;sb.textContent=i.running?'Installing...':(i.error||S.install.total)?'Try again':'Start the installation';
+ setPre($('#instLog'),i.lines);
+}
+$('#btnUsb').onclick=()=>act('refresh_usb');$('#skipFlash').onchange=e=>act('skip_flash',{value:e.target.checked});$('#btnStart').onclick=()=>act('start_install');
+function paint4(){
+ const sel=$('#slot');if(!sel.children.length){for(let n=1;n<=10;n++)sel.append(h('option',{value:n},String(n)))}
+ const p=S.phones,box=$('#provBox');clear(box);$('#btnPhone').disabled=p.state==='opening';
+ if(p.state==='opening')box.append(note('','Preparing the setup page...'));
+ else if(p.state==='setup')box.append(note('ok','The setup page for slot '+p.slot+' is ready.'),h('p',{},h('a',{href:p.url,target:'_blank',rel:'noopener'},'Open the phone setup page'),' ',h('button',{class:'small',onclick:ev=>copyText(p.url,ev.target)},'Copy link')),h('p',{class:'mut small'},'The link holds this box\'s key: open it only on your own phone or laptop.'));
+ else if(p.state==='box')box.append(note('warn','The phone setup page could not be filled in ('+p.note+'). Open the coin box\'s own page from a computer on the router\'s network, log in as admin with the admin password below, and tap Set up a phone: http://'+p.box_ip+'/'));
+ const bu=$('#boxUp');bu.textContent=p.box_up===null?'Checking...':p.box_up?'Online at '+p.box_ip:'Does not answer at '+p.box_ip+'. Is it powered on, near the router?';bu.style.color=p.box_up===null?'':p.box_up?'var(--ok)':'var(--bad)';
+ const list=$('#pwList'),f=S.final;clear(list);
+ [['BOX_NEW_ADMIN_PASSWORD','Coin box admin (user admin)'],['KIOSK_PASSWORD',p.kiosk_ssid+' Wi-Fi'],['ROOT_PASSWORD','Router (user root)']].forEach(([k,l])=>{const v=f[k];list.append(h('div',{style:'margin:8px 0'},h('div',{class:'mut small'},l),h('div',{class:'row'},h('span',{class:'pw grow'},v||'in the saved summary'),v?h('button',{class:'small',onclick:ev=>copyText(v,ev.target)},'Copy'):null)))});
+}
+$('#btnPhone').onclick=()=>act('open_phone',{slot:+$('#slot').value});
+function paint5(){
+ const c=S.coin,cb=$('#coinBox');clear(cb);$('#btnCoin').disabled=c.running;
+ if(c.lines.length)cb.append(h('pre',{},c.lines.join('\n')));
+ if(c.ok===true)cb.append(note('ok','The box counted the coin: the box and the portal work.'));else if(c.ok===false&&!c.running)cb.append(note('bad','The coin test did not pass. Read the lines above, then try again.'));
+ $('#custText').textContent='With any phone join the Wi-Fi "'+(S.final.GUEST_SSID||S.review.public_wifi)+'". The payment page opens by itself. Pick a plan, tap Insert Coin, insert a coin: it shows at once. Tap Done: you are online.';
+ const t=S.telegram,tb=$('#tgBox');clear(tb);$('#btnTg').disabled=t.running;$('#tgErr').textContent=t.error||'';
+ if(t.ok)tb.append(note('ok','Telegram is connected.'));
+ if(t.lines.length)tb.append(h('pre',{},t.lines.join('\n')));
+ if(t.confirm)tb.append(note('warn',t.confirm+' Is that you? Alerts and commands are then accepted only from this chat.'),h('div',{class:'row'},h('button',{class:'primary',onclick:()=>act('telegram_answer',{yes:true})},'Yes, that is me'),h('button',{onclick:()=>act('telegram_answer',{yes:false})},'No')));
+ const sl=$('#savedList');clear(sl);S.saved.forEach(([l,n],i)=>sl.append(h('p',{},h('a',{href:'/api/saved?i='+i,target:'_blank'},l.split(' (')[0]),' ',h('span',{class:'mut small'},n))));
+ if(!S.saved.length)sl.append(h('p',{class:'mut'},'Nothing saved yet.'));
+ $('#savedDir').textContent='Keep the summary private: it holds every password. Day to day, the router has: piso-setup status.';
+}
+$('#btnCoin').onclick=()=>act('coin_test');$('#btnTg').onclick=()=>act('telegram',{token:$('#tgToken').value});$('#btnNext').onclick=()=>act('next_unit');
+$('#btnBack').onclick=()=>act('back');$('#btnNextStep').onclick=()=>act('next');
+$('#btnDeps').onclick=()=>act('install_deps');$('#btnRecheck').onclick=()=>act('recheck');$('#btnSearch').onclick=()=>act('search');
+poll();
+</script></body></html>
+"""
 
 
 # ---- start ---------------------------------------------------------------------------------------------------------------
@@ -2369,9 +2262,16 @@ def main(argv=None):
         return 0
     if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(errors="replace")
+    use_private_libs()
     p = argparse.ArgumentParser(description="Set up a PisoPhone system: the coin box, the router and the rental phones.")
     p.add_argument("--branch", default=DEFAULT_BRANCH, help=f"the repository branch whose setup files are used (default {DEFAULT_BRANCH})")
-    p.add_argument("--cli", action="store_true", help="run in the terminal instead of a window")
+    p.add_argument("--cli", action="store_true", help="run in the terminal instead of the setup page")
+    p.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"the setup page's port (default {DEFAULT_PORT})")
+    p.add_argument("--pin", help="the PIN that opens the setup page (6 to 32 letters or digits; kept for next time; default: a random one)")
+    p.add_argument("--local-only", action="store_true", help="serve the setup page to this computer only (not to a phone)")
+    p.add_argument("--no-open", action="store_true", help="do not open a browser on this computer")
+    p.add_argument("--no-install", action="store_true", help="do not install the programs this one needs (ssh, esptool)")
+    p.add_argument("--install-service", action="store_true", help="Linux: start the setup page by itself when the computer boots (run with sudo)")
     p.add_argument("--update", action="store_true", help="install new software on a router that is set up already (terminal)")
     p.add_argument("--router", help=f"the router's address (default: found by itself, {TARGET_IP} or {FACTORY_IP})")
     p.add_argument("--guest-ssid", help="the public Wi-Fi name (default PisoWiFi)")
@@ -2379,7 +2279,7 @@ def main(argv=None):
     p.add_argument("--country", default="PH", help="the Wi-Fi country code (default PH)")
     p.add_argument("--yes", action="store_true", help="ask nothing: defaults, generated passwords, no review (terminal)")
     p.add_argument("--out", default=".", help="the folder for the saved summary and setup sheet (default: the current folder; "
-                                              "the window uses Documents/PisoPhone)")
+                                              "the setup page uses Documents/PisoPhone)")
     p.add_argument("--no-browser", action="store_true", help="do not open the setup sheet when done (terminal)")
     p.add_argument("--no-flash", action="store_true", help="do not write the coin box software over USB (terminal; it has it already)")
     args = p.parse_args(argv)
@@ -2390,8 +2290,22 @@ def main(argv=None):
     args.country = args.country.upper()
     if country_problem(args.country):
         p.error(f"not a country code: {args.country}")
-    if not (args.cli or args.update or args.yes or args.router) and gui_available():
-        return run_gui(args)
+    if not 1 <= args.port <= 65535:
+        p.error("not a port")
+    try:
+        if args.install_service:
+            return install_service(args)
+        if not (args.cli or args.update or args.yes or args.router):
+            return run_web(args)
+    except SetupError as e:
+        say(f"ERROR: {e}")
+        return 1
+    use_private_libs()
+    if not args.no_install:
+        system = detect_system()
+        ensure_ssh(say, system)
+        if not (args.update or args.no_flash):
+            ensure_esptool(say, system)
     if not os.environ.get("PISO_SSH") and not shutil.which("ssh"):
         say("ERROR: the ssh command was not found. Windows: Settings > Apps > Optional features > add 'OpenSSH Client'. "
             "Linux: install openssh-client.")

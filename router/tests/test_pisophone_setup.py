@@ -450,12 +450,15 @@ if os.name != "nt" and sys.platform != "darwin":
 os.environ["PATH"] = old_path
 
 # the checks of the first page
-pf = ps.preflight("main", opener=lambda req, timeout=0: FakeResponse("{}"), find=lambda: "/x/chrome", tool=lambda: object())
-check([c[1] for c in pf][1:] == [True, True, True], "preflight: the website, the flashing tool and the browser are found: " + str(pf))
-pf2 = ps.preflight("main", opener=lambda req, timeout=0: (_ for _ in ()).throw(urllib.error.URLError("offline")), find=lambda: None,
-                   tool=lambda: None)
-check(pf2[1][1] is False and pf2[2][1] is False and "esptool" in pf2[2][2] and pf2[3][1] is False and "Chrome" in pf2[3][2],
-      "preflight: no internet, no esptool, no Chrome: said")
+pf = ps.preflight("main", opener=lambda req, timeout=0: FakeResponse("{}"), tool=lambda: object(), which=lambda n: "/usr/bin/ssh")
+check([c[1] for c in pf] == [True, True, True] and len(pf) == 3, "preflight: ssh, the website and the flashing tool are found: " + str(pf))
+saved_ssh = os.environ.pop("PISO_SSH", None)
+pf2 = ps.preflight("main", opener=lambda req, timeout=0: (_ for _ in ()).throw(urllib.error.URLError("offline")), tool=lambda: None,
+                   which=lambda n: None)
+if saved_ssh:
+    os.environ["PISO_SSH"] = saved_ssh
+check(pf2[0][1] is False and pf2[1][1] is False and pf2[2][1] is False and "esptool" in pf2[2][2], "preflight: nothing found: all said")
+check(ps.box_online("10.0.0.10", probe=lambda h, p: (h, p) == ("10.0.0.10", 80)) is True, "the box is online when its page port answers")
 
 # ---- the coin box over USB ------------------------------------------------------------------------------------------------
 Port = types.SimpleNamespace
@@ -587,7 +590,6 @@ check(r.rc != 0 and r.err and "several USB boards" in r.err and FLASHED == [], "
 BOARDS[:] = []
 r = e2e(answers=("Tindahan WiFi", "Aling Nena", "y", "n"), secrets_=("routerpass1", "routerpass1", "kioskpass1", "kioskpass1", "boxadmin99", "boxadmin99"))
 check(r.rc == 0 and "No coin box board found on USB" in r.out, "no board: it says so and goes on with the router")
-check(ps.box_online("10.0.0.10", probe=lambda h, p: (h, p) == ("10.0.0.10", 80)) is True, "the box is online when its page port answers")
 
 # main(): options and the missing ssh
 sys.stdout, sys.stderr = io.StringIO(), io.StringIO()
@@ -600,7 +602,7 @@ try:
     os.environ.pop("PISO_SSH")
     path = os.environ["PATH"]
     os.environ["PATH"] = tmp
-    nossh = ps.main(["--yes"])
+    nossh = ps.main(["--yes", "--no-install"])
     os.environ["PATH"] = path
 finally:
     sys.stdout, sys.stderr = sys.__stdout__, sys.__stderr__

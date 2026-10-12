@@ -1,6 +1,6 @@
 # Setting up by hand (the manual)
 
-> **Most people should not need this page.** The setup program does every step below for you, in a window that guides you
+> **Most people should not need this page.** The setup program does every step below for you, in a web page that guides you (open it on your phone)
 > from the bare boards to working phones: see [`README.md`](README.md). Use this manual when you prefer to do it yourself, to
 > understand what the program does, or to repair one part of an installed system.
 
@@ -38,7 +38,7 @@ The box starts with the published defaults (admin password `Coinslot@Setup`, set
 changes the password and key by itself, and the box refuses coins until its password has been changed.
 
 ## The program in the terminal (steps 1 and 2 without typing the commands)
-`python3 pisophone_setup.py --cli` is the program without its window. Download **https://pisophone.pages.dev/pisophone_setup.py** (also in this folder: `setup/pisophone_setup.py`), plug the
+`python3 pisophone_setup.py --cli` is the program in the terminal, without its setup web page (the default mode serves the page: see `README.md`). Download **https://pisophone.pages.dev/pisophone_setup.py** (also in this folder: `setup/pisophone_setup.py`), plug the
 computer into a LAN port of the factory-reset router (modem in its WAN port, the coin box flashed and powered on), turn the
 computer's Wi-Fi off, and run it:
 ```
@@ -53,8 +53,8 @@ itself), runs the setup with your answers while you watch its output, and saves 
 printable setup sheet** in the current folder (only you can read them), then opens the coin box's phone setup page in your
 browser, already filled in. At the end it offers to connect Telegram alerts.
 
-It needs Python 3.8 or newer and the `ssh` command, which Windows 10/11, macOS and Linux already have (Windows: Settings > Apps
-> Optional features > OpenSSH Client, if it is missing). The passwords travel over the SSH connection's input, never on a
+It needs Python 3.8 or newer and the `ssh` command (installed for you on Linux when it runs as root; Windows: Settings > Apps
+> Optional features > OpenSSH Client, if it is missing) and, to write the coin box over USB, `esptool` (installed for you with pip; `--no-flash` skips the box, `--no-install` installs nothing). The passwords travel over the SSH connection's input, never on a
 command line, and the router's SSH key is pinned for the run (the same key must answer at 192.168.1.1 and at 10.0.0.1).
 Running it again is safe: a router that was set up before keeps its names and passwords and is only finished or repaired
 (ssh then asks for the router password, which is in the saved summary). Other uses: `--update` installs new software on a
@@ -208,7 +208,7 @@ The setup asks you to choose the router password (or shows a generated one and a
 * Everything is logged in `/root/piso-setup.log`.
 
 ## Tips while it runs
-The setup prints `TIP:` lines at the moments people usually get stuck: what the coin box's light means, what to check when the box has not joined after one, two and five minutes (the advice depends on whether the router's `PisoCoinBox` network is on the air), what happens next when the box is found, and what to do when it is finished or a check failed. The window shows the latest tip above the log. `PISO_TIPS=0` turns them off.
+The setup prints `TIP:` lines at the moments people usually get stuck: what the coin box's light means, what to check when the box has not joined after one, two and five minutes (the advice depends on whether the router's `PisoCoinBox` network is on the air), what happens next when the box is found, and what to do when it is finished or a check failed. The setup page shows the latest tip above the log. `PISO_TIPS=0` turns them off.
 
 ## For developers
 The setup file is written in parts: **edit the files in `setup/src/`** (`00-header` settings and helpers, `20-preflight`,

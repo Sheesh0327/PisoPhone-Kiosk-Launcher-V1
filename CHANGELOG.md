@@ -4,6 +4,14 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Setup program: the setup is now a web page served by the program, so the computer that runs it needs no monitor: run it on a
+  small Armbian, Parrot, Debian, Ubuntu or Raspberry Pi computer, open the address it prints on your phone and type the PIN.
+  The window (Tk) is gone. On start the program detects the system and installs what is missing: `ssh` from the system's packages
+  (root or passwordless sudo) and `esptool` with pip into its own folder, which also works on Debian 12 / Armbian systems whose
+  Python is "externally managed". `sudo python3 pisophone_setup.py --install-service` makes the page start by itself at boot.
+  The page is plain HTTP to the local network behind a PIN (five wrong PINs lock it for a minute; other sites' pages cannot reach
+  it); `--local-only` serves the computer's own browser only. The phone setup link is shown on the page to open on a phone or
+  laptop with internet. See `setup/README.md` ("Which network?") for how the phone reaches the page.
 - Setup program: one click per unit. The program now writes the PisoPhone software to the coin box itself over USB (it detects
   the board, checks the image's size and checksum against the website's list, erases the board and verifies what it wrote), then
   sets up the router and pairs the two, and the last page has a "Set up the next unit" button that starts over for the next
