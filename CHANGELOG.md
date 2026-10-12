@@ -4,6 +4,11 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- **Owner console** (`python3 scripts/owner_console.py`): a web page for every owner script, in place of typing its command line. Each
+  tool has its own page (`/p/<name>`): admin QR, recovery code, card key, owner key, print time cards, sign firmware, sign router update,
+  publish box firmware, release/APK/library/security checks and the sold-unit checks. A form fills in the options, Run shows the output
+  and the files made (QR pictures inline, PDFs and ledgers to download). Keys never go through the browser (only their file path); it
+  listens on 127.0.0.1, needs the printed secret, checks the Host name and refuses requests that did not come from its own pages.
 - Firmware 3.5.2: **the dashboard no longer asks for the password every few seconds.** The page polls the box (`/api/status` every 3 s)
   and, when its sign-in had ended, each poll got a Basic-auth challenge, so the browser's password box popped up again and again.
   Requests to `/api/...` now get a plain 401 with no challenge; the page stops polling and shows one "You are signed out. Sign in

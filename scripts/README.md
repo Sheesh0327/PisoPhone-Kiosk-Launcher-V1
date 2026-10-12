@@ -1,3 +1,10 @@
+# Owner scripts
+
+**Prefer a web page?** `python3 scripts/owner_console.py` opens a console on your own computer with a dedicated page for every owner
+script below (keys and codes, time cards, releasing, checks): a form for its options, a Run button, the output, and the files it made
+(QR pictures shown, PDFs to download). Your keys are never uploaded: a page asks for the key file's path and the script reads it from
+disk. The console listens on 127.0.0.1 only and needs the secret in the address it prints. The scripts still work from a terminal.
+
 # Scripts: what each one is for
 
 Run everything from the repository root. **Find yours by who runs it and when**, not by name.

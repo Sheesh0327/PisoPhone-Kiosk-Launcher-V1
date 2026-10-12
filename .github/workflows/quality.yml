@@ -213,6 +213,7 @@ jobs:
           pip install qrcode pillow
           python3 scripts/tests/test_recovery_code.py
           python3 scripts/tests/test_make_cards.py
+          python3 scripts/tests/test_owner_console.py
           python3 scripts/tests/test_publish_firmware.py
 
   firmware-build:
