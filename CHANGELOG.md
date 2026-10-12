@@ -4,7 +4,7 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
-- **Product name: TechNet PisoHub** (by TechNet Solutions): the umbrella for PisoHub WiFi, PisoPhone (rental phones) and PisoHub Cards. README, the Owner's
+- **Product name: TechNet PisoHub** (by TechNet Solutions): the umbrella for PisoWiFi and PisoPhone (rental phones, with time cards as a PisoPhone feature). README, the Owner's
   Manual, the setup guides and the setup program's pages and printouts use it. Technical names are unchanged on purpose (the Android package, `piso-setup`,
   the PisoKiosk / PisoCoinBox / PisoWiFi networks, key prefixes) so deployed phones and boxes keep updating.
 - **Owner's Manual** (`website/manual.html`): one print-ready page covering setup, rental phones, the dashboard tab by tab, how customers
