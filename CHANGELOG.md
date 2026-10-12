@@ -4,6 +4,11 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Router 1.2.8: **pairing tells a refused box from a joined one.** A coin box that was set up before keeps its own Wi-Fi password; when the
+  router offers another, the box is listed as joined for a moment and thrown out again, which pairing took for "joined" and then blamed
+  an address lease. Pairing now reads the router's Wi-Fi log ("POSSIBLE-PSK-MISMATCH"): it says the box is refused and to factory reset
+  it (GPIO 2 to ground for 5 seconds, or flash it again with an erase), keeps waiting, and ends with that message instead of the lease one.
+  `piso-setup box-diag` gives the same verdict.
 - **Rental phone lock screen for younger users.** The old logo animation is replaced by the TechNet mascot, big in the middle, bobbing,
   breathing and swaying in turning light rays over slow colour clouds. Eleven mascot stickers float, wiggle and pop around the edges
   (PisoWiFi, PisoPhone, gamer, laptop, cool, wink, and more), sparkles twinkle and gold coins spin down the screen. It is one canvas under
