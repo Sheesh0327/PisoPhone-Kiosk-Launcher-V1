@@ -60,15 +60,10 @@ private val STICKERS = listOf(
     FloatingSticker(R.drawable.technet_sticker_question, 0.50f, 0.045f, 52f, 0.74f),
 )
 
-/** Fixed pseudo-random places for the sparkles and the coins (the same every time, so the screen looks the same after a restart). */
-private val SPARKLE_X = floatArrayOf(
-    .06f, .22f, .38f, .55f, .71f, .93f, .15f, .47f, .83f, .30f, .62f, .97f, .04f, .78f, .52f, .26f, .68f, .90f,
-)
-private val SPARKLE_Y = floatArrayOf(
-    .05f, .20f, .09f, .27f, .16f, .38f, .45f, .55f, .62f, .70f, .78f, .84f, .93f, .97f, .35f, .62f, .07f, .46f,
-)
+/** Where the coins fall (fractions of the width). The sparkles sit on a golden-ratio scatter: the same after every restart. */
 private val COIN_X = floatArrayOf(.18f, .40f, .62f, .80f, .30f, .70f, .52f, .08f, .92f)
 
+private const val SPARKLE_COUNT = 18
 private const val LOOP_MS = 60_000
 private const val TAU = 6.2831855f
 
@@ -129,9 +124,12 @@ fun LockScreenArt(modifier: Modifier = Modifier, landscape: Boolean = false, scr
     }
 }
 
-private fun DrawScope.heroCenter(landscape: Boolean): Offset {
-    return if (landscape) Offset(size.width * 0.25f, size.height * 0.5f) else Offset(size.width * 0.5f, size.height * 0.3f)
-}
+private fun DrawScope.heroCenter(landscape: Boolean) =
+    if (landscape) {
+        Offset(size.width * 0.25f, size.height * 0.5f)
+    } else {
+        Offset(size.width * 0.5f, size.height * 0.3f)
+    }
 
 /** Three slow colour clouds (TechNet blue, teal and gold) drifting around the screen. */
 private fun DrawScope.drawClouds(t: Float) {
@@ -226,10 +224,10 @@ private fun DrawScope.drawSticker(image: ImageBitmap, s: FloatingSticker, index:
 /** Four-point stars that twinkle. */
 private fun DrawScope.drawSparkles(t: Float) {
     val palette = listOf(Color.White, Color(0xFFFFD66B), Color(0xFF6FE3C8), Color(0xFF8FB8FF))
-    for (i in SPARKLE_X.indices) {
+    for (i in 0 until SPARKLE_COUNT) {
         val twinkle = (sin(TAU * (t * (8 + i % 5 * 4) + i * 0.137f)) + 1f) / 2f
         val r = (4 + i % 4 * 2).dp.toPx() * (0.4f + 0.9f * twinkle)
-        val c = Offset(size.width * SPARKLE_X[i], size.height * SPARKLE_Y[i])
+        val c = Offset(size.width * ((i * 0.6180339f + 0.07f) % 1f), size.height * ((i * 0.4142136f + 0.11f) % 1f))
         val color = palette[i % palette.size].copy(alpha = 0.25f + 0.7f * twinkle)
         val stroke = 2.dp.toPx()
         drawLine(color, Offset(c.x - r, c.y), Offset(c.x + r, c.y), stroke, StrokeCap.Round)
@@ -248,7 +246,11 @@ private fun DrawScope.drawCoins(t: Float) {
         val y = -r + fall * (size.height + 2 * r)
         val x = size.width * COIN_X[i] + 12.dp.toPx() * sin(TAU * (t * (6 + i % 4 * 3) + i * 0.21f))
         val squish = 0.18f + 0.82f * abs(cos(TAU * (t * (24 + i % 3 * 6) + i * 0.31f)))
-        val fade = if (fall < 0.08f) fall / 0.08f else if (fall > 0.9f) (1f - fall) / 0.1f else 1f
+        val fade = when {
+            fall < 0.08f -> fall / 0.08f
+            fall > 0.9f -> (1f - fall) / 0.1f
+            else -> 1f
+        }
         val topLeft = Offset(x - r * squish, y - r)
         val oval = Size(2 * r * squish, 2 * r)
         drawOval(Color(0xFFFFC21A).copy(alpha = 0.8f * fade), topLeft, oval)
