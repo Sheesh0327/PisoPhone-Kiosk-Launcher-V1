@@ -1,10 +1,10 @@
 {
-  "versionCode": 413,
-  "versionName": "1.0.413-dev",
+  "versionCode": 415,
+  "versionName": "1.0.415-dev",
   "channel": "dev",
   
   "signatureChecksum": "Un0usqLMwnmeaowrY2g21EgRVWe4bTRDLUi2RH12WbE",
-  "sha256": "5fc3451d61c14a185ee9ba6753dd1201f5ad8667139d8ec847de9ee43121a571",
-  "size": 3088723,
-  "releaseDate": "2026-10-11"
+  "sha256": "e4662e8be7846b437030c519971fdec160397f1ca40cef7b9e6f518aa0fb83df",
+  "size": 3105107,
+  "releaseDate": "2026-10-12"
 }
