@@ -89,7 +89,8 @@ object KioskWifi {
         try {
             if (Build.VERSION.SDK_INT >= 33) {
                 val policy = if (lock) {
-                    WifiSsidPolicy(WifiSsidPolicy.WIFI_SSID_POLICY_TYPE_ALLOWLIST, setOf(WifiSsid.fromBytes(ssid.toByteArray(Charsets.UTF_8))))
+                    val allowed = setOf(WifiSsid.fromBytes(ssid.toByteArray(Charsets.UTF_8)))
+                    WifiSsidPolicy(WifiSsidPolicy.WIFI_SSID_POLICY_TYPE_ALLOWLIST, allowed)
                 } else {
                     null
                 }
