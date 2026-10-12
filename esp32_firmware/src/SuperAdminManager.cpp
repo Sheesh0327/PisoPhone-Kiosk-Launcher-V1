@@ -1,12 +1,12 @@
 // Super-admin features: vault unmask with a 5-minute window that ends in a recorded collection, revenue split and the
 // collection history. The lifetime revenue counters never go down: "reset" means a collection (RevenueVault.h).
-// The password itself is managed remotely (SuperAdminCreds.cpp); there is no local change option.
+// The super admin is whoever signed in with the owner's admin QR code (SuperAdminSession.cpp); there is no password.
 
 #include "SuperAdminManager.h"
 #include "Config.h"
 #include "WebServerModule.h"
 #include "WebServerAuth.h"
-#include "SuperAdminCreds.h"
+#include "SuperAdminSession.h"
 #include "Money.h"
 #include "RevenueVault.h"
 #include "RevenueLedger.h"
@@ -18,36 +18,32 @@
 // ============================================================================
 // SUPER ADMIN STATE DEFINITIONS
 // ============================================================================
-String superAdminPassword = DEFAULT_SUPER_ADMIN_PW;
 int vendorRevenueSplitPercent = DEFAULT_VENDOR_SPLIT_PERCENT;
 bool isVaultUnmasked = false;
 unsigned long unmaskExpiryTimestamp = 0;
 
 void loadSuperAdminConfig() {
     prefs.begin(NVS_NAMESPACE, false);
-    superAdminPassword = prefs.getString("super_admin_pw", DEFAULT_SUPER_ADMIN_PW);
+    // (the super-admin password of earlier firmware, and its remote-management records, are not used any more)
+    prefs.remove("super_admin_pw");
+    prefs.remove("sa_ver");
+    prefs.remove("sa_iter");
+    prefs.remove("sa_salt");
+    prefs.remove("sa_hash");
     vendorRevenueSplitPercent = prefs.getInt("vendor_split", DEFAULT_VENDOR_SPLIT_PERCENT);
     if (vendorRevenueSplitPercent < 0 || vendorRevenueSplitPercent > 100) {
         vendorRevenueSplitPercent = DEFAULT_VENDOR_SPLIT_PERCENT;
     }
     prefs.end();
-    superAdminCredsLoad();
 
     isVaultUnmasked = false;
     unmaskExpiryTimestamp = 0;
 
-    Serial.printf("[👑 SUPER ADMIN] Loaded: Split=%d%% Vendor, Password=%s\n", vendorRevenueSplitPercent,
-                  (superAdminPassword.length() > 0 ? "Set" : "Default"));
+    Serial.printf("[👑 SUPER ADMIN] Loaded: Split=%d%% Vendor\n", vendorRevenueSplitPercent);
 }
 
 bool authenticateSuperAdmin() {
-    if (webServer.hasArg("super_admin_pw")) {
-        String entered = webServer.arg("super_admin_pw");
-        if (superAdminPasswordOk(entered)) {
-            return true;
-        }
-    }
-    return superAdminBasicAuthOk();
+    return superAdminSessionOk();
 }
 
 void processSuperAdminLoop() {
@@ -70,7 +66,7 @@ void processSuperAdminLoop() {
 void handleSuperAdminAuth() {
     if (!authenticateSuperAdmin()) {
         webServer.send(401, "application/json",
-                       "{\"status\":\"error\",\"message\":\"Unauthorized: Invalid Super Admin password.\"}");
+                       "{\"status\":\"error\",\"message\":\"Sign in with the admin QR code first.\"}");
         return;
     }
 
@@ -95,6 +91,12 @@ void handleSuperAdminAuth() {
     json += "}";
 
     webServer.send(200, "application/json", json);
+}
+
+// Ends the owner's session (the cookie is dropped). Needs no sign-in: it can only sign out.
+void handleSuperAdminLock() {
+    superAdminSessionEnd();
+    webServer.send(200, "application/json", "{\"status\":\"ok\"}");
 }
 
 void handleSuperAdminUnmask() {

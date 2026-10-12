@@ -13,7 +13,8 @@
 #include "InputSafety.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
-#include "SuperAdminCreds.h"
+#include "SuperAdminSession.h"
+#include "WebAssetServer.h"
 #include "RevenueVault.h"
 #include "RevenueLedger.h"
 
@@ -237,9 +238,7 @@ void authWorkerTask(void* pvParameters) {
 static inputsafety::LoginThrottle loginThrottle;
 
 bool defaultCredentialsActive() {
-    // True until the operator replaces the admin password that was generated for this box. Only the operator-controlled admin password counts. The super-admin password cannot be
-    // changed on the box (it is published from the website), so counting it kept this warning on
-    // permanently even after the operator had changed their password.
+    // True until the operator replaces the admin password that was generated for this box.
     return !adminPwChanged;
 }
 
@@ -258,7 +257,7 @@ static bool adminCredentialsOk(bool& lockedOut) {
         webServer.send(429, "text/plain", "Too many failed logins. Try again later.");
         return false;
     }
-    if (superAdminBasicAuthOk() || webServer.authenticate("admin", webPassword.c_str())) {
+    if (superAdminSessionOk() || webServer.authenticate("admin", webPassword.c_str())) {
         loginThrottle.recordSuccess(client);
         return true;
     }
@@ -268,6 +267,16 @@ static bool adminCredentialsOk(bool& lockedOut) {
         delay(250); // slows guessing without stalling the coin loop for long
     }
     return false;
+}
+
+unsigned long adminLoginLockedMs() {
+    return loginThrottle.lockedForMs((uint32_t)webServer.client().remoteIP(), millis());
+}
+void adminLoginRecordFailure() {
+    loginThrottle.recordFailure((uint32_t)webServer.client().remoteIP(), millis());
+}
+void adminLoginRecordSuccess() {
+    loginThrottle.recordSuccess((uint32_t)webServer.client().remoteIP());
 }
 
 bool checkAdminAuth() {
@@ -280,6 +289,105 @@ bool checkAdminAuth() {
                                         "Unauthorized: Admin credentials required.");
     }
     return false;
+}
+
+// Where to go after signing in: the page that was asked for, only ever on this box ("/..." and not "//...").
+static String safeNext(const String& next) {
+    if (next.length() == 0 || next[0] != '/' || (next.length() > 1 && next[1] == '/') || next.indexOf('\\') >= 0 ||
+        next.indexOf('\r') >= 0 || next.indexOf('\n') >= 0) {
+        return "/";
+    }
+    return next;
+}
+
+static String htmlEscape(const String& in) {
+    String out;
+    for (size_t i = 0; i < in.length(); i++) {
+        char c = in[i];
+        if (c == '&')
+            out += "&amp;";
+        else if (c == '<')
+            out += "&lt;";
+        else if (c == '>')
+            out += "&gt;";
+        else if (c == '"')
+            out += "&quot;";
+        else if (c == '\'')
+            out += "&#39;";
+        else
+            out += c;
+    }
+    return out;
+}
+
+static String urlEncode(const String& in) {
+    String out;
+    for (size_t i = 0; i < in.length(); i++) {
+        char c = in[i];
+        if (isalnum((unsigned char)c) || c == '-' || c == '_' || c == '.' || c == '~') {
+            out += c;
+        } else {
+            char buf[4];
+            snprintf(buf, sizeof(buf), "%%%02X", (unsigned char)c);
+            out += buf;
+        }
+    }
+    return out;
+}
+
+// The page that was asked for, with its query (a phone pairing link carries one), so signing in leads back to it.
+static String requestedPage() {
+    String page = webServer.uri();
+    for (int i = 0; i < webServer.args(); i++) {
+        page += (i == 0 ? "?" : "&") + urlEncode(webServer.argName(i)) + "=" + urlEncode(webServer.arg(i));
+    }
+    return page;
+}
+
+static void sendLoginPage() {
+    String next = htmlEscape(safeNext(requestedPage()));
+    String page = F("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\">"
+                    "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">"
+                    "<meta name=\"color-scheme\" content=\"light dark\"><title>Sign in - PisoPhone</title>"
+                    "<link rel=\"stylesheet\" href=\"/assets/portal.css\"></head><body data-next=\"");
+    page += next;
+    page += F("\"><div class=\"center-page\"><div class=\"card-narrow\" style=\"text-align:center\">"
+              "<h1>PisoPhone admin</h1><p class=\"muted\">Sign in to manage this coin box.</p>"
+              "<p><a class=\"btn primary\" id=\"pw\" style=\"display:block\" href=\"/signin?next=");
+    page += urlEncode(safeNext(requestedPage()));
+    page += F("\">Sign in with the admin password</a></p>"
+              "<p><label class=\"btn\" for=\"qr\" style=\"display:block\">Scan admin QR</label>"
+              "<input id=\"qr\" type=\"file\" accept=\"image/*\" capture=\"environment\" hidden></p>"
+              "<p id=\"msg\" class=\"muted\"></p>"
+              "<p class=\"muted small\">Scan opens the camera: photograph your admin QR code.</p></div></div>"
+              "<script src=\"/assets/jsqr.js?v=");
+    page += webAssetVersion("jsqr.js");
+    page += F("\"></script><script src=\"/assets/adminqr.js?v=");
+    page += webAssetVersion("adminqr.js");
+    page += F(
+        "\"></script><script>PisoAdminQr.bindLoginPage(document.getElementById('qr'), document.getElementById('msg'));"
+        "</script></body></html>");
+    webServer.sendHeader("Cache-Control", "no-store");
+    webServer.send(200, "text/html; charset=utf-8", page);
+}
+
+bool checkAdminAuthOrLoginPage() {
+    bool lockedOut = false;
+    if (adminCredentialsOk(lockedOut)) return true;
+    if (lockedOut) return false;
+    if (webServer.hasHeader("Authorization")) { // a wrong password: the browser's own prompt again
+        webServer.requestAuthentication(BASIC_AUTH, "HARDWARE Admin Login",
+                                        "Unauthorized: Admin credentials required.");
+        return false;
+    }
+    sendLoginPage();
+    return false;
+}
+
+void handleSignIn() {
+    if (!checkAdminAuth()) return;
+    webServer.sendHeader("Location", safeNext(webServer.arg("next")));
+    webServer.send(303);
 }
 
 bool checkAuth() {
@@ -308,12 +416,13 @@ void redirectHome() {
 void handleLogout() {
     // Signing out ends the vendor's collection, but only when the request really is the vendor's: /logout is a plain GET that
     // anyone (or a link prefetch) can send, and it must not be able to end someone else's collection window.
-    if (isVaultUnmasked && superAdminBasicAuthOk()) {
+    if (isVaultUnmasked && superAdminSessionOk()) {
         vaultCollect(revenue::SUPERADMIN_LOGOUT);
         isVaultUnmasked = false;
         unmaskExpiryTimestamp = 0;
         Serial.println("[👑 SUPER ADMIN] Collection recorded at Super Admin logout.");
     }
+    superAdminSessionEnd();
     webServer.requestAuthentication(BASIC_AUTH, "HARDWARE Admin Login", "Logged out");
     webServer.send(401, "text/html; charset=utf-8", R"HTML(
 <!DOCTYPE html>

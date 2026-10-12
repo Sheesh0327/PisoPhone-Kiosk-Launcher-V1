@@ -8,7 +8,7 @@ Three parts work together: the **Android kiosk app** on each rental phone, the *
              |                                                              |
         admin web page                                              locks/unlocks the phone
              |
-   website/update  (app.json + APK, firmware.json + .bin, credentials.json)
+   website/update  (app.json + APK, firmware.json + .bin)
 ```
 
 ## 1. A coin payment, step by step
@@ -57,15 +57,15 @@ restores the session) and locks the phone when time reaches zero.
   `BoxClock` is the time the box itself reported), and `ReplayGuard` accepts each signed message once, so a command captured on
   the network cannot be played back later; a refused one is answered `403 STALE_TIMESTAMP`. Until the phone has heard the box's
   time (just started, or a box that has not learned the time yet) nothing is judged by time, so the box can never be locked out.
-- **Admin -> box:** the web dashboard (Basic auth, lockout after repeated failures).
+- **Admin -> box:** the web dashboard (Basic auth, or the owner's admin QR code, which also opens super admin; lockout after repeated failures).
 - **Admin -> phone:** `KioskAdminActionReceiver` broadcasts, all gated by the admin PIN.
 
 ## 4. Credentials
 - **Operator admin password:** every box starts on the published default `Coinslot@Setup` (admin login and setup Wi-Fi) so it can be set up and reset without a serial monitor. Changing it in the dashboard is required: until then a banner shows and the box arms no coin slot (`SETUP_REQUIRED`). A new password needs 8+ characters and cannot be the default.
 - **Admin PIN (phone):** per phone; also required for every admin broadcast.
-- **Super-admin password:** one value for all boxes, published as a signed hash in
-  `website/update/credentials.json` and applied by `SuperAdminCreds.cpp`. See
-  `docs/api/superadmin-credentials.md`.
+- **Super admin:** the owner's admin QR code (a private key). The box checks a signature over a one-time challenge with the public
+  key built into its firmware and starts a session cookie (`SuperAdminSession.cpp`, `AdminQrAuth.h`). No password, no website
+  feed. See `docs/api/superadmin-qr.md`.
 
 ## 5. Where things live
 | area | files |
@@ -76,8 +76,8 @@ restores the session) and locks the phone when time reaches zero.
 | OpenNDS Wi-Fi payments | `tools/pisoportal/` (portal program), `router/` (monitor, init scripts), `setup/` (installer) |
 | Network gateway (router payment check) | `GatewayCoinslot.cpp` (logic), `WebServerGateway.cpp` (HTTP), `include/GatewayAuth.h` (auth), docs in `docs/api/gateway-coinslot.md` |
 | Web API | `WebServerModule.cpp` (routes), `WebServerApi.cpp`, `WebServerCoinslot.cpp`, `WebServerTelemetry.cpp`, `WebServerConfig.cpp` |
-| Auth and crypto | `WebServerAuth.cpp`, `Security.cpp`, `SuperAdminCreds.cpp`, `include/CredCrypto.h` |
-| Pure, PC-testable logic | `include/InputSafety.h`, `OtaCheck.h`, `DiagRing.h`, `CredCrypto.h` (tests in `host_tests/`) |
+| Auth and crypto | `WebServerAuth.cpp`, `Security.cpp`, `SuperAdminSession.cpp`, `include/AdminQrAuth.h`, `include/CredCrypto.h` |
+| Pure, PC-testable logic | `include/InputSafety.h`, `OtaCheck.h`, `DiagRing.h`, `AdminQrAuth.h`, `CredCrypto.h` (tests in `host_tests/`) |
 | App engine | `service/KioskEngine.kt`, `KioskStateManager.kt`, `KioskSessionSupervisor.kt`, `SessionRules.kt` |
 | App <-> box | `network/Esp32ConnectionManager.kt`, `Esp32CoinslotRequests.kt`, `Esp32DiscoveryScanner.kt`, `server/KioskHttpServer.kt` |
 | Payments (app) | `repository/PaymentRepository.kt`, `db/` |

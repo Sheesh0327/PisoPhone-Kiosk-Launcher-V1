@@ -6,18 +6,15 @@
 const char SUPER_ADMIN_HTML[] PROGMEM = R"HTML(
         <!-- VENDOR -->
         <section id="tab-superadmin" class="tab-content">
-            <!-- Sign-in (shown until the vendor password is accepted) -->
+            <!-- Sign-in (shown until the owner's admin QR code is scanned) -->
             <div id="sa_auth_gate" class="panel" style="max-width: 520px;">
                 <div class="panel-head"><h2><svg class="ic"><use href="#i-shield"/></svg>Vendor access</h2></div>
                 <div class="panel-body">
-                    <p class="hint">For the vendor who supplied this box. Unlocks revenue collection and the revenue split calculator.</p>
-                    <div class="field">
-                        <label for="sa_login_pw">Vendor password</label>
-                        <input type="password" id="sa_login_pw" autocomplete="off" onkeydown="if(event.key==='Enter') unlockSuperAdmin()">
-                    </div>
+                    <p class="hint">For the owner. Photograph your admin QR code to unlock revenue collection and the revenue split calculator.</p>
+                    <input type="file" id="sa_qr_file" accept="image/*" capture="environment" hidden onchange="scanSuperAdminQr(this)">
                 </div>
                 <div class="panel-foot">
-                    <button type="button" class="btn primary" onclick="unlockSuperAdmin()"><svg class="ic"><use href="#i-unlock"/></svg>Unlock</button>
+                    <button type="button" class="btn primary" onclick="document.getElementById('sa_qr_file').click()"><svg class="ic"><use href="#i-unlock"/></svg>Scan admin QR</button>
                 </div>
             </div>
 
@@ -96,7 +93,7 @@ const char SUPER_ADMIN_HTML[] PROGMEM = R"HTML(
                             <li><svg class="ic"><use href="#i-check"/></svg>See the revenue counter and reset it after collecting.</li>
                             <li><svg class="ic"><use href="#i-check"/></svg>Set the default revenue split.</li>
                             <li><svg class="ic"><use href="#i-check"/></svg>Everything the normal admin can do.</li>
-                            <li><svg class="ic"><use href="#i-info"/></svg>The vendor password is managed by the vendor and cannot be changed here.</li>
+                            <li><svg class="ic"><use href="#i-info"/></svg>There is no password: vendor mode opens only with the owner's admin QR code.</li>
                         </ul>
                     </div>
                 </div>

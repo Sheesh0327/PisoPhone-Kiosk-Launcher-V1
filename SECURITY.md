@@ -37,7 +37,7 @@ Out of scope: attacks that need physical access to open the box and read its fla
 units you sell, `docs/PROVISIONING_SOLD_UNIT.md`), and denial of service on a Wi-Fi network you control.
 
 ## Handling of keys (for maintainers)
-- The owner signing key and the super-admin key are created on the owner's own computer and never committed; `*.pem` and `*.key`
+- The owner signing key and the super-admin key (and the QR code made from it) are created on the owner's own computer and never committed; `*.pem` and `*.key`
   are ignored by git and `scripts/check_security_rules.sh` runs in CI. See `docs/KEYS.md`.
 - If a key may have leaked, treat every update signed with it as untrusted: rotate the key, rebuild and re-flash boxes and
   routers with the new public key.

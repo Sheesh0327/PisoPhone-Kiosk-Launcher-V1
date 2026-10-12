@@ -4,7 +4,15 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
-- Coin box firmware 3.4.0: the release that carries the fixes listed below (payments, the revenue ledger, the update safety net, the list of undelivered payments). Boxes on 3.3.3 install it from the dashboard: Update > Install update.
+- Super admin now opens with **one QR code that only you hold**, instead of a password that had to be published from the website.
+  On a box's login page there is a **Scan admin QR** button next to the admin password: it opens the phone's camera, the page reads
+  your code and answers a one-time challenge from the box with a signature (the key in the QR code never leaves your phone), and
+  the box opens the dashboard with vendor mode unlocked (a session of 15 idle minutes, one hour at most). Make the code with
+  `python3 scripts/make_admin_qr.py`; it uses the key you already made, if any. Gone: the password feed
+  (`website/update/credentials.json`, `scripts/superadmin_credentials.py set`), the hourly check for it, the stored password and
+  the vendor password form on the dashboard. A box needs this firmware (and the public key in it) for the QR code to work; see
+  `docs/api/superadmin-qr.md`. The setup script's comment about the super-admin password changed, so the router release is 1.2.5.
+- Coin box firmware 3.5.0 (3.4.0 plus the admin QR login below): the release that carries the fixes listed below (payments, the revenue ledger, the update safety net, the list of undelivered payments). Boxes on 3.3.3 install it from the dashboard: Update > Install update.
 - Phone app: a rental phone now connects only to the one Wi-Fi network its box paired it with (PisoKiosk). On Android 13 and newer
   the system itself is told to allow only that network (an SSID allowlist set by the device owner), and on every version any other
   saved network is removed, so a phone no longer wanders onto a neighbour's Wi-Fi or a hotspot. An admin maintenance window lifts the lock

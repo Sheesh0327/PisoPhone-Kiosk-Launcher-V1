@@ -17,6 +17,7 @@
 #include "HardwareManager.h"
 #include "DeviceManager.h"
 #include "SuperAdminManager.h"
+#include "SuperAdminSession.h"
 #include "WebDashboardHtml.h"
 #include <WiFi.h>
 #include <WebServer.h>
@@ -53,13 +54,16 @@ void setupWebServer() {
     // Port 80: HTTP Portal & API routes
     webServer.on("/", HTTP_GET, handlePortalRoot);
     webServer.on("/logout", HTTP_GET, handleLogout);
+    webServer.on("/signin", HTTP_GET, handleSignIn);
     webServer.on("/save", HTTP_POST, handleSave);
     webServer.on("/reboot", HTTP_POST, handleReboot);
     webServer.on("/factory_reset", HTTP_POST, handleFactoryReset);
     webServer.on("/add_time", HTTP_POST, handleAddTime);
     webServer.on("/one_vs_one", HTTP_POST, handleOneVsOne);
-    webServer.on("/reset_vault", HTTP_POST, handleResetVault);
+    webServer.on("/api/superadmin/challenge", HTTP_GET, handleSuperAdminChallenge);
+    webServer.on("/api/superadmin/qr_login", HTTP_POST, handleSuperAdminQrLogin);
     webServer.on("/api/superadmin/auth", HTTP_POST, handleSuperAdminAuth);
+    webServer.on("/api/superadmin/lock", HTTP_POST, handleSuperAdminLock);
     webServer.on("/api/superadmin/unmask", HTTP_POST, handleSuperAdminUnmask);
     webServer.on("/api/superadmin/reset_vault", HTTP_POST, handleSuperAdminResetVault);
     webServer.on("/api/superadmin/collections", HTTP_POST, handleSuperAdminCollections);
@@ -327,8 +331,9 @@ void setupWebServer() {
             }
         });
     // Needed so the login throttle can tell a wrong password from the browser's first probe.
-    static const char* kCollectedHeaders[] = {"Authorization"};
-    webServer.collectHeaders(kCollectedHeaders, 1);
+    // (and the cookie of the owner's admin QR login)
+    static const char* kCollectedHeaders[] = {"Authorization", "Cookie"};
+    webServer.collectHeaders(kCollectedHeaders, 2);
     webServer.begin();
 
     // Port 81: Real-time WebSocket Server

@@ -1,5 +1,6 @@
-        let saToken = localStorage.getItem('sa_token') || '';
-        let saSessionExpiry = parseInt(localStorage.getItem('sa_session_expiry') || '0', 10);
+        // Vendor mode is the owner's session: the box sets a cookie when the admin QR code is scanned, so nothing secret is kept here.
+        let saUnlocked = false;
+        let saSessionExpiry = 0;
         let saVaultTotal = 0;
         let saSessionTotal = 0;
         let saVendorSplit = 50;
@@ -12,8 +13,7 @@
             
             const now = Date.now();
             if (!saSessionExpiry || saSessionExpiry <= now) {
-                saSessionExpiry = now + (300 * 1000); // 5 minutes (300 seconds)
-                localStorage.setItem('sa_session_expiry', saSessionExpiry.toString());
+                saSessionExpiry = now + (300 * 1000); // this page shows vendor mode for 5 minutes at a time
             }
 
             updateSessionTimerDisplay();
@@ -39,27 +39,20 @@
             if (el) el.textContent = str;
         }
 
-        function unlockSuperAdmin() {
-            const pw = document.getElementById('sa_login_pw').value || saToken;
-            if (!pw) { notify('Enter the vendor password.', 'bad'); return; }
-            
-            fetch('/api/superadmin/auth', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'super_admin_pw=' + encodeURIComponent(pw)
-            })
+        // Asks the box whether this browser holds the owner's session (the cookie); `quiet`: no message when it does not.
+        function unlockSuperAdmin(quiet) {
+            fetch('/api/superadmin/auth', { method: 'POST', credentials: 'same-origin' })
             .then(res => res.json())
             .then(data => {
                 if (data.status === 'ok') {
-                    saToken = pw;
-                    localStorage.setItem('sa_token', pw);
+                    saUnlocked = true;
                     document.getElementById('sa_auth_gate').classList.add('hidden');
                     document.getElementById('sa_main_console').classList.remove('hidden');
                     saVaultTotal = data.total_coins || 0;
                     saSessionTotal = data.session_coins || 0;
                     saVendorSplit = data.vendor_split || 50;
                     setSplitPercent(saVendorSplit);
-                    
+
                     startSuperAdminSessionTimer();
 
                     if (data.is_unmasked && data.remaining_seconds > 0) {
@@ -67,30 +60,39 @@
                     } else {
                         showMaskedVault();
                     }
-                } else {
-                    lockSuperAdmin();
-                    notify(data.message || 'That vendor password is not correct.', 'bad');
+                } else if (!quiet) {
+                    notify(data.message || 'Scan the admin QR code first.', 'bad');
                 }
             })
-            .catch(err => notify('Could not reach the box: ' + err, 'bad'));
+            .catch(err => { if (!quiet) notify('Could not reach the box: ' + err, 'bad'); });
+        }
+
+        // The "Scan admin QR" button: a photo of the owner's QR code signs in (see adminqr.js), then vendor mode opens.
+        function scanSuperAdminQr(input) {
+            const file = input.files && input.files[0];
+            input.value = '';
+            if (!file) return;
+            if (!window.PisoAdminQr) { notify('The QR reader is still loading. Try again in a moment.', 'bad'); return; }
+            notify('Reading the code...');
+            window.PisoAdminQr.login(file).then(() => unlockSuperAdmin(false)).catch(err => notify(err.message || String(err), 'bad'));
         }
 
         function lockSuperAdmin() {
-            saToken = '';
+            saUnlocked = false;
             saSessionExpiry = 0;
-            localStorage.removeItem('sa_token');
-            localStorage.removeItem('sa_session_expiry');
             if (saTimerInterval) clearInterval(saTimerInterval);
             if (saSessionTimerInterval) clearInterval(saSessionTimerInterval);
             saTimerInterval = null;
             saSessionTimerInterval = null;
             document.getElementById('sa_auth_gate').classList.remove('hidden');
             document.getElementById('sa_main_console').classList.add('hidden');
-            document.getElementById('sa_login_pw').value = '';
+            // end the owner's session on the box too; a browser that signed in with the admin password keeps working, one that
+            // only had the QR code is taken back to the sign-in page
+            fetch('/api/superadmin/lock', { method: 'POST', credentials: 'same-origin' }).finally(() => window.location.reload());
         }
 
         function promptUnmaskVault() {
-            if (!saToken) { notify('Unlock vendor mode first.', 'bad'); return; }
+            if (!saUnlocked) { notify('Unlock vendor mode first.', 'bad'); return; }
             
             const confirmed = confirm(
                 'Start collecting revenue?\n\n' +
@@ -103,7 +105,7 @@
             fetch('/api/superadmin/unmask', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'super_admin_pw=' + encodeURIComponent(saToken)
+                body: ''
             })
             .then(res => res.json())
             .then(data => {
@@ -181,7 +183,7 @@
             fetch('/api/superadmin/reset_vault', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'super_admin_pw=' + encodeURIComponent(saToken)
+                body: ''
             })
             .then(res => res.json())
             .then(data => {
@@ -233,12 +235,12 @@
         }
 
         function saveDefaultSplit() {
-            if (!saToken) { notify('Unlock vendor mode first.', 'bad'); return; }
+            if (!saUnlocked) { notify('Unlock vendor mode first.', 'bad'); return; }
             
             fetch('/api/superadmin/save_split', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'super_admin_pw=' + encodeURIComponent(saToken) + '&vendor_split=' + saVendorSplit
+                body: 'vendor_split=' + saVendorSplit
             })
             .then(res => res.json())
             .then(data => {
@@ -268,15 +270,5 @@
             });
         }
 
-        // Auto-check on page load if token is stored and session is valid (<= 5 minutes)
-        window.addEventListener('DOMContentLoaded', () => {
-            if (saToken) {
-                if (saSessionExpiry && Date.now() >= saSessionExpiry) {
-                    lockSuperAdmin();
-                    notify('Vendor mode locked itself after 5 minutes.');
-                } else {
-                    document.getElementById('sa_login_pw').value = saToken;
-                    unlockSuperAdmin();
-                }
-            }
-        });
+        // A browser that signed in with the admin QR code opens vendor mode by itself.
+        window.addEventListener('DOMContentLoaded', () => unlockSuperAdmin(true));

@@ -26,7 +26,7 @@
 
 VERSION="dev"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
-PISO_RELEASE='1.2.4'
+PISO_RELEASE='1.2.5'
 
 COUNTRY="${COUNTRY:-PH}"
 KIOSK_SSID="PisoKiosk"                       # fixed, and hidden: only phones provisioned by the coin box page know it
@@ -1385,8 +1385,7 @@ ask_password() {
 	conf_set "$_n" "$_p"
 }
 
-# Every password the system needs is chosen here, once. The coin box's super-admin password is not one of them: the
-# firmware keeps it under remote management and it cannot be set from here.
+# Every password the system needs is chosen here, once. Super admin has no password: the owner opens it with the admin QR code.
 choose_passwords() {
 	ask_password ROOT_PASS "router password (SSH and LuCI login)" 8 63 "$ROOT_PASSWORD"
 	ask_password KIOSK_PASS "PisoKiosk Wi-Fi password (typed once into each rental phone's setup page)" 8 63 "$KIOSK_PASSWORD"

@@ -9,8 +9,8 @@ can do, in order, before a build goes to shops.
       (the production firmware builds in CI show a warning), and routers install **no** update
       from the website at all (they fail closed). Let CI build the router program once more after committing the key (it does
       so on every push), and install that setup file on each router by hand this one time: the key is inside the program.
-- [ ] `python3 scripts/superadmin_credentials.py keygen --private <file>` for `SuperAdminPubKey.h`
-      (`docs/api/superadmin-credentials.md`). Until then remote super-admin password sync stays off.
+- [ ] `python3 scripts/make_admin_qr.py` makes your admin QR code and, the first time, `SuperAdminPubKey.h` (commit it, update the
+      boxes once; `docs/api/superadmin-qr.md`). Until then no one can open super admin.
 
 ## 2. Hardware and real-world tests
 - [ ] Pass 1 and 2 of `docs/REAL_WORLD_TESTING.md` on `beta` (box, phones, router), including the new items R3, R5, RS11

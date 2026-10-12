@@ -65,7 +65,7 @@ void handleApiOtaManifest() {
         if (!authenticateSuperAdmin()) {
             webServer.send(
                 403, "application/json",
-                "{\"status\":\"error\",\"message\":\"Installing an older version needs the super-admin password.\"}");
+                "{\"status\":\"error\",\"message\":\"Installing an older version needs the owner signed in with the admin QR code.\"}");
             return;
         }
         downgrade = true;

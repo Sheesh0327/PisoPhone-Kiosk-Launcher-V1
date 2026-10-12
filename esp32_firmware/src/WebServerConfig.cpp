@@ -12,7 +12,6 @@
 #include "PaymentQueueManager.h"
 #include "Config.h"
 #include "SetupGate.h"
-#include "SuperAdminCreds.h"
 #include "RevenueVault.h"
 #include "RevenueLedger.h"
 #include "Security.h"
@@ -32,7 +31,7 @@ bool otaIsValidBinary = true;
 String otaErrorMsg = "";
 
 void handlePortalRoot() {
-    if (!checkAdminAuth()) return;
+    if (!checkAdminAuthOrLoginPage()) return;
     if (macAddressStr.length() == 0) {
         uint8_t mac[6];
         esp_read_mac(mac, ESP_MAC_WIFI_STA);
@@ -124,21 +123,6 @@ void handleFactoryReset() {
     delay(1000);
     diagNoteRestartReason("factory-reset");
     ESP.restart();
-}
-
-void handleResetVault() {
-    if (!checkAdminAuth()) return;
-    if (webServer.hasArg("reset_pw")) {
-        String enteredPw = webServer.arg("reset_pw");
-        if (superAdminPasswordOk(enteredPw) || superAdminBasicAuthOk()) {
-            if (vaultCollect(revenue::VENDOR_PASSWORD_RESET)) {
-                Serial.println("[👑 VAULT] Collection recorded by Super Admin (Vendor); lifetime totals are kept.");
-            }
-        } else {
-            Serial.println("[⚠️ VAULT] Reset attempted without valid Super Admin credentials.");
-        }
-    }
-    redirectHome();
 }
 
 void handleSave() {

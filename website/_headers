@@ -48,5 +48,3 @@
 /update/app-release.apk
   Cache-Control: no-cache
 
-/update/credentials.json
-  Cache-Control: no-store

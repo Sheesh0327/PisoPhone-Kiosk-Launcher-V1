@@ -11,7 +11,6 @@ extern String otaErrorMsg;
 void handlePortalRoot();
 void handleReboot();
 void handleFactoryReset();
-void handleResetVault();
 void handleSave();
 void handleOtaForm();
 

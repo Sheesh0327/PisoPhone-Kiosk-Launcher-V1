@@ -116,7 +116,7 @@ jobs:
           flag firmware_build "^(esp32_firmware/|protocol/|$W)"
           flag firmware_tests "^(esp32_firmware/|protocol/|scripts/|$W)"
           flag portal "^(tools/pisoportal/|router/|setup/|website/install\.sh|website/pisophone_setup\.py|tools/build_piso_setup\.py|scripts/(sign_router|owner_key|make_owner_keys)\.py|$W)"
-          flag website "^(website/|scripts/check_published_apk\.py|scripts/tests/test_check_published_apk\.py|app/src/main/java/com/pisophone/kiosk/(security/KioskSecurity|network/KioskWifi|provisioning/QrProvisioning)\.kt|scripts/tests/test_provisioning\.js|scripts/tests/test_flasher\.js|scripts/tests/test_site_page\.py|scripts/check_vendored\.py|$W)"
+          flag website "^(website/|esp32_firmware/web/(adminqr|jsqr)\.js|scripts/(make_admin_qr\.py|tests/test_admin_qr\.py)|scripts/check_published_apk\.py|scripts/tests/test_check_published_apk\.py|app/src/main/java/com/pisophone/kiosk/(security/KioskSecurity|network/KioskWifi|provisioning/QrProvisioning)\.kt|scripts/tests/test_provisioning\.js|scripts/tests/test_flasher\.js|scripts/tests/test_site_page\.py|scripts/check_vendored\.py|$W)"
 
   security-rules:
     name: Security rules
@@ -150,8 +150,10 @@ jobs:
           key: playwright-1.63.0
       - name: The page in a browser, with the site's Content-Security-Policy
         run: |
-          pip install -q playwright==1.63.0 zxing-cpp==2.3.0 pillow==11.3.0 && playwright install --with-deps chromium
+          pip install -q playwright==1.63.0 zxing-cpp==2.3.0 pillow==11.3.0 cryptography qrcode && playwright install --with-deps chromium
           python3 scripts/tests/test_site_page.py
+      - name: The owner's admin QR login (the key and QR code script, the browser code that signs, reading a photo of the code)
+        run: python3 scripts/tests/test_admin_qr.py
 
   kotlin-style:
     name: ktlint
