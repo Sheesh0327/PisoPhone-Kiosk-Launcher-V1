@@ -4,6 +4,10 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Firmware 3.5.2: **the dashboard no longer asks for the password every few seconds.** The page polls the box (`/api/status` every 3 s)
+  and, when its sign-in had ended, each poll got a Basic-auth challenge, so the browser's password box popped up again and again.
+  Requests to `/api/...` now get a plain 401 with no challenge; the page stops polling and shows one "You are signed out. Sign in
+  again" bar. Pages (not scripts) still ask for the password as before.
 - Lock screen: the original texts and cards are easier to read over the new art. The cards are darker (the theme colour mixed with black) and
   still translucent, a dark translucent panel sits behind the lock, the title and the cards, and the dim layer over the art is stronger. The
   layout is the same (8 dp of padding inside the panel).

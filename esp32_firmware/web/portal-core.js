@@ -1,3 +1,4 @@
+var pollTimers = []; // the background polls (see sessionLost)
 function escHtml(v) {
     return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
@@ -270,7 +271,7 @@ window.fetchAccounts = function() {
     const box = document.getElementById('accounts_container');
     if (!box) return;
     fetch('/api/accounts')
-        .then(res => { if (!res.ok) throw new Error(res.status === 503 ? 'Accounts are off on this box' : 'HTTP ' + res.status); return res.json(); })
+        .then(res => { if (res.status === 401) { sessionLost(); throw new Error('signed out'); } if (!res.ok) throw new Error(res.status === 503 ? 'Accounts are off on this box' : 'HTTP ' + res.status); return res.json(); })
         .then(data => {
             const list = data.accounts || [];
             const badge = document.getElementById('accounts_count');
@@ -291,7 +292,7 @@ window.fetchAccounts = function() {
         .catch(err => { box.innerHTML = '<div class="row-empty-msg">' + escHtml(err.message) + '</div>'; });
 };
 document.addEventListener('DOMContentLoaded', fetchAccounts);
-setInterval(fetchAccounts, 15000);
+pollTimers.push(setInterval(fetchAccounts, 15000));
 
 function accountPost(path, id, extra, done) {
     fetch(path, {
@@ -327,9 +328,23 @@ function setConn(ok) {
     pill.textContent = ok ? 'Online' : 'Connection lost';
 }
 
+// The sign-in ended (a restart of the box, another password, a lock-out): stop polling and say so once, with a way back in. The
+// browser's own password box is not used for these background requests, so it cannot pop up every few seconds.
+function sessionLost() {
+    pollTimers.forEach(clearInterval);
+    pollTimers = [];
+    if (document.getElementById('session_lost')) return;
+    const bar = document.createElement('div');
+    bar.id = 'session_lost';
+    bar.className = 'note bad';
+    bar.style.cssText = 'position:fixed;left:12px;right:12px;bottom:12px;z-index:50;margin:0';
+    bar.innerHTML = '<span class="grow"><b>You are signed out.</b> <a href="/signin?next=/">Sign in again</a></span>';
+    document.body.appendChild(bar);
+}
+
 window.fetchDeviceStatus = function() {
     fetch('/api/status')
-        .then(res => res.json())
+        .then(res => { if (res.status === 401) { sessionLost(); throw new Error('signed out'); } return res.json(); })
         .then(data => {
             setConn(true);
             const devices = Array.isArray(data) ? data : (data.devices || []);
@@ -366,7 +381,7 @@ window.fetchDeviceStatus = function() {
         })
         .catch(err => { setConn(false); console.log('Status polling error', err); });
 };
-setInterval(fetchDeviceStatus, 3000);
+pollTimers.push(setInterval(fetchDeviceStatus, 3000));
 document.addEventListener("DOMContentLoaded", fetchDeviceStatus);
 
 function showMatchResult(kind, html) {
