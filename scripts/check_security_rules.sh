@@ -10,14 +10,15 @@ CODE_DIRS="app esp32_firmware website scripts router setup tools/pisoportal/src 
 # purpose wherever it is used.)
 EXCLUDE='--exclude-dir=.git --exclude-dir=build --exclude-dir=target --exclude-dir=node_modules --exclude-dir=__pycache__ --exclude=yume-chan-bundle.js --exclude=check_security_rules.sh'
 
-# 1. No private keys anywhere in the repository (the signing keys live offline).
-if grep -rEl $EXCLUDE -e '-----BEGIN [A-Z ]*PRIVATE KEY-----' . ; then
+# 1. No private keys anywhere in the repository (the signing keys live offline). Binary files are skipped (-I): a firmware image
+# contains the mbedTLS parser's own text "-----BEGIN EC PRIVATE KEY-----", which is not a key.
+if grep -rEIl $EXCLUDE -e '-----BEGIN [A-Z ]*PRIVATE KEY-----' . ; then
     bad "a private key is committed (files listed above)"
 fi
 
 # 2. The shared master secret may only remain in the two files still being migrated off it.
 #    Any new use fails the build; the list shrinks to nothing when S3 lands. Source files only (-I): the firmware images
-#    built from Config.cpp for the web flasher (website/flash/*.bin) carry its string like any build of it.
+#    built from Config.cpp for the setup program (website/flash/*.bin) carry its string like any build of it.
 ALLOWED_MASTER="app/src/main/java/com/pisophone/kiosk/security/KioskSecurity.kt esp32_firmware/src/Config.cpp"
 for f in $(grep -rlI $EXCLUDE 'PISOPHONE_HMAC_MASTER_KEY' $CODE_DIRS 2>/dev/null); do
     case " $ALLOWED_MASTER " in *" $f "*) ;; *) bad "shared master secret referenced in $f" ;; esac

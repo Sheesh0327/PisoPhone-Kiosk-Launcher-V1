@@ -2,6 +2,7 @@ package com.pisophone.kiosk.server
 
 import android.content.Context
 import android.util.Log
+import com.pisophone.kiosk.network.BoxClock
 import com.pisophone.kiosk.repository.PaymentResult
 import com.pisophone.kiosk.security.KioskSecurity
 import fi.iki.elonen.NanoHTTPD
@@ -35,13 +36,13 @@ class KioskHttpServer(
     private val context: Context,
     private val port: Int,
     private val delegate: KioskServerDelegate,
+    private val freshness: RequestFreshness = RequestFreshness(BoxClock::nowMs, BoxClock::isSynced),
 ) : NanoHTTPD(port) {
     companion object {
         private const val TAG = "KioskHttpServer"
         private const val RATE_LIMIT_WINDOW_MS = 60000L
         private const val MAX_REQUESTS_PER_WINDOW = 60
         private const val MAX_TRACKED_IPS = 256
-        private const val MAX_TIMESTAMP_SKEW_MS = 60000L
 
         /** Actions the ESP32 box sends to a phone. Anything else arriving over the network is refused. */
         internal val NETWORK_ACTIONS = setOf(
@@ -149,12 +150,21 @@ class KioskHttpServer(
         }
         val decryptedParams = parseQueryString(decryptedStr)
 
-        // Validate timestamp freshness (Replay protection Layer 1)
+        // Replay protection layer 1: freshness. A payment is idempotent by tx_id (the box repeats it, with its original
+        // timestamp, until acknowledged), so it is not judged by time. Anything else must carry a time close to the box's clock,
+        // so a command captured on the network cannot be played back later.
         val ts = decryptedParams["ts"]?.trim()?.toLongOrNull() ?: 0L
-        val now = System.currentTimeMillis()
-        val skew = Math.abs(now - ts)
-        if (ts <= 0L || skew > MAX_TIMESTAMP_SKEW_MS) {
-            Log.w(TAG, "Notice on $uri: timestamp skew (${skew}ms, ts=$ts, now=$now) detected; relying on unique tx_id replay protection")
+        val isPayment = uri == "/add_time" || uri == "/coin"
+        if (!isPayment) {
+            when (freshness.check(ts)) {
+                RequestFreshness.Verdict.FRESH -> {}
+                RequestFreshness.Verdict.UNVERIFIED ->
+                    Log.w(TAG, "Notice on $uri: no box clock to check ts=$ts against yet; relying on the signature cache only")
+                RequestFreshness.Verdict.OUTSIDE_WINDOW -> {
+                    Log.w(TAG, "Rejected stale signed request to $uri (ts=$ts, box clock=${BoxClock.nowMs()})")
+                    return createResponse(Response.Status.FORBIDDEN, "text/plain", "STALE_TIMESTAMP")
+                }
+            }
         }
 
         // Replay Protection check: verify unique tx_id (Layer 2)
@@ -172,7 +182,7 @@ class KioskHttpServer(
 
         // A signed message is accepted once. Payments are exempt: the box repeats them until acknowledged and
         // they are already idempotent by tx_id. A repeat of anything else is acknowledged but not executed again.
-        if (uri != "/add_time" && uri != "/coin" && !replayGuard.firstSeen(hmac.trim().lowercase())) {
+        if (!isPayment && !replayGuard.firstSeen(hmac.trim().lowercase())) {
             Log.w(TAG, "Ignoring repeated signed request to $uri")
             return createResponse(Response.Status.OK, "text/plain", "OK:DUPLICATE")
         }

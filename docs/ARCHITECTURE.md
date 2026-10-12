@@ -52,7 +52,11 @@ restores the session) and locks the phone when time reaches zero.
   (`403`, `reason: STALE_TIMESTAMP`) carries the box's time too: the phone adopts it and retries once. A `BAD_SIGNATURE`
   means the phone has another box secret (press Save on the box dashboard, or set the phone up again). Before pairing,
   the heartbeat answer already says `auth_ok` (does the box accept this phone's key) and carries the box's time.
-- **Box -> phone:** add time, deduct time, config sync (`KioskHttpServer`, encrypted + HMAC).
+- **Box -> phone:** add time, deduct time, config sync (`KioskHttpServer`, encrypted + HMAC). Apart from payments (idempotent
+  by transaction id), a signed message must also carry a time within 2 minutes of the box's clock (`server/RequestFreshness.kt`;
+  `BoxClock` is the time the box itself reported), and `ReplayGuard` accepts each signed message once, so a command captured on
+  the network cannot be played back later; a refused one is answered `403 STALE_TIMESTAMP`. Until the phone has heard the box's
+  time (just started, or a box that has not learned the time yet) nothing is judged by time, so the box can never be locked out.
 - **Admin -> box:** the web dashboard (Basic auth, lockout after repeated failures).
 - **Admin -> phone:** `KioskAdminActionReceiver` broadcasts, all gated by the admin PIN.
 

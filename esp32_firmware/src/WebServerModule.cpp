@@ -8,6 +8,8 @@
 #include "Diagnostics.h"
 #include "OtaCheck.h"
 #include "OtaSecurity.h"
+#include "OtaRollback.h"
+#include "OrphanPayments.h"
 #include "WebAssetServer.h"
 #include "WebServerAuth.h"
 #include "Config.h"
@@ -60,6 +62,7 @@ void setupWebServer() {
     webServer.on("/api/superadmin/auth", HTTP_POST, handleSuperAdminAuth);
     webServer.on("/api/superadmin/unmask", HTTP_POST, handleSuperAdminUnmask);
     webServer.on("/api/superadmin/reset_vault", HTTP_POST, handleSuperAdminResetVault);
+    webServer.on("/api/superadmin/collections", HTTP_POST, handleSuperAdminCollections);
     webServer.on("/api/superadmin/save_split", HTTP_POST, handleSuperAdminSaveSplit);
     webServer.on("/api/superadmin/factory_reset", HTTP_POST, handleSuperAdminFactoryReset);
     webServer.on("/api/status", HTTP_GET, handleApiStatus);
@@ -141,7 +144,31 @@ void setupWebServer() {
             return;
         }
         int cleared = clearPaymentQueue();
+        if (cleared < 0) {
+            webServer.send(
+                500, "application/json",
+                "{\"status\":\"error\",\"message\":\"Could not record the payments in the orphaned-payments list; nothing was cleared.\"}");
+            return;
+        }
         webServer.send(200, "application/json", "{\"status\":\"ok\",\"cleared\":" + String(cleared) + "}");
+    });
+    // Payments the box gave up on (OrphanLedger.h): the list for the dashboard, and "the operator dealt with it".
+    webServer.on("/api/payments/orphans", HTTP_GET, []() {
+        if (!checkAdminAuth()) return;
+        webServer.send(200, "application/json", orphansJson());
+    });
+    webServer.on("/api/payments/orphans/handle", HTTP_POST, []() {
+        if (!checkAdminAuth()) return;
+        bool ok = false;
+        if (webServer.arg("all") == "1") {
+            ok = orphansHandleAll();
+        } else {
+            long seq = webServer.arg("seq").toInt();
+            ok = seq > 0 && orphansHandle((uint32_t)seq);
+        }
+        webServer.send(ok ? 200 : 400, "application/json",
+                       ok ? "{\"status\":\"ok\"}"
+                          : "{\"status\":\"error\",\"message\":\"No such payment, or it could not be saved.\"}");
     });
 
     // Port 80: Web OTA Firmware Update Endpoints
@@ -191,6 +218,16 @@ void setupWebServer() {
                     return;
                 }
 
+                // The Arduino Update class does not check this (the ESP-IDF's own OTA call does): a second update started
+                // now would overwrite the one slot that still holds the last confirmed firmware, leaving nothing to roll back to.
+                if (otaImageOnTrial()) {
+                    otaIsValidBinary = false;
+                    otaErrorMsg =
+                        "OTA refused: the box is still checking the firmware it was just updated to (about a minute). Try again shortly.";
+                    diagLog("[OTA] %s\n", otaErrorMsg.c_str());
+                    return;
+                }
+
                 diagCount(DiagCounter::OtaAttempts);
                 diagLog("[OTA] Starting firmware flash: %s\n", upload.filename.c_str());
 
@@ -203,6 +240,7 @@ void setupWebServer() {
                     return;
                 }
 
+                otaNoteUploadStart(WiFi.status() == WL_CONNECTED); // a working update must get back on Wi-Fi then
                 if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
                     otaIsValidBinary = false;
                     otaErrorMsg = "Failed to begin flash partition write (Error: " + String(Update.getError()) + ")";

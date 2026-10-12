@@ -1,13 +1,16 @@
 package com.pisophone.kiosk.network
 
 import android.app.admin.DevicePolicyManager
+import android.app.admin.WifiSsidPolicy
 import android.content.Context
 import android.net.wifi.SupplicantState
 import android.net.wifi.WifiConfiguration
 import android.net.wifi.WifiManager
 import android.net.wifi.WifiNetworkSuggestion
+import android.net.wifi.WifiSsid
 import android.os.Build
 import android.util.Log
+import com.pisophone.kiosk.security.AdminMaintenanceMode
 import com.pisophone.kiosk.security.KioskSecurity
 
 /**
@@ -17,6 +20,11 @@ import com.pisophone.kiosk.security.KioskSecurity
  *
  * The phone is the device owner, so it may add the network itself (no dialog, no Settings screen). Any other install
  * falls back to a network suggestion, which Android asks the user to approve once.
+ *
+ * A device-owner phone also connects to NO other network ([lockToKioskNetwork]): Android 13 and newer get an SSID allowlist
+ * with only the kiosk network (the system then refuses every other one), and on every version each other saved network is
+ * removed, so a phone never wanders onto a customer's Wi-Fi or a hotspot. An admin maintenance window lifts the lock while it
+ * is open, and it is back as soon as the window ends.
  */
 object KioskWifi {
     private const val TAG = "KioskWifi"
@@ -26,6 +34,14 @@ object KioskWifi {
 
     /** WPA2 passphrase: 8 to 63 printable ASCII characters. */
     fun isValidPassword(password: String): Boolean = password.length in 8..63 && password.all { it in ' '..'~' }
+
+    /** The ids of the saved networks that are not the kiosk network, given the saved ones as (id, quoted SSID). */
+    fun foreignNetworkIds(saved: List<Pair<Int, String>>, ssid: String): List<Int> =
+        saved.filter { (id, name) -> id >= 0 && name.trim('"') != ssid }.map { it.first }
+
+    /** True when the phone must be held to the kiosk network now: a network is provisioned and no admin window is open. */
+    fun shouldLock(ssid: String, password: String, adminWindowOpen: Boolean): Boolean =
+        isValidSsid(ssid) && isValidPassword(password) && !adminWindowOpen
 
     /** What [join] found or did, for the status line shown on the phone ([statusText]). */
     enum class Join { NOT_SAVED, ALREADY_ON, JOINING, NEEDS_APPROVAL, REFUSED, ERROR }
@@ -59,15 +75,67 @@ object KioskWifi {
         }
     }
 
+    /**
+     * Holds a device-owner phone to the kiosk network only (see the class comment); during an admin maintenance window, or
+     * when no kiosk network is provisioned yet, it lifts the lock instead. Safe to call often. Returns true when the lock is on.
+     */
+    @Suppress("DEPRECATION")
+    fun lockToKioskNetwork(context: Context): Boolean {
+        val app = context.applicationContext
+        val dpm = app.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager ?: return false
+        if (!dpm.isDeviceOwnerApp(app.packageName)) return false
+        val ssid = KioskSecurity.getKioskWifiSsid(app)
+        val lock = shouldLock(ssid, KioskSecurity.getKioskWifiPassword(app), AdminMaintenanceMode.isActive(app))
+        try {
+            if (Build.VERSION.SDK_INT >= 33) {
+                val policy = if (lock) {
+                    val allowed = setOf(WifiSsid.fromBytes(ssid.toByteArray(Charsets.UTF_8)))
+                    WifiSsidPolicy(WifiSsidPolicy.WIFI_SSID_POLICY_TYPE_ALLOWLIST, allowed)
+                } else {
+                    null
+                }
+                dpm.wifiSsidPolicy = policy
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not set the Wi-Fi allowlist: ${e.message}")
+        }
+        if (!lock) return false
+        try {
+            val wm = app.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return true
+            val saved = wm.configuredNetworks?.map { it.networkId to (it.SSID ?: "") } ?: return true
+            for (id in foreignNetworkIds(saved, ssid)) {
+                if (wm.removeNetwork(id)) Log.i(TAG, "Removed a saved Wi-Fi network that is not the kiosk network")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not remove other Wi-Fi networks: ${e.message}")
+        }
+        return true
+    }
+
+    /** Lifts the allowlist (a phone leaving kiosk mode must not stay held to one network). */
+    fun releaseNetworkLock(context: Context) {
+        if (Build.VERSION.SDK_INT < 33) return
+        try {
+            val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager ?: return
+            if (dpm.isDeviceOwnerApp(context.packageName)) dpm.wifiSsidPolicy = null
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not lift the Wi-Fi allowlist: ${e.message}")
+        }
+    }
+
     @Suppress("DEPRECATION")
     fun join(context: Context): Join {
         val app = context.applicationContext
         val ssid = KioskSecurity.getKioskWifiSsid(app)
         val password = KioskSecurity.getKioskWifiPassword(app)
-        if (!isValidSsid(ssid) || !isValidPassword(password)) return Join.NOT_SAVED
+        if (!isValidSsid(ssid) || !isValidPassword(password)) {
+            releaseNetworkLock(app) // (nothing to hold the phone to yet)
+            return Join.NOT_SAVED
+        }
         return try {
             val wm = app.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return Join.ERROR
             if (!wm.isWifiEnabled) wm.isWifiEnabled = true
+            lockToKioskNetwork(app) // before joining: the allowlist must know the (possibly new) network first
             if (isOnNetwork(wm, ssid)) return Join.ALREADY_ON
 
             var suggested = false

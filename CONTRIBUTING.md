@@ -17,7 +17,7 @@ Run the checks for every area you touched (the full list is in `CLAUDE.md`, sect
 | ESP32 firmware | `cd esp32_firmware/host_tests && ./run.sh`, `pio run -e esp32-c3-dev && pio run -e esp32dev-dev`, `clang-format --dry-run --Werror <files>` |
 | Dashboard files (`esp32_firmware/web/`) | `python3 scripts/embed_web.py` then `python3 scripts/embed_web.py --check` |
 | Router / setup | `python3 router/tests/test_monitor.py`, `python3 router/tests/test_pisophone_setup.py`, `python3 tools/build_piso_setup.py --check` |
-| Website | `node scripts/test_provisioning.js`, `node scripts/test_flasher.js`, `python3 scripts/tests/test_site_page.py` |
+| Website | `node scripts/tests/test_provisioning.js`, `python3 scripts/tests/test_site_page.py` |
 | Always | `bash scripts/check_security_rules.sh` |
 
 ## Rules that are easy to break

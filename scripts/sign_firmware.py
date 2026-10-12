@@ -12,7 +12,7 @@ You build firmware.bin with PlatformIO, then sign it with the same offline owner
 It writes <image>.manifest.json next to the image:
   {"chip", "version", "sha256", "size", "sig"}
 Use that file with the dashboard's manual upload, or copy the image and manifest into website/update/ as
-firmware-<chip>.bin and firmware-<chip>.bin.manifest.json (scripts/update_firmware_json.py publishes the
+firmware-<chip>.bin and firmware-<chip>.bin.manifest.json (scripts/publish_firmware_ota.py --json-only publishes the
 signature in firmware.json).
 
 The version defaults to PISO_FW_VERSION in esp32_firmware/include/FirmwareVersion.h.

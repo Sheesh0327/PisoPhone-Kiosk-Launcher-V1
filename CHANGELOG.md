@@ -4,6 +4,65 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Coin box firmware 3.4.0: the release that carries the fixes listed below (payments, the revenue ledger, the update safety net, the list of undelivered payments). Boxes on 3.3.3 install it from the dashboard: Update > Install update.
+- Phone app: a rental phone now connects only to the one Wi-Fi network its box paired it with (PisoKiosk). On Android 13 and newer
+  the system itself is told to allow only that network (an SSID allowlist set by the device owner), and on every version any other
+  saved network is removed, so a phone no longer wanders onto a neighbour's Wi-Fi or a hotspot. An admin maintenance window lifts the lock
+  while it is open (so an admin can still use Settings) and it is back as soon as the window ends; a phone that has no
+  kiosk network saved yet, or that leaves kiosk mode or has the app removed, is not held. (Needs the next APK; test S5.)
+- Setup program: the setup is now a web page served by the program, so the computer that runs it needs no monitor: run it on a
+  small Armbian, Parrot, Debian, Ubuntu or Raspberry Pi computer, open the address it prints on your phone and type the PIN.
+  The window (Tk) is gone. On start the program detects the system and installs what is missing: `ssh` from the system's packages
+  (root or passwordless sudo) and `esptool` with pip into its own folder, which also works on Debian 12 / Armbian systems whose
+  Python is "externally managed". `sudo python3 pisophone_setup.py --install-service` makes the page start by itself at boot.
+  The page is plain HTTP to the local network behind a PIN (five wrong PINs lock it for a minute; other sites' pages cannot reach
+  it); `--local-only` serves the computer's own browser only. The phone setup link is shown on the page to open on a phone or
+  laptop with internet. See `setup/README.md` ("Which network?") for how the phone reaches the page.
+- Setup program: one click per unit. The program now writes the PisoPhone software to the coin box itself over USB (it detects
+  the board, checks the image's size and checksum against the website's list, erases the board and verifies what it wrote), then
+  sets up the router and pairs the two, and the last page has a "Set up the next unit" button that starts over for the next
+  router and box: the shop name and public Wi-Fi name are asked every time and the passwords are new every time. The coin box
+  step in the browser (`flash.html`) is gone: the setup program is the one way to set up a unit, next to the manual steps in
+  `setup/MANUAL.md` (PlatformIO or esptool by hand). It needs `pip install esptool` (a ready-made program has it built in); on
+  Linux the user must be in the `dialout` group. Phones are unchanged: the QR code, and the USB cable for phones that need it
+  ("Finish over USB" stays for Android Go phones). The router's hint for a box that does not join now points to the setup program
+  (router release 1.2.4).
+- Coin box firmware: a payment the box gives up on is no longer lost without a trace. A coin that the phone never acknowledged was
+  dropped from the box's queue after 24 hours (30 minutes when the queue was nearly full), the "clear payments" request dropped
+  every queued payment, and a coin that arrived when the queue was full was only printed in a log that rolls over. Now each of
+  these is first written to a list in the box's flash: the time, the amount, what it was worth, the phone, the transaction number
+  and why it was given up on. The dashboard shows a red banner ("N payments (₱X) could not be delivered") with a Review dialog:
+  refund the customer or add the time by hand, then press Handled. The list keeps the newest 16 and counts any older ones that no
+  longer fit, so the total never shrinks until you mark them handled; it survives a restart and a firmware update, and only the
+  owner's full wipe clears it. If the list cannot be written, the payment stays queued instead of being dropped. A payment that
+  could not be delivered is not necessarily one the customer lost: a coin the box could not record may still have reached the
+  phone, so check the phone before refunding. The diagnostics now also show how full the settings flash is (`nvs`), the number of
+  waiting payments and two new counters.
+- Coin box firmware: a bad firmware update is now reverted by the box itself. The box's bootloader could always go back to the
+  previous firmware, but the Arduino framework told it that every update was fine before the new firmware had run a single
+  line, so a firmware that crashed, hung or could not get online after an update stayed in charge until someone reflashed the
+  box by USB. Now the new firmware is on trial after an update: it is kept after a minute if the payment storage works and (when
+  the box was on Wi-Fi at the time of the update) it is back on Wi-Fi; if it has not passed after 5 minutes the box restores
+  the previous firmware, once no coin session is open and no payment is waiting to be saved. A box that crashes or loses power
+  during that first minute goes back to the previous firmware at once. This means: restarting the box (or a power cut) in the
+  first minute after an update undoes the update, and a second update cannot be started during that minute (the dashboard says
+  so; wait a minute and try again). Diagnostics show `ota_image_state` and `ota_last_update_rolled_back`, and a revert is
+  recorded as the restart cause `ota-rollback`. Boxes with a custom bootloader (secure boot) must keep rollback enabled in it.
+- Phone app: a command the box sent to a phone (a setting change, an arena or lock action, a status read) can no longer be copied
+  off the network and played back later. Before, the phone only remembered the last 10 minutes of messages, so a copy played
+  after that was obeyed again. Now a message must also carry a time within 2 minutes of the box's clock; a refused one is
+  answered `403 STALE_TIMESTAMP`. Payments are unaffected (they are counted once by their transaction id). Until a phone has
+  heard the box's time nothing is judged by time, so a box that has just restarted can still send commands.
+- Coin box firmware: collecting the revenue no longer erases it. The lifetime coin and earnings counters now only go up (only the
+  owner's full wipe clears them). Taking the money out is recorded as a collection (time, coins, amount, why, and the lifetime
+  total at that moment; the last 16 are kept in the box and survive a restart, a firmware update and the operator's factory
+  reset). The vendor page and the dashboard still show the amount counted since the last collection and still start again at
+  ₱0, so nothing changes for the person collecting. The vendor can read the history from `/api/superadmin/collections`. Every
+  way of resetting goes through the same step: the 5-minute window ending, finishing a collection or signing out on the vendor
+  page, and the dashboard's vendor-password form (now labelled "Collect"). If the record cannot be written, nothing changes and
+  the money stays in the counter. Signing out of the dashboard used to reset the revenue whenever a vendor window was open,
+  even for a request that was not the vendor's; now only the vendor's own sign-out ends the collection. The router's
+  reconcile check works with both old and new boxes.
 - Developers (coin box firmware): the background task that delivers coins to phones no longer changes the player-account table or
   the phone slots itself. When a phone confirms a coin it now hands the confirmation to the main loop, the only task that owns
   that state, so the two can no longer change the account table at the same moment. A confirmation that cannot be handed over

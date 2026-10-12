@@ -16,6 +16,20 @@ can do, in order, before a build goes to shops.
 - [ ] Pass 1 and 2 of `docs/REAL_WORLD_TESTING.md` on `beta` (box, phones, router), including the new items R3, R5, RS11
       and RS12. Log every failure in its Issue log.
 
+## 2b. Before the merge: check the path (about a minute, no hardware)
+- [ ] `git fetch && python3 scripts/verify_release.py` says **0 FAIL**. It checks that the owner key in the box firmware and the
+      router program is the same, that every firmware image and the router file in `website/update` match their checksums and
+      carry signatures that verify, that the app feed matches the APK, and the rule that most often makes an update "do
+      nothing": **a box installs firmware only if `PISO_FW_VERSION` is higher than the one it runs** (and a router only a higher
+      `setup/RELEASE`). If firmware code changed since `main` but the version did not, it fails and says so. `firmware-images.yml`
+      rebuilds the images on every push under the *same* version number, so `beta` and `main` can both publish different
+      binaries called `3.3.3`; boxes ignore both.
+- [ ] The merge itself: `git checkout main && git merge beta` conflicts in files CI regenerates (`website/flash/*`,
+      `website/update/app.json`, `website/update/app-release.apk`) and usually in `CHANGELOG.md`. Take `main`'s copy of the
+      generated files (`git checkout --ours -- website/flash website/update/app.json website/update/app-release.apk`) and keep both
+      sides of `CHANGELOG.md`; the next push rebuilds and re-signs them. (Tried on a throwaway merge: the result passes
+      `verify_release.py`, the formatting check and the firmware host tests.)
+
 ## 3. Publish (merging `beta` into `main` ships all three)
 One-time: the repository secret `OWNER_SIGNING_KEY_B64` (step 1, `python3 scripts/make_owner_keys.py --github-secret`) so CI can sign
 firmware and router updates. After that, merging `beta` into `main` publishes everything to https://pisophone.pages.dev/update:
@@ -26,6 +40,9 @@ firmware and router updates. After that, merging `beta` into `main` publishes ev
 - [ ] **Router**: raise `setup/RELEASE` first (a router installs only a newer release), and let the router-program workflow rebuild
       `setup/piso-setup.sh` on `beta`. `publish-router.yml` signs it and writes `router.json` and `router-setup.sh`. On the router:
       `piso-setup update`.
+After the merge has built, check what the world actually downloads (the sandbox of a cloud session cannot reach it): `curl -s https://pisophone.pages.dev/update/firmware.json`
+shows the new `version`, `app.json` the new `versionCode`, `router.json` the new release; compare the `sha256` values with
+the files in `website/update` on `main`.
 Check the three workflows are green on `main`; a red `publish-router` or `firmware-images` run says what is missing (usually the secret or
 the owner key in `tools/pisoportal/owner_key.b64`).
 

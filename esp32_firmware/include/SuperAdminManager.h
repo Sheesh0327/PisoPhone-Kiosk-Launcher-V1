@@ -26,6 +26,7 @@ void handleSuperAdminAuth();
 void handleSuperAdminFactoryReset();
 void handleSuperAdminUnmask();
 void handleSuperAdminResetVault();
+void handleSuperAdminCollections();
 void handleSuperAdminSaveSplit();
 
 // ============================================================================

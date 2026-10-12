@@ -151,6 +151,15 @@ function updateBanners(data, devices) {
             ? ic('alert') + '<span class="grow"><b>The default admin password is still in use.</b> Coins are blocked until you choose your own in Settings.</span>'
             : '',
         'note bad');
+    // Payments the box had to give up on: a customer paid and the phone never got the time. They stay here until handled.
+    const orphans = data.orphans || {};
+    setBanner('orphan_banner',
+        orphans.unhandled > 0
+            ? ic('alert') + '<span class="grow"><b>' + orphans.unhandled + (orphans.unhandled === 1 ? ' payment' : ' payments') +
+              ' (₱' + orphans.pulses + ') could not be delivered.</b> A customer paid but did not get the time. Refund or credit them, then mark them handled.</span>' +
+              '<button type="button" class="btn sm" onclick="showOrphans()">Review</button>'
+            : '',
+        'note bad');
     setBanner('legacy_key_banner',
         data.legacy_key
             ? ic('alert') + '<span class="grow"><b>This box still uses the old shared key.</b> Switch it to its own key. Phones must be set up again afterwards.</span>' +

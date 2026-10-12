@@ -9,8 +9,8 @@ Cloudflare). It holds no secrets and has no user accounts.
   remove the kiosk from a phone (admin PIN). Without a box's link it shows a "restricted" notice instead.
   - `js/provisioning.js`: checks the box's link and builds the QR code's content; `js/qrcode.js` draws the code (vendored, MIT).
   - `js/webadb_manager.js`: the USB fallback. It loads the ADB library (`js/yume-chan-bundle.js`) only when it is used.
-- `flash.html` + `js/flasher.js`: flashes a coin box's ESP32 over USB from Chrome or Edge (`js/esptool-bundle.js`, vendored).
-  Its images are built by CI into `flash/` (`manifest.json` with a sha256 for each).
+- `flash/`: the coin box firmware images (one merged image per chip, `manifest.json` with a sha256 for each), built by CI. The
+  setup program downloads them, checks them and writes them to the box over USB. There is no flasher page any more.
 - `pisophone_setup.py`: the setup program, a copy of `setup/pisophone_setup.py` (kept equal by `tools/build_piso_setup.py`).
 - `install.sh` and `setup/`: the one-line router installer and the router setup file it downloads (built from `setup/`).
 - `update/`: the phone app (`app-release.apk`, `app.json`), the coin box firmware and `firmware.json`, and the router's

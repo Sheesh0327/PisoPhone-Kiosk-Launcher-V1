@@ -9,6 +9,8 @@
 #include "DeviceNetwork.h"
 #include "Config.h"
 #include "Diagnostics.h"
+#include "OrphanLedger.h"
+#include "OrphanPayments.h"
 
 #include <Preferences.h>
 #include <freertos/FreeRTOS.h>
@@ -233,6 +235,11 @@ bool enqueuePendingPayment(const String& txId, const String& targetId, int pulse
     if (freeIndex < 0) {
         unlockQueue();
         Serial.println("[PAY QUEUE] Cannot record payment: queue is full.");
+        // The coin is in the box and cannot be remembered by the queue: write it down where the operator will see it.
+        uint8_t ownerCode =
+            ownerType == CoinSlotOwnerType::CONTROLLER ? 2 : (ownerType == CoinSlotOwnerType::GATEWAY ? 3 : 1);
+        orphanRecord(txId.c_str(), targetId.c_str(), ownerCode, (uint32_t)pulses, (uint32_t)creditSeconds, 0,
+                     orphans::NOT_QUEUED);
         return false;
     }
 
@@ -409,8 +416,24 @@ int acknowledgeGatewayPayments(const String& targetId) {
     return pulses;
 }
 
-int clearPaymentQueue() {
+int clearPaymentQueue(bool recordOrphans) {
     lockQueue();
+    if (recordOrphans) {
+        // Write every payment down first. If one cannot be written, nothing is removed: a payment is never dropped untraced.
+        unsigned long now = millis();
+        for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
+            if (!paymentSlotUsed[i]) continue;
+            uint32_t ageS = (uint32_t)((now - firstSeenMs[i]) / 1000UL);
+            if (!orphanRecord(paymentQueue[i].txId, paymentQueue[i].targetId, paymentQueue[i].ownerType,
+                              (uint32_t)paymentQueue[i].pulses, (uint32_t)paymentQueue[i].creditSeconds, ageS,
+                              orphans::CLEARED_BY_ADMIN)) {
+                unlockQueue();
+                Serial.println(
+                    "[PAY QUEUE] Clear refused: a payment could not be written to the orphaned-payments ledger.");
+                return -1;
+            }
+        }
+    }
     int cleared = activePaymentCount;
     for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
         resetSlotLocked(i);
@@ -430,7 +453,8 @@ int clearPaymentQueue() {
 static void evictExpiredPayments(unsigned long now) {
     uint64_t masterNow = getCurrentMasterTimeMs();
     lockQueue();
-    uint64_t ttl = (activePaymentCount >= MAX_PAYMENT_QUEUE_SIZE - 2) ? PAYMENT_TTL_UNDER_PRESSURE_MS : PAYMENT_TTL_MS;
+    const bool underPressure = activePaymentCount >= MAX_PAYMENT_QUEUE_SIZE - 2;
+    uint64_t ttl = underPressure ? PAYMENT_TTL_UNDER_PRESSURE_MS : PAYMENT_TTL_MS;
     for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
         if (!paymentSlotUsed[i]) continue;
         // Uptime age resets on reboot, so also use the master-clock age when both are known.
@@ -440,6 +464,14 @@ static void evictExpiredPayments(unsigned long now) {
             age = masterNow - recTs;
         }
         if (age < ttl) continue;
+        // Write the payment down for the operator BEFORE dropping it. If that fails it stays queued and is tried again in a
+        // minute, so a payment never disappears without a trace.
+        if (!orphanRecord(paymentQueue[i].txId, paymentQueue[i].targetId, paymentQueue[i].ownerType,
+                          (uint32_t)paymentQueue[i].pulses, (uint32_t)paymentQueue[i].creditSeconds,
+                          (uint32_t)(age / 1000ULL),
+                          underPressure ? orphans::EXPIRED_UNDER_PRESSURE : orphans::EXPIRED)) {
+            continue;
+        }
         if (paymentSlotPersisted[i] && !eraseRecord(i)) continue;
         diagLog("[PAY QUEUE] Evicted unacknowledged tx_id='%s' for '%s' (%d pulse(s)) after %llu s.\n",
                 paymentQueue[i].txId, paymentQueue[i].targetId, paymentQueue[i].pulses, age / 1000ULL);

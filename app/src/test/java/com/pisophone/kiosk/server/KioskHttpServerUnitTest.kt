@@ -1,9 +1,11 @@
 package com.pisophone.kiosk.server
 
+import com.pisophone.kiosk.network.BoxClock
 import com.pisophone.kiosk.repository.PaymentResult
 import com.pisophone.kiosk.security.KioskSecurity
 import fi.iki.elonen.NanoHTTPD
 import org.json.JSONObject
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -51,6 +53,7 @@ class KioskHttpServerUnitTest {
     @Before
     fun setUp() {
         context = androidx.test.core.app.ApplicationProvider.getApplicationContext()
+        BoxClock.reset() // the default server follows the global box clock: start every test not knowing the box's time
         server = KioskHttpServer(context = context, port = 8080, delegate = fakeDelegate)
         creditPaymentCallCount = 0
         triggeredActions.clear()
@@ -58,6 +61,15 @@ class KioskHttpServerUnitTest {
         lastCreditedSeconds = null
         lastCreditedAmount = null
     }
+
+    @After
+    fun tearDown() = BoxClock.reset()
+
+    private val boxNow = 1_790_000_000_000L
+
+    /** A server that knows (or does not know) the box's time. */
+    private fun serverWithBoxClock(known: Boolean = true) =
+        KioskHttpServer(context, 8080, fakeDelegate, RequestFreshness({ boxNow }, { known }))
 
     private fun createSession(
         uri: String,
@@ -362,5 +374,41 @@ class KioskHttpServerUnitTest {
             assertEquals("ALREADY_PROCESSED", readResponseBody(response))
         }
         assertEquals("both repeats reach the idempotent ledger so the box can clear its retry queue", 2, creditPaymentCallCount)
+    }
+
+    @Test
+    fun aStaleSignedCommandIsRefusedOnceTheBoxClockIsKnown() {
+        val stale = boxNow - 10 * 60_000L
+        val response = serverWithBoxClock().serve(createSession("/trigger_action", createEncryptedParams("action=slot_lockdown&ts=$stale")))
+        assertEquals(403, response.status.requestStatus)
+        assertEquals("STALE_TIMESTAMP", readResponseBody(response))
+        assertTrue("a refused command must not run", triggeredActions.isEmpty())
+    }
+
+    @Test
+    fun theStatusReadsCannotBeReplayedLaterEither() {
+        val stale = boxNow - 10 * 60_000L
+        for (path in listOf("/audit", "/crash", "/status", "/get_time", "/state")) {
+            val response = serverWithBoxClock().serve(createSession(path, createEncryptedParams("ts=$stale")))
+            assertEquals("$path", 403, response.status.requestStatus)
+        }
+    }
+
+    @Test
+    fun nothingIsRefusedByTimeBeforeTheBoxClockIsKnown() {
+        val stale = boxNow - 10 * 60_000L
+        val response = serverWithBoxClock(known = false).serve(createSession("/trigger_action", createEncryptedParams("action=slot_lockdown&ts=$stale")))
+        assertEquals("a phone that has not heard the box's time yet cannot judge it", 200, response.status.requestStatus)
+        assertEquals(listOf("slot_lockdown"), triggeredActions)
+    }
+
+    @Test
+    fun paymentsAreNotJudgedByTimeEvenWhenTheBoxClockIsKnown() {
+        simulatedPaymentResult = PaymentResult.APPLIED
+        val stale = boxNow - 10 * 60_000L // the box repeats a payment with its original time until it is acknowledged
+        val response = serverWithBoxClock().serve(createSession("/coin", createEncryptedParams("tx_id=tx-old&seconds=300&amount=5.0&ts=$stale")))
+        assertEquals(200, response.status.requestStatus)
+        assertEquals("OK", readResponseBody(response))
+        assertEquals(1, creditPaymentCallCount)
     }
 }

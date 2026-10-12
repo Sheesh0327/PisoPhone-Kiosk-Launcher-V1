@@ -24,13 +24,13 @@ A box with a public key built in only flashes images you signed.
 `firmware.json` to `website/update/` (`scripts/publish_firmware_ota.py`). Then, on the box's dashboard, **Update > Install update**.
 Without the secret the images are published unsigned, which boxes accept only while no owner key is built into their firmware; once
 the key is installed the workflow refuses to publish unsigned images. Edit `changelog` in `website/update/firmware.json` for the text
-the dashboard shows. The images are the dev builds (no flash encryption), the same ones the website's USB flasher writes.
+the dashboard shows. The images are the dev builds (no flash encryption), the same ones the setup program writes over USB.
 
 **By hand:**
 1. Bump `PISO_FW_VERSION`, build each chip with PlatformIO.
 2. `python3 scripts/sign_firmware.py --private KEY.pem --chip esp32c3 --image <path>/firmware.bin` writes `firmware.bin.manifest.json`.
-3. Copy the image and manifest to `website/update/firmware-<chip>.bin` (+ `.manifest.json`); `update-firmware-json.yml` (or
-   `scripts/update_firmware_json.py`) publishes size and signature in `firmware.json`. Manual update: choose both files on the box's update page.
+3. Copy the image and manifest to `website/update/firmware-<chip>.bin` (+ `.manifest.json`); `python3 scripts/publish_firmware_ota.py --json-only`
+   publishes size and signature in `firmware.json`. Manual update: choose both files on the box's update page.
 The box checks the signature, chip and that the version is newer (a downgrade needs `allow_downgrade=1` and the super-admin password), hashes the
 upload against the signed hash and size, accepts one upload per manifest within 15 minutes, and confirms the new image after a minute of normal running.
 

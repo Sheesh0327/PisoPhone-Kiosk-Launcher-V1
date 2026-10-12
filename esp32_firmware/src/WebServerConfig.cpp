@@ -13,6 +13,8 @@
 #include "Config.h"
 #include "SetupGate.h"
 #include "SuperAdminCreds.h"
+#include "RevenueVault.h"
+#include "RevenueLedger.h"
 #include "Security.h"
 #include "HardwareManager.h"
 #include "DeviceManager.h"
@@ -129,17 +131,9 @@ void handleResetVault() {
     if (webServer.hasArg("reset_pw")) {
         String enteredPw = webServer.arg("reset_pw");
         if (superAdminPasswordOk(enteredPw) || superAdminBasicAuthOk()) {
-            totalCoinsLifetime = 0;
-            totalCoinsSession = 0;
-            totalCentavosLifetime = 0;
-            totalCentavosSession = 0;
-            lastSavedTotalCoins = 0;
-            lastSavedTotalCentavos = 0;
-            prefs.begin(NVS_NAMESPACE, false);
-            prefs.putULong(NVS_KEY_TOTAL_COINS, 0);
-            prefs.putULong(NVS_KEY_TOTAL_CENTAVOS, 0);
-            prefs.end();
-            Serial.println("[👑 VAULT] Lifetime revenue counter reset to 0 by Super Admin (Vendor).");
+            if (vaultCollect(revenue::VENDOR_PASSWORD_RESET)) {
+                Serial.println("[👑 VAULT] Collection recorded by Super Admin (Vendor); lifetime totals are kept.");
+            }
         } else {
             Serial.println("[⚠️ VAULT] Reset attempted without valid Super Admin credentials.");
         }

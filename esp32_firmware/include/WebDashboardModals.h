@@ -32,6 +32,21 @@ const char PORTAL_MODALS_HTML[] PROGMEM = R"HTML(
     </div>
 </div>
 
+<!-- Payments the box could not deliver -->
+<div id="orphans_modal" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-head">
+            <h3>Payments that were not delivered</h3>
+            <button type="button" class="modal-x" onclick="hideModal('orphans_modal')" aria-label="Close"><svg class="ic"><use href="#i-x"/></svg></button>
+        </div>
+        <div id="orphans_body" class="modal-body">Loading…</div>
+        <div class="modal-foot">
+            <button type="button" id="orphans_all_btn" class="btn" onclick="handleAllOrphans()"><svg class="ic"><use href="#i-check"/></svg>Mark all handled</button>
+            <button type="button" class="btn" onclick="hideModal('orphans_modal')">Close</button>
+        </div>
+    </div>
+</div>
+
 <!-- Pair a connecting phone -->
 <div id="unassigned_pair_modal" class="modal-overlay">
     <div class="modal">

@@ -1,6 +1,6 @@
 # Setting up by hand (the manual)
 
-> **Most people should not need this page.** The setup program does every step below for you, in a window that guides you
+> **Most people should not need this page.** The setup program does every step below for you, in a web page that guides you (open it on your phone)
 > from the bare boards to working phones: see [`README.md`](README.md). Use this manual when you prefer to do it yourself, to
 > understand what the program does, or to repair one part of an installed system.
 
@@ -8,18 +8,26 @@ One file, `piso-setup.sh`, turns a factory-reset OpenWrt router into the whole P
 order as the program: the coin box, the router (steps 1 to 3), alerts, and the phones (step 5).
 
 ## Before you start
-1. **Flash the ESP32 coin box** from the browser (https://pisophone.pages.dev/flash.html, see "Flashing the coin box" below) and power it on. It joins the hidden `PisoCoinBox` Wi-Fi by itself, which the router creates. A used box must be factory reset first (it remembers its old Wi-Fi).
+1. **Flash the ESP32 coin box** (the setup program does it over USB; by hand with esptool or PlatformIO, see "Flashing the coin box" below) and power it on. It joins the hidden `PisoCoinBox` Wi-Fi by itself, which the router creates. A used box must be factory reset first (it remembers its old Wi-Fi).
 2. **Modem into the router's WAN port** (internet is needed once, to download packages).
 3. A PC on one of the router's **LAN ports**.
 4. The modem's own network must not be `10.0.0.x` or `10.0.30.x` (the script stops and tells you if it is).
 
 ### Flashing the coin box (once per box, by USB)
-Open **https://pisophone.pages.dev/flash.html** in Chrome or Edge on a computer, plug the box's ESP32 in with a USB data
-cable and click **Connect the box and install**. The page detects the chip (ESP32-C3 or ESP32), downloads the matching
-image, checks its sha256, writes it, reads it back to verify, and restarts the box. Keep **Erase everything first** ticked
-for a new or used box. If it does not connect: hold the board's BOOT button, tap RESET, release BOOT, and try again.
-The images are built by CI from the branch's firmware (`.github/workflows/firmware-images.yml`, the `-dev` environments)
-and published in `website/flash/`; on the beta site the page flashes beta's firmware.
+The setup program (`pisophone_setup.py`) does this by itself: it finds the board on USB, asks it which chip it is (ESP32-C3 or
+ESP32), downloads the matching image from the website, checks its size and sha256, erases the board, writes the image, reads
+it back to verify and restarts the box. The images are built by CI from the branch's firmware
+(`.github/workflows/firmware-images.yml`, the `-dev` environments) and published in `website/flash/`
+(`manifest.json` lists them); on the beta site the program writes beta's firmware.
+
+By hand with Espressif's tool (`python3 -m pip install esptool`), from the same files:
+```
+curl -O https://pisophone.pages.dev/flash/esp32-c3-dev.bin          # esp32dev-dev.bin for a classic ESP32
+python3 -m esptool --port <PORT> --baud 460800 write_flash -e -z 0x0 esp32-c3-dev.bin     # 0x1000 for the classic ESP32
+```
+(`<PORT>` is `COM5` on Windows, `/dev/ttyUSB0` or `/dev/ttyACM0` on Linux, `/dev/cu.usbserial-...` on macOS; esptool 5 spells the
+command `write-flash`.) `-e` erases everything first, so a used box forgets its old Wi-Fi. If it does not connect: hold the
+board's BOOT button, tap RESET, release BOOT, and try again.
 
 For developers, PlatformIO still works:
 ```
@@ -30,7 +38,7 @@ The box starts with the published defaults (admin password `Coinslot@Setup`, set
 changes the password and key by itself, and the box refuses coins until its password has been changed.
 
 ## The program in the terminal (steps 1 and 2 without typing the commands)
-`python3 pisophone_setup.py --cli` is the program without its window. Download **https://pisophone.pages.dev/pisophone_setup.py** (also in this folder: `setup/pisophone_setup.py`), plug the
+`python3 pisophone_setup.py --cli` is the program in the terminal, without its setup web page (the default mode serves the page: see `README.md`). Download **https://pisophone.pages.dev/pisophone_setup.py** (also in this folder: `setup/pisophone_setup.py`), plug the
 computer into a LAN port of the factory-reset router (modem in its WAN port, the coin box flashed and powered on), turn the
 computer's Wi-Fi off, and run it:
 ```
@@ -45,8 +53,8 @@ itself), runs the setup with your answers while you watch its output, and saves 
 printable setup sheet** in the current folder (only you can read them), then opens the coin box's phone setup page in your
 browser, already filled in. At the end it offers to connect Telegram alerts.
 
-It needs Python 3.8 or newer and the `ssh` command, which Windows 10/11, macOS and Linux already have (Windows: Settings > Apps
-> Optional features > OpenSSH Client, if it is missing). The passwords travel over the SSH connection's input, never on a
+It needs Python 3.8 or newer and the `ssh` command (installed for you on Linux when it runs as root; Windows: Settings > Apps
+> Optional features > OpenSSH Client, if it is missing) and, to write the coin box over USB, `esptool` (installed for you with pip; `--no-flash` skips the box, `--no-install` installs nothing). The passwords travel over the SSH connection's input, never on a
 command line, and the router's SSH key is pinned for the run (the same key must answer at 192.168.1.1 and at 10.0.0.1).
 Running it again is safe: a router that was set up before keeps its names and passwords and is only finished or repaired
 (ssh then asks for the router password, which is in the saved summary). Other uses: `--update` installs new software on a
@@ -96,7 +104,7 @@ It has every password (router, PisoKiosk Wi-Fi, coin box admin). The setup also 
 3. **Wi-Fi customer:** join the customer Wi-Fi (`PisoWiFi`) with a phone, open the login page, pick a plan, tap Insert Coin, insert one coin. The page shows each coin at once with a countdown, and a **Done** button. You are *not* online yet (so the phone does not close the login page while you add coins). Insert more coins if you like, then tap **Done** (or wait 15 s after the last coin): the page then says you are online with your time and code. Browse something.
 4. **Second device:** while a window is open, try Insert Coin on another phone. It must be refused with a "Try again" page.
 5. **Rental phone:** join `PisoKiosk` with a kiosk phone (the app's own flow) and pay once.
-6. `piso-setup reconcile` must say `RECONCILE OK` (needs firmware 3.2.1). After the box's revenue is collected its count starts again at 0;
+6. `piso-setup reconcile` must say `RECONCILE OK` (needs firmware 3.2.1). On box firmware newer than 3.3.3 the count keeps going through a collection; on older firmware it starts again at 0 after one;
    the portal notices that by itself ("compared from now on"). If a mismatch stays after a collection: `piso-setup reconcile rebase`.
 7. `piso-setup diag > diag.txt` and keep the output: it contains the coin timings and no passwords. Send it with any bug report.
 
@@ -179,7 +187,7 @@ The setup asks you to choose the router password (or shows a generated one and a
 | command | what it does |
 |---|---|
 | `piso-setup test-coin` | arms the coin slot and waits for a coin, with no customer portal involved. It says whether the box counts the coin. |
-| `piso-setup reconcile [rebase]` | compares the box's own coin count with the router's revenue ledger and checks that nobody edited the ledger (needs firmware 3.2.1). The box's count restarts when its revenue is collected; that is noticed by itself, and `rebase` compares from now on. |
+| `piso-setup reconcile [rebase]` | compares the box's own coin count with the router's revenue ledger and checks that nobody edited the ledger (needs firmware 3.2.1). On box firmware older than 3.3.4 the box's count restarts at 0 when its revenue is collected (newer firmware keeps counting); that is noticed by itself, and `rebase` compares from now on. |
 | `piso-setup telegram` | connects a Telegram bot: alerts (router restarted, box offline, revenue mismatch, a device abusing the coin slot, daily report) and remote commands `/status /report /reconcile /diag /restart /reboot`, answered only to your chat. Create the bot with @BotFather first. Optional: put a healthchecks.io URL in `/etc/piso-monitor.conf` (`HEALTHCHECK_URL`) so you are told when the whole router goes silent. |
 | `piso-setup self-update [check]` / `auto-update on\|off` | **updates from the website**: the router checks hourly for a release you signed (docs/RELEASE.md), installs it when no customer is online, goes back by itself if it does not run, and tells you in Telegram (`/update` installs now). Only releases signed with your owner key are accepted. |
 | `piso-setup update [check]` | the same as `self-update` (below), when run as the installed command on the router: fetches the newest release the owner signed from https://pisophone.pages.dev/update and installs it now. (A router still on release 1.0.0 needs `piso-setup self-update` once.) |
@@ -200,7 +208,7 @@ The setup asks you to choose the router password (or shows a generated one and a
 * Everything is logged in `/root/piso-setup.log`.
 
 ## Tips while it runs
-The setup prints `TIP:` lines at the moments people usually get stuck: what the coin box's light means, what to check when the box has not joined after one, two and five minutes (the advice depends on whether the router's `PisoCoinBox` network is on the air), what happens next when the box is found, and what to do when it is finished or a check failed. The window shows the latest tip above the log. `PISO_TIPS=0` turns them off.
+The setup prints `TIP:` lines at the moments people usually get stuck: what the coin box's light means, what to check when the box has not joined after one, two and five minutes (the advice depends on whether the router's `PisoCoinBox` network is on the air), what happens next when the box is found, and what to do when it is finished or a check failed. The setup page shows the latest tip above the log. `PISO_TIPS=0` turns them off.
 
 ## For developers
 The setup file is written in parts: **edit the files in `setup/src/`** (`00-header` settings and helpers, `20-preflight`,

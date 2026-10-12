@@ -22,6 +22,12 @@ object BoxClock {
     @Volatile
     private var offsetMs = 0L
 
+    @Volatile
+    private var heard = false
+
+    /** True once the box's time has been heard: only then is [nowMs] the box's clock and not just this phone's own. */
+    fun isSynced(): Boolean = heard
+
     fun nowMs(): Long = System.currentTimeMillis() + offsetMs
 
     fun offsetMs(): Long = offsetMs
@@ -29,6 +35,7 @@ object BoxClock {
     /** Learns the box's time. Returns true when the correction changed. */
     fun learn(serverTimeMs: Long, phoneNowMs: Long = System.currentTimeMillis()): Boolean {
         if (serverTimeMs < MIN_PLAUSIBLE_MS) return false
+        heard = true
         val newOffset = serverTimeMs - phoneNowMs
         if (abs(newOffset - offsetMs) <= TOLERANCE_MS) return false
         offsetMs = newOffset
@@ -47,5 +54,6 @@ object BoxClock {
     /** For tests. */
     fun reset() {
         offsetMs = 0L
+        heard = false
     }
 }

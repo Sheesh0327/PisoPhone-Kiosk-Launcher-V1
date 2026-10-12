@@ -116,7 +116,7 @@ jobs:
           flag firmware_build "^(esp32_firmware/|protocol/|$W)"
           flag firmware_tests "^(esp32_firmware/|protocol/|scripts/|$W)"
           flag portal "^(tools/pisoportal/|router/|setup/|website/install\.sh|website/pisophone_setup\.py|tools/build_piso_setup\.py|scripts/(sign_router|owner_key|make_owner_keys)\.py|$W)"
-          flag website "^(website/|scripts/check_published_apk\.py|scripts/tests/test_check_published_apk\.py|app/src/main/java/com/pisophone/kiosk/(security/KioskSecurity|network/KioskWifi|provisioning/QrProvisioning)\.kt|scripts/test_provisioning\.js|scripts/test_flasher\.js|scripts/tests/test_site_page\.py|scripts/check_vendored\.py|$W)"
+          flag website "^(website/|scripts/check_published_apk\.py|scripts/tests/test_check_published_apk\.py|app/src/main/java/com/pisophone/kiosk/(security/KioskSecurity|network/KioskWifi|provisioning/QrProvisioning)\.kt|scripts/tests/test_provisioning\.js|scripts/tests/test_flasher\.js|scripts/tests/test_site_page\.py|scripts/check_vendored\.py|$W)"
 
   security-rules:
     name: Security rules
@@ -137,10 +137,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: The setup page's provisioning helpers (validation, shell quoting, the box's link, the QR code) and the flasher's
+      - name: The setup page's provisioning helpers (validation, shell quoting, the box's link, the QR code)
         run: |
-          node scripts/test_provisioning.js
-          node scripts/test_flasher.js
+          node scripts/tests/test_provisioning.js
       - name: The published APK is the one app.json describes (QR setup needs the signing certificate to match)
         run: |
           python3 scripts/check_published_apk.py
@@ -195,14 +194,24 @@ jobs:
           git diff --exit-code protocol
       - name: Check generated web assets are up to date
         run: python3 scripts/embed_web.py --check
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-1.63.0
+      - name: The dashboard's own scripts in a browser
+        run: |
+          pip install -q playwright==1.63.0 && playwright install --with-deps chromium
+          python3 scripts/tests/test_portal_orphans_ui.py
       - name: Run host tests
         run: sh esp32_firmware/host_tests/run.sh
       - name: Test the sold-unit checker
         run: python3 scripts/tests/test_sold_unit_check.py
-      - name: Test the recovery code tool
+      - name: Test the recovery code tool, the QR card printer and the firmware publisher
         run: |
           pip install qrcode pillow
           python3 scripts/tests/test_recovery_code.py
+          python3 scripts/tests/test_make_cards.py
+          python3 scripts/tests/test_publish_firmware.py
 
   firmware-build:
     name: Firmware build (${{ matrix.env }})
@@ -287,10 +296,8 @@ jobs:
         run: python3 router/tests/test_install.py
       - name: Check the router setup run from a computer (setup/pisophone_setup.py, against a fake ssh and router)
         run: python3 router/tests/test_pisophone_setup.py
-      - name: Check the setup program's window (every page, against a fake router, coin box and phone)
-        run: |
-          sudo apt-get install -y -q python3-tk xvfb
-          xvfb-run -a /usr/bin/python3 router/tests/test_setup_gui.py
+      - name: Check the setup page (this computer and what it installs, the PIN and the server, every step in a phone-sized browser)
+        run: CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 router/tests/test_setup_web.py
       - name: Check the Telegram monitor against a fake Telegram
         run: python3 router/tests/test_monitor.py
       - name: Check router updates from the website (signed releases only, staged rollout, undo of a release that does not run)

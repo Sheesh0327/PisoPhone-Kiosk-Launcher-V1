@@ -75,6 +75,7 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
                         dpm.clearUserRestriction(adminComponent, android.os.UserManager.DISALLOW_FACTORY_RESET)
                         dpm.clearUserRestriction(adminComponent, android.os.UserManager.DISALLOW_SAFE_BOOT)
                         dpm.clearUserRestriction(adminComponent, android.os.UserManager.DISALLOW_UNINSTALL_APPS)
+                        com.pisophone.kiosk.network.KioskWifi.releaseNetworkLock(context)
                     } catch (e: Exception) {
                         Log.w(TAG, "Failed to clear user restrictions: ${e.message}")
                     }
