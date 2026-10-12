@@ -6,6 +6,12 @@ box_station() {  # MAC of a station joined to the box network
 	_if=$(box_ifname); [ -n "$_if" ] || return 1
 	iwinfo "$_if" assoclist 2> /dev/null | awk 'toupper($1) ~ /^[0-9A-F][0-9A-F]:[0-9A-F:]+$/ { print toupper($1); exit }'
 }
+# psk_mismatches: how often the router's Wi-Fi log says a station sent the wrong password. A box that was set up before keeps the
+# Wi-Fi password it was given; one that tries another is let in for a moment and thrown out again, which looks like "joined" if
+# only the station list is read.
+psk_mismatches() { logread 2> /dev/null | grep -c 'POSSIBLE-PSK-MISMATCH'; }
+# the words for a box that is refused (shown while pairing, in the failure message and by box-diag)
+PSK_HINT="the box is trying to join but the router refuses its Wi-Fi password: it remembers one from an earlier setup. Factory reset the box (touch the wire on GPIO 2 to ground for 5 seconds, or flash it again with an erase), then run: piso-setup pair"
 box_up() { curl -s -m 4 "http://$BOX_IP/api/gateway/challenge" 2> /dev/null | grep -q '{'; }
 
 # pair_box: open the box network, wait for the box to join, then admit only its MAC and give it BOX_IP.
@@ -30,11 +36,14 @@ pair_box() {
 	conf_set BOX_WIFI_ROTATED 0
 	_key="$BOX_DEFAULT_WIFI"
 	set_box_key "$_key"
-	_t=0; MAC=""
+	_t=0; MAC=""; _mm0=$(psk_mismatches); _refused=""; _told=""
 	while [ "$_t" -lt "$PAIR_WAIT" ]; do
 		MAC=$(box_station)
+		# a station that is listed while the log says its password is refused is not paired: it is thrown out a moment later
+		if [ -n "$MAC" ] && [ "$(psk_mismatches)" -gt "$_mm0" ]; then _refused=1; MAC=""; fi
 		[ -n "$MAC" ] && break
 		sleep 5; _t=$((_t + 5))
+		if [ -n "$_refused" ] && [ -z "$_told" ]; then _told=1; log "  $PSK_HINT"; fi
 		if [ $((_t % 30)) -eq 0 ]; then
 			if [ -n "$(box_ifname)" ]; then _net="$BOX_SSID is on the air"; else _net="$BOX_SSID is NOT on the air"; fi
 			log "  still waiting for the coin box ($_t of $PAIR_WAIT s): $_net, nobody has joined it yet"
@@ -59,6 +68,7 @@ pair_box() {
 		cmd_box_diag   # while the network is still as it was during the wait
 		lock_box_network ""
 		[ -n "$_up" ] || die "the hidden $BOX_SSID network is not on the air (check the router's 2.4 GHz radio: iwinfo), so the coin box could not join it. Then run: piso-setup pair"
+		[ -z "$_refused" ] || die "$PSK_HINT"
 		die "the coin box did not join the hidden $BOX_SSID network. Check that it is powered and has the current firmware (or factory reset it: it must try $BOX_SSID), then run: piso-setup pair"
 	fi
 	if [ "$_key" = "$_old" ] && [ "$_old" != "$BOX_DEFAULT_WIFI" ]; then conf_set BOX_WIFI_ROTATED 1; fi   # it joined with its own password

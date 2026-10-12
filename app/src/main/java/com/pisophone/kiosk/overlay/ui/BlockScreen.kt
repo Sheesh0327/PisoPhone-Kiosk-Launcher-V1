@@ -18,7 +18,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -26,7 +25,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.pisophone.kiosk.R
 import com.pisophone.kiosk.model.BatteryAlertState
 import com.pisophone.kiosk.model.BatteryStatus
 import com.pisophone.kiosk.network.Esp32Responses
@@ -36,7 +34,6 @@ import com.pisophone.kiosk.overlay.ui.EmergencyRecoveryDialog
 import com.pisophone.kiosk.overlay.ui.SecurityVaultView
 import com.pisophone.kiosk.service.AccountController
 import com.pisophone.kiosk.ui.video.LockScreenPresence
-import com.pisophone.kiosk.ui.video.LoopingVideoBackground
 
 @Composable
 fun BlockScreen(
@@ -177,36 +174,8 @@ fun BlockScreen(
     Box(
         modifier = modifier.background(Background),
     ) {
-        // The logo animation behind the content: a square, as wide as the screen allows, with its dark edges faded into the theme
-        // and a dim layer so the text on top stays readable.
-        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val side = minOf(maxWidth, maxHeight)
-            Box(modifier = Modifier.size(side).align(Alignment.Center)) {
-                LoopingVideoBackground(
-                    videoRes = R.raw.piso_lock_logo,
-                    posterRes = R.drawable.piso_lock_logo_poster,
-                    modifier = Modifier.fillMaxSize(),
-                )
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.radialGradient(
-                                0f to Background.copy(alpha = 0.1f),
-                                0.62f to Background.copy(alpha = 0.2f),
-                                1f to Background,
-                            ),
-                        ),
-                )
-            }
-        }
-        // The TechNet mascot, a faint animated watermark under everything (it takes no touches and moves nothing).
-        MascotWatermark(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .fillMaxWidth(0.8f)
-                .offset(x = 24.dp),
-        )
+        // The TechNet mascot and his stickers, moving behind the content (the canvas takes no touches and moves no layout).
+        LockScreenArt(modifier = Modifier.fillMaxSize(), landscape = isLandscape, scrim = Background)
         Column(
             modifier = Modifier
                 .fillMaxSize()

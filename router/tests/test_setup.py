@@ -543,6 +543,16 @@ r = box_diag('box_ifname() { echo wlan0-3; }; iwinfo() { [ "$2" = assoclist ] &&
              'conf_set BOX_MAC AA:BB:CC:DD:EE:01; conf_set BOX_WIFI_ROTATED 0; uci() { case "$*" in *box_ap.key*) echo PisoCoinBox@Setup;; esac; }')
 check("verdict: the link works" in r.stdout, "box-diag: everything fine -> the link works: " + r.stdout + r.stderr)
 check("box-diag) cmd_box_diag" in text and "cmd_box_diag 2>&1" in text.split("cmd_diag() {")[1].split("\n}\n")[0], "box-diag is a command and part of piso-setup diag")
+# a box that is listed as joined while the router's log says its password is refused is not paired: the setup says so and stops
+os.path.exists(f"{tmp}/logn") and os.remove(f"{tmp}/logn")
+r = lib(f'sleep() {{ :; }}; logread() {{ c=$(cat {tmp}/logn 2>/dev/null || echo 0); c=$((c + 1)); echo $c > {tmp}/logn; [ "$c" -gt 1 ] && echo "hostapd: phy0-ap2: AP-STA-POSSIBLE-PSK-MISMATCH 84:c7:bb:e1:57:60"; }}; '
+        'box_station() { echo 84:C7:BB:E1:57:60; }; box_ifname() { echo wlan0-3; }; cmd_box_diag() { :; }; pair_box; echo rc=$?', env={"PAIR_WAIT": "20"})
+out = r.stdout + r.stderr
+check("refuses its Wi-Fi password" in out and "Factory reset the box" in out and "the coin box joined" not in out and "rc=0" not in out,
+      "a refused box is not taken for a paired one, and the setup says to factory reset it: " + out[-700:])
+r = box_diag('box_ifname() { echo wlan0-3; }; iwinfo() { [ "$2" = assoclist ] && echo "AA:BB:CC:DD:EE:01  -50 dBm / -95 dBm"; }; logread() { echo "hostapd: AP-STA-POSSIBLE-PSK-MISMATCH aa:bb:cc:dd:ee:01"; }; '
+             'conf_set BOX_MAC AA:BB:CC:DD:EE:01; conf_set BOX_WIFI_ROTATED 0; uci() { case "$*" in *box_ap.key*) echo PisoCoinBox@Setup;; esac; }')
+check("verdict: the box is trying to join but the router refuses its Wi-Fi password" in r.stdout, "box-diag: password mismatches in the log -> factory reset the box: " + r.stdout + r.stderr)
 # ---- tips along the way ------------------------------------------------------------------------------------------------------
 r = lib('sleep() { :; }; box_station() { :; }; box_ifname() { echo wlan0-3; }; box_diag() { :; }; cmd_box_diag() { :; }; pair_box; echo rc=$?', env={"PAIR_WAIT": "310"})
 out = r.stdout + r.stderr

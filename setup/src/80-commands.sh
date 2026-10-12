@@ -133,6 +133,9 @@ cmd_box_diag() {
 	echo "neighbour: $(ip neigh show 2> /dev/null | grep "$BOX_IP" || echo none)"
 	if box_up; then _answers=yes; else _answers=no; fi
 	echo "answers at $BOX_IP: $_answers"
+	if [ -z "$_verdict" ] && [ "$_answers" != yes ] && [ -n "$_mac" ] && logread 2> /dev/null | tail -n 40 | grep -qi "POSSIBLE-PSK-MISMATCH $_mac"; then
+		_verdict="$PSK_HINT"
+	fi
 	if [ -z "$_verdict" ]; then
 		if [ "$_answers" = yes ]; then _verdict="the link works"
 		elif [ -z "$_st" ]; then _verdict="the box has not joined: read its serial console ([WIFI] lines say why), check it is powered and has this firmware"
