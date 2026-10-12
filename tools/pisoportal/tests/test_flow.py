@@ -37,6 +37,11 @@ try:
     with urllib.request.urlopen(req, timeout=10) as r:
         check(r.read() == b"" and int(r.headers["Content-Length"]) == len(logo), "HEAD of the logo has its length and no body")
 
+    with urllib.request.urlopen(f"http://127.0.0.1:{env.PP}/mascot.png", timeout=10) as r:
+        mascot, mascot_type = r.read(), r.headers.get("Content-Type")
+    check(mascot[:8] == b"\x89PNG\r\n\x1a\n" and mascot_type == "image/png" and len(mascot) < 20000 and 'src="/mascot.png"' in body,
+          f"the TechNet mascot is served as a small PNG and the page shows it ({len(mascot)} bytes)")
+
     # ---- a payment: P17 on Endurance (1 + 1 + 15 pesos), online only when the customer is done ----------------------------------
     env.set_box(busy=False, coins_at=[0.5, 1.0] + [1.5 + 0.1 * i for i in range(15)])
     a = Cust("127.0.0.1")

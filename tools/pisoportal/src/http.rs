@@ -98,6 +98,8 @@ const SAFE_HEADERS: &str = "X-Content-Type-Options: nosniff\r\nX-Frame-Options: 
 
 /// The TechNet PisoWifi logo (fixed branding, not a setting): served from memory like the pages.
 const BRAND_LOGO: &[u8] = include_bytes!("brand.png");
+/// The TechNet mascot shown on the login page.
+const BRAND_MASCOT: &[u8] = include_bytes!("mascot.png");
 
 struct Request {
     method: String,
@@ -467,6 +469,9 @@ fn handle(p: Arc<Portal>, stream: TcpStream, peer: SocketAddr) {
         }
         "/brand.png" => {
             respond_bytes(&mut conn.s, "200 OK", "image/png", BRAND_LOGO, "Cache-Control: public, max-age=86400\r\n", !head_only)
+        }
+        "/mascot.png" => {
+            respond_bytes(&mut conn.s, "200 OK", "image/png", BRAND_MASCOT, "Cache-Control: public, max-age=86400\r\n", !head_only)
         }
         _ => {
             let etag = format!("\"{}\"", p.page.1);
