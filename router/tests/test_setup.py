@@ -707,5 +707,78 @@ check(r.returncode != 0 and "does not answer" in r.stdout, "test-coin explains a
 r = run("diag")
 check("=== piso-setup diag" in r.stdout and "--- last coin-slot log lines" in r.stdout and "ROOT_PASS" not in r.stdout and "password:" not in r.stdout.lower(), "diag runs and prints no passwords")
 
+# ---- space, backups and what a firmware upgrade keeps (96-space-backup.sh) ---------------------------------------------------------
+sysconf = f"{tmp}/sysupgrade.conf"
+open(sysconf, "w").write("/etc/config/network\n")
+r = lib("keep_across_upgrades; keep_across_upgrades; cat $PISO_SYSUPGRADE_CONF", env={"PISO_SYSUPGRADE_CONF": sysconf})
+lines = r.stdout.split()
+check("/etc/piso-setup.conf" in lines and "/etc/coinslot.d" in lines and "/usr/bin/pisoportal" in lines and "/etc/config/network" in lines,
+      "a firmware upgrade keeps the settings, the ledger and the programs, and the owner's own lines: " + r.stdout)
+check(len(lines) == len(set(lines)), "running it twice adds nothing twice")
+r = lib("work_base", env={"PISO_MEM_KB": "90000"})
+check(r.stdout.strip() == "/tmp", "plenty of memory: an update works in memory: " + r.stdout)
+r = lib("work_base", env={"PISO_MEM_KB": "12000", "PISO_FLASH_WORK": "/root"})
+check(r.stdout.strip() == "/root", "little memory: an update works in flash instead: " + r.stdout)
+logf = f"{tmp}/trim.log"
+open(logf, "w").write("".join(f"line {i}\n" for i in range(1000)))
+r = lib("trim_log; wc -l < $LOG; head -n1 $LOG", env={"PISO_LOG": logf, "PISO_LOG_MAX": "900", "PISO_LOG_KEEP": "600"})
+check(r.stdout.split()[0] == "600" and "line 400" in r.stdout, "a long log is cut to its last 600 lines: " + r.stdout)
+osr = f"{tmp}/openwrt"
+os.makedirs(f"{osr}/etc", exist_ok=True)
+fam = {"mipsel_24kc": "mipsel", "mipsel_74kc": "mipsel", "mips_24kc": "mips", "aarch64_cortex-a53": "aarch64", "aarch64_generic": "aarch64",
+       "arm_cortex-a7_neon-vfpv4": "armv7", "x86_64": "x86_64", "arm_arm1176jzf-s_vfp": "", "riscv64_riscv64": ""}
+for pkg, want in fam.items():
+    open(f"{osr}/etc/openwrt_release", "w").write(f"DISTRIB_ARCH='{pkg}'\n")
+    got = lib("router_family", env={"PISO_ROOT": osr}).stdout.strip()
+    check(got == want, f"the CPU family of {pkg} is '{want}': got '{got}'")
+open(f"{osr}/etc/openwrt_release", "w").write("DISTRIB_ARCH='aarch64_cortex-a53'\n")
+r = lib("check_arch; echo reached", env={"PISO_ROOT": osr})
+check("aarch64_cortex-a53" in r.stdout + r.stderr and "piso-setup-aarch64.sh" in r.stdout + r.stderr and "reached" not in r.stdout and "Nothing was changed" in r.stdout + r.stderr,
+      "another CPU family is refused before anything changes, and the right file is named: " + r.stdout + r.stderr)
+open(f"{osr}/etc/openwrt_release", "w").write("DISTRIB_ARCH='riscv64_riscv64'\n")
+r = lib("check_arch; echo reached", env={"PISO_ROOT": osr})
+check("no portal program built yet" in r.stdout + r.stderr and "reached" not in r.stdout, "a CPU with no build is refused: " + r.stdout + r.stderr)
+open(f"{osr}/etc/openwrt_release", "w").write("DISTRIB_ARCH='mipsel_24kc'\n")
+check("reached" in lib("check_arch; echo reached", env={"PISO_ROOT": osr}).stdout, "mipsel_24kc passes (this file is built for mipsel)")
+open(f"{osr}/etc/openwrt_release", "w").write("DISTRIB_ARCH='aarch64_cortex-a53'\n")
+check("reached" in lib("PISO_ARCH=aarch64; check_arch; echo reached", env={"PISO_ROOT": osr}).stdout, "an aarch64 router passes with the aarch64 file")
+# export / import round trip
+root = f"{tmp}/exp"
+for d in ("etc/coinslot.d",):
+    os.makedirs(f"{root}/{d}", exist_ok=True)
+open(f"{root}/etc/piso-setup.conf", "w").write("GW_KEY='abc'\n")
+open(f"{root}/etc/coinslot.d/revenue.csv", "w").write("1,2,3\n")
+bk = f"{tmp}/backup.tar.gz"
+r = lib(f"cmd_export {bk}", env={"PISO_ROOT": root, "PISO_TEST_NONROOT": "1"})
+check(os.path.isfile(bk) and oct(os.stat(bk).st_mode & 0o777) == "0o600" and "Backup written" in r.stdout, "export writes a private backup: " + r.stdout + r.stderr)
+os.remove(f"{root}/etc/piso-setup.conf"); os.remove(f"{root}/etc/coinslot.d/revenue.csv")
+r = lib(f"ASSUME_YES=1; cmd_import {bk}", env={"PISO_ROOT": root, "PISO_TEST_NONROOT": "1"})
+check(open(f"{root}/etc/piso-setup.conf").read() == "GW_KEY='abc'\n" and os.path.isfile(f"{root}/etc/coinslot.d/revenue.csv") and "Restored" in r.stdout, "import puts the settings and the ledger back: " + r.stdout + r.stderr)
+import subprocess as _sp
+evil = f"{tmp}/evil.tar.gz"
+_sp.run(["tar", "-C", root, "-czf", evil, "etc/piso-setup.conf", "etc/coinslot.d/revenue.csv"])
+open(f"{root}/etc/passwd", "w").write("x")
+_sp.run(["tar", "-C", root, "-czf", evil, "etc/passwd"])
+r = lib(f"ASSUME_YES=1; cmd_import {evil}", env={"PISO_ROOT": root, "PISO_TEST_NONROOT": "1"})
+check("refused" in r.stdout + r.stderr, "a backup with other files is refused: " + r.stdout + r.stderr)
+summ = f"{tmp}/summary.txt"
+open(summ, "w").write("passwords")
+r = lib("ASSUME_YES=1; cmd_forget_summary", env={"PISO_SUMMARY": summ, "PISO_TEST_NONROOT": "1"})
+check(not os.path.exists(summ), "forget-summary deletes the saved summary: " + r.stdout)
+
+
+# ---- the console and LuCI ports (97-console.sh) ---------------------------------------------------------------------------------------
+r = lib("rm -f $CONF; echo $(console_port) $(luci_port http) $(luci_port https); conf_set CONSOLE_MODE front; echo $(console_port) $(luci_port http) $(luci_port https)")
+check(r.stdout.split() == ["8081", "80", "443", "80", "8080", "8443"], "console: behind LuCI on 8081 by default; as the front page it takes 80 and LuCI moves to 8080 / 8443: " + r.stdout + r.stderr)
+os.makedirs(f"{root}/etc/config", exist_ok=True); open(f"{root}/etc/config/uhttpd", "w").write("")
+r = lib("rm -f $CONF; router_access_uci | grep uhttpd; conf_set CONSOLE_MODE front; router_access_uci | grep uhttpd", env={"PISO_ROOT": root})
+check("listen_http='10.0.0.1:80'" in r.stdout and "listen_http='10.0.0.1:8080'" in r.stdout and "listen_https='10.0.0.1:8443'" in r.stdout, "LuCI's listen lines follow the mode: " + r.stdout)
+os.makedirs(f"{root}/etc", exist_ok=True)
+r = lib("rm -f $CONF; write_coinslot_conf k1 aa; cat $PISO_ROOT/etc/coinslot.conf; conf_set CONSOLE_MODE front; write_coinslot_conf k1 aa; grep CONSOLE_PORT $PISO_ROOT/etc/coinslot.conf", env={"PISO_ROOT": root})
+check("CONSOLE_BIND='10.0.0.1'" in r.stdout and "CONSOLE_PORT='8081'" in r.stdout and "CONSOLE_PORT='80'" in r.stdout, "the portal's settings carry the console's address and port: " + r.stdout + r.stderr)
+r = lib("rm -f $CONF; console_answers() { return 1; }; cmd_console on; echo rc=$?", env={"PISO_TEST_NONROOT": "1"})
+check("does not answer" in r.stdout + r.stderr and "front" not in (lib("conf_get CONSOLE_MODE").stdout), "console on: refused while the console does not answer yet (nothing changed): " + r.stdout + r.stderr)
+r = lib("rm -f $CONF; n=0; console_answers() { [ \"$1\" = 8081 ]; }; console_apply() { echo APPLY mode=[$(conf_get CONSOLE_MODE)]; }; sleep() { :; }; (cmd_console on); echo mode=[$(conf_get CONSOLE_MODE)]", env={"PISO_TEST_NONROOT": "1"})
+check("APPLY mode=[front]" in r.stdout and "APPLY mode=[]" in r.stdout and "put back" in r.stdout + r.stderr and "mode=[]" in r.stdout.split("APPLY mode=[]")[-1], "console on: when the console does not come up on port 80, everything is put back: " + r.stdout + r.stderr)
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)

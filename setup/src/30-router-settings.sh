@@ -122,9 +122,9 @@ router_access_uci() {
 	[ -e "${PISO_ROOT}/etc/config/uhttpd" ] || return 0
 	cat << EOT
 delete uhttpd.main.listen_http
-add_list uhttpd.main.listen_http='$LAN_IP:80'
+add_list uhttpd.main.listen_http='$LAN_IP:$(luci_port http)'
 delete uhttpd.main.listen_https
-add_list uhttpd.main.listen_https='$LAN_IP:443'
+add_list uhttpd.main.listen_https='$LAN_IP:$(luci_port https)'
 EOT
 }
 

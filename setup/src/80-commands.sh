@@ -177,6 +177,7 @@ cmd_update() {
 		die "no PisoPhone setup found on this router: run ./piso-setup.sh without arguments first"
 	fi
 	[ "$0" != "$SELF_PATH" ] || die "this is the installed (old) copy. Copy the NEW piso-setup.sh to the router and run it from there: ./piso-setup.sh update"
+	check_arch
 	step "Updating the portal files"
 	[ -x /etc/init.d/pisoportal ] && /etc/init.d/pisoportal stop > /dev/null 2>&1   # (no program is replaced while it runs)
 	remove_old_portal
@@ -199,6 +200,7 @@ cmd_update() {
 		restart_router_access
 	fi
 	install_update_timer
+	keep_across_upgrades
 	[ -r /etc/piso-monitor.conf ] && [ -x /etc/init.d/piso_monitor ] && { /etc/init.d/piso_monitor enable; /etc/init.d/piso_monitor restart; }
 	sleep 3
 	log "Updated to setup file version $VERSION. Customers' sessions and the revenue ledger were not touched."

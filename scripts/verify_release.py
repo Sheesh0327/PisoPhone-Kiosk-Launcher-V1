@@ -102,6 +102,25 @@ def main():
         rp.append("signature does not verify")
     report("FAIL" if rp else "PASS", "router feed (release %s, rollout %s%%): %s" % (r["version"], r["rollout"], "; ".join(rp) or "checksum, size and signature verify"))
 
+    # --- the router feeds of the other CPU families (website/update/<family>/): the same checks
+    import glob
+    for jp in sorted(glob.glob("website/update/*/router.json")):
+        fam = os.path.basename(os.path.dirname(jp))
+        try:
+            rr = json.load(open(jp))
+            rrb = open(os.path.join(os.path.dirname(jp), "router-setup.sh"), "rb").read()
+        except (OSError, ValueError) as e:
+            report("FAIL", "router feed %s: %s" % (fam, e))
+            continue
+        fp = []
+        if hashlib.sha256(rrb).hexdigest() != rr["sha256"] or len(rrb) != rr["size"]:
+            fp.append("setup file differs from router.json (checksum or size)")
+        if pub and not verifies(rr["sig"], "pisophone-router-v1|%s|%s|%s|%s" % (rr["version"], rr["sha256"], rr["size"], rr["rollout"])):
+            fp.append("signature does not verify")
+        if ("PISO_ARCH='%s'" % fam).encode() not in rrb:
+            fp.append("the setup file is not built for %s" % fam)
+        report("FAIL" if fp else "PASS", "router feed %s (release %s, rollout %s%%): %s" % (fam, rr["version"], rr["rollout"], "; ".join(fp) or "checksum, size and signature verify"))
+
     # --- the app
     p = subprocess.run([sys.executable, "scripts/check_published_apk.py"], capture_output=True, text=True)
     report("PASS" if p.returncode == 0 else "FAIL", "app feed: " + ((p.stdout or p.stderr).strip().splitlines() or ["no output"])[-1])

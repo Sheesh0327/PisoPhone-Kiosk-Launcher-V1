@@ -194,7 +194,7 @@ check(r.returncode == 0 and new_prog == real_prog, "the signed release installs 
 check(open(f"{root}/usr/bin/piso-monitor.sh").read() == open(f"{ROOT}/router/piso_monitor.sh").read(), "and the monitor")
 check(release_of_installed() == "1.1.0" and not any(ln.startswith(b"#@@") for ln in open(inst, "rb")) and os.path.getsize(inst) < 200_000,
       "the installed command is now release 1.1.0, without the payload")
-check(open(f"{tmp}/backup/" + f"{root}/usr/bin/pisoportal".replace("/", "_"), "rb").read() == OLD, "the earlier program was kept aside")
+check(not os.path.exists(f"{tmp}/backup"), "the backup of the earlier release is deleted once the new one has proven itself (it was needed to go back until then)")
 check("release 1.1.0 installed and running" in telegram(), "the owner is told: " + telegram())
 cron = open(f"{root}/etc/crontabs/root").read()
 check("/usr/bin/other-job" in cron and len([ln for ln in cron.splitlines() if "self-update auto" in ln]) == 1 and f"{inst} self-update auto" in cron, "the hourly timer is in cron, the other jobs kept: " + cron)

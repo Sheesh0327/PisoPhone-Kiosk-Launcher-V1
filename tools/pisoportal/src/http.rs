@@ -97,29 +97,29 @@ const HEAD_TIME: Duration = Duration::from_secs(10);
 const SAFE_HEADERS: &str = "X-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nReferrer-Policy: no-referrer\r\n";
 
 /// The TechNet PisoWifi logo (fixed branding, not a setting): served from memory like the pages.
-const BRAND_LOGO: &[u8] = include_bytes!("brand.png");
+pub(crate) const BRAND_LOGO: &[u8] = include_bytes!("brand.png");
 /// The TechNet mascot shown on the login page.
-const BRAND_MASCOT: &[u8] = include_bytes!("mascot.png");
+pub(crate) const BRAND_MASCOT: &[u8] = include_bytes!("mascot.png");
 
-struct Request {
-    method: String,
-    path: String,
-    query: String,
-    headers: Vec<(String, String)>,
+pub(crate) struct Request {
+    pub(crate) method: String,
+    pub(crate) path: String,
+    pub(crate) query: String,
+    pub(crate) headers: Vec<(String, String)>,
 }
 
 impl Request {
-    fn header(&self, n: &str) -> Option<&str> {
+    pub(crate) fn header(&self, n: &str) -> Option<&str> {
         self.headers.iter().find(|(k, _)| k == n).map(|(_, v)| v.as_str())
     }
 }
 
 /// What the client sent: the bytes that came after the request head first (a WebSocket client may send its first frame
 /// without waiting for the answer), then the socket.
-struct Incoming {
-    s: TcpStream,
-    pre: Vec<u8>,
-    at: usize,
+pub(crate) struct Incoming {
+    pub(crate) s: TcpStream,
+    pub(crate) pre: Vec<u8>,
+    pub(crate) at: usize,
 }
 
 impl Read for Incoming {
@@ -135,7 +135,7 @@ impl Read for Incoming {
 }
 
 /// One request head, bounded in size and time. None for anything malformed, too big or too slow.
-fn read_request(mut s: TcpStream, limit: Duration) -> Option<(Request, Incoming)> {
+pub(crate) fn read_request(mut s: TcpStream, limit: Duration) -> Option<(Request, Incoming)> {
     let started = Instant::now();
     let mut buf: Vec<u8> = Vec::with_capacity(1024);
     let mut chunk = [0u8; 1024];
@@ -166,12 +166,12 @@ fn read_request(mut s: TcpStream, limit: Duration) -> Option<(Request, Incoming)
     Some((req, Incoming { s, pre: buf[end + 4..].to_vec(), at: 0 }))
 }
 
-fn respond(stream: &mut TcpStream, status: &str, ctype: &str, body: &str, extra: &str) {
+pub(crate) fn respond(stream: &mut TcpStream, status: &str, ctype: &str, body: &str, extra: &str) {
     respond_bytes(stream, status, ctype, body.as_bytes(), extra, true);
 }
 
 /// Like `respond`, for a body that is not text; `send_body` false answers a HEAD request (the length is still the real one).
-fn respond_bytes(stream: &mut TcpStream, status: &str, ctype: &str, body: &[u8], extra: &str, send_body: bool) {
+pub(crate) fn respond_bytes(stream: &mut TcpStream, status: &str, ctype: &str, body: &[u8], extra: &str, send_body: bool) {
     let _ = write!(
         stream,
         "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n{}{}\r\n",

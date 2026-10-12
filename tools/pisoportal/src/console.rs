@@ -1,0 +1,550 @@
+//! The owner's console: one friendly page for the router, in place of LuCI. Who is connected and how much they use, the rental phones, the
+//! money, and the health of the internet and the coin box. It runs inside this program (nothing more to install), signs in with the
+//! router's own root password (checked by `ubus call session login`, which is what LuCI does) and keeps its history in memory only.
+//!
+//! Routes: `/` the page; `/api/login`, `/api/logout`; `/api/overview`, `/api/clients`, `/api/phones` (needs a session); `/api/kick` (POST).
+use crate::boxlink::{with_port, BoxLink};
+use crate::core::Core;
+use crate::http::{bind_retry, read_request, respond, respond_bytes, Incoming, Request, BRAND_LOGO, BRAND_MASCOT};
+use crate::nds::ClientInfo;
+use crate::util::{b64_encode, jget, json_esc, now_secs, random_hex, valid_mac};
+use std::collections::{HashMap, VecDeque};
+use std::io::Read;
+use std::net::TcpStream;
+use std::process::Command;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+const UI: &str = include_str!("console.html");
+const UI_JS: &str = include_str!("console-ui.js");
+const VERIFY_JS: &str = include_str!("console-verify.js");
+const SESSION_IDLE: u64 = 30 * 60;
+const MAX_SESSIONS: usize = 16;
+const LOGIN_FAILS: u32 = 5;
+const LOCK_SECS: u64 = 60;
+const SAMPLE_EVERY: u64 = 5;
+const SAMPLES_KEPT: usize = 180; // 15 minutes of the internet line, in memory only
+
+// 'unsafe-eval' is for one thing only: running a newer page script from the website AFTER its signature was checked against the owner
+// key (src/console.html). Anything unsigned is never run.
+const CSP: &str =
+    "Content-Security-Policy: default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; \
+img-src 'self' data:; connect-src 'self' https://pisophone.pages.dev; base-uri 'none'; form-action 'none'; frame-ancestors 'none'\r\n";
+
+#[derive(Clone, Copy)]
+struct Sample {
+    t: u64,
+    rx: u64,
+    tx: u64,
+}
+
+pub struct Console {
+    core: Arc<Core>,
+    sessions: Mutex<HashMap<String, u64>>,
+    fails: Mutex<HashMap<String, (u32, u64)>>,
+    wan: Mutex<VecDeque<Sample>>,
+    prev: Mutex<HashMap<String, (u64, u64, u64)>>,
+}
+
+// ---- reading the router (pure parts first: they are tested) -----------------------------------------------------------------------
+
+/// The interface of the default route in /proc/net/route text.
+pub fn default_route_if(text: &str) -> Option<String> {
+    text.lines().skip(1).find_map(|l| {
+        let f: Vec<&str> = l.split_whitespace().collect();
+        (f.len() > 2 && f[1] == "00000000").then(|| f[0].to_string())
+    })
+}
+
+/// (received, sent) bytes of an interface in /proc/net/dev text.
+pub fn netdev_bytes(text: &str, iface: &str) -> Option<(u64, u64)> {
+    text.lines().find_map(|l| {
+        let (name, rest) = l.split_once(':')?;
+        if name.trim() != iface {
+            return None;
+        }
+        let f: Vec<&str> = rest.split_whitespace().collect();
+        Some((f.first()?.parse().ok()?, f.get(8)?.parse().ok()?))
+    })
+}
+
+/// mac -> host name from dnsmasq's lease file ("expiry mac ip name id").
+pub fn parse_leases(text: &str) -> HashMap<String, String> {
+    text.lines()
+        .filter_map(|l| {
+            let f: Vec<&str> = l.split_whitespace().collect();
+            (f.len() >= 4 && f[3] != "*").then(|| (f[1].to_lowercase(), f[3].to_string()))
+        })
+        .collect()
+}
+
+/// Seconds east of UTC from an OpenWrt TZ string such as "PST-8" (POSIX counts the other way), 0 when unknown.
+pub fn tz_offset_secs(tz: &str) -> i64 {
+    let mut t = tz.trim();
+    if t.starts_with('<') {
+        t = t.split_once('>').map(|(_, r)| r).unwrap_or("");
+    }
+    let Some(start) = t.find(|c: char| c.is_ascii_digit() || c == '+' || c == '-') else { return 0 };
+    let tail = &t[start..];
+    let (sign, num) = match tail.strip_prefix('-') {
+        Some(n) => (1, n),
+        None => (-1, tail.strip_prefix('+').unwrap_or(tail)),
+    };
+    let digits: String = num.chars().take_while(|c| c.is_ascii_digit()).collect();
+    sign * digits.parse::<i64>().unwrap_or(0) * 3600
+}
+
+/// (pesos today, pesos ever, pesos of the last 7 days oldest first) from the revenue ledger text.
+pub fn revenue_stats(text: &str, now: u64, tz: i64) -> (u64, u64, [u64; 7]) {
+    let day0 = |t: u64| ((t as i64 + tz).div_euclid(86400)) * 86400 - tz;
+    let today = day0(now);
+    let (mut total, mut week) = (0u64, [0u64; 7]);
+    for l in text.lines() {
+        let f: Vec<&str> = l.split(',').collect();
+        if f.len() < 3 {
+            continue;
+        }
+        let (Ok(t), Ok(p)) = (f[0].parse::<u64>(), f[2].parse::<u64>()) else { continue };
+        total += p;
+        let back = (today - day0(t)) / 86400;
+        if (0..7).contains(&back) {
+            week[6 - back as usize] += p;
+        }
+    }
+    (week[6], total, week)
+}
+
+fn kbps(prev: Option<(u64, u64)>, now_t: u64, now_b: u64) -> u64 {
+    match prev {
+        Some((t, b)) if now_t > t && now_b >= b => (now_b - b) * 8 / 1000 / (now_t - t), // bytes -> kbit/s
+        _ => 0,
+    }
+}
+
+fn read(path: &str) -> String {
+    std::fs::read_to_string(path).unwrap_or_default()
+}
+
+fn conf_value(path: &str, key: &str) -> String {
+    read(path)
+        .lines()
+        .find_map(|l| l.strip_prefix(&format!("{}=", key)).map(|v| v.trim().trim_matches('\'').trim_matches('"').to_string()))
+        .unwrap_or_default()
+}
+
+/// One plain HTTP GET with Basic auth (the coin box's dashboard API).
+fn http_get_auth(addr: &str, path: &str, user: &str, pass: &str) -> Result<String, String> {
+    use std::io::Write;
+    use std::net::ToSocketAddrs;
+    let sock = addr.to_socket_addrs().map_err(|e| e.to_string())?.next().ok_or("no address")?;
+    let mut s = TcpStream::connect_timeout(&sock, Duration::from_secs(3)).map_err(|e| e.to_string())?;
+    s.set_read_timeout(Some(Duration::from_secs(4))).ok();
+    let auth = b64_encode(format!("{}:{}", user, pass).as_bytes());
+    write!(s, "GET {} HTTP/1.0\r\nHost: box\r\nAuthorization: Basic {}\r\nConnection: close\r\n\r\n", path, auth)
+        .map_err(|e| e.to_string())?;
+    let mut buf = Vec::new();
+    let _ = s.take(262_144).read_to_end(&mut buf);
+    let text = String::from_utf8_lossy(&buf).into_owned();
+    let (head, body) = text.split_once("\r\n\r\n").unwrap_or(("", &text));
+    if head.starts_with("HTTP/1.0 401") || head.starts_with("HTTP/1.1 401") {
+        return Err("PASSWORD".into());
+    }
+    Ok(body.to_string())
+}
+
+impl Console {
+    fn new(core: Arc<Core>) -> Arc<Console> {
+        Arc::new(Console {
+            core,
+            sessions: Mutex::new(HashMap::new()),
+            fails: Mutex::new(HashMap::new()),
+            wan: Mutex::new(VecDeque::new()),
+            prev: Mutex::new(HashMap::new()),
+        })
+    }
+
+    fn wan_if(&self) -> String {
+        default_route_if(&read(&self.core.cfg.route_file)).unwrap_or_default()
+    }
+
+    fn sample_wan(&self) {
+        let iface = self.wan_if();
+        if let Some((rx, tx)) = netdev_bytes(&read(&self.core.cfg.netdev_file), &iface) {
+            let mut w = self.wan.lock().unwrap();
+            w.push_back(Sample { t: now_secs(), rx, tx });
+            while w.len() > SAMPLES_KEPT {
+                w.pop_front();
+            }
+        }
+    }
+
+    /// The router's root password, checked the way LuCI does it.
+    fn password_ok(&self, password: &str) -> bool {
+        if password.is_empty() || password.len() > 128 {
+            return false;
+        }
+        let args = format!("{{\"username\":\"root\",\"password\":\"{}\",\"timeout\":5}}", json_esc(password));
+        match Command::new(&self.core.cfg.ubus).args(["call", "session", "login", &args]).output() {
+            Ok(o) => String::from_utf8_lossy(&o.stdout).contains("ubus_rpc_session"),
+            Err(_) => false,
+        }
+    }
+
+    fn locked(&self, ip: &str) -> u64 {
+        let now = now_secs();
+        match self.fails.lock().unwrap().get(ip) {
+            Some((n, at)) if *n >= LOGIN_FAILS && now < *at + LOCK_SECS => *at + LOCK_SECS - now,
+            _ => 0,
+        }
+    }
+
+    fn fail(&self, ip: &str) {
+        let now = now_secs();
+        let mut f = self.fails.lock().unwrap();
+        let e = f.entry(ip.to_string()).or_insert((0, now));
+        if now > e.1 + LOCK_SECS {
+            *e = (0, now);
+        }
+        e.0 += 1;
+        e.1 = now;
+        if f.len() > 256 {
+            f.retain(|_, (_, at)| now < *at + LOCK_SECS);
+        }
+    }
+
+    fn new_session(&self) -> String {
+        let now = now_secs();
+        let mut s = self.sessions.lock().unwrap();
+        s.retain(|_, last| now < *last + SESSION_IDLE);
+        if s.len() >= MAX_SESSIONS {
+            if let Some(oldest) = s.iter().min_by_key(|(_, t)| **t).map(|(k, _)| k.clone()) {
+                s.remove(&oldest);
+            }
+        }
+        let token = random_hex(32);
+        s.insert(token.clone(), now);
+        token
+    }
+
+    fn session_ok(&self, req: &Request) -> bool {
+        let Some(cookie) = req.header("cookie") else { return false };
+        let Some(token) = cookie.split(';').filter_map(|p| p.trim().strip_prefix("piso_console=")).next() else { return false };
+        let now = now_secs();
+        let mut s = self.sessions.lock().unwrap();
+        match s.get_mut(token) {
+            Some(last) if now < *last + SESSION_IDLE => {
+                *last = now;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    // ---- the data ------------------------------------------------------------------------------------------------------------
+
+    fn overview(&self) -> String {
+        let cfg = &self.core.cfg;
+        let now = now_secs();
+        let clients = self.core.nds.detail();
+        let online = clients.iter().filter(|c| c.state == "Authenticated").count();
+        let waiting = clients.len() - online;
+        let (rx_kbps, tx_kbps, rx_total, tx_total, hist) = {
+            let w = self.wan.lock().unwrap();
+            let n = w.len();
+            let last = w.back().copied();
+            let before = if n >= 2 { Some(w[n - 2]) } else { None };
+            let rate = |a: Option<Sample>, b: Option<Sample>, f: fn(&Sample) -> u64| match (a, b) {
+                (Some(a), Some(b)) => kbps(Some((b.t, f(&b))), a.t, f(&a)),
+                _ => 0,
+            };
+            let mut hist = String::new();
+            let step = (n / 60).max(1);
+            for i in (step..n).step_by(step) {
+                let (a, b) = (w[i], w[i - step]);
+                if !hist.is_empty() {
+                    hist.push(',');
+                }
+                hist.push_str(&format!("[{},{},{}]", a.t, kbps(Some((b.t, b.rx)), a.t, a.rx), kbps(Some((b.t, b.tx)), a.t, a.tx)));
+            }
+            (
+                rate(last, before, |s| s.rx),
+                rate(last, before, |s| s.tx),
+                last.map(|s| s.rx).unwrap_or(0),
+                last.map(|s| s.tx).unwrap_or(0),
+                hist,
+            )
+        };
+        let tz = tz_offset_secs(&read("/etc/TZ"));
+        let (today, total, week) = revenue_stats(&read(&cfg.revenue_path()), now, tz);
+        let box_ok = BoxLink::new(&cfg.gw_box, &cfg.gw_key).challenge().is_some();
+        let (ledger_ok, ledger_lines) = match crate::ledger::verify(&cfg.revenue_path()) {
+            Ok((n, _)) => (true, n),
+            Err(l) => (false, l),
+        };
+        let mem = read("/proc/meminfo")
+            .lines()
+            .find_map(|l| l.strip_prefix("MemAvailable:").map(|v| v.trim().trim_end_matches("kB").trim().to_string()))
+            .unwrap_or_default();
+        let uptime = read("/proc/uptime").split_whitespace().next().unwrap_or("0").split('.').next().unwrap_or("0").to_string();
+        format!(
+            "{{\"version\":\"{}\",\"now\":{},\"online\":{},\"waiting\":{},\"wan_if\":\"{}\",\"rx_kbps\":{},\"tx_kbps\":{},\"rx_total\":{},\"tx_total\":{},\"history\":[{}],\
+             \"today\":{},\"total\":{},\"week\":[{}],\"box_ok\":{},\"ledger_ok\":{},\"ledger_lines\":{},\"mem_kb\":{},\"uptime\":{}}}",
+            env!("CARGO_PKG_VERSION"),
+            now,
+            online,
+            waiting,
+            json_esc(&self.wan_if()),
+            rx_kbps,
+            tx_kbps,
+            rx_total,
+            tx_total,
+            hist,
+            today,
+            total,
+            week.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(","),
+            box_ok,
+            ledger_ok,
+            ledger_lines,
+            if mem.is_empty() { "0".into() } else { mem },
+            uptime
+        )
+    }
+
+    fn clients(&self) -> String {
+        let cfg = &self.core.cfg;
+        let now = now_secs();
+        let names = parse_leases(&read(&cfg.dhcp_leases));
+        let list: Vec<ClientInfo> = self.core.nds.detail();
+        let mut prev = self.prev.lock().unwrap();
+        let mut rows: Vec<(u64, String)> = Vec::new();
+        for c in &list {
+            let (dl_kbps, ul_kbps) = match prev.get(&c.mac) {
+                Some((t, d, u)) if now > *t && c.dl_kb >= *d && c.ul_kb >= *u => {
+                    ((c.dl_kb - d) * 8 / (now - t), (c.ul_kb - u) * 8 / (now - t))
+                }
+                _ => (0, 0),
+            };
+            let (plan, left) = match crate::roll::peek(&cfg.roll_path(), now, &c.mac) {
+                Some((p, l)) => (p.as_str().to_string(), l),
+                None => (String::new(), 0),
+            };
+            rows.push((
+                dl_kbps + ul_kbps,
+                format!(
+                    "{{\"mac\":\"{}\",\"ip\":\"{}\",\"name\":\"{}\",\"state\":\"{}\",\"plan\":\"{}\",\"left\":{},\"dl_kb\":{},\"ul_kb\":{},\"dl_kbps\":{},\"ul_kbps\":{},\"duration\":{}}}",
+                    json_esc(&c.mac),
+                    json_esc(&c.ip),
+                    json_esc(names.get(&c.mac).map(|s| s.as_str()).unwrap_or("")),
+                    json_esc(&c.state),
+                    plan,
+                    left,
+                    c.dl_kb,
+                    c.ul_kb,
+                    dl_kbps,
+                    ul_kbps,
+                    c.duration
+                ),
+            ));
+        }
+        prev.clear();
+        for c in &list {
+            prev.insert(c.mac.clone(), (now, c.dl_kb, c.ul_kb));
+        }
+        rows.sort_by_key(|r| std::cmp::Reverse(r.0));
+        format!("{{\"clients\":[{}]}}", rows.into_iter().map(|r| r.1).collect::<Vec<_>>().join(","))
+    }
+
+    fn phones(&self) -> String {
+        let cfg = &self.core.cfg;
+        let pass = conf_value(&cfg.setup_conf, "BOX_ADMIN_PASS");
+        if pass.is_empty() {
+            return "{\"error\":\"NO_PASSWORD\"}".into();
+        }
+        match http_get_auth(&with_port(&cfg.gw_box), "/api/status", "admin", &pass) {
+            Ok(body) if body.trim_start().starts_with(['{', '[']) => body,
+            Ok(_) => "{\"error\":\"BAD_ANSWER\"}".into(),
+            Err(e) if e == "PASSWORD" => "{\"error\":\"PASSWORD\"}".into(),
+            Err(_) => "{\"error\":\"BOX_DOWN\"}".into(),
+        }
+    }
+}
+
+// ---- the server ---------------------------------------------------------------------------------------------------------------------
+
+fn body_of(req: &Request, conn: &mut Incoming) -> String {
+    let len: usize = req.header("content-length").and_then(|v| v.parse().ok()).unwrap_or(0).min(4096);
+    let mut buf = vec![0u8; len];
+    let mut got = 0;
+    while got < len {
+        match conn.read(&mut buf[got..]) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => got += n,
+        }
+    }
+    String::from_utf8_lossy(&buf[..got]).into_owned()
+}
+
+fn same_origin(req: &Request) -> bool {
+    match (req.header("origin"), req.header("host")) {
+        (Some(o), Some(h)) => o.trim_start_matches("http://") == h,
+        (None, _) => true,
+        _ => false,
+    }
+}
+
+fn json(conn: &mut Incoming, code: &str, body: &str, extra: &str) {
+    respond(&mut conn.s, code, "application/json", body, &format!("Cache-Control: no-store\r\n{}{}", CSP, extra));
+}
+
+fn handle(c: &Console, req: Request, mut conn: Incoming) {
+    let ip = conn.s.peer_addr().map(|a| a.ip().to_string()).unwrap_or_default();
+    let head_only = req.method == "HEAD";
+    match (req.method.as_str(), req.path.as_str()) {
+        ("GET" | "HEAD", "/") => {
+            let page = UI.replace("@OWNER_KEY@", &crate::update::owner_key());
+            respond_bytes(
+                &mut conn.s,
+                "200 OK",
+                "text/html; charset=utf-8",
+                page.as_bytes(),
+                &format!("Cache-Control: no-store\r\n{}", CSP),
+                !head_only,
+            )
+        }
+        ("GET" | "HEAD", "/ui.js") => {
+            respond_bytes(&mut conn.s, "200 OK", "application/javascript", UI_JS.as_bytes(), "Cache-Control: no-store\r\n", !head_only)
+        }
+        ("GET" | "HEAD", "/verify.js") => {
+            respond_bytes(&mut conn.s, "200 OK", "application/javascript", VERIFY_JS.as_bytes(), "Cache-Control: no-cache\r\n", !head_only)
+        }
+        ("GET" | "HEAD", "/brand.png") => {
+            respond_bytes(&mut conn.s, "200 OK", "image/png", BRAND_LOGO, "Cache-Control: public, max-age=86400\r\n", !head_only)
+        }
+        ("GET" | "HEAD", "/mascot.png") => {
+            respond_bytes(&mut conn.s, "200 OK", "image/png", BRAND_MASCOT, "Cache-Control: public, max-age=86400\r\n", !head_only)
+        }
+        ("POST", "/api/login") => {
+            if req.header("x-piso") != Some("1") || !same_origin(&req) {
+                return json(&mut conn, "403 Forbidden", "{\"error\":\"FORBIDDEN\"}", "");
+            }
+            let wait = c.locked(&ip);
+            if wait > 0 {
+                return json(&mut conn, "429 Too Many Requests", &format!("{{\"error\":\"LOCKED\",\"retry\":{}}}", wait), "");
+            }
+            let body = body_of(&req, &mut conn);
+            if c.password_ok(&crate::util::jget(&body, "password").replace("\\\"", "\"").replace("\\\\", "\\")) {
+                let token = c.new_session();
+                json(
+                    &mut conn,
+                    "200 OK",
+                    "{\"ok\":true}",
+                    &format!("Set-Cookie: piso_console={}; Path=/; HttpOnly; SameSite=Strict\r\n", token),
+                );
+            } else {
+                c.fail(&ip);
+                std::thread::sleep(Duration::from_millis(400)); // slows guessing
+                json(&mut conn, "401 Unauthorized", "{\"error\":\"PASSWORD\"}", "");
+            }
+        }
+        (m, path) if path.starts_with("/api/") => {
+            if !c.session_ok(&req) {
+                return json(&mut conn, "401 Unauthorized", "{\"error\":\"LOGIN\"}", "");
+            }
+            if m == "POST" && (req.header("x-piso") != Some("1") || !same_origin(&req)) {
+                return json(&mut conn, "403 Forbidden", "{\"error\":\"FORBIDDEN\"}", "");
+            }
+            match (m, path) {
+                ("GET", "/api/overview") => json(&mut conn, "200 OK", &c.overview(), ""),
+                ("GET", "/api/clients") => json(&mut conn, "200 OK", &c.clients(), ""),
+                ("GET", "/api/phones") => json(&mut conn, "200 OK", &c.phones(), ""),
+                ("POST", "/api/logout") => {
+                    if let Some(t) =
+                        req.header("cookie").and_then(|k| k.split(';').filter_map(|p| p.trim().strip_prefix("piso_console=")).next())
+                    {
+                        c.sessions.lock().unwrap().remove(t);
+                    }
+                    json(&mut conn, "200 OK", "{\"ok\":true}", "Set-Cookie: piso_console=; Path=/; Max-Age=0\r\n");
+                }
+                ("POST", "/api/kick") => {
+                    let body = body_of(&req, &mut conn);
+                    let mac = jget(&body, "mac").to_lowercase();
+                    if !valid_mac(&mac) {
+                        return json(&mut conn, "400 Bad Request", "{\"error\":\"BAD_MAC\"}", "");
+                    }
+                    c.core.nds.deauth(&mac);
+                    json(&mut conn, "200 OK", "{\"ok\":true}", "");
+                }
+                _ => json(&mut conn, "404 Not Found", "{\"error\":\"NOT_FOUND\"}", ""),
+            }
+        }
+        _ => respond(&mut conn.s, "404 Not Found", "text/plain", "not found", ""),
+    }
+}
+
+pub fn start(core: Arc<Core>) {
+    let console = Console::new(core);
+    let sampler = Arc::clone(&console);
+    std::thread::spawn(move || loop {
+        sampler.sample_wan();
+        std::thread::sleep(Duration::from_secs(SAMPLE_EVERY));
+    });
+    std::thread::spawn(move || {
+        let cfg = &console.core.cfg;
+        let listener = bind_retry(&format!("{}:{}", cfg.console_bind, cfg.console_port), "console");
+        for stream in listener.incoming().flatten() {
+            let c = Arc::clone(&console);
+            std::thread::spawn(move || {
+                if let Some((req, conn)) = read_request(stream, Duration::from_secs(5)) {
+                    handle(&c, req, conn);
+                }
+            });
+        }
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_internet_line_is_found_and_counted() {
+        let route = "Iface\tDestination\tGateway\tFlags\nbr-lan\t0000000A\t00000000\t0001\neth1\t00000000\t0101A8C0\t0003\n";
+        assert_eq!(default_route_if(route).as_deref(), Some("eth1"));
+        let dev = "Inter-|   Receive\n face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed\n  eth1: 1000 5 0 0 0 0 0 0 2000 6 0 0 0 0 0 0\n   lo: 1 1 0 0 0 0 0 0 1 1 0 0 0 0 0 0\n";
+        assert_eq!(netdev_bytes(dev, "eth1"), Some((1000, 2000)));
+        assert_eq!(netdev_bytes(dev, "wan"), None);
+        assert_eq!(kbps(Some((10, 1000)), 15, 1000 + 625_000), 1000); // 625000 bytes in 5 s = 1000 kbit/s
+        assert_eq!(kbps(None, 15, 5), 0);
+    }
+
+    #[test]
+    fn names_come_from_the_lease_file() {
+        let leases = "1791858393 84:c7:bb:e1:57:60 10.0.0.10 pisocoinbox 01:84\n1791858999 AA:BB:CC:00:00:01 10.0.30.5 * 01:aa\n1791859000 aa:bb:cc:00:00:02 10.0.30.6 Rowels-iPhone 01:aa";
+        let n = parse_leases(leases);
+        assert_eq!(n.get("84:c7:bb:e1:57:60").map(|s| s.as_str()), Some("pisocoinbox"));
+        assert_eq!(n.get("aa:bb:cc:00:00:02").map(|s| s.as_str()), Some("Rowels-iPhone"));
+        assert!(!n.contains_key("aa:bb:cc:00:00:01"));
+    }
+
+    #[test]
+    fn the_time_zone_and_the_money_of_today() {
+        assert_eq!(tz_offset_secs("PST-8"), 8 * 3600);
+        assert_eq!(tz_offset_secs("EST5EDT"), -5 * 3600);
+        assert_eq!(tz_offset_secs("<+08>-8"), 8 * 3600);
+        assert_eq!(tz_offset_secs("UTC"), 0);
+        assert_eq!(tz_offset_secs(""), 0);
+        let tz = 8 * 3600;
+        let now = 1_791_900_000u64; // some moment; build lines relative to it
+        let day = |back: u64| now - back * 86400;
+        let text = format!(
+            "{},hyper,5,30,new,x\n{},endurance,17,690,new,x\n{},hyper,3,18,new,x\n{},hyper,1,6,new,x\nbad line\n",
+            now,
+            day(1),
+            day(3),
+            day(40)
+        );
+        let (today, total, week) = revenue_stats(&text, now, tz);
+        assert_eq!((today, total), (5, 26));
+        assert_eq!(week, [0, 0, 0, 3, 0, 17, 5]);
+    }
+}

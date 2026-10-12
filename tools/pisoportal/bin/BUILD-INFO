@@ -1,3 +1,3 @@
-pisoportal 1.0.0 for mipsel-unknown-linux-musl, from commit 1505896d9eff7191ca7e01b00952efb3b0aee6c3
-rustc 1.101.0-nightly (080cc2714 2026-10-11)
+pisoportal 1.0.0 for mipsel-unknown-linux-musl (mipsel), from commit 39bf028bce32db3e14b5ba4b37e1b9c027c23f0f
+rustc 1.99.0 (b940084d7 2026-09-28)
 C toolchain: openwrt/sdk:ramips-mt7621-23.05.5 (mipsel-openwrt-linux-musl-gcc (OpenWrt GCC 12.3.0 r24106-10cc5fcd00) 12.3.0)

@@ -285,6 +285,22 @@ ol.steps>li::before{content:counter(s);position:absolute;left:0;top:2px;width:30
 <p>The phone's kiosk Wi-Fi name and password are set during provisioning and cannot be edited on the phone.</p>
 
 <h2 id="router">11. The router and alerts</h2>
+<h3>The router console (instead of the router's own pages)</h3>
+<p>Open <code>http://10.0.0.1:8081</code> on a device on the router's network and sign in with the router password. It shows what matters:</p>
+<ul>
+<li><b>Overview:</b> customers online, money today, the internet line (down and up speed and a short graph), coin box and records health.</li>
+<li><b>Customers:</b> every PisoWiFi device with its name, plan, time left, data used and current speed, busiest first. <b>Disconnect</b> sends a device back to the payment page; its paid time stays.</li>
+<li><b>Rental phones:</b> each slot, its status, time left and battery.</li>
+<li><b>Money:</b> today, this week, all time and the last seven days.</li>
+</ul>
+<p>To make it the front page at <code>http://10.0.0.1</code>, run <code>piso-setup console on</code> on the router. The router's own settings page (LuCI) then moves to <code>http://10.0.0.1:8080</code> and stays reachable as <b>Advanced</b>; <code>piso-setup console off</code> puts everything back. If the console does not come up, <code>console on</code> puts everything back by itself.</p>
+<div class="note"><b>Privacy</b>The console shows device names and addresses of your customers, and keeps no history of what they browse. Its speed graph lives in the router's memory only. Put a notice on your login page if your customers' data is covered by privacy rules.</div>
+<h3>Backups and small routers</h3>
+<ul>
+<li><code>piso-setup export</code> writes a private backup (settings, keys, revenue ledger) to copy to your computer; <code>piso-setup import &lt;file&gt;</code> restores it after a reset or on a replaced router. A firmware upgrade of the router now keeps these by itself.</li>
+<li><code>piso-setup space</code> shows what PisoPhone uses and what is free; <code>piso-setup forget-summary</code> deletes the saved summary (it holds passwords).</li>
+<li>The portal program is built for <b>mipsel_24kc</b> routers (for example MT7621) only. On another CPU the setup stops before changing anything and says so.</li>
+</ul>
 <h3>Joining the hidden PisoKiosk network</h3>
 <p>Scan the QR on your <b>Wi-Fi join card</b> with a phone camera, or add the network by hand with the name, WPA password and "hidden network" ticked. The card also has a QR that opens the coin box page.</p>
 <h3>Commands</h3>

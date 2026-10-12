@@ -4,6 +4,31 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Router 1.3.0: **the owner's console.** A friendly page in place of LuCI, inside the portal program (nothing more to install): customers
+  online, money today, the internet line with a short graph, every PisoWiFi device with its name, plan, time left, data and live speed
+  (and a Disconnect button), and the rental phones from the coin box. It signs in with the router's root password (checked like LuCI does,
+  5 wrong tries lock it for a minute) and keeps its history in memory only. It is at `http://10.0.0.1:8081`; `piso-setup console on`
+  makes it the front page at `http://10.0.0.1` and moves LuCI to `:8080` as "Advanced" (and puts everything back if it does not come
+  up; `console off` reverts). The page's script can be replaced by a newer one from the website without a router update, but only a
+  script the owner signed (`scripts/sign_console_ui.py`, checked in the browser against the owner key the router already trusts; an
+  unsigned, changed, expired or older script is ignored). Tests: `tools/pisoportal/tests/test_console.py`, `test_console_loader.py`,
+  `scripts/tests/test_console_ui.py`. Not tried on a real router yet (the openNDS client list format is read as documented).
+- Router 1.3.0: **space, backups and safety on small routers.**
+  - A firmware upgrade (sysupgrade) now keeps the PisoPhone settings, the revenue ledger, the monitor settings and the programs
+    (`/etc/sysupgrade.conf`), so an upgraded router still pairs with its box and keeps its records.
+  - `piso-setup export [file]` / `piso-setup import <file>`: a private backup of the settings and the ledger to copy to your computer, and
+    back after a reset or on a replaced router (it refuses a file with anything else in it).
+  - `piso-setup space`: what is kept on the router, what is free, what can go. `piso-setup forget-summary` deletes the saved summary
+    (it holds passwords; `piso-setup summary` shows them again).
+  - An update's backup of the old release is deleted as soon as the new one has proven itself; the log keeps its last 600 lines;
+    an update on a router with under ~24 MB of free memory downloads into flash instead of memory.
+  - The portal program is built for mipsel_24kc only: on another CPU the setup and update now stop before changing anything and say so.
+  - CI checks a footprint budget (`router/tests/test_footprint.py`).
+- **Owner console** (`python3 scripts/owner_console.py`): a web page for every owner script, in place of typing its command line. Each
+  tool has its own page (`/p/<name>`): admin QR, recovery code, card key, owner key, print time cards, sign firmware, sign router update,
+  publish box firmware, release/APK/library/security checks and the sold-unit checks. A form fills in the options, Run shows the output
+  and the files made (QR pictures inline, PDFs and ledgers to download). Keys never go through the browser (only their file path); it
+  listens on 127.0.0.1, needs the printed secret, checks the Host name and refuses requests that did not come from its own pages.
 - Firmware 3.5.2: **the dashboard no longer asks for the password every few seconds.** The page polls the box (`/api/status` every 3 s)
   and, when its sign-in had ended, each poll got a Basic-auth challenge, so the browser's password box popped up again and again.
   Requests to `/api/...` now get a plain 401 with no challenge; the page stops polling and shows one "You are signed out. Sign in

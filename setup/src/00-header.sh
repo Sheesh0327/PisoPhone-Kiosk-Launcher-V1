@@ -18,7 +18,7 @@
 # Everything is generated here (Wi-Fi password, box admin password, gateway key) and printed once at the end and saved in
 # /root/piso-setup-summary.txt. Running the file again is safe: it keeps what it already made.
 #
-# Other commands (after setup): piso-setup status | wifi-name "<name>" | guest-port [lanN|off] | pair | summary | test-coin | diag | box-diag | set-password | reconcile [rebase] | telegram | rotate-box-wifi | kiosk-wifi | verify | handout | lock-admin | unlock-admin | update [check] (installs the newest release from the website; same as self-update) | self-update [check] | auto-update on|off
+# Other commands (after setup): piso-setup status | wifi-name "<name>" | guest-port [lanN|off] | pair | summary | test-coin | diag | box-diag | set-password | reconcile [rebase] | telegram | rotate-box-wifi | export [file] | import <file> | space | forget-summary | kiosk-wifi | verify | handout | lock-admin | unlock-admin | update [check] (installs the newest release from the website; same as self-update) | self-update [check] | auto-update on|off
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation
@@ -27,6 +27,8 @@
 VERSION="@VERSION@"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
 PISO_RELEASE='@RELEASE@'
+# the CPU family the portal program in this file is built for (router_family below names the family of the router it runs on)
+PISO_ARCH='@ARCH@'
 
 COUNTRY="${COUNTRY:-PH}"
 KIOSK_SSID="PisoKiosk"                       # fixed, and hidden: only phones provisioned by the coin box page know it
@@ -57,6 +59,20 @@ die() {
 }
 # stop_opennds: stop it for the setup. On a re-run it was already serving the guest network: a failed run starts it again.
 NDS_RESTORE=0
+# router_family: the CPU family of this router, from OpenWrt's package architecture (DISTRIB_ARCH): mipsel, mips, aarch64, armv7, x86_64
+# or "" when it is none of those (no portal program is built for it)
+router_family() {
+	_ra=$(sed -n "s/^DISTRIB_ARCH=['\"]\\{0,1\\}\\([^'\"]*\\).*/\\1/p" "$PISO_ROOT/etc/openwrt_release" 2> /dev/null | head -n 1)
+	case "$_ra" in
+		mipsel_*) echo mipsel ;;
+		mips_*) echo mips ;;
+		aarch64_*) echo aarch64 ;;
+		arm_cortex-a7_neon-vfpv4 | arm_cortex-a15_neon-vfpv4 | arm_cortex-a9_neon | arm_cortex-a9_vfpv3-d16) echo armv7 ;;
+		x86_64) echo x86_64 ;;
+		*) echo "" ;;
+	esac
+}
+
 # proc_running <name>: a process of that name runs. Both tools are asked: on a real router `pgrep -x` answered "no" for a running
 # pisoportal while `pidof` found it, so neither alone is trusted to say "not running".
 proc_running() { pidof "$1" > /dev/null 2>&1 || pgrep -x "$1" > /dev/null 2>&1; }

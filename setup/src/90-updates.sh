@@ -79,13 +79,14 @@ cmd_self_update() {
 		rm -rf "$_lock"; mkdir "$_lock" || die "could not take the update lock"
 	fi
 	echo $$ > "$_lock/pid"
-	_work="${TMPDIR:-/tmp}/piso-update.$$"
+	_work="$(work_base)/piso-update.$$"
 	trap 'rm -rf "$_work" "$_lock"' EXIT
 	rm -rf "$_work"; (umask 077; mkdir -p "$_work") || die "could not create $_work"
 
 	[ "$_mode" != auto ] || conf_set UPDATE_LAST_CHECK "$(date +%s)"   # (status says when the hourly check last ran)
 	[ "$_mode" != auto ] || { sync_kiosk_wifi; watch_agreement; }   # (hourly: a box that lost the phones' Wi-Fi password gets it; the owner hears when values stop agreeing)
 	_base=$(conf_get UPDATE_URL); _base="${_base:-$UPDATE_URL_DEFAULT}"
+	[ "$PISO_ARCH" = mipsel ] || _base="$_base/$PISO_ARCH"   # the first family (mipsel) is at the top, as it always was; the others have a folder each
 	if ! fetch_url "$_base/router.json" "$_work/router.json" 20000; then
 		log "No update information at $_base (offline, or nothing published yet)."
 		[ "$_mode" = apply ] && notify "update: could not reach $_base"
@@ -136,6 +137,8 @@ cmd_self_update() {
 	if [ -z "$UPDATE_WHY" ]; then
 		conf_set UPDATE_NOTIFIED "$_new"
 		log "Release $_new is installed and running."
+		rm -rf "$UPDATE_BACKUP"   # it has proven itself: the backup of the old release is not needed any more
+		trim_log
 		notify "update: release $_new installed and running (was $PISO_RELEASE). $_note"
 		return 0
 	fi
