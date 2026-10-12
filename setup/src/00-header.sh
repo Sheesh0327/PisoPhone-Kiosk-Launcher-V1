@@ -57,9 +57,13 @@ die() {
 }
 # stop_opennds: stop it for the setup. On a re-run it was already serving the guest network: a failed run starts it again.
 NDS_RESTORE=0
+# proc_running <name>: a process of that name runs. Both tools are asked: on a real router `pgrep -x` answered "no" for a running
+# pisoportal while `pidof` found it, so neither alone is trusted to say "not running".
+proc_running() { pidof "$1" > /dev/null 2>&1 || pgrep -x "$1" > /dev/null 2>&1; }
+
 stop_opennds() {
 	[ -x /etc/init.d/opennds ] || return 0
-	if [ "$(uci -q get opennds.@opennds[0].gatewayinterface)" = br-guest ] && pgrep -x opennds > /dev/null 2>&1; then NDS_RESTORE=1; fi
+	if [ "$(uci -q get opennds.@opennds[0].gatewayinterface)" = br-guest ] && proc_running opennds; then NDS_RESTORE=1; fi
 	/etc/init.d/opennds stop > /dev/null 2>&1
 	sleep 2
 }

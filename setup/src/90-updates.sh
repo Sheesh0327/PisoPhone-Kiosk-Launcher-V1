@@ -33,9 +33,6 @@ update_files() {
 	echo "$SELF_PATH"
 }
 
-# portal_running: either tool will do (a router may lack one of them)
-portal_running() { pidof pisoportal > /dev/null 2>&1 || pgrep -x pisoportal > /dev/null 2>&1; }
-
 # update_healthy: the new portal program passes its self-test and is running (it gets up to PISO_HEALTH_RETRY seconds to start);
 # when it is not, UPDATE_WHY says why, so the log and the owner's message name the reason
 update_healthy() {
@@ -44,7 +41,7 @@ update_healthy() {
 	[ -x /etc/init.d/pisoportal ] || return 0
 	_t=0
 	while [ "$_t" -lt "${PISO_HEALTH_RETRY:-30}" ]; do
-		portal_running && return 0
+		proc_running pisoportal && return 0
 		sleep 2; _t=$((_t + 2))
 	done
 	UPDATE_WHY="the portal program is not running after the update"
@@ -162,7 +159,7 @@ cmd_auto_update() {
 # the hourly check (its minute is this router's own, so the routers do not all ask at once)
 # update_timer_ok: the hourly update check is scheduled and the scheduler runs
 update_timer_ok() {
-	grep -qs 'self-update auto' "$CRON_FILE" && { pgrep -x crond > /dev/null 2>&1 || pgrep -x cron > /dev/null 2>&1; }
+	grep -qs 'self-update auto' "$CRON_FILE" && { proc_running crond || proc_running cron; }
 }
 
 # update_check_recent: the hourly check ran within the last 3 hours (a router that has not run it yet is given the time)
