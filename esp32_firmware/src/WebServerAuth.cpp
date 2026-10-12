@@ -320,21 +320,6 @@ static String htmlEscape(const String& in) {
     return out;
 }
 
-static String urlEncode(const String& in) {
-    String out;
-    for (size_t i = 0; i < in.length(); i++) {
-        char c = in[i];
-        if (isalnum((unsigned char)c) || c == '-' || c == '_' || c == '.' || c == '~') {
-            out += c;
-        } else {
-            char buf[4];
-            snprintf(buf, sizeof(buf), "%%%02X", (unsigned char)c);
-            out += buf;
-        }
-    }
-    return out;
-}
-
 // The page that was asked for, with its query (a phone pairing link carries one), so signing in leads back to it.
 static String requestedPage() {
     String page = webServer.uri();
