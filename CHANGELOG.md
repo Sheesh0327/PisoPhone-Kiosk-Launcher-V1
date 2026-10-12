@@ -4,6 +4,7 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Coin box firmware 3.4.0: the release that carries the fixes listed below (payments, the revenue ledger, the update safety net, the list of undelivered payments). Boxes on 3.3.3 install it from the dashboard: Update > Install update.
 - Phone app: a rental phone now connects only to the one Wi-Fi network its box paired it with (PisoKiosk). On Android 13 and newer
   the system itself is told to allow only that network (an SSID allowlist set by the device owner), and on every version any other
   saved network is removed, so a phone no longer wanders onto a neighbour's Wi-Fi or a hotspot. An admin maintenance window lifts the lock
