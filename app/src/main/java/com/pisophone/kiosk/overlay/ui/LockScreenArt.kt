@@ -114,9 +114,9 @@ fun LockScreenArt(modifier: Modifier = Modifier, landscape: Boolean = false, scr
         // a dim layer that grows toward the bottom keeps the text on top readable; the stickers and sparkles are above it
         drawRect(
             Brush.verticalGradient(
-                0f to scrim.copy(alpha = 0.05f),
-                0.45f to scrim.copy(alpha = 0.25f),
-                1f to scrim.copy(alpha = 0.55f),
+                0f to scrim.copy(alpha = 0.3f),
+                0.4f to scrim.copy(alpha = 0.5f),
+                1f to scrim.copy(alpha = 0.78f),
             ),
         )
         STICKERS.forEachIndexed { i, s -> drawSticker(stickers[i], s, i, t) }
