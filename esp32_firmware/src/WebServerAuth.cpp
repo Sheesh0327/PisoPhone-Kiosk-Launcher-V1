@@ -242,6 +242,16 @@ bool defaultCredentialsActive() {
     return !adminPwChanged;
 }
 
+// The "sign in" answer. A page asks the browser for a password with Basic auth; a script on a page (the dashboard polls /api/... every
+// few seconds) must not: the browser would pop its password box again at every poll. Those get a plain 401 the page can read.
+static void denyAdmin(const char* text) {
+    if (webServer.uri().startsWith("/api/")) {
+        webServer.send(401, "application/json", "{\"error\":\"login\"}");
+        return;
+    }
+    webServer.requestAuthentication(BASIC_AUTH, "HARDWARE Admin Login", text);
+}
+
 // Checks Basic-auth admin credentials with per-client throttling: five wrong passwords lock that
 // client out for a minute. A request without an Authorization header is only the browser's first
 // probe and is not counted. Returns true when authenticated; otherwise the caller still has to
@@ -284,10 +294,7 @@ bool checkAdminAuth() {
     // Phone or controller telemetry signatures MUST NOT grant administrative access.
     bool lockedOut = false;
     if (adminCredentialsOk(lockedOut)) return true;
-    if (!lockedOut) {
-        webServer.requestAuthentication(BASIC_AUTH, "HARDWARE Admin Login",
-                                        "Unauthorized: Admin credentials required.");
-    }
+    if (!lockedOut) denyAdmin("Unauthorized: Admin credentials required.");
     return false;
 }
 
@@ -392,7 +399,7 @@ bool checkAuth() {
             return true;
         }
     }
-    webServer.requestAuthentication(BASIC_AUTH, "HARDWARE Admin Login", "Unauthorized: Access denied.");
+    denyAdmin("Unauthorized: Access denied.");
     return false;
 }
 
