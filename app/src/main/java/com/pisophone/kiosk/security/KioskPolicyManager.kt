@@ -84,6 +84,8 @@ object KioskPolicyManager {
             Log.w(TAG, "Could not update lock task packages: ${e.message}")
         }
         applyWifiConfigRestriction(context, dpm, componentName)
+        // the single-network lock is lifted while the window is open and back on as soon as it ends
+        com.pisophone.kiosk.network.KioskWifi.lockToKioskNetwork(context)
     }
 
     private fun applyWifiConfigRestriction(context: Context, dpm: DevicePolicyManager, componentName: ComponentName) {

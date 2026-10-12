@@ -56,4 +56,27 @@ class KioskWifiUnitTest {
         assertTrue(KioskWifi.isValidSsid("PisoKiosk"))
         assertFalse(KioskWifi.isValidSsid(""))
     }
+
+    @Test
+    fun onlyTheKioskNetworkIsKeptAmongTheSavedOnes() {
+        val saved = listOf(3 to "\"PisoKiosk\"", 4 to "\"Neighbour\"", 5 to "\"Shop WiFi\"", -1 to "\"Broken\"", 6 to "\"PisoKiosk 2\"")
+        assertEquals(listOf(4, 5, 6), KioskWifi.foreignNetworkIds(saved, "PisoKiosk"))
+        assertEquals(emptyList<Int>(), KioskWifi.foreignNetworkIds(listOf(3 to "\"PisoKiosk\""), "PisoKiosk"))
+        assertEquals(listOf(7), KioskWifi.foreignNetworkIds(listOf(7 to "PisoKiosk"), "Other"))
+    }
+
+    @Test
+    fun theLockIsOnOnlyForAProvisionedPhoneOutsideAnAdminWindow() {
+        assertTrue(KioskWifi.shouldLock("PisoKiosk", "3hC4RATnpQMJ", adminWindowOpen = false))
+        assertFalse(KioskWifi.shouldLock("PisoKiosk", "3hC4RATnpQMJ", adminWindowOpen = true))
+        assertFalse(KioskWifi.shouldLock("", "3hC4RATnpQMJ", adminWindowOpen = false))
+        assertFalse(KioskWifi.shouldLock("PisoKiosk", "short", adminWindowOpen = false))
+    }
+
+    @Test
+    fun aPhoneThatIsNotTheDeviceOwnerIsNeverLockedAndNothingBreaks() {
+        KioskSecurity.setKioskWifi(context, "PisoKiosk", "3hC4RATnpQMJ")
+        assertFalse(KioskWifi.lockToKioskNetwork(context))
+        KioskWifi.releaseNetworkLock(context)
+    }
 }
