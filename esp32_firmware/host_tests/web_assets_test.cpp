@@ -22,7 +22,8 @@ int main() {
         CHECK(a.gzLen > 200 && a.gzLen < 70000);                   // (jsqr.js, the QR reader, is the largest)
         CHECK(a.gz[0] == 0x1f && a.gz[1] == 0x8b && a.gz[2] == 8); // gzip magic, deflate
         CHECK(strlen(a.version) == 12);
-        CHECK(strstr(a.contentType, "text/css") || strstr(a.contentType, "javascript") || strstr(a.contentType, "image/png"));
+        CHECK(strstr(a.contentType, "text/css") || strstr(a.contentType, "javascript") ||
+              strstr(a.contentType, "image/png"));
         for (size_t j = i + 1; j < WEB_ASSET_COUNT; j++)
             CHECK(strcmp(a.name, WEB_ASSETS[j].name) != 0);
     }
