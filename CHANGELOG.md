@@ -4,6 +4,9 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Publishing a router release now starts at **0%** of the installed routers (a router set up with the installer still gets the newest file).
+  Widen it by hand with the workflow's rollout input (10, then 100); a push to main never re-signs a file that is already published, so a widened
+  rollout stays. (docs/RELEASE.md)
 - Router 1.3.0: **five CPU families.** The portal program (and so the console) is now built for `mipsel` (as before; MT7621, MT7628, the
   360T6M), `mips` (ath79, big-endian), `aarch64` (newer Wi-Fi 6 routers, Raspberry Pi 4, NanoPi), `armv7` (Qualcomm IPQ40xx) and `x86_64`, each with
   OpenWrt's own toolchain in CI. Each family has its own setup file (`setup/piso-setup-<family>.sh`, signed into `website/update/<family>/`;
