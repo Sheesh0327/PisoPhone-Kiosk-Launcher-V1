@@ -1,4 +1,5 @@
 var pollTimers = []; // the background polls (see sessionLost)
+var signedOutStrikes = 0; // consecutive "not signed in" answers: one stray answer does not end the page
 function escHtml(v) {
     return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
@@ -271,7 +272,7 @@ window.fetchAccounts = function() {
     const box = document.getElementById('accounts_container');
     if (!box) return;
     fetch('/api/accounts')
-        .then(res => { if (res.status === 401) { sessionLost(); throw new Error('signed out'); } if (!res.ok) throw new Error(res.status === 503 ? 'Accounts are off on this box' : 'HTTP ' + res.status); return res.json(); })
+        .then(res => { if (res.status === 401) { signedOutAnswer(); throw new Error('signed out'); } signedOutStrikes = 0; if (!res.ok) throw new Error(res.status === 503 ? 'Accounts are off on this box' : 'HTTP ' + res.status); return res.json(); })
         .then(data => {
             const list = data.accounts || [];
             const badge = document.getElementById('accounts_count');
@@ -330,6 +331,11 @@ function setConn(ok) {
 
 // The sign-in ended (a restart of the box, another password, a lock-out): stop polling and say so once, with a way back in. The
 // browser's own password box is not used for these background requests, so it cannot pop up every few seconds.
+function signedOutAnswer() {
+    signedOutStrikes++;
+    if (signedOutStrikes >= 2) sessionLost();
+}
+
 function sessionLost() {
     pollTimers.forEach(clearInterval);
     pollTimers = [];
@@ -344,7 +350,7 @@ function sessionLost() {
 
 window.fetchDeviceStatus = function() {
     fetch('/api/status')
-        .then(res => { if (res.status === 401) { sessionLost(); throw new Error('signed out'); } return res.json(); })
+        .then(res => { if (res.status === 401) { signedOutAnswer(); throw new Error('signed out'); } signedOutStrikes = 0; return res.json(); })
         .then(data => {
             setConn(true);
             const devices = Array.isArray(data) ? data : (data.devices || []);

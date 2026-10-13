@@ -4,6 +4,12 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Firmware 3.5.3: **signing in to the box's admin page keeps you signed in.** After a correct password, the box now gives the browser a session
+  cookie (like the admin QR login already did) and the page's background checks carry that, instead of relying on the browser to resend its
+  cached password on scripted requests (some do not, which ended the sign-in a few seconds after it began). A session lasts 30 idle minutes
+  (12 hours at most), up to six browsers at once, and ends when the admin password is changed, on **Sign out** or when the box restarts. The page
+  also needs two "not signed in" answers in a row before it shows the signed-out bar, and the box notes in Tools, Diagnostics why it
+  answered 401 (password sent or not, cookie sent or not).
 - **Everything updates itself now** (router 1.3.2). The **coin box** gets its new firmware through the router: every hour (half an hour after the
   router's own check) the router looks at `firmware.json` and, at a quiet moment (no customer online, no phone with time running), hands the box the
   signed image; the box still verifies your signature itself and goes back to its old firmware if the new one does not start. `piso-setup box-update

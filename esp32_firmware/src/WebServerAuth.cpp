@@ -3,6 +3,7 @@
 // Also hosts the background AuthWorker task that sends encrypted, signed commands to phones.
 
 #include "WebServerAuth.h"
+#include "AdminSession.h"
 #include "PaymentQueueManager.h"
 #include "WebServerModule.h"
 #include "Config.h"
@@ -13,6 +14,7 @@
 #include "InputSafety.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <esp_random.h>
 #include "SuperAdminSession.h"
 #include "WebAssetServer.h"
 #include "RevenueVault.h"
@@ -237,6 +239,47 @@ void authWorkerTask(void* pvParameters) {
 
 static inputsafety::LoginThrottle loginThrottle;
 
+// The browser sessions that follow a correct admin password (AdminSession.h): the dashboard's background requests carry this cookie
+// instead of relying on the browser to send its cached password.
+static adminsession::Sessions adminSessions;
+static const char* ADMIN_COOKIE = "piso_adm";
+static bool lastAuthViaPassword =
+    false; // the request being served was accepted on the password itself (not on a cookie)
+
+static String cookieValue(const char* name) {
+    String header = webServer.header("Cookie");
+    String key = String(name) + "=";
+    int at = 0;
+    while (at < (int)header.length()) {
+        int end = header.indexOf(';', at);
+        if (end < 0) end = header.length();
+        String part = header.substring(at, end);
+        part.trim();
+        if (part.startsWith(key)) return part.substring(key.length());
+        at = end + 1;
+    }
+    return "";
+}
+
+static bool passwordSessionOk() {
+    String token = cookieValue(ADMIN_COOKIE);
+    return token.length() > 0 && adminSessions.valid(token.c_str(), millis());
+}
+
+// Called where a page was just accepted on the admin password: gives this browser a session cookie (once).
+static void offerPasswordSession() {
+    if (!lastAuthViaPassword) return;
+    uint8_t random[adminsession::RANDOM_BYTES];
+    esp_fill_random(random, sizeof(random));
+    std::string token = adminSessions.start(random, millis());
+    webServer.sendHeader("Set-Cookie", String(ADMIN_COOKIE) + "=" + token.c_str() +
+                                           "; Path=/; HttpOnly; SameSite=Strict; Max-Age=43200");
+}
+
+void adminSessionsEndAll() {
+    adminSessions.endAll();
+}
+
 bool defaultCredentialsActive() {
     // True until the operator replaces the admin password that was generated for this box.
     return !adminPwChanged;
@@ -246,6 +289,15 @@ bool defaultCredentialsActive() {
 // few seconds) must not: the browser would pop its password box again at every poll. Those get a plain 401 the page can read.
 static void denyAdmin(const char* text) {
     if (webServer.uri().startsWith("/api/")) {
+        // (Tools, Diagnostics shows why a page was signed out; at most once a minute)
+        static unsigned long lastNoteMs = 0;
+        if (lastNoteMs == 0 || millis() - lastNoteMs > 60000UL) {
+            lastNoteMs = millis() == 0 ? 1 : millis();
+            diagLog("[AUTH] %s answered 401 to %s: password %s, session cookie %s\n", webServer.uri().c_str(),
+                    webServer.client().remoteIP().toString().c_str(),
+                    webServer.hasHeader("Authorization") ? "sent but not accepted" : "not sent",
+                    cookieValue(ADMIN_COOKIE).length() > 0 ? "sent but not valid" : "not sent");
+        }
         webServer.send(401, "application/json", "{\"error\":\"login\"}");
         return;
     }
@@ -267,7 +319,13 @@ static bool adminCredentialsOk(bool& lockedOut) {
         webServer.send(429, "text/plain", "Too many failed logins. Try again later.");
         return false;
     }
-    if (superAdminSessionOk() || webServer.authenticate("admin", webPassword.c_str())) {
+    lastAuthViaPassword = false;
+    if (superAdminSessionOk() || passwordSessionOk()) {
+        loginThrottle.recordSuccess(client);
+        return true;
+    }
+    if (webServer.authenticate("admin", webPassword.c_str())) {
+        lastAuthViaPassword = true;
         loginThrottle.recordSuccess(client);
         return true;
     }
@@ -368,7 +426,10 @@ static void sendLoginPage() {
 
 bool checkAdminAuthOrLoginPage() {
     bool lockedOut = false;
-    if (adminCredentialsOk(lockedOut)) return true;
+    if (adminCredentialsOk(lockedOut)) {
+        offerPasswordSession();
+        return true;
+    }
     if (lockedOut) return false;
     if (webServer.hasHeader("Authorization")) { // a wrong password: the browser's own prompt again
         webServer.requestAuthentication(BASIC_AUTH, "HARDWARE Admin Login",
@@ -381,6 +442,7 @@ bool checkAdminAuthOrLoginPage() {
 
 void handleSignIn() {
     if (!checkAdminAuth()) return;
+    offerPasswordSession();
     webServer.sendHeader("Location", safeNext(webServer.arg("next")));
     webServer.send(303);
 }
@@ -418,6 +480,8 @@ void handleLogout() {
         Serial.println("[👑 SUPER ADMIN] Collection recorded at Super Admin logout.");
     }
     superAdminSessionEnd();
+    adminSessions.end(cookieValue(ADMIN_COOKIE).c_str());
+    webServer.sendHeader("Set-Cookie", String(ADMIN_COOKIE) + "=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0");
     webServer.requestAuthentication(BASIC_AUTH, "HARDWARE Admin Login", "Logged out");
     webServer.send(401, "text/html; charset=utf-8", R"HTML(
 <!DOCTYPE html>

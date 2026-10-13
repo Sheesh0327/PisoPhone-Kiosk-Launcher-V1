@@ -206,6 +206,7 @@ jobs:
         run: |
           pip install -q playwright==1.63.0 && playwright install --with-deps chromium
           python3 scripts/tests/test_portal_orphans_ui.py
+          python3 scripts/tests/test_portal_session_ui.py
       - name: Run host tests
         run: sh esp32_firmware/host_tests/run.sh
       - name: Test the sold-unit checker

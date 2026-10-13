@@ -216,6 +216,7 @@ void handleSave() {
         }
         if (newPw != webPassword) {
             webPassword = newPw;
+            adminSessionsEndAll();
             adminPwChanged = true;
             prefs.putString(NVS_KEY_ADMIN_PW, webPassword);
             prefs.putBool(NVS_KEY_ADMIN_PW_CHANGED, true);
