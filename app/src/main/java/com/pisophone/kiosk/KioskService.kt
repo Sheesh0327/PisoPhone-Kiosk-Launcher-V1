@@ -14,8 +14,10 @@ import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.pisophone.kiosk.receiver.KioskWatchdogReceiver
+import com.pisophone.kiosk.security.AutoUpdatePolicy
 import com.pisophone.kiosk.security.KioskActivationManager
 import com.pisophone.kiosk.security.KioskSecurity
+import com.pisophone.kiosk.security.KioskUpdateManager
 import com.pisophone.kiosk.service.KioskEngine
 import com.pisophone.kiosk.service.KioskStateManager
 
@@ -123,6 +125,7 @@ class KioskService : Service() {
         engine = eng
         eng.start()
         startWifiKeeper()
+        startUpdateKeeper()
     }
 
     // A phone that is not on the kiosk Wi-Fi cannot find its box (and so cannot pair or get its admin PIN): join it
@@ -138,6 +141,26 @@ class KioskService : Service() {
     private fun startWifiKeeper() {
         wifiHandler.removeCallbacks(wifiKeeper)
         wifiHandler.post(wifiKeeper)
+    }
+
+    // New app releases install by themselves: every hour, and only while nobody is using the phone (the policy says when).
+    private val updateKeeper = object : Runnable {
+        override fun run() {
+            KioskUpdateManager.autoUpdate(applicationContext) {
+                AutoUpdatePolicy.isIdle(
+                    stateManager.appState.value,
+                    stateManager.sessionTimeRemaining.value,
+                    stateManager.signedInAccount.value,
+                    stateManager.isArenaMode.value,
+                )
+            }
+            wifiHandler.postDelayed(this, AutoUpdatePolicy.CHECK_INTERVAL_MS)
+        }
+    }
+
+    private fun startUpdateKeeper() {
+        wifiHandler.removeCallbacks(updateKeeper)
+        wifiHandler.postDelayed(updateKeeper, AutoUpdatePolicy.FIRST_CHECK_DELAY_MS)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -230,6 +253,7 @@ class KioskService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         wifiHandler.removeCallbacks(wifiKeeper)
+        wifiHandler.removeCallbacks(updateKeeper)
         engine?.stop()
         engine = null
         releaseLocks()

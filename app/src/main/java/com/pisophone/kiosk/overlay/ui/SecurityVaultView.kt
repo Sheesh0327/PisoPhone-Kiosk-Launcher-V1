@@ -165,7 +165,7 @@ fun SecurityVaultView(
                         }
                         HelpInfoButton(
                             title = "Direct App Update",
-                            description = "Directly downloads and installs the latest secure application update APK.",
+                            description = "Directly downloads and installs the latest secure application update APK. A phone that is set up as the device owner also does this by itself, every hour, whenever nobody is using it.",
                             onShowHelp = { t, d -> activeHelpDialog = Pair(t, d) },
                         )
                     }

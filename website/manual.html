@@ -325,12 +325,12 @@ ol.steps>li::before{content:counter(s);position:absolute;left:0;top:2px;width:30
 <h2 id="updates">12. Updates</h2>
 <table>
 <tr><th>What</th><th>How</th></tr>
-<tr><td>Coin box</td><td>Dashboard &rarr; Tools &rarr; <b>Firmware update</b> &rarr; <b>Check for an update</b> &rarr; <b>Update &gt; Install update</b>. The box tries the new version for about a minute and rolls back by itself if it fails. Updates are signed.</td></tr>
-<tr><td>Router</td><td><code>piso-setup update</code> (or <code>python3 pisophone_setup.py --update</code>)</td></tr>
-<tr><td>Rental phones</td><td>Admin console &rarr; Direct App Update &rarr; <b>Check for Update &amp; Install</b></td></tr>
+<tr><td>Coin box</td><td><b>By itself.</b> The router checks every hour and installs a new box firmware at a quiet moment (no customer online, no phone with time running). Only firmware you signed is accepted, and the box goes back to the old one if the new one does not start. To do it now: <code>piso-setup box-update</code> (or dashboard &rarr; Tools &rarr; <b>Firmware update</b>). <code>piso-setup auto-update off</code> stops the automatic part.</td></tr>
+<tr><td>Router</td><td><b>By itself.</b> The router checks every hour and installs a release you signed when no customer is online; it goes back if the release does not run. To do it now: <code>piso-setup update</code> (or send <code>/update</code> in Telegram).</td></tr>
+<tr><td>Rental phones</td><td><b>By itself.</b> A phone set up as the device owner checks every hour and installs a new app while nobody is using it (lock screen showing, no time left). Admin console &rarr; Direct App Update &rarr; <b>Check for Update &amp; Install</b> does it at once.</td></tr>
 <tr><td>Setup program</td><td>Download the latest <code>pisophone_setup.py</code></td></tr>
 </table>
-<div class="note"><b>Do it at a quiet time</b>The box restarts while updating. Choose a time with no customers.</div>
+<div class="note"><b>You are told</b>The router tells you in Telegram when it updates itself or the box. A new router release starts at 0% of the routers, so it only reaches them once you widen it.</div>
 
 <h2 id="trouble">13. Troubleshooting</h2>
 <table>

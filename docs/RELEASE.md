@@ -68,6 +68,19 @@ The key is built into the router program, so a stolen Cloudflare or GitHub accou
 `./piso-setup.sh update`, run from a NEW copy of the setup file that you copied to the router, still works for a router that has no internet.
 A router still on release 1.0.0 has the old `update` command (it only installs from a file): run `piso-setup self-update` once on it, after that
 `piso-setup update` fetches from the website.
+
+## Everything updates itself
+- **Router**: hourly (`piso-setup self-update auto`), a release you signed, no customer online, rolled back if it does not run. Staged by the rollout percentage above.
+- **Coin box**: the router checks half an hour after that (`piso-setup box-update auto`): it reads `website/update/firmware.json`, and when the box
+  runs an older version it downloads the image for the box's chip, checks the size and checksum you published, gives the box your signed
+  manifest and then the image (exactly what the dashboard does), and waits for the box to come back on the new version. It waits while a customer is
+  online or a phone has time running, tries a version three times at most, and tells you in Telegram. The box still verifies your signature
+  itself, and goes back to its old firmware if the new one does not start. There is no staged rollout for the box: publish firmware only when you
+  have tried it on your own box (`piso-setup auto-update off` on a router stops both). `piso-setup box-update` installs now; `check` only looks.
+- **Phones**: the app checks `app.json` hourly (the first time 5 minutes after it starts) and installs by itself when it is the device owner (a silent
+  install; otherwise Android would ask the person holding the phone) and the phone is idle: lock screen showing, no time left, nobody signed in, no
+  arena match. The APK is checked against the published checksum and the signing certificate, a build that fails to install three times is left alone
+  until a newer one is published, and the app restarts by itself afterwards.
 ## 4. After `main` serves the new website (timed follow-up)
 - [ ] The box's **Set up a phone** links still carry the box's secret in the query string (`?secret=`), which reaches
       the web server's logs and the browser history. The website now also reads it after `#` (never sent to a server) and

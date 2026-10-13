@@ -18,7 +18,7 @@
 # Everything is generated here (Wi-Fi password, box admin password, gateway key) and printed once at the end and saved in
 # /root/piso-setup-summary.txt. Running the file again is safe: it keeps what it already made.
 #
-# Other commands (after setup): piso-setup status | wifi-name "<name>" | guest-port [lanN|off] | pair | summary | test-coin | diag | box-diag | set-password | reconcile [rebase] | telegram | rotate-box-wifi | export [file] | import <file> | space | forget-summary | kiosk-wifi | verify | handout | lock-admin | unlock-admin | update [check] (installs the newest release from the website; same as self-update) | self-update [check] | auto-update on|off
+# Other commands (after setup): piso-setup status | wifi-name "<name>" | guest-port [lanN|off] | pair | summary | test-coin | diag | box-diag | set-password | reconcile [rebase] | telegram | rotate-box-wifi | export [file] | import <file> | space | forget-summary | kiosk-wifi | verify | handout | lock-admin | unlock-admin | update [check] (installs the newest release from the website; same as self-update) | self-update [check] | box-update [check] (installs the coin box's newest firmware) | auto-update on|off
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation

@@ -314,5 +314,7 @@ jobs:
           PISO_TEST_TARGET_DIR=$HOME/test-target python3 router/tests/test_selfupdate.py
           # not an error while the owner has not made the keys (docs/KEYS.md), but never silent: routers install no update until then
           if [ ! -s tools/pisoportal/owner_key.b64 ]; then echo "::warning file=tools/pisoportal/owner_key.b64::no owner key built into the router program: routers will install no update from the website (docs/RELEASE.md)"; fi
+      - name: Check the coin box's firmware updates through the router (against a fake website and a fake box)
+        run: python3 router/tests/test_boxupdate.py
       - name: The committed setup file is up to date
         run: python3 tools/build_piso_setup.py --check

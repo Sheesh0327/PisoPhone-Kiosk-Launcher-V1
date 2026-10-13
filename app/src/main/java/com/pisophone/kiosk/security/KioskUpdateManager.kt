@@ -118,47 +118,86 @@ object KioskUpdateManager {
         }
 
         _updateState.value = UpdateState.Downloading(0f)
-        scope.launch {
-            try {
-                val updateDir = File(context.cacheDir, "updates").apply { mkdirs() }
-                val apkFile = File(updateDir, "piso_update.apk")
-                if (apkFile.exists()) {
-                    apkFile.delete()
-                }
+        scope.launch { runUpdate(context, url, isIdle = null) }
+    }
 
-                val localCode = com.pisophone.kiosk.BuildConfig.VERSION_CODE
-                val remote = fetchRemoteVersion()
-                if (!isUpdateAvailable(remote.versionCode, localCode)) {
+    /**
+     * What the service's hourly timer calls: look for a new release and install it, without anyone asking. It only acts
+     * on a phone that installs silently (the device owner; anything else would show an install prompt to a customer) and
+     * only while [isIdle] says nobody is using the phone, checked again after the download. Quiet when there is nothing
+     * to do, and a failure is logged rather than shown (the vault's update card is for the owner's own taps).
+     */
+    fun autoUpdate(context: Context, isIdle: () -> Boolean) {
+        if (_updateState.value is UpdateState.Downloading || _updateState.value is UpdateState.Installing) return
+        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
+        if (dpm?.isDeviceOwnerApp(context.packageName) != true || !isIdle()) return
+        scope.launch { runUpdate(context, "${BuildConfig.UPDATE_BASE_URL}/app-release.apk", isIdle) }
+    }
+
+    private fun attemptPrefs(context: Context) = context.getSharedPreferences("kiosk_auto_update", Context.MODE_PRIVATE)
+
+    /** [isIdle] is null for the owner's own tap (install now, show progress); set for the timer (see [autoUpdate]). */
+    private fun runUpdate(context: Context, url: String, isIdle: (() -> Boolean)?) {
+        val auto = isIdle != null
+        try {
+            val updateDir = File(context.cacheDir, "updates").apply { mkdirs() }
+            val apkFile = File(updateDir, "piso_update.apk")
+            if (apkFile.exists()) {
+                apkFile.delete()
+            }
+
+            val localCode = com.pisophone.kiosk.BuildConfig.VERSION_CODE
+            val remote = fetchRemoteVersion()
+            if (!isUpdateAvailable(remote.versionCode, localCode)) {
+                if (auto) {
+                    attemptPrefs(context).edit().clear().apply()
+                } else {
                     _updateState.value = UpdateState.UpToDate(
                         "Already up to date (installed build $localCode, latest published ${remote.versionCode}).",
                     )
-                    return@launch
                 }
-
-                val downloadUrl = remote.url.ifEmpty { url }
-                if (!isAllowedDownloadUrl(downloadUrl)) {
-                    throw IOException("Refusing to download an update from a non-HTTPS address.")
-                }
-                downloadApk(downloadUrl, apkFile) { progress ->
-                    _updateState.value = UpdateState.Downloading(progress)
-                }
-                try {
-                    verifyDownloadedApk(context, apkFile, remote)
-                } catch (e: Exception) {
-                    apkFile.delete()
-                    throw e
-                }
-
-                _updateState.value = UpdateState.Installing
-                val installed = triggerInstallation(context, apkFile)
-                if (!installed) {
-                    _updateState.value = UpdateState.Error("Failed to trigger installation.")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Update failed: ${e.message}", e)
-                DiagnosticsLog.add("UPDATE", "failed: ${e.message}")
-                _updateState.value = UpdateState.Error(e.message ?: "Unknown error")
+                return
             }
+            if (auto) {
+                val tries = attemptPrefs(context).getInt("tries_${remote.versionCode}", 0)
+                if (!AutoUpdatePolicy.mayAttempt(tries)) return
+                _updateState.value = UpdateState.Downloading(0f)
+            }
+
+            val downloadUrl = remote.url.ifEmpty { url }
+            if (!isAllowedDownloadUrl(downloadUrl)) {
+                throw IOException("Refusing to download an update from a non-HTTPS address.")
+            }
+            downloadApk(downloadUrl, apkFile) { progress ->
+                _updateState.value = UpdateState.Downloading(progress)
+            }
+            try {
+                verifyDownloadedApk(context, apkFile, remote)
+            } catch (e: Exception) {
+                apkFile.delete()
+                throw e
+            }
+            if (isIdle != null && !isIdle()) {
+                // a customer came while it downloaded: the next hourly check tries again
+                apkFile.delete()
+                _updateState.value = UpdateState.Idle
+                return
+            }
+
+            if (auto) {
+                val key = "tries_${remote.versionCode}"
+                attemptPrefs(context).edit().putInt(key, attemptPrefs(context).getInt(key, 0) + 1).apply()
+                DiagnosticsLog.add("UPDATE", "installing build ${remote.versionCode} by itself")
+            }
+            _updateState.value = UpdateState.Installing
+            val installed = triggerInstallation(context, apkFile)
+            if (!installed) {
+                _updateState.value = if (auto) UpdateState.Idle else UpdateState.Error("Failed to trigger installation.")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Update failed: ${e.message}", e)
+            DiagnosticsLog.add("UPDATE", "failed: ${e.message}")
+            _updateState.value = if (auto) UpdateState.Idle else UpdateState.Error(e.message ?: "Unknown error")
         }
     }
 

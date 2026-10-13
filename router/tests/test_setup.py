@@ -470,6 +470,11 @@ r = lib("update_timer_ok; echo rc=$?", env={"PISO_CRON_FILE": cron})
 check("rc=1" in r.stdout, "no hourly update line: not scheduled")
 r = lib("install_update_timer; cat $PISO_CRON_FILE; update_timer_ok; echo rc=$?", env={"PISO_CRON_FILE": cron})
 check("self-update auto" in r.stdout and "something" in r.stdout, "installing the timer adds the hourly line and keeps the others: " + r.stdout)
+_lines = [ln for ln in r.stdout.splitlines() if "update auto" in ln]
+check(len(_lines) == 2 and any("box-update auto" in ln for ln in _lines) and len({ln.split()[0] for ln in _lines}) == 2,
+      "and a second line for the coin box's firmware, at a different minute: " + r.stdout)
+r = lib("install_update_timer; install_update_timer; grep -c 'update auto' $PISO_CRON_FILE", env={"PISO_CRON_FILE": cron})
+check(r.stdout.strip().endswith("2"), "installing the timer twice leaves one line of each: " + r.stdout)
 for _tool in ("pgrep", "pidof"):  # (both are asked: the machine running the test may really have a scheduler)
     open(f"{bindir}/{_tool}", "w").write("#!/bin/sh\n[ -z \"$FAKE_CRON\" ] || exit 0\nexit 1\n"); os.chmod(f"{bindir}/{_tool}", 0o755)
 check("rc=1" in lib("update_timer_ok; echo rc=$?", env={"PISO_CRON_FILE": cron}).stdout, "a scheduler that is not running is reported")

@@ -175,7 +175,10 @@ update_check_recent() {
 install_update_timer() {
 	_k=$(conf_get GW_KEY | cut -c1-4); case "$_k" in "" | *[!0-9a-f]*) _k=0 ;; esac
 	mkdir -p "$(dirname "$CRON_FILE")" 2> /dev/null
-	{ grep -v 'piso-setup self-update' "$CRON_FILE" 2> /dev/null; echo "$((0x$_k % 60)) * * * * $SELF_PATH self-update auto > /dev/null 2>&1"; } > "$CRON_FILE.new" && mv "$CRON_FILE.new" "$CRON_FILE"
+	# the router's own update at its minute, the coin box's firmware half an hour later
+	{ grep -v -e 'piso-setup self-update' -e 'piso-setup box-update' "$CRON_FILE" 2> /dev/null
+		echo "$((0x$_k % 60)) * * * * $SELF_PATH self-update auto > /dev/null 2>&1"
+		echo "$(((0x$_k + 30) % 60)) * * * * $SELF_PATH box-update auto > /dev/null 2>&1"; } > "$CRON_FILE.new" && mv "$CRON_FILE.new" "$CRON_FILE"
 	if [ -x /etc/init.d/cron ]; then /etc/init.d/cron enable > /dev/null 2>&1; /etc/init.d/cron restart > /dev/null 2>&1; fi
 }
 

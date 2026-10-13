@@ -4,6 +4,12 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- **Everything updates itself now** (router 1.3.2). The **coin box** gets its new firmware through the router: every hour (half an hour after the
+  router's own check) the router looks at `firmware.json` and, at a quiet moment (no customer online, no phone with time running), hands the box the
+  signed image; the box still verifies your signature itself and goes back to its old firmware if the new one does not start. `piso-setup box-update
+  [check]` does it now, `auto-update off` stops it, and Telegram `/update` now covers the box too. The **rental phones'** app checks hourly and
+  installs a new build by itself when it is the device owner and idle (lock screen, no time left, nobody signed in), three tries per build at most.
+  The router already updated itself hourly. (docs/RELEASE.md)
 - Publishing a router release now starts at **0%** of the installed routers (a router set up with the installer still gets the newest file).
   Widen it by hand with the workflow's rollout input (10, then 100); a push to main never re-signs a file that is already published, so a widened
   rollout stays. (docs/RELEASE.md)
