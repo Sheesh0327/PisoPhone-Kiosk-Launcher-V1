@@ -55,8 +55,9 @@ is refused or undone, and you get a Telegram message either way. With customers 
    and `setup/piso-setup.sh` (check `tools/pisoportal/bin/BUILD-INFO` shows your commit).
 2. Merge `beta` into `main` when your tests pass, `git pull`.
 3. `publish-router.yml` signs the file with `OWNER_SIGNING_KEY_B64` and commits `website/update/router.json` and `router-setup.sh` to `main`
-   (Cloudflare publishes them), at 100% of the routers. For a staged rollout run the workflow by hand (Actions > Publish the router
-   update > Run workflow) with rollout `10`, then again with `100`. Without the secret, sign on **your own computer** instead:
+   (Cloudflare publishes them), at **0%** of the routers: a new release reaches no installed router (a new router set up with the installer gets
+   it at once) until you widen it. Run the workflow by hand (Actions > Publish the router update > Run workflow) with rollout `10`, then again with
+   `100`; a push never changes a rollout you widened. Without the secret, sign on **your own computer** instead:
    `python3 scripts/sign_router.py --private ~/pisophone_license_key.pem --rollout 10 --changelog "what changed"` and commit both files.
 4. Watch Telegram ("update: release 1.1.0 installed and running"). A router that cannot run the new release goes back by itself
    and tells you ("FAILED and was undone"). When the first routers are fine, sign the **same file again** with `--rollout 100`.

@@ -299,7 +299,7 @@ ol.steps>li::before{content:counter(s);position:absolute;left:0;top:2px;width:30
 <ul>
 <li><code>piso-setup export</code> writes a private backup (settings, keys, revenue ledger) to copy to your computer; <code>piso-setup import &lt;file&gt;</code> restores it after a reset or on a replaced router. A firmware upgrade of the router now keeps these by itself.</li>
 <li><code>piso-setup space</code> shows what PisoPhone uses and what is free; <code>piso-setup forget-summary</code> deletes the saved summary (it holds passwords).</li>
-<li>The portal program is built for <b>mipsel_24kc</b> routers (for example MT7621) only. On another CPU the setup stops before changing anything and says so.</li>
+<li>The portal program is built for five CPU families: <b>mipsel</b> (MT7621, MT7628: the 360T6M), <b>mips</b> (older TP-Link), <b>aarch64</b> (newer Wi-Fi 6 routers, Raspberry Pi 4), <b>armv7</b> (Qualcomm IPQ40xx) and <b>x86_64</b> (mini PCs). Check yours with <code>cat /etc/openwrt_release</code> (the <code>DISTRIB_ARCH</code> line). The installer picks the right file by itself; on a CPU with no build the setup stops before changing anything and says so. You want OpenWrt 23.05 or newer, 16 MB flash or more, and 128 MB RAM or more. Only the 360T6M has been tried on real hardware so far.</li>
 </ul>
 <h3>Joining the hidden PisoKiosk network</h3>
 <p>Scan the QR on your <b>Wi-Fi join card</b> with a phone camera, or add the network by hand with the name, WPA password and "hidden network" ticked. The card also has a QR that opens the coin box page.</p>

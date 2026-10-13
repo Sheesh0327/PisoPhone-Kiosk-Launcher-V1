@@ -399,6 +399,8 @@ fn json(conn: &mut Incoming, code: &str, body: &str, extra: &str) {
 fn handle(c: &Console, req: Request, mut conn: Incoming) {
     let ip = conn.s.peer_addr().map(|a| a.ip().to_string()).unwrap_or_default();
     let head_only = req.method == "HEAD";
+    // a request's body is always read, whatever the answer: closing a connection with unread bytes resets it and the client sees an error
+    let body = if req.method == "POST" { body_of(&req, &mut conn) } else { String::new() };
     match (req.method.as_str(), req.path.as_str()) {
         ("GET" | "HEAD", "/") => {
             let page = UI.replace("@OWNER_KEY@", &crate::update::owner_key());
@@ -431,7 +433,6 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
             if wait > 0 {
                 return json(&mut conn, "429 Too Many Requests", &format!("{{\"error\":\"LOCKED\",\"retry\":{}}}", wait), "");
             }
-            let body = body_of(&req, &mut conn);
             if c.password_ok(&crate::util::jget(&body, "password").replace("\\\"", "\"").replace("\\\\", "\\")) {
                 let token = c.new_session();
                 json(
@@ -466,7 +467,6 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
                     json(&mut conn, "200 OK", "{\"ok\":true}", "Set-Cookie: piso_console=; Path=/; Max-Age=0\r\n");
                 }
                 ("POST", "/api/kick") => {
-                    let body = body_of(&req, &mut conn);
                     let mac = jget(&body, "mac").to_lowercase();
                     if !valid_mac(&mac) {
                         return json(&mut conn, "400 Bad Request", "{\"error\":\"BAD_MAC\"}", "");
