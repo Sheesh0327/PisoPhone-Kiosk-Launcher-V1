@@ -26,7 +26,7 @@
 
 VERSION="dev"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
-PISO_RELEASE='1.3.0'
+PISO_RELEASE='1.3.1'
 # the CPU family the portal program in this file is built for (router_family below names the family of the router it runs on)
 PISO_ARCH='aarch64'
 
@@ -1518,7 +1518,7 @@ cmd_console() {
 	case "$1" in
 		on)
 			console_front && { echo "The console already is the front page: http://$LAN_IP"; return 0; }
-			console_answers 8081 || die "the console does not answer at http://$LAN_IP:8081 yet: run piso-setup update first (it comes with release 1.3.0 and later)"
+			console_answers 8081 || die "the console does not answer at http://$LAN_IP:8081 yet: run piso-setup update first (it comes with release 1.3.0 and later; 1.3.1 fixes a sign-out error)"
 			conf_set CONSOLE_MODE front
 			console_apply
 			_t=0; while [ "$_t" -lt 30 ]; do console_answers 80 && break; sleep 2; _t=$((_t + 2)); done
