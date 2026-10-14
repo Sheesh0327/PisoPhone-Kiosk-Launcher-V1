@@ -183,6 +183,19 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                                 <span class="hint">Change it if the relay is on when it should be off.</span>
                             </div>
                             <div class="field">
+                                <label for="pulse_guard">Spark protection</label>
+                                <select id="pulse_guard" name="pulse_guard">
+                                    <option value="0" {PULSE_GUARD_OFF_SELECTED}>Off (every pulse counts, as before)</option>
+                                    <option value="1" {PULSE_GUARD_ON_SELECTED}>On (a pulse that is too short to be a coin is ignored)</option>
+                                </select>
+                                <span class="hint">Stops a lighter or electrical noise near the coin slot from being counted as coins. Insert a few real coins first and read the measured pulse widths below.</span>
+                            </div>
+                            <div class="field">
+                                <label for="pulse_min_ms">Shortest real coin pulse (ms)</label>
+                                <input id="pulse_min_ms" type="number" min="5" max="40" name="pulse_min_ms" value="{PULSE_MIN_MS}">
+                                <span class="hint">{PULSE_STATS}</span>
+                            </div>
+                            <div class="field">
                                 <label for="led_pin">Indicator LED pin</label>
                                 <input id="led_pin" type="number" name="led_pin" value="{LED_PIN}">
                             </div>

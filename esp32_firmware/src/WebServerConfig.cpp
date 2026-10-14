@@ -11,6 +11,7 @@
 #include "WebServerAuth.h"
 #include "PaymentQueueManager.h"
 #include "Config.h"
+#include "PulseGuard.h"
 #include "SetupGate.h"
 #include "RevenueVault.h"
 #include "RevenueLedger.h"
@@ -264,6 +265,14 @@ void handleSave() {
         relayActiveLow =
             (webServer.arg(NVS_KEY_RELAY_ACTIVE_LOW) == "1" || webServer.arg(NVS_KEY_RELAY_ACTIVE_LOW) == "true");
         prefs.putBool(NVS_KEY_RELAY_ACTIVE_LOW, relayActiveLow);
+    }
+    if (webServer.hasArg(NVS_KEY_PULSE_GUARD)) {
+        coinPulseGuard = (webServer.arg(NVS_KEY_PULSE_GUARD) == "1" || webServer.arg(NVS_KEY_PULSE_GUARD) == "true");
+        prefs.putBool(NVS_KEY_PULSE_GUARD, coinPulseGuard);
+    }
+    if (webServer.hasArg(NVS_KEY_PULSE_MIN_MS)) {
+        coinPulseMinMs = pulseMinMsClamp(webServer.arg(NVS_KEY_PULSE_MIN_MS).toInt());
+        prefs.putInt(NVS_KEY_PULSE_MIN_MS, coinPulseMinMs);
     }
     if (webServer.hasArg(NVS_KEY_SHARED_SECRET)) {
         String newSecret = webServer.arg(NVS_KEY_SHARED_SECRET);

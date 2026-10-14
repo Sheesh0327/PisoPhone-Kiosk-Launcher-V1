@@ -313,6 +313,23 @@ void processCoinSlotSession() {
         return;
     }
 
+    // 1b. Say so when pulses too short to be a coin were seen (a spark, a loose wire, noise), at most once a second.
+    {
+        static unsigned long lastShortCheckMs = 0;
+        static uint32_t shortReported = 0;
+        if (now - lastShortCheckMs >= 1000) {
+            lastShortCheckMs = now;
+            PulseStats ps = coinPulseStats();
+            if (ps.shortN < shortReported) shortReported = 0; // the measurements were reset
+            if (ps.shortN > shortReported) {
+                diagLog("[🪙 COIN SLOT] %u pulse(s) too short to be a coin (the shortest %u us): %s\n",
+                        (unsigned)(ps.shortN - shortReported), (unsigned)ps.minUs,
+                        coinPulseGuard ? "ignored." : "COUNTED, because the spark protection is off.");
+                shortReported = ps.shortN;
+            }
+        }
+    }
+
     // 2. Read and harvest new pulses atomically from ISR counter into session buffer
     int newPulses = 0;
     unsigned long lastPulseTime = 0;

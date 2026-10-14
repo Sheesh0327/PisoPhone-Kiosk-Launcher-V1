@@ -30,7 +30,7 @@ The rules that hold everywhere: **the box records a payment before anything else
    builds the URL with `Esp32CoinslotRequests`). The box checks the signature, that the phone is
    paired, and that payment storage works, then energises the coin acceptor for
    a limited time (`CoinSlotManager.reserveCoinSlot`). Only one phone can hold the slot.
-2. **Coin.** The acceptor produces pulses; `universalCoinIsr` (HardwareManager) only counts them.
+2. **Coin.** The acceptor produces pulses; `universalCoinIsr` (HardwareManager) only counts them, and measures how long each held the line low (`PulseGuard.h`; the optional spark protection ignores pulses too short to be a coin: `docs/COIN_SLOT_PROTECTION.md`).
    `CoinSlotManager.processCoinSlotSession` waits for a gap in the pulses, then delivers the total.
 3. **Record.** `triggerUniversalCoinEvent` (DeviceNetwork) saves the payment in the durable queue
    (`PaymentQueueManager.enqueuePendingPayment`, persisted in NVS) *before* anything else.

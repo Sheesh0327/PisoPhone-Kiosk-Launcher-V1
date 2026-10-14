@@ -4,6 +4,12 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- **Coin box firmware 3.5.6: spark protection for the coin slot.** The box now measures how long every coin pulse holds the signal line low and
+  shows it (box settings page and diagnostics: a histogram of pulse widths, and a log line when pulses too short to be a coin are seen). A new
+  setting, **Spark protection** (off by default, so nothing changes until you switch it on), counts a pulse only when it lasted at least the
+  **shortest real coin pulse** you set (default 12 ms), which keeps a lighter or electrical noise near the coin slot from being credited as coins.
+  How to set it up on your box, and the wiring that matters most (twisted pair, metal case, optocoupler, RC filter): `docs/COIN_SLOT_PROTECTION.md`.
+  Only the width rules are tested on a computer; try it on one box before relying on it. Routers with automatic updates install box firmware by themselves.
 - **Phone app version name** is now the build number cut into digits, hundreds.tens.ones (build 437 is 4.3.7, build 1000 is 10.0.0), instead of `1.0.<build>`. Only the build number (versionCode) decides what counts as an update, so phones update normally; Owner settings still shows the build number in brackets.
 - Router 1.3.4, **PisoWiFi: voucher codes bought with coins, a page that no longer gets stuck, speech that works.**
   **Vouchers:** before Insert Coin a customer can pick **Use now** (as before) or **Get a voucher code**. A voucher window counts and prices the coins as

@@ -2,6 +2,7 @@
 // slots and revenue counters, plus the locked accessor for the shared secret.
 
 #include "Config.h"
+#include "PulseGuard.h"
 #include "OwnerData.h"
 #include "DeviceManager.h"
 #include "HardwareManager.h"
@@ -51,6 +52,8 @@ int ledPin = DEFAULT_LED_PIN;
 bool ledActiveLow = DEFAULT_LED_ACTIVE_LOW;
 int relayPin = DEFAULT_RELAY_PIN;
 bool relayActiveLow = false;
+bool coinPulseGuard = false;
+int coinPulseMinMs = PULSE_MIN_MS_DEFAULT;
 
 String wifiSsid = setupgate::DEFAULT_WIFI_SSID; // the hidden network the router setup script creates for the box
 String wifiPass = setupgate::DEFAULT_WIFI_PASSWORD;
@@ -313,6 +316,8 @@ const char* const NVS_KEY_LED_PIN = "led_pin";
 const char* const NVS_KEY_LED_ACTIVE_LOW = "led_act_low";
 const char* const NVS_KEY_RELAY_PIN = "relay_pin";
 const char* const NVS_KEY_RELAY_ACTIVE_LOW = "relay_act_low";
+const char* const NVS_KEY_PULSE_GUARD = "pulse_guard";
+const char* const NVS_KEY_PULSE_MIN_MS = "pulse_min_ms";
 const char* const NVS_KEY_PORT = "target_port";
 const char* const NVS_KEY_MINS_PER_COIN = "mins_per_coin";
 const char* const NVS_KEY_ADMIN_PW = cfgmig::K_ADMIN_PW;
@@ -544,6 +549,8 @@ void loadAllConfig() {
 
     webPassword = prefs.getString(NVS_KEY_ADMIN_PW, webPassword);
     relayActiveLow = prefs.getBool(NVS_KEY_RELAY_ACTIVE_LOW, false);
+    coinPulseGuard = prefs.getBool(NVS_KEY_PULSE_GUARD, false);
+    coinPulseMinMs = pulseMinMsClamp(prefs.getInt(NVS_KEY_PULSE_MIN_MS, PULSE_MIN_MS_DEFAULT));
     p1Ip = prefs.getString(NVS_KEY_P1, p1Ip);
     p2Ip = prefs.getString(NVS_KEY_P2, p2Ip);
     matchMinutes = prefs.getInt(NVS_KEY_MATCH, matchMinutes);
