@@ -30,7 +30,7 @@ The rules that hold everywhere: **the box records a payment before anything else
    builds the URL with `Esp32CoinslotRequests`). The box checks the signature, that the phone is
    paired, and that payment storage works, then energises the coin acceptor for
    a limited time (`CoinSlotManager.reserveCoinSlot`). Only one phone can hold the slot.
-2. **Coin.** The acceptor produces pulses; `universalCoinIsr` (HardwareManager) only counts them.
+2. **Coin.** The acceptor produces pulses; `universalCoinIsr` (HardwareManager) only counts them, and measures how long each held the line low (`PulseGuard.h`; the optional spark protection ignores pulses too short to be a coin: `docs/COIN_SLOT_PROTECTION.md`).
    `CoinSlotManager.processCoinSlotSession` waits for a gap in the pulses, then delivers the total.
 3. **Record.** `triggerUniversalCoinEvent` (DeviceNetwork) saves the payment in the durable queue
    (`PaymentQueueManager.enqueuePendingPayment`, persisted in NVS) *before* anything else.
@@ -105,7 +105,7 @@ openNDS is only the doorman: it blocks a guest phone from the internet until tol
 | `boxlink.rs` | the coin box: signed HTTP calls (`docs/api/gateway-coinslot.md`) and signed UDP coin events |
 | `nds.rs` | `ndsctl`: grant, revoke, state, counters |
 | `roll.rs` | the roll: one line per device with paid time; written atomically |
-| `pricing.rs`, `fair.rs` | plans and prices (best combination of tiers); fair use slow-down for HyperSpeed |
+| `pricing.rs`, `fair.rs` | plans and prices (best combination of tiers; a `Pricing` value the console edits live); fair use slow-down for HyperSpeed |
 | `ledger.rs`, `reconcile.rs` | the revenue ledger (hash-chained lines) and its comparison with the box's own count |
 | `voucher.rs` | voucher codes (below) |
 | `console.rs`, `console-ui.js` | the owner's console page (signed in with the router's root password) |
@@ -120,6 +120,7 @@ sign-in window notices that the internet works.
 and a few read-only commands from the owner's chat. It cannot change prices, passwords or Wi-Fi settings.
 
 ## 6. Vouchers, the ledger and reconcile
+- **Prices are live:** the settings file (`HYPER_TIERS`, `HYPER_PRORATA_MIN`, `ENDURANCE_TIERS`, `ENDURANCE_DOWN_KBPS`, `ENDURANCE_UP_KBPS`) gives the starting `Pricing`; the console's Settings page (`/api/pricing`) can replace it, kept in `DATA_DIR/settings.txt` like the voucher choice, with validation (every plan keeps a 1-peso line, at most 8 lines, bounded pesos and minutes). Each coin window snapshots the `Pricing` it started with, so the amount on a customer's screen and the time it buys never change mid-payment; the customer page is rebuilt when the prices change.
 - **Voucher choice (`VOUCHER_CHOICE`, on by default):** before inserting coins a customer picks *Use now* or *Get a voucher code*. A voucher window counts and prices coins as usual, but connects
   nobody: it makes **one** voucher worth the minutes the coins bought, on the chosen plan, valid 30 days. The page shows the code and offers a tiny HTML file that opens the portal with the code filled in.
 - **Codes are never stored in the clear:** a code is `HMAC-SHA256(router secret, "v1" + salt + 0)`, shown as `ABCDE-FGHJK` (Crockford base32); only a hash and a used flag are on flash. The same device can list its unused vouchers again.

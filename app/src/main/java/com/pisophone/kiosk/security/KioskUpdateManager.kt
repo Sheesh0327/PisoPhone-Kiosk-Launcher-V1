@@ -162,7 +162,7 @@ object KioskUpdateManager {
         scope.launch { runUpdate(context, "${BuildConfig.UPDATE_BASE_URL}/app-release.apk", isIdle) }
     }
 
-    private fun attemptPrefs(context: Context) = context.getSharedPreferences("kiosk_auto_update", Context.MODE_PRIVATE)
+    private fun attemptPrefs(context: Context) = KioskSecurity.getDirectBootPrefs(context, "kiosk_auto_update")
 
     /** [isIdle] is null for the owner's own tap (install now, show progress); set for the timer (see [autoUpdate]). */
     private fun runUpdate(context: Context, url: String, isIdle: (() -> Boolean)?) {

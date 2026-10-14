@@ -50,7 +50,6 @@ object KioskSecurity {
     private const val KEY_KIOSK_WIFI_SSID = "kiosk_wifi_ssid"
     private const val KEY_KIOSK_WIFI_PASSWORD = "kiosk_wifi_password"
     private val BOX_SECRET_REGEX = Regex("^[A-Za-z0-9_.+=-]{16,128}$")
-    private const val KEY_SECRET_EXPLICITLY_PROVISIONED = "kiosk_secret_explicitly_provisioned"
     private const val TAG = "KioskSecurity"
 
     @Volatile
@@ -181,13 +180,6 @@ object KioskSecurity {
             return clean.chunked(2).joinToString(":")
         }
         return input.trim().uppercase()
-    }
-
-    fun isProvisioned(context: Context): Boolean {
-        val prefs = getPrefs(context)
-        val isExplicit = prefs.getBoolean(KEY_SECRET_EXPLICITLY_PROVISIONED, false)
-        val mac = getConfiguredEsp32Mac(context)
-        return isExplicit && mac.isNotBlank()
     }
 
     /**

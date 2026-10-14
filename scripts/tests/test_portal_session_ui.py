@@ -48,7 +48,7 @@ def handle_route(route):
     route.fulfill(status=200, content_type="application/json", body=json.dumps(body))
 
 
-def fresh(page, clock_start=True):
+def fresh(page):
     answers["status"].clear(); answers["accounts"].clear()
     calls["status"] = calls["accounts"] = 0
     page.goto("http://box.test/")

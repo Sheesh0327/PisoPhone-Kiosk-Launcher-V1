@@ -120,7 +120,7 @@ jobs:
           flag firmware_build "^(esp32_firmware/|protocol/|$W)"
           flag firmware_tests "^(esp32_firmware/|protocol/|scripts/|$W)"
           flag portal "^(tools/pisoportal/|router/|setup/|website/install\.sh|website/pisophone_setup\.py|tools/build_piso_setup\.py|scripts/(sign_router|owner_key|make_owner_keys)\.py|$W)"
-          flag website "^(website/|esp32_firmware/web/(adminqr|jsqr)\.js|scripts/(make_admin_qr\.py|tests/test_admin_qr\.py)|scripts/check_published_apk\.py|scripts/tests/test_check_published_apk\.py|app/src/main/java/com/pisophone/kiosk/(security/KioskSecurity|network/KioskWifi|provisioning/QrProvisioning)\.kt|scripts/tests/test_provisioning\.js|scripts/tests/test_flasher\.js|scripts/tests/test_site_page\.py|scripts/check_vendored\.py|$W)"
+          flag website "^(website/|esp32_firmware/web/(adminqr|jsqr)\.js|scripts/(make_admin_qr\.py|tests/test_admin_qr\.py|make_firmware_bundles\.py|tests/test_make_firmware_bundles\.py)|esp32_firmware/partitions_encrypted\.csv|docs/PROVISIONING_SOLD_UNIT\.md|scripts/check_published_apk\.py|scripts/tests/test_check_published_apk\.py|app/src/main/java/com/pisophone/kiosk/(security/KioskSecurity|network/KioskWifi|provisioning/QrProvisioning)\.kt|scripts/tests/test_provisioning\.js|scripts/tests/test_flasher\.js|scripts/tests/test_site_page\.py|scripts/check_vendored\.py|$W)"
 
   security-rules:
     name: Security rules
@@ -160,6 +160,8 @@ jobs:
         run: python3 scripts/tests/test_admin_qr.py
       - name: The console page's signed script (the signer and the browser-side check)
         run: python3 scripts/tests/test_console_ui.py
+      - name: Firmware zips (layout checks, no keys inside)
+        run: python3 scripts/tests/test_make_firmware_bundles.py
 
   kotlin-style:
     name: ktlint
@@ -315,8 +317,10 @@ jobs:
           cargo test --locked --release
           python3 tests/test_flow.py
           python3 tests/test_console.py
+          python3 tests/test_pricing_flow.py
           CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 tests/test_browser.py
           CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 tests/test_console_loader.py
+          CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 tests/test_console_prices.py
       - name: Shell scripts (shellcheck)
         run: |
           shellcheck -s sh setup/piso-setup.sh.in router/piso_monitor.sh

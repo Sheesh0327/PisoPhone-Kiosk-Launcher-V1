@@ -6,6 +6,7 @@
 #include "CoinSlotManager.h"
 #include "Config.h"
 #include "DeviceManager.h"
+#include "PulseGuard.h"
 #include <WiFi.h>
 #include "hal/gpio_ll.h"
 
@@ -93,11 +94,14 @@ static bool isRelayCurrentlyActive = false;
 static const unsigned long RELAY_POWER_ON_BLANKING_MS = 400;
 static volatile unsigned long relayPowerOnMs = 0;
 
+static volatile bool isrPulseOpen = false; // a pulse has begun and the line has not gone high again
+
 void resetCoinDetectorStates() {
     noInterrupts();
     isrUniversalPulseCount = 0;
     isrLastPulseTimeMs = 0;
     isrLastPulseTimeUs = 0;
+    isrPulseOpen = false;
     interrupts();
 }
 
@@ -148,11 +152,54 @@ volatile unsigned long isrLastPulseTimeUs = 0;
 // while mechanical noise spikes (< 10ms) are strictly filtered out.
 static const unsigned long U_MIN_PULSE_DEBOUNCE_US = 10000;
 
+// Fake-pulse protection (include/PulseGuard.h). Every pulse is measured from its falling edge to its rising edge. With the guard OFF
+// (the default) a pulse is counted at its falling edge exactly as it always was and the measurement is only kept for the dashboard.
+// With the guard ON a pulse is counted at its rising edge, and only when the line stayed low for at least the owner's limit.
+volatile bool isrPulseGuardOn = false;
+volatile uint32_t isrPulseMinUs = (uint32_t)PULSE_MIN_MS_DEFAULT * 1000UL;
+static volatile unsigned long isrPulseStartUs = 0;
+static PulseStats isrStats; // written by the ISR and read with the lock below
+static portMUX_TYPE pulseMux = portMUX_INITIALIZER_UNLOCKED;
+
+PulseStats coinPulseStats() {
+    PulseStats copy;
+    portENTER_CRITICAL(&pulseMux);
+    copy = isrStats;
+    portEXIT_CRITICAL(&pulseMux);
+    return copy;
+}
+
+void coinPulseStatsReset() {
+    portENTER_CRITICAL(&pulseMux);
+    memset(&isrStats, 0, sizeof isrStats);
+    portEXIT_CRITICAL(&pulseMux);
+}
+
 void IRAM_ATTR universalCoinIsr() {
-    if (millis() - relayPowerOnMs < RELAY_POWER_ON_BLANKING_MS) return;
-    // A real pulse holds the line low for 20+ ms; an edge that is already high again is noise.
-    if (gpio_ll_get_level(&GPIO, (gpio_num_t)universalCoinPin) != 0) return;
     unsigned long nowUs = micros();
+    bool lineLow = gpio_ll_get_level(&GPIO, (gpio_num_t)universalCoinPin) == 0;
+    if (!lineLow) {
+        // The line is high: a pulse that had begun has ended. Measure it (and, with the guard on, count it if it was long enough).
+        if (isrPulseOpen) {
+            isrPulseOpen = false;
+            uint32_t widthUs = (uint32_t)(nowUs - isrPulseStartUs);
+            portENTER_CRITICAL_ISR(&pulseMux);
+            pulseStatsAdd(isrStats, widthUs, isrPulseMinUs);
+            portEXIT_CRITICAL_ISR(&pulseMux);
+            if (isrPulseGuardOn && pulseIsReal(widthUs, isrPulseMinUs)) {
+                isrUniversalPulseCount++;
+                isrLastPulseTimeUs = nowUs;
+                isrLastPulseTimeMs = millis();
+            }
+        }
+        return;
+    }
+    if (millis() - relayPowerOnMs < RELAY_POWER_ON_BLANKING_MS) return;
+    if (isrPulseOpen) return; // still the same pulse (the line never went high in between)
+    // A real pulse holds the line low for 20+ ms; an edge that is already high again is noise (handled above).
+    isrPulseOpen = true;
+    isrPulseStartUs = nowUs;
+    if (isrPulseGuardOn) return; // counted when it ends, if it was long enough
     unsigned long elapsedUs = nowUs - isrLastPulseTimeUs;
     if (elapsedUs >= U_MIN_PULSE_DEBOUNCE_US) {
         isrUniversalPulseCount++;
@@ -166,7 +213,12 @@ void applyCoinSlotHardwareConfig() {
 
     // Universal Multi-Coin Pulse Slot (Allan 124A/616A)
     pinMode(universalCoinPin, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(universalCoinPin), universalCoinIsr, FALLING);
+    // both edges: the width of each pulse is measured (see the fake-pulse protection above)
+    isrPulseGuardOn = coinPulseGuard;
+    isrPulseMinUs = (uint32_t)pulseMinMsClamp(coinPulseMinMs) * 1000UL;
+    isrPulseOpen = false;
+    coinPulseStatsReset();
+    attachInterrupt(digitalPinToInterrupt(universalCoinPin), universalCoinIsr, CHANGE);
     Serial.printf("[+] Active Coin Mode: UNIVERSAL MULTI-COIN (GPIO %d, Interrupt Active).\n", universalCoinPin);
 
     resetCoinDetectorStates();

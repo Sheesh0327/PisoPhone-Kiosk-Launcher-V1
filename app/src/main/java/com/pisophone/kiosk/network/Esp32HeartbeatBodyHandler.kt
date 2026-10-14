@@ -56,8 +56,8 @@ internal class Esp32HeartbeatBodyHandler(
 
             val mac = if (json.has("mac")) json.optString("mac", "") else null
             val alias = if (json.has("device_name")) json.optString("device_name", "").trim() else null
-            val price = if (json.has("price")) json.optDouble("price", 5.0) else null
-            val minutes = if (json.has("minutes")) json.optInt("minutes", 30) else null
+            val price = if (json.has("price")) json.optDouble("price", 1.0) else null
+            val minutes = if (json.has("minutes")) json.optInt("minutes", 6) else null
             val encryptedPin = json.optString("admin_pin", "")
             val decryptedPin = if (encryptedPin.isNotBlank()) {
                 val dec = KioskSecurity.decrypt(encryptedPin, delegate.getSecretKey()).trim()

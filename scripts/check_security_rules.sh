@@ -78,5 +78,12 @@ for f in $(git ls-files); do
     fi
 done
 
+# 9. A log line never carries the admin PIN or the box secret (logcat is readable over USB debugging). A line that names one of
+#    them and interpolates a value ($x or ${x}) in the same call is a violation; "SecretSet=${!secret.isNullOrBlank()}" style
+#    booleans and lengths are fine (they do not contain the value).
+if grep -rnE --include='*.kt' -e 'Log\.[a-z]\(.*([Pp]in|PIN|[Ss]ecret).*\$\{?(it|pin|adminPin|currentPin|newPin|secret|boxSecret)\b[^.!(]*["}]' app/src/main/java; then
+    bad "a log line interpolates the admin PIN or a secret (lines above)"
+fi
+
 [ "$fail" -eq 0 ] && echo "security rules: all passed"
 exit "$fail"

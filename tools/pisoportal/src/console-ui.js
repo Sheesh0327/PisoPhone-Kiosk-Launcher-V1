@@ -1,5 +1,5 @@
 // TechNet PisoHub console: the page's behaviour. PISO_UI_VERSION rises with every change that is published (scripts/sign_console_ui.py).
-window.PISO_UI_VERSION = 3;
+window.PISO_UI_VERSION = 4;
 (function(){
 var $=function(i){return document.getElementById(i)},tab='over',timer=null,last={},sales=null,TABS=['over','cli','ph','sales','vch','set'];
 function esc(t){return String(t).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
@@ -64,6 +64,22 @@ function vch(j){if(soldOut(j))return;var a=j.batches||[];$('vl2').innerHTML=a.sl
 /* settings */
 function sets(j){if(soldOut(j)||document.activeElement===$('vcs'))return;$('vcs').value=j.voucher_choice?'on':'off'}
 $('vcs').onchange=function(){var s=$('vcs');$('setm').textContent='';api('/api/settings',{voucher_choice:s.value}).then(function(j){$('setm').textContent=j.ok?'Saved. Open customer pages follow at once.':'Could not save.';if(j.ok)s.value=j.voucher_choice?'on':'off'}).catch(function(){})};
-function refresh(){var p={over:'/api/overview',cli:'/api/clients',ph:'/api/phones',sales:'/api/sales?days='+($('rng').value||30),vch:'/api/vouchers',set:'/api/settings'}[tab],f={over:over,cli:cli,ph:ph,sales:sale,vch:vch,set:sets}[tab];api(p).then(f).catch(function(){})}
+/* prices: the editor keeps what is typed until it is saved (the page refreshes every few seconds and must not overwrite it) */
+var pdirty=false;
+function prow(p,m){return '<div class="tr"><span class="s">&#8369;</span><input type="number" class="tp" min="1" max="1000" step="1" value="'+(+p||'')+'" aria-label="Pesos"><span class="s">buys</span><input type="number" class="tm" min="1" max="10080" step="1" value="'+(+m||'')+'" aria-label="Minutes"><span class="s tx">'+(m>=60?mins(m):'min')+'</span><button class="b rm" aria-label="Remove this line">Remove</button></div>'}
+function pfill(id,list){$(id).innerHTML=(list||[]).map(function(t){return prow(t[0],t[1])}).join('')}
+function mbps(k){return +((+k||0)/1000).toFixed(3)}
+function prices(j,force){if(!j||j.error)return;$('prn').textContent=j.changed?'Changed in the console':'The settings file\'s prices';if(!force&&(pdirty||$('prc').contains(document.activeElement)))return;
+ pfill('rows-h',j.hyper);pfill('rows-e',j.endurance);$('pro').value=j.prorata;$('edn').value=mbps(j.down);$('eup').value=mbps(j.up)}
+function pcollect(id){var out=[];document.querySelectorAll('#'+id+' .tr').forEach(function(r){var p=r.querySelector('.tp').value.trim(),m=r.querySelector('.tm').value.trim();if(p===''&&m==='')return;out.push(p+':'+m)});return out.join(' ')}
+function pmsg(t,bad){var e=$('prm');e.textContent=t;e.style.color=bad?'':'var(--mut)'}
+$('prc').addEventListener('input',function(e){pdirty=true;pmsg('');if(e.target.classList.contains('tm')){var m=+e.target.value;e.target.parentNode.querySelector('.tx').textContent=m>=60?mins(m):'min'}});
+$('prc').addEventListener('click',function(e){var b=e.target;if(b.classList&&b.classList.contains('rm')){b.parentNode.remove();pdirty=true;pmsg('')}});
+$('add-h').onclick=function(){$('rows-h').insertAdjacentHTML('beforeend',prow('',''));pdirty=true};
+$('add-e').onclick=function(){$('rows-e').insertAdjacentHTML('beforeend',prow('',''));pdirty=true};
+$('prs').onclick=function(){pmsg('');var body={hyper:pcollect('rows-h'),endurance:pcollect('rows-e'),prorata:String(Math.round(+$('pro').value||0)),down:String(Math.round((+$('edn').value||0)*1000)),up:String(Math.round((+$('eup').value||0)*1000))};
+ api('/api/pricing',body).then(function(j){if(j.ok){pdirty=false;prices(j,true);pmsg('Saved. New payments use these prices.')}else pmsg(j.why?'Not saved: '+j.why+'.':'Not saved.',true)}).catch(function(){})};
+$('prr').onclick=function(){ask('Go back to the settings file?','The prices you changed here are forgotten; the router\'s settings file applies again.','Go back',true,function(){api('/api/pricing',{reset:'1'}).then(function(j){pdirty=false;if(j.ok){prices(j,true);pmsg('Done. The settings file\'s prices apply.')}}).catch(function(){})})};
+function refresh(){var p={over:'/api/overview',cli:'/api/clients',ph:'/api/phones',sales:'/api/sales?days='+($('rng').value||30),vch:'/api/vouchers',set:'/api/settings'}[tab],f={over:over,cli:cli,ph:ph,sales:sale,vch:vch,set:sets}[tab];api(p).then(f).catch(function(){});if(tab==='set')api('/api/pricing').then(prices).catch(function(){})}
 api('/api/overview').then(function(j){if(j.version)showApp();else showLogin()}).catch(showLogin);
 })();

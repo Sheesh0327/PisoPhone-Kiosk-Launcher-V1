@@ -133,30 +133,6 @@ object AppCloser {
         }
     }
 
-    /**
-     * Goes back to the kiosk home, then stops the customer apps. Call off the main thread.
-     * Returns how many apps were asked to stop.
-     */
-    fun closeCustomerApps(context: Context): Int {
-        AppLauncher.launchHome(context)
-        val packages = closableApps(context)
-        if (packages.isEmpty()) return 0
-        // The apps must be in the background before the system agrees to kill them.
-        Thread.sleep(BACKGROUND_WAIT_MS)
-
-        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
-        packages.forEach { pkg ->
-            try {
-                am?.killBackgroundProcesses(pkg)
-            } catch (e: Exception) {
-                Log.w(TAG, "killBackgroundProcesses($pkg) failed: ${e.message}")
-            }
-        }
-        suspendAndResume(context, packages)
-        Log.i(TAG, "Asked ${packages.size} customer apps to stop")
-        return packages.size
-    }
-
     /** As device owner, suspending a package force-stops it; resuming makes it launchable again. */
     private fun suspendAndResume(context: Context, packages: List<String>) {
         try {
@@ -174,6 +150,5 @@ object AppCloser {
 
     private const val FOREGROUND_LOOKBACK_MS = 6L * 60L * 60L * 1000L
     private const val BOOST_SETTLE_MS = 700L
-    private const val BACKGROUND_WAIT_MS = 600L
     private const val SUSPEND_HOLD_MS = 300L
 }

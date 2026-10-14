@@ -7,6 +7,7 @@
 #include "WebDashboardTemplate.h"
 #include "SuperAdminManager.h"
 #include "Config.h"
+#include "HardwareManager.h"
 #include "DeviceManager.h"
 #include "Security.h"
 #include <WebServer.h>
@@ -23,6 +24,22 @@ String escapeHtmlText(String s) {
     return s;
 }
 
+// What the coin pulse input has measured since the box started: how long each pulse held the line low. Real coins all land in one
+// width range; a spark or noise lands in the short ones. (No angle brackets: this text is put into the page as it is.)
+static String renderPulseStats() {
+    PulseStats st = coinPulseStats();
+    if (st.n == 0) return "No pulse measured since the box started. Insert a few real coins and open this page again.";
+    String out = "Measured since the box started: " + String(st.n) + " pulses. Widths: under 2 ms " +
+                 String(st.bucket[0]) + ", 2-8 ms " + String(st.bucket[1]) + ", 8-15 ms " + String(st.bucket[2]) +
+                 ", 15-30 ms " + String(st.bucket[3]) + ", 30-80 ms " + String(st.bucket[4]) + ", 80 ms and longer " +
+                 String(st.bucket[5]) + ". Shortest " + String(st.minUs / 1000.0f, 1) + " ms, longest " +
+                 String(st.maxUs / 1000.0f, 1) + " ms.";
+    if (st.shortN > 0)
+        out += " " + String(st.shortN) + " were shorter than the limit" +
+               String(coinPulseGuard ? " and were ignored." : " (counted, because the protection is off).");
+    out += " Set the limit a little under the shortest pulse a real coin gives.";
+    return out;
+}
 String noteHtml(const char* kind, const char* icon, const String& html) {
     return String("<div class=\"note ") + kind + "\"><svg class=\"ic\"><use href=\"#i-" + icon +
            "\"/></svg><span class=\"grow\">" + html + "</span></div>";
@@ -51,6 +68,10 @@ static String getPlaceholderValue(const String& tag) {
     if (tag == "LED_ACTIVE_HIGH_SELECTED") return !ledActiveLow ? "selected" : "";
     if (tag == "RELAY_HIGH_SELECTED") return !relayActiveLow ? "selected" : "";
     if (tag == "RELAY_LOW_SELECTED") return relayActiveLow ? "selected" : "";
+    if (tag == "PULSE_GUARD_ON_SELECTED") return coinPulseGuard ? "selected" : "";
+    if (tag == "PULSE_GUARD_OFF_SELECTED") return !coinPulseGuard ? "selected" : "";
+    if (tag == "PULSE_MIN_MS") return String(pulseMinMsClamp(coinPulseMinMs));
+    if (tag == "PULSE_STATS") return renderPulseStats();
     if (tag == "P1_OPTIONS") return renderDeviceOptions(p1Ip);
     if (tag == "P2_OPTIONS") return renderDeviceOptions(p2Ip);
 

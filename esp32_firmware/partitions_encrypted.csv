@@ -2,10 +2,13 @@
 # Two equal OTA slots, no factory app: an OTA upload is written to the slot that is NOT
 # running, so a failed or interrupted update always leaves the old firmware bootable.
 # Each slot is 0x1C0000 (1.75 MB) for a ~1.1 MB image. Slot offsets are 64 KB aligned.
+# otadata MUST stay at 0xe000: PlatformIO writes boot_app0.bin (8 KB) there whatever this table says, so any other
+# place would overwrite the end of nvs or the start of the next partition on every upload (scripts/make_firmware_bundles.py
+# and its test fail the build if this ever drifts). nvs is 20 KB like the development layout.
 # Name,   Type, SubType, Offset,   Size,     Flags
-nvs,      data, nvs,     0x9000,   0x6000,   encrypted
-otadata,  data, ota,     0xf000,   0x2000,   encrypted
-phy_init, data, phy,     0x11000,  0x1000,   encrypted
+nvs,      data, nvs,     0x9000,   0x5000,   encrypted
+otadata,  data, ota,     0xe000,   0x2000,   encrypted
+phy_init, data, phy,     0x10000,  0x1000,   encrypted
 ota_0,    app,  ota_0,   0x20000,  0x1C0000, encrypted
 ota_1,    app,  ota_1,   0x1E0000, 0x1C0000, encrypted
 spiffs,   data, spiffs,  0x3A0000, 0x60000,  encrypted

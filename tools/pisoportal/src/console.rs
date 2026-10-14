@@ -7,6 +7,7 @@ use crate::boxlink::{with_port, BoxLink};
 use crate::core::Core;
 use crate::http::{bind_retry, read_request, respond, respond_bytes, Incoming, Request, BRAND_LOGO, BRAND_MASCOT};
 use crate::nds::ClientInfo;
+use crate::pricing::{parse_tier_list, Plan, Pricing, MAX_KBPS, MAX_PRORATA_MIN};
 use crate::util::{b64_encode, jget, json_esc, now_secs, random_hex, valid_mac};
 use std::collections::{HashMap, VecDeque};
 use std::io::Read;
@@ -443,6 +444,21 @@ impl Console {
 
 // ---- the server ---------------------------------------------------------------------------------------------------------------------
 
+/// The prices in force, for the console's Settings page (tiers as [pesos, minutes]; speeds in kbit/s, 0 = no cap).
+fn pricing_json(core: &Core) -> String {
+    let pr = core.pricing();
+    let list = |t: &[(u32, u32)]| t.iter().map(|(p, m)| format!("[{},{}]", p, m)).collect::<Vec<_>>().join(",");
+    format!(
+        "{{\"ok\":true,\"hyper\":[{}],\"prorata\":{},\"endurance\":[{}],\"down\":{},\"up\":{},\"changed\":{}}}",
+        list(&pr.hyper_tiers),
+        pr.hyper_prorata_min,
+        list(&pr.endurance_tiers),
+        pr.endurance_down,
+        pr.endurance_up,
+        *pr != Pricing::from_config(&core.cfg)
+    )
+}
+
 fn body_of(req: &Request, conn: &mut Incoming) -> String {
     let len: usize = req.header("content-length").and_then(|v| v.parse().ok()).unwrap_or(0).min(4096);
     let mut buf = vec![0u8; len];
@@ -584,6 +600,52 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
                         return json(&mut conn, "500 Internal Server Error", "{\"error\":\"IO\"}", "");
                     }
                     json(&mut conn, "200 OK", &format!("{{\"ok\":true,\"voucher_choice\":{}}}", c.core.voucher_choice()), "")
+                }
+                ("GET", "/api/pricing") => json(&mut conn, "200 OK", &pricing_json(&c.core), ""),
+                ("POST", "/api/pricing") => {
+                    // (a full form, or only the fields named; "reset" goes back to the settings file's prices)
+                    if jget(&body, "reset") == "1" {
+                        c.core.reset_pricing();
+                        return json(&mut conn, "200 OK", &pricing_json(&c.core), "");
+                    }
+                    let mut pr = (*c.core.pricing()).clone();
+                    let has = |k: &str| body.contains(&format!("\"{}\"", k));
+                    let bad = |conn: &mut Incoming, why: String| {
+                        json(
+                            conn,
+                            "400 Bad Request",
+                            &format!("{{\"error\":\"BAD_PRICES\",\"why\":\"{}\"}}", crate::util::json_esc(&why)),
+                            "",
+                        )
+                    };
+                    for (key, plan) in [("hyper", Plan::Hyper), ("endurance", Plan::Endurance)] {
+                        if !has(key) {
+                            continue;
+                        }
+                        match parse_tier_list(&jget(&body, key)) {
+                            Ok(t) if plan == Plan::Hyper => pr.hyper_tiers = t,
+                            Ok(t) => pr.endurance_tiers = t,
+                            Err(e) => return bad(&mut conn, e),
+                        }
+                    }
+                    for (key, max) in [("prorata", MAX_PRORATA_MIN), ("down", MAX_KBPS), ("up", MAX_KBPS)] {
+                        if !has(key) {
+                            continue;
+                        }
+                        let Ok(v) = jget(&body, key).parse::<u32>() else { return bad(&mut conn, format!("{} is not a number", key)) };
+                        if v > max {
+                            return bad(&mut conn, format!("{} is too large (the most is {})", key, max));
+                        }
+                        match key {
+                            "prorata" => pr.hyper_prorata_min = v,
+                            "down" => pr.endurance_down = v,
+                            _ => pr.endurance_up = v,
+                        }
+                    }
+                    match c.core.set_pricing(pr) {
+                        Ok(()) => json(&mut conn, "200 OK", &pricing_json(&c.core), ""),
+                        Err(e) => bad(&mut conn, e),
+                    }
                 }
                 ("POST", "/api/vouchers/void") => {
                     if c.core.voucher_void(&jget(&body, "batch")) {

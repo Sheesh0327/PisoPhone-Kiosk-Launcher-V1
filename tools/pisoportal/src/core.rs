@@ -5,14 +5,14 @@ use crate::boxlink::{parse_event, BoxLink};
 use crate::config::Config;
 use crate::ledger;
 use crate::nds::Nds;
-use crate::pricing::{minutes_for, rates, Plan};
+use crate::pricing::{minutes_for, rates, Plan, Pricing};
 use crate::roll::{self, MintError};
 use crate::util::{jget, jget_u64, json_esc, now_secs, random_hex};
 use crate::voucher::Mine;
 use std::collections::HashMap;
 use std::fs;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
 macro_rules! log {
@@ -178,6 +178,8 @@ struct Window {
     mac: String,
     plan: Plan,
     forfeit: bool,
+    /// the prices this payment started with: the amount on the screen and the time it buys never change under the customer
+    pricing: Arc<Pricing>,
     /// the coins buy a voucher code, not time: nothing is connected when the window settles
     voucher: bool,
     state: WState,
@@ -221,6 +223,9 @@ pub struct Core {
     pub files: Mutex<()>,
     /// one recovery at a time (the maintenance thread and a customer's start can both ask for one)
     recovering: Mutex<()>,
+    /// the prices now in force (the settings file's, or what the owner set in the console) and a counter that rises with every change
+    pricing: RwLock<Arc<Pricing>>,
+    pricing_stamp: AtomicU32,
     /// the coin page offers the choice "Use now" / "Get a voucher code" (VOUCHER_CHOICE, changed live from the console)
     vchoice: AtomicBool,
 }
@@ -237,6 +242,7 @@ impl Core {
         let nds = Nds { ndsctl: cfg.ndsctl.clone() };
         let vchoice =
             AtomicBool::new(crate::config::parse_switch(&crate::config::override_get(&cfg.data_dir, "VOUCHER_CHOICE"), cfg.voucher_choice));
+        let pricing = RwLock::new(Arc::new(Pricing::load(&cfg)));
         Arc::new(Core {
             cfg,
             box_,
@@ -256,6 +262,8 @@ impl Core {
             files: Mutex::new(()),
             recovering: Mutex::new(()),
             vchoice,
+            pricing,
+            pricing_stamp: AtomicU32::new(1),
         })
     }
 
@@ -273,6 +281,39 @@ impl Core {
             self.bump(&mut st);
         }
         ok
+    }
+
+    /// The prices in force now (a payment keeps the ones it started with).
+    pub fn pricing(&self) -> Arc<Pricing> {
+        Arc::clone(&self.pricing.read().unwrap())
+    }
+
+    /// Rises with every price change: the coin page is built again when it moves.
+    pub fn pricing_stamp(&self) -> u64 {
+        u64::from(self.pricing_stamp.load(Ordering::Relaxed))
+    }
+
+    /// The owner sets new prices (console, Settings). Kept in DATA_DIR/settings.txt; payments already open keep their prices.
+    pub fn set_pricing(&self, new: Pricing) -> Result<(), String> {
+        new.check()?;
+        if !new.save(&self.cfg.data_dir) {
+            return Err("could not be saved on the router".into());
+        }
+        self.adopt_pricing(new);
+        Ok(())
+    }
+
+    /// The owner goes back to the settings file's prices.
+    pub fn reset_pricing(&self) {
+        Pricing::forget_changes(&self.cfg.data_dir);
+        self.adopt_pricing(Pricing::load(&self.cfg));
+    }
+
+    fn adopt_pricing(&self, new: Pricing) {
+        *self.pricing.write().unwrap() = Arc::new(new);
+        self.pricing_stamp.fetch_add(1, Ordering::Relaxed);
+        let mut st = self.st.lock().unwrap();
+        self.bump(&mut st);
     }
 
     fn bump(&self, st: &mut State) {
@@ -349,7 +390,7 @@ impl Core {
     }
 
     fn window_view(&self, w: &Window) -> View {
-        let minutes = minutes_for(&self.cfg, w.plan, w.pulses);
+        let minutes = minutes_for(&w.pricing, w.plan, w.pulses);
         match w.state {
             WState::Starting => View::Starting { plan: w.plan, voucher: w.voucher },
             WState::Armed => View::Armed {
@@ -481,7 +522,7 @@ impl Core {
                 crate::voucher::RedeemError::Expired => ("exp", 0),
             })?;
             let plan = Plan::parse(&batch.plan).unwrap_or(Plan::Hyper);
-            let (down, up) = rates(&self.cfg, plan);
+            let (down, up) = rates(&self.pricing(), plan);
             let wid = format!("v{}", hash);
             match roll::mint(&self.cfg.roll_path(), now, mac, &wid, plan, 0, batch.minutes, up, down, false) {
                 Ok(mode) => {
@@ -597,6 +638,7 @@ impl Core {
             mac: mac.to_string(),
             plan,
             forfeit,
+            pricing: self.pricing(),
             voucher,
             state: WState::Starting,
             pulses: 0,
@@ -739,9 +781,12 @@ impl Core {
     }
 
     fn run_window(self: &Arc<Self>, sid: &str) {
-        let Some((wid, mac, plan, forfeit, voucher)) = ({
+        let Some((wid, mac, plan, forfeit, voucher, pricing)) = ({
             let st = self.st.lock().unwrap();
-            st.window.as_ref().filter(|w| w.sid == sid).map(|w| (w.wid.clone(), w.mac.clone(), w.plan, w.forfeit, w.voucher))
+            st.window
+                .as_ref()
+                .filter(|w| w.sid == sid)
+                .map(|w| (w.wid.clone(), w.mac.clone(), w.plan, w.forfeit, w.voucher, Arc::clone(&w.pricing)))
         }) else {
             return;
         };
@@ -883,8 +928,11 @@ impl Core {
             self.finish_window(sid, View::Empty, Some(false));
             return;
         }
-        let view =
-            if voucher { self.settle_voucher(sid, &mac, plan, &wid, pulses) } else { self.settle(sid, &mac, plan, &wid, forfeit, pulses) };
+        let view = if voucher {
+            self.settle_voucher(sid, &mac, plan, &wid, pulses, &pricing)
+        } else {
+            self.settle(sid, &mac, plan, &wid, forfeit, pulses, &pricing)
+        };
         // (a voucher window connects nothing, so there is nothing for the grant retries to finish)
         let refused = matches!(view, View::Final { online: false, voucher: None, .. });
         self.finish_window(sid, view, Some(true));
@@ -942,8 +990,9 @@ impl Core {
     }
 
     /// Price the window once, record it, grant access once, acknowledge the box.
-    fn settle(&self, sid: &str, mac: &str, plan: Plan, wid: &str, forfeit: bool, pulses: u32) -> View {
-        let minutes = minutes_for(&self.cfg, plan, pulses);
+    #[allow(clippy::too_many_arguments)]
+    fn settle(&self, sid: &str, mac: &str, plan: Plan, wid: &str, forfeit: bool, pulses: u32, pr: &Pricing) -> View {
+        let minutes = minutes_for(pr, plan, pulses);
         let now = now_secs();
         if let Err(e) = self.record(sid, mac, plan, wid, forfeit, pulses, minutes, now) {
             return e;
@@ -977,8 +1026,8 @@ impl Core {
 
     /// A window that paid for a voucher code: price it once, make the one voucher (and its revenue row, as a direct purchase
     /// would), acknowledge the box. The device is NOT connected and no time is granted.
-    fn settle_voucher(&self, sid: &str, mac: &str, plan: Plan, wid: &str, pulses: u32) -> View {
-        let minutes = minutes_for(&self.cfg, plan, pulses);
+    fn settle_voucher(&self, sid: &str, mac: &str, plan: Plan, wid: &str, pulses: u32, pr: &Pricing) -> View {
+        let minutes = minutes_for(pr, plan, pulses);
         let now = now_secs();
         let v = match self.record_voucher(sid, mac, plan, wid, pulses, minutes, now) {
             Ok(v) => v,
@@ -1023,7 +1072,7 @@ impl Core {
     /// Record a closed window on the roll and the ledger (once: the same window id never credits twice).
     #[allow(clippy::too_many_arguments)]
     fn record(&self, sid: &str, mac: &str, plan: Plan, wid: &str, forfeit: bool, pulses: u32, minutes: u32, now: u64) -> Result<(), View> {
-        let (down, up) = rates(&self.cfg, plan);
+        let (down, up) = rates(&self.pricing(), plan);
         let _g = self.files.lock().unwrap();
         match roll::mint(&self.cfg.roll_path(), now, mac, wid, plan, pulses, minutes, up, down, forfeit) {
             Ok(mode) => {
@@ -1139,7 +1188,7 @@ impl Core {
                 continue;
             }
             if pulses > 0 {
-                let minutes = minutes_for(&self.cfg, plan, pulses);
+                let minutes = minutes_for(&self.pricing(), plan, pulses);
                 if voucher {
                     match self.record_voucher(&sid, mac, plan, wid, pulses, minutes, now_secs()) {
                         Ok(_) => log!("recover: window {} made its voucher ({} coins, {} min) after a restart", &sid[..8], pulses, minutes),

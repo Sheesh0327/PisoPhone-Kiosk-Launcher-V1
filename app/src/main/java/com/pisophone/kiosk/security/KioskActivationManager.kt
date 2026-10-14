@@ -118,12 +118,7 @@ object KioskActivationManager {
 
     fun isPairingCompleted(context: Context): Boolean {
         val prefs = getPrefs(context)
-        if (prefs.getBoolean(KEY_PAIRING_COMPLETED, false)) return true
-        if (KioskSecurity.isProvisioned(context)) {
-            setPairingCompleted(context, true)
-            return true
-        }
-        return false
+        return prefs.getBoolean(KEY_PAIRING_COMPLETED, false)
     }
 
     fun setPairingCompleted(context: Context, completed: Boolean) {

@@ -134,7 +134,7 @@ fn selftest() -> i32 {
     let ok_hmac = util::hmac_hex(b"key", b"The quick brown fox jumps over the lazy dog")
         == "f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8";
     let ok_ws = http::ws_accept("dGhlIHNhbXBsZSBub25jZQ==") == "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=";
-    let ok_price = pricing::minutes_for(&cfg, pricing::Plan::Endurance, 17) == 690;
+    let ok_price = pricing::minutes_for(&pricing::Pricing::from_config(&cfg), pricing::Plan::Endurance, 17) == 690;
     println!("hmac-sha256: {}  websocket accept key: {}  price P17 endurance=690 min: {}", ok_hmac, ok_ws, ok_price);
     println!(
         "arch={} endian={} pointer_width={}",

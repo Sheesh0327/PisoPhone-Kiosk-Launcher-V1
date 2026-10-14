@@ -1,9 +1,33 @@
 # Changelog
 
 What changed for people who run PisoPhone sites. The phone app, the coin-box firmware and the router software are versioned
-separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
+separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 4.6.6; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- **Release cleanup.** Removed code and files nothing used: an unreferenced app-closing function, two colour tokens, a manifest action no receiver handled, three strings and a picture the lint check
+  reported as unused, two Compose tooling libraries (the app has no previews), a stray Python wheel in the firmware folder and an unused function in the desktop installer. The changelog's version
+  note now describes the digit-based app version. Nothing in the firmware or the router portal was found to be dead.
+- **Coin box firmware: the encrypted-production partition table was wrong and is fixed.** PlatformIO writes `boot_app0.bin` at 0xe000, but the encrypted layout put otadata at 0xf000 and ran nvs up to it, so every
+  upload would have overwritten the end of nvs. otadata is now at 0xe000 and nvs is 20 KB like the development layout (nothing sold used the encrypted layout yet). New: `scripts/make_firmware_bundles.py` packs the
+  development and release firmware into two zips (a manual run of the firmware workflow with *bundle* on); it reads every build's partition table and fails on a bad layout. The encrypted release route is still
+  unproven on a board (`docs/PROVISIONING_SOLD_UNIT.md`).
+- **Phone app: fixes from an outside code review.** The admin PIN is no longer written to the log when the box syncs it (a second place that the earlier fix missed), and CI now fails any log line
+  that carries the PIN or a secret. The setup step, the auto-update attempt counter and the pill position now use the phone's device-protected storage like the rest of the app, so they cannot fail before the
+  first unlock. Six remote-action branches that could never be reached over the network were deleted from the server coordinator, and an "is provisioned" check that was always false was removed (no behaviour change).
+  The lock screen's fallback rate (before the phone has heard from the box) is now the box's own unit, one peso for 6 minutes, instead of 5 pesos for 30 minutes, so coins are shown correctly even then.
+- Router 1.3.5, **console: edit the prices.** The console's **Settings** page has a **Prices** editor: the HyperSpeed and Endurance price lists (pesos to minutes,
+  up to eight lines each), the minutes each extra HyperSpeed peso adds, and the Endurance download and upload limits. A change applies at once: the next payment uses
+  it and the customer page shows the new list, while a payment already under way keeps the prices it started with (the amount on the screen never changes under the customer).
+  Each plan must keep a 1-peso line (or pro-rata minutes) so every coin counts; limits stop typos (at most 8 lines, 1 to 1000 pesos, up to 7 days a line). The prices are kept on the router
+  next to the voucher choice and survive `piso-setup`; **Go back to the settings file** forgets them. The settings file (`HYPER_TIERS`, `ENDURANCE_TIERS` ...) still gives the starting prices.
+- **Admin pages: one look.** The router console, the coin box dashboard and the owner tool share one style: a near-black canvas (light theme mirrored), hairline-bordered cards, small muted labels,
+  the tabs as one bordered group in the top bar, a status chip, and a white primary button.
+- **Coin box firmware 3.5.6: spark protection for the coin slot.** The box now measures how long every coin pulse holds the signal line low and
+  shows it (box settings page and diagnostics: a histogram of pulse widths, and a log line when pulses too short to be a coin are seen). A new
+  setting, **Spark protection** (off by default, so nothing changes until you switch it on), counts a pulse only when it lasted at least the
+  **shortest real coin pulse** you set (default 12 ms), which keeps a lighter or electrical noise near the coin slot from being credited as coins.
+  How to set it up on your box, and the wiring that matters most (twisted pair, metal case, optocoupler, RC filter): `docs/COIN_SLOT_PROTECTION.md`.
+  Only the width rules are tested on a computer; try it on one box before relying on it. Routers with automatic updates install box firmware by themselves.
 - **Phone app version name** is now the build number cut into digits, hundreds.tens.ones (build 437 is 4.3.7, build 1000 is 10.0.0), instead of `1.0.<build>`. Only the build number (versionCode) decides what counts as an update, so phones update normally; Owner settings still shows the build number in brackets.
 - Router 1.3.4, **PisoWiFi: voucher codes bought with coins, a page that no longer gets stuck, speech that works.**
   **Vouchers:** before Insert Coin a customer can pick **Use now** (as before) or **Get a voucher code**. A voucher window counts and prices the coins as

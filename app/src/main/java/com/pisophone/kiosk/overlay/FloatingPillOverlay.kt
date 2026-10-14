@@ -45,7 +45,7 @@ class FloatingPillOverlay(
     private val onDoneClick: () -> Unit,
 ) {
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    private val positionPrefs = context.getSharedPreferences("pill_position", Context.MODE_PRIVATE)
+    private val positionPrefs = context.createDeviceProtectedStorageContext().getSharedPreferences("pill_position", Context.MODE_PRIVATE)
     private var overlayView: ComposeOverlayView? = null
     private var isViewAdded = false
 

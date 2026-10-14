@@ -39,6 +39,8 @@ extern const char* const NVS_KEY_LED_PIN;
 extern const char* const NVS_KEY_LED_ACTIVE_LOW;
 extern const char* const NVS_KEY_RELAY_PIN;
 extern const char* const NVS_KEY_RELAY_ACTIVE_LOW;
+extern const char* const NVS_KEY_PULSE_GUARD;
+extern const char* const NVS_KEY_PULSE_MIN_MS;
 extern const char* const NVS_KEY_PORT;
 extern const char* const NVS_KEY_MINS_PER_COIN;
 extern const char* const NVS_KEY_ADMIN_PW;
@@ -104,6 +106,9 @@ extern int ledPin;
 extern bool ledActiveLow;
 extern int relayPin;
 extern bool relayActiveLow;
+// Fake-pulse protection: count a coin pulse only when the line stayed low for at least coinPulseMinMs (off by default; see PulseGuard.h)
+extern bool coinPulseGuard;
+extern int coinPulseMinMs;
 
 extern String wifiSsid;
 extern String wifiPass;

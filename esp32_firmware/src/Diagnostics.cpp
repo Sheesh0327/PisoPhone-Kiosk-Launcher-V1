@@ -4,6 +4,7 @@
 #include "FirmwareVersion.h"
 #include "Config.h"
 #include "CoinSlotManager.h"
+#include "HardwareManager.h"
 #include "OtaRollback.h"
 #include "OrphanPayments.h"
 #include "PaymentQueueManager.h"
@@ -130,7 +131,7 @@ void diagCount(DiagCounter counter, uint32_t amount) {
 }
 
 String diagBuildJson() {
-    DynamicJsonDocument doc(10240);
+    DynamicJsonDocument doc(10752); // (the coin pulse measurements added about 350 bytes)
 
     doc["firmware"] = PISO_FW_VERSION;
     doc["built"] = __DATE__ " " __TIME__;
@@ -204,6 +205,23 @@ String diagBuildJson() {
         nvsObj["used_entries"] = nvsStats.used_entries;
         nvsObj["free_entries"] = nvsStats.free_entries;
         nvsObj["total_entries"] = nvsStats.total_entries;
+    }
+
+    // How long each coin pulse held the line low (see PulseGuard.h): real coins sit in one width range, sparks and noise in the short ones.
+    {
+        PulseStats ps = coinPulseStats();
+        JsonObject pulse = doc.createNestedObject("coin_pulse");
+        pulse["guard"] = coinPulseGuard;
+        pulse["min_real_ms"] = pulseMinMsClamp(coinPulseMinMs);
+        pulse["measured"] = ps.n;
+        pulse["too_short"] = ps.shortN;
+        pulse["shortest_us"] = ps.n == 0 ? 0 : ps.minUs;
+        pulse["longest_us"] = ps.maxUs;
+        pulse["average_us"] = pulseStatsAvgUs(ps);
+        JsonArray buckets =
+            pulse.createNestedArray("width_buckets"); // under 2 ms, 2-8, 8-15, 15-30, 30-80, 80 and longer
+        for (int i = 0; i < PULSE_BUCKETS; i++)
+            buckets.add(ps.bucket[i]);
     }
 
     JsonObject counters = doc.createNestedObject("counters");

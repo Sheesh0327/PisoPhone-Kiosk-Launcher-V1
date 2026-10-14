@@ -23,6 +23,11 @@ on:
       - 'esp32_firmware/**'
       - '.github/workflows/firmware-images.yml'
   workflow_dispatch:
+    inputs:
+      bundle:
+        description: 'Also build the production (encrypted layout) firmware and pack the dev and release zips (branch firmware-bundles)'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -87,6 +92,27 @@ jobs:
           done
           printf '{"version":"%s","commit":"%s","builds":[%s]}\n' "$VERSION" "$GITHUB_SHA" "${builds%,}" | python3 -m json.tool > ../website/flash/manifest.json
           cat ../website/flash/manifest.json
+      # A manual run with "bundle" on: the two production environments too, then the two owner zips (scripts/make_firmware_bundles.py,
+      # which reads each build's partition table and fails the run when a layout is wrong). No secrets here: no keys are ever packed.
+      - name: Build the production environments and pack the firmware zips
+        if: ${{ inputs.bundle == true }}
+        working-directory: esp32_firmware
+        run: |
+          set -eu
+          pio run -e esp32-c3-production-encrypted
+          pio run -e esp32dev-production-encrypted
+          VERSION=$(sed -n 's/^#define PISO_FW_VERSION "\(.*\)"/\1/p' include/FirmwareVersion.h)
+          APP0=$(find ~/.platformio/packages -name boot_app0.bin -path '*partitions*' | head -n 1)
+          [ -n "$APP0" ] || { echo "::error::boot_app0.bin not found"; exit 1; }
+          python3 ../scripts/make_firmware_bundles.py --version "$VERSION" --commit "$GITHUB_SHA" --build-dir .pio/build \
+            --boot-app0 "$APP0" --merged-dir ../website/flash --out "$RUNNER_TEMP/bundles"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: ${{ inputs.bundle == true }}
+        with:
+          name: firmware-bundles
+          path: ${{ runner.temp }}/bundles
+          retention-days: 7
+          if-no-files-found: error
       - name: Gather the images for the publish job
         run: |
           mkdir -p "$RUNNER_TEMP/stage"
@@ -98,6 +124,33 @@ jobs:
           path: ${{ runner.temp }}/stage
           retention-days: 1
           if-no-files-found: error
+
+  bundle:
+    name: Put the firmware zips on the firmware-bundles branch
+    needs: build
+    if: ${{ inputs.bundle == true }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: firmware-bundles
+          path: ${{ runner.temp }}/bundles
+      # One commit on its own branch, replaced every time, so no history (and no repository size) builds up. Not main, not beta.
+      - name: Replace the branch's content with the zips
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git checkout -q --orphan firmware-bundles
+          git rm -rfq --cached . > /dev/null
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp "$RUNNER_TEMP"/bundles/*.zip .
+          printf 'Firmware zips built by CI from commit %s (the version is in the file names).\nReplaced on every manual run of "Coin box images" with bundle on.\n' "$GITHUB_SHA" > README.txt
+          git add -A
+          git commit -q -m "firmware zips from $GITHUB_SHA"
+          git push -f origin firmware-bundles
 
   publish:
     name: Sign and publish the coin box images

@@ -150,8 +150,8 @@ class Esp32ConnectionManager(
         if (!rawResponseBody.isNullOrBlank()) {
             try {
                 val json = JSONObject(rawResponseBody)
-                val price = if (json.has("price")) json.optDouble("price", 5.0) else null
-                val minutes = if (json.has("minutes")) json.optInt("minutes", 30) else null
+                val price = if (json.has("price")) json.optDouble("price", 1.0) else null
+                val minutes = if (json.has("minutes")) json.optInt("minutes", 6) else null
                 val alias = if (json.has("device_name")) json.optString("device_name", "").trim() else null
                 val mac = if (json.has("mac")) json.optString("mac", "") else null
                 delegate.onConfigSynced(price, minutes, alias)
@@ -201,8 +201,8 @@ class Esp32ConnectionManager(
                 if (resp.isSuccessful) {
                     val body = resp.body?.string() ?: ""
                     val json = JSONObject(body)
-                    val price = if (json.has("price")) json.optDouble("price", 5.0) else null
-                    val minutes = if (json.has("minutes")) json.optInt("minutes", 30) else null
+                    val price = if (json.has("price")) json.optDouble("price", 1.0) else null
+                    val minutes = if (json.has("minutes")) json.optInt("minutes", 6) else null
                     val alias = if (json.has("device_name")) json.optString("device_name", "").trim() else null
                     delegate.onConfigSynced(price, minutes, alias)
                 }

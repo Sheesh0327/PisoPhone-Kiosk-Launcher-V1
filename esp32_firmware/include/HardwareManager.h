@@ -2,6 +2,7 @@
 #define HARDWARE_MANAGER_H
 
 #include <Arduino.h>
+#include "PulseGuard.h"
 
 enum LedSystemState { LED_STATE_CONNECTING, LED_STATE_FAILED, LED_STATE_CONNECTED };
 
@@ -20,6 +21,9 @@ void applyCoinSlotHardwareConfig();
 extern volatile int isrUniversalPulseCount;
 extern volatile unsigned long isrLastPulseTimeMs;
 extern volatile unsigned long isrLastPulseTimeUs;
+// the measured widths of the coin pulses (a copy) and a reset (see PulseGuard.h)
+PulseStats coinPulseStats();
+void coinPulseStatsReset();
 
 void processHardwareResetPin();
 
