@@ -94,6 +94,7 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           HEAD_REF: ${{ github.head_ref }}
         run: |
+          # (a change to this file runs every job: that is how the whole suite is run on purpose)
           files=""
           if [ "$EVENT" = pull_request ]; then
             files=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --paginate --jq '.[].filename')
