@@ -227,7 +227,7 @@ if(s==="idle"||s==="paused"){
   el("pz").style.display=!ps&&j.pm>0?"block":"none";el("rs").style.display=ps?"block":"none";el("rs").disabled=false;el("rs").textContent="Resume time";el("pz").removeAttribute("aria-disabled");
   var cap=ps?"":j.pl<1?"No pauses left":j.left<120?"Pause needs 2 min left":j.pw>0?"You can pause again in "+j.pw+" s":j.pl+(j.pl>1?" pauses":" pause")+" left";
   put("pzc",cap);if(cap&&j.pl<1||j.left<120||j.pw>0)el("pz").setAttribute("aria-disabled","true");
-  if(ps){tstop();tl=j.left;put("t",clock(tl));put("fleft",clock(tl));el("tbar").style.width="100%";put("chip","Paused");el("chip").className="chip gold";put("tin","Offline while paused · time left");el("tbar").style.background="var(--mut)";put("tby","Time is on hold. "+by(j.left)+"; unused time after that is lost.")}else tstart(j.left)}
+  if(ps){tstop();tl=j.left;put("t",clock(tl));put("fleft",clock(tl));el("tbar").style.width="100%";put("chip","Paused");el("chip").className="chip gold";put("tin","Paused, internet almost stopped · time left");el("tbar").style.background="var(--mut)";put("tby","Time is on hold. "+by(j.left)+"; unused time after that is lost.")}else tstart(j.left)}
  else{on.style.display="none";tstop();tt=0}
  put("go",tm?"Add more time":"Insert Coin");el("go").className="btn coin"+(ps?" alt":"");put("gos",tm?"":"Coins add up: every coin adds more time");
  var b=el("ibusy");if(j.cooldown>0){b.style.display="block";b.textContent="Too many empty tries. Wait about "+j.cooldown+" s."}else if(j.busy>0){b.style.display="block";b.textContent="Another customer is paying. Try again in a few seconds."}else b.style.display="none";

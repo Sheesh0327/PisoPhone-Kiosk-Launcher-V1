@@ -96,6 +96,15 @@ try:
     second = json.loads(call("/api/clients", cookie=cookie)[1])["clients"]
     me = [c for c in second if c["mac"] == "aa:bb:cc:00:00:01"][0]
     check(me["dl_kbps"] > 0 and me["ul_kbps"] > 0 and me["dl_kb"] == 3298 and second[0]["mac"] == "aa:bb:cc:00:00:01", f"clients: a speed from the counters, the busiest first: {me}")
+    # a paused device stays online (slowed to a crawl): the list says so, and its time is the time on hold
+    now = int(time.time())
+    env.nds_client("aa:bb:cc:00:00:09", STATE="Authenticated", SESSION_END=now + 86000, UPRATE=1, DOWNRATE=1)
+    with open(f"{env.data}/vouchers.txt", "a") as f:
+        f.write(f"pz,0,0,0,0,60,{now - 600},aa:bb:cc:00:00:09,1,{now - 60},1500,hyper,w9,5,60,5,1\n")
+    rows = json.loads(call("/api/clients", cookie=cookie)[1])["clients"]
+    pz = [c for c in rows if c["mac"] == "aa:bb:cc:00:00:09"][0]
+    check(pz["paused"] is True and pz["state"] == "Authenticated" and pz["left"] == 1500 and all(c["paused"] is False for c in rows if c["mac"] != "aa:bb:cc:00:00:09"),
+          f"clients: a paused device is marked paused, with its time on hold: {pz}")
     code, body, _h = call("/api/phones", cookie=cookie)
     check(json.loads(body)["devices"][0]["time"] == 600, "phones: the coin box's slot list, fetched with its stored password: " + body.decode()[:100])
     open(f"{tmp}/setup.conf", "w").write("BOX_ADMIN_PASS='changed'\n")

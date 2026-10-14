@@ -283,7 +283,7 @@ try:
     d.close()
     env.set_box(busy=False, coins_at=[])
 
-    # ---- pause and resume: the clock stops, the device goes off the internet, Resume brings both back --------------------------------------
+    # ---- pause and resume: the clock stops, the device stays on at a crawl (1 kbit/s), Resume brings the time and the speed back --------------------------------------
     env.reset_device(MAC_D)
     env.set_box(busy=False, coins_at=[0.3])
     d = Cust("127.0.0.4", reset=True)
@@ -299,14 +299,18 @@ try:
     r = d.wait_msg("pz", n)
     p = d.wait_state("paused", 5)
     check(r and r.get("ok") == 1 and p is not None and p["pl"] == 1 and p["pm"] == 2 and 300 < p["left"] <= 360, f"Pause stops the clock and counts the pause: {r} {p}")
-    check(env.nds_get(MAC_D)["STATE"] == "Preauthenticated", "a paused device is taken off the internet")
+    nd = env.nds_get(MAC_D)
+    check(nd["STATE"] == "Authenticated" and nd["UPRATE"] == "1" and nd["DOWNRATE"] == "1", f"a paused device is not taken off: it stays on at 1 kbit/s: {nd}")
+    check(nd["QUP"] == "2048" and nd["QDOWN"] == "2048", f"with 2 MB of data for the whole pause (openNDS takes it off when that is used): {nd}")
+    check(86000 < int(nd["SESSION_END"]) - time.time() <= 86460, "and openNDS keeps it for as long as the paused time is kept (a day), then ends the session itself")
     left0 = p["left"]
     d.send({"t": "hello", "fas": "", "reset": False})   # the page reloads while paused
     time.sleep(2.2)
     d.send({"t": "ping"})
     p2 = d.last()
-    check(p2.get("s") == "paused" and p2["left"] == left0 and env.nds_get(MAC_D)["STATE"] == "Preauthenticated",
-          f"a reloaded page stays paused, the clock is stopped and the device stays off: {p2}")
+    nd2 = env.nds_get(MAC_D)
+    check(p2.get("s") == "paused" and p2["left"] == left0 and nd2["STATE"] == "Authenticated" and nd2["DOWNRATE"] == "1",
+          f"a reloaded page stays paused, the clock is stopped, and the fair-use timer (every second here) neither resumes it nor speeds it up: {p2} {nd2}")
     n = d.count()
     d.send({"t": "pause"})
     r = d.wait_msg("pz", n)
@@ -318,7 +322,9 @@ try:
     on = d.wait(lambda m: m.get("s") == "idle" and m.get("online") is True, 5)
     check(r and r.get("ok") == 1 and on is not None and left0 - 5 <= on["left"] <= left0 and on["pl"] == 1,
           f"Resume gives the same time back and the device is online again: {r} {on}")
-    check(wait_until(lambda: env.nds_get(MAC_D)["STATE"] == "Authenticated", 5), "and openNDS lets it on")
+    check(wait_until(lambda: env.nds_get(MAC_D)["STATE"] == "Authenticated" and env.nds_get(MAC_D)["DOWNRATE"] == "0", 5), "and it is back at the plan's own speed (HyperSpeed: no cap), not at a crawl")
+    ndr = env.nds_get(MAC_D)
+    check(ndr["QUP"] == "0" and ndr["QDOWN"] == "0", f"and the paused data allowance is gone: {ndr}")
     n = d.count()
     d.send({"t": "pause"})
     r = d.wait_msg("pz", n)
@@ -326,13 +332,18 @@ try:
     time.sleep(2.3)
     for want in ("ok", "limit"):
         n = d.count()
+        if want == "ok":
+            open(f"{env.nds}/refuse_auth", "w").close()   # openNDS refuses the slow grant: the pause must still work, the device is simply off
         d.send({"t": "pause"})
         r = d.wait_msg("pz", n)
         if want == "ok":
             check(r and r.get("ok") == 1, f"the second pause (the last allowed) works: {r}")
+            check(env.nds_get(MAC_D)["STATE"] == "Preauthenticated", "and when openNDS refuses the slow grant the device is off, as a pause always was")
+            os.remove(f"{env.nds}/refuse_auth")
             n = d.count()
             d.send({"t": "resume"})
             d.wait_msg("pz", n)
+            check(wait_until(lambda: env.nds_get(MAC_D)["STATE"] == "Authenticated", 5), "and Resume puts it back on")
             time.sleep(2.3)
         else:
             check(r and r.get("e") == "limit", f"no pauses left: {r}")

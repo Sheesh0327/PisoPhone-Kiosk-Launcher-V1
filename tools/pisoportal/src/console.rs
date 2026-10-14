@@ -397,14 +397,14 @@ impl Console {
                 }
                 _ => (0, 0),
             };
-            let (plan, left) = match crate::roll::peek(&cfg.roll_path(), now, &c.mac) {
-                Some((p, l)) => (p.as_str().to_string(), l),
-                None => (String::new(), 0),
+            let (plan, left, paused) = match crate::roll::peek_state(&cfg.roll_path(), now, &c.mac) {
+                Some(p) => (p.plan.as_str().to_string(), p.left, p.paused),
+                None => (String::new(), 0, false),
             };
             rows.push((
                 dl_kbps + ul_kbps,
                 format!(
-                    "{{\"mac\":\"{}\",\"ip\":\"{}\",\"name\":\"{}\",\"state\":\"{}\",\"plan\":\"{}\",\"left\":{},\"dl_kb\":{},\"ul_kb\":{},\"dl_kbps\":{},\"ul_kbps\":{},\"duration\":{}}}",
+                    "{{\"mac\":\"{}\",\"ip\":\"{}\",\"name\":\"{}\",\"state\":\"{}\",\"plan\":\"{}\",\"left\":{},\"dl_kb\":{},\"ul_kb\":{},\"dl_kbps\":{},\"ul_kbps\":{},\"duration\":{},\"paused\":{}}}",
                     json_esc(&c.mac),
                     json_esc(&c.ip),
                     json_esc(names.get(&c.mac).map(|s| s.as_str()).unwrap_or("")),
@@ -415,7 +415,8 @@ impl Console {
                     c.ul_kb,
                     dl_kbps,
                     ul_kbps,
-                    c.duration
+                    c.duration,
+                    paused
                 ),
             ));
         }

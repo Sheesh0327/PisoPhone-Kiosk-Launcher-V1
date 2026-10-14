@@ -456,7 +456,7 @@ impl Core {
     pub fn reconnect(&self, mac: &str) -> bool {
         let now = now_secs();
         let _g = self.files.lock().unwrap();
-        // (a paused device is left offline: only its own Resume puts it back)
+        // (a paused device is left as it is, slowed or off: only its own Resume puts it back at full speed)
         let Some(s) = roll::session_active(&self.cfg.roll_path(), now, mac) else { return false };
         let cur = self.nds.state(mac);
         if cur == "Authenticated" {
@@ -485,7 +485,7 @@ impl Core {
         };
         match r {
             Ok(left) => {
-                self.nds.deauth(mac);
+                self.slow_down_paused(mac, now);
                 log!("pause {} with {} s left", mac, left);
                 let mut st = self.st.lock().unwrap();
                 st.results.remove(mac);
@@ -497,6 +497,27 @@ impl Core {
             Err(roll::PauseError::Limit) => Err(("limit", 0)),
             Err(roll::PauseError::TooLittle) => Err(("little", self.cfg.pause_min_left)),
             Err(roll::PauseError::Io) => Err(("io", 0)),
+        }
+    }
+
+    /// A paused device is not taken off: it stays on at a crawl (PAUSE_KBPS, 1 kbit/s by default) with a small data allowance for the whole
+    /// pause (PAUSE_QUOTA_KB, 2 MB by default: openNDS takes the device off when it is used up, as a pause always did), so its page, its
+    /// buttons and its scripts keep working but nobody chats for free while the clock is stopped. It is let on for as long as its paused time is kept (the same moment the
+    /// roll forgets that time), so openNDS ends the session by itself when the time is lost. If openNDS refuses, the device is simply off,
+    /// as a pause always was.
+    fn slow_down_paused(&self, mac: &str, now: u64) {
+        let lost_at = {
+            let _g = self.files.lock().unwrap();
+            roll::peek_state(&self.cfg.roll_path(), now, mac).map(|p| p.lost_at).unwrap_or(0)
+        };
+        let minutes = (lost_at.saturating_sub(now) / 60).max(1);
+        let kbps = self.cfg.pause_kbps;
+        let quota = self.cfg.pause_quota_kb;
+        if self.nds.grant(mac, minutes, kbps, kbps, quota, quota) {
+            log!("pause {}: slowed to {} kbit/s (up to {} kB) for up to {} min", mac, kbps, quota, minutes);
+        } else {
+            self.nds.deauth(mac);
+            log!("pause {}: openNDS refused the slow grant, the device is off", mac);
         }
     }
 
