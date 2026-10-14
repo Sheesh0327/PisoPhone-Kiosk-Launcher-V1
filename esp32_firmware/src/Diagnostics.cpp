@@ -131,7 +131,7 @@ void diagCount(DiagCounter counter, uint32_t amount) {
 }
 
 String diagBuildJson() {
-    DynamicJsonDocument doc(10240);
+    DynamicJsonDocument doc(10752); // (the coin pulse measurements added about 350 bytes)
 
     doc["firmware"] = PISO_FW_VERSION;
     doc["built"] = __DATE__ " " __TIME__;
