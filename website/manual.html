@@ -296,7 +296,7 @@ ol.steps>li::before{content:counter(s);position:absolute;left:0;top:2px;width:30
 <li><b>Money:</b> today, this week, all time and the last seven days.</li>
 <li><b>Sales:</b> per day: coins that bought time, coins that bought voucher codes (with how many were issued, redeemed and are waiting), and a CSV download.</li>
 <li><b>Vouchers:</b> the codes customers bought: issued time, minutes, plan, used or not, expiry. <b>Cancel</b> an unused one.</li>
-<li><b>Settings:</b> the voucher choice at payment, on or off.</li>
+<li><b>Settings:</b> the voucher choice at payment, on or off, and the <b>Prices</b>: the price list of HyperSpeed and Endurance (pesos to minutes, up to eight lines each), the minutes each extra HyperSpeed peso adds, and the Endurance speed limits. A change applies at once to the next payment (one already started keeps the prices it began with) and the customer page shows the new list. Each plan needs a 1-peso line so every coin counts. <b>Go back to the settings file</b> forgets the console prices.</li>
 </ul>
 <p>To make it the front page at <code>http://10.0.0.1</code>, run <code>piso-setup console on</code> on the router. The router's own settings page (LuCI) then moves to <code>http://10.0.0.1:8080</code> and stays reachable as <b>Advanced</b>; <code>piso-setup console off</code> puts everything back. If the console does not come up, <code>console on</code> puts everything back by itself.</p>
 <div class="note"><b>Privacy</b>The console shows device names and addresses of your customers, and keeps no history of what they browse. Its speed graph lives in the router's memory only. Put a notice on your login page if your customers' data is covered by privacy rules.</div>

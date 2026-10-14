@@ -4,6 +4,13 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Router 1.3.5, **console: edit the prices.** The console's **Settings** page has a **Prices** editor: the HyperSpeed and Endurance price lists (pesos to minutes,
+  up to eight lines each), the minutes each extra HyperSpeed peso adds, and the Endurance download and upload limits. A change applies at once: the next payment uses
+  it and the customer page shows the new list, while a payment already under way keeps the prices it started with (the amount on the screen never changes under the customer).
+  Each plan must keep a 1-peso line (or pro-rata minutes) so every coin counts; limits stop typos (at most 8 lines, 1 to 1000 pesos, up to 7 days a line). The prices are kept on the router
+  next to the voucher choice and survive `piso-setup`; **Go back to the settings file** forgets them. The settings file (`HYPER_TIERS`, `ENDURANCE_TIERS` ...) still gives the starting prices.
+- **Admin pages: one look.** The router console, the coin box dashboard and the owner tool share one style: a near-black canvas (light theme mirrored), hairline-bordered cards, small muted labels,
+  the tabs as one bordered group in the top bar, a status chip, and a white primary button.
 - **Coin box firmware 3.5.6: spark protection for the coin slot.** The box now measures how long every coin pulse holds the signal line low and
   shows it (box settings page and diagnostics: a histogram of pulse widths, and a log line when pulses too short to be a coin are seen). A new
   setting, **Spark protection** (off by default, so nothing changes until you switch it on), counts a pulse only when it lasted at least the

@@ -2,7 +2,7 @@
 //! everything else (Insert Coin, coins, Done, the result) travels over it. A device is the MAC address the router itself
 //! sees behind its connection (ARP), never what the page says.
 use crate::core::{log, Core};
-use crate::pricing::{fmt_min, tiers, Plan};
+use crate::pricing::{fmt_min, Plan, Pricing};
 use crate::util::{b64_decode, b64_encode, jget, json_esc, query_get, sha256_hex, url_decode, valid_mac};
 use std::collections::HashMap;
 use std::fs;
@@ -10,7 +10,7 @@ use std::hash::Hash;
 use std::io::{ErrorKind, Read, Write};
 use std::net::{IpAddr, Shutdown, SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
 // ---- SHA-1 (only for the WebSocket handshake) -----------------------------------------------------------------------------
@@ -63,14 +63,11 @@ pub fn ws_accept(key: &str) -> String {
 }
 
 // ---- the page, built once -------------------------------------------------------------------------------------------------------
-fn tier_rows(core: &Core, plan: Plan) -> String {
+fn tier_rows(pr: &Pricing, plan: Plan) -> String {
     let mut rows = String::new();
-    let mut t: Vec<(u32, u32)> = tiers(&core.cfg, plan).to_vec();
+    // (the pro-rata pesos of HyperSpeed are not a price list line)
+    let mut t: Vec<(u32, u32)> = if plan == Plan::Hyper { pr.hyper_tiers.clone() } else { pr.endurance_tiers.clone() };
     t.sort();
-    // the pro-rata 1-peso tier of HyperSpeed is not a price list line
-    if plan == Plan::Hyper {
-        t.retain(|(p, _)| *p > 1);
-    }
     for (p, m) in t {
         rows.push_str(&format!("<div><span>&#8369;{}</span><span>{}</span></div>", p, fmt_min(m)));
     }
@@ -97,11 +94,12 @@ fn squeeze(src: &str) -> String {
 
 pub fn build_page(core: &Core) -> String {
     let cfg = &core.cfg;
+    let pr = core.pricing();
     let page = squeeze(include_str!("page.html")).replace("%CSS%", &squeeze(include_str!("base.css")));
-    page.replace("%TIERS_H%", &tier_rows(core, Plan::Hyper))
-        .replace("%TIERS_E%", &tier_rows(core, Plan::Endurance))
-        .replace("%E_DOWN%", &(cfg.endurance_down / 1000).to_string())
-        .replace("%E_UP%", &(cfg.endurance_up / 1000).to_string())
+    page.replace("%TIERS_H%", &tier_rows(&pr, Plan::Hyper))
+        .replace("%TIERS_E%", &tier_rows(&pr, Plan::Endurance))
+        .replace("%E_DOWN%", &(pr.endurance_down / 1000).to_string())
+        .replace("%E_UP%", &(pr.endurance_up / 1000).to_string())
         .replace("%FAIR_GB%", &(cfg.fair_kb / 1024 / 1024).to_string())
         .replace("%FIRST%", &cfg.first_wait.to_string())
 }
@@ -480,9 +478,28 @@ fn ws_session(core: Arc<Core>, mut conn: Incoming, key: &str, mac: String) {
 
 struct Portal {
     core: Arc<Core>,
-    /// the page and its ETag
-    page: (String, String),
+    /// the page and its ETag, and the price counter it was built at (built again when the owner changes a price)
+    page: RwLock<(u64, Arc<(String, String)>)>,
     pages: Arc<Limits<String>>,
+}
+
+impl Portal {
+    fn page(&self) -> Arc<(String, String)> {
+        let stamp = self.core.pricing_stamp();
+        {
+            let g = self.page.read().unwrap();
+            if g.0 == stamp {
+                return Arc::clone(&g.1);
+            }
+        }
+        let mut g = self.page.write().unwrap();
+        if g.0 != stamp {
+            let html = build_page(&self.core);
+            let tag = sha256_hex(html.as_bytes())[..16].to_string();
+            *g = (stamp, Arc::new((html, tag)));
+        }
+        Arc::clone(&g.1)
+    }
 }
 
 fn handle(p: Arc<Portal>, stream: TcpStream, peer: SocketAddr) {
@@ -516,7 +533,8 @@ fn handle(p: Arc<Portal>, stream: TcpStream, peer: SocketAddr) {
             respond_bytes(&mut conn.s, "200 OK", "image/png", BRAND_MASCOT, "Cache-Control: public, max-age=86400\r\n", !head_only)
         }
         _ => {
-            let etag = format!("\"{}\"", p.page.1);
+            let page = p.page();
+            let etag = format!("\"{}\"", page.1);
             let extra = format!("ETag: {}\r\nCache-Control: no-cache\r\n", etag);
             if req.header("if-none-match") == Some(etag.as_str()) {
                 return respond(&mut conn.s, "304 Not Modified", "text/html; charset=utf-8", "", &extra);
@@ -525,13 +543,13 @@ fn handle(p: Arc<Portal>, stream: TcpStream, peer: SocketAddr) {
                 let _ = write!(
                     conn.s,
                     "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n{}{}\r\n",
-                    p.page.0.len(),
+                    page.0.len(),
                     SAFE_HEADERS,
                     extra
                 );
                 return;
             }
-            respond(&mut conn.s, "200 OK", "text/html; charset=utf-8", &p.page.0, &extra);
+            respond(&mut conn.s, "200 OK", "text/html; charset=utf-8", &page.0, &extra);
         }
     }
 }
@@ -561,12 +579,13 @@ pub fn bind_retry(addr: &str, what: &str) -> TcpListener {
 pub fn serve(core: Arc<Core>) {
     let page = build_page(&core);
     let tag = sha256_hex(page.as_bytes())[..16].to_string();
+    let stamp = core.pricing_stamp();
     let max = core.cfg.max_clients.max(1);
-    let p = Arc::new(Portal { core, page: (page, tag), pages: Limits::new(max, WS_PER_DEVICE) });
+    let p = Arc::new(Portal { core, page: RwLock::new((stamp, Arc::new((page, tag)))), pages: Limits::new(max, WS_PER_DEVICE) });
     let conns: Arc<Limits<IpAddr>> = Limits::new(max * 4, CONN_PER_IP);
     let addr = format!("{}:{}", p.core.cfg.bind, p.core.cfg.port);
     let listener = bind_retry(&addr, "portal");
-    log!("portal listening on {} ({} bytes of page)", addr, p.page.0.len());
+    log!("portal listening on {} ({} bytes of page)", addr, p.page().0.len());
     for stream in listener.incoming().flatten() {
         let Ok(peer) = stream.peer_addr() else { continue };
         // a client over its share (or everybody at once) is turned away before any thread is started

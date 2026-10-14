@@ -149,6 +149,33 @@ try:
     c9.close()
     call("/api/settings", {"voucher_choice": True}, cookie=cookie)
     check(json.loads(call("/api/settings", cookie=cookie)[1])["voucher_choice"] is True, "and on again")
+    # prices: the owner edits the price list live (kept in the data folder, followed by the customer page at once)
+    check(call("/api/pricing")[0] == 401, "prices need a session")
+    code, body, _h = call("/api/pricing", cookie=cookie)
+    pr = json.loads(body)
+    check(code == 200 and pr["endurance"][0] == [1, 15] and pr["hyper"][0] == [5, 30] and pr["prorata"] == 6 and pr["down"] == 5000 and pr["changed"] is False,
+          f"the prices start as the settings file's: {body}")
+    check(call("/api/pricing", {"prorata": "9"}, cookie=cookie, headers={"X-Piso": "0"})[0] == 403, "changing prices needs the page's header")
+    page0 = env.get("/")[1]
+    check("<span>&#8369;5</span><span>3 hrs</span>" in page0, "the customer page shows the starting price list")
+    code, body, _h = call("/api/pricing", {"hyper": "10:100 5:45", "endurance": "5:300 1:20", "prorata": "7", "down": "8000", "up": "0"}, cookie=cookie)
+    pr = json.loads(body)
+    check(code == 200 and pr["endurance"] == [[1, 20], [5, 300]] and pr["hyper"] == [[5, 45], [10, 100]] and pr["prorata"] == 7 and pr["down"] == 8000 and pr["up"] == 0 and pr["changed"] is True,
+          f"new prices are saved and sorted: {body}")
+    saved = open(f"{env.data}/settings.txt").read()
+    check("ENDURANCE_TIERS=1:20 5:300" in saved and "HYPER_TIERS=5:45 10:100" in saved and "ENDURANCE_DOWN_KBPS=8000" in saved and "VOUCHER_CHOICE" in saved, "they are kept in the data folder next to the other console settings")
+    page1 = env.get("/")[1]
+    check("<span>&#8369;5</span><span>5 hrs</span>" in page1 and "<span>&#8369;10</span><span>1 hr 40 min</span>" in page1 and "<span>&#8369;5</span><span>3 hrs</span>" not in page1,
+          "the customer page shows the new list without a restart")
+    for bad, why in [({"endurance": "5:300"}, "1-peso"), ({"hyper": "5:30 5:40"}, "twice"), ({"endurance": "x"}, "pesos:minutes"), ({"endurance": "1:0"}, "minutes must be"),
+                     ({"prorata": "abc"}, "not a number"), ({"down": "99999999"}, "too large"), ({"hyper": ""}, "at least one")]:
+        code, body, _h = call("/api/pricing", bad, cookie=cookie)
+        check(code == 400 and b"BAD_PRICES" in body and why in body.decode(), f"refused: {bad} ({body.decode()[:80]})")
+    check(json.loads(call("/api/pricing", cookie=cookie)[1])["endurance"] == [[1, 20], [5, 300]], "a refused change leaves the prices as they were")
+    code, body, _h = call("/api/pricing", {"reset": "1"}, cookie=cookie)
+    pr = json.loads(body)
+    check(code == 200 and pr["changed"] is False and pr["endurance"][0] == [1, 15] and "ENDURANCE_TIERS" not in open(f"{env.data}/settings.txt").read(), "going back forgets the console prices")
+    check("<span>&#8369;5</span><span>3 hrs</span>" in env.get("/")[1], "and the customer page follows")
     ui = call("/ui.js")[1].decode()
     page = call("/")[1].decode()
     check("printBatch" not in ui and "vouchers/new" not in ui and "@media print" not in ui and "Print" not in page and "Make codes" not in page, "the console has no batch forms and no slip printing")

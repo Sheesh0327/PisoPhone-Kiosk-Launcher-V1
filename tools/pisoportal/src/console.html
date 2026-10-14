@@ -45,6 +45,9 @@ canvas{width:100%;height:80px;display:block}
 #login{max-width:380px;margin:64px auto;padding:24px;background:var(--s1);border:1px solid var(--ln);border-radius:12px}#login img{width:72px}#login h1{font-size:18px;margin:8px 0}
 dialog{border:1px solid var(--ln);border-radius:12px;background:var(--s1);color:var(--tx);padding:20px;max-width:420px;box-shadow:0 8px 24px rgba(0,0,0,.45)}dialog::backdrop{background:rgba(0,0,0,.7)}
 dialog h3{margin:0 0 8px;font-size:16px}dialog .row{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+.pg{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:24px}.pg h3{font-size:13px;font-weight:650;margin:0 0 4px}
+.tr{display:grid;grid-template-columns:auto minmax(56px,1fr) auto minmax(64px,1fr) 5em auto;gap:8px;align-items:center;margin:6px 0}.tr input{height:36px;padding:0 8px}.tr .s{white-space:nowrap}
+.acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:16px}
 footer{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:14px 24px;border-top:1px solid var(--ln);color:var(--mut);font-size:12px}footer a{color:var(--mut);text-decoration:none}footer a:hover{color:var(--tx)}
 @media(max-width:899px){header{padding:0 12px;gap:6px}header>span:not(.sp){display:none}header #th{width:34px;height:34px}main{padding:16px 16px 88px}nav{position:fixed;left:0;right:0;bottom:0;border:0;border-top:1px solid var(--ln);border-radius:0;background:var(--s1);padding:0;gap:0;z-index:5}nav button{flex:1;height:52px;border-radius:0;padding:0 2px;font-size:12px}nav button.on{background:none;box-shadow:inset 0 2px 0 var(--bfg)}footer{padding:12px 16px 72px}.hm{display:none}}
 </style></head><body>
@@ -69,8 +72,16 @@ footer{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;paddin
 <p><button class="b" id="csv" style="margin-top:12px">Download as CSV</button></p></section>
 <section id="t-vch" class="hide"><h2>Voucher codes</h2><p class="s">A customer who chooses "Get a voucher code" when paying gets one code worth the minutes the coins bought, valid for 30 days. It works once. The money is in your sales as soon as the coins are counted; using the code adds no income. Codes are not kept on the router, only a fingerprint. You can cancel a code that was not used.</p>
 <div class="card" style="overflow-x:auto"><table><thead><tr><th>Voucher</th><th>Worth</th><th>Status</th><th>Valid until</th><th></th></tr></thead><tbody id="vl2"></tbody></table></div></section>
-<section id="t-set" class="hide"><h2>Settings</h2><div class="card"><div class="f" style="max-width:360px"><div><label for="vcs">Voucher choice at payment</label><select id="vcs"><option value="on">On: customers pick Use now or Get a voucher code</option><option value="off">Off: coins always buy time at once</option></select></div></div>
-<p class="s" id="setm" role="status"></p><p class="s">Takes effect at once. A payment already started keeps the choice it began with. The same setting on the router: <b>piso-setup voucher-choice on|off</b>.</p></div></section>
+<section id="t-set" class="hide"><h2>Settings</h2><div class="card"><div class="f" style="max-width:520px"><div><label for="vcs">Voucher choice at payment</label><select id="vcs"><option value="on">On: customers pick Use now or Get a voucher code</option><option value="off">Off: coins always buy time at once</option></select></div></div>
+<p class="s" id="setm" role="status"></p><p class="s">Takes effect at once. A payment already started keeps the choice it began with. The same setting on the router: <b>piso-setup voucher-choice on|off</b>.</p></div>
+<h2>Prices</h2><div class="card" id="prc"><p class="s">Pesos to minutes. The best mix of lines is used for any amount, so &#8369;17 can be 10 + 5 + 1 + 1. Each plan needs a 1-peso line, so every coin counts. A payment already started keeps the prices it began with.</p>
+<div class="pg"><div><h3>HyperSpeed</h3><div id="rows-h"></div><button class="b" id="add-h">Add a line</button>
+<div class="f" style="margin-top:12px;max-width:240px"><div><label for="pro">Minutes for each extra peso</label><input id="pro" type="number" min="0" max="120" step="1"></div></div></div>
+<div><h3>Endurance</h3><div id="rows-e"></div><button class="b" id="add-e">Add a line</button>
+<div class="f" style="margin-top:12px"><div><label for="edn">Download limit, Mbps (0 = none)</label><input id="edn" type="number" min="0" max="1000" step="0.1"></div><div><label for="eup">Upload limit, Mbps (0 = none)</label><input id="eup" type="number" min="0" max="1000" step="0.1"></div></div></div></div>
+<p class="err" id="prm" role="status"></p>
+<div class="acts"><button class="go" id="prs">Save prices</button><button class="b" id="prr">Go back to the settings file</button><span class="s" id="prn"></span></div>
+<p class="s">Takes effect at once; the customer page shows the new list on its next visit. Starting prices come from the router's settings file (HYPER_TIERS, ENDURANCE_TIERS).</p></div></section>
 </main></div>
 <footer><span>TechNet PisoHub Console</span><span><a href="https://pisophone.pages.dev/manual.html" target="_blank" rel="noopener">Owner manual</a></span></footer></div>
 <dialog id="dlg"><h3 id="dt"></h3><p id="dp" class="s"></p><div class="row"><button class="b" id="dno">Cancel</button><button class="go" id="dyes"></button></div></dialog>

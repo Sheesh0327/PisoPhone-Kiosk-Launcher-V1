@@ -20,6 +20,7 @@ pub struct Config {
     pub poll_ms: u64,
     pub drain_secs: u64,
     pub hyper_tiers: Vec<(u32, u32)>,
+    pub hyper_prorata_min: u32,
     pub endurance_tiers: Vec<(u32, u32)>,
     pub endurance_down: u32,
     pub endurance_up: u32,
@@ -91,6 +92,16 @@ pub fn override_set(data_dir: &str, key: &str, value: &str) -> bool {
     fs::write(&tmp, text).and_then(|_| fs::rename(&tmp, &path)).is_ok()
 }
 
+/// Forget one console setting (the other lines stay).
+pub fn override_clear(data_dir: &str, key: &str) -> bool {
+    let path = format!("{}/settings.txt", data_dir);
+    let Ok(old) = fs::read_to_string(&path) else { return true };
+    let text: String =
+        old.lines().filter(|l| l.split_once('=').map(|(k, _)| k.trim() != key).unwrap_or(false)).map(|l| format!("{}\n", l)).collect();
+    let tmp = format!("{}.tmp", path);
+    fs::write(&tmp, text).and_then(|_| fs::rename(&tmp, &path)).is_ok()
+}
+
 fn read_file_settings(path: &str) -> HashMap<String, String> {
     let mut m = HashMap::new();
     let Ok(text) = fs::read_to_string(path) else { return m };
@@ -119,11 +130,7 @@ impl Config {
         };
         let num = |k: &str, d: u64| -> u64 { get(k, "").parse().unwrap_or(d) };
         let port = |k: &str, d: u16| -> u16 { get(k, "").parse().unwrap_or(d) };
-        let mut hyper = parse_tiers(&get("HYPER_TIERS", "5:30 10:60 20:120"));
-        let prorata = num("HYPER_PRORATA_MIN", 6) as u32;
-        if prorata > 0 {
-            hyper.push((1, prorata));
-        }
+        let hyper = parse_tiers(&get("HYPER_TIERS", "5:30 10:60 20:120"));
         let fair_kb = match get("FAIR_USE_KB", "").parse::<u64>() {
             Ok(v) => v,
             Err(_) => num("FAIR_USE_GB", 5) * 1024 * 1024,
@@ -145,6 +152,7 @@ impl Config {
             poll_ms: num("COIN_POLL_MS", 1000),
             drain_secs: num("COIN_DRAIN_SECONDS", 30),
             hyper_tiers: hyper,
+            hyper_prorata_min: num("HYPER_PRORATA_MIN", 6) as u32,
             endurance_tiers: parse_tiers(&get("ENDURANCE_TIERS", "1:15 5:180 10:480 20:1440")),
             endurance_down: num("ENDURANCE_DOWN_KBPS", 5000) as u32,
             endurance_up: num("ENDURANCE_UP_KBPS", 2000) as u32,
