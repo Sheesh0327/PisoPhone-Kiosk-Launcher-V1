@@ -1,0 +1,32 @@
+/* TechNet PisoHub theme (docs/design/GUI_SPEC_OWNER_AND_WIFI.md): navy band, one signal line, solid fills, gold only for money and attention. */
+:root{color-scheme:dark;--bg:#050d22;--band:#0a1b45;--s1:#0c1a3a;--s2:#132552;--tx:#eef3ff;--mut:#97a6c7;--ln:#1f3361;--ln2:#5a70a3;--brand:#1d63d6;--bfg:#5b9bff;--teal:#16c9a4;--gold:#ffb81c;--ok:#4be3b4;--bad:#ff8a8a}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--tx);font:16px/24px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-variant-numeric:tabular-nums}
+header{display:flex;align-items:center;gap:8px;height:48px;padding:0 max(14px,env(safe-area-inset-left));background:var(--band);font-size:18px}
+header img{width:28px;height:28px}
+header b{font-weight:800}
+header span{font-weight:500;color:var(--mut)}
+.sl{display:block;height:3px;background:#2f7bff;background:linear-gradient(90deg,#2f7bff,#16c9a4)}
+.w{width:100%;max-width:420px;margin:0 auto;padding:14px 14px 24px}
+.card{background:var(--s1);border:1px solid var(--ln);border-radius:10px;padding:16px}
+.v{display:none}
+.mut{color:var(--mut);font-size:14px;line-height:20px;margin:0}
+.c{text-align:center}
+.big{font-size:44px;line-height:48px;font-weight:700;text-align:center;margin:4px 0}
+button,.btn{font:inherit}
+.btn{display:block;width:100%;min-height:52px;margin:12px 0 0;padding:12px;border:0;border-radius:10px;background:var(--brand);color:#fff;font-weight:700;text-align:center;text-decoration:none;cursor:pointer}
+.btn:active{background:#164fa8}
+.btn:disabled,.btn[aria-disabled=true]{opacity:.55}
+.btn.alt{min-height:48px;background:none;color:var(--tx);border:1px solid var(--ln2);font-weight:600}
+.btn:focus-visible,summary:focus-visible,input:focus-visible+.seg{outline:2px solid var(--bfg);outline-offset:2px}
+.sub{margin:6px 0 0;color:var(--mut);font-size:14px;line-height:20px;text-align:center}
+.msg{margin:12px 0 0;padding:10px 12px;border-left:4px solid var(--bad);border-radius:0 6px 6px 0;background:var(--s1);color:var(--tx);font-size:14px;line-height:20px}
+.msg.ok{border-color:var(--teal)}
+.msg.w{border-color:var(--gold)}
+.bar{height:6px;background:var(--s2);border-radius:3px;overflow:hidden;margin:12px 0 6px}
+.bar i{display:block;height:100%;background:var(--teal);transition:width 1s linear}
+.chip{display:inline-block;padding:0 10px;border-radius:99px;background:var(--s2);color:var(--mut);font-size:14px;line-height:24px;font-weight:600}
+.chip.ok{color:var(--ok)}
+.chip.gold{border:1px solid var(--gold);color:var(--gold);line-height:22px}
+.foot{color:var(--mut);font-size:12px;line-height:16px;margin:20px 2px 0}
+@media(prefers-reduced-motion:reduce){.bar i{transition:none}}

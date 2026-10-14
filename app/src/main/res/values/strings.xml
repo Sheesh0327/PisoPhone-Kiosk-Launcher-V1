@@ -1,0 +1,115 @@
+<resources>
+    <string name="app_name">PisoPhone Launcher</string>
+
+    <!-- Lock screen (docs/design/GUI_SPEC_PISOPHONE_KIDS.md). -->
+    <string name="lock_phone_chip">Phone %1$d</string>
+    <string name="lock_title_idle">Insert a coin!</string>
+    <string name="lock_body_idle">Insert a coin to unlock this phone.</string>
+    <string name="lock_title_waiting">Insert coin now</string>
+    <string name="lock_title_coin_in">Coin in!</string>
+    <string name="lock_title_arming">Getting ready…</string>
+    <string name="lock_caption_signout">Phone locks when time ends. Sign out of your accounts.</string>
+    <string name="lock_button_ready">Ready, insert coin</string>
+    <string name="lock_button_ready_subline">Tap first, then insert your coin</string>
+    <string name="lock_button_waiting">Waiting for coin…</string>
+    <string name="lock_button_arming">Getting ready…</string>
+    <string name="lock_button_done">Done · %1$s</string>
+    <string name="lock_button_offline">Coin box offline</string>
+    <string name="lock_button_not_activated">Device not activated</string>
+    <string name="lock_scan_card">Have a PisoPhone card? Scan it</string>
+    <string name="lock_stuck_hint">Push the coin in slowly. Still stuck? Ask the shop.</string>
+    <string name="lock_rate_more">More coins, more time.</string>
+    <string name="lock_total_label">You put in</string>
+    <string name="lock_seconds_left">%1$ds</string>
+    <string name="lock_footer_online">Coin box connected</string>
+    <string name="lock_footer_offline">Coin box offline. Ask the shop staff.</string>
+    <string name="lock_cd_backdrop">Change backdrop colour</string>
+    <string name="lock_cd_admin">Owner settings</string>
+    <string name="lock_cd_mascot">TechNet mascot</string>
+
+    <!-- Banners -->
+    <string name="banner_low_battery">Low battery (%1$d%%)</string>
+    <string name="banner_low_battery_detail">Plug in the charger now so the phone does not shut down.</string>
+    <string name="banner_unplug">Unplug the charger (%1$d%%)</string>
+    <string name="banner_unplug_detail">The battery is full enough. Unplugging protects its health.</string>
+    <string name="banner_not_activated">Device not activated</string>
+    <string name="banner_not_activated_default">Ask the shop staff to activate this phone on the coin box.</string>
+    <string name="banner_arena_title">1v1 arena duel</string>
+    <string name="banner_arena_detail">You are %1$s · %2$d min stake</string>
+    <string name="arena_player_1">Player 1</string>
+    <string name="arena_player_2">Player 2</string>
+    <string name="arena_participant">Participant</string>
+
+    <!-- Time pill and its panel -->
+    <string name="pill_time_left">Time left</string>
+    <string name="pill_game_space">Game space</string>
+    <string name="pill_add_coin">Add coin</string>
+    <string name="pill_waiting">Waiting for coin · %1$ds</string>
+    <string name="pill_arming">Getting ready…</string>
+    <string name="pill_offline">Coin box offline</string>
+    <string name="pill_home">Home</string>
+    <string name="pill_tap_again">Tap again</string>
+    <string name="pill_sign_out">Sign out</string>
+    <string name="pill_sign_out_signed_in">Signed in as %1$s · Sign out</string>
+    <string name="pill_sign_out_confirm">Tap again to save your time and sign out</string>
+    <string name="pill_status_line">Battery %1$d%% · RAM %2$d%%</string>
+    <string name="pill_brightness">Brightness</string>
+    <string name="pill_volume">Volume</string>
+    <string name="pill_cd_close">Close panel</string>
+    <string name="pill_cd_mute">Mute or unmute</string>
+    <string name="banner_time_low">5 minutes left</string>
+    <string name="banner_time_critical">1 minute left! Insert coin for more time.</string>
+    <string name="banner_add_time">Add time</string>
+    <plurals name="pill_done_coins">
+        <item quantity="one">Done · %1$d coin</item>
+        <item quantity="other">Done · %1$d coins</item>
+    </plurals>
+
+    <string name="popover_time_added">Time added!</string>
+    <string name="pill_boost">Boost</string>
+    <string name="pill_boosting">Boosting…</string>
+    <string name="pill_boost_hint">Closes your other apps. The one you are using stays open.</string>
+    <string name="pill_boost_done">Boost done: %1$d apps closed, %2$d MB free</string>
+    <string name="pill_wifi">Refresh Wi-Fi</string>
+    <string name="pill_wifi_busy">Reconnecting…</string>
+    <string name="pill_wifi_ok">Wi-Fi is back</string>
+    <string name="pill_wifi_failed">Could not reconnect. Ask the shop staff.</string>
+    <string name="pill_wifi_wait">Please wait a moment before refreshing again</string>
+
+    <!-- Text of the owner settings, system recovery and launcher screens. -->
+    <string name="ui_system_recovery">System recovery</string>
+    <string name="ui_scan_a_recovery_code">Scan a recovery code</string>
+    <string name="ui_test_the_voice">Test the voice</string>
+    <string name="ui_refresh">Refresh</string>
+    <string name="ui_copy">Copy</string>
+    <string name="ui_open">Open</string>
+    <string name="ui_cancel">Cancel</string>
+    <string name="ui_unlock">Unlock</string>
+    <string name="ui_got_it">Got it</string>
+    <string name="ui_open_5_min">Open 5 min</string>
+    <string name="ui_lock_phone">Lock phone</string>
+    <string name="ui_close">Close</string>
+    <string name="ui_exit_owner_settings">Exit owner settings</string>
+    <string name="ui_check_for_update_and_install">Check for update and install</string>
+    <string name="ui_ok">OK</string>
+    <string name="ui_try_again">Try again</string>
+    <string name="ui_emergency_tools_for_the_owner">Emergency tools for the owner</string>
+    <string name="ui_status">Status</string>
+    <string name="ui_emergency_actions">Emergency actions</string>
+    <string name="ui_remove_device_owner">Remove device owner?</string>
+    <string name="ui_this_removes_the_device_owner_lock_c">This removes the device-owner lock completely, so the app can be uninstalled without a factory reset. The phone will no longer be a kiosk.</string>
+    <string name="ui_close_system_recovery">Close system recovery</string>
+    <string name="ui_select_an_app_or_game_for_quick_acce">Select an app or game for quick access</string>
+    <string name="ui_manage_this_pinned_slot">Manage this pinned slot:</string>
+    <string name="ui_choose_which_slot_to_pin_this_app_to">Choose which slot to pin this app to:</string>
+    <string name="ui_pisophone">PisoPhone</string>
+    <string name="ui_piso">PISO</string>
+    <string name="ui_phone">PHONE</string>
+    <string name="ui_pinned_apps">Pinned Apps</string>
+    <string name="ui_pinned">PINNED</string>
+    <string name="ui_pinned_2">Pinned</string>
+    <string name="ui_add_pinned_app">Add Pinned App</string>
+    <string name="ui_search">Search</string>
+    <string name="ui_clear">Clear</string>
+    <string name="ui_all_apps">ALL APPS</string>
+</resources>

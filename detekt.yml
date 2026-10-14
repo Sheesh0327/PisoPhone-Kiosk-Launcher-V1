@@ -1,0 +1,59 @@
+# detekt (static analysis for the Kotlin app), run by CI in .github/workflows/quality.yml:
+#   java -jar detekt-cli-1.23.8-all.jar --config detekt.yml --build-upon-default-config --baseline detekt-baseline.xml --input app/src/main/java
+# Only the differences from detekt's defaults are listed. Findings that existed when this was added are in detekt-baseline.xml:
+# CI fails on anything NEW, and the baseline only ever shrinks. To refresh it after fixing some:
+#   java -jar detekt-cli-1.23.8-all.jar --config detekt.yml --build-upon-default-config --input app/src/main/java --baseline detekt-baseline.xml --create-baseline
+build:
+  maxIssues: 0
+  excludeCorrectable: false
+
+style:
+  # Pulse counts, milliseconds and dp values are named where it helps and plain numbers where it does not.
+  MagicNumber:
+    active: false
+  # ktlint owns formatting (.editorconfig).
+  MaxLineLength:
+    active: false
+  WildcardImport:
+    active: false
+  ReturnCount:
+    active: false
+  ForbiddenComment:
+    active: false
+  UnusedPrivateMember:
+    ignoreAnnotated: ['Preview']
+
+exceptions:
+  # A kiosk must survive anything: catching a broad exception at a boundary is deliberate.
+  TooGenericExceptionCaught:
+    active: false
+
+naming:
+  MatchingDeclarationName:
+    active: false
+  # Compose functions are PascalCase.
+  FunctionNaming:
+    active: false
+
+complexity:
+  LongMethod:
+    threshold: 80
+    ignoreAnnotated: ['Composable']
+  LongParameterList:
+    functionThreshold: 8
+    constructorThreshold: 10
+    ignoreAnnotated: ['Composable']
+  CyclomaticComplexMethod:
+    threshold: 20
+    ignoreAnnotated: ['Composable']
+  TooManyFunctions:
+    thresholdInFiles: 20
+    thresholdInClasses: 20
+    thresholdInInterfaces: 20
+    thresholdInObjects: 25
+    thresholdInEnums: 11
+    ignoreAnnotated: ['Composable']
+  NestedBlockDepth:
+    threshold: 5
+  ComplexCondition:
+    threshold: 5

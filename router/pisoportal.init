@@ -1,0 +1,15 @@
+#!/bin/sh /etc/rc.common
+# OpenWrt service for the PisoPhone portal (procd): the coin page (openNDS FAS), the coin box link and the money records.
+# Installed as /etc/init.d/pisoportal. Settings: /etc/coinslot.conf (written by piso-setup).
+START=99
+STOP=10
+USE_PROCD=1
+
+start_service() {
+	mkdir -p /etc/coinslot.d
+	procd_open_instance portal
+	procd_set_param command /usr/bin/pisoportal serve
+	procd_set_param respawn 3600 5 0
+	procd_set_param stderr 1
+	procd_close_instance
+}

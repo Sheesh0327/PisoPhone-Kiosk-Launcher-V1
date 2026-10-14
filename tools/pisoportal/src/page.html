@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>TechNet PisoWifi</title>
+<link rel="icon" href="/brand.png">
+<link rel="apple-touch-icon" href="/brand.png">
+<style>
+%CSS%
+.pick{position:relative}
+.pick input{position:absolute;left:0;top:0;width:1px;height:1px;opacity:0}
+.seg{display:flex;border-bottom:1px solid var(--ln)}
+.seg label{flex:1;height:44px;line-height:44px;text-align:center;font-weight:600;color:var(--mut);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+#rh:checked~.seg label[for=rh],#re:checked~.seg label[for=re],#mn:checked~.seg label[for=mn],#mv:checked~.seg label[for=mv]{color:var(--tx);border-color:var(--bfg)}
+.mh{display:none}
+#mv:checked~.mh{display:block}
+.tiers{margin-top:12px;padding:12px 16px 4px}
+.tiers .rows div{display:flex;justify-content:space-between;min-height:44px;align-items:center;border-top:1px solid var(--ln)}
+.tiers .rows span:first-child{font-weight:700;color:var(--gold)}
+.te{display:none}
+#re:checked~.tiers .te{display:block}
+#re:checked~.tiers .th{display:none}
+.hd{display:flex;gap:12px;align-items:center;margin:0 0 14px}
+.hd img{width:72px;height:74px;flex:none}
+.hd p{margin:0;font-size:20px;line-height:28px;font-weight:700}
+#lsub{font-size:17px;line-height:24px;font-weight:600;text-align:center;margin:8px 0 0}
+#lpes{color:var(--mut)}
+#lpes.p{color:var(--ok)}
+#lplan{display:table;margin:0 auto}
+.gap{display:flex;justify-content:space-between;align-items:center}
+details{margin:14px 0 0;border:1px solid var(--ln);border-radius:10px;padding:0 16px}
+summary{min-height:48px;line-height:48px;font-weight:600;cursor:pointer}
+details input{width:100%;height:48px;margin:0;padding:0 12px;border-radius:6px;border:1px solid var(--ln2);background:var(--bg);color:var(--tx);font:inherit;letter-spacing:.1em;text-transform:uppercase}
+details .btn{margin:8px 0 12px}
+.vcode{font:700 30px/40px ui-monospace,Menlo,Consolas,monospace;letter-spacing:.04em;-webkit-user-select:all;user-select:all;word-break:break-all}
+.vr{display:flex;justify-content:space-between;align-items:center;min-height:56px;border-top:1px solid var(--ln);margin-top:8px}
+.vr b{font:700 17px ui-monospace,Menlo,Consolas,monospace}
+.vr .btn{width:auto;min-height:44px;margin:0;padding:8px 16px}
+.ck{width:56px;height:56px;margin:0 auto 4px;border:3px solid var(--teal);border-radius:50%;position:relative}
+.ck:after{content:"";position:absolute;left:19px;top:9px;width:11px;height:22px;border:solid var(--teal);border-width:0 4px 4px 0;transform:rotate(45deg)}
+</style>
+</head><body>
+<header><img src="/brand.png" alt="" width="28" height="28"><b>TechNet</b><span>PisoWifi</span></header><i class="sl"></i>
+<div class="w">
+<div id="v-conn" class="v"><p class="mut c" id="conn" role="status">Getting your connection ready.</p><button class="btn alt" id="rl" type="button" style="display:none">Reload</button></div>
+<div id="v-idle" class="v">
+<div class="hd" id="hd"><img src="/mascot.png" alt="" width="72" height="74"><p>Buy Wi-Fi time<span class="mut" style="display:block;font-weight:400">Pick a plan, insert a coin and you are online.</span></p></div>
+<div class="card" id="ion" style="display:none;margin:0 0 14px">
+<span class="chip ok" id="chip">Connected</span> <span class="mut" id="tplan"></span> <span class="mut" id="tused"></span>
+<p class="mut c" style="margin-top:12px" id="tin">&#10003; You are online &middot; time left</p>
+<div class="big" id="t"></div>
+<p class="mut c" id="tby"></p>
+<div class="bar"><i id="tbar"></i></div>
+<div class="msg w" id="tslow" style="display:none">Speed is reduced for a few minutes (fair use).</div>
+<button class="btn" id="rs" type="button" style="display:none">Resume time</button>
+<button class="btn alt" id="pz" type="button" style="display:none">Pause time</button>
+<p class="sub" id="pzc"></p>
+</div>
+<div class="pick" id="pk">
+<input type="radio" name="p" id="rh" value="hyper" checked><input type="radio" name="p" id="re" value="endurance">
+<div class="seg"><label for="rh">HyperSpeed</label><label for="re">Endurance</label></div>
+<div class="card tiers">
+<div class="th"><p class="mut">Full speed &middot; slows after %FAIR_GB% GB</p><div class="rows">%TIERS_H%</div></div>
+<div class="te"><p class="mut">Up to %E_DOWN%/%E_UP% Mbps &middot; much more time per peso</p><div class="rows">%TIERS_E%</div></div>
+</div>
+</div>
+<div class="pick" id="vchoice" style="display:none;margin-top:12px">
+<input type="radio" name="m" id="mn" value="now" checked><input type="radio" name="m" id="mv" value="voucher">
+<div class="seg"><label for="mn">Use now</label><label for="mv">Get a voucher code</label></div>
+<p class="sub mh">You get a code to use later, within 30 days. You are not connected after paying.</p>
+</div>
+<div class="msg" id="ibusy"></div>
+<button class="btn coin" id="go" type="button">Insert Coin</button>
+<p class="sub" id="gos">Coins add up: every coin adds more time</p>
+<div class="card" id="vlist" style="display:none;margin:14px 0 0"><b>Your voucher codes</b><div id="vls"></div><p class="mut" id="vlm" role="status"></p></div>
+<details id="vd"><summary>Have a voucher?</summary>
+<input id="vc" maxlength="11" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="ABCDE-FGHJK" aria-label="Voucher code">
+<button class="btn alt" id="vb" type="button">Redeem</button>
+<p class="mut" id="vm" role="status"></p></details>
+</div>
+<div id="v-live" class="v card">
+<span class="chip" id="lplan"></span>
+<p id="lsub"></p>
+<div class="big" id="lpes"></div>
+<p class="mut c" id="lmin"></p>
+<div id="lcd"><div class="bar"><i id="lbar" style="width:100%;background:var(--bfg)"></i></div><p class="mut c" id="lleft"></p></div>
+<p class="msg w" id="lv" style="display:none">This pays for a voucher code. You are not connected yet.</p>
+<p class="mut c" id="lhint" style="display:none" role="status">Coin received. Insert more, or tap Done.</p>
+<p class="sub" id="ltop" style="display:none">Page closed? Keep inserting, coins still count.</p>
+<button class="btn" id="ldone" type="button" style="display:none">Done</button>
+<button class="btn alt" id="lcancel" type="button">Cancel</button>
+</div>
+<div id="v-final" class="v card">
+<div id="fn"><div class="ck" id="ck"></div>
+<p class="mut c" id="fon"></p>
+<div class="big" id="fleft"></div></div>
+<p class="mut c" id="fmin"></p>
+<div id="fv" style="display:none">
+<p class="mut c">Your voucher code</p>
+<div class="vcode c" id="vcode"></div>
+<button class="btn alt" id="vcopy" type="button">Copy code</button>
+<div class="msg w"><b>Nothing is connected yet.</b> No time was added. To use the code: on the start page tap <b>Have a voucher?</b>, type or paste the code and tap Redeem. It works once, until <span id="vexp"></span>.</div>
+<button class="btn" id="vsave" type="button">Save voucher file</button>
+<p class="sub">Tip: take a screenshot of this code.</p>
+</div>
+<div class="msg w" id="foff" style="display:none"></div>
+<a class="btn" id="fcont" style="display:none">Continue browsing</a>
+<button class="btn alt" id="fagain" type="button">Add more time</button>
+</div>
+<div id="v-msg" class="v card" role="alert">
+<div id="mtext"></div>
+<div id="mbtns"></div>
+</div>
+<p class="foot">TechNet Solutions &middot; Connect &middot; Play &middot; More Possibilities</p>
+</div>
+<script>
+(function(){
+var FIRST=%FIRST%;
+var A=window.AudioContext||window.webkitAudioContext,ctx=null,ws=null,tk=null,left=0,total=FIRST,cont="",plan="hyper",pes=0,fas=location.search.replace(/^.*[?&]fas=([^&]*).*$/,"$1");
+if(fas===location.search)fas="";
+var SS=window.speechSynthesis,SU=window.SpeechSynthesisUtterance,keep=[],voice=null,unl=0,sq=0,vch=false,rt=0,rx=0,lc=0,cw=0;
+function el(i){return document.getElementById(i)}
+function put(i,t){var e=el(i);if(e&&e.textContent!==t)e.textContent=t}
+function show(n){var l=document.getElementsByClassName("v"),i;for(i=0;i<l.length;i++)l[i].style.display=l[i].id==="v-"+n?"block":"none"}
+function pn(p){return p==="endurance"?"Endurance":"HyperSpeed"}
+function fmt(m){m=+m||0;if(m<60)return m+" min";var h=Math.floor(m/60),r=m%60;return h+(h>1?" hrs":" hr")+(r?" "+r+" min":"")}
+function fsec(s){return fmt(Math.ceil((+s||0)/60))}
+function tone(f,t,d){var o=ctx.createOscillator(),g=ctx.createGain();o.type="triangle";o.frequency.value=f;g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.35,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+d);o.connect(g);g.connect(ctx.destination);o.start(t);o.stop(t+d+.05)}
+/* beeps: the fallback when the phone cannot speak */
+function ding(n){try{if(!ctx)return;if(ctx.state!=="running")ctx.resume();var t=ctx.currentTime,i;n=Math.min(n,4);for(i=0;i<n;i++){tone(988,t+i*.22,.12);tone(1319,t+i*.22+.1,.3)}}catch(e){}}
+/* speech is the default. Chrome drops an utterance nobody holds (keep), and a cancel() right before speak() can swallow it (a gap);
+   an engine that never starts, errors, or is missing gets the beeps for that event instead */
+function voices(){try{voice=SS.getVoices().filter(function(v){return/^en[-_]/i.test(v.lang)})[0]||null}catch(e){}}
+if(SS&&SU){voices();try{SS.addEventListener("voiceschanged",voices)}catch(e){SS.onvoiceschanged=voices}}
+function talk(t,fb){var u,st=0,fd=0,wd;
+ function end(bad){clearTimeout(wd);var i=keep.indexOf(u);if(i>=0)keep.splice(i,1);if(bad&&!st&&!fd){fd=1;fb()}}
+ try{u=new SU(t);u.lang="en-US";if(voice)u.voice=voice;keep.push(u);
+  u.onstart=function(){st=1;clearTimeout(wd)};
+  u.onend=function(){end(0)};
+  u.onerror=function(e){end(!e||e.error!=="interrupted"&&e.error!=="canceled")};
+  wd=setTimeout(function(){end(1)},1e3);
+  if(SS.paused)SS.resume();SS.speak(u)}catch(e){end(1)}}
+function say(t,fb){if(!SS||!SU){fb();return}
+ clearTimeout(sq);var busy=false;try{busy=SS.speaking||SS.pending}catch(e){}
+ if(busy){try{SS.cancel()}catch(e){}}
+ sq=setTimeout(function(){talk(t,fb)},busy?120:0)}
+function prime(){try{if(SS&&SU&&!unl){unl=1;var u=new SU(" ");u.volume=0;keep.push(u);u.onend=u.onerror=function(){var i=keep.indexOf(u);if(i>=0)keep.splice(i,1)};SS.speak(u)}}catch(x){}try{if(A){ctx=window.__ctx=window.__ctx||new A();ctx.resume()}}catch(x){}}
+function later(f){(window.requestAnimationFrame||setTimeout)(function(){setTimeout(f,0)})}
+/* the first tap anywhere unlocks speech and sound (after the screen has changed: starting the engine can freeze a phone for a moment) */
+function first(){document.removeEventListener("click",first,true);later(prime)}
+document.addEventListener("click",first,true);
+function send(o){if(ws&&ws.readyState===1){ws.send(JSON.stringify(o));return true}return false}
+function bar(){put("lleft","Insert within "+left+" s");el("lbar").style.width=Math.max(0,Math.min(100,100*left/total))+"%"}
+function stopTick(){if(tk){clearInterval(tk);tk=null}}
+var tl=0,tt=0,ttk=null,pj=null;
+function p2(n){return(n<10?"0":"")+n}
+function clock(s){s=Math.max(0,s|0);return Math.floor(s/3600)+":"+p2(Math.floor(s%3600/60))+":"+p2(s%60)}
+function by(s){try{return"Use by "+new Date(Date.now()+s*1e3).toLocaleString([],{weekday:"short",hour:"numeric",minute:"2-digit"})}catch(e){return""}}
+function tpaint(){if(tl<=0){tstop();el("ion").style.display="none";send({t:"hello",fas:fas});return}
+ put("t",clock(tl));put("fleft",clock(tl));el("tbar").style.width=Math.min(100,100*tl/Math.max(tt,tl))+"%";
+ if(!pj){put("tin","✓ You are online · time left");var lo=tl<300,c=el("chip");put("chip",lo?"Almost out":"Connected");c.className="chip "+(lo?"gold":"ok");put("tby",lo?"Less than 5 min left":by(tl));el("tbar").style.background=lo?"var(--gold)":"var(--teal)"}}
+function tstop(){if(ttk){clearInterval(ttk);ttk=null}}
+function tstart(s){tstop();tl=s;if(s>tt)tt=s;tpaint();if(tl>0)ttk=setInterval(function(){tl--;tpaint()},1000)}
+var fo=null,wk=null,woke=/[?&]w=1/.test(location.search);
+function dropq(k){return location.search.replace(new RegExp("([?&])"+k+"=[^&]*(&|$)"),"$1").replace(/[?&]$/,"")}
+function clean(){return dropq("w")}
+/* once online, load the page again: the phone's sign-in window checks the internet when a page loads, so it sees the
+   connection now (and closes itself) instead of minutes later */
+function wake(){wk=null;if(woke)return;var q=clean();location.replace(location.pathname+q+(q?"&":"?")+"w=1")}
+function foff(on){var e=el("foff");if(!on){clearTimeout(fo);fo=null;e.style.display="none"}else if(!fo){e.style.display="block";e.innerHTML="<b>Payment received.</b> Connecting you&hellip;";fo=setTimeout(function(){e.innerHTML="<b>Payment received.</b> Not online yet: turn Wi-Fi off and on. Your time is saved."},3e4)}}
+function msg(t,btns){put("mtext",t);var b=el("mbtns");b.innerHTML="";var i,x;for(i=0;i<(btns||[]).length;i++){x=document.createElement("button");x.type="button";x.className="btn"+(btns[i][2]?" alt":"");x.textContent=btns[i][0];x.onclick=btns[i][1];b.appendChild(x)}show("msg")}
+function again(){clearTimeout(wk);wk=null;send({t:"hello",fas:fas,reset:true})}
+function startPlan(p,f,v){plan=p;if(woke){woke=false;try{history.replaceState(null,"",location.pathname+clean())}catch(e){}}send({t:"start",plan:p,forfeit:!!f,mode:v?"voucher":"now"})}
+function wait(p){show("live");put("lplan",pn(p));put("lsub","Getting the coin slot ready");put("lpes","");put("lmin","Please wait, do not insert coins yet");el("lcd").style.display="none";el("ldone").style.display="none";el("lhint").style.display="none"}
+var go=function(){var r=document.querySelector("input[name=p]:checked");var p=r?r.value:"hyper";wait(p);startPlan(p,false,vch&&el("mv").checked);later(prime)};
+el("go").onclick=go;
+el("ldone").onclick=function(){this.disabled=true;this.textContent="Closing…";send({t:"done"})};
+el("lcancel").onclick=function(){send({t:"done"})};
+el("fagain").onclick=function(){show("idle");again()};
+el("rl").onclick=function(){location.reload()};
+el("pz").onclick=function(){if(this.getAttribute("aria-disabled")!=="true"){this.setAttribute("aria-disabled","true");send({t:"pause"})}};
+el("rs").onclick=function(){this.disabled=true;this.textContent="Resuming…";send({t:"resume"})};
+var vc=el("vc");
+vc.oninput=function(){var v=vc.value.toUpperCase().replace(/[^0-9A-Z]/g,"").replace(/O/g,"0").replace(/[IL]/g,"1").slice(0,10);vc.value=v.length>5?v.slice(0,5)+"-"+v.slice(5):v};
+vc.onkeydown=function(e){if(e.key==="Enter")el("vb").click()};
+function redeem(c){el("vb").disabled=true;put("vm","Checking…");put("vlm","Checking…");send({t:"redeem",c:c})}
+el("vb").onclick=function(){if(vc.value.length<11){put("vm","Type the 10 characters of the code.");return}redeem(vc.value)};
+/* a voucher file opened later brings its code in the address (?v=ABCDE-FGHJK): it is only filled in, the customer taps Redeem */
+var qv=/[?&]v=([^&]*)/.exec(location.search);
+if(qv){try{vc.value=decodeURIComponent(qv[1])}catch(e){}vc.oninput();try{history.replaceState(null,"",location.pathname+dropq("v"))}catch(e){}
+ if(vc.value.length===11){el("vd").open=true;put("vm","Code filled in. Tap Redeem to add the time.")}else vc.value=""}
+var WHY={bad:"Code not accepted. Check the letters and try again.",used:"This code was already used.",exp:"This code has expired.",plan:"You have time on the other plan. Use it up first.",io:"Could not save it. Try again."};
+function reply(j){
+ if(j.t==="rd"){el("vb").disabled=false;var m;if(j.ok){m="Added "+fmt(j.min)+". Enjoy!";vc.value=""}else m=j.e==="wait"?"Too many tries. Try again in "+clock(j.w).slice(2)+".":WHY[j.e]||WHY.io;put("vm",m);put("vlm",m);return}
+ var m={wait:"You can pause again in "+j.w+" s.",limit:"No pauses left.",little:"Pause needs "+Math.ceil(j.w/60)+" min left.",paying:"Finish adding coins first.",already:"Already paused.",none:"There is no time to pause."};
+ if(!j.ok)put("pzc",m[j.e]||"Could not pause. Try again.")}
+/* the voucher code view: copy, a small file to keep (the browser may refuse the automatic download: the button and a screenshot remain) */
+function vfile(c){var u=location.protocol+"//"+location.host+"/?v="+c;return'<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width"><title>PisoWiFi voucher</title><meta http-equiv=refresh content="0;url='+u+'"><body style="font:18px system-ui,sans-serif;text-align:center;padding:24px"><p><b>TechNet PisoWiFi voucher</b></p><p style="font:700 28px monospace">'+c+'</p><p>Join the PisoWiFi network, then <a href="'+u+'">tap here to use it</a>.</p>'}
+function vsave(c){try{var a=document.createElement("a");a.href=URL.createObjectURL(new Blob([vfile(c)],{type:"text/html"}));a.download="TechNet-PisoWiFi-voucher-"+c.slice(0,5)+".html";document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(function(){URL.revokeObjectURL(a.href)},4e3);return true}catch(e){return false}}
+function vcopy(b){var ok=0;try{var r=document.createRange();r.selectNodeContents(el("vcode"));var g=getSelection();g.removeAllRanges();g.addRange(r);ok=document.execCommand("copy")}catch(e){}
+ b.textContent=ok?"Copied":"Press and hold the code to copy it"}
+function vshow(j){show("final");pes=0;tt=0;pj=false;tstop();foff(false);var c=j.vcode;
+ el("fn").style.display="none";el("fv").style.display="block";el("fcont").style.display="none";put("fagain","Back to start");
+ put("vcode",c);put("fmin","₱"+j.pulses+" = "+fmt(j.minutes)+" voucher");
+ try{put("vexp",new Date(j.vexp*1e3).toLocaleDateString([],{day:"numeric",month:"short",year:"numeric"}))}catch(e){}
+ el("vcopy").onclick=function(){vcopy(this)};
+ el("vsave").onclick=function(){put("vsave",vsave(c)?"Saved. Save it again":"Could not save. Take a screenshot")};
+ var k="pd"+c,seen=0;try{seen=sessionStorage.getItem(k)}catch(e){}
+ if(!seen){try{sessionStorage.setItem(k,"1")}catch(e){}vsave(c)}}
+function vlist(a){var b=el("vls"),i,h="";for(i=0;i<a.length;i++){var c=String(a[i].c).replace(/[^0-9A-Z-]/g,"");h+='<div class="vr"><div><b>'+c+'</b><div class="mut">'+fmt(a[i].m)+" · "+pn(a[i].p)+'</div></div><button class="btn alt" type="button" data-c="'+c+'">Use</button></div>'}
+ b.innerHTML=h;el("vlist").style.display=a.length?"block":"none";var l=b.getElementsByTagName("button");for(i=0;i<l.length;i++)l[i].onclick=function(){redeem(this.getAttribute("data-c"))}}
+function view(j){
+var s=j.s;
+if(s!=="armed")stopTick();if(s!=="idle"&&s!=="final"&&s!=="paused")tstop();if(s!=="final"){foff(false);clearTimeout(wk);wk=null}
+/* a window that stays in "Counting coins" is asked about again by a new connection every 3 s (a phone may have paused the old one) */
+if(s==="closing"){if(!cw)cw=setInterval(connect,3e3)}else if(cw){clearInterval(cw);cw=0}
+if(s==="idle"||s==="paused"){
+ show("idle");el("ldone").disabled=false;el("ldone").textContent="Done";pj=s==="paused";
+ var on=el("ion"),ps=pj,tm=j.left>0;
+ if(s==="idle"){vch=!!j.vc;vlist(j.vs||[])}else vlist([]);
+ el("vchoice").style.display=vch?"block":"none";
+ el("hd").style.display=tm?"none":"flex";el("vd").style.display=ps?"none":"block";
+ if(tm){on.style.display="block";put("tplan",pn(j.plan));el("tused").style.display=j.plan==="hyper"&&!ps?"inline":"none";put("tused",j.used_mb+" MB used");el("tslow").style.display=j.slow>0&&!ps?"block":"none";
+  el("pz").style.display=!ps&&j.pm>0?"block":"none";el("rs").style.display=ps?"block":"none";el("rs").disabled=false;el("rs").textContent="Resume time";el("pz").removeAttribute("aria-disabled");
+  var cap=ps?"":j.pl<1?"No pauses left":j.left<120?"Pause needs 2 min left":j.pw>0?"You can pause again in "+j.pw+" s":j.pl+(j.pl>1?" pauses":" pause")+" left";
+  put("pzc",cap);if(cap&&j.pl<1||j.left<120||j.pw>0)el("pz").setAttribute("aria-disabled","true");
+  if(ps){tstop();tl=j.left;put("t",clock(tl));put("fleft",clock(tl));el("tbar").style.width="100%";put("chip","Paused");el("chip").className="chip gold";put("tin","Offline while paused · time left");el("tbar").style.background="var(--mut)";put("tby","Time is on hold. "+by(j.left)+"; unused time after that is lost.")}else tstart(j.left)}
+ else{on.style.display="none";tstop();tt=0}
+ put("go",tm?"Add more time":"Insert Coin");el("go").className="btn coin"+(ps?" alt":"");put("gos",tm?"":"Coins add up: every coin adds more time");
+ var b=el("ibusy");if(j.cooldown>0){b.style.display="block";b.textContent="Too many empty tries. Wait about "+j.cooldown+" s."}else if(j.busy>0){b.style.display="block";b.textContent="Another customer is paying. Try again in a few seconds."}else b.style.display="none";
+ return}
+if(s==="starting"){wait(j.plan);el("lv").style.display=j.v?"block":"none";return}
+if(s==="armed"){
+ show("live");el("lcd").style.display="block";put("lplan",pn(j.plan));put("lsub","Insert coin now");el("lv").style.display=j.v?"block":"none";
+ put("lpes","₱"+j.pulses);el("lpes").className="big"+(j.pulses>0?" p":"");put("lmin",j.pulses>0?"= "+fmt(j.minutes)+(j.v?" voucher":" of Wi-Fi"):j.v?"Each coin adds voucher time":"Each coin adds Wi-Fi time");
+ if(j.pulses>pes){var d=j.pulses-pes;say(j.pulses+(j.pulses===1?" peso":" pesos"),function(){ding(d)})}else if(!pes&&!j.pulses&&!tk)say("Insert coin now",function(){ding(1)});
+ pes=j.pulses;left=j.remaining;total=j.total||FIRST;bar();
+ el("ldone").style.display=j.pulses>0?"block":"none";el("lhint").style.display=j.pulses>0?"block":"none";el("ltop").style.display=tl>0?"block":"none";el("lcancel").style.display=j.pulses>0?"none":"block";
+ if(!tk)tk=setInterval(function(){if(left>0)left--;bar()},1000);return}
+if(s==="closing"){show("live");el("lcd").style.display="none";el("ldone").style.display="none";el("lcancel").style.display="none";el("lhint").style.display="none";el("lv").style.display=j.v?"block":"none";put("lplan",pn(j.plan));put("lsub","Counting coins");put("lpes","₱"+j.pulses);put("lmin","");return}
+if(s==="final"){
+ if(j.vcode){vshow(j);return}
+ show("final");el("fn").style.display="block";el("fv").style.display="none";put("fagain","Add more time");pes=0;tt=0;pj=false;tstart(j.left);put("fmin","time left · ₱"+j.pulses+" = "+fmt(j.minutes)+" bought");
+ el("ck").style.display=j.online?"block":"none";put("fon",j.online?"✓ You are online":"");foff(!j.online);
+ var c=el("fcont");if(cont){c.href=cont;c.style.display="block"}else c.style.display="none";
+ if(j.online&&!woke&&!wk){setTimeout(function(){say("You are online",function(){ding(2)})},900);wk=setTimeout(wake,2500);try{navigator.vibrate&&navigator.vibrate([100,60,100])}catch(e){}}return}
+if(s==="empty"){msg("No coins detected, you were not charged.",[["Try again",again]]);return}
+if(s==="busy"){msg("Another customer is paying. Try again in about "+j.retry+" s.",[["Try again",again]]);return}
+if(s==="cooldown"){msg("Too many empty tries. Wait about "+j.retry+" s.",[["Try again",again]]);return}
+if(s==="mismatch"){var o=pn(j.plan),sw=plan,n=pn(sw);msg("You still have "+fsec(j.left)+" of "+o+" time. Add more "+o+" time, or switch to "+n+" and give up the time you have left.",[["Add "+o+" time",function(){startPlan(j.plan,false)}],["Switch to "+n+" · lose my time",function(){startPlan(sw,true)},1]]);return}
+msg("Coin payment is not available right now. Try again, or ask the attendant ("+(j.e||"error")+").",[["Try again",again]])}
+/* one socket at a time. connect() also replaces a socket that went quiet: a phone that paused the page leaves it half open and the
+   last state never arrives */
+function connect(){
+ clearTimeout(rt);rt=0;var o=ws;ws=null;if(o){o.onopen=o.onmessage=o.onclose=o.onerror=null;try{o.close()}catch(e){}}
+ var p=location.protocol==="https:"?"wss://":"ws://",w;lc=rx=Date.now();
+ try{w=ws=new WebSocket(p+location.host+"/ws")}catch(e){put("conn","This phone's browser cannot run the coin page.");show("conn");return}
+ w.onopen=function(){if(ws!==w)return;rx=Date.now();send({t:"hello",fas:fas})};
+ w.onmessage=function(m){if(ws!==w)return;rx=Date.now();var j;try{j=JSON.parse(m.data)}catch(e){return}if(j.t==="info"){cont=j.cont||"";vch=!!j.vc;if(!vch)el("vchoice").style.display="none";return}if(j.t==="pong")return;if(j.t==="state")view(j);else reply(j)};
+ w.onclose=function(){if(ws!==w)return;ws=null;stopTick();put("conn","Connection lost. Reconnecting…");if(!el("v-live").style.display||el("v-live").style.display==="none")show("conn");rt=setTimeout(connect,1500)};
+ w.onerror=function(){try{w.close()}catch(e){}}}
+/* a heartbeat: a ping every 4 s; no answer for 10 s and the connection is made again */
+function beat(){var w=ws;if(!w){if(!rt)connect();return}
+ if(w.readyState===0){if(Date.now()-lc>8e3)connect();return}
+ if(w.readyState!==1||Date.now()-rx>1e4){connect();return}
+ send({t:"ping"})}
+/* back on screen, the page shown again from the cache, the phone's network back: ask again (a new connection when the old one has been quiet) */
+function resync(){var w=ws;if(w&&w.readyState===1&&Date.now()-rx<5e3)send({t:"hello",fas:fas});else if(!w||w.readyState>1||Date.now()-lc>1500)connect()}
+document.addEventListener("visibilitychange",function(){if(document.hidden)return;try{if(SS&&SS.paused)SS.resume()}catch(e){}resync()});
+window.addEventListener("pageshow",resync);
+window.addEventListener("online",resync);
+show("conn");connect();setInterval(beat,4e3);setTimeout(function(){if(!ws||ws.readyState!==1){put("conn","Still connecting. Check you are on the TechNet Wi-Fi.");el("rl").style.display="block"}},8e3);
+})();
+</script></body></html>

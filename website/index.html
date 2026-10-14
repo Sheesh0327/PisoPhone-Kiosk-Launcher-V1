@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <title>PisoPhone Phone Setup</title>
+    <link rel="icon" type="image/png" href="img/technet-logo-64.png">
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<svg class="hidden" aria-hidden="true">
+<symbol id="i-logo" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M9.5 9.5h4a1.8 1.8 0 010 3.6h-3.5"/></symbol>
+<symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+<symbol id="i-phone" viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></symbol>
+<symbol id="i-qr" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="M14 14h2v2h-2zM18 14h2v2M14 18h2v2M18 18h2v2"/></symbol>
+<symbol id="i-usb" viewBox="0 0 24 24"><path d="M12 3v13M12 16a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM12 9l4-2v3M12 12l-4-2V8"/></symbol>
+<symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></symbol>
+<symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2.5 5 13.5h6l-1 8 8-11h-6z"/></symbol>
+<symbol id="i-wifi" viewBox="0 0 24 24"><path d="M2 9a15 15 0 0 1 20 0M5.5 12.5a10 10 0 0 1 13 0M9 16a5 5 0 0 1 6 0"/><path d="M12 19.5h.01"/></symbol>
+<symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+<symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3.5 2.5 20h19z"/><path d="M12 10v4.5M12 17.5h.01"/></symbol>
+<symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.5h.01"/></symbol>
+<symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v8.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/></symbol>
+<symbol id="i-box" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></symbol>
+</svg>
+<div class="page">
+    <div class="brand">
+        <span class="brand-mark"><img src="img/technet-logo-64.png" alt="" width="38" height="38"></span>
+        <span class="brand-name">TechNet PisoPhone</span>
+        <span class="brand-sub">Setup</span>
+        <span id="connectionPill" class="pill ok hidden">Coin box found</span>
+    </div>
+
+    <!-- Shown when the page was not opened from a coin box -->
+    <div id="restrictedView" class="card hidden">
+        <img class="hero-banner" loading="lazy" src="img/pisohub-banner.jpg" alt="TechNet Solutions: PisoWiFi and PisoPhone" width="1000" height="750">
+        <h1>Open this page from your coin box</h1>
+        <p class="lead">Phone setup needs the details of your coin box, which its own page passes along. Opened on its own, this page has nothing to set up.</p>
+        <ol class="steps">
+            <li>Connect this computer or phone to the same Wi-Fi network as the coin box.</li>
+            <li>Open the coin box's page (for example <code>http://kioskmanager.local</code>, or its address on the router).</li>
+            <li>Under <b>Tools</b>, <b>Phone slots</b>, choose <b>Set up a phone</b> or <b>Remove from a phone</b>.</li>
+        </ol>
+        <div class="links">
+            <a href="pisophone_setup.py" download><svg class="ic"><use href="#i-download"/></svg><span>Setting up a whole new site?<small>Download the setup program. It guides you through everything.</small></span></a>
+        </div>
+    </div>
+
+    <!-- The setup tool -->
+    <div id="mainView" class="card hidden">
+        <div class="meta">
+            <div><span class="k">Coin box</span><span id="displayMac" class="v">…</span></div>
+            <div><span class="k">Slot</span><span id="displaySlot" class="v">–</span></div>
+            <div><span class="k">Box address</span><span id="displayIp" class="v">–</span></div>
+        </div>
+
+        <div class="seg" role="tablist">
+            <button id="tabInstall" type="button" role="tab"><svg class="ic"><use href="#i-phone"/></svg>Set up a phone</button>
+            <button id="tabDeprovision" type="button" role="tab" class="danger"><svg class="ic"><use href="#i-trash"/></svg>Remove from a phone</button>
+        </div>
+
+        <!-- Set up a phone -->
+        <div id="installPanel" class="stack">
+            <div class="field">
+                <label for="wifiPass"><svg class="ic"><use href="#i-wifi"/></svg> PisoKiosk Wi-Fi password</label>
+                <input type="text" id="wifiPass" value="" placeholder="Filled in by the coin box's link" autocomplete="off" spellcheck="false">
+                <span id="wifiFromBox" class="hint hidden">Given by your coin box: nothing to type.</span>
+                <span id="wifiRemembered" class="hint warn hidden">Filled in from the last setup on this computer. If the router was reset or set up again, its PisoKiosk password changed: type the new one (<code>piso-setup summary</code>), or the phone will install but never find its box.</span>
+                <span class="hint">The phone joins the hidden <code>PisoKiosk</code> network by itself and keeps rejoining it. It finds its coin box only there. Opened from the coin box's <i>Set up a phone</i> button, this page already has the password. Opened any other way, type the one in the router's setup summary (<code>piso-setup summary</code>, "PisoKiosk Wi-Fi").</span>
+            </div>
+
+            <div class="seg" role="tablist">
+                <button id="methodQr" type="button" role="tab"><svg class="ic"><use href="#i-qr"/></svg>QR code (recommended)</button>
+                <button id="methodUsb" type="button" role="tab"><svg class="ic"><use href="#i-usb"/></svg>USB cable</button>
+            </div>
+
+            <div id="qrPanel" class="stack">
+                <ol class="steps">
+                    <li>Use a <b>new or factory-reset</b> phone. On the first welcome screen, <b>tap the same spot 6 times</b> until a QR reader opens. (Some older phones first ask to join a Wi-Fi to download the reader.)</li>
+                    <li>Scan the code below with the phone.</li>
+                    <li>The phone joins PisoKiosk, downloads PisoPhone and sets itself up (a few minutes). Accept its screens until it shows PisoPhone's <b>One last step</b>, and do what it says:
+                        <ul>
+                            <li><b>Most phones:</b> tap <b>Open the setting</b>, choose PisoPhone, turn on "Allow display over other apps", press Back. Then pair the slot on the box's page.</li>
+                            <li><b>Android Go phones</b> (the phone asks for USB), or if the switch is missing or greyed out: plug the phone into this computer, tap <b>Allow</b> on "Allow USB debugging?" (the phone turned it on by itself, so no Developer options are needed), and click <b>Finish over USB</b> below. It grants the permissions, starts the kiosk, turns USB debugging off again and opens the box's page to pair the slot.</li>
+                        </ul>
+                    </li>
+                </ol>
+                <button id="showQrBtn" type="button" class="btn primary block"><svg class="ic"><use href="#i-qr"/></svg>Show the setup code</button>
+                <div id="qrError" class="note warn hidden"></div>
+                <div id="qrResult" class="stack hidden">
+                    <div id="qrBox" class="qr"></div>
+                    <p class="hint" style="text-align: center;">The code holds this box's key and the Wi-Fi password. Show it only to the phone you are setting up.</p>
+                    <button id="hideQrBtn" type="button" class="linkbtn">Hide the code</button>
+                </div>
+                <hr style="border: 0; border-top: 1px solid var(--line);">
+                <button id="finishUsbBtn" type="button" class="btn block"><svg class="ic"><use href="#i-usb"/></svg>Finish over USB</button>
+                <p class="hint" style="text-align: center;">Only for phones that ask for USB on their One last step screen.</p>
+            </div>
+
+            <div id="usbPanel" class="stack hidden">
+                <div id="browserWarning" class="note warn hidden"><svg class="ic"><use href="#i-alert"/></svg><span class="grow">USB setup needs Google Chrome or Microsoft Edge on a computer. Use the QR code instead, or open this page in Chrome.</span></div>
+                <div class="note">
+                    <svg class="ic"><use href="#i-info"/></svg>
+                    <div class="grow">
+                        <b>Before you plug the phone in</b>
+                        <ul class="dots" style="margin-top: 6px;">
+                            <li>A <b>factory-reset</b> phone with <b>no account</b> signed in (Android allows the kiosk lock only then).</li>
+                            <li>Settings &gt; About phone: tap <b>Build number</b> 7 times, then turn on <b>USB debugging</b> in Developer options.</li>
+                            <li>Xiaomi / Redmi / POCO: also turn on <b>Install via USB</b> and <b>USB debugging (Security settings)</b>. They ask for a Mi account: sign in, turn them on, then <b>remove the account</b> again.</li>
+                            <li>A USB <b>data</b> cable. Unlock the phone and tap <b>Allow</b> when it asks about USB debugging.</li>
+                        </ul>
+                    </div>
+                </div>
+                <button id="installAppBtn" type="button" class="btn primary block"><svg class="ic"><use href="#i-usb"/></svg>Connect the phone and set it up</button>
+                <div class="hint" style="display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+                    <span>Optional: install an APK file from this computer</span>
+                    <label for="localApkInput" style="color: var(--accent); cursor: pointer; font-weight: 600;"><svg class="ic"><use href="#i-folder"/></svg> Choose .APK</label>
+                    <input type="file" id="localApkInput" accept=".apk" class="hidden">
+                </div>
+                <div id="localApkStatus" class="note ok hidden"></div>
+            </div>
+        </div>
+
+        <!-- Remove from a phone -->
+        <div id="deprovisionPanel" class="stack hidden">
+            <div class="note bad"><svg class="ic"><use href="#i-alert"/></svg><span class="grow">Removes the kiosk lock and uninstalls PisoPhone from a phone connected by USB (USB debugging on). No PIN is needed.</span></div>
+            <div id="deprovisionConfirm" class="note bad hidden"><span class="grow">Tap again to remove the kiosk from the connected phone.</span></div>
+            <button id="deprovisionBtn" type="button" class="btn danger block"><svg class="ic"><use href="#i-trash"/></svg>Connect the phone and remove the kiosk</button>
+            <div class="note"><svg class="ic"><use href="#i-qr"/></svg><span class="grow"><b>No cable, or the app cannot reach its box?</b> Use a recovery code. On your own computer run <code>python3 scripts/make_recovery_code.py</code> (it signs a short-lived code with your owner key and saves it as a picture). On the phone, open the admin entry on the lock screen, tap <b>Scan a recovery code (remove app)</b> and show the picture to the camera. It works even if USB debugging is off and the box was never reached. Delete the picture afterwards; the code stops working by itself. It cannot be made on this page, because anyone could then remove the app from your phones.</span></div>
+        </div>
+
+        <!-- Log -->
+        <div id="logContainer" class="hidden">
+            <div class="log-head"><span>Setup log</span><span id="logStatusBadge" class="pill run">Running</span></div>
+            <div id="terminalLog" class="terminal"></div>
+        </div>
+
+        <div class="foot">
+            <a id="returnToEsp32Link" href="#"><svg class="ic"><use href="#i-back"/></svg> Back to the coin box</a>
+        </div>
+    </div>
+</div>
+
+    <script src="js/qrcode.js"></script>
+    <script src="js/provisioning.js"></script>
+    <script src="js/webadb_manager.js"></script>
+    <script>
+        const P = window.PisoProvisioning;
+        const urlParams = P.params;   // read once; the secret is already out of the address bar
+        const $ = (id) => document.getElementById(id);
+        const urlMac = urlParams.get('mac');
+        // only a plain IPv4 address is ever used to go back to the box
+        const rawIp = urlParams.get('ip') || '';
+        const urlIp = /^(\d{1,3}\.){3}\d{1,3}$/.test(rawIp) && rawIp.split('.').every(n => parseInt(n, 10) <= 255) ? rawIp : null;
+        const urlSlot = parseInt(urlParams.get('slot') || '1', 10);
+        const urlName = urlParams.get('name') || `PisoPhone Slot ${urlSlot}`;
+        const boxPage = urlIp ? `http://${urlIp}/` : null;
+
+        // every value that reaches the phone (its shell or the QR code) is checked; a malformed link is refused outright
+        let linkProv = null;
+        try {
+            linkProv = P.validateProvisioning({ mac: urlMac, slot: String(urlSlot), name: urlName, secret: urlParams.get('secret') || '' });
+        } catch (e) {
+            console.warn('Setup link rejected:', e.message);
+        }
+
+        if (!urlMac || urlMac === '00:00:00:00:00:00' || !linkProv) {
+            $('restrictedView').classList.remove('hidden');
+        } else {
+            $('mainView').classList.remove('hidden');
+            $('connectionPill').classList.remove('hidden');
+            $('displayMac').textContent = urlMac;
+            $('displaySlot').textContent = `Slot #${urlSlot}`;
+            $('displayIp').textContent = urlIp || 'Dynamic (DHCP)';
+            $('returnToEsp32Link').href = boxPage || 'javascript:history.back()';
+
+            function pick(on, off) {
+                on.classList.add('on'); on.setAttribute('aria-selected', 'true');
+                off.classList.remove('on'); off.setAttribute('aria-selected', 'false');
+            }
+            function setMode(mode) {
+                const install = mode !== 'deprovision';
+                if (install) pick($('tabInstall'), $('tabDeprovision')); else pick($('tabDeprovision'), $('tabInstall'));
+                $('installPanel').classList.toggle('hidden', !install);
+                $('deprovisionPanel').classList.toggle('hidden', install);
+                if (!install) window.webADB.warmUp();
+            }
+            function setMethod(method) {
+                const qr = method !== 'usb';
+                if (qr) pick($('methodQr'), $('methodUsb')); else pick($('methodUsb'), $('methodQr'));
+                $('qrPanel').classList.toggle('hidden', !qr);
+                $('usbPanel').classList.toggle('hidden', qr);
+                if (!qr) window.webADB.warmUp();   // the ADB library loads only for USB (or once the QR code is shown)
+            }
+            $('tabInstall').addEventListener('click', () => setMode('install'));
+            $('tabDeprovision').addEventListener('click', () => setMode('deprovision'));
+            $('methodQr').addEventListener('click', () => setMethod('qr'));
+            $('methodUsb').addEventListener('click', () => setMethod('usb'));
+            setMode(urlParams.get('mode') === 'deprovision' || urlParams.get('action') === 'deprovision' ? 'deprovision' : 'install');
+            setMethod(urlParams.get('method') === 'usb' ? 'usb' : 'qr');
+            if (!navigator.usb) $('browserWarning').classList.remove('hidden');
+
+            // the kiosk Wi-Fi password: from the link if it carries one, else what was typed last time on this computer
+            const wifiPass = $('wifiPass');
+            try {
+                const fromLink = urlParams.get('wifi_pass');
+                const remembered = fromLink ? '' : (localStorage.getItem('pisoWifiPass') || '');
+                wifiPass.value = fromLink || remembered;
+                if (fromLink) $('wifiFromBox').classList.remove('hidden');
+                if (remembered) $('wifiRemembered').classList.remove('hidden');
+                wifiPass.addEventListener('input', () => { $('wifiRemembered').classList.add('hidden'); $('wifiFromBox').classList.add('hidden'); });
+            } catch (e) {}
+            function currentProv() {
+                const prov = P.validateProvisioning({ ...linkProv, slot: linkProv.slot ? String(linkProv.slot) : '', wifiSsid: P.DEFAULT_SSID, wifiPass: wifiPass.value });
+                try { if (prov.wifiPass) localStorage.setItem('pisoWifiPass', prov.wifiPass); } catch (e) {}
+                return prov;
+            }
+
+            // ---- QR code (main) ----
+            let appInfo = null;
+            async function loadAppInfo() {
+                if (!appInfo) {
+                    const res = await fetch('update/app.json', { cache: 'no-store' });
+                    if (!res.ok) throw new Error(`The app's details could not be loaded (HTTP ${res.status}).`);
+                    appInfo = await res.json();
+                }
+                return appInfo;
+            }
+            function hideQr() {
+                $('qrBox').textContent = '';
+                delete $('qrBox').dataset.payload;
+                $('qrResult').classList.add('hidden');
+            }
+            $('showQrBtn').addEventListener('click', async () => {
+                $('qrError').classList.add('hidden');
+                hideQr();
+                try {
+                    const payload = P.buildQrPayload(currentProv(), await loadAppInfo(), document.baseURI);
+                    $('qrBox').innerHTML = P.qrSvg(JSON.stringify(payload));
+                    $('qrBox').dataset.payload = JSON.stringify(payload);
+                    $('qrResult').classList.remove('hidden');
+                    window.webADB.warmUp();   // the last step (Finish over USB) needs the ADB library
+                } catch (e) {
+                    $('qrError').textContent = e.message;
+                    $('qrError').classList.remove('hidden');
+                }
+            });
+            $('hideQrBtn').addEventListener('click', hideQr);
+            wifiPass.addEventListener('input', hideQr);   // a code for an old password must not stay on screen
+
+            // ---- the log ----
+            const terminalLog = $('terminalLog'), badge = $('logStatusBadge');
+            function log(msg) {
+                $('logContainer').classList.remove('hidden');
+                const div = document.createElement('div');
+                div.textContent = `> ${msg}`;
+                terminalLog.appendChild(div);
+                terminalLog.scrollTop = terminalLog.scrollHeight;
+            }
+            function status(text, cls) { badge.textContent = text; badge.className = `pill ${cls}`; }
+            async function runUsb(button, label, work) {
+                if (!navigator.usb) { log('USB setup needs Google Chrome or Microsoft Edge on a computer.'); return; }
+                button.disabled = true;
+                const was = button.innerHTML;
+                button.innerHTML = label;
+                terminalLog.textContent = '';
+                status('Running', 'run');
+                try {
+                    await window.webADB.connect(log);
+                    await work();
+                    status('Done', 'ok');
+                } catch (e) {
+                    log(`ERROR: ${e.message || e}`);
+                    status('Failed', 'bad');
+                    button.innerHTML = was;
+                } finally {
+                    await window.webADB.disconnect();
+                    button.disabled = false;
+                }
+            }
+
+            // ---- QR + USB: the last step (the permissions only ADB can grant) ----
+            $('finishUsbBtn').addEventListener('click', () => {
+                runUsb($('finishUsbBtn'), 'Keep the phone connected…', async () => {
+                    const id = await window.webADB.grantPermissions(log);
+                    log('Done. The kiosk is running on the phone.');
+                    $('finishUsbBtn').innerHTML = 'Set up. Opening the box page…';
+                    if (boxPage) setTimeout(() => { location.href = `${boxPage}?action=pair&slot=${urlSlot}&id=${encodeURIComponent(id)}&name=${encodeURIComponent(urlName)}`; }, 2500);
+                });
+            });
+
+            // ---- USB cable (fallback) ----
+            $('localApkInput').addEventListener('change', async (e) => {
+                const file = e.target.files && e.target.files[0];
+                if (!file) return;
+                try {
+                    window.webADB.setApkBytes(new Uint8Array(await file.arrayBuffer()));
+                    $('localApkStatus').textContent = `Using ${file.name} (${(file.size / 1048576).toFixed(1)} MB)`;
+                } catch (err) {
+                    $('localApkStatus').textContent = err.message;
+                }
+                $('localApkStatus').classList.remove('hidden');
+            });
+            $('installAppBtn').addEventListener('click', () => {
+                let prov;
+                try { prov = currentProv(); } catch (e) { log(e.message); return; }
+                if (!prov.wifiPass) log('Note: no PisoKiosk password entered. The phone can only find its box if it is already on PisoKiosk.');
+                runUsb($('installAppBtn'), 'Keep the phone connected…', async () => {
+                    const id = await window.webADB.installKioskApp(prov, log);
+                    log('Done. The kiosk is running on the phone.');
+                    $('installAppBtn').innerHTML = 'Set up. Opening the box page…';
+                    if (boxPage) setTimeout(() => { location.href = `${boxPage}?action=pair&slot=${urlSlot}&id=${encodeURIComponent(id)}&name=${encodeURIComponent(urlName)}`; }, 2500);
+                });
+            });
+
+            // ---- remove (USB) ----
+            let removeArmed = false;
+            $('deprovisionBtn').addEventListener('click', () => {
+                if (!removeArmed) { removeArmed = true; $('deprovisionConfirm').classList.remove('hidden'); return; }
+                removeArmed = false;
+                $('deprovisionConfirm').classList.add('hidden');
+                runUsb($('deprovisionBtn'), 'Removing the kiosk…', async () => {
+                    await window.webADB.deprovision(log);
+                    log('Removed. Unpair this slot on the box page to finish.');
+                    if (boxPage) setTimeout(() => { location.href = `${boxPage}?action=unpair&slot=${urlSlot}`; }, 2500);
+                });
+            });
+        }
+    </script>
+</body>
+</html>

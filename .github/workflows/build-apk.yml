@@ -1,0 +1,532 @@
+name: Build and Deploy APK to Website
+# Builds, signs and publishes the APK for the branch that was pushed, in three jobs so that no code from a branch ever runs
+# next to the production signing key:
+#   build   compiles an UNSIGNED APK (Gradle and every dependency run here; there are no secrets in this job)
+#   sign    signs it. On main it runs in the protected GitHub Environment "production-signing" (a required reviewer, main only,
+#           the only place the keystore secrets exist). On every other branch it runs in "development" and signs with the public
+#           test key app/dev-signing/dev-test-key.p12, so a branch build can never be installed over a production phone
+#           (Android refuses an update signed by a different key).
+#   publish puts the signed APK on the releases repository and writes website/update/app.json
+# Setting the Environment up: docs/RELEASE.md, "Protect the signing keys".
+
+# Every branch publishes its own APK to its own website/update folder:
+#   main          -> https://pisophone.pages.dev/update              (production channel)
+#   any other     -> https://<branch-alias>.pisophone.pages.dev/update  (dev channel, "-dev" versionName)
+# A dev APK only ever checks its own branch's folder, so testing a branch never touches production.
+on:
+  push:
+    branches:
+      - '**'
+    paths:
+      - 'app/**'
+      - 'protocol/**'
+      - 'tools/pisoportal/owner_key.b64'
+      - 'gradle/**'
+      - '*.gradle.kts'
+      - 'gradle.properties'
+      - '.github/workflows/build-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write # Required to push the APK to the website directory
+
+# One run per branch at a time (each deploy commits back to its branch); a newer push to a dev
+# branch supersedes an older unfinished run, but a production deploy is never cancelled midway.
+concurrency:
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Run unit tests
+        run: bash ./gradlew :app:testDebugUnitTest --no-daemon --no-configuration-cache
+
+      # What the failed tests said (the build log only names the exception).
+      - name: Why the unit tests failed
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          for path in sorted(glob.glob("app/build/test-results/testDebugUnitTest/*.xml")):
+              for case in ET.parse(path).getroot().iter("testcase"):
+                  for failure in case.findall("failure"):
+                      text = (failure.get("message") or "") + "\n" + (failure.text or "")
+                      print(f"::group::{case.get('classname')}.{case.get('name')}")
+                      print(text[:1800])
+                      print("::endgroup::")
+          PY
+
+      # Screenshot tests (app/src/test/.../screenshot) record a golden picture the first time a screen is drawn. A branch commits the
+      # new pictures by itself; main never does (record them on a branch first), and a picture that changed fails the tests above.
+      - name: Commit new screenshot goldens
+        env:
+          BRANCH: ${{ github.ref_name }}
+          ACTOR: ${{ github.actor }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          NEW=$(git ls-files --others --exclude-standard -- app/src/test/screenshots)
+          if [ -z "$NEW" ]; then echo "Screenshot goldens are up to date."; exit 0; fi
+          echo "New golden screenshots:"; echo "$NEW"
+          if [ "$BRANCH" = "main" ]; then
+            echo "::error::These screenshots were recorded on main. Record them on a branch (push there once) and merge."
+            exit 1
+          fi
+          if [ "$ACTOR" = "dependabot[bot]" ] || [ "$EVENT" != "push" ]; then
+            echo "::warning::New goldens not committed (not a push to a branch); commit them from a regular build."
+            exit 0
+          fi
+          mkdir -p "$RUNNER_TEMP/goldens"
+          cp -r app/src/test/screenshots/. "$RUNNER_TEMP/goldens/"
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3 4 5; do
+            git fetch -q origin "$BRANCH"
+            git reset -q --hard "origin/$BRANCH"
+            mkdir -p app/src/test/screenshots
+            cp -rn "$RUNNER_TEMP/goldens/." app/src/test/screenshots/
+            git add -- app/src/test/screenshots
+            if git diff --staged --quiet; then exit 0; fi
+            git commit -q -m "chore: screenshot goldens"
+            if git push origin "HEAD:refs/heads/$BRANCH"; then exit 0; fi
+            sleep $((attempt * 3))
+          done
+          echo "::error::Could not commit the screenshot goldens."
+          exit 1
+
+      # Line coverage per package against app/coverage-minimums.txt (the minimums only go up).
+      - name: Coverage of the unit tests
+        run: |
+          bash ./gradlew :app:createDebugUnitTestCoverageReport --no-daemon --no-configuration-cache --stacktrace
+          find app/build -name '*.xml' -path '*overage*' | head
+          python3 scripts/check_coverage.py
+
+      # Room writes a snapshot of each database version to app/schemas while compiling (see app/build.gradle.kts).
+      # A version's snapshot must never change once committed: changing the tables without a new version number and a
+      # migration makes Room refuse to open the database on phones that already have it. A new version's snapshot is
+      # committed back to the branch here, so it is never forgotten.
+      - name: Database schema snapshots
+        env:
+          BRANCH: ${{ github.ref_name }}
+          ACTOR: ${{ github.actor }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if ! git diff --quiet -- app/schemas; then
+            echo "::error::A committed database schema changed. Change the Room entities only together with a new database version and a migration."
+            git diff --stat -- app/schemas
+            exit 1
+          fi
+          NEW=$(git ls-files --others --exclude-standard -- app/schemas)
+          if [ -z "$NEW" ]; then echo "Database schema snapshots are up to date."; exit 0; fi
+          echo "New database schema snapshot(s):"; echo "$NEW"
+          if [ "$ACTOR" = "dependabot[bot]" ] || [ "$EVENT" != "push" ]; then
+            echo "::warning::New schema snapshot not committed (not a push to a branch); commit it from a regular build."
+            exit 0
+          fi
+          mkdir -p "$RUNNER_TEMP/schemas"
+          cp -r app/schemas/. "$RUNNER_TEMP/schemas/"
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3 4 5; do
+            git fetch -q origin "$BRANCH"
+            git reset -q --hard "origin/$BRANCH"
+            mkdir -p app/schemas
+            cp -rn "$RUNNER_TEMP/schemas/." app/schemas/
+            git add -- app/schemas
+            if git diff --staged --quiet; then exit 0; fi
+            git commit -q -m "chore: database schema snapshot"
+            if git push origin "HEAD:refs/heads/$BRANCH"; then exit 0; fi
+            echo "::warning::Push rejected (attempt $attempt); trying again on the newest branch tip."
+            sleep $((attempt * 3))
+          done
+          echo "::error::Could not commit the database schema snapshot."
+          exit 1
+
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: unit-test-reports
+          path: |
+            app/build/reports/tests/
+            app/build/reports/coverage/
+            app/build/screenshot-diffs/
+
+  lint:
+    name: Android Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      # app/lint-baseline.xml holds the findings that existed when lint was switched on; anything new fails this job.
+      # When the file does not exist yet, lint makes it (and reports that it did): a branch other than main then commits it.
+      - name: Run lint
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          if [ -f app/lint-baseline.xml ]; then
+            bash ./gradlew :app:lintDebug --no-daemon --no-configuration-cache --stacktrace
+            exit 0
+          fi
+          bash ./gradlew :app:lintDebug --no-daemon --no-configuration-cache --stacktrace || true
+          if [ ! -f app/lint-baseline.xml ]; then
+            echo "::error::Lint did not make a baseline."
+            exit 1
+          fi
+          if [ "$BRANCH" = "main" ]; then
+            echo "::error::app/lint-baseline.xml is missing on main; make it on a branch first."
+            exit 1
+          fi
+          cp app/lint-baseline.xml "$RUNNER_TEMP/lint-baseline.xml"
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3 4 5; do
+            git fetch -q origin "$BRANCH"
+            git reset -q --hard "origin/$BRANCH"
+            cp "$RUNNER_TEMP/lint-baseline.xml" app/lint-baseline.xml
+            git add -- app/lint-baseline.xml
+            if git diff --staged --quiet; then exit 0; fi
+            git commit -q -m "chore: lint baseline"
+            if git push origin "HEAD:refs/heads/$BRANCH"; then exit 0; fi
+            sleep $((attempt * 3))
+          done
+          echo "::error::Could not commit the lint baseline."
+          exit 1
+
+      - name: Upload the lint report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: lint-report
+          path: app/build/reports/lint-results-debug.html
+          if-no-files-found: ignore
+
+  # The real app on an emulated phone (app/src/androidTest): a signed payment goes in over the wire, the phone unlocks, counts
+  # down and locks itself. Not yet required for the APK to be built: it becomes a requirement (`needs:` of "build") once it has
+  # been stable for a while. An emulator is slower and flakier than the jobs above, so this one has a generous timeout.
+  emulator-tests:
+    name: Emulator tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Dependabot runs get no secrets and its branches never publish; the unit tests already check its pull requests.
+    if: github.actor != 'dependabot[bot]'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Allow the emulator to use hardware acceleration (KVM)
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Run the instrumented tests on an emulator
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: bash scripts/ci_emulator_tests.sh
+
+      - name: Upload the test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: emulator-test-reports
+          path: |
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
+          if-no-files-found: ignore
+
+  build:
+    name: Build the unsigned APK
+    needs: [unit-tests, lint]
+    # Dependabot runs get no repository secrets, and its branches must never publish an APK.
+    # Its pull requests are still checked by the unit tests above and by the Code quality workflow.
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      channel: ${{ steps.channel.outputs.channel }}
+      base: ${{ steps.channel.outputs.base }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Work out release channel
+        id: channel
+        env:
+          BRANCH: ${{ github.ref_name }}
+          PAGES_HOST: ${{ vars.PAGES_PRODUCTION_HOST }}
+        run: |
+          HOST="${PAGES_HOST:-pisophone.pages.dev}"
+          if [ "$BRANCH" = "main" ]; then
+            CHANNEL=stable
+            BASE="https://$HOST/update"
+          else
+            CHANNEL=dev
+            # Cloudflare Pages branch alias: lowercase, non-alphanumerics become '-', cut to 28 chars.
+            ALIAS=$(printf '%s' "$BRANCH" | tr 'A-Z' 'a-z' | sed 's/[^a-z0-9]/-/g' | cut -c1-28 | sed 's/^-*//; s/-*$//')
+            PROJECT="${HOST%%.*}"
+            BASE="https://$ALIAS.$PROJECT.pages.dev/update"
+          fi
+          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+          echo "Channel: $CHANNEL, update URL: $BASE"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Build the unsigned release APK
+        env:
+          BUILD_CHANNEL: ${{ steps.channel.outputs.channel }}
+          UPDATE_BASE_URL: ${{ steps.channel.outputs.base }}
+          UNSIGNED_BUILD: '1' # app/build.gradle.kts: the signing job signs it, this job has no key
+        # The runner's GITHUB_RUN_NUMBER becomes versionCode (see app/build.gradle.kts), so every
+        # build is newer than the one before it.
+        run: bash ./gradlew :app:assembleRelease --no-daemon --no-configuration-cache --stacktrace
+
+      - name: Keep the unsigned APK for the signing job
+        run: |
+          set -eu
+          APK=$(ls app/build/outputs/apk/release/*.apk | head -n 1)
+          [ -f "$APK" ] || { echo "::error::no release APK was built"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/unsigned" && cp "$APK" "$RUNNER_TEMP/unsigned/app-unsigned.apk"
+          echo "Unsigned APK: $(stat -c %s "$APK") bytes"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: unsigned-apk
+          path: ${{ runner.temp }}/unsigned/app-unsigned.apk
+          retention-days: 1
+          if-no-files-found: error
+
+  sign:
+    name: Sign the APK
+    needs: build
+    runs-on: ubuntu-latest
+    # main: the protected Environment (reviewer approval, main only). Everything else: "development", which holds no secrets.
+    environment: ${{ github.ref == 'refs/heads/main' && 'production-signing' || 'development' }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: unsigned-apk
+          path: ${{ runner.temp }}/unsigned
+
+      - name: Sign
+        env:
+          PRODUCTION: ${{ github.ref == 'refs/heads/main' }}
+          # The production secrets are only ever handed to a run on main; a branch run gets empty strings.
+          KEYSTORE_BASE64: ${{ github.ref == 'refs/heads/main' && secrets.KEYSTORE_BASE64 || '' }}
+          STORE_PASSWORD: ${{ github.ref == 'refs/heads/main' && secrets.STORE_PASSWORD || '' }}
+          KEY_ALIAS: ${{ github.ref == 'refs/heads/main' && secrets.KEY_ALIAS || '' }}
+          KEY_PASSWORD: ${{ github.ref == 'refs/heads/main' && secrets.KEY_PASSWORD || '' }}
+        run: |
+          set -eu
+          KS="$RUNNER_TEMP/signing.p12"
+          trap 'rm -f "$KS"' EXIT
+          if [ "$PRODUCTION" = true ]; then
+            missing=""
+            for name in KEYSTORE_BASE64 STORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+              if [ -z "${!name}" ]; then missing="$missing $name"; fi
+            done
+            if [ -n "$missing" ]; then
+              echo "::error::Missing secret(s) in the production-signing Environment:$missing. A release APK signed with a different key cannot update installed phones, so the build is stopped."
+              exit 1
+            fi
+            (umask 077; printf '%s' "$KEYSTORE_BASE64" | tr -d '\r\n ' | base64 -d > "$KS")
+          else
+            # Branch builds use the PUBLIC test key: it is in the repository on purpose, so a branch can never sign as production.
+            cp app/dev-signing/dev-test-key.p12 "$KS"
+            STORE_PASSWORD=pisodev-public; KEY_ALIAS=pisodev; KEY_PASSWORD=pisodev-public
+          fi
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)
+          "$BT/zipalign" -f -p 4 "$RUNNER_TEMP/unsigned/app-unsigned.apk" "$RUNNER_TEMP/aligned.apk"
+          mkdir -p "$RUNNER_TEMP/signed"
+          STORE_PASSWORD="$STORE_PASSWORD" KEY_PASSWORD="$KEY_PASSWORD" "$BT/apksigner" sign \
+            --ks "$KS" --ks-pass env:STORE_PASSWORD --ks-key-alias "$KEY_ALIAS" --key-pass env:KEY_PASSWORD \
+            --out "$RUNNER_TEMP/signed/app-release.apk" "$RUNNER_TEMP/aligned.apk"
+          "$BT/apksigner" verify --print-certs "$RUNNER_TEMP/signed/app-release.apk"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: signed-apk
+          path: ${{ runner.temp }}/signed/app-release.apk
+          retention-days: 1
+          if-no-files-found: error
+
+  publish:
+    name: Publish the APK to the website
+    needs: [build, sign]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Required to push the APK to the website directory
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: signed-apk
+          path: ${{ runner.temp }}/signed
+
+      - name: Publish APK and version info
+        env:
+          BRANCH: ${{ github.ref_name }}
+          CHANNEL: ${{ needs.build.outputs.channel }}
+          RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          RELEASES_REPO: ${{ vars.RELEASES_REPO || 'Sheesh0327/PisoPhone-Releases' }}
+          KEEP_PAGES_APK: ${{ vars.KEEP_PAGES_APK }}
+        run: |
+          # the same name app/build.gradle.kts gives the APK: the build number as hundreds.tens.ones (build 437 is 4.3.7)
+          RUN=${{ github.run_number }}
+          VERSION_NAME="$((RUN / 100)).$((RUN / 10 % 10)).$((RUN % 10))"
+          if [ "$CHANNEL" != "stable" ]; then VERSION_NAME="$VERSION_NAME-dev"; fi
+          APK="$RUNNER_TEMP/signed/app-release.apk"
+          if [ ! -f "$APK" ]; then
+            echo "::error::No signed APK found at $APK"
+            exit 1
+          fi
+          # An unsigned or badly signed APK cannot update installed phones; refuse to publish one.
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)
+          SIG_CHECKSUM=""
+          if [ -n "$APKSIGNER" ]; then
+            "$APKSIGNER" verify --print-certs "$APK" | tee /tmp/certs.txt
+            # QR-code setup: Android only installs an app whose signing certificate has this SHA-256 (URL-safe base64,
+            # no padding); the provisioning page puts it in the code
+            # ("Signer #1 certificate SHA-256 digest: <hex>", or "V2 Signer: ..." when the APK has only a v2 signature)
+            CERT_SHA=$(sed -n 's/^.*[Ss]igner.* certificate SHA-256 digest: \([0-9a-f]\{64\}\)$/\1/p' /tmp/certs.txt | head -n 1)
+            if [ -n "$CERT_SHA" ]; then
+              SIG_CHECKSUM=$(python3 -c "import base64,sys; print(base64.urlsafe_b64encode(bytes.fromhex(sys.argv[1])).decode().rstrip('='))" "$CERT_SHA")
+              echo "Signing certificate SHA-256: $CERT_SHA (QR checksum $SIG_CHECKSUM)"
+            else
+              echo "::warning::no signing certificate SHA-256 in apksigner's output: this build cannot be set up by QR code"
+            fi
+          else
+            echo "::warning::apksigner not found; skipping signature verification (and no QR setup checksum)."
+          fi
+          mkdir -p website/update
+
+          SHA=$(sha256sum "$APK" | awk '{print $1}')
+          SIZE=$(stat -c %s "$APK")
+          echo "Generated APK SHA-256: $SHA ($SIZE bytes)"
+
+          # The APK goes to a separate PUBLIC releases repository (this repository is private, and phones
+          # cannot log in to download from it). Needs the RELEASES_TOKEN secret; see docs/DEPLOY.md.
+          URL=""
+          if [ -n "$RELEASES_TOKEN" ]; then
+            TAG="app-$CHANNEL-${{ github.run_number }}"
+            ASSET="pisophone-$VERSION_NAME.apk"
+            cp "$APK" "/tmp/$ASSET"
+            PRE=""
+            if [ "$CHANNEL" != "stable" ]; then PRE="--prerelease"; fi
+            GH_TOKEN="$RELEASES_TOKEN" gh release create "$TAG" "/tmp/$ASSET" --repo "$RELEASES_REPO" \
+              --title "PisoPhone $VERSION_NAME" $PRE \
+              --notes "Built from $GITHUB_SHA on branch $BRANCH. SHA-256: $SHA"
+            URL="https://github.com/$RELEASES_REPO/releases/download/$TAG/$ASSET"
+            echo "Published release asset: $URL"
+            # Keep only the 20 newest dev builds.
+            GH_TOKEN="$RELEASES_TOKEN" gh release list --repo "$RELEASES_REPO" --limit 200 --json tagName,createdAt \
+              -q '[.[] | select(.tagName | startswith("app-dev-"))] | sort_by(.createdAt) | reverse | .[20:] | .[].tagName' \
+              | xargs -r -n1 env GH_TOKEN="$RELEASES_TOKEN" gh release delete --repo "$RELEASES_REPO" --cleanup-tag --yes || true
+          else
+            echo "::warning::RELEASES_TOKEN is not set: the APK is committed to website/update instead (see docs/DEPLOY.md)."
+          fi
+
+          # Phones running a build from before the 'url' field existed still download website/update/app-release.apk,
+          # so it stays published until you set the repository variable KEEP_PAGES_APK to 'false'.
+          PUBLISH_APK=0
+          if [ -z "$URL" ] || [ "$KEEP_PAGES_APK" != "false" ]; then PUBLISH_APK=1; fi
+
+          # Version info the in-app updater compares against; it is produced from the same
+          # run number that was baked into the APK as versionCode.
+          URL_LINE=""
+          if [ -n "$URL" ]; then URL_LINE="\"url\": \"$URL\","; fi
+          SIG_LINE=""
+          if [ -n "$SIG_CHECKSUM" ]; then SIG_LINE="\"signatureChecksum\": \"$SIG_CHECKSUM\","; fi
+          cat > website/update/app.json <<EOF
+          {
+            "versionCode": ${{ github.run_number }},
+            "versionName": "$VERSION_NAME",
+            "channel": "$CHANNEL",
+            $URL_LINE
+            $SIG_LINE
+            "sha256": "$SHA",
+            "size": $SIZE,
+            "releaseDate": "$(date -u +%Y-%m-%d)"
+          }
+          EOF
+          python3 -m json.tool website/update/app.json > /dev/null
+
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
+          # The two generated files are the only thing this commit changes, so there is nothing to merge: if the
+          # branch moved while we were building (another push, another bot commit), start again from its newest
+          # tip, put our two files on it and push. Retry a few times if another push wins the race.
+          cp website/update/app.json "$RUNNER_TEMP/app.json"
+          published=0
+          for attempt in 1 2 3 4 5; do
+            git fetch -q origin "$BRANCH"
+            git reset -q --hard "origin/$BRANCH"
+            cp "$RUNNER_TEMP/app.json" website/update/app.json
+            git add -f website/update/app.json
+            if [ "$PUBLISH_APK" = 1 ]; then
+              cp "$APK" website/update/app-release.apk
+              git add -f website/update/app-release.apk
+            else
+              git rm -q -f --ignore-unmatch website/update/app-release.apk
+            fi
+            if git diff --staged --quiet; then published=1; break; fi
+            # No [skip ci] marker: Cloudflare Pages honours it and would never deploy this commit.
+            # This commit only touches website/update, which no workflow trigger matches, so it
+            # cannot start another build.
+            git commit -q -m "chore: publish $CHANNEL APK build ${{ github.run_number }}"
+            if git push origin "HEAD:refs/heads/$BRANCH"; then published=1; break; fi
+            echo "::warning::Push rejected (attempt $attempt); trying again on the newest branch tip."
+            sleep $((attempt * 3))
+          done
+          [ "$published" = 1 ] || { echo "::error::Could not publish the APK after 5 attempts."; exit 1; }

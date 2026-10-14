@@ -1,0 +1,239 @@
+# Setting up by hand (the manual)
+
+> **Most people should not need this page.** The setup program does every step below for you, in a web page that guides you (open it on your phone)
+> from the bare boards to working phones: see [`README.md`](README.md). Use this manual when you prefer to do it yourself, to
+> understand what the program does, or to repair one part of an installed system.
+
+One file, `piso-setup.sh`, turns a factory-reset OpenWrt router into the whole PisoWiFi system. This manual follows the same
+order as the program: the coin box, the router (steps 1 to 3), alerts, and the phones (step 5).
+
+## Before you start
+1. **Flash the ESP32 coin box** (the setup program does it over USB; by hand with esptool or PlatformIO, see "Flashing the coin box" below) and power it on. It joins the hidden `PisoCoinBox` Wi-Fi by itself, which the router creates. A used box must be factory reset first (it remembers its old Wi-Fi).
+2. **Modem into the router's WAN port** (internet is needed once, to download packages).
+3. A PC on one of the router's **LAN ports**.
+4. The modem's own network must not be `10.0.0.x` or `10.0.30.x` (the script stops and tells you if it is).
+
+### Flashing the coin box (once per box, by USB)
+The setup program (`pisophone_setup.py`) does this by itself: it finds the board on USB, asks it which chip it is (ESP32-C3 or
+ESP32), downloads the matching image from the website, checks its size and sha256, erases the board, writes the image, reads
+it back to verify and restarts the box. The images are built by CI from the branch's firmware
+(`.github/workflows/firmware-images.yml`, the `-dev` environments) and published in `website/flash/`
+(`manifest.json` lists them); on the beta site the program writes beta's firmware.
+
+By hand with Espressif's tool (`python3 -m pip install esptool`), from the same files:
+```
+curl -O https://pisophone.pages.dev/flash/esp32-c3-dev.bin          # esp32dev-dev.bin for a classic ESP32
+python3 -m esptool --port <PORT> --baud 460800 write_flash -e -z 0x0 esp32-c3-dev.bin     # 0x1000 for the classic ESP32
+```
+(`<PORT>` is `COM5` on Windows, `/dev/ttyUSB0` or `/dev/ttyACM0` on Linux, `/dev/cu.usbserial-...` on macOS; esptool 5 spells the
+command `write-flash`.) `-e` erases everything first, so a used box forgets its old Wi-Fi. If it does not connect: hold the
+board's BOOT button, tap RESET, release BOOT, and try again.
+
+For developers, PlatformIO still works:
+```
+cd esp32_firmware
+pio run -e esp32-c3-dev -t upload     # ESP32-C3 boards; esp32dev-dev for a classic ESP32 (environments: esp32_firmware/envs/)
+```
+The box starts with the published defaults (admin password `Coinslot@Setup`, setup Wi-Fi `PisoCoinBox`); the router setup
+changes the password and key by itself, and the box refuses coins until its password has been changed.
+
+## The program in the terminal (steps 1 and 2 without typing the commands)
+`python3 pisophone_setup.py --cli` is the program in the terminal, without its setup web page (the default mode serves the page: see `README.md`). Download **https://pisophone.pages.dev/pisophone_setup.py** (also in this folder: `setup/pisophone_setup.py`), plug the
+computer into a LAN port of the factory-reset router (modem in its WAN port, the coin box flashed and powered on), turn the
+computer's Wi-Fi off, and run it:
+```
+python3 pisophone_setup.py --cli            (Windows: py pisophone_setup.py --cli)
+python3 pisophone_setup.py --cli --branch beta    (the beta branch's setup, for testing)
+```
+It asks for the public Wi-Fi name, the site name and the three passwords (Enter generates them), shows everything on a review
+screen, and after you answer `y` it does the rest by itself: it finds the router (192.168.1.1 or 10.0.0.1), runs the one-line
+installer there unattended (`install.sh --yes`, which checks the setup file's sha256), waits for the router to come back at
+10.0.0.1 (if it does not within half a minute it tells you to unplug and replug the cable; Windows renews its address by
+itself), runs the setup with your answers while you watch its output, and saves **the summary (every password) and the
+printable setup sheet** in the current folder (only you can read them), then opens the coin box's phone setup page in your
+browser, already filled in. At the end it offers to connect Telegram alerts.
+
+It needs Python 3.8 or newer and the `ssh` command (installed for you on Linux when it runs as root; Windows: Settings > Apps
+> Optional features > OpenSSH Client, if it is missing) and, to write the coin box over USB, `esptool` (installed for you with pip; `--no-flash` skips the box, `--no-install` installs nothing). The passwords travel over the SSH connection's input, never on a
+command line, and the router's SSH key is pinned for the run (the same key must answer at 192.168.1.1 and at 10.0.0.1).
+Running it again is safe: a router that was set up before keeps its names and passwords and is only finished or repaired
+(ssh then asks for the router password, which is in the saved summary). Other uses: `--update` installs new software on a
+router that is set up already, `--yes` asks nothing (defaults and generated passwords), `--guest-ssid` and `--site-name` set
+the names, `--out <folder>` chooses where the files go. If it stops with an error, it says why; fix that and run it again.
+
+The steps below are the same thing by hand.
+
+## Step 1: one line on the router
+Plug your computer into a LAN port of the factory-reset router, log in and paste one line:
+```
+ssh root@192.168.1.1
+wget -qO- https://pisophone.pages.dev/install.sh | sh
+```
+It downloads the current setup file to `/root/piso-setup.sh`, checks it (its published sha256, that it is complete and readable),
+then asks to move the router from `192.168.1.1` to **10.0.0.1** (the kiosk network). Answer `y`: the SSH session ends, which is
+expected. Unplug and replug the computer's cable (or wait a minute), then continue:
+```
+ssh root@10.0.0.1
+./piso-setup.sh
+```
+(A router that is already at 10.0.0.1 goes straight on to the setup.) If the modem itself uses `10.0.0.x`, the installer stops and
+tells you to change the modem's address first.
+
+Other uses of the same line: `... | sh -s update` installs new software on a router that is set up already, and
+`... | sh -s -- --branch beta` uses the setup file of another branch (testing); `... | sh -s -- --yes` asks nothing (it moves the
+router by itself and runs the setup unattended, with passwords from `ROOT_PASSWORD`, `KIOSK_PASSWORD`, `BOX_NEW_ADMIN_PASSWORD`
+or generated: this is what `pisophone_setup.py` uses). The installer is `setup/install.sh`; the website serves copies of it and
+of `pisophone_setup.py` (`website/install.sh`, `website/pisophone_setup.py`, kept equal by `tools/build_piso_setup.py`).
+
+## Step 2: run the setup
+Without internet on the router (or to do it by hand): set the address yourself (`uci set network.lan.ipaddr='10.0.0.1'; uci commit
+network; /etc/init.d/network restart`, then log in at 10.0.0.1), then copy the file over and start it:
+```
+scp -O setup/piso-setup.sh root@10.0.0.1:/root/
+ssh root@10.0.0.1 'sed -i "s/\r$//" piso-setup.sh && sh piso-setup.sh'
+```
+Answer `y` when asked. It then asks for the **public Wi-Fi name** (default `PisoWiFi`; Enter keeps it; 32 characters at most, no quotes; the rental-phone network is always the hidden `PisoKiosk`) and then to choose **three passwords** (each typed twice, not shown; just press Enter to have a strong one generated for you): the router password (SSH and LuCI), the **PisoKiosk Wi-Fi** password (the router gives it to the coin box, whose *Set up a phone* link carries it, so nobody types it) and the **coin box admin** password (the box's web page, also the phones' admin PIN). Use 8 or more characters without spaces or quotes. Super admin has no password: you open it with your admin QR code (`docs/api/superadmin-qr.md`). For unattended runs set `ROOT_PASSWORD`, `KIOSK_PASSWORD` and `BOX_NEW_ADMIN_PASSWORD` in the environment. Before anything is changed it shows a **review screen** (names, which passwords you chose and which will be generated, router address and country) and asks `Apply these settings? [y/N]`. It also asks for a **site name** (printed on the setup sheet and shown in Telegram messages) and offers to connect **Telegram** at the end of the setup. It runs in front of you for about 3 to 8 minutes and **keeps your SSH session open the whole time**: it installs packages, creates the networks, waits for the ESP32 to join, sets its password and key, starts everything and ends with a health check. When it prints `SETUP COMPLETE`, read the summary:
+```
+cat /root/piso-setup-summary.txt
+```
+It has every password (router, PisoKiosk Wi-Fi, coin box admin). The setup also writes a **printable page for the shop owner**, `/root/piso-handout.html` (copy it off with `scp -O root@10.0.0.1:/root/piso-handout.html .`, or run `piso-setup handout` later). Keep it private. The coin box also gets its own random Wi-Fi password for the hidden box network (the built-in one is public); you never need to type it. If you replace the box, `piso-setup pair` starts again from the built-in one.
+
+## Step 3: check that it works (do this before any customer or partner uses it)
+1. `piso-setup status` must end with `All checks passed.`
+2. `piso-setup test-coin`: it arms the slot; insert one coin. It must say `the box counted 1 peso(s)`.
+3. **Wi-Fi customer:** join the customer Wi-Fi (`PisoWiFi`) with a phone, open the login page, pick a plan, tap Insert Coin, insert one coin. The page shows each coin at once with a countdown, and a **Done** button. You are *not* online yet (so the phone does not close the login page while you add coins). Insert more coins if you like, then tap **Done** (or wait 15 s after the last coin): the page then says you are online with your time and code. Browse something.
+4. **Second device:** while a window is open, try Insert Coin on another phone. It must be refused with a "Try again" page.
+5. **Rental phone:** join `PisoKiosk` with a kiosk phone (the app's own flow) and pay once.
+6. `piso-setup reconcile` must say `RECONCILE OK` (needs firmware 3.2.1). On box firmware newer than 3.3.3 the count keeps going through a collection; on older firmware it starts again at 0 after one;
+   the portal notices that by itself ("compared from now on"). If a mismatch stays after a collection: `piso-setup reconcile rebase`.
+7. `piso-setup diag > diag.txt` and keep the output: it contains the coin timings and no passwords. Send it with any bug report.
+
+## Step 4 (optional, recommended): Telegram alerts and remote control
+1. In Telegram, open **@BotFather**, send `/newbot`, pick a name, copy the token it gives you.
+2. On the router: `piso-setup telegram`. Paste the token, give the site a name (it prefixes every message), then open your new bot in Telegram and send it any message. The router shows the chat it found; answer `y` if it is you.
+3. You get a "connected" message. From then on you receive: router restarted, box offline for 5 minutes (and back), revenue mismatch or edited ledger, a device abusing the coin slot, and a daily report at 21:00.
+4. Commands (only from your chat): `/status`, `/report [days]`, `/reconcile`, `/diag`, `/restart` (the portal), `/reboot` (then `/reboot confirm` within 2 minutes), `/help`.
+5. Optional dead-man switch: create a check at healthchecks.io, put its ping URL in `/etc/piso-monitor.conf` as `HEALTHCHECK_URL='...'`, then `/etc/init.d/piso_monitor restart`. You are alerted when the router stops pinging (power cut, internet down).
+The router needs internet for this: while the site is offline nothing can be sent, and alerts raised in that time are not delivered later (the dead-man switch covers that case).
+
+## Step 5: set up each rental phone (QR code, or USB as the fallback)
+Open the box's page and click **Set up a phone**. The page already has the **PisoKiosk** Wi-Fi password: the router
+gives it to the box (`piso-setup kiosk-wifi` repeats that; the hourly update check also repairs a box that lost it), and the
+box's link carries it. Type it (from `piso-setup summary`) only if the page asks, for example when you open the page some
+other way. The status check says if the box's link does not carry it. Then:
+
+**QR code (recommended; USB only for the phones that need it):**
+1. Use a new or **factory-reset** phone. On the first welcome screen, **tap the same spot 6 times**: a QR reader opens (some
+   older phones first ask for a Wi-Fi to download the reader).
+2. Click **Show the setup code** on the page and scan it with the phone.
+3. The phone joins PisoKiosk, downloads PisoPhone, checks its signature, makes it the device owner and hands it the box's
+   key, MAC, slot and the Wi-Fi password. Accept the screens it shows until PisoPhone shows **One last step**: the lock
+   screen and the time bubble need "display over other apps", which no app may grant to itself. The app picks the way:
+   - **Most phones:** tap **Open the setting**, choose PisoPhone, turn on **Allow display over other apps**, press Back. The
+     kiosk starts.
+   - **Android Go phones** (they have no such switch), or if the switch is missing or greyed out: plug the phone into the
+     computer showing the page, tap **Allow** on "Allow USB debugging?" (the app turned USB debugging on by itself at the end
+     of the setup: no Developer options), and click **Finish over USB**. The computer grants the permissions, the kiosk
+     starts, and the page opens the box's page to pair the slot.
+   Either way USB debugging goes off again as soon as the permission is on (and after 15 minutes at the latest).
+4. Pair the slot on the box's page as usual (Finish over USB opens it for you).
+No PIN is asked within 30 minutes of the setup; later the admin PIN is.
+The code holds the box's key and the Wi-Fi password: show it only to the phone you are setting up (the page hides it when
+you click Hide or change the password). It needs an app published by CI with its signing fingerprint
+(`update/app.json` has `signatureChecksum`); until then the page says to use the USB cable.
+
+**USB cable (fallback):** for a phone whose welcome screen has no QR reader. Chrome or Edge on a computer, a USB data cable,
+a factory-reset phone with no account, USB debugging on (Xiaomi/Redmi/POCO: also "Install via USB" and "USB debugging
+(Security settings)"; they need a Mi account: sign in, turn them on, then remove the account). Click **Connect the phone
+and set it up**: the page checks the phone first (accounts, extra users), installs, makes PisoPhone the device owner and
+gives it the box's details in one step that the app confirms.
+
+Either way the app joins PisoKiosk, rejoins it whenever the phone is on another network (checked every minute), and shows
+short status lines (Wi-Fi, box search) while it finds its box.
+To fix a phone that is already provisioned (it needs the admin PIN or box secret because it is paired already):
+```
+adb shell am broadcast -a com.pisophone.kiosk.CONFIGURE_ESP32 -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es wifi_ssid PisoKiosk --es wifi_pass '<password>' --es pin '<admin PIN>'
+```
+
+## What you get
+| network | for | bands | notes |
+|---|---|---|---|
+| **PisoKiosk** (hidden) | the rental phones | 2.4 + 5 GHz | WPA2, fixed name, **not broadcast**: it appears in no Wi-Fi list, so only phones set up from the coin box's provisioning page (which gives them the name and password) can join. Password chosen or generated. This is the router's LAN (`10.0.0.0/24`, the address you set in step 1). |
+| **PisoCoinBox** (hidden) | the ESP32 only | 2.4 GHz | After pairing, only the box's MAC address may join. The box is always `10.0.0.10`. |
+| **PisoWiFi** | customers | 2.4 + 5 GHz | Open, behind the openNDS login and coin payment. Rename: `piso-setup wifi-name "My Shop"`. Separate network `10.0.30.0/24` (routers set up earlier keep the guest range they already have, usually `192.168.30.0/24`; to move one, run the setup again with `GUEST_IP=10.0.30.1`). |
+
+The script also installs the packages, `pisoportal` (the resident coin portal: openNDS FAS mode, one WebSocket per customer), sets the box's admin password and gateway key through its API,
+sets a root password, and ends with a health check. The router's wired LAN ports stay on the same network as PisoKiosk (administration). **An access point plugged into one of them would therefore bypass the customer login**: give it a dedicated port with `piso-setup guest-port` (below).
+
+## Day to day
+| command | what it does |
+|---|---|
+| `piso-setup status` | checks every part |
+| `piso-setup wifi-name "Name"` | renames the customer Wi-Fi (also the login page title) |
+| `piso-setup pair` | replaces the coin box: re-opens pairing for a few minutes, then locks to the new box |
+| `piso-setup summary` | shows the saved passwords again |
+| `piso-setup voucher-choice [on\|off]` | the coin page offers "Use now" or "Get a voucher code" before Insert Coin (**default on**). Off: the page is exactly as it was before vouchers. Same switch as the console's **Settings** page; whichever was changed last wins (see below). |
+
+## Voucher codes (customers buy them with coins)
+There is no batch to make and nothing to print. On the coin page a customer picks **Use now** (the default: coins add time at once) or **Get a voucher code**.
+
+* **What happens.** The coin window works as usual (same prices, same plan choice). When it closes, the customer is **not connected and no time is added**. The router makes **one voucher** worth exactly the minutes the coins bought, on the plan chosen, valid for **30 days**, and shows the code (`XXXXX-XXXXX`) large, with a **Copy** button, a line saying that nothing is connected yet, and how to use it: **Have a voucher?** on the same page, type or paste the code, tap **Redeem**. A code works once. Wrong tries are slowed as before (5 wrong tries, 1 minute, doubling to 15).
+* **The file.** The page also offers a tiny HTML file (`TechNet-PisoWiFi-voucher-XXXXX.html`, about 470 bytes, nothing loaded from outside) by itself, and has a **Save voucher file** button and a tip to take a screenshot (sign-in browsers on phones often block downloads). Opening the file later (the phone must be on the PisoWiFi network) goes to the coin page's own address with `?v=<code>`; the page fills the code into the voucher field and removes it from the address bar. The customer still taps **Redeem**. It works whether the phone is already online or only on the Wi-Fi: the address is the portal's own (`http://<guest address>:2080/`, normally `http://10.0.30.1:2080/`), which a phone that is not connected yet may open, and it needs no `fas` part.
+* **If the page is closed.** The start page of the same device lists its unused vouchers (code, minutes, plan) for 30 days, each with a **Use** button.
+* **Money.** The coins are income when they are counted: the revenue ledger gets the normal coin row (pesos, minutes, plan) when the window closes, with the kind `vbuy`, and it is part of `piso-setup reconcile` against the box's own count. **Using the code later writes no revenue row** (it is time use, not income). Older ledgers stay valid: rows of kind `voucher` (printed slips of earlier releases, sold for cash and booked when used) are still left out of the comparison with the box.
+* **How codes are kept.** Never in the clear. The router has a secret (`/etc/coinslot.d/voucher.key`, root only). Each voucher is a batch of one in `/etc/coinslot.d/voucher_batches.txt` (a random salt, the minutes, the plan, the 30-day expiry, the device and the coin window that paid) and a fingerprint of its code in `voucher_codes.txt`. The code is derived as HMAC-SHA256(secret, salt + number), which is how the device's page can show it again; a copy of the files without the secret shows none, and the voucher file `vouchers.txt` (the customers' sessions) never holds a code. Used and expired vouchers are forgotten 100 days later.
+* **Console.** **Vouchers** lists what was issued (when, minutes, plan, used or not, expiry) and lets you cancel an unused one. **Sales** shows coins, the coins that bought voucher codes with how many were issued, redeemed and are waiting. **Settings** switches the choice.
+* **The setting.** `VOUCHER_CHOICE='on'|'off'` in `/etc/coinslot.conf` (written by `piso-setup voucher-choice`, kept in `/etc/piso-setup.conf`). A change made in the console is kept in `/etc/coinslot.d/settings.txt`, needs no restart and wins over the conf file until `piso-setup voucher-choice` is run again.
+* **Older batches.** Vouchers you printed with an earlier release are still accepted until they expire or are used (the console lists them as "Printed slips"). This release cannot make new ones.
+
+A **poster** with two QR codes (join the Wi-Fi; check time or enter a voucher) is made on your own computer: `pip install qrcode pillow`, then `python3 scripts/make_wifi_poster.py --ssid "Your Wi-Fi name" --shop-name "Your shop"`. It writes a PNG and a PDF for A4 to `~/pisowifi_poster` and refuses to write inside the repository. Two codes because one QR code cannot both join a network and open a page; the Wi-Fi is open, so the coin page opens by itself after joining.
+
+## The page that seems stuck
+If a customer's page stays on "Counting coins" (a phone had paused it), it asks the router again after 3 seconds and every 3 seconds after that, so the result appears without reloading. The page also pings the router every few seconds, reconnects when it hears nothing, and asks again when the phone wakes up, the page is shown again or the network comes back.
+
+Running `piso-setup.sh` again is safe: it keeps the passwords and names it already made. To install new software only (no Wi-Fi or box changes), use `./piso-setup.sh update` from the new file.
+
+## Locked out of the router?
+The setup asks you to choose the router password (or shows a generated one and asks you to type it back), and prints every password at the end. If you still lose it, OpenWrt's failsafe mode keeps all settings:
+1. Give the PC the fixed address `192.168.1.2` (netmask `255.255.255.0`), plugged into a LAN port.
+2. Power-cycle the router; when the power LED starts blinking fast, press the reset button once (WPS on some models). The LED blinks very fast.
+3. `telnet 192.168.1.1`, then `mount_root`, then `cat /etc/piso-setup.conf` (all the generated passwords are in it), then `passwd`, then `reboot -f`.
+
+`piso-setup set-password` changes the router password later; `piso-setup summary` shows all saved passwords.
+
+## Check the coin path
+| command | what it does |
+|---|---|
+| `piso-setup test-coin` | arms the coin slot and waits for a coin, with no customer portal involved. It says whether the box counts the coin. |
+| `piso-setup reconcile [rebase]` | compares the box's own coin count with the router's revenue ledger and checks that nobody edited the ledger (needs firmware 3.2.1). On box firmware older than 3.3.4 the box's count restarts at 0 when its revenue is collected (newer firmware keeps counting); that is noticed by itself, and `rebase` compares from now on. |
+| `piso-setup telegram` | connects a Telegram bot: alerts (router restarted, box offline, revenue mismatch, a device abusing the coin slot, daily report) and remote commands `/status /report /reconcile /diag /restart /reboot`, answered only to your chat. Create the bot with @BotFather first. Optional: put a healthchecks.io URL in `/etc/piso-monitor.conf` (`HEALTHCHECK_URL`) so you are told when the whole router goes silent. |
+| `piso-setup self-update [check]` / `auto-update on\|off` | **updates from the website**: the router checks hourly for a release you signed (docs/RELEASE.md), installs it when no customer is online, goes back by itself if it does not run, and tells you in Telegram (`/update` installs now). Only releases signed with your owner key are accepted. |
+| `piso-setup box-update [check]` | installs the **coin box's newest firmware** now (the router fetches it, checks the checksum you published and hands it to the box, which checks your signature itself). Done by itself half an hour after the router's own hourly check, at a quiet moment; `auto-update off` stops that. |
+| `piso-setup update [check]` | the same as `self-update` (below), when run as the installed command on the router: fetches the newest release the owner signed from https://pisophone.pages.dev/update and installs it now. (A router still on release 1.0.0 needs `piso-setup self-update` once.) |
+| `./piso-setup.sh update` | **updates only the software** on an installed router: installs the `pisoportal` program and the Telegram monitor files from the new file and restarts them. It changes no Wi-Fi or network settings, passwords, pairing or customer data. Copy the new `piso-setup.sh` to the router and run it from there (the installed `piso-setup update` fetches from the website instead). A coin window open at that moment is picked up by crash recovery. |
+| `piso-setup guest-port lan4` | dedicates a wired router port to customers (`piso-setup guest-port` lists the ports, `guest-port off` undoes it). An extra Wi-Fi access point plugged into that port, in **bridge / AP mode with its own DHCP off** (not router/NAT mode, which makes every customer look like one device), puts its users on the guest network behind the login page and coin payment, like `PisoWiFi`. Plugged into a normal LAN port it would give them open access, because the kiosk LAN is not gated. Move your own computer's cable off that port first: the network reloads and the SSH session on it ends. Needs a router whose LAN ports are listed as bridge ports (OpenWrt 21.02 or newer on DSA hardware); on an older switch-based router, move the port to `br-guest` in LuCI instead. At least one LAN port always stays for administration. |
+| `piso-setup handout` | writes the printable setup sheet `/root/piso-handout.html` again. |
+| `piso-setup rotate-box-wifi` | gives the coin box a new random Wi-Fi password for the hidden box network (done automatically by the setup). |
+| `piso-setup lock-admin [MAC...]` | opt-in: only the named computers (default: the one you are on) may reach the router's SSH and web pages (ports 22, 80, 443, 8080, 8443 and the console's 8081); the rental phones can no longer try them. It **undoes itself after 2 minutes unless you open a new SSH session to check, then type CONFIRM** (or run `piso-setup lock-admin-confirm`), so it cannot lock you out. `piso-setup unlock-admin` removes it. |
+| `piso-setup diag` | prints one block (status, manager, box, firewall, recent logs; no passwords) to paste when asking for help. |
+
+## If something fails
+* **The phone's app cannot reach its box and you want it off the phone (no USB debugging)**: make a recovery code on your computer with `python3 scripts/make_recovery_code.py` (signed with your owner key, valid 30 minutes by default). On the phone's lock screen open the admin entry, tap **Scan a recovery code (remove app)** and show the picture to the camera. The app removes the kiosk lock and Device Owner by itself; then uninstall it in Settings > Apps. It works on a phone that never reached its box. Delete the picture afterwards.
+* **"the coin box did not join"**: the box must be powered, have the current firmware, and be a fresh or factory-reset unit (an old unit remembers its old Wi-Fi). Then `piso-setup pair`. (If it says the hidden network "is not on the air", the router's 2.4 GHz radio is the problem, not the box. A box that was paired before is offered both its own Wi-Fi password and the built-in one while pairing.)
+* **"Permission denied (publickey,password)" when running the setup again**: the router has the password the first run gave it. The setup program now logs in with the password it saved on this computer (`pisophone-router-password.txt`, written before the router is changed, or the latest `pisophone-summary-*.txt`, in the folder given by `--out` or in Documents/PisoPhone). If that password was changed since, it says so and ssh asks for it.
+* **The coin box's light keeps blinking after a reboot**: run `piso-setup box-diag` on the router. It shows whether the hidden `PisoCoinBox` network is on the air, whether the router and the box agree on the Wi-Fi password (compared by fingerprint, nothing secret is printed), whether the box has joined, and whether it got its address, and ends with a one-line verdict. On the box, the serial console (115200 baud) and `/api/diagnostics` now carry `[WIFI]` lines that say why each attempt failed (for example `NO_AP_FOUND` or `AUTH_FAIL`). The box retries every 15 seconds.
+* **"the box refused the admin login"**: the box already has its own password. Factory reset it, or run `BOX_ADMIN_PASSWORD='<its password>' piso-setup pair`.
+* **`: not found` errors and a syntax error right at the start**: the file has Windows line endings. Run `sed -i 's/\r$//' piso-setup.sh` and try again.
+* Everything is logged in `/root/piso-setup.log`.
+
+## Tips while it runs
+The setup prints `TIP:` lines at the moments people usually get stuck: what the coin box's light means, what to check when the box has not joined after one, two and five minutes (the advice depends on whether the router's `PisoCoinBox` network is on the air), what happens next when the box is found, and what to do when it is finished or a check failed. The setup page shows the latest tip above the log. `PISO_TIPS=0` turns them off.
+
+## For developers
+The setup file is written in parts: **edit the files in `setup/src/`** (`00-header` settings and helpers, `20-preflight`,
+`30-router-settings` the uci batch, `40-files`, `50-coin-box` pairing and provisioning, `60-summary`, `70-agreement` the
+`verify` checks, `75-checks-stage2` the status checks and the second stage, `80-commands`, `90-updates` signed updates,
+`95-owner-tools` Telegram, handout, admin lock, `98-setup-flow` pairing, questions and `main`). `setup/piso-setup.sh.in` is
+those parts joined, and `setup/piso-setup.sh` is that plus the portal files. After changing any of them run
+`python3 tools/build_piso_setup.py` (CI fails if a committed generated file is out of date). Tests: `python3 router/tests/test_setup.py`.
+`./piso-setup.sh --dry-run` prints the router settings without applying anything.

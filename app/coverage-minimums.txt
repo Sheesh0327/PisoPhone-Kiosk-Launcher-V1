@@ -1,0 +1,12 @@
+# Minimum line coverage (percent) of the unit tests per package, checked by scripts/check_coverage.py in CI (build-apk.yml, "Unit tests").
+# These are set just under what the packages had when the check was added, so coverage cannot slip back. When a package gets better,
+# raise its line here in the same commit. Screens (overlay.ui, ui) and Android-only glue are deliberately not listed: they need
+# device or screenshot tests, not unit tests.
+com.pisophone.kiosk.repository 70
+com.pisophone.kiosk.server 75
+com.pisophone.kiosk.db 50
+com.pisophone.kiosk.model 50
+com.pisophone.kiosk.provisioning 40
+com.pisophone.kiosk.security 40
+com.pisophone.kiosk.service 32
+com.pisophone.kiosk.network 22

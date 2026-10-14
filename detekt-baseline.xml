@@ -1,0 +1,89 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:BootReceiver.kt$BootReceiver$action == Intent.ACTION_BOOT_COMPLETED || action == Intent.ACTION_LOCKED_BOOT_COMPLETED || action == Intent.ACTION_MY_PACKAGE_REPLACED || action == "android.intent.action.QUICKBOOT_POWERON" || action == "com.htc.intent.action.QUICKBOOT_POWERON"</ID>
+    <ID>ComplexCondition:CoinProof.kt$CoinProof$deviceId.isBlank() || txId.isBlank() || ts.isBlank() || sig.isBlank() || secret.isBlank()</ID>
+    <ID>ComplexCondition:KioskHttpServer.kt$KioskHttpServer$(hasMinutes &amp;&amp; minutesLong == null) || (hasSeconds &amp;&amp; secondsParamLong == null) || (!hasMinutes &amp;&amp; !hasSeconds)</ID>
+    <ID>ComplexCondition:KioskOverlayCoordinator.kt$KioskOverlayCoordinator$unlocked &amp;&amp; previousUnlocked &amp;&amp; previousTime &gt; 0 &amp;&amp; added &gt;= POPOVER_MIN_ADDED_SECONDS &amp;&amp; !suspendedForAdminApp</ID>
+    <ID>ComplexCondition:VideoBackgroundPolicy.kt$VideoBackgroundPolicy$!enabled || lowRamDevice || powerSaveMode || !screenInFront || covered</ID>
+    <ID>CyclomaticComplexMethod:AppLauncher.kt$AppLauncher$fun launchApp(context: Context, packageName: String, bypassKiosk: Boolean = false): Boolean</ID>
+    <ID>CyclomaticComplexMethod:CardScanActivity.kt$CardScanActivity$private fun buildUi()</ID>
+    <ID>CyclomaticComplexMethod:Esp32ConnectionManager.kt$Esp32ConnectionManager$private fun performArm(attemptId: Long, initialIp: String?, armingTimeoutSeconds: Int, clockRetried: Boolean = false)</ID>
+    <ID>CyclomaticComplexMethod:Esp32DiscoveryScanner.kt$Esp32DiscoveryScanner$private fun startUdpListenerLocked()</ID>
+    <ID>CyclomaticComplexMethod:Esp32HeartbeatBodyHandler.kt$Esp32HeartbeatBodyHandler$fun handle(body: String, targetIp: String)</ID>
+    <ID>CyclomaticComplexMethod:KioskAdminActionReceiver.kt$KioskAdminActionReceiver$override fun onReceive(context: Context, intent: Intent)</ID>
+    <ID>CyclomaticComplexMethod:KioskAudioManager.kt$KioskAudioManager$fun speakWarning(text: String, alert: Boolean = true, ignorePolicy: Boolean = false)</ID>
+    <ID>CyclomaticComplexMethod:KioskHttpServer.kt$KioskHttpServer$override fun serve(session: IHTTPSession): Response</ID>
+    <ID>CyclomaticComplexMethod:KioskServerCoordinator.kt$KioskServerCoordinator$override fun onTriggerAction(action: String, slotNum: Int?, extra: Map&lt;String, String&gt;?)</ID>
+    <ID>CyclomaticComplexMethod:KioskSystemMonitor.kt$KioskSystemMonitor$fun getRealTimeBatteryInfo(): Pair&lt;Int, Boolean&gt;</ID>
+    <ID>CyclomaticComplexMethod:KioskSystemMonitor.kt$KioskSystemMonitor$private fun updateBatteryStatus(intent: Intent?)</ID>
+    <ID>CyclomaticComplexMethod:MainActivity.kt$MainActivity$private fun handleSetupIntent(intent: Intent?)</ID>
+    <ID>CyclomaticComplexMethod:PaymentRepository.kt$PaymentRepository$fun restoreSessionState(ctx: Context? = context): RestoredSessionState</ID>
+    <ID>EmptyFunctionBlock:FloatingPillOverlay.kt$FloatingPillOverlay.&lt;no name provided&gt;${}</ID>
+    <ID>EmptyFunctionBlock:KioskOverlay.kt$LockScreenOverlay.&lt;no name provided&gt;${}</ID>
+    <ID>EmptyFunctionBlock:PickupWake.kt$PickupWake.&lt;no name provided&gt;${}</ID>
+    <ID>ExplicitGarbageCollectionCall:AppCloser.kt$AppCloser$gc()</ID>
+    <ID>ExplicitGarbageCollectionCall:KioskSystemController.kt$AndroidKioskSystemController$gc()</ID>
+    <ID>FunctionOnlyReturningConstant:Esp32Responses.kt$Esp32Responses$fun authRefusedMessage(): String</ID>
+    <ID>FunctionOnlyReturningConstant:Esp32Responses.kt$Esp32Responses$fun badSecretMessage(): String</ID>
+    <ID>LargeClass:KioskAudioManager.kt$KioskAudioManager</ID>
+    <ID>LongMethod:AppLauncher.kt$AppLauncher$fun launchApp(context: Context, packageName: String, bypassKiosk: Boolean = false): Boolean</ID>
+    <ID>LongMethod:Esp32ConnectionManager.kt$Esp32ConnectionManager$private fun performArm(attemptId: Long, initialIp: String?, armingTimeoutSeconds: Int, clockRetried: Boolean = false)</ID>
+    <ID>LongMethod:FloatingPillOverlay.kt$FloatingPillOverlay$fun show()</ID>
+    <ID>LongMethod:KioskAdminActionReceiver.kt$KioskAdminActionReceiver$override fun onReceive(context: Context, intent: Intent)</ID>
+    <ID>LongMethod:KioskHttpServer.kt$KioskHttpServer$override fun serve(session: IHTTPSession): Response</ID>
+    <ID>LongMethod:KioskOverlay.kt$LockScreenOverlay$fun show(): Boolean</ID>
+    <ID>LongMethod:KioskPolicyManager.kt$KioskPolicyManager$fun applyStrictKioskPolicies(context: Context)</ID>
+    <ID>LongMethod:KioskServerCoordinator.kt$KioskServerCoordinator$override fun onTriggerAction(action: String, slotNum: Int?, extra: Map&lt;String, String&gt;?)</ID>
+    <ID>LongMethod:PaymentRepository.kt$PaymentRepository$fun restoreSessionState(ctx: Context? = context): RestoredSessionState</ID>
+    <ID>LongParameterList:Esp32AccountRequests.kt$Esp32AccountRequests$( host: String, port: Int, op: String, deviceId: String, secret: String, id: Int = 0, card: String = "", name: String = "", secondsLeft: Int = 0, nowMs: Long = BoxClock.nowMs(), )</ID>
+    <ID>LongParameterList:FloatingPillOverlay.kt$FloatingPillOverlay$( private val context: Context, private val appStateFlow: StateFlow&lt;Int&gt;, private val sessionTimeFlow: StateFlow&lt;Int&gt;, private val paymentTimeoutFlow: StateFlow&lt;Int&gt;, private val coinsInsertedFlow: StateFlow&lt;Int&gt;, private val themeIndexFlow: StateFlow&lt;Int&gt;, private val isEsp32OnlineFlow: StateFlow&lt;Boolean&gt;, private val armFailureFlow: StateFlow&lt;Esp32Responses.ArmFailure?&gt; = kotlinx.coroutines.flow.MutableStateFlow(null), private val isArmingInProgressFlow: StateFlow&lt;Boolean&gt; = kotlinx.coroutines.flow.MutableStateFlow(false), private val pricePerCoinFlow: StateFlow&lt;Double&gt;, private val minutesPerCoinFlow: StateFlow&lt;Int&gt;, private val batteryStatusFlow: StateFlow&lt;BatteryStatus&gt; = kotlinx.coroutines.flow.MutableStateFlow(BatteryStatus()), private val isArenaModeFlow: StateFlow&lt;Boolean&gt; = kotlinx.coroutines.flow.MutableStateFlow(false), private val arenaPlayerRoleFlow: StateFlow&lt;Int&gt; = kotlinx.coroutines.flow.MutableStateFlow(0), private val arenaStakeMinutesFlow: StateFlow&lt;Int&gt; = kotlinx.coroutines.flow.MutableStateFlow(15), private val isArenaBannerVisibleFlow: StateFlow&lt;Boolean&gt; = kotlinx.coroutines.flow.MutableStateFlow(false), private val onDismissArenaBanner: () -&gt; Unit = {}, private val hiddenForAdminAppFlow: StateFlow&lt;Boolean&gt; = AdminMaintenanceMode.suspendOverlays, private val onInsertCoinClick: () -&gt; Unit, private val onDoneClick: () -&gt; Unit, )</ID>
+    <ID>LongParameterList:KioskEsp32Coordinator.kt$KioskEsp32Coordinator$( private val context: Context, private val stateManager: KioskStateManager, private val paymentRepo: PaymentRepository, private val armingTimeoutSeconds: Int, private val getSecretKey: () -&gt; String, private val getRealTimeBatteryInfo: () -&gt; Pair&lt;Int, Boolean&gt;, private val onCreditPayment: (txId: String, seconds: Int, amount: Double) -&gt; PaymentResult, private val onArmFailedTriggered: (Esp32Responses.ArmFailure) -&gt; Unit, private val getAudioManager: (() -&gt; com.pisophone.kiosk.audio.KioskAudioManager?)? = null, /** Centralized lock side effects (unarm, send customer app home, pause media). */ private val onSessionLocked: (cancelArm: Boolean) -&gt; Unit = {}, /** The box's answer about who is signed in on this slot ([account] is the card number, empty when nobody). */ private val onAccountSynced: (account: String, name: String) -&gt; Unit = { _, _ -&gt; }, )</ID>
+    <ID>LongParameterList:KioskOverlay.kt$KioskOverlay$( private val context: Context, private val appStateFlow: StateFlow&lt;Int&gt;, private val sessionTimeFlow: StateFlow&lt;Int&gt;, private val paymentTimeoutFlow: StateFlow&lt;Int&gt;, private val coinsInsertedFlow: StateFlow&lt;Int&gt;, private val themeIndexFlow: StateFlow&lt;Int&gt;, private val isEsp32OnlineFlow: StateFlow&lt;Boolean&gt;, private val esp32MacAddressFlow: StateFlow&lt;String&gt; = kotlinx.coroutines.flow.MutableStateFlow(""), private val armFailureFlow: StateFlow&lt;Esp32Responses.ArmFailure?&gt; = kotlinx.coroutines.flow.MutableStateFlow(null), private val isArmingInProgressFlow: StateFlow&lt;Boolean&gt; = kotlinx.coroutines.flow.MutableStateFlow(false), private val pricePerCoinFlow: StateFlow&lt;Double&gt;, private val minutesPerCoinFlow: StateFlow&lt;Int&gt;, private val deviceIpFlow: StateFlow&lt;String&gt; = kotlinx.coroutines.flow.MutableStateFlow("127.0.0.1"), private val slotNumberFlow: StateFlow&lt;Int&gt; = kotlinx.coroutines.flow.MutableStateFlow(1), private val batteryStatusFlow: StateFlow&lt;BatteryStatus&gt; = kotlinx.coroutines.flow.MutableStateFlow(BatteryStatus()), private val isSlotExpiredFlow: StateFlow&lt;Boolean&gt; = kotlinx.coroutines.flow.MutableStateFlow(false), private val slotExpiryReasonFlow: StateFlow&lt;String&gt; = kotlinx.coroutines.flow.MutableStateFlow(""), private val isArenaModeFlow: StateFlow&lt;Boolean&gt; = kotlinx.coroutines.flow.MutableStateFlow(false), private val arenaPlayerRoleFlow: StateFlow&lt;Int&gt; = kotlinx.coroutines.flow.MutableStateFlow(0), private val arenaStakeMinutesFlow: StateFlow&lt;Int&gt; = kotlinx.coroutines.flow.MutableStateFlow(15), private val isArenaBannerVisibleFlow: StateFlow&lt;Boolean&gt; = kotlinx.coroutines.flow.MutableStateFlow(false), private val onDismissArenaBanner: () -&gt; Unit = {}, private val onInsertCoinClick: () -&gt; Unit, private val onDoneClick: () -&gt; Unit, private val onThemeChange: () -&gt; Unit, private val onActivateClick: (String) -&gt; Unit = {}, )</ID>
+    <ID>LongParameterList:KioskOverlay.kt$LockScreenOverlay$( private val context: Context, private val appStateFlow: StateFlow&lt;Int&gt;, private val paymentTimeoutFlow: StateFlow&lt;Int&gt;, private val coinsInsertedFlow: StateFlow&lt;Int&gt;, private val themeIndexFlow: StateFlow&lt;Int&gt;, private val isEsp32OnlineFlow: StateFlow&lt;Boolean&gt;, private val esp32MacAddressFlow: StateFlow&lt;String&gt; = kotlinx.coroutines.flow.MutableStateFlow(""), private val armFailureFlow: StateFlow&lt;Esp32Responses.ArmFailure?&gt; = kotlinx.coroutines.flow.MutableStateFlow(null), private val isArmingInProgressFlow: StateFlow&lt;Boolean&gt; = kotlinx.coroutines.flow.MutableStateFlow(false), private val pricePerCoinFlow: StateFlow&lt;Double&gt;, private val minutesPerCoinFlow: StateFlow&lt;Int&gt;, private val deviceIpFlow: StateFlow&lt;String&gt; = kotlinx.coroutines.flow.MutableStateFlow("127.0.0.1"), private val slotNumberFlow: StateFlow&lt;Int&gt; = kotlinx.coroutines.flow.MutableStateFlow(1), private val batteryStatusFlow: StateFlow&lt;BatteryStatus&gt; = kotlinx.coroutines.flow.MutableStateFlow(BatteryStatus()), private val isSlotExpiredFlow: StateFlow&lt;Boolean&gt; = kotlinx.coroutines.flow.MutableStateFlow(false), private val slotExpiryReasonFlow: StateFlow&lt;String&gt; = kotlinx.coroutines.flow.MutableStateFlow(""), private val isArenaModeFlow: StateFlow&lt;Boolean&gt; = kotlinx.coroutines.flow.MutableStateFlow(false), private val arenaPlayerRoleFlow: StateFlow&lt;Int&gt; = kotlinx.coroutines.flow.MutableStateFlow(0), private val arenaStakeMinutesFlow: StateFlow&lt;Int&gt; = kotlinx.coroutines.flow.MutableStateFlow(15), private val onInsertCoinClick: () -&gt; Unit, private val onDoneClick: () -&gt; Unit, private val onThemeChange: () -&gt; Unit, private val onActivateClick: (String) -&gt; Unit = {}, )</ID>
+    <ID>LongParameterList:KioskServerCoordinator.kt$KioskServerCoordinator$( private val context: Context, private val stateManager: KioskStateManager, private val coinEventRepo: CoinEventRepository, private val paymentRepo: PaymentRepository, private val getSecretKey: () -&gt; String, private val getRealTimeBatteryInfo: () -&gt; Pair&lt;Int, Boolean&gt;, private val getAudioManager: () -&gt; KioskAudioManager?, private val onCreditPayment: (txId: String, seconds: Int, amount: Double) -&gt; PaymentResult, private val isReady: () -&gt; Boolean = { true }, /** Contact from an address that is not the known ESP32; must be verified, never trusted. */ private val onUnverifiedEsp32Contact: ((String) -&gt; Unit)? = null, /** Centralized lock side effects (unarm, send customer app home, pause media). */ private val onSessionLocked: (cancelArm: Boolean) -&gt; Unit = {}, )</ID>
+    <ID>LongParameterList:KioskSessionSupervisor.kt$KioskSessionSupervisor$( private val context: Context, private val scope: CoroutineScope, private val stateManager: KioskStateManager, private val paymentRepo: PaymentRepository, private val onSpeakWarning: (String) -&gt; Unit, /** One number of the final countdown (5, 4, 3, 2, 1), at its own second. */ private val onCountdownDigit: (Int) -&gt; Unit = {}, /** Time was added during the final countdown. */ private val onCountdownCancelled: () -&gt; Unit = {}, private val onFinishPayment: () -&gt; Unit, private val onTimeExpired: () -&gt; Unit = {}, private val onCloseSession: (Boolean) -&gt; Unit, private val onCheckBatteryAlerts: () -&gt; Unit, /** Centralized lock side effects (send customer app home, pause media, unarm if needed). */ private val onSessionExpired: (cancelArm: Boolean) -&gt; Unit = {}, )</ID>
+    <ID>LongParameterList:LauncherDialogs.kt$LauncherThemeColors$( val bg: Color = Color(0xFF060B14), val surface: Color = Color(0xFF0F172A), val cardBg: Color = Color(0xFF0D1527), val primary: Color = Color(0xFF10B981), val primaryLight: Color = Color(0xFF34D399), val onPrimary: Color = Color(0xFF020617), val textPrimary: Color = Color(0xFFF8FAFC), val textSecondary: Color = Color(0xFF94A3B8), val textMuted: Color = Color(0xFF64748B), val border: Color = Color(0xFF1E293B), val borderEmerald: Color = Color(0x4010B981), )</ID>
+    <ID>LoopWithTooManyJumpStatements:CoinStatusParser.kt$CoinStatusParser$for</ID>
+    <ID>LoopWithTooManyJumpStatements:Esp32DiscoveryScanner.kt$Esp32DiscoveryScanner$for</ID>
+    <ID>LoopWithTooManyJumpStatements:Esp32DiscoveryScanner.kt$Esp32DiscoveryScanner$while</ID>
+    <ID>NestedBlockDepth:BootReceiver.kt$BootReceiver$override fun onReceive(context: Context, intent: Intent?)</ID>
+    <ID>NestedBlockDepth:Esp32DiscoveryScanner.kt$Esp32DiscoveryScanner$fun getLocalIpAddress(): String</ID>
+    <ID>NestedBlockDepth:KioskStateManager.kt$KioskStateManager$fun getLocalIpAddress(): String</ID>
+    <ID>NestedBlockDepth:KioskUpdateManager.kt$KioskUpdateManager$private fun downloadApk(url: String, targetFile: File, onProgress: (Float) -&gt; Unit)</ID>
+    <ID>SwallowedException:AppCloser.kt$AppCloser$e: Exception</ID>
+    <ID>SwallowedException:AppLauncher.kt$AppLauncher$e: Exception</ID>
+    <ID>SwallowedException:CrashLoop.kt$CrashLoop$e: Exception</ID>
+    <ID>SwallowedException:CrashReporter.kt$CrashReporter$ex: Exception</ID>
+    <ID>SwallowedException:EffectsLevel.kt$e: Exception</ID>
+    <ID>SwallowedException:FirstBootSetup.kt$FirstBootSetup$e: Exception</ID>
+    <ID>SwallowedException:KioskActivationManager.kt$KioskActivationManager$e: Exception</ID>
+    <ID>SwallowedException:KioskRecoveryManager.kt$KioskRecoveryManager$e: Exception</ID>
+    <ID>SwallowedException:KioskUpdateManager.kt$KioskUpdateManager$e: Exception</ID>
+    <ID>SwallowedException:KioskUpdateManager.kt$KioskUpdateManager$e: IOException</ID>
+    <ID>SwallowedException:KioskUpdateManager.kt$KioskUpdateManager$e: java.net.URISyntaxException</ID>
+    <ID>SwallowedException:KioskWifi.kt$KioskWifi$e: Exception</ID>
+    <ID>SwallowedException:KioskWifi.kt$KioskWifi$e: SecurityException</ID>
+    <ID>SwallowedException:MainActivity.kt$MainActivity$e: Exception</ID>
+    <ID>SwallowedException:PaymentRepository.kt$PaymentRepository$e: Exception</ID>
+    <ID>SwallowedException:SecurityVaultView.kt$e: Exception</ID>
+    <ID>SwallowedException:VaultBehaviourSections.kt$e: Exception</ID>
+    <ID>SwallowedException:VideoBackgroundPolicy.kt$VideoBackgroundPolicy$e: Exception</ID>
+    <ID>ThrowsCount:KioskUpdateManager.kt$KioskUpdateManager$private fun runUpdate(context: Context, url: String, isIdle: (() -&gt; Boolean)?)</ID>
+    <ID>ThrowsCount:KioskUpdateManager.kt$KioskUpdateManager$private fun verifyDownloadedApk(context: Context, apkFile: File, remote: RemoteVersion)</ID>
+    <ID>TooManyFunctions:Esp32ConnectionManager.kt$Esp32ConnectionManager</ID>
+    <ID>TooManyFunctions:KioskAudioManager.kt$KioskAudioManager</ID>
+    <ID>TooManyFunctions:KioskEngine.kt$KioskEngine</ID>
+    <ID>TooManyFunctions:KioskSecurity.kt$KioskSecurity</ID>
+    <ID>UnusedParameter:Esp32ConnectionManager.kt$Esp32ConnectionManager$armingTimeoutSeconds: Int</ID>
+    <ID>UnusedParameter:Esp32ConnectionManager.kt$Esp32ConnectionManager$callerAttemptId: Long</ID>
+    <ID>UnusedParameter:Esp32DiscoveryScanner.kt$Esp32DiscoveryScanner$rawResponseBody: String?</ID>
+    <ID>UnusedPrivateProperty:CrashReporter.kt$CrashReporter$private val defaultHandler: Thread.UncaughtExceptionHandler? = Thread.getDefaultUncaughtExceptionHandler()</ID>
+    <ID>UnusedPrivateProperty:FloatingPillOverlay.kt$FloatingPillOverlay$private val minutesPerCoinFlow: StateFlow&lt;Int&gt;</ID>
+    <ID>UnusedPrivateProperty:FloatingPillOverlay.kt$FloatingPillOverlay$private val pricePerCoinFlow: StateFlow&lt;Double&gt;</ID>
+    <ID>UnusedPrivateProperty:FloatingPillOverlay.kt$FloatingPillOverlay$private val themeIndexFlow: StateFlow&lt;Int&gt;</ID>
+    <ID>UnusedPrivateProperty:KioskOverlayCoordinator.kt$KioskOverlayCoordinator$private val armingTimeoutSeconds: Int</ID>
+    <ID>UnusedPrivateProperty:KioskSystemMonitor.kt$KioskSystemMonitor$private val scope: CoroutineScope</ID>
+  </CurrentIssues>
+</SmellBaseline>

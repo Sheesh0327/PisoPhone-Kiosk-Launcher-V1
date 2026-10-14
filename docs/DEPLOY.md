@@ -1,0 +1,90 @@
+# Deploying and releasing
+
+## First run (own shop, one box, one or two phones)
+1. **Build.** Push; CI builds the APK and compiles the firmware. Locally: `cd esp32_firmware && sh host_tests/run.sh && pio run -e esp32-c3-dev`
+   (the dev environment has no flash encryption and can be re-flashed freely).
+2. **Test order** (serial monitor at 115200 baud):
+   1. The box boots with the default password `Coinslot@Setup` for the admin login (`admin`) and joins the hidden `PisoCoinBox` Wi-Fi (password `PisoCoinBox@Setup`) that the router setup creates; it has no access point of its own. No serial monitor is needed (`setup/README.md`).
+   2. Open the dashboard and change the admin password (at least 8 characters, not the default), then connect Wi-Fi. **The box accepts no coins until you do.**
+   3. Provision a phone with the dashboard's **Set up a phone** link, then reboot the phone: the box must still be reachable.
+   4. Insert coins: time is added once per coin. Cut the box's power mid-session: no coin lost or doubled.
+   5. Drop the Wi-Fi between a coin and its acknowledgement: the box retries and the phone credits it once.
+   6. Router (`setup/README.md`), only after the above.
+   7. Factory reset from the dashboard: lifetime revenue survives; Wi-Fi and admin password reset to the default (coins stay blocked until a new password is chosen).
+3. If payments stop after a phone reboot, collect `adb logcat -s KioskSecurity`. The phone's box secret and PIN are
+   Keystore-wrapped with a plain fallback; if the Keystore key is lost the phone reads them as unset: re-provision it.
+
+The full checklist and issue log are in `docs/REAL_WORLD_TESTING.md`.
+
+Keys are not needed for this test (see `docs/KEYS.md`); boxes then accept unsigned firmware and OTA is off, so flash by USB.
+
+## Owner settings on a phone (hold the time pill for 5 seconds, or the admin icon on the lock screen)
+
+- **Spoken messages**: voice on or off, its volume, and quiet hours (no voice at night; the screen and the vibration still warn).
+- **Idle phone**: screen off after the lock screen was left alone (default 5 min); wake when picked up (saves the power button); wipe the social, chat, mail
+  and browser apps after the phone had no paid time for 5 minutes (needs the phone to be the device owner and Android 9 or newer; games are never wiped; you
+  can add or remove apps in the list).
+- **Boost keeps the current app**: grant Usage Access once (the switch in "Idle phone" opens Android's page, or from a computer:
+  `adb shell appops set com.pisophone.kiosk GET_USAGE_STATS allow`). Without it, Boost stops only background apps.
+- A phone whose app crashed shows "↻ N" next to its name on the box page (restarts in the last 24 hours); a crash that repeats waits longer each time.
+
+## CI
+`quality.yml` runs on pushes to `main` and `beta` and on pull requests into `main` or `beta`, and only for the parts a change touches (a "What changed" job decides; a newer push cancels the unfinished run; downloads are cached): ktlint, clang-format, firmware host tests, a real PlatformIO build of all four firmware
+environments (the platform is pinned in `esp32_firmware/envs/*.ini`), security-rule and vendored-file checks, the provisioning
+website (its helpers, its stylesheet and the page itself in a browser under the site's Content-Security-Policy), and the
+router portal and setup tests (rustfmt, clippy, unit, end-to-end and browser tests, shellcheck). `firmware-images.yml` builds the coin box
+firmware for the setup program (`website/flash/`, one checked image per chip). `router-program.yml` builds
+the router program for `mipsel_24kc` and regenerates `setup/piso-setup.sh` on `beta`. `build-apk.yml` runs the Android unit
+tests, builds and signs the release APK and publishes it to the branch's channel (`main` = production, other branches =
+`-dev`). Dependabot opens update PRs (majors and Kotlin-toolchain minors are ignored on purpose).
+
+Secrets for the APK build: `KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD` in the protected Environment
+`production-signing` (docs/RELEASE.md 2a; the signing job stops if one is missing, because an APK signed with another key cannot update
+installed phones), and optionally the repository secret `RELEASES_TOKEN`. Gradle builds an unsigned APK in a job with no secrets; a
+separate job signs it (main: your keystore after approval; other branches: the public test key `app/dev-signing/dev-test-key.p12`).
+
+## Claude implementer (`claude.yml`)
+Issues written by the Architect (see `CLAUDE.md`) end with `@claude`. `claude.yml` runs Claude Code when someone with write
+access opens such an issue, comments `@claude` on an issue or pull request, or adds the label `claude` to an issue. Claude
+works on a new `claude/...` branch made from `beta`, runs the issue's Verification commands, and links the pull request into
+`beta` in its comment; Code quality then runs on that pull request. Nothing reaches `main` without the usual merge.
+
+Set it up once:
+1. Install the Claude GitHub App on this repository: https://github.com/apps/claude (Contents, Issues and Pull requests
+   read and write).
+2. Add the repository secret `CLAUDE_CODE_OAUTH_TOKEN` (run `claude setup-token` on your computer; uses your Claude
+   subscription).
+3. Create the label `claude` (Issues > Labels) if you want to start a run by labelling an issue.
+4. Merge `claude.yml` to `main`: GitHub runs issue and comment workflows only from the default branch.
+5. Turn off **Settings > General > Automatically delete head branches**: with it on, merging a pull request from `beta`
+   into `main` deletes `beta`, and the implementer has no branch to start from.
+
+The app's own setup (`/install-github-app` or the app's "add workflow" pull request) writes a generic `claude.yml` with
+read-only access and a `claude-code-review.yml` that reviews every pull request on every push. Keep this repository's
+`claude.yml`; ask for a review by commenting `@claude review this` on a pull request.
+
+Issues that were already open before the workflow existed start with a new `@claude` comment or the `claude` label.
+
+The implementer runs on Sonnet; add the label `model:haiku` before dispatching for small, local changes. Opus never
+implements: it plans, writes the issues and reviews the pull requests (`CLAUDE.md` section 1). Only one implementer runs at a time and each run stops after 60
+turns, so dispatch one issue at a time. Generated and binary files (`CLAUDE.md` section 4) are blocked from being read or
+edited by the run.
+
+## Where APKs and firmware are published
+The repository is private, so phones cannot download from its GitHub Releases. APKs go to a separate **public** releases
+repository (default `Sheesh0327/PisoPhone-Releases`, override with the variable `RELEASES_REPO`):
+1. Create that public repository (with a README) and a fine-grained token limited to it, permission *Contents: read and write*.
+   Save it here as the secret `RELEASES_TOKEN`.
+2. Each build creates a release there (`app-stable-<run>` for `main`, `app-dev-<run>` pre-releases otherwise; the newest 20 dev
+   builds are kept) and writes `website/update/app.json` with the APK's `url`, `sha256` and `size`. Phones refuse an APK
+   whose checksum, package name or signing certificate do not match.
+3. Without `RELEASES_TOKEN` the APK is committed to `website/update` instead (with a warning). Once every phone runs a build
+   that understands `url`, set the variable `KEEP_PAGES_APK` to `false` to stop committing APKs.
+4. Optional, owner-run: once APKs are out of git, `git filter-repo --invert-paths --path-glob '*.apk'` (on a fresh mirror clone,
+   then force-push every branch) shrinks the repository. It rewrites history; everyone re-clones.
+   (This was done once, on 2026-10-14: the history of about 400 commits, 800 MB of it build outputs, became one commit. Builds that CI
+   commits to `website/update` and `website/flash` grow the repository again, a few tens of MB per release: repeat this when it matters.)
+
+`versionCode` is the workflow run number (always increasing across branches); `versionName` is the run number as hundreds.tens.ones (+`-dev`; run 437 is 4.3.7, run 1000 is 10.0.0).
+Firmware images stay on the website (`website/update/firmware-<chip>.bin` + signed manifest): the box's update page downloads
+them in the browser, which cannot fetch GitHub release files cross-origin.

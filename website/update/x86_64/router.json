@@ -1,0 +1,8 @@
+{
+  "version": "1.3.4",
+  "sha256": "93f29b0c5d61543c2ac295c0927c2ac11179fc22a8e99b10fa6ebd6fd2029072",
+  "size": 1358329,
+  "rollout": 100,
+  "changelog": "Router software release 1.3.4",
+  "sig": "MEQCIBbIat6qFQirDzIchikm13NbnWn/My202Zp4+7AOFehrAiBVr7j43RFpQBddAavf4LycicZB58SHJJCnoy9UWz7eMw=="
+}

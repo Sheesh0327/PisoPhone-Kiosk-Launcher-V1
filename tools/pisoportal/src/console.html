@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TechNet PisoHub Console</title><link rel="icon" href="/brand.png">
+<style>
+:root{color-scheme:light dark;--bg:#f6f8fc;--band:#0a1b45;--s1:#fff;--s2:#eef2fa;--tx:#0b1530;--mut:#4a5878;--ln:#d5ddec;--ln2:#7184ad;--brand:#1d63d6;--bfg:#1d63d6;--teal:#0a9d80;--gold:#8a5a00;--goldf:#ffb81c;--ok:#0a7a5a;--bad:#b42318}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#050d22;--s1:#0c1a3a;--s2:#132552;--tx:#eef3ff;--mut:#97a6c7;--ln:#1f3361;--ln2:#5a70a3;--bfg:#5b9bff;--teal:#16c9a4;--gold:#ffb81c;--ok:#4be3b4;--bad:#ff8a8a}}
+:root[data-theme=dark]{--bg:#050d22;--s1:#0c1a3a;--s2:#132552;--tx:#eef3ff;--mut:#97a6c7;--ln:#1f3361;--ln2:#5a70a3;--bfg:#5b9bff;--teal:#16c9a4;--gold:#ffb81c;--ok:#4be3b4;--bad:#ff8a8a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:14px/20px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-variant-numeric:tabular-nums;min-height:100vh}
+header{display:flex;align-items:center;gap:8px;height:56px;padding:0 16px;background:var(--band);color:#eef3ff;font-size:18px}
+header img{width:28px;height:28px}header b{font-weight:800}header span{font-weight:500;color:#97a6c7}header .sp{flex:1}
+header a,header button{color:#97a6c7;font:inherit;font-size:14px;text-decoration:none;background:none;border:0;cursor:pointer;padding:8px 6px}
+.sl{display:block;height:3px;background:#2f7bff;background:linear-gradient(90deg,#2f7bff,#16c9a4)}
+#shell{display:grid;grid-template-columns:200px 1fr;max-width:1180px;margin:0 auto}
+nav{padding:16px 12px;display:flex;flex-direction:column;gap:2px}
+nav button{height:44px;text-align:left;padding:0 12px;border:0;border-left:2px solid transparent;background:none;color:var(--mut);font:inherit;font-weight:600;cursor:pointer}
+nav button.on{color:var(--tx);border-color:var(--bfg);background:var(--s2)}
+main{padding:16px 16px 80px;min-width:0}
+h2{font-size:17px;line-height:24px;margin:20px 0 8px}h2:first-child{margin-top:0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.card{background:var(--s1);border:1px solid var(--ln);border-radius:10px;padding:16px}
+.k{color:var(--mut);font-size:12px;line-height:16px}.v{font-size:28px;line-height:32px;font-weight:700}.s{color:var(--mut);font-size:12px;line-height:16px}
+.hero .v{font-size:44px;line-height:48px}.money{color:var(--gold)}
+table{width:100%;border-collapse:collapse}th,td{padding:0 8px;height:40px;text-align:left;border-bottom:1px solid var(--ln);vertical-align:middle}th{color:var(--mut);font-size:12px;font-weight:600;position:sticky;top:0;background:var(--s1)}
+td.n,th.n{text-align:right}
+.chip{display:inline-block;padding:0 10px;border-radius:99px;background:var(--s2);color:var(--mut);font-size:12px;line-height:22px;font-weight:600}
+.chip.ok{color:var(--ok)}.chip.bad{color:var(--bad)}.chip.gold{color:var(--gold);border:1px solid var(--goldf);line-height:20px}
+button.b,a.b{display:inline-block;min-height:32px;padding:5px 12px;border-radius:6px;border:1px solid var(--ln2);background:none;color:var(--tx);cursor:pointer;font:inherit;font-weight:600;text-decoration:none}
+button.go{min-height:44px;padding:0 20px;border:0;border-radius:10px;background:var(--brand);color:#fff;font:inherit;font-weight:700;cursor:pointer}
+button.go:disabled{opacity:.55}
+button.dg{border-color:var(--bad);color:var(--bad)}
+button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid var(--bfg);outline-offset:2px}
+input,select{height:44px;width:100%;padding:0 12px;border-radius:6px;border:1px solid var(--ln2);background:var(--s1);color:var(--tx);font:inherit}
+label{display:block;font-size:12px;font-weight:600;color:var(--mut);margin-bottom:4px}
+.f{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;align-items:end}
+.bars{display:flex;align-items:flex-end;gap:4px;height:120px;margin-top:8px}.bars div{flex:1;background:var(--bfg);border-radius:3px 3px 0 0;min-height:2px;position:relative}.bars span{position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:11px;color:var(--mut);white-space:nowrap}
+.days{display:flex;gap:4px;font-size:11px;color:var(--mut)}.days div{flex:1;text-align:center;white-space:nowrap;overflow:visible}
+canvas{width:100%;height:80px;display:block}
+.msg{border-left:4px solid var(--goldf);background:var(--s1);padding:8px 12px;border-radius:0 6px 6px 0;margin:8px 0}.msg.bad{border-color:var(--bad)}
+.err{color:var(--bad);min-height:20px}.hide{display:none!important}
+#login{max-width:380px;margin:48px auto;padding:0 16px}#login img{width:88px}#login h1{font-size:20px;margin:8px 0}
+dialog{border:1px solid var(--ln);border-radius:10px;background:var(--s1);color:var(--tx);padding:20px;max-width:420px;box-shadow:0 8px 24px rgba(0,0,0,.45)}dialog::backdrop{background:rgba(5,13,34,.7)}
+dialog h3{margin:0 0 8px;font-size:17px}dialog .row{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+@media(max-width:899px){#shell{display:block}nav{position:fixed;left:0;right:0;bottom:0;flex-direction:row;background:var(--s1);border-top:1px solid var(--ln);padding:0;z-index:5}nav button{flex:1;text-align:center;padding:0 2px;border-left:0;border-top:2px solid transparent;font-size:12px}nav button.on{border-color:var(--bfg)}.hm{display:none}}
+</style></head><body>
+<div id="login" class="hide"><img src="/mascot.png" alt=""><h1>TechNet PisoHub</h1><p class="s">Sign in with this router's password.</p>
+<label for="pw">Router password</label><input id="pw" type="password" autocomplete="current-password"><div class="err" id="err" role="alert"></div><p><button class="go" id="gobtn">Sign in</button></p></div>
+<div id="app" class="hide">
+<header><img src="/brand.png" alt=""><b>TechNet</b><span>PisoHub Console</span><span class="sp"></span><button id="th" title="Light or dark">Theme</button><a id="adv" href="#" title="The router's own settings page (LuCI)">Advanced</a><button id="out">Sign out</button></header><i class="sl"></i>
+<div id="shell">
+<nav id="tabs"><button data-t="over" class="on">Overview</button><button data-t="cli">Customers</button><button data-t="ph">Rental phones</button><button data-t="sales">Sales</button><button data-t="vch">Vouchers</button><button data-t="set">Settings</button></nav>
+<main>
+<section id="t-over"><div class="grid"><div class="card hero"><div class="k">Money today</div><div class="v money" id="hm"></div><div class="s" id="hs"></div></div></div>
+<h2>At a glance</h2><div class="grid" id="tiles"></div>
+<h2>Internet line</h2><div class="card"><canvas id="cv" width="900" height="160"></canvas><div class="s" id="cvl"></div></div></section>
+<section id="t-cli" class="hide"><h2>Customers on PisoWiFi</h2><div class="card" style="overflow-x:auto"><table><thead><tr><th>Device</th><th class="hm">Address</th><th>Plan</th><th class="n">Time left</th><th class="n hm">Data</th><th class="n hm">Speed now</th><th></th></tr></thead><tbody id="cl"></tbody></table></div><p class="s" id="clnote"></p></section>
+<section id="t-ph" class="hide"><h2>Rental phones</h2><div class="card" style="overflow-x:auto"><table><thead><tr><th>Slot</th><th>Phone</th><th>Status</th><th class="n">Time left</th><th class="n">Battery</th></tr></thead><tbody id="phl"></tbody></table></div><p class="s" id="phnote"></p></section>
+<section id="t-sales" class="hide"><h2>Sales</h2><div class="f" style="max-width:260px"><div><label for="rng">Period</label><select id="rng"><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option></select></div></div>
+<div class="grid" id="st" style="margin-top:12px"></div>
+<h2>Per day</h2><div class="card"><div class="bars" id="sb"></div><div class="days" id="sd"></div><p class="s" id="ssum"></p></div>
+<div class="card" style="margin-top:12px;max-height:420px;overflow:auto"><table><thead id="shd"></thead><tbody id="sl"></tbody></table></div>
+<p class="s" id="vnote"></p>
+<p><button class="b" id="csv" style="margin-top:12px">Download as CSV</button></p></section>
+<section id="t-vch" class="hide"><h2>Voucher codes</h2><p class="s">A customer who chooses "Get a voucher code" when paying gets one code worth the minutes the coins bought, valid for 30 days. It works once. The money is in your sales as soon as the coins are counted; using the code adds no income. Codes are not kept on the router, only a fingerprint. You can cancel a code that was not used.</p>
+<div class="card" style="overflow-x:auto"><table><thead><tr><th>Voucher</th><th>Worth</th><th>Status</th><th>Valid until</th><th></th></tr></thead><tbody id="vl2"></tbody></table></div></section>
+<section id="t-set" class="hide"><h2>Settings</h2><div class="card"><div class="f" style="max-width:360px"><div><label for="vcs">Voucher choice at payment</label><select id="vcs"><option value="on">On: customers pick Use now or Get a voucher code</option><option value="off">Off: coins always buy time at once</option></select></div></div>
+<p class="s" id="setm" role="status"></p><p class="s">Takes effect at once. A payment already started keeps the choice it began with. The same setting on the router: <b>piso-setup voucher-choice on|off</b>.</p></div></section>
+</main></div></div>
+<dialog id="dlg"><h3 id="dt"></h3><p id="dp" class="s"></p><div class="row"><button class="b" id="dno">Cancel</button><button class="go" id="dyes"></button></div></dialog>
+<script src="/verify.js"></script>
+<script>
+/* The page's code is the built-in /ui.js, or a newer one from the website that the owner signed (checked here with the owner key this
+   router already trusts for updates); anything else is ignored. A verified newer copy is kept in this browser for the next visit. */
+(function(){
+var OWNER='@OWNER_KEY@',SITE='https://pisophone.pages.dev/console/',STORE='piso_console_ui',API=1,enc=new TextEncoder();
+function ver(src){var m=/PISO_UI_VERSION\s*=\s*(\d+)/.exec(src);return m?+m[1]:0}
+function ok(m,src){try{return m&&m.api===API&&m.expires>Date.now()/1000&&src.length<200000&&PisoVerify.sha256hex(enc.encode(src))===m.sha256&&
+ PisoVerify.verify(OWNER,'pisophone-console-ui-v1|'+m.version+'|'+m.api+'|'+m.expires+'|'+m.sha256,m.sig)&&ver(src)===m.version}catch(e){return false}}
+function run(src){try{(new Function(src))()}catch(e){document.body.insertAdjacentHTML('beforeend','<p style="padding:20px;color:#ff8a8a">The page could not start: '+String(e.message).replace(/</g,'&lt;')+'</p>')}}
+function cached(){try{var c=JSON.parse(localStorage.getItem(STORE)||'null');return c&&ok(c.m,c.src)?c:null}catch(e){return null}}
+fetch('/ui.js').then(function(r){return r.text()}).then(function(built){
+ var best=ver(built),src=built,c=cached();
+ if(c&&c.m.version>best){best=c.m.version;src=c.src}
+ run(src);
+ if(typeof AbortController==='undefined')return;var ab=new AbortController();setTimeout(function(){ab.abort()},6000);
+ fetch(SITE+'ui.json',{signal:ab.signal,cache:'no-store'}).then(function(r){return r.json()}).then(function(m){
+  if(!m||m.version<=best)return;
+  return fetch(SITE+'ui.js',{signal:ab.signal,cache:'no-store'}).then(function(r){return r.text()}).then(function(js){if(ok(m,js)){try{localStorage.setItem(STORE,JSON.stringify({m:m,src:js}))}catch(e){}}})
+ }).catch(function(){})
+}).catch(function(){document.body.insertAdjacentHTML('beforeend','<p style="padding:20px;color:#ff8a8a">The console could not load.</p>')});
+})();
+</script></body></html>

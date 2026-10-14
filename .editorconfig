@@ -1,0 +1,37 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+
+[*.{kt,kts}]
+indent_size = 4
+max_line_length = 140
+ktlint_code_style = ktlint_official
+# Compose composables are PascalCase functions and large screens keep their order for readability.
+ktlint_standard_function-naming = disabled
+ktlint_standard_property-naming = disabled
+ktlint_standard_no-wildcard-imports = disabled
+ktlint_standard_filename = disabled
+ktlint_standard_class-signature = disabled
+ktlint_standard_function-signature = disabled
+ktlint_standard_multiline-expression-wrapping = disabled
+ktlint_standard_string-template-indent = disabled
+ktlint_standard_max-line-length = disabled
+ktlint_standard_blank-line-before-declaration = disabled
+ktlint_standard_statement-wrapping = disabled
+ktlint_standard_if-else-wrapping = disabled
+ktlint_standard_chain-method-continuation = disabled
+ktlint_standard_discouraged-comment-location = disabled
+ktlint_standard_no-consecutive-comments = disabled
+ktlint_standard_backing-property-naming = disabled
+ktlint_standard_try-catch-finally-spacing = disabled
+
+[*.{cpp,h,ino}]
+indent_size = 4
+
+[*.{yml,yaml,json,md}]
+indent_size = 2

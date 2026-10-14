@@ -1,0 +1,411 @@
+@file:Suppress("DEPRECATION")
+
+package com.pisophone.kiosk.receiver
+
+import android.app.admin.DevicePolicyManager
+import android.content.BroadcastReceiver
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
+import android.widget.Toast
+import com.pisophone.kiosk.KioskService
+import com.pisophone.kiosk.MainActivity
+import com.pisophone.kiosk.security.KioskRecoveryManager
+
+/**
+ * BroadcastReceiver listening for remote administrative commands via ADB / WebADB.
+ *
+ * Commands:
+ * 1. Clean Deprovision & Remove Device Owner:
+ *    adb shell am broadcast -a com.pisophone.kiosk.DEPROVISION
+ *
+ * 2. Restart Kiosk Service & Launcher:
+ *    adb shell am broadcast -a com.pisophone.kiosk.RESTART
+ */
+class KioskAdminActionReceiver : BroadcastReceiver() {
+    companion object {
+        const val ACTION_DEPROVISION = "com.pisophone.kiosk.DEPROVISION"
+
+        /** Whether DEPROVISION may run: the admin PIN, or USB debugging on (see the handler). */
+        fun deprovisionAllowed(pinAuthorized: Boolean, usbDebuggingOn: Boolean): Boolean = pinAuthorized || usbDebuggingOn
+        const val ACTION_RESTORE_SYSTEM_APPS = "com.pisophone.kiosk.RESTORE_SYSTEM_APPS"
+        const val ACTION_ENABLE_ADB = "com.pisophone.kiosk.ENABLE_ADB"
+        const val ACTION_EMERGENCY_RECOVERY = "com.pisophone.kiosk.EMERGENCY_RECOVERY"
+        const val ACTION_EXIT_KIOSK = "com.pisophone.kiosk.EXIT_KIOSK"
+        const val ACTION_OPEN_SETTINGS = "com.pisophone.kiosk.OPEN_SETTINGS"
+        const val ACTION_STATUS_REFRESH = "com.pisophone.kiosk.STATUS_REFRESH"
+        const val ACTION_RESTART = "com.pisophone.kiosk.RESTART"
+        const val ACTION_FACTORY_RESET = "com.pisophone.kiosk.FACTORY_RESET"
+        const val ACTION_SCREEN_OFF = "com.pisophone.kiosk.SCREEN_OFF"
+        const val ACTION_SCREEN_ON = "com.pisophone.kiosk.SCREEN_ON"
+        const val ACTION_LOCK_NOW = "com.pisophone.kiosk.LOCK_NOW"
+        const val ACTION_GRANT_PERMISSIONS = "com.pisophone.kiosk.GRANT_PERMISSIONS"
+        const val ACTION_SET_VOLUME = "com.pisophone.kiosk.SET_VOLUME"
+        const val ACTION_ADMIN_BYPASS = "com.pisophone.kiosk.ADMIN_BYPASS"
+        const val ACTION_TEST_TTS = "com.pisophone.kiosk.TEST_TTS"
+        const val ACTION_ACTIVATE = "com.pisophone.kiosk.ACTIVATE"
+        const val ACTION_CONFIGURE_ESP32 = "com.pisophone.kiosk.CONFIGURE_ESP32"
+        const val ACTION_GET_DEVICE_ID = "com.pisophone.kiosk.GET_DEVICE_ID"
+        const val ACTION_SETUP_GRANTS_DONE = "com.pisophone.kiosk.SETUP_GRANTS_DONE"
+        private const val TAG = "KioskAdminAction"
+
+        /** Removes the kiosk lock and Device Owner. Slow (it restores hidden apps): call it off the main thread. */
+        fun deprovisionNow(context: Context) {
+            val main = Handler(Looper.getMainLooper())
+            fun say(text: String) = main.post { Toast.makeText(context, text, Toast.LENGTH_LONG).show() }
+            try {
+                // 1. Stop background Kiosk Service
+                context.stopService(Intent(context, KioskService::class.java))
+
+                // 2. Clear Device Policy & Lock Task mode
+                val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+                val adminComponent = ComponentName(context, KioskDeviceAdminReceiver::class.java)
+
+                if (dpm.isDeviceOwnerApp(context.packageName)) {
+                    com.pisophone.kiosk.security.KioskRecoveryManager.restoreSystemApps(context)
+                    try {
+                        dpm.setLockTaskPackages(adminComponent, emptyArray())
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to clear lock task packages: ${e.message}")
+                    }
+                    try {
+                        dpm.clearUserRestriction(adminComponent, android.os.UserManager.DISALLOW_FACTORY_RESET)
+                        dpm.clearUserRestriction(adminComponent, android.os.UserManager.DISALLOW_SAFE_BOOT)
+                        dpm.clearUserRestriction(adminComponent, android.os.UserManager.DISALLOW_UNINSTALL_APPS)
+                        com.pisophone.kiosk.network.KioskWifi.releaseNetworkLock(context)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to clear user restrictions: ${e.message}")
+                    }
+                    dpm.clearDeviceOwnerApp(context.packageName)
+                    Log.i(TAG, "Device Owner successfully cleared!")
+                }
+
+                if (dpm.isAdminActive(adminComponent)) {
+                    dpm.removeActiveAdmin(adminComponent)
+                    Log.i(TAG, "Active Admin removed!")
+                }
+
+                say("PisoPhone Deprovisioned! Device Owner removed.")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error during deprovisioning: ${e.message}", e)
+                say("Deprovision error: ${e.message}")
+            }
+        }
+    }
+
+    override fun onReceive(context: Context, intent: Intent) {
+        val action = intent.action ?: return
+        Log.d(TAG, "Received admin action: $action")
+
+        when (action) {
+            ACTION_ENABLE_ADB -> {
+                if (!isAuthorized(context, intent)) {
+                    Log.w(TAG, "Unauthorized attempt to trigger ENABLE_ADB rejected.")
+                    Toast.makeText(context, "Unauthorized: Valid Admin PIN or Secret required.", Toast.LENGTH_SHORT).show()
+                    setResultCode(android.app.Activity.RESULT_CANCELED)
+                    return
+                }
+                Log.i(TAG, "Emergency Enable ADB broadcast received.")
+                val success = com.pisophone.kiosk.security.KioskSecurity.emergencyEnableUsbDebugging(context)
+                Toast.makeText(context, "⚡ Emergency: USB Debugging Re-Enabled!", Toast.LENGTH_LONG).show()
+                setResultCode(if (success) android.app.Activity.RESULT_OK else android.app.Activity.RESULT_CANCELED)
+            }
+
+            ACTION_EMERGENCY_RECOVERY -> {
+                if (!isAuthorized(context, intent)) {
+                    Log.w(TAG, "Unauthorized attempt to trigger EMERGENCY_RECOVERY rejected.")
+                    Toast.makeText(context, "Unauthorized: Valid Admin PIN or Secret required.", Toast.LENGTH_SHORT).show()
+                    setResultCode(android.app.Activity.RESULT_CANCELED)
+                    return
+                }
+                Log.i(TAG, "Emergency Full Recovery broadcast received.")
+                com.pisophone.kiosk.security.KioskSecurity.emergencyEnableUsbDebugging(context)
+                com.pisophone.kiosk.security.KioskSecurity.emergencyExitKiosk(context)
+                Toast.makeText(context, "⚠️ Emergency Recovery: Kiosk Exited & ADB Enabled!", Toast.LENGTH_LONG).show()
+                setResultCode(android.app.Activity.RESULT_OK)
+            }
+
+            ACTION_EXIT_KIOSK -> {
+                if (!isAuthorized(context, intent)) {
+                    Log.w(TAG, "Unauthorized attempt to trigger EXIT_KIOSK rejected.")
+                    return
+                }
+                Log.i(TAG, "Exit Kiosk command received.")
+                com.pisophone.kiosk.security.KioskSecurity.emergencyExitKiosk(context)
+            }
+
+            ACTION_OPEN_SETTINGS -> {
+                if (!isAuthorized(context, intent)) {
+                    Log.w(TAG, "Unauthorized attempt to trigger OPEN_SETTINGS rejected.")
+                    Toast.makeText(context, "Unauthorized: Valid Admin PIN or Secret required.", Toast.LENGTH_SHORT).show()
+                    return
+                }
+                // Settings is not allowed in lock task mode for renters; open the admin window first.
+                com.pisophone.kiosk.security.AdminMaintenanceMode.begin(context, 900)
+                try {
+                    val sIntent = Intent(android.provider.Settings.ACTION_SETTINGS).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(sIntent)
+                } catch (_: Exception) {}
+            }
+
+            ACTION_ADMIN_BYPASS -> {
+                if (!isAuthorized(context, intent)) {
+                    Log.w(TAG, "Unauthorized attempt to trigger ADMIN_BYPASS rejected. Valid PIN or secret required.")
+                    Toast.makeText(context, "Unauthorized: Valid Admin PIN required.", Toast.LENGTH_SHORT).show()
+                    return
+                }
+                val duration = intent.getIntExtra("duration", 900)
+                Log.i(TAG, "Admin bypass command authenticated & received for $duration seconds.")
+                KioskService.triggerAdminBypass(context, duration)
+            }
+
+            ACTION_TEST_TTS -> {
+                if (!isPinAuthorized(context, intent)) {
+                    Log.w(TAG, "Unauthorized attempt to trigger TEST_TTS rejected.")
+                    return
+                }
+                val text = intent.getStringExtra("text") ?: "Arcade OS voice system online and functional."
+                Log.i(TAG, "Test TTS command received: $text")
+                KioskService.triggerTestTts(context, text)
+            }
+            ACTION_RESTART -> {
+                if (!isPinAuthorized(context, intent)) {
+                    Log.w(TAG, "Unauthorized attempt to trigger RESTART rejected.")
+                    return
+                }
+                Log.i(TAG, "Admin restart triggered via broadcast.")
+                try {
+                    val serviceIntent = Intent(context, KioskService::class.java)
+                    context.startForegroundService(serviceIntent)
+
+                    val mainIntent = Intent(context, MainActivity::class.java).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    }
+                    context.startActivity(mainIntent)
+                    Toast.makeText(context, "ArcadeOS Kiosk restarted.", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to restart Kiosk: ${e.message}", e)
+                }
+            }
+
+            ACTION_FACTORY_RESET -> {
+                if (!isAuthorized(context, intent)) {
+                    Log.w(TAG, "Unauthorized attempt to trigger FACTORY_RESET rejected.")
+                    return
+                }
+                Log.w(TAG, "Factory Reset command received and authorized! Wiping device...")
+                com.pisophone.kiosk.security.KioskSecurity.factoryResetDevice(context)
+            }
+
+            ACTION_SCREEN_OFF, ACTION_LOCK_NOW -> {
+                if (!isPinAuthorized(context, intent)) {
+                    Log.w(TAG, "Unauthorized attempt to trigger SCREEN_OFF / LOCK_NOW rejected.")
+                    return
+                }
+                Log.i(TAG, "Screen off / lock now command received.")
+                com.pisophone.kiosk.security.KioskSecurity.turnScreenOff(context)
+            }
+
+            ACTION_SCREEN_ON -> {
+                if (!isPinAuthorized(context, intent)) {
+                    Log.w(TAG, "Unauthorized attempt to trigger SCREEN_ON rejected.")
+                    return
+                }
+                Log.i(TAG, "Screen on / wake command received.")
+                com.pisophone.kiosk.security.KioskSecurity.wakeScreenUp(context)
+            }
+
+            ACTION_GRANT_PERMISSIONS -> {
+                if (!isAuthorized(context, intent)) {
+                    Log.w(TAG, "Unauthorized attempt to trigger GRANT_PERMISSIONS rejected.")
+                    return
+                }
+                Log.i(TAG, "Auto-grant permissions command received.")
+                com.pisophone.kiosk.security.KioskSecurity.autoGrantAllPermissions(context)
+                Toast.makeText(context, "Permissions granted to kiosk apps.", Toast.LENGTH_SHORT).show()
+            }
+
+            ACTION_RESTORE_SYSTEM_APPS -> {
+                if (!isPinAuthorized(context, intent)) {
+                    Log.w(TAG, "Unauthorized attempt to trigger RESTORE_SYSTEM_APPS rejected.")
+                    return
+                }
+                Log.i(TAG, "Admin asked to restore the disabled and hidden system apps.")
+                com.pisophone.kiosk.security.FirstBootSetup.markDone(context)
+                Thread { com.pisophone.kiosk.security.AppVisibilityPolicy.restoreAll(context) }.start()
+                Toast.makeText(context, "Restoring the phone's pre-installed apps.", Toast.LENGTH_SHORT).show()
+            }
+
+            ACTION_SET_VOLUME -> {
+                if (!isPinAuthorized(context, intent)) {
+                    Log.w(TAG, "Unauthorized attempt to trigger SET_VOLUME rejected.")
+                    return
+                }
+                val volume = intent.getIntExtra("volume", -1)
+                if (volume in 0..100) {
+                    Log.i(TAG, "Setting media volume to $volume%")
+                    com.pisophone.kiosk.security.KioskSecurity.setMediaVolume(context, volume)
+                }
+            }
+
+            ACTION_SETUP_GRANTS_DONE -> {
+                // QR + USB setup: the computer has granted what only ADB can grant. Once "display over other apps" is really
+                // on, the kiosk starts and USB debugging goes off (a few seconds later, so the computer's command returns).
+                // No PIN: this can only close ADB and start the kiosk, never open anything.
+                val granted = android.provider.Settings.canDrawOverlays(context)
+                setResultCode(if (granted) android.app.Activity.RESULT_OK else android.app.Activity.RESULT_CANCELED)
+                if (granted) {
+                    Log.i(TAG, "Setup grants done: starting the kiosk; USB debugging goes off.")
+                    val app = context.applicationContext
+                    try {
+                        context.startForegroundService(Intent(context, com.pisophone.kiosk.KioskService::class.java))
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Could not start the kiosk service yet (the home screen starts it): ${e.message}")
+                    }
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                        Thread { com.pisophone.kiosk.security.KioskSecurity.setAdbAllowed(app, false) }.start()
+                    }, 3000L)
+                } else {
+                    Log.w(TAG, "Setup grants reported, but \"display over other apps\" is still off.")
+                }
+            }
+
+            ACTION_GET_DEVICE_ID -> {
+                // The id the box knows this phone by is the one it signs its heartbeats with (a random id made on first start), NOT the
+                // hardware fingerprint: pairing the fingerprint left the real phone "waiting for a slot".
+                val hwId = com.pisophone.kiosk.security.KioskSecurity.getHardwareId(context)
+                val devName = com.pisophone.kiosk.security.KioskActivationManager.getHardwareDescription()
+                val isPaired = com.pisophone.kiosk.security.KioskActivationManager.isPairingCompleted(context)
+                Log.i(TAG, "GET_DEVICE_ID requested via ADB broadcast. Returning: $hwId ($devName), paired=$isPaired")
+                // the result code says whether the phone took its setup (`am broadcast` always prints it readably as result=-1;
+                // the extras below often print only as a parcel): RESULT_OK when it did, RESULT_FIRST_USER when not yet
+                setResultCode(if (isPaired) android.app.Activity.RESULT_OK else android.app.Activity.RESULT_FIRST_USER)
+                setResultData(hwId)
+                val extras = android.os.Bundle().apply {
+                    putString("hardware_id", hwId)
+                    putString("device_name", devName)
+                    putBoolean("paired", isPaired)
+                }
+                setResultExtras(extras)
+            }
+
+            ACTION_CONFIGURE_ESP32 -> {
+                val isPaired = com.pisophone.kiosk.security.KioskActivationManager.isPairingCompleted(context) || com.pisophone.kiosk.security.KioskSecurity.isProvisioned(context)
+                val isSetupActive = com.pisophone.kiosk.security.KioskActivationManager.isSetupModeActive(context)
+                if ((isPaired || !isSetupActive) && !isAuthorized(context, intent)) {
+                    Log.w(TAG, "Unauthorized attempt to re-configure ESP32 rejected.")
+                    Toast.makeText(context, "Unauthorized: Valid Admin PIN or Secret required.", Toast.LENGTH_SHORT).show()
+                    setResultCode(android.app.Activity.RESULT_CANCELED)
+                    return
+                }
+
+                val secret = intent.getStringExtra("secret") ?: intent.getStringExtra("setup_secret") ?: intent.getStringExtra("shared_secret")
+                val mac = intent.getStringExtra("esp32_mac") ?: intent.getStringExtra("mac") ?: intent.getStringExtra("box_mac")
+                val slot = intent.getIntExtra("slot", intent.getIntExtra("setup_slot", -1))
+                val name = intent.getStringExtra("name") ?: intent.getStringExtra("alias")
+                val wifiSsid = intent.getStringExtra("wifi_ssid")
+                val wifiPassword = intent.getStringExtra("wifi_pass")
+
+                Log.i(TAG, "CONFIGURE_ESP32 received. Infusing Master MAC: '$mac', Slot: $slot, SecretSet=${!secret.isNullOrBlank()}")
+
+                if (!mac.isNullOrBlank() || slot > 0 || !secret.isNullOrBlank() || !wifiPassword.isNullOrEmpty()) {
+                    KioskService.configureMasterBox(context, mac ?: "", slot, secret, name, wifiSsid, wifiPassword)
+                }
+
+                val savedMac = com.pisophone.kiosk.security.KioskSecurity.getConfiguredEsp32Mac(context)
+                Toast.makeText(context, "Hardware Box Paired! MAC: ${savedMac.ifEmpty { "Auto" }}", Toast.LENGTH_SHORT).show()
+                setResultCode(android.app.Activity.RESULT_OK)
+                setResultData("SUCCESS")
+            }
+
+            ACTION_ACTIVATE -> {
+                val isPaired = com.pisophone.kiosk.security.KioskActivationManager.isPairingCompleted(context) || com.pisophone.kiosk.security.KioskSecurity.isProvisioned(context)
+                val isSetupActive = com.pisophone.kiosk.security.KioskActivationManager.isSetupModeActive(context)
+                if ((isPaired || !isSetupActive) && !isAuthorized(context, intent)) {
+                    Log.w(TAG, "Unauthorized attempt to re-activate device rejected.")
+                    Toast.makeText(context, "Unauthorized: Valid Admin PIN or Secret required.", Toast.LENGTH_SHORT).show()
+                    setResultCode(android.app.Activity.RESULT_CANCELED)
+                    return
+                }
+
+                val key = intent.getStringExtra("key") ?: intent.getStringExtra("code") ?: "ACTIVATION_KEY"
+                val secret = intent.getStringExtra("secret") ?: intent.getStringExtra("setup_secret") ?: intent.getStringExtra("shared_secret")
+                val esp32Mac = intent.getStringExtra("esp32_mac") ?: intent.getStringExtra("mac") ?: intent.getStringExtra("box_mac")
+                val slot = intent.getIntExtra("slot", intent.getIntExtra("setup_slot", -1))
+                val name = intent.getStringExtra("name") ?: intent.getStringExtra("alias")
+                val wifiSsid = intent.getStringExtra("wifi_ssid")
+                val wifiPassword = intent.getStringExtra("wifi_pass")
+
+                if (!esp32Mac.isNullOrBlank() || slot > 0 || !secret.isNullOrBlank() || !wifiPassword.isNullOrEmpty()) {
+                    Log.i(TAG, "Infusing ESP32 Master params with activation: MAC '$esp32Mac', Slot $slot, SecretSet=${!secret.isNullOrBlank()}")
+                    KioskService.configureMasterBox(context, esp32Mac ?: "", slot, secret, name, wifiSsid, wifiPassword)
+                }
+
+                Log.i(TAG, "Activation broadcast received with key: $key")
+                val success = com.pisophone.kiosk.security.KioskActivationManager.recordDeviceIdentity(context)
+                com.pisophone.kiosk.security.KioskActivationManager.setPairingCompleted(context, true)
+                setResultCode(if (success) android.app.Activity.RESULT_OK else android.app.Activity.RESULT_CANCELED)
+                setResultData(if (success) "SUCCESS" else "FAILED")
+                if (success) {
+                    Toast.makeText(context, "PisoPhone Terminal Activation Configured", Toast.LENGTH_LONG).show()
+                    // Restart Kiosk Service and reload UI
+                    try {
+                        val serviceIntent = Intent(context, KioskService::class.java)
+                        context.startForegroundService(serviceIntent)
+                        val mainIntent = Intent(context, MainActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        }
+                        context.startActivity(mainIntent)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Could not bring MainActivity to top after activation: ${e.message}")
+                    }
+                } else {
+                    Toast.makeText(context, "Activation Failed. Please contact administrator.", Toast.LENGTH_LONG).show()
+                }
+            }
+
+            ACTION_DEPROVISION -> {
+                // Removing the kiosk needs no PIN while USB debugging is on: the setup computer is then connected and was
+                // authorised on the phone, and the website's "Remove from a phone" cannot reach the phone otherwise. With USB
+                // debugging off (the normal state of a rental phone) the PIN is still required.
+                if (!deprovisionAllowed(isAuthorized(context, intent), KioskRecoveryManager.isUsbDebuggingEnabled(context))) {
+                    Log.w(TAG, "Unauthorized attempt to trigger DEPROVISION rejected. USB debugging is off and no valid PIN was sent.")
+                    Toast.makeText(context, "Unauthorized: turn USB debugging on, or send the admin PIN, to deprovision.", Toast.LENGTH_LONG).show()
+                    return
+                }
+                Log.w(TAG, "Deprovisioning request authenticated & received. Removing Device Owner and clearing lockdown.")
+
+                // Restoring the hidden system apps can take longer than a broadcast may run on the main thread.
+                val pending = goAsync()
+                Thread {
+                    try {
+                        deprovisionNow(context)
+                    } finally {
+                        pending.finish()
+                    }
+                }.start()
+            }
+        }
+    }
+
+    /**
+     * PIN only. The shared secret is a compiled-in constant that anyone with the app can read, so
+     * it must not unlock commands that anyone on the phone could otherwise send to this exported
+     * receiver (restart, lock, screen on/off, volume, test announcement).
+     */
+    private fun isPinAuthorized(context: Context, intent: Intent): Boolean {
+        val pin = intent.getStringExtra("pin") ?: intent.getStringExtra("admin_pin")
+        return !pin.isNullOrBlank() && com.pisophone.kiosk.security.KioskSecurity.verifyAdminPinRemote(context, pin.trim())
+    }
+
+    /**
+     * Administrative broadcasts require the admin PIN. The shared secret is baked into every APK
+     * and is only used to sign ESP32 traffic, so it must never unlock admin actions.
+     */
+    private fun isAuthorized(context: Context, intent: Intent): Boolean = isPinAuthorized(context, intent)
+}

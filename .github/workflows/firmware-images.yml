@@ -1,0 +1,157 @@
+name: Coin box images for the setup program
+
+# Builds the coin box firmware (the dev environments: no flash encryption) for each chip, merges bootloader, partition
+# table, boot_app0 and the app into ONE image per chip, checks its structure, and commits it with a manifest to
+# website/flash/ on main and beta. The setup program (setup/pisophone_setup.py) downloads it, checks its sha256 and writes it to
+# the box over USB with esptool, so a box can be flashed without PlatformIO. Production (encrypted) builds are not published here.
+#
+# On main it also publishes the app-only images for the dashboard's "Install update" (website/update/firmware-<chip>.bin and
+# firmware.json, scripts/publish_firmware_ota.py). They are signed with OWNER_SIGNING_KEY_B64 (made by
+# `python3 scripts/make_owner_keys.py --github-secret`, docs/KEYS.md), which lives only in the protected GitHub Environment
+# "production-signing" (a required reviewer, main only: docs/RELEASE.md, "Protect the signing keys"); without the secret they are
+# published unsigned, which boxes accept only until the owner key is built into the firmware. Raise PISO_FW_VERSION for every
+# release: a box installs only a newer version.
+#
+# Two jobs: "build" runs PlatformIO and everything it downloads, with no secrets at all; "publish" has the key (main only) and runs
+# only this repository's own scripts on the finished files.
+on:
+  push:
+    branches:
+      - main
+      - beta
+    paths:
+      - 'esp32_firmware/**'
+      - '.github/workflows/firmware-images.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: firmware-images-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build the coin box images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.platformio
+          key: pio-images-${{ hashFiles('esp32_firmware/platformio.ini', 'esp32_firmware/envs/*.ini') }}
+      - name: Install PlatformIO and esptool
+        run: pip install platformio==6.2.0 esptool==4.8.1
+      - name: Build and merge (one image per chip)
+        working-directory: esp32_firmware
+        run: |
+          set -eu
+          mkdir -p ../website/flash "$RUNNER_TEMP/ota"
+          VERSION=$(sed -n 's/^#define PISO_FW_VERSION "\(.*\)"/\1/p' include/FirmwareVersion.h)
+          [ -n "$VERSION" ] || { echo "::error::no PISO_FW_VERSION"; exit 1; }
+          builds=""
+          # env  esptool chip  chip name as esptool-js reports it  bootloader offset
+          for spec in "esp32-c3-dev esp32c3 ESP32-C3 0x0" "esp32dev-dev esp32 ESP32 0x1000"; do
+            set -- $spec
+            ENV=$1; CHIP=$2; NAME=$3; BOOT=$4
+            pio run -e "$ENV"
+            B=.pio/build/$ENV
+            cp "$B/firmware.bin" "$RUNNER_TEMP/ota/firmware-$CHIP.bin"   # the app-only image for over-the-air updates
+            APP0=$(find ~/.platformio/packages -name boot_app0.bin -path '*partitions*' | head -n 1)
+            [ -n "$APP0" ] || { echo "::error::boot_app0.bin not found"; exit 1; }
+            OUT=../website/flash/$ENV.bin
+            # the image starts at the bootloader's offset (0x0 on the C3, 0x1000 on the classic ESP32)
+            python -m esptool --chip "$CHIP" merge_bin -o "$OUT" --target-offset "$BOOT" \
+              --flash_mode keep --flash_freq keep --flash_size keep \
+              "$BOOT" "$B/bootloader.bin" 0x8000 "$B/partitions.bin" 0xe000 "$APP0" 0x10000 "$B/firmware.bin"
+            # structure: the bootloader's and the app's image magic, the partition table's magic, at the right places
+            python3 - "$OUT" "$BOOT" <<'PY'
+          import sys
+          data, base = open(sys.argv[1], "rb").read(), int(sys.argv[2], 16)
+          at = lambda addr: data[addr - base:]
+          assert at(base)[0] == 0xE9, "bootloader image magic missing"
+          assert at(0x8000)[:2] == b"\xaa\x50", "partition table magic missing at 0x8000"
+          assert at(0x10000)[0] == 0xE9, "app image magic missing at 0x10000"
+          assert len(data) < 4 * 1024 * 1024 - base, "image larger than the 4 MB flash"
+          print(f"{sys.argv[1]}: {len(data)} bytes from 0x{base:x}, structure OK")
+          PY
+            SHA=$(sha256sum "$OUT" | cut -c1-64)
+            SIZE=$(stat -c %s "$OUT")
+            builds="$builds{\"env\":\"$ENV\",\"chip\":\"$NAME\",\"file\":\"$ENV.bin\",\"offset\":$((BOOT)),\"size\":$SIZE,\"sha256\":\"$SHA\"},"
+          done
+          printf '{"version":"%s","commit":"%s","builds":[%s]}\n' "$VERSION" "$GITHUB_SHA" "${builds%,}" | python3 -m json.tool > ../website/flash/manifest.json
+          cat ../website/flash/manifest.json
+      - name: Gather the images for the publish job
+        run: |
+          mkdir -p "$RUNNER_TEMP/stage"
+          cp -r website/flash "$RUNNER_TEMP/stage/flash"
+          cp -r "$RUNNER_TEMP/ota" "$RUNNER_TEMP/stage/ota"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: coin-box-images
+          path: ${{ runner.temp }}/stage
+          retention-days: 1
+          if-no-files-found: error
+
+  publish:
+    name: Sign and publish the coin box images
+    needs: build
+    runs-on: ubuntu-latest
+    # main: the protected Environment (reviewer approval, main only; it holds the owner key). Beta: "development", which holds no secrets.
+    environment: ${{ github.ref == 'refs/heads/main' && 'production-signing' || 'development' }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: coin-box-images
+          path: ${{ runner.temp }}/built
+      - name: Install the signing library
+        run: pip install cryptography
+      - name: Commit the images to the branch
+        env:
+          # only a run on main is ever handed the key
+          OWNER_SIGNING_KEY_B64: ${{ github.ref == 'refs/heads/main' && secrets.OWNER_SIGNING_KEY_B64 || '' }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          [ -d "$RUNNER_TEMP/built/flash" ] && [ -d "$RUNNER_TEMP/built/ota" ] || { echo "::error::the build artifact is missing the images"; exit 1; }
+          cp -r "$RUNNER_TEMP/built/flash" "$RUNNER_TEMP/flash"
+          mv "$RUNNER_TEMP/built/ota" "$RUNNER_TEMP/ota"
+          KEY=""
+          if [ "$GITHUB_REF_NAME" = main ] && [ -n "$OWNER_SIGNING_KEY_B64" ]; then
+            KEY="$RUNNER_TEMP/owner.pem"
+            trap 'rm -f "$KEY"' EXIT
+            (umask 077; printf '%s' "$OWNER_SIGNING_KEY_B64" | tr -d '\r\n ' | base64 -d > "$KEY")
+          elif [ "$GITHUB_REF_NAME" = main ]; then
+            echo "::warning::OWNER_SIGNING_KEY_B64 is not in the production-signing Environment: the over-the-air images are published UNSIGNED (docs/RELEASE.md, Protect the signing keys)."
+          fi
+          ota_failed=0
+          for attempt in 1 2 3 4 5; do
+            git fetch -q origin "$GITHUB_REF_NAME"
+            git reset -q --hard "origin/$GITHUB_REF_NAME"
+            rm -rf website/flash && cp -r "$RUNNER_TEMP/flash" website/flash
+            git add -A website/flash
+            if [ "$GITHUB_REF_NAME" = main ]; then
+              # (the production site is built from main, and the boxes' dashboard reads https://pisophone.pages.dev/update)
+              # (a failure here must not hold back the coin box images, but it still fails the run, after they are pushed)
+              if python3 scripts/publish_firmware_ota.py --images "$RUNNER_TEMP/ota" ${KEY:+--key "$KEY"}; then
+                ota_failed=0
+                git add -A -f website/update
+              else
+                ota_failed=1
+                git checkout -q -- website/update && git clean -fdq website/update
+              fi
+            fi
+            if git diff --staged --quiet; then exit $ota_failed; fi
+            git commit -q -m "ci: coin box images for the setup program and updates ($(python3 -c "import json;print(json.load(open('website/flash/manifest.json'))['version'])"))"
+            if git push origin "HEAD:refs/heads/$GITHUB_REF_NAME"; then exit $ota_failed; fi
+            sleep $((attempt * 3))
+          done
+          echo "::error::could not push the images"; exit 1

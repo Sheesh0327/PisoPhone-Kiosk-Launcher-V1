@@ -1,0 +1,94 @@
+#ifndef COIN_SLOT_MANAGER_H
+#define COIN_SLOT_MANAGER_H
+
+#include <Arduino.h>
+#include <functional>
+
+// ============================================================================
+// CALLBACK SIGNATURES & ENUMS
+// ============================================================================
+typedef std::function<void(const String& sessionId, int pulses)> CoinPaymentCallback;
+typedef std::function<void(const String& sessionId, const char* reason)> CoinSessionEndCallback;
+
+enum class CoinSlotOwnerType { ANY, PHONE, CONTROLLER, GATEWAY };
+
+enum class CoinSlotState {
+    IDLE,    // No session, relay OFF, acceptor disabled
+    ARMED,   // Active session running, relay ON, accepting coins
+    DRAINING // Session closing/timed-out, relay ON, waiting for in-flight pulses to finish
+};
+
+// ============================================================================
+// COIN SLOT MANAGER INTERFACE
+// ============================================================================
+
+/**
+ * Initialize the coin slot manager subsystem and default state.
+ */
+void initCoinSlotManager();
+
+/**
+ * Attempts to reserve the coin slot for a specific session/device.
+ * - If currently IDLE: arms acceptor relay, resets detector, starts session.
+ * - If already reserved by SAME sessionId & ownerType: refreshes TTL and preserves accumulated pulses.
+ * - If reserved/draining for ANOTHER session or different ownerType: rejects request (returns false).
+ */
+bool reserveCoinSlot(const String& sessionId, CoinSlotOwnerType ownerType, unsigned long ttlMs,
+                     CoinPaymentCallback onPayment = nullptr, CoinSessionEndCallback onSessionEnd = nullptr);
+
+/**
+ * Releases the coin slot reservation and de-energizes the acceptor relay.
+ */
+void releaseCoinSlot(const String& sessionId, CoinSlotOwnerType ownerType = CoinSlotOwnerType::ANY, bool force = false,
+                     const char* reason = "RELEASED");
+
+/**
+ * Extends/refreshes the active reservation TTL for the current session.
+ */
+bool refreshCoinSlotTtl(const String& sessionId, CoinSlotOwnerType ownerType, unsigned long ttlMs);
+
+/**
+ * Non-blocking main loop processor for pulse accumulation, debouncing,
+ * payment callback dispatching, and session timeout management.
+ */
+void processCoinSlotSession();
+
+/**
+ * Returns true if the coin slot is currently reserved and powered/armed.
+ */
+bool isCoinSlotArmed();
+
+/**
+ * Returns the timestamp (millis) until which the current session is armed, or 0.
+ */
+unsigned long getCoinSlotArmedUntilMs();
+
+/** Milliseconds until pulses are counted after the relay powered the acceptor on (0 when settled). */
+unsigned long getCoinSlotSettleRemainingMs();
+
+/**
+ * Returns true if the slot is currently reserved or draining for a different session or owner.
+ */
+bool isCoinSlotBusy(const String& sessionId, CoinSlotOwnerType ownerType = CoinSlotOwnerType::ANY);
+
+/**
+ * Returns the current state of the coin slot manager.
+ */
+CoinSlotState getCoinSlotState();
+
+/**
+ * Returns the session ID of the current active/draining reservation, or empty string.
+ */
+String getActiveCoinSessionId();
+
+/**
+ * Returns the owner type of the current active reservation.
+ */
+CoinSlotOwnerType getActiveCoinOwnerType();
+
+/**
+ * Registers a global fallback payment callback if no session-specific callback is set.
+ */
+void setGlobalCoinPaymentCallback(CoinPaymentCallback callback);
+
+#endif // COIN_SLOT_MANAGER_H

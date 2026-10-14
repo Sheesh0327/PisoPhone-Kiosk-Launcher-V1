@@ -1,0 +1,373 @@
+<title>PisoPhone Test Log</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one narrow column built for a phone held in a shop: a sticky tally with the pass tabs on top, one row per test, big Pass / Fail / Skip buttons. */
+:root {
+  --bg: #f1f4f6;
+  --surface: #ffffff;
+  --ink: #12181f;
+  --muted: #566370;
+  --line: #d7dee4;
+  --accent: #b35400;
+  --accent-soft: #fbeedd;
+  --pass: #0a7a43;
+  --pass-soft: #def3e8;
+  --fail: #c0281c;
+  --fail-soft: #fbe3e0;
+  --skip: #5b6773;
+  --skip-soft: #e6eaee;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-head: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1418; --surface: #182027; --ink: #e8edf1; --muted: #98a5b1; --line: #2b3640;
+    --accent: #f0a04b; --accent-soft: #3a2a14; --pass: #4fd18b; --pass-soft: #12301f;
+    --fail: #ff7a6e; --fail-soft: #3b1b18; --skip: #a3afba; --skip-soft: #242e37; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1418; --surface: #182027; --ink: #e8edf1; --muted: #98a5b1; --line: #2b3640;
+  --accent: #f0a04b; --accent-soft: #3a2a14; --pass: #4fd18b; --pass-soft: #12301f;
+  --fail: #ff7a6e; --fail-soft: #3b1b18; --skip: #a3afba; --skip-soft: #242e37; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--font-body); margin: 0; padding-inline: 16px; padding-block: 0 48px; }
+.wrap { max-width: 760px; margin-inline: auto; }
+code { font-family: var(--font-mono); font-size: .88em; background: var(--skip-soft); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible, select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+/* top tally */
+.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); padding-block: 10px 10px; border-bottom: 1px solid var(--line); margin-inline: -16px; padding-inline: 16px; }
+.top .wrap { display: grid; gap: 10px; }
+.headline { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 2px 16px; }
+h1 { font: 700 22px/1.1 var(--font-head); letter-spacing: .01em; text-transform: uppercase; margin: 0; }
+.tally { font-family: var(--font-mono); font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.tally b { font-weight: 600; }
+.tally .p b { color: var(--pass); } .tally .f b { color: var(--fail); }
+.bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--line); }
+.bar i { display: block; height: 100%; }
+.bar .bp { background: var(--pass); } .bar .bf { background: var(--fail); } .bar .bk { background: var(--skip); opacity: .55; }
+.tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.tab { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 6px 4px; min-height: 38px; font-weight: 500; font-size: 14px; }
+.tab[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.hide-done { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); min-height: 30px; }
+.hide-done input { width: 18px; height: 18px; accent-color: var(--accent); }
+.passnote { margin: 14px 0 0; color: var(--muted); font-size: 14px; max-width: 65ch; }
+
+/* sections */
+section { margin-top: 20px; }
+details > summary { list-style: none; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; cursor: pointer; padding: 10px 0; border-bottom: 2px solid var(--ink); }
+details > summary::-webkit-details-marker { display: none; }
+summary h2 { font: 700 18px/1.2 var(--font-head); text-transform: uppercase; letter-spacing: .02em; margin: 0; text-wrap: balance; }
+summary .count { font-family: var(--font-mono); font-size: 13px; color: var(--muted); white-space: nowrap; }
+summary .count.done { color: var(--pass); }
+.hint { color: var(--muted); font-size: 13.5px; margin: 8px 0 0; }
+ol.items { list-style: none; margin: 0; padding: 0; display: grid; }
+.item { display: grid; gap: 10px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.item[hidden] { display: none; }
+.row { display: flex; gap: 12px; align-items: flex-start; }
+.id { flex: none; font-family: var(--font-mono); font-weight: 600; font-size: 13px; min-width: 3.1em; text-align: center; padding: 3px 6px; border-radius: 6px; background: var(--skip-soft); color: var(--ink); margin-top: 1px; }
+.txt { margin: 0; min-width: 0; overflow-wrap: anywhere; max-width: 68ch; }
+.passtag { font-family: var(--font-mono); font-size: 11px; color: var(--muted); margin-inline-start: 6px; white-space: nowrap; }
+.acts { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; max-width: 440px; }
+.acts button { min-height: 46px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--surface); font-weight: 600; letter-spacing: .01em; }
+.acts [data-act="k"] { padding-inline: 18px; font-weight: 500; color: var(--muted); }
+.item[data-s="p"] [data-act="p"] { background: var(--pass); border-color: var(--pass); color: #fff; }
+.item[data-s="f"] [data-act="f"] { background: var(--fail); border-color: var(--fail); color: #fff; }
+.item[data-s="k"] [data-act="k"] { background: var(--skip); border-color: var(--skip); color: #fff; }
+:root[data-theme="dark"] .item[data-s] .acts button[aria-pressed="true"] { color: #0f1418; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .item[data-s] .acts button[aria-pressed="true"] { color: #0f1418; } }
+.item[data-s="p"] .id { background: var(--pass-soft); color: var(--pass); }
+.item[data-s="f"] .id { background: var(--fail-soft); color: var(--fail); }
+.more { display: grid; gap: 8px; }
+.more[hidden] { display: none; }
+.sev { display: flex; gap: 6px; flex-wrap: wrap; }
+.sev button { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; min-height: 34px; padding: 4px 12px; font-size: 13.5px; }
+.sev button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); font-weight: 600; }
+textarea, input[type="text"] { width: 100%; font: inherit; color: var(--ink); background: var(--surface); border: 1.5px solid var(--line); border-radius: 8px; padding: 9px 11px; }
+textarea { min-height: 84px; resize: vertical; }
+
+/* setup + report */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+.setup { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin-top: 12px; }
+.setup label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); font-weight: 500; }
+.tools { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 28px; }
+.btn { border: 1.5px solid var(--ink); background: var(--ink); color: var(--bg); border-radius: 10px; padding: 11px 18px; min-height: 46px; font-weight: 600; }
+.btn.ghost { background: transparent; color: var(--ink); border-color: var(--line); font-weight: 500; }
+.btn.danger-armed { background: var(--fail); border-color: var(--fail); color: #fff; }
+#report { margin-top: 14px; display: grid; gap: 10px; }
+#report textarea { min-height: 260px; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.5; }
+.status { font-size: 13px; color: var(--muted); margin-top: 14px; min-height: 1.4em; }
+.empty { color: var(--muted); padding: 18px 0; }
+@media (prefers-reduced-motion: no-preference) { .bar i { transition: width .25s ease; } }
+</style>
+
+<div class="top"><div class="wrap">
+  <div class="headline">
+    <h1>PisoPhone Test Log</h1>
+    <label class="hide-done"><input type="checkbox" id="hideDone"> Hide done</label>
+  </div>
+  <div class="tally" id="tally" aria-live="polite"></div>
+  <div class="bar" id="bar" role="img" aria-label="Progress"><i class="bp"></i><i class="bf"></i><i class="bk"></i></div>
+  <div class="tabs" id="tabs">
+    <button class="tab" data-pass="0" aria-pressed="true">All</button>
+    <button class="tab" data-pass="1" aria-pressed="false">Pass 1</button>
+    <button class="tab" data-pass="2" aria-pressed="false">Pass 2</button>
+    <button class="tab" data-pass="3" aria-pressed="false">Pass 3</button>
+  </div>
+</div></div>
+
+<main class="wrap">
+  <p class="passnote" id="passnote"></p>
+
+  <section>
+    <details id="setupBox">
+      <summary><h2>Test setup</h2><span class="count" id="setupCount"></span></summary>
+      <div class="card setup" id="setup"></div>
+    </details>
+  </section>
+
+  <div id="sections"></div>
+
+  <div class="tools">
+    <button class="btn" id="makeReport">Make the report</button>
+    <button class="btn ghost" id="clearAll">Clear all results</button>
+  </div>
+  <div id="report" hidden>
+    <textarea id="reportText" readonly aria-label="Report text"></textarea>
+    <div><button class="btn" id="copyReport">Copy it</button></div>
+  </div>
+  <p class="status" id="status"></p>
+</main>
+
+<script>
+const DATA = /*DATA*/;
+const SETUP_FIELDS = [
+  ["date", "Date / tester"], ["fw", "Firmware version and board"], ["apk", "APK build number"],
+  ["phone", "Phone model / Android version"], ["router", "Router model / OpenWrt version / layout"], ["coin", "Coin acceptor model"]
+];
+const SEVERITIES = [["blocker", "Blocker"], ["bug", "Bug"], ["polish", "Polish"]];
+
+let state = { items: {}, setup: {} };
+let filterPass = 0, hideDone = false;
+let dbRef = null, dbExists = false, writing = false, pending = null, remoteReady = false;
+const $ = (s, r = document) => r.querySelector(s);
+const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
+const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+
+/* ---------- build the static page from DATA ---------- */
+const passNotes = {
+  0: "Everything, in the order of the checklist. Tap Pass or Fail on each test; a failure asks for a note.",
+  1: "Pass 1 is the money path, about two hours. If anything here fails, stop, log it and send it before going on.",
+  2: "Pass 2 is the rest of the box and phone, a second session.",
+  3: "Pass 3 is for later, when passes 1 and 2 are clean: keys, updates, the router and the soak."
+};
+function build() {
+  const host = $("#sections");
+  DATA.sections.forEach(sec => {
+    const s = el("section"), d = el("details"); d.open = true; d.dataset.sec = sec.id;
+    const sum = el("summary"); sum.append(el("h2", "", sec.title), el("span", "count"));
+    d.append(sum);
+    if (sec.hint) d.append(el("p", "hint", sec.hint));
+    const ol = el("ol", "items");
+    sec.items.forEach(it => {
+      const li = el("li", "item"); li.id = "it-" + it.id; li.dataset.id = it.id; li.dataset.pass = it.pass;
+      const row = el("div", "row");
+      row.append(el("span", "id", it.id));
+      const p = el("p", "txt", it.html); p.append(el("span", "passtag", "P" + it.pass));
+      row.append(p);
+      const acts = el("div", "acts");
+      [["p", "Pass"], ["f", "Fail"], ["k", "Skip"]].forEach(([a, label]) => { const b = el("button", "", label); b.type = "button"; b.dataset.act = a; b.setAttribute("aria-pressed", "false"); acts.append(b); });
+      const more = el("div", "more"); more.hidden = true;
+      const sev = el("div", "sev");
+      SEVERITIES.forEach(([v, label]) => { const b = el("button", "", label); b.type = "button"; b.dataset.sev = v; b.setAttribute("aria-pressed", "false"); sev.append(b); });
+      const ta = el("textarea"); ta.id = "note-" + it.id; ta.dataset.note = it.id; ta.setAttribute("aria-label", "Note for " + it.id);
+      more.append(sev, ta);
+      li.append(row, acts, more); ol.append(li);
+    });
+    d.append(ol); s.append(d); host.append(s);
+  });
+  const setup = $("#setup");
+  SETUP_FIELDS.forEach(([k, label]) => {
+    const lab = el("label", "", label), inp = el("input"); inp.type = "text"; inp.id = "setup-" + k; inp.dataset.setup = k; inp.autocomplete = "off";
+    lab.append(inp); setup.append(lab);
+  });
+}
+
+/* ---------- apply state to the DOM ---------- */
+function counts() {
+  const c = { p: 0, f: 0, k: 0, todo: 0, total: 0 };
+  DATA.sections.forEach(sec => sec.items.forEach(it => { c.total++; const s = (state.items[it.id] || {}).s; if (s === "p") c.p++; else if (s === "f") c.f++; else if (s === "k") c.k++; else c.todo++; }));
+  return c;
+}
+function apply() {
+  DATA.sections.forEach(sec => {
+    let done = 0;
+    sec.items.forEach(it => {
+      const li = document.getElementById("it-" + it.id), st = state.items[it.id] || {};
+      const s = st.s || "";
+      if (s) done++;
+      if ((li.dataset.s || "") !== s) { if (s) li.dataset.s = s; else delete li.dataset.s; }
+      li.querySelectorAll(".acts button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.act === s)));
+      const more = $(".more", li); more.hidden = !(s === "f" || s === "k");
+      li.querySelectorAll(".sev button").forEach(b => { b.setAttribute("aria-pressed", String(b.dataset.sev === (st.sev || "bug"))); });
+      $(".sev", li).hidden = s !== "f";
+      const ta = $("textarea", li);
+      ta.placeholder = s === "k" ? "Why was it skipped?" : "What did you do, what did you expect, what happened? How often?";
+      if (document.activeElement !== ta && ta.value !== (st.note || "")) ta.value = st.note || "";
+      const visible = (filterPass === 0 || it.pass === filterPass) && !(hideDone && s);
+      li.hidden = !visible;
+    });
+    const d = $(`details[data-sec="${sec.id}"]`), cnt = $(".count", d);
+    cnt.textContent = `${done}/${sec.items.length}`; cnt.classList.toggle("done", done === sec.items.length);
+    const anyVisible = sec.items.some(it => !document.getElementById("it-" + it.id).hidden);
+    d.parentElement.hidden = !anyVisible;
+  });
+  SETUP_FIELDS.forEach(([k]) => { const i = document.getElementById("setup-" + k); if (document.activeElement !== i) i.value = (state.setup || {})[k] || ""; });
+  const filled = SETUP_FIELDS.filter(([k]) => (state.setup || {})[k]).length;
+  $("#setupCount").textContent = `${filled}/${SETUP_FIELDS.length}`; $("#setupCount").classList.toggle("done", filled === SETUP_FIELDS.length);
+  const c = counts();
+  $("#tally").innerHTML = `<span class="p"><b>${c.p}</b> pass</span><span class="f"><b>${c.f}</b> fail</span><span><b>${c.k}</b> skipped</span><span><b>${c.todo}</b> left</span>`;
+  const [bp, bf, bk] = $("#bar").children;
+  bp.style.width = (100 * c.p / c.total) + "%"; bf.style.width = (100 * c.f / c.total) + "%"; bk.style.width = (100 * c.k / c.total) + "%";
+  $("#bar").setAttribute("aria-label", `${c.p} passed, ${c.f} failed, ${c.k} skipped, ${c.todo} left of ${c.total}`);
+  $("#passnote").textContent = passNotes[filterPass];
+  document.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-pressed", String(Number(t.dataset.pass) === filterPass)));
+  let empty = $("#empty");
+  const any = !!document.querySelector(".item:not([hidden])");
+  if (!any && !empty) { empty = el("p", "empty", "Nothing left here. Switch the tab or untick Hide done."); empty.id = "empty"; $("#sections").after(empty); }
+  if (any && empty) empty.remove();
+}
+
+/* ---------- saving: this device first, then the shared store ---------- */
+function merge(into, patch) {
+  Object.keys(patch).forEach(k => {
+    const v = patch[k];
+    if (v && typeof v === "object" && !Array.isArray(v)) { into[k] = merge(into[k] && typeof into[k] === "object" ? into[k] : {}, v); } else into[k] = v;
+  });
+  return into;
+}
+function save(patch) {
+  merge(state, patch);
+  lsSet("pisoTestLog", JSON.stringify(state));
+  pending = merge(pending || {}, patch);
+  apply(); flush();
+}
+async function flush() {
+  if (!dbRef || writing || !pending || !remoteReady) return;
+  writing = true;
+  while (pending) {
+    const patch = pending; pending = null;
+    try {
+      if (!dbExists) { await dbRef.set(JSON.parse(JSON.stringify(state))); dbExists = true; }
+      else await dbRef.update(patch);
+      status("Saved.");
+    } catch (e) {
+      pending = merge(patch, pending || {});
+      status("Could not save to the shared record (" + ((e && e.code) || "error") + "). Your ticks stay on this device and are retried on the next tap.");
+      break;
+    }
+  }
+  writing = false;
+}
+let statusTimer = 0;
+function status(msg) { $("#status").textContent = msg; clearTimeout(statusTimer); if (msg === "Saved.") statusTimer = setTimeout(() => { $("#status").textContent = ""; }, 1800); }
+
+function mark(id, s) {
+  const cur = (state.items[id] || {}).s;
+  const next = cur === s ? null : s;
+  save({ items: { [id]: { s: next, t: Date.now(), sev: next === "f" ? ((state.items[id] || {}).sev || "bug") : null } } });
+  if (next === "f" || next === "k") { const ta = document.getElementById("note-" + id); if (ta && !ta.value) ta.focus({ preventScroll: false }); }
+}
+
+/* ---------- events ---------- */
+document.addEventListener("click", ev => {
+  const b = ev.target.closest("button"); if (!b) return;
+  const li = b.closest(".item");
+  if (b.dataset.act && li) return mark(li.dataset.id, b.dataset.act);
+  if (b.dataset.sev && li) return save({ items: { [li.dataset.id]: { sev: b.dataset.sev, t: Date.now() } } });
+  if (b.classList.contains("tab")) { filterPass = Number(b.dataset.pass); lsSet("pisoTestTab", String(filterPass)); apply(); window.scrollTo({ top: 0 }); }
+});
+$("#hideDone").addEventListener("change", e => { hideDone = e.target.checked; apply(); });
+const noteTimers = {};
+document.addEventListener("input", ev => {
+  const t = ev.target;
+  if (t.dataset && t.dataset.note) { const id = t.dataset.note; clearTimeout(noteTimers[id]); noteTimers[id] = setTimeout(() => save({ items: { [id]: { note: t.value, t: Date.now() } } }), 700); }
+  if (t.dataset && t.dataset.setup) { const k = t.dataset.setup; clearTimeout(noteTimers["s" + k]); noteTimers["s" + k] = setTimeout(() => save({ setup: { [k]: t.value } }), 700); }
+});
+document.addEventListener("focusout", ev => {
+  const t = ev.target;
+  if (t.dataset && t.dataset.note) { clearTimeout(noteTimers[t.dataset.note]); if (t.value !== ((state.items[t.dataset.note] || {}).note || "")) save({ items: { [t.dataset.note]: { note: t.value, t: Date.now() } } }); }
+  if (t.dataset && t.dataset.setup) { clearTimeout(noteTimers["s" + t.dataset.setup]); if (t.value !== ((state.setup || {})[t.dataset.setup] || "")) save({ setup: { [t.dataset.setup]: t.value } }); }
+});
+
+/* ---------- the report ---------- */
+function plain(html) { const d = document.createElement("div"); d.innerHTML = html; return d.textContent.replace(/\s+/g, " ").trim(); }
+function cell(s) { return String(s || "").replace(/\|/g, "/").replace(/\s*\n\s*/g, " ").trim(); }
+function report() {
+  const c = counts(), out = [];
+  out.push(`PisoPhone real-world test report, ${new Date().toISOString().slice(0, 10)}`);
+  SETUP_FIELDS.forEach(([k, label]) => { if ((state.setup || {})[k]) out.push(`${label}: ${state.setup[k]}`); });
+  out.push(`Passed ${c.p}, failed ${c.f}, skipped ${c.k}, not tested ${c.todo} (of ${c.total})`, "");
+  const failed = [], skipped = [];
+  DATA.sections.forEach(sec => sec.items.forEach(it => { const st = state.items[it.id] || {}; if (st.s === "f") failed.push([it, st]); else if (st.s === "k") skipped.push([it, st]); }));
+  if (failed.length) {
+    out.push("FAILED");
+    failed.forEach(([it, st]) => out.push(`${it.id} [${st.sev || "bug"}] ${plain(it.html)}`, `    ${(st.note || "(no note)").replace(/\n/g, "\n    ")}`));
+    out.push("", "Rows for the Issue log in docs/REAL_WORLD_TESTING.md:");
+    failed.forEach(([it, st], i) => out.push(`| ${i + 1} | ${it.id} ${cell(plain(it.html)).slice(0, 90)} | ${st.sev || "bug"} | | | ${cell(st.note)} | | | open | |`));
+    out.push("");
+  } else out.push("No failures.", "");
+  if (skipped.length) { out.push("SKIPPED"); skipped.forEach(([it, st]) => out.push(`${it.id}: ${st.note || "(no reason)"}`)); out.push(""); }
+  const left = [];
+  DATA.sections.forEach(sec => sec.items.forEach(it => { if (!(state.items[it.id] || {}).s) left.push(it.id); }));
+  if (left.length) out.push("NOT TESTED YET", left.join(", "));
+  return out.join("\n");
+}
+$("#makeReport").addEventListener("click", () => { $("#reportText").value = report(); $("#report").hidden = false; $("#reportText").scrollIntoView({ block: "center" }); });
+$("#copyReport").addEventListener("click", async () => {
+  const ta = $("#reportText");
+  try { await navigator.clipboard.writeText(ta.value); status("Copied."); } catch (e) { ta.focus(); ta.select(); status("Select the text and copy it."); }
+});
+let armTimer = 0;
+$("#clearAll").addEventListener("click", e => {
+  const b = e.currentTarget;
+  if (!b.classList.contains("danger-armed")) { b.classList.add("danger-armed"); b.textContent = "Tap again to erase every result"; armTimer = setTimeout(() => { b.classList.remove("danger-armed"); b.textContent = "Clear all results"; }, 5000); return; }
+  clearTimeout(armTimer); b.classList.remove("danger-armed"); b.textContent = "Clear all results";
+  state = { items: {}, setup: {} }; lsSet("pisoTestLog", JSON.stringify(state));
+  pending = null; apply();
+  if (dbRef) { dbExists = false; writing = true; dbRef.set({ items: {}, setup: {} }).then(() => { dbExists = true; }).catch(() => {}).finally(() => { writing = false; flush(); }); }
+  status("Cleared.");
+});
+
+/* ---------- start ---------- */
+build();
+try { const s = JSON.parse(lsGet("pisoTestLog") || "null"); if (s && s.items) state = { items: s.items, setup: s.setup || {} }; } catch (e) {}
+const tab = Number(lsGet("pisoTestTab")); if ([1, 2, 3].includes(tab)) filterPass = tab;
+apply();
+$("#setupBox").open = SETUP_FIELDS.some(([k]) => !(state.setup || {})[k]);   // open until the setup is filled in
+
+(async () => {
+  let db = null;
+  try { db = window.claude && await window.claude.use("db"); } catch (e) {}
+  if (!db) { status("Results are kept on this device only (the shared record is not available here)."); return; }
+  dbRef = db.doc("run/main");
+  dbRef.onSnapshot(snap => {
+    const first = !remoteReady;
+    dbExists = snap.exists;
+    if (snap.exists) {
+      const d = snap.data() || {};
+      if (!writing && !pending) { state = { items: d.items || {}, setup: d.setup || {} }; lsSet("pisoTestLog", JSON.stringify(state)); }
+    } else if (first && (Object.keys(state.items).length || Object.keys(state.setup).length)) {
+      pending = merge(pending || {}, JSON.parse(JSON.stringify(state)));   // ticks made on this device before the shared record existed
+    }
+    remoteReady = true; apply(); flush();
+  }, e => { status("The shared record stopped updating (" + ((e && e.code) || "error") + "). Reload the page; ticks stay on this device."); });
+})();
+</script>

@@ -1,0 +1,1406 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<issues format="6" by="lint 9.1.1" type="baseline" client="gradle" dependencies="false" name="AGP (9.1.1)" variant="all" version="9.1.1">
+
+    <issue
+        id="MissingPermission"
+        message="Call requires permission which may be rejected by user: code should explicitly check to see if permission is available (with `checkPermission`) or explicitly handle a potential `SecurityException`"
+        errorLine1="            val saved = wm.configuredNetworks?.map { it.networkId to (it.SSID ?: &quot;&quot;) } ?: return true"
+        errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/network/KioskWifi.kt"
+            line="111"
+            column="25"/>
+    </issue>
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by WifiManager.getConfiguredNetworks: android.permission.ACCESS_FINE_LOCATION"
+        errorLine1="            val saved = wm.configuredNetworks?.map { it.networkId to (it.SSID ?: &quot;&quot;) } ?: return true"
+        errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/network/KioskWifi.kt"
+            line="111"
+            column="25"/>
+    </issue>
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by WifiManager.getConfiguredNetworks: android.permission.ACCESS_FINE_LOCATION"
+        errorLine1="                    wm.configuredNetworks?.firstOrNull { it.SSID == config.SSID }?.networkId ?: -1"
+        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/network/KioskWifi.kt"
+            line="164"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by WifiManager.getConfiguredNetworks: android.permission.ACCESS_FINE_LOCATION"
+        errorLine1="            val id = wm.configuredNetworks?.firstOrNull { it.SSID == &quot;\&quot;$ssid\&quot;&quot; }?.networkId ?: -1"
+        errorLine2="                     ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/network/KioskWifi.kt"
+            line="251"
+            column="22"/>
+    </issue>
+
+    <issue
+        id="MissingSuperCall"
+        message="Overriding method should call `super.onBackPressed`"
+        errorLine1="    override fun onBackPressed() {"
+        errorLine2="                 ~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/ui/CardScanActivity.kt"
+            line="129"
+            column="18"/>
+    </issue>
+
+    <issue
+        id="GestureBackNavigation"
+        message="`onBackPressed` is no longer called for back gestures; migrate to AndroidX&apos;s backward compatible `OnBackPressedDispatcher`"
+        errorLine1="    override fun onBackPressed() {"
+        errorLine2="                 ~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/ui/CardScanActivity.kt"
+            line="129"
+            column="18"/>
+    </issue>
+
+    <issue
+        id="ApplySharedPref"
+        message="Consider using `apply()` instead; `commit` writes its data to persistent storage immediately, whereas `apply` will handle it in the background"
+        errorLine1="        prefs(app).edit().putLong(KEY_UNTIL_MS, until).commit()"
+        errorLine2="                                                       ~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/AdminMaintenanceMode.kt"
+            line="77"
+            column="56"/>
+    </issue>
+
+    <issue
+        id="ApplySharedPref"
+        message="Consider using `apply()` instead; `commit` writes its data to persistent storage immediately, whereas `apply` will handle it in the background"
+        errorLine1="        p.edit().putLong(KEY_UNTIL_MS, 0L).commit()"
+        errorLine2="                                           ~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/AdminMaintenanceMode.kt"
+            line="88"
+            column="44"/>
+    </issue>
+
+    <issue
+        id="ApplySharedPref"
+        message="Consider using `apply()` instead; `commit` writes its data to persistent storage immediately, whereas `apply` will handle it in the background"
+        errorLine1="            .commit()"
+        errorLine2="             ~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/AppVisibilityPolicy.kt"
+            line="204"
+            column="14"/>
+    </issue>
+
+    <issue
+        id="ApplySharedPref"
+        message="Consider using `apply()` instead; `commit` writes its data to persistent storage immediately, whereas `apply` will handle it in the background"
+        errorLine1="        p.edit().remove(KEY_DISABLED).remove(KEY_HIDDEN).commit()"
+        errorLine2="                                                         ~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/AppVisibilityPolicy.kt"
+            line="224"
+            column="58"/>
+    </issue>
+
+    <issue
+        id="ApplySharedPref"
+        message="Consider using `apply()` instead; `commit` writes its data to persistent storage immediately, whereas `apply` will handle it in the background"
+        errorLine1="        prefs(context).edit().putString(KEY_TIMES, times.joinToString(&quot;,&quot;)).commit()"
+        errorLine2="                                                                            ~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/util/CrashLoop.kt"
+            line="35"
+            column="77"/>
+    </issue>
+
+    <issue
+        id="ApplySharedPref"
+        message="Consider using `apply()` instead; `commit` writes its data to persistent storage immediately, whereas `apply` will handle it in the background"
+        errorLine1="        prefs(context).edit().putInt(KEY_STEP, step.code).commit()"
+        errorLine2="                                                          ~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/FirstBootSetup.kt"
+            line="53"
+            column="59"/>
+    </issue>
+
+    <issue
+        id="ApplySharedPref"
+        message="Consider using `apply()` instead; `commit` writes its data to persistent storage immediately, whereas `apply` will handle it in the background"
+        errorLine1="        prefs(app).edit().putBoolean(KEY_LEFT_KIOSK, false).commit()"
+        errorLine2="                                                            ~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/FirstBootSetup.kt"
+            line="79"
+            column="61"/>
+    </issue>
+
+    <issue
+        id="ApplySharedPref"
+        message="Consider using `apply()` instead; `commit` writes its data to persistent storage immediately, whereas `apply` will handle it in the background"
+        errorLine1="        if (step(app) == Step.SIGNING_IN) prefs(app).edit().putBoolean(KEY_LEFT_KIOSK, true).commit()"
+        errorLine2="                                                                                             ~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/FirstBootSetup.kt"
+            line="90"
+            column="94"/>
+    </issue>
+
+    <issue
+        id="ApplySharedPref"
+        message="Consider using `apply()` instead; `commit` writes its data to persistent storage immediately, whereas `apply` will handle it in the background"
+        errorLine1="            prefs.edit().putLong(KEY_ADB_GRACE_START, start).commit()"
+        errorLine2="                                                             ~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/KioskSecurity.kt"
+            line="215"
+            column="62"/>
+    </issue>
+
+    <issue
+        id="ApplySharedPref"
+        message="Consider using `apply()` instead; `commit` writes its data to persistent storage immediately, whereas `apply` will handle it in the background"
+        errorLine1="            bootPrefs?.edit()?.putInt(KEY_BOOT_COUNT, currentBootCount)?.commit()"
+        errorLine2="                                                                         ~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/repository/PaymentRepository.kt"
+            line="457"
+            column="74"/>
+    </issue>
+
+    <issue
+        id="ApplySharedPref"
+        message="Consider using `apply()` instead; `commit` writes its data to persistent storage immediately, whereas `apply` will handle it in the background"
+        errorLine1="                bootPrefs?.edit()?.putInt(KEY_BOOT_COUNT, nextCount)?.commit()"
+        errorLine2="                                                                      ~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/repository/PaymentRepository.kt"
+            line="480"
+            column="71"/>
+    </issue>
+
+    <issue
+        id="InlinedApi"
+        message="Field requires API level 28 (current min is 26): `android.os.UserManager#DISALLOW_SYSTEM_ERROR_DIALOGS`"
+        errorLine1="                    dpm.addUserRestriction(componentName, UserManager.DISALLOW_SYSTEM_ERROR_DIALOGS)"
+        errorLine2="                                                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/KioskPolicyManager.kt"
+            line="212"
+            column="59"/>
+    </issue>
+
+    <issue
+        id="OldTargetApi"
+        message="Not targeting the latest versions of Android; compatibility modes apply. Consider testing and updating this version. Consult the `android.os.Build.VERSION_CODES` javadoc for details."
+        errorLine1="        targetSdk = 36"
+        errorLine2="        ~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="34"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="RedundantLabel"
+        message="Redundant label can be removed"
+        errorLine1="            android:label=&quot;@string/app_name&quot;"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/AndroidManifest.xml"
+            line="146"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="AndroidGradlePluginVersion"
+        message="A newer version of Gradle than 9.3.1 is available: 9.8.1"
+        errorLine1="distributionUrl=https\://services.gradle.org/distributions/gradle-9.3.1-bin.zip"
+        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="$HOME/work/PisoPhone-Kiosk-Launcher-V1/PisoPhone-Kiosk-Launcher-V1/gradle/wrapper/gradle-wrapper.properties"
+            line="3"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="AndroidGradlePluginVersion"
+        message="A newer version of com.android.application than 9.1.1 is available: 9.4.1"
+        errorLine1="agp = &quot;9.1.1&quot;"
+        errorLine2="      ~~~~~~~">
+        <location
+            file="$HOME/work/PisoPhone-Kiosk-Launcher-V1/PisoPhone-Kiosk-Launcher-V1/gradle/libs.versions.toml"
+            line="2"
+            column="7"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.core:core-ktx than 1.18.0 is available: 1.19.1"
+        errorLine1="coreKtx = &quot;1.18.0&quot;"
+        errorLine2="          ~~~~~~~~">
+        <location
+            file="$HOME/work/PisoPhone-Kiosk-Launcher-V1/PisoPhone-Kiosk-Launcher-V1/gradle/libs.versions.toml"
+            line="3"
+            column="11"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.lifecycle:lifecycle-runtime-ktx than 2.8.7 is available: 2.11.0"
+        errorLine1="lifecycleRuntimeKtx = &quot;2.8.7&quot;"
+        errorLine2="                      ~~~~~~~">
+        <location
+            file="$HOME/work/PisoPhone-Kiosk-Launcher-V1/PisoPhone-Kiosk-Launcher-V1/gradle/libs.versions.toml"
+            line="5"
+            column="23"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.activity:activity-compose than 1.10.1 is available: 1.13.0"
+        errorLine1="activityCompose = &quot;1.10.1&quot;"
+        errorLine2="                  ~~~~~~~~">
+        <location
+            file="$HOME/work/PisoPhone-Kiosk-Launcher-V1/PisoPhone-Kiosk-Launcher-V1/gradle/libs.versions.toml"
+            line="6"
+            column="19"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.compose:compose-bom than 2024.09.00 is available: 2026.09.00"
+        errorLine1="composeBom = &quot;2024.09.00&quot;"
+        errorLine2="             ~~~~~~~~~~~~">
+        <location
+            file="$HOME/work/PisoPhone-Kiosk-Launcher-V1/PisoPhone-Kiosk-Launcher-V1/gradle/libs.versions.toml"
+            line="8"
+            column="14"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.room:room-runtime than 2.7.0 is available: 2.8.5"
+        errorLine1="roomRuntime = &quot;2.7.0&quot;"
+        errorLine2="              ~~~~~~~">
+        <location
+            file="$HOME/work/PisoPhone-Kiosk-Launcher-V1/PisoPhone-Kiosk-Launcher-V1/gradle/libs.versions.toml"
+            line="10"
+            column="15"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.room:room-ktx than 2.7.0 is available: 2.8.5"
+        errorLine1="roomKtx = &quot;2.7.0&quot;"
+        errorLine2="          ~~~~~~~">
+        <location
+            file="$HOME/work/PisoPhone-Kiosk-Launcher-V1/PisoPhone-Kiosk-Launcher-V1/gradle/libs.versions.toml"
+            line="11"
+            column="11"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.room:room-compiler than 2.7.0 is available: 2.8.5"
+        errorLine1="roomCompiler = &quot;2.7.0&quot;"
+        errorLine2="               ~~~~~~~">
+        <location
+            file="$HOME/work/PisoPhone-Kiosk-Launcher-V1/PisoPhone-Kiosk-Launcher-V1/gradle/libs.versions.toml"
+            line="12"
+            column="16"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.test:core than 1.6.1 is available: 1.7.0"
+        errorLine1="core = &quot;1.6.1&quot;"
+        errorLine2="       ~~~~~~~">
+        <location
+            file="$HOME/work/PisoPhone-Kiosk-Launcher-V1/PisoPhone-Kiosk-Launcher-V1/gradle/libs.versions.toml"
+            line="14"
+            column="8"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.security:security-crypto than 1.1.0-alpha06 is available: 1.1.0"
+        errorLine1="securityCrypto = &quot;1.1.0-alpha06&quot;"
+        errorLine2="                 ~~~~~~~~~~~~~~~">
+        <location
+            file="$HOME/work/PisoPhone-Kiosk-Launcher-V1/PisoPhone-Kiosk-Launcher-V1/gradle/libs.versions.toml"
+            line="19"
+            column="18"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.camera:camera-camera2 than 1.3.4 is available: 1.6.2"
+        errorLine1="camerax = &quot;1.3.4&quot;"
+        errorLine2="          ~~~~~~~">
+        <location
+            file="$HOME/work/PisoPhone-Kiosk-Launcher-V1/PisoPhone-Kiosk-Launcher-V1/gradle/libs.versions.toml"
+            line="20"
+            column="11"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.camera:camera-core than 1.3.4 is available: 1.6.2"
+        errorLine1="camerax = &quot;1.3.4&quot;"
+        errorLine2="          ~~~~~~~">
+        <location
+            file="$HOME/work/PisoPhone-Kiosk-Launcher-V1/PisoPhone-Kiosk-Launcher-V1/gradle/libs.versions.toml"
+            line="20"
+            column="11"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.camera:camera-lifecycle than 1.3.4 is available: 1.6.2"
+        errorLine1="camerax = &quot;1.3.4&quot;"
+        errorLine2="          ~~~~~~~">
+        <location
+            file="$HOME/work/PisoPhone-Kiosk-Launcher-V1/PisoPhone-Kiosk-Launcher-V1/gradle/libs.versions.toml"
+            line="20"
+            column="11"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.camera:camera-view than 1.3.4 is available: 1.6.2"
+        errorLine1="camerax = &quot;1.3.4&quot;"
+        errorLine2="          ~~~~~~~">
+        <location
+            file="$HOME/work/PisoPhone-Kiosk-Launcher-V1/PisoPhone-Kiosk-Launcher-V1/gradle/libs.versions.toml"
+            line="20"
+            column="11"/>
+    </issue>
+
+    <issue
+        id="NewerVersionAvailable"
+        message="A newer version of org.jetbrains.kotlin.plugin.compose than 2.0.21 is available: 2.4.21"
+        errorLine1="kotlin = &quot;2.0.21&quot;"
+        errorLine2="         ~~~~~~~~">
+        <location
+            file="$HOME/work/PisoPhone-Kiosk-Launcher-V1/PisoPhone-Kiosk-Launcher-V1/gradle/libs.versions.toml"
+            line="7"
+            column="10"/>
+    </issue>
+
+    <issue
+        id="NewerVersionAvailable"
+        message="A newer version of org.jetbrains.kotlinx:kotlinx-coroutines-test than 1.10.2 is available: 1.11.0"
+        errorLine1="kotlinxCoroutinesTest = &quot;1.10.2&quot;"
+        errorLine2="                        ~~~~~~~~">
+        <location
+            file="$HOME/work/PisoPhone-Kiosk-Launcher-V1/PisoPhone-Kiosk-Launcher-V1/gradle/libs.versions.toml"
+            line="13"
+            column="25"/>
+    </issue>
+
+    <issue
+        id="NewerVersionAvailable"
+        message="A newer version of org.jetbrains.kotlinx:kotlinx-coroutines-android than 1.10.2 is available: 1.11.0"
+        errorLine1="kotlinxCoroutinesAndroid = &quot;1.10.2&quot;"
+        errorLine2="                           ~~~~~~~~">
+        <location
+            file="$HOME/work/PisoPhone-Kiosk-Launcher-V1/PisoPhone-Kiosk-Launcher-V1/gradle/libs.versions.toml"
+            line="15"
+            column="28"/>
+    </issue>
+
+    <issue
+        id="NewerVersionAvailable"
+        message="A newer version of org.jetbrains.kotlinx:kotlinx-coroutines-core than 1.10.2 is available: 1.11.0"
+        errorLine1="kotlinxCoroutinesCore = &quot;1.10.2&quot;"
+        errorLine2="                        ~~~~~~~~">
+        <location
+            file="$HOME/work/PisoPhone-Kiosk-Launcher-V1/PisoPhone-Kiosk-Launcher-V1/gradle/libs.versions.toml"
+            line="16"
+            column="25"/>
+    </issue>
+
+    <issue
+        id="NewerVersionAvailable"
+        message="A newer version of com.squareup.okhttp3:okhttp than 4.12.0 is available: 5.5.0"
+        errorLine1="okhttp = &quot;4.12.0&quot;"
+        errorLine2="         ~~~~~~~~">
+        <location
+            file="$HOME/work/PisoPhone-Kiosk-Launcher-V1/PisoPhone-Kiosk-Launcher-V1/gradle/libs.versions.toml"
+            line="17"
+            column="10"/>
+    </issue>
+
+    <issue
+        id="NewerVersionAvailable"
+        message="A newer version of org.robolectric:robolectric than 4.16.1 is available: 4.17"
+        errorLine1="robolectric = &quot;4.16.1&quot;"
+        errorLine2="              ~~~~~~~~">
+        <location
+            file="$HOME/work/PisoPhone-Kiosk-Launcher-V1/PisoPhone-Kiosk-Launcher-V1/gradle/libs.versions.toml"
+            line="18"
+            column="15"/>
+    </issue>
+
+    <issue
+        id="NewerVersionAvailable"
+        message="A newer version of com.google.zxing:core than 3.5.3 is available: 3.5.4"
+        errorLine1="zxing = &quot;3.5.3&quot;"
+        errorLine2="        ~~~~~~~">
+        <location
+            file="$HOME/work/PisoPhone-Kiosk-Launcher-V1/PisoPhone-Kiosk-Launcher-V1/gradle/libs.versions.toml"
+            line="21"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="PluralsCandidate"
+        message="Formatting %d followed by words (&quot;apps&quot;): This should probably be a plural rather than a string"
+        errorLine1="    &lt;string name=&quot;pill_boost_done&quot;>Boost done: %1$d apps closed, %2$d MB free&lt;/string>"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/strings.xml"
+            line="72"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="HardwareIds"
+        message="Using `getString` to get device identifiers is not recommended"
+        errorLine1="            Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: &quot;UNKNOWN_ID&quot;"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/KioskActivationManager.kt"
+            line="42"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="ExportedReceiver"
+        message="Exported receiver does not require permission"
+        errorLine1="        &lt;receiver"
+        errorLine2="         ~~~~~~~~">
+        <location
+            file="src/main/AndroidManifest.xml"
+            line="76"
+            column="10"/>
+    </issue>
+
+    <issue
+        id="WakelockTimeout"
+        message="Provide a timeout when requesting a wakelock with `PowerManager.Wakelock.acquire(long timeout)`. This will ensure the OS will cleanup any wakelocks that last longer than you intend, and will save your user&apos;s battery."
+        errorLine1="                acquire()"
+        errorLine2="                ~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/KioskService.kt"
+            line="264"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="This folder configuration (`v26`) is unnecessary; `minSdkVersion` is 26. Merge all the resources in this folder into `mipmap-anydpi`.">
+        <location
+            file="src/main/res/mipmap-anydpi-v26"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.string.lock_total_label` appears to be unused"
+        errorLine1="    &lt;string name=&quot;lock_total_label&quot;>You put in&lt;/string>"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/strings.xml"
+            line="22"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.string.pill_sign_out` appears to be unused"
+        errorLine1="    &lt;string name=&quot;pill_sign_out&quot;>Sign out&lt;/string>"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/strings.xml"
+            line="52"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.string.pill_volume` appears to be unused"
+        errorLine1="    &lt;string name=&quot;pill_volume&quot;>Volume&lt;/string>"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/strings.xml"
+            line="57"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.drawable.technet_sticker_question` appears to be unused">
+        <location
+            file="src/main/res/drawable-nodpi/technet_sticker_question.webp"/>
+    </issue>
+
+    <issue
+        id="IconDipSize"
+        message="The image `ic_launcher.webp` varies significantly in its density-independent (dip) size across the various density versions: mipmap-hdpi/ic_launcher.webp: 48x48 dp (72x72 px), mipmap-xhdpi/ic_launcher.webp: 48x48 dp (96x96 px), mipmap-xxhdpi/ic_launcher.webp: 12268x3140438 dp (36803x9421313 px)">
+        <location
+            file="src/main/res/mipmap-xhdpi/ic_launcher.webp"/>
+        <location
+            file="src/main/res/mipmap-hdpi/ic_launcher.webp"/>
+        <location
+            file="src/main/res/mipmap-xxhdpi/ic_launcher.webp"/>
+    </issue>
+
+    <issue
+        id="IconDipSize"
+        message="The image `ic_launcher_round.webp` varies significantly in its density-independent (dip) size across the various density versions: mipmap-hdpi/ic_launcher_round.webp: 48x48 dp (72x72 px), mipmap-xhdpi/ic_launcher_round.webp: 48x48 dp (96x96 px), mipmap-xxhdpi/ic_launcher_round.webp: 12268x3140438 dp (36803x9421313 px), mipmap-xxxhdpi/ic_launcher_round.webp: 12273x3141760 dp (49091x12567041 px)">
+        <location
+            file="src/main/res/mipmap-xhdpi/ic_launcher_round.webp"/>
+        <location
+            file="src/main/res/mipmap-hdpi/ic_launcher_round.webp"/>
+        <location
+            file="src/main/res/mipmap-xxhdpi/ic_launcher_round.webp"/>
+        <location
+            file="src/main/res/mipmap-xxxhdpi/ic_launcher_round.webp"/>
+    </issue>
+
+    <issue
+        id="ViewConstructor"
+        message="Custom view `LoopingVideoView` is missing constructor used by tools: `(Context)` or `(Context,AttributeSet)` or `(Context,AttributeSet,int)`"
+        errorLine1="class LoopingVideoView("
+        errorLine2="      ~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/ui/video/LoopingVideoBackground.kt"
+            line="109"
+            column="7"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs(app).edit().putLong(KEY_UNTIL_MS, until).commit()"
+        errorLine2="        ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/AdminMaintenanceMode.kt"
+            line="77"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        p.edit().putLong(KEY_UNTIL_MS, 0L).commit()"
+        errorLine2="        ~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/AdminMaintenanceMode.kt"
+            line="88"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        p.edit()"
+        errorLine2="        ~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/AppVisibilityPolicy.kt"
+            line="201"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        p.edit().remove(KEY_DISABLED).remove(KEY_HIDDEN).commit()"
+        errorLine2="        ~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/AppVisibilityPolicy.kt"
+            line="224"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs(context).edit().putString(KEY_TIMES, times.joinToString(&quot;,&quot;)).commit()"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/util/CrashLoop.kt"
+            line="35"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs(context).edit().putInt(KEY_STEP, step.code).commit()"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/FirstBootSetup.kt"
+            line="53"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs(app).edit().putBoolean(KEY_LEFT_KIOSK, false).commit()"
+        errorLine2="        ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/FirstBootSetup.kt"
+            line="79"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        if (step(app) == Step.SIGNING_IN) prefs(app).edit().putBoolean(KEY_LEFT_KIOSK, true).commit()"
+        errorLine2="                                          ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/FirstBootSetup.kt"
+            line="90"
+            column="43"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        positionPrefs.edit().putInt(&quot;x&quot;, layoutParams.x).putInt(&quot;y&quot;, layoutParams.y).apply()"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/overlay/FloatingPillOverlay.kt"
+            line="79"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit()"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/KioskActivationManager.kt"
+            line="109"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        getPrefs(context).edit().putBoolean(KEY_PAIRING_COMPLETED, completed).apply()"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/KioskActivationManager.kt"
+            line="130"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="            prefs.edit().putLong(KEY_SETUP_WINDOW_START, System.currentTimeMillis()).apply()"
+        errorLine2="            ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/KioskActivationManager.kt"
+            line="137"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit()"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/KioskActivationManager.kt"
+            line="168"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="                data = android.net.Uri.parse(&quot;package:${context.packageName}&quot;)"
+        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/KioskPolicyManager.kt"
+            line="340"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="                data = android.net.Uri.parse(&quot;package:${context.packageName}&quot;)"
+        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/KioskPolicyManager.kt"
+            line="340"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        getPrefs(context).edit().putBoolean(KEY_VIDEO_BACKGROUND, enabled).apply()"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/KioskSecurity.kt"
+            line="141"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        getPrefs(context).edit().putBoolean(KEY_BATTERY_ALERTS_ENABLED, enabled).apply()"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/KioskSecurity.kt"
+            line="147"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        getPrefs(context).edit().putInt(KEY_LOW_BATTERY_THRESHOLD, threshold.coerceIn(5, 50)).apply()"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/KioskSecurity.kt"
+            line="153"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        getPrefs(context).edit().putInt(KEY_HIGH_BATTERY_THRESHOLD, threshold.coerceIn(50, 100)).apply()"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/KioskSecurity.kt"
+            line="159"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        getPrefs(context).edit().putString(KEY_CONFIGURED_ESP32_MAC, clean).apply()"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/KioskSecurity.kt"
+            line="166"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="            getPrefs(context).edit().putInt(KEY_ASSIGNED_BOX_SLOT, slot).apply()"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/KioskSecurity.kt"
+            line="173"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="            prefs.edit().putLong(KEY_ADB_GRACE_START, start).commit()"
+        errorLine2="            ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/KioskSecurity.kt"
+            line="215"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        getPrefs(context).edit().putBoolean(KEY_PROVISIONING_ADB_ALLOWED, allowed).apply()"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/KioskSecurity.kt"
+            line="223"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="            prefs.edit()"
+        errorLine2="            ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/KioskSecurity.kt"
+            line="234"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        getPrefs(context).edit()"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/KioskSecurity.kt"
+            line="245"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="            directPrefs.edit().putString(&quot;device_uuid&quot;, savedUuid).apply()"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/KioskSecurity.kt"
+            line="282"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        getPrefs(context).edit().putString(KEY_DEVICE_ALIAS, alias.trim()).apply()"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/KioskSecurity.kt"
+            line="288"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="            if (sealed != opened.value) prefs.edit().putString(KEY_BOX_SECRET, sealed).apply()"
+        errorLine2="                                        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/KioskSecurity.kt"
+            line="313"
+            column="41"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        getPrefs(context).edit()"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/KioskSecurity.kt"
+            line="328"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        getPrefs(context).edit().putString(KEY_BOX_SECRET, secretVault.seal(trimmed)).apply()"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/KioskSecurity.kt"
+            line="345"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="            prefs.edit().remove(KEY_ADMIN_PIN).apply()"
+        errorLine2="            ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/KioskSecurity.kt"
+            line="360"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="            if (sealed != pin) prefs.edit().putString(KEY_ADMIN_PIN, sealed).apply()"
+        errorLine2="                               ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/KioskSecurity.kt"
+            line="367"
+            column="32"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        getPrefs(context).edit().putString(KEY_ADMIN_PIN, secretVault.seal(pin)).apply()"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/KioskSecurity.kt"
+            line="374"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="            prefs.edit().putInt(failuresKey, next.failures).putLong(lockKey, next.lockedUntilMs).apply()"
+        errorLine2="            ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/KioskSecurity.kt"
+            line="405"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="    fun setSpeechEnabled(context: Context, enabled: Boolean) = prefs(context).edit().putBoolean(KEY_SPEECH_ENABLED, enabled).apply()"
+        errorLine2="                                                               ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/util/KioskSettings.kt"
+            line="37"
+            column="64"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="    fun setSpeechVolumePercent(context: Context, percent: Int) = prefs(context).edit().putInt(KEY_SPEECH_VOLUME, percent.coerceIn(20, 100)).apply()"
+        errorLine2="                                                                 ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/util/KioskSettings.kt"
+            line="42"
+            column="66"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="    fun setQuietHoursEnabled(context: Context, enabled: Boolean) = prefs(context).edit().putBoolean(KEY_QUIET_ENABLED, enabled).apply()"
+        errorLine2="                                                                   ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/util/KioskSettings.kt"
+            line="46"
+            column="68"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs(context).edit().putInt(KEY_QUIET_START, startHour.coerceIn(0, 23)).putInt(KEY_QUIET_END, endHour.coerceIn(0, 23)).apply()"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/util/KioskSettings.kt"
+            line="53"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="    fun setScreenOffEnabled(context: Context, enabled: Boolean) = prefs(context).edit().putBoolean(KEY_SCREEN_OFF_ENABLED, enabled).apply()"
+        errorLine2="                                                                  ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/util/KioskSettings.kt"
+            line="62"
+            column="67"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs(context).edit().putInt(KEY_SCREEN_OFF_MINUTES, minutes.coerceIn(MIN_IDLE_MINUTES, MAX_IDLE_MINUTES)).apply()"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/util/KioskSettings.kt"
+            line="68"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="    fun setWakeOnPickupEnabled(context: Context, enabled: Boolean) = prefs(context).edit().putBoolean(KEY_WAKE_ON_PICKUP, enabled).apply()"
+        errorLine2="                                                                     ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/util/KioskSettings.kt"
+            line="72"
+            column="70"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="    fun setGuestClearEnabled(context: Context, enabled: Boolean) = prefs(context).edit().putBoolean(KEY_CLEAR_ENABLED, enabled).apply()"
+        errorLine2="                                                                   ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/util/KioskSettings.kt"
+            line="77"
+            column="68"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs(context).edit().putInt(KEY_CLEAR_MINUTES, minutes.coerceIn(MIN_IDLE_MINUTES, MAX_IDLE_MINUTES)).apply()"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/util/KioskSettings.kt"
+            line="83"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs(context).edit().putStringSet(KEY_SOCIAL_EXTRA, extra).putStringSet(KEY_SOCIAL_EXCLUDED, excluded).apply()"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/util/KioskSettings.kt"
+            line="92"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="            prefs.edit()"
+        errorLine2="            ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/service/KioskStateManager.kt"
+            line="152"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="                    attemptPrefs(context).edit().clear().apply()"
+        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/KioskUpdateManager.kt"
+            line="181"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="                attemptPrefs(context).edit().putInt(key, attemptPrefs(context).getInt(key, 0) + 1).apply()"
+        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/security/KioskUpdateManager.kt"
+            line="220"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX function `createBitmap` instead?"
+        errorLine1="                        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)"
+        errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/MainActivity.kt"
+            line="373"
+            column="35"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putLong(KEY_QR_SETUP_AT, System.currentTimeMillis()).apply()"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/provisioning/OverlayPermissionStep.kt"
+            line="64"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="        val own = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse(&quot;package:${activity.packageName}&quot;))"
+        errorLine2="                                                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/provisioning/OverlayPermissionStep.kt"
+            line="94"
+            column="69"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="            bootPrefs?.edit()?.putInt(KEY_BOOT_COUNT, currentBootCount)?.commit()"
+        errorLine2="            ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/repository/PaymentRepository.kt"
+            line="457"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="                bootPrefs?.edit()?.putInt(KEY_BOOT_COUNT, nextCount)?.commit()"
+        errorLine2="                ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/repository/PaymentRepository.kt"
+            line="480"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="            sp.edit().putString(&quot;$KEY_PREFIX$slotIndex&quot;, packageName).apply()"
+        errorLine2="            ~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/util/PinnedSlotsManager.kt"
+            line="20"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="            sp.edit().remove(&quot;$KEY_PREFIX$slotIndex&quot;).apply()"
+        errorLine2="            ~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/util/PinnedSlotsManager.kt"
+            line="27"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UseTomlInstead"
+        message="Use version catalog instead"
+        errorLine1="    implementation(&quot;org.nanohttpd:nanohttpd:2.3.1&quot;)"
+        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="128"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="SetTextI18n"
+        message="String literal in `setText` can not be translated. Use Android resources instead."
+        errorLine1="            text = &quot;Hold your PisoPhone card up to the camera&quot;"
+        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/ui/CardScanActivity.kt"
+            line="163"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="SetTextI18n"
+        message="String literal in `setText` can not be translated. Use Android resources instead."
+        errorLine1="            text = &quot;Cancel&quot;"
+        errorLine2="                    ~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/ui/CardScanActivity.kt"
+            line="192"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="SetTextI18n"
+        message="String literal in `setText` can not be translated. Use Android resources instead."
+        errorLine1="            text = &quot;Use front camera&quot;"
+        errorLine2="                    ~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/ui/CardScanActivity.kt"
+            line="203"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="SetTextI18n"
+        message="String literal in `setText` can not be translated. Use Android resources instead."
+        errorLine1="            if (now - ignoredSince > 2500L) status.text = &quot;That is not a PisoPhone card. Hold your card up to the camera.&quot;"
+        errorLine2="                                                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/ui/CardScanActivity.kt"
+            line="281"
+            column="60"/>
+    </issue>
+
+    <issue
+        id="SetTextI18n"
+        message="String literal in `setText` can not be translated. Use Android resources instead."
+        errorLine1="        status.text = &quot;Checking your card…&quot;"
+        errorLine2="                       ~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/ui/CardScanActivity.kt"
+            line="284"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="SetTextI18n"
+        message="Do not concatenate text displayed with `setText`. Use resource string with placeholders."
+        errorLine1="                status.text = (bonusText + &quot;\nChoose a name so you can tell your account apart.&quot;).trim()"
+        errorLine2="                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/ui/CardScanActivity.kt"
+            line="294"
+            column="32"/>
+    </issue>
+
+    <issue
+        id="SetTextI18n"
+        message="Do not concatenate text displayed with `setText`. Use resource string with placeholders."
+        errorLine1="                status.text = (bonusText + &quot;\nChoose a name so you can tell your account apart.&quot;).trim()"
+        errorLine2="                                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/ui/CardScanActivity.kt"
+            line="294"
+            column="44"/>
+    </issue>
+
+    <issue
+        id="SetTextI18n"
+        message="String literal in `setText` can not be translated. Use Android resources instead."
+        errorLine1="                status.text = (bonusText + &quot;\nChoose a name so you can tell your account apart.&quot;).trim()"
+        errorLine2="                                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/ui/CardScanActivity.kt"
+            line="294"
+            column="47"/>
+    </issue>
+
+    <issue
+        id="SetTextI18n"
+        message="String literal in `setText` can not be translated. Use Android resources instead."
+        errorLine1="                primaryButton.text = &quot;Save&quot;"
+        errorLine2="                                      ~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/ui/CardScanActivity.kt"
+            line="296"
+            column="39"/>
+    </issue>
+
+    <issue
+        id="SetTextI18n"
+        message="Do not concatenate text displayed with `setText`. Use resource string with placeholders."
+        errorLine1="                status.text = (bonusText.ifEmpty { &quot;Welcome back, ${reply.name}!&quot; }) + &quot;\n${formatDuration(reply.balanceSec)} on your account.&quot;"
+        errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/ui/CardScanActivity.kt"
+            line="300"
+            column="31"/>
+    </issue>
+
+    <issue
+        id="SetTextI18n"
+        message="Do not concatenate text displayed with `setText`. Use resource string with placeholders."
+        errorLine1="                status.text = (bonusText.ifEmpty { &quot;Welcome back, ${reply.name}!&quot; }) + &quot;\n${formatDuration(reply.balanceSec)} on your account.&quot;"
+        errorLine2="                                                                                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/ui/CardScanActivity.kt"
+            line="300"
+            column="88"/>
+    </issue>
+
+    <issue
+        id="SetTextI18n"
+        message="String literal in `setText` can not be translated. Use Android resources instead."
+        errorLine1="                status.text = (bonusText.ifEmpty { &quot;Welcome back, ${reply.name}!&quot; }) + &quot;\n${formatDuration(reply.balanceSec)} on your account.&quot;"
+        errorLine2="                                                                                                                             ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/ui/CardScanActivity.kt"
+            line="300"
+            column="126"/>
+    </issue>
+
+    <issue
+        id="SetTextI18n"
+        message="Do not concatenate text displayed with `setText`. Use resource string with placeholders."
+        errorLine1="            if (now - ignoredSince > 2500L) status.text = &quot;That is not a recovery code. $RECOVERY_HINT&quot;"
+        errorLine2="                                                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/ui/CardScanActivity.kt"
+            line="312"
+            column="59"/>
+    </issue>
+
+    <issue
+        id="SetTextI18n"
+        message="String literal in `setText` can not be translated. Use Android resources instead."
+        errorLine1="            if (now - ignoredSince > 2500L) status.text = &quot;That is not a recovery code. $RECOVERY_HINT&quot;"
+        errorLine2="                                                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/ui/CardScanActivity.kt"
+            line="312"
+            column="60"/>
+    </issue>
+
+    <issue
+        id="SetTextI18n"
+        message="String literal in `setText` can not be translated. Use Android resources instead."
+        errorLine1="        status.text = &quot;Removing PisoPhone from this phone…&quot;"
+        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/ui/CardScanActivity.kt"
+            line="320"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="SetTextI18n"
+        message="String literal in `setText` can not be translated. Use Android resources instead."
+        errorLine1="        status.text = &quot;Saving…&quot;"
+        errorLine2="                       ~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/ui/CardScanActivity.kt"
+            line="340"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="SetTextI18n"
+        message="Do not concatenate text displayed with `setText`. Use resource string with placeholders."
+        errorLine1="                status.text = &quot;Saved. Enjoy your time, ${reply.name}!&quot;"
+        errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/ui/CardScanActivity.kt"
+            line="345"
+            column="31"/>
+    </issue>
+
+    <issue
+        id="SetTextI18n"
+        message="String literal in `setText` can not be translated. Use Android resources instead."
+        errorLine1="                status.text = &quot;Saved. Enjoy your time, ${reply.name}!&quot;"
+        errorLine2="                               ~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/ui/CardScanActivity.kt"
+            line="345"
+            column="32"/>
+    </issue>
+
+    <issue
+        id="SetTextI18n"
+        message="String literal in `setText` can not be translated. Use Android resources instead."
+        errorLine1="                primaryButton.text = &quot;Save&quot;"
+        errorLine2="                                      ~~~~">
+        <location
+            file="src/main/java/com/pisophone/kiosk/ui/CardScanActivity.kt"
+            line="352"
+            column="39"/>
+    </issue>
+
+</issues>

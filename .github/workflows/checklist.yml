@@ -1,0 +1,49 @@
+name: Test checklist
+
+# The real-world test checklist (docs/REAL_WORLD_TESTING.md) is turned into a tickable page (tools/checklist/build.py), and the
+# page's results are written back into the document (tools/checklist/apply.py). This checks that every test in the document is on
+# the page (the build stops if one would be left out), that writing results back works and would open the right GitHub issues, and
+# that the page itself works in a browser. It runs only when one of those files changes.
+on:
+  push:
+    branches: [main, beta]
+    paths:
+      - 'docs/REAL_WORLD_TESTING.md'
+      - 'tools/checklist/**'
+      - '.github/scripts/sync_test_issues.py'
+      - '.github/workflows/checklist.yml'
+  pull_request:
+    branches: [main, beta]
+    paths:
+      - 'docs/REAL_WORLD_TESTING.md'
+      - 'tools/checklist/**'
+      - '.github/scripts/sync_test_issues.py'
+      - '.github/workflows/checklist.yml'
+
+concurrency:
+  group: checklist-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checklist:
+    name: Checklist page and write-back
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Every test in the document is on the page
+        run: python3 tools/checklist/build.py "$RUNNER_TEMP/log.html"
+      - name: Writing results back into the document (and the issues that follow)
+        run: python3 tools/checklist/test_apply.py
+      - name: The Issue log still parses
+        run: python3 .github/scripts/sync_test_issues.py --dry-run
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-1.63.0
+      - name: The page in a browser
+        run: |
+          pip install -q playwright==1.63.0 && playwright install --with-deps chromium
+          python3 tools/checklist/test_page.py

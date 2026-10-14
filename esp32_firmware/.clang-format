@@ -1,0 +1,13 @@
+# Firmware C++ style. Includes are never reordered: several Arduino/ESP-IDF headers depend on order.
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 120
+SortIncludes: Never
+ReflowComments: false
+PointerAlignment: Left
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: false
+AlignTrailingComments: true
+BreakStringLiterals: false
+AccessModifierOffset: -4

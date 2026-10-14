@@ -1,0 +1,307 @@
+package com.pisophone.kiosk.system
+
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.BatteryManager
+import android.util.Log
+import com.pisophone.kiosk.audio.KioskAudioManager
+import com.pisophone.kiosk.model.BatteryAlertState
+import com.pisophone.kiosk.model.BatteryStatus
+import com.pisophone.kiosk.security.KioskSecurity
+import com.pisophone.kiosk.service.LockIdle
+import com.pisophone.kiosk.util.HardwareFeedback
+import com.pisophone.kiosk.util.KioskSettings
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+
+interface KioskSystemMonitorDelegate {
+    fun onScreenSleep()
+    fun onScreenWake()
+    fun getAudioManager(): KioskAudioManager?
+
+    /** True while a customer is using the phone (paid time running). */
+    fun isSessionActive(): Boolean = false
+}
+
+class KioskSystemMonitor(
+    private val context: Context,
+    private val scope: CoroutineScope,
+    private val delegate: KioskSystemMonitorDelegate,
+) {
+    companion object {
+        private const val TAG = "KioskSystemMonitor"
+        private const val HIGH_BATTERY_REMINDER_MS = 60_000L
+    }
+
+    private val _batteryStatus: MutableStateFlow<BatteryStatus> by lazy {
+        MutableStateFlow(readInitialBatteryStatus())
+    }
+    val batteryStatus: StateFlow<BatteryStatus> get() = _batteryStatus
+
+    private var previousAlertState = BatteryAlertState.NONE
+    private var lastBatteryVoiceReminderMs = 0L
+
+    // The high-battery reminder fires once per charge cycle; unplugging starts a new cycle.
+    @Volatile private var highBatteryAlertedThisCycle = false
+    private var lastHighBatteryReminderMs = 0L
+
+    private var screenOffReceiver: BroadcastReceiver? = null
+
+    /** Wakes the screen when the phone is picked up (armed while the screen is off), so nobody has to press the power button. */
+    private val pickupWake = PickupWake(context) {
+        Log.i(TAG, "Pick-up detected while the screen was off")
+        KioskSecurity.wakeScreenUp(context)
+    }
+    private var batteryReceiver: BroadcastReceiver? = null
+
+    private fun readInitialBatteryStatus(): BatteryStatus {
+        try {
+            val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+            val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+            val status = intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+            val plugged = intent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1) ?: 0
+
+            val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+            val bmCapacity = try {
+                bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
+            } catch (_: Exception) { -1 }
+
+            val pct = when {
+                level >= 0 && scale > 0 -> (level * 100 / scale.toFloat()).toInt().coerceIn(0, 100)
+                bmCapacity in 0..100 -> bmCapacity
+                else -> -1
+            }
+            val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                status == BatteryManager.BATTERY_STATUS_FULL ||
+                plugged > 0
+            return BatteryStatus(level = pct, isCharging = isCharging)
+        } catch (_: Exception) {
+            return BatteryStatus(level = -1, isCharging = false)
+        }
+    }
+
+    // ========================================================================
+    // SCREEN OFF / SLEEP RECEIVER
+    // ========================================================================
+
+    fun registerScreenOffReceiver() {
+        if (screenOffReceiver != null) return
+        screenOffReceiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    Intent.ACTION_SCREEN_OFF -> {
+                        Log.d(TAG, "Screen OFF detected.")
+                        if (KioskSettings.isWakeOnPickupEnabled(context)) pickupWake.arm()
+                        delegate.onScreenSleep()
+                    }
+                    Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> {
+                        Log.d(TAG, "Screen ON/User Present detected.")
+                        pickupWake.disarm()
+                        LockIdle.touch() // the lock screen idle time starts again when the screen comes on
+                        KioskSecurity.wakeScreenUp(context)
+                        KioskSecurity.dismissKeyguard(context)
+                        delegate.onScreenWake()
+                    }
+                }
+            }
+        }
+
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_USER_PRESENT)
+        }
+        context.registerReceiver(screenOffReceiver, filter)
+        val power = context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+        if (power?.isInteractive == false && KioskSettings.isWakeOnPickupEnabled(context)) pickupWake.arm()
+    }
+
+    fun unregisterScreenOffReceiver() {
+        pickupWake.disarm()
+        try {
+            if (screenOffReceiver != null) {
+                context.unregisterReceiver(screenOffReceiver)
+                screenOffReceiver = null
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error unregistering screen receiver: ${e.message}")
+        }
+    }
+
+    // ========================================================================
+    // BATTERY MONITORING
+    // ========================================================================
+
+    fun registerBatteryMonitor() {
+        if (batteryReceiver != null) return
+        batteryReceiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                updateBatteryStatus(intent)
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_BATTERY_CHANGED)
+            addAction(Intent.ACTION_POWER_CONNECTED)
+            addAction(Intent.ACTION_POWER_DISCONNECTED)
+        }
+        context.registerReceiver(batteryReceiver, filter)
+
+        try {
+            val initialIntent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            updateBatteryStatus(initialIntent)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to read initial battery intent: ${e.message}")
+        }
+    }
+
+    fun unregisterBatteryMonitor() {
+        try {
+            if (batteryReceiver != null) {
+                context.unregisterReceiver(batteryReceiver)
+                batteryReceiver = null
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error unregistering battery receiver: ${e.message}")
+        }
+    }
+
+    fun getRealTimeBatteryInfo(): Pair<Int, Boolean> {
+        try {
+            val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+            val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+            val status = intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+            val plugged = intent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1) ?: 0
+
+            var pct = if (level >= 0 && scale > 0) {
+                (level * 100 / scale.toFloat()).toInt().coerceIn(0, 100)
+            } else {
+                -1
+            }
+
+            if (pct < 0) {
+                val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+                val bmCap = try {
+                    bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
+                } catch (_: Exception) { -1 }
+                if (bmCap in 0..100) {
+                    pct = bmCap
+                }
+            }
+
+            val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                status == BatteryManager.BATTERY_STATUS_FULL ||
+                plugged > 0
+
+            if (pct >= 0) {
+                val alertsEnabled = KioskSecurity.isBatteryAlertsEnabled(context)
+                val lowThreshold = KioskSecurity.getLowBatteryThreshold(context)
+                val highThreshold = KioskSecurity.getHighBatteryThreshold(context)
+
+                val newAlertState = when {
+                    !alertsEnabled -> BatteryAlertState.NONE
+                    pct <= lowThreshold && !isCharging -> BatteryAlertState.LOW_BATTERY_UNPLUGGED
+                    pct >= highThreshold && isCharging -> BatteryAlertState.HIGH_BATTERY_PLUGGED
+                    else -> BatteryAlertState.NONE
+                }
+                previousAlertState = newAlertState
+                _batteryStatus.value = BatteryStatus(level = pct, isCharging = isCharging, alertState = newAlertState)
+                return Pair(pct, isCharging)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error reading real time battery info: ${e.message}")
+        }
+        return Pair(_batteryStatus.value.level, _batteryStatus.value.isCharging)
+    }
+
+    private fun updateBatteryStatus(intent: Intent?) {
+        val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+        val status = intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        val plugged = intent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1) ?: 0
+
+        val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+        val bmCapacity = try {
+            bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
+        } catch (_: Exception) { -1 }
+
+        val pct = when {
+            level >= 0 && scale > 0 -> (level * 100 / scale.toFloat()).toInt().coerceIn(0, 100)
+            bmCapacity in 0..100 -> bmCapacity
+            else -> _batteryStatus.value.level.coerceIn(0, 100)
+        }
+        val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+            status == BatteryManager.BATTERY_STATUS_FULL ||
+            plugged > 0
+
+        val alertsEnabled = KioskSecurity.isBatteryAlertsEnabled(context)
+        val lowThreshold = KioskSecurity.getLowBatteryThreshold(context)
+        val highThreshold = KioskSecurity.getHighBatteryThreshold(context)
+
+        val newAlertState = when {
+            !alertsEnabled -> BatteryAlertState.NONE
+            pct <= lowThreshold && !isCharging -> BatteryAlertState.LOW_BATTERY_UNPLUGGED
+            pct >= highThreshold && isCharging -> BatteryAlertState.HIGH_BATTERY_PLUGGED
+            else -> BatteryAlertState.NONE
+        }
+
+        val audioMgr = delegate.getAudioManager()
+        if (audioMgr != null) {
+            if (previousAlertState == BatteryAlertState.LOW_BATTERY_UNPLUGGED && isCharging) {
+                audioMgr.speakWarning("Charger connected. Battery charging.")
+                audioMgr.playSynthesizedTone(1046, 220) // High C6 confirmation chime
+            } else if (previousAlertState == BatteryAlertState.HIGH_BATTERY_PLUGGED &&
+                !isCharging &&
+                highBatteryAlertedThisCycle &&
+                !delegate.isSessionActive()
+            ) {
+                audioMgr.speakWarning("Charger disconnected. Battery protection active.")
+                audioMgr.playSynthesizedTone(784, 220) // G5 confirmation chime
+            }
+        }
+        if (!isCharging) {
+            highBatteryAlertedThisCycle = false
+        }
+
+        previousAlertState = newAlertState
+        _batteryStatus.value = BatteryStatus(level = pct, isCharging = isCharging, alertState = newAlertState)
+    }
+
+    fun checkPeriodicBatteryAlerts() {
+        val currentBattery = _batteryStatus.value
+        val now = System.currentTimeMillis()
+        val audioMgr = delegate.getAudioManager() ?: return
+
+        if (currentBattery.alertState == BatteryAlertState.LOW_BATTERY_UNPLUGGED) {
+            if (now - lastBatteryVoiceReminderMs >= 15000L) {
+                lastBatteryVoiceReminderMs = now
+                audioMgr.playAnnoyingLowBatteryTone()
+                HardwareFeedback.triggerVibration(context, longArrayOf(0, 200, 100, 200, 100, 400))
+                audioMgr.speakWarning("Warning! Battery is very low at ${currentBattery.level} percent. Please connect the charger immediately to prevent shutdown.")
+            }
+        } else if (currentBattery.alertState == BatteryAlertState.HIGH_BATTERY_PLUGGED) {
+            // Announce as soon as the limit is reached, even mid-session: a charger left in is the
+            // problem this alert exists for. Mid-session it is said once, because speaking mutes
+            // the customer's media; while idle it repeats until the charger is unplugged.
+            val sessionActive = delegate.isSessionActive()
+            val due = !highBatteryAlertedThisCycle ||
+                (!sessionActive && now - lastHighBatteryReminderMs >= HIGH_BATTERY_REMINDER_MS)
+            if (due) {
+                highBatteryAlertedThisCycle = true
+                lastHighBatteryReminderMs = now
+                audioMgr.playHighBatteryAttentionTone()
+                HardwareFeedback.triggerVibration(context, longArrayOf(0, 150, 80, 150))
+                audioMgr.speakWarning("Attention! Battery has reached ${currentBattery.level} percent. Please disconnect the charger now to protect battery health.")
+            }
+        }
+    }
+
+    fun shutdown() {
+        unregisterScreenOffReceiver()
+        unregisterBatteryMonitor()
+    }
+}
