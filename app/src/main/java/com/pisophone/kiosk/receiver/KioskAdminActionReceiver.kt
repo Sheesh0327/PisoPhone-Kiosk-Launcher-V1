@@ -295,7 +295,7 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
             }
 
             ACTION_CONFIGURE_ESP32 -> {
-                val isPaired = com.pisophone.kiosk.security.KioskActivationManager.isPairingCompleted(context) || com.pisophone.kiosk.security.KioskSecurity.isProvisioned(context)
+                val isPaired = com.pisophone.kiosk.security.KioskActivationManager.isPairingCompleted(context)
                 val isSetupActive = com.pisophone.kiosk.security.KioskActivationManager.isSetupModeActive(context)
                 if ((isPaired || !isSetupActive) && !isAuthorized(context, intent)) {
                     Log.w(TAG, "Unauthorized attempt to re-configure ESP32 rejected.")
@@ -324,7 +324,7 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
             }
 
             ACTION_ACTIVATE -> {
-                val isPaired = com.pisophone.kiosk.security.KioskActivationManager.isPairingCompleted(context) || com.pisophone.kiosk.security.KioskSecurity.isProvisioned(context)
+                val isPaired = com.pisophone.kiosk.security.KioskActivationManager.isPairingCompleted(context)
                 val isSetupActive = com.pisophone.kiosk.security.KioskActivationManager.isSetupModeActive(context)
                 if ((isPaired || !isSetupActive) && !isAuthorized(context, intent)) {
                     Log.w(TAG, "Unauthorized attempt to re-activate device rejected.")

@@ -230,24 +230,6 @@ class KioskServerCoordinator(
                 "flash" -> HardwareFeedback.triggerFlashlight(context, 2000L)
                 "locate" -> getAudioManager.invoke()?.startLocateAlarm()
                 "locate_stop" -> getAudioManager.invoke()?.stopLocateAlarm()
-                "enable_adb" -> {
-                    KioskSecurity.emergencyEnableUsbDebugging(context)
-                    Toast.makeText(context, "⚡ Remote: USB Debugging Re-Enabled!", Toast.LENGTH_LONG).show()
-                }
-                "recovery", "emergency_recovery" -> {
-                    KioskSecurity.emergencyEnableUsbDebugging(context)
-                    KioskSecurity.emergencyExitKiosk(context)
-                    Toast.makeText(context, "⚠️ Remote: Emergency Recovery & ADB Enabled!", Toast.LENGTH_LONG).show()
-                }
-                "exit_kiosk" -> {
-                    KioskSecurity.emergencyExitKiosk(context)
-                }
-                "deprovision" -> {
-                    KioskSecurity.emergencyClearDeviceOwner(context)
-                }
-                "factory_reset" -> {
-                    KioskSecurity.factoryResetDevice(context)
-                }
                 "identify" -> {
                     Toast.makeText(context, "Device Identified: ${KioskSecurity.getDeviceAlias(context)}", Toast.LENGTH_LONG).show()
                 }

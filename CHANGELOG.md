@@ -4,6 +4,10 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- **Phone app: fixes from an outside code review.** The admin PIN is no longer written to the log when the box syncs it (a second place that the earlier fix missed), and CI now fails any log line
+  that carries the PIN or a secret. The setup step, the auto-update attempt counter and the pill position now use the phone's device-protected storage like the rest of the app, so they cannot fail before the
+  first unlock. Six remote-action branches that could never be reached over the network were deleted from the server coordinator, and an "is provisioned" check that was always false was removed (no behaviour change).
+  The lock screen's fallback rate (before the phone has heard from the box) is now the box's own unit, one peso for 6 minutes, instead of 5 pesos for 30 minutes, so coins are shown correctly even then.
 - Router 1.3.5, **console: edit the prices.** The console's **Settings** page has a **Prices** editor: the HyperSpeed and Endurance price lists (pesos to minutes,
   up to eight lines each), the minutes each extra HyperSpeed peso adds, and the Endurance download and upload limits. A change applies at once: the next payment uses
   it and the customer page shows the new list, while a payment already under way keeps the prices it started with (the amount on the screen never changes under the customer).

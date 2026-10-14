@@ -276,7 +276,7 @@ class KioskEngine(
                     esp32Manager.setEsp32Ip(stateManager.esp32Ip)
                 }
 
-                if (!KioskActivationManager.isPairingCompleted(context) && !KioskSecurity.isProvisioned(context)) {
+                if (!KioskActivationManager.isPairingCompleted(context)) {
                     KioskActivationManager.startSetupWindow(context)
                 }
 

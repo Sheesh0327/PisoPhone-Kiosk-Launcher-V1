@@ -235,7 +235,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun isSetupIntentAuthorized(intent: Intent): Boolean {
-        val paired = KioskActivationManager.isPairingCompleted(this) || KioskSecurity.isProvisioned(this)
+        val paired = KioskActivationManager.isPairingCompleted(this)
         if (!paired) {
             // The WebADB installer launches this activity right after install, before the
             // service has opened the setup window.

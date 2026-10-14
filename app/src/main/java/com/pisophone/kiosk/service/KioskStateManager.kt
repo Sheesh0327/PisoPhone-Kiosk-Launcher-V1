@@ -33,8 +33,8 @@ class KioskStateManager(private val context: Context) {
     val esp32MacAddress = MutableStateFlow("")
     val armFailure = MutableStateFlow<Esp32Responses.ArmFailure?>(null)
     val isArmingInProgress = MutableStateFlow(false)
-    val pricePerCoin = MutableStateFlow(5.0)
-    val minutesPerCoin = MutableStateFlow(30)
+    val pricePerCoin = MutableStateFlow(1.0)
+    val minutesPerCoin = MutableStateFlow(6)
     var esp32Ip: String? = null
     val isSlotExpired = MutableStateFlow(false)
     val slotExpiryMessage = MutableStateFlow("")
@@ -176,8 +176,8 @@ class KioskStateManager(private val context: Context) {
         )
         val restored = paymentRepo.restoreSessionState()
 
-        pricePerCoin.value = prefs.getFloat("price_per_coin", 5.0f).toDouble()
-        minutesPerCoin.value = prefs.getInt("minutes_per_coin", 30)
+        pricePerCoin.value = prefs.getFloat("price_per_coin", 1.0f).toDouble()
+        minutesPerCoin.value = prefs.getInt("minutes_per_coin", 6)
         esp32Ip = null
 
         val savedTxSet = prefs.getStringSet("processed_tx_ids", emptySet()) ?: emptySet()

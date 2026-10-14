@@ -61,11 +61,11 @@ object OverlayPermissionStep {
 
     /** The QR setup just finished: the step needs no PIN for the next 30 minutes. */
     fun markQrSetup(context: Context) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putLong(KEY_QR_SETUP_AT, System.currentTimeMillis()).apply()
+        KioskSecurity.getDirectBootPrefs(context, PREFS).edit().putLong(KEY_QR_SETUP_AT, System.currentTimeMillis()).apply()
     }
 
     private fun justSetUp(context: Context): Boolean {
-        val at = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_QR_SETUP_AT, 0L)
+        val at = KioskSecurity.getDirectBootPrefs(context, PREFS).getLong(KEY_QR_SETUP_AT, 0L)
         val age = System.currentTimeMillis() - at
         return at > 0L && age in 0 until NO_PIN_AFTER_SETUP_MS
     }

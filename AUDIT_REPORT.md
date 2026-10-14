@@ -152,7 +152,7 @@ coin-slot request string, the WebSocket `COIN_DETECTED`, the heartbeat reply. Th
 | A-F5 | Launcher fails open: the overlay is the only lock, and HOME works before it is up after a restart. | Low | confirmed | **Open** |
 | A-F7 | Replay protection is in memory only; retries are re-encrypted with a fresh IV, so up to three copies of a command pass (receipt dedup stops double credit). | Low | partly | **Open** |
 | A-F9 | App auto-update has no staged rollout, health check or rollback on the phone; idle test ignores arming and card scans. | Medium (not re-checked) | | **Open** |
-| A-F10 | The admin PIN was written to the log. | Low | confirmed twice | **Fixed** |
+| A-F10 | The admin PIN was written to the log. | Low | confirmed twice | **Fixed** (a second place, the box-heartbeat sync, was found by a later review and fixed too; a CI rule now fails any log line that carries the PIN or a secret) |
 | A-F11 | DEPROVISION needs no PIN while USB debugging is on. | Low | partly | **By design** (the website's "Remove from a phone" needs it) |
 | A-F8 | "Power-off pauses paid time." | none | refuted by one checker, partly by the other | **By design**: time is billed only while the phone runs; wiping it on a long power cut was rejected on purpose. Documented |
 | A-F12/13 | Lock-task allowlist includes gms and launchers; maintenance window uses the wall clock; `processed_tx_ids` is dead code. | Low | | **Open** |
