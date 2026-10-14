@@ -11,7 +11,7 @@ use crate::util::{jget, jget_u64, json_esc, now_secs, random_hex};
 use crate::voucher::Mine;
 use std::collections::HashMap;
 use std::fs;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
@@ -225,7 +225,7 @@ pub struct Core {
     recovering: Mutex<()>,
     /// the prices now in force (the settings file's, or what the owner set in the console) and a counter that rises with every change
     pricing: RwLock<Arc<Pricing>>,
-    pricing_stamp: AtomicU64,
+    pricing_stamp: AtomicU32,
     /// the coin page offers the choice "Use now" / "Get a voucher code" (VOUCHER_CHOICE, changed live from the console)
     vchoice: AtomicBool,
 }
@@ -263,7 +263,7 @@ impl Core {
             recovering: Mutex::new(()),
             vchoice,
             pricing,
-            pricing_stamp: AtomicU64::new(1),
+            pricing_stamp: AtomicU32::new(1),
         })
     }
 
@@ -290,7 +290,7 @@ impl Core {
 
     /// Rises with every price change: the coin page is built again when it moves.
     pub fn pricing_stamp(&self) -> u64 {
-        self.pricing_stamp.load(Ordering::Relaxed)
+        u64::from(self.pricing_stamp.load(Ordering::Relaxed))
     }
 
     /// The owner sets new prices (console, Settings). Kept in DATA_DIR/settings.txt; payments already open keep their prices.
