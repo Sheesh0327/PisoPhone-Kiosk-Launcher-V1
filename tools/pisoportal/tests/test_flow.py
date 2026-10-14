@@ -339,7 +339,8 @@ try:
         replies.append(c.wait_msg("rd", n))
     check(all(r and r.get("e") in ("bad", "wait") for r in replies) and replies[0]["e"] == "bad" and replies[3]["e"] == "bad",
           f"wrong codes are refused: {replies}")
-    check(replies[4].get("w") == 60, f"the fifth wrong try starts a one-minute wait: {replies[4]}")
+    # (the wait is counted down from the moment of the fifth try: a second may already have passed when the answer is made)
+    check(58 <= (replies[4].get("w") or 0) <= 60, f"the fifth wrong try starts a one-minute wait: {replies[4]}")
     n = c.count()
     c.send({"t": "redeem", "c": c2})
     r = c.wait_msg("rd", n)
