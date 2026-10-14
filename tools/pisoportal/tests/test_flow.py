@@ -4,7 +4,16 @@ import hashlib, hmac, json, os, signal, socket, subprocess, sys, time, urllib.er
 from harness import *
 
 MAC_A, MAC_B, MAC_C, MAC_D = "aa:bb:cc:00:00:01", "aa:bb:cc:00:00:02", "aa:bb:cc:00:00:03", "aa:bb:cc:00:00:04"
-env = Env(PAUSE_GAP_SECONDS=2, PAUSE_MAX=2)
+env = Env(PAUSE_GAP_SECONDS=2, PAUSE_MAX=2, GAME_LIMIT_SECONDS=6)
+
+
+def gget(ip, path, headers=None):
+    """A request to the portal from one device's own address (the portal tells devices apart by it)."""
+    import http.client
+    c = http.client.HTTPConnection("127.0.0.1", env.PP, timeout=10, source_address=(ip, 0))
+    c.request("GET", path, headers=headers or {})
+    r = c.getresponse()
+    return r.status, r.read().decode(), dict(r.getheaders())
 try:
     check(env.start(), "the portal starts")
     env.nds_client(MAC_A)
@@ -18,7 +27,8 @@ try:
     page_ms = (time.time() - t) * 1000
     check(code == 200 and "TechNet" in body and "PisoWifi" in body and "Test Spot" not in body and "HyperSpeed" in body and "&#8369;10" in body and "11 hrs 30 min" not in body, "the splash page carries the TechNet PisoWifi brand (not the configurable name) and the price list")
     check("1 day" not in body and "24 hrs" in body, "tiers are listed in the page (Endurance 20 pesos = 24 hrs)")
-    check(len(body) < 27000, f"the page is small ({len(body)} bytes; it goes over the shop Wi-Fi once, then a 304)")
+    check(len(body) < 27500, f"the page is small ({len(body)} bytes; it goes over the shop Wi-Fi once, then a 304)")
+    check('id="gm"' in body and "Play a mini-game" in body and 'href="/game"' in body and 'target="_blank"' in body, "the coin page has the mini-game button (a link that opens a tab)")
     check("Get a voucher code" in body and "Use now" in body and "Save voucher file" in body and "Have a voucher?" in body and 't:"ping"' in body,
           "the page carries the voucher choice, the voucher code view, the voucher entry and the heartbeat")
     check(page_ms < 100, f"the page comes back fast ({page_ms:.1f} ms)")
@@ -27,6 +37,30 @@ try:
     check(code2 == 304 and body2 == "", "a returning phone gets 304 and downloads nothing")
     check(env.get("/generate_204")[0] == 200 and env.get("/ping")[1] == "ok", "any other address is the page; ping answers")
 
+    # ---- the mini-game: a small offline game, a few minutes a device a day, counted by the router ------------------------------------
+    code, game, gh = gget("127.0.0.1", "/game")
+    check(code == 200 and "Coin Catch" in game and "<canvas" in game and "left=6," in game and "no-store" in gh.get("Cache-Control", ""), "the game page is served with the device's minutes (6 s in this test)")
+    check("http://" not in game and "https://" not in game and "src=" not in game.replace("src=\"/", ""), "and it needs nothing from the internet")
+    check(len(game) < 9000, f"and it is small ({len(game)} bytes)")
+    check(json.loads(gget("127.0.0.1", "/game/tick")[1])["left"] in (5, 6), "a tick right after the start adds almost nothing")
+    check(gget("127.0.0.1", "/game/tick", {"Sec-Fetch-Site": "cross-site"})[0] == 403 and gget("127.0.0.1", "/game/tick", {"Sec-Fetch-Site": "same-origin"})[0] == 200, "another site's page cannot spend a device's minutes")
+    gget("127.0.0.3", "/game")
+    fast = [json.loads(gget("127.0.0.3", "/game/tick")[1])["left"] for _ in range(25)]
+    check(min(fast) >= 5, f"asking fast adds only the real time that passed: {fast[-1]} s left after 25 quick ticks")
+    seen = []
+    for _ in range(9):
+        time.sleep(1)
+        seen.append(json.loads(gget("127.0.0.1", "/game/tick")[1])["left"])
+    check(seen == sorted(seen, reverse=True) and seen[-1] == 0, f"real time runs the minutes down to nothing: {seen}")
+    code, used, _ = gget("127.0.0.1", "/game")
+    check(code == 200 and "used up" in used and "<canvas" not in used, "with no time left the game page says so and has no game")
+    check("left=6," in gget("127.0.0.2", "/game")[1], "another device still has all its minutes")
+    check(json.loads(gget("127.0.0.1", "/game/tick")[1])["left"] == 0, "and the first device stays at zero")
+    for ip, want in (("127.0.0.1", 0), ("127.0.0.2", 6)):
+        cc = Cust(ip, port=env.PP)
+        st = cc.wait_state("idle", 5)
+        check(st is not None and st.get("gm") == want, f"the coin page's state tells {ip} how much game time is left ({want} s): {st and st.get('gm')}")
+        cc.close()
     code_s, body_s, _ = env.get("/status")
     check(code_s == 200 and body_s == body and "time left" in body and "TechNet" in body and "WebSocket" in body,
           "there is one page: /status (an old bookmark) is the same page as / and carries the live countdown")

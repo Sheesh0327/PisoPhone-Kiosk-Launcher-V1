@@ -2,6 +2,7 @@
 //! everything else (Insert Coin, coins, Done, the result) travels over it. A device is the MAC address the router itself
 //! sees behind its connection (ARP), never what the page says.
 use crate::core::{log, Core};
+use crate::game::device_key;
 use crate::pricing::{fmt_min, Plan, Pricing};
 use crate::util::{b64_decode, b64_encode, jget, json_esc, query_get, sha256_hex, url_decode, valid_mac};
 use std::collections::HashMap;
@@ -91,6 +92,14 @@ fn squeeze(src: &str) -> String {
     out.push_str(rest);
     out.lines().map(str::trim).filter(|l| !l.is_empty()).collect::<Vec<_>>().join("\n")
 }
+
+/// The mini-game page for a device with `left` seconds of play today (a small page of its own: the coin page is not touched).
+pub fn game_page(left: u32) -> String {
+    squeeze(include_str!("game.html")).replace("%LEFT%", &left.to_string())
+}
+
+/// What a device sees when it opens the game with no time left today.
+const GAME_USED_UP: &str = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Coin Catch</title><style>body{margin:0;background:#050d22;color:#eef3ff;font:16px/24px system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:20px;box-sizing:border-box}div{max-width:340px;text-align:center;background:#0c1a3a;border:1px solid #1f3361;border-radius:12px;padding:20px}p{color:#97a6c7}a{display:block;margin-top:14px;padding:13px;border-radius:10px;background:#1d63d6;color:#fff;text-decoration:none;font-weight:700}</style></head><body><div><h1>Mini-game time is used up</h1><p>Each device gets a few minutes of play a day. Come back tomorrow.</p><a href=\"/\">Back to the Wi-Fi page</a></div></body></html>";
 
 pub fn build_page(core: &Core) -> String {
     let cfg = &core.cfg;
@@ -525,6 +534,30 @@ fn handle(p: Arc<Portal>, stream: TcpStream, peer: SocketAddr) {
                 return respond(&mut conn.s, "503 Service Unavailable", "text/plain", "busy", "Retry-After: 5\r\n");
             };
             ws_session(Arc::clone(&p.core), conn, &key, mac);
+        }
+        "/game" | "/game/" => {
+            let games = &p.core.games;
+            if !games.enabled() {
+                return respond(&mut conn.s, "404 Not Found", "text/plain", "not found", "");
+            }
+            let key = device_key(arp_mac(&p.core.cfg.arp_file, &peer.ip().to_string()), &peer.ip().to_string());
+            let left = games.begin(&key, crate::util::now_secs());
+            let html = if left == 0 { GAME_USED_UP.to_string() } else { game_page(left) };
+            respond_bytes(&mut conn.s, "200 OK", "text/html; charset=utf-8", html.as_bytes(), "Cache-Control: no-store\r\n", !head_only)
+        }
+        "/game/tick" => {
+            // the page asks from its own address; another site's page must not be able to spend a child's minutes
+            if req.header("sec-fetch-site").is_some_and(|v| v != "same-origin" && v != "none") {
+                return respond(&mut conn.s, "403 Forbidden", "text/plain", "wrong origin", "");
+            }
+            let games = &p.core.games;
+            if !games.enabled() {
+                return respond(&mut conn.s, "404 Not Found", "text/plain", "not found", "");
+            }
+            let key = device_key(arp_mac(&p.core.cfg.arp_file, &peer.ip().to_string()), &peer.ip().to_string());
+            let now = crate::util::now_secs();
+            let left = if query_get(&req.query, "s").is_some() { games.begin(&key, now) } else { games.tick(&key, now) };
+            respond(&mut conn.s, "200 OK", "application/json", &format!("{{\"left\":{}}}", left), "Cache-Control: no-store\r\n")
         }
         "/brand.png" => {
             respond_bytes(&mut conn.s, "200 OK", "image/png", BRAND_LOGO, "Cache-Control: public, max-age=86400\r\n", !head_only)

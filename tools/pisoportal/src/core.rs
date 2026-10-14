@@ -3,6 +3,7 @@
 //! box), recovery after a restart, and the cooldown for devices that keep opening empty windows.
 use crate::boxlink::{parse_event, BoxLink};
 use crate::config::Config;
+use crate::game::Games;
 use crate::ledger;
 use crate::nds::Nds;
 use crate::pricing::{minutes_for, rates, Plan, Pricing};
@@ -23,6 +24,8 @@ pub(crate) use log;
 #[derive(Clone, Debug, PartialEq)]
 pub enum View {
     Idle {
+        /// seconds of mini-game left today for this device (-1: the game is off)
+        gm: i64,
         left: u64,
         plan: Option<Plan>,
         online: bool,
@@ -95,8 +98,8 @@ fn vflag(voucher: bool) -> &'static str {
 impl View {
     pub fn to_json(&self) -> String {
         match self {
-            View::Idle { left, plan, online, busy, cooldown, used_mb, slow, pm, pl, pw, vc, vs } => format!(
-                "{{\"t\":\"state\",\"s\":\"idle\",\"left\":{},\"plan\":\"{}\",\"online\":{},\"busy\":{},\"cooldown\":{},\"used_mb\":{},\"slow\":{},\"pm\":{},\"pl\":{},\"pw\":{},\"vc\":{},\"vs\":[{}]}}",
+            View::Idle { gm, left, plan, online, busy, cooldown, used_mb, slow, pm, pl, pw, vc, vs } => format!(
+                "{{\"t\":\"state\",\"s\":\"idle\",\"left\":{},\"plan\":\"{}\",\"online\":{},\"busy\":{},\"cooldown\":{},\"used_mb\":{},\"slow\":{},\"pm\":{},\"pl\":{},\"pw\":{},\"vc\":{},\"gm\":{},\"vs\":[{}]}}",
                 left,
                 plan.map(|p| p.as_str()).unwrap_or(""),
                 online,
@@ -108,6 +111,7 @@ impl View {
                 pl,
                 pw,
                 vc,
+                gm,
                 vs.iter()
                     .map(|m| format!("{{\"c\":\"{}\",\"m\":{},\"p\":\"{}\",\"x\":{}}}", json_esc(&m.code), m.minutes, json_esc(&m.plan), m.expires))
                     .collect::<Vec<_>>()
@@ -226,6 +230,8 @@ pub struct Core {
     /// the prices now in force (the settings file's, or what the owner set in the console) and a counter that rises with every change
     pricing: RwLock<Arc<Pricing>>,
     pricing_stamp: AtomicU32,
+    /// the mini-game's daily play time per device
+    pub games: Games,
     /// the coin page offers the choice "Use now" / "Get a voucher code" (VOUCHER_CHOICE, changed live from the console)
     vchoice: AtomicBool,
 }
@@ -243,6 +249,11 @@ impl Core {
         let vchoice =
             AtomicBool::new(crate::config::parse_switch(&crate::config::override_get(&cfg.data_dir, "VOUCHER_CHOICE"), cfg.voucher_choice));
         let pricing = RwLock::new(Arc::new(Pricing::load(&cfg)));
+        let game_minutes = crate::config::override_get(&cfg.data_dir, "GAME_MINUTES")
+            .parse::<u32>()
+            .unwrap_or(cfg.game_minutes)
+            .min(crate::game::MAX_MINUTES);
+        let games = Games::new(&cfg.data_dir, cfg.game_seconds.unwrap_or(game_minutes * 60));
         Arc::new(Core {
             cfg,
             box_,
@@ -264,6 +275,7 @@ impl Core {
             vchoice,
             pricing,
             pricing_stamp: AtomicU32::new(1),
+            games,
         })
     }
 
@@ -277,6 +289,18 @@ impl Core {
         let ok = crate::config::override_set(&self.cfg.data_dir, "VOUCHER_CHOICE", if on { "on" } else { "off" });
         if ok {
             self.vchoice.store(on, Ordering::Relaxed);
+            let mut st = self.st.lock().unwrap();
+            self.bump(&mut st);
+        }
+        ok
+    }
+
+    /// The owner sets the mini-game minutes a device gets per day (0 = off). Kept in DATA_DIR/settings.txt; open pages are told at once.
+    pub fn set_game_minutes(&self, minutes: u32) -> bool {
+        let minutes = minutes.min(crate::game::MAX_MINUTES);
+        let ok = crate::config::override_set(&self.cfg.data_dir, "GAME_MINUTES", &minutes.to_string());
+        if ok {
+            self.games.set_limit_secs(minutes * 60);
             let mut st = self.st.lock().unwrap();
             self.bump(&mut st);
         }
@@ -373,7 +397,21 @@ impl Core {
         };
         // (the vouchers this device paid for are listed here: a page that was closed before the code was written down loses nothing)
         let vs = crate::voucher::for_device(&self.cfg.data_dir, now, mac);
-        View::Idle { left, plan, online: left > 0, busy, cooldown, used_mb, slow, pm, pl, pw, vc: self.voucher_choice(), vs }
+        View::Idle {
+            gm: self.games.left(mac, now),
+            left,
+            plan,
+            online: left > 0,
+            busy,
+            cooldown,
+            used_mb,
+            slow,
+            pm,
+            pl,
+            pw,
+            vc: self.voucher_choice(),
+            vs,
+        }
     }
 
     /// A stored result is shown again when a page reloads: the time it names is read from the roll now, never the amount it
