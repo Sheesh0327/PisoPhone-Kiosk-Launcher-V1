@@ -4,6 +4,10 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 4.6.6; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Router 1.3.7, **PisoWiFi: Pause no longer takes the device off.** A paused device stays on the Wi-Fi but is slowed to **1 kbit/s** (`PAUSE_KBPS`), so the page, its buttons and its scripts keep working;
+  the clock is still stopped and the time is still kept for a day. Resume gives back the time and the plan's own speed. The console's Customers page marks a paused device. Found on the way and fixed: the fair-use
+  timer used `roll::session`, which resumes a paused session, so a device that stayed online while paused would have been resumed by it within a minute; it now leaves paused sessions alone (a test proves it).
+  If openNDS refuses the slow grant the device is taken off, as before.
 - Router 1.3.6, **PisoWiFi: a mini-game.** The coin page has a **Play a mini-game** button that opens *Coin Catch* (catch the coins, dodge the sparks) in a new browser tab. The game is one small page the router serves
   itself (7 KB, nothing from the internet), so it works before anyone has paid. Each device gets **10 minutes a day**, counted by the router while the game is played (a hidden tab or a pause does not count; the router adds only the
   real time that passed). When the minutes are gone the page says so until the next day. Change the minutes, or turn the game off with 0, in the console **Settings** page or with `GAME_MINUTES` in `/etc/coinslot.conf`. It is a soft limit

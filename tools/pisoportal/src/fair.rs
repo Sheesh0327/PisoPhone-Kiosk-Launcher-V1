@@ -15,7 +15,7 @@ pub fn tick(core: &Arc<Core>) {
         }
         let Some(s) = ({
             let _g = core.files.lock().unwrap();
-            roll::session(&cfg.roll_path(), now, &mac)
+            roll::session_active(&cfg.roll_path(), now, &mac)
         }) else {
             continue;
         };

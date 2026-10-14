@@ -32,6 +32,8 @@ pub struct Config {
     pub pause_max: u32,
     pub pause_min_left: u64,
     pub pause_gap: u64,
+    /// a paused device stays online at this speed, in kbit/s (PAUSE_KBPS, default 1: nothing usable, but its page and its buttons keep working)
+    pub pause_kbps: u32,
     /// the coin page offers "Use now" or "Get a voucher code" (VOUCHER_CHOICE, default on; the owner can switch it in the console)
     pub voucher_choice: bool,
     /// minutes of mini-game a device gets per day (GAME_MINUTES, default 10, 0 = no game; the owner can change it in the console)
@@ -168,6 +170,7 @@ impl Config {
             pause_max: num("PAUSE_MAX", 10).min(20) as u32,
             pause_min_left: num("PAUSE_MIN_LEFT_SECONDS", 120),
             pause_gap: num("PAUSE_GAP_SECONDS", 60),
+            pause_kbps: (num("PAUSE_KBPS", 1) as u32).clamp(1, 1000),
             voucher_choice: parse_switch(&get("VOUCHER_CHOICE", ""), true),
             game_minutes: (num("GAME_MINUTES", 10) as u32).min(crate::game::MAX_MINUTES),
             game_seconds: get("GAME_LIMIT_SECONDS", "").parse().ok(),
