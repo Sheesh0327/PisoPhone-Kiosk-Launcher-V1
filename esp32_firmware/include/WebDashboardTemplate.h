@@ -281,6 +281,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
 
 {SUPER_ADMIN_TAB}
     </main>
+    <footer class="foot"><span>TechNet PisoHub &middot; Coin box</span><span><a href="https://pisophone.pages.dev/manual.html" target="_blank" rel="noopener">Owner manual</a></span></footer>
 
 {PORTAL_MODALS}
 
