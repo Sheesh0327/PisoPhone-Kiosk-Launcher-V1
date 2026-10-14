@@ -77,6 +77,8 @@ details .btn{margin:8px 0 12px}
 <input id="vc" maxlength="11" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="ABCDE-FGHJK" aria-label="Voucher code">
 <button class="btn alt" id="vb" type="button">Redeem</button>
 <p class="mut" id="vm" role="status"></p></details>
+<a class="btn alt" id="gm" href="/game" target="_blank" rel="noopener" style="display:none">Play a mini-game</a>
+<p class="sub" id="gms"></p>
 </div>
 <div id="v-live" class="v card">
 <span class="chip" id="lplan"></span>
@@ -219,6 +221,7 @@ if(s==="idle"||s==="paused"){
  var on=el("ion"),ps=pj,tm=j.left>0;
  if(s==="idle"){vch=!!j.vc;vlist(j.vs||[])}else vlist([]);
  el("vchoice").style.display=vch?"block":"none";
+ var gl=s==="idle"&&j.gm!==undefined?j.gm:-1;el("gm").style.display=gl>0?"block":"none";put("gms",gl>0?"Mini-game: "+Math.ceil(gl/60)+" min left today":gl===0?"Mini-game time is used up today. Back tomorrow.":"");
  el("hd").style.display=tm?"none":"flex";el("vd").style.display=ps?"none":"block";
  if(tm){on.style.display="block";put("tplan",pn(j.plan));el("tused").style.display=j.plan==="hyper"&&!ps?"inline":"none";put("tused",j.used_mb+" MB used");el("tslow").style.display=j.slow>0&&!ps?"block":"none";
   el("pz").style.display=!ps&&j.pm>0?"block":"none";el("rs").style.display=ps?"block":"none";el("rs").disabled=false;el("rs").textContent="Resume time";el("pz").removeAttribute("aria-disabled");

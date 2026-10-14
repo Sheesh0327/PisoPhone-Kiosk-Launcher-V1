@@ -444,6 +444,11 @@ impl Console {
 
 // ---- the server ---------------------------------------------------------------------------------------------------------------------
 
+/// The owner's console settings (voucher choice at payment, mini-game minutes a day).
+fn settings_json(core: &Core) -> String {
+    format!("{{\"voucher_choice\":{},\"game_minutes\":{}}}", core.voucher_choice(), core.games.limit_secs() / 60)
+}
+
 /// The prices in force, for the console's Settings page (tiers as [pesos, minutes]; speeds in kbit/s, 0 = no cap).
 fn pricing_json(core: &Core) -> String {
     let pr = core.pricing();
@@ -589,17 +594,37 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
                     )
                 }
                 ("GET", "/api/vouchers") => json(&mut conn, "200 OK", &c.core.vouchers_json(), ""),
-                ("GET", "/api/settings") => json(&mut conn, "200 OK", &format!("{{\"voucher_choice\":{}}}", c.core.voucher_choice()), ""),
+                ("GET", "/api/settings") => json(&mut conn, "200 OK", &settings_json(&c.core), ""),
                 ("POST", "/api/settings") => {
                     // (only the settings named in the body change)
-                    let v = jget(&body, "voucher_choice");
-                    if v.is_empty() {
+                    let (vc, gm) = (jget(&body, "voucher_choice"), jget(&body, "game_minutes"));
+                    if vc.is_empty() && gm.is_empty() {
                         return json(&mut conn, "400 Bad Request", "{\"error\":\"NOTHING\"}", "");
                     }
-                    if !c.core.set_voucher_choice(crate::config::parse_switch(&v, true)) {
+                    if !gm.is_empty() {
+                        match gm.parse::<u32>() {
+                            Ok(m) if m <= crate::game::MAX_MINUTES => {
+                                if !c.core.set_game_minutes(m) {
+                                    return json(&mut conn, "500 Internal Server Error", "{\"error\":\"IO\"}", "");
+                                }
+                            }
+                            _ => {
+                                let why = format!("the mini-game minutes must be a number from 0 to {}", crate::game::MAX_MINUTES);
+                                return json(
+                                    &mut conn,
+                                    "400 Bad Request",
+                                    &format!("{{\"error\":\"BAD_MINUTES\",\"why\":\"{}\"}}", why),
+                                    "",
+                                );
+                            }
+                        }
+                    }
+                    if !vc.is_empty() && !c.core.set_voucher_choice(crate::config::parse_switch(&vc, true)) {
                         return json(&mut conn, "500 Internal Server Error", "{\"error\":\"IO\"}", "");
                     }
-                    json(&mut conn, "200 OK", &format!("{{\"ok\":true,\"voucher_choice\":{}}}", c.core.voucher_choice()), "")
+                    let mut out = settings_json(&c.core);
+                    out.insert_str(1, "\"ok\":true,");
+                    json(&mut conn, "200 OK", &out, "")
                 }
                 ("GET", "/api/pricing") => json(&mut conn, "200 OK", &pricing_json(&c.core), ""),
                 ("POST", "/api/pricing") => {

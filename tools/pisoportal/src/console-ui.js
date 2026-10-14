@@ -1,5 +1,5 @@
 // TechNet PisoHub console: the page's behaviour. PISO_UI_VERSION rises with every change that is published (scripts/sign_console_ui.py).
-window.PISO_UI_VERSION = 4;
+window.PISO_UI_VERSION = 5;
 (function(){
 var $=function(i){return document.getElementById(i)},tab='over',timer=null,last={},sales=null,TABS=['over','cli','ph','sales','vch','set'];
 function esc(t){return String(t).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
@@ -62,7 +62,8 @@ function vch(j){if(soldOut(j))return;var a=j.batches||[];$('vl2').innerHTML=a.sl
  return '<tr><td><b>'+(b.bought===false?esc(b.label||'Printed slips'):'Bought with coins')+'</b><div class="s">'+dt(b.created)+(b.count>1?' · '+b.count+' codes':'')+' · '+(b.plan==='endurance'?'Endurance':'HyperSpeed')+'</div></td><td>'+mins(b.minutes)+' · '+peso(b.pesos)+'</td><td>'+(b.void?chip('Cancelled','bad'):!left?chip('Used','ok'):b.used?chip(b.used+' of '+b.count+' used'):chip('Not used','gold'))+'</td><td>'+(gone?chip('Expired','bad'):b.expires?dt(b.expires):'No expiry')+'</td><td>'+(b.void||!left||gone?'':'<button class="b dg" data-v="'+b.id+'" data-n="'+esc(b.bought===false?(b.label||b.id):dt(b.created))+'" data-l="'+left+'">Cancel</button>')+'</td></tr>'}).join('')||'<tr><td colspan="5" class="s">No vouchers yet. Customers get one when they choose "Get a voucher code" at payment.</td></tr>';
  document.querySelectorAll('#vl2 button[data-v]').forEach(function(b){b.onclick=function(){ask('Cancel this voucher ('+b.dataset.n+')?',b.dataset.l+' unused code'+(b.dataset.l==='1'?'':'s')+' will stop working. The customer already paid; the money stays in the sales.','Cancel the voucher',true,function(){api('/api/vouchers/void',{batch:b.dataset.v}).then(refresh)})}})}
 /* settings */
-function sets(j){if(soldOut(j)||document.activeElement===$('vcs'))return;$('vcs').value=j.voucher_choice?'on':'off'}
+function sets(j){if(soldOut(j))return;if(document.activeElement!==$('vcs'))$('vcs').value=j.voucher_choice?'on':'off';if(document.activeElement!==$('gmi')&&j.game_minutes!==undefined)$('gmi').value=j.game_minutes}
+$('gmi').onchange=function(){var m=Math.round(+$('gmi').value);if(!(m>=0&&m<=120)){$('setm').textContent='Use a number from 0 to 120.';return}$('setm').textContent='';api('/api/settings',{game_minutes:String(m)}).then(function(j){$('setm').textContent=j.ok?'Saved. Coin pages follow at once.':(j.why||'Could not save.');if(j.ok)$('gmi').value=j.game_minutes}).catch(function(){})};
 $('vcs').onchange=function(){var s=$('vcs');$('setm').textContent='';api('/api/settings',{voucher_choice:s.value}).then(function(j){$('setm').textContent=j.ok?'Saved. Open customer pages follow at once.':'Could not save.';if(j.ok)s.value=j.voucher_choice?'on':'off'}).catch(function(){})};
 /* prices: the editor keeps what is typed until it is saved (the page refreshes every few seconds and must not overwrite it) */
 var pdirty=false;

@@ -11,6 +11,7 @@ BUDGET_KB = {
     "tools/pisoportal/bin/pisoportal-x86_64": 1000,
     "setup/piso-setup.sh": 1500,                      # the one-file installer / update (it is downloaded, not kept)
     "setup/piso-setup.sh.in": 150,                    # the installed command (the file without its payload)
+    "tools/pisoportal/src/game.html": 10,             # the mini-game page (1.3.6: Coin Catch, one file, no libraries)
     "tools/pisoportal/src/page.html": 28,             # the customer page (1.3.4: voucher choice and code view, speech with a fallback, heartbeat)
 }
 bad = 0

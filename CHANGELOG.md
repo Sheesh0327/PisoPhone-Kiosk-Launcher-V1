@@ -4,6 +4,10 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 4.6.6; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Router 1.3.6, **PisoWiFi: a mini-game.** The coin page has a **Play a mini-game** button that opens *Coin Catch* (catch the coins, dodge the sparks) in a new browser tab. The game is one small page the router serves
+  itself (7 KB, nothing from the internet), so it works before anyone has paid. Each device gets **10 minutes a day**, counted by the router while the game is played (a hidden tab or a pause does not count; the router adds only the
+  real time that passed). When the minutes are gone the page says so until the next day. Change the minutes, or turn the game off with 0, in the console **Settings** page or with `GAME_MINUTES` in `/etc/coinslot.conf`. It is a soft limit
+  for the child at the counter, not a lock. New: `game.rs`, `game.html`, `/game`, `/game/tick`; the coin page's state carries `gm` (seconds left today).
 - **Release cleanup.** Removed code and files nothing used: an unreferenced app-closing function, two colour tokens, a manifest action no receiver handled, three strings and a picture the lint check
   reported as unused, two Compose tooling libraries (the app has no previews), a stray Python wheel in the firmware folder and an unused function in the desktop installer. The changelog's version
   note now describes the digit-based app version. Nothing in the firmware or the router portal was found to be dead.

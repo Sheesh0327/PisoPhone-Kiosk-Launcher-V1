@@ -34,6 +34,10 @@ pub struct Config {
     pub pause_gap: u64,
     /// the coin page offers "Use now" or "Get a voucher code" (VOUCHER_CHOICE, default on; the owner can switch it in the console)
     pub voucher_choice: bool,
+    /// minutes of mini-game a device gets per day (GAME_MINUTES, default 10, 0 = no game; the owner can change it in the console)
+    pub game_minutes: u32,
+    /// the same in seconds, for tests only (GAME_LIMIT_SECONDS); wins over the minutes when set
+    pub game_seconds: Option<u32>,
     pub empty_limit: usize,
     pub empty_window: u64,
     pub empty_cooldown: u64,
@@ -165,6 +169,8 @@ impl Config {
             pause_min_left: num("PAUSE_MIN_LEFT_SECONDS", 120),
             pause_gap: num("PAUSE_GAP_SECONDS", 60),
             voucher_choice: parse_switch(&get("VOUCHER_CHOICE", ""), true),
+            game_minutes: (num("GAME_MINUTES", 10) as u32).min(crate::game::MAX_MINUTES),
+            game_seconds: get("GAME_LIMIT_SECONDS", "").parse().ok(),
             empty_limit: num("EMPTY_LIMIT", 2) as usize,
             empty_window: num("EMPTY_WINDOW", 300),
             empty_cooldown: num("EMPTY_COOLDOWN", 120),

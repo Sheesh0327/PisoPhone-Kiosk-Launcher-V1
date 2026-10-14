@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Coin Catch</title>
+<style>
+/* TechNet PisoHub mini-game: one small offline page, no libraries, nothing from the internet. */
+html,body{margin:0;height:100%;background:#050d22;color:#eef3ff;font:16px/22px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none}
+canvas{display:block;position:fixed;top:0;left:0}
+#hud{position:fixed;left:0;right:0;top:0;display:flex;justify-content:space-between;gap:8px;padding:max(10px,env(safe-area-inset-top)) 14px 0;font-weight:700;pointer-events:none}
+#hud b{color:#ffb81c}
+#ov{position:fixed;left:0;right:0;top:0;bottom:0;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(5,13,34,.8)}
+#ov>div{max-width:340px;width:100%;text-align:center;background:#0c1a3a;border:1px solid #1f3361;border-radius:12px;padding:20px;box-sizing:border-box}
+h1{margin:0 0 6px;font-size:22px;line-height:28px}
+p{margin:6px 0;color:#97a6c7}
+button,a.b{display:block;width:100%;min-height:52px;margin:14px 0 0;padding:12px;border:0;border-radius:10px;background:#1d63d6;color:#fff;font:inherit;font-weight:700;text-align:center;text-decoration:none;box-sizing:border-box;cursor:pointer}
+a.b{min-height:48px;background:none;border:1px solid #5a70a3;color:#eef3ff;font-weight:600}
+button:focus-visible,a.b:focus-visible{outline:2px solid #5b9bff;outline-offset:2px}
+</style></head><body>
+<canvas id="c" aria-label="Coin Catch game"></canvas>
+<div id="hud"><span>Score <b id="sc">0</b></span><span id="lv" aria-label="lives"></span><span><b id="tl"></b> left today</span></div>
+<div id="ov" role="dialog" aria-live="polite"><div>
+<h1 id="ot">Coin Catch</h1>
+<p id="om">Slide your finger to move the basket. Catch the coins, dodge the sparks. You have three lives.</p>
+<button id="ob" type="button">Play</button>
+<a class="b" href="/">Back to the Wi-Fi page</a>
+</div></div>
+<script>
+(function(){
+var cv=document.getElementById("c"),g=cv.getContext("2d");
+function $(i){return document.getElementById(i)}
+var W=0,H=0,left=%LEFT%,score=0,best=0,lives=3,run=false,done=false,items=[],bx=0,tx=0,bw=100,sp=0,lvl=1,prev=0,flash=0,okAt=0,tickAt=0,key=0,raf=0,clk=-1;
+try{best=+localStorage.getItem("pisoBest")||0}catch(e){}
+function fit(){var d=window.devicePixelRatio||1;W=window.innerWidth;H=window.innerHeight;cv.width=Math.round(W*d);cv.height=Math.round(H*d);cv.style.width=W+"px";cv.style.height=H+"px";g.setTransform(d,0,0,d,0,0);bw=Math.max(70,Math.min(130,W*.26));if(!bx){bx=tx=W/2}else{bx=tx=Math.min(Math.max(bx,bw/2),W-bw/2)}draw()}
+function mv(x){tx=Math.max(bw/2,Math.min(W-bw/2,x))}
+cv.addEventListener("touchstart",function(e){mv(e.touches[0].clientX);e.preventDefault()},{passive:false});
+cv.addEventListener("touchmove",function(e){mv(e.touches[0].clientX);e.preventDefault()},{passive:false});
+cv.addEventListener("mousemove",function(e){mv(e.clientX)});
+document.addEventListener("keydown",function(e){if(e.keyCode===37||e.keyCode===65)key=-1;else if(e.keyCode===39||e.keyCode===68)key=1});
+document.addEventListener("keyup",function(e){key=0});
+function clock(){var s=Math.max(0,Math.ceil(left)),t=Math.floor(s/60)+":"+("0"+s%60).slice(-2);if(s!==clk){clk=s;$("tl").textContent=t}}
+function hud(){$("sc").textContent=score;var h="",i;for(i=0;i<3;i++)h+=i<lives?"♥ ":"♡ ";$("lv").textContent=h}
+function ask(m,s,fn,bad){var x=new XMLHttpRequest();x.open("GET","/game/tick"+(s?"?s=1":""));x.onload=function(){try{var j=JSON.parse(x.responseText);okAt=Date.now();left=j.left;clock();if(fn)fn(left)}catch(e){if(bad)bad()}};x.onerror=function(){if(bad)bad()};x.send()}
+function overlay(t,m,b,fn){$("ot").textContent=t;$("om").textContent=m;var o=$("ob");o.style.display=b?"block":"none";o.textContent=b||"";o.onclick=fn||null;$("ov").style.display="flex"}
+function stop(){run=false;if(raf)cancelAnimationFrame(raf);raf=0}
+function over(t,m){stop();ask(0,false);if(score>best){best=score;try{localStorage.setItem("pisoBest",best)}catch(e){}}
+ if(left<=0)overlay("Time is up for today","Come back tomorrow for more play time. Best score: "+best+".",""); else overlay(t,m+" Best: "+best+".","Play again",function(){begin(true)})}
+function begin(fresh){if(fresh){score=0;lives=3;items=[];lvl=1;sp=.5;flash=0}hud();$("ov").style.display="none";okAt=tickAt=Date.now();ask(0,true);run=true;prev=0;raf=requestAnimationFrame(frame)}
+function update(dt){
+ bx+=(tx-bx)*Math.min(1,dt*18);if(key){tx=Math.max(bw/2,Math.min(W-bw/2,tx+key*dt*620))}
+ left-=dt;clock();if(left<=0){left=0;stop();ask(0,false,function(l){if(l>0)begin(false);else over("","")},function(){overlay("Lost the Wi-Fi","Reconnect to the Wi-Fi to keep playing.","Try again",function(){begin(false)})});return}
+ sp-=dt;if(sp<=0){sp=Math.max(.3,.95-lvl*.06);items.push({x:20+Math.random()*(W-40),y:-20,v:(130+lvl*24+Math.random()*50)*(H/640),k:Math.random()<Math.min(.4,.14+lvl*.03)?1:0,a:Math.random()*6})}
+ var by=H-64,i,t;for(i=items.length-1;i>=0;i--){t=items[i];t.y+=t.v*dt;t.a+=dt*6;
+  if(t.y>by-12&&t.y<by+22&&Math.abs(t.x-bx)<bw/2+8){items.splice(i,1);if(t.k){lives--;flash=.35;hud();if(lives<=0){over("Game over","Score "+score+".");return}}else{score++;lvl=1+Math.floor(score/8);hud()}}
+  else if(t.y>H+30)items.splice(i,1)}
+ if(flash>0)flash-=dt}
+function draw(){
+ var gr=g.createLinearGradient(0,0,0,H);gr.addColorStop(0,"#0a1b45");gr.addColorStop(1,"#050d22");g.fillStyle=gr;g.fillRect(0,0,W,H);
+ var i,t,by=H-64;
+ for(i=0;i<items.length;i++){t=items[i];
+  if(t.k){g.fillStyle="#ff6b6b";g.beginPath();g.moveTo(t.x-4,t.y-16);g.lineTo(t.x+9,t.y-2);g.lineTo(t.x+1,t.y-1);g.lineTo(t.x+6,t.y+16);g.lineTo(t.x-9,t.y+2);g.lineTo(t.x-1,t.y+1);g.closePath();g.fill()}
+  else{g.fillStyle="#ffb81c";g.beginPath();g.arc(t.x,t.y,13,0,6.3);g.fill();g.fillStyle="#a8730b";g.font="bold 15px system-ui,sans-serif";g.textAlign="center";g.textBaseline="middle";g.fillText("₱",t.x,t.y+1)}}
+ g.fillStyle="#1d63d6";g.beginPath();g.moveTo(bx-bw/2,by);g.lineTo(bx+bw/2,by);g.lineTo(bx+bw/2-10,by+22);g.lineTo(bx-bw/2+10,by+22);g.closePath();g.fill();
+ g.fillStyle="#5b9bff";g.fillRect(bx-bw/2,by-3,bw,5);
+ if(flash>0){g.fillStyle="rgba(255,107,107,"+Math.min(.35,flash)+")";g.fillRect(0,0,W,H)}}
+function frame(t){if(!run)return;var dt=prev?Math.min(.05,(t-prev)/1e3):.016;prev=t;update(dt);if(!run)return;draw();
+ var n=Date.now();if(n-tickAt>=5e3){tickAt=n;ask(0,false)}
+ if(n-okAt>3e4){stop();overlay("Lost the Wi-Fi","Reconnect to the Wi-Fi to keep playing.","Try again",function(){begin(false)});return}
+ raf=requestAnimationFrame(frame)}
+document.addEventListener("visibilitychange",function(){if(document.hidden&&run){stop();ask(0,false);overlay("Paused","Time only counts while you play.","Keep playing",function(){begin(false)})}});
+window.addEventListener("resize",fit);
+fit();hud();clock();
+$("ob").onclick=function(){begin(true)};
+})();
+</script></body></html>
