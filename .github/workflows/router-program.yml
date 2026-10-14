@@ -31,7 +31,8 @@ permissions:
 # A newer push supersedes an unfinished build of the same branch (both would commit the binaries).
 concurrency:
   group: router-program-${{ github.ref }}
-  cancel-in-progress: true
+  # (on main a run that signs or commits is never cancelled half way)
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   build:
@@ -49,7 +50,18 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
+      # The C toolchain of each family comes out of a large Docker image (a pull of a minute or two). It only changes with the image tag.
+      - name: Restore the C toolchain of this family
+        id: toolchain
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            toolchain
+            host
+          key: openwrt-toolchain-${{ matrix.image }}
+
       - name: Take the C toolchain out of the OpenWrt SDK image
+        if: steps.toolchain.outputs.cache-hit != 'true'
         run: |
           docker pull "${{ matrix.image }}"
           TC=$(docker run --rm "${{ matrix.image }}" sh -c 'ls -d /builder/staging_dir/toolchain-*' | head -1)
@@ -58,7 +70,18 @@ jobs:
           docker cp "$id:$TC" "$PWD/toolchain"
           mkdir -p host && docker cp "$id:/builder/staging_dir/host/lib" "$PWD/host/lib"   # the compiler wrapper looks for ../../host/lib
           docker rm "$id" > /dev/null
-          echo "GCC=$(ls "$PWD"/toolchain/bin/*-openwrt-linux-musl*-gcc | head -1)" >> "$GITHUB_ENV"
+
+      - name: Find the C compiler
+        run: echo "GCC=$(ls "$PWD"/toolchain/bin/*-openwrt-linux-musl*-gcc | head -1)" >> "$GITHUB_ENV"
+
+      - name: Restore the Rust downloads
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-${{ matrix.family }}-${{ hashFiles('tools/pisoportal/Cargo.lock') }}
+          restore-keys: cargo-${{ matrix.family }}-
 
       - name: Rust toolchain (MIPS has no prebuilt standard library, so it uses nightly with the sources)
         run: |

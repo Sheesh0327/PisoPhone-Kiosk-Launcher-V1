@@ -38,6 +38,18 @@ the router program for `mipsel_24kc` and regenerates `setup/piso-setup.sh` on `b
 tests, builds and signs the release APK and publishes it to the branch's channel (`main` = production, other branches =
 `-dev`). Dependabot opens update PRs (majors and Kotlin-toolchain minors are ignored on purpose).
 
+### CI minutes (what a push costs, and how it is kept down)
+On a private repository GitHub gives a monthly allowance of free runner minutes (check the current figure for your plan); a full push that
+touches the app, the firmware and the router program costs about 35 to 45 minutes, a docs push almost nothing. How it is kept down:
+- **The emulator tests** (`emulator-tests.yml`, about 6 minutes) run on pushes to `main` that change the app, every night at 02:00 UTC when
+  the app changed in the last day, and by hand (Actions > Emulator tests > Run workflow) for any branch. They do not run on every `beta` push.
+- **`build-apk.yml`** does not run for a change that only touches `app/src/androidTest/` or the screenshot pictures.
+- **`quality.yml`** runs every job on a push to `main` (what ships is checked in full), and on any other branch only the jobs the change can
+  affect. A change to `quality.yml` itself runs everything: use that to run the whole suite on purpose.
+- **A newer push cancels the unfinished run** of the same branch (never on `main`, where a run that signs or commits is not cancelled).
+- **Caches:** Gradle, PlatformIO, Cargo downloads, and the OpenWrt C toolchain of each router family (a Docker pull otherwise).
+Everything runs on Linux (Windows runners count double, macOS ten times).
+
 Secrets for the APK build: `KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD` in the protected Environment
 `production-signing` (docs/RELEASE.md 2a; the signing job stops if one is missing, because an APK signed with another key cannot update
 installed phones), and optionally the repository secret `RELEASES_TOKEN`. Gradle builds an unsigned APK in a job with no secrets; a

@@ -166,7 +166,7 @@ The owner makes cards on their own computer with `scripts/make_cards.py` (the ca
 - `.github/workflows/quality.yml` ("Code quality") runs on every push: ktlint for Kotlin, clang-format and the firmware host tests, the security-rule and vendored-file checks, the website and provisioning tests,
   the owner's admin QR login and signed console script tests, the generated web assets check, the dashboard's scripts in a browser, and the portal and router tests (flow, console, browser, installer, self-update, box update).
 - `quality.yml` also runs **detekt** (static analysis; `detekt.yml` is the rules, `detekt-baseline.xml` the findings that existed when it was added, and anything new fails).
-- `build-apk.yml` runs the **emulator tests** (`scripts/ci_emulator_tests.sh`, in an Android emulator with `reactivecircus/android-emulator-runner`), the Android unit tests (Robolectric, no device) with a per-package **coverage** check, **Android Lint** (`app/lint-baseline.xml`; anything new fails and lint must pass before the APK is built),
+- `emulator-tests.yml` runs the **emulator tests** (`scripts/ci_emulator_tests.sh`, in an Android emulator with `reactivecircus/android-emulator-runner`) on pushes to `main`, nightly, and by hand. `build-apk.yml` runs the Android unit tests (Robolectric, no device) with a per-package **coverage** check, **Android Lint** (`app/lint-baseline.xml`; anything new fails and lint must pass before the APK is built),
   then builds, signs and publishes the APK (per-branch channel).
 - `scripts/check_security_rules.sh` also fails if a file that is not source sits in a source folder, or a tracked file is over 5 MB (outside the folders CI publishes builds into).
 - Format locally with `ktlint -F` (Kotlin) and `clang-format -i` (firmware, config in `esp32_firmware/.clang-format`).
@@ -181,7 +181,7 @@ The owner makes cards on their own computer with `scripts/make_cards.py` (the ca
   A failed comparison leaves `*.actual.png` and `*.diff.png` in `app/build/screenshot-diffs/` (uploaded by CI). They show the still version of each screen, not the animation, and not a real phone's fonts or GPU.
 - **Emulator lane (new):** `app/src/androidTest/.../KioskWireFlowTest.kt` runs the real service on an Android 14 emulator and drives it the way the coin box does (signed, encrypted requests to port 8080):
   bad signatures are refused, a payment unlocks the phone, the countdown runs, the phone locks itself when time is up, a coin arms the phone first, a repeated payment is credited once and a changed one is a conflict.
-  It is not required for the APK build yet (an emulator is flakier than the other jobs); it becomes required after it has been stable for a while. It does **not** cover anything that needs the phone to be device owner.
+  It is not required for the APK build yet (an emulator is flakier than the other jobs, and it runs on `main` and nightly, not on every branch push; see `docs/DEPLOY.md`, "CI minutes"); it becomes required after it has been stable for a while. It does **not** cover anything that needs the phone to be device owner.
 - **Still not tested on a real device in CI:** Unit tests cover the decision logic; the Android calls (device policy, Wi-Fi radio, usage stats, sensors, clearing app data) and real openNDS behaviour are checked by hand
   (`docs/REAL_WORLD_TESTING.md`).
 - **Structure:** the app is one Gradle module with feature folders; dependencies are not enforced by the compiler, and many pieces are singleton `object`s rather than injected. Several classes are large
