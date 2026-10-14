@@ -1,10 +1,10 @@
 {
-  "versionCode": 442,
-  "versionName": "4.4.2",
+  "versionCode": 464,
+  "versionName": "4.6.4",
   "channel": "stable",
   
   "signatureChecksum": "Un0usqLMwnmeaowrY2g21EgRVWe4bTRDLUi2RH12WbE",
-  "sha256": "b12ead278aa48d591b3cf19c3a371ebc9d0fbe7d161cd72265e7957d5fccc3ee",
-  "size": 3499933,
+  "sha256": "7509fe2b4f56e8cb830853bc75f26ab2060a9c831f53d418d63d274e0a5b58f4",
+  "size": 3541091,
   "releaseDate": "2026-10-14"
 }
