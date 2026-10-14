@@ -4,6 +4,9 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 4.6.6; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Router 1.3.8, **PisoWiFi: Pause is a perk of paying ₱20 or more, once per session.** A device can pause only after the session has paid **₱20 in all** (top-ups and vouchers add up; `PAUSE_MIN_PESOS`, default 20, 0 = any amount),
+  and only **one** pause per session (`PAUSE_MAX`, default 1). Below ₱20 the Pause button is hidden and the page says "Pay ₱N more to unlock a pause". The 1 kbit/s crawl and the 2 MB allowance are unchanged.
+  Phones that drop the Wi-Fi when they are slowed down just reconnect, as before.
 - Router 1.3.7, **PisoWiFi: Pause no longer takes the device off.** A paused device stays on the Wi-Fi but is slowed to **1 kbit/s** (`PAUSE_KBPS`), so the page, its buttons and its scripts keep working;
   with only **2 MB** of data for the whole pause (`PAUSE_QUOTA_KB`; used up, openNDS takes the device off as a pause always did, and Resume still works). The clock is still stopped and the time is still kept for a day. Resume gives back the time and the plan's own speed. The console's Customers page marks a paused device. Found on the way and fixed: the fair-use
   timer used `roll::session`, which resumes a paused session, so a device that stayed online while paused would have been resumed by it within a minute; it now leaves paused sessions alone (a test proves it).

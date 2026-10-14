@@ -30,6 +30,8 @@ pub struct Config {
     pub fair_throttle_min: u64,
     pub fair_full_min: u64,
     pub pause_max: u32,
+    /// pesos a session must have paid in all to be allowed a pause (PAUSE_MIN_PESOS, default 20; 0 = anyone with time left)
+    pub pause_min_pesos: u32,
     pub pause_min_left: u64,
     pub pause_gap: u64,
     /// a paused device stays online at this speed, in kbit/s (PAUSE_KBPS, default 1: nothing usable, but its page and its buttons keep working)
@@ -169,7 +171,8 @@ impl Config {
             fair_up: num("FAIR_THROTTLE_UP_KBPS", 1000) as u32,
             fair_throttle_min: num("FAIR_THROTTLE_MINUTES", 5),
             fair_full_min: num("FAIR_FULL_MINUTES", 2),
-            pause_max: num("PAUSE_MAX", 10).min(20) as u32,
+            pause_max: num("PAUSE_MAX", 1).min(20) as u32,
+            pause_min_pesos: num("PAUSE_MIN_PESOS", 20).min(1000) as u32,
             pause_min_left: num("PAUSE_MIN_LEFT_SECONDS", 120),
             pause_gap: num("PAUSE_GAP_SECONDS", 60),
             pause_kbps: (num("PAUSE_KBPS", 1) as u32).clamp(1, 1000),
@@ -232,6 +235,17 @@ mod tests {
         assert!(override_set(&dir, "OTHER", "x") && override_set(&dir, "VOUCHER_CHOICE", "on"));
         assert_eq!((override_get(&dir, "VOUCHER_CHOICE").as_str(), override_get(&dir, "OTHER").as_str()), ("on", "x"));
         let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_pause_is_a_perk_for_paying_20_pesos_once() {
+        let c = Config::from_map(HashMap::new());
+        assert_eq!((c.pause_max, c.pause_min_pesos), (1, 20), "defaults: one pause, for a session that paid 20 pesos or more");
+        let mut m = HashMap::new();
+        m.insert("PAUSE_MAX".to_string(), "3".to_string());
+        m.insert("PAUSE_MIN_PESOS".to_string(), "0".to_string());
+        let c = Config::from_map(m);
+        assert_eq!((c.pause_max, c.pause_min_pesos), (3, 0), "the owner can allow more pauses and any amount");
     }
 
     #[test]

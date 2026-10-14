@@ -317,6 +317,8 @@ pub struct Peeked {
     pub left: u64,
     pub paused: bool,
     pub pauses_used: u32,
+    /// pesos paid into this session so far
+    pub pesos: u32,
     /// when the paused time is lost (0 when not paused)
     pub lost_at: u64,
 }
@@ -330,6 +332,7 @@ pub fn peek_state(path: &str, now: u64, mac: &str) -> Option<Peeked> {
         left: l,
         paused: e.paused(),
         pauses_used: e.pu,
+        pesos: e.pesos,
         lost_at: if e.paused() { e.pa + PAUSE_MAX_SECS } else { 0 },
     })
 }
@@ -340,6 +343,8 @@ pub struct PauseRules {
     pub max: u32,
     /// seconds that must be left to pause
     pub min_left: u64,
+    /// pesos the session must have paid in all (top-ups and vouchers count) before it may pause; 0: any amount
+    pub min_pesos: u32,
 }
 
 #[derive(Debug, PartialEq)]
@@ -350,6 +355,8 @@ pub enum PauseError {
     Limit,
     /// less than the minimum is left
     TooLittle,
+    /// the session has paid this many pesos too few to be allowed a pause
+    Pesos(u32),
     Io,
 }
 
@@ -367,6 +374,9 @@ pub fn pause(path: &str, now: u64, mac: &str, rules: PauseRules) -> Result<u64, 
     }
     if rules.max == 0 || entries[i].pu >= rules.max {
         return Err(PauseError::Limit);
+    }
+    if entries[i].pesos < rules.min_pesos {
+        return Err(PauseError::Pesos(rules.min_pesos - entries[i].pesos));
     }
     if left < rules.min_left {
         return Err(PauseError::TooLittle);
@@ -438,7 +448,7 @@ mod tests {
     fn pause_keeps_the_time_and_resume_gives_it_back() {
         let p = tmp("pause");
         let mac = "aa:bb:cc:00:00:03";
-        let rules = PauseRules { max: 2, min_left: 120 };
+        let rules = PauseRules { max: 2, min_left: 120, min_pesos: 0 };
         mint(&p, 1000, mac, "w", Plan::Hyper, 5, 30, 0, 0, false).unwrap(); // 30 min = 1800 s
         assert_eq!(pause(&p, 1600, mac, rules), Ok(1200)); // 1200 s left
         assert_eq!(peek_state(&p, 1700, mac).map(|s| (s.left, s.paused, s.pauses_used)), Some((1200, true, 1)));
@@ -456,14 +466,14 @@ mod tests {
         session(&p, 7010, mac).unwrap();
         assert_eq!(pause(&p, 7020, mac, rules), Err(PauseError::Limit));
         // pausing off
-        assert_eq!(pause(&p, 7020, mac, PauseRules { max: 0, min_left: 0 }), Err(PauseError::Limit));
+        assert_eq!(pause(&p, 7020, mac, PauseRules { max: 0, min_left: 0, min_pesos: 0 }), Err(PauseError::Limit));
     }
 
     #[test]
     fn pausing_needs_enough_time_left_and_paused_time_is_not_kept_for_ever() {
         let p = tmp("pause2");
         let mac = "aa:bb:cc:00:00:04";
-        let rules = PauseRules { max: 5, min_left: 120 };
+        let rules = PauseRules { max: 5, min_left: 120, min_pesos: 0 };
         mint(&p, 1000, mac, "w", Plan::Hyper, 1, 6, 0, 0, false).unwrap(); // 360 s
         assert_eq!(pause(&p, 1000 + 300, mac, rules), Err(PauseError::TooLittle)); // 60 s left
         assert_eq!(pause(&p, 1000 + 400, mac, rules), Err(PauseError::NoSession)); // ran out
@@ -479,6 +489,21 @@ mod tests {
         pause(&p, 3010, mac, rules).unwrap();
         assert_eq!(mint(&p, 3500, mac, "w4", Plan::Hyper, 1, 6, 0, 0, false), Ok(Mode::TopUp));
         assert_eq!(peek(&p, 3600, mac).map(|v| v.1), Some(350 + 360));
+    }
+
+    #[test]
+    fn a_pause_needs_enough_pesos_paid_in_all() {
+        let p = tmp("pause-pesos");
+        let mac = "aa:bb:cc:00:00:05";
+        let rules = PauseRules { max: 1, min_left: 120, min_pesos: 20 };
+        mint(&p, 1000, mac, "w", Plan::Hyper, 10, 60, 0, 0, false).unwrap();
+        assert_eq!(pause(&p, 1100, mac, rules), Err(PauseError::Pesos(10)), "10 pesos paid: 10 more are missing");
+        assert_eq!(peek_state(&p, 1100, mac).map(|s| (s.pesos, s.paused)), Some((10, false)), "and nothing was changed");
+        // a top-up adds to the same session, so the total counts
+        assert_eq!(mint(&p, 1200, mac, "w2", Plan::Hyper, 10, 60, 0, 0, false), Ok(Mode::TopUp));
+        assert!(pause(&p, 1300, mac, rules).is_ok(), "20 pesos in all unlock the pause");
+        session(&p, 1400, mac).unwrap();
+        assert_eq!(pause(&p, 1500, mac, rules), Err(PauseError::Limit), "and it is once per session");
     }
 
     #[test]
