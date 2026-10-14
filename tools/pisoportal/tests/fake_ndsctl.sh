@@ -4,9 +4,9 @@
 # Every command is appended to $FAKE_NDS_DIR/calls.log. Auth only works on a Preauthenticated client, like the real one.
 D="${FAKE_NDS_DIR:?}"
 key() { printf '%s' "$1" | tr 'A-F' 'a-f' | tr -d ':'; }
-load() { STATE=""; SESSION_END=0; DL=0; UL=0; UPRATE=0; DOWNRATE=0; [ -r "$D/$1" ] && . "$D/$1"; }
+load() { STATE=""; SESSION_END=0; DL=0; UL=0; UPRATE=0; DOWNRATE=0; QUP=0; QDOWN=0; [ -r "$D/$1" ] && . "$D/$1"; }
 save() {  # atomic (temp file + rename): tests read these files while a grant is being written
-  printf 'STATE=%s\nSESSION_END=%s\nDL=%s\nUL=%s\nUPRATE=%s\nDOWNRATE=%s\n' "$STATE" "$SESSION_END" "$DL" "$UL" "$UPRATE" "$DOWNRATE" > "$D/$1.tmp.$$" &&
+  printf 'STATE=%s\nSESSION_END=%s\nDL=%s\nUL=%s\nUPRATE=%s\nDOWNRATE=%s\nQUP=%s\nQDOWN=%s\n' "$STATE" "$SESSION_END" "$DL" "$UL" "$UPRATE" "$DOWNRATE" "$QUP" "$QDOWN" > "$D/$1.tmp.$$" &&
     mv "$D/$1.tmp.$$" "$D/$1"
 }
 client_json() {  # client_json <mackey> <mac>
@@ -39,7 +39,7 @@ case "$1" in
     k=$(key "$2"); load "$k"
     if [ -e "$D/refuse_auth" ]; then echo "Failed to authenticate client $2."   # openNDS refusing (tests)
     elif [ "$STATE" = "Preauthenticated" ]; then
-      STATE=Authenticated; SESSION_END=$(( $(date +%s) + $3 * 60 )); UPRATE="$4"; DOWNRATE="$5"
+      STATE=Authenticated; SESSION_END=$(( $(date +%s) + $3 * 60 )); UPRATE="$4"; DOWNRATE="$5"; QUP="$6"; QDOWN="$7"
       [ "${FAKE_NDS_KEEP_COUNTERS:-0}" = 1 ] || { DL=0; UL=0; }
       save "$k"; echo "Client $2 authenticated."
     else echo "Failed to authenticate client $2."; fi ;;

@@ -5,7 +5,7 @@ separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 
 
 ## Unreleased
 - Router 1.3.7, **PisoWiFi: Pause no longer takes the device off.** A paused device stays on the Wi-Fi but is slowed to **1 kbit/s** (`PAUSE_KBPS`), so the page, its buttons and its scripts keep working;
-  the clock is still stopped and the time is still kept for a day. Resume gives back the time and the plan's own speed. The console's Customers page marks a paused device. Found on the way and fixed: the fair-use
+  with only **2 MB** of data for the whole pause (`PAUSE_QUOTA_KB`; used up, openNDS takes the device off as a pause always did, and Resume still works). The clock is still stopped and the time is still kept for a day. Resume gives back the time and the plan's own speed. The console's Customers page marks a paused device. Found on the way and fixed: the fair-use
   timer used `roll::session`, which resumes a paused session, so a device that stayed online while paused would have been resumed by it within a minute; it now leaves paused sessions alone (a test proves it).
   If openNDS refuses the slow grant the device is taken off, as before.
 - Router 1.3.6, **PisoWiFi: a mini-game.** The coin page has a **Play a mini-game** button that opens *Coin Catch* (catch the coins, dodge the sparks) in a new browser tab. The game is one small page the router serves

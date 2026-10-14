@@ -301,6 +301,7 @@ try:
     check(r and r.get("ok") == 1 and p is not None and p["pl"] == 1 and p["pm"] == 2 and 300 < p["left"] <= 360, f"Pause stops the clock and counts the pause: {r} {p}")
     nd = env.nds_get(MAC_D)
     check(nd["STATE"] == "Authenticated" and nd["UPRATE"] == "1" and nd["DOWNRATE"] == "1", f"a paused device is not taken off: it stays on at 1 kbit/s: {nd}")
+    check(nd["QUP"] == "2048" and nd["QDOWN"] == "2048", f"with 2 MB of data for the whole pause (openNDS takes it off when that is used): {nd}")
     check(86000 < int(nd["SESSION_END"]) - time.time() <= 86460, "and openNDS keeps it for as long as the paused time is kept (a day), then ends the session itself")
     left0 = p["left"]
     d.send({"t": "hello", "fas": "", "reset": False})   # the page reloads while paused
@@ -322,6 +323,8 @@ try:
     check(r and r.get("ok") == 1 and on is not None and left0 - 5 <= on["left"] <= left0 and on["pl"] == 1,
           f"Resume gives the same time back and the device is online again: {r} {on}")
     check(wait_until(lambda: env.nds_get(MAC_D)["STATE"] == "Authenticated" and env.nds_get(MAC_D)["DOWNRATE"] == "0", 5), "and it is back at the plan's own speed (HyperSpeed: no cap), not at a crawl")
+    ndr = env.nds_get(MAC_D)
+    check(ndr["QUP"] == "0" and ndr["QDOWN"] == "0", f"and the paused data allowance is gone: {ndr}")
     n = d.count()
     d.send({"t": "pause"})
     r = d.wait_msg("pz", n)

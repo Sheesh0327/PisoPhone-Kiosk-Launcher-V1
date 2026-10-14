@@ -500,8 +500,9 @@ impl Core {
         }
     }
 
-    /// A paused device is not taken off: it stays on at a crawl (PAUSE_KBPS, 1 kbit/s by default), so its page, its buttons and its scripts
-    /// keep working and nothing reconnects it when it resumes. It is let on for as long as its paused time is kept (the same moment the
+    /// A paused device is not taken off: it stays on at a crawl (PAUSE_KBPS, 1 kbit/s by default) with a small data allowance for the whole
+    /// pause (PAUSE_QUOTA_KB, 2 MB by default: openNDS takes the device off when it is used up, as a pause always did), so its page, its
+    /// buttons and its scripts keep working but nobody chats for free while the clock is stopped. It is let on for as long as its paused time is kept (the same moment the
     /// roll forgets that time), so openNDS ends the session by itself when the time is lost. If openNDS refuses, the device is simply off,
     /// as a pause always was.
     fn slow_down_paused(&self, mac: &str, now: u64) {
@@ -511,8 +512,9 @@ impl Core {
         };
         let minutes = (lost_at.saturating_sub(now) / 60).max(1);
         let kbps = self.cfg.pause_kbps;
-        if self.nds.grant(mac, minutes, kbps, kbps, 0, 0) {
-            log!("pause {}: slowed to {} kbit/s for up to {} min", mac, kbps, minutes);
+        let quota = self.cfg.pause_quota_kb;
+        if self.nds.grant(mac, minutes, kbps, kbps, quota, quota) {
+            log!("pause {}: slowed to {} kbit/s (up to {} kB) for up to {} min", mac, kbps, quota, minutes);
         } else {
             self.nds.deauth(mac);
             log!("pause {}: openNDS refused the slow grant, the device is off", mac);

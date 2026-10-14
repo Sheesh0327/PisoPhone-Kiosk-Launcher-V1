@@ -34,6 +34,8 @@ pub struct Config {
     pub pause_gap: u64,
     /// a paused device stays online at this speed, in kbit/s (PAUSE_KBPS, default 1: nothing usable, but its page and its buttons keep working)
     pub pause_kbps: u32,
+    /// the most a paused device may move during one pause, in kB (PAUSE_QUOTA_KB, default 2048 = 2 MB, 0 = no limit): openNDS takes the device off when it is used up
+    pub pause_quota_kb: u64,
     /// the coin page offers "Use now" or "Get a voucher code" (VOUCHER_CHOICE, default on; the owner can switch it in the console)
     pub voucher_choice: bool,
     /// minutes of mini-game a device gets per day (GAME_MINUTES, default 10, 0 = no game; the owner can change it in the console)
@@ -171,6 +173,7 @@ impl Config {
             pause_min_left: num("PAUSE_MIN_LEFT_SECONDS", 120),
             pause_gap: num("PAUSE_GAP_SECONDS", 60),
             pause_kbps: (num("PAUSE_KBPS", 1) as u32).clamp(1, 1000),
+            pause_quota_kb: num("PAUSE_QUOTA_KB", 2048).min(1_000_000),
             voucher_choice: parse_switch(&get("VOUCHER_CHOICE", ""), true),
             game_minutes: (num("GAME_MINUTES", 10) as u32).min(crate::game::MAX_MINUTES),
             game_seconds: get("GAME_LIMIT_SECONDS", "").parse().ok(),
@@ -229,6 +232,17 @@ mod tests {
         assert!(override_set(&dir, "OTHER", "x") && override_set(&dir, "VOUCHER_CHOICE", "on"));
         assert_eq!((override_get(&dir, "VOUCHER_CHOICE").as_str(), override_get(&dir, "OTHER").as_str()), ("on", "x"));
         let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_paused_device_crawls_and_has_a_small_data_allowance() {
+        let c = Config::from_map(HashMap::new());
+        assert_eq!((c.pause_kbps, c.pause_quota_kb), (1, 2048), "defaults: 1 kbit/s and 2 MB a pause");
+        let mut m = HashMap::new();
+        m.insert("PAUSE_KBPS".to_string(), "0".to_string());
+        m.insert("PAUSE_QUOTA_KB".to_string(), "0".to_string());
+        let c = Config::from_map(m);
+        assert_eq!((c.pause_kbps, c.pause_quota_kb), (1, 0), "never a 0 kbit/s (that would mean no limit); a 0 quota means no data limit");
     }
 
     #[test]
