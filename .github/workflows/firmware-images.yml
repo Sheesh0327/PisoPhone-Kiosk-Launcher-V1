@@ -29,7 +29,8 @@ permissions:
 
 concurrency:
   group: firmware-images-${{ github.ref }}
-  cancel-in-progress: true
+  # (on main a run that signs or commits is never cancelled half way)
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   build:

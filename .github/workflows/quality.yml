@@ -104,6 +104,8 @@ jobs:
           fi
           all=""
           [ -n "$files" ] || { echo "no list of changed files (new branch or a lookup failure): running everything"; all=1; }
+          # main is what ships: every job runs there, whatever the push touched. A branch runs only the jobs its change can affect.
+          if [ "$EVENT" = push ] && [ "$GITHUB_REF" = refs/heads/main ]; then echo "push to main: running everything"; all=1; fi
           skip=""
           if [ "$EVENT" = pull_request ] && { [ "$HEAD_REF" = beta ] || [ "$HEAD_REF" = main ]; }; then echo "this pull request's branch was checked by its own push"; skip=1; fi
           flag() {  # flag <output name> <regex of the paths that matter>
