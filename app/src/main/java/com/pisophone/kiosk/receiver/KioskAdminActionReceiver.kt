@@ -36,7 +36,6 @@ class KioskAdminActionReceiver : BroadcastReceiver() {
         const val ACTION_EMERGENCY_RECOVERY = "com.pisophone.kiosk.EMERGENCY_RECOVERY"
         const val ACTION_EXIT_KIOSK = "com.pisophone.kiosk.EXIT_KIOSK"
         const val ACTION_OPEN_SETTINGS = "com.pisophone.kiosk.OPEN_SETTINGS"
-        const val ACTION_STATUS_REFRESH = "com.pisophone.kiosk.STATUS_REFRESH"
         const val ACTION_RESTART = "com.pisophone.kiosk.RESTART"
         const val ACTION_FACTORY_RESET = "com.pisophone.kiosk.FACTORY_RESET"
         const val ACTION_SCREEN_OFF = "com.pisophone.kiosk.SCREEN_OFF"

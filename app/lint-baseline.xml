@@ -514,45 +514,9 @@
             file="src/main/res/mipmap-anydpi-v26"/>
     </issue>
 
-    <issue
-        id="UnusedResources"
-        message="The resource `R.string.lock_total_label` appears to be unused"
-        errorLine1="    &lt;string name=&quot;lock_total_label&quot;>You put in&lt;/string>"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/values/strings.xml"
-            line="22"
-            column="13"/>
-    </issue>
 
-    <issue
-        id="UnusedResources"
-        message="The resource `R.string.pill_sign_out` appears to be unused"
-        errorLine1="    &lt;string name=&quot;pill_sign_out&quot;>Sign out&lt;/string>"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/values/strings.xml"
-            line="52"
-            column="13"/>
-    </issue>
 
-    <issue
-        id="UnusedResources"
-        message="The resource `R.string.pill_volume` appears to be unused"
-        errorLine1="    &lt;string name=&quot;pill_volume&quot;>Volume&lt;/string>"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/values/strings.xml"
-            line="57"
-            column="13"/>
-    </issue>
 
-    <issue
-        id="UnusedResources"
-        message="The resource `R.drawable.technet_sticker_question` appears to be unused">
-        <location
-            file="src/main/res/drawable-nodpi/technet_sticker_question.webp"/>
-    </issue>
 
     <issue
         id="IconDipSize"

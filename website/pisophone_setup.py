@@ -1797,19 +1797,6 @@ def default_out_dir():
     return str((docs if docs.is_dir() else home) / "PisoPhone")
 
 
-def open_path(path):
-    """Opens a file or folder with the system's program for it."""
-    try:
-        if os.name == "nt":
-            os.startfile(path)   # noqa: S606 (a file this program saved)
-        elif sys.platform == "darwin":
-            subprocess.Popen(["open", path])
-        else:
-            subprocess.Popen(["xdg-open", path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except Exception:
-        webbrowser.open(pathlib.Path(path).as_uri())
-
-
 # ---- the setup page: a small web server on this computer ----------------------------------------------------------------------
 # The setup is a web page served by this program (standard library only), so it needs no screen on the computer that runs it:
 # open the address on any phone or laptop in the same network. A PIN keeps everyone else out.

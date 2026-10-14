@@ -19,7 +19,6 @@
     <string name="lock_scan_card">Have a PisoPhone card? Scan it</string>
     <string name="lock_stuck_hint">Push the coin in slowly. Still stuck? Ask the shop.</string>
     <string name="lock_rate_more">More coins, more time.</string>
-    <string name="lock_total_label">You put in</string>
     <string name="lock_seconds_left">%1$ds</string>
     <string name="lock_footer_online">Coin box connected</string>
     <string name="lock_footer_offline">Coin box offline. Ask the shop staff.</string>
@@ -49,12 +48,10 @@
     <string name="pill_offline">Coin box offline</string>
     <string name="pill_home">Home</string>
     <string name="pill_tap_again">Tap again</string>
-    <string name="pill_sign_out">Sign out</string>
     <string name="pill_sign_out_signed_in">Signed in as %1$s · Sign out</string>
     <string name="pill_sign_out_confirm">Tap again to save your time and sign out</string>
     <string name="pill_status_line">Battery %1$d%% · RAM %2$d%%</string>
     <string name="pill_brightness">Brightness</string>
-    <string name="pill_volume">Volume</string>
     <string name="pill_cd_close">Close panel</string>
     <string name="pill_cd_mute">Mute or unmute</string>
     <string name="banner_time_low">5 minutes left</string>

@@ -24,8 +24,3 @@ val OutlineVariant = Color(0xFF1F3361)
 
 val Tertiary = Color(0xFFFFB81C) // gold: money, minutes
 val OnTertiary = Color(0xFF0B1530)
-
-// Semantic tokens
-
-val TextPrimary = Color(0xFFEEF3FF)
-val TextSecondary = Color(0xFF97A6C7)

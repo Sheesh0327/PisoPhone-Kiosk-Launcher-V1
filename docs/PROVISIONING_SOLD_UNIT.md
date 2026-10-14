@@ -58,6 +58,11 @@ password manager.
 
 ## 3. Prepare the firmware
 
+0. **Get the files without PlatformIO:** run the workflow "Coin box images for the setup program" by hand (Actions tab, Run workflow, branch of your
+   choice, **bundle** on). It builds the dev and the production environments, checks every partition table (boot_app0 must fit inside otadata,
+   every partition flagged encrypted, the app where the offsets say) and puts two zips on the branch `firmware-bundles`:
+   `PisoPhone-firmware-dev-<version>.zip` and `PisoPhone-firmware-release-<version>.zip` (plain files, offsets, SHA256SUMS, and this guide; no keys).
+   The branch holds one commit that every run replaces.
 1. Build the release firmware (`pio run -e esp32-c3-production-encrypted`).
 2. Sign the bootloader and the app for Secure Boot V2:
    ```bash
@@ -112,7 +117,7 @@ esptool.py -p /dev/ttyUSB0 read_flash 0x20000 0x2000 app_dump.bin    # may be re
 python3 scripts/sold_unit_check.py flash app_dump.bin                # must say: ciphertext
 python3 scripts/sold_unit_check.py fuses --port /dev/ttyUSB0 --expect-locked
 ```
-Also dump the **NVS region** (`0x9000`, 0x6000 bytes) and search it for the box's secret
+Also dump the **NVS region** (`0x9000`, 0x5000 bytes) and search it for the box's secret
 (`python3 scripts/sold_unit_check.py flash nvs_dump.bin --find "<text>"`). **If the text appears in plain**, the
 NVS partition is not covered by flash encryption on this build; the fix is NVS encryption (`nvs_flash_secure_init`
 with a key partition), a firmware change that must be made before selling hardened units.

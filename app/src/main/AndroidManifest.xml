@@ -93,7 +93,6 @@
                 <action android:name="com.pisophone.kiosk.SET_VOLUME" />
                 <action android:name="com.pisophone.kiosk.ADMIN_BYPASS" />
                 <action android:name="com.pisophone.kiosk.TEST_TTS" />
-                <action android:name="com.pisophone.kiosk.STATUS_REFRESH" />
                 <action android:name="com.pisophone.kiosk.ACTIVATE" />
                 <action android:name="com.pisophone.kiosk.GET_DEVICE_ID" />
                 <action android:name="com.pisophone.kiosk.SETUP_GRANTS_DONE" />

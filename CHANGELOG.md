@@ -1,9 +1,16 @@
 # Changelog
 
 What changed for people who run PisoPhone sites. The phone app, the coin-box firmware and the router software are versioned
-separately (app: build number `1.0.<build>`; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
+separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 4.6.6; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- **Release cleanup.** Removed code and files nothing used: an unreferenced app-closing function, two colour tokens, a manifest action no receiver handled, three strings and a picture the lint check
+  reported as unused, two Compose tooling libraries (the app has no previews), a stray Python wheel in the firmware folder and an unused function in the desktop installer. The changelog's version
+  note now describes the digit-based app version. Nothing in the firmware or the router portal was found to be dead.
+- **Coin box firmware: the encrypted-production partition table was wrong and is fixed.** PlatformIO writes `boot_app0.bin` at 0xe000, but the encrypted layout put otadata at 0xf000 and ran nvs up to it, so every
+  upload would have overwritten the end of nvs. otadata is now at 0xe000 and nvs is 20 KB like the development layout (nothing sold used the encrypted layout yet). New: `scripts/make_firmware_bundles.py` packs the
+  development and release firmware into two zips (a manual run of the firmware workflow with *bundle* on); it reads every build's partition table and fails on a bad layout. The encrypted release route is still
+  unproven on a board (`docs/PROVISIONING_SOLD_UNIT.md`).
 - **Phone app: fixes from an outside code review.** The admin PIN is no longer written to the log when the box syncs it (a second place that the earlier fix missed), and CI now fails any log line
   that carries the PIN or a secret. The setup step, the auto-update attempt counter and the pill position now use the phone's device-protected storage like the rest of the app, so they cannot fail before the
   first unlock. Six remote-action branches that could never be reached over the network were deleted from the server coordinator, and an "is provisioned" check that was always false was removed (no behaviour change).
