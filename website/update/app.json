@@ -1,10 +1,10 @@
 {
-  "versionCode": 467,
-  "versionName": "4.6.7-dev",
+  "versionCode": 468,
+  "versionName": "4.6.8-dev",
   "channel": "dev",
   
   "signatureChecksum": "DiFF_STFcP7MrUKtszkGshMCDzo8YHv1Q1jtomQFpLU",
-  "sha256": "5bbb0c06e8b51b19a5708a3596d66f2e07a0cfe5682ea38f48cfd856292d24cc",
-  "size": 3541089,
+  "sha256": "1c33d48b03fbf6fe62ef3d9c98b85590d3982dbe5b6fb9214da304a0dd3f1dbe",
+  "size": 3536892,
   "releaseDate": "2026-10-14"
 }
