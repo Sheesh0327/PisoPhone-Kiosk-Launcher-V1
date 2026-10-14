@@ -1,8 +1,8 @@
 {
-  "version": "1.3.6",
-  "sha256": "ef4b7aea1ede8d0995bec508c3e38c1a22d64145e623f8456cbaa18daced0eaa",
+  "version": "1.3.7",
+  "sha256": "91708753669c89bd150f20f2404916a468bb279693d32c11b964ce6ec94fe6d9",
   "size": 1455165,
-  "rollout": 100,
-  "changelog": "Router 1.3.6: a mini-game on the coin page (10 minutes per device per day), a price editor in the console, and a new console look.",
-  "sig": "MEYCIQD7auadkbprE3/DJU9SJO40aM58Ird0rHcV0R2qwvIF5gIhANpO6jrxdpUSOzfSet+2Vfq/3I3WNuKFfnoK6HtFZ6bL"
+  "rollout": 0,
+  "changelog": "Router software release 1.3.7",
+  "sig": "MEYCIQDe8so9nduRG/l1LHfU4BPobAklnV338Uv3OEPLDd8fswIhALG9Fk03PJCdv+ncxafEYyUsrZ6RJ/RvYpEa1fzEx34J"
 }
