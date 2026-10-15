@@ -344,13 +344,14 @@ check(ps.TELEGRAM_TOKEN.fullmatch("123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw"
 # the summary the router sends back
 SUMMARY = """PisoPhone setup summary (2026-10-07 10:00:00, setup file version abc)
 Router (SSH / LuCI):   root@10.0.0.1        password: Rpass2345678
-Kiosk Wi-Fi:           PisoKiosk (HIDDEN)   password: Kpass234567    (rental phones only; ...)
+Kiosk Wi-Fi:           PisoKiosk-a1b2 (HIDDEN)   password: Kpass234567    (rental phones only; ...)
 PisoWiFi (customers):  Tindahan WiFi   (open; rename with: piso-setup wifi-name "New Name")
 Coin box:              http://10.0.0.10      admin password: Bpass23456789    hidden Wi-Fi: PisoCoinBox (only MAC x)
 """
 found = ps.parse_summary(SUMMARY)
-check(found == {"ROOT_PASSWORD": "Rpass2345678", "KIOSK_PASSWORD": "Kpass234567", "GUEST_SSID": "Tindahan WiFi",
-                "BOX_NEW_ADMIN_PASSWORD": "Bpass23456789"}, "the summary is read: " + str(found))
+check(found == {"ROOT_PASSWORD": "Rpass2345678", "KIOSK_PASSWORD": "Kpass234567", "KIOSK_SSID_NAME": "PisoKiosk-a1b2", "GUEST_SSID": "Tindahan WiFi",
+                "BOX_NEW_ADMIN_PASSWORD": "Bpass23456789"}, "the summary is read, with this router's own kiosk network name: " + str(found))
+check(ps.parse_summary(SUMMARY.replace("PisoKiosk-a1b2", "PisoKiosk"))["KIOSK_SSID_NAME"] == "PisoKiosk", "a router with the old shared name")
 check("ROOT_PASSWORD" not in ps.parse_summary(SUMMARY.replace("password: Rpass2345678", "password: NOT SET by this setup")),
       "a router password the setup did not set is not shown as one")
 
@@ -406,6 +407,10 @@ check(url.startswith("https://pisophone.pages.dev/#") and "?" not in url and fra
       and frag["secret"] == ["box_secret-12345678"] and frag["ip"] == ["10.0.0.10"] and frag["wifi_pass"] == ["Kpass 123&x"] and frag["name"] == ["PisoPhone 2"],
       "the setup page's address: everything after the #, nothing in the query: " + url)
 check("beta.pisophone.pages.dev" in ps.provisioning_url("beta", link, 1, ""), "a branch's own website")
+frag = urllib.parse.parse_qs(urllib.parse.urlsplit(ps.provisioning_url("main", link, 2, "Kpass123456", wifi_ssid="PisoKiosk-a1b2")).fragment)
+check(frag["wifi_ssid"] == ["PisoKiosk-a1b2"] and frag["wifi_pass"] == ["Kpass123456"], "the setup page gets this router's own kiosk network name")
+check("wifi_ssid" not in urllib.parse.urlsplit(ps.provisioning_url("main", link, 2, "Kpass123456", wifi_ssid="PisoKiosk")).fragment,
+      "and nothing for the old shared name (the page assumes it)")
 opened_urls = []
 kind, note = ps.open_provisioning("main", {"BOX_NEW_ADMIN_PASSWORD": "boxadmin99", "KIOSK_PASSWORD": "Kpass123456"}, 3,
                                   fetch=lambda host, pw: link, opener=lambda u, chromium=True: opened_urls.append((u, chromium)))

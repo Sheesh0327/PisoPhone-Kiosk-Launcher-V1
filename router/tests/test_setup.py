@@ -44,7 +44,7 @@ exit 0
 
 def run(*args, env=None, inp=None):
     e = dict(os.environ, PATH=f"{bindir}:" + os.environ["PATH"], PISO_CONF=f"{tmp}/conf", PISO_LOG=f"{tmp}/log",
-             PISO_STATE=f"{tmp}/state", PISO_SUMMARY=f"{tmp}/summary")
+             PISO_STATE=f"{tmp}/state", PISO_SUMMARY=f"{tmp}/summary", PISO_ROUTER_ID="a1b2")
     e.update(env or {})
     return subprocess.run(["sh", SCRIPT, *args], env=e, capture_output=True, text=True, timeout=60, input=inp)
 
@@ -52,7 +52,7 @@ def run(*args, env=None, inp=None):
 def lib(code, env=None):
     """Load the script's functions (no main) and run shell code."""
     e = dict(os.environ, PATH=f"{bindir}:" + os.environ["PATH"], PISO_CONF=f"{tmp}/conf2", PISO_LOG=f"{tmp}/log2",
-             PISO_STATE=f"{tmp}/state2", PISO_SUMMARY=f"{tmp}/summary2", PISO_SETUP_SOURCE_ONLY="1")
+             PISO_STATE=f"{tmp}/state2", PISO_SUMMARY=f"{tmp}/summary2", PISO_SETUP_SOURCE_ONLY="1", PISO_ROUTER_ID="a1b2")
     e.update(env or {})
     return subprocess.run(["sh", "-c", f". {SCRIPT}; {code}"], env=e, capture_output=True, text=True, timeout=60)
 
@@ -81,7 +81,7 @@ check("add_list uhttpd.main.listen_https='10.0.0.1:443'" in r2.stdout and "add_l
 check("uhttpd" not in out, "no LuCI settings on a router without LuCI")
 r2 = run("--dry-run", env={"GUEST_SSID": "Maria Free WiFi"})
 check("set wireless.guest_radio0.ssid='Maria Free WiFi'" in r2.stdout, "the public Wi-Fi name can be chosen at setup: " + r2.stderr[-200:])
-check("set wireless.kiosk_radio0.ssid='PisoKiosk'" in r2.stdout and "set wireless.kiosk_radio0.hidden='1'" in r2.stdout and "set wireless.kiosk_radio1.hidden='1'" in r2.stdout,
+check("set wireless.kiosk_radio0.ssid='PisoKiosk-a1b2'" in r2.stdout and "set wireless.kiosk_radio0.hidden='1'" in r2.stdout and "set wireless.kiosk_radio1.hidden='1'" in r2.stdout,
       "the kiosk network is hidden on both bands and keeps its fixed name")
 r2 = run("--dry-run", env={"GUEST_SSID": "PisoKiosk"})
 check(r2.returncode != 0 and "cannot be PisoKiosk" in (r2.stdout + r2.stderr), "the public name cannot be the kiosk name")
@@ -130,7 +130,7 @@ check(not re.search(r"\bod -|hexdump|xxd", text.split(PAYLOAD_MARK)[0]), "no too
 check("--stage2" not in text.split(PAYLOAD_MARK)[0] and "nohup" not in text.split(PAYLOAD_MARK)[0], "no background stage that outlives the SSH session")
 check("set network.guest.ipaddr='10.0.30.1'" in out and "set network.guest.device='br-guest'" in out, "guest network on its own bridge")
 for radio in ("radio0", "radio1"):
-    check(f"set wireless.kiosk_{radio}.ssid='PisoKiosk'" in out and f"set wireless.kiosk_{radio}.network='lan'" in out, f"PisoKiosk on {radio}")
+    check(f"set wireless.kiosk_{radio}.ssid='PisoKiosk-a1b2'" in out and f"set wireless.kiosk_{radio}.network='lan'" in out, f"PisoKiosk on {radio}")
     check(f"set wireless.guest_{radio}.ssid='PisoWiFi'" in out and f"set wireless.guest_{radio}.encryption='none'" in out and f"set wireless.guest_{radio}.network='guest'" in out,
           f"open PisoWiFi on {radio}, in the guest network")
     check(f"set wireless.{radio}.country='PH'" in out and f"set wireless.{radio}.disabled='0'" in out, f"{radio} on with a country")
@@ -306,7 +306,10 @@ class Box(http.server.BaseHTTPRequestHandler):
     admin = "Coinslot@Setup"
     key = None
     kiosk = None
+    kiosk_ssid = None
+    wifi_ssid = None
     kiosk_support = True
+    ssid_support = True   # firmware 3.6.0 and newer carries the kiosk network's name in the link
     log = []
 
     def log_message(self, *a):
@@ -327,11 +330,14 @@ class Box(http.server.BaseHTTPRequestHandler):
             self.send_response(200); self.end_headers(); self.wfile.write(b"{}"); return
         if self.path == "/save" and "wifi_pass" in body:
             Box.wifi = body["wifi_pass"]
+            Box.wifi_ssid = urllib.parse.unquote_plus(body.get("wifi_ssid", "")) or None
             self.send_response(200); self.end_headers(); self.wfile.write(b"{}"); return
         if self.path == "/save" and "kiosk_wifi" in body:
             if not Box.kiosk_support:
                 self.send_response(404); self.end_headers(); return   # a box with older firmware
             Box.kiosk = urllib.parse.unquote_plus(body["kiosk_wifi"])
+            if Box.ssid_support and "kiosk_ssid" in body:
+                Box.kiosk_ssid = urllib.parse.unquote_plus(body["kiosk_ssid"])
             self.send_response(200); self.end_headers(); self.wfile.write(b"{}"); return
         if self.path == "/api/gateway/config":
             Box.key = body.get("key")
@@ -342,7 +348,8 @@ class Box(http.server.BaseHTTPRequestHandler):
         if self.path == "/" and not self._auth():
             self.send_response(401); self.end_headers(); return
         if self.path == "/" and self._auth():
-            link = "&wifi_pass=" + urllib.parse.quote_plus(Box.kiosk) if Box.kiosk else ""
+            link = ("&wifi_ssid=" + urllib.parse.quote_plus(Box.kiosk_ssid) if Box.kiosk_ssid else "") + \
+                   ("&wifi_pass=" + urllib.parse.quote_plus(Box.kiosk) if Box.kiosk else "")
             self.send_response(200); self.end_headers()
             self.wfile.write(f'<a href="https://pisophone.pages.dev/?mac=AA&secret=xyz{link}">Set up a phone</a>'.encode()); return
         self.send_response(200); self.end_headers(); self.wfile.write(b'{"error":"GATEWAY_DISABLED"}')
@@ -366,11 +373,19 @@ check("rc=0" in r.stdout and Box.key == "ef" * 32, "BOX_ADMIN_PASSWORD lets setu
 # ---- the phones' PisoKiosk password goes to the box (its "Set up a phone" link then carries it) -----------------------------
 Box.admin = "NewPassw0rdXYZ"
 KP = "Pa&ss#w0rd+1%"
-pre = f"conf_set BOX_ADMIN_PASS NewPassw0rdXYZ; conf_set KIOSK_PASS '{KP}'; "
+NAMES = "conf_set KIOSK_SSID_NAME PisoKiosk-a1b2; conf_set BOX_SSID_NAME PisoCoinBox-a1b2; resolve_wifi_names; "   # (this router's own names, as a setup stores them)
+pre = f"conf_set BOX_ADMIN_PASS NewPassw0rdXYZ; conf_set KIOSK_PASS '{KP}'; " + NAMES
 r = lib(pre + "push_kiosk_wifi; echo rc=$?", env={"BOX_IP": addr})
 check("rc=0" in r.stdout and Box.kiosk == KP, f"the router gives the box the PisoKiosk password, special characters intact: {Box.kiosk!r} {r.stdout}{r.stderr}")
+check(Box.kiosk_ssid == "PisoKiosk-a1b2", f"... and this router's own kiosk network name: {Box.kiosk_ssid!r}")
 r = lib(pre + "kiosk_wifi_on_box; echo rc=$?", env={"BOX_IP": addr})
 check("rc=0" in r.stdout, "the check sees the password in the box's link: " + r.stdout + r.stderr)
+Box.kiosk_ssid = None   # a box that has the password but not the name (firmware before 3.6.0): not good enough for a router with its own name
+r = lib(pre + "kiosk_wifi_on_box; echo rc=$?", env={"BOX_IP": addr})
+check("rc=1" in r.stdout, "a link without the router's own network name is not accepted")
+r = lib(pre + "conf_set KIOSK_SSID_NAME PisoKiosk; conf_set BOX_SSID_NAME PisoCoinBox; resolve_wifi_names; kiosk_wifi_on_box; echo rc=$?", env={"BOX_IP": addr})
+check("rc=0" in r.stdout, "a router that keeps the old shared name needs no name in the link (older firmware is fine): " + r.stdout)
+Box.kiosk_ssid = "PisoKiosk-a1b2"
 Box.kiosk = "something-else"
 r = lib(pre + "kiosk_wifi_on_box; echo rc=$?", env={"BOX_IP": addr})
 check("rc=1" in r.stdout, "a different password in the link is not accepted (the router's password changed)")
@@ -398,7 +413,8 @@ check("kiosk_wifi_on_box" in text.split("agree_all() {")[1].split("\n}\n")[0], "
 check("kiosk-wifi" in text.split("main() {")[1], "piso-setup kiosk-wifi exists")
 
 # ---- agreement: the copies of one value are compared with each other ----------------------------------------------------------
-AG_ENV = {"T_KIOSK": "kiosk-pass-1", "T_GUEST": "Shop WiFi", "T_MAC": "aa:bb:cc:dd:ee:ff", "T_BOXKEY": "boxwifi-own-key-123"}
+AG_ENV = {"T_KIOSK": "kiosk-pass-1", "T_GUEST": "Shop WiFi", "T_MAC": "aa:bb:cc:dd:ee:ff", "T_BOXKEY": "boxwifi-own-key-123",
+          "T_KIOSKSSID": "PisoKiosk-a1b2", "T_BOXSSID": "PisoCoinBox-a1b2"}
 AG_PRE = r"""
 PISO_ROOT=$T_ROOT; mkdir -p "$PISO_ROOT/etc"
 conf_set GW_KEY """ + "9f" * 32 + r"""; conf_set BOX_MAC AA:BB:CC:DD:EE:FF; conf_set GUEST_NAME "Shop WiFi"; conf_set KIOSK_PASS kiosk-pass-1
@@ -412,6 +428,8 @@ uci() { [ "$1" = -q ] && shift; case "$1 $2" in
   "get opennds.@opennds[0].fasport") echo "$PORTAL_PORT" ;;
   "get wireless.box_ap.maclist") echo "$T_MAC" ;;
   "get wireless.box_ap.key") echo "$T_BOXKEY" ;;
+  "get wireless.kiosk_radio0.ssid" | "get wireless.kiosk_radio1.ssid") echo "$T_KIOSKSSID" ;;
+  "get wireless.box_ap.ssid") echo "$T_BOXSSID" ;;
   *) return 1 ;; esac; }
 ip() { echo "    inet 10.0.30.1/24 brd 10.0.30.255 scope global br-guest"; }
 """
@@ -434,7 +452,9 @@ check("rc=0" in r.stdout and "SKIP" in r.stdout and "FAIL" not in r.stdout.repla
 for what, extra, env, frag in [
     ("another gateway key in the portal's file", "sed -i \"s/^GW_KEY=.*/GW_KEY='aa'/\" $PISO_ROOT/etc/coinslot.conf", None, "gateway key"),
     ("a MAC the box network does not allow", "", {"T_MAC": "11:22:33:44:55:66"}, "address"),
-    ("a PisoKiosk radio with another password", "", {"T_KIOSK": "an-old-password"}, "PisoKiosk password"),
+    ("a PisoKiosk radio with another password", "", {"T_KIOSK": "an-old-password"}, "kiosk network"),
+    ("a kiosk radio with another name (the shared one of another router)", "", {"T_KIOSKSSID": "PisoKiosk"}, "kiosk network"),
+    ("a box network with another name", "", {"T_BOXSSID": "PisoCoinBox"}, "coin box network"),
     ("a customer Wi-Fi name changed in LuCI", "", {"T_GUEST": "Renamed"}, "customer Wi-Fi name"),
     ("a portal that listens on another address", "sed -i \"s/^PORTAL_BIND=.*/PORTAL_BIND='10.9.9.9'/\" $PISO_ROOT/etc/coinslot.conf", None, "listens"),
     ("a box network whose password was changed by hand", "", {"T_BOXKEY": "changed-by-hand-1"}, "coin box network"),
@@ -459,7 +479,7 @@ Box.kiosk = "kiosk-pass-1"
 watch = "NOTES=$T_ROOT/notes; : > $NOTES; notify() { echo \"$*\" >> $NOTES; }\n"
 r = agree(watch, {"T_KIOSK": "an-old-password"}, code="watch_agreement; watch_agreement; cat $T_ROOT/notes; DRY=0")
 notes = r.stdout.split("rc=")[0].strip().splitlines()
-check(len(notes) == 1 and "no longer agree" in notes[0] and "PisoKiosk password" in notes[0], "a new disagreement is told once, with its name: " + str(notes) + r.stderr)
+check(len(notes) == 1 and "no longer agree" in notes[0] and "kiosk network" in notes[0], "a new disagreement is told once, with its name: " + str(notes) + r.stderr)
 r = agree(watch + "conf_set AGREE_LAST 12345\n", {}, code="watch_agreement; watch_agreement; cat $T_ROOT/notes")
 notes = r.stdout.split("rc=")[0].strip().splitlines()
 check(len(notes) == 1 and "agrees again" in notes[0], "and again when everything agrees: " + str(notes))
@@ -501,12 +521,16 @@ os.remove(f"{bindir}/pgrep"); os.remove(f"{bindir}/pidof")
 # ---- the box's own Wi-Fi password -----------------------------------------------------------------------------------------------
 Box.wifi = None
 open(f"{tmp}/uci.log", "w").close()
-r = lib('conf_set BOX_ADMIN_PASS NewPassw0rdXYZ; rotate_box_wifi; echo rc=$?; echo "ROT=$(conf_get BOX_WIFI_ROTATED) KEY=$(conf_get BOX_WIFI_PASS_NEW)"; box_wifi_key',
+r = lib(NAMES + 'conf_set BOX_ADMIN_PASS NewPassw0rdXYZ; rotate_box_wifi; echo rc=$?; echo "ROT=$(conf_get BOX_WIFI_ROTATED) KEY=$(conf_get BOX_WIFI_PASS_NEW)"; box_wifi_key',
         env={"BOX_IP": addr, "ROTATE_SETTLE": "0"})
 m = re.search(r"KEY=(\S+)", r.stdout)
 check("rc=0" in r.stdout and "ROT=1" in r.stdout and m and Box.wifi == m.group(1) and len(m.group(1)) == 20 and m.group(1) != "PisoCoinBox@Setup",
       "the box gets its own random 20-character Wi-Fi password through its API: " + r.stdout + r.stderr)
 check(f"set wireless.box_ap.key={Box.wifi}" in open(f"{tmp}/uci.log").read(), "and the router's box network takes the same one")
+check(Box.wifi_ssid == "PisoCoinBox-a1b2" and "set wireless.box_ap.ssid=PisoCoinBox-a1b2" in open(f"{tmp}/uci.log").read(),
+      f"the box is also told this router's own network name, and the router's network takes it: {Box.wifi_ssid!r}")
+rn = lib("box_net_ssid; echo; cp $PISO_CONF $PISO_CONF.keep; conf_set BOX_WIFI_ROTATED 0; box_net_ssid; mv $PISO_CONF.keep $PISO_CONF")
+check(rn.stdout.split() == ["PisoCoinBox-a1b2", "PisoCoinBox"], "the box network has the router's name once the box has it, the built-in one before: " + rn.stdout)
 check(r.stdout.strip().endswith(Box.wifi), "box_wifi_key returns it from then on (a re-run of the setup keeps it)")
 Box.wifi = None
 r = lib('rotate_box_wifi; echo rc=$?', env={"BOX_IP": addr, "ROTATE_SETTLE": "0"})
@@ -569,6 +593,46 @@ check("refuses its Wi-Fi password" in out and "Factory reset the box" in out and
 r = box_diag('box_ifname() { echo wlan0-3; }; iwinfo() { [ "$2" = assoclist ] && echo "AA:BB:CC:DD:EE:01  -50 dBm / -95 dBm"; }; logread() { echo "hostapd: AP-STA-POSSIBLE-PSK-MISMATCH aa:bb:cc:dd:ee:01"; }; '
              'conf_set BOX_MAC AA:BB:CC:DD:EE:01; conf_set BOX_WIFI_ROTATED 0; uci() { case "$*" in *box_ap.key*) echo PisoCoinBox@Setup;; esac; }')
 check("verdict: the box is trying to join but the router refuses its Wi-Fi password" in r.stdout, "box-diag: password mismatches in the log -> factory reset the box: " + r.stdout + r.stderr)
+# ---- every router has Wi-Fi names of its own (two routers in range never compete for the same phones and coin box) -------------
+def names_of(conf_lines="", router_id="a1b2", root=None):
+    conf = f"{tmp}/names-{abs(hash((conf_lines, router_id, root)))}"
+    open(conf, "w").write(conf_lines)
+    env = {"PISO_CONF": conf, "PISO_ROUTER_ID": router_id}
+    if root:
+        env["PISO_ROOT"] = root
+    return lib('echo "$KIOSK_SSID|$BOX_SSID|$(box_net_ssid)"', env=env).stdout.strip(), conf
+n1, _ = names_of(router_id="0f3c")
+n2, _ = names_of(router_id="9d41")
+check(n1 == "PisoKiosk-0f3c|PisoCoinBox-0f3c|PisoCoinBox" and n2 == "PisoKiosk-9d41|PisoCoinBox-9d41|PisoCoinBox",
+      f"a new router gets names with its own ending (the box network keeps the built-in name until the box is paired): {n1} {n2}")
+check(n1.split("|")[0] != n2.split("|")[0] and n1.split("|")[1] != n2.split("|")[1], "two routers never share a name")
+legacy, _ = names_of("KIOSK_PASS='abc12345'\n", router_id="0f3c")
+check(legacy == "PisoKiosk|PisoCoinBox|PisoCoinBox", f"a router that was set up before keeps the old names, so its phones and box are untouched: {legacy}")
+stored, _ = names_of("KIOSK_SSID_NAME='PisoKiosk-aaaa'\nBOX_SSID_NAME='PisoCoinBox-aaaa'\nBOX_WIFI_ROTATED='1'\n", router_id="0f3c")
+check(stored == "PisoKiosk-aaaa|PisoCoinBox-aaaa|PisoCoinBox-aaaa", f"names a setup chose stay, whatever the router's MAC says later: {stored}")
+os.makedirs(f"{tmp}/sysroot/sys/class/net/br-lan", exist_ok=True)
+open(f"{tmp}/sysroot/sys/class/net/br-lan/address", "w").write("AA:BB:CC:DD:E1:B2\n")
+fromsys, conf = names_of(router_id="", root=f"{tmp}/sysroot")
+check(fromsys.startswith("PisoKiosk-e1b2|PisoCoinBox-e1b2"), f"the ending comes from the router's own MAC address: {fromsys}")
+r = lib('remember_wifi_names; conf_get KIOSK_SSID_NAME; conf_get BOX_SSID_NAME', env={"PISO_CONF": f"{tmp}/names-remember", "PISO_ROUTER_ID": "7c70"})
+check(r.stdout.split() == ["PisoKiosk-7c70", "PisoCoinBox-7c70"], "a setup stores them before it writes any Wi-Fi setting: " + r.stdout)
+r = run("--dry-run", env={"PISO_CONF": f"{tmp}/names-dry", "PISO_ROUTER_ID": "7c70"})
+check("set wireless.kiosk_radio0.ssid='PisoKiosk-7c70'" in r.stdout and "set wireless.box_ap.ssid='PisoCoinBox'" in r.stdout,
+      "the settings use the router's kiosk name, and the built-in name for the box while pairing")
+r = run("--dry-run", env={"PISO_CONF": f"{tmp}/names-dry2", "PISO_ROUTER_ID": "7c70", "GUEST_SSID": "PisoKiosk-7c70"})
+check(r.returncode != 0 and "cannot be PisoKiosk-7c70" in (r.stdout + r.stderr), "the public name cannot be the router's kiosk name")
+r = run("--dry-run", env={"PISO_CONF": f"{tmp}/names-dry3", "PISO_ROUTER_ID": "7c70", "GUEST_SSID": "My PisoCoinBox"})
+check(r.returncode != 0 and "may not contain PisoCoinBox" in (r.stdout + r.stderr), "the public name may not contain the coin box's name")
+# a re-pair of a box that holds its own password offers the router's own network name with it, and the built-in name with the built-in password
+open(f"{tmp}/uci.log", "w").close()
+r = lib(NAMES + 'conf_set BOX_WIFI_ROTATED 1; conf_set BOX_WIFI_PASS_NEW OwnPassw0rd1234567; sleep() { :; }; box_up() { return 0; }; '
+        'box_station() { [ "$(grep "set wireless.box_ap.key=" ' + tmp + '/uci.log | tail -n 1)" = "set wireless.box_ap.key=OwnPassw0rd1234567" ] && echo AA:BB:CC:DD:EE:01; }; '
+        'pair_box; echo "rc=$? ROT=$(conf_get BOX_WIFI_ROTATED)"', env={"PAIR_WAIT": "600"})
+ul = [l for l in open(f"{tmp}/uci.log").read().splitlines() if l.startswith("set wireless.box_ap.s") or l.startswith("set wireless.box_ap.key")]
+check("rc=0 ROT=1" in r.stdout and ul.index("set wireless.box_ap.ssid=PisoCoinBox") < ul.index("set wireless.box_ap.ssid=PisoCoinBox-a1b2")
+      and ul.index("set wireless.box_ap.key=PisoCoinBox@Setup") < ul.index("set wireless.box_ap.key=OwnPassw0rd1234567"),
+      "a re-pair offers the built-in name with the built-in password, then its own name with its own password: " + str(ul) + r.stdout + r.stderr)
+
 # ---- tips along the way ------------------------------------------------------------------------------------------------------
 r = lib('sleep() { :; }; box_station() { :; }; box_ifname() { echo wlan0-3; }; box_diag() { :; }; cmd_box_diag() { :; }; pair_box; echo rc=$?', env={"PAIR_WAIT": "310"})
 out = r.stdout + r.stderr
@@ -576,7 +640,7 @@ check("TIP: the coin box's light tells you" in out and "TIP: no box yet after a 
       "while pairing waits, the tips come in turn (light, firmware, factory reset, supply): " + out[-900:])
 check(out.index("no box yet") < out.index("still nothing") < out.index("last try"), "in that order")
 r = lib('sleep() { :; }; box_station() { :; }; box_ifname() { :; }; cmd_box_diag() { :; }; pair_box; echo rc=$?', env={"PAIR_WAIT": "65"})
-check("TIP: the router is not broadcasting PisoCoinBox" in r.stdout + r.stderr and "no box yet after a minute" not in r.stdout + r.stderr,
+check("TIP: the router is not broadcasting the box network" in r.stdout + r.stderr and "no box yet after a minute" not in r.stdout + r.stderr,
       "the tip fits what is wrong (the network is not on the air): " + r.stdout + r.stderr)
 r = lib('sleep() { :; }; box_station() { :; }; box_ifname() { echo wlan0-3; }; cmd_box_diag() { :; }; pair_box; echo rc=$?', env={"PAIR_WAIT": "65", "PISO_TIPS": "0"})
 check("TIP:" not in r.stdout + r.stderr, "PISO_TIPS=0 turns the tips off")

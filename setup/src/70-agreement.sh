@@ -21,10 +21,10 @@ ag_summary_has() { [ -n "$1" ] && [ -r "$SUMMARY" ] && grep -qF "$1" "$SUMMARY";
 
 ag_is_key() { [ -n "$(conf_get GW_KEY)" ] && [ "$(cs_get GW_KEY)" = "$(conf_get GW_KEY)" ]; }
 ag_is_mac() { [ -n "$(conf_get BOX_MAC)" ] && [ "$(cs_get GW_BOX_MAC)" = "$(conf_get BOX_MAC)" ] && ag_mac_allowed "$(conf_get BOX_MAC)"; }
-ag_is_kiosk() { ag_every_iface kiosk_ key "$(conf_get KIOSK_PASS)"; }
+ag_is_kiosk() { ag_every_iface kiosk_ key "$(conf_get KIOSK_PASS)" && ag_every_iface kiosk_ ssid "$KIOSK_SSID"; }
 ag_is_name() { ag_every_iface guest_ ssid "$(conf_get GUEST_NAME)" && [ "$(uci -q get 'opennds.@opennds[0].gatewayname')" = "$(conf_get GUEST_NAME)" ] && [ "$(cs_get GATEWAY_NAME)" = "$(conf_get GUEST_NAME)" ]; }
 ag_is_bind() { [ -n "$(cs_get PORTAL_BIND)" ] && ip -4 addr show br-guest | grep -q "inet $(cs_get PORTAL_BIND)/" && [ "$(cs_get PORTAL_PORT)" = "$(uci -q get 'opennds.@opennds[0].fasport')" ]; }
-ag_is_boxwifi() { [ "$(conf_get BOX_WIFI_ROTATED)" != 1 ] || { [ -n "$(conf_get BOX_WIFI_PASS_NEW)" ] && [ "$(uci -q get wireless.box_ap.key)" = "$(conf_get BOX_WIFI_PASS_NEW)" ]; }; }
+ag_is_boxwifi() { [ "$(conf_get BOX_WIFI_ROTATED)" != 1 ] || { [ -n "$(conf_get BOX_WIFI_PASS_NEW)" ] && [ "$(uci -q get wireless.box_ap.key)" = "$(conf_get BOX_WIFI_PASS_NEW)" ] && [ "$(uci -q get wireless.box_ap.ssid)" = "$BOX_SSID" ]; }; }
 ag_is_summary() { ag_summary_has "$(conf_get KIOSK_PASS)" && ag_summary_has "$(conf_get BOX_ADMIN_PASS)"; }
 ag_is_gwkey_box() { "$PORTAL_BIN" box | grep -qi answers; }
 
@@ -34,10 +34,10 @@ agree_all() {  # prints PASS/FAIL lines, returns the number of disagreements; th
 	_abad=0; AGREE_FAILS=""
 	ag_run "the gateway key in the settings is the one in the portal's file" ag_is_key
 	ag_run "the coin box's address is the same in the settings, the portal's file and the box network's allow list" ag_is_mac
-	ag_run "the PisoKiosk password in the settings is on every PisoKiosk radio" ag_is_kiosk
+	ag_run "the kiosk network's name and password in the settings are on every kiosk radio" ag_is_kiosk
 	ag_run "the customer Wi-Fi name is the same in the settings, on every radio, in openNDS and in the portal's file" ag_is_name
 	ag_run "the portal listens on the guest network's address and on the port openNDS sends guests to" ag_is_bind
-	ag_run "the coin box network's password is the one the router gave the box" ag_is_boxwifi
+	ag_run "the coin box network's name and password are the ones the router gave the box" ag_is_boxwifi
 	ag_run "the setup summary shows the current PisoKiosk and coin box passwords" ag_is_summary
 	if box_up; then
 		ag_run "the box accepts the router's gateway key (signed request)" ag_is_gwkey_box

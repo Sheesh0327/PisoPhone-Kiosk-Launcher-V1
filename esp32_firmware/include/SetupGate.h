@@ -38,6 +38,18 @@ inline bool kioskWifiPasswordValid(const char* candidate) {
     return true;
 }
 
+// The name of the rental phones' Wi-Fi: 1 to 32 printable ASCII characters (the phone app and the setup page accept no others).
+inline bool kioskWifiSsidValid(const char* candidate) {
+    if (!candidate) return false;
+    size_t n = std::strlen(candidate);
+    if (n < 1 || n > 32) return false;
+    for (size_t i = 0; i < n; i++) {
+        unsigned char c = static_cast<unsigned char>(candidate[i]);
+        if (c < 0x20 || c > 0x7E) return false;
+    }
+    return true;
+}
+
 // Coins may only be accepted once the operator has chosen their own admin password.
 inline bool usageAllowed(bool adminPasswordChanged) {
     return adminPasswordChanged;

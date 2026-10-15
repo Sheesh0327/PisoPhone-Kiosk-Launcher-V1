@@ -12,7 +12,7 @@ cmd_wifi_name() {
 	_n="$1"
 	[ -n "$_n" ] || { echo "usage: piso-setup wifi-name \"New Name\"" >&2; exit 1; }
 	[ "${#_n}" -le 32 ] || { echo "the name can be at most 32 characters" >&2; exit 1; }
-	case "$_n" in "$KIOSK_SSID" | "$BOX_SSID") echo "that name is reserved" >&2; exit 1 ;; esac
+	case "$_n" in "$KIOSK_SSID" | "$KIOSK_BASE" | "$BOX_SSID" | "$BOX_PAIR_SSID") echo "that name is reserved" >&2; exit 1 ;; esac
 	case "$_n" in *\'* | *\"* | *\\* | *\$* | *\`*) echo "please avoid quotes, backslashes, \$ and backticks in the name" >&2; exit 1 ;; esac
 	for s in $(uci -q show wireless | sed -n 's/^\(wireless\.guest_[^.=]*\)=wifi-iface$/\1/p'); do uci set "$s.ssid=$_n"; done
 	uci set opennds.@opennds[0].gatewayname="$_n"
@@ -134,15 +134,15 @@ cmd_box_diag() {
 	_key=$(uci -q get wireless.box_ap.key); _want=$(box_wifi_key)
 	echo "--- the router's side"
 	if [ -n "$_if" ]; then
-		echo "hidden network $BOX_SSID: on the air as $_if"
+		echo "hidden network $(box_net_ssid): on the air as $_if"
 		iwinfo "$_if" info 2> /dev/null | grep -E 'Channel|Mode:|Encryption' | sed 's/^ */  /'
 	else
-		echo "hidden network $BOX_SSID: NOT on the air"
-		_verdict="the router is not broadcasting $BOX_SSID (is the 2.4 GHz radio on? see: iwinfo)"
+		echo "hidden network $(box_net_ssid): NOT on the air"
+		_verdict="the router is not broadcasting $(box_net_ssid) (is the 2.4 GHz radio on? see: iwinfo)"
 	fi
 	echo "password on the router: fingerprint $(key_fp "$_key"); the box should have: $(key_fp "$_want") ($(if [ "$(conf_get BOX_WIFI_ROTATED)" = 1 ]; then echo "its own"; else echo "the built-in"; fi))"
 	if [ -n "$_key" ] && [ "$_key" != "$_want" ] && [ -z "$_verdict" ]; then
-		_verdict="the router's password for $BOX_SSID differs from the one stored for the box: run: piso-setup pair"
+		_verdict="the router's password for $(box_net_ssid) differs from the one stored for the box: run: piso-setup pair"
 	fi
 	echo "allowed MAC: filter=$(uci -q get wireless.box_ap.macfilter) list=$(uci -q get wireless.box_ap.maclist); paired box: ${_mac:-none}"
 	if [ -z "$_mac" ]; then [ -n "$_verdict" ] || _verdict="no box is paired yet: run: piso-setup pair"; fi
@@ -163,7 +163,7 @@ cmd_box_diag() {
 		else _verdict="the box joined the Wi-Fi but does not answer at $BOX_IP: its address lease (power-cycle the box) or its IP settings"; fi
 	fi
 	echo "--- the router's log about the box"
-	logread 2> /dev/null | grep -iE "${_mac:-no-mac}|$BOX_SSID" | tail -12
+	logread 2> /dev/null | grep -iE "${_mac:-no-mac}|$BOX_PAIR_SSID|$BOX_SSID" | tail -12
 	if [ "$_answers" = yes ]; then
 		echo "--- the box's own Wi-Fi log"
 		curl -s -m 8 -u "admin:$(conf_get BOX_ADMIN_PASS)" "http://$BOX_IP/api/diagnostics" 2> /dev/null | grep -o '\[WIFI\][^"]*' | sed 's/\\n$//' | tail -12

@@ -85,7 +85,12 @@ String renderPhoneSlotsHtml() {
     // the router gives the box the phones' Wi-Fi password, so the setup page needs no typing
     // The box secret and the Wi-Fi password go after the "#": a browser never sends that part to the website's server, so it
     // stays out of the host's logs, and the setup page removes it from the address bar as soon as it has read it.
-    String kioskLink = kioskWifiPass.length() > 0 ? String("&wifi_pass=") + urlEncode(kioskWifiPass) : String("");
+    // (the router's own network name goes first, so a reader of the link can find "&wifi_ssid=NAME&wifi_pass=")
+    String kioskLink = "";
+    if (kioskWifiPass.length() > 0) {
+        if (kioskWifiSsid.length() > 0) kioskLink += String("&wifi_ssid=") + urlEncode(kioskWifiSsid);
+        kioskLink += String("&wifi_pass=") + urlEncode(kioskWifiPass);
+    }
     html += "<a class=\"btn primary sm\" href=\"" + setupBase + "#secret=" + secret + kioskLink + "\">" +
             icon("download") + "Set up a phone</a>";
     html +=
