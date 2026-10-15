@@ -1,8 +1,8 @@
 {
-  "version": "1.3.7",
-  "sha256": "b45cd784dc77f7e8924c1d3a6cbc5c11b8796a377c82c4948a5caae0eb24de90",
+  "version": "1.3.8",
+  "sha256": "4ae79274dd8b0825bd712920bddd36d14c863464b690c708d10a1fa87dd8cee4",
   "size": 1408128,
-  "rollout": 100,
-  "changelog": "Router 1.3.7: pausing no longer takes a device off the Wi-Fi: it is slowed to 1 kbit/s with 2 MB of data until it resumes.",
-  "sig": "MEYCIQDjOW96CZ9QmXGUXfU071xJmwXJwcUsUH5VcfBmbknRTwIhAL8UZiCAG/846hFmWxD4KPJws0TzGMb/O02BJ/lgXJIB"
+  "rollout": 0,
+  "changelog": "Router software release 1.3.8",
+  "sig": "MEUCIHgrKtZuCim4p2/Dl3f5KHCSffztzvvBhrcb6cW1FPjiAiEA2DDlhOoFlNSPx4npcVIL6XZ5NrhZByobVUp930Ml6wM="
 }
