@@ -194,7 +194,7 @@ if(qv){try{vc.value=decodeURIComponent(qv[1])}catch(e){}vc.oninput();try{history
 var WHY={bad:"Code not accepted. Check the letters and try again.",used:"This code was already used.",exp:"This code has expired.",plan:"You have time on the other plan. Use it up first.",io:"Could not save it. Try again."};
 function reply(j){
  if(j.t==="rd"){el("vb").disabled=false;var m;if(j.ok){m="Added "+fmt(j.min)+". Enjoy!";vc.value=""}else m=j.e==="wait"?"Too many tries. Try again in "+clock(j.w).slice(2)+".":WHY[j.e]||WHY.io;put("vm",m);put("vlm",m);return}
- var m={wait:"You can pause again in "+j.w+" s.",limit:"No pauses left.",little:"Pause needs "+Math.ceil(j.w/60)+" min left.",paying:"Finish adding coins first.",already:"Already paused.",none:"There is no time to pause."};
+ var m={wait:"You can pause again in "+j.w+" s.",limit:"No pauses left.",pesos:"Pause unlocks after paying \u20b1"+j.w+" more.",little:"Pause needs "+Math.ceil(j.w/60)+" min left.",paying:"Finish adding coins first.",already:"Already paused.",none:"There is no time to pause."};
  if(!j.ok)put("pzc",m[j.e]||"Could not pause. Try again.")}
 /* the voucher code view: copy, a small file to keep (the browser may refuse the automatic download: the button and a screenshot remain) */
 function vfile(c){var u=location.protocol+"//"+location.host+"/?v="+c;return'<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width"><title>PisoWiFi voucher</title><meta http-equiv=refresh content="0;url='+u+'"><body style="font:18px system-ui,sans-serif;text-align:center;padding:24px"><p><b>TechNet PisoWiFi voucher</b></p><p style="font:700 28px monospace">'+c+'</p><p>Join the PisoWiFi network, then <a href="'+u+'">tap here to use it</a>.</p>'}
@@ -224,8 +224,8 @@ if(s==="idle"||s==="paused"){
  var gl=s==="idle"&&j.gm!==undefined?j.gm:-1;el("gm").style.display=gl>0?"block":"none";put("gms",gl>0?"Mini-game: "+Math.ceil(gl/60)+" min left today":gl===0?"Mini-game time is used up today. Back tomorrow.":"");
  el("hd").style.display=tm?"none":"flex";el("vd").style.display=ps?"none":"block";
  if(tm){on.style.display="block";put("tplan",pn(j.plan));el("tused").style.display=j.plan==="hyper"&&!ps?"inline":"none";put("tused",j.used_mb+" MB used");el("tslow").style.display=j.slow>0&&!ps?"block":"none";
-  el("pz").style.display=!ps&&j.pm>0?"block":"none";el("rs").style.display=ps?"block":"none";el("rs").disabled=false;el("rs").textContent="Resume time";el("pz").removeAttribute("aria-disabled");
-  var cap=ps?"":j.pl<1?"No pauses left":j.left<120?"Pause needs 2 min left":j.pw>0?"You can pause again in "+j.pw+" s":j.pl+(j.pl>1?" pauses":" pause")+" left";
+  el("pz").style.display=!ps&&j.pm>0&&!(j.pn>0)?"block":"none";el("rs").style.display=ps?"block":"none";el("rs").disabled=false;el("rs").textContent="Resume time";el("pz").removeAttribute("aria-disabled");
+  var cap=ps?"":j.pn>0&&j.pm>0?"Pay \u20b1"+j.pn+" more to unlock a pause":j.pl<1?"No pauses left":j.left<120?"Pause needs 2 min left":j.pw>0?"You can pause again in "+j.pw+" s":j.pl+(j.pl>1?" pauses":" pause")+" left";
   put("pzc",cap);if(cap&&j.pl<1||j.left<120||j.pw>0)el("pz").setAttribute("aria-disabled","true");
   if(ps){tstop();tl=j.left;put("t",clock(tl));put("fleft",clock(tl));el("tbar").style.width="100%";put("chip","Paused");el("chip").className="chip gold";put("tin","Paused, internet almost stopped · time left");el("tbar").style.background="var(--mut)";put("tby","Time is on hold. "+by(j.left)+"; unused time after that is lost.")}else tstart(j.left)}
  else{on.style.display="none";tstop();tt=0}

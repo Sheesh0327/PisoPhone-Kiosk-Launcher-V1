@@ -4,7 +4,7 @@ import hashlib, hmac, json, os, signal, socket, subprocess, sys, time, urllib.er
 from harness import *
 
 MAC_A, MAC_B, MAC_C, MAC_D = "aa:bb:cc:00:00:01", "aa:bb:cc:00:00:02", "aa:bb:cc:00:00:03", "aa:bb:cc:00:00:04"
-env = Env(PAUSE_GAP_SECONDS=2, PAUSE_MAX=2, GAME_LIMIT_SECONDS=6)
+env = Env(PAUSE_GAP_SECONDS=2, PAUSE_MAX=2, PAUSE_MIN_PESOS=3, GAME_LIMIT_SECONDS=6)
 
 
 def gget(ip, path, headers=None):
@@ -293,12 +293,32 @@ try:
     fin = d.wait_state("final", 25)
     check(fin is not None and fin["online"] is True, f"a paid device is online before it pauses: {fin}")
     env.set_box(busy=False, coins_at=[])
+    # a pause is a perk of paying enough (PAUSE_MIN_PESOS, 3 here, 20 by default): 1 peso paid is not enough, and the page is told how much is missing
+    n = d.count()
+    d.send({"t": "pause"})
+    r = d.wait_msg("pz", n)
+    check(r and r.get("e") == "pesos" and r["w"] == 2, f"one coin does not unlock a pause; 2 pesos more are missing: {r}")
+    d.mark()
+    d.send({"t": "hello", "fas": "", "reset": True})   # the page is opened again
+    idle = d.wait(lambda m: m.get("s") == "idle", 5) or {}
+    check(idle.get("s") == "idle" and idle.get("pn") == 2 and idle.get("pl") == 2, f"and the page is told what is still needed: {idle}")
+    check(env.nds_get(MAC_D)["DOWNRATE"] == "0", "and the refused pause changed nothing: the device keeps its full speed")
+    env.set_box(busy=False, coins_at=[0.3, 0.6])   # two more coins in the same session: 3 pesos paid in all
+    d.mark()
+    d.send({"t": "start", "plan": "hyper"})
+    fin = d.wait_state("final", 25)
+    check(fin is not None and fin["online"] is True, f"topping up works: {fin}")
+    env.set_box(busy=False, coins_at=[])
+    d.mark()
+    d.send({"t": "hello", "fas": "", "reset": True})
+    idle = d.wait(lambda m: m.get("s") == "idle" and m.get("pn") == 0, 5)
+    check(idle is not None, f"after 3 pesos in all the pause is unlocked: {idle}")
     n = d.count()
     d.mark()
     d.send({"t": "pause"})
     r = d.wait_msg("pz", n)
     p = d.wait_state("paused", 5)
-    check(r and r.get("ok") == 1 and p is not None and p["pl"] == 1 and p["pm"] == 2 and 300 < p["left"] <= 360, f"Pause stops the clock and counts the pause: {r} {p}")
+    check(r and r.get("ok") == 1 and p is not None and p["pl"] == 1 and p["pm"] == 2 and 1000 < p["left"] <= 1080, f"Pause stops the clock and counts the pause: {r} {p}")
     nd = env.nds_get(MAC_D)
     check(nd["STATE"] == "Authenticated" and nd["UPRATE"] == "1" and nd["DOWNRATE"] == "1", f"a paused device is not taken off: it stays on at 1 kbit/s: {nd}")
     check(nd["QUP"] == "2048" and nd["QDOWN"] == "2048", f"with 2 MB of data for the whole pause (openNDS takes it off when that is used): {nd}")

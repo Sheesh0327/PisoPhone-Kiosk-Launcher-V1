@@ -26,6 +26,8 @@ pub enum View {
     Idle {
         /// seconds of mini-game left today for this device (-1: the game is off)
         gm: i64,
+        /// pesos the session still has to pay before it may pause (0: it may, or pausing is off)
+        pn: u32,
         left: u64,
         plan: Option<Plan>,
         online: bool,
@@ -98,8 +100,8 @@ fn vflag(voucher: bool) -> &'static str {
 impl View {
     pub fn to_json(&self) -> String {
         match self {
-            View::Idle { gm, left, plan, online, busy, cooldown, used_mb, slow, pm, pl, pw, vc, vs } => format!(
-                "{{\"t\":\"state\",\"s\":\"idle\",\"left\":{},\"plan\":\"{}\",\"online\":{},\"busy\":{},\"cooldown\":{},\"used_mb\":{},\"slow\":{},\"pm\":{},\"pl\":{},\"pw\":{},\"vc\":{},\"gm\":{},\"vs\":[{}]}}",
+            View::Idle { gm, pn, left, plan, online, busy, cooldown, used_mb, slow, pm, pl, pw, vc, vs } => format!(
+                "{{\"t\":\"state\",\"s\":\"idle\",\"left\":{},\"plan\":\"{}\",\"online\":{},\"busy\":{},\"cooldown\":{},\"used_mb\":{},\"slow\":{},\"pm\":{},\"pl\":{},\"pw\":{},\"vc\":{},\"gm\":{},\"pn\":{},\"vs\":[{}]}}",
                 left,
                 plan.map(|p| p.as_str()).unwrap_or(""),
                 online,
@@ -112,6 +114,7 @@ impl View {
                 pw,
                 vc,
                 gm,
+                pn,
                 vs.iter()
                     .map(|m| format!("{{\"c\":\"{}\",\"m\":{},\"p\":\"{}\",\"x\":{}}}", json_esc(&m.code), m.minutes, json_esc(&m.plan), m.expires))
                     .collect::<Vec<_>>()
@@ -380,6 +383,7 @@ impl Core {
         if let Some(p) = peeked.as_ref().filter(|p| p.paused) {
             return View::Paused { plan: p.plan, left: p.left, pm, pl, by: p.lost_at };
         }
+        let pn = if pm > 0 { peeked.as_ref().map(|p| self.cfg.pause_min_pesos.saturating_sub(p.pesos)).unwrap_or(0) } else { 0 };
         let (plan, left) = match peeked {
             Some(p) => (Some(p.plan), p.left),
             None => (None, 0),
@@ -399,6 +403,7 @@ impl Core {
         let vs = crate::voucher::for_device(&self.cfg.data_dir, now, mac);
         View::Idle {
             gm: self.games.left(mac, now),
+            pn,
             left,
             plan,
             online: left > 0,
@@ -478,7 +483,7 @@ impl Core {
         if self.st.lock().unwrap().window.as_ref().is_some_and(|w| w.mac == mac) {
             return Err(("paying", 0)); // not in the middle of putting coins in
         }
-        let rules = roll::PauseRules { max: self.cfg.pause_max, min_left: self.cfg.pause_min_left };
+        let rules = roll::PauseRules { max: self.cfg.pause_max, min_left: self.cfg.pause_min_left, min_pesos: self.cfg.pause_min_pesos };
         let r = {
             let _g = self.files.lock().unwrap();
             roll::pause(&self.cfg.roll_path(), now, mac, rules)
@@ -495,6 +500,7 @@ impl Core {
             Err(roll::PauseError::NoSession) => Err(("none", 0)),
             Err(roll::PauseError::Already) => Err(("already", 0)),
             Err(roll::PauseError::Limit) => Err(("limit", 0)),
+            Err(roll::PauseError::Pesos(n)) => Err(("pesos", u64::from(n))),
             Err(roll::PauseError::TooLittle) => Err(("little", self.cfg.pause_min_left)),
             Err(roll::PauseError::Io) => Err(("io", 0)),
         }
@@ -583,7 +589,7 @@ impl Core {
             let plan = Plan::parse(&batch.plan).unwrap_or(Plan::Hyper);
             let (down, up) = rates(&self.pricing(), plan);
             let wid = format!("v{}", hash);
-            match roll::mint(&self.cfg.roll_path(), now, mac, &wid, plan, 0, batch.minutes, up, down, false) {
+            match roll::mint(&self.cfg.roll_path(), now, mac, &wid, plan, batch.pesos, batch.minutes, up, down, false) {
                 Ok(mode) => {
                     // A voucher bought with coins was income when its coins were counted (kind "vbuy"): spending it is time use, no
                     // revenue row. A printed slip of an earlier release (no coin window) was sold for cash elsewhere and is booked
