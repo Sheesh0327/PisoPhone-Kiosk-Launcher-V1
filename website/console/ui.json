@@ -1,7 +1,7 @@
 {
-  "version": 6,
+  "version": 7,
   "api": 1,
-  "expires": 1802377069,
-  "sha256": "ec9f13b711162b449f08396d1bfcee97819fa682e8c75804c26161c68b44e7c9",
-  "sig": "MEUCIQCF/87DS5kM4cCxyo25ROn93O2Xej+T7LW3RpktNDVMQAIgfcuQEOUZ3er8xB+GqLzLnG6ZJzLkp0dzdK1aG5hbMb4="
+  "expires": 1802400265,
+  "sha256": "7afd40307f88e6bb5ddd55e7b7720da88783d4b64101484d03b5f6c0c2ed72e5",
+  "sig": "MEUCIG730x7GmqAyGQmsiB/3KWlUDCOsPvtQrhkMNUfqFHjeAiEA+Z8Ui1OEpcr5Nze4W74JoUzAfk/zRApB415/YCas6eI="
 }
