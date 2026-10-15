@@ -262,7 +262,8 @@ impl Core {
             .unwrap_or(cfg.game_minutes)
             .min(crate::game::MAX_MINUTES);
         let games = Games::new(&cfg.data_dir, cfg.game_seconds.unwrap_or(game_minutes * 60));
-        let send = crate::send::Send::new(&cfg.send_host, cfg.send_port, &cfg.data_dir, cfg.send_max_mb, cfg.send_per_hour);
+        let send_on = crate::config::parse_switch(&crate::config::override_get(&cfg.data_dir, "SEND_ENABLED"), cfg.send_enabled);
+        let send = crate::send::Send::new(&cfg.send_host, cfg.send_port, &cfg.data_dir, cfg.send_max_mb, cfg.send_per_hour, send_on);
         Arc::new(Core {
             cfg,
             box_,
@@ -299,6 +300,17 @@ impl Core {
         let ok = crate::config::override_set(&self.cfg.data_dir, "VOUCHER_CHOICE", if on { "on" } else { "off" });
         if ok {
             self.vchoice.store(on, Ordering::Relaxed);
+            let mut st = self.st.lock().unwrap();
+            self.bump(&mut st);
+        }
+        ok
+    }
+
+    /// The owner switches file sending for guests on or off (console, Settings). Kept in DATA_DIR/settings.txt; open pages are told at once.
+    pub fn set_file_send(&self, on: bool) -> bool {
+        let ok = crate::config::override_set(&self.cfg.data_dir, "SEND_ENABLED", if on { "on" } else { "off" });
+        if ok {
+            self.send.set_switch(on);
             let mut st = self.st.lock().unwrap();
             self.bump(&mut st);
         }

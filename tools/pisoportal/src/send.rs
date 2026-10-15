@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -68,6 +69,8 @@ pub struct Send {
     key_file: String,
     max_bytes: u64,
     per_hour: usize,
+    /// the owner's switch (console, Settings): off hides the button and refuses uploads even when the key file is there
+    switch: AtomicBool,
     st: Mutex<State>,
 }
 
@@ -87,13 +90,14 @@ pub fn encode_name(raw: &str) -> String {
 }
 
 impl Send {
-    pub fn new(host: &str, port: u16, data_dir: &str, max_mb: u64, per_hour: usize) -> Send {
+    pub fn new(host: &str, port: u16, data_dir: &str, max_mb: u64, per_hour: usize, on: bool) -> Send {
         Send {
             host: host.to_string(),
             port,
             key_file: format!("{}/send.key", data_dir),
             max_bytes: max_mb.clamp(1, 50) * 1024 * 1024,
             per_hour,
+            switch: AtomicBool::new(on),
             st: Mutex::new(State { sent: HashMap::new(), running: HashSet::new(), key: None }),
         }
     }
@@ -116,7 +120,21 @@ impl Send {
         }
     }
 
+    /// Offered to guests: the owner's switch is on and the print server's key is installed.
     pub fn enabled(&self) -> bool {
+        self.switch_on() && self.key().is_some()
+    }
+
+    pub fn switch_on(&self) -> bool {
+        self.switch.load(Ordering::Relaxed)
+    }
+
+    pub fn set_switch(&self, on: bool) {
+        self.switch.store(on, Ordering::Relaxed);
+    }
+
+    /// Is the print server's key installed (whatever the switch says)? The console shows it next to the switch.
+    pub fn has_key(&self) -> bool {
         self.key().is_some()
     }
 
@@ -130,6 +148,9 @@ impl Send {
 
     /// Send `len` bytes read from `body` to the print server's inbox as `name` (already encoded by `encode_name`) for `device`.
     pub fn upload(&self, device: &str, name: &str, len: u64, body: &mut dyn Read, now: u64) -> Result<(), SendError> {
+        if !self.switch_on() {
+            return Err(SendError::Off);
+        }
         let key = self.key().ok_or(SendError::Off)?;
         if len == 0 || len > self.max_bytes {
             return Err(SendError::TooBig);
@@ -268,7 +289,7 @@ mod tests {
 
     fn make(port: u16, dir: &str) -> Send {
         fs::write(format!("{}/send.key", dir), "k".repeat(40) + "\n").unwrap();
-        Send::new("127.0.0.1", port, dir, 1, 2)
+        Send::new("127.0.0.1", port, dir, 1, 2, true)
     }
 
     #[test]
@@ -300,11 +321,11 @@ mod tests {
     #[test]
     fn it_is_off_without_a_key_and_checks_sizes_before_connecting() {
         let dir = tmp("off");
-        let s = Send::new("127.0.0.1", 9, &dir, 1, 2);
+        let s = Send::new("127.0.0.1", 9, &dir, 1, 2, true);
         assert!(!s.enabled());
         assert_eq!(s.upload("d", "a.pdf", 10, &mut Cursor::new(vec![0; 10]), 1), Err(SendError::Off));
         fs::write(format!("{}/send.key", dir), "short").unwrap();
-        let s = Send::new("127.0.0.1", 9, &dir, 1, 2);
+        let s = Send::new("127.0.0.1", 9, &dir, 1, 2, true);
         assert!(!s.enabled(), "a key that is too short is no key");
         let s = make(9, &dir);
         assert_eq!(s.upload("d", "a.pdf", 0, &mut Cursor::new(vec![]), 1), Err(SendError::TooBig));
@@ -349,6 +370,22 @@ mod tests {
         let r = s.upload("d2", "a.pdf", 10, &mut Cursor::new(vec![1, 2, 3, 4]), 1);
         assert_eq!(r, Err(SendError::Incomplete));
         drop(srv);
+    }
+
+    #[test]
+    fn the_owner_can_switch_it_off_even_with_the_key() {
+        let dir = tmp("switch");
+        let s = make(9, &dir);
+        assert!(s.enabled() && s.has_key());
+        s.set_switch(false);
+        assert!(!s.enabled() && s.has_key() && !s.switch_on());
+        assert_eq!(
+            s.upload("d", "a.pdf", 3, &mut Cursor::new(vec![1, 2, 3]), 1),
+            Err(SendError::Off),
+            "switched off: refused before anything is read"
+        );
+        s.set_switch(true);
+        assert!(s.enabled());
     }
 
     #[test]

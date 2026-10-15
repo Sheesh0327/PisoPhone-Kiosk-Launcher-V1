@@ -50,6 +50,8 @@ pub struct Config {
     /// the largest file a guest may send, in MB (SEND_MAX_MB, default 10), and how many files one device may send an hour (SEND_PER_HOUR, default 5)
     pub send_max_mb: u64,
     pub send_per_hour: usize,
+    /// guests may send files (SEND_ENABLED, default on; the owner can switch it in the console). Still needs the key file.
+    pub send_enabled: bool,
     pub empty_limit: usize,
     pub empty_window: u64,
     pub empty_cooldown: u64,
@@ -190,6 +192,7 @@ impl Config {
             send_port: port("SEND_PORT", 80),
             send_max_mb: num("SEND_MAX_MB", 10).clamp(1, 50),
             send_per_hour: num("SEND_PER_HOUR", 5).clamp(1, 100) as usize,
+            send_enabled: parse_switch(&get("SEND_ENABLED", ""), true),
             empty_limit: num("EMPTY_LIMIT", 2) as usize,
             empty_window: num("EMPTY_WINDOW", 300),
             empty_cooldown: num("EMPTY_COOLDOWN", 120),

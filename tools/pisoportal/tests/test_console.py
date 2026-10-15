@@ -6,6 +6,7 @@ from harness import *
 HERE = os.path.dirname(os.path.abspath(__file__))
 CP = 18290
 env = Env(offset=40)
+open(f"{env.data}/send.key", "w").write("k" * 40 + "\n")   # the print server's key is installed on this router
 tmp = env.tmp
 # a fake `ubus`: the password "router-pass" is the router's
 open(f"{tmp}/ubus", "w").write('#!/bin/sh\ncase "$4" in *\\"password\\":\\"router-pass\\"*) echo \'{ "ubus_rpc_session": "abc" }\';; *) echo \'{}\';; esac\n')
@@ -145,7 +146,7 @@ try:
     check(s["vouchers"] == {"redeemed": 0, "waiting": 0}, f"sales: vouchers redeemed and waiting come from the voucher records (the one voucher is cancelled): {s['vouchers']}")
     # ---- settings: the voucher choice ----------------------------------------------------------------------------------------------------------
     code, body, _h = call("/api/settings", cookie=cookie)
-    check(code == 200 and json.loads(body) == {"voucher_choice": True, "game_minutes": 10}, f"settings: the voucher choice is on and the mini-game has 10 minutes by default: {body}")
+    check(code == 200 and json.loads(body) == {"voucher_choice": True, "game_minutes": 10, "file_send": True, "file_send_key": True}, f"settings: the voucher choice is on, the mini-game has 10 minutes and file sending is on by default: {body}")
     check(call("/api/settings", cookie="piso_console=x")[0] == 401, "settings need a session")
     check(call("/api/settings", {"voucher_choice": "off"}, cookie=cookie, headers={"X-Piso": "0"})[0] == 403, "changing a setting needs the page's header")
     check(call("/api/settings", {}, cookie=cookie)[0] == 400, "a change that names nothing is refused")
@@ -178,6 +179,24 @@ try:
     check(st is not None and st["gm"] == 900, f"with all 15 minutes ahead: {st and st.get('gm')}")
     c8.close()
     call("/api/settings", {"game_minutes": 10}, cookie=cookie)
+    # sending files to the owner (the print inbox): on by default when the key is installed; the owner can switch it off for sites without printing
+    c7 = Cust("127.0.0.1", port=env.PP, reset=True)
+    st = c7.wait_state("idle", 5)
+    check(st is not None and st["sd"] is True and env.get("/send")[0] == 200, f"file sending is offered by default: {st and st.get('sd')}")
+    c7.mark()
+    code, body, _h = call("/api/settings", {"file_send": "off"}, cookie=cookie)
+    check(code == 200 and json.loads(body)["file_send"] is False and json.loads(body)["voucher_choice"] is True and json.loads(body)["game_minutes"] == 10, f"the owner switches it off: {body}")
+    check("SEND_ENABLED=off" in open(f"{env.data}/settings.txt").read(), "and it is kept next to the other console settings")
+    check(c7.wait(lambda m: m.get("s") == "idle" and m.get("sd") is False, 5) is not None, "an open customer page is told at once and hides the button")
+    check(env.get("/send")[0] == 404, "the upload page is gone while it is off")
+    try:
+        urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{env.PP}/send/upload", data=b"%PDF-1.4", headers={"X-Filename": "a.pdf"}, method="POST"))
+        check(False, "an upload must be refused while it is off")
+    except urllib.error.HTTPError as e:
+        check(e.code == 404, f"and an upload is refused while it is off: {e.code}")
+    code, body, _h = call("/api/settings", {"file_send": "on"}, cookie=cookie)
+    check(code == 200 and json.loads(body)["file_send"] is True and env.get("/send")[0] == 200, "and on again, at once")
+    c7.close()
     # prices: the owner edits the price list live (kept in the data folder, followed by the customer page at once)
     check(call("/api/pricing")[0] == 401, "prices need a session")
     code, body, _h = call("/api/pricing", cookie=cookie)
