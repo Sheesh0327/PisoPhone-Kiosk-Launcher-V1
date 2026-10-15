@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Send a file</title>
+<style>
+/* TechNet PisoHub: send a file to the owner. One small page of the router's own, no libraries. */
+body{margin:0;background:#050d22;color:#eef3ff;font:16px/24px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box}
+main{max-width:360px;width:100%;background:#0c1a3a;border:1px solid #1f3361;border-radius:12px;padding:20px;box-sizing:border-box}
+h1{margin:0 0 6px;font-size:22px;line-height:28px}
+p{margin:6px 0;color:#97a6c7}
+label.pick,button,a.b{display:block;width:100%;min-height:52px;margin:14px 0 0;padding:12px;border:0;border-radius:10px;background:#1d63d6;color:#fff;font:inherit;font-weight:700;text-align:center;text-decoration:none;box-sizing:border-box;cursor:pointer}
+label.pick{background:none;border:1px dashed #5a70a3;color:#eef3ff;font-weight:600;min-height:48px;line-height:24px}
+a.b{min-height:48px;background:none;border:1px solid #5a70a3;color:#eef3ff;font-weight:600;line-height:24px}
+button:disabled{opacity:.5}
+input{display:none}
+#bar{height:8px;border-radius:4px;background:#1f3361;margin-top:14px;overflow:hidden;display:none}
+#bar i{display:block;height:100%;width:0;background:#5b9bff}
+#msg{min-height:24px;margin-top:12px;font-weight:600}
+.ok{color:#6fe3a0}.bad{color:#ff8a8a}
+button:focus-visible,a.b:focus-visible,label.pick:focus-within{outline:2px solid #5b9bff;outline-offset:2px}
+</style></head><body><main>
+<h1>Send a file</h1>
+<p>Send a document or a picture to the owner. It is not printed by itself and costs nothing. Up to %MAX% MB: PDF, Word, Excel, PowerPoint, text or an image.</p>
+<label class="pick" id="pk">Choose a file<input id="f" type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.rtf,.txt,.csv,.jpg,.jpeg,.png,.heic,.heif,.webp,.avif,.bmp,.tif,.tiff,application/pdf"></label>
+<div id="bar"><i></i></div>
+<div id="msg" role="status" aria-live="polite"></div>
+<button id="go" type="button" disabled>Send</button>
+<a class="b" href="/">Back to the Wi-Fi page</a>
+</main>
+<script>
+(function(){
+var MAX=%MAXB%,f=document.getElementById("f"),go=document.getElementById("go"),msg=document.getElementById("msg"),bar=document.getElementById("bar"),pk=document.getElementById("pk");
+function say(t,c){msg.textContent=t;msg.className=c||""}
+var E={OFF:"Sending files is not available right now.",TOO_BIG:"That file is too big. The limit is %MAX% MB.",RATE:"You sent several files already. Please try again later.",BUSY:"The router is busy. Please try again in a minute.",DOWN:"The owner's computer is not reachable right now. Please try again later.",INCOMPLETE:"The upload did not finish. Please try again.",NO_NAME:"That file has no name.",REFUSED:"The file was not accepted."};
+f.onchange=function(){var x=f.files[0];if(!x){go.disabled=true;return}
+ pk.firstChild.nodeValue=x.name+" ("+(x.size>=1048576?(x.size/1048576).toFixed(1)+" MB":Math.max(1,Math.round(x.size/1024))+" KB")+")";
+ if(x.size>MAX){say(E.TOO_BIG,"bad");go.disabled=true;return}
+ if(!x.size){say("That file is empty.","bad");go.disabled=true;return}
+ say("");go.disabled=false};
+go.onclick=function(){var x=f.files[0];if(!x)return;go.disabled=true;bar.style.display="block";say("Sending...");
+ var r=new XMLHttpRequest();r.open("POST","/send/upload");r.setRequestHeader("X-Filename",encodeURIComponent(x.name));
+ r.upload.onprogress=function(e){if(e.lengthComputable)bar.firstChild.style.width=Math.round(e.loaded*100/e.total)+"%"};
+ r.onload=function(){var j={};try{j=JSON.parse(r.responseText)}catch(e){}
+  if(j.ok){bar.firstChild.style.width="100%";say("Sent! The owner will see it.","ok");f.value="";pk.firstChild.nodeValue="Choose another file";return}
+  say((E[j.error]||"Something went wrong.")+(j.msg?" ("+j.msg+")":""),"bad");go.disabled=false};
+ r.onerror=function(){say("Could not reach the Wi-Fi. Check your connection and try again.","bad");go.disabled=false};
+ r.send(x)};
+})();
+</script></body></html>

@@ -447,7 +447,13 @@ impl Console {
 
 /// The owner's console settings (voucher choice at payment, mini-game minutes a day).
 fn settings_json(core: &Core) -> String {
-    format!("{{\"voucher_choice\":{},\"game_minutes\":{}}}", core.voucher_choice(), core.games.limit_secs() / 60)
+    format!(
+        "{{\"voucher_choice\":{},\"game_minutes\":{},\"file_send\":{},\"file_send_key\":{}}}",
+        core.voucher_choice(),
+        core.games.limit_secs() / 60,
+        core.send.switch_on(),
+        core.send.has_key()
+    )
 }
 
 /// The prices in force, for the console's Settings page (tiers as [pesos, minutes]; speeds in kbit/s, 0 = no cap).
@@ -598,8 +604,8 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
                 ("GET", "/api/settings") => json(&mut conn, "200 OK", &settings_json(&c.core), ""),
                 ("POST", "/api/settings") => {
                     // (only the settings named in the body change)
-                    let (vc, gm) = (jget(&body, "voucher_choice"), jget(&body, "game_minutes"));
-                    if vc.is_empty() && gm.is_empty() {
+                    let (vc, gm, fs) = (jget(&body, "voucher_choice"), jget(&body, "game_minutes"), jget(&body, "file_send"));
+                    if vc.is_empty() && gm.is_empty() && fs.is_empty() {
                         return json(&mut conn, "400 Bad Request", "{\"error\":\"NOTHING\"}", "");
                     }
                     if !gm.is_empty() {
@@ -619,6 +625,9 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
                                 );
                             }
                         }
+                    }
+                    if !fs.is_empty() && !c.core.set_file_send(crate::config::parse_switch(&fs, true)) {
+                        return json(&mut conn, "500 Internal Server Error", "{\"error\":\"IO\"}", "");
                     }
                     if !vc.is_empty() && !c.core.set_voucher_choice(crate::config::parse_switch(&vc, true)) {
                         return json(&mut conn, "500 Internal Server Error", "{\"error\":\"IO\"}", "");
