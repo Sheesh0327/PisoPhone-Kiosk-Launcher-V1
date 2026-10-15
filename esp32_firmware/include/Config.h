@@ -34,6 +34,7 @@ extern const char* const NVS_KEY_IPS;
 extern const char* const NVS_KEY_WIFI_SSID;
 extern const char* const NVS_KEY_WIFI_PASS;
 extern const char* const NVS_KEY_KIOSK_WIFI_PASS;
+extern const char* const NVS_KEY_KIOSK_WIFI_SSID;
 extern const char* const NVS_KEY_U_COIN_PIN;
 extern const char* const NVS_KEY_LED_PIN;
 extern const char* const NVS_KEY_LED_ACTIVE_LOW;
@@ -114,6 +115,7 @@ extern String wifiSsid;
 extern String wifiPass;
 extern String
     kioskWifiPass; // the rental phones' Wi-Fi password, given by the router (carried by the "Set up a phone" link)
+extern String kioskWifiSsid; // and the name of that network (each router has its own; empty: the shared name PisoKiosk)
 extern String androidIps;
 extern String webPassword;
 extern bool adminPwChanged;                // false until the default admin password is replaced

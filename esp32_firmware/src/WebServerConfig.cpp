@@ -180,6 +180,14 @@ void handleSave() {
             prefs.putString(NVS_KEY_KIOSK_WIFI_PASS, kioskWifiPass);
         }
     }
+    if (webServer.hasArg(NVS_KEY_KIOSK_WIFI_SSID)) {
+        // this router's name for the phones' network (empty clears it, and the phones use the shared name); an invalid one is ignored
+        String ks = webServer.arg(NVS_KEY_KIOSK_WIFI_SSID);
+        if (ks.length() == 0 || setupgate::kioskWifiSsidValid(ks.c_str())) {
+            kioskWifiSsid = ks;
+            prefs.putString(NVS_KEY_KIOSK_WIFI_SSID, kioskWifiSsid);
+        }
+    }
     if (webServer.hasArg(NVS_KEY_U_COIN_PIN)) {
         universalCoinPin = webServer.arg(NVS_KEY_U_COIN_PIN).toInt();
         prefs.putInt(NVS_KEY_U_COIN_PIN, universalCoinPin);

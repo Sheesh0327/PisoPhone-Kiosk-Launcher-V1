@@ -9,8 +9,11 @@
 # (or factory reset) and powered on.
 #
 # What it builds (the router's LAN address is not touched; your SSH session stays open the whole time):
-#   PisoKiosk    Wi-Fi, 2.4 + 5 GHz, WPA2, fixed name, HIDDEN (not broadcast). For the rental phones only. Network 10.0.0.0/24 (the router's LAN).
-#   PisoCoinBox  hidden Wi-Fi, 2.4 GHz, for the ESP32 coin box only: after pairing, only the box's MAC address may join.
+#   PisoKiosk-xxxx    Wi-Fi, 2.4 + 5 GHz, WPA2, HIDDEN (not broadcast). For the rental phones only. Network 10.0.0.0/24 (the router's LAN).
+#                     xxxx comes from this router's own MAC address, so two shops (or two routers) never share a network name.
+#                     A router that was set up before keeps the name PisoKiosk.
+#   PisoCoinBox-xxxx  hidden Wi-Fi, 2.4 GHz, for the ESP32 coin box only: after pairing, only the box's MAC address may join.
+#                     (only while pairing it is called PisoCoinBox, the name a new box knows; then the box is told its own name)
 #                The box gets the fixed address 10.0.0.10.
 #   PisoWiFi     open Wi-Fi, 2.4 + 5 GHz, for customers (openNDS login page, coin payments). Rename it with:
 #                  piso-setup wifi-name "My Shop"
@@ -31,8 +34,9 @@ PISO_RELEASE='@RELEASE@'
 PISO_ARCH='@ARCH@'
 
 COUNTRY="${COUNTRY:-PH}"
-KIOSK_SSID="PisoKiosk"                       # fixed, and hidden: only phones provisioned by the coin box page know it
-BOX_SSID="PisoCoinBox"                       # fixed: the ESP32 firmware has it built in
+KIOSK_BASE="PisoKiosk"                       # the start of the rental phones' hidden network name (resolve_wifi_names adds the router's own ending)
+BOX_PAIR_SSID="PisoCoinBox"                  # the box's hidden network while pairing: the ESP32 firmware has this name built in
+KIOSK_SSID="$KIOSK_BASE"; BOX_SSID="$BOX_PAIR_SSID"   # (replaced by resolve_wifi_names: each router has names of its own)
 BOX_DEFAULT_WIFI="PisoCoinBox@Setup"         # the ESP32 firmware has it built in; setup gives the paired box its own (rotate_box_wifi)
 BOX_DEFAULT_ADMIN="Coinslot@Setup"           # the box's admin password until this script changes it
 LAN_IP=$(uci -q get network.lan.ipaddr 2> /dev/null | head -n 1 | cut -d/ -f1)   # whatever the router has now: this script never changes it

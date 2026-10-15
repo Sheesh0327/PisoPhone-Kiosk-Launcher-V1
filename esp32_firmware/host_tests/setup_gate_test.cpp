@@ -39,6 +39,17 @@ int main() {
     CHECK(!kioskWifiPasswordValid("tab\there1234"));
     CHECK(!kioskWifiPasswordValid("caf\xC3\xA9-password"));
 
+    // the rental phones' network name: each router has its own (PisoKiosk-a1b2), 1 to 32 printable characters
+    CHECK(kioskWifiSsidValid("PisoKiosk"));
+    CHECK(kioskWifiSsidValid("PisoKiosk-a1b2"));
+    CHECK(kioskWifiSsidValid("x"));
+    CHECK(kioskWifiSsidValid(std::string(32, 'x').c_str()));
+    CHECK(!kioskWifiSsidValid(nullptr));
+    CHECK(!kioskWifiSsidValid(""));
+    CHECK(!kioskWifiSsidValid(std::string(33, 'x').c_str()));
+    CHECK(!kioskWifiSsidValid("tab\there"));
+    CHECK(!kioskWifiSsidValid("caf\xC3\xA9"));
+
     // coins only after the operator's own password
     CHECK(!usageAllowed(false));
     CHECK(usageAllowed(true));

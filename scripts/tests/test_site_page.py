@@ -118,6 +118,29 @@ with sync_playwright() as pw:
     check("USB cable" in pg.inner_text("#qrError"), "an app published without its signing hash: the page says to use the USB cable")
     pg.close()
 
+    # a router with its own kiosk network name (PisoKiosk-a1b2): the link carries it, the code uses it; without it the old shared name
+    pg = br.new_page()
+    pg.route("**/update/app.json", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(app)))
+    pg.goto(f"{base}#secret={secret}&wifi_ssid=PisoKiosk-a1b2&wifi_pass=3hC4RATnpQMJ")
+    pg.wait_for_timeout(500)
+    check(pg.input_value("#wifiSsid") == "PisoKiosk-a1b2" and pg.input_value("#wifiPass") == "3hC4RATnpQMJ", "the link fills in the router's own network name and password")
+    pg.click("#showQrBtn")
+    pg.wait_for_selector("#qrBox svg")
+    payload = json.loads(pg.get_attribute("#qrBox", "data-payload"))
+    ex = payload["android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE"]
+    check(ex["wifi_ssid"] == "PisoKiosk-a1b2" and payload["android.app.extra.PROVISIONING_WIFI_SSID"] == "PisoKiosk-a1b2", "the code joins the router's own network: " + json.dumps(ex))
+    pg.close()
+    pg = br.new_page()
+    pg.route("**/update/app.json", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(app)))
+    pg.goto(f"{base}#secret={secret}&wifi_pass=3hC4RATnpQMJ")   # (an older box's link: no name)
+    pg.wait_for_timeout(500)
+    pg.click("#showQrBtn")
+    pg.wait_for_selector("#qrBox svg")
+    payload = json.loads(pg.get_attribute("#qrBox", "data-payload"))
+    check(pg.input_value("#wifiSsid") == "" and payload["android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE"]["wifi_ssid"] == "PisoKiosk",
+          "a link without a name means the old shared name PisoKiosk")
+    pg.close()
+
     br.close()
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)

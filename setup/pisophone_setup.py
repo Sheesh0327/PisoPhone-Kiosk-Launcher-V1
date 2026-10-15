@@ -223,7 +223,7 @@ def review(answers):
     say()
     say("================ PLEASE REVIEW (write the passwords down now) ================")
     say(f"  Public Wi-Fi (customers):  {answers['GUEST_SSID']}  (open, behind the coin payment page)")
-    say(f"  Rental-phone Wi-Fi:        {KIOSK_SSID}  (hidden)")
+    say(f"  Rental-phone Wi-Fi:        {KIOSK_SSID}-xxxx  (hidden; xxxx is this router's own ending, shown at the end)")
     say(f"  Site name:                 {answers['SITE_NAME']}")
     say(f"  Router address:            {TARGET_IP}   Country: {answers.get('COUNTRY', 'PH')}")
     say(f"  Router password:           {answers['ROOT_PASSWORD']}")
@@ -239,6 +239,7 @@ def parse_summary(text):
     found = {}
     for key, pattern in (("ROOT_PASSWORD", r"^Router \(SSH / LuCI\):.*?password: (\S+)"),
                          ("KIOSK_PASSWORD", r"^Kiosk Wi-Fi:.*?password: (\S+)"),
+                         ("KIOSK_SSID_NAME", r"^Kiosk Wi-Fi:\s+(\S+)\s+\(HIDDEN\)"),   # this router's own name (PisoKiosk-a1b2; PisoKiosk on an older router)
                          ("GUEST_SSID", r"^PisoWiFi \(customers\):\s+(.+?)\s{2,}\(open"),
                          ("BOX_NEW_ADMIN_PASSWORD", r"^Coin box:.*?admin password: (\S+)")):
         m = re.search(pattern, text or "", re.M)
@@ -1084,7 +1085,7 @@ def install(ssh, host, answers, branch, out_dir, emit, wait_move, stage=lambda n
     if found.get("KIOSK_PASSWORD"):   # the card for the owner's manual: scan to join the hidden network, scan to open the box
         site = answers.get("SITE_NAME") or found.get("GUEST_SSID") or KIOSK_SSID
         path = os.path.join(out_dir, f"pisophone-wifi-card-{stamp}.html")
-        save_private(path, wifi_card_html(site, KIOSK_SSID, found["KIOSK_PASSWORD"], stamp=time.strftime("%Y-%m-%d")))
+        save_private(path, wifi_card_html(site, found.get("KIOSK_SSID_NAME") or KIOSK_SSID, found["KIOSK_PASSWORD"], stamp=time.strftime("%Y-%m-%d")))
         saved.append(("Wi-Fi join card (print it for your manual)", os.path.abspath(path)))
     if result["rc"] is None:
         raise SetupError("the connection to the router was lost before the setup finished. Try again: it continues where it "
@@ -1214,10 +1215,11 @@ def fetch_box_link(host, password, opener=urllib.request.urlopen, timeout=8):
     return {"mac": m.group(1), "secret": m.group(2)}
 
 
-def provisioning_url(branch, link, slot, wifi_pass, box_ip=BOX_IP):
+def provisioning_url(branch, link, slot, wifi_pass, box_ip=BOX_IP, wifi_ssid=""):
     """The website's phone setup page for this box, filled in. Everything goes after the # (a fragment is never sent to a web
     server, its logs or a Referer); the page reads it, shows the QR code and removes it from the address bar."""
     values = {"mac": link["mac"], "secret": link["secret"], "slot": slot, "name": f"PisoPhone {slot}", "ip": box_ip,
+              "wifi_ssid": wifi_ssid if wifi_ssid != KIOSK_SSID else "",   # (empty: the shared old name, which the page assumes)
               "wifi_pass": wifi_pass}
     return f"{site_url(branch)}/#" + urllib.parse.urlencode({k: v for k, v in values.items() if v not in ("", None)})
 
@@ -1231,7 +1233,8 @@ def provisioning_target(branch, passwords, slot=1, fetch=fetch_box_link):
         try:
             link = fetch(BOX_IP, box_password)
             if link["mac"] and link["mac"] != "00:00:00:00:00:00":
-                return "setup", provisioning_url(branch, link, slot, passwords.get("KIOSK_PASSWORD", "")), ""
+                return "setup", provisioning_url(branch, link, slot, passwords.get("KIOSK_PASSWORD", ""),
+                                                 wifi_ssid=passwords.get("KIOSK_SSID_NAME", "")), ""
             note = "the coin box has no address yet"
         except SetupError as e:
             note = str(e)
@@ -2823,7 +2826,7 @@ class Session:
                 "install": inst, "stages": INSTALL_STAGES, "final": self.passwords(), "saved": [[l, os.path.basename(p)] for l, p in self.saved],
                 "review": {"public_wifi": self.answers()["GUEST_SSID"], "site": self.answers()["SITE_NAME"], "country": self.country,
                            "router": f"{self.router['host'] or '?'} -> {TARGET_IP}" if self.router["host"] == FACTORY_IP else TARGET_IP},
-                "phones": dict(self.prov, box_up=self.box_up, box_ip=BOX_IP, kiosk_ssid=KIOSK_SSID),
+                "phones": dict(self.prov, box_up=self.box_up, box_ip=BOX_IP, kiosk_ssid=(self.final or {}).get("KIOSK_SSID_NAME") or KIOSK_SSID),
                 "coin": dict(self.coin), "telegram": dict(self.telegram), "tools": self.tools_snapshot(),
             }
 

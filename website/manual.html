@@ -104,8 +104,8 @@ ol.steps>li::before{content:counter(s);position:absolute;left:0;top:2px;width:30
 <h3>The three Wi-Fi networks</h3>
 <table>
 <tr><th>Name</th><th>For</th><th>Visible?</th></tr>
-<tr><td><b>PisoKiosk</b></td><td>Your rental phones. A phone locks itself to this one network only.</td><td>Hidden; password made by the setup program</td></tr>
-<tr><td><b>PisoCoinBox</b></td><td>The ESP32 coin box only. Never give this one out.</td><td>Hidden</td></tr>
+<tr><td><b>PisoKiosk-xxxx</b></td><td>Your rental phones. A phone locks itself to this one network only. The ending is made from the router, so a second shop or router never shares it (a router set up before release 1.5.0 is called just PisoKiosk).</td><td>Hidden; password made by the setup program</td></tr>
+<tr><td><b>PisoCoinBox-xxxx</b></td><td>The ESP32 coin box only. Never give this one out. (Only while pairing it is called PisoCoinBox, the name a new box knows.)</td><td>Hidden</td></tr>
 <tr><td><b>PisoWiFi</b></td><td>Customers on their own phones and laptops (the name you chose at setup).</td><td>Open, shows a login page</td></tr>
 </table>
 <div class="note"><b>Tip</b>Each unit gets new passwords. The setup program saves them in a summary file and a printable sheet. Keep those safe: they are your records.</div>

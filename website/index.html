@@ -64,6 +64,11 @@
         <!-- Set up a phone -->
         <div id="installPanel" class="stack">
             <div class="field">
+                <label for="wifiSsid"><svg class="ic"><use href="#i-wifi"/></svg> Kiosk Wi-Fi name</label>
+                <input type="text" id="wifiSsid" value="" placeholder="PisoKiosk" maxlength="32" autocomplete="off" spellcheck="false">
+                <span class="hint">Each router has its own hidden network name (for example <code>PisoKiosk-a1b2</code>), so two shops never mix their phones up. Opened from the coin box's <i>Set up a phone</i> button this is filled in. Empty means the old shared name <code>PisoKiosk</code>; otherwise type the name from the router's setup summary (<code>piso-setup summary</code>, "Kiosk Wi-Fi").</span>
+            </div>
+            <div class="field">
                 <label for="wifiPass"><svg class="ic"><use href="#i-wifi"/></svg> PisoKiosk Wi-Fi password</label>
                 <input type="text" id="wifiPass" value="" placeholder="Filled in by the coin box's link" autocomplete="off" spellcheck="false">
                 <span id="wifiFromBox" class="hint hidden">Given by your coin box: nothing to type.</span>
@@ -204,6 +209,12 @@
 
             // the kiosk Wi-Fi password: from the link if it carries one, else what was typed last time on this computer
             const wifiPass = $('wifiPass');
+            const wifiSsid = $('wifiSsid');
+            try {
+                // the router's own network name: from the link, else what was used last time on this computer, else the shared old name
+                const nameFromLink = urlParams.get('wifi_ssid');
+                wifiSsid.value = nameFromLink || (urlParams.get('wifi_pass') ? '' : (localStorage.getItem('pisoWifiSsid') || ''));
+            } catch (e) {}
             try {
                 const fromLink = urlParams.get('wifi_pass');
                 const remembered = fromLink ? '' : (localStorage.getItem('pisoWifiPass') || '');
@@ -213,8 +224,8 @@
                 wifiPass.addEventListener('input', () => { $('wifiRemembered').classList.add('hidden'); $('wifiFromBox').classList.add('hidden'); });
             } catch (e) {}
             function currentProv() {
-                const prov = P.validateProvisioning({ ...linkProv, slot: linkProv.slot ? String(linkProv.slot) : '', wifiSsid: P.DEFAULT_SSID, wifiPass: wifiPass.value });
-                try { if (prov.wifiPass) localStorage.setItem('pisoWifiPass', prov.wifiPass); } catch (e) {}
+                const prov = P.validateProvisioning({ ...linkProv, slot: linkProv.slot ? String(linkProv.slot) : '', wifiSsid: wifiSsid.value.trim() || P.DEFAULT_SSID, wifiPass: wifiPass.value });
+                try { if (prov.wifiPass) { localStorage.setItem('pisoWifiPass', prov.wifiPass); localStorage.setItem('pisoWifiSsid', wifiSsid.value.trim()); } } catch (e) {}
                 return prov;
             }
 
@@ -248,7 +259,8 @@
                 }
             });
             $('hideQrBtn').addEventListener('click', hideQr);
-            wifiPass.addEventListener('input', hideQr);   // a code for an old password must not stay on screen
+            wifiPass.addEventListener('input', hideQr);
+            wifiSsid.addEventListener('input', hideQr);   // a code for an old password must not stay on screen
 
             // ---- the log ----
             const terminalLog = $('terminalLog'), badge = $('logStatusBadge');

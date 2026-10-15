@@ -27,11 +27,13 @@ ask_name() {
 	conf_set "$_n" "$_v"; ASKED="$_v"
 }
 
-# The public Wi-Fi name (asked once). The kiosk network keeps its fixed, hidden name: the phones are provisioned with it.
+# The public Wi-Fi name (asked once). The kiosk and coin box networks have hidden names of their own (resolve_wifi_names), kept
+# from the first setup on: the phones are provisioned with the kiosk one.
 choose_names() {
 	ask_name GUEST_NAME "public customer" "${GUEST_SSID:-PisoWiFi}" "$GUEST_SSID"; GUEST_NAME="$ASKED"
-	[ "$GUEST_NAME" != "$KIOSK_SSID" ] || die "the public Wi-Fi name cannot be $KIOSK_SSID"
-	case "$GUEST_NAME" in *"$BOX_SSID"*) die "the public Wi-Fi name may not contain $BOX_SSID (the coin box's hidden network)" ;; esac
+	[ "$GUEST_NAME" != "$KIOSK_SSID" ] && [ "$GUEST_NAME" != "$KIOSK_BASE" ] || die "the public Wi-Fi name cannot be $KIOSK_SSID"
+	case "$GUEST_NAME" in *"$BOX_PAIR_SSID"*) die "the public Wi-Fi name may not contain $BOX_PAIR_SSID (the coin box's hidden network)" ;; esac
+	[ "$DRY" = 1 ] || remember_wifi_names
 }
 
 # ask_password NAME "label" MIN MAX [ENV VALUE]: the password for NAME. Already chosen (a re-run): kept. Otherwise it is
