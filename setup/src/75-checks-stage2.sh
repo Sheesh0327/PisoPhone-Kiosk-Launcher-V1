@@ -12,7 +12,7 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 	_ck "the portal can talk to the box (signed request)" "/usr/bin/pisoportal box | grep -qi answers"
 	_gp=$(conf_get GUEST_PORT)
 	[ -z "$_gp" ] || _ck "router port $_gp is on the guest network (an access point plugged in there is gated)" "uci -q get \$(net_section br-guest).ports | grep -qw '$_gp'"
-	_ck "openNDS is running" "ndsctl status"
+	_ck "openNDS is running" "wait_until 30 'ndsctl status'"   # (it needs a few seconds after it was started)
 	_ck "openNDS sends new guests to the portal (FAS)" "[ \"\$(uci -q get opennds.@opennds[0].fasport)\" = $PORTAL_PORT ]"
 	_ck "the router looks for signed updates every hour (scheduler running)" update_timer_ok
 	_ck "the hourly update check ran within the last 3 hours" update_check_recent
