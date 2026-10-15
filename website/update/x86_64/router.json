@@ -2,7 +2,7 @@
   "version": "1.5.0",
   "sha256": "b3b1621debdece78fba8e3529d61705503ddd7d8d46f070122a055ac26daf77e",
   "size": 1440688,
-  "rollout": 0,
+  "rollout": 100,
   "changelog": "Router software release 1.5.0",
-  "sig": "MEUCIQDCPu12uRiSC5iAUqDQ/i0c/PnGMkYDywpIgbMNYW4bGwIgNFCSEgv971BKQC6KYLO5yVZqO0jn3pisbZ4So09a4RQ="
+  "sig": "MEUCIF4tmElOJmEJdEK2jbUKUWz4xWMBaBhXyTsCDdzttZLPAiEA1oEcHP0/HtyJqY5WM6Hn9X94II13c2mE47OOONrL7yo="
 }
