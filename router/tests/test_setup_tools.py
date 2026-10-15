@@ -101,24 +101,25 @@ check(len(ps.read_card_ledger(r["ledger"])) == 19, "refused batches reserve no n
 # the QR codes on the cards decode to the signed text (when a QR reader is installed)
 try:
     import zxingcpp
+    from PIL import Image
 except ImportError:
     zxingcpp = None
 if zxingcpp:
-    def raster(m, scale=6, quiet=4):
-        n = len(m) + 2 * quiet
-        w = n * scale
-        data = bytearray([255]) * (w * w)
-        for y, row in enumerate(m):
+    def raster(matrix, scale=6, quiet=4):
+        n = len(matrix) + 2 * quiet
+        img = Image.new("L", (n * scale, n * scale), 255)
+        px = img.load()
+        for y, row in enumerate(matrix):
             for x, v in enumerate(row):
                 if v:
                     for dy in range(scale):
                         for dx in range(scale):
-                            data[((y + quiet) * scale + dy) * w + (x + quiet) * scale + dx] = 0
-        return zxingcpp.read_barcodes(__import__("numpy").frombuffer(bytes(data), dtype="uint8").reshape(w, w))
-    bad = [s for s, text in r["cards"] if not (lambda out: out and out[0].text == text)(raster(ps.qr_matrix(text)))]
+                            px[(x + quiet) * scale + dx, (y + quiet) * scale + dy] = 0
+        return img
+    bad = [s for s, text in r["cards"] if not (lambda out: out and out[0].text == text)(zxingcpp.read_barcodes(raster(ps.qr_matrix(text))))]
     check(not bad, f"every card's QR code reads back as its signed text (failed: {bad})")
 else:
-    print("note: zxing-cpp is not installed, the QR read-back check is skipped")
+    print("note: zxing-cpp / pillow are not installed, the QR read-back check is skipped")
 
 # ---- the admin QR code and the recovery code --------------------------------------------------------------------------------
 admin = ps.load_key("admin")
