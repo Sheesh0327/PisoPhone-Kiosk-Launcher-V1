@@ -67,6 +67,18 @@ is a **Wi-Fi join card**: a print-ready page with a QR code that joins the hidde
 with the camera) and one that opens the coin box's page, plus the same steps by hand. Print it for your manual and keep it with
 your admin QR code: it holds the Wi-Fi password.
 
+## Owner tools (come back any time)
+Tap **Owner tools** at the top of the setup page (or open `http://<this computer>:8765/#tools`). You do not need a router or a coin box connected.
+- **Time cards (QR):** type the coin box's address (shown on its page), how many cards and how many hours on each, and tap *Make the cards*. It
+  gives you printable pages (fronts, backs, both sides) that print from the browser at 100% on A4, and a ledger of every card number.
+  Boxes you printed for before are remembered. Come back any time for another batch: numbers continue where they stopped.
+- **Admin QR code:** shows the code that logs you in as super admin on every coin box.
+- **Phone recovery code:** a short-lived code that removes PisoPhone from a phone's lock screen.
+- **Your keys:** the card, admin and recovery keys live in your home folder (`pisophone_card_key.pem`, `pisophone-superadmin.key`,
+  `pisophone_license_key.pem`). If you already have them, import them once (a file path or paste the text). A coin box trusts only the
+  keys its firmware was built with, so a new key works only after the firmware is rebuilt with it.
+- The first time, it may ask to *Install what is missing* (the `cryptography` package, into this program's own folder).
+
 ## Setting up a phone
 On the phone setup page (step 5) the link is filled in for the chosen slot. On the rental phone:
 1. On its first welcome screen **tap the same spot 6 times**: a QR reader opens.

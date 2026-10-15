@@ -1,9 +1,8 @@
 # Owner scripts
 
-**Prefer a web page?** `python3 scripts/owner_console.py` opens a console on your own computer with a dedicated page for every owner
-script below (keys and codes, time cards, releasing, checks): a form for its options, a Run button, the output, and the files it made
-(QR pictures shown, PDFs to download). Your keys are never uploaded: a page asks for the key file's path and the script reads it from
-disk. The console listens on 127.0.0.1 only and needs the secret in the address it prints. The scripts still work from a terminal.
+**The owner tools are in the setup program.** Time cards (QR), your admin QR code, the phone recovery code and your key files are made on the
+**Owner tools** page of `setup/pisophone_setup.py` (open it with `python3 pisophone_setup.py` and tap **Owner tools**); it replaced the
+owner console. The scripts below still work from a terminal and use the same key files and ledgers.
 
 # Scripts: what each one is for
 

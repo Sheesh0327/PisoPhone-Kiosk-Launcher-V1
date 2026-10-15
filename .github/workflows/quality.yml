@@ -241,7 +241,6 @@ jobs:
           pip install qrcode pillow
           python3 scripts/tests/test_recovery_code.py
           python3 scripts/tests/test_make_cards.py
-          python3 scripts/tests/test_owner_console.py
           python3 scripts/tests/test_publish_firmware.py
 
   firmware-build:
@@ -336,7 +335,9 @@ jobs:
       - name: Check the router setup run from a computer (setup/pisophone_setup.py, against a fake ssh and router)
         run: python3 router/tests/test_pisophone_setup.py
       - name: Check the setup page (this computer and what it installs, the PIN and the server, every step in a phone-sized browser)
-        run: CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 router/tests/test_setup_web.py
+        run: |
+          CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 router/tests/test_setup_web.py
+          CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 router/tests/test_setup_tools.py
       - name: Check the Telegram monitor against a fake Telegram
         run: python3 router/tests/test_monitor.py
       - name: Check router updates from the website (signed releases only, staged rollout, undo of a release that does not run)
