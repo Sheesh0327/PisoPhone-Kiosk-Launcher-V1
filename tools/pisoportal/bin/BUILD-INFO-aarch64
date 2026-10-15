@@ -1,3 +1,3 @@
-pisoportal 1.0.0 for aarch64-unknown-linux-musl (aarch64), from commit 3125d896587a3bbcf9e5ec18abae83fcfbfe1d5e
+pisoportal 1.0.0 for aarch64-unknown-linux-musl (aarch64), from commit 0d9e65206ef71218cdfe203f40cfe57d67ec6222
 rustc 1.99.0 (b940084d7 2026-09-28)
 C toolchain: openwrt/sdk:mediatek-filogic-23.05.5 (aarch64-openwrt-linux-musl-gcc (OpenWrt GCC 12.3.0 r24106-10cc5fcd00) 12.3.0)
