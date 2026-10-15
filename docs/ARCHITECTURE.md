@@ -105,6 +105,7 @@ openNDS is only the doorman: it blocks a guest phone from the internet until tol
 | `boxlink.rs` | the coin box: signed HTTP calls (`docs/api/gateway-coinslot.md`) and signed UDP coin events |
 | `nds.rs` | `ndsctl`: grant, revoke, state, counters |
 | `roll.rs` | the roll: one line per device with paid time; written atomically |
+| `send.rs`, `send.html` | guest file send: the page `/send` and `POST /send/upload`; the router streams the guest's file (no storage here) to the print server's inbox `POST /api/inbox/upload` with `X-Router-Key` from `DATA_DIR/send.key`; size, per-device rate and parallel limits; on only when the key file exists (`SEND_HOST`, `SEND_PORT`, `SEND_MAX_MB`, `SEND_PER_HOUR`) |
 | `game.rs`, `game.html` | the mini-game: a small offline game the router serves at `/game`, played in a browser tab; `/game/tick` counts each device's play time per day (default 10 min, `GAME_MINUTES`, console Settings; a soft limit) |
 | `pricing.rs`, `fair.rs` | plans and prices (best combination of tiers; a `Pricing` value the console edits live); fair use slow-down for HyperSpeed |
 | `ledger.rs`, `reconcile.rs` | the revenue ledger (hash-chained lines) and its comparison with the box's own count |

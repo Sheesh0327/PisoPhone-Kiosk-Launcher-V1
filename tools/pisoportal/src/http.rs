@@ -98,6 +98,11 @@ pub fn game_page(left: u32) -> String {
     squeeze(include_str!("game.html")).replace("%LEFT%", &left.to_string())
 }
 
+/// The page where a guest sends a file to the owner.
+pub fn send_page(max_mb: u64) -> String {
+    squeeze(include_str!("send.html")).replace("%MAXB%", &(max_mb * 1024 * 1024).to_string()).replace("%MAX%", &max_mb.to_string())
+}
+
 /// What a device sees when it opens the game with no time left today.
 const GAME_USED_UP: &str = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Coin Catch</title><style>body{margin:0;background:#050d22;color:#eef3ff;font:16px/24px system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:20px;box-sizing:border-box}div{max-width:340px;text-align:center;background:#0c1a3a;border:1px solid #1f3361;border-radius:12px;padding:20px}p{color:#97a6c7}a{display:block;margin-top:14px;padding:13px;border-radius:10px;background:#1d63d6;color:#fff;text-decoration:none;font-weight:700}</style></head><body><div><h1>Mini-game time is used up</h1><p>Each device gets a few minutes of play a day. Come back tomorrow.</p><a href=\"/\">Back to the Wi-Fi page</a></div></body></html>";
 
@@ -485,6 +490,67 @@ fn ws_session(core: Arc<Core>, mut conn: Incoming, key: &str, mac: String) {
     }
 }
 
+/// A guest's file for the owner: the bytes go straight on to the print server's inbox (see send.rs).
+fn handle_send_upload(p: &Portal, req: Request, mut conn: Incoming, peer: SocketAddr) {
+    let send = &p.core.send;
+    let answer = |conn: &mut Incoming, status: &str, code: &str, msg: &str| {
+        let body =
+            if code.is_empty() { "{\"ok\":true}".to_string() } else { format!("{{\"error\":\"{}\",\"msg\":\"{}\"}}", code, json_esc(msg)) };
+        respond(&mut conn.s, status, "application/json", &body, "Cache-Control: no-store\r\n");
+        if !code.is_empty() {
+            // The refusal comes before the file is read. Read (and drop) what is still on its way, a little, so the phone
+            // gets the answer and not a connection reset; a sender that keeps going is cut off.
+            let _ = conn.s.set_read_timeout(Some(Duration::from_secs(2)));
+            let (mut sink, mut left) = ([0u8; 4096], 2 * 1024 * 1024usize);
+            while left > 0 {
+                match conn.read(&mut sink) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => left = left.saturating_sub(n),
+                }
+            }
+        }
+    };
+    // only the page of this portal may send (another site's page must not make a guest's phone upload a file)
+    if !same_origin(&req) || req.header("sec-fetch-site").is_some_and(|v| v != "same-origin" && v != "none") {
+        return answer(&mut conn, "403 Forbidden", "OFF", "");
+    }
+    if !send.enabled() {
+        return answer(&mut conn, "404 Not Found", "OFF", "");
+    }
+    let len: u64 = req.header("content-length").and_then(|v| v.parse().ok()).unwrap_or(0);
+    if len == 0 || len > send.max_bytes() {
+        return answer(&mut conn, "413 Payload Too Large", "TOO_BIG", "");
+    }
+    if req.header("transfer-encoding").is_some() {
+        return answer(&mut conn, "411 Length Required", "INCOMPLETE", "");
+    }
+    let name = crate::send::encode_name(req.header("x-filename").unwrap_or(""));
+    let device = device_key(arp_mac(&p.core.cfg.arp_file, &peer.ip().to_string()), &peer.ip().to_string());
+    let _ = conn.s.set_read_timeout(Some(crate::send::idle_time()));
+    let mut body = (&mut conn).take(len);
+    let started = Instant::now();
+    match send.upload(&device, &name, len, &mut body, crate::util::now_secs()) {
+        Ok(()) => {
+            log!("file {} ({} bytes) from {} sent to the print server in {} s", name, len, device, started.elapsed().as_secs());
+            answer(&mut conn, "200 OK", "", "")
+        }
+        Err(e) => {
+            log!("file from {} not sent: {:?}", device, e);
+            let (status, msg) = match &e {
+                crate::send::SendError::Off => ("404 Not Found", String::new()),
+                crate::send::SendError::TooBig => ("413 Payload Too Large", String::new()),
+                crate::send::SendError::NoName => ("400 Bad Request", String::new()),
+                crate::send::SendError::Rate => ("429 Too Many Requests", String::new()),
+                crate::send::SendError::Busy => ("503 Service Unavailable", String::new()),
+                crate::send::SendError::Down => ("502 Bad Gateway", String::new()),
+                crate::send::SendError::Incomplete => ("400 Bad Request", String::new()),
+                crate::send::SendError::Refused(_, m) => ("422 Unprocessable Entity", m.clone()),
+            };
+            answer(&mut conn, status, e.code(), &msg)
+        }
+    }
+}
+
 struct Portal {
     core: Arc<Core>,
     /// the page and its ETag, and the price counter it was built at (built again when the owner changes a price)
@@ -514,6 +580,9 @@ impl Portal {
 fn handle(p: Arc<Portal>, stream: TcpStream, peer: SocketAddr) {
     let Some((req, mut conn)) = read_request(stream, HEAD_TIME) else { return };
     let head_only = req.method == "HEAD";
+    if req.method == "POST" && req.path == "/send/upload" {
+        return handle_send_upload(&p, req, conn, peer);
+    }
     if req.method != "GET" && !head_only {
         return respond(&mut conn.s, "405 Method Not Allowed", "text/plain", "", "Allow: GET, HEAD\r\n");
     }
@@ -543,6 +612,13 @@ fn handle(p: Arc<Portal>, stream: TcpStream, peer: SocketAddr) {
             let key = device_key(arp_mac(&p.core.cfg.arp_file, &peer.ip().to_string()), &peer.ip().to_string());
             let left = games.begin(&key, crate::util::now_secs());
             let html = if left == 0 { GAME_USED_UP.to_string() } else { game_page(left) };
+            respond_bytes(&mut conn.s, "200 OK", "text/html; charset=utf-8", html.as_bytes(), "Cache-Control: no-store\r\n", !head_only)
+        }
+        "/send" | "/send/" => {
+            if !p.core.send.enabled() {
+                return respond(&mut conn.s, "404 Not Found", "text/plain", "not found", "");
+            }
+            let html = send_page(p.core.send.max_mb());
             respond_bytes(&mut conn.s, "200 OK", "text/html; charset=utf-8", html.as_bytes(), "Cache-Control: no-store\r\n", !head_only)
         }
         "/game/tick" => {

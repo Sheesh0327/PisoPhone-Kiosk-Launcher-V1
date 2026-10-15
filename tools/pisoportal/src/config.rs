@@ -44,6 +44,12 @@ pub struct Config {
     pub game_minutes: u32,
     /// the same in seconds, for tests only (GAME_LIMIT_SECONDS); wins over the minutes when set
     pub game_seconds: Option<u32>,
+    /// where guests' files go: the print server's inbox (SEND_HOST, SEND_PORT); on only when DATA_DIR/send.key exists
+    pub send_host: String,
+    pub send_port: u16,
+    /// the largest file a guest may send, in MB (SEND_MAX_MB, default 10), and how many files one device may send an hour (SEND_PER_HOUR, default 5)
+    pub send_max_mb: u64,
+    pub send_per_hour: usize,
     pub empty_limit: usize,
     pub empty_window: u64,
     pub empty_cooldown: u64,
@@ -180,6 +186,10 @@ impl Config {
             voucher_choice: parse_switch(&get("VOUCHER_CHOICE", ""), true),
             game_minutes: (num("GAME_MINUTES", 10) as u32).min(crate::game::MAX_MINUTES),
             game_seconds: get("GAME_LIMIT_SECONDS", "").parse().ok(),
+            send_host: get("SEND_HOST", "10.0.0.95"),
+            send_port: port("SEND_PORT", 80),
+            send_max_mb: num("SEND_MAX_MB", 10).clamp(1, 50),
+            send_per_hour: num("SEND_PER_HOUR", 5).clamp(1, 100) as usize,
             empty_limit: num("EMPTY_LIMIT", 2) as usize,
             empty_window: num("EMPTY_WINDOW", 300),
             empty_cooldown: num("EMPTY_COOLDOWN", 120),

@@ -22,6 +22,7 @@ mod nds;
 mod pricing;
 mod reconcile;
 mod roll;
+mod send;
 mod update;
 mod util;
 mod voucher;
