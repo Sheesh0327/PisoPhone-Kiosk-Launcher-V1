@@ -24,12 +24,14 @@ button:focus-visible,a.b:focus-visible,label.pick:focus-within{outline:2px solid
 <label class="pick" id="pk">Choose a file<input id="f" type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.rtf,.txt,.csv,.jpg,.jpeg,.png,.heic,.heif,.webp,.avif,.bmp,.tif,.tiff,application/pdf"></label>
 <div id="bar"><i></i></div>
 <div id="msg" role="status" aria-live="polite"></div>
+<p id="alt" style="font-size:14px;line-height:20px">Nothing happens when you tap Choose a file? The Wi-Fi sign-in window of some phones cannot open files. Open <b id="url"></b> in your phone's normal browser instead.</p>
 <button id="go" type="button" disabled>Send</button>
 <a class="b" href="/">Back to the Wi-Fi page</a>
 </main>
 <script>
 (function(){
 var MAX=%MAXB%,f=document.getElementById("f"),go=document.getElementById("go"),msg=document.getElementById("msg"),bar=document.getElementById("bar"),pk=document.getElementById("pk");
+document.getElementById("url").textContent=location.host+"/send";
 function say(t,c){msg.textContent=t;msg.className=c||""}
 var E={OFF:"Sending files is not available right now.",TOO_BIG:"That file is too big. The limit is %MAX% MB.",RATE:"You sent several files already. Please try again later.",BUSY:"The router is busy. Please try again in a minute.",DOWN:"The owner's computer is not reachable right now. Please try again later.",INCOMPLETE:"The upload did not finish. Please try again.",NO_NAME:"That file has no name.",REFUSED:"The file was not accepted."};
 f.onchange=function(){var x=f.files[0];if(!x){go.disabled=true;return}

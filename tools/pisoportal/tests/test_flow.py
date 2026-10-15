@@ -28,7 +28,7 @@ try:
     check(code == 200 and "TechNet" in body and "PisoWifi" in body and "Test Spot" not in body and "HyperSpeed" in body and "&#8369;10" in body and "11 hrs 30 min" not in body, "the splash page carries the TechNet PisoWifi brand (not the configurable name) and the price list")
     check("1 day" not in body and "24 hrs" in body, "tiers are listed in the page (Endurance 20 pesos = 24 hrs)")
     check(len(body) < 27500, f"the page is small ({len(body)} bytes; it goes over the shop Wi-Fi once, then a 304)")
-    check('id="gm"' in body and "Play a mini-game" in body and 'href="/game"' in body and 'target="_blank"' in body, "the coin page has the mini-game button (a link that opens a tab)")
+    check('id="gm"' in body and "Play a mini-game" in body and 'href="/game"' in body and 'target=' not in body.split('id="gm"')[1].split('>')[0], "the coin page has the mini-game button (a plain link: the sign-in window of a phone opens no new tabs)")
     check("Get a voucher code" in body and "Use now" in body and "Save voucher file" in body and "Have a voucher?" in body and 't:"ping"' in body,
           "the page carries the voucher choice, the voucher code view, the voucher entry and the heartbeat")
     check(page_ms < 100, f"the page comes back fast ({page_ms:.1f} ms)")

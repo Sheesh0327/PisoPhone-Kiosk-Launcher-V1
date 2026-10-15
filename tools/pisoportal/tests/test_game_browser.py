@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The mini-game in a real browser (headless Chromium): the coin page's button opens it in a new tab, the game runs without script errors,
+"""The mini-game in a real browser (headless Chromium): the coin page's button opens it in the same window, the game runs without script errors,
 only time spent playing counts, a hidden tab pauses it, and when the day's minutes are used up the game stops and says so."""
 import glob, os, shutil, sys, time
 from harness import *
@@ -25,12 +25,12 @@ try:
         pg.wait_for_selector("#v-idle", state="visible", timeout=8000)
         pg.wait_for_selector("#gm", state="visible", timeout=5000)
         check("Play a mini-game" in pg.text_content("#gm") and "min left today" in pg.text_content("#gms"), f"the coin page offers the game with the minutes left: {pg.text_content('#gms')}")
-        with ctx.expect_page() as popup:
-            pg.click("#gm")
-        game = popup.value
+        pg.click("#gm")
+        pg.wait_for_url("**/game")
+        game = pg
         game.on("pageerror", lambda e: errors.append(str(e)))
         game.wait_for_load_state()
-        check(game.url.endswith("/game") and game.is_visible("#ov") and "Coin Catch" in game.text_content("#ot"), "the button opens the game in a new tab, with its start card")
+        check(game.url.endswith("/game") and game.is_visible("#ov") and "Coin Catch" in game.text_content("#ot"), "the button opens the game in the same window, with its start card")
         check(game.text_content("#tl").strip() == "0:14", "showing the minutes left: " + game.text_content("#tl"))
 
         game.click("#ob")
@@ -66,8 +66,7 @@ try:
         used = game.content()
         check("used up" in used and "<canvas" not in used, "and the game page is refused for the rest of the day")
         # the coin page now says so too
-        pg.bring_to_front()
-        pg.reload()
+        pg.goto(f"http://127.0.0.1:{env.PP}/?fas=ABC")
         pg.wait_for_selector("#v-idle", state="visible", timeout=8000)
         pg.wait_for_timeout(800)
         check(not pg.is_visible("#gm") and "used up" in pg.text_content("#gms"), "the coin page hides the button and says the time is used up: " + pg.text_content("#gms"))
