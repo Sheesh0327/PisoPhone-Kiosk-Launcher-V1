@@ -57,6 +57,17 @@ die() {
 	if [ "$NDS_RESTORE" = 1 ]; then log "starting the customer portal (openNDS) again, as it was before this run"; /etc/init.d/opennds start > /dev/null 2>&1; fi
 	exit 1
 }
+# wait_until SECONDS 'COMMAND': runs the command every 2 seconds until it succeeds or the time is up (returns 1). A service that was just
+# started (openNDS) needs a few seconds before it answers, so a check right after the install waits for it instead of failing.
+wait_until() {
+	_wu=$1
+	while ! eval "$2" > /dev/null 2>&1; do
+		[ "$_wu" -le 0 ] && return 1
+		sleep 2; _wu=$((_wu - 2))
+	done
+	return 0
+}
+
 # stop_opennds: stop it for the setup. On a re-run it was already serving the guest network: a failed run starts it again.
 NDS_RESTORE=0
 # router_family: the CPU family of this router, from OpenWrt's package architecture (DISTRIB_ARCH): mipsel, mips, aarch64, armv7, x86_64

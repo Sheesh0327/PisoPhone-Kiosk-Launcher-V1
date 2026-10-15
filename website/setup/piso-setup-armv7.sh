@@ -26,7 +26,7 @@
 
 VERSION="dev"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
-PISO_RELEASE='1.4.0'
+PISO_RELEASE='1.4.1'
 # the CPU family the portal program in this file is built for (router_family below names the family of the router it runs on)
 PISO_ARCH='armv7'
 
@@ -57,6 +57,17 @@ die() {
 	if [ "$NDS_RESTORE" = 1 ]; then log "starting the customer portal (openNDS) again, as it was before this run"; /etc/init.d/opennds start > /dev/null 2>&1; fi
 	exit 1
 }
+# wait_until SECONDS 'COMMAND': runs the command every 2 seconds until it succeeds or the time is up (returns 1). A service that was just
+# started (openNDS) needs a few seconds before it answers, so a check right after the install waits for it instead of failing.
+wait_until() {
+	_wu=$1
+	while ! eval "$2" > /dev/null 2>&1; do
+		[ "$_wu" -le 0 ] && return 1
+		sleep 2; _wu=$((_wu - 2))
+	done
+	return 0
+}
+
 # stop_opennds: stop it for the setup. On a re-run it was already serving the guest network: a failed run starts it again.
 NDS_RESTORE=0
 # router_family: the CPU family of this router, from OpenWrt's package architecture (DISTRIB_ARCH): mipsel, mips, aarch64, armv7, x86_64
@@ -763,7 +774,7 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 	_ck "the portal can talk to the box (signed request)" "/usr/bin/pisoportal box | grep -qi answers"
 	_gp=$(conf_get GUEST_PORT)
 	[ -z "$_gp" ] || _ck "router port $_gp is on the guest network (an access point plugged in there is gated)" "uci -q get \$(net_section br-guest).ports | grep -qw '$_gp'"
-	_ck "openNDS is running" "ndsctl status"
+	_ck "openNDS is running" "wait_until 30 'ndsctl status'"   # (it needs a few seconds after it was started)
 	_ck "openNDS sends new guests to the portal (FAS)" "[ \"\$(uci -q get opennds.@opennds[0].fasport)\" = $PORTAL_PORT ]"
 	_ck "the router looks for signed updates every hour (scheduler running)" update_timer_ok
 	_ck "the hourly update check ran within the last 3 hours" update_check_recent

@@ -97,6 +97,17 @@ stopper = text.split("stop_opennds() {")[1].split("\n}\n")[0]
 check("/etc/init.d/opennds stop" in stopper and "NDS_RESTORE=1" in stopper and "br-guest" in stopper, "a re-run remembers a working guest portal so a failed run can start it again")
 check("NDS_RESTORE" in text.split("die() {")[1].split("\n}\n")[0], "a failed run restores the guest portal it stopped")
 pre = text.split(PAYLOAD_MARK)[0]
+# a check right after the install waits for a service that was just started (openNDS needs a few seconds)
+r = lib(f'sleep() {{ echo s >> {tmp}/slept; }}; n=0; ndsctl() {{ n=$((n + 1)); [ "$n" -ge 4 ]; }}; wait_until 30 \'ndsctl status\'; echo rc=$?; echo n=$n')
+check("rc=0" in r.stdout and "n=4" in r.stdout, "wait_until: a service that starts after a few tries passes: " + r.stdout)
+check(open(f"{tmp}/slept").read().count("s") == 3, "and it slept between the tries, not before the first")
+os.remove(f"{tmp}/slept")
+r = lib(f'sleep() {{ echo s >> {tmp}/slept; }}; ndsctl() {{ return 1; }}; wait_until 30 \'ndsctl status\'; echo rc=$?')
+check("rc=1" in r.stdout and open(f"{tmp}/slept").read().count("s") == 15, "wait_until: a service that never starts fails after the time is up (15 tries of 2 s): " + r.stdout)
+os.remove(f"{tmp}/slept")
+r = lib(f'sleep() {{ echo s >> {tmp}/slept; }}; ndsctl() {{ return 0; }}; wait_until 30 \'ndsctl status\'; echo rc=$?')
+check("rc=0" in r.stdout and not os.path.exists(f"{tmp}/slept"), "wait_until: a service that is already up passes at once, without waiting")
+check('wait_until 30 \'ndsctl status\'' in text.split("check_all() {")[1].split("\n}\n")[0], "the 'openNDS is running' check waits for openNDS")
 r = lib('conf_set ROOT_PASS "abcdefgh123"; conf_set ROOT_PASS_SET 0; write_summary; cat "$SUMMARY"; conf_set ROOT_PASS_SET 1; write_summary; cat "$SUMMARY"')
 first, second = r.stdout.split("PisoPhone setup summary")[1:3]
 check("abcdefgh123" not in first and "NOT SET" in first and "set-password" in first, "a password that was not applied is never shown as the router password")
