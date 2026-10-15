@@ -41,6 +41,8 @@ Build a standalone program with Nuitka (no Python needed on the computer that ru
 import argparse
 import base64
 import contextlib
+import csv
+import datetime
 import getpass
 import glob
 import hashlib
@@ -1797,6 +1799,392 @@ def default_out_dir():
     return str((docs if docs.is_dir() else home) / "PisoPhone")
 
 
+# ---- owner tools: time cards, the admin QR code, the phone recovery code ------------------------------------------------------
+# What used to be separate owner scripts (and the owner console) lives here, in the one program: the QR codes are drawn by this
+# program's own QR encoder and printed from the browser, so only the signing needs a package (`cryptography`, installed on request).
+# The key files are the same as the scripts' (the home folder), so keys and ledgers made earlier keep working.
+CARD_PREFIX = "PISO1"
+CARD_MAX_SERIAL, CARD_MIN_SECONDS, CARD_MAX_SECONDS, CARD_MAX_BATCH = 65535, 60, 240 * 3600, 600
+CARD_COLS, CARD_ROWS = 3, 4
+CARD_LEDGER_FIELDS = ["serial", "seconds", "box", "printed", "batch", "sold", "note"]
+ADMIN_PREFIX, RECOVERY_PREFIX, RECOVERY_MAX_MINUTES = "PISOADMIN1", "PISOREC1", 24 * 60
+KEY_FILES = {   # kind: (file in the home folder, what it is for)
+    "card": ("pisophone_card_key.pem", "Time cards"),
+    "admin": ("pisophone-superadmin.key", "Admin QR code"),
+    "owner": ("pisophone_license_key.pem", "Phone recovery code"),
+}
+
+
+class ToolError(Exception):
+    """A problem the owner can fix (shown on the Owner tools page)."""
+
+
+def keys_home():
+    return os.environ.get("PISOPHONE_KEYS") or os.path.expanduser("~")
+
+
+def key_path(kind):
+    return os.path.join(keys_home(), KEY_FILES[kind][0])
+
+
+def cards_dir():
+    return os.path.join(keys_home(), "pisophone_cards")
+
+
+def tool_crypto():
+    use_private_libs()
+    try:
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import ec
+    except ImportError:
+        raise ToolError("The key tools need one more package. Tap 'Install what is missing' on this page.")
+    return hashes, serialization, ec
+
+
+def ensure_cryptography(emit, system, run=run_command):
+    """Makes `import cryptography` work (it signs the QR codes): already there, or installed into this program's own folder."""
+    use_private_libs()
+    try:
+        import cryptography  # noqa: F401
+        return True
+    except ImportError:
+        pass
+    if not pip_available(run):
+        emit("pip is missing.")
+        if system["kind"] == "linux":
+            install_system_package("pip", system, emit, run)
+        if not pip_available(run):
+            emit("Without pip it cannot be installed here. Debian family: sudo apt install python3-cryptography")
+            return False
+    lib = private_lib_dir()
+    os.makedirs(lib, exist_ok=True)
+    emit("Installing cryptography (it signs the QR codes)...")
+    lines = []
+
+    def keep(line):
+        lines.append(line)
+        emit(line)
+    argv = [sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "--quiet", "--upgrade", "--target", lib, "cryptography"]
+    code = run(argv, keep, 900)
+    if code != 0 and any("externally-managed" in line for line in lines):
+        code = run(argv + ["--break-system-packages"], keep, 900)
+    importlib.invalidate_caches()
+    use_private_libs()
+    try:
+        import cryptography  # noqa: F401,F811
+        return True
+    except ImportError:
+        emit("cryptography could not be installed (is the internet on? Debian family: sudo apt install python3-cryptography).")
+        return False
+
+
+def b64u(data):
+    return base64.urlsafe_b64encode(data).decode().rstrip("=")
+
+
+def unb64u(text):
+    return base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
+
+
+def load_key(kind, path=None):
+    """The private key in the owner's key file (a ToolError when there is none or it is not a P-256 key)."""
+    _hashes, serialization, ec = tool_crypto()
+    path = path or key_path(kind)
+    if not os.path.isfile(path):
+        raise ToolError(f"There is no {KEY_FILES[kind][1].lower()} key yet. Import your key file (or paste it) in 'Your keys' above.")
+    try:
+        with open(path, "rb") as f:
+            key = serialization.load_pem_private_key(f.read(), password=None)
+    except Exception:
+        raise ToolError(f"The key file {path} could not be read (it must be an unprotected PEM key).")
+    if not isinstance(key, ec.EllipticCurvePrivateKey) or key.curve.name != "secp256r1":
+        raise ToolError(f"The key file {path} is not a P-256 key.")
+    return key
+
+
+def key_fingerprint(key):
+    _hashes, serialization, _ec = tool_crypto()
+    der = key.public_key().public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
+    return hashlib.sha256(der).hexdigest()[:16]
+
+
+def write_private_key(kind, pem, replace=False):
+    """Saves a key file (mode 600); an existing key is only replaced on request and then kept as <file>.old."""
+    path = key_path(kind)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    if os.path.exists(path):
+        if not replace:
+            raise ToolError(f"There already is a key at {path}. Replacing it makes everything printed with the old one stop working.")
+        os.replace(path, path + ".old")
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "wb") as f:
+        f.write(pem if isinstance(pem, bytes) else pem.encode())
+    return path
+
+
+def import_key(kind, text=None, path=None, replace=False):
+    """Saves a key the owner already has (its PEM text, or the path of its file on this computer) after checking it."""
+    _hashes, serialization, ec = tool_crypto()
+    if path:
+        path = os.path.expanduser(path.strip())
+        if not os.path.isfile(path):
+            raise ToolError(f"No file at {path}.")
+        with open(path, "rb") as f:
+            raw = f.read(20000)
+    else:
+        raw = (text or "").strip().encode()
+    if not raw:
+        raise ToolError("Paste the key (the text between -----BEGIN and -----END) or type the path of its file.")
+    try:
+        key = serialization.load_pem_private_key(raw, password=None)
+    except Exception:
+        raise ToolError("That is not a usable key: it must be an unprotected PEM private key.")
+    if not isinstance(key, ec.EllipticCurvePrivateKey) or key.curve.name != "secp256r1":
+        raise ToolError("That is not a P-256 key.")
+    write_private_key(kind, raw if raw.endswith(b"\n") else raw + b"\n", replace)
+    return key
+
+
+def create_key(kind, replace=False):
+    """Makes a new key. Boxes only accept what their firmware was built to trust, so a new card or admin key works only after the
+    firmware is rebuilt with its public half (a developer step); the page says so."""
+    _hashes, serialization, ec = tool_crypto()
+    key = ec.generate_private_key(ec.SECP256R1())
+    pem = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
+    write_private_key(kind, pem, replace)
+    return key
+
+
+# -- time cards --------------------------------------------------------------------------------------------------------------------
+def card_box(text):
+    """'AA:BB:CC:DD:EE:FF', 'aa-bb-...' or 'aabbccddeeff' -> 'aabbccddeeff'."""
+    box = re.sub(r"[^0-9a-fA-F]", "", text or "").lower()
+    if not re.fullmatch(r"[0-9a-f]{12}", box):
+        raise ToolError("That is not a box address: type the 12 characters shown on the coin box's page (like AA:BB:CC:DD:EE:FF).")
+    return box
+
+
+def card_text(key, box, serial, seconds):
+    hashes, _serialization, ec = tool_crypto()
+    sig = key.sign(f"pisophone-card-v1|{box}|{serial}|{seconds}".encode(), ec.ECDSA(hashes.SHA256()))
+    return f"{CARD_PREFIX}.{box}.{serial}.{seconds}.{base64.b64encode(sig).decode()}"
+
+
+def card_verify(public_key, text):
+    hashes, _serialization, ec = tool_crypto()
+    from cryptography.exceptions import InvalidSignature
+    try:
+        prefix, box, serial, seconds, sig = text.split(".")
+        public_key.verify(base64.b64decode(sig, validate=True), f"pisophone-card-v1|{box}|{serial}|{seconds}".encode(), ec.ECDSA(hashes.SHA256()))
+        return prefix == CARD_PREFIX
+    except (ValueError, InvalidSignature):
+        return False
+
+
+def read_card_ledger(path):
+    if not os.path.exists(path):
+        return []
+    with open(path, newline="") as f:
+        return list(csv.DictReader(f))
+
+
+def next_serials(rows, count):
+    used = [int(r["serial"]) for r in rows]
+    if len(used) != len(set(used)):
+        raise ToolError("The ledger lists a serial twice; fix the ledger file by hand before printing more cards.")
+    start = (max(used) if used else 0) + 1
+    if start + count - 1 > CARD_MAX_SERIAL:
+        raise ToolError(f"Not enough card numbers are left for this box: {CARD_MAX_SERIAL - start + 1} remain, {count} asked for.")
+    return list(range(start, start + count))
+
+
+def known_boxes(directory=None):
+    """The boxes cards were printed for before (from their ledger files): [{box, printed, sold, last}]."""
+    directory = directory or cards_dir()
+    found = []
+    try:
+        names = sorted(os.listdir(directory))
+    except OSError:
+        return found
+    for name in names:
+        m = re.fullmatch(r"ledger_([0-9a-f]{12})\.csv", name)
+        if not m:
+            continue
+        try:
+            rows = read_card_ledger(os.path.join(directory, name))
+        except (OSError, csv.Error):
+            continue
+        found.append({"box": m.group(1), "printed": len(rows), "sold": sum(1 for r in rows if (r.get("sold") or "").strip()),
+                      "last": max((int(r["serial"]) for r in rows), default=0)})
+    return found
+
+
+def card_back_position(col, row, flip):
+    """Where the back of the card at (col, row) goes once the paper is turned over (long edge: left and right swap)."""
+    return (CARD_COLS - 1 - col, row) if flip == "long" else (col, CARD_ROWS - 1 - row)
+
+
+_CARD_CSS = """@page{size:A4;margin:0}*{box-sizing:border-box}body{margin:0;background:#fff;font-family:system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.sheet{position:relative;width:210mm;height:297mm;page-break-after:always;overflow:hidden;background:#fff}.sheet:last-child{page-break-after:auto}
+.card{position:absolute;width:61mm;height:66.6mm;border:.3mm solid #787878;text-align:center;color:#000}
+.card b{display:block;margin-top:5.5mm;font-size:5.6mm;line-height:6mm}.card .h{margin-top:1.4mm;font-size:3.7mm;color:#3c3c3c}
+.card svg{position:absolute;left:50%;top:15.5mm;width:40mm;height:40mm;margin-left:-20mm}
+.card .s{position:absolute;left:0;right:0;top:56.5mm;font-size:2.9mm}.card .n{position:absolute;left:0;right:0;bottom:2.4mm;font-size:2.7mm;color:#505050}
+.back{position:absolute;width:63mm;height:68.6mm;background:#0a1b45;display:flex;align-items:center;justify-content:center}.back img{width:46mm;height:auto}
+.note{position:absolute;left:8mm;right:8mm;bottom:3mm;font-size:3mm;color:#666;text-align:center}
+@media screen{body{background:#dde3ee;padding:10px}.sheet{margin:0 auto 12px;box-shadow:0 1px 6px #0006}.note{position:static;margin:4px 0}}
+@media print{.noprint{display:none}}"""
+
+
+def _card_pos(col, row):
+    cell_w, cell_h = (2480 - 200) / 3, (3508 - 200) / 4
+    mm = 25.4 / 300
+    return ((100 + col * cell_w + 20) * mm, (100 + row * cell_h + 20) * mm)
+
+
+def card_front_html(cards, hours_label, per_page=CARD_COLS * CARD_ROWS):
+    sheets = []
+    for p in range(0, len(cards), per_page):
+        body = []
+        for i, (serial, text) in enumerate(cards[p:p + per_page]):
+            x, y = _card_pos(i % CARD_COLS, i // CARD_COLS)
+            body.append(f'<div class="card" style="left:{x:.2f}mm;top:{y:.2f}mm"><b>PisoPhone</b><div class="h">{html_escape(hours_label)} play card</div>'
+                        f'{qr_svg(text, 4, 4)}<div class="s">Scan at the PisoPhone to start</div><div class="n">No. {serial:05d}</div></div>')
+        sheets.append('<div class="sheet">' + "".join(body) + "</div>")
+    return sheets
+
+
+def card_back_html(count, flip, shift=(0.0, 0.0), per_page=CARD_COLS * CARD_ROWS):
+    sheets = []
+    for p in range(0, count, per_page):
+        body = []
+        for i in range(min(per_page, count - p)):
+            bc, br = card_back_position(i % CARD_COLS, i // CARD_COLS, flip)
+            x, y = _card_pos(bc, br)
+            body.append(f'<div class="back" style="left:{x - 1 + shift[0]:.2f}mm;top:{y - 1 + shift[1]:.2f}mm"><img src="{LOGO_LARGE_URI}" alt=""></div>')
+        sheets.append('<div class="sheet">' + "".join(body) + "</div>")
+    return sheets
+
+
+def cards_page(title, sheets, hint):
+    return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+            f"<title>{html_escape(title)}</title><style>{_CARD_CSS}</style></head><body><p class=\"note noprint\">{html_escape(hint)}</p>"
+            + "".join(sheets) + "</body></html>")
+
+
+def make_cards(box, count, hours, note="", flip="long", shift=(0.0, 0.0), out=None, key=None):
+    """Signs `count` new cards for one box, reserves their serial numbers in the box's ledger and writes the printable pages.
+    Returns {folder, files: [(label, path)], first, last, ledger}."""
+    box = card_box(box)
+    try:
+        count = int(count)
+        hours = float(hours)
+    except (TypeError, ValueError):
+        raise ToolError("Type a whole number of cards and the hours as a number.")
+    if not 1 <= count <= CARD_MAX_BATCH:
+        raise ToolError(f"Make 1 to {CARD_MAX_BATCH} cards at a time.")
+    seconds = int(round(hours * 3600))
+    if not CARD_MIN_SECONDS <= seconds <= CARD_MAX_SECONDS:
+        raise ToolError("The hours must be between 1 minute and 240 hours.")
+    key = key or load_key("card")
+    out = out or cards_dir()
+    os.makedirs(out, exist_ok=True)
+    ledger = os.path.join(out, f"ledger_{box}.csv")
+    serials = next_serials(read_card_ledger(ledger), count)
+    cards = [(s, card_text(key, box, s, seconds)) for s in serials]
+    for s, text in cards:   # never print a card the box would refuse
+        if not card_verify(key.public_key(), text):
+            raise ToolError(f"Self-check failed for card {s}: nothing was printed.")
+    batch = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    stamp = datetime.datetime.now().isoformat(timespec="seconds")
+    # the serials are reserved before anything is drawn: if something fails below they are skipped, never reused
+    new = not os.path.exists(ledger)
+    with open(ledger, "a", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=CARD_LEDGER_FIELDS)
+        if new:
+            w.writeheader()
+        for s in serials:
+            w.writerow({"serial": s, "seconds": seconds, "box": box, "printed": stamp, "batch": batch, "sold": "", "note": note})
+    folder = os.path.join(out, f"batch_{batch}")
+    os.makedirs(folder, exist_ok=True)
+    label = f"{hours:g}-hour"
+    fronts = card_front_html(cards, label)
+    backs = card_back_html(len(cards), flip, shift)
+    pairs = [s for pair in zip(fronts, backs) for s in pair]
+    howto = "Print at 100% / 'actual size' on A4, no margins and no headers or footers (Ctrl+P)."
+    files = []
+    for name, title, sheets, hint in (
+            ("1-fronts.html", "Cards: QR sides", fronts, howto + " Print this first."),
+            ("2-backs.html", "Cards: logo sides", backs, howto + " Put the printed sheets back so the backs print on the other side (try one sheet first)."),
+            ("duplex-both-sides.html", "Cards: both sides", pairs, howto + " For a printer that prints on both sides: flip on the " + flip + " edge.")):
+        path = os.path.join(folder, name)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(cards_page(title, sheets, hint))
+        files.append((title, path))
+    return {"folder": folder, "files": files, "first": serials[0], "last": serials[-1], "ledger": ledger, "box": box, "hours": label,
+            "sheets": len(fronts), "cards": cards}
+
+
+# -- the admin QR code and the phone recovery code ----------------------------------------------------------------------------
+def admin_qr_text(key):
+    """PISOADMIN1.<d>.<x>.<y>: the P-256 private number and the public point (32 bytes each, base64url)."""
+    n = key.private_numbers()
+    return ".".join([ADMIN_PREFIX, b64u(n.private_value.to_bytes(32, "big")), b64u(n.public_numbers.x.to_bytes(32, "big")),
+                     b64u(n.public_numbers.y.to_bytes(32, "big"))])
+
+
+def recovery_text(key, expiry):
+    hashes, _serialization, ec = tool_crypto()
+    sig = key.sign(f"pisophone-recover-v1|{expiry}".encode(), ec.ECDSA(hashes.SHA256()))
+    return f"{RECOVERY_PREFIX}.{expiry}." + base64.urlsafe_b64encode(sig).decode().rstrip("=")
+
+
+def qr_page(title, line, text, warning):
+    """A printable page with one QR code (the admin code or a recovery code)."""
+    return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+            f"<title>{html_escape(title)}</title><style>@page{{size:A4;margin:14mm}}body{{font:16px/1.45 system-ui,Segoe UI,Roboto,sans-serif;"
+            f"text-align:center;margin:0;padding:20px;color:#111}}svg{{width:100%;max-width:420px;height:auto}}.w{{border:2px dashed #b00;color:#800;"
+            f"border-radius:10px;padding:8px 12px;margin:16px auto;max-width:520px;font-weight:600}}</style></head><body>"
+            f'<img src="{LOGO_LARGE_URI}" alt="" width="64" height="64"><h1>{html_escape(title)}</h1><p>{html_escape(line)}</p>{qr_svg(text, 6, 4)}'
+            f'<div class="w">{html_escape(warning)}</div></body></html>')
+
+
+def save_tool_page(name, html):
+    folder = default_out_dir()
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, name)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(html)
+    return path
+
+
+def make_admin_qr(key=None):
+    key = key or load_key("admin")
+    text = admin_qr_text(key)
+    page = qr_page("PisoPhone owner admin QR code", "On a coin box's login page tap Scan admin QR and show this code to the camera.", text,
+                   "Keep this private: it opens super admin on every box. Print it and store it away from the shop.")
+    return {"svg": qr_svg(text, 6, 4), "path": save_tool_page("pisophone-admin-qr.html", page), "fingerprint": key_fingerprint(key)}
+
+
+def make_recovery_qr(minutes, key=None):
+    try:
+        minutes = int(minutes)
+    except (TypeError, ValueError):
+        raise ToolError("Type the minutes as a number.")
+    if not 1 <= minutes <= RECOVERY_MAX_MINUTES:
+        raise ToolError(f"The code can work for 1 to {RECOVERY_MAX_MINUTES} minutes.")
+    key = key or load_key("owner")
+    expiry = int(time.time()) + minutes * 60
+    text = recovery_text(key, expiry)
+    until = time.strftime("%H:%M", time.localtime(expiry))
+    page = qr_page("PisoPhone recovery code", f"Works until {until}. On the phone's lock screen: admin entry > SCAN A RECOVERY CODE.", text,
+                   "Anyone holding this code can remove PisoPhone from a phone until it expires. Delete it afterwards.")
+    return {"svg": qr_svg(text, 6, 4), "path": save_tool_page("pisophone-recovery-code.html", page), "until": until, "minutes": minutes}
+
+
+
 # ---- the setup page: a small web server on this computer ----------------------------------------------------------------------
 # The setup is a web page served by this program (standard library only), so it needs no screen on the computer that runs it:
 # open the address on any phone or laptop in the same network. A PIN keeps everyone else out.
@@ -1879,6 +2267,9 @@ class Session:
         self.checks = None
         self.deps = {"running": False, "lines": []}
         self.country = "PH"
+        # the owner tools do not belong to one unit: they stay when the next unit starts
+        self.tools = {"error": None, "message": None, "batch": None, "qr": None, "prep": {"running": False, "lines": []}}
+        self.tool_files = []
         self.reset_unit()
         self.run_checks()
 
@@ -2285,6 +2676,129 @@ class Session:
                 return
             self.reset_unit()
 
+
+    # -- the owner tools (time cards, admin QR code, recovery code, keys) -------------------------------------------------------
+    def _tool(self, work):
+        """Runs one owner tool: its result or its problem is shown on the Owner tools page."""
+        with self.lock:
+            self.tools["error"] = self.tools["message"] = None
+        try:
+            return work()
+        except ToolError as e:
+            with self.lock:
+                self.tools["error"] = str(e)
+        except OSError as e:
+            with self.lock:
+                self.tools["error"] = f"Could not write the files: {e}"
+        return None
+
+    def _offer(self, path):
+        with self.lock:
+            if path not in [p for _l, p in self.tool_files]:
+                self.tool_files.append(("", path))
+            return [p for _l, p in self.tool_files].index(path)
+
+    def do_tool_prepare(self, a):
+        with self.lock:
+            if self.tools["prep"]["running"]:
+                return
+            self.tools["prep"] = {"running": True, "lines": []}
+
+        def emit(line):
+            with self.lock:
+                self.tools["prep"]["lines"].append(line)
+
+        def work():
+            try:
+                ok = ensure_cryptography(emit, self.system)
+                emit("Ready." if ok else "Not installed.")
+            except Exception as e:
+                emit(f"failed: {e}")
+            with self.lock:
+                self.tools["prep"]["running"] = False
+        self.spawn(work)
+
+    def do_tool_key(self, a):
+        kind = a.get("kind")
+        if kind not in KEY_FILES:
+            raise ValueError("unknown key")
+        mode = a.get("mode")
+
+        def work():
+            replace = bool(a.get("replace"))
+            if mode == "import":
+                key = import_key(kind, a.get("text"), a.get("path"), replace)
+                what = "saved"
+            elif mode == "create":
+                key = create_key(kind, replace)
+                what = "created"
+            else:
+                raise ValueError("unknown mode")
+            with self.lock:
+                self.tools["message"] = f"The {KEY_FILES[kind][1].lower()} key is {what} (fingerprint {key_fingerprint(key)}), in {key_path(kind)}."
+                if mode == "create" and kind != "owner":
+                    self.tools["message"] += " Boxes accept it only after their firmware is built with its public half (a developer step)."
+        self._tool(work)
+
+    def do_tool_cards(self, a):
+        def work():
+            shift = (float(a.get("shift_x") or 0), float(a.get("shift_y") or 0))
+            r = make_cards(a.get("box"), a.get("count"), a.get("hours"), str(a.get("note") or "")[:80],
+                           "short" if a.get("flip") == "short" else "long", shift)
+            files = [[label, self._offer(path)] for label, path in r["files"]]
+            files.append(["Ledger (which card is which)", self._offer(r["ledger"])])
+            with self.lock:
+                self.tools["batch"] = {"box": r["box"], "first": r["first"], "last": r["last"], "hours": r["hours"], "sheets": r["sheets"],
+                                       "folder": r["folder"], "files": files}
+        self._tool(work)
+
+    def do_tool_adminqr(self, a):
+        def work():
+            r = make_admin_qr()
+            with self.lock:
+                self.tools["qr"] = {"kind": "admin", "svg": r["svg"], "title": "Owner admin QR code", "file": self._offer(r["path"]),
+                                    "note": f"Key fingerprint {r['fingerprint']}. Keep it private: it opens super admin on every box."}
+        self._tool(work)
+
+    def do_tool_recovery(self, a):
+        def work():
+            r = make_recovery_qr(a.get("minutes"))
+            with self.lock:
+                self.tools["qr"] = {"kind": "recovery", "svg": r["svg"], "title": "Phone recovery code", "file": self._offer(r["path"]),
+                                    "note": f"Works until {r['until']} ({r['minutes']} minutes). On the phone's lock screen: admin entry > SCAN A RECOVERY CODE."}
+        self._tool(work)
+
+    def do_tool_hide(self, a):
+        with self.lock:
+            self.tools["qr"] = None
+
+    def tools_snapshot(self):
+        keys = []
+        for kind, (_name, label) in KEY_FILES.items():
+            path = key_path(kind)
+            keys.append({"kind": kind, "label": label, "path": path, "found": os.path.isfile(path)})
+        try:
+            import cryptography  # noqa: F401
+            have = True
+        except ImportError:
+            use_private_libs()
+            try:
+                import cryptography  # noqa: F401,F811
+                have = True
+            except ImportError:
+                have = False
+        t = self.tools
+        return {"crypto": have, "keys": keys, "boxes": known_boxes(), "error": t["error"], "message": t["message"], "batch": t["batch"],
+                "qr": t["qr"], "prep": dict(t["prep"], lines=list(t["prep"]["lines"][-40:]))}
+
+    def tool_file(self, index):
+        """(name, path) of a page the tools made. Only those can be fetched."""
+        with self.lock:
+            if 0 <= index < len(self.tool_files):
+                path = self.tool_files[index][1]
+                return os.path.basename(path), path
+        return None
+
     # -- what the page reads -------------------------------------------------------------------------------------------------------
     def act(self, name, args):
         if not re.fullmatch(r"[a-z_]{2,24}", name or "") or not hasattr(self, "do_" + name):
@@ -2310,7 +2824,7 @@ class Session:
                 "review": {"public_wifi": self.answers()["GUEST_SSID"], "site": self.answers()["SITE_NAME"], "country": self.country,
                            "router": f"{self.router['host'] or '?'} -> {TARGET_IP}" if self.router["host"] == FACTORY_IP else TARGET_IP},
                 "phones": dict(self.prov, box_up=self.box_up, box_ip=BOX_IP, kiosk_ssid=KIOSK_SSID),
-                "coin": dict(self.coin), "telegram": dict(self.telegram),
+                "coin": dict(self.coin), "telegram": dict(self.telegram), "tools": self.tools_snapshot(),
             }
 
     def saved_file(self, index):
@@ -2470,6 +2984,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 body = f.read()
             kind = "text/html; charset=utf-8" if found[0].endswith(".html") else "text/plain; charset=utf-8"
             return self._send(200, body, kind, [("Content-Disposition", f'inline; filename="{found[0]}"')])
+        if path.path == "/api/toolfile":
+            try:
+                found = self.web.session.tool_file(int(urllib.parse.parse_qs(path.query).get("i", ["-1"])[0]))
+            except ValueError:
+                found = None
+            if not found:
+                return self._json(404, {"error": "no such file"})
+            with open(found[1], "rb") as f:
+                body = f.read()
+            kind = "text/html; charset=utf-8" if found[0].endswith(".html") else "text/csv; charset=utf-8"
+            return self._send(200, body, kind, [("Content-Disposition", f'inline; filename="{found[0]}"')])
         self._json(404, {"error": "not found"})
 
     def do_POST(self):
@@ -2625,8 +3150,42 @@ a{color:var(--acc)}.hide{display:none!important}
 <div id="login"><div class="card"><div class="hero"><img src="@@MASCOT@@" alt=""><h1>TechNet PisoHub Setup</h1></div><p class="mut">Type the PIN shown on the computer that runs the setup (in its terminal, or <code>pisophone-setup.service</code>'s log).</p>
 <label for="pin">PIN</label><input id="pin" type="password" inputmode="text" autocomplete="off"><div class="err" id="pinErr"></div>
 <p><button class="primary" id="pinBtn" style="width:100%">Open the setup</button></p></div></div>
-<header><img src="@@LOGO@@" alt=""><b>TechNet PisoHub Setup</b><span id="unit"></span><span id="sysname"></span></header>
+<header><img src="@@LOGO@@" alt=""><b>TechNet PisoHub Setup</b><span id="unit"></span><span id="sysname"></span><button class="small" id="btnTools" style="margin-left:auto">Owner tools</button></header>
 <nav id="nav"></nav>
+<main id="toolsMain" class="hide">
+<div>
+ <h1>Owner tools</h1>
+ <p class="mut">Everything that is not a new installation, in one place: time cards, your admin QR code and the phone recovery code. Your keys stay on this computer and are never uploaded.</p>
+ <div id="tBanner"></div>
+ <div id="tPrep" class="card hide"><h2>One more package is needed</h2><p class="mut">The QR codes are signed with the <b>cryptography</b> package. It installs into this program's own folder (no administrator rights).</p>
+  <button class="primary" id="btnPrep">Install what is missing</button><pre id="tPrepLog" class="hide"></pre></div>
+ <div class="card"><h2>Time cards (QR)</h2>
+  <p class="mut">Printable cards that add play time to a rental phone: the first scan adds the time on the card. Each card works on one coin box only and its number is never printed twice.</p>
+  <label for="cBox">Coin box <span class="hint">the 12 characters on the coin box's page, like AA:BB:CC:DD:EE:FF</span></label><input id="cBox" list="cBoxes" autocomplete="off" placeholder="AA:BB:CC:DD:EE:FF"><datalist id="cBoxes"></datalist>
+  <div class="row"><div class="grow"><label for="cCount">How many cards</label><input id="cCount" type="number" min="1" max="600" value="24"></div>
+   <div class="grow"><label for="cHours">Hours on each</label><input id="cHours" type="number" min="0.1" max="240" step="0.5" value="3"></div></div>
+  <label for="cNote">Note <span class="hint">optional, kept in the ledger</span></label><input id="cNote" maxlength="80" autocomplete="off">
+  <details style="margin-top:8px"><summary class="mut small">Printer settings</summary>
+   <label for="cFlip">Turning the paper over</label><select id="cFlip"><option value="long">Like a page (long edge)</option><option value="short">Like a calendar (short edge)</option></select>
+   <div class="row"><div class="grow"><label for="cSx">Move the backs right (mm)</label><input id="cSx" type="number" step="0.5" value="0"></div><div class="grow"><label for="cSy">Move the backs down (mm)</label><input id="cSy" type="number" step="0.5" value="0"></div></div></details>
+  <p style="margin-top:12px"><button class="primary" id="btnCards">Make the cards</button></p>
+  <div id="cResult"></div><div id="cBoxList"></div></div>
+ <div class="card"><h2>Admin QR code</h2><p class="mut">The code that logs you in as super admin on every coin box (the box's login page, Scan admin QR).</p>
+  <button id="btnAdminQr">Show my admin QR code</button><div id="qrResult"></div></div>
+ <div class="card"><h2>Phone recovery code</h2><p class="mut">Scanned on a phone's lock screen, it removes PisoPhone from that phone (no cable needed). It works for a short time only.</p>
+  <div class="row"><div><label for="rMin" style="margin-top:0">Works for (minutes)</label><input id="rMin" type="number" min="1" max="1440" value="30" style="width:120px"></div><button id="btnRecovery" style="align-self:flex-end">Make a recovery code</button></div></div>
+ <div class="card"><h2>Your keys</h2><p class="mut small">Found in your home folder. A key you already use is imported once; new keys are not needed for a shop that already runs.</p><div id="kList"></div>
+  <details style="margin-top:8px"><summary class="mut small">Import a key you already have</summary>
+   <label for="kKind">Which key</label><select id="kKind"></select>
+   <label for="kPath">The file on this computer <span class="hint">or paste its text below</span></label><input id="kPath" autocomplete="off" placeholder="/home/you/pisophone_card_key.pem">
+   <textarea id="kText" rows="4" style="width:100%;font:12px ui-monospace,Menlo,Consolas,monospace;margin-top:8px" placeholder="or paste the whole key text here"></textarea>
+   <label style="font-weight:400;display:flex;gap:10px;align-items:center"><input type="checkbox" id="kReplace" style="width:auto;min-height:0"> Replace the key that is there (the old one is kept as .old)</label>
+   <p><button id="btnKeyImport">Save this key</button></p></details>
+  <details style="margin-top:8px"><summary class="mut small">Make a new key (only for your own firmware build)</summary>
+   <p class="mut small">A coin box trusts only the keys its firmware was built with. A new card or admin key therefore works only after the firmware is rebuilt with its public half; the published boxes keep the old key.</p>
+   <button id="btnKeyCreate">Make a new key for the selected kind</button></details></div>
+</div>
+</main>
 <main>
 <section id="s0">
  <div class="hero"><img src="@@MASCOT@@" alt=""><h1>Set up your PisoHub system</h1></div>
@@ -2685,13 +3244,14 @@ a{color:var(--acc)}.hide{display:none!important}
  <div class="card"><h2>Alerts on your phone (optional)</h2><p class="mut">Telegram messages when the coin box goes offline or the revenue does not add up, plus a daily report. You need a bot token from @BotFather.</p>
   <input id="tgToken" placeholder="123456789:AAH..." autocomplete="off"><div class="err" id="tgErr"></div><button id="btnTg">Connect Telegram</button><div id="tgBox"></div></div>
  <div class="card"><h2>Saved on this computer</h2><div id="savedList"></div><p class="mut small" id="savedDir"></p></div>
+ <div class="card"><h2>Time cards</h2><p class="mut">Print QR time cards for this unit's coin box now, or any day later (the same page, any number of batches).</p><button id="btnToCards">Open Owner tools</button></div>
  <div class="card"><h2>Another unit?</h2><p class="mut">Starts over for the next router and coin box: the shop and Wi-Fi names are asked again and new passwords are made. This unit's summary stays saved.</p><button class="primary" id="btnNext">Set up the next unit</button></div>
 </section>
 </main>
 <footer><div class="in"><button id="btnBack">Back</button><button class="primary" id="btnNextStep">Next</button></div></footer>
 <script>
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
-let S=null,shown=-1,shownUnit=0,dirty=false,pwTimer=0;
+let S=null,shown=-1,shownUnit=0,dirty=false,pwTimer=0,view=location.hash==='#tools'?'tools':'setup';
 const h=(tag,attrs,...kids)=>{const e=document.createElement(tag);for(const k in(attrs||{})){if(k==='class')e.className=attrs[k];else if(k==='onclick')e.onclick=attrs[k];else e.setAttribute(k,attrs[k])}for(const c of kids.flat())if(c!=null)e.append(c.nodeType?c:document.createTextNode(String(c)));return e};
 const clear=e=>{while(e.firstChild)e.removeChild(e.firstChild)};
 async function api(path,body){const r=await fetch(path,{method:body?'POST':'GET',headers:{'X-Piso':'1','Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,credentials:'same-origin'});if(r.status===401){showLogin();throw new Error('login')}return r.json()}
@@ -2705,6 +3265,8 @@ function note(kind,text){return h('div',{class:'note '+kind},text)}
 function setPre(pre,lines){const near=pre.scrollTop+pre.clientHeight>=pre.scrollHeight-40;pre.textContent=lines.join('\n');if(near)pre.scrollTop=pre.scrollHeight}
 function paint(){
  if(!S)return;
+ const tv=view==='tools';$('#toolsMain').classList.toggle('hide',!tv);$$('main:not(#toolsMain)').forEach(m=>m.classList.toggle('hide',tv));$('#nav').classList.toggle('hide',tv);document.querySelector('footer').classList.toggle('hide',tv);$('#btnTools').textContent=tv?'Back to setup':'Owner tools';
+ if(tv){paintTools();return}
  $('#unit').textContent='Unit '+S.unit;$('#sysname').textContent=S.system.name;
  if(S.unit!==shownUnit){shownUnit=S.unit;shown=-1;fillSettingsOnce()}
  const nav=$('#nav');if(nav.children.length!==S.steps.length){clear(nav);S.steps.forEach(n=>nav.append(h('div',{},n)))}
@@ -2793,6 +3355,33 @@ function paint5(){
  if(!S.saved.length)sl.append(h('p',{class:'mut'},'Nothing saved yet.'));
  $('#savedDir').textContent='Keep the summary private: it holds every password. Day to day, the router has: piso-setup status.';
 }
+
+function paintTools(){
+ const t=S.tools,b=$('#tBanner');clear(b);
+ if(t.error)b.append(note('bad',t.error));if(t.message)b.append(note('ok',t.message));
+ $('#tPrep').classList.toggle('hide',t.crypto&&!t.prep.running&&!t.prep.lines.length);$('#btnPrep').disabled=t.prep.running||t.crypto;
+ const pl=$('#tPrepLog');pl.classList.toggle('hide',!t.prep.lines.length);if(t.prep.lines.length)setPre(pl,t.prep.lines);
+ const dl=$('#cBoxes');if(dl.children.length!==t.boxes.length){clear(dl);t.boxes.forEach(x=>dl.append(h('option',{value:x.box.replace(/(..)(?=.)/g,'$1:').toUpperCase()})))}
+ const kl=$('#kList');clear(kl);t.keys.forEach(k=>kl.append(h('div',{class:'kv'},h('span',{style:'color:var(--'+(k.found?'ok':'warn')+')'},k.found?'Found':'Missing'),h('span',{style:'color:var(--ink)'},k.label+' '),h('span',{class:'mut small'},k.path))));
+ const ks=$('#kKind');if(!ks.children.length)t.keys.forEach(k=>ks.append(h('option',{value:k.kind},k.label)));
+ const cr=$('#cResult');clear(cr);
+ if(t.batch){const x=t.batch;cr.append(note('ok','Made '+(x.last-x.first+1)+' cards, numbers '+x.first+' to '+x.last+', '+x.hours+' each, for box '+x.box+' ('+x.sheets+' sheet'+(x.sheets>1?'s':'')+').'),
+  h('ul',{class:'steps'},h('li',{},'Open ',h('b',{},'Cards: QR sides'),', print it at 100% on A4 (Ctrl+P, no margins, no headers).'),h('li',{},'Turn the paper over and print ',h('b',{},'Cards: logo sides'),' on the back (try one sheet first). A printer that prints both sides: use ',h('b',{},'Cards: both sides'),'.'),h('li',{},'Cut along the grey lines.')),
+  h('div',{},x.files.map(([l,i])=>h('p',{},h('a',{href:'/api/toolfile?i='+i,target:'_blank',rel:'noopener'},l)))),h('p',{class:'mut small'},'The QR codes are the accounts: keep the printed cards and the ledger private. Fill in the "sold" column of the ledger as you sell.'))}
+ const bl=$('#cBoxList');clear(bl);if(t.boxes.length){bl.append(h('p',{class:'mut small'},'Printed before: '+t.boxes.map(x=>x.box.replace(/(..)(?=.)/g,'$1:').toUpperCase()+' ('+x.printed+' cards, '+x.sold+' sold, last number '+x.last+')').join('; ')))}
+ const q=$('#qrResult');const sig=t.qr?t.qr.title+t.qr.note:'';if(q.dataset.sig!==sig){q.dataset.sig=sig;clear(q);
+  if(t.qr){const sv=h('div',{style:'max-width:360px;margin:10px 0;background:#fff;padding:4px;border-radius:8px'});sv.innerHTML=t.qr.svg;
+   q.append(note('warn',t.qr.note),sv,h('p',{},h('a',{href:'/api/toolfile?i='+t.qr.file,target:'_blank',rel:'noopener'},'Open the printable page'),' ',h('button',{class:'small',onclick:()=>act('tool_hide')},'Hide it')))}}
+ ['btnCards','btnAdminQr','btnRecovery','btnKeyImport','btnKeyCreate'].forEach(id=>$('#'+id).disabled=!t.crypto);
+}
+$('#btnToCards').onclick=()=>{view='tools';paint()};
+$('#btnTools').onclick=()=>{view=view==='tools'?'setup':'tools';paint()};
+$('#btnPrep').onclick=()=>act('tool_prepare');
+$('#btnCards').onclick=()=>act('tool_cards',{box:$('#cBox').value,count:$('#cCount').value,hours:$('#cHours').value,note:$('#cNote').value,flip:$('#cFlip').value,shift_x:$('#cSx').value,shift_y:$('#cSy').value});
+$('#btnAdminQr').onclick=()=>act('tool_adminqr');
+$('#btnRecovery').onclick=()=>act('tool_recovery',{minutes:$('#rMin').value});
+$('#btnKeyImport').onclick=()=>{act('tool_key',{kind:$('#kKind').value,mode:'import',path:$('#kPath').value,text:$('#kText').value,replace:$('#kReplace').checked});$('#kText').value=''};
+$('#btnKeyCreate').onclick=()=>{if(confirm('Make a NEW '+$('#kKind').selectedOptions[0].textContent.toLowerCase()+' key? Boxes only trust the key their firmware was built with.'))act('tool_key',{kind:$('#kKind').value,mode:'create',replace:$('#kReplace').checked})};
 $('#btnCoin').onclick=()=>act('coin_test');$('#btnTg').onclick=()=>act('telegram',{token:$('#tgToken').value});$('#btnNext').onclick=()=>act('next_unit');
 $('#btnBack').onclick=()=>act('back');$('#btnNextStep').onclick=()=>act('next');
 $('#btnDeps').onclick=()=>act('install_deps');$('#btnRecheck').onclick=()=>act('recheck');$('#btnSearch').onclick=()=>act('search');
