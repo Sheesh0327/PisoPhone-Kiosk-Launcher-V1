@@ -55,33 +55,6 @@ Secrets for the APK build: `KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_ALIAS`, `KE
 installed phones), and optionally the repository secret `RELEASES_TOKEN`. Gradle builds an unsigned APK in a job with no secrets; a
 separate job signs it (main: your keystore after approval; other branches: the public test key `app/dev-signing/dev-test-key.p12`).
 
-## Claude implementer (`claude.yml`)
-Issues written by the Architect (see `CLAUDE.md`) end with `@claude`. `claude.yml` runs Claude Code when someone with write
-access opens such an issue, comments `@claude` on an issue or pull request, or adds the label `claude` to an issue. Claude
-works on a new `claude/...` branch made from `beta`, runs the issue's Verification commands, and links the pull request into
-`beta` in its comment; Code quality then runs on that pull request. Nothing reaches `main` without the usual merge.
-
-Set it up once:
-1. Install the Claude GitHub App on this repository: https://github.com/apps/claude (Contents, Issues and Pull requests
-   read and write).
-2. Add the repository secret `CLAUDE_CODE_OAUTH_TOKEN` (run `claude setup-token` on your computer; uses your Claude
-   subscription).
-3. Create the label `claude` (Issues > Labels) if you want to start a run by labelling an issue.
-4. Merge `claude.yml` to `main`: GitHub runs issue and comment workflows only from the default branch.
-5. Turn off **Settings > General > Automatically delete head branches**: with it on, merging a pull request from `beta`
-   into `main` deletes `beta`, and the implementer has no branch to start from.
-
-The app's own setup (`/install-github-app` or the app's "add workflow" pull request) writes a generic `claude.yml` with
-read-only access and a `claude-code-review.yml` that reviews every pull request on every push. Keep this repository's
-`claude.yml`; ask for a review by commenting `@claude review this` on a pull request.
-
-Issues that were already open before the workflow existed start with a new `@claude` comment or the `claude` label.
-
-The implementer runs on Sonnet; add the label `model:haiku` before dispatching for small, local changes. Opus never
-implements: it plans, writes the issues and reviews the pull requests (`CLAUDE.md` section 1). Only one implementer runs at a time and each run stops after 60
-turns, so dispatch one issue at a time. Generated and binary files (`CLAUDE.md` section 4) are blocked from being read or
-edited by the run.
-
 ## Where APKs and firmware are published
 The repository is private, so phones cannot download from its GitHub Releases. APKs go to a separate **public** releases
 repository (default `Sheesh0327/PisoPhone-Releases`, override with the variable `RELEASES_REPO`):

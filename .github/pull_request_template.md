@@ -9,7 +9,7 @@
 - [ ] CI / docs only
 
 ## Verification
-<!-- Paste the output (or the last lines) of the commands you ran, from CONTRIBUTING.md / CLAUDE.md section 3. -->
+<!-- Paste the output (or the last lines) of the commands you ran, from CONTRIBUTING.md ("Before you open a pull request"). -->
 
 ## Checklist
 - [ ] I ran the checks for every area I touched and they are clean
