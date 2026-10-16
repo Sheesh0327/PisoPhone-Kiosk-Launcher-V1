@@ -1,8 +1,9 @@
-# Owner scripts
+# Scripts
 
-**The owner tools are in the setup program.** Time cards (QR), your admin QR code, the phone recovery code and your key files are made on the
-**Owner tools** page of `setup/pisophone_setup.py` (open it with `python3 pisophone_setup.py` and tap **Owner tools**); it replaced the
-owner console. The scripts below still work from a terminal and use the same key files and ledgers.
+**Owners do not need this folder.** Opening a shop, adding a phone and making time cards, your admin QR code, the phone recovery code and
+your key files are all in the setup program (`python3 pisophone_setup.py`, the **Owner tools** page); start at
+[the Start page](https://pisophone.pages.dev/start/). Everything below is for the **maintainer**: signing, releases, checks. The scripts
+still work from a terminal and use the same key files and ledgers as the setup program.
 
 # Scripts: what each one is for
 

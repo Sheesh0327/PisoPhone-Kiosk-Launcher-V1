@@ -6,6 +6,19 @@
 
 PisoHub is one coin box for a whole shop. It runs two services: **PisoWiFi** (customer Wi-Fi sold by the coin) and **PisoPhone** (rental phones that lock and unlock by the minute, with prepaid time cards for regular players), both managed from one owner dashboard.
 
+## Start here
+**Opening a shop? You do not need anything else in this file.** Pick the job:
+
+| I want to... | Go to |
+|---|---|
+| **Set up a shop** (coin box and router, about 15 minutes) | [Set up a shop](https://pisophone.pages.dev/start/shop.html) |
+| **Add a phone** (a factory-reset Android phone becomes a rental kiosk) | [Add a phone](https://pisophone.pages.dev/start/phone.html) |
+| **Add a print server** (optional: customers send you a file to print) | [Add a print server](https://pisophone.pages.dev/start/print.html) |
+
+The pages are in [`website/start/`](website/start). Nobody has to read, copy or type a key to open a shop; the keys are the maintainer's
+business and are described in the "For maintainers" part of the documentation table below.
+
+## How it is built
 Customers insert coins into an ESP32 box; the box credits time to a locked-down Android phone (the kiosk), and can also
 sell Wi-Fi time through an OpenWrt/openNDS router. Three parts plus a router add-on:
 
@@ -25,10 +38,9 @@ coins -> ESP32 box <-- Wi-Fi (signed + encrypted) --> phone kiosk app
 ```
 
 ## Setting up a site
-One program does it all, from the bare boards to working phones: download
-[`pisophone_setup.py`](https://pisophone.pages.dev/pisophone_setup.py) (also `setup/pisophone_setup.py`) and open it. A window
-guides you through flashing the coin box, setting up the router (it asks for your Wi-Fi names and passwords), opening the phone
-setup page, and testing a coin. The guide: [`setup/README.md`](setup/README.md); doing it by hand: [`setup/MANUAL.md`](setup/MANUAL.md).
+One program does it all, from the bare boards to working phones: [`pisophone_setup.py`](https://pisophone.pages.dev/pisophone_setup.py)
+(also `setup/pisophone_setup.py`). The short steps are on the [Start page](https://pisophone.pages.dev/start/shop.html); the full
+guide is [`setup/README.md`](setup/README.md), and doing it by hand is [`setup/MANUAL.md`](setup/MANUAL.md) (advanced).
 
 ## How it stays safe
 Each box has its own secret (provisioned to its phones, wrapped in the Android Keystore). Payments are kept in a flash queue on the
@@ -53,20 +65,29 @@ python3 router/tests/test_setup.py
 CI (GitHub Actions, `.github/workflows/`) runs all of this on every push, only for the parts it touches; style is ktlint (Kotlin) and clang-format (`esp32_firmware/.clang-format`).
 
 ## Documentation
+**For owners and operators**
+
+| Doc | For |
+|---|---|
+| [Start here](https://pisophone.pages.dev/start/) | Set up a shop, add a phone, add a print server: one screen each |
+| [`website/manual.html`](website/manual.html) | **Owner's Manual**: setup, daily use, every feature, revenue, troubleshooting (print-ready) |
+| [`setup/README.md`](setup/README.md) | The setup program in full: coin box, router, phones, owner tools, fixes |
+| [`setup/MANUAL.md`](setup/MANUAL.md) | Advanced: the same by hand, router commands, repair tools |
+| [`docs/ROUTERS.md`](docs/ROUTERS.md) | Which routers work (five CPU families), what they need |
+
+**For maintainers** (keys, releases, CI, hardware tests)
+
 | Doc | For |
 |---|---|
 | [`docs/DEPLOY.md`](docs/DEPLOY.md) | First run, CI, where APKs and firmware are published |
 | [`docs/RELEASE.md`](docs/RELEASE.md) | Release checklist: the owner-only steps before a build goes to shops |
-| [`scripts/README.md`](scripts/README.md) | What every script is for, grouped by who runs it and when |
-| [`docs/REAL_WORLD_TESTING.md`](docs/REAL_WORLD_TESTING.md) | Hardware test checklist and issue log |
 | [`docs/KEYS.md`](docs/KEYS.md) | Owner key, signed firmware, per-box secrets and migration |
+| [`scripts/README.md`](scripts/README.md) | What every script is for, grouped by who runs it and when |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | How a coin becomes time; who talks to whom; where code lives |
+| [`docs/REAL_WORLD_TESTING.md`](docs/REAL_WORLD_TESTING.md) | Hardware test checklist and issue log |
 | [`docs/PROVISIONING_SOLD_UNIT.md`](docs/PROVISIONING_SOLD_UNIT.md) | Secure boot and flash encryption for boxes you sell |
-| [`docs/api/`](docs/api) | Router gateway API and the super-admin QR login |
-| [`website/manual.html`](website/manual.html) | **Owner's Manual**: setup, daily use, every feature, revenue, troubleshooting (print-ready) |
-| [`docs/ROUTERS.md`](docs/ROUTERS.md) | Which routers work (five CPU families), what they need |
-| [`setup/README.md`](setup/README.md) | Setting up a site with the setup program: coin box, router, phones |
-| [`setup/MANUAL.md`](setup/MANUAL.md) | The same by hand, router commands, repair tools |
+| [`docs/api/`](docs/api) | Router gateway API, the super-admin QR login, print server pairing |
+| [`docs/maintainers/AUDIT_REPORT.md`](docs/maintainers/AUDIT_REPORT.md) | The security audit and what was done about each finding |
 
 ## Branches
 | Branch | Contains | Purpose |

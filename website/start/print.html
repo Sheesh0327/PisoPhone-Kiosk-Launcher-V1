@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <title>Add a print server</title>
+    <link rel="icon" type="image/png" href="../img/technet-logo-64.png">
+    <link rel="stylesheet" href="../css/site.css">
+    <style>.big a{padding:16px 16px} .big small{font-size:14px} details summary{cursor:pointer;font-weight:600} details p,details ul{margin-top:8px} svg.cables{width:100%;height:auto}</style>
+</head>
+<body>
+<div class="page">
+    <div class="brand">
+        <span class="brand-mark"><img src="../img/technet-logo-64.png" alt="" width="38" height="38"></span>
+        <span class="brand-name">TechNet PisoHub</span>
+        <span class="brand-sub">Start here</span>
+    </div>
+
+    <div class="card">
+        <h1>Add a print server</h1>
+        <p class="lead">Optional. With a print server, the Wi-Fi page shows a <i>Send a file to the owner</i> button. Files wait in your print server's inbox; nothing prints by itself.</p>
+        <p><b>You need:</b> the print server (release 2.2.0 or newer) running on a computer on the router's network, by default at <code>10.0.0.95</code>, and the router already set up.</p>
+        <ol class="steps">
+            <li><b>Install the print server</b> on a computer plugged into the router. Note the admin password it prints once.</li>
+            <li><b>On the print server</b>, show the router key: <code>cat /etc/webprint/send.key</code> (one line).</li>
+            <li><b>On the router</b> (<code>ssh root@10.0.0.1</code>), save that line in <code>/etc/coinslot.d/send.key</code> and run <code>chmod 600 /etc/coinslot.d/send.key</code>.</li>
+            <li><b>Wait a minute.</b> The button appears on the coin page. If the print server is not at <code>10.0.0.95</code>, set <code>SEND_HOST</code> in <code>/etc/coinslot.conf</code>.</li>
+            <li><b>Try it</b> from a phone on the customer Wi-Fi and open the <i>Inbox</i> bar on the print server's admin page.</li>
+        </ol>
+        <div class="note"><div class="grow"><b>Switching it off.</b> In the router console under <i>Settings</i>, <i>Send a file to the owner</i> is On or Off. Deleting the key file also hides the button. Limits: 10 MB per file and 5 files an hour per device; files are deleted from the inbox after 24 hours.</div></div>
+        <p class="hint">Copying the key by hand is temporary: a connect button that stores the key for you is planned, and this page will change when it ships.</p>
+    </div>
+    <p class="foot"><a href="./">&larr; Start</a> &middot; <a href="../manual.html">Owner's Manual</a> &middot; <a href="https://github.com/Sheesh0327/PisoPhone-Kiosk-Launcher-V1">Source</a></p>
+</div>
+</body>
+</html>

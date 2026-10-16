@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <title>Add a phone</title>
+    <link rel="icon" type="image/png" href="../img/technet-logo-64.png">
+    <link rel="stylesheet" href="../css/site.css">
+    <style>.big a{padding:16px 16px} .big small{font-size:14px} details summary{cursor:pointer;font-weight:600} details p,details ul{margin-top:8px} svg.cables{width:100%;height:auto}</style>
+</head>
+<body>
+<div class="page">
+    <div class="brand">
+        <span class="brand-mark"><img src="../img/technet-logo-64.png" alt="" width="38" height="38"></span>
+        <span class="brand-name">TechNet PisoHub</span>
+        <span class="brand-sub">Start here</span>
+    </div>
+
+    <div class="card">
+        <h1>Add a phone</h1>
+        <p class="lead">Turns a factory-reset Android phone into a locked rental kiosk that finds its coin box by itself.</p>
+        <p><b>You need:</b> a shop that is already <a href="shop.html">set up</a>, the rental phone factory reset and charged, and your own phone or a laptop with internet.</p>
+        <ol class="steps">
+            <li><b>Get the link for the slot.</b> The setup program's last page has it; or open the coin box's page (<code>http://10.0.0.10</code>) and under <i>Tools</i>, <i>Phone slots</i> choose <i>Set up a phone</i>. The link already holds this box's key: you never see it.</li>
+            <li><b>On the rental phone's first welcome screen tap the same spot 6 times.</b> A QR reader opens.</li>
+            <li><b>On your own phone or laptop open the link</b>, tap <i>Show the setup code</i> and scan it with the rental phone. It joins the Wi-Fi, installs PisoPhone and locks itself.</li>
+            <li><b>When it says <i>One last step</i>, do what it says.</b> On most phones: <i>Open the setting</i> and switch on <i>Allow display over other apps</i>. On an Android Go phone: plug it into a computer, tap <i>Allow</i> on the USB debugging question and use <i>Finish over USB</i> on the link's page (Chrome or Edge).</li>
+            <li><b>Pair the slot</b> on the coin box's page. The phone is now a kiosk.</li>
+        </ol>
+        <details>
+            <summary>No QR reader after 6 taps, or the link says to open it from the coin box</summary>
+            <p>The link must come from the coin box or the setup program; opened on its own the page has nothing to set up. Some phones show the reader on a different welcome screen: go back one screen and tap again. The <i>USB cable</i> tab on the link's page is the fallback.</p>
+        </details>
+        <details>
+            <summary>Take PisoPhone off a phone</summary>
+            <p>On the link's page choose <i>Remove from a phone</i> (USB debugging must be on), or use a recovery code from the setup program's <i>Owner tools</i>.</p>
+        </details>
+    </div>
+    <p class="foot"><a href="./">&larr; Start</a> &middot; <a href="../manual.html">Owner's Manual</a> &middot; <a href="https://github.com/Sheesh0327/PisoPhone-Kiosk-Launcher-V1">Source</a></p>
+</div>
+</body>
+</html>

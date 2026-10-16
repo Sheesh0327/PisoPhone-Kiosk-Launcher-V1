@@ -9,6 +9,7 @@ Cloudflare). It holds no secrets and has no user accounts.
   remove the kiosk from a phone (no PIN: the phone accepts it while USB debugging is on). Without a box's link it shows a "restricted" notice instead.
   - `js/provisioning.js`: checks the box's link and builds the QR code's content; `js/qrcode.js` draws the code (vendored, MIT).
   - `js/webadb_manager.js`: the USB fallback. It loads the ADB library (`js/yume-chan-bundle.js`) only when it is used.
+- `start/`: the "Start here" pages: set up a shop, add a phone, add a print server, one screen each (`scripts/tests/test_start_pages.py` checks the links and the six-step limit). The README and the phone setup page link to it.
 - `flash/`: the coin box firmware images (one merged image per chip, `manifest.json` with a sha256 for each), built by CI. The
   setup program downloads them, checks them and writes them to the box over USB. There is no flasher page any more.
 - `pisophone_setup.py`: the setup program, a copy of `setup/pisophone_setup.py` (kept equal by `tools/build_piso_setup.py`).

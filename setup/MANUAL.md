@@ -1,4 +1,4 @@
-# Setting up by hand (the manual)
+# Advanced: setting up by hand
 
 > **Most people should not need this page.** The setup program does every step below for you, in a web page that guides you (open it on your phone)
 > from the bare boards to working phones: see [`README.md`](README.md). Use this manual when you prefer to do it yourself, to
