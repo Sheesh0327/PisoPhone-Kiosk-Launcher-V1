@@ -211,6 +211,8 @@ class FakeCore:
     def saved_login(self, host, out_dir): return None
     def usb_boards(self): return list(self.boards)
     def box_online(self): return True
+    def checkup(self): return [{"name": "Router", "state": "ok", "text": "Answers at 10.0.0.1.", "fix": ""},
+                               {"name": "Print server", "state": "off", "text": "Nothing at 10.0.0.95.", "fix": "Optional."}]
 
     def login(self, host, password):
         self.calls.append(("login", password))
@@ -511,6 +513,26 @@ t = ps.provisioning_target("main", {"BOX_NEW_ADMIN_PASSWORD": "pw"}, 1, fetch=la
 check(t[0] == "box" and "does not answer" in t[2], "the box does not answer: said")
 check(ps.make_server(session, "123456", "127.0.0.1", 0).server_address[1] > 0, "a free port is found")
 
+# the Check-up page: read-only, runs in the background, shows what the core found
+cu_core, cu_session, cu_server = start()
+cu = Client(cu_server)
+cu.call("POST", "/api/login", {"pin": "123456"})
+_st, snap, _r = cu.call("GET", "/api/state")
+check(snap["checkup"] == {"running": False, "done": False, "items": []}, "the check-up starts empty: " + str(snap["checkup"]))
+cu.do("checkup")
+for _ in range(50):
+    _st, snap, _r = cu.call("GET", "/api/state")
+    if snap["checkup"]["done"]:
+        break
+    time.sleep(0.1)
+check(snap["checkup"]["done"] and [i["name"] for i in snap["checkup"]["items"]] == ["Router", "Print server"], "the check-up result reaches the page: " + str(snap["checkup"]))
+_st, page, _r = cu.call("GET", "/")
+page = page.decode() if isinstance(page, bytes) else str(page)
+check('id="btnCheckup"' in page and 'id="pwOwn"' in page and "My phone can't open this page" in page,
+      "the page has the Check-up button, the passwords under Advanced and the can't-open help")
+check(page.index('id="pwOwn"') < page.index('id="ROOT_PASSWORD"') < page.index("</details>", page.index('id="pwOwn"')) and "Advanced: type my own passwords" in page,
+      "the three password fields are inside the Advanced section")
+
 # ---- 3. the page in a real browser -------------------------------------------------------------------------------------------
 try:
     from playwright.sync_api import sync_playwright
@@ -576,6 +598,23 @@ if sync_playwright:
         page.fill("#SITE_NAME", "Aling Nena")
         page.select_option("#COUNTRY", "SG")
         until(lambda: page.is_enabled("#btnNextStep"), "Next is on")
+        check(not page.is_visible("#ROOT_PASSWORD") and not page.is_visible("#KIOSK_PASSWORD"), "the passwords are folded away under Advanced")
+        page.click("#pwOwn summary")
+        made = page.input_value("#ROOT_PASSWORD")   # the one made for this unit
+        check(len(made) >= 8, "a password was made for the unit")
+        page.fill("#ROOT_PASSWORD", "short")
+        until(lambda: "ssword" in page.inner_text("[data-e=ROOT_PASSWORD]") or page.inner_text("[data-e=ROOT_PASSWORD]"), "a short typed password is explained")
+        check(page.is_visible("[data-e=ROOT_PASSWORD]") and page.is_disabled("#btnNextStep"), "a typed password is checked in the Advanced section: Next is off")
+        page.fill("#ROOT_PASSWORD", made)
+        until(lambda: page.is_enabled("#btnNextStep"), "Next is on again")
+        page.click("#btnTools")
+        page.wait_for_selector("#toolsMain", state="visible")
+        page.click("#btnCheckup")
+        page.wait_for_selector("#cuList .kv")
+        check("Answers at 10.0.0.1" in page.inner_text("#cuList") and "Not used" in page.inner_text("#cuList"), "the Check-up page lists what the core found: " + page.inner_text("#cuList"))
+        shot(page, "owner-tools-checkup")
+        page.click("#btnTools")
+        page.wait_for_selector("#s2", state="visible")
         shot(page, "3-settings")
         page.click("#btnNextStep")
         page.wait_for_selector("#s3", state="visible")

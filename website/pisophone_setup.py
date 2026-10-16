@@ -1256,6 +1256,65 @@ def box_online(host=BOX_IP, probe=port_open):
     return probe(host, 80)
 
 
+PRINT_HOST = "10.0.0.95"   # where the router looks for the print server unless SEND_HOST says otherwise
+
+
+def run_checkup(branch, probe=port_open, opener=urllib.request.urlopen):
+    """The Check-up page: a read-only look at the router, the coin box, the update feed and the print server. Each item has
+    a state (ok, bad, or off for the optional print server), one line saying what was found and, when it is not ok, the one-line fix."""
+    items = []
+
+    def add(name, state, text, fix=""):
+        items.append({"name": name, "state": state, "text": text, "fix": fix})
+
+    if probe(TARGET_IP, 22):
+        add("Router", "ok", f"Answers at {TARGET_IP}.")
+    elif probe(FACTORY_IP, 22):
+        add("Router", "bad", f"Answers at {FACTORY_IP}: it has not been set up yet.", "Run the installation from the setup page.")
+    else:
+        add("Router", "bad", "Does not answer.", "Is it powered on, and is this computer plugged into one of its LAN ports (not WAN)?")
+    if box_online(BOX_IP, probe):
+        add("Coin box", "ok", f"Answers at {BOX_IP}.")
+    else:
+        add("Coin box", "bad", f"Does not answer at {BOX_IP}.", "Is it powered (its USB cable) and near the router? If it was never paired, run the installation again.")
+    try:
+        request = urllib.request.Request(site_url(branch) + "/update/router.json", headers={"User-Agent": USER_AGENT})
+        with opener(request, timeout=8) as r:
+            feed = json.loads(r.read(20000).decode("utf-8"))
+        add("Update feed", "ok", f"Router release {feed['version']} is published ({feed.get('rollout', 100)}% of routers).")
+    except (OSError, ValueError, KeyError, AttributeError):
+        add("Update feed", "bad", "The website's update list cannot be read from this computer.",
+            "Check this computer's internet. The routers update from the same list, by themselves.")
+    if probe(PRINT_HOST, 80):
+        add("Print server", "ok", f"Answers at {PRINT_HOST}.")
+    else:
+        add("Print server", "off", f"Nothing at {PRINT_HOST}. This is optional.", "Only if you use one: see the Add a print server page.")
+    return items
+
+
+def terminal_qr(text, tty=None):
+    """The QR code for a text drawn with half-block characters and colours (black on white, so a phone reads it on any terminal),
+    or an empty string when the output is not a terminal that shows colours."""
+    if tty is None:
+        tty = sys.stdout.isatty() and not os.environ.get("NO_COLOR") and (os.name != "nt" or bool(os.environ.get("WT_SESSION")))
+    if not tty:
+        return ""
+    try:
+        rows = qr_matrix(text)
+    except ValueError:
+        return ""
+    quiet = 2
+    width = len(rows) + 2 * quiet
+    grid = [[False] * width for _ in range(quiet)] + [[False] * quiet + list(r) + [False] * quiet for r in rows] + [[False] * width for _ in range(quiet)]
+    if len(grid) % 2:
+        grid.append([False] * width)
+    lines = []
+    for top, bottom in zip(grid[0::2], grid[1::2]):
+        # "upper half block": its colour is the top module, the background is the bottom module (30 black / 97 white; 40 / 107)
+        lines.append("".join(f"\x1b[{30 if t else 97};{40 if b else 107}m\u2580" for t, b in zip(top, bottom)) + "\x1b[0m")
+    return "\n".join(lines)
+
+
 # ---- the coin box: its software goes in over USB ----------------------------------------------------------------------------
 
 FLASH_BAUD = 460800   # fast, and still reliable on the cheap USB-serial chips of most boards
@@ -2252,6 +2311,9 @@ class Core:
     def box_online(self):
         return box_online()
 
+    def checkup(self):
+        return run_checkup(self.branch)
+
 
 class Session:
     """The state of the setup, for the web page: one unit after the other. Worker threads change it, the page reads it."""
@@ -2269,6 +2331,7 @@ class Session:
         # the owner tools do not belong to one unit: they stay when the next unit starts
         self.tools = {"error": None, "message": None, "batch": None, "qr": None, "prep": {"running": False, "lines": []}}
         self.tool_files = []
+        self.checkup = {"running": False, "done": False, "items": []}   # the Check-up page, also not tied to one unit
         self.reset_unit()
         self.run_checks()
 
@@ -2567,6 +2630,21 @@ class Session:
     def passwords(self):
         return dict(self.final or {})
 
+    def do_checkup(self, a):
+        with self.lock:
+            if self.checkup["running"]:
+                return
+            self.checkup.update(running=True, done=False, items=[])
+
+        def work():
+            try:
+                items = self.core.checkup()
+            except Exception as e:
+                items = [{"name": "Check-up", "state": "bad", "text": f"Could not run: {e}", "fix": ""}]
+            with self.lock:
+                self.checkup.update(running=False, done=True, items=items)
+        self.spawn(work)
+
     def do_recheck_box(self, a):
         def work():
             try:
@@ -2823,6 +2901,7 @@ class Session:
                            "router": f"{self.router['host'] or '?'} -> {TARGET_IP}" if self.router["host"] == FACTORY_IP else TARGET_IP},
                 "phones": dict(self.prov, box_up=self.box_up, box_ip=BOX_IP, kiosk_ssid=(self.final or {}).get("KIOSK_SSID_NAME") or KIOSK_SSID),
                 "coin": dict(self.coin), "telegram": dict(self.telegram), "tools": self.tools_snapshot(),
+                "checkup": dict(self.checkup, items=[dict(i) for i in self.checkup["items"]]),
             }
 
     def saved_file(self, index):
@@ -3091,8 +3170,15 @@ def run_web(args, core=None, system=None):
         say("The setup page is running. Open it in a browser:")
         say(f"  on this computer:  http://127.0.0.1:{port}")
         if not args.local_only:
-            for ip in local_addresses():
+            addresses = local_addresses()
+            for ip in addresses:
                 say(f"  on your phone:     http://{ip}:{port}   (same network as this computer)")
+            code = terminal_qr(f"http://{addresses[0]}:{port}") if addresses else ""
+            if code:
+                say()
+                say("Or scan this with your phone's camera (same network as this computer):")
+                say(code)
+                say()
         say(f"  PIN: {pin}")
         say("Leave this running until the last unit is done (Ctrl+C stops it).")
         if not args.no_open and has_display():
@@ -3155,6 +3241,8 @@ a{color:var(--acc)}.hide{display:none!important}
  <h1>Owner tools</h1>
  <p class="mut">Everything that is not a new installation, in one place: time cards, your admin QR code and the phone recovery code. Your keys stay on this computer and are never uploaded.</p>
  <div id="tBanner"></div>
+ <div class="card"><h2>Check-up</h2><p class="mut">Is everything working? A read-only look at the router, the coin box, the update list and the print server. It changes nothing.</p>
+  <button class="primary" id="btnCheckup">Check now</button><div id="cuList" style="margin-top:8px"></div></div>
  <div id="tPrep" class="card hide"><h2>One more package is needed</h2><p class="mut">The QR codes are signed with the <b>cryptography</b> package. It installs into this program's own folder (no administrator rights).</p>
   <button class="primary" id="btnPrep">Install what is missing</button><pre id="tPrepLog" class="hide"></pre></div>
  <div class="card"><h2>Time cards (QR)</h2>
@@ -3189,6 +3277,7 @@ a{color:var(--acc)}.hide{display:none!important}
  <div class="hero"><img src="@@MASCOT@@" alt=""><h1>Set up your PisoHub system</h1></div>
  <p class="mut">One unit at a time: the coin box gets its software over USB, the router is set up and paired with it, then the rental phones. About 15 minutes. Nothing on the router is changed until you start the installation.</p>
  <div class="card"><h2>What you need</h2><ul class="steps"><li>The ESP32 coin box board and a USB <b>data</b> cable, plugged into this computer</li><li>An OpenWrt router (for example a 360T6M), factory reset</li><li>The modem in the router's WAN port, and a network cable from this computer to a LAN port</li><li>The rental phones, factory reset</li></ul></div>
+ <details class="card"><summary><b>My phone can't open this page</b></summary><p class="mut">The page runs on this computer, so the phone must be on a network that reaches it. A factory-reset router has no Wi-Fi yet, so the phone cannot use that one. Give this computer a second connection (its Wi-Fi or another network cable) to your own network and put the phone on that network; keep the cable to the router plugged in. Or use this computer's own browser at <b>http://127.0.0.1:8765</b>. A firewall may block the port (<b>--port</b> changes it).</p></details>
  <div class="card"><h2>This computer</h2><p class="mut small" id="sysline"></p><div id="checks"><p class="mut">Checking...</p></div>
   <div class="row" style="margin-top:8px"><button id="btnDeps" class="hide">Install what is missing</button><button id="btnRecheck">Check again</button></div>
   <pre id="depsLog" class="hide"></pre></div>
@@ -3210,10 +3299,13 @@ a{color:var(--acc)}.hide{display:none!important}
   <label for="SITE_NAME">Shop / site name <span class="hint">on the setup sheet and in alerts</span></label><input id="SITE_NAME" data-k="1" autocomplete="off"><div class="err" data-e="SITE_NAME"></div>
  </div>
  <div class="card"><label for="COUNTRY" style="margin-top:0">Country <span class="hint">decides which Wi-Fi channels the router may use</span></label><select id="COUNTRY"></select><div class="err" data-e="COUNTRY"></div></div>
- <div class="card" id="pwCard"><h2>Passwords <span class="hint">new for every unit; keep them or type your own</span></h2>
+ <div class="card" id="pwCard"><h2>Passwords <span class="hint">made for you, new for every unit</span></h2>
+  <p class="mut small" style="margin-top:0">They are saved on this computer and printed on the setup sheet at the end. Nothing to type here.</p>
+  <details id="pwOwn"><summary class="mut small">Advanced: type my own passwords</summary>
   <label for="ROOT_PASSWORD">Router password <span class="hint">SSH and the router's web page</span></label><input id="ROOT_PASSWORD" data-k="1" autocomplete="off"><div class="err" data-e="ROOT_PASSWORD"></div>
   <label for="KIOSK_PASSWORD">PisoKiosk Wi-Fi password <span class="hint">the hidden network of the rental phones</span></label><input id="KIOSK_PASSWORD" data-k="1" autocomplete="off"><div class="err" data-e="KIOSK_PASSWORD"></div>
-  <label for="BOX_NEW_ADMIN_PASSWORD">Coin box admin password <span class="hint">the box's admin page; also the phones' admin PIN</span></label><input id="BOX_NEW_ADMIN_PASSWORD" data-k="1" autocomplete="off"><div class="err" data-e="BOX_NEW_ADMIN_PASSWORD"></div></div>
+  <label for="BOX_NEW_ADMIN_PASSWORD">Coin box admin password <span class="hint">the box's admin page; also the phones' admin PIN</span></label><input id="BOX_NEW_ADMIN_PASSWORD" data-k="1" autocomplete="off"><div class="err" data-e="BOX_NEW_ADMIN_PASSWORD"></div>
+  </details></div>
 </section>
 <section id="s3" class="hide">
  <h1>Install</h1>
@@ -3303,15 +3395,15 @@ function paint2(){
  const st=S.settings,kept=st.kept;
  $('#namesCard').classList.toggle('hide',kept);$('#pwCard').classList.toggle('hide',kept);
  $('#setTitle').textContent=kept?'This router keeps its settings':'This customer\'s names and passwords';
- $('#setSub').textContent=kept?'It was set up before, so its Wi-Fi names and passwords stay as they are (they are in the summary the earlier setup saved). The installation finishes or repairs it.':'Type the shop name and public Wi-Fi name for this customer (asked every time). The passwords were made for you, new ones for every unit: keep them or type your own. They are saved on this computer at the end and printed on the setup sheet.';
- $$('.err[data-e]').forEach(e=>{const k=e.dataset.e,p=st.problems[k];const input=document.getElementById(k);const typed=input&&(input.value||k==='COUNTRY');e.textContent=p&&typed?p[0].toUpperCase()+p.slice(1):'';if(input)input.classList.toggle('bad',!!(p&&typed))});
+ $('#setSub').textContent=kept?'It was set up before, so its Wi-Fi names and passwords stay as they are (they are in the summary the earlier setup saved). The installation finishes or repairs it.':'Type the shop name and public Wi-Fi name for this customer (asked every time). The passwords were made for you, new ones for every unit. They are saved on this computer at the end and printed on the setup sheet.';
+ $$('.err[data-e]').forEach(e=>{const k=e.dataset.e,p=st.problems[k];const input=document.getElementById(k);const typed=input&&(input.value||k==='COUNTRY');e.textContent=p&&typed?p[0].toUpperCase()+p.slice(1):'';if(input)input.classList.toggle('bad',!!(p&&typed));if(p&&typed&&input&&input.closest('#pwOwn'))$('#pwOwn').open=true});
 }
 $$('input[data-k]').forEach(i=>i.addEventListener('input',()=>{clearTimeout(pwTimer);const values={};$$('input[data-k]').forEach(x=>values[x.id]=x.value);pwTimer=setTimeout(()=>act('set',{values}),250)}));
 $('#COUNTRY').onchange=e=>act('set',{country:e.target.value});
 $('#routerPw').addEventListener('input',e=>act('router_password',{password:e.target.value}));
 function paint3(){
  const rv=S.review,i=S.install,u=S.usb,kept=S.settings.kept,box=$('#review');clear(box);
- [['Public Wi-Fi',kept?'kept as it is':rv.public_wifi],['Site name',kept?'kept as it is':rv.site],['Country',rv.country],['Router',rv.router],['Passwords',kept?'kept as they are':'the three shown before']].forEach(([k,v])=>box.append(h('div',{class:'kv'},h('span',{},k),h('span',{},v))));
+ [['Public Wi-Fi',kept?'kept as it is':rv.public_wifi],['Site name',kept?'kept as it is':rv.site],['Country',rv.country],['Router',rv.router],['Passwords',kept?'kept as they are':'made for you (on the setup sheet at the end)']].forEach(([k,v])=>box.append(h('div',{class:'kv'},h('span',{},k),h('span',{},v))));
  let t,cls='mut';
  if(u.flashed){t='The coin box software is written.';cls='ok'}else if(u.skip){t='Not written: the box is used as it is.'}else if(u.boards===null)t='Looking for the board...';
  else if(!u.boards.length){t='No board found. Plug the coin box board into this computer with a USB data cable (a charge-only cable does not work), then tap Look again.';cls='warn'}
@@ -3354,7 +3446,14 @@ function paint5(){
  $('#savedDir').textContent='Keep the summary private: it holds every password. Day to day, the router has: piso-setup status.';
 }
 
+function paintCheckup(){
+ const cu=S.checkup,cl=$('#cuList');clear(cl);$('#btnCheckup').disabled=cu.running;
+ if(cu.running)cl.append(h('p',{class:'mut'},'Checking...'));
+ cu.items.forEach(i=>cl.append(h('div',{class:'kv'},h('span',{style:'color:var(--'+(i.state==='ok'?'ok':i.state==='bad'?'bad':'warn')+')'},i.state==='ok'?'OK':i.state==='bad'?'Problem':'Not used'),h('span',{style:'color:var(--ink)'},i.name+' '),h('span',{class:'mut small'},i.text+(i.fix&&i.state!=='ok'?' '+i.fix:'')))));
+}
+$('#btnCheckup').onclick=()=>act('checkup');
 function paintTools(){
+ paintCheckup();
  const t=S.tools,b=$('#tBanner');clear(b);
  if(t.error)b.append(note('bad',t.error));if(t.message)b.append(note('ok',t.message));
  $('#tPrep').classList.toggle('hide',t.crypto&&!t.prep.running&&!t.prep.lines.length);$('#btnPrep').disabled=t.prep.running||t.crypto;
