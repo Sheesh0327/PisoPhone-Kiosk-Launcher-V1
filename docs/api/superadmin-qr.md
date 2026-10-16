@@ -15,7 +15,7 @@ with **one QR code that only you hold**. There is no password to set, publish or
 - The box checks the signature with its public key and starts a **session**: a random cookie, valid for 15 idle minutes and one
   hour at most. The session is both the dashboard sign-in and super admin; the admin password still works for the normal admin.
   Five wrong tries lock a phone out for a minute, like wrong passwords. "Lock now" in vendor mode, or Sign out, ends it.
-- The box's page is reached the usual way: join the hidden `PisoKiosk` Wi-Fi with your phone (its password is in the setup summary)
+- The box's page is reached the usual way: join the hidden kiosk Wi-Fi (`PisoKiosk-xxxx`; its name and password are in the setup summary) with your phone (its password is in the setup summary)
   and open `http://10.0.0.10`.
 
 ## Setting it up (once)

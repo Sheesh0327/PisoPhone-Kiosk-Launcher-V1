@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """End-to-end tests of pisoportal: customers over WebSocket, a fake coin box, a fake openNDS."""
-import hashlib, hmac, json, os, signal, socket, subprocess, sys, time, urllib.error, urllib.request
+import hashlib, hmac, json, os, signal, socket, time, urllib.error, urllib.request
 from harness import *
 
 MAC_A, MAC_B, MAC_C, MAC_D = "aa:bb:cc:00:00:01", "aa:bb:cc:00:00:02", "aa:bb:cc:00:00:03", "aa:bb:cc:00:00:04"

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The console's price editor in a real browser (headless Chromium): the list shows, a line is edited and saved, a bad list is refused with its reason,
 what is typed survives the page's refresh, and going back to the settings file asks first."""
-import glob, os, shutil, sys, time
+import glob, os, shutil, sys
 from harness import *
 
 try:

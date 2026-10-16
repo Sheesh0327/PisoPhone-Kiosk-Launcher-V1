@@ -119,7 +119,7 @@ Closing the page never loses coins: the window runs on the router and settles wi
 sign-in window notices that the internet works.
 
 `router/piso_monitor.sh` is a separate small service: Telegram alerts (router restarted, box silent for 5 minutes, ledger and box disagree, a device keeps opening empty windows)
-and a few read-only commands from the owner's chat. It cannot change prices, passwords or Wi-Fi settings.
+and a few commands from the owner's chat (status, report, reconcile, diagnostics, and `/update` which installs the newest signed software, `/restart` which restarts the portal, and `/reboot` which reboots the router after a second confirming message). It cannot change prices, passwords or Wi-Fi settings.
 
 ## 6. Vouchers, the ledger and reconcile
 - **Prices are live:** the settings file (`HYPER_TIERS`, `HYPER_PRORATA_MIN`, `ENDURANCE_TIERS`, `ENDURANCE_DOWN_KBPS`, `ENDURANCE_UP_KBPS`) gives the starting `Pricing`; the console's Settings page (`/api/pricing`) can replace it, kept in `DATA_DIR/settings.txt` like the voucher choice, with validation (every plan keeps a 1-peso line, at most 8 lines, bounded pesos and minutes). Each coin window snapshots the `Pricing` it started with, so the amount on a customer's screen and the time it buys never change mid-payment; the customer page is rebuilt when the prices change.

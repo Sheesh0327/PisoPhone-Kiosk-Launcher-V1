@@ -46,7 +46,7 @@ cargo build --release
 python3 tests/test_flow.py        # whole flow against a fake box and fake ndsctl
 python3 tests/test_browser.py     # real Chromium (needs: pip install playwright)
 ```
-CI (`router-program.yml`) builds `bin/pisoportal-mipsel` for `mipsel_24kc` with the OpenWrt toolchain (the exact
+CI (`router-program.yml`) builds `bin/pisoportal-<family>` for each router family (`mipsel`, `mips`, `aarch64`, `armv7`, `x86_64`) with the OpenWrt toolchain (the exact
 toolchain is recorded in `bin/BUILD-INFO`), regenerates `setup/piso-setup.sh` (which embeds that binary) and commits both
 to `beta`. `quality.yml` checks rustfmt, clippy (`-D warnings`), the unit tests, `tests/test_flow.py` and
 `tests/test_browser.py` on every push. You do not need Rust on the router or on your computer.

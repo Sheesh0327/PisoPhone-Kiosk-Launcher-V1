@@ -34,7 +34,7 @@ environments (the platform is pinned in `esp32_firmware/envs/*.ini`), security-r
 website (its helpers, its stylesheet and the page itself in a browser under the site's Content-Security-Policy), and the
 router portal and setup tests (rustfmt, clippy, unit, end-to-end and browser tests, shellcheck). `firmware-images.yml` builds the coin box
 firmware for the setup program (`website/flash/`, one checked image per chip). `router-program.yml` builds
-the router program for `mipsel_24kc` and regenerates `setup/piso-setup.sh` on `beta`. `build-apk.yml` runs the Android unit
+the router program for the five router families (`mipsel_24kc`, `mips_24kc`, `aarch64`, `armv7`, `x86_64`; `docs/ROUTERS.md`) and regenerates `setup/piso-setup.sh` on `beta`. `build-apk.yml` runs the Android unit
 tests, builds and signs the release APK and publishes it to the branch's channel (`main` = production, other branches =
 `-dev`). Dependabot opens update PRs (majors and Kotlin-toolchain minors are ignored on purpose).
 

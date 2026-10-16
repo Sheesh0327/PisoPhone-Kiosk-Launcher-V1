@@ -73,9 +73,6 @@ CI (GitHub Actions, `.github/workflows/`) runs all of this on every push, only f
 |---|---|---|
 | `main` | Everything: PisoPhone + PisoWiFi (OpenNDS) | Production. Only receives tested code from `beta`. |
 | `beta` | Everything | Testing and bug fixing; all shared fixes land here first. |
-| `pisophone` / `pisophone-beta` | Phone rental only (app, ESP32 firmware, provisioning website) | Stable / testing builds of the phone product. |
-| `pisowifi` / `pisowifi-beta` | Piso Wi-Fi only (ESP32 firmware, openNDS portal) | Stable / testing builds of the Wi-Fi product. |
 
-Flow: fix and test on a `*-beta` branch (checklist: `docs/REAL_WORLD_TESTING.md`), then merge it into its stable branch. Fixes to
-shared parts (firmware, keys, CI) go to `beta` first and are merged into `pisophone-beta` and `pisowifi-beta`; the files each product
-does not ship were removed once and stay removed on merge. The ESP32 firmware is shared and still contains both features.
+Flow: fix and test on `beta` (checklist: `docs/REAL_WORLD_TESTING.md`), then merge it into `main` (`docs/RELEASE.md`). The ESP32
+firmware is shared by both products and contains both features.

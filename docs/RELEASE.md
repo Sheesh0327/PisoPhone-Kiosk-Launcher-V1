@@ -13,7 +13,7 @@ can do, in order, before a build goes to shops.
       boxes once; `docs/api/superadmin-qr.md`). Until then no one can open super admin.
 
 ## 2. Hardware and real-world tests
-- [ ] Pass 1 and 2 of `docs/REAL_WORLD_TESTING.md` on `beta` (box, phones, router), including the new items R3, R5, RS11
+- [ ] Pass 1 and 2 of `docs/REAL_WORLD_TESTING.md` on `beta` (box, phones, router), including R3, R5, RS11
       and RS12. Log every failure in its Issue log.
 
 ## 2b. Before the merge: check the path (about a minute, no hardware)
@@ -113,10 +113,5 @@ A router still on release 1.0.0 has the old `update` command (it only installs f
   install; otherwise Android would ask the person holding the phone) and the phone is idle: lock screen showing, no time left, nobody signed in, no
   arena match. The APK is checked against the published checksum and the signing certificate, a build that fails to install three times is left alone
   until a newer one is published, and the app restarts by itself afterwards.
-## 4. After `main` serves the new website (timed follow-up)
-- [ ] The box's **Set up a phone** links still carry the box's secret in the query string (`?secret=`), which reaches
-      the web server's logs and the browser history. The website now also reads it after `#` (never sent to a server) and
-      removes it from the address bar. Once that website is live on `main`, switch the links to `#secret=` in
-      `esp32_firmware/web/portal-modals.js` (two links) and `esp32_firmware/src/WebDashboardComponents.cpp`, run
-      `python3 scripts/embed_web.py`, and release that firmware. (Doing it earlier would break provisioning: the links
-      always open the production site.)
+## 4. After `main` serves the new website
+Nothing pending: the box's **Set up a phone** links already carry the secret after `#` (never sent to a server), not in the query string.
