@@ -3,7 +3,7 @@
 recovery code and the key files. The codes must be exactly what the boxes and the app check, so they are verified here with the
 repository's own format code (scripts/card_format.py, make_admin_qr.py, make_recovery_code.py) and, when installed, a QR reader.
 Run with:  python3 router/tests/test_setup_tools.py"""
-import csv, http.client, importlib.util, json, os, re, stat, sys, tempfile, threading, time
+import http.client, importlib.util, json, os, stat, sys, tempfile, threading, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, f"{ROOT}/scripts")

@@ -1885,10 +1885,6 @@ def b64u(data):
     return base64.urlsafe_b64encode(data).decode().rstrip("=")
 
 
-def unb64u(text):
-    return base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
-
-
 def load_key(kind, path=None):
     """The private key in the owner's key file (a ToolError when there is none or it is not a P-256 key)."""
     _hashes, serialization, ec = tool_crypto()
@@ -2299,7 +2295,6 @@ class Session:
             self.coin = {"running": False, "ok": None, "lines": []}
             self.telegram = {"running": False, "ok": False, "error": None, "lines": [], "confirm": None}
             self._tg_answer = None
-            self._entered = {self.step}
             if self.step == 1:
                 self._enter(1)
 
