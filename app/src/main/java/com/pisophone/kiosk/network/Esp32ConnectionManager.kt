@@ -91,7 +91,6 @@ class Esp32ConnectionManager(
     private val connectionLock = Any()
     private var currentAttemptId = 0L
     private var activeWebSocket: WebSocket? = null
-    private var isDraining: Boolean = false
     private var drainJob: Job? = null
     private var coinSyncJob: Job? = null
     private val processedTxIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
@@ -134,8 +133,6 @@ class Esp32ConnectionManager(
     fun triggerCandidateDiscovery(localIp: String) {
         discoveryScanner.triggerDiscovery(localIp)
     }
-
-    fun probeEsp32Connection(ip: String): Boolean = discoveryScanner.probeEsp32Connection(ip)
 
     private fun handleEsp32Discovered(ip: String, rawResponseBody: String? = null) {
         val (ipHost, esp32Port) = discoveryScanner.getEsp32HostAndPort(ip)
@@ -418,7 +415,6 @@ class Esp32ConnectionManager(
                 activeWebSocket = null
                 drainJob?.cancel()
                 drainJob = null
-                isDraining = false
             }
             try {
                 if (!targetWs.close(1000, reason)) {
@@ -796,7 +792,6 @@ class Esp32ConnectionManager(
                     if (webSocket === activeWebSocket) {
                         drainJob?.cancel()
                         drainJob = null
-                        isDraining = false
                         activeWebSocket = null
                     }
                 }

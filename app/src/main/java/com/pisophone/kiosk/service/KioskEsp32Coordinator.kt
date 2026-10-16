@@ -34,8 +34,6 @@ class KioskEsp32Coordinator(
         private const val TAG = "KioskEsp32Coordinator"
     }
 
-    private var lastArmTimestampMs: Long = 0L
-
     override fun getDeviceId(): String = stateManager.deviceId.value
     override fun getSecretKey(): String = getSecretKey.invoke()
     override fun getAppState(): Int = stateManager.appState.value
@@ -135,7 +133,6 @@ class KioskEsp32Coordinator(
 
     override fun onArmSuccess() {
         DiagnosticsLog.add("ARM", "armed (state ${stateManager.appState.value})")
-        lastArmTimestampMs = System.currentTimeMillis()
         stateManager.isEsp32Online.value = true
         // Publish the arming window BEFORE flipping appState so the supervisor tick never
         // observes state 1/3 with a stale paymentTimeout of 0 (which would close the session).

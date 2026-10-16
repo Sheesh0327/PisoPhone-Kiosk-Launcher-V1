@@ -11,8 +11,6 @@ import java.io.StringWriter
 import java.util.concurrent.atomic.AtomicBoolean
 
 class CrashReporter(private val context: Context) : Thread.UncaughtExceptionHandler {
-    private val defaultHandler: Thread.UncaughtExceptionHandler? = Thread.getDefaultUncaughtExceptionHandler()
-
     override fun uncaughtException(t: Thread, e: Throwable) {
         try {
             val sw = StringWriter()

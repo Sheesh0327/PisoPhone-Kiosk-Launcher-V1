@@ -257,10 +257,8 @@ class KioskEngine(
 
     private var nanoServer: KioskHttpServer? = null
     private var armFailureJob: Job? = null
-    private var engineStartTimeMs = 0L
 
     fun start() {
-        engineStartTimeMs = System.currentTimeMillis()
         bindAccounts()
 
         scope.launch(Dispatchers.IO) {
@@ -369,16 +367,6 @@ class KioskEngine(
 
     fun triggerCandidateDiscovery() {
         esp32Manager.triggerCandidateDiscovery(stateManager.deviceIp.value)
-    }
-
-    fun probeEsp32Connection(ip: String): Boolean {
-        if (Looper.myLooper() == Looper.getMainLooper()) {
-            scope.launch(Dispatchers.IO) {
-                esp32Manager.probeEsp32Connection(ip)
-            }
-            return false
-        }
-        return esp32Manager.probeEsp32Connection(ip)
     }
 
     fun closeSession(sendUnarmToEsp: Boolean = false) {

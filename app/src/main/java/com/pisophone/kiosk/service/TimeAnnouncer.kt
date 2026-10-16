@@ -53,12 +53,6 @@ class TimeAnnouncer {
         return crossed.minByOrNull { it.first }?.let { Action.Warning(it.second) }
     }
 
-    /** Forget everything (a new session starts). */
-    fun reset() {
-        last = Int.MAX_VALUE
-        inCountdown = false
-    }
-
     companion object {
         const val COUNTDOWN_FROM = 5
         private val WARNINGS = listOf(

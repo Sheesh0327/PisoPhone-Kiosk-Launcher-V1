@@ -30,10 +30,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pisophone.kiosk.R
 import com.pisophone.kiosk.model.AppInfo
-import com.pisophone.kiosk.ui.LauncherThemeColors
-import com.pisophone.kiosk.ui.PinAppPickerModal
-import com.pisophone.kiosk.ui.PinAppToSlotModal
-import com.pisophone.kiosk.ui.PinnedSlotOptionsModal
 import com.pisophone.kiosk.ui.video.LockScreenPresence
 import com.pisophone.kiosk.ui.video.LoopingVideoBackground
 import com.pisophone.kiosk.util.PinnedSlotsManager

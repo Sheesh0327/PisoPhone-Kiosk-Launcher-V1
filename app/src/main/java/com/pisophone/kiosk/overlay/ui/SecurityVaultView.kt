@@ -81,7 +81,6 @@ fun SecurityVaultView(
                 AppInfo(
                     name = resolveInfo.loadLabel(pm).toString(),
                     packageName = pkgName,
-                    icon = resolveInfo.activityInfo.loadIcon(pm),
                     bitmap = try { resolveInfo.activityInfo.loadIcon(pm).toBitmap().asImageBitmap() } catch (e: Exception) { null },
                 )
             }
