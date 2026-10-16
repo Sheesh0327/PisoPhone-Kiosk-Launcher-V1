@@ -126,6 +126,8 @@ class H(BaseHTTPRequestHandler):
                 threading.Timer(0.85, lambda: s["armed_at"] == gen and push(sid, s, "end")).start()
         pulses = pulses_now(s, c)
         if action == "ack":
+            if c.get("ack_delay"):   # a box that is slow to answer the acknowledgement (flash writes)
+                time.sleep(c["ack_delay"])
             if c.get("ack_fail"):   # the box could not remove the coins from flash (ACK_INCOMPLETE)
                 return self.send(503, {"success": False, "error": "ACK_INCOMPLETE"})
             s["acked"] += pulses

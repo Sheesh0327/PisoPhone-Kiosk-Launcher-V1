@@ -123,12 +123,16 @@ try:
             pg.wait_for_selector("#v-idle", state="visible", timeout=8000)
             pg.wait_for_selector("#snd", state="visible", timeout=5000)
             check("Send a file" in pg.text_content("#snd"), "the coin page offers Send a file")
-            with ctx.expect_page() as popup:
-                pg.click("#snd")
-            up = popup.value
+            check(pg.get_attribute("#snd", "target") is None, "the button is a plain link (the sign-in window of a phone opens no new tabs)")
+            pg.click("#snd")
+            pg.wait_for_url("**/send")
+            up = pg
             up.on("pageerror", lambda e: errors.append(str(e)))
             up.wait_for_load_state()
-            check(up.url.endswith("/send") and up.is_disabled("#go"), "the button opens the upload page in a new tab, Send disabled until a file is chosen")
+            check(up.url.endswith("/send") and up.is_disabled("#go") and up.input_value("#lnk") == f"http://127.0.0.1:{env.PP}/send" and "neverssl.com" in up.text_content("#alt"),
+                  "the button opens the upload page in the same window, Send disabled until a file is chosen, with the address for a normal browser")
+            up.click("#cp")
+            check(up.text_content("#cp").startswith(("Copied", "Press and hold")), f"Copy link answers: {up.text_content('#cp')}")
             tmpf = f"{env.tmp}/Homework.pdf"
             body = b"%PDF-1.4\nbrowser test\n" * 50
             open(tmpf, "wb").write(body)

@@ -28,7 +28,7 @@ try:
     check(code == 200 and "TechNet" in body and "PisoWifi" in body and "Test Spot" not in body and "HyperSpeed" in body and "&#8369;10" in body and "11 hrs 30 min" not in body, "the splash page carries the TechNet PisoWifi brand (not the configurable name) and the price list")
     check("1 day" not in body and "24 hrs" in body, "tiers are listed in the page (Endurance 20 pesos = 24 hrs)")
     check(len(body) < 27500, f"the page is small ({len(body)} bytes; it goes over the shop Wi-Fi once, then a 304)")
-    check('id="gm"' in body and "Play a mini-game" in body and 'href="/game"' in body and 'target="_blank"' in body, "the coin page has the mini-game button (a link that opens a tab)")
+    check('id="gm"' in body and "Play a mini-game" in body and 'href="/game"' in body and 'target=' not in body.split('id="gm"')[1].split('>')[0], "the coin page has the mini-game button (a plain link: the sign-in window of a phone opens no new tabs)")
     check("Get a voucher code" in body and "Use now" in body and "Save voucher file" in body and "Have a voucher?" in body and 't:"ping"' in body,
           "the page carries the voucher choice, the voucher code view, the voucher entry and the heartbeat")
     check(page_ms < 100, f"the page comes back fast ({page_ms:.1f} ms)")
@@ -151,6 +151,19 @@ try:
     check(rc == 0 and out.startswith("OK 3 24"), "ledger chain still verifies: " + out)
     a.close()
 
+    # ---- a top-up by a customer who is online already keeps the window open between coins ---------------------------------------------------
+    # (in this test the first coin must come within 4 s, and each later one within 3 s of the one before; the shop's real values are 30 s and 15 s)
+    env.set_box(busy=False, coins_at=[0.3, 2.5, 4.8, 7.0])   # the window lasts 7 s here, longer than the 4 s of the first wait
+    a = Cust("127.0.0.1", reset=True)
+    s = a.wait_state("idle", 5)
+    check(s is not None and s["online"] is True and s["left"] > 0, f"the customer is online with time left: {s}")
+    a.mark()
+    a.send({"t": "start", "plan": "hyper"})
+    fin = a.wait_state("final", 30)
+    check(fin is not None and fin["pulses"] == 4, f"one window took all four coins, over 7 seconds (each coin gives the next one time): {fin}")
+    a.close()
+    time.sleep(1.5)
+
     # ---- Done ends the window early; one client at a time; the other devices are turned away -------------------------------------
     env.set_box(busy=False, coins_at=[0.4])
     b = Cust("127.0.0.2", reset=True)
@@ -246,6 +259,7 @@ try:
     rev1 = env.revenue()
     recs = os.listdir(f"{env.data}/open")
     check(len(recs) == 2 and any(r.endswith(".rec") for r in recs), f"the window stays noted (recorded, not acknowledged): {recs}")
+    time.sleep(2.6)   # (the page is told at once, but the router asks the box to acknowledge three times, a second apart: the window is over after that)
     d.mark()
     d.send({"t": "start", "plan": "hyper"})
     er = d.wait_state("error", 20)
@@ -259,6 +273,24 @@ try:
     d.send({"t": "done"})
     d.wait_state("empty", 10)
     d.close()
+
+    # ---- the page is told it is online as soon as the device is let on, not after the box has answered the acknowledgement -----------------
+    env.reset_device(MAC_D)
+    env.set_box(busy=False, coins_at=[0.3], ack_delay=3.0)
+    e = Cust("127.0.0.4", reset=True)
+    e.wait_state("idle", 5)
+    e.mark()
+    e.send({"t": "start", "plan": "hyper"})
+    e.wait(lambda m: m.get("s") == "armed" and m.get("pulses", 0) >= 1, 10)
+    e.mark()
+    t_done = time.time()
+    e.send({"t": "done"})
+    fin = e.wait_state("final", 12)
+    waited = time.time() - t_done
+    check(fin is not None and fin["online"] is True and waited < 2.5, f"Done to online takes {waited:.1f} s even though the box needs 3 s to acknowledge: {fin}")
+    time.sleep(3.5)   # (let the acknowledgement finish before the next test)
+    e.close()
+    env.set_box(busy=False, coins_at=[], ack_delay=0)
 
     # ---- the box signs its answers: an unsigned or wrongly signed answer is not trusted, whatever it says -----------------------------------
     # (the box has signed many answers by now, so the router no longer takes an unsigned one: someone else is answering in its place)
