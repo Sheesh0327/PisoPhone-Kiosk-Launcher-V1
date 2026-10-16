@@ -42,6 +42,8 @@ try:
     fin = a.wait_state("final", 30)
     check(fin is not None and fin["pulses"] == 3 and fin["minutes"] == 18, f"that payment keeps the prices it started with (3 pesos = 18 min): {fin}")
     a.close()
+    # (the page hears the result a moment before the box has been acknowledged; the next customer can start after that)
+    check(wait_until(lambda: not os.path.isdir(f"{env.data}/open") or os.listdir(f"{env.data}/open") == [], 10), "the box is acknowledged")
 
     # the next customer pays the same 3 pesos at the new prices
     env.set_box(busy=False, coins_at=[0.3, 0.6, 0.9])

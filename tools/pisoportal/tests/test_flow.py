@@ -246,6 +246,7 @@ try:
     rev1 = env.revenue()
     recs = os.listdir(f"{env.data}/open")
     check(len(recs) == 2 and any(r.endswith(".rec") for r in recs), f"the window stays noted (recorded, not acknowledged): {recs}")
+    time.sleep(2.6)   # (the page is told at once, but the router asks the box to acknowledge three times, a second apart: the window is over after that)
     d.mark()
     d.send({"t": "start", "plan": "hyper"})
     er = d.wait_state("error", 20)
@@ -259,6 +260,24 @@ try:
     d.send({"t": "done"})
     d.wait_state("empty", 10)
     d.close()
+
+    # ---- the page is told it is online as soon as the device is let on, not after the box has answered the acknowledgement -----------------
+    env.reset_device(MAC_D)
+    env.set_box(busy=False, coins_at=[0.3], ack_delay=3.0)
+    e = Cust("127.0.0.4", reset=True)
+    e.wait_state("idle", 5)
+    e.mark()
+    e.send({"t": "start", "plan": "hyper"})
+    e.wait(lambda m: m.get("s") == "armed" and m.get("pulses", 0) >= 1, 10)
+    e.mark()
+    t_done = time.time()
+    e.send({"t": "done"})
+    fin = e.wait_state("final", 12)
+    waited = time.time() - t_done
+    check(fin is not None and fin["online"] is True and waited < 2.5, f"Done to online takes {waited:.1f} s even though the box needs 3 s to acknowledge: {fin}")
+    time.sleep(3.5)   # (let the acknowledgement finish before the next test)
+    e.close()
+    env.set_box(busy=False, coins_at=[], ack_delay=0)
 
     # ---- the box signs its answers: an unsigned or wrongly signed answer is not trusted, whatever it says -----------------------------------
     # (the box has signed many answers by now, so the router no longer takes an unsigned one: someone else is answering in its place)

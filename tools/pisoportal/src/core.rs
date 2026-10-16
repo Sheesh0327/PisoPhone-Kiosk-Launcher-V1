@@ -199,6 +199,9 @@ struct Window {
     total: u64,
     stop: bool,
     box_ended: bool,
+    /// the result, as soon as it is known (the device is let on, or the voucher is written): the page is told at once, while the
+    /// box is still being acknowledged. The window stays until that is done, so no other payment starts before.
+    early: Option<View>,
 }
 
 #[derive(Default)]
@@ -464,7 +467,25 @@ impl Core {
                 total: w.total,
                 voucher: w.voucher,
             },
-            WState::Closing => View::Closing { plan: w.plan, pulses: w.pulses, minutes, voucher: w.voucher },
+            WState::Closing => match &w.early {
+                Some(v) => self.live(v.clone(), &w.mac, now_secs()),
+                None => View::Closing { plan: w.plan, pulses: w.pulses, minutes, voucher: w.voucher },
+            },
+        }
+    }
+
+    /// Tell the page the result now, before the box is acknowledged (that takes a moment, and the customer is waiting).
+    fn publish_early(&self, sid: &str, v: View) {
+        let mut st = self.st.lock().unwrap();
+        let set = match st.window.as_mut().filter(|w| w.sid == sid) {
+            Some(w) => {
+                w.early = Some(v);
+                true
+            }
+            None => false,
+        };
+        if set {
+            self.bump(&mut st);
         }
     }
 
@@ -500,7 +521,7 @@ impl Core {
         if wait > 0 {
             return Err(("wait", wait));
         }
-        if self.st.lock().unwrap().window.as_ref().is_some_and(|w| w.mac == mac) {
+        if self.st.lock().unwrap().window.as_ref().is_some_and(|w| w.mac == mac && w.early.is_none()) {
             return Err(("paying", 0)); // not in the middle of putting coins in
         }
         let rules = roll::PauseRules { max: self.cfg.pause_max, min_left: self.cfg.pause_min_left, min_pesos: self.cfg.pause_min_pesos };
@@ -732,6 +753,7 @@ impl Core {
             total: self.cfg.first_wait,
             stop: false,
             box_ended: false,
+            early: None,
         });
         self.bump(&mut st);
         drop(st);
@@ -748,9 +770,10 @@ impl Core {
         View::Starting { plan, voucher }
     }
 
-    /// This device has a coin window open now.
+    /// This device has a coin window open now (one whose result is known already is over for the customer: only the box is
+    /// still being acknowledged).
     pub fn window_open_for(&self, mac: &str) -> bool {
-        self.st.lock().unwrap().window.as_ref().is_some_and(|w| w.mac == mac)
+        self.st.lock().unwrap().window.as_ref().is_some_and(|w| w.mac == mac && w.early.is_none())
     }
 
     /// The customer is done (or cancels): close the window now.
@@ -969,6 +992,7 @@ impl Core {
                 break;
             }
         }
+        let t_done = Instant::now();
         log!(
             "window {} closing: {} ({} pesos, open {} s)",
             &sid[..8],
@@ -985,6 +1009,7 @@ impl Core {
             }
             std::thread::sleep(Duration::from_millis(300));
         }
+        let t_released = t_done.elapsed().as_millis();
         let drain_end = Instant::now() + Duration::from_secs(cfg.drain_secs);
         loop {
             let ended = self.cur(sid).is_some_and(|c| c.2);
@@ -1007,6 +1032,7 @@ impl Core {
             }
             self.wait_end(sid, Duration::from_millis(300));
         }
+        let t_drained = t_done.elapsed().as_millis();
         let pulses = self.cur(sid).map(|c| c.0).unwrap_or(last);
         if pulses == 0 {
             log!("window {} closed with no coins", &sid[..8]);
@@ -1020,6 +1046,13 @@ impl Core {
         };
         // (a voucher window connects nothing, so there is nothing for the grant retries to finish)
         let refused = matches!(view, View::Final { online: false, voucher: None, .. });
+        log!(
+            "timing {} after the end of the window: box released {} ms, coins drained {} ms, settled and acknowledged {} ms",
+            &sid[..8],
+            t_released,
+            t_drained,
+            t_done.elapsed().as_millis()
+        );
         self.finish_window(sid, view, Some(true));
         if refused {
             // paid but openNDS did not let the device on yet: keep trying for a while, so the page turns to "online" by itself
@@ -1079,9 +1112,11 @@ impl Core {
     fn settle(&self, sid: &str, mac: &str, plan: Plan, wid: &str, forfeit: bool, pulses: u32, pr: &Pricing) -> View {
         let minutes = minutes_for(pr, plan, pulses);
         let now = now_secs();
+        let t0 = Instant::now();
         if let Err(e) = self.record(sid, mac, plan, wid, forfeit, pulses, minutes, now) {
             return e;
         }
+        let t_rec = t0.elapsed().as_millis();
         // the customer is let on first, the box is acknowledged after: the window is on the roll already, so the order is safe
         let s = {
             let _g = self.files.lock().unwrap();
@@ -1104,9 +1139,23 @@ impl Core {
         if !online {
             log!("window {} recorded but openNDS refused the grant for {}", &sid[..8], mac);
         }
+        let t_grant = t0.elapsed().as_millis();
+        let result = View::Final { plan: s.plan, pulses, minutes, left: s.left_secs, online, voucher: None };
+        self.publish_early(sid, result.clone()); // the customer is online: the page says so now, not after the box answers
         let ack_ok = self.ack_and_clear(sid);
-        log!("timing {} settled pulses={} min={} left={} min online={} acked={}", &sid[..8], pulses, minutes, s.minutes, online, ack_ok);
-        View::Final { plan: s.plan, pulses, minutes, left: s.left_secs, online, voucher: None }
+        log!(
+            "timing {} settled pulses={} min={} left={} min online={} acked={} (recorded {} ms, granted {} ms, acknowledged {} ms)",
+            &sid[..8],
+            pulses,
+            minutes,
+            s.minutes,
+            online,
+            ack_ok,
+            t_rec,
+            t_grant,
+            t0.elapsed().as_millis()
+        );
+        result
     }
 
     /// A window that paid for a voucher code: price it once, make the one voucher (and its revenue row, as a direct purchase
@@ -1118,9 +1167,11 @@ impl Core {
             Ok(v) => v,
             Err(e) => return e,
         };
+        let result = View::Final { plan, pulses, minutes, left: 0, online: false, voucher: Some(v) };
+        self.publish_early(sid, result.clone());
         let ack_ok = self.ack_and_clear(sid);
         log!("timing {} settled pulses={} min={} voucher issued acked={}", &sid[..8], pulses, minutes, ack_ok);
-        View::Final { plan, pulses, minutes, left: 0, online: false, voucher: Some(v) }
+        result
     }
 
     /// Make the voucher of a closed window, once (the same window id never makes two), and book its coins in the revenue ledger

@@ -58,14 +58,14 @@ pub struct Nds {
 
 impl Nds {
     fn run(&self, args: &[&str]) -> String {
-        for attempt in 0..4 {
+        for attempt in 0..8 {
             let out = Command::new(&self.ndsctl).args(args).output();
             let text = match out {
                 Ok(o) => format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr)),
                 Err(e) => return format!("Failed: {}", e),
             };
-            if text.contains("locked") && attempt < 3 {
-                std::thread::sleep(std::time::Duration::from_millis(500)); // openNDS is busy with another request
+            if text.contains("locked") && attempt < 7 {
+                std::thread::sleep(std::time::Duration::from_millis(150)); // openNDS is busy with another request (asked again soon: a customer waits)
                 continue;
             }
             return text;
