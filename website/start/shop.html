@@ -45,9 +45,9 @@
         </svg>
         <ol class="steps">
             <li><b>Download and run the setup program.</b> <a href="../pisophone_setup.py" download>pisophone_setup.py</a>, then <code>python3 pisophone_setup.py</code> (Windows: <code>py pisophone_setup.py</code>). It installs what it is missing.</li>
-            <li><b>Open the address it prints</b> on your phone and type the PIN shown in the terminal.</li>
+            <li><b>Open the address it prints</b> on your phone (or scan the QR code it draws) and type the PIN shown in the terminal.</li>
             <li><b>Cable it as in the picture</b> and reset the router. The program finds the router by itself.</li>
-            <li><b>Type the shop's name and its public Wi-Fi name.</b> Passwords are made for you and saved on a printable sheet.</li>
+            <li><b>Type the shop's name and its public Wi-Fi name.</b> Passwords are made for you and saved on a printable sheet; nothing to type.</li>
             <li><b>Plug the coin box into the computer by USB</b>, tap <i>Start the installation</i> and wait about 10 minutes.</li>
             <li><b>Insert a coin</b> to test, join the customer Wi-Fi with a phone, and print the sheet. Then <a href="phone.html">add your phones</a>.</li>
         </ol>
@@ -55,6 +55,10 @@
             <summary>My phone cannot open the page</summary>
             <p>The page is served by the setup computer, so the phone must be on a network that reaches it. A factory-reset router has no Wi-Fi yet, so the phone cannot use that one. Either give the setup computer a second connection (its own Wi-Fi or another Ethernet port) on your own network and put the phone on that network too, keeping the cable to the router plugged in; or open <code>http://127.0.0.1:8765</code> in the computer's own browser.</p>
             <p>A firewall may block port 8765 (<code>--port</code> changes it).</p>
+        </details>
+        <details>
+            <summary>Is everything still working? (Check-up)</summary>
+            <p>Open the setup program again, tap <i>Owner tools</i> and <i>Check now</i>: it looks at the router, the coin box, the update list and the print server, and says what to do about anything red. It changes nothing.</p>
         </details>
         <details>
             <summary>Something went wrong</summary>

@@ -28,6 +28,7 @@ box over USB, sets up the router and pairs them. About 15 minutes a unit, and on
      PIN: 482913
    ```
    Open the address on your phone (or the computer's own browser, which opens by itself when it has a screen) and type the PIN.
+   In a terminal that shows colours the program also draws a **QR code** of the phone's address: scan it with the phone's camera instead of typing the address.
 
 **No monitor at all (a small Armbian PC):** run it once over SSH (or with a keyboard) as `sudo python3 pisophone_setup.py
 --install-service`. The setup page then starts by itself whenever the computer boots; it prints the address and PIN once, and
@@ -55,7 +56,7 @@ add `--local-only` to serve the computer's own browser only.
 |---|---|---|
 | **1 Start** | Read what you need | Checks this computer, installs what is missing |
 | **2 Router** | Reset the router, plug in the modem and the cable | Finds the router by itself |
-| **3 Settings** | Type this customer's shop name and public Wi-Fi name (asked every time); keep the passwords it made (new ones for every unit), or type your own | Checks every entry |
+| **3 Settings** | Type this customer's shop name and public Wi-Fi name (asked every time); the passwords are made for you (new ones for every unit; *Advanced: type my own passwords* is folded away if you want your own) | Checks every entry |
 | **4 Install** | Plug the ESP32 in by USB (a data cable), tap *Start the installation*, wait about 10 minutes | Writes the PisoPhone software to the box (erasing it first), installs the router software, pairs the coin box, checks everything, saves your passwords and a printable sheet |
 | **5 Phones** | Open the setup page link and scan its QR code with each factory-reset phone | Makes the link to the phone setup page, already filled in with this box's key |
 | **6 Finish** | Insert one coin; try the customer Wi-Fi with a phone; tap *Set up the next unit* for the next router and box | Tests the coin and offers Telegram alerts; starts over for the next unit |
@@ -69,6 +70,7 @@ your admin QR code: it holds the Wi-Fi password.
 
 ## Owner tools (come back any time)
 Tap **Owner tools** at the top of the setup page (or open `http://<this computer>:8765/#tools`). You do not need a router or a coin box connected.
+- **Check-up:** tap *Check now* for a read-only look at the router, the coin box, the website's update list and the print server (if you have one). Each is green or red, with a one-line fix. It changes nothing; use it first when a shop reports a problem.
 - **Time cards (QR):** type the coin box's address (shown on its page), how many cards and how many hours on each, and tap *Make the cards*. It
   gives you printable pages (fronts, backs, both sides) that print from the browser at 100% on A4, and a ledger of every card number.
   Boxes you printed for before are remembered. Come back any time for another batch: numbers continue where they stopped.
@@ -94,7 +96,7 @@ For the next phone, choose the next slot and make the link again.
 ## If something goes wrong
 | What you see | What to do |
 |---|---|
-| The page does not open on the phone | The phone and the setup computer must be on the same network (see above). Use the address printed in the terminal; a firewall may block port 8765 (`--port` changes it). |
+| The page does not open on the phone | The first page has a *My phone can't open this page* help. The phone and the setup computer must be on the same network (see above). Use the address printed in the terminal; a firewall may block port 8765 (`--port` changes it). |
 | "No board found" / the board does not answer | Use a USB **data** cable. Hold the board's BOOT button, tap RESET, release BOOT, tap *Try again*. Linux: you must be in the `dialout` group (or run as root). Windows: install the CH340 / CP210x driver once. Close any serial monitor that uses the port. On Ubuntu / Parrot desktops ModemManager can grab the port: `sudo systemctl stop ModemManager`. |
 | "No router found" | Cable in a **LAN** port (not WAN), router on for 2 minutes after the reset. The page keeps looking every few seconds; after a fix it finds the router by itself. |
 | "The router could not download..." | The modem must be in the router's WAN port and have internet. |

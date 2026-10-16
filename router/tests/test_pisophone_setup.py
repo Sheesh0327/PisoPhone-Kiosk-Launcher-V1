@@ -3,7 +3,7 @@
 commands here with sh, against a fake router (fake wget serving the repository's files from a folder, fake uci, ubus and
 jsonfilter), with the real one-line installer (setup/install.sh) and a stand-in setup file.
 Run with:  python3 router/tests/test_pisophone_setup.py"""
-import base64, hashlib, importlib.util, io, os, shutil, subprocess, sys, tempfile, time, types, urllib.error, urllib.parse
+import base64, hashlib, importlib.util, io, os, re, shutil, subprocess, sys, tempfile, time, types, urllib.error, urllib.parse
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 spec = importlib.util.spec_from_file_location("pisophone_setup", f"{ROOT}/setup/pisophone_setup.py")
@@ -706,6 +706,47 @@ finally:
     sys.stdout, sys.stderr = sys.__stdout__, sys.__stderr__
 check(bad == 2, "a bad branch name is refused")
 check(nossh == 2, "no ssh command: says how to get it")
+
+# ---- the Check-up (read-only) and the QR code drawn in the terminal --------------------------------------------------------
+
+
+class Feed:
+    def __init__(self, body): self.body = body
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def read(self, n=-1): return self.body
+
+
+def checkup(up=(), feed=b'{"version": "1.5.4", "rollout": 100}'):
+    def opener(request, timeout=0):
+        if feed is None:
+            raise urllib.error.URLError("offline")
+        return Feed(feed)
+    return {i["name"]: i for i in ps.run_checkup("main", probe=lambda h, p=22, timeout=2.0: (h, p) in up, opener=opener)}
+
+
+everything = checkup(up={("10.0.0.1", 22), ("10.0.0.10", 80), ("10.0.0.95", 80)})
+check([i["state"] for i in everything.values()] == ["ok"] * 4 and "1.5.4" in everything["Update feed"]["text"], "check-up: all four ok: " + str(everything))
+none = checkup(feed=None)
+check([none[n]["state"] for n in ("Router", "Coin box", "Update feed", "Print server")] == ["bad", "bad", "bad", "off"], "check-up: nothing answers: the print server is only 'off'")
+check(all(none[n]["fix"] for n in ("Router", "Coin box", "Update feed", "Print server")), "check-up: every problem comes with its fix")
+factory = checkup(up={("192.168.1.1", 22)})
+check(factory["Router"]["state"] == "bad" and "not been set up" in factory["Router"]["text"], "check-up: a router at the factory address is not set up yet")
+check(checkup(feed=b"not json")["Update feed"]["state"] == "bad" and checkup(feed=b"{}")["Update feed"]["state"] == "bad", "check-up: a broken update list is a problem, not a crash")
+
+url = "http://192.168.1.50:8765"
+check(ps.terminal_qr(url, tty=False) == "", "no QR code when the output is not a terminal")
+art = ps.terminal_qr(url, tty=True)
+rows = []
+for line in art.split("\n"):
+    cells = re.findall(r"\x1b\[(\d+);(\d+)m\u2580", line)
+    rows.append([c[0] == "30" for c in cells])
+    rows.append([c[1] == "40" for c in cells])
+m = ps.qr_matrix(url)
+q = 2
+check(len(rows) >= len(m) + 2 * q and all(len(r) == len(m) + 2 * q for r in rows), "terminal QR: the size is the code plus a quiet zone")
+check(all(rows[q + y][q + x] == m[y][x] for y in range(len(m)) for x in range(len(m))) and not any(rows[0]) and not any(r[0] for r in rows),
+      "terminal QR: the modules are the ones of the QR encoder, with a white border")
 
 shutil.rmtree(tmp, ignore_errors=True)
 print(f"{checks} checks, {failures} failures")
