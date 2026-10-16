@@ -129,8 +129,10 @@ try:
             up = pg
             up.on("pageerror", lambda e: errors.append(str(e)))
             up.wait_for_load_state()
-            check(up.url.endswith("/send") and up.is_disabled("#go") and f"127.0.0.1:{env.PP}/send" in up.text_content("#url"),
+            check(up.url.endswith("/send") and up.is_disabled("#go") and up.input_value("#lnk") == f"http://127.0.0.1:{env.PP}/send" and "neverssl.com" in up.text_content("#alt"),
                   "the button opens the upload page in the same window, Send disabled until a file is chosen, with the address for a normal browser")
+            up.click("#cp")
+            check(up.text_content("#cp").startswith(("Copied", "Press and hold")), f"Copy link answers: {up.text_content('#cp')}")
             tmpf = f"{env.tmp}/Homework.pdf"
             body = b"%PDF-1.4\nbrowser test\n" * 50
             open(tmpf, "wb").write(body)

@@ -13,6 +13,10 @@ label.pick{background:none;border:1px dashed #5a70a3;color:#eef3ff;font-weight:6
 a.b{min-height:48px;background:none;border:1px solid #5a70a3;color:#eef3ff;font-weight:600;line-height:24px}
 button:disabled{opacity:.5}
 input{display:none}
+#alt{margin-top:18px;font-size:14px;line-height:20px;color:#97a6c7}
+#alt p{margin:0}
+#alt input{display:block;width:100%;margin:10px 0 0;padding:10px;border:1px solid #5a70a3;border-radius:8px;background:#050d22;color:#eef3ff;font:inherit;font-size:14px;box-sizing:border-box}
+button.alt2{min-height:44px;background:none;border:1px solid #5a70a3;color:#eef3ff;font-weight:600;margin-top:8px}
 #bar{height:8px;border-radius:4px;background:#1f3361;margin-top:14px;overflow:hidden;display:none}
 #bar i{display:block;height:100%;width:0;background:#5b9bff}
 #msg{min-height:24px;margin-top:12px;font-weight:600}
@@ -24,14 +28,21 @@ button:focus-visible,a.b:focus-visible,label.pick:focus-within{outline:2px solid
 <label class="pick" id="pk">Choose a file<input id="f" type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.rtf,.txt,.csv,.jpg,.jpeg,.png,.heic,.heif,.webp,.avif,.bmp,.tif,.tiff,application/pdf"></label>
 <div id="bar"><i></i></div>
 <div id="msg" role="status" aria-live="polite"></div>
-<p id="alt" style="font-size:14px;line-height:20px">Nothing happens when you tap Choose a file? The Wi-Fi sign-in window of some phones cannot open files. Open <b id="url"></b> in your phone's normal browser instead.</p>
+<div id="alt">
+<p><b>Nothing happens when you tap Choose a file?</b> The Wi-Fi sign-in window of some phones cannot open files. Open your phone's normal browser (Chrome or Safari) and go to any website that starts with <b>http://</b>, for example <b>neverssl.com</b>. This page opens there. Or copy the link below and paste it in that browser.</p>
+<input id="lnk" type="text" readonly aria-label="Link to this page">
+<button id="cp" type="button" class="alt2">Copy link</button>
+</div>
 <button id="go" type="button" disabled>Send</button>
 <a class="b" href="/">Back to the Wi-Fi page</a>
 </main>
 <script>
 (function(){
 var MAX=%MAXB%,f=document.getElementById("f"),go=document.getElementById("go"),msg=document.getElementById("msg"),bar=document.getElementById("bar"),pk=document.getElementById("pk");
-document.getElementById("url").textContent=location.host+"/send";
+var lnk=document.getElementById("lnk"),cp=document.getElementById("cp");
+lnk.value="http://"+location.host+"/send";
+cp.onclick=function(){lnk.select();try{lnk.setSelectionRange(0,200)}catch(e){}var ok=false;try{ok=document.execCommand("copy")}catch(e){}
+ cp.textContent=ok?"Copied. Paste it in your normal browser":"Press and hold the link above, then tap Copy"};
 function say(t,c){msg.textContent=t;msg.className=c||""}
 var E={OFF:"Sending files is not available right now.",TOO_BIG:"That file is too big. The limit is %MAX% MB.",RATE:"You sent several files already. Please try again later.",BUSY:"The router is busy. Please try again in a minute.",DOWN:"The owner's computer is not reachable right now. Please try again later.",INCOMPLETE:"The upload did not finish. Please try again.",NO_NAME:"That file has no name.",REFUSED:"The file was not accepted."};
 f.onchange=function(){var x=f.files[0];if(!x){go.disabled=true;return}
