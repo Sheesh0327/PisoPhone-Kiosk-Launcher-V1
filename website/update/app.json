@@ -1,10 +1,10 @@
 {
-  "versionCode": 468,
-  "versionName": "4.6.8-dev",
+  "versionCode": 473,
+  "versionName": "4.7.3-dev",
   "channel": "dev",
   
   "signatureChecksum": "DiFF_STFcP7MrUKtszkGshMCDzo8YHv1Q1jtomQFpLU",
-  "sha256": "1c33d48b03fbf6fe62ef3d9c98b85590d3982dbe5b6fb9214da304a0dd3f1dbe",
+  "sha256": "2de6941471c96a9d5349a0076e8b5240881eef398a85d539dfec567581e76b15",
   "size": 3536892,
-  "releaseDate": "2026-10-14"
+  "releaseDate": "2026-10-16"
 }
