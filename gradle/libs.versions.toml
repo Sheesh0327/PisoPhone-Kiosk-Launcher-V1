@@ -1,5 +1,5 @@
 [versions]
-roborazzi = "1.50.0"
+roborazzi = "1.76.0"
 androidxTestExtJunit = "1.2.1"
 androidxTestRunner = "1.6.2"
 agp = "9.1.1"
