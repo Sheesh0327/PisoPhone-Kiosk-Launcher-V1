@@ -151,6 +151,19 @@ try:
     check(rc == 0 and out.startswith("OK 3 24"), "ledger chain still verifies: " + out)
     a.close()
 
+    # ---- a top-up by a customer who is online already keeps the window open between coins ---------------------------------------------------
+    # (in this test the first coin must come within 4 s, and each later one within 3 s of the one before; the shop's real values are 30 s and 15 s)
+    env.set_box(busy=False, coins_at=[0.3, 2.5, 4.8, 7.0])   # the window lasts 7 s here, longer than the 4 s of the first wait
+    a = Cust("127.0.0.1", reset=True)
+    s = a.wait_state("idle", 5)
+    check(s is not None and s["online"] is True and s["left"] > 0, f"the customer is online with time left: {s}")
+    a.mark()
+    a.send({"t": "start", "plan": "hyper"})
+    fin = a.wait_state("final", 30)
+    check(fin is not None and fin["pulses"] == 4, f"one window took all four coins, over 7 seconds (each coin gives the next one time): {fin}")
+    a.close()
+    time.sleep(1.5)
+
     # ---- Done ends the window early; one client at a time; the other devices are turned away -------------------------------------
     env.set_box(busy=False, coins_at=[0.4])
     b = Cust("127.0.0.2", reset=True)
