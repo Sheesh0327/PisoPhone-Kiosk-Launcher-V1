@@ -1,7 +1,7 @@
 """Tests of setup/piso-setup.sh (the one-file router setup) without a router: a fake uci with canned radios, the generated
 settings, the payload, the helpers, and the coin box provisioning against a fake box.
 Run with:  python3 router/tests/test_setup.py"""
-import urllib.parse, http.server, json, os, re, shutil, subprocess, sys, tempfile, threading, base64
+import urllib.parse, http.server, os, re, shutil, subprocess, sys, tempfile, threading, base64
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SCRIPT = f"{ROOT}/setup/piso-setup.sh"

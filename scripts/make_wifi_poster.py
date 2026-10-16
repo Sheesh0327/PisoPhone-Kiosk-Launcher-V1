@@ -193,7 +193,7 @@ def build_poster(ssid, portal_url, shop_name="", logo_path=DEFAULT_LOGO):
     top = 1000
     qr_side = pw - 2 * 110
     panel(img, d, margin, top, pw, "Step 1", "Join the Wi-Fi", wifi,
-          [f"Open your phone camera, scan this code and tap Join.",
+          ["Open your phone camera, scan this code and tap Join.",
            f"Or pick \"{ssid}\" in your Wi-Fi list. There is no password.",
            "The payment page opens by itself."], qr_side)
     panel(img, d, margin + pw + gap, top, pw, "Step 2", "Already connected? Check your time or enter a voucher", url,

@@ -9,7 +9,7 @@ import base64, glob, hashlib, http.server, json, os, random, subprocess, sys, te
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 import make_admin_qr as qr
-from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 
 WEB = os.path.join(ROOT, "esp32_firmware", "web")
