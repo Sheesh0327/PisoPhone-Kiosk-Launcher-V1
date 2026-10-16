@@ -24,6 +24,10 @@ Run everything from the repository root. **Find yours by who runs it and when**,
 | `publish_firmware_ota.py` | Copies the built box firmware into `website/update/`, signs it, and writes `firmware.json` (version, build, checksums, signatures). `--json-only` rewrites only `firmware.json` after you signed by hand. Warns when the firmware changed but `PISO_FW_VERSION` did not. | `firmware-images.yml` (on `main`) |
 | `sign_router.py` | Signs the router setup file so every router installs it: writes `router.json` and `router-setup.sh`. | `publish-router.yml` |
 | `check_published_apk.py` | Checks that the APK on the website is the one `app.json` describes (size, checksum, signing certificate). | `quality.yml`, `verify_release.py` |
+| `make_firmware_bundles.py` | Packs the coin box firmware into the two owner zips (development and release layouts, no keys inside). | `firmware-images.yml` (manual run with "bundle") |
+| `sign_console_ui.py` | Signs the router console's page script so routers can take a newer one from the website. | `publish-router.yml` |
+| `check_coverage.py` | Line coverage of the app's unit tests per package, against `app/coverage-minimums.txt`. | `build-apk.yml` |
+| `ci_emulator_tests.sh` | Runs the app's instrumented tests inside an emulator (or on a phone with USB debugging). | `emulator-tests.yml`, `build-apk.yml` |
 
 ## Owner tools (your own computer; the private keys never go in CI or a cloud session)
 | Script | What it does |
@@ -34,6 +38,8 @@ Run everything from the repository root. **Find yours by who runs it and when**,
 | `make_admin_qr.py` | Makes the owner's admin QR code (and the key behind it the first time): scan it on a box's login page to be super admin. No password to publish (`docs/api/superadmin-qr.md`). |
 | `make_card_key.py`, `make_cards.py` | The separate card key, and printing a batch of QR time cards for one box. |
 | `make_recovery_code.py` | A recovery QR: scanned on a phone's lock screen it removes PisoPhone from that phone. |
+| `sign_box_type.py` | Signs a coin box's type (purchased: up to 6 phones, rental: up to 12) for that box's MAC address; the box checks it with the same owner key. |
+| `make_wifi_poster.py` | Prints the PisoWiFi poster: a QR code that joins the customer Wi-Fi and one that opens the coin page. |
 
 Not run directly: `owner_key.py` (shared key loading for the signing tools) and `card_format.py` (the QR card format).
 
@@ -44,7 +50,7 @@ Not run directly: `owner_key.py` (shared key loading for the signing tools) and 
 | `check_security_rules.sh` | The repository's security rules: no private key or factory password committed, TLS certificate checks never switched off without a stated reason, the coin-slot API keeps requiring signed calls, a capped number of `runBlocking`, and the router setup keeps verifying what it downloads. CI runs it. |
 | `check_vendored.py` | Fails if a vendored third-party file changed without its record in `website/js/VENDORED.md`. |
 | `sold_unit_check.py` | For hardened boxes you sell: shows the security eFuses and tells whether a flash dump is encrypted (`docs/PROVISIONING_SOLD_UNIT.md`). |
-| `gateway_client.py` | Talks to a box's router API from a PC (`arm`, `status`, `release`): for testing, and the model for the router side. |
+| `gateway_client.py` | Talks to a box's router API from a PC (`arm`, `status`, `release`, `ack`, `run`): for testing, and the model for the router side. |
 
 ## Tests
 Run all with the commands in `CONTRIBUTING.md`; CI runs them for the parts a change touches.

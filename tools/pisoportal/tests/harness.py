@@ -1,6 +1,6 @@
 """Test harness for pisoportal: a fake coin box (fakebox.py), a fake ndsctl, a fake ARP table, and customers that talk to the
 portal over WebSocket like the page does."""
-import base64, hashlib, hmac, json, os, shutil, signal, socket, subprocess, sys, tempfile, threading, time, urllib.error, urllib.request
+import base64, hashlib, hmac, json, os, shutil, socket, subprocess, sys, tempfile, threading, time, urllib.error, urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BIN = os.environ.get("PISOPORTAL") or os.path.join(HERE, "..", "target", "release", "pisoportal")
@@ -75,7 +75,6 @@ class Env:
         self.write_arp()
         self.set_box()
         self.extra = extra
-        self.procs = []
         self.portal = None
         self.start_box()
 

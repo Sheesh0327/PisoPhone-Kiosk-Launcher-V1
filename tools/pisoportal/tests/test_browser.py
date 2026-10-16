@@ -30,6 +30,17 @@ try:
         pg.wait_for_selector("#v-idle", state="visible", timeout=8000)
         check(pg.is_visible(".coin") and "HyperSpeed" in pg.content() and "Endurance" in pg.content(), "the plan page shows at once with the price list")
         check(not pg.is_visible("#ion"), "nothing paid yet: no online notice")
+        # a paused page says by when the paused time must be resumed (the server's moment, a day after the pause), not a made-up date
+        pp = br.new_page()
+        paused = '{"t":"state","s":"paused","plan":"hyper","left":600,"pm":1,"pl":1,"by":%d}' % (int(time.time()) + 86400)
+        pp.route_web_socket("**/ws", lambda ws: ws.on_message(lambda m: ws.send(paused)))
+        pp.goto(url)
+        end = time.time() + 8
+        while time.time() < end and "hold" not in (pp.text_content("#tby") or ""):
+            time.sleep(0.1)
+        tby = pp.text_content("#tby") or ""
+        check("Resume by" in tby and "Use by" not in tby and "lost" in tby, f"a paused page says when the time must be resumed: {tby}")
+        pp.close()
         env.set_box(busy=False, coins_at=[1.0, 1.6, 2.2])
         pg.click(".coin")
         pg.wait_for_timeout(150)
@@ -174,7 +185,7 @@ try:
         ctx2.close()
 
         # ---- a page stuck in "Counting coins" asks again by itself, every 3 s ----------------------------------------------------------------
-        import socketserver, threading, socket as sk
+        import threading, socket as sk
 
         class Proxy:
             """Between the phone and the portal. After the server's 'closing' state it keeps reading but passes nothing on to the page for

@@ -6,7 +6,7 @@ Cloudflare). It holds no secrets and has no user accounts.
 ## What is here
 - `index.html`: the phone setup page, reached from a coin box's **Set up a phone** link (`?mac=…&secret=…` or the
   same values after `#`). It shows the QR setup code (the main way) and, as the fallback, a USB cable setup. It can also
-  remove the kiosk from a phone (admin PIN). Without a box's link it shows a "restricted" notice instead.
+  remove the kiosk from a phone (no PIN: the phone accepts it while USB debugging is on). Without a box's link it shows a "restricted" notice instead.
   - `js/provisioning.js`: checks the box's link and builds the QR code's content; `js/qrcode.js` draws the code (vendored, MIT).
   - `js/webadb_manager.js`: the USB fallback. It loads the ADB library (`js/yume-chan-bundle.js`) only when it is used.
 - `flash/`: the coin box firmware images (one merged image per chip, `manifest.json` with a sha256 for each), built by CI. The

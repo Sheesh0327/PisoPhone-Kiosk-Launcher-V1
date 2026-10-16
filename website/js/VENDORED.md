@@ -16,7 +16,7 @@ It exports `Adb`, `AdbWebCredentialStore` (as `AdbCredentialWeb`), `AdbDaemonTra
 ## What is NOT known
 The bundle carries no version numbers and the repository never recorded them, so **the exact upstream versions are
 unknown**. Upstream: <https://github.com/yume-chan/ya-webadb> (npm scope `@yume-chan`). The bundle was committed on
-2026-09-29 (`e0a8599`).
+2026-09-29.
 
 ## Rule
 The hash above is checked in CI (`python3 scripts/check_vendored.py`). If you replace the bundle, update this file in

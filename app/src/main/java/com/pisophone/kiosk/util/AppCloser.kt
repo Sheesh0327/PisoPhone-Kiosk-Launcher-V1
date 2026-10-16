@@ -12,14 +12,14 @@ import com.pisophone.kiosk.receiver.KioskDeviceAdminReceiver
 /**
  * Stops whatever customer app is hung so the customer can open it again.
  *
- * The kiosk cannot see which app is in front without a special permission, so it closes every
- * launchable customer app. Core system apps and the kiosk itself are never touched.
+ * It closes every launchable customer app except the one in front (found with the Usage Access permission, when the
+ * owner has granted it). Core system apps and the kiosk itself are never touched.
  */
 object AppCloser {
     private const val TAG = "AppCloser"
 
-    /** What a [boost] did: how many apps were told to stop, how much memory came free, and which app was kept. */
-    class BoostResult(val closed: Int, val freedMb: Long, val keptPackage: String?)
+    /** What a [boost] did: how many apps were told to stop, and how much memory came free. */
+    class BoostResult(val closed: Int, val freedMb: Long)
 
     /** Usage events: the numbers of ACTIVITY_RESUMED / MOVE_TO_FOREGROUND and ACTIVITY_PAUSED / MOVE_TO_BACKGROUND. */
     private const val EVENT_FOREGROUND = 1
@@ -106,7 +106,7 @@ object AppCloser {
         Thread.sleep(BOOST_SETTLE_MS)
         val freed = (availableMb(app) - before).coerceAtLeast(0L)
         Log.i(TAG, "Boost: ${targets.size} apps stopped, ${freed}MB free, kept $foreground")
-        return BoostResult(targets.size, freed, foreground)
+        return BoostResult(targets.size, freed)
     }
 
     /** True for apps the customer can open and that are safe to stop. */

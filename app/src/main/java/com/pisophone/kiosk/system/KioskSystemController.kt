@@ -17,7 +17,6 @@ interface KioskSystemController {
     fun getScreenBrightness(): Float
     fun setScreenBrightness(brightness: Float)
     fun getMemoryStats(): Pair<Long, Long> // Pair(usedMb, totalMb)
-    fun optimizeMemory(): Long // returns freed MB
     fun triggerHapticFeedback()
 }
 
@@ -89,20 +88,6 @@ class AndroidKioskSystemController(
     } catch (e: Exception) {
         Log.w(TAG, "Error reading memory info: ${e.message}")
         Pair(0L, 0L)
-    }
-
-    override fun optimizeMemory(): Long {
-        val beforeUsed = getMemoryStats().first
-        return try {
-            // No killBackgroundProcesses(): modern Android restarts killed processes straight away,
-            // so it freed nothing and needed an extra permission.
-            System.gc()
-            val afterUsed = getMemoryStats().first
-            (beforeUsed - afterUsed).coerceAtLeast(0L)
-        } catch (e: Exception) {
-            Log.w(TAG, "Error optimizing memory: ${e.message}")
-            0L
-        }
     }
 
     override fun triggerHapticFeedback() {

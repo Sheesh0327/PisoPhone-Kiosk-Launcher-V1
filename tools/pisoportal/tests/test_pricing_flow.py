@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """A price change made in the console while a customer pays: that payment keeps the prices it started with, the next one gets the new ones."""
-import json, os, sys, time, urllib.request
+import json, os, urllib.request
 from harness import *
 
 CP = 18310

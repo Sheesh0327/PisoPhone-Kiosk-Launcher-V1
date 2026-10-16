@@ -130,10 +130,13 @@ pushing closes its issue. Avoid `|` characters inside cells.
 - RS7 skipped (2026-10-11): There are still users actively connected to the portal.
 - R4 skipped (2026-10-11): will check later.
 
+In this checklist "PisoKiosk" means the hidden kiosk network: `PisoKiosk-xxxx` on a router set up with release 1.5.0 or later (the name is in the setup summary), `PisoKiosk` on an older one.
+
 ## Baseline summary (update after each session)
 | Date | Passed | Failed | Not tested | Open blockers | Verdict |
 |---|---|---|---|---|---|
 | 2026-10-11 | 59 | 0 | 15 | 0 | no failures so far; 15 not tested |
+| 2026-10-16 | 57 ticked | 0 | 22 unticked | 0 | the checklist grew since (router 1.4 and 1.5, firmware 3.6.0); the unticked items are untested, not failed |
 
 ## 9. Router setup and customer Wi-Fi (setup/README.md)
 *pass 1 unless noted*

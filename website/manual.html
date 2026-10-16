@@ -91,7 +91,7 @@ ol.steps>li::before{content:counter(s);position:absolute;left:0;top:2px;width:30
 <rect x="10" y="70" width="150" height="70" rx="8" fill="#fff" stroke="#1f6feb" stroke-width="2"/><text x="85" y="100" text-anchor="middle" font-weight="700">Coin slot</text><text x="85" y="122" text-anchor="middle">takes the pesos</text>
 <rect x="210" y="70" width="150" height="70" rx="8" fill="#fff" stroke="#1f6feb" stroke-width="2"/><text x="285" y="100" text-anchor="middle" font-weight="700">ESP32 coin box</text><text x="285" y="122" text-anchor="middle">counts, keeps time</text>
 <rect x="410" y="70" width="150" height="70" rx="8" fill="#fff" stroke="#1f6feb" stroke-width="2"/><text x="485" y="100" text-anchor="middle" font-weight="700">OpenWrt router</text><text x="485" y="122" text-anchor="middle">Wi-Fi + internet</text>
-<rect x="600" y="10" width="150" height="60" rx="8" fill="#fff" stroke="#2da44e" stroke-width="2"/><text x="675" y="36" text-anchor="middle" font-weight="700">Rental phones</text><text x="675" y="56" text-anchor="middle">up to 10 slots</text>
+<rect x="600" y="10" width="150" height="60" rx="8" fill="#fff" stroke="#2da44e" stroke-width="2"/><text x="675" y="36" text-anchor="middle" font-weight="700">Rental phones</text><text x="675" y="56" text-anchor="middle">up to 6 phones (12 on a rental box)</text>
 <rect x="600" y="140" width="150" height="60" rx="8" fill="#fff" stroke="#2da44e" stroke-width="2"/><text x="675" y="166" text-anchor="middle" font-weight="700">Customer Wi-Fi</text><text x="675" y="186" text-anchor="middle">their own devices</text>
 <path d="M160 105H210M360 105H410M560 90L600 45M560 120L600 165" stroke="#1b2430" stroke-width="2" fill="none"/>
 </g></svg>
@@ -161,7 +161,7 @@ ol.steps>li::before{content:counter(s);position:absolute;left:0;top:2px;width:30
 <p>On a device on the router's network open <code>http://10.0.0.10</code> and sign in with the admin password. There are four tabs and a <b>Sign out</b> button.</p>
 <h3>Overview</h3>
 <ul>
-<li><b>Stats:</b> Revenue, Phones (x of 10) and Wi-Fi signal.</li>
+<li><b>Stats:</b> Revenue, Phones (x of 6, or x of 12 on a rental box) and Wi-Fi signal.</li>
 <li><b>Phones table</b> with a row per slot: Phone, Status (<i>Renting</i>, <i>Locked</i> or <i>Offline</i>), Time left and Battery. Buttons: <b>Pair…</b>, <b>Locate</b> (the phone rings for 1 minute), <b>Unpair</b>, <b>Set up</b>.</li>
 <li><b>Add or remove time:</b> choose one phone or <i>All phones</i>, type minutes, tap <b>Add time</b> or <b>Remove time</b>. Use this for refunds, freebies and fixes.</li>
 <li><b>Player accounts:</b> see <a href="#cards">chapter 8</a>.</li>
@@ -323,7 +323,7 @@ ol.steps>li::before{content:counter(s);position:absolute;left:0;top:2px;width:30
 <tr><th>Command</th><th>What it does</th></tr>
 <tr><td><code>piso-setup status</code></td><td>Health of everything</td></tr>
 <tr><td><code>piso-setup test-coin</code></td><td>Simulate a coin</td></tr>
-<tr><td><code>piso-setup reconcile</code></td><td>Fix bookkeeping (<code>rebase</code> to restart it)</td></tr>
+<tr><td><code>piso-setup reconcile</code></td><td>Compares the box's coin count with the ledger and checks the ledger was not edited (<code>rebase</code> to restart the comparison)</td></tr>
 <tr><td><code>piso-setup telegram</code></td><td>Set up Telegram alerts</td></tr>
 <tr><td><code>piso-setup wifi-name</code> / <code>guest-port</code></td><td>Change public Wi-Fi name / guest port</td></tr>
 <tr><td><code>piso-setup voucher-choice</code></td><td>Turn "Get a voucher code" at payment on or off</td></tr>
@@ -392,7 +392,7 @@ ol.steps>li::before{content:counter(s);position:absolute;left:0;top:2px;width:30
 </table>
 <h3>Numbers to remember</h3>
 <ul>
-<li>10 phones per box. Voice warnings at 5, 3, 1 minute and 10 s.</li>
+<li>6 phones per purchased box, 12 per rental box. Voice warnings at 5, 3, 1 minute and 10 s.</li>
 <li>Admin PIN lock: 5 wrong tries &rarr; 60 s, doubling to 15 min.</li>
 <li>Vendor unmask: 5 minutes. Owner login: 15 min idle, 1 h max.</li>
 <li>Maintenance window: 15 min (bypass: 5 min).</li>
@@ -404,7 +404,7 @@ ol.steps>li::before{content:counter(s);position:absolute;left:0;top:2px;width:30
 <table>
 <tr><th>Word</th><th>Meaning</th></tr>
 <tr><td>Box / coin box</td><td>The ESP32 board with the coin slot</td></tr>
-<tr><td>Slot</td><td>A numbered place for one rental phone (1 to 10)</td></tr>
+<tr><td>Slot</td><td>A numbered place for one rental phone (1 to 6, or 1 to 12 on a rental box)</td></tr>
 <tr><td>Pair</td><td>Link a rental phone to its slot on the box</td></tr>
 <tr><td>Kiosk</td><td>A phone locked so it can only run what you allow</td></tr>
 <tr><td>Device Owner</td><td>The Android mode that makes the lock permanent</td></tr>

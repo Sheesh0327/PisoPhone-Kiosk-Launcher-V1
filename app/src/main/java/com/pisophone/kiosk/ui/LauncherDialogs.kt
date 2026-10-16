@@ -42,7 +42,6 @@ class LauncherThemeColors(
     val cardBg: Color = Color(0xFF0D1527),
     val primary: Color = Color(0xFF10B981),
     val primaryLight: Color = Color(0xFF34D399),
-    val onPrimary: Color = Color(0xFF020617),
     val textPrimary: Color = Color(0xFFF8FAFC),
     val textSecondary: Color = Color(0xFF94A3B8),
     val textMuted: Color = Color(0xFF64748B),

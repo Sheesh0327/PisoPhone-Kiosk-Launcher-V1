@@ -39,20 +39,10 @@
 -keep interface fi.iki.elonen.** { *; }
 -keep class com.pisophone.kiosk.server.** { *; }
 
-# Preserve Cryptography & Security helper classes from member-level obfuscation if reflection is needed
--keepclassmembers class com.pisophone.kiosk.security.KioskSecurity {
-    public static *** getSharedSecret(...);
-    public static *** setSharedSecret(...);
-}
-
 # OkHttp & Okio
 -dontwarn okhttp3.**
 -dontwarn okio.**
 -keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod
-
--keepclassmembers class * {
-    @org.json.* <fields>;
-}
 
 # AndroidX Security Crypto
 -keep class androidx.security.crypto.** { *; }

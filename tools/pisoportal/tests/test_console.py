@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """The owner's console: sign-in with the router password, lock-out, the overview, the customer list with speeds, the rental phones, kicking a device."""
-import http.server, json, os, sys, threading, time, urllib.error, urllib.request
+import http.server, json, os, threading, time, urllib.error, urllib.request
 from harness import *
 
 HERE = os.path.dirname(os.path.abspath(__file__))

@@ -37,8 +37,6 @@ private object FakeSystemController : KioskSystemController {
 
     override fun getMemoryStats() = 1800L to 4096L
 
-    override fun optimizeMemory() = 0L
-
     override fun triggerHapticFeedback() {}
 }
 

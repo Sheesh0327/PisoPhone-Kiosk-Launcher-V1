@@ -2,7 +2,7 @@
 """Guests send a file to the owner: the coin page offers the button only when the key file exists; the upload page, in a real browser, sends a
 file that arrives at a fake print server byte for byte with the key and the device; limits, wrong types, a down print server and a
 cross-site page are handled; a router without the key refuses everything."""
-import glob, http.server, json, os, shutil, sys, threading, time, urllib.error, urllib.request
+import glob, http.server, json, os, shutil, threading, time, urllib.error, urllib.request
 from harness import *
 
 try:
@@ -150,8 +150,6 @@ try:
             check(not errors, f"no script errors: {errors}")
             br.close()
 
-    # the idle view tells the page the feature is on
-    ws_ok = True
 finally:
     env.close()
     srv.shutdown()

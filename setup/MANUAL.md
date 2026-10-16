@@ -103,7 +103,7 @@ It has every password (router, PisoKiosk Wi-Fi, coin box admin). The setup also 
 2. `piso-setup test-coin`: it arms the slot; insert one coin. It must say `the box counted 1 peso(s)`.
 3. **Wi-Fi customer:** join the customer Wi-Fi (`PisoWiFi`) with a phone, open the login page, pick a plan, tap Insert Coin, insert one coin. The page shows each coin at once with a countdown, and a **Done** button. You are *not* online yet (so the phone does not close the login page while you add coins). Insert more coins if you like, then tap **Done** (or wait 15 s after the last coin): the page then says you are online with your time and code. Browse something.
 4. **Second device:** while a window is open, try Insert Coin on another phone. It must be refused with a "Try again" page.
-5. **Rental phone:** join `PisoKiosk` with a kiosk phone (the app's own flow) and pay once.
+5. **Rental phone:** join the hidden kiosk network (`PisoKiosk-xxxx`, its name is in the setup summary; `PisoKiosk` on a router set up before 1.5.0) with a kiosk phone (the app's own flow) and pay once.
 6. `piso-setup reconcile` must say `RECONCILE OK` (needs firmware 3.2.1). On box firmware newer than 3.3.3 the count keeps going through a collection; on older firmware it starts again at 0 after one;
    the portal notices that by itself ("compared from now on"). If a mismatch stays after a collection: `piso-setup reconcile rebase`.
 7. `piso-setup diag > diag.txt` and keep the output: it contains the coin timings and no passwords. Send it with any bug report.
@@ -112,7 +112,7 @@ It has every password (router, PisoKiosk Wi-Fi, coin box admin). The setup also 
 1. In Telegram, open **@BotFather**, send `/newbot`, pick a name, copy the token it gives you.
 2. On the router: `piso-setup telegram`. Paste the token, give the site a name (it prefixes every message), then open your new bot in Telegram and send it any message. The router shows the chat it found; answer `y` if it is you.
 3. You get a "connected" message. From then on you receive: router restarted, box offline for 5 minutes (and back), revenue mismatch or edited ledger, a device abusing the coin slot, and a daily report at 21:00.
-4. Commands (only from your chat): `/status`, `/report [days]`, `/reconcile`, `/diag`, `/restart` (the portal), `/reboot` (then `/reboot confirm` within 2 minutes), `/help`.
+4. Commands (only from your chat): `/status`, `/report [days]`, `/reconcile`, `/diag`, `/update` (installs the newest signed router and coin box software), `/restart` (the portal), `/reboot` (then `/reboot confirm` within 2 minutes), `/help`.
 5. Optional dead-man switch: create a check at healthchecks.io, put its ping URL in `/etc/piso-monitor.conf` as `HEALTHCHECK_URL='...'`, then `/etc/init.d/piso_monitor restart`. You are alerted when the router stops pinging (power cut, internet down).
 The router needs internet for this: while the site is offline nothing can be sent, and alerts raised in that time are not delivered later (the dead-man switch covers that case).
 
@@ -152,7 +152,7 @@ Either way the app joins PisoKiosk, rejoins it whenever the phone is on another 
 short status lines (Wi-Fi, box search) while it finds its box.
 To fix a phone that is already provisioned (it needs the admin PIN or box secret because it is paired already):
 ```
-adb shell am broadcast -a com.pisophone.kiosk.CONFIGURE_ESP32 -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es wifi_ssid PisoKiosk --es wifi_pass '<password>' --es pin '<admin PIN>'
+adb shell am broadcast -a com.pisophone.kiosk.CONFIGURE_ESP32 -n com.pisophone.kiosk/.receiver.KioskAdminActionReceiver --es wifi_ssid '<kiosk network name>' --es wifi_pass '<password>' --es pin '<admin PIN>'
 ```
 
 ## What you get
@@ -206,7 +206,7 @@ The setup asks you to choose the router password (or shows a generated one and a
 |---|---|
 | `piso-setup test-coin` | arms the coin slot and waits for a coin, with no customer portal involved. It says whether the box counts the coin. |
 | `piso-setup reconcile [rebase]` | compares the box's own coin count with the router's revenue ledger and checks that nobody edited the ledger (needs firmware 3.2.1). On box firmware older than 3.3.4 the box's count restarts at 0 when its revenue is collected (newer firmware keeps counting); that is noticed by itself, and `rebase` compares from now on. |
-| `piso-setup telegram` | connects a Telegram bot: alerts (router restarted, box offline, revenue mismatch, a device abusing the coin slot, daily report) and remote commands `/status /report /reconcile /diag /restart /reboot`, answered only to your chat. Create the bot with @BotFather first. Optional: put a healthchecks.io URL in `/etc/piso-monitor.conf` (`HEALTHCHECK_URL`) so you are told when the whole router goes silent. |
+| `piso-setup telegram` | connects a Telegram bot: alerts (router restarted, box offline, revenue mismatch, a device abusing the coin slot, daily report) and remote commands `/status /report /reconcile /diag /update /restart /reboot`, answered only to your chat. Create the bot with @BotFather first. Optional: put a healthchecks.io URL in `/etc/piso-monitor.conf` (`HEALTHCHECK_URL`) so you are told when the whole router goes silent. |
 | `piso-setup self-update [check]` / `auto-update on\|off` | **updates from the website**: the router checks hourly for a release you signed (docs/RELEASE.md), installs it when no customer is online, goes back by itself if it does not run, and tells you in Telegram (`/update` installs now). Only releases signed with your owner key are accepted. |
 | `piso-setup box-update [check]` | installs the **coin box's newest firmware** now (the router fetches it, checks the checksum you published and hands it to the box, which checks your signature itself). Done by itself half an hour after the router's own hourly check, at a quiet moment; `auto-update off` stops that. |
 | `piso-setup update [check]` | the same as `self-update` (below), when run as the installed command on the router: fetches the newest release the owner signed from https://pisophone.pages.dev/update and installs it now. (A router still on release 1.0.0 needs `piso-setup self-update` once.) |
@@ -231,8 +231,8 @@ The setup prints `TIP:` lines at the moments people usually get stuck: what the 
 
 ## For developers
 The setup file is written in parts: **edit the files in `setup/src/`** (`00-header` settings and helpers, `20-preflight`,
-`30-router-settings` the uci batch, `40-files`, `50-coin-box` pairing and provisioning, `60-summary`, `70-agreement` the
-`verify` checks, `75-checks-stage2` the status checks and the second stage, `80-commands`, `90-updates` signed updates,
+`10-settings` stored settings and this router's Wi-Fi names, `30-router-settings` the uci batch, `40-files`, `50-coin-box` pairing and provisioning, `60-summary`, `70-agreement` the
+`verify` checks, `75-checks-stage2` the status checks and the second stage, `80-commands`, `90-updates` signed updates, `91-box-update` coin box firmware updates, `96-space-backup` free space, export and import, `97-console` the router console as front page,
 `95-owner-tools` Telegram, handout, admin lock, `98-setup-flow` pairing, questions and `main`). `setup/piso-setup.sh.in` is
 those parts joined, and `setup/piso-setup.sh` is that plus the portal files. After changing any of them run
 `python3 tools/build_piso_setup.py` (CI fails if a committed generated file is out of date). Tests: `python3 router/tests/test_setup.py`.

@@ -4,10 +4,10 @@ import androidx.compose.ui.graphics.Color
 import com.pisophone.kiosk.ui.theme.TechNet
 
 /** How urgent the remaining time looks on the pill: calm, running low (5 min), nearly out (1 min). */
-enum class TimeLevel(val color: Color?) {
-    OK(null),
-    LOW(TechNet.gold),
-    CRITICAL(TechNet.danger),
+enum class TimeLevel {
+    OK,
+    LOW,
+    CRITICAL,
     ;
 
     companion object {
