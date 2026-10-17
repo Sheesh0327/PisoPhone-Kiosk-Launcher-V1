@@ -21,11 +21,15 @@ key; and the money is always right. Two rules decide every trade-off:
 
 Real customers use the live release. Prefer a smaller, tested change over a clever one, and say plainly what you did not test.
 
-## 2. Where the repository is now (2026-10-16)
-- **Live (published, 100%):** router **1.5.4** (`setup/RELEASE`), coin box firmware **3.6.0** (`PISO_FW_VERSION`), the phone app
+## 2. Where the repository is now (2026-10-17)
+- **Live (published, 100%):** router **1.5.5** (`setup/RELEASE`), coin box firmware **3.6.1** (`PISO_FW_VERSION`), the phone app
   from CI (dev builds from `beta`, stable builds from `main`; the number is the CI run number).
 - **Branches:** `main` is production, `beta` is where work happens. After CI rebuilds on each branch their generated router
   files differ byte for byte, so merges to `main` keep `main`'s generated files (section 5).
+- **Production hardening pass** (`docs/maintainers/HARDENING_PLAN.md`: what was fixed, what is open, the hardware checks): router
+  1.5.5 went to 100% before the owner's hardware checks were done, so those checks are still owed. Phone app: paid time starts at
+  Done (coins are held while the lock screen waits; `PaymentRepository.startHeldClock`), and the power menu is available only
+  inside an admin maintenance window (`KioskPolicyManager.applyPowerMenu`); neither has run on a real phone.
 - **Recent work:** each router has its own Wi-Fi names (`PisoKiosk-xxxx`, `PisoCoinBox-xxxx`, 1.5.0); coin page: vouchers, pause
   (from 20 pesos, once, 1 kbit/s and 2 MB), mini-game, "send a file to the owner" (relayed to the print server's inbox);
   quicker "you are online" after Done; the setup program (`setup/pisophone_setup.py`) does the whole install and has Owner tools
@@ -35,8 +39,6 @@ Real customers use the live release. Prefer a smaller, tested change over a clev
   done. **Print server pairing** (a code instead of copying `send.key`) is only specified (`docs/api/print-pairing.md`): it needs
   `/api/inbox/pair` on the print server, which is a separate project, not in this repo. Until then the key is copied by hand.
 - **Known and open:**
-  - the box dashboard's Settings form sends `port`, `relay_active_low`, `led_active_low` but the handler reads `target_port`,
-    `relay_act_low`, `led_act_low`, so those three never save from the dashboard (fix needs a hardware test and a firmware release);
   - cleanup skipped on purpose: firmware dead code (needs a firmware release); Android: `MainActivity` `isLockTaskActive`, unused
     constructor parameters, stale lint-baseline entries, `device_admin.xml`, legacy launcher icons, `ACTION_FACTORY_RESET`,
     a duplicate `getLocalIpAddress`.

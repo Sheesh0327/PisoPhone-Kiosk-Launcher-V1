@@ -182,6 +182,10 @@ cmd_diag() {
 	echo "--- coin box link"; cmd_box_diag 2>&1
 	echo "--- firewall tables"; nft list tables 2> /dev/null
 	echo "--- openNDS"; uci -q get opennds.@opennds[0].gatewayinterface; ndsctl status 2>&1 | head -12
+	echo "--- guests as openNDS sees them (a paying phone must be Authenticated)"; ndsctl json 2> /dev/null | grep -E '"(mac|ip|state|session_end|download_this_session)"' | head -40
+	echo "--- rules openNDS built for guests (an Authenticated phone's traffic must reach an accept rule)"
+	{ nft list ruleset 2> /dev/null | grep -i -A14 'chain.*nds' || iptables -S 2> /dev/null | grep -i nds; } | head -90
+	echo "--- last grants and re-grants"; logread -e coinslot 2> /dev/null | grep -E 'reconnect|healed|resume|REFUSED|still not online' | tail -10
 	echo "--- last coin timings (ms after the slot was asked to arm)"; logread -e coinslot 2> /dev/null | grep ' timing ' | tail -12
 	echo "--- last coin-slot log lines"; logread -e coinslot 2> /dev/null | grep -v ' timing ' | tail -20
 	echo "--- setup log"; tail -15 "$LOG" 2> /dev/null
