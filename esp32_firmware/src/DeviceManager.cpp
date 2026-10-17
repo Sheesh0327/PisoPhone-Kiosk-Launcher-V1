@@ -231,7 +231,7 @@ bool checkReplayProtection(String deviceId, unsigned long long newTs) {
 const char* telemetryAuthFailure(String deviceId, String tsStr, String sig) {
     if (deviceId.length() == 0) return "no device id";
     String expectedSig = calculateHMAC(deviceId + ":" + tsStr, getSharedSecret());
-    if (!sig.equalsIgnoreCase(expectedSig)) return "signature does not match (the phone has a different box secret)";
+    if (!signatureMatches(sig, expectedSig)) return "signature does not match (the phone has a different box secret)";
 
     unsigned long long ts = strtoull(tsStr.c_str(), NULL, 10);
     if (!checkReplayProtection(deviceId, ts))

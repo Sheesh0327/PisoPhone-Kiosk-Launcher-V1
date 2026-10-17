@@ -206,12 +206,14 @@ fn hash_of(code: &str) -> String {
     sha256_hex(format!("vch1{}", code).as_bytes())[..16].to_string()
 }
 
+// Read as bytes and decoded leniently: one damaged byte used to make the whole file read as empty, and the next write then
+// replaced every voucher with one line.
 fn load_batches(dir: &str) -> Vec<Batch> {
-    fs::read_to_string(batches_path(dir)).map(|t| t.lines().filter_map(Batch::parse).collect()).unwrap_or_default()
+    fs::read(batches_path(dir)).map(|b| String::from_utf8_lossy(&b).lines().filter_map(Batch::parse).collect()).unwrap_or_default()
 }
 
 fn load_codes(dir: &str) -> Vec<CodeRow> {
-    fs::read_to_string(codes_path(dir)).map(|t| t.lines().filter_map(CodeRow::parse).collect()).unwrap_or_default()
+    fs::read(codes_path(dir)).map(|b| String::from_utf8_lossy(&b).lines().filter_map(CodeRow::parse).collect()).unwrap_or_default()
 }
 
 fn write_atomic(path: &str, lines: impl Iterator<Item = String>) -> std::io::Result<()> {
@@ -407,6 +409,15 @@ pub fn lookup(dir: &str, now: u64, code: &str) -> Result<(Batch, String), Redeem
         return Err(RedeemError::Expired);
     }
     Ok((batch, h))
+}
+
+/// A code marked spent whose time could not be added: unused again.
+pub fn mark_unused(dir: &str, hash: &str) -> bool {
+    let mut rows = load_codes(dir);
+    let Some(r) = rows.iter_mut().find(|r| r.hash == hash) else { return false };
+    r.used_at = 0;
+    r.mac.clear();
+    write_atomic(&codes_path(dir), rows.iter().map(|r| r.line())).is_ok()
 }
 
 /// The code is spent (by this device, now).

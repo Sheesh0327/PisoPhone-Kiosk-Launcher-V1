@@ -182,7 +182,7 @@ void authWorkerTask(void* pvParameters) {
                                         String expectedSig = calculateHMAC("v1:" + currentDevId + ":" + currentTxId +
                                                                                ":" + currentAmount + ":" + ackTs,
                                                                            getSharedSecret());
-                                        if (ackSig.equalsIgnoreCase(expectedSig)) {
+                                        if (signatureMatches(ackSig, expectedSig)) {
                                             ackValid = true;
                                         } else {
                                             Serial.printf("[AUTH WORKER] Invalid ACK signature for tx_id='%s'\n",
@@ -499,7 +499,7 @@ void handleLogout() {
         unmaskExpiryTimestamp = 0;
         Serial.println("[👑 SUPER ADMIN] Collection recorded at Super Admin logout.");
     }
-    superAdminSessionEnd();
+    if (superAdminSessionOk()) superAdminSessionEnd(); // a plain GET from anyone must not sign the owner out
     adminSessions.end(cookieValue(ADMIN_COOKIE).c_str());
     webServer.sendHeader("Set-Cookie", String(ADMIN_COOKIE) + "=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0");
     webServer.requestAuthentication(BASIC_AUTH, "HARDWARE Admin Login", "Logged out");

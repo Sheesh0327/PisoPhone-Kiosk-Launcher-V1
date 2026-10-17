@@ -592,7 +592,7 @@ fn handle(p: Arc<Portal>, stream: TcpStream, peer: SocketAddr) {
             let Some(key) = req.header("sec-websocket-key").map(|k| k.to_string()) else {
                 return respond(&mut conn.s, "400 Bad Request", "text/plain", "websocket only", "");
             };
-            if !same_origin(&req) {
+            if !same_origin(&req) || req.header("sec-fetch-site").is_some_and(|v| v != "same-origin" && v != "none") {
                 log!("websocket refused: origin {} is not this portal", req.header("origin").unwrap_or(""));
                 return respond(&mut conn.s, "403 Forbidden", "text/plain", "wrong origin", "");
             }

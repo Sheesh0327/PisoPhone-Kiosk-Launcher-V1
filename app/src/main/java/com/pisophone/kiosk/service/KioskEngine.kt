@@ -387,12 +387,17 @@ class KioskEngine(
         esp32Manager.armSlot(ARMING_TIMEOUT_SECONDS)
     }
 
+    // Called from the Done button (main thread) and from the coin window running out (supervisor thread): one at a time, and only
+    // while a payment is open (the second of two calls has nothing to finish).
+    @Synchronized
     fun finishPayment() {
+        if (!SessionRules.isArmed(stateManager.appState.value)) return
         if (stateManager.coinsInserted.value > 0) audioManager.playDoneSound()
         closeSession(sendUnarmToEsp = true)
         stateManager.appState.value = SessionRules.afterFinishPayment(
             stateManager.appState.value,
             stateManager.coinsInserted.value,
+            hasPaidTime = stateManager.sessionTimeRemaining.value > 0,
         )
         stateManager.coinsInserted.value = 0
         stateManager.saveState()

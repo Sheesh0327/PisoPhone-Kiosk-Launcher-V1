@@ -238,6 +238,26 @@ a, b, c = r.stdout.strip().split("\n")
 check(a == "second|2", "conf_set replaces, conf_get reads: " + a)
 k1, k2 = b.split("|")
 check(len(k1) == 12 and k1 == k2 and re.fullmatch(r"[a-hjkmnp-zA-HJ-NP-Z2-9]+", k1), "secrets are random, look-alike free and remembered: " + b)
+
+# a settings write that fails (a full flash: no byte can be written) keeps the old settings, which hold every password and the gateway key
+r = lib("conf_set KEEP1 one; conf_set KEEP2 two; ( trap '' XFSZ; ulimit -f 0; conf_set NEW three; echo rc=$? ); "
+        'echo "$(conf_get KEEP1)|$(conf_get KEEP2)|$(conf_get NEW)"; ls "$(dirname "$CONF")" | grep -c "tmp" || true')
+check("rc=1" in r.stdout and "one|two|\n" in r.stdout, "a failed settings write keeps the old settings: " + r.stdout + r.stderr)
+check(r.stdout.strip().endswith("0"), "no temporary settings file is left behind: " + r.stdout)
+
+# the owner's own lines in coinslot.conf survive a rewrite (prices, SEND_HOST, ...); the setup's keys are replaced
+cs = f"{tmp}/csroot"
+os.makedirs(f"{cs}/etc", exist_ok=True)
+open(f"{cs}/etc/coinslot.conf", "w").write("GW_KEY='old'\nHYPER_TIERS='5:40 10:90'\nSEND_HOST='10.0.0.96'\n# my note\n")
+r = lib(f'PISO_ROOT={cs}; conf_set GUEST_NAME "Shop"; write_coinslot_conf {"ab" * 32} AA:BB:CC:DD:EE:FF; cat {cs}/etc/coinslot.conf')
+check("HYPER_TIERS='5:40 10:90'" in r.stdout and "SEND_HOST='10.0.0.96'" in r.stdout and "# my note" in r.stdout,
+      "the owner's own coinslot.conf lines are kept: " + r.stdout)
+check(r.stdout.count("GW_KEY=") == 1 and f"GW_KEY='{'ab' * 32}'" in r.stdout, "the setup's own keys are replaced, not doubled")
+check(oct(os.stat(f"{cs}/etc/coinslot.conf").st_mode & 0o777) == "0o600", "coinslot.conf stays private")
+
+# stopped from outside (Ctrl-C, the SSH session lost): the clean-up runs, as on an error
+r = lib('NDS_RESTORE=0; UNDO="echo undone-it"; ( kill -INT $$ ) ; echo not-reached', env={})
+check("undone-it" in r.stdout and "not-reached" not in r.stdout and "interrupted" in r.stdout, "an interrupted run undoes its half-done step: " + r.stdout)
 check(re.fullmatch(r"[0-9a-f]{64}", c), "gateway key is 64 hex characters")
 check(oct(os.stat(f"{tmp}/conf2").st_mode)[-3:] == "600", "settings file is private")
 

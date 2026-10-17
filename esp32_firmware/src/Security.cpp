@@ -31,3 +31,15 @@ String computeSecWebSocketAccept(String key) {
     base64Result[outLen] = 0;
     return String((char*)base64Result);
 }
+
+bool signatureMatches(const String& got, const String& expected) {
+    if (got.length() != expected.length() || expected.length() == 0) return false;
+    uint8_t diff = 0;
+    for (size_t i = 0; i < expected.length(); i++) {
+        char a = got[i], b = expected[i];
+        if (a >= 'A' && a <= 'Z') a = (char)(a - 'A' + 'a');
+        if (b >= 'A' && b <= 'Z') b = (char)(b - 'A' + 'a');
+        diff |= (uint8_t)(a ^ b);
+    }
+    return diff == 0;
+}

@@ -113,7 +113,7 @@ static SigCheck coinslotSignatureCheck(const char* action, const String& rawDevI
     String sig = webServer.arg("sig");
     String payload = "v1:" + String(action) + ":" + rawDevId + ":" + ts;
     if (txId.length() > 0) payload += ":" + txId;
-    if (rawDevId.length() == 0 || !sig.equalsIgnoreCase(calculateHMAC(payload, getSharedSecret())))
+    if (rawDevId.length() == 0 || !signatureMatches(sig, calculateHMAC(payload, getSharedSecret())))
         return SigCheck::BadSignature;
     if (!checkReplayProtection(rawDevId, strtoull(ts.c_str(), NULL, 10))) return SigCheck::StaleTimestamp;
     return SigCheck::Ok;

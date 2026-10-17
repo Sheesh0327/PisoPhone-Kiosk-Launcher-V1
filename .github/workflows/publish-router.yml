@@ -77,9 +77,22 @@ jobs:
           KEY="$RUNNER_TEMP/owner.pem"
           trap 'rm -f "$KEY"' EXIT
           (umask 077; printf '%s' "$OWNER_SIGNING_KEY_B64" | tr -d '\r\n ' | base64 -d > "$KEY")
+          # What was approved is this run's commit: the router files and the signing script are fingerprinted now, and the loop below
+          # (which rebases onto the newest main to push) signs only when they are still exactly these. Anything pushed to main after
+          # the approval is never signed by this run.
+          APPROVED=$(sha256sum setup/piso-setup*.sh scripts/sign_router.py scripts/owner_key.py)
           for attempt in 1 2 3 4 5; do
             git fetch -q origin main
             git reset -q --hard origin/main
+            if [ "$(sha256sum setup/piso-setup*.sh scripts/sign_router.py scripts/owner_key.py)" != "$APPROVED" ]; then
+              if [ "$GITHUB_EVENT_NAME" = push ]; then
+                # (the push that changed them started its own run, which asks for its own approval)
+                echo "::notice::main has newer router files than this run's commit ($GITHUB_SHA): nothing signed here, the run of the newer push signs them."
+                exit 0
+              fi
+              echo "::error::main has new router files since this run was approved ($GITHUB_SHA): nothing was signed. Run the workflow again for the newest main."
+              exit 1
+            fi
             # the router file: nothing to sign when exactly this file is already published at this rollout
             if [ -f website/update/router-setup.sh ] && cmp -s setup/piso-setup.sh website/update/router-setup.sh \
                && { [ -z "$ROLLOUT_SET" ] || python3 -c "import json,sys; sys.exit(0 if str(json.load(open('website/update/router.json')).get('rollout')) == sys.argv[1] else 1)" "$ROLLOUT" 2> /dev/null; }; then

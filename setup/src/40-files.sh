@@ -47,21 +47,29 @@ extract_payload() {
 		log "this copy carries no portal files (it is the installed one): the files on the router are kept"
 		return 0
 	fi
-	sed -n 's/^#@@FILE //p' "$_self" | while read -r _dest _mode; do mkdir -p "$(dirname "$PISO_ROOT$_dest")"; : > "$PISO_ROOT$_dest"; chmod "$_mode" "$PISO_ROOT$_dest"; done
+	# text files are written next to the old ones (.new) and moved in only when every one is complete: a power cut or a full flash
+	# in the middle leaves the old files working (each was emptied first, and a cut left an empty init script: no portal after a reboot)
+	sed -n 's/^#@@FILE //p' "$_self" | while read -r _dest _mode; do mkdir -p "$(dirname "$PISO_ROOT$_dest")"; : > "$PISO_ROOT$_dest.new"; chmod "$_mode" "$PISO_ROOT$_dest.new"; done
 	# a program is only replaced once its new copy is decoded and checked: a failed update leaves the old one working
 	sed -n 's/^#@@B64 //p' "$_self" | while read -r _dest _rest; do mkdir -p "$(dirname "$PISO_ROOT$_dest")"; done
 	# text files are copied as they are; a binary (the portal program) is stored as base64 lines, decoded in RAM (/tmp: the
 	# flash may be nearly full) and then moved into place
 	_tmpd="${TMPDIR:-/tmp}/piso-payload.$$"
 	rm -rf "$_tmpd"; mkdir -p "$_tmpd" || die "could not create $_tmpd"
-	awk -v root="$PISO_ROOT" -v tmp="$_tmpd" '/^#@@FILE /{ if (out != "") close(out); out = root $2; next } /^#@@B64 /{ if (out != "") close(out); n = split($2, p, "/"); out = tmp "/" p[n] ".b64"; next } out != "" { print > out }' "$_self"
+	awk -v root="$PISO_ROOT" -v tmp="$_tmpd" '/^#@@FILE /{ if (out != "") close(out); out = root $2 ".new"; next } /^#@@B64 /{ if (out != "") close(out); n = split($2, p, "/"); out = tmp "/" p[n] ".b64"; next } out != "" { print > out }' "$_self"
 	# shellcheck disable=SC2013 # destinations are paths without spaces
 	for f in $(sed -n 's/^#@@FILE \([^ ]*\) .*/\1/p' "$_self"); do
 		f="$PISO_ROOT$f"
-		[ -s "$f" ] || die "could not write $f"
-		sed -i 's/\r$//' "$f"
+		[ -s "$f.new" ] || { rm -f "$f.new"; die "could not write $f (is the router's flash full? piso-setup space)"; }
+		sed -i 's/\r$//' "$f.new"
+	done
+	# shellcheck disable=SC2013 # destinations are paths without spaces
+	for _e in $(sed -n 's/^#@@FILE \([^ ]*\) \([^ ]*\).*/\1|\2/p' "$_self"); do
+		f="$PISO_ROOT${_e%%|*}"
+		chmod "${_e#*|}" "$f.new"; mv "$f.new" "$f"
 		log "installed $f"
 	done
+	sync
 	# (a for loop, not a pipe: die must end the whole setup, not a subshell)
 	# shellcheck disable=SC2013 # one word per program: path|mode|sha256
 	for _e in $(sed -n 's/^#@@B64 \([^ ]*\) \([^ ]*\) *\([^ ]*\).*/\1|\2|\3/p' "$_self"); do
@@ -97,7 +105,9 @@ remove_old_portal() {
 write_coinslot_conf() {  # write_coinslot_conf <gateway key> <box mac>
 	umask 077
 	mkdir -p "$PISO_ROOT/etc"
-	cat > "$PISO_ROOT/etc/coinslot.conf" << EOT
+	_cf="$PISO_ROOT/etc/coinslot.conf"
+	{
+		cat << EOT
 GW_BOX='$BOX_IP'
 GW_KEY='$1'
 GW_BOX_MAC='$2'
@@ -107,9 +117,13 @@ GATEWAY_NAME='$(conf_get GUEST_NAME)'
 CONSOLE_BIND='$LAN_IP'
 CONSOLE_PORT='$(console_port)'
 EOT
-	# the voucher choice on the coin page (piso-setup voucher-choice on|off); nothing is written until it is set: the portal's default is on
-	[ -z "$(conf_get VOUCHER_CHOICE)" ] || printf "VOUCHER_CHOICE='%s'\n" "$(conf_get VOUCHER_CHOICE)" >> "$PISO_ROOT/etc/coinslot.conf"
+		# the voucher choice on the coin page (piso-setup voucher-choice on|off); nothing is written until it is set: the portal's default is on
+		[ -z "$(conf_get VOUCHER_CHOICE)" ] || printf "VOUCHER_CHOICE='%s'\n" "$(conf_get VOUCHER_CHOICE)"
+		# every other line is the owner's own (prices, SEND_HOST, PAUSE_*, ...): kept as it was, the setup only owns the keys above
+		[ -r "$_cf" ] && grep -v -E '^(GW_BOX|GW_KEY|GW_BOX_MAC|PORTAL_BIND|PORTAL_PORT|GATEWAY_NAME|CONSOLE_BIND|CONSOLE_PORT|VOUCHER_CHOICE)=' "$_cf"
+		:
+	} > "$_cf.new" && grep -q '^GW_KEY=' "$_cf.new" && mv "$_cf.new" "$_cf" || { rm -f "$_cf.new"; umask 022; die "could not write $_cf (is the router's flash full? piso-setup space)"; }
 	umask 022
-	chmod 600 "$PISO_ROOT/etc/coinslot.conf"
+	chmod 600 "$_cf"
 }
 

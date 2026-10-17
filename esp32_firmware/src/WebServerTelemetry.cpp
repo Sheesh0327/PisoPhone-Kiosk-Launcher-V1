@@ -61,15 +61,8 @@ void handleHeartbeat() {
         return;
     }
 
-    // An acknowledgement removes a paid coin from the retry queue for good: only on a signed heartbeat (it used to be
-    // honoured before any check, so anyone on the kiosk network could clear a phone's queued coins).
-    if (isAuth && webServer.hasArg("ack_tx") && deviceId.length() > 0) {
-        String ackTx = webServer.arg("ack_tx");
-        ackTx.trim();
-        if (ackTx.length() > 0) {
-            acknowledgePhonePayment(deviceId, ackTx);
-        }
-    }
+    // (A heartbeat no longer acknowledges payments: its signature covers only the device and the time, so an "ack_tx" added to a
+    // captured heartbeat could clear a phone's queued coins before the phone was paid. Phones acknowledge with a signed ack.)
 
     bool isAppReq = (webServer.hasArg("app") && (webServer.arg("app") == "1" || webServer.arg("app") == "true")) ||
                     (webServer.hasArg("client") && webServer.arg("client") == "pisophone_app") ||

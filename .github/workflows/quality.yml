@@ -322,6 +322,7 @@ jobs:
           python3 tests/test_flow.py
           python3 tests/test_console.py
           python3 tests/test_pricing_flow.py
+          python3 tests/test_link_loss.py
           CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 tests/test_browser.py
           CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 tests/test_console_loader.py
           CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 tests/test_console_prices.py

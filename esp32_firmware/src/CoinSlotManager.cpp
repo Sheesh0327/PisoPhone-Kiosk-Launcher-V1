@@ -85,10 +85,8 @@ static void initiateSessionRelease(const char* reason, bool force) {
     }
 
     if (!force) {
-        noInterrupts();
-        int currentPulses = isrUniversalPulseCount;
-        unsigned long lastPulse = isrLastPulseTimeMs;
-        interrupts();
+        unsigned long lastPulse = 0;
+        int currentPulses = coinPulsesPeek(&lastPulse);
 
         currentState = CoinSlotState::DRAINING;
         pendingEndReason = terminalReason;
@@ -142,7 +140,10 @@ CoinSlotState getCoinSlotState() {
 
 bool isCoinSlotArmed() {
     if (currentState == CoinSlotState::ARMED) {
-        return ((long)(sessionArmedUntil - millis()) > 0);
+        // Powered for the whole ARMED state, even past its deadline: the slot manager decides when to drain. Dropping power here
+        // for one loop pass (the deadline passed between the session check and the relay update) blanked the pulses of the coin in
+        // flight for 400 ms, the very coin the drain exists to save.
+        return true;
     }
     if (currentState == CoinSlotState::DRAINING) {
         return true; // Keep physical relay energized throughout DRAINING lifecycle
@@ -303,14 +304,14 @@ void processCoinSlotSession() {
     // Periodically retry unacknowledged payment dispatches
     processPendingPaymentRetries();
 
-    // 1. Ignore early boot spikes (< 3000ms)
-    if (now < 3000) {
-        if (isrUniversalPulseCount > 0) {
-            noInterrupts();
-            isrUniversalPulseCount = 0;
-            interrupts();
+    // 1. Ignore early boot spikes (the first 3 s after start; once only, so not again when millis() wraps after 49.7 days)
+    static bool bootSettled = false;
+    if (!bootSettled) {
+        if (now < 3000) {
+            coinPulsesTake();
+            return;
         }
-        return;
+        bootSettled = true;
     }
 
     // 1b. Say so when pulses too short to be a coin were seen (a spark, a loose wire, noise), at most once a second.
@@ -333,11 +334,7 @@ void processCoinSlotSession() {
     // 2. Read and harvest new pulses atomically from ISR counter into session buffer
     int newPulses = 0;
     unsigned long lastPulseTime = 0;
-    noInterrupts();
-    newPulses = isrUniversalPulseCount;
-    isrUniversalPulseCount = 0;
-    lastPulseTime = isrLastPulseTimeMs;
-    interrupts();
+    newPulses = coinPulsesTake(&lastPulseTime);
 
     // 2b. Settling window: pulses right after the relay powers on are stray, not coins. Drop them, and drop the rest of
     // a train that began inside the window.
@@ -411,10 +408,7 @@ void processCoinSlotSession() {
                 "[🪙 COIN SLOT] Drain guard timeout reached. Delivering remaining pulses and finalizing release.");
 
             // Salvage any pulses that accumulated before the guard tripped
-            noInterrupts();
-            int trailingPulses = isrUniversalPulseCount;
-            isrUniversalPulseCount = 0;
-            interrupts();
+            int trailingPulses = coinPulsesTake();
 
             int remainingPulses = sessionAccumulatedPulses + trailingPulses;
             sessionAccumulatedPulses = 0;

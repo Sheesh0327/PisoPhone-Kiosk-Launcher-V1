@@ -41,11 +41,21 @@ update_healthy() {
 	[ -x /etc/init.d/pisoportal ] || return 0
 	_t=0
 	while [ "$_t" -lt "${PISO_HEALTH_RETRY:-30}" ]; do
-		proc_running pisoportal && return 0
-		sleep 2; _t=$((_t + 2))
+		# running is not enough: a program that keeps crashing is restarted by procd and is "running" most of the time. It must
+		# answer, twice, a few seconds apart.
+		if proc_running pisoportal && portal_answers && { sleep 3; portal_answers; }; then return 0; fi
+		sleep 2; _t=$((_t + 5))
 	done
-	UPDATE_WHY="the portal program is not running after the update"
+	UPDATE_WHY="the portal program is not running (or not answering) after the update"
 	return 1
+}
+
+# portal_answers: the portal answers its /ping on the guest address (true when that address is not known: an older setup)
+portal_answers() {
+	_pb=$(cs_get PORTAL_BIND); _pp=$(cs_get PORTAL_PORT)
+	[ -n "$_pb" ] && [ -n "$_pp" ] || return 0
+	if command -v curl > /dev/null 2>&1; then curl -s -m 4 "http://$_pb:$_pp/ping" 2> /dev/null | grep -q ok
+	else wget -q -T 4 -O - "http://$_pb:$_pp/ping" 2> /dev/null | grep -q ok; fi
 }
 
 rollback_update() {

@@ -5,7 +5,15 @@ conf_get() { [ -r "$CONF" ] && sed -n "s/^$1='\\(.*\\)'\$/\\1/p" "$CONF" | tail 
 conf_set() {  # conf_set NAME VALUE
 	[ "$DRY" = 1 ] && return 0
 	touch "$CONF"; chmod 600 "$CONF"
-	grep -v "^$1=" "$CONF" > "$CONF.tmp" 2> /dev/null; printf "%s='%s'\n" "$1" "$2" >> "$CONF.tmp"; mv "$CONF.tmp" "$CONF"; chmod 600 "$CONF"
+	# The settings hold every password and the gateway key: they are replaced only by a complete new copy. On a full flash the
+	# write fails and the old settings stay (an unchecked write used to leave an empty file, and the router lost its pairing).
+	_ct="$CONF.tmp.$$"
+	if (umask 077; { grep -v "^$1=" "$CONF"; printf "%s='%s'\n" "$1" "$2"; } > "$_ct") 2> /dev/null && grep -q "^$1=" "$_ct" \
+		&& [ "$(wc -l < "$_ct")" -gt "$(grep -vc "^$1=" "$CONF")" ]; then
+		mv "$_ct" "$CONF"; chmod 600 "$CONF"
+	else
+		rm -f "$_ct"; log "could not save the setting $1 (is the router's flash full? piso-setup space)"; return 1
+	fi
 }
 rand() {  # rand <length> [hex]: random characters (letters and digits, no look-alikes; or hex)
 	if [ "$2" = hex ]; then head -c 8192 /dev/urandom | tr -dc '0-9a-f' | cut -c1-"$1"     # (only tools every BusyBox has)

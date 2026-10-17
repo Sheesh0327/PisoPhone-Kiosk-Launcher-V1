@@ -3,6 +3,7 @@
 
 #include "Config.h"
 #include "PulseGuard.h"
+#include "PinRules.h"
 #include "OwnerData.h"
 #include "DeviceManager.h"
 #include "HardwareManager.h"
@@ -17,6 +18,7 @@
 #include "TxId.h"
 #include "ConfigMigration.h"
 #include <esp_random.h>
+#include <bootloader_random.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
@@ -407,8 +409,12 @@ void loadSlots() {
     syncAndroidIpsFromSlots();
 }
 
+// Secrets and passwords are made before Wi-Fi starts, when esp_fill_random is only pseudo-random (Espressif's documentation):
+// switch the chip's own entropy source on while they are made.
 static void fillRandomBytes(uint8_t* buf, size_t len) {
+    bootloader_random_enable();
     esp_fill_random(buf, len);
+    bootloader_random_disable();
 }
 
 // Settings storage for the migrations: a thin wrapper over an open Preferences namespace.
@@ -544,9 +550,17 @@ void loadAllConfig() {
     ledPin = prefs.getInt(NVS_KEY_LED_PIN, ledPin);
     ledActiveLow = prefs.getBool(NVS_KEY_LED_ACTIVE_LOW, DEFAULT_LED_ACTIVE_LOW);
     relayPin = prefs.getInt(NVS_KEY_RELAY_PIN, relayPin);
+    if (pinrules::problem(pinrules::THIS_CHIP, universalCoinPin, relayPin, ledPin, HARDWARE_RESET_PIN)) {
+        // A stored pin this board cannot use (saved by an older firmware) would crash the box at every start: use the defaults.
+        Serial.printf("[CONFIG] Stored pins coin=%d relay=%d led=%d cannot be used: back to the defaults.\n",
+                      universalCoinPin, relayPin, ledPin);
+        universalCoinPin = DEFAULT_UNIVERSAL_COIN_PIN;
+        relayPin = DEFAULT_RELAY_PIN;
+        ledPin = DEFAULT_LED_PIN;
+    }
 
     targetPort = prefs.getInt(NVS_KEY_PORT, targetPort);
-    if (targetPort <= 0) targetPort = 8080;
+    if (targetPort <= 0 || targetPort > 65535) targetPort = DEFAULT_PORT;
     minutesPerCoin = prefs.getInt(NVS_KEY_MINS_PER_COIN, DEFAULT_MINUTES_PER_COIN);
     if (minutesPerCoin < 1) minutesPerCoin = 1;
 
@@ -613,6 +627,7 @@ void factoryResetDefaults(bool ownerWipe) {
                       : "[⚠️ FACTORY RESET] Restoring operator settings to defaults (revenue is kept)...");
     Serial.println("=======================================================");
 
+    flushRevenueNow(); // the totals in memory first: the last coins' revenue would otherwise be lost with the reset
     prefs.begin(NVS_NAMESPACE, false);
     PrefsStore keepStore;
     ownerdata::Snapshot owner = ownerdata::capture(keepStore);

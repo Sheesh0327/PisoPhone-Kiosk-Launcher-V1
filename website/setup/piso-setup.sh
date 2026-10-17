@@ -29,7 +29,7 @@
 
 VERSION="dev"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
-PISO_RELEASE='1.5.4'
+PISO_RELEASE='1.5.5'
 # the CPU family the portal program in this file is built for (router_family below names the family of the router it runs on)
 PISO_ARCH='mipsel'
 
@@ -58,9 +58,15 @@ DRY=0; ASSUME_YES=0; PISO_ROOT="${PISO_ROOT:-}"
 log() { printf '%s\n' "$*"; [ "$DRY" = 1 ] || printf '%s %s\n' "$(date '+%F %T')" "$*" >> "$LOG" 2> /dev/null; }
 die() {
 	log "ERROR: $*"; [ "$DRY" = 1 ] || echo "FAILED $*" > "$STATE"
+	if [ -n "$UNDO" ]; then _u="$UNDO"; UNDO=""; eval "$_u"; fi
+	if [ "$PORTAL_RESTORE" = 1 ]; then log "starting the portal program again"; /etc/init.d/pisoportal start > /dev/null 2>&1; fi
 	if [ "$NDS_RESTORE" = 1 ]; then log "starting the customer portal (openNDS) again, as it was before this run"; /etc/init.d/opennds start > /dev/null 2>&1; fi
 	exit 1
 }
+# Stopped from outside (Ctrl-C, the SSH session or the setup computer lost, a kill): the same clean-up as an error, so openNDS is
+# never left stopped (guests would be online without paying) and a half-done pairing is put back.
+UNDO=""; PORTAL_RESTORE=0
+trap 'die "stopped before the end (interrupted)"' HUP INT TERM
 # wait_until SECONDS 'COMMAND': runs the command every 2 seconds until it succeeds or the time is up (returns 1). A service that was just
 # started (openNDS) needs a few seconds before it answers, so a check right after the install waits for it instead of failing.
 wait_until() {
@@ -109,7 +115,15 @@ conf_get() { [ -r "$CONF" ] && sed -n "s/^$1='\\(.*\\)'\$/\\1/p" "$CONF" | tail 
 conf_set() {  # conf_set NAME VALUE
 	[ "$DRY" = 1 ] && return 0
 	touch "$CONF"; chmod 600 "$CONF"
-	grep -v "^$1=" "$CONF" > "$CONF.tmp" 2> /dev/null; printf "%s='%s'\n" "$1" "$2" >> "$CONF.tmp"; mv "$CONF.tmp" "$CONF"; chmod 600 "$CONF"
+	# The settings hold every password and the gateway key: they are replaced only by a complete new copy. On a full flash the
+	# write fails and the old settings stay (an unchecked write used to leave an empty file, and the router lost its pairing).
+	_ct="$CONF.tmp.$$"
+	if (umask 077; { grep -v "^$1=" "$CONF"; printf "%s='%s'\n" "$1" "$2"; } > "$_ct") 2> /dev/null && grep -q "^$1=" "$_ct" \
+		&& [ "$(wc -l < "$_ct")" -gt "$(grep -vc "^$1=" "$CONF")" ]; then
+		mv "$_ct" "$CONF"; chmod 600 "$CONF"
+	else
+		rm -f "$_ct"; log "could not save the setting $1 (is the router's flash full? piso-setup space)"; return 1
+	fi
 }
 rand() {  # rand <length> [hex]: random characters (letters and digits, no look-alikes; or hex)
 	if [ "$2" = hex ]; then head -c 8192 /dev/urandom | tr -dc '0-9a-f' | cut -c1-"$1"     # (only tools every BusyBox has)
@@ -381,6 +395,12 @@ delete opennds.@opennds[0].themespec_path
 set opennds.@opennds[0].statuspath='/usr/lib/opennds/pisoportal_status.sh'
 delete opennds.@opennds[0].users_to_router
 add_list opennds.@opennds[0].users_to_router='allow tcp port $PORTAL_PORT'
+# a paying guest reaches the internet, not the modem's admin page or other private networks behind the router (the shop's own devices)
+delete opennds.@opennds[0].authenticated_users
+add_list opennds.@opennds[0].authenticated_users='block to 10.0.0.0/8'
+add_list opennds.@opennds[0].authenticated_users='block to 172.16.0.0/12'
+add_list opennds.@opennds[0].authenticated_users='block to 192.168.0.0/16'
+add_list opennds.@opennds[0].authenticated_users='allow all'
 set opennds.@opennds[0].download_unrestricted_bursting='1'
 set opennds.@opennds[0].upload_unrestricted_bursting='1'
 set opennds.@opennds[0].checkinterval='15'
@@ -451,21 +471,29 @@ extract_payload() {
 		log "this copy carries no portal files (it is the installed one): the files on the router are kept"
 		return 0
 	fi
-	sed -n 's/^#@@FILE //p' "$_self" | while read -r _dest _mode; do mkdir -p "$(dirname "$PISO_ROOT$_dest")"; : > "$PISO_ROOT$_dest"; chmod "$_mode" "$PISO_ROOT$_dest"; done
+	# text files are written next to the old ones (.new) and moved in only when every one is complete: a power cut or a full flash
+	# in the middle leaves the old files working (each was emptied first, and a cut left an empty init script: no portal after a reboot)
+	sed -n 's/^#@@FILE //p' "$_self" | while read -r _dest _mode; do mkdir -p "$(dirname "$PISO_ROOT$_dest")"; : > "$PISO_ROOT$_dest.new"; chmod "$_mode" "$PISO_ROOT$_dest.new"; done
 	# a program is only replaced once its new copy is decoded and checked: a failed update leaves the old one working
 	sed -n 's/^#@@B64 //p' "$_self" | while read -r _dest _rest; do mkdir -p "$(dirname "$PISO_ROOT$_dest")"; done
 	# text files are copied as they are; a binary (the portal program) is stored as base64 lines, decoded in RAM (/tmp: the
 	# flash may be nearly full) and then moved into place
 	_tmpd="${TMPDIR:-/tmp}/piso-payload.$$"
 	rm -rf "$_tmpd"; mkdir -p "$_tmpd" || die "could not create $_tmpd"
-	awk -v root="$PISO_ROOT" -v tmp="$_tmpd" '/^#@@FILE /{ if (out != "") close(out); out = root $2; next } /^#@@B64 /{ if (out != "") close(out); n = split($2, p, "/"); out = tmp "/" p[n] ".b64"; next } out != "" { print > out }' "$_self"
+	awk -v root="$PISO_ROOT" -v tmp="$_tmpd" '/^#@@FILE /{ if (out != "") close(out); out = root $2 ".new"; next } /^#@@B64 /{ if (out != "") close(out); n = split($2, p, "/"); out = tmp "/" p[n] ".b64"; next } out != "" { print > out }' "$_self"
 	# shellcheck disable=SC2013 # destinations are paths without spaces
 	for f in $(sed -n 's/^#@@FILE \([^ ]*\) .*/\1/p' "$_self"); do
 		f="$PISO_ROOT$f"
-		[ -s "$f" ] || die "could not write $f"
-		sed -i 's/\r$//' "$f"
+		[ -s "$f.new" ] || { rm -f "$f.new"; die "could not write $f (is the router's flash full? piso-setup space)"; }
+		sed -i 's/\r$//' "$f.new"
+	done
+	# shellcheck disable=SC2013 # destinations are paths without spaces
+	for _e in $(sed -n 's/^#@@FILE \([^ ]*\) \([^ ]*\).*/\1|\2/p' "$_self"); do
+		f="$PISO_ROOT${_e%%|*}"
+		chmod "${_e#*|}" "$f.new"; mv "$f.new" "$f"
 		log "installed $f"
 	done
+	sync
 	# (a for loop, not a pipe: die must end the whole setup, not a subshell)
 	# shellcheck disable=SC2013 # one word per program: path|mode|sha256
 	for _e in $(sed -n 's/^#@@B64 \([^ ]*\) \([^ ]*\) *\([^ ]*\).*/\1|\2|\3/p' "$_self"); do
@@ -501,7 +529,9 @@ remove_old_portal() {
 write_coinslot_conf() {  # write_coinslot_conf <gateway key> <box mac>
 	umask 077
 	mkdir -p "$PISO_ROOT/etc"
-	cat > "$PISO_ROOT/etc/coinslot.conf" << EOT
+	_cf="$PISO_ROOT/etc/coinslot.conf"
+	{
+		cat << EOT
 GW_BOX='$BOX_IP'
 GW_KEY='$1'
 GW_BOX_MAC='$2'
@@ -511,10 +541,14 @@ GATEWAY_NAME='$(conf_get GUEST_NAME)'
 CONSOLE_BIND='$LAN_IP'
 CONSOLE_PORT='$(console_port)'
 EOT
-	# the voucher choice on the coin page (piso-setup voucher-choice on|off); nothing is written until it is set: the portal's default is on
-	[ -z "$(conf_get VOUCHER_CHOICE)" ] || printf "VOUCHER_CHOICE='%s'\n" "$(conf_get VOUCHER_CHOICE)" >> "$PISO_ROOT/etc/coinslot.conf"
+		# the voucher choice on the coin page (piso-setup voucher-choice on|off); nothing is written until it is set: the portal's default is on
+		[ -z "$(conf_get VOUCHER_CHOICE)" ] || printf "VOUCHER_CHOICE='%s'\n" "$(conf_get VOUCHER_CHOICE)"
+		# every other line is the owner's own (prices, SEND_HOST, PAUSE_*, ...): kept as it was, the setup only owns the keys above
+		[ -r "$_cf" ] && grep -v -E '^(GW_BOX|GW_KEY|GW_BOX_MAC|PORTAL_BIND|PORTAL_PORT|GATEWAY_NAME|CONSOLE_BIND|CONSOLE_PORT|VOUCHER_CHOICE)=' "$_cf"
+		:
+	} > "$_cf.new" && grep -q '^GW_KEY=' "$_cf.new" && mv "$_cf.new" "$_cf" || { rm -f "$_cf.new"; umask 022; die "could not write $_cf (is the router's flash full? piso-setup space)"; }
 	umask 022
-	chmod 600 "$PISO_ROOT/etc/coinslot.conf"
+	chmod 600 "$_cf"
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -555,6 +589,9 @@ pair_box() {
 	_old=$(box_wifi_key); _was=$(conf_get BOX_WIFI_ROTATED); _old_ssid=$(box_net_ssid)   # (the network's name goes with its password)
 	tip "the coin box's light tells you how it is doing: fast blinking = looking for the network, slow blinking = it cannot find or join it, steady = connected."
 	if [ -n "$(conf_get BOX_MAC)" ]; then tip "this router was paired with a coin box before: a box that was set up already is offered its own password, a new one the built-in one."; fi
+	# stopped during the wait: the box network goes back to the password and name it had, closed to all but the paired box (it
+	# used to stay open with the published pairing password, and the next pair offered only that one)
+	UNDO='conf_set BOX_WIFI_ROTATED "${_was:-0}"; uci set wireless.box_ap.key="$_old"; uci set wireless.box_ap.ssid="$_old_ssid"; lock_box_network "$(conf_get BOX_MAC)"'
 	conf_set BOX_WIFI_ROTATED 0
 	_key="$BOX_DEFAULT_WIFI"
 	set_box_key "$_key" "$BOX_PAIR_SSID"
@@ -582,6 +619,7 @@ pair_box() {
 		fi
 	done
 	if [ -z "$MAC" ]; then
+		UNDO=""
 		_up=$(box_ifname)
 		# nobody joined: the box keeps the password it had, so the router goes back to it (the wait may have ended on the other one)
 		# and a next "piso-setup pair" offers it again
@@ -593,6 +631,7 @@ pair_box() {
 		[ -z "$_refused" ] || die "$PSK_HINT"
 		die "the coin box did not join the hidden $BOX_PAIR_SSID network. Check that it is powered and has the current firmware (or factory reset it: it must try $BOX_PAIR_SSID), then run: piso-setup pair"
 	fi
+	UNDO=""
 	if [ "$_key" = "$_old" ] && [ "$_old" != "$BOX_DEFAULT_WIFI" ]; then conf_set BOX_WIFI_ROTATED 1; fi   # it joined with its own password
 	log "the coin box joined: $MAC"
 	tip "found it. Keep the box powered: next it gets its own admin password and its own Wi-Fi password, and loses the network for up to a minute while it switches."
@@ -1102,12 +1141,13 @@ cmd_update() {
 	[ "$0" != "$SELF_PATH" ] || die "this is the installed (old) copy. Copy the NEW piso-setup.sh to the router and run it from there: ./piso-setup.sh update"
 	check_arch
 	step "Updating the portal files"
-	[ -x /etc/init.d/pisoportal ] && /etc/init.d/pisoportal stop > /dev/null 2>&1   # (no program is replaced while it runs)
+	[ -x /etc/init.d/pisoportal ] && /etc/init.d/pisoportal stop > /dev/null 2>&1 && PORTAL_RESTORE=1   # (no program is replaced while it runs; started again on an error)
 	remove_old_portal
 	extract_payload "$0"
 	write_coinslot_conf "$(conf_get GW_KEY)" "$(conf_get BOX_MAC)"
 	sync_kiosk_wifi
 	[ -x /etc/init.d/pisoportal ] && { /etc/init.d/pisoportal enable; /etc/init.d/pisoportal start; }
+	PORTAL_RESTORE=0
 	# openNDS and the firewall as this version needs them (a router set up with the earlier ThemeSpec portal is moved over)
 	(umask 077; { portal_uci "$(conf_get GUEST_NAME)"; router_access_uci; } > /tmp/piso-setup.uci)
 	uci_apply /tmp/piso-setup.uci
@@ -1175,11 +1215,21 @@ update_healthy() {
 	[ -x /etc/init.d/pisoportal ] || return 0
 	_t=0
 	while [ "$_t" -lt "${PISO_HEALTH_RETRY:-30}" ]; do
-		proc_running pisoportal && return 0
-		sleep 2; _t=$((_t + 2))
+		# running is not enough: a program that keeps crashing is restarted by procd and is "running" most of the time. It must
+		# answer, twice, a few seconds apart.
+		if proc_running pisoportal && portal_answers && { sleep 3; portal_answers; }; then return 0; fi
+		sleep 2; _t=$((_t + 5))
 	done
-	UPDATE_WHY="the portal program is not running after the update"
+	UPDATE_WHY="the portal program is not running (or not answering) after the update"
 	return 1
+}
+
+# portal_answers: the portal answers its /ping on the guest address (true when that address is not known: an older setup)
+portal_answers() {
+	_pb=$(cs_get PORTAL_BIND); _pp=$(cs_get PORTAL_PORT)
+	[ -n "$_pb" ] && [ -n "$_pp" ] || return 0
+	if command -v curl > /dev/null 2>&1; then curl -s -m 4 "http://$_pb:$_pp/ping" 2> /dev/null | grep -q ok
+	else wget -q -T 4 -O - "http://$_pb:$_pp/ping" 2> /dev/null | grep -q ok; fi
 }
 
 rollback_update() {

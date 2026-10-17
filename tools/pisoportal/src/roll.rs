@@ -112,8 +112,10 @@ impl Entry {
     }
 }
 
+/// The sessions on file. Read as bytes and decoded leniently: one damaged byte used to make the whole roll read as empty, and the
+/// next payment then rewrote it with one line, ending every other customer's session.
 pub fn load(path: &str) -> Vec<Entry> {
-    fs::read_to_string(path).map(|t| t.lines().filter_map(Entry::parse).collect()).unwrap_or_default()
+    fs::read(path).map(|b| String::from_utf8_lossy(&b).lines().filter_map(Entry::parse).collect()).unwrap_or_default()
 }
 
 pub fn save(path: &str, entries: &[Entry]) -> std::io::Result<()> {
@@ -389,6 +391,31 @@ pub fn pause(path: &str, now: u64, mac: &str, rules: PauseRules) -> Result<u64, 
 }
 
 /// Delete sessions that ran out more than two days ago.
+/// The router's clock jumped forward by `delta` seconds: it started with a stale time after a power cut (OpenWrt starts from the
+/// time of its last file write) and then reached a time server. Sessions paid or paused since `since` were timed with the stale
+/// clock and would lose `delta` seconds at once (a customer who paid 60 minutes before the clock synced lost all of it): their
+/// start and pause times move forward with the clock. Returns how many entries moved.
+pub fn shift(path: &str, since: u64, delta: u64) -> usize {
+    let mut entries = load(path);
+    let mut moved = 0;
+    for e in entries.iter_mut() {
+        let mut m = false;
+        if e.fp >= since {
+            e.fp += delta;
+            m = true;
+        }
+        if e.pa != 0 && e.pa >= since {
+            e.pa += delta;
+            m = true;
+        }
+        moved += m as usize;
+    }
+    if moved > 0 {
+        let _ = save(path, &entries);
+    }
+    moved
+}
+
 pub fn purge(path: &str, now: u64) {
     let entries = load(path);
     let keep: Vec<Entry> = entries
@@ -404,6 +431,22 @@ pub fn purge(path: &str, now: u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_clock_jump_moves_only_the_sessions_timed_with_the_stale_clock() {
+        let p = tmp("shift");
+        let boot = 1_000_000; // the stale time the router started with
+        let old = Entry::parse("c1,0,0,0,0,60,900000,aa:aa:aa:aa:aa:01,0,0,0,hyper,w1,10,60,0,1").unwrap(); // paid before the power cut
+        let new = Entry::parse("c2,0,0,0,0,60,1000100,aa:aa:aa:aa:aa:02,0,0,0,hyper,w2,10,60,0,1").unwrap(); // paid after the start
+        save(&p, &[old.clone(), new.clone()]).unwrap();
+        let jump = 7200; // the router was off for two hours
+        assert_eq!(shift(&p, boot, jump), 1);
+        let got = load(&p);
+        assert_eq!(got[0].fp, old.fp, "a session from before the cut keeps its times");
+        assert_eq!(got[1].fp, new.fp + jump, "a session paid with the stale clock moves with it");
+        // after the sync, the customer still has the hour they paid for
+        assert_eq!(got[1].left(new.fp + jump + 60), 59 * 60);
+    }
 
     fn tmp(name: &str) -> String {
         let d = std::env::temp_dir().join(format!("pisoportal-roll-{}-{}", name, std::process::id()));

@@ -245,6 +245,10 @@ pub struct Core {
     pub send: crate::send::Send,
     /// the coin page offers the choice "Use now" / "Get a voucher code" (VOUCHER_CHOICE, changed live from the console)
     vchoice: AtomicBool,
+    /// the last wall/monotonic clock reading, and since when sessions may be timed with a stale clock (this program's start, or
+    /// the last jump): a forward jump of the wall clock (the router synced it after starting with a stale one) moves the sessions
+    /// paid in between (see roll::shift)
+    clock: Mutex<(u64, Instant, u64)>,
 }
 
 /// More pesos than one coin window can physically take (about two minutes of coins): an answer above this is not trusted.
@@ -286,6 +290,7 @@ impl Core {
             files: Mutex::new(()),
             recovering: Mutex::new(()),
             vchoice,
+            clock: Mutex::new((now_secs(), Instant::now(), now_secs())),
             pricing,
             pricing_stamp: AtomicU32::new(1),
             games,
@@ -630,6 +635,12 @@ impl Core {
             let plan = Plan::parse(&batch.plan).unwrap_or(Plan::Hyper);
             let (down, up) = rates(&self.pricing(), plan);
             let wid = format!("v{}", hash);
+            // The code is marked spent BEFORE the time is added: the other order let a crash or a failed write in between leave
+            // the code unused after crediting it, and it could be spent again. A crash now costs at most this one code (the owner
+            // sees it used, with this device), never a second credit.
+            if !crate::voucher::mark_used(&dir, &hash, now, mac) {
+                return Err(("io", 0));
+            }
             match roll::mint(&self.cfg.roll_path(), now, mac, &wid, plan, batch.pesos, batch.minutes, up, down, false) {
                 Ok(mode) => {
                     // A voucher bought with coins was income when its coins were counted (kind "vbuy"): spending it is time use, no
@@ -642,10 +653,15 @@ impl Core {
                         }
                     }
                 }
-                Err(MintError::Mismatch { .. }) => return Err(("plan", 0)),
-                Err(MintError::Io) => return Err(("io", 0)),
+                Err(MintError::Mismatch { .. }) => {
+                    crate::voucher::mark_unused(&dir, &hash); // nothing was added: the customer keeps the code
+                    return Err(("plan", 0));
+                }
+                Err(MintError::Io) => {
+                    crate::voucher::mark_unused(&dir, &hash);
+                    return Err(("io", 0));
+                }
             }
-            crate::voucher::mark_used(&dir, &hash, now, mac);
             Ok((batch.minutes, plan))
         })();
         match result {
@@ -1011,6 +1027,7 @@ impl Core {
         }
         let t_released = t_done.elapsed().as_millis();
         let drain_end = Instant::now() + Duration::from_secs(cfg.drain_secs);
+        let mut drained = false; // the box said it is idle (or sent "end"): every coin it counted is in `pulses`
         loop {
             let ended = self.cur(sid).is_some_and(|c| c.2);
             let mut idle = false;
@@ -1027,7 +1044,12 @@ impl Core {
                 noted = true;
                 self.note_open(sid, &mac, plan, &wid, forfeit, voucher);
             }
-            if ended || idle || Instant::now() >= drain_end {
+            if ended || idle {
+                drained = true;
+                break;
+            }
+            if Instant::now() >= drain_end {
+                log!("window {} drain timed out: the box never said it is idle, so it is acknowledged later (recovery)", &sid[..8]);
                 break;
             }
             self.wait_end(sid, Duration::from_millis(300));
@@ -1035,14 +1057,24 @@ impl Core {
         let t_drained = t_done.elapsed().as_millis();
         let pulses = self.cur(sid).map(|c| c.0).unwrap_or(last);
         if pulses == 0 {
+            if !drained {
+                // The box's link was lost: it may have counted coins the router never saw. The window is kept for recovery, which
+                // credits whatever the box holds once it answers (it used to be closed as empty, and those coins were never credited).
+                if !noted {
+                    self.note_open(sid, &mac, plan, &wid, forfeit, voucher);
+                }
+                log!("window {} closed with no coins seen and no answer from the box: left for recovery", &sid[..8]);
+                self.finish_window(sid, View::Empty, None);
+                return;
+            }
             log!("window {} closed with no coins", &sid[..8]);
             self.finish_window(sid, View::Empty, Some(false));
             return;
         }
         let view = if voucher {
-            self.settle_voucher(sid, &mac, plan, &wid, pulses, &pricing)
+            self.settle_voucher(sid, &mac, plan, &wid, pulses, &pricing, drained)
         } else {
-            self.settle(sid, &mac, plan, &wid, forfeit, pulses, &pricing)
+            self.settle(sid, &mac, plan, &wid, forfeit, pulses, &pricing, drained)
         };
         // (a voucher window connects nothing, so there is nothing for the grant retries to finish)
         let refused = matches!(view, View::Final { online: false, voucher: None, .. });
@@ -1099,8 +1131,12 @@ impl Core {
     /// recovery credits the coins. Nothing is granted yet.
     fn note_open(&self, sid: &str, mac: &str, plan: Plan, wid: &str, forfeit: bool, voucher: bool) {
         let _ = fs::create_dir_all(self.cfg.open_dir());
-        // (records of earlier releases have four fields: no voucher)
-        let _ = fs::write(self.open_file(sid), format!("{} {} {} {} {}\n", mac, plan.as_str(), wid, forfeit as u8, voucher as u8));
+        // (records of earlier releases have four fields: no voucher). Flushed to flash: a power cut right after a coin must not lose it.
+        if let Err(e) =
+            write_synced(&self.open_file(sid), &format!("{} {} {} {} {}\n", mac, plan.as_str(), wid, forfeit as u8, voucher as u8))
+        {
+            log!("window {} could not be noted on flash: {}", &sid[..8], e);
+        }
     }
 
     fn ack(&self, sid: &str) -> bool {
@@ -1109,7 +1145,9 @@ impl Core {
 
     /// Price the window once, record it, grant access once, acknowledge the box.
     #[allow(clippy::too_many_arguments)]
-    fn settle(&self, sid: &str, mac: &str, plan: Plan, wid: &str, forfeit: bool, pulses: u32, pr: &Pricing) -> View {
+    /// `ack_now` is false when the box never said it is idle: an acknowledgement erases every coin it holds for the window, also
+    /// the ones the router has not seen yet, so it is left to recovery (which waits for "idle" and credits what came late).
+    fn settle(&self, sid: &str, mac: &str, plan: Plan, wid: &str, forfeit: bool, pulses: u32, pr: &Pricing, ack_now: bool) -> View {
         let minutes = minutes_for(pr, plan, pulses);
         let now = now_secs();
         let t0 = Instant::now();
@@ -1142,7 +1180,7 @@ impl Core {
         let t_grant = t0.elapsed().as_millis();
         let result = View::Final { plan: s.plan, pulses, minutes, left: s.left_secs, online, voucher: None };
         self.publish_early(sid, result.clone()); // the customer is online: the page says so now, not after the box answers
-        let ack_ok = self.ack_and_clear(sid);
+        let ack_ok = ack_now && self.ack_and_clear(sid);
         log!(
             "timing {} settled pulses={} min={} left={} min online={} acked={} (recorded {} ms, granted {} ms, acknowledged {} ms)",
             &sid[..8],
@@ -1160,7 +1198,8 @@ impl Core {
 
     /// A window that paid for a voucher code: price it once, make the one voucher (and its revenue row, as a direct purchase
     /// would), acknowledge the box. The device is NOT connected and no time is granted.
-    fn settle_voucher(&self, sid: &str, mac: &str, plan: Plan, wid: &str, pulses: u32, pr: &Pricing) -> View {
+    #[allow(clippy::too_many_arguments)]
+    fn settle_voucher(&self, sid: &str, mac: &str, plan: Plan, wid: &str, pulses: u32, pr: &Pricing, ack_now: bool) -> View {
         let minutes = minutes_for(pr, plan, pulses);
         let now = now_secs();
         let v = match self.record_voucher(sid, mac, plan, wid, pulses, minutes, now) {
@@ -1169,7 +1208,7 @@ impl Core {
         };
         let result = View::Final { plan, pulses, minutes, left: 0, online: false, voucher: Some(v) };
         self.publish_early(sid, result.clone());
-        let ack_ok = self.ack_and_clear(sid);
+        let ack_ok = ack_now && self.ack_and_clear(sid);
         log!("timing {} settled pulses={} min={} voucher issued acked={}", &sid[..8], pulses, minutes, ack_ok);
         result
     }
@@ -1217,7 +1256,10 @@ impl Core {
                         log!("could not write the revenue ledger: {}", e);
                     }
                 }
-                let _ = fs::write(format!("{}.rec", self.open_file(sid)), "recorded\n");
+                // the pesos credited, so recovery can tell coins the box counted after the router stopped looking
+                if let Err(e) = write_synced(&format!("{}.rec", self.open_file(sid)), &format!("recorded {}\n", pulses)) {
+                    log!("window {} recorded, but its marker could not be written: {}", &sid[..8], e);
+                }
                 Ok(())
             }
             Err(MintError::Mismatch { plan: p, left }) => {
@@ -1283,12 +1325,9 @@ impl Core {
             if self.is_live(&sid) {
                 continue;
             }
-            let rec = fs::metadata(format!("{}.rec", self.open_file(&sid))).is_ok();
-            if rec {
-                if self.ack(&sid) {
-                    let _ = fs::remove_file(self.open_file(&sid));
-                    let _ = fs::remove_file(format!("{}.rec", self.open_file(&sid)));
-                }
+            let rec_text = fs::read_to_string(format!("{}.rec", self.open_file(&sid))).ok();
+            if let Some(rec_text) = rec_text {
+                self.recover_recorded(&sid, &rec_text);
                 continue;
             }
             let Ok(text) = fs::read_to_string(self.open_file(&sid)) else { continue };
@@ -1315,8 +1354,8 @@ impl Core {
                     continue;
                 }
             };
-            if jget(&st, "state") == "armed" {
-                continue;
+            if jget(&st, "state") != "idle" {
+                continue; // still armed or draining: its coins are not all counted yet
             }
             let pulses = jget_u64(&st, "pulses").unwrap_or(0) as u32;
             if pulses > MAX_PULSES {
@@ -1348,8 +1387,89 @@ impl Core {
         }
     }
 
+    /// A window that is on the roll but not acknowledged: acknowledged once the box says it is idle. Coins the box counted after the
+    /// router stopped looking (its link dropped during the drain) are credited to the same device first: the acknowledgement erases
+    /// everything the box holds for the window.
+    fn recover_recorded(&self, sid: &str, rec_text: &str) {
+        let st = match self.box_.call(sid, "status", "") {
+            Ok(b) if BoxLink::is_success(&b) => b,
+            _ => return,
+        };
+        if jget(&st, "state") != "idle" {
+            return;
+        }
+        let recorded = rec_text.split_whitespace().nth(1).and_then(|n| n.parse::<u32>().ok());
+        let boxed = jget_u64(&st, "pulses").unwrap_or(0) as u32;
+        if let Some(recorded) = recorded {
+            let late = boxed.saturating_sub(recorded);
+            if late > 0 && boxed <= MAX_PULSES {
+                let opened = fs::read_to_string(self.open_file(sid)).unwrap_or_default();
+                let f: Vec<&str> = opened.split_whitespace().collect();
+                match (f.first(), f.get(1).and_then(|p| Plan::parse(p)), f.get(2), f.get(4) == Some(&"1")) {
+                    (Some(mac), Some(plan), Some(wid), false) => {
+                        let minutes = minutes_for(&self.pricing(), plan, late);
+                        let late_wid = format!("{}L", wid);
+                        match self.record(sid, mac, plan, &late_wid, false, late, minutes, now_secs()) {
+                            Ok(()) => {
+                                // the marker now says every coin is credited: a failed acknowledgement below must not credit them twice
+                                let _ = write_synced(&format!("{}.rec", self.open_file(sid)), &format!("recorded {}\n", boxed));
+                                log!("recover: window {} credited {} late coins ({} min) to {}", &sid[..8], late, minutes, mac);
+                                if let Some(s) = {
+                                    let _g = self.files.lock().unwrap();
+                                    roll::session(&self.cfg.roll_path(), now_secs(), mac)
+                                } {
+                                    let _ = self.nds.grant(mac, s.minutes, s.down, s.up, s.qdown, s.qup);
+                                }
+                            }
+                            Err(_) => {
+                                log!(
+                                    "recover: window {} has {} late coins that could not be credited to {}: kept for the owner",
+                                    &sid[..8],
+                                    late,
+                                    mac
+                                );
+                                return; // not acknowledged: the box keeps them (its orphan list after a day)
+                            }
+                        }
+                    }
+                    _ => log!("recover: window {} has {} late coins that cannot be credited (voucher or no record)", &sid[..8], late),
+                }
+            }
+        }
+        if self.ack(sid) {
+            let _ = fs::remove_file(self.open_file(sid));
+            let _ = fs::remove_file(format!("{}.rec", self.open_file(sid)));
+        }
+    }
+
+    /// Notices a forward jump of the wall clock (more than two minutes beyond the time that really passed) and moves the sessions
+    /// that were timed with the stale clock (roll::shift). A backward jump is only logged.
+    pub fn check_clock(&self) {
+        let mut g = self.clock.lock().unwrap();
+        let wall = now_secs();
+        let expected = g.0 + g.1.elapsed().as_secs();
+        if wall > expected + 120 {
+            let delta = wall - expected;
+            let moved = {
+                let _f = self.files.lock().unwrap();
+                roll::shift(&self.cfg.roll_path(), g.2, delta)
+            };
+            g.2 = wall; // what is paid from now on is timed with the right clock
+            log!(
+                "the clock jumped forward {} s (it was set after a stale start): {} session(s) paid since then moved with it",
+                delta,
+                moved
+            );
+        } else if expected > wall + 120 {
+            log!("the clock went back {} s", expected - wall);
+        }
+        g.0 = wall;
+        g.1 = Instant::now();
+    }
+
     /// Housekeeping: settle leftovers, forget old sessions and old results.
     pub fn maintenance(&self) {
+        self.check_clock();
         self.recover();
         {
             let _g = self.files.lock().unwrap();
@@ -1437,4 +1557,18 @@ pub fn run_event_listener(core: Arc<Core>) {
             }
         }
     }
+}
+
+/// Write a small record and make sure it is on the flash (the file, then its folder) before saying so.
+fn write_synced(path: &str, text: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut f = fs::File::create(path)?;
+    f.write_all(text.as_bytes())?;
+    f.sync_all()?;
+    if let Some(dir) = std::path::Path::new(path).parent() {
+        if let Ok(d) = fs::File::open(dir) {
+            let _ = d.sync_all();
+        }
+    }
+    Ok(())
 }
