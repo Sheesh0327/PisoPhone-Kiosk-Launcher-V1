@@ -105,11 +105,7 @@ class KioskSessionSupervisor(
                         startHeldClockIfAny()
                         val deadline = stateManager.sessionExpiryDeadlineMs.value
                         val nowMonotonic = android.os.SystemClock.elapsedRealtime()
-                        val remainingSec = if (deadline > 0L) {
-                            maxOf(0, ((deadline - nowMonotonic) / 1000L).toInt())
-                        } else {
-                            maxOf(0, stateManager.sessionTimeRemaining.value - 1)
-                        }
+                        val remainingSec = remainingSecondsAt(deadline, nowMonotonic)
 
                         stateManager.sessionTimeRemaining.value = remainingSec
 
@@ -165,6 +161,13 @@ class KioskSessionSupervisor(
                 }
             }
         }
+    }
+
+    /** Seconds left: from the deadline when there is one, otherwise one less than the balance shown. */
+    private fun remainingSecondsAt(deadline: Long, nowMonotonic: Long): Int = if (deadline > 0L) {
+        maxOf(0, ((deadline - nowMonotonic) / 1000L).toInt())
+    } else {
+        maxOf(0, stateManager.sessionTimeRemaining.value - 1)
     }
 
     /**
