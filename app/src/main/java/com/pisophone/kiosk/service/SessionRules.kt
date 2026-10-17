@@ -94,9 +94,13 @@ object SessionRules {
     fun afterArmTimeoutNoCoin(current: Int, hasPaidTime: Boolean): Int =
         if (current == UNLOCKED_ARMED || hasPaidTime) UNLOCKED else LOCKED
 
-    /** The customer finished paying (button or arming window with coins): 2 if coins were inserted or time is running, else 0. */
-    fun afterFinishPayment(current: Int, coinsInserted: Int): Int =
-        if (coinsInserted > 0 || current == UNLOCKED_ARMED) UNLOCKED else LOCKED
+    /**
+     * The customer finished paying (button or arming window with coins): 2 if coins were inserted, time is running or paid time is
+     * left, else 0. A paying customer is never locked out here: a second "finish" (Done tapped as the coin window ran out) used to
+     * see state 2 with no coins and lock the phone while the paid time kept running.
+     */
+    fun afterFinishPayment(current: Int, coinsInserted: Int, hasPaidTime: Boolean): Int =
+        if (coinsInserted > 0 || current == UNLOCKED_ARMED || current == UNLOCKED || hasPaidTime) UNLOCKED else LOCKED
 
     /** Admin lock, slot lockdown and similar hard resets. */
     fun hardLocked(): Int = LOCKED

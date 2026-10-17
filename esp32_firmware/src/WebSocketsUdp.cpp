@@ -334,7 +334,7 @@ void processWebSocketServer() {
             // 1. Verify HMAC Signature
             if (getSharedSecret().length() > 0) {
                 String expectedSig = calculateHMAC(reqDeviceId + ":" + tsStr, getSharedSecret());
-                if (!sig.equalsIgnoreCase(expectedSig)) {
+                if (!signatureMatches(sig, expectedSig)) {
                     Serial.printf("[-] WS Auth Failed for %s: Signature Mismatch\n", reqDeviceId.c_str());
                     newClient.print("HTTP/1.1 403 Forbidden\r\n\r\nInvalid Signature");
                     newClient.stop();
@@ -478,7 +478,7 @@ void processWebSocketServer() {
                         if (!sigValid && ackSig.length() > 0 && ackTs.length() > 0) {
                             String expectedSig = calculateHMAC(
                                 "v1:" + ackDevId + ":" + ackTxId + ":" + ackPulses + ":" + ackTs, getSharedSecret());
-                            sigValid = ackSig.equalsIgnoreCase(expectedSig);
+                            sigValid = signatureMatches(ackSig, expectedSig);
                         }
                         if (!sigValid) {
                             Serial.printf("[⚡ WS Port 81] Rejected ACK for '%s': missing or invalid signature\n",

@@ -3,6 +3,8 @@
 Behaviour is driven by a JSON control file (path in FAKEBOX_CTL) that tests rewrite:
   {"busy": false, "coins_at": [2, 4]}   # seconds after arm at which each coin (1 peso) arrives
   "events": false                         # do not push coin events (an older box); "drop_events": true loses them all
+  "status_fail": true                     # the box's link is lost for status calls (answers 503); "extra": n more pesos the box
+                                          # counted than its coin times say (coins the router never saw)
   "sign": "good" | "none" | "bad"         # sign the answers like the firmware (default), send them unsigned (older firmware), or with a wrong signature
 Coin events (GatewayEvent.h): an arm with wid & evport makes it push signed UDP lines to the caller, like the box.
 The action log is appended to FAKEBOX_LOG (one action per line)."""
@@ -124,13 +126,16 @@ class H(BaseHTTPRequestHandler):
             if s.get("ev"):
                 gen = s["armed_at"]
                 threading.Timer(0.85, lambda: s["armed_at"] == gen and push(sid, s, "end")).start()
-        pulses = pulses_now(s, c)
+        pulses = pulses_now(s, c) + (c.get("extra", 0) if s["armed_at"] and not s.get("extra_acked") else 0)
+        if action == "status" and c.get("status_fail"):
+            return self.send(503, {"success": False, "error": "LINK_LOST"})
         if action == "ack":
             if c.get("ack_delay"):   # a box that is slow to answer the acknowledgement (flash writes)
                 time.sleep(c["ack_delay"])
             if c.get("ack_fail"):   # the box could not remove the coins from flash (ACK_INCOMPLETE)
                 return self.send(503, {"success": False, "error": "ACK_INCOMPLETE"})
-            s["acked"] += pulses
+            s["acked"] += pulses - (c.get("extra", 0) if not s.get("extra_acked") else 0)
+            s["extra_acked"] = True
             return self.send(200, signed(action, sid, n, {"success": True, "acknowledged_pulses": pulses}))
         state = "idle" if (s["released"] or not s["armed_at"]) else "armed"
         if s["released"] and time.time() - s["rel_at"] < 0.8:

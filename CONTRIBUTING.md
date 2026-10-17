@@ -1,7 +1,7 @@
 # Contributing
 
-Read `README.md` for what the parts are and `docs/ARCHITECTURE.md` for how they fit. `CLAUDE.md` describes the workflow used
-here (an architect writes issues, an implementer makes the pull request) and the checks every change must pass.
+Read `README.md` for what the parts are and `docs/ARCHITECTURE.md` for how they fit. `CLAUDE.md` says what the project is for, where it stands and the rules
+for working on it (also for Claude Code sessions).
 
 ## Branches
 - Work on a branch made from `beta` and open the pull request **into `beta`**.
@@ -9,7 +9,7 @@ here (an architect writes issues, an implementer makes the pull request) and the
   the phone app, the coin-box firmware and the router update, so nothing goes there that was not tested on `beta`.
 
 ## Before you open a pull request
-Run the checks for every area you touched (the full list is in `CLAUDE.md`, section 3):
+Run the checks for every area you touched (`CLAUDE.md` section 3 adds the router program's own tests):
 
 | Area | Commands |
 |---|---|

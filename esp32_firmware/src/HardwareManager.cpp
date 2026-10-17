@@ -129,8 +129,27 @@ void setRelayHardware(bool active) {
     }
 }
 
+// The dashboard's relay test: "on" with no session open is switched off again after this long (it used to stay on for good,
+// and coins inserted then were accepted by the acceptor and dropped by the box with no record).
+static const unsigned long RELAY_TEST_MAX_MS = 10000;
+static unsigned long relayTestOnSinceMs = 0;
+static bool relayTestOn = false;
+
+void relayManualTest(bool on) {
+    setRelayHardware(on);
+    relayTestOn = on;
+    relayTestOnSinceMs = millis();
+}
+
 void processRelayState() {
     bool shouldBeOn = isCoinSlotArmed();
+    if (relayTestOn && (shouldBeOn || millis() - relayTestOnSinceMs >= RELAY_TEST_MAX_MS)) {
+        relayTestOn = false;
+        if (!shouldBeOn) {
+            setRelayHardware(false);
+            Serial.println("[⚡ RELAY] Relay test ended: the coin slot is off again.");
+        }
+    }
     static int lastAppliedRelayState = -1;
     int cur = shouldBeOn ? 1 : 0;
     if (cur != lastAppliedRelayState) {
@@ -187,9 +206,11 @@ void IRAM_ATTR universalCoinIsr() {
             pulseStatsAdd(isrStats, widthUs, isrPulseMinUs);
             portEXIT_CRITICAL_ISR(&pulseMux);
             if (isrPulseGuardOn && pulseIsReal(widthUs, isrPulseMinUs)) {
+                portENTER_CRITICAL_ISR(&pulseMux);
                 isrUniversalPulseCount++;
                 isrLastPulseTimeUs = nowUs;
                 isrLastPulseTimeMs = millis();
+                portEXIT_CRITICAL_ISR(&pulseMux);
             }
         }
         return;
@@ -202,10 +223,31 @@ void IRAM_ATTR universalCoinIsr() {
     if (isrPulseGuardOn) return; // counted when it ends, if it was long enough
     unsigned long elapsedUs = nowUs - isrLastPulseTimeUs;
     if (elapsedUs >= U_MIN_PULSE_DEBOUNCE_US) {
+        portENTER_CRITICAL_ISR(&pulseMux);
         isrUniversalPulseCount++;
         isrLastPulseTimeUs = nowUs;
         isrLastPulseTimeMs = millis();
+        portEXIT_CRITICAL_ISR(&pulseMux);
     }
+}
+
+// The loop's side of the pulse counter. Read-and-zero under the same lock the ISR counts under: noInterrupts() is not that lock,
+// and a pulse counted between the read and the zeroing was lost (a coin one peso short).
+int coinPulsesTake(unsigned long* lastPulseMs) {
+    portENTER_CRITICAL(&pulseMux);
+    int pulses = isrUniversalPulseCount;
+    isrUniversalPulseCount = 0;
+    if (lastPulseMs) *lastPulseMs = isrLastPulseTimeMs;
+    portEXIT_CRITICAL(&pulseMux);
+    return pulses;
+}
+
+int coinPulsesPeek(unsigned long* lastPulseMs) {
+    portENTER_CRITICAL(&pulseMux);
+    int pulses = isrUniversalPulseCount;
+    if (lastPulseMs) *lastPulseMs = isrLastPulseTimeMs;
+    portEXIT_CRITICAL(&pulseMux);
+    return pulses;
 }
 
 void applyCoinSlotHardwareConfig() {

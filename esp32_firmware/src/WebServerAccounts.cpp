@@ -326,7 +326,7 @@ void accountsOnHeartbeat(int slotNum, const String& deviceId, const String& tsSt
         String want = String(
             acctproto::signature(getSharedSecret().c_str(), "report", deviceId.c_str(), tsStr.c_str(), bound).c_str());
         uint32_t id = 0, remaining = 0;
-        if (webServer.arg("asig").equalsIgnoreCase(want) && acctproto::parseId(acct.c_str(), id) &&
+        if (signatureMatches(webServer.arg("asig"), want) && acctproto::parseId(acct.c_str(), id) &&
             acctproto::parseSeconds(atime.c_str(), remaining)) {
             if (t.reportRemaining(id, (uint8_t)slotNum, remaining, nowS) == Result::OK) {
                 lastReportMs[slotNum] = millis();

@@ -134,7 +134,7 @@ void setupWebServer() {
         }
         if (webServer.hasArg("state")) {
             bool state = (webServer.arg("state") == "1" || webServer.arg("state") == "true");
-            setRelayHardware(state);
+            relayManualTest(state);
             webServer.send(200, "application/json",
                            "{\"status\":\"ok\",\"relay_pin\":" + String(relayPin) + ",\"state\":" +
                                String(state ? 1 : 0) + ",\"active_low\":" + String(relayActiveLow ? 1 : 0) + "}");

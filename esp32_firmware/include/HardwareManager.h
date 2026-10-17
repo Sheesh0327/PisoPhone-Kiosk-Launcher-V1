@@ -14,6 +14,8 @@ void processLedBlink();
 
 void setRelayHardware(bool active);
 void processRelayState();
+// the dashboard's relay test (an "on" is switched off again after 10 s unless a session is open)
+void relayManualTest(bool on);
 
 void IRAM_ATTR universalCoinIsr();
 void resetCoinDetectorStates();
@@ -24,6 +26,9 @@ extern volatile unsigned long isrLastPulseTimeUs;
 // the measured widths of the coin pulses (a copy) and a reset (see PulseGuard.h)
 PulseStats coinPulseStats();
 void coinPulseStatsReset();
+// the pulses counted since the last take (zeroed), or a look without zeroing; both under the ISR's lock
+int coinPulsesTake(unsigned long* lastPulseMs = nullptr);
+int coinPulsesPeek(unsigned long* lastPulseMs = nullptr);
 
 void processHardwareResetPin();
 

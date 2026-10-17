@@ -200,12 +200,13 @@ cmd_update() {
 	[ "$0" != "$SELF_PATH" ] || die "this is the installed (old) copy. Copy the NEW piso-setup.sh to the router and run it from there: ./piso-setup.sh update"
 	check_arch
 	step "Updating the portal files"
-	[ -x /etc/init.d/pisoportal ] && /etc/init.d/pisoportal stop > /dev/null 2>&1   # (no program is replaced while it runs)
+	[ -x /etc/init.d/pisoportal ] && /etc/init.d/pisoportal stop > /dev/null 2>&1 && PORTAL_RESTORE=1   # (no program is replaced while it runs; started again on an error)
 	remove_old_portal
 	extract_payload "$0"
 	write_coinslot_conf "$(conf_get GW_KEY)" "$(conf_get BOX_MAC)"
 	sync_kiosk_wifi
 	[ -x /etc/init.d/pisoportal ] && { /etc/init.d/pisoportal enable; /etc/init.d/pisoportal start; }
+	PORTAL_RESTORE=0
 	# openNDS and the firewall as this version needs them (a router set up with the earlier ThemeSpec portal is moved over)
 	(umask 077; { portal_uci "$(conf_get GUEST_NAME)"; router_access_uci; } > /tmp/piso-setup.uci)
 	uci_apply /tmp/piso-setup.uci

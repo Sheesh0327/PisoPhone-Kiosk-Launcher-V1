@@ -59,7 +59,7 @@ bool handleControllerWebSocketHandshake(WiFiClient& client, const String& reques
     String payload = sessionId + ":" + tsStr;
     String expectedSig = calculateHMAC(payload, cred);
 
-    if (!sig.equalsIgnoreCase(expectedSig)) {
+    if (!signatureMatches(sig, expectedSig)) {
         Serial.printf("[-] Controller WS Auth Failed for session '%s': Signature Mismatch\n", sessionId.c_str());
         client.print(
             "HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\n\r\n{\"error\":\"INVALID_SIGNATURE\"}");
@@ -137,6 +137,8 @@ bool handleControllerWebSocketHandshake(WiFiClient& client, const String& reques
             String txId = generateTxId("tx-");
 
             bool retained = enqueuePendingPayment(txId, sessId, pulses, CoinSlotOwnerType::CONTROLLER);
+            recordCoinRevenue(
+                pulses); // the cash is in the box whatever happens to the delivery (as for phones and the router)
             if (!retained) {
                 Serial.printf("[CONTROLLER WS] CRITICAL: Could not retain tx_id='%s'.\n", txId.c_str());
             }

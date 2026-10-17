@@ -113,18 +113,22 @@ class SessionRulesTest {
 
     @Test
     fun finishingPaymentUnlocksWhenCoinsWereInsertedOrTimeWasRunning() {
-        for (coins in listOf(0, 5)) {
-            for (s in allStates) {
-                val old = if (coins > 0) {
-                    2
-                } else if (s == 3) {
-                    2
-                } else {
-                    0
+        for (paid in listOf(false, true)) {
+            for (coins in listOf(0, 5)) {
+                for (s in allStates) {
+                    val want = if (coins > 0 || s == 2 || s == 3 || paid) 2 else 0
+                    assertEquals("finish $s coins=$coins paid=$paid", want, SessionRules.afterFinishPayment(s, coins, paid))
                 }
-                assertEquals("finish $s coins=$coins", old, SessionRules.afterFinishPayment(s, coins))
             }
         }
+    }
+
+    @Test
+    fun aSecondFinishNeverLocksAPayingCustomer() {
+        // the coin window ran out (first finish: coins credited, state 2) and Done was tapped at the same moment (second finish)
+        val first = SessionRules.afterFinishPayment(ARMED_LOCKED, coinsInserted = 3, hasPaidTime = true)
+        assertEquals(UNLOCKED, first)
+        assertEquals(UNLOCKED, SessionRules.afterFinishPayment(first, coinsInserted = 0, hasPaidTime = true))
     }
 
     @Test

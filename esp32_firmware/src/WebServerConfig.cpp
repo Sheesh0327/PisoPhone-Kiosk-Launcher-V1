@@ -12,6 +12,7 @@
 #include "PaymentQueueManager.h"
 #include "Config.h"
 #include "PulseGuard.h"
+#include "PinRules.h"
 #include "SetupGate.h"
 #include "RevenueVault.h"
 #include "RevenueLedger.h"
@@ -157,8 +158,50 @@ void handleFactoryReset() {
     ESP.restart();
 }
 
+// The 400 answer for a setting that cannot be saved. Nothing of the request has been written when it is sent.
+static void refuseSave(const char* code, const char* message) {
+    webServer.send(400, "application/json",
+                   String("{\"success\":false,\"error\":\"") + code + "\",\"message\":\"" + message + "\"}");
+}
+
+// A port typed in the form: 1-65535, or -1.
+static int parsePort(const String& text) {
+    if (text.length() == 0 || text.length() > 5) return -1;
+    for (size_t i = 0; i < text.length(); i++) {
+        if (text[i] < '0' || text[i] > '9') return -1;
+    }
+    long port = text.toInt();
+    return (port >= 1 && port <= 65535) ? (int)port : -1;
+}
+
 void handleSave() {
     if (!checkAdminAuth()) return;
+
+    // Check everything that can be refused BEFORE anything is written, so a refused save changes nothing. A pin on the flash bus
+    // used to be saved and applied at once, which crashed the box at this and every following start (only a USB flash fixed it).
+    int newCoinPin = universalCoinPin, newRelayPin = relayPin, newLedPin = ledPin, newPort = targetPort;
+    if (webServer.hasArg(NVS_KEY_U_COIN_PIN))
+        newCoinPin = pinrules::parsePin(webServer.arg(NVS_KEY_U_COIN_PIN).c_str());
+    if (webServer.hasArg(NVS_KEY_RELAY_PIN)) newRelayPin = pinrules::parsePin(webServer.arg(NVS_KEY_RELAY_PIN).c_str());
+    if (webServer.hasArg(NVS_KEY_LED_PIN)) newLedPin = pinrules::parsePin(webServer.arg(NVS_KEY_LED_PIN).c_str());
+    const char* pinProblem =
+        pinrules::problem(pinrules::THIS_CHIP, newCoinPin, newRelayPin, newLedPin, HARDWARE_RESET_PIN);
+    if (pinProblem) {
+        refuseSave("BAD_PIN", pinProblem);
+        return;
+    }
+    if (webServer.hasArg(NVS_KEY_PORT)) newPort = parsePort(webServer.arg(NVS_KEY_PORT));
+    if (newPort < 0) {
+        refuseSave("BAD_PORT", "The phone app port must be a number from 1 to 65535.");
+        return;
+    }
+    if (webServer.hasArg(NVS_KEY_ADMIN_PW)) {
+        String newPw = webServer.arg(NVS_KEY_ADMIN_PW);
+        if (newPw != webPassword && !setupgate::passwordAcceptable(newPw.c_str())) {
+            refuseSave("WEAK_PASSWORD", "Use at least 8 characters, and not the default password.");
+            return;
+        }
+    }
 
     // Immediately flush any dirty revenue to NVS flash on manual save
     flushRevenueToFlash();
@@ -189,11 +232,11 @@ void handleSave() {
         }
     }
     if (webServer.hasArg(NVS_KEY_U_COIN_PIN)) {
-        universalCoinPin = webServer.arg(NVS_KEY_U_COIN_PIN).toInt();
+        universalCoinPin = newCoinPin;
         prefs.putInt(NVS_KEY_U_COIN_PIN, universalCoinPin);
     }
     if (webServer.hasArg(NVS_KEY_LED_PIN)) {
-        ledPin = webServer.arg(NVS_KEY_LED_PIN).toInt();
+        ledPin = newLedPin;
         prefs.putInt(NVS_KEY_LED_PIN, ledPin);
     }
     if (webServer.hasArg(NVS_KEY_LED_ACTIVE_LOW)) {
@@ -201,7 +244,7 @@ void handleSave() {
         prefs.putBool(NVS_KEY_LED_ACTIVE_LOW, ledActiveLow);
     }
     if (webServer.hasArg(NVS_KEY_RELAY_PIN)) {
-        relayPin = webServer.arg(NVS_KEY_RELAY_PIN).toInt();
+        relayPin = newRelayPin;
         prefs.putInt(NVS_KEY_RELAY_PIN, relayPin);
     }
     if (webServer.hasArg("ips")) {
@@ -243,17 +286,11 @@ void handleSave() {
         }
     }
     if (webServer.hasArg(NVS_KEY_PORT)) {
-        targetPort = webServer.arg(NVS_KEY_PORT).toInt();
+        targetPort = newPort;
         prefs.putInt(NVS_KEY_PORT, targetPort);
     }
     if (webServer.hasArg(NVS_KEY_ADMIN_PW)) {
-        String newPw = webServer.arg(NVS_KEY_ADMIN_PW);
-        if (newPw != webPassword && !setupgate::passwordAcceptable(newPw.c_str())) {
-            webServer.send(
-                400, "application/json",
-                "{\"success\":false,\"error\":\"WEAK_PASSWORD\",\"message\":\"Use at least 8 characters, and not the default password.\"}");
-            return;
-        }
+        String newPw = webServer.arg(NVS_KEY_ADMIN_PW); // checked above
         if (newPw != webPassword) {
             webPassword = newPw;
             adminSessionsEndAll();

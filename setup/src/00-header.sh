@@ -58,9 +58,15 @@ DRY=0; ASSUME_YES=0; PISO_ROOT="${PISO_ROOT:-}"
 log() { printf '%s\n' "$*"; [ "$DRY" = 1 ] || printf '%s %s\n' "$(date '+%F %T')" "$*" >> "$LOG" 2> /dev/null; }
 die() {
 	log "ERROR: $*"; [ "$DRY" = 1 ] || echo "FAILED $*" > "$STATE"
+	if [ -n "$UNDO" ]; then _u="$UNDO"; UNDO=""; eval "$_u"; fi
+	if [ "$PORTAL_RESTORE" = 1 ]; then log "starting the portal program again"; /etc/init.d/pisoportal start > /dev/null 2>&1; fi
 	if [ "$NDS_RESTORE" = 1 ]; then log "starting the customer portal (openNDS) again, as it was before this run"; /etc/init.d/opennds start > /dev/null 2>&1; fi
 	exit 1
 }
+# Stopped from outside (Ctrl-C, the SSH session or the setup computer lost, a kill): the same clean-up as an error, so openNDS is
+# never left stopped (guests would be online without paying) and a half-done pairing is put back.
+UNDO=""; PORTAL_RESTORE=0
+trap 'die "stopped before the end (interrupted)"' HUP INT TERM
 # wait_until SECONDS 'COMMAND': runs the command every 2 seconds until it succeeds or the time is up (returns 1). A service that was just
 # started (openNDS) needs a few seconds before it answers, so a check right after the install waits for it instead of failing.
 wait_until() {

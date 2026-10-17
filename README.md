@@ -88,6 +88,7 @@ CI (GitHub Actions, `.github/workflows/`) runs all of this on every push, only f
 | [`docs/PROVISIONING_SOLD_UNIT.md`](docs/PROVISIONING_SOLD_UNIT.md) | Secure boot and flash encryption for boxes you sell |
 | [`docs/api/`](docs/api) | Router gateway API, the super-admin QR login, print server pairing |
 | [`docs/maintainers/AUDIT_REPORT.md`](docs/maintainers/AUDIT_REPORT.md) | The security audit and what was done about each finding |
+| [`docs/maintainers/HARDENING_PLAN.md`](docs/maintainers/HARDENING_PLAN.md) | The production hardening pass: findings, fixes, confidence, hardware checks, release order |
 
 ## Branches
 | Branch | Contains | Purpose |

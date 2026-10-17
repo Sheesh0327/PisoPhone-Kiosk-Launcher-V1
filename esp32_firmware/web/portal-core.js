@@ -67,7 +67,12 @@ document.addEventListener('DOMContentLoaded', () => {
 window.saveSettings = function(form, ev) {
     if (ev) ev.preventDefault();
     fetch('/save', { method: 'POST', body: new URLSearchParams(new FormData(form)) })
-        .then(res => notify(res.ok ? 'Saved. The phones have the new settings.' : 'Could not save the settings.', res.ok ? 'ok' : 'bad'))
+        .then(async res => {
+            if (res.ok) return notify('Saved. The phones have the new settings.', 'ok');
+            let why = '';
+            try { why = (await res.json()).message || ''; } catch (e) { /* not JSON */ }
+            notify('Not saved, nothing was changed. ' + (why || 'Could not save the settings.'), 'bad');
+        })
         .catch(err => notify('Could not reach the box: ' + err, 'bad'));
     return false;
 };

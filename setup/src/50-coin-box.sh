@@ -36,6 +36,10 @@ pair_box() {
 	_old=$(box_wifi_key); _was=$(conf_get BOX_WIFI_ROTATED); _old_ssid=$(box_net_ssid)   # (the network's name goes with its password)
 	tip "the coin box's light tells you how it is doing: fast blinking = looking for the network, slow blinking = it cannot find or join it, steady = connected."
 	if [ -n "$(conf_get BOX_MAC)" ]; then tip "this router was paired with a coin box before: a box that was set up already is offered its own password, a new one the built-in one."; fi
+	# stopped during the wait: the box network goes back to the password and name it had, closed to all but the paired box (it
+	# used to stay open with the published pairing password, and the next pair offered only that one)
+	# shellcheck disable=SC2016 # run later by die()/the trap, when the values are known: the quotes keep it from expanding now
+	UNDO='conf_set BOX_WIFI_ROTATED "${_was:-0}"; uci set wireless.box_ap.key="$_old"; uci set wireless.box_ap.ssid="$_old_ssid"; lock_box_network "$(conf_get BOX_MAC)"'
 	conf_set BOX_WIFI_ROTATED 0
 	_key="$BOX_DEFAULT_WIFI"
 	set_box_key "$_key" "$BOX_PAIR_SSID"
@@ -63,6 +67,7 @@ pair_box() {
 		fi
 	done
 	if [ -z "$MAC" ]; then
+		UNDO=""
 		_up=$(box_ifname)
 		# nobody joined: the box keeps the password it had, so the router goes back to it (the wait may have ended on the other one)
 		# and a next "piso-setup pair" offers it again
@@ -74,6 +79,7 @@ pair_box() {
 		[ -z "$_refused" ] || die "$PSK_HINT"
 		die "the coin box did not join the hidden $BOX_PAIR_SSID network. Check that it is powered and has the current firmware (or factory reset it: it must try $BOX_PAIR_SSID), then run: piso-setup pair"
 	fi
+	UNDO=""
 	if [ "$_key" = "$_old" ] && [ "$_old" != "$BOX_DEFAULT_WIFI" ]; then conf_set BOX_WIFI_ROTATED 1; fi   # it joined with its own password
 	log "the coin box joined: $MAC"
 	tip "found it. Keep the box powered: next it gets its own admin password and its own Wi-Fi password, and loses the network for up to a minute while it switches."

@@ -132,7 +132,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                             </div>
                             <div class="field">
                                 <label for="port">Phone app port</label>
-                                <input id="port" type="number" name="port" value="{PORT}">
+                                <input id="port" type="number" min="1" max="65535" name="target_port" value="{PORT}">
                                 <span class="hint">Default is 8080.</span>
                             </div>
                             <div class="kv"><span class="muted">Box address</span><span id="wifi_ip_display" class="mono">{IP_ADDRESS}</span></div>
@@ -176,7 +176,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                             </div>
                             <div class="field">
                                 <label for="relay_active_low">Relay type</label>
-                                <select id="relay_active_low" name="relay_active_low">
+                                <select id="relay_active_low" name="relay_act_low">
                                     <option value="0" {RELAY_HIGH_SELECTED}>On with a high signal</option>
                                     <option value="1" {RELAY_LOW_SELECTED}>On with a low signal (most relay boards)</option>
                                 </select>
@@ -201,7 +201,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                             </div>
                             <div class="field">
                                 <label for="led_active_low">LED type</label>
-                                <select id="led_active_low" name="led_active_low">
+                                <select id="led_active_low" name="led_act_low">
                                     <option value="1" {LED_ACTIVE_LOW_SELECTED}>On-board LED (on with a low signal)</option>
                                     <option value="0" {LED_ACTIVE_HIGH_SELECTED}>External LED (on with a high signal)</option>
                                 </select>
