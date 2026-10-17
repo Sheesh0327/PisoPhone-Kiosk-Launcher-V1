@@ -1,8 +1,8 @@
 {
-  "version": "1.5.5",
-  "sha256": "86d454c379dc793309cf9c6ba0efdf300d1cc14fbaf6bd7c1f0118038c192d56",
-  "size": 1455465,
-  "rollout": 100,
-  "changelog": "Router 1.5.5: safer coin handling after a lost box link or power cut, settings kept on a full update, guests cannot reach private networks.",
-  "sig": "MEUCIQDGW+vE+SoF8SNOoSlYa79lMQsspyYgLxSGsxxLhfelowIgcZsXnmhuqGxHGYbM24ks4bkDySUOL1L8v6YsAI/O7Q8="
+  "version": "1.5.6",
+  "sha256": "649bf14385fd0acc00cc409282b1babc268223b52f15a6c00482f3153d7ea41d",
+  "size": 1455848,
+  "rollout": 0,
+  "changelog": "Router software release 1.5.6",
+  "sig": "MEQCHxMPccdOgV1q0CenupYIj5rcs9ecNnnA2iBhGM825gcCIQCUjM9OTROHpoo8SJi6OxtzB6se0no+ahbKJVLhqGH0XA=="
 }
