@@ -169,7 +169,11 @@ class KioskEngine(
             Log.w(TAG, "Rejecting payment credit: KioskEngine initialization in progress")
             return PaymentResult.FAILED
         }
-        return paymentRepo.creditPaymentBlocking(txId, seconds, amount)
+        // A coin put in while the phone is locked is paid time whose clock starts at Done (finishPayment), not at the coin.
+        // Complimentary, admin and sign-in credits (no coin amount) start at once.
+        val isCoin = amount > 0.0 && !txId.startsWith(ADMIN_TX_PREFIX)
+        val holdClock = isCoin && SessionRules.isLockScreenShown(stateManager.appState.value)
+        return paymentRepo.creditPaymentBlocking(txId, seconds, amount, holdClock)
     }
 
     private val systemMonitor: KioskSystemMonitor = KioskSystemMonitor(
@@ -394,13 +398,22 @@ class KioskEngine(
         if (!SessionRules.isArmed(stateManager.appState.value)) return
         if (stateManager.coinsInserted.value > 0) audioManager.playDoneSound()
         closeSession(sendUnarmToEsp = true)
-        stateManager.appState.value = SessionRules.afterFinishPayment(
+        val next = SessionRules.afterFinishPayment(
             stateManager.appState.value,
             stateManager.coinsInserted.value,
             hasPaidTime = stateManager.sessionTimeRemaining.value > 0,
         )
+        // Paid time starts counting now (the customer is done paying), before the phone unlocks.
+        if (SessionRules.isUnlocked(next)) startHeldClock()
+        stateManager.appState.value = next
         stateManager.coinsInserted.value = 0
         stateManager.saveState()
+    }
+
+    /** Starts the clock on time that was paid for but not yet counting (see [creditPayment]). */
+    fun startHeldClock() {
+        val started = paymentRepo.startHeldClockBlocking() ?: return
+        stateManager.applySessionUpdate(started.sessionExpiryDeadlineMs, started.sessionTimeRemaining, started.revision)
     }
 
     fun speakWarning(text: String) {

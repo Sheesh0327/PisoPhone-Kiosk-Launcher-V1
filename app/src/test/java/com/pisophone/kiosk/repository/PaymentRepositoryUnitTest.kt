@@ -484,4 +484,82 @@ class PaymentRepositoryUnitTest {
         assertEquals("Negative deadline must be sanitized to 0L", 0L, sanitizedState.sessionExpiryDeadlineMs)
         assertEquals(2L, sanitizedState.revision)
     }
+
+    // Paid time starts at Done: a coin put in while the phone is locked is held, with no deadline, until the clock is started.
+
+    @Test
+    fun testHeldCoinsAddUpWithoutStartingTheClock() = runBlocking {
+        val repository = PaymentRepository(db = db, isEligible = { isEligibleState })
+
+        assertEquals(PaymentResult.APPLIED, repository.creditPayment("tx-h1", 360, 1.0, holdClock = true))
+        assertEquals(PaymentResult.APPLIED, repository.creditPayment("tx-h2", 360, 1.0, holdClock = true))
+
+        val state = repository.getSessionState()!!
+        assertEquals("Held time adds up", 720, state.sessionTimeRemaining)
+        assertEquals("Held time has no deadline: the clock is not running", 0L, state.sessionExpiryDeadlineMs)
+    }
+
+    @Test
+    fun testStartHeldClockStartsTheDeadlineOnceFromTheHeldTotal() = runBlocking {
+        val repository = PaymentRepository(db = db, isEligible = { isEligibleState })
+        repository.creditPayment("tx-s1", 360, 1.0, holdClock = true)
+        repository.creditPayment("tx-s2", 120, 1.0, holdClock = true)
+
+        val before = SystemClock.elapsedRealtime()
+        val started = repository.startHeldClock()!!
+        assertEquals(480, started.sessionTimeRemaining)
+        assertTrue("Deadline is now plus the held seconds", started.sessionExpiryDeadlineMs >= before + 480_000L)
+
+        assertEquals("A second start has nothing to start", null, repository.startHeldClock())
+        assertEquals(started.sessionExpiryDeadlineMs, repository.getSessionState()!!.sessionExpiryDeadlineMs)
+    }
+
+    @Test
+    fun testCoinAddedToRunningTimeExtendsItEvenWhenHoldIsAsked() = runBlocking {
+        val repository = PaymentRepository(db = db, isEligible = { isEligibleState })
+        repository.creditPayment("tx-r1", 300, 1.0)
+        val running = repository.getSessionState()!!.sessionExpiryDeadlineMs
+        assertTrue(running > 0L)
+
+        repository.creditPayment("tx-r2", 60, 1.0, holdClock = true)
+
+        assertEquals("Running time is extended, never frozen", running + 60_000L, repository.getSessionState()!!.sessionExpiryDeadlineMs)
+    }
+
+    @Test
+    fun testNormalCreditKeepsHeldTime() = runBlocking {
+        val repository = PaymentRepository(db = db, isEligible = { isEligibleState })
+        repository.creditPayment("tx-n1", 360, 1.0, holdClock = true)
+
+        val before = SystemClock.elapsedRealtime()
+        repository.creditPayment("tx-n2", 120, 0.0)
+
+        val state = repository.getSessionState()!!
+        assertTrue("Held time is not lost when a credit starts the clock", state.sessionExpiryDeadlineMs >= before + 480_000L)
+        assertEquals(480, state.sessionTimeRemaining)
+    }
+
+    @Test
+    fun testCheckpointAndDeductKeepHeldTimeAccurate() = runBlocking {
+        val repository = PaymentRepository(db = db, isEligible = { isEligibleState })
+        repository.creditPayment("tx-c1", 600, 1.0, holdClock = true)
+
+        repository.checkpointSession(repository.getSessionState()!!.revision)
+        assertEquals("A checkpoint must not wipe held time", 600, repository.getSessionState()!!.sessionTimeRemaining)
+
+        repository.deductTime(120)
+        val state = repository.getSessionState()!!
+        assertEquals("Admin deduction reduces held time", 480, state.sessionTimeRemaining)
+        assertEquals(0L, state.sessionExpiryDeadlineMs)
+    }
+
+    @Test
+    fun testAdminBypassNeverShrinksHeldTime() = runBlocking {
+        val repository = PaymentRepository(db = db, isEligible = { isEligibleState })
+        repository.creditPayment("tx-b1", 1800, 5.0, holdClock = true)
+
+        val state = repository.adjustSessionTime(900)
+
+        assertTrue("Bypass guarantees at least the held time", state.sessionTimeRemaining >= 1799)
+    }
 }
