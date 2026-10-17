@@ -39,7 +39,7 @@ nothing here has run on a real box, phone or router yet. Section 4 is what must 
 | High: `/etc/coinslot.conf` was rebuilt from scratch, losing the owner's own lines | the owner's lines are kept; only the setup's keys are replaced | `test_setup.py` | 95% |
 | High: an interrupted pairing left the box network open with the published password | a trap restores the network as it was | `test_setup.py` (interrupt) | 80% |
 | High: an interrupted setup re-run left openNDS stopped (free internet) | the same trap starts openNDS again | `test_setup.py` (interrupt) | 85% |
-| Medium: paying guests could reach the modem's admin page and other private networks | openNDS blocks 10/8, 172.16/12, 192.168/16 for authenticated users | dry-run settings | 75% (openNDS syntax needs the router check in section 4) |
+| Medium: paying guests could reach the modem's admin page and other private networks | taken back in router 1.5.6: the rules were the only guest-traffic change of 1.5.5 and paying phones were reported online with no internet; see section 3 item 17 | not tried on a router | withdrawn |
 | Medium: a failed manual update left the portal stopped; a power cut mid-update could leave an empty init script | the portal is started again on an error; text files are moved in only when all are complete | `test_setup.py`, `test_install.py` | 85% |
 | Medium: a crash-looping portal passed the update health check | the portal must answer `/ping` twice | by reading (the update tests use their own health command) | 75% |
 
@@ -90,6 +90,7 @@ Ordered by risk to money first. Items marked **decision** need the owner's answe
 | 13 | Security | The admin QR key is used inside a page the box serves over HTTP | sign in the owner's own app instead |
 | 14 | Security | `RELEASES_TOKEN` is readable from any branch; the security rules miss one-line keys | move it to the protected environment; add patterns |
 | 15 | Box | Replay windows on signed phone calls are wider than intended; one account per slot not enforced on the box | record timestamps; sign out the other account |
+| 17 | Router | Paying guests can reach the modem's admin page and other private networks (router 1.5.5 tried to block them in openNDS's ruleset and was taken back in 1.5.6) | try it on a router first: `nft list ruleset` shows what openNDS built; consider a firewall rule in the guest zone instead of openNDS's list |
 | 16 | Router | One guest can block others (voucher guessing limit is global; empty windows hold the slot) | per-device limits |
 
 ## 4. Hardware checks before 100%

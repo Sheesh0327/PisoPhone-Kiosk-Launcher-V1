@@ -10,6 +10,10 @@ pub fn tick(core: &Arc<Core>) {
     let cfg = &core.cfg;
     let now = now_secs();
     for (mac, state, kb) in core.nds.clients() {
+        if state == "Preauthenticated" {
+            core.heal(&mac);
+            continue;
+        }
         if state != "Authenticated" {
             continue;
         }

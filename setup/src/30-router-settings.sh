@@ -160,12 +160,9 @@ delete opennds.@opennds[0].themespec_path
 set opennds.@opennds[0].statuspath='/usr/lib/opennds/pisoportal_status.sh'
 delete opennds.@opennds[0].users_to_router
 add_list opennds.@opennds[0].users_to_router='allow tcp port $PORTAL_PORT'
-# a paying guest reaches the internet, not the modem's admin page or other private networks behind the router (the shop's own devices)
+# paying guests get openNDS's own rules for authenticated users. Router 1.5.5 set its own list here (private networks blocked,
+# then everything allowed) and some routers' paying guests were let on with no internet; the delete takes that list away again.
 delete opennds.@opennds[0].authenticated_users
-add_list opennds.@opennds[0].authenticated_users='block to 10.0.0.0/8'
-add_list opennds.@opennds[0].authenticated_users='block to 172.16.0.0/12'
-add_list opennds.@opennds[0].authenticated_users='block to 192.168.0.0/16'
-add_list opennds.@opennds[0].authenticated_users='allow all'
 set opennds.@opennds[0].download_unrestricted_bursting='1'
 set opennds.@opennds[0].upload_unrestricted_bursting='1'
 set opennds.@opennds[0].checkinterval='15'

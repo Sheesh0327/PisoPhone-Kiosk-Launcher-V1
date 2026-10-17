@@ -109,6 +109,10 @@ try:
     check(v2 is not None and v2["left"] > 0 and v2["left"] < fin["left"], f"a reload counts down from the real time, not the purchase: {fin['left']} -> {v2 and v2['left']}")
     nd = env.nds_get(MAC_A)
     check(nd["STATE"] == "Authenticated" and nd["UPRATE"] == "2000" and nd["DOWNRATE"] == "5000" and abs(int(nd["SESSION_END"]) - (int(r[6]) + 690 * 60)) < 120, f"granted 690 min with the Endurance caps: {nd}")
+    # openNDS forgets its sessions (an update restarts it, or it crashes): a customer with paid time is let on again by the portal
+    # itself within a tick, without opening the page again
+    env.nds_client(MAC_A, STATE="Preauthenticated")
+    check(wait_until(lambda: env.nds_get(MAC_A)["STATE"] == "Authenticated", 8), "openNDS forgot a paying customer: the portal puts the device back online by itself")
     check(any(l.startswith("ack ") for l in env.boxlines()) and os.listdir(f"{env.data}/open") == [], "coins acknowledged on the box, the flash record removed")
     check(any(l.startswith("event coin") for l in env.boxlines()), "the box pushed coin events")
     lines = env.boxlines()

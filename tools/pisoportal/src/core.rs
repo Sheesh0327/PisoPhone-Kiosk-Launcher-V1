@@ -518,6 +518,19 @@ impl Core {
         ok
     }
 
+    /// Called every tick for a device openNDS lists as not let on. When it has paid time on the roll (openNDS was restarted by an
+    /// update or a crash, or a grant was refused and nobody asked again) it is put back online here, so a customer is not left
+    /// with a page that says "online" and a phone with no internet until the page happens to be opened again. A device that is in
+    /// the middle of paying, or paused, is left alone.
+    pub fn heal(&self, mac: &str) {
+        if self.st.lock().unwrap().window.as_ref().is_some_and(|w| w.mac == mac) {
+            return;
+        }
+        if self.reconnect(mac) {
+            log!("healed {}: it had paid time but openNDS had not let it on", mac);
+        }
+    }
+
     // ---- pause and resume --------------------------------------------------------------------------------------------------------
     /// Stop the clock of a device's paid time and take it off the internet. Err: why not (the page shows it).
     pub fn pause(&self, mac: &str) -> Result<(), (&'static str, u64)> {

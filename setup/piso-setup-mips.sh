@@ -29,7 +29,7 @@
 
 VERSION="dev"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
-PISO_RELEASE='1.5.5'
+PISO_RELEASE='1.5.6'
 # the CPU family the portal program in this file is built for (router_family below names the family of the router it runs on)
 PISO_ARCH='mips'
 
@@ -395,12 +395,9 @@ delete opennds.@opennds[0].themespec_path
 set opennds.@opennds[0].statuspath='/usr/lib/opennds/pisoportal_status.sh'
 delete opennds.@opennds[0].users_to_router
 add_list opennds.@opennds[0].users_to_router='allow tcp port $PORTAL_PORT'
-# a paying guest reaches the internet, not the modem's admin page or other private networks behind the router (the shop's own devices)
+# paying guests get openNDS's own rules for authenticated users. Router 1.5.5 set its own list here (private networks blocked,
+# then everything allowed) and some routers' paying guests were let on with no internet; the delete takes that list away again.
 delete opennds.@opennds[0].authenticated_users
-add_list opennds.@opennds[0].authenticated_users='block to 10.0.0.0/8'
-add_list opennds.@opennds[0].authenticated_users='block to 172.16.0.0/12'
-add_list opennds.@opennds[0].authenticated_users='block to 192.168.0.0/16'
-add_list opennds.@opennds[0].authenticated_users='allow all'
 set opennds.@opennds[0].download_unrestricted_bursting='1'
 set opennds.@opennds[0].upload_unrestricted_bursting='1'
 set opennds.@opennds[0].checkinterval='15'
@@ -1125,6 +1122,10 @@ cmd_diag() {
 	echo "--- coin box link"; cmd_box_diag 2>&1
 	echo "--- firewall tables"; nft list tables 2> /dev/null
 	echo "--- openNDS"; uci -q get opennds.@opennds[0].gatewayinterface; ndsctl status 2>&1 | head -12
+	echo "--- guests as openNDS sees them (a paying phone must be Authenticated)"; ndsctl json 2> /dev/null | grep -E '"(mac|ip|state|session_end|download_this_session)"' | head -40
+	echo "--- rules openNDS built for guests (an Authenticated phone's traffic must reach an accept rule)"
+	{ nft list ruleset 2> /dev/null | grep -i -A14 'chain.*nds' || iptables -S 2> /dev/null | grep -i nds; } | head -90
+	echo "--- last grants and re-grants"; logread -e coinslot 2> /dev/null | grep -E 'reconnect|healed|resume|REFUSED|still not online' | tail -10
 	echo "--- last coin timings (ms after the slot was asked to arm)"; logread -e coinslot 2> /dev/null | grep ' timing ' | tail -12
 	echo "--- last coin-slot log lines"; logread -e coinslot 2> /dev/null | grep -v ' timing ' | tail -20
 	echo "--- setup log"; tail -15 "$LOG" 2> /dev/null
