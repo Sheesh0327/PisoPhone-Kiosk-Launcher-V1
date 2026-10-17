@@ -68,6 +68,7 @@ compile check.
 |---|---|---|---|
 | High: Done tapped as the coin window ran out locked a customer who had paid time | finish runs once, only while armed, and never locks while paid time is left | `SessionRulesTest` (CI) | 90% |
 | Medium: the router signing job signed whatever `main` held at signing time | it signs only the files of the approved commit | by reading | 85% |
+| Owner decision: paid time counted down while the lock screen still waited for more coins | coins put in while locked are held with no deadline; the clock starts at Done, at the end of the coin window, or on any other unlock (supervisor safety net) | `PaymentRepositoryUnitTest` (CI) | 80% (the live flow needs a phone) |
 
 ## 3. Open: not fixed in this pass
 
@@ -84,7 +85,6 @@ Ordered by risk to money first. Items marked **decision** need the owner's answe
 | 7 | Router | Fair use can race a pause and lift its 1 kbit/s | re-check under the file lock before granting |
 | 8 | Router | The monitor does not watch the portal's health | `/ping` in the monitor, restart after 3 failures, alert |
 | 9 | App, **decision** | Phones with no box secret accept the public legacy key | refuse it once no box runs in legacy mode: are any of your boxes still in legacy mode? |
-| 10 | App, **decision** | Paid time starts counting while the lock screen still waits for more coins | start it at Done, or keep as is? |
 | 11 | Security | Router programs are built on `beta` and signed without a reproducible build check | rebuild on `main` in the signing job and compare |
 | 12 | Security | First phone setup trusts the website's APK (USB path installs with `-d`, no certificate pin) | pin the certificate fingerprint in the page and the setup program |
 | 13 | Security | The admin QR key is used inside a page the box serves over HTTP | sign in the owner's own app instead |

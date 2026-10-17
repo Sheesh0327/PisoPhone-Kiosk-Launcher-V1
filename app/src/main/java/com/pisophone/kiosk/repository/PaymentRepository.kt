@@ -81,7 +81,12 @@ class PaymentRepository(
 
     private val paymentDao = db.paymentDao()
 
-    suspend fun creditPayment(txId: String, seconds: Int, amount: Double): PaymentResult {
+    /**
+     * [holdClock]: a coin put in while the phone is still locked adds its time to the balance without starting the clock. The
+     * time starts when the customer finishes paying ([startHeldClock]), so the minutes spent putting in more coins are not
+     * taken from the minutes paid for. Time that is already running is simply extended.
+     */
+    suspend fun creditPayment(txId: String, seconds: Int, amount: Double, holdClock: Boolean = false): PaymentResult {
         var committedSnapshot: SessionSnapshot? = null
 
         val result = try {
@@ -111,12 +116,21 @@ class PaymentRepository(
                 val currentState = paymentDao.getSessionState()
                 val nowMonotonic = SystemClock.elapsedRealtime()
                 val currentDeadline = currentState?.sessionExpiryDeadlineMs ?: 0L
-                val newDeadline = if (currentDeadline > nowMonotonic) {
-                    currentDeadline + (seconds * 1000L)
+                val running = currentDeadline > nowMonotonic
+                val heldSeconds = heldSeconds(currentState)
+                val newDeadline: Long
+                val newSessionTime: Int
+                if (holdClock && !running) {
+                    newDeadline = 0L
+                    newSessionTime = heldSeconds + seconds
                 } else {
-                    nowMonotonic + (seconds * 1000L)
+                    newDeadline = if (running) {
+                        currentDeadline + (seconds * 1000L)
+                    } else {
+                        nowMonotonic + ((heldSeconds + seconds) * 1000L)
+                    }
+                    newSessionTime = ((newDeadline - nowMonotonic) / 1000L).toInt()
                 }
-                val newSessionTime = ((newDeadline - nowMonotonic) / 1000L).toInt()
                 val newRevision = (currentState?.revision ?: 0L) + 1L
 
                 val receipt = PaymentReceipt(
@@ -155,10 +169,44 @@ class PaymentRepository(
         return result
     }
 
-    fun creditPaymentBlocking(txId: String, seconds: Int, amount: Double): PaymentResult =
+    fun creditPaymentBlocking(txId: String, seconds: Int, amount: Double, holdClock: Boolean = false): PaymentResult =
         blockingIo {
-            creditPayment(txId, seconds, amount)
+            creditPayment(txId, seconds, amount, holdClock)
         }
+
+    /** Time that is paid for but whose clock has not started (no deadline yet). */
+    private fun heldSeconds(state: PaidSessionState?): Int =
+        if (state != null && state.sessionExpiryDeadlineMs == 0L) maxOf(0, state.sessionTimeRemaining) else 0
+
+    /**
+     * Starts the clock on held time: the deadline becomes now plus the held seconds. Does nothing when no time is held or the
+     * clock already runs. Returns the new state when it started.
+     */
+    suspend fun startHeldClock(): PaidSessionState? {
+        val started = db.withTransaction {
+            val current = paymentDao.getSessionState() ?: return@withTransaction null
+            val held = heldSeconds(current)
+            if (held <= 0) return@withTransaction null
+            val nowMonotonic = SystemClock.elapsedRealtime()
+            val state = PaidSessionState(
+                id = 1,
+                sessionTimeRemaining = held,
+                sessionExpiryDeadlineMs = nowMonotonic + held * 1000L,
+                lastSavedElapsedRealtime = nowMonotonic,
+                revision = current.revision + 1L,
+            )
+            paymentDao.updateSessionState(state)
+            state
+        }
+        if (started != null) {
+            onSessionStateChanged?.invoke(
+                SessionSnapshot(started.sessionExpiryDeadlineMs, started.sessionTimeRemaining, started.revision),
+            )
+        }
+        return started
+    }
+
+    fun startHeldClockBlocking(): PaidSessionState? = blockingIo { startHeldClock() }
 
     suspend fun deductTime(secondsDelta: Int, txId: String? = null): PaidSessionState {
         val updatedState = db.withTransaction {
@@ -184,17 +232,25 @@ class PaymentRepository(
             val positiveSecondsLong = if (rawSecondsLong == Long.MIN_VALUE) Long.MAX_VALUE else Math.abs(rawSecondsLong)
             val deductMs = positiveSecondsLong * 1000L
 
+            val held = heldSeconds(currentState)
             val newDeadline = if (curDeadline > nowMonotonic) {
                 maxOf(nowMonotonic, curDeadline - deductMs)
             } else {
                 0L
             }
-            val remaining = if (newDeadline > nowMonotonic) {
+            // Time still held (clock not started) is reduced as it is; running time keeps its deadline.
+            val remaining = if (held > 0 && curDeadline <= nowMonotonic) {
+                maxOf(0L, held - positiveSecondsLong).toInt()
+            } else if (newDeadline > nowMonotonic) {
                 ((newDeadline - nowMonotonic) / 1000L).toInt()
             } else {
                 0
             }
-            val effectiveDeadline = if (remaining > 0) newDeadline else 0L
+            val effectiveDeadline = when {
+                held > 0 && curDeadline <= nowMonotonic -> 0L
+                remaining > 0 -> newDeadline
+                else -> 0L
+            }
             val newRevision = (currentState?.revision ?: 0L) + 1L
 
             if (!txId.isNullOrBlank()) {
@@ -306,7 +362,13 @@ class PaymentRepository(
             // Never shrink a paid balance: an admin bypass guarantees AT LEAST durationSeconds,
             // i.e. remaining = max(currentRemaining, durationSeconds).
             val currentDeadline = currentState?.sessionExpiryDeadlineMs ?: 0L
-            val activeDeadline = if (currentDeadline > nowMonotonic) currentDeadline else 0L
+            val activeDeadline = if (currentDeadline > nowMonotonic) {
+                currentDeadline
+            } else if (heldSeconds(currentState) > 0) {
+                nowMonotonic + heldSeconds(currentState) * 1000L
+            } else {
+                0L
+            }
             val requestedDeadline = if (durationSeconds > 0) nowMonotonic + (durationSeconds * 1000L) else 0L
             val newDeadline = maxOf(activeDeadline, requestedDeadline)
             val remaining = if (newDeadline > nowMonotonic) ((newDeadline - nowMonotonic) / 1000L).toInt() else 0
@@ -348,6 +410,8 @@ class PaymentRepository(
             val nowMonotonic = SystemClock.elapsedRealtime()
             val remaining = if (current.sessionExpiryDeadlineMs > nowMonotonic) {
                 ((current.sessionExpiryDeadlineMs - nowMonotonic) / 1000L).toInt()
+            } else if (current.sessionExpiryDeadlineMs == 0L) {
+                heldSeconds(current)
             } else {
                 0
             }
