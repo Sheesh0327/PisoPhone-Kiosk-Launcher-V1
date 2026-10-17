@@ -546,7 +546,8 @@ EOT
 		# every other line is the owner's own (prices, SEND_HOST, PAUSE_*, ...): kept as it was, the setup only owns the keys above
 		[ -r "$_cf" ] && grep -v -E '^(GW_BOX|GW_KEY|GW_BOX_MAC|PORTAL_BIND|PORTAL_PORT|GATEWAY_NAME|CONSOLE_BIND|CONSOLE_PORT|VOUCHER_CHOICE)=' "$_cf"
 		:
-	} > "$_cf.new" && grep -q '^GW_KEY=' "$_cf.new" && mv "$_cf.new" "$_cf" || { rm -f "$_cf.new"; umask 022; die "could not write $_cf (is the router's flash full? piso-setup space)"; }
+	} > "$_cf.new"
+	if grep -q '^GW_KEY=' "$_cf.new"; then mv "$_cf.new" "$_cf"; else rm -f "$_cf.new"; umask 022; die "could not write $_cf (is the router's flash full? piso-setup space)"; fi
 	umask 022
 	chmod 600 "$_cf"
 }
@@ -591,6 +592,7 @@ pair_box() {
 	if [ -n "$(conf_get BOX_MAC)" ]; then tip "this router was paired with a coin box before: a box that was set up already is offered its own password, a new one the built-in one."; fi
 	# stopped during the wait: the box network goes back to the password and name it had, closed to all but the paired box (it
 	# used to stay open with the published pairing password, and the next pair offered only that one)
+	# shellcheck disable=SC2016 # run later by die()/the trap, when the values are known: the quotes keep it from expanding now
 	UNDO='conf_set BOX_WIFI_ROTATED "${_was:-0}"; uci set wireless.box_ap.key="$_old"; uci set wireless.box_ap.ssid="$_old_ssid"; lock_box_network "$(conf_get BOX_MAC)"'
 	conf_set BOX_WIFI_ROTATED 0
 	_key="$BOX_DEFAULT_WIFI"

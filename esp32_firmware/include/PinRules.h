@@ -15,12 +15,13 @@
 
 namespace pinrules {
 
-enum class Chip { ESP32, ESP32C3 };
+// (not named ESP32: the build flags define ESP32 as a macro, which broke every firmware build)
+enum class Chip { Classic, C3 };
 enum class Use { INPUT_PIN, OUTPUT_PIN };
 
 // Can this pin do this job on this chip without harming the box?
 inline bool usable(Chip chip, int pin, Use use) {
-    if (chip == Chip::ESP32C3) {
+    if (chip == Chip::C3) {
         if (pin < 0 || pin > 21) return false;
         if (pin >= 11 && pin <= 17) return false; // the flash bus (and its supply pin, 11)
         if (pin == 18 || pin == 19) return false; // the USB port the box is flashed through
@@ -57,9 +58,9 @@ inline int parsePin(const char* text) {
 }
 
 #if defined(CONFIG_IDF_TARGET_ESP32C3)
-constexpr Chip THIS_CHIP = Chip::ESP32C3;
+constexpr Chip THIS_CHIP = Chip::C3;
 #else
-constexpr Chip THIS_CHIP = Chip::ESP32;
+constexpr Chip THIS_CHIP = Chip::Classic;
 #endif
 
 } // namespace pinrules
