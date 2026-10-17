@@ -216,6 +216,16 @@ object KioskPolicyManager {
                 }
                 applyWifiConfigRestriction(context, dpm, componentName)
 
+                // 2b. No power menu while the app is pinned: the long-press power dialog (Power off, Restart) stays hidden. This is
+                // Android's default for lock task mode; it is set here so it does not depend on a phone maker's default.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    try {
+                        dpm.setLockTaskFeatures(componentName, DevicePolicyManager.LOCK_TASK_FEATURE_NONE)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Could not set the lock task features: ${e.message}")
+                    }
+                }
+
                 // 3. Set ADB global setting if permitted by device policy
                 try {
                     dpm.setGlobalSetting(componentName, Settings.Global.ADB_ENABLED, if (adbAllowed) "1" else "0")
