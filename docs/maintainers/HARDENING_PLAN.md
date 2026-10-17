@@ -68,6 +68,7 @@ compile check.
 |---|---|---|---|
 | High: Done tapped as the coin window ran out locked a customer who had paid time | finish runs once, only while armed, and never locks while paid time is left | `SessionRulesTest` (CI) | 90% |
 | Medium: the router signing job signed whatever `main` held at signing time | it signs only the files of the approved commit | by reading | 85% |
+| High (reported after 1.5.5): paying phones were online on the page but had no internet | router 1.5.6: the portal lets on a paid customer openNDS forgot (checked every minute); the 1.5.5 guest private-network rules removed | `test_flow.py` (fails on the old code); the owner tried 1.5.6 on a router and it works | 90% |
 | Owner decision: paid time counted down while the lock screen still waited for more coins | coins put in while locked are held with no deadline; the clock starts at Done, at the end of the coin window, or on any other unlock (supervisor safety net) | `PaymentRepositoryUnitTest` (CI) | 80% (the live flow needs a phone) |
 
 ## 3. Open: not fixed in this pass

@@ -22,12 +22,14 @@ key; and the money is always right. Two rules decide every trade-off:
 Real customers use the live release. Prefer a smaller, tested change over a clever one, and say plainly what you did not test.
 
 ## 2. Where the repository is now (2026-10-17)
-- **Live (published, 100%):** router **1.5.5** (`setup/RELEASE`), coin box firmware **3.6.1** (`PISO_FW_VERSION`), the phone app
+- **Live (published, 100%):** router **1.5.6** (`setup/RELEASE`), coin box firmware **3.6.1** (`PISO_FW_VERSION`), the phone app
   from CI (dev builds from `beta`, stable builds from `main`; the number is the CI run number).
 - **Branches:** `main` is production, `beta` is where work happens. After CI rebuilds on each branch their generated router
   files differ byte for byte, so merges to `main` keep `main`'s generated files (section 5).
 - **Production hardening pass** (`docs/maintainers/HARDENING_PLAN.md`: what was fixed, what is open, the hardware checks): router
-  1.5.5 went to 100% before the owner's hardware checks were done, so those checks are still owed. Phone app: paid time starts at
+  1.5.5 went to 100% before the owner's hardware checks were done, so those checks are still owed. After 1.5.5 paying phones were
+  reported online with no internet; the fix in 1.5.6 (the portal lets on a paid customer openNDS forgot; the 1.5.5 guest
+  private-network rules removed) was tried by the owner on a router and works. Phone app: paid time starts at
   Done (coins are held while the lock screen waits; `PaymentRepository.startHeldClock`), and the power menu is available only
   inside an admin maintenance window (`KioskPolicyManager.applyPowerMenu`); neither has run on a real phone.
 - **Recent work:** each router has its own Wi-Fi names (`PisoKiosk-xxxx`, `PisoCoinBox-xxxx`, 1.5.0); coin page: vouchers, pause
