@@ -102,13 +102,7 @@ class KioskSessionSupervisor(
 
                     // Active session countdown
                     if (SessionRules.isUnlocked(curState)) {
-                        // Safety net: whatever unlocked the phone (finish, arm timeout or failure, a reboot), paid time that has
-                        // no clock yet starts now. Without a deadline the balance would never run out.
-                        if (stateManager.sessionExpiryDeadlineMs.value <= 0L && stateManager.sessionTimeRemaining.value > 0) {
-                            paymentRepo.startHeldClock()?.let {
-                                stateManager.applySessionUpdate(it.sessionExpiryDeadlineMs, it.sessionTimeRemaining, it.revision)
-                            }
-                        }
+                        startHeldClockIfAny()
                         val deadline = stateManager.sessionExpiryDeadlineMs.value
                         val nowMonotonic = android.os.SystemClock.elapsedRealtime()
                         val remainingSec = if (deadline > 0L) {
@@ -171,6 +165,16 @@ class KioskSessionSupervisor(
                 }
             }
         }
+    }
+
+    /**
+     * Safety net: whatever unlocked the phone (finish, arm timeout or failure, a reboot), paid time that has no clock yet starts
+     * now. Without a deadline the balance would never run out.
+     */
+    private suspend fun startHeldClockIfAny() {
+        if (stateManager.sessionExpiryDeadlineMs.value > 0L || stateManager.sessionTimeRemaining.value <= 0) return
+        val started = paymentRepo.startHeldClock() ?: return
+        stateManager.applySessionUpdate(started.sessionExpiryDeadlineMs, started.sessionTimeRemaining, started.revision)
     }
 
     /**

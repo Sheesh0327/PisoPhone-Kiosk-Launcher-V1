@@ -246,7 +246,11 @@ class PaymentRepository(
             } else {
                 0
             }
-            val effectiveDeadline = if (held > 0 && curDeadline <= nowMonotonic) 0L else if (remaining > 0) newDeadline else 0L
+            val effectiveDeadline = when {
+                held > 0 && curDeadline <= nowMonotonic -> 0L
+                remaining > 0 -> newDeadline
+                else -> 0L
+            }
             val newRevision = (currentState?.revision ?: 0L) + 1L
 
             if (!txId.isNullOrBlank()) {
