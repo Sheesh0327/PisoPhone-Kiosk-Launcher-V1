@@ -83,9 +83,29 @@ object KioskPolicyManager {
         } catch (e: Exception) {
             Log.w(TAG, "Could not update lock task packages: ${e.message}")
         }
+        applyPowerMenu(context, dpm, componentName)
         applyWifiConfigRestriction(context, dpm, componentName)
         // the single-network lock is lifted while the window is open and back on as soon as it ends
         com.pisophone.kiosk.network.KioskWifi.lockToKioskNetwork(context)
+    }
+
+    /**
+     * The long-press power dialog (Power off, Restart) is shown only while an admin maintenance window is open, so a phone can
+     * be switched off only after the admin has signed in. Outside the window it stays hidden: Android's default for lock task
+     * mode, set here so it does not depend on the phone maker. Needs Android 9; older phones keep their default.
+     */
+    private fun applyPowerMenu(context: Context, dpm: DevicePolicyManager, componentName: ComponentName) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
+        val features = if (AdminMaintenanceMode.isActive(context)) {
+            DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS
+        } else {
+            DevicePolicyManager.LOCK_TASK_FEATURE_NONE
+        }
+        try {
+            dpm.setLockTaskFeatures(componentName, features)
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not set the lock task features: ${e.message}")
+        }
     }
 
     private fun applyWifiConfigRestriction(context: Context, dpm: DevicePolicyManager, componentName: ComponentName) {
@@ -216,15 +236,7 @@ object KioskPolicyManager {
                 }
                 applyWifiConfigRestriction(context, dpm, componentName)
 
-                // 2b. No power menu while the app is pinned: the long-press power dialog (Power off, Restart) stays hidden. This is
-                // Android's default for lock task mode; it is set here so it does not depend on a phone maker's default.
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    try {
-                        dpm.setLockTaskFeatures(componentName, DevicePolicyManager.LOCK_TASK_FEATURE_NONE)
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Could not set the lock task features: ${e.message}")
-                    }
-                }
+                applyPowerMenu(context, dpm, componentName)
 
                 // 3. Set ADB global setting if permitted by device policy
                 try {
