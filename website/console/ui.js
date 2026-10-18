@@ -1,5 +1,5 @@
 // TechNet PisoHub console: the page's behaviour. PISO_UI_VERSION rises with every change that is published (scripts/sign_console_ui.py).
-window.PISO_UI_VERSION = 7;
+window.PISO_UI_VERSION = 8;
 (function(){
 var $=function(i){return document.getElementById(i)},tab='over',timer=null,last={},sales=null,TABS=['over','cli','ph','sales','vch','set'];
 function esc(t){return String(t).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
@@ -17,7 +17,7 @@ function showApp(){$('login').className='hide';$('app').className='';$('adv').hr
 $('gobtn').onclick=function(){api('/api/login',{password:$('pw').value}).then(function(j){if(j.ok){$('pw').value='';$('err').textContent='';showApp()}else $('err').textContent=j.error==='LOCKED'?'Too many tries. Wait '+j.retry+' s.':'Wrong password.'}).catch(function(){$('err').textContent='The router did not answer.'})};
 $('pw').onkeydown=function(e){if(e.key==='Enter')$('gobtn').onclick()};
 $('out').onclick=function(){api('/api/logout',{}).then(showLogin)};
-$('th').onclick=function(){var r=document.documentElement,d=(r.dataset.theme||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'))==='dark';r.dataset.theme=d?'light':'dark';try{localStorage.setItem('piso_theme',r.dataset.theme)}catch(e){}if(last.over)draw(last.over.history)};
+$('th').onclick=function(){var r=document.documentElement,d=(r.dataset.theme||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'))==='dark';r.dataset.theme=d?'light':'dark';try{localStorage.setItem('piso_theme',r.dataset.theme)}catch(e){}if(last.over)draw(last.over.history);boxTheme()};
 try{var T=localStorage.getItem('piso_theme');if(T)document.documentElement.dataset.theme=T}catch(e){}
 document.querySelectorAll('#tabs button').forEach(function(b){b.onclick=function(){tab=b.dataset.t;document.querySelectorAll('#tabs button').forEach(function(x){x.className=x===b?'on':''});TABS.forEach(function(t){$('t-'+t).className=t===tab?'':'hide'});refresh()}});
 /* a confirmation that names what it does; Escape closes it and focus goes back to the button that opened it */
@@ -38,9 +38,11 @@ function cli(j){var a=j.clients||[];$('cl').innerHTML=a.map(function(c){var on=c
  return '<tr><td><b>'+esc(nm)+'</b><div class="s">'+esc(c.mac)+'</div></td><td class="hm">'+esc(c.ip)+'</td><td>'+(on?(c.paused?chip('paused','gold'):chip(c.plan||'online',c.plan==='endurance'?'gold':'ok')):chip('waiting'))+'</td><td class="n">'+tm(c.left)+'</td><td class="n hm">'+mb(c.dl_kb+c.ul_kb)+'</td><td class="n hm">'+(on?'&darr; '+sp(c.dl_kbps)+' &uarr; '+sp(c.ul_kbps):'-')+'</td><td>'+(on?'<button class="b" data-mac="'+esc(c.mac)+'" data-nm="'+esc(nm)+'">Disconnect</button>':'')+'</td></tr>'}).join('')||'<tr><td colspan="7" class="s">Nobody is connected right now.</td></tr>';
  $('clnote').textContent='Updates every few seconds. A disconnected customer keeps the paid time and can connect again.';
  document.querySelectorAll('#cl button.b').forEach(function(b){b.onclick=function(){ask('Disconnect '+b.dataset.nm+'?','Their paid time stays; they can reconnect.','Disconnect '+b.dataset.nm,true,function(){api('/api/kick',{mac:b.dataset.mac}).then(refresh)})}})}
-function ph(j){var n=$('phnote');if(j.error){$('phl').innerHTML='';n.textContent=j.error==='PASSWORD'?'The router does not know the coin box password any more: run piso-setup kiosk-wifi on the router.':j.error==='NO_PASSWORD'?'The coin box password is not stored on this router.':'The coin box does not answer.';return}
- n.textContent='';var a=Array.isArray(j)?j:(j.devices||[]);$('phl').innerHTML=a.map(function(d){if(!d.isBound)return '<tr><td>'+d.slotNum+'</td><td class="s">Empty slot</td><td></td><td></td><td></td></tr>';
- var nm=(d.name&&d.name.indexOf('Terminal')!==0)?d.name:'PisoPhone '+d.slotNum;return '<tr><td>'+d.slotNum+'</td><td><b>'+esc(nm)+'</b><div class="s">'+esc(d.ip||'')+'</div></td><td>'+(!d.online?chip('Offline','bad'):d.time>0?chip('Renting','ok'):chip('Locked'))+'</td><td class="n">'+(d.online?tm(d.time):'-')+'</td><td class="n">'+(typeof d.battery==='number'&&d.battery>=0?d.battery+'%'+(d.charging?' &#9889;':''):'-')+'</td></tr>'}).join('')||'<tr><td colspan="5" class="s">No phones yet.</td></tr>'}
+/* rental phones: the coin box's own page, passed through by the router one port above the console; it follows this page's light or dark */
+function theme(){var r=document.documentElement;return r.dataset.theme||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light')}
+function boxOrigin(){return 'http://'+location.hostname+':'+((+location.port||80)+1)}
+function boxTheme(){var f=$('boxf');if(f&&f.contentWindow&&f.src)try{f.contentWindow.postMessage({piso:'theme',theme:theme()},boxOrigin())}catch(e){}}
+function ph(){var f=$('boxf');if(!f.getAttribute('src')){f.onload=boxTheme;f.src=boxOrigin()+'/?embed=1&theme='+theme()}$('boxdirect').href=boxOrigin()+'/'}
 /* sales */
 function soldOut(j){if(j&&j.error==='NOT_FOUND'){$('t-'+tab).insertAdjacentHTML('afterbegin','<p class="msg">This router is on an older version. Run <b>piso-setup update</b> to use this page.</p>');return true}return false}
 /* kinds: coin = coins that bought time at once, vcoin = coins that bought a voucher code (income when the coins were counted), voucher = printed slips of older releases */
@@ -82,6 +84,6 @@ $('add-e').onclick=function(){$('rows-e').insertAdjacentHTML('beforeend',prow(''
 $('prs').onclick=function(){pmsg('');var body={hyper:pcollect('rows-h'),endurance:pcollect('rows-e'),prorata:String(Math.round(+$('pro').value||0)),down:String(Math.round((+$('edn').value||0)*1000)),up:String(Math.round((+$('eup').value||0)*1000))};
  api('/api/pricing',body).then(function(j){if(j.ok){pdirty=false;prices(j,true);pmsg('Saved. New payments use these prices.')}else pmsg(j.why?'Not saved: '+j.why+'.':'Not saved.',true)}).catch(function(){})};
 $('prr').onclick=function(){ask('Go back to the settings file?','The prices you changed here are forgotten; the router\'s settings file applies again.','Go back',true,function(){api('/api/pricing',{reset:'1'}).then(function(j){pdirty=false;if(j.ok){prices(j,true);pmsg('Done. The settings file\'s prices apply.')}}).catch(function(){})})};
-function refresh(){var p={over:'/api/overview',cli:'/api/clients',ph:'/api/phones',sales:'/api/sales?days='+($('rng').value||30),vch:'/api/vouchers',set:'/api/settings'}[tab],f={over:over,cli:cli,ph:ph,sales:sale,vch:vch,set:sets}[tab];api(p).then(f).catch(function(){});if(tab==='set')api('/api/pricing').then(prices).catch(function(){})}
+function refresh(){if(tab==='ph'){ph();return}var p={over:'/api/overview',cli:'/api/clients',sales:'/api/sales?days='+($('rng').value||30),vch:'/api/vouchers',set:'/api/settings'}[tab],f={over:over,cli:cli,sales:sale,vch:vch,set:sets}[tab];api(p).then(f).catch(function(){});if(tab==='set')api('/api/pricing').then(prices).catch(function(){})}
 api('/api/overview').then(function(j){if(j.version)showApp();else showLogin()}).catch(showLogin);
 })();

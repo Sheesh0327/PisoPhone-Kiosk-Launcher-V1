@@ -1,8 +1,8 @@
 {
-  "version": "1.5.10",
-  "sha256": "3f76cddc1fa6b78ec7d43d6bcfd8840920eccc1e5b102c1a55b118838713f854",
-  "size": 1467205,
-  "rollout": 100,
-  "changelog": "PisoWiFi and PisoPhone: guests and rental phones are kept apart from other devices; the router login pages are closed on Wi-Fi",
-  "sig": "MEYCIQDj9AQXT5YWniIVBxWB515hcO5NQhlmQacFeQamIP8FAgIhAI5B4GA7Shu/3zRrIPQk7SCn/uUuIHenubZYmNLO0lbb"
+  "version": "1.5.11",
+  "sha256": "87d76028e36f3d337b3fade0a9c13e56a0cccf067ec82c70fb9c79c7084e1122",
+  "size": 1483892,
+  "rollout": 0,
+  "changelog": "Router software release 1.5.11",
+  "sig": "MEUCIQDG/v/gyR1sFti5SGWifV4DVz6homSBnqk1mBromB1YTgIgCf3+uTSBvfVSPLVQ+YoMw72TIWQx7ZrHsvTWvuTFWxM="
 }
