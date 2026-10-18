@@ -215,6 +215,7 @@ The setup asks you to choose the router password (or shows a generated one and a
 | `piso-setup handout` | writes the printable setup sheet `/root/piso-handout.html` again. |
 | `piso-setup rotate-box-wifi` | gives the coin box a new random Wi-Fi password for the hidden box network (done automatically by the setup). |
 | `piso-setup lock-admin [MAC...]` | opt-in: only the named computers (default: the one you are on) may reach the router's SSH and web pages (ports 22, 80, 443, 8080, 8443 and the console's 8081); the rental phones can no longer try them. It **undoes itself after 2 minutes unless you open a new SSH session to check, then type CONFIRM** (or run `piso-setup lock-admin-confirm`), so it cannot lock you out. `piso-setup unlock-admin` removes it. |
+| `piso-setup wifi-admin [on\|off]` | whether the router's own login pages (SSH, LuCI) answer on Wi-Fi. Off is the normal state (since 1.5.10): rental phones cannot even see them; a computer on a LAN cable always can. The owner's console page is not affected |
 | `piso-setup diag` | prints one block (status, manager, box, firewall, recent logs; no passwords) to paste when asking for help. |
 
 ## If something fails

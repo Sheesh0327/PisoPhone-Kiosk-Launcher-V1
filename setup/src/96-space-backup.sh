@@ -3,7 +3,7 @@
 # ---------------------------------------------------------------------------------------------------------------------
 # What the system keeps when the router's own firmware is upgraded (sysupgrade): the settings, the revenue ledger, the monitor and the
 # programs, so a router that is upgraded (or whose settings are restored) still pairs with its box and still has its records.
-KEEP_FILES="/etc/piso-setup.conf /etc/coinslot.conf /etc/coinslot.d /etc/piso-monitor.conf /etc/crontabs/root /usr/sbin/piso-setup /usr/bin/pisoportal /usr/bin/piso-monitor.sh /etc/init.d/pisoportal /etc/init.d/piso_monitor /usr/lib/opennds/pisoportal_status.sh /etc/hotplug.d/firewall/50-piso-guest-isolate"
+KEEP_FILES="/etc/piso-setup.conf /etc/coinslot.conf /etc/coinslot.d /etc/piso-monitor.conf /etc/crontabs/root /usr/sbin/piso-setup /usr/bin/pisoportal /usr/bin/piso-monitor.sh /etc/init.d/pisoportal /etc/init.d/piso_monitor /usr/lib/opennds/pisoportal_status.sh /etc/hotplug.d/firewall/50-piso-isolation"
 
 keep_across_upgrades() {
 	_kf="${PISO_SYSUPGRADE_CONF:-$PISO_ROOT/etc/sysupgrade.conf}"

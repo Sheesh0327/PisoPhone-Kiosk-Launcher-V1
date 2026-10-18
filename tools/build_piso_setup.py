@@ -16,7 +16,7 @@ FILES = [  # (source in the repository, destination on the router, mode)
     ("router/piso_monitor.init", "/etc/init.d/piso_monitor", "755"),
     ("router/pisoportal.init", "/etc/init.d/pisoportal", "755"),
     ("router/pisoportal_status.sh", "/usr/lib/opennds/pisoportal_status.sh", "755"),
-    ("router/piso_guest_isolate.sh", "/etc/hotplug.d/firewall/50-piso-guest-isolate", "755"),
+    ("router/piso_isolation.sh", "/etc/hotplug.d/firewall/50-piso-isolation", "755"),
 ]
 DEFAULT_ARCH = "mipsel"   # its setup file is setup/piso-setup.sh (as it always was); the other families have setup/piso-setup-<family>.sh
 ARCHES = ["mipsel", "mips", "aarch64", "armv7", "x86_64"]

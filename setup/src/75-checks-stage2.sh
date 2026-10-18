@@ -12,7 +12,7 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 	_ck "the portal can talk to the box (signed request)" "/usr/bin/pisoportal box | grep -qi answers"
 	_gp=$(conf_get GUEST_PORT)
 	[ -z "$_gp" ] || _ck "router port $_gp is on the guest network (an access point plugged in there is gated)" "uci -q get \$(net_section br-guest).ports | grep -qw '$_gp'"
-	guest_isolation_on || log "WARN  guests on different radios or behind an access point can still reach each other: this router cannot load the bridge rule (install kmod-nft-bridge, then run piso-setup update)"
+	isolation_on || log "WARN  guests can still reach each other and rental phones can still reach each other and the router's login pages: this router cannot load the bridge rules (install kmod-nft-bridge, then run piso-setup update)"
 	_ck "openNDS is running" "wait_until 30 'ndsctl status'"   # (it needs a few seconds after it was started)
 	_ck "openNDS sends new guests to the portal (FAS)" "[ \"\$(uci -q get opennds.@opennds[0].fasport)\" = $PORTAL_PORT ]"
 	_ck "the router looks for signed updates every hour (scheduler running)" update_timer_ok
@@ -29,7 +29,7 @@ stage2() {
 	sleep 5
 	wifi reload > /dev/null 2>&1
 	/etc/init.d/firewall reload > /dev/null 2>&1
-	apply_guest_isolation
+	apply_isolation
 	/etc/init.d/dnsmasq restart > /dev/null 2>&1
 	sleep 8
 	ip -4 addr show br-guest | grep -q "inet $GUEST_IP/" || die "the guest network did not come up on $GUEST_IP"

@@ -149,21 +149,50 @@ check("set firewall.guest_noprivate.src='guest'" in out and "set firewall.guest_
       and out.index("set firewall.guest_noprivate=rule") < out.index("set opennds.@opennds[0].enabled"),
       "guests are refused the private address ranges beyond the modem (the internet stays open)")
 
-# the guest-to-guest block: a bridge rule, loaded with nft, soft when the router cannot do it
-fakebin = f"{tmp}/fakebin-iso"; os.makedirs(fakebin, exist_ok=True)
-for name, body in [("ip", "exit 0"), ("logger", f'echo "$*" >> {tmp}/iso-logger.log'),
-                   ("nft", f'echo "ARGS $*" >> {tmp}/iso-nft.log; [ "$1" = -f ] && cat >> {tmp}/iso-nft.log; [ -e {tmp}/iso-nft-fail ] && [ "$1" = -f ] && exit 1; exit 0')]:
-    open(f"{fakebin}/{name}", "w").write("#!/bin/sh\n" + body + "\n"); os.chmod(f"{fakebin}/{name}", 0o755)
-def run_iso():
-    return subprocess.run(["sh", f"{ROOT}/router/piso_guest_isolate.sh"], capture_output=True, text=True, env={**os.environ, "PATH": f"{fakebin}:{os.environ['PATH']}"})
-for f in ("iso-nft.log", "iso-logger.log", "iso-nft-fail"):
-    if os.path.exists(f"{tmp}/{f}"): os.remove(f"{tmp}/{f}")
-r = run_iso(); nl = open(f"{tmp}/iso-nft.log").read()
-check(r.returncode == 0 and "delete table bridge piso_guest" in nl and "table bridge piso_guest" in nl and 'meta ibrname "br-guest"' in nl and "drop" in nl and "hook forward" in nl
-      and not os.path.exists(f"{tmp}/iso-logger.log"), "the guest bridge rule drops what would pass from one guest port to another, and runs again without harm: " + nl)
-open(f"{tmp}/iso-nft-fail", "w").close()
-r = run_iso()
-check(r.returncode == 0 and "NOT active" in open(f"{tmp}/iso-logger.log").read(), "a router that cannot load the bridge rule logs it and carries on (exit 0)")
+check("set firewall.phone_noprivate.src='lan'" in out and "set firewall.phone_noprivate.dest='wan'" in out and "set firewall.phone_noprivate.target='REJECT'" in out
+      and "set firewall.phone_noprivate.mark='0x00200000/0x00200000'" in out
+      and all(f"add_list firewall.phone_noprivate.dest_ip='{n}'" in out for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "100.64.0.0/10")),
+      "phones that come in by Wi-Fi (marked by the bridge rules) are refused the modem's network")
+check("0x00200000" in open(f"{ROOT}/router/piso_isolation.sh").read(), "and the bridge rules mark them with the same mark")
+
+# the bridge rules (router/piso_isolation.sh): guests apart, rental phones reach the router and the coin box only. A fake nft keeps what it is given.
+iso = f"{tmp}/iso"; shutil.rmtree(iso, ignore_errors=True)
+for d in ("sys/br-lan/brif", "sys/br-guest/brif/phy0-ap1", "sys/br-guest/brif/phy1-ap1", "bin"): os.makedirs(f"{iso}/{d}", exist_ok=True)
+open(f"{iso}/coin.conf", "w").write("GW_BOX='10.0.0.10'\nGW_BOX_MAC='AA:BB:CC:DD:EE:09'\nCONSOLE_BIND='10.0.0.1'\n"); open(f"{iso}/piso.conf", "w").write("")
+open(f"{iso}/nft", "w").write(f'#!/bin/sh\necho "ARGS $*" >> {iso}/nft.log\nif [ "$1" = -f ]; then {{ echo "FILE $2"; cat "$2"; }} >> {iso}/nft.log; [ -e {iso}/nft-fail ] && exit 1; [ -e {iso}/nft-noname ] && grep -q ibrname "$2" && exit 1; fi\nexit 0\n')
+open(f"{iso}/bin/logger", "w").write(f'#!/bin/sh\necho "$*" >> {iso}/logger.log\n')
+for f in ("nft", "bin/logger"): os.chmod(f"{iso}/{f}", 0o755)
+def run_iso(clear=True):
+    if clear:
+        for f in ("nft.log", "logger.log"):
+            if os.path.exists(f"{iso}/{f}"): os.remove(f"{iso}/{f}")
+    r = subprocess.run(["sh", f"{ROOT}/router/piso_isolation.sh"], capture_output=True, text=True,
+                       env={**os.environ, "PATH": f"{iso}/bin:{os.environ['PATH']}", "PISO_NFT": f"{iso}/nft", "PISO_SYS": f"{iso}/sys", "PISO_CONF": f"{iso}/piso.conf", "PISO_COINSLOT_CONF": f"{iso}/coin.conf"})
+    return r, (open(f"{iso}/nft.log").read() if os.path.exists(f"{iso}/nft.log") else ""), (open(f"{iso}/logger.log").read() if os.path.exists(f"{iso}/logger.log") else "")
+r, nl, ll = run_iso()
+check(r.returncode == 0 and nl.count("delete table bridge piso_guest") == 1 and 'meta ibrname "br-guest" counter drop' in nl and ll == "",
+      "the guest bridge rule drops what would pass from one guest port to another: " + nl[:400])
+check("delete table bridge piso_kiosk" in nl and "ether saddr aa:bb:cc:dd:ee:09 accept" in nl and "ether daddr aa:bb:cc:dd:ee:09 accept" in nl and "arp daddr ip 10.0.0.10 accept" in nl
+      and 'iifname "phy*" counter drop' in nl and 'oifname "phy*" counter drop' in nl and 'iifname "wlan*" counter drop' in nl,
+      "rental phones: only the coin box (by its address) is let through, everything else on a Wi-Fi port is dropped")
+check('iifname "phy*" ip daddr 10.0.0.1 tcp dport { 22, 80, 443, 8080, 8443 } counter drop' in nl and "dport 2050" not in nl and "dport 8081" not in nl,
+      "the router's login pages (not the owner's console) are not offered on Wi-Fi, and only on the router's own kiosk address (a guest's web request to any website is not touched)")
+check('iifname "phy*" ether saddr != aa:bb:cc:dd:ee:09 meta mark set meta mark | 0x00200000' in nl, "what comes in by Wi-Fi (except the coin box) is marked for the firewall rule")
+# a router that cannot match the bridge name: the guest ports are named instead; and the rule is the same each time it runs
+open(f"{iso}/nft-noname", "w").close()
+r, nl, ll = run_iso()
+check(r.returncode == 0 and 'iifname { "phy0-ap1","phy1-ap1" } oifname { "phy0-ap1","phy1-ap1" } counter drop' in nl and ll == "", "without bridge-name matching the guest ports are listed instead: " + nl[:300])
+os.remove(f"{iso}/nft-noname")
+# the admin switch, and a router before the box is paired
+open(f"{iso}/piso.conf", "w").write("WIFI_ADMIN='on'\n"); open(f"{iso}/coin.conf", "w").write("GW_BOX='10.0.0.10'\nGW_BOX_MAC=''\nCONSOLE_BIND='10.0.0.1'\n")
+r, nl, ll = run_iso()
+check("tcp dport" not in nl and "ether saddr aa:bb" not in nl and 'iifname "phy*" counter drop' in nl and 'iifname "phy*" meta mark set meta mark | 0x00200000' in nl,
+      "wifi-admin on leaves the login pages open on Wi-Fi; before the box is paired phones are isolated and no address is named: " + nl[-500:])
+# a router that cannot load the rules logs it and carries on
+open(f"{iso}/nft-fail", "w").close()
+r, nl, ll = run_iso()
+check(r.returncode == 0 and ll.count("NOT active") == 2 and "guest isolation is NOT active" in ll and "phone isolation is NOT active" in ll, "a router that cannot load the bridge rules logs it and carries on (exit 0): " + ll)
+os.remove(f"{iso}/nft-fail")
 
 check("authenticated_users='block to" not in out and "authenticated_users='allow all'" not in out, "openNDS's own rules for paying guests are not replaced (1.5.5 did, and was taken back)")
 r = lib('ip() { echo "default via 192.168.0.1 dev wan"; }; modem_addresses')
@@ -218,7 +247,7 @@ fake_uci({"radio0": "2g", "radio1": "5g"})
 # ---- payload ---------------------------------------------------------------------------------------------------------------
 root = f"{tmp}/root"
 r = lib(f'PISO_ROOT={root}; DRY=1; extract_payload {SCRIPT}', env={"PISO_ROOT": root})
-for src, dest in [("router/piso_monitor.sh", "/usr/bin/piso-monitor.sh"), ("router/piso_monitor.init", "/etc/init.d/piso_monitor"), ("router/pisoportal.init", "/etc/init.d/pisoportal"), ("router/pisoportal_status.sh", "/usr/lib/opennds/pisoportal_status.sh"), ("router/piso_guest_isolate.sh", "/etc/hotplug.d/firewall/50-piso-guest-isolate")]:
+for src, dest in [("router/piso_monitor.sh", "/usr/bin/piso-monitor.sh"), ("router/piso_monitor.init", "/etc/init.d/piso_monitor"), ("router/pisoportal.init", "/etc/init.d/pisoportal"), ("router/pisoportal_status.sh", "/usr/lib/opennds/pisoportal_status.sh"), ("router/piso_isolation.sh", "/etc/hotplug.d/firewall/50-piso-isolation")]:
     p = f"{root}{dest}"
     check(os.path.exists(p) and open(p).read() == open(f"{ROOT}/{src}").read(), f"payload {dest} is identical to {src}")
     check(os.path.exists(p) and os.access(p, os.X_OK), f"{dest} is executable")
@@ -757,7 +786,7 @@ ub, ul = open(f"{tmp}/uci.batch").read(), open(f"{tmp}/uci.log").read()
 check("set opennds.@opennds[0].fasport='2080'" in ub and "set opennds.@opennds[0].login_option_enabled='0'" in ub and "delete opennds.@opennds[0].themespec_path" in ub
       and "set firewall.guest_stream.dest_port='2080'" in ub and "set opennds.@opennds[0].gatewayname='Shop WiFi'" in ub, "update moves openNDS to the FAS portal: " + ub[:300])
 check("set dropbear.@dropbear[0].Interface='lan'" in ub, "and keeps SSH off the guest network")
-check(all(l.startswith(("set firewall.guest_stream", "set firewall.guest_nomodem", "delete firewall.guest_nomodem", "add_list firewall.guest_nomodem", "set firewall.guest_noprivate", "delete firewall.guest_noprivate", "add_list firewall.guest_noprivate", "set opennds.", "delete opennds.", "add_list opennds.", "set dropbear.", "delete uhttpd.", "add_list uhttpd.", "#"))
+check(all(l.startswith(("set firewall.guest_stream", "set firewall.guest_nomodem", "delete firewall.guest_nomodem", "add_list firewall.guest_nomodem", "set firewall.guest_noprivate", "delete firewall.guest_noprivate", "add_list firewall.guest_noprivate", "set firewall.phone_noprivate", "delete firewall.phone_noprivate", "add_list firewall.phone_noprivate", "set opennds.", "delete opennds.", "add_list opennds.", "set dropbear.", "delete uhttpd.", "add_list uhttpd.", "#"))
           for l in ub.splitlines() if l.strip()), "and touches nothing else (no Wi-Fi, network or passwords): " + ub)
 check("commit opennds" in ul and "commit firewall" in ul, "the change is committed")
 cc = open(f"{root}/etc/coinslot.conf").read()
