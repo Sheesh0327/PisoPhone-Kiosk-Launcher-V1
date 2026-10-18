@@ -2,7 +2,7 @@
   "version": "1.5.12",
   "sha256": "68c39f1f536645107abe632def3d8130299a6dd73a12d00afc51902e47889f47",
   "size": 1486216,
-  "rollout": 0,
-  "changelog": "Router software release 1.5.12",
-  "sig": "MEUCIB3m89Bh/bAhXiDfIoIVQwKXSxO8lGjVBZe/PJFJIqisAiEAmAP2bKN+puiNFhSoH+MlrYZ5t3g7pl6OOSG4swSxNEE="
+  "rollout": 10,
+  "changelog": "Admin page at http://admin.hub; coin box and phone no longer use mDNS",
+  "sig": "MEYCIQCZHB2VlvkmzwxwNCbJeLKDIeRHsJOuhdV5taeQI/r5bAIhALhw/ZEvLRYt4ffLe6HYSf4dccr/ImGzoryoWrNoLI1s"
 }
