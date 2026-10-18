@@ -329,7 +329,7 @@ try:
     fin = d.wait_state("final", 25)
     check(fin is not None and fin["online"] is True, f"a paid device is online before it pauses: {fin}")
     env.set_box(busy=False, coins_at=[])
-    # a pause is a perk of paying enough (PAUSE_MIN_PESOS, 3 here, 20 by default): 1 peso paid is not enough, and the page is told how much is missing
+    # a pause is a perk of paying enough (PAUSE_MIN_PESOS, 3 here, 10 by default): 1 peso paid is not enough, and the page is told how much is missing
     n = d.count()
     d.send({"t": "pause"})
     r = d.wait_msg("pz", n)
