@@ -2,6 +2,7 @@
 // pushes it over WebSocket and HTTP, and re-sends queued payments on request.
 
 #include "DeviceNetwork.h"
+#include "PhoneProfileStore.h"
 #include "PaymentQueueManager.h"
 #include "CoinSlotManager.h"
 #include "DeviceManager.h"
@@ -75,7 +76,9 @@ void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId) {
         targetIp = getIpFromDeviceId(targetDev);
     }
 
-    int rate = (minutesPerCoin > 0) ? minutesPerCoin : 1;
+    // The rate of the phone that gets the coin: its profile's (PhoneProfiles.h), the standard rate when it has none.
+    int rate = minutesPerCoinForDevice(targetDev, targetIp);
+    if (rate < 1) rate = 1;
     int addedMinutes = pulses * rate;
     int addedSeconds = addedMinutes * 60;
 
@@ -145,7 +148,8 @@ bool retryPhonePayment(const String& targetDeviceId, int pulses, int creditSecon
     String targetIp = getIpFromDeviceId(targetDeviceId);
     if (targetIp.length() == 0 || targetIp == "127.0.0.1") return false;
 
-    int safeSeconds = creditSeconds > 0 ? creditSeconds : pulses * max(minutesPerCoin, 1) * 60;
+    int safeSeconds =
+        creditSeconds > 0 ? creditSeconds : pulses * max(minutesPerCoinForDevice(targetDeviceId, targetIp), 1) * 60;
     uint64_t retryTs = getCurrentMasterTimeMs();
     String vPayload = "v1:" + targetDeviceId + ":" + txId + ":" + String(pulses) + ":" + String(retryTs);
     String vSig = calculateHMAC(vPayload, getSharedSecret());

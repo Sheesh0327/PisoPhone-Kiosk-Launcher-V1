@@ -15,6 +15,7 @@
 #include "WebServerModule.h"
 #include "WebServerAuth.h"
 #include "Config.h"
+#include "PhoneProfileStore.h"
 #include "SetupGate.h"
 #include "Security.h"
 #include "HardwareManager.h"
@@ -243,7 +244,8 @@ void handleApiCoinslotArm() {
 
     int sNum = phoneSlots[slotIdx].slotNum;
     String json = "{\"success\":true,\"status\":\"armed\",\"slot\":" + String(sNum) +
-                  ",\"duration\":" + String(durationSec) + ",\"minutes_per_coin\":" + String(minutesPerCoin) +
+                  ",\"duration\":" + String(durationSec) +
+                  ",\"minutes_per_coin\":" + String(minutesPerCoinForSlotIndex(slotIdx)) +
                   ",\"price\":1.0,\"settle_ms\":" + String(getCoinSlotSettleRemainingMs()) + "}";
     webServer.send(200, "application/json", json);
 }
@@ -285,7 +287,7 @@ void handleApiCoinslotStatus() {
     json += "\"armed\":" + String(isArmed ? "true" : "false") + ",";
     json += "\"state\":\"" + stateStr + "\",";
     json += "\"remaining_seconds\":" + String(remainingSec) + ",";
-    json += "\"minutes_per_coin\":" + String(minutesPerCoin) + ",";
+    json += "\"minutes_per_coin\":" + String(minutesPerCoinForDevice(devId, "")) + ",";
     json += "\"transactions\":[";
 
     // Coins are listed only to the phone they belong to, on a signed request (see coinTxVisibleTo). An unsigned or

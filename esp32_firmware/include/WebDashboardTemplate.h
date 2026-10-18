@@ -156,7 +156,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                             <div class="field">
                                 <label for="minutes_per_coin">Minutes per ₱1</label>
                                 <input id="minutes_per_coin" type="number" name="minutes_per_coin" value="{MINUTES_PER_COIN}" min="1" max="1440">
-                                <span class="hint">Larger coins multiply it (₱5 = 5×, ₱10 = 10×, ₱20 = 20×). Phones get the new rate right away.</span>
+                                <span class="hint">This is the Standard rate. Larger coins multiply it (₱5 = 5×, ₱10 = 10×, ₱20 = 20×). A phone with a profile (below) uses the profile's rate instead. Phones get the new rate right away.</span>
                             </div>
                         </div>
                     </div>
@@ -214,6 +214,20 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                     <span class="hint">Changes are saved on the box and sent to the phones right away.</span>
                 </div>
             </form>
+
+            <div class="panel" id="profiles_panel">
+                <div class="panel-head"><h2><svg class="ic"><use href="#i-coin"/></svg>Phone profiles</h2></div>
+                <div class="panel-body">
+                    <span class="hint">A profile is a kind of rental device (a basic phone, a gaming phone, a tablet) with its own minutes per ₱1. Phones without a profile use the Coin rate above (Standard).</span>
+                    <div id="profiles_list"></div>
+                    <div class="actions">
+                        <button type="button" class="btn sm" id="profile_add" onclick="addProfileRow()">Add a profile</button>
+                        <button type="button" class="btn primary sm" id="profile_save" onclick="saveProfiles()">Save profiles</button>
+                    </div>
+                    <h3 class="muted" style="margin-top:16px">Profile of each phone slot</h3>
+                    <div id="profile_slots"></div>
+                </div>
+            </div>
         </section>
 
         <!-- TOOLS -->
