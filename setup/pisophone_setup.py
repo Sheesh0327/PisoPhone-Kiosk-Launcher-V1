@@ -2085,8 +2085,8 @@ def card_back_position(col, row, flip):
 _CARD_CSS = """@page{size:A4;margin:0}*{box-sizing:border-box}body{margin:0;background:#fff;font-family:system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .sheet{position:relative;width:210mm;height:297mm;page-break-after:always;overflow:hidden;background:#fff}.sheet:last-child{page-break-after:auto}
 .card{position:absolute;width:61mm;height:66.6mm;border:.3mm solid #787878;text-align:center;color:#000}
-.card b{display:block;margin-top:5.5mm;font-size:5.6mm;line-height:6mm}.card .h{margin-top:1.4mm;font-size:3.7mm;color:#3c3c3c}
-.card svg{position:absolute;left:50%;top:15.5mm;width:40mm;height:40mm;margin-left:-20mm}
+.card b{display:block;margin-top:4.5mm;font-size:5.6mm;line-height:6mm}.card .h{margin-top:.8mm;font-size:3.7mm;line-height:4.4mm;color:#3c3c3c}
+.card svg{position:absolute;left:50%;top:17mm;width:38mm;height:38mm;margin-left:-19mm}
 .card .s{position:absolute;left:0;right:0;top:56.5mm;font-size:2.9mm}.card .n{position:absolute;left:0;right:0;bottom:2.4mm;font-size:2.7mm;color:#505050}
 .back{position:absolute;width:63mm;height:68.6mm;background:#0a1b45;display:flex;align-items:center;justify-content:center}.back img{width:46mm;height:auto}
 .note{position:absolute;left:8mm;right:8mm;bottom:3mm;font-size:3mm;color:#666;text-align:center}

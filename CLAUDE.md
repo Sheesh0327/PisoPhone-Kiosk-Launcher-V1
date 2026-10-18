@@ -22,12 +22,14 @@ key; and the money is always right. Two rules decide every trade-off:
 Real customers use the live release. Prefer a smaller, tested change over a clever one, and say plainly what you did not test.
 
 ## 2. Where the repository is now (2026-10-18)
-- **Live (published, 100%):** router **1.5.11** (`setup/RELEASE`), coin box firmware **3.8.0** (`PISO_FW_VERSION`; boxes update from their
-  dashboards), the phone app from CI (dev builds from `beta`, stable builds from `main`; the number is the CI run number). Router 1.5.7-1.5.11
-  are new since the last hardware tests and have not been tried on a router: the modem block, guests apart and rental phones reaching only the
-  router and the coin box (bridge rules, `router/piso_isolation.sh`, need `kmod-nft-bridge`), the router login pages closed on Wi-Fi
-  (`piso-setup wifi-admin`), and one admin page (the console's Rental phones tab shows the coin box's page through `boxview.rs`, port 8082).
-  Firmware 3.7.0-3.8.0 (phone profiles; the box page's light/dark button and embedded view) have not been tried on a box.
+- **Live:** router **1.5.11** at 100%; router **1.5.12** is published as a staged rollout at **10%** (raise it with `publish-router.yml`, rollout 100, when
+  the owner says); coin box firmware **3.9.0** (`PISO_FW_VERSION`; boxes update from their dashboards); the phone app from CI (dev builds from `beta`,
+  stable builds from `main`; the number is the CI run number). **Routers 1.5.7-1.5.12 have never run on a real router** (modem block; guests apart and
+  rental phones reaching only the router and the coin box: bridge rules in `router/piso_isolation.sh`, they need `kmod-nft-bridge`; the router login pages
+  and the console closed on Wi-Fi, `piso-setup wifi-admin`; one admin page: `http://admin.hub`, the router's own DNS name, the console as the front page on
+  port 80 with LuCI on 8080, and the coin box's page inside its Rental phones tab through `boxview.rs`, port 81/8082). Firmware 3.7.0-3.9.0 (phone profiles; the
+  box page's light/dark button and embedded view; no mDNS any more) and the phone app without the `kioskmanager.local` fallback have not been tried on a box
+  or a phone. The hardware checks are in `docs/REAL_WORLD_TESTING.md` (RS22 and later).
 - **Branches:** `main` is production, `beta` is where work happens. After CI rebuilds on each branch their generated router
   files differ byte for byte, so merges to `main` keep `main`'s generated files (section 5).
 - **Production hardening pass** (`docs/maintainers/HARDENING_PLAN.md`: what was fixed, what is open, the hardware checks): router
