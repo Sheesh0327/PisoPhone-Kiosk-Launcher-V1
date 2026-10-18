@@ -175,8 +175,8 @@ check(r.returncode == 0 and nl.count("delete table bridge piso_guest") == 1 and 
 check("delete table bridge piso_kiosk" in nl and "ether saddr aa:bb:cc:dd:ee:09 accept" in nl and "ether daddr aa:bb:cc:dd:ee:09 accept" in nl and "arp daddr ip 10.0.0.10 accept" in nl
       and 'iifname "phy*" counter drop' in nl and 'oifname "phy*" counter drop' in nl and 'iifname "wlan*" counter drop' in nl,
       "rental phones: only the coin box (by its address) is let through, everything else on a Wi-Fi port is dropped")
-check('iifname "phy*" ip daddr 10.0.0.1 tcp dport { 22, 80, 443, 8080, 8443 } counter drop' in nl and "dport 2050" not in nl and "dport 8081" not in nl,
-      "the router's login pages (not the owner's console) are not offered on Wi-Fi, and only on the router's own kiosk address (a guest's web request to any website is not touched)")
+check('iifname "phy*" ip daddr 10.0.0.1 tcp dport { 22, 80, 443, 8080, 8443, 8081, 8082 } counter drop' in nl and "dport 2050" not in nl,
+      "the router's login pages and the console (and the coin box page one port up) are not offered on Wi-Fi, and only on the router's own kiosk address (a guest's web request to any website is not touched): " + nl[-900:])
 check('iifname "phy*" ether saddr != aa:bb:cc:dd:ee:09 meta mark set meta mark | 0x00200000' in nl, "what comes in by Wi-Fi (except the coin box) is marked for the firewall rule")
 # a router that cannot match the bridge name: the guest ports are named instead; and the rule is the same each time it runs
 open(f"{iso}/nft-noname", "w").close()
@@ -188,6 +188,12 @@ open(f"{iso}/piso.conf", "w").write("WIFI_ADMIN='on'\n"); open(f"{iso}/coin.conf
 r, nl, ll = run_iso()
 check("tcp dport" not in nl and "ether saddr aa:bb" not in nl and 'iifname "phy*" counter drop' in nl and 'iifname "phy*" meta mark set meta mark | 0x00200000' in nl,
       "wifi-admin on leaves the login pages open on Wi-Fi; before the box is paired phones are isolated and no address is named: " + nl[-500:])
+# the console as the front page (port 80): its ports are listed once each
+open(f"{iso}/coin.conf", "w").write("GW_BOX='10.0.0.10'\nGW_BOX_MAC='AA:BB:CC:DD:EE:09'\nCONSOLE_BIND='10.0.0.1'\nCONSOLE_PORT='80'\n"); open(f"{iso}/piso.conf", "w").write("")
+r, nl, ll = run_iso()
+check('tcp dport { 22, 80, 443, 8080, 8443, 81 } counter drop' in nl, "with the console on port 80 the list has 80 once and 81 for the box page: " + nl[-700:])
+open(f"{iso}/piso.conf", "w").write("WIFI_ADMIN='on'\n"); open(f"{iso}/coin.conf", "w").write("GW_BOX='10.0.0.10'\nGW_BOX_MAC=''\nCONSOLE_BIND='10.0.0.1'\n")
+r, nl, ll = run_iso()
 # a router that cannot load the rules logs it and carries on
 open(f"{iso}/nft-fail", "w").close()
 r, nl, ll = run_iso()
@@ -786,7 +792,7 @@ ub, ul = open(f"{tmp}/uci.batch").read(), open(f"{tmp}/uci.log").read()
 check("set opennds.@opennds[0].fasport='2080'" in ub and "set opennds.@opennds[0].login_option_enabled='0'" in ub and "delete opennds.@opennds[0].themespec_path" in ub
       and "set firewall.guest_stream.dest_port='2080'" in ub and "set opennds.@opennds[0].gatewayname='Shop WiFi'" in ub, "update moves openNDS to the FAS portal: " + ub[:300])
 check("set dropbear.@dropbear[0].Interface='lan'" in ub, "and keeps SSH off the guest network")
-check(all(l.startswith(("set firewall.guest_stream", "set firewall.guest_nomodem", "delete firewall.guest_nomodem", "add_list firewall.guest_nomodem", "set firewall.guest_noprivate", "delete firewall.guest_noprivate", "add_list firewall.guest_noprivate", "set firewall.phone_noprivate", "delete firewall.phone_noprivate", "add_list firewall.phone_noprivate", "set opennds.", "delete opennds.", "add_list opennds.", "set dropbear.", "delete uhttpd.", "add_list uhttpd.", "#"))
+check(all(l.startswith(("set firewall.guest_stream", "set firewall.guest_nomodem", "delete firewall.guest_nomodem", "add_list firewall.guest_nomodem", "set firewall.guest_noprivate", "delete firewall.guest_noprivate", "add_list firewall.guest_noprivate", "set firewall.phone_noprivate", "delete firewall.phone_noprivate", "add_list firewall.phone_noprivate", "add_list dhcp.@dnsmasq", "del_list dhcp.@dnsmasq", "set opennds.", "delete opennds.", "add_list opennds.", "set dropbear.", "delete uhttpd.", "add_list uhttpd.", "#"))
           for l in ub.splitlines() if l.strip()), "and touches nothing else (no Wi-Fi, network or passwords): " + ub)
 check("commit opennds" in ul and "commit firewall" in ul, "the change is committed")
 cc = open(f"{root}/etc/coinslot.conf").read()
@@ -946,6 +952,24 @@ r = lib("rm -f $CONF; console_answers() { return 1; }; cmd_console on; echo rc=$
 check("does not answer" in r.stdout + r.stderr and "front" not in (lib("conf_get CONSOLE_MODE").stdout), "console on: refused while the console does not answer yet (nothing changed): " + r.stdout + r.stderr)
 r = lib("rm -f $CONF; n=0; console_answers() { [ \"$1\" = 8081 ]; }; console_apply() { echo APPLY mode=[$(conf_get CONSOLE_MODE)]; }; sleep() { :; }; (cmd_console on); echo mode=[$(conf_get CONSOLE_MODE)]", env={"PISO_TEST_NONROOT": "1"})
 check("APPLY mode=[front]" in r.stdout and "APPLY mode=[]" in r.stdout and "put back" in r.stdout + r.stderr and "mode=[]" in r.stdout.split("APPLY mode=[]")[-1], "console on: when the console does not come up on port 80, everything is put back: " + r.stdout + r.stderr)
+# ---- admin.hub: the router's own DNS answers it; the console is the front page unless the owner chose otherwise (1.5.12) --------------------------------------------
+fake = f"{tmp}/uci-admin"; os.makedirs(fake, exist_ok=True)
+open(f"{fake}/uci", "w").write('#!/bin/sh\n[ "$1" = -q ] && shift\nif [ "$1" = get ] && [ "$2" = "dhcp.@dnsmasq[0].address" ]; then [ -e "$ADDR_FILE" ] && cat "$ADDR_FILE"; exit 0; fi\nexit 0\n'); os.chmod(f"{fake}/uci", 0o755)
+def name_lines(have):
+    open(f"{tmp}/addr", "w").write(have)
+    return lib("admin_name_uci", env={"PATH": f"{fake}:{os.environ['PATH']}", "ADDR_FILE": f"{tmp}/addr"}).stdout.strip().splitlines()
+check(name_lines("") == ["add_list dhcp.@dnsmasq[0].address='/admin.hub/10.0.0.1'"] or name_lines("\n") == ["add_list dhcp.@dnsmasq[0].address='/admin.hub/10.0.0.1'"], "admin.hub: the router answers the name with its kiosk address")
+check(name_lines("/other.lan/10.0.0.5 /admin.hub/10.0.0.1\n") == [], "admin.hub: nothing is added twice, and the owner's other names are left alone")
+check(name_lines("/admin.hub/192.168.9.1 /other.lan/10.0.0.5\n") == ["del_list dhcp.@dnsmasq[0].address='/admin.hub/192.168.9.1'", "add_list dhcp.@dnsmasq[0].address='/admin.hub/10.0.0.1'"],
+      "admin.hub: an old address of the name is replaced when the router's address changed")
+r = lib("rm -f $CONF; console_front && echo F; cmd_console() { echo ON-CALLED; }; console_default; echo mode=[$(conf_get CONSOLE_MODE)]")
+check("ON-CALLED" in r.stdout, "console_default: a router that never chose gets the front page: " + r.stdout + r.stderr)
+r = lib("rm -f $CONF; conf_set CONSOLE_MODE back; cmd_console() { echo ON-CALLED; }; console_default; echo mode=[$(conf_get CONSOLE_MODE)]")
+check("ON-CALLED" not in r.stdout and "mode=[back]" in r.stdout, "console_default: an owner's own choice (console off) is kept: " + r.stdout + r.stderr)
+r = lib("rm -f $CONF; conf_set CONSOLE_MODE front; console_apply() { :; }; cmd_console off >/dev/null; echo mode=[$(conf_get CONSOLE_MODE)]; console_front || echo notfront", env={"PISO_TEST_NONROOT": "1"})
+check("mode=[back]" in r.stdout and "notfront" in r.stdout, "console off is remembered as the owner's choice: " + r.stdout + r.stderr)
+r = lib("rm -f $CONF; cmd_console() { echo ON-FAILED; return 1; }; console_default; echo rc=$?")
+check("ON-FAILED" in r.stdout and "rc=0" in r.stdout and "stays at http://10.0.0.1:8081" in r.stdout + r.stderr, "console_default: a front page that could not be made does not stop the update: " + r.stdout + r.stderr)
 # ---- voucher-choice: the coin page's "Use now / Get a voucher code" choice -----------------------------------------------------------------
 os.makedirs(f"{root}/etc/coinslot.d", exist_ok=True)
 open(f"{root}/etc/coinslot.d/settings.txt", "w").write("VOUCHER_CHOICE=on\nOTHER=1\n")

@@ -77,7 +77,7 @@ static String getPlaceholderValue(const String& tag) {
 
     if (tag == "IP_ADDRESS") {
         String ip = WiFi.localIP().toString();
-        if (ip == "0.0.0.0" || ip.length() == 0) ip = "kioskmanager.local";
+        if (ip == "0.0.0.0" || ip.length() == 0) ip = "10.0.0.10"; // the box's fixed address
         return ip;
     }
 

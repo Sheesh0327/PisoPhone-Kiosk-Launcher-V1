@@ -117,7 +117,7 @@ class Esp32DiscoveryScannerUnitTest {
             isAlreadyBound = { false },
         )
 
-        assertEquals(listOf("10.0.0.10", "kioskmanager.local"), scanner.fastPathTargets("10.0.0.57"))
-        assertEquals(listOf("kioskmanager.local"), scanner.fastPathTargets(""))
+        assertEquals(listOf("10.0.0.10"), scanner.fastPathTargets("10.0.0.57"))
+        assertEquals(emptyList<String>(), scanner.fastPathTargets(""))
     }
 }

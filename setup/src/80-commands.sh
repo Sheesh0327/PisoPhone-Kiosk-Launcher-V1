@@ -223,6 +223,11 @@ cmd_update() {
 		/etc/init.d/opennds stop > /dev/null 2>&1; /etc/init.d/opennds start > /dev/null 2>&1
 	fi
 	apply_isolation
+	if [ -n "$(uci changes dhcp 2> /dev/null)" ]; then
+		uci commit dhcp
+		log "the router answers the name admin.hub (its own DNS)"
+		/etc/init.d/dnsmasq restart > /dev/null 2>&1
+	fi
 	if [ -n "$(uci changes dropbear 2> /dev/null)$(uci changes uhttpd 2> /dev/null)" ]; then
 		uci commit dropbear; uci commit uhttpd 2> /dev/null
 		restart_router_access
@@ -231,6 +236,7 @@ cmd_update() {
 	keep_across_upgrades
 	[ -r /etc/piso-monitor.conf ] && [ -x /etc/init.d/piso_monitor ] && { /etc/init.d/piso_monitor enable; /etc/init.d/piso_monitor restart; }
 	sleep 3
+	console_default
 	log "Updated to setup file version $VERSION. Customers' sessions and the revenue ledger were not touched."
 	# (the checks are for you to read; a router whose box or modem is off right now has still been updated)
 	cmd_status || log "Some of the checks above failed: see them. The update itself is complete."

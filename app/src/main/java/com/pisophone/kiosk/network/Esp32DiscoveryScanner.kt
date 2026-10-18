@@ -20,7 +20,7 @@ interface Esp32DiscoveryDelegate {
 
 /**
  * Industry-standard IoT Discovery Service for the ESP32 Master box:
- * 1. Fast Path: Direct probe of the box's fixed address (<network>.10) & canonical mDNS ("kioskmanager.local") via HTTP /identify.
+ * 1. Fast Path: Direct probe of the box's fixed address (<network>.10) via HTTP /identify.
  * 2. Dynamic Discovery: Standard UDP broadcast probe & beacon on port 8888.
  * 3. Security (RULE 6): Uniform MAC address validation from discovered JSON payload.
  */
@@ -262,15 +262,15 @@ class Esp32DiscoveryScanner(
 
     /**
      * Where the box can be asked directly. The router setup gives the coin box the fixed address <network>.10 on the kiosk
-     * network (docs: setup/README.md), so that is tried first; "kioskmanager.local" (mDNS) is the fallback. (The box has no
-     * Wi-Fi network of its own any more, so the old 192.168.4.1 is gone, and the network's .1 is the router, not the box.)
+     * network (docs: setup/README.md), so that is the one place asked. (There is no mDNS name any more, and the box has no
+     * Wi-Fi network of its own, so the old 192.168.4.1 is gone, and the network's .1 is the router, not the box.) A phone with
+     * no address yet only listens for the box's broadcast.
      */
     fun fastPathTargets(localIp: String): List<String> {
         val targets = mutableListOf<String>()
         if (localIp.isNotBlank() && localIp.contains(".")) {
             targets.add(localIp.substringBeforeLast(".") + ".10")
         }
-        targets.add("kioskmanager.local")
         return targets
     }
 

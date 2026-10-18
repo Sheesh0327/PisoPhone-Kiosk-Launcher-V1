@@ -106,6 +106,7 @@ stage1() {
 	install_packages
 	extract_payload "$0"
 	step "Writing the router settings"
+	[ -n "$(conf_get CONSOLE_MODE)" ] || conf_set CONSOLE_MODE front   # (the console is the front page, http://admin.hub; LuCI is on 8080)
 	apply_batch "$KIOSK_PASS" "$GUEST_NAME" "$BOX_MAC"
 	stage2
 }
