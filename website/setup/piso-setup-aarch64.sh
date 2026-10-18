@@ -29,7 +29,7 @@
 
 VERSION="dev"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
-PISO_RELEASE='1.5.8'
+PISO_RELEASE='1.5.9'
 # the CPU family the portal program in this file is built for (router_family below names the family of the router it runs on)
 PISO_ARCH='aarch64'
 
@@ -382,6 +382,15 @@ modem_addresses() {
 	} | awk '/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ && !seen[$0]++'
 }
 
+# apply_guest_isolation: puts the guest-to-guest block in place now (the firewall hotplug script does it at each firewall reload)
+apply_guest_isolation() {
+	[ -x "$PISO_ROOT/etc/hotplug.d/firewall/50-piso-guest-isolate" ] && sh "$PISO_ROOT/etc/hotplug.d/firewall/50-piso-guest-isolate"
+	return 0
+}
+
+# guest_isolation_on: the block between guests is loaded (it needs the kernel's bridge firewall support)
+guest_isolation_on() { nft list table bridge piso_guest > /dev/null 2>&1; }
+
 # portal_uci <guest name>: the guest-facing portal: openNDS sends new guests to pisoportal (FAS) and only the guest network
 # is gated; guests may reach the portal's port. The same lines are applied by the setup and by an update (which is how a
 # router set up with the earlier ThemeSpec portal is moved to this one).
@@ -404,6 +413,20 @@ set firewall.guest_nomodem.proto='all'
 set firewall.guest_nomodem.target='REJECT'
 delete firewall.guest_nomodem.dest_ip
 $(modem_addresses | while read -r _ma; do echo "add_list firewall.guest_nomodem.dest_ip='$_ma'"; done)
+# and nothing else on the far side of the modem either (the shop's other computers, the modem's neighbours): private and link-local
+# addresses are refused from the guest network, public addresses (the internet) are not. A narrow firewall rule again, not openNDS's list.
+set firewall.guest_noprivate=rule
+set firewall.guest_noprivate.name='Guest-No-Private'
+set firewall.guest_noprivate.src='guest'
+set firewall.guest_noprivate.dest='wan'
+set firewall.guest_noprivate.proto='all'
+set firewall.guest_noprivate.target='REJECT'
+delete firewall.guest_noprivate.dest_ip
+add_list firewall.guest_noprivate.dest_ip='10.0.0.0/8'
+add_list firewall.guest_noprivate.dest_ip='172.16.0.0/12'
+add_list firewall.guest_noprivate.dest_ip='192.168.0.0/16'
+add_list firewall.guest_noprivate.dest_ip='169.254.0.0/16'
+add_list firewall.guest_noprivate.dest_ip='100.64.0.0/10'
 
 # --- openNDS gates only the guest network -------------------------------------------------------------------------------
 set opennds.@opennds[0].enabled='1'
@@ -882,6 +905,7 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 	_ck "the portal can talk to the box (signed request)" "/usr/bin/pisoportal box | grep -qi answers"
 	_gp=$(conf_get GUEST_PORT)
 	[ -z "$_gp" ] || _ck "router port $_gp is on the guest network (an access point plugged in there is gated)" "uci -q get \$(net_section br-guest).ports | grep -qw '$_gp'"
+	guest_isolation_on || log "WARN  guests on different radios or behind an access point can still reach each other: this router cannot load the bridge rule (install kmod-nft-bridge, then run piso-setup update)"
 	_ck "openNDS is running" "wait_until 30 'ndsctl status'"   # (it needs a few seconds after it was started)
 	_ck "openNDS sends new guests to the portal (FAS)" "[ \"\$(uci -q get opennds.@opennds[0].fasport)\" = $PORTAL_PORT ]"
 	_ck "the router looks for signed updates every hour (scheduler running)" update_timer_ok
@@ -898,6 +922,7 @@ stage2() {
 	sleep 5
 	wifi reload > /dev/null 2>&1
 	/etc/init.d/firewall reload > /dev/null 2>&1
+	apply_guest_isolation
 	/etc/init.d/dnsmasq restart > /dev/null 2>&1
 	sleep 8
 	ip -4 addr show br-guest | grep -q "inet $GUEST_IP/" || die "the guest network did not come up on $GUEST_IP"
@@ -1144,6 +1169,7 @@ cmd_diag() {
 	echo "--- ledger vs box"; cmd_reconcile 2>&1
 	echo "--- coin box link"; cmd_box_diag 2>&1
 	echo "--- firewall tables"; nft list tables 2> /dev/null
+	echo "--- guests cannot reach each other (the rule must be listed; if not, this router lacks kmod-nft-bridge)"; nft list table bridge piso_guest 2>&1 | head -12
 	echo "--- openNDS"; uci -q get opennds.@opennds[0].gatewayinterface; ndsctl status 2>&1 | head -12
 	echo "--- guests as openNDS sees them (a paying phone must be Authenticated)"; ndsctl json 2> /dev/null | grep -E '"(mac|ip|state|session_end|download_this_session)"' | head -40
 	echo "--- rules openNDS built for guests (an Authenticated phone's traffic must reach an accept rule)"
@@ -1184,6 +1210,7 @@ cmd_update() {
 		/etc/init.d/firewall reload > /dev/null 2>&1
 		/etc/init.d/opennds stop > /dev/null 2>&1; /etc/init.d/opennds start > /dev/null 2>&1
 	fi
+	apply_guest_isolation
 	if [ -n "$(uci changes dropbear 2> /dev/null)$(uci changes uhttpd 2> /dev/null)" ]; then
 		uci commit dropbear; uci commit uhttpd 2> /dev/null
 		restart_router_access
@@ -1696,7 +1723,7 @@ cmd_set_password() {
 # ---------------------------------------------------------------------------------------------------------------------
 # What the system keeps when the router's own firmware is upgraded (sysupgrade): the settings, the revenue ledger, the monitor and the
 # programs, so a router that is upgraded (or whose settings are restored) still pairs with its box and still has its records.
-KEEP_FILES="/etc/piso-setup.conf /etc/coinslot.conf /etc/coinslot.d /etc/piso-monitor.conf /etc/crontabs/root /usr/sbin/piso-setup /usr/bin/pisoportal /usr/bin/piso-monitor.sh /etc/init.d/pisoportal /etc/init.d/piso_monitor /usr/lib/opennds/pisoportal_status.sh"
+KEEP_FILES="/etc/piso-setup.conf /etc/coinslot.conf /etc/coinslot.d /etc/piso-monitor.conf /etc/crontabs/root /usr/sbin/piso-setup /usr/bin/pisoportal /usr/bin/piso-monitor.sh /etc/init.d/pisoportal /etc/init.d/piso_monitor /usr/lib/opennds/pisoportal_status.sh /etc/hotplug.d/firewall/50-piso-guest-isolate"
 
 keep_across_upgrades() {
 	_kf="${PISO_SYSUPGRADE_CONF:-$PISO_ROOT/etc/sysupgrade.conf}"
@@ -2273,6 +2300,36 @@ cat << HTML
 <script>location.replace("$url")</script>
 </body></html>
 HTML
+#@@FILE /etc/hotplug.d/firewall/50-piso-guest-isolate 755
+#!/bin/sh
+# Guests must not see each other. The guest Wi-Fi already keeps the clients of one radio apart, but a guest on 2.4 GHz and one on
+# 5 GHz, or anything behind an access point plugged into a guest port, share the guest bridge. This puts one rule on the bridge:
+# nothing is passed from one port of br-guest to another. A guest still reaches the router itself (DHCP, DNS, the portal): frames
+# for the router are delivered locally and never pass through this rule. Installed as a firewall hotplug script, so it is applied
+# again each time the firewall is reloaded; setup and update also run it once. Safe to run any number of times.
+#
+# Needs the kernel's nftables bridge support (kmod-nft-bridge). Without it nothing is changed and the reason is logged; the
+# Wi-Fi isolation of each radio stays as it was. `piso-setup diag` shows whether the rule is in place.
+BRIDGE="${PISO_GUEST_BRIDGE:-br-guest}"
+TABLE=piso_guest
+
+command -v nft > /dev/null 2>&1 || exit 0
+ip link show "$BRIDGE" > /dev/null 2>&1 || exit 0
+
+nft delete table bridge "$TABLE" > /dev/null 2>&1
+if nft -f - << EOF
+table bridge $TABLE {
+	chain forward {
+		type filter hook forward priority -200; policy accept;
+		meta ibrname "$BRIDGE" counter drop comment "guests do not reach each other"
+	}
+}
+EOF
+then
+	exit 0
+fi
+logger -t piso-setup "guest isolation is NOT active: this router cannot load a bridge firewall rule (install kmod-nft-bridge); guests on different radios can still reach each other"
+exit 0
 #@@B64 /usr/bin/pisoportal 755 54e9880d1fda601da9a50a6ad868d9be056779c195f3d9d74ddf4e10ec0d8223
 f0VMRgIBAQAAAAAAAAAAAAIAtwABAAAAkFNAAAAAAABAAAAAAAAAAEgMDgAAAAAAAAAAAEAAOAAG
 AEAAEgARAAEAAAAFAAAAAAAAAAAAAAAAAEAAAAAAAAAAQAAAAAAAANMMAAAAAAAA0wwAAAAAAAAA

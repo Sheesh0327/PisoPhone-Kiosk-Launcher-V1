@@ -147,6 +147,15 @@ modem_addresses() {
 	} | awk '/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ && !seen[$0]++'
 }
 
+# apply_guest_isolation: puts the guest-to-guest block in place now (the firewall hotplug script does it at each firewall reload)
+apply_guest_isolation() {
+	[ -x "$PISO_ROOT/etc/hotplug.d/firewall/50-piso-guest-isolate" ] && sh "$PISO_ROOT/etc/hotplug.d/firewall/50-piso-guest-isolate"
+	return 0
+}
+
+# guest_isolation_on: the block between guests is loaded (it needs the kernel's bridge firewall support)
+guest_isolation_on() { nft list table bridge piso_guest > /dev/null 2>&1; }
+
 # portal_uci <guest name>: the guest-facing portal: openNDS sends new guests to pisoportal (FAS) and only the guest network
 # is gated; guests may reach the portal's port. The same lines are applied by the setup and by an update (which is how a
 # router set up with the earlier ThemeSpec portal is moved to this one).
@@ -169,6 +178,20 @@ set firewall.guest_nomodem.proto='all'
 set firewall.guest_nomodem.target='REJECT'
 delete firewall.guest_nomodem.dest_ip
 $(modem_addresses | while read -r _ma; do echo "add_list firewall.guest_nomodem.dest_ip='$_ma'"; done)
+# and nothing else on the far side of the modem either (the shop's other computers, the modem's neighbours): private and link-local
+# addresses are refused from the guest network, public addresses (the internet) are not. A narrow firewall rule again, not openNDS's list.
+set firewall.guest_noprivate=rule
+set firewall.guest_noprivate.name='Guest-No-Private'
+set firewall.guest_noprivate.src='guest'
+set firewall.guest_noprivate.dest='wan'
+set firewall.guest_noprivate.proto='all'
+set firewall.guest_noprivate.target='REJECT'
+delete firewall.guest_noprivate.dest_ip
+add_list firewall.guest_noprivate.dest_ip='10.0.0.0/8'
+add_list firewall.guest_noprivate.dest_ip='172.16.0.0/12'
+add_list firewall.guest_noprivate.dest_ip='192.168.0.0/16'
+add_list firewall.guest_noprivate.dest_ip='169.254.0.0/16'
+add_list firewall.guest_noprivate.dest_ip='100.64.0.0/10'
 
 # --- openNDS gates only the guest network -------------------------------------------------------------------------------
 set opennds.@opennds[0].enabled='1'

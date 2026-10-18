@@ -181,6 +181,7 @@ cmd_diag() {
 	echo "--- ledger vs box"; cmd_reconcile 2>&1
 	echo "--- coin box link"; cmd_box_diag 2>&1
 	echo "--- firewall tables"; nft list tables 2> /dev/null
+	echo "--- guests cannot reach each other (the rule must be listed; if not, this router lacks kmod-nft-bridge)"; nft list table bridge piso_guest 2>&1 | head -12
 	echo "--- openNDS"; uci -q get opennds.@opennds[0].gatewayinterface; ndsctl status 2>&1 | head -12
 	echo "--- guests as openNDS sees them (a paying phone must be Authenticated)"; ndsctl json 2> /dev/null | grep -E '"(mac|ip|state|session_end|download_this_session)"' | head -40
 	echo "--- rules openNDS built for guests (an Authenticated phone's traffic must reach an accept rule)"
@@ -221,6 +222,7 @@ cmd_update() {
 		/etc/init.d/firewall reload > /dev/null 2>&1
 		/etc/init.d/opennds stop > /dev/null 2>&1; /etc/init.d/opennds start > /dev/null 2>&1
 	fi
+	apply_guest_isolation
 	if [ -n "$(uci changes dropbear 2> /dev/null)$(uci changes uhttpd 2> /dev/null)" ]; then
 		uci commit dropbear; uci commit uhttpd 2> /dev/null
 		restart_router_access
