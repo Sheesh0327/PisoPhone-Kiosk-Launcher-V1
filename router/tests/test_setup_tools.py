@@ -246,6 +246,17 @@ else:
         check(not page.evaluate("document.documentElement.scrollWidth > window.innerWidth"), "no sideways scrolling on a phone screen")
         check(not problems, f"no script error: {problems}")
         browser.close()
+# the card back: the circle emblem alone (a transparent corner, not a coloured box), sharp enough to print, on the paper with the front's hairline
+try:
+    from PIL import Image
+    import base64, io
+    emb = Image.open(io.BytesIO(base64.b64decode(ps.CARD_EMBLEM_B64))).convert("RGBA")
+    check(emb.size == (512, 512) and emb.getpixel((2, 2))[3] == 0 and emb.getpixel((509, 509))[3] == 0 and emb.getpixel((256, 256))[3] >= 250, "card back: the emblem is 512 px with transparent corners and an opaque middle")
+except ImportError:
+    pass
+back = "".join(ps.card_back_html(3, "long"))
+check("0a1b45" not in ps._CARD_CSS and "CARD_EMBLEM" not in back and back.count("data:image/png;base64,") == 3 and "border:.3mm solid #787878" in ps._CARD_CSS.split(".back{", 1)[1].split("}", 1)[0],
+      "card back: no navy box behind the emblem, one emblem per card, the same hairline as the front")
 server.shutdown()
 
 print(f"{checks} checks, {failures} failures")
