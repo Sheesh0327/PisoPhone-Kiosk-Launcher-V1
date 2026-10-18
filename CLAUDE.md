@@ -22,7 +22,7 @@ key; and the money is always right. Two rules decide every trade-off:
 Real customers use the live release. Prefer a smaller, tested change over a clever one, and say plainly what you did not test.
 
 ## 2. Where the repository is now (2026-10-18)
-- **Live (all at 100%):** router **1.5.12**; coin box firmware **3.9.0** (`PISO_FW_VERSION`; boxes update from their dashboards); the phone app from CI (dev builds from `beta`,
+- **Live (all at 100%):** router **1.5.12**; coin box firmware **3.10.0** (`PISO_FW_VERSION`; boxes update from their dashboards; slot licensing: 2 free slots, P500 per extra slot, boxes already in shops keep the phones they have paired, `docs/LICENSING.md`; not tried on a box, RS27); the phone app from CI (dev builds from `beta`,
   stable builds from `main`; the number is the CI run number). **Routers 1.5.7-1.5.12 have never run on a real router** (modem block; guests apart and
   rental phones reaching only the router and the coin box: bridge rules in `router/piso_isolation.sh`, they need `kmod-nft-bridge`; the router login pages
   and the console closed on Wi-Fi, `piso-setup wifi-admin`; one admin page: `http://admin.hub`, the router's own DNS name, the console as the front page on
