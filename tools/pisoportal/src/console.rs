@@ -32,6 +32,17 @@ const CSP: &str =
     "Content-Security-Policy: default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; \
 img-src 'self' data:; connect-src 'self' https://pisophone.pages.dev; base-uri 'none'; form-action 'none'; frame-ancestors 'none'\r\n";
 
+/// The console page's policy: the same, and it may show the coin box's page (passed through by boxview.rs one port up) in a frame.
+fn page_csp(req: &Request, console_port: u16) -> String {
+    match req.header("host").and_then(crate::boxview::host_of) {
+        Some(h) => CSP.replace(
+            "; frame-ancestors 'none'",
+            &format!("; frame-src http://{}:{}; frame-ancestors 'none'", h, console_port.saturating_add(1)),
+        ),
+        None => CSP.to_string(),
+    }
+}
+
 #[derive(Clone, Copy)]
 struct Sample {
     t: u64,
@@ -40,7 +51,7 @@ struct Sample {
 }
 
 pub struct Console {
-    core: Arc<Core>,
+    pub(crate) core: Arc<Core>,
     sessions: Mutex<HashMap<String, u64>>,
     fails: Mutex<HashMap<String, (u32, u64)>>,
     wan: Mutex<VecDeque<Sample>>,
@@ -195,7 +206,7 @@ fn read(path: &str) -> String {
     std::fs::read_to_string(path).unwrap_or_default()
 }
 
-fn conf_value(path: &str, key: &str) -> String {
+pub(crate) fn conf_value(path: &str, key: &str) -> String {
     read(path)
         .lines()
         .find_map(|l| l.strip_prefix(&format!("{}=", key)).map(|v| v.trim().trim_matches('\'').trim_matches('"').to_string()))
@@ -296,7 +307,7 @@ impl Console {
         token
     }
 
-    fn session_ok(&self, req: &Request) -> bool {
+    pub(crate) fn session_ok(&self, req: &Request) -> bool {
         let Some(cookie) = req.header("cookie") else { return false };
         let Some(token) = cookie.split(';').filter_map(|p| p.trim().strip_prefix("piso_console=")).next() else { return false };
         let now = now_secs();
@@ -509,7 +520,7 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
                 "200 OK",
                 "text/html; charset=utf-8",
                 page.as_bytes(),
-                &format!("Cache-Control: no-store\r\n{}", CSP),
+                &format!("Cache-Control: no-store\r\n{}", page_csp(&req, c.core.cfg.console_port)),
                 !head_only,
             )
         }
@@ -706,6 +717,7 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
 
 pub fn start(core: Arc<Core>) {
     let console = Console::new(core);
+    crate::boxview::start(Arc::clone(&console));
     let sampler = Arc::clone(&console);
     std::thread::spawn(move || loop {
         sampler.sample_wan();

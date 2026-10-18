@@ -110,7 +110,8 @@ openNDS is only the doorman: it blocks a guest phone from the internet until tol
 | `pricing.rs`, `fair.rs` | plans and prices (best combination of tiers; a `Pricing` value the console edits live); fair use slow-down for HyperSpeed |
 | `ledger.rs`, `reconcile.rs` | the revenue ledger (hash-chained lines) and its comparison with the box's own count |
 | `voucher.rs` | voucher codes (below) |
-| `console.rs`, `console-ui.js` | the owner's console page (signed in with the router's root password) |
+| `console.rs`, `console-ui.js` | the owner's console page (signed in with the router's root password); its *Rental phones* tab shows the coin box's own page in a frame |
+| `boxview.rs` | passes the coin box's own admin page through on the console port + 1 (same paths as on the box, so the page works unchanged): needs a console session, adds the box's admin login from `BOX_ADMIN_PASS`, answers 401/403/502/503 plainly, lets only the console frame it, and copies bytes without changing them |
 | `update.rs` | self-update from the website, signed releases only |
 
 The customer's page moves through the states `idle`, `starting`, `armed`, `closing` ("Counting coins"), then a final result (online, empty, error, busy, cooldown, mismatch)

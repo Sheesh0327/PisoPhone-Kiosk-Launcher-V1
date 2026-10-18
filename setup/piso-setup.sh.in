@@ -1683,7 +1683,7 @@ admin_rules_clear() {
 	for _s in $(uci -q show firewall | sed -n 's/^firewall\.\(piso_admin_[a-z0-9_]*\)=rule$/\1/p'); do uci -q delete "firewall.$_s"; done
 }
 # the ports the lock covers: SSH, the web pages (80, 443, and the 8080 / 8443 some routers use for LuCI) and the owner's console
-admin_ports() { echo "22 80 443 8080 8443 $(conf_get CONSOLE_PORT | grep -E '^[0-9]+$' || echo 8081)"; }
+admin_ports() { _cp=$(conf_get CONSOLE_PORT | grep -E '^[0-9]+$' || echo 8081); echo "22 80 443 8080 8443 $_cp $((_cp + 1))"; }   # (the console and, one port up, the coin box's page it shows)
 cmd_lock_admin() {
 	[ "$(id -u)" = 0 ] || die "run as root"
 	_macs="$*"

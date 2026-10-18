@@ -749,7 +749,7 @@ r = lib('LOCK_ADMIN_SECONDS=0; id() { echo 0; }; cmd_lock_admin aa:bb:cc:dd:ee:0
         env={"LOCK_ADMIN_SECONDS": "300"})
 ul = open(f"{tmp}/uci.log").read()
 check("rc=0" in r.stdout and "firewall.piso_admin_allow_1.src_mac=aa:bb:cc:dd:ee:01" in ul and "firewall.piso_admin_allow_2.src_mac=AA:BB:CC:DD:EE:02" in ul
-      and "firewall.piso_admin_block.target=REJECT" in ul and "dest_port=22 80 443 8080 8443 8081" in ul and "commit firewall" in ul, "lock-admin allows the named computers and blocks the rest: " + r.stdout + r.stderr[-300:])
+      and "firewall.piso_admin_block.target=REJECT" in ul and "dest_port=22 80 443 8080 8443 8081 8082" in ul and "commit firewall" in ul, "lock-admin allows the named computers and blocks the rest: " + r.stdout + r.stderr[-300:])
 check("undo" in r.stdout.lower() and "ADMIN=aa:bb:cc:dd:ee:01 AA:BB:CC:DD:EE:02" in r.stdout, "it says it undoes itself unless confirmed, and remembers the addresses")
 r = lib('id() { echo 0; }; cmd_lock_admin not-a-mac < /dev/null; echo rc=$?')
 check("not a MAC" in (r.stdout + r.stderr), "a bad address is refused")

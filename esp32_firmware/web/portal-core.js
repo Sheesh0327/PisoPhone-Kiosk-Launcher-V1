@@ -1,3 +1,28 @@
+// Light or dark, and the embedded view (this page inside the router console's Rental phones tab). A theme asked for in the address (?theme=) or by the
+// console's message is used without being saved; the button saves the owner's own choice.
+(function () {
+    var root = document.documentElement;
+    var framed = window.parent !== window;
+    function apply(t) { if (t === 'dark' || t === 'light') root.setAttribute('data-theme', t); }
+    var q = new URLSearchParams(location.search);
+    try { if (framed && q.get('embed') === '1') sessionStorage.setItem('piso_embed', '1'); } catch (e) { /* private mode */ }
+    try { if (framed && sessionStorage.getItem('piso_embed') === '1') root.classList.add('embed'); } catch (e) { /* private mode */ }
+    var t = q.get('theme');
+    if (!t) { try { t = localStorage.getItem('piso_theme'); } catch (e) { /* private mode */ } }
+    apply(t);
+    window.toggleTheme = function () {
+        var now = root.getAttribute('data-theme') || (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        var next = now === 'dark' ? 'light' : 'dark';
+        apply(next);
+        try { localStorage.setItem('piso_theme', next); } catch (e) { /* private mode */ }
+    };
+    window.addEventListener('message', function (e) {
+        if (!framed || e.source !== window.parent) return;
+        try { if (new URL(e.origin).hostname !== location.hostname) return; } catch (x) { return; }
+        if (e.data && e.data.piso === 'theme') apply(e.data.theme);
+    });
+})();
+
 var pollTimers = []; // the background polls (see sessionLost)
 var signedOutStrikes = 0; // consecutive "not signed in" answers: one stray answer does not end the page
 function escHtml(v) {

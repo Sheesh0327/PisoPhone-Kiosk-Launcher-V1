@@ -52,6 +52,52 @@
         --shadow: none;
     }
 }
+:root[data-theme="light"] {
+    color-scheme: light;
+    --bg: #fafafa;
+    --surface: #ffffff;
+    --surface-2: #f4f4f5;
+    --ink: #09090b;
+    --muted: #71717a;
+    --line: #e4e4e7;
+    --line-strong: #d4d4d8;
+    --accent: #18181b;
+    --accent-2: #0f9f7a;
+    --brand: #09090b;
+    --accent-ink: #fafafa;
+    --accent-soft: #f4f4f5;
+    --sel: #e4e4e7;
+    --ok: #15803d;
+    --ok-soft: #e3f4ea;
+    --warn: #9a5b00;
+    --warn-soft: #fdf0d3;
+    --bad: #b42318;
+    --bad-soft: #fbe7e4;
+    --shadow: none;
+}
+:root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #09090b;
+    --surface: #0f0f11;
+    --surface-2: #18181b;
+    --ink: #fafafa;
+    --muted: #8b8b94;
+    --line: #232327;
+    --line-strong: #33333a;
+    --accent: #e4e4e7;
+    --accent-2: #2dd4a4;
+    --brand: #fafafa;
+    --accent-ink: #09090b;
+    --accent-soft: #18181b;
+    --sel: #27272a;
+    --ok: #4ade80;
+    --ok-soft: #0f2a1b;
+    --warn: #fbbf24;
+    --warn-soft: #2e2410;
+    --bad: #f87171;
+    --bad-soft: #2f1517;
+    --shadow: none;
+}
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { -webkit-text-size-adjust: 100%; }
 body {
@@ -311,3 +357,12 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
     .shell { padding-bottom: 88px; }
     .foot { padding-bottom: 76px; }
 }
+
+/* The theme button (portal-core.js), and the embedded view: this page shown inside the router console's Rental phones tab, which brings its own header, sign-out and theme. */
+.themebtn { display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: none; color: var(--muted); cursor: pointer; }
+.themebtn:hover { color: var(--ink); }
+.themebtn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.embed .brand, .embed .topbar-end { display: none; }
+.embed .topbar { position: static; border-bottom: 0; background: transparent; }
+.embed .topbar-in { padding-top: 12px; }
+.embed .tabs { margin-left: 0; }
