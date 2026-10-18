@@ -1,8 +1,8 @@
 {
-  "version": "1.5.6",
-  "sha256": "649bf14385fd0acc00cc409282b1babc268223b52f15a6c00482f3153d7ea41d",
-  "size": 1455848,
-  "rollout": 100,
-  "changelog": "Router 1.5.6: customers who paid are let on again by the router if the connection was lost; fixes pages that say online but have no internet.",
-  "sig": "MEYCIQDzcExqdhCS8NrTX2rgE9mjdQaLOdz70moOyN91y06RNwIhAJUdm3/IuoXpxVh7qVBRVtndI9evvi9mVDgbYGutdkfZ"
+  "version": "1.5.7",
+  "sha256": "e1e3dbf4410cb8b0ce91ec128a9a218404edb6a3e3be574fb3fb084ad16dab3a",
+  "size": 1457145,
+  "rollout": 0,
+  "changelog": "Router software release 1.5.7",
+  "sig": "MEUCIAK6lnfmawwvFhc5U9T7jXN7M11h+/z53sJrNQ8LSIMPAiEArzewBcpKkcolYjrKY60S7YFfklnqFfJocuszUoFHgqA="
 }
