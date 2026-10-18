@@ -6,6 +6,7 @@
 #include "WebServerModule.h"
 #include "WebServerAuth.h"
 #include "Config.h"
+#include "PhoneProfileStore.h"
 #include "WebDashboardHtml.h"
 #include "SuperAdminPubKey.h"
 #include "SuperAdminManager.h"
@@ -461,7 +462,8 @@ void handleIdentify() {
     String dName = getDeviceNameByIpOrId(reqIp, devId);
     int slotIdx = findSlotIndexForDevice(devId, reqIp);
     String json = "{\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr +
-                  "\",\"version\":\"3.0\",\"minutes\":" + String(minutesPerCoin) + ",\"price\":1.0";
+                  "\",\"version\":\"3.0\",\"minutes\":" + String(minutesPerCoinForDevice(devId, reqIp)) +
+                  ",\"price\":1.0";
     if (dName.length() > 0) {
         json += ",\"device_name\":\"" + jsonEsc(dName) + "\"";
     }

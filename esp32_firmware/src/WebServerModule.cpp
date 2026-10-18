@@ -3,6 +3,7 @@
 
 #include "WebServerModule.h"
 #include "WebServerAccounts.h"
+#include "WebServerProfiles.h"
 #include "CoinSlotManager.h"
 #include "PaymentQueueManager.h"
 #include "Diagnostics.h"
@@ -81,6 +82,8 @@ void setupWebServer() {
     webServer.on("/api/slots/pair", HTTP_ANY, handleApiSlotPair);
     webServer.on("/api/slots/pair_request", HTTP_ANY, handleApiSlotPairRequest);
     webServer.on("/api/slots/unpair", HTTP_ANY, handleApiSlotUnpair);
+    webServer.on("/api/slots/profile", HTTP_ANY, handleApiSlotProfile);
+    webServer.on("/api/profiles", HTTP_ANY, handleApiProfiles);
     webServer.on("/api/slots/cloud_sync", HTTP_POST, handleApiSlotCloudSync);
     webServer.on("/api/security/switch_key", HTTP_POST, handleApiSecuritySwitchKey);
     webServer.on("/api/license", HTTP_GET, handleApiLicense);

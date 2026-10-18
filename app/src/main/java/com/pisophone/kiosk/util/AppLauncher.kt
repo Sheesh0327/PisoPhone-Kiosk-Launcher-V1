@@ -16,6 +16,11 @@ import com.pisophone.kiosk.security.KioskPolicyManager
 object AppLauncher {
     private const val TAG = "AppLauncher"
 
+    /** The customer app opened last through the kiosk: what "force close app" restarts when the app in front cannot be seen. */
+    @Volatile
+    var lastLaunchedPackage: String? = null
+        private set
+
     /**
      * Robust app launcher inspired by FreeKiosk.
      * Supports opening any installed application, whitelisting it dynamically for LockTask if Device Owner,
@@ -125,6 +130,7 @@ object AppLauncher {
                 if (KioskPolicyManager.isAdminOnlyPackage(packageName)) AdminMaintenanceMode.noteAdminAppOpened()
                 context.startActivity(intent)
                 Log.i(TAG, "Successfully started activity for package: $packageName")
+                if (packageName != context.packageName) lastLaunchedPackage = packageName
                 return true
             } catch (e: Exception) {
                 Log.e(TAG, "startActivity failed for package $packageName: ${e.message}", e)

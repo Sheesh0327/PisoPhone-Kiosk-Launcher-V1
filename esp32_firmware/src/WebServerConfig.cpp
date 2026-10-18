@@ -11,6 +11,7 @@
 #include "WebServerAuth.h"
 #include "PaymentQueueManager.h"
 #include "Config.h"
+#include "PhoneProfileStore.h"
 #include "PulseGuard.h"
 #include "PinRules.h"
 #include "SetupGate.h"
@@ -339,7 +340,7 @@ void handleSave() {
     forEachConfiguredDevice([&](const DeviceConfig& cfg) {
         int slotIdx = findSlotIndexForDevice(cfg.id, cfg.ip);
         if (slotIdx >= 0 && cfg.ip.length() > 0 && cfg.ip != "127.0.0.1") {
-            String configParams = "minutes=" + String(minutesPerCoin) + "&price=1.0";
+            String configParams = "minutes=" + String(minutesPerCoinForSlotIndex(slotIdx)) + "&price=1.0";
             if (secretmode::mayPushAdminPassword(isLegacyKeyMode(), webPassword.c_str()))
                 configParams += "&admin_pin=" + webPassword;
             if (cfg.name.length() > 0) {

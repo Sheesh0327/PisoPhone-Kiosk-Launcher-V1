@@ -109,6 +109,44 @@ object AppCloser {
         return BoostResult(targets.size, freed)
     }
 
+    /**
+     * The app "force close app" restarts: the one in front when it can be seen, otherwise the one the kiosk opened last. Only a
+     * customer app that may be closed (never the kiosk or a core system app); null when there is none.
+     */
+    fun restartTarget(foreground: String?, lastLaunched: String?, closable: List<String>): String? =
+        (foreground ?: lastLaunched)?.takeIf { it in closable }
+
+    /** The package to force close and start again, or null when there is no customer app to close. Call off the main thread. */
+    fun restartTarget(context: Context): String? {
+        val app = context.applicationContext
+        return restartTarget(foregroundPackage(app), AppLauncher.lastLaunchedPackage, closableApps(app))
+    }
+
+    /**
+     * Stops one app for good, also when it is in front and hung: it is stopped in the background (the caller sends the customer
+     * Home first) and, as device owner, suspended and allowed again, which force-stops it. The caller opens it again afterwards.
+     * Call off the main thread.
+     */
+    fun forceStop(context: Context, packageName: String) {
+        val app = context.applicationContext
+        if (packageName !in closableApps(app)) return
+        try {
+            (app.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)?.killBackgroundProcesses(packageName)
+        } catch (e: Exception) {
+            Log.w(TAG, "killBackgroundProcesses($packageName) failed: ${e.message}")
+        }
+        suspendAndResume(app, listOf(packageName))
+        Log.i(TAG, "Force closed $packageName")
+    }
+
+    /** The name the customer knows an app by (its package name when it has none). */
+    fun appLabel(context: Context, packageName: String): String = try {
+        val pm = context.packageManager
+        pm.getApplicationLabel(pm.getApplicationInfo(packageName, 0)).toString()
+    } catch (e: Exception) {
+        packageName
+    }
+
     /** True for apps the customer can open and that are safe to stop. */
     fun isClosable(packageName: String, ownPackage: String, appFlags: Int): Boolean {
         if (packageName == ownPackage) return false

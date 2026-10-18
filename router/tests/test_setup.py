@@ -141,6 +141,22 @@ check("set wireless.radio0.htmode='HT20'" in out and "set wireless.radio1.htmode
 check(out.count("delete wireless.@wifi-iface[") == 3 and "delete wireless.@wifi-iface[2]" in out and out.index("[2]") < out.index("[0]"), "router's own default networks removed (highest first)")
 check("macfilter" not in out and "dhcp.pisocoinbox" not in out, "box network is open for pairing until the box's MAC is known")
 check("set firewall.guest.forward='REJECT'" in out and "set firewall.guest_wan.dest='wan'" in out and "set firewall.guest_stream.dest_port='2080'" in out, "guests reach the internet only (and the portal port)")
+check("set firewall.guest_nomodem.src='guest'" in out and "set firewall.guest_nomodem.dest='wan'" in out and "set firewall.guest_nomodem.target='REJECT'" in out
+      and "add_list firewall.guest_nomodem.dest_ip='192.168.1.1'" in out and out.index("set firewall.guest_nomodem=rule") < out.index("set opennds.@opennds[0].enabled"),
+      "guests are refused the modem's address (192.168.1.1) in the router's firewall")
+check("authenticated_users='block to" not in out and "authenticated_users='allow all'" not in out, "openNDS's own rules for paying guests are not replaced (1.5.5 did, and was taken back)")
+r = lib('ip() { echo "default via 192.168.0.1 dev wan"; }; modem_addresses')
+check(r.stdout.split() == ["192.168.1.1", "192.168.0.1"], "the modem's address and the router's own default gateway are both refused: " + r.stdout)
+r = lib('ip() { echo "default via 192.168.1.1 dev wan"; }; modem_addresses')
+check(r.stdout.split() == ["192.168.1.1"], "the same address is listed once: " + r.stdout)
+r = lib('ip() { echo "default via not-an-address dev wan"; }; modem_addresses')
+check(r.stdout.split() == ["192.168.1.1"], "a gateway that is not an IPv4 address is left out: " + r.stdout)
+r = lib('ip() { return 1; }; modem_addresses')
+check(r.stdout.split() == ["192.168.1.1"], "no default route (modem off): the usual modem address is still refused: " + r.stdout)
+open(f"{tmp}/conf2", "w").write("MODEM_IP='10.9.9.1'\n")
+r = lib('ip() { return 1; }; modem_addresses')
+check(r.stdout.split() == ["192.168.1.1", "10.9.9.1"], "MODEM_IP in the settings adds an address: " + r.stdout)
+os.remove(f"{tmp}/conf2")
 check("set opennds.@opennds[0].gatewayinterface='br-guest'" in out and "set opennds.@opennds[0].gatewayname='PisoWiFi'" in out, "openNDS gates the guest network")
 check("set opennds.@opennds[0].fasport='2080'" in out and "set opennds.@opennds[0].faspath='/'" in out and "set opennds.@opennds[0].fas_secure_enabled='1'" in out
       and "set opennds.@opennds[0].login_option_enabled='0'" in out and "delete opennds.@opennds[0].themespec_path" in out and "allow tcp port 2080" in out
@@ -720,7 +736,7 @@ ub, ul = open(f"{tmp}/uci.batch").read(), open(f"{tmp}/uci.log").read()
 check("set opennds.@opennds[0].fasport='2080'" in ub and "set opennds.@opennds[0].login_option_enabled='0'" in ub and "delete opennds.@opennds[0].themespec_path" in ub
       and "set firewall.guest_stream.dest_port='2080'" in ub and "set opennds.@opennds[0].gatewayname='Shop WiFi'" in ub, "update moves openNDS to the FAS portal: " + ub[:300])
 check("set dropbear.@dropbear[0].Interface='lan'" in ub, "and keeps SSH off the guest network")
-check(all(l.startswith(("set firewall.guest_stream", "set opennds.", "delete opennds.", "add_list opennds.", "set dropbear.", "delete uhttpd.", "add_list uhttpd.", "#"))
+check(all(l.startswith(("set firewall.guest_stream", "set firewall.guest_nomodem", "delete firewall.guest_nomodem", "add_list firewall.guest_nomodem", "set opennds.", "delete opennds.", "add_list opennds.", "set dropbear.", "delete uhttpd.", "add_list uhttpd.", "#"))
           for l in ub.splitlines() if l.strip()), "and touches nothing else (no Wi-Fi, network or passwords): " + ub)
 check("commit opennds" in ul and "commit firewall" in ul, "the change is committed")
 cc = open(f"{root}/etc/coinslot.conf").read()

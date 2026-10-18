@@ -499,6 +499,63 @@ fun FloatingPill(
                     )
                 }
 
+                // A hung app: close it for good and open it again. Two taps on purpose: what the customer has not saved is lost.
+                var confirmForceClose by remember { mutableStateOf(false) }
+                var forceClosing by remember { mutableStateOf(false) }
+                LaunchedEffect(confirmForceClose) {
+                    if (confirmForceClose) {
+                        delay(4000L)
+                        confirmForceClose = false
+                    }
+                }
+                PisoButton(
+                    text = stringResource(
+                        when {
+                            forceClosing -> R.string.pill_force_closing
+                            confirmForceClose -> R.string.pill_tap_again
+                            else -> R.string.pill_force_close
+                        },
+                    ),
+                    onClick = {
+                        if (!confirmForceClose) {
+                            confirmForceClose = true
+                        } else {
+                            confirmForceClose = false
+                            forceClosing = true
+                            coroutineScope.launch {
+                                val target = withContext(Dispatchers.IO) { AppCloser.restartTarget(context) }
+                                if (target == null) {
+                                    forceClosing = false
+                                    Toast.makeText(context, context.getString(R.string.pill_force_close_none), Toast.LENGTH_SHORT).show()
+                                } else {
+                                    AppLauncher.launchHome(context) // in the background, any app can be stopped
+                                    delay(400L)
+                                    withContext(Dispatchers.IO) { AppCloser.forceStop(context, target) }
+                                    delay(300L)
+                                    val label = AppCloser.appLabel(context, target)
+                                    val opened = AppLauncher.launchApp(context, target)
+                                    forceClosing = false
+                                    expanded = false
+                                    val message = if (opened) R.string.pill_force_close_done else R.string.pill_force_close_failed
+                                    Toast.makeText(context, context.getString(message, label), Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    },
+                    style = if (confirmForceClose) PisoButtonStyle.Danger else PisoButtonStyle.Tonal,
+                    size = PisoButtonSize.Small,
+                    enabled = !forceClosing,
+                )
+                if (confirmForceClose) {
+                    Text(
+                        text = stringResource(R.string.pill_force_close_hint),
+                        color = TechNet.textMuted,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+
                 // A quick off and on of the Wi-Fi: the radio is never left off, and the phone returns to the kiosk network.
                 var wifiBusy by remember { mutableStateOf(false) }
                 var lastWifiToggleMs by remember { mutableLongStateOf(0L) }

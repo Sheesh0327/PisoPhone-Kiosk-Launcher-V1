@@ -2,6 +2,7 @@
 // slots and revenue counters, plus the locked accessor for the shared secret.
 
 #include "Config.h"
+#include "PhoneProfileStore.h"
 #include "PulseGuard.h"
 #include "PinRules.h"
 #include "OwnerData.h"
@@ -563,6 +564,7 @@ void loadAllConfig() {
     if (targetPort <= 0 || targetPort > 65535) targetPort = DEFAULT_PORT;
     minutesPerCoin = prefs.getInt(NVS_KEY_MINS_PER_COIN, DEFAULT_MINUTES_PER_COIN);
     if (minutesPerCoin < 1) minutesPerCoin = 1;
+    loadPhoneProfilesFromPrefs();
 
     webPassword = prefs.getString(NVS_KEY_ADMIN_PW, webPassword);
     relayActiveLow = prefs.getBool(NVS_KEY_RELAY_ACTIVE_LOW, false);
@@ -656,6 +658,7 @@ void factoryResetDefaults(bool ownerWipe) {
     androidIps = "";
     targetPort = DEFAULT_PORT;
     minutesPerCoin = DEFAULT_MINUTES_PER_COIN;
+    resetPhoneProfiles();
     p1Ip = "";
     p2Ip = "";
     matchMinutes = 15;

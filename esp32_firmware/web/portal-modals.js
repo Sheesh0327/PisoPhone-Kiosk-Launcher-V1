@@ -312,3 +312,117 @@ document.addEventListener('DOMContentLoaded', function() {
             .catch(err => notify('Could not reach the box: ' + err.message, 'bad'));
     }
 });
+
+
+// ---- Phone profiles (Settings): a name and minutes per P1 for each kind of rental device, and a profile for each slot -----------
+let profileState = { standard: 6, max: 8, profiles: [], slots: [] };
+
+function profilesFail(data) {
+    const why = {
+        BAD_NAME: 'A profile name must be 1 to 20 characters, without | ; " < > & or \\.',
+        BAD_MINUTES: 'Minutes per \u20b11 must be a whole number from 1 to 1440.',
+        NAME_TAKEN: 'Two profiles have the same name.',
+        TOO_MANY_PROFILES: 'There is room for ' + profileState.max + ' profiles.',
+        CHANGED_ELSEWHERE: 'The profiles were changed somewhere else. The page is reloading them.',
+        UNKNOWN_PROFILE: 'That profile no longer exists.'
+    };
+    notify((data && why[data.error]) || 'Could not save the profiles.', 'bad');
+}
+
+function renderProfiles() {
+    const list = document.getElementById('profiles_list');
+    const slots = document.getElementById('profile_slots');
+    if (!list || !slots) return;
+    const rows = ['<div class="kv"><span>Standard</span><span class="mono">' + profileState.standard + ' min per \u20b11 (the Coin rate above)</span></div>'];
+    profileState.profiles.forEach((p, i) => {
+        rows.push('<div class="split profile-row" data-id="' + p.id + '">' +
+            '<div class="field"><label>Name</label><input type="text" maxlength="20" class="pf-name" value="' + escHtml(p.name) + '" autocomplete="off"></div>' +
+            '<div class="field"><label>Minutes per \u20b11</label><input type="number" min="1" max="1440" class="pf-min" value="' + p.minutes + '"></div>' +
+            '<div class="field"><label>&nbsp;</label><button type="button" class="btn sm danger" onclick="removeProfileRow(' + i + ')">Remove</button></div>' +
+            '</div>');
+    });
+    list.innerHTML = rows.join('');
+    const add = document.getElementById('profile_add');
+    if (add) add.disabled = profileState.profiles.length >= profileState.max;
+    const opts = (cur) => '<option value="0"' + (cur === 0 ? ' selected' : '') + '>Standard (' + profileState.standard + ' min)</option>' +
+        profileState.profiles.map(p => '<option value="' + p.id + '"' + (cur === p.id ? ' selected' : '') + '>' + escHtml(p.name) + ' (' + p.minutes + ' min)</option>').join('');
+    let html = '';
+    for (let s = 1; s <= profileState.slots.length; s++) {
+        const dev = (window.latestDevicesList || []).find(d => d.slotNum === s);
+        const label = (dev && dev.isBound) ? 'Slot ' + s + ' \u00b7 ' + escHtml(dev.name || ('PisoPhone ' + s)) : 'Slot ' + s + ' \u00b7 empty';
+        html += '<div class="field"><label for="pslot' + s + '">' + label + '</label>' +
+            '<select id="pslot' + s + '" onchange="setSlotProfile(' + s + ', this.value)">' + opts(profileState.slots[s - 1] || 0) + '</select></div>';
+    }
+    slots.innerHTML = html;
+}
+
+// The profile list as it is on the page now (unsaved edits included).
+function readProfileRows() {
+    return Array.from(document.querySelectorAll('#profiles_list .profile-row')).map(row => ({
+        id: row.dataset.id || '0',
+        name: row.querySelector('.pf-name').value.trim(),
+        minutes: row.querySelector('.pf-min').value.trim()
+    }));
+}
+
+window.loadProfiles = function() {
+    fetch('/api/profiles')
+        .then(res => res.json())
+        .then(data => {
+            if (!data.success) throw new Error(data.error || 'failed');
+            profileState = data;
+            renderProfiles();
+        })
+        .catch(() => {});
+};
+
+window.addProfileRow = function() {
+    const edited = readProfileRows();
+    if (edited.length >= profileState.max) return;
+    profileState.profiles = edited.map(r => ({ id: parseInt(r.id, 10) || 0, name: r.name, minutes: parseInt(r.minutes, 10) || 0 }));
+    profileState.profiles.push({ id: 0, name: '', minutes: profileState.standard });
+    renderProfiles();
+};
+
+window.removeProfileRow = function(i) {
+    const edited = readProfileRows();
+    const gone = edited[i];
+    if (gone && !confirm('Remove the profile ' + (gone.name || '(unnamed)') + '? Phones that use it go back to the Standard rate.')) return;
+    edited.splice(i, 1);
+    profileState.profiles = edited.map(r => ({ id: parseInt(r.id, 10) || 0, name: r.name, minutes: parseInt(r.minutes, 10) || 0 }));
+    renderProfiles();
+};
+
+window.saveProfiles = function() {
+    const rows = readProfileRows();
+    const list = rows.map(r => (r.id === '0' ? '' : r.id) + '|' + r.name + '|' + r.minutes).join(';');
+    const btn = document.getElementById('profile_save');
+    if (btn) btn.disabled = true;
+    fetch('/api/profiles', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'list=' + encodeURIComponent(list) })
+        .then(res => res.json())
+        .then(data => {
+            if (!data.success) { profilesFail(data); if (data.error === 'CHANGED_ELSEWHERE') window.loadProfiles(); return; }
+            profileState = data;
+            renderProfiles();
+            notify('Profiles saved. Phones were told their rate.', 'ok');
+        })
+        .catch(() => notify('Could not reach the box.', 'bad'))
+        .finally(() => { if (btn) btn.disabled = false; });
+};
+
+window.setSlotProfile = function(slot, id) {
+    fetch('/api/slots/profile?slot=' + slot + '&profile=' + encodeURIComponent(id), { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+            if (!data.success) { profilesFail(data); window.loadProfiles(); return; }
+            profileState = data;
+            renderProfiles();
+            notify('Slot ' + slot + ' profile saved.', 'ok');
+        })
+        .catch(() => notify('Could not reach the box.', 'bad'));
+};
+
+window.addEventListener('load', function() {
+    window.loadProfiles();
+    setTimeout(renderProfiles, 3500); // (the phone names arrive with the first status poll)
+});
