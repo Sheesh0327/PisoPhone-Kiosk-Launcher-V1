@@ -33,7 +33,7 @@ Real customers use the live release. Prefer a smaller, tested change over a clev
   Done (coins are held while the lock screen waits; `PaymentRepository.startHeldClock`), and the power menu is available only
   inside an admin maintenance window (`KioskPolicyManager.applyPowerMenu`); neither has run on a real phone.
 - **Recent work:** each router has its own Wi-Fi names (`PisoKiosk-xxxx`, `PisoCoinBox-xxxx`, 1.5.0); coin page: vouchers, pause
-  (from 20 pesos, once, 1 kbit/s and 2 MB), mini-game, "send a file to the owner" (relayed to the print server's inbox);
+  (from 10 pesos, once, 1 kbit/s and 2 MB), mini-game, "send a file to the owner" (relayed to the print server's inbox);
   quicker "you are online" after Done; the setup program (`setup/pisophone_setup.py`) does the whole install and has Owner tools
   (time cards, admin QR, recovery code) and a read-only Check-up; "Start here" pages (`website/start/`); codebase cleanup of the
   setup program, tests, scripts and the phone app.
