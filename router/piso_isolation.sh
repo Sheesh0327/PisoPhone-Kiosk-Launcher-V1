@@ -22,7 +22,7 @@ GUEST_BR=br-guest
 LAN_BR=br-lan
 MARK=0x00200000                     # also in setup/src/30-router-settings.sh (Kiosk-Wi-Fi-No-Private)
 WIFI_PORTS="phy* wlan* wl* ra*"     # the names a Wi-Fi access point port can have, on the router's drivers
-ADMIN_PORTS="22, 80, 443, 8080, 8443"
+ADMIN_PORTS="22 80 443 8080 8443"   # (the router's login pages; the console's own ports are added below)
 
 command -v "$NFT" > /dev/null 2>&1 || exit 0
 
@@ -79,6 +79,10 @@ if [ -d "$SYS/$LAN_BR" ]; then
 	BOX_IP=$(cget "$COIN" GW_BOX)
 	LAN_IP=$(cget "$COIN" CONSOLE_BIND)
 	WIFI_ADMIN=$(cget "$CONF" WIFI_ADMIN)
+	# the console is the admin page (and the coin box's page one port up): offered on a LAN cable only, like the login pages
+	CONSOLE_PORT=$(cget "$COIN" CONSOLE_PORT)
+	case "$CONSOLE_PORT" in "" | *[!0-9]*) CONSOLE_PORT=8081 ;; esac
+	ADMIN_PORTS=$(echo "$ADMIN_PORTS $CONSOLE_PORT $((CONSOLE_PORT + 1))" | tr ' ' '\n' | awk '!seen[$0]++' | paste -sd, - | sed 's/,/, /g')
 	case "$BOX_MAC" in [0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]) ;; *) BOX_MAC="" ;; esac
 	case "$BOX_IP" in *[!0-9.]*) BOX_IP="" ;; esac
 	case "$LAN_IP" in *[!0-9.]*) LAN_IP="" ;; esac

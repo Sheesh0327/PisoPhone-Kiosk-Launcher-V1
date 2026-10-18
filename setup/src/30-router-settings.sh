@@ -114,10 +114,24 @@ EOT
 	router_access_uci
 }
 
+# admin_name_uci: the router answers the name admin.hub with its kiosk LAN address (its own DNS, no mDNS): the owner's one admin page. The
+# owner's other dnsmasq address entries stay; an old address of the name (the router's address was changed) is replaced.
+admin_name_uci() {
+	_have=$(uci -q get dhcp.@dnsmasq[0].address 2> /dev/null)
+	for _a in $_have; do
+		case "$_a" in "/admin.hub/$LAN_IP") return 0 ;; esac
+	done
+	for _a in $_have; do
+		case "$_a" in /admin.hub/*) echo "del_list dhcp.@dnsmasq[0].address='$_a'" ;; esac
+	done
+	echo "add_list dhcp.@dnsmasq[0].address='/admin.hub/$LAN_IP'"
+}
+
 # router_access_uci: the router's own logins (SSH, LuCI) only on the kiosk LAN address. openNDS always lets guests reach
 # ports 22 and 443 of the router (its "essential" access, which also bypasses the firewall's guest zone), so on the guest
 # network these services are simply not offered.
 router_access_uci() {
+	admin_name_uci
 	echo "set dropbear.@dropbear[0].Interface='lan'"
 	[ -e "${PISO_ROOT}/etc/config/uhttpd" ] || return 0
 	cat << EOT

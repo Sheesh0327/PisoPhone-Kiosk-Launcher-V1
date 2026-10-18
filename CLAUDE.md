@@ -22,9 +22,12 @@ key; and the money is always right. Two rules decide every trade-off:
 Real customers use the live release. Prefer a smaller, tested change over a clever one, and say plainly what you did not test.
 
 ## 2. Where the repository is now (2026-10-18)
-- **Live (published, 100%):** router **1.5.8** (`setup/RELEASE`; it includes 1.5.7, the guest block on the modem, which has not been tried on a router),
-  coin box firmware **3.7.0** (`PISO_FW_VERSION`; phone profiles, not yet tried on a box), the phone app
-  from CI (dev builds from `beta`, stable builds from `main`; the number is the CI run number).
+- **Live (published, 100%):** router **1.5.11** (`setup/RELEASE`), coin box firmware **3.8.0** (`PISO_FW_VERSION`; boxes update from their
+  dashboards), the phone app from CI (dev builds from `beta`, stable builds from `main`; the number is the CI run number). Router 1.5.7-1.5.11
+  are new since the last hardware tests and have not been tried on a router: the modem block, guests apart and rental phones reaching only the
+  router and the coin box (bridge rules, `router/piso_isolation.sh`, need `kmod-nft-bridge`), the router login pages closed on Wi-Fi
+  (`piso-setup wifi-admin`), and one admin page (the console's Rental phones tab shows the coin box's page through `boxview.rs`, port 8082).
+  Firmware 3.7.0-3.8.0 (phone profiles; the box page's light/dark button and embedded view) have not been tried on a box.
 - **Branches:** `main` is production, `beta` is where work happens. After CI rebuilds on each branch their generated router
   files differ byte for byte, so merges to `main` keep `main`'s generated files (section 5).
 - **Production hardening pass** (`docs/maintainers/HARDENING_PLAN.md`: what was fixed, what is open, the hardware checks): router

@@ -24,7 +24,6 @@
 #include <WebServer.h>
 #include <HTTPClient.h>
 #include <WiFiUdp.h>
-#include <ESPmDNS.h>
 #include <Update.h>
 #include "esp_wifi.h"
 #include <esp_task_wdt.h>
@@ -38,15 +37,6 @@ WiFiUDP udpServer;
 QueueHandle_t authQueue = NULL;
 
 void setupWebServer() {
-    // Initialize mDNS Responder ("kioskmanager.local")
-    if (MDNS.begin("kioskmanager")) {
-        MDNS.addService("kioskmanager", "tcp", 80);
-        MDNS.addService("http", "tcp", 80);
-        Serial.println("[+] mDNS service active at http://kioskmanager.local");
-    } else {
-        Serial.println("[-] Error setting up mDNS responder!");
-    }
-
     // Initialize Authenticated Request Worker Queue & FreeRTOS Supervisor Task (8KB stack)
     authQueue = xQueueCreate(16, sizeof(AuthRequest));
     initWorkerAckQueue(); // before the task starts: it posts into this queue
