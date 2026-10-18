@@ -2,7 +2,7 @@
   "version": "1.5.8",
   "sha256": "bcf48c276733e1ba37d77f08126956bfb30fc5330c558b85119c950cfd319b06",
   "size": 1282808,
-  "rollout": 0,
-  "changelog": "Router software release 1.5.8",
-  "sig": "MEYCIQDuj4wEXOGYEtPsZ6G3Go9EEve7eQvorW6gzdYMFY3/dAIhAOECXbSFE00aJmXnf8pmv9550aj0CNgbiyi1JG8q1C+E"
+  "rollout": 100,
+  "changelog": "PisoWiFi: Pause now unlocks from 10 pesos paid",
+  "sig": "MEUCIQDj+NhbCzmoznYmlnTNbhkobtRI3CnVy4rKSTcU6hZR2gIgA+wl3CiXKc+OgINKWChRBsxMs7Laq7AlcffR0NBL3vg="
 }
