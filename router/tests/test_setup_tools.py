@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests of the owner tools inside setup/pisophone_setup.py (they replaced the owner console): QR time cards, the admin QR code, the phone
+"""Tests of the owner tools inside setup/pisophone_setup.py (they replaced the owner console): slot license keys, QR time cards, the admin QR code, the phone
 recovery code and the key files. The codes must be exactly what the boxes and the app check, so they are verified here with the
 repository's own format code (scripts/card_format.py, make_admin_qr.py, make_recovery_code.py) and, when installed, a QR reader.
 Run with:  python3 router/tests/test_setup_tools.py"""
@@ -147,6 +147,21 @@ class FakeCore:
         return []
 
 
+
+# ---- slot license keys (esp32_firmware/include/SlotLicense.h) ------------------------------------------------------------------
+lic = ps.make_slot_licenses("AA:BB:CC:DD:EE:FF", 2, "Juan, receipt 1")
+owner_pub = ps.load_key("owner").public_key()
+check(len(lic["keys"]) == 2 and lic["total"] == 2 and all(k.startswith("PSLOT1.aabbccddeeff.") for k in lic["keys"]), "two license keys for one box")
+check(all(ps.slot_license_verify(owner_pub, k) for k in lic["keys"]) and len({k.split(".")[2] for k in lic["keys"]}) == 2, "each is signed by the owner key and has its own number")
+check(not ps.slot_license_verify(owner_pub, lic["keys"][0].replace("aabbccddeeff", "aabbccddee00")) and not ps.slot_license_verify(ps.load_key("admin").public_key(), lic["keys"][0]), "a key is no good for another box or under another key")
+check(len(ps.read_license_ledger(lic["ledger"])) == 2, "the keys are recorded in the ledger")
+check(ps.make_slot_licenses("aa-bb-cc-dd-ee-ff", 8)["total"] == 10, "a box can have 10 keys (12 slots less the 2 free ones)")
+check("at most 10" in (problem(ps.make_slot_licenses, "AA:BB:CC:DD:EE:FF", 1) or ""), "an 11th key is refused")
+check(problem(ps.make_slot_licenses, "nonsense", 1) and problem(ps.make_slot_licenses, "AA:BB:CC:DD:EE:11", 0), "a bad box code or count is refused")
+again = ps.reissue_slot_licenses("AA:BB:CC:DD:EE:FF")
+check(len(again) == 10 and {k.split(".")[2] for k in again} == {r["key"] for r in ps.read_license_ledger(lic["ledger"])}, "re-issue gives back exactly the keys sold")
+check(problem(ps.reissue_slot_licenses, "AA:BB:CC:DD:EE:99"), "nothing to re-issue for a box with no keys")
+
 system = {"kind": "linux", "family": "debian", "name": "Test", "arch": "x86_64", "root": False, "sudo": False}
 session = ps.Session(FakeCore(), "main", os.path.join(tmp, "out"), system, install_deps=lambda emit: emit("x"))
 server = ps.make_server(session, "123456", "127.0.0.1", 0)
@@ -186,6 +201,15 @@ check(st == 200 and body.startswith(b"serial,seconds,box"), "so can the ledger")
 check(call("GET", "/api/toolfile?i=999")[0] == 404 and call("GET", "/api/toolfile?i=-1")[0] == 404 and call("GET", "/api/toolfile?i=../../etc/passwd")[0] == 404, "nothing else can be fetched")
 state = call("POST", "/api/do", {"action": "tool_cards", "box": "nonsense", "count": 3, "hours": 2})[1]
 check(state["tools"]["error"] and "box address" in state["tools"]["error"], "a mistake is shown on the page, not as a crash")
+state = call("POST", "/api/do", {"action": "tool_licenses", "box": "AA:BB:CC:DD:EE:77", "count": 2, "note": "Maria"})[1]
+lt = state["tools"]["licenses"]
+check(lt and len(lt["keys"]) == 2 and lt["total"] == 2 and not lt["reissued"], f"slot license keys through the page: {state['tools']['error']}")
+st, body = call("GET", "/api/toolfile?i=" + str(lt["ledger"]))
+check(st == 200 and b"Maria" in body, "and the ledger opens")
+state = call("POST", "/api/do", {"action": "tool_reissue", "box": "AA:BB:CC:DD:EE:77"})[1]
+check(state["tools"]["licenses"]["reissued"] and len(state["tools"]["licenses"]["keys"]) == 2 and state["tools"]["licenses"]["ledger"] is None, "re-issue through the page")
+state = call("POST", "/api/do", {"action": "tool_licenses", "box": "nonsense", "count": 1})[1]
+check(state["tools"]["error"] and "box address" in state["tools"]["error"], "a mistake with a license box code is shown on the page")
 state = call("POST", "/api/do", {"action": "tool_adminqr"})[1]
 check(state["tools"]["qr"]["kind"] == "admin" and state["tools"]["qr"]["svg"].startswith("<svg"), "the admin QR through the page")
 state = call("POST", "/api/do", {"action": "tool_hide"})[1]
@@ -229,6 +253,16 @@ else:
             time.sleep(0.1)
         text = page.inner_text("#cResult")
         check("Made 6 cards" in text and "2-hour" in text, f"the cards are made: {text[:80]}")
+        page.fill("#lBox", "AA:BB:CC:DD:EE:88")
+        page.fill("#lCount", "2")
+        page.fill("#lNote", "Pedro")
+        page.click("#btnLicenses")
+        for _ in range(80):
+            if "Made 2 keys" in page.inner_text("#lResult"):
+                break
+            time.sleep(0.1)
+        ltext = page.inner_text("#lResult")
+        check("Made 2 keys" in ltext and "PSLOT1.aabbccddee88." in ltext and "4 slots" in ltext, f"the license keys are shown on the page: {ltext[:120]}")
         with page.context.expect_page() as popup:
             page.click("#cResult a")
         card_page = popup.value
@@ -246,6 +280,17 @@ else:
         check(not page.evaluate("document.documentElement.scrollWidth > window.innerWidth"), "no sideways scrolling on a phone screen")
         check(not problems, f"no script error: {problems}")
         browser.close()
+# the card back: the circle emblem alone (a transparent corner, not a coloured box), sharp enough to print, on the paper with the front's hairline
+try:
+    from PIL import Image
+    import base64, io
+    emb = Image.open(io.BytesIO(base64.b64decode(ps.CARD_EMBLEM_B64))).convert("RGBA")
+    check(emb.size == (512, 512) and emb.getpixel((2, 2))[3] == 0 and emb.getpixel((509, 509))[3] == 0 and emb.getpixel((256, 256))[3] >= 250, "card back: the emblem is 512 px with transparent corners and an opaque middle")
+except ImportError:
+    pass
+back = "".join(ps.card_back_html(3, "long"))
+check("0a1b45" not in ps._CARD_CSS and "CARD_EMBLEM" not in back and back.count("data:image/png;base64,") == 3 and "border:.3mm solid #787878" in ps._CARD_CSS.split(".back{", 1)[1].split("}", 1)[0],
+      "card back: no navy box behind the emblem, one emblem per card, the same hairline as the front")
 server.shutdown()
 
 print(f"{checks} checks, {failures} failures")

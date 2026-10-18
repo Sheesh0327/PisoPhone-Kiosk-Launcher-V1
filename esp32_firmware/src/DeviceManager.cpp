@@ -46,7 +46,7 @@ bool pairDeviceToSlot(int slotNum, String devId, String ip, String name) {
     devId.trim();
     ip.trim();
 
-    // The box type sets how many phones it may pair (BoxLicense.h). A phone that is already paired, or that takes over an
+    // The slot licenses set how many phones the box may pair (SlotLicense.h). A phone that is already paired, or that takes over an
     // occupied slot, adds none.
     {
         int now = pairedDeviceCount();
@@ -54,11 +54,11 @@ bool pairDeviceToSlot(int slotNum, String devId, String ip, String name) {
         for (int i = 0; i < MAX_SUPPORTED_SLOTS && addsOne; i++) {
             if (phoneSlots[i].deviceId.length() > 0 && phoneSlots[i].deviceId == devId) addsOne = false;
         }
-        if (!boxlicense::mayPair(getBoxType(), now, now + (addsOne ? 1 : 0))) {
-            lastPairRefusal =
-                String("This box is a ") + boxlicense::name(getBoxType()) + " box and can pair up to " +
-                String(getDeviceCap()) + " phones. Unpair a phone first" +
-                (getBoxType() == boxlicense::Type::Purchased ? ", or ask your vendor about a rental box." : ".");
+        if (!slotlicense::mayPair(getDeviceCap(), now, now + (addsOne ? 1 : 0))) {
+            lastPairRefusal = String("This box has ") + String(getDeviceCap()) + " phone slot" +
+                              (getDeviceCap() == 1 ? "" : "s") + " unlocked (" + String(slotlicense::FREE_SLOTS) +
+                              " are free, each more needs a P" + String(slotlicense::PRICE_PHP) +
+                              " license key). Unpair a phone first, or add a license key on the dashboard.";
             diagLog("[LICENSE] Pairing refused: %s\n", lastPairRefusal.c_str());
             return false;
         }

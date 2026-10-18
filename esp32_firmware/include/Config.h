@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 #include <Arduino.h>
-#include "BoxLicense.h"
+#include "SlotLicense.h"
 #include <Preferences.h>
 #include <functional>
 
@@ -19,9 +19,10 @@ extern const int HARDWARE_RESET_PIN;
 extern const int UDP_DISCOVERY_PORT;
 extern const int DEFAULT_MINUTES_PER_COIN;
 
-// The most phones any box can pair (a "rental" box, BoxLicense.h); a "purchased" box stops at 6. Room is also kept for the
-// phones that have only said hello (identify, a heartbeat before pairing): MAX_TRACKED_DEVICES.
+// The most phones any box can pair (SlotLicense.h: 2 slots are free, each of the others needs a license key). Room is also kept
+// for the phones that have only said hello (identify, a heartbeat before pairing): MAX_TRACKED_DEVICES.
 #define MAX_SUPPORTED_SLOTS 12
+static_assert(MAX_SUPPORTED_SLOTS == slotlicense::MAX_SLOTS, "the slot limit and the license limit must agree");
 #define MAX_TRACKED_DEVICES 24
 
 // ============================================================================
@@ -128,12 +129,15 @@ String getLegacySharedSecret();            // old shared key (legacy mode); a ne
 bool isLegacyKeyMode();                    // true until the operator switches the box to its own key
 void switchToOwnKey();                     // leaves legacy mode for good
 void loadSecretMode();                     // reads the box secret and legacy-mode flag
-// Box type (BoxLicense.h): how many phones this box may pair. Changed only with an owner-signed token or the admin QR.
-boxlicense::Type getBoxType();
-int getDeviceCap();                     // 6 for a purchased box, 12 for a rental box
-bool setBoxType(boxlicense::Type type); // saves it (callers have checked who may)
-int pairedDeviceCount();                // phones paired right now
-void loadBoxType();                     // reads the saved type (a box without one is "purchased")
+// Slot licenses (SlotLicense.h): how many phones this box may pair. Opened only by a key the owner signed for THIS box.
+int getDeviceCap();       // 2 free slots plus one for each license key used (never fewer than the grandfathered floor)
+int getLicenseKeyCount(); // license keys used on this box
+int getLicenseFloor();    // the slots this box keeps from before licensing (0 on a new box)
+String getLicenseIds();   // the numbers of those keys, "id,id,..."
+bool addLicenseKey(const String& id); // saves one more used key (callers have verified it: SlotLicense.h)
+int pairedDeviceCount();              // phones paired right now
+void loadLicenses();                  // reads the saved keys and the floor (a box with none has the 2 free slots)
+void settleLicenseFloor(); // first start with licensing: records how many phones are paired now, once (after loadSlots)
 extern String macAddressStr;
 
 extern int targetPort;

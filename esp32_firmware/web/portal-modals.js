@@ -426,3 +426,29 @@ window.addEventListener('load', function() {
     window.loadProfiles();
     setTimeout(renderProfiles, 3500); // (the phone names arrive with the first status poll)
 });
+
+
+// ---- Slot licenses (Phone slots): a key the owner made for this box opens one more slot -----------------------------------------
+window.focusSlotLicense = function() {
+    const box = document.getElementById('licensebox');
+    if (box) box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const input = document.getElementById('lic_token');
+    if (input) input.focus();
+};
+
+window.redeemSlotLicense = function() {
+    const input = document.getElementById('lic_token');
+    const token = input ? input.value.trim() : '';
+    if (!token) { notify('Paste the license key first.', 'bad'); return; }
+    fetch('/api/license', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'token=' + encodeURIComponent(token) })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                notify('Slot added. This box can now pair ' + data.cap + ' phones.');
+                setTimeout(() => location.reload(), 900);
+            } else {
+                notify(data.message || data.error || 'The box did not accept that key.', 'bad');
+            }
+        })
+        .catch(err => notify('Could not reach the box: ' + err.message, 'bad'));
+};

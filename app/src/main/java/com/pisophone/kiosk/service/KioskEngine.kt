@@ -554,7 +554,7 @@ class KioskEngine(
                     accountBusy.set(false)
                 }
             }
-            Handler(Looper.getMainLooper()).post { onDone(reply) }
+            Handler(Looper.getMainLooper()).post { onDone(reply.also { AccountSpeech.speakWelcome(audioManager, it) }) }
         }
     }
 
