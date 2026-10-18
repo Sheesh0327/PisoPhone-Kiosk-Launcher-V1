@@ -91,7 +91,7 @@ Ordered by risk to money first. Items marked **decision** need the owner's answe
 | 13 | Security | The admin QR key is used inside a page the box serves over HTTP | sign in the owner's own app instead |
 | 14 | Security | `RELEASES_TOKEN` is readable from any branch; the security rules miss one-line keys | move it to the protected environment; add patterns |
 | 15 | Box | Replay windows on signed phone calls are wider than intended; one account per slot not enforced on the box | record timestamps; sign out the other account |
-| 17 | Router | Paying guests can reach the modem's admin page and other private networks (router 1.5.5 tried to block them in openNDS's ruleset and was taken back in 1.5.6) | try it on a router first: `nft list ruleset` shows what openNDS built; consider a firewall rule in the guest zone instead of openNDS's list |
+| 17 | Router | Guests could reach the modem's own pages | router 1.5.7: one narrow firewall rule refuses the modem's addresses (192.168.1.1 and the router's default gateway); other private networks behind the router are still reachable and need a router check first |
 | 16 | Router | One guest can block others (voucher guessing limit is global; empty windows hold the slot) | per-device limits |
 
 ## 4. Hardware checks before 100%

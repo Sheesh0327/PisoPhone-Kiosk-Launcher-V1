@@ -29,7 +29,7 @@
 
 VERSION="dev"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
-PISO_RELEASE='1.5.6'
+PISO_RELEASE='1.5.7'
 # the CPU family the portal program in this file is built for (router_family below names the family of the router it runs on)
 PISO_ARCH='mips'
 
@@ -370,6 +370,18 @@ restart_router_access() {
 	log "SSH and LuCI answer only on $LAN_IP (the kiosk LAN), not on the guest network"
 }
 
+# modem_addresses: the addresses guests must not reach on the other side of the router's WAN: the usual modem address and the
+# router's own default gateway (whatever the modem's address is on this shop's line). One per line, no repeats; an address that
+# does not look like an IPv4 address is left out. MODEM_IP in the settings file adds one more.
+modem_addresses() {
+	{
+		echo "192.168.1.1"
+		_mg=$(ip -4 route show default 2> /dev/null | awk '$1 == "default" { for (i = 1; i < NF; i++) if ($i == "via") { print $(i + 1); exit } }')
+		echo "$_mg"
+		conf_get MODEM_IP
+	} | awk '/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ && !seen[$0]++'
+}
+
 # portal_uci <guest name>: the guest-facing portal: openNDS sends new guests to pisoportal (FAS) and only the guest network
 # is gated; guests may reach the portal's port. The same lines are applied by the setup and by an update (which is how a
 # router set up with the earlier ThemeSpec portal is moved to this one).
@@ -381,6 +393,17 @@ set firewall.guest_stream.src='guest'
 set firewall.guest_stream.proto='tcp'
 set firewall.guest_stream.dest_port='$PORTAL_PORT'
 set firewall.guest_stream.target='ACCEPT'
+# guests reach the internet, not the modem's own pages (its login page, its settings): traffic from the guest network to the modem's
+# addresses is refused. It is one narrow rule in the router's firewall; the withdrawn 1.5.5 attempt blocked whole private ranges in
+# openNDS's list.
+set firewall.guest_nomodem=rule
+set firewall.guest_nomodem.name='Guest-No-Modem'
+set firewall.guest_nomodem.src='guest'
+set firewall.guest_nomodem.dest='wan'
+set firewall.guest_nomodem.proto='all'
+set firewall.guest_nomodem.target='REJECT'
+delete firewall.guest_nomodem.dest_ip
+$(modem_addresses | while read -r _ma; do echo "add_list firewall.guest_nomodem.dest_ip='$_ma'"; done)
 
 # --- openNDS gates only the guest network -------------------------------------------------------------------------------
 set opennds.@opennds[0].enabled='1'
