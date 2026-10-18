@@ -2,7 +2,7 @@
   "version": "1.5.11",
   "sha256": "368fcf6724855c10304774641897d1bacae2935550768a7b28a9ef75f44963fd",
   "size": 1475599,
-  "rollout": 0,
-  "changelog": "Router software release 1.5.11",
-  "sig": "MEUCIQDrOeUiCJBw1aDPRhy31EedUGM4F1ls1uXMiaywfhE7vgIgBh5RaNIHw+8aHM/q/KlZkauhEB4q4b9IySg0QEHy6zg="
+  "rollout": 100,
+  "changelog": "One admin page: the console shows the coin box page in Rental phones",
+  "sig": "MEQCIGHmZqTklzp/ik0pcsgCn3xrmMctHl+dsFymFMwepGIKAiBh/+/FQlvH7lgAxbmIhs4F/THJ0kuAEDsWLhDKoWI65A=="
 }
