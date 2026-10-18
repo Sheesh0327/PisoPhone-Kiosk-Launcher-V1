@@ -2,7 +2,7 @@
   "version": "1.5.12",
   "sha256": "e9d526e1ee17a9fb6322e88b3dcec34947d98c0948f086d121a57a9c64202073",
   "size": 1477925,
-  "rollout": 10,
+  "rollout": 100,
   "changelog": "Admin page at http://admin.hub; coin box and phone no longer use mDNS",
-  "sig": "MEYCIQCxnlIadkamGZJu1Km0yb9bL65QGaIIDpGH9A8rPfDGDAIhAOhZt/ykcXyD6WN5+PmKOlBTg1HRARoYXN7fHcl3If07"
+  "sig": "MEUCIQC/UsCEAY+J/LDRwYbQ1pk89rWCXuSm9z9A7SE3N2cckAIgHJ1ubyhh1Kft2CaSx3WVh6CDxqkJ+F1FwgpIhsR7SqE="
 }
