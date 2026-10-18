@@ -554,8 +554,21 @@ class KioskEngine(
                     accountBusy.set(false)
                 }
             }
-            Handler(Looper.getMainLooper()).post { onDone(reply) }
+            Handler(Looper.getMainLooper()).post {
+                if (reply.success) speakCardWelcome(reply)
+                onDone(reply)
+            }
         }
+    }
+
+    /**
+     * Says "Welcome, VIP card activated" on a card's first scan (the box gave it its starter time) and "Welcome, VIP <name>" on
+     * every later scan. A plain confirmation: it follows the owner's speech switch and quiet hours, and is skipped while the voice
+     * is not ready.
+     */
+    private fun speakCardWelcome(reply: Esp32AccountRequests.Reply) {
+        val words = AccountSpeech.welcome(firstScan = reply.bonusSec > 0, name = reply.name)
+        audioManager.speakWarning(words, alert = false)
     }
 
     private fun runScan(card: String): Esp32AccountRequests.Reply {
